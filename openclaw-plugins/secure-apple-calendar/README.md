@@ -200,17 +200,49 @@ registration time, so each agent can see a different subset of calendars.
 This is the same allow/blocklist mechanism `apple-pim-cli` already honors —
 single source of truth.
 
-**Drop a config file at:**
+**Where the file goes** (one of `<workspaceDir>/apple-pim/config.json`):
 
-```
-<agent workspaceDir>/apple-pim/config.json
+OpenClaw's default-agent gets `defaults.workspace` as its `workspaceDir`;
+non-default agents get `<defaults.workspace>/<agentId>`. So with the common
+`defaults.workspace = "~/.openclaw/workspace"`:
+
+| Agent | Config path |
+|---|---|
+| Default agent (e.g. `main`) | `~/.openclaw/workspace/apple-pim/config.json` |
+| Other agent (e.g. `reader`) | `~/.openclaw/workspace/reader/apple-pim/config.json` |
+
+If you've set per-agent `workspace` overrides in `~/.openclaw/config.json`,
+substitute that path instead.
+
+**Schema** — apple-pim's `PIMConfiguration` Codable struct (Swift). All four
+domain blocks are **required** (non-optional in Swift); omitting any one
+makes the entire file fail to decode and apple-pim silently falls back to
+defaults (warning is stderr-only). For a calendar-only restriction:
+
+```json
+{
+  "calendars": {
+    "enabled": true,
+    "mode": "allowlist",
+    "items": ["Personal", "Work", "US Holidays"]
+  },
+  "reminders": { "enabled": false, "mode": "all", "items": [] },
+  "contacts":  { "enabled": false, "mode": "all", "items": [] },
+  "mail":      { "enabled": false },
+  "default_calendar": "Personal"
+}
 ```
 
-For an OpenClaw agent at `~/.openclaw/agents/<agentId>/workspace/`, that's
-`~/.openclaw/agents/<agentId>/workspace/apple-pim/config.json`. Schema is
-apple-pim's — see
-[`Apple-PIM-Agent-Plugin/docs/config.md`](https://github.com/omarshahine/Apple-PIM-Agent-Plugin)
-(`items.calendar.allow`, `items.calendar.deny`, etc).
+- `mode`: `"all"` | `"allowlist"` | `"blocklist"`
+- `items`: exact macOS Calendar.app names (case + punctuation matter)
+- `default_calendar`: name used when `create` doesn't specify one (omit
+  for read-only agents)
+- `reminders`/`contacts`/`mail` blocks must be present even though this
+  plugin doesn't expose those tools — they're required by apple-pim's
+  decoder. Setting `enabled: false` makes them defense-in-depth.
+
+Source of truth: `swift/Sources/PIMConfig/PIMConfiguration.swift` in
+[`Apple-PIM-Agent-Plugin`](https://github.com/omarshahine/Apple-PIM-Agent-Plugin).
 
 **Resolution priority** (first match wins):
 
@@ -224,12 +256,22 @@ apple-pim's — see
 apple-pim subprocess (cached for the gateway lifetime). Two agents with no
 per-agent config both share the global default bridge.
 
-**Cache invalidation:** changes to a per-agent `config.json` require
-restarting the OpenClaw gateway. There is no FS-watch in v1.
+**Cache invalidation:** *editing* an existing per-agent `config.json` takes
+effect on the next bridge spawn (no restart needed — the env var still
+points at the same dir, apple-pim re-reads on startup, and bridges are
+spawned lazily). *Adding* a new config file is the same — the factory's
+`existsSync` check has already locked in the path. *Removing* a config
+file requires a gateway restart so the factory re-resolves.
 
 **Backward compat:** if no per-agent config exists anywhere, behavior is
 identical to before this feature shipped — one shared bridge against
 `~/.config/apple-pim/`.
+
+**Quick verification** — to confirm decoding succeeded, run any
+`calendar_read action=list` and check the apple-pim mcp-server's stderr
+in the gateway log. A line like `Warning: failed to parse ...
+config.json: The data couldn't be read because it is missing` means
+you're missing one of the four required domain blocks.
 
 ### Per-agent tool allowlist split
 

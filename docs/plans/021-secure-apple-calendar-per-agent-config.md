@@ -1,6 +1,6 @@
 # Plan 021: `secure-apple-calendar` per-agent config (factory pattern)
 
-**Status:** ✅ Implemented (2026-05-10) — pending mini deploy
+**Status:** ✅ Complete (2026-05-13)
 **Author:** Cole + Puddles
 **Blocks:** Plan 022 (`household`) — household needs per-agent calendar
 filtering to be useful with `calendar_read`/`calendar_write`.
@@ -392,14 +392,32 @@ None — all design questions settled this session.
 - [x] Mark plan complete with date
 
 ### Deploy
-- [ ] Build + bundle
-- [ ] Deploy to mini
-- [ ] Validate config
-- [ ] Restart gateway
-- [ ] Smoke test: main calendar still works (no per-agent config →
+- [x] Build + bundle (mini)
+- [x] Deploy to mini (git pull + pnpm build)
+- [x] Restart gateway (`launchctl kickstart -k gui/$(id -u)/ai.openclaw.gateway`)
+- [x] Verify factory registration in gateway log
+- [x] Smoke test: main calendar still works (no per-agent config →
       falls back to global)
-- [ ] Smoke test: `calendar_write` still works (regression check, since
+- [x] Smoke test: `calendar_write` still works (regression check, since
       both tools moved to factory at once)
+- [x] Smoke test: per-agent allowlist actually filters (verified 2026-05-13:
+      main + reader configured with allowlist=[Personal, Work, US Holidays];
+      `calendar_read action=list` returned only those three)
+
+### Lessons learned
+- **apple-pim's `PIMConfiguration` Codable struct requires ALL FOUR domain
+  blocks** (`calendars`, `reminders`, `contacts`, `mail`) — they're
+  non-optional. A config with only `calendars` fails Swift decoding with
+  "data couldn't be read because it is missing" and apple-pim falls back
+  to defaults *silently* (warning is to stderr only). Original README
+  example only showed the calendar block, which decodes to nothing. Real
+  schema: see `swift/Sources/PIMConfig/PIMConfiguration.swift` upstream.
+- **No gateway restart needed when adding/changing a per-agent
+  `config.json`** — the factory closure captures `existsSync()` at
+  registration, but the cache key is the resolved path, so once a config
+  is in place the env var is correct on next bridge spawn. (If a config
+  is REMOVED, that's a different story — the factory would still send
+  `APPLE_PIM_CONFIG_DIR`. Restart for the deletion case.)
 
 ### Commit & push
-- [ ] Commit + push
+- [x] Commit + push (`b4a76de`)
