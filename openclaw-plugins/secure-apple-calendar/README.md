@@ -161,6 +161,7 @@ After enabling, add the config block below.
 | `applePimMcpArgs` | | `[]` | Args appended to the command (path to apple-pim's `mcp-server/dist/server.js`). |
 | `applePimMcpCwd` | | — | Working directory for the subprocess. |
 | `applePimMcpEnv` | | — | Extra env vars passed to the subprocess. |
+| `configDir` | | — | Gateway-level default `APPLE_PIM_CONFIG_DIR`. Overridden per-agent if `<workspaceDir>/apple-pim/config.json` exists. See [Per-agent calendar filtering](#per-agent-calendar-filtering). |
 | `trustedAttendeeDomains` | | `[]` | Email domains whose attendees auto-pass the egress guard without a Contacts lookup. Case-insensitive; leading `@` accepted. |
 | `model` | | `claude-haiku-4.5` | Copilot model used by hook LLM checks. |
 | `auditLogPath` | | `~/.openclaw/logs/secure-apple-calendar-audit.jsonl` | JSONL audit log. |
@@ -192,7 +193,45 @@ Prerequisites above.
 }
 ```
 
-### Per-agent allowlist split
+### Per-agent calendar filtering
+
+`secure-apple-calendar` resolves a per-agent `APPLE_PIM_CONFIG_DIR` at tool
+registration time, so each agent can see a different subset of calendars.
+This is the same allow/blocklist mechanism `apple-pim-cli` already honors —
+single source of truth.
+
+**Drop a config file at:**
+
+```
+<agent workspaceDir>/apple-pim/config.json
+```
+
+For an OpenClaw agent at `~/.openclaw/agents/<agentId>/workspace/`, that's
+`~/.openclaw/agents/<agentId>/workspace/apple-pim/config.json`. Schema is
+apple-pim's — see
+[`Apple-PIM-Agent-Plugin/docs/config.md`](https://github.com/omarshahine/Apple-PIM-Agent-Plugin)
+(`items.calendar.allow`, `items.calendar.deny`, etc).
+
+**Resolution priority** (first match wins):
+
+1. `<workspaceDir>/apple-pim/config.json` exists → use that dir as
+   `APPLE_PIM_CONFIG_DIR`
+2. Plugin config `configDir` (gateway-wide default)
+3. `process.env.APPLE_PIM_CONFIG_DIR` at gateway start
+4. Fall back to apple-pim's own `~/.config/apple-pim/`
+
+**Bridge sharing:** agents that resolve to the same config dir share one
+apple-pim subprocess (cached for the gateway lifetime). Two agents with no
+per-agent config both share the global default bridge.
+
+**Cache invalidation:** changes to a per-agent `config.json` require
+restarting the OpenClaw gateway. There is no FS-watch in v1.
+
+**Backward compat:** if no per-agent config exists anywhere, behavior is
+identical to before this feature shipped — one shared bridge against
+`~/.config/apple-pim/`.
+
+### Per-agent tool allowlist split
 
 Recommended: give the sandboxed reader agent only `calendar_read`, and
 give the main agent only `calendar_write` (or both, if main also browses

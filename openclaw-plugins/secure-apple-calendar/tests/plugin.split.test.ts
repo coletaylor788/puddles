@@ -1,5 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import secureAppleCalendarPlugin from "../src/plugin.js";
+import { __resetCacheForTests } from "../src/bridge-cache.js";
 import type {
   AnyAgentTool,
   OpenClawPluginApi,
@@ -80,8 +81,27 @@ function makeStubApi(
       error: vi.fn(),
       debug: vi.fn(),
     },
-    registerTool: (tool: AnyAgentTool) => {
-      tools.push(tool);
+    // Plugin now registers factories. We invoke each one immediately with an
+    // empty ctx (no workspaceDir) so existing tests can grab `api.tools` and
+    // exercise them without thinking about per-agent dispatch.
+    registerTool: (
+      toolOrFactory:
+        | AnyAgentTool
+        | ((ctx: { workspaceDir?: string; agentId?: string }) =>
+            | AnyAgentTool
+            | AnyAgentTool[]
+            | null
+            | undefined),
+    ) => {
+      if (typeof toolOrFactory === "function") {
+        const resolved = toolOrFactory({});
+        if (!resolved) return;
+        for (const t of Array.isArray(resolved) ? resolved : [resolved]) {
+          tools.push(t);
+        }
+      } else {
+        tools.push(toolOrFactory);
+      }
     },
     on: vi.fn(),
   } as unknown as OpenClawPluginApi & { tools: AnyAgentTool[] };
@@ -90,6 +110,13 @@ function makeStubApi(
 }
 
 describe("secure-apple-calendar plugin: read/write split", () => {
+  // Bridge cache is module-level; reset between tests so per-test mocks of
+  // connectMcpBridge are actually consulted instead of returning a previously
+  // cached bridge.
+  beforeEach(() => {
+    __resetCacheForTests();
+  });
+
   function loadPlugin(): { api: ReturnType<typeof makeStubApi> } {
     const api = makeStubApi({
       applePimMcpCommand: "node",
@@ -228,5 +255,103 @@ describe("secure-apple-calendar plugin: read/write split", () => {
     expect(result.details?.isError).toBeFalsy();
     expect(recordedCalls).toHaveLength(1);
     expect(recordedCalls[0].name).toBe("calendar");
+  });
+});
+
+describe("secure-apple-calendar plugin: per-agent factory dispatch", () => {
+  beforeEach(() => {
+    __resetCacheForTests();
+  });
+
+  /** Stub api that captures factories instead of resolving them eagerly. */
+  function makeFactoryStubApi(config: Record<string, unknown>) {
+    const factories: Array<
+      (ctx: { workspaceDir?: string; agentId?: string }) =>
+        | AnyAgentTool
+        | AnyAgentTool[]
+        | null
+        | undefined
+    > = [];
+    const api = {
+      pluginConfig: config,
+      logger: {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+      },
+      registerTool: (toolOrFactory: unknown) => {
+        if (typeof toolOrFactory === "function") {
+          factories.push(toolOrFactory as never);
+        }
+      },
+      on: vi.fn(),
+    } as unknown as OpenClawPluginApi;
+    return { api, factories };
+  }
+
+  it("registers factory functions (not eagerly-resolved tools)", () => {
+    const { api, factories } = makeFactoryStubApi({
+      applePimMcpCommand: "node",
+      applePimMcpArgs: ["/dev/null"],
+      auditLogPath: "/tmp/x.jsonl",
+    });
+    secureAppleCalendarPlugin.register(api);
+    expect(factories).toHaveLength(2);
+    expect(typeof factories[0]).toBe("function");
+  });
+
+  it("invokes the factory once per agent and yields a tool with the right name", () => {
+    const { api, factories } = makeFactoryStubApi({
+      applePimMcpCommand: "node",
+      applePimMcpArgs: ["/dev/null"],
+      auditLogPath: "/tmp/x.jsonl",
+    });
+    secureAppleCalendarPlugin.register(api);
+
+    const readToolForAgentA = factories[0]({
+      workspaceDir: "/tmp/agent-a/workspace",
+      agentId: "a",
+    }) as AnyAgentTool;
+    const readToolForAgentB = factories[0]({
+      workspaceDir: "/tmp/agent-b/workspace",
+      agentId: "b",
+    }) as AnyAgentTool;
+
+    expect(readToolForAgentA.name).toBe("calendar_read");
+    expect(readToolForAgentB.name).toBe("calendar_read");
+    // Different tool instances because each closes over a different bridgeSpec.
+    expect(readToolForAgentA).not.toBe(readToolForAgentB);
+  });
+
+  it("agents with no per-agent config share the <default> bridge slot", async () => {
+    const { connectMcpBridge } = await import("../src/mcp-bridge.js");
+    const seen: Array<Record<string, string> | undefined> = [];
+    (connectMcpBridge as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      async (opts: { env?: Record<string, string> }) => {
+        seen.push(opts.env);
+        return {
+          callTool: async () => ({ content: [{ type: "text", text: "ok" }] }),
+          close: async () => {},
+        };
+      },
+    );
+
+    const { api, factories } = makeFactoryStubApi({
+      applePimMcpCommand: "node",
+      applePimMcpArgs: ["/dev/null"],
+      auditLogPath: "/tmp/x.jsonl",
+    });
+    secureAppleCalendarPlugin.register(api);
+
+    const readA = factories[0]({ workspaceDir: "/tmp/no-config-a" }) as AnyAgentTool;
+    const readB = factories[0]({ workspaceDir: "/tmp/no-config-b" }) as AnyAgentTool;
+
+    await readA.execute("c1", { action: "list" });
+    await readB.execute("c2", { action: "list" });
+
+    // One spawn shared across both agents, no APPLE_PIM_CONFIG_DIR set.
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.APPLE_PIM_CONFIG_DIR).toBeUndefined();
   });
 });

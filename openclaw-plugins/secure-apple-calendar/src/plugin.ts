@@ -1,6 +1,6 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
-import { appendFileSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { appendFileSync, existsSync, mkdirSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import {
   ContactsEgressGuard,
@@ -11,7 +11,7 @@ import {
   type IngressHook,
 } from "mcp-hooks";
 import type { Tool as McpTool } from "@modelcontextprotocol/sdk/types.js";
-import { connectMcpBridge, McpBridge } from "./mcp-bridge.js";
+import { getBridge, shutdownAll, type BridgeSpec } from "./bridge-cache.js";
 import { calendarPrefilter } from "./prefilter.js";
 import {
   wrapMcpTool,
@@ -33,6 +33,12 @@ interface SecureAppleCalendarConfig {
   applePimMcpArgs?: string[];
   applePimMcpCwd?: string;
   applePimMcpEnv?: Record<string, string>;
+  /**
+   * Gateway-level default `APPLE_PIM_CONFIG_DIR`. Used when an agent has no
+   * per-agent `<workspaceDir>/apple-pim/config.json`. Lower priority than
+   * the workspace config; higher than `process.env.APPLE_PIM_CONFIG_DIR`.
+   */
+  configDir?: string;
   trustedAttendeeDomains?: string[];
   /** Override path to the contacts-cli binary. Defaults to "contacts-cli" on PATH. */
   contactsCliPath?: string;
@@ -285,6 +291,44 @@ function restrictActionsCaller(
   };
 }
 
+/**
+ * Subset of OpenClaw's `OpenClawPluginToolContext` we depend on. The full
+ * type isn't re-exported on `openclaw/plugin-sdk`'s public surface, but the
+ * runtime always supplies these fields (verified in
+ * `node_modules/openclaw/dist/plugin-sdk/src/plugins/tool-types.d.ts`).
+ */
+interface PluginToolCtx {
+  workspaceDir?: string;
+  agentDir?: string;
+  agentId?: string;
+}
+
+/**
+ * Resolve the apple-pim config dir for a given agent ctx.
+ *
+ *   1. `<ctx.workspaceDir>/apple-pim/config.json` exists  → use that dir
+ *   2. `pluginConfig.configDir`                           → gateway default
+ *   3. `process.env.APPLE_PIM_CONFIG_DIR`                 → env override
+ *   4. undefined                                          → apple-pim's own
+ *                                                           ~/.config/apple-pim/
+ *
+ * The bridge cache treats undefined as a single shared "<default>" slot, so
+ * agents without per-agent config all share the global bridge — preserves the
+ * pre-021 behavior on upgrade.
+ */
+function resolveConfigDirForAgent(
+  ctx: PluginToolCtx,
+  pluginConfig: Partial<SecureAppleCalendarConfig>,
+): string | undefined {
+  if (ctx.workspaceDir) {
+    const candidate = join(ctx.workspaceDir, "apple-pim");
+    if (existsSync(join(candidate, "config.json"))) return candidate;
+  }
+  if (pluginConfig.configDir) return pluginConfig.configDir;
+  if (process.env.APPLE_PIM_CONFIG_DIR) return process.env.APPLE_PIM_CONFIG_DIR;
+  return undefined;
+}
+
 const secureAppleCalendarPlugin = {
   id: "secure-apple-calendar",
   name: "Secure Apple Calendar",
@@ -307,22 +351,19 @@ const secureAppleCalendarPlugin = {
       return;
     }
 
+    // Hooks, LLM, audit, trust resolver are SHARED across all agents — the
+    // security wrappers don't depend on per-agent identity. Only the bridge
+    // (and thus the apple-pim allow/blocklist) varies per agent.
     const llm = new CopilotLLMClient({
       model: config.model ?? "claude-haiku-4.5",
     });
-
-    // Trust resolver reads the local AddressBook on every egress check (no
-    // cache; the per-call cost is invisible at this call frequency and
-    // eliminates staleness after `contact create`).
     const contacts = new ContactsTrustResolver({
       cliPath: config.contactsCliPath,
       logger: { warn: (m) => api.logger.warn?.(m) },
     });
-
     const trustedDomains = (config.trustedAttendeeDomains ?? [])
       .map((d) => d.trim().toLowerCase().replace(/^@/, ""))
       .filter((d) => d.length > 0);
-
     const ingress: IngressHook[] = [
       new InjectionGuard({ llm, prefilter: calendarPrefilter }),
       new SecretRedactor({ llm, prefilter: calendarPrefilter }),
@@ -335,46 +376,16 @@ const secureAppleCalendarPlugin = {
     });
     const calendarHooks: CalendarHooks = { ingress, egress: [egressGuard] };
 
-    // Lazy MCP bridge: spawn apple-pim MCP only on first invocation.
-    let bridgePromise: Promise<McpBridge> | null = null;
-    const getBridge = (): Promise<McpBridge> => {
-      if (!bridgePromise) {
-        const command = config.applePimMcpCommand!;
-        const args = config.applePimMcpArgs!;
-        const cwd = config.applePimMcpCwd;
-        const env = config.applePimMcpEnv
-          ? { ...process.env, ...config.applePimMcpEnv } as Record<string, string>
-          : undefined;
-        api.logger.info?.(
-          `[secure-apple-calendar] spawning bridge: command=${command} args=${
-            JSON.stringify(args)
-          } cwd=${cwd ?? "<none>"}`,
-        );
-        bridgePromise = connectMcpBridge({
-          command,
-          args,
-          cwd,
-          env,
-        }).catch((err) => {
-          api.logger.error?.(
-            `[secure-apple-calendar] bridge connect failed: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
-          );
-          bridgePromise = null;
-          throw err;
-        });
-      }
-      return bridgePromise;
-    };
-
-    const lazyCaller = {
-      callTool: async (name: string, args: Record<string, unknown>) =>
-        (await getBridge()).callTool(name, args),
-    };
-
     const auditLogPath = config.auditLogPath ?? DEFAULT_AUDIT_LOG_PATH;
     const audit = createAuditLogger(api, auditLogPath);
+
+    const baseBridgeSpec = (configDir: string | undefined): BridgeSpec => ({
+      command: config.applePimMcpCommand!,
+      args: config.applePimMcpArgs!,
+      cwd: config.applePimMcpCwd,
+      baseEnv: config.applePimMcpEnv,
+      configDir,
+    });
 
     const CALENDAR_READ_TOOL = narrowCalendarTool(
       "calendar_read",
@@ -393,41 +404,58 @@ const secureAppleCalendarPlugin = {
     );
 
     api.logger.info?.(
-      `[secure-apple-calendar] registering 2 tools (audit log: ${auditLogPath}, trusted domains: ${
+      `[secure-apple-calendar] registering 2 factory tools (audit log: ${auditLogPath}, trusted domains: ${
         trustedDomains.length > 0 ? trustedDomains.join(",") : "<none>"
       }): calendar_read, calendar_write`,
     );
 
-    api.registerTool(
-      wrapMcpTool(
-        CALENDAR_READ_TOOL,
-        restrictActionsCaller(lazyCaller, "calendar_read", READ_ACTIONS, api),
+    /**
+     * Build a per-agent OpenClaw tool. Called by OpenClaw at descriptor
+     * resolution time (cached per agent ctx — see plan 021), so the bridge
+     * spec is closure-captured per agent rather than re-resolved every call.
+     */
+    const buildFactory = (
+      tool: McpTool,
+      openclawToolName: string,
+      allowedActions: ReadonlySet<CalendarAction>,
+    ) => (ctx: PluginToolCtx) => {
+      const configDir = resolveConfigDirForAgent(ctx, config);
+      api.logger.debug?.(
+        `[secure-apple-calendar] resolving ${openclawToolName} for agent=${
+          ctx.agentId ?? "<no-id>"
+        } workspace=${ctx.workspaceDir ?? "<none>"} configDir=${
+          configDir ?? "<apple-pim default>"
+        }`,
+      );
+      const spec = baseBridgeSpec(configDir);
+      const lazyCaller: McpCaller = {
+        callTool: async (_name: string, args: Record<string, unknown>) => {
+          const bridge = await getBridge(spec);
+          // OpenClaw-facing names are calendar_read / calendar_write; the
+          // underlying MCP tool is always `calendar`.
+          return bridge.callTool("calendar", args);
+        },
+      };
+      return wrapMcpTool(
+        tool,
+        restrictActionsCaller(lazyCaller, openclawToolName, allowedActions, api),
         {
           selectHooks: (args) => selectHooksForCalendar(args, calendarHooks),
           audit,
           source: "secure-apple-calendar",
         },
-      ),
-    );
+      );
+    };
 
     api.registerTool(
-      wrapMcpTool(
-        CALENDAR_WRITE_TOOL,
-        restrictActionsCaller(lazyCaller, "calendar_write", WRITE_ACTIONS, api),
-        {
-          selectHooks: (args) => selectHooksForCalendar(args, calendarHooks),
-          audit,
-          source: "secure-apple-calendar",
-        },
-      ),
+      buildFactory(CALENDAR_READ_TOOL, "calendar_read", READ_ACTIONS),
+    );
+    api.registerTool(
+      buildFactory(CALENDAR_WRITE_TOOL, "calendar_write", WRITE_ACTIONS),
     );
 
     api.on("session_end", async () => {
-      if (bridgePromise) {
-        const bridge = await bridgePromise.catch(() => null);
-        bridgePromise = null;
-        if (bridge) await bridge.close();
-      }
+      await shutdownAll();
     });
   },
 };

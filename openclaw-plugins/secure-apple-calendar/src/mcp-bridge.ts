@@ -14,6 +14,12 @@ export interface McpBridgeOptions {
   /** Logical name surfaced to the MCP server during the handshake. */
   clientName?: string;
   clientVersion?: string;
+  /**
+   * Fired when the underlying transport closes (subprocess exit, broken
+   * stdio). Used by the bridge cache to evict crashed bridges so the next
+   * call respawns. Not fired for caller-initiated `close()`.
+   */
+  onClose?: () => void;
 }
 
 /**
@@ -24,6 +30,7 @@ export interface McpBridgeOptions {
 export class McpBridge {
   private client: Client | null = null;
   private transport: StdioClientTransport | null = null;
+  private userClosed = false;
 
   constructor(private readonly opts: McpBridgeOptions) {}
 
@@ -36,6 +43,11 @@ export class McpBridge {
       cwd: this.opts.cwd,
       env: this.opts.env,
     });
+    if (this.opts.onClose) {
+      transport.onclose = () => {
+        if (!this.userClosed) this.opts.onClose?.();
+      };
+    }
     const client = new Client(
       {
         name: this.opts.clientName ?? "secure-apple-calendar",
@@ -64,6 +76,7 @@ export class McpBridge {
   }
 
   async close(): Promise<void> {
+    this.userClosed = true;
     if (this.client) {
       await this.client.close().catch(() => undefined);
       this.client = null;
