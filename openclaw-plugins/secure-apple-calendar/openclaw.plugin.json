@@ -3,6 +3,12 @@
   "name": "Secure Apple Calendar",
   "version": "0.1.0",
   "description": "Wraps apple-pim's calendar MCP tool with mcp-hooks ingress (InjectionGuard + SecretRedactor) and egress (SendApproval) security.",
+  "contracts": {
+    "tools": [
+      "calendar_read",
+      "calendar_write"
+    ]
+  },
   "configSchema": {
     "type": "object",
     "required": ["applePimMcpCommand"],
