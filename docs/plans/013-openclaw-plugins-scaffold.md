@@ -89,7 +89,7 @@ Users add plugins to their OpenClaw config:
 
 The `openclaw-plugins/README.md` should cover:
 - What these plugins do (security hooks for OpenClaw tools)
-- Prerequisites (OpenClaw installed, GitHub Copilot subscription, PAT in keychain)
+- Prerequisites (OpenClaw installed, the configured LLM provider subscription, PAT in keychain)
 - How to register plugins with OpenClaw
 - Per-plugin config examples
 - Link to Plan 009 / `packages/mcp-hooks/` for the underlying hook logic

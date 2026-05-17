@@ -4,11 +4,11 @@ This is the third guide in my journey building Puddles, my personal AI agent, on
 
 By the end of it you'll have:
 
-- **OpenClaw installed and configured** on the Mini, talking to GitHub Copilot for inference
+- **OpenClaw installed and configured** on the Mini, talking to whichever LLM provider you've wired up
 - **Four agents** (`main`, `debug`, `reader`, `browser-agent`) with separate workspaces, separate sessions, separate auth, and separate tool allowlists
 - **Docker sandboxes** by default for every agent except `debug` — so a prompt-injection compromise lands inside a container with a tiny toolbox, not on the host
 - **A hardened `AGENTS.md`** in each workspace that tells the agent how to behave when the input is hostile
-- **`SecretRef`** for every credential — the gateway token, the BlueBubbles API key, the Copilot token, anything else — so `openclaw.json` can be read without leaking anything
+- **`SecretRef`** for every credential — the gateway token, the BlueBubbles API key, your LLM provider token, anything else — so `openclaw.json` can be read without leaking anything
 
 Heads-up: this guide assumes guides 01 and 02 are done. The `puddles` user and FileVault remote-unlock from guide 01, and the BlueBubbles bridge / gateway service from guide 02, are prerequisites. Guide 02 already installs OpenClaw and gets the gateway running as a service — this guide assumes that's in place and walks through tightening it. If you're starting completely from scratch, do the install + `openclaw configure` from guide 02 first, then come back here.
 
@@ -148,7 +148,7 @@ Defaults apply to every agent unless that agent overrides them. We want the **de
 
 ```bash
 openclaw config set 'agents.defaults' '{
-  "model": "github-copilot/claude-opus-4.6",
+  "model": "<your-provider>/<your-model-id>",
   "contextTokens": 120000,
   "thinkingDefault": "medium",
   "timeoutSeconds": 900,
@@ -552,7 +552,7 @@ The full file for `reader` is 49 lines and the full file for `browser-agent` is 
 
 ## 9. SecretRef — getting credentials out of the config
 
-Every credential — gateway token, BlueBubbles API key, Copilot token, Google API key for inference — should resolve through a `SecretRef`, never appear inline in `openclaw.json`.
+Every credential — gateway token, BlueBubbles API key, LLM provider token, Google API key for inference — should resolve through a `SecretRef`, never appear inline in `openclaw.json`.
 
 ### The shape
 
@@ -603,10 +603,10 @@ The `id` is a JSON pointer into `secrets.json`. The gateway resolves it at start
 ```json
 {
   "providers": {
-    "gateway":        { "token":  "<random 64-char hex>" },
-    "bluebubbles":    { "apiKey": "<the password you set in guide 02>" },
-    "google":         { "apiKey": "<google api key>" },
-    "github-copilot": { "token":  "<copilot token>" }
+    "gateway":     { "token":  "<random 64-char hex>" },
+    "bluebubbles": { "apiKey": "<the password you set in guide 02>" },
+    "google":      { "apiKey": "<google api key>" },
+    "<your-llm-provider-id>": { "token":  "<your llm provider token>" }
   }
 }
 ```

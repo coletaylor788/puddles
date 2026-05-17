@@ -24,7 +24,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { CopilotLLMClient } from "../src/copilot-llm.js";
+import { loadLLMProvider } from "../src/load-llm-provider.js";
 import {
   GEN_CONFIGS,
   type BooleanGenConfig,
@@ -75,8 +75,9 @@ interface ParsedArgs {
   concurrency: number;
   retries: number;
   target: number | null;
-  model: string;
-  validatorModel: string;
+  llmProvider: string | null;
+  model: string | null;
+  validatorModel: string | null;
 }
 
 interface GenJob {
@@ -97,11 +98,20 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const evalsToRun: EvalName[] = args.evalName === "all" ? ALL_EVALS : [args.evalName];
 
-  const llm = new CopilotLLMClient({ model: args.model });
+  if (!args.llmProvider) {
+    console.error(
+      "[generate] --llm-provider=<module-specifier> is required (see packages/mcp-hooks/README.md).",
+    );
+    process.exit(1);
+  }
+
+  const baseOpts: Record<string, unknown> = {};
+  if (args.model) baseOpts.model = args.model;
+  const llm = await loadLLMProvider(args.llmProvider, baseOpts);
   const validatorLLM =
-    args.validatorModel === args.model
+    !args.validatorModel || args.validatorModel === args.model
       ? llm
-      : new CopilotLLMClient({ model: args.validatorModel });
+      : await loadLLMProvider(args.llmProvider, { model: args.validatorModel });
 
   for (const evalName of evalsToRun) {
     const cfg = GEN_CONFIGS[evalName];
@@ -122,8 +132,8 @@ async function generateOne(
   cfg: EvalGenConfig,
   target: number,
   args: ParsedArgs,
-  llm: CopilotLLMClient,
-  validatorLLM: CopilotLLMClient,
+  llm: import("../src/llm-client.js").LLMClient,
+  validatorLLM: import("../src/llm-client.js").LLMClient,
 ): Promise<void> {
   const seedPath = resolve(SEEDS_DIR, `${evalName}.json`);
   if (!existsSync(seedPath)) {
@@ -238,8 +248,8 @@ interface GenFail {
 async function tryGenerateOne(
   cfg: EvalGenConfig,
   job: GenJob,
-  llm: CopilotLLMClient,
-  validatorLLM: CopilotLLMClient,
+  llm: import("../src/llm-client.js").LLMClient,
+  validatorLLM: import("../src/llm-client.js").LLMClient,
   retries: number,
 ): Promise<GenSuccess | GenFail> {
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -292,7 +302,7 @@ async function tryGenerateOne(
 async function callGenerator(
   cfg: EvalGenConfig,
   job: GenJob,
-  llm: CopilotLLMClient,
+  llm: import("../src/llm-client.js").LLMClient,
 ): Promise<{ content: string; secret?: string }> {
   const prompt = buildGeneratorPrompt(cfg, job);
   const userMsg = `Generate one case now. Return ONLY a JSON object, no prose, no markdown fences.`;
@@ -315,7 +325,7 @@ async function callValidator(
   cfg: EvalGenConfig,
   content: string,
   secret: string | undefined,
-  llm: CopilotLLMClient,
+  llm: import("../src/llm-client.js").LLMClient,
 ): Promise<boolean | null> {
   // INDEPENDENT prompt — NOT the production prompt. Asks for plain yes/no.
   // For redact: validator confirms the generator-claimed secret is actually
@@ -501,7 +511,7 @@ function nextIdStart(evalName: EvalName, seedCases: Array<BooleanEvalCase | Reda
 }
 
 function parseJsonLoose(raw: string): unknown {
-  // Strip code fences (already done in CopilotLLMClient.classify) but be safe.
+  // Strip code fences (already done in stripCodeFences() inside the LLM adapter) but be safe.
   const trimmed = raw.trim();
   // Try direct parse
   try {
@@ -530,18 +540,20 @@ function parseArgs(argv: string[]): ParsedArgs {
     concurrency: 8,
     retries: 1,
     target: null,
-    model: "claude-opus-4.7",
-    validatorModel: "claude-opus-4.7",
+    llmProvider: null,
+    model: null,
+    validatorModel: null,
   };
   for (const arg of argv) {
     if (arg.startsWith("--eval=")) out.evalName = arg.slice(7) as EvalName | "all";
     else if (arg.startsWith("--concurrency=")) out.concurrency = Number(arg.slice(14));
     else if (arg.startsWith("--retries=")) out.retries = Number(arg.slice(10));
     else if (arg.startsWith("--target=")) out.target = Number(arg.slice(9));
+    else if (arg.startsWith("--llm-provider=")) out.llmProvider = arg.slice(15);
     else if (arg.startsWith("--model=")) out.model = arg.slice(8);
     else if (arg.startsWith("--validator-model=")) out.validatorModel = arg.slice(18);
     else if (arg === "-h" || arg === "--help") {
-      console.log(`Usage: tsx evals/generate.ts --eval=<name> [--target=N] [--concurrency=N]\n  --eval: secrets|sensitive|pii|injection|redact|all\n  --target: override the per-eval target (default: from generate-config)\n  --concurrency: parallel Opus calls (default 8)\n  --model: generator model (default claude-opus-4.7)\n  --validator-model: validator model (default claude-opus-4.7)`);
+      console.log(`Usage: tsx evals/generate.ts --llm-provider=<module> --eval=<name> [options]\n  --llm-provider: Node module specifier whose default export implements LLMClient (REQUIRED)\n  --eval: secrets|sensitive|pii|injection|redact|all\n  --target: override the per-eval target (default: from generate-config)\n  --concurrency: parallel LLM calls (default 8)\n  --model: generator model id forwarded to the provider's constructor\n  --validator-model: validator model id (defaults to --model)`);
       process.exit(0);
     } else if (arg.startsWith("--")) {
       console.error(`Unknown arg: ${arg}`);

@@ -31,9 +31,9 @@ vi.mock("mcp-hooks", () => {
     }
   }
   return {
-    CopilotLLMClient: class {
-      constructor(_opts: unknown) {}
-    },
+    loadLLMProvider: async () => ({
+      classify: async () => "",
+    }),
     InjectionGuard: class extends FakeHook {
       constructor(_opts: unknown) {
         super("InjectionGuard");
@@ -73,6 +73,7 @@ function makeApi(workspaceDir: string) {
     pluginConfig: {
       gmailMcpCommand: "/bin/true",
       gmailMcpArgs: [],
+      llmProvider: "test-stub-llm-provider",
       auditLogPath: join(workspaceDir, "audit.jsonl"),
     },
     logger: {

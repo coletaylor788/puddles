@@ -14,7 +14,7 @@
   },
   "configSchema": {
     "type": "object",
-    "required": ["gmailMcpCommand"],
+    "required": ["gmailMcpCommand", "llmProvider"],
     "additionalProperties": false,
     "properties": {
       "gmailMcpCommand": {
@@ -31,10 +31,18 @@
         "type": "string",
         "description": "Working directory for the gmail-mcp subprocess (optional)."
       },
+      "llmProvider": {
+        "type": "string",
+        "description": "Node module specifier whose default export is a class implementing mcp-hooks' LLMClient interface (e.g. a workspace package name or absolute path). The plugin dynamic-imports this at startup and constructs it with `{ model, ...llmProviderOptions }`."
+      },
+      "llmProviderOptions": {
+        "type": "object",
+        "description": "Extra constructor options forwarded to the llmProvider class (merged with { model }).",
+        "additionalProperties": true
+      },
       "model": {
         "type": "string",
-        "description": "Copilot model used by hook LLM checks.",
-        "default": "claude-haiku-4.5"
+        "description": "Model id passed to the llmProvider class constructor. The provider decides what counts as a valid id."
       },
       "skipTools": {
         "type": "array",

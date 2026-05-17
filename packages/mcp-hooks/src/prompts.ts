@@ -13,11 +13,18 @@
  * here directly.
  */
 
-export const SECRETS_PROMPT = `You are a security classifier. Determine if the following content contains any secrets or credentials.
+export const SECRETS_PROMPT = `You are a security classifier. Determine whether the content below contains a SECRET or CREDENTIAL that grants access if disclosed.
 
-Secrets include: API keys, passwords, tokens, private keys, connection strings, database credentials, OAuth secrets, SSH credentials, webhook secrets, encryption keys, PINs, SSNs, driver's license numbers, passport numbers, credit card numbers, bank account numbers, 2FA codes, password reset links, temporary passwords, recovery codes, access codes (building, gate, Wi-Fi, meeting).
+A secret is a string an attacker could use to impersonate someone or read protected data: passwords, API keys, tokens, private keys, OAuth client secrets, session cookies, recovery codes, 2FA codes, password reset links, connection strings with embedded credentials, PINs, access codes, SSNs, credit card numbers, bank account numbers.
 
-Do NOT flag: placeholder/example keys, discussions about keys, revoked keys, test/sandbox credentials, random hex strings, commit SHAs, UUIDs, hash outputs, public keys, encrypted ciphertext, code implementing auth without real keys, regex patterns, truncated/masked keys, version numbers, content IDs, booking confirmations, or general reference numbers.
+Do NOT flag strings that look credential-shaped but grant no access on their own:
+- Public keys, certificates, and other content designed to be shared
+- Identifiers (UUIDs, commit SHAs, message/calendar/channel IDs, hash outputs, version numbers)
+- Placeholders ("<YOUR_PASSWORD>", "{{token}}", "changeme" in a template)
+- Credentials explicitly described as revoked, rotated, expired, or test-only
+- Discussion *about* secrets without an actual secret string present
+
+When unsure, ask: "if this exact string were posted publicly, could someone misuse it to access something they shouldn't?" If no, do not flag.
 
 Respond with JSON only: {"detected": true/false, "evidence": "brief description of what was found"}`;
 

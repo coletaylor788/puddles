@@ -20,19 +20,20 @@ actually sees end-to-end.
 
 - **Unit tests** mock the LLM and verify wiring/control flow. They tell us "is
   the code correct given a known LLM output?"
-- **Evals** call the real Copilot LLM API and measure classifier accuracy
-  against hand-curated cases. They tell us "is the prompt + model good enough
-  to deploy?"
+- **Evals** call a real LLM through your wired-up `LLMClient` adapter and
+  measure classifier accuracy against hand-curated cases. They tell us "is
+  the prompt + model good enough to deploy?"
 
 ## Quickstart
 
 ```bash
-# Requires a Copilot PAT in the macOS keychain (service "openclaw" or
-# "mcp-hooks"). Without one, the harness skips with a warning.
-pnpm --filter mcp-hooks eval                      # run all 5
-pnpm --filter mcp-hooks eval:secrets              # run one
-pnpm --filter mcp-hooks eval --eval=injection -v  # verbose
-pnpm --filter mcp-hooks eval --output-dir=evals/baselines  # commit results
+# Requires --llm-provider=<module-specifier> whose default export implements
+# mcp-hooks' LLMClient (see packages/mcp-hooks/README.md). Without it the CLI
+# exits non-zero.
+pnpm --filter mcp-hooks eval --llm-provider=my-llm-adapter             # run all 5
+pnpm --filter mcp-hooks eval:secrets --llm-provider=my-llm-adapter     # run one
+pnpm --filter mcp-hooks eval --eval=injection --llm-provider=my-llm-adapter -v
+pnpm --filter mcp-hooks eval --eval=all --llm-provider=my-llm-adapter --output-dir=evals/baselines
 ```
 
 ## Two metric views
@@ -80,7 +81,7 @@ canonical types):
 ```json
 {
   "eval": "secrets",
-  "model": "claude-haiku-4.5",
+  "model": "claude-haiku-4-5",
   "createdAt": "2026-04-26T00:56:19.752Z",
   "gitSha": "<commit>",
   "promptHash": "<sha256[:12]>",

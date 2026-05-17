@@ -103,10 +103,10 @@ export PATH="/opt/homebrew/opt/node@22/bin:$PATH"
 - Library validation disabled (`DisableLibraryValidation = 1`)
 - **OpenClaw 2026.4.21** installed globally as **cole** (`npm install -g openclaw@latest`); puddles uses the binary at `/opt/homebrew/bin/openclaw` — no per-user npm prefix needed. Updates must be run as cole (puddles can't write to `/opt/homebrew/lib`).
 - Tailscale **operator = puddles** (`sudo tailscale set --operator=puddles`) so puddles can manage `tailscale serve` without sudo
-- Onboarded with **GitHub Copilot** as model provider (device-flow OAuth, token at `~/.openclaw/agents/main/agent/auth-profiles.json`)
-- Default model: **`github-copilot/claude-opus-4.6`** (1M context Opus on Copilot)
+- Onboarded with **the configured LLM provider** as model provider (OAuth, token at `~/.openclaw/agents/main/agent/auth-profiles.json`)
+- Default model: **`<your-provider>/<your-model-id>`** (1M context Opus via the provider)
 - Soft compaction budget: **600,000 tokens** (`agents.defaults.contextTokens = 600000`, ~60% of model ceiling)
-- Reasoning effort: **high** (`agents.defaults.thinkingDefault = high`) — initially set to `adaptive` but Copilot's Claude proxy doesn't expose adaptive (UI dropdown for Claude Opus 4.6 only shows Off/Minimal/Low/Medium/High; "Default" resolves to low). Set to `high` so Opus reasons hard by default; dial down per-message in the composer when you want speed.
+- Reasoning effort: **high** (`agents.defaults.thinkingDefault = high`) — initially set to `adaptive` but the provider's Claude proxy doesn't expose adaptive (UI dropdown for Claude Opus 4.6 only shows Off/Minimal/Low/Medium/High; "Default" resolves to low). Set to `high` so Opus reasons hard by default; dial down per-message in the composer when you want speed.
 - Gateway running as puddles' LaunchAgent on `127.0.0.1:18789` (`gateway.mode=local`)
 - **Tailscale Serve** active: `https://coles-mac-mini-1.tailcef8bc.ts.net/` → proxies to `127.0.0.1:18789`. Tailnet-only HTTPS (real cert). NOT funnelled.
 - `gateway.controlUi.allowedOrigins = ["https://coles-mac-mini-1.tailcef8bc.ts.net"]` so the browser origin is permitted
@@ -118,8 +118,8 @@ export PATH="/opt/homebrew/opt/node@22/bin:$PATH"
 ### 2.x — Gotchas captured this round (for guide #02)
 1. **Wizard is fragile when interrupted.** It writes config in stages (auth → gateway.mode → daemon → per-agent models). Killing it mid-flow leaves partial state. Recovery: `openclaw config set gateway.mode local && openclaw daemon install && openclaw daemon start`.
 2. **Driving the wizard via async/SSH is bad** — the spinner output (`◒ ◐ ◓ ◑`) floods buffers and blanks the TUI. Either run it in a real terminal (Termius / VNC GUI) or use `--non-interactive` flags where supported.
-3. **`--non-interactive` does NOT support GitHub Copilot:** `openclaw onboard --non-interactive --auth-choice github-copilot ...` → "GitHub Copilot provider plugin does not implement non-interactive setup." Must onboard interactively for Copilot.
-4. **`gpt-5.4` (the current default in shipped models.json) is mapped to provider `codex`**, not github-copilot. After Copilot-only onboard, change the default with: `openclaw config set agents.defaults.model "github-copilot/<model>"` then `openclaw daemon restart`.
+3. **`--non-interactive` does NOT support the configured LLM provider:** `openclaw onboard --non-interactive --auth-choice <your-provider> ...` → "the configured LLM provider provider plugin does not implement non-interactive setup." Must onboard interactively for this provider.
+4. **`gpt-5.4` (the current default in shipped models.json) is mapped to provider `codex`**, not your provider. After provider-only onboard, change the default with: `openclaw config set agents.defaults.model "<your-provider>/<your-model-id>"` then `openclaw daemon restart`.
 5. **CLI ↔ gateway pairing required after first browser pair.** `openclaw devices approve <requestId> --token <gateway.auth.token>` for both. The CLI shows up as pending request with `device=agent`; the browser shows up with a long hex device id.
 6. **`openclaw infer model providers`** is the way to inspect what's wired up (per-provider count/defaults/configured/selected). `openclaw infer model list` to see all models with provider+context-window. Use `openclaw infer model inspect --model <provider/model>` to confirm context window.
 7. **The `(200k ctx)` in `openclaw status` is NOT the model ceiling** — it's `sessions.defaults.contextTokens` (soft compaction budget). The model's true context window comes from `models.providers.<id>.models[].contextWindow` and is shown by `infer model inspect`.
@@ -140,11 +140,11 @@ export PATH="/opt/homebrew/opt/node@22/bin:$PATH"
 - ✅ `openclaw security audit` → **0 critical · 0 warn**
 
 ### 2.6 — UI thinking-effort label cosmetic bug (TODO: confirm + report)
-- Symptom: composer dropdown for `Claude Opus 4.6 · github-copilot` shows **"Default (low)"** even with `agents.list[main].thinkingDefault = "high"` and `agents.defaults.thinkingDefault = "high"` set.
+- Symptom: composer dropdown for `Claude Opus 4.6 · <your-provider>` shows **"Default (low)"** even with `agents.list[main].thinkingDefault = "high"` and `agents.defaults.thinkingDefault = "high"` set.
 - Root cause: in `dist/control-ui/assets/index-Bsj0vinf.js` the `ja(provider, model, catalog)` function hardcodes the default-label as `adaptive` for `provider=anthropic` (regex-matched Claude) or `provider=amazon-bedrock` Claude, else `low` for any other reasoning model. It does NOT consult agent config for the label.
 - The runtime resolver (`dist/model-selection-DpNW4nwC.js`: `agentEntry?.thinkingDefault ?? resolved ?? agentCfg?.thinkingDefault ?? "off"`) should still apply our `high` default.
 - **TODO:** confirm via inspecting an actual request payload (e.g. `openclaw logs`, or send a complex prompt and verify reasoning depth). If not actually applied, file as bug + workaround = manually pick "High" per session.
-- **TODO:** open OpenClaw issue: UI label should fall back to `agentEntry.thinkingDefault` for non-anthropic-direct providers (especially github-copilot Claude).
+- **TODO:** open OpenClaw issue: UI label should fall back to `agentEntry.thinkingDefault` for non-anthropic-direct providers (especially third-party Claude proxies).
 
 ---
 
@@ -296,7 +296,7 @@ After this fix, both keys reference `providers.gateway.token`:
 3. `openclaw secrets reload` — re-resolves SecretRefs and atomically swaps the runtime snapshot. **No process restart needed.** The long-running gateway picks up the new token in place.
 4. Verify: `openclaw gateway call health` (CLI uses the new token end-to-end via `gateway.remote.token`).
 
-The `secrets reload` warning count is unrelated — `openclaw secrets audit` lists pre-existing plaintext findings (currently 3 × `github-copilot` tokens in `~/.openclaw/agents/{main,browser-agent,reader}/agent/auth-profiles.json`). Tracked as a separate follow-up below.
+The `secrets reload` warning count is unrelated — `openclaw secrets audit` lists pre-existing plaintext findings (currently 3 × LLM provider tokens in `~/.openclaw/agents/{main,browser-agent,reader}/agent/auth-profiles.json`). Tracked as a separate follow-up below.
 
 **Operational notes:**
 - `~/.openclaw/secrets.json` contains plaintext credentials — do not `cat` it during rotations or troubleshooting; only update by atomic write or `chmod`/`ls -la` to verify perms.
@@ -316,9 +316,9 @@ The `secrets reload` warning count is unrelated — `openclaw secrets audit` lis
 **Open follow-ups (post-rotation):**
 - Consider adding `SSH_SK_PROVIDER` to `~/.zshenv` (loaded by non-interactive shells) so scripted SSH from the laptop "just works" without per-call exports.
 
-### 5.7 — github-copilot auth tokens → SecretRef ✅ (2026-04-24)
+### 5.7 — LLM provider OAuth tokens → SecretRef ✅ (2026-04-24)
 
-Audit (`openclaw secrets audit`) flagged 3 plaintext `ghu_*` tokens in agent auth-profiles:
+Audit (`openclaw secrets audit`) flagged 3 plaintext provider OAuth tokens in agent auth-profiles:
 - `~/.openclaw/agents/main/agent/auth-profiles.json`
 - `~/.openclaw/agents/browser-agent/agent/auth-profiles.json`
 - `~/.openclaw/agents/reader/agent/auth-profiles.json`
@@ -326,10 +326,10 @@ Audit (`openclaw secrets audit`) flagged 3 plaintext `ghu_*` tokens in agent aut
 All three were verified identical (same SHA-256), so consolidated into a single secrets entry rather than per-agent copies.
 
 **Result:**
-- `~/.openclaw/secrets.json` gained `providers.github-copilot.token` (the canonical token, mode 600).
-- Each `auth-profiles.json` `profiles["github-copilot:github"].token` replaced with:
+- `~/.openclaw/secrets.json` gained `providers.<your-provider>.token` (the canonical token, mode 600).
+- Each `auth-profiles.json` token field replaced with:
   ```json
-  { "source": "file", "provider": "local", "id": "/providers/github-copilot/token" }
+  { "source": "file", "provider": "local", "id": "/providers/<your-provider>/token" }
   ```
 - Backups of all 4 modified files written alongside as `*.bak.<timestamp>`.
 - Post-migration: `openclaw secrets audit` → **clean. plaintext=0, unresolved=0, shadowed=0, legacy=0.**
@@ -438,7 +438,7 @@ Inspired by https://lobster.shahine.com/guides/bluebubbles-health/ but reverse-e
 
 ### 6.1.4 — Gateway silent-wedge watchdog (TODO)
 
-**Trigger:** 2026-04-26 evening incident — initially diagnosed as transient network blip during scheduled `github-copilot` OAuth refresh (18:18 PDT). Refresh failed twice with `Connect Timeout Error api.github.com:443`, scheduled-retry never recovered, gateway stayed `state=running` for ~12 hours but processed **zero agent runs** while continuing to accept BlueBubbles webhooks. Discovered next morning when DMs got no reply. `launchctl kickstart -k` recovered it instantly.
+**Trigger:** 2026-04-26 evening incident — initially diagnosed as transient network blip during a scheduled LLM provider OAuth refresh (18:18 PDT). Refresh failed twice with a connect timeout to the provider's auth endpoint, scheduled-retry never recovered, gateway stayed `state=running` for ~12 hours but processed **zero agent runs** while continuing to accept BlueBubbles webhooks. Discovered next morning when DMs got no reply. `launchctl kickstart -k` recovered it instantly.
 
 **Real root cause (later discovery):** A second wedge on 2026-04-27 morning showed the same symptoms but with a clear fingerprint — `embedded run tool start: tool=list_emails` with no matching `tool end`, and `~/.openclaw/logs/secure-gmail-audit.jsonl` not updated. The actual culprit was the `gmail-mcp` Python bridge: blocking `googleapiclient.execute()` calls inside `async def` handlers with no socket timeout. A hung Google API call froze the bridge's asyncio event loop, which made the gateway appear wedged. Fixed in `servers/gmail-mcp/docs/plans/009-async-bridge-resilience.md` (`asyncio.to_thread` + `httplib2` 30s socket timeout + 60s asyncio timeout + structured logging).
 
@@ -451,7 +451,7 @@ Inspired by https://lobster.shahine.com/guides/bluebubbles-health/ but reverse-e
 
 **Plan:** new script `~/.openclaw/bin/gateway-stall-watchdog.sh` on the mini.
 - Read-only check: parse `~/.openclaw/logs/gateway.log` for the most recent `embedded run start` and the most recent `bluebubbles webhook accepted`. If a webhook was accepted >5 min ago AND no `embedded run start` followed it, the gateway is wedged.
-- Also flag standalone signal: `Runtime auth refresh failed` in last 30 min with no subsequent `Runtime auth refreshed for github-copilot` success.
+- Also flag standalone signal: `Runtime auth refresh failed` in last 30 min with no subsequent `Runtime auth refreshed for <provider>` success.
 - Mutating: `launchctl kickstart -k gui/$(id -u)/ai.openclaw.gateway`, then re-check after 30s.
 - Schedule: `/Library/LaunchDaemons/ai.openclaw.gateway-stall-watchdog.plist`, `StartInterval=600` (10 min), runs as `puddles`, logs to `~/.openclaw/logs/gateway-stall/`.
 

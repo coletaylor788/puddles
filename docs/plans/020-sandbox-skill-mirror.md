@@ -1,7 +1,7 @@
 # Plan 020 — Sandbox skill mirror for rw workspaces
 
 **Status:** ✅ Complete (2026-05-02)
-**Owner:** cole + Copilot
+**Owner:** cole
 **Related:** docs/openclaw-setup/03-openclaw-and-agent-sandboxing.md, docs/openclaw-setup/04-secure-gmail.md
 
 ## Problem

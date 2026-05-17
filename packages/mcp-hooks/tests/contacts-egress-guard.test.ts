@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import type { CopilotLLMClient } from "../src/copilot-llm.js";
+import type { LLMClient } from "../src/llm-client.js";
 import type { ContactsTrustResolver } from "../src/contacts/contacts-trust.js";
 import { ContactsEgressGuard } from "../src/egress/contacts-egress-guard.js";
 
@@ -7,7 +7,7 @@ function makeMockLLM() {
   return {
     classify: vi.fn(),
     destroy: vi.fn(),
-  } as unknown as CopilotLLMClient & { classify: ReturnType<typeof vi.fn> };
+  } as unknown as LLMClient & { classify: ReturnType<typeof vi.fn> };
 }
 
 function makeResolver(trusted: string[]): ContactsTrustResolver {
@@ -20,7 +20,7 @@ function makeResolver(trusted: string[]): ContactsTrustResolver {
 
 function classifyMock(secrets: boolean, sensitive: boolean) {
   return (_content: string, prompt: string) => {
-    if (prompt.includes("secrets or credentials")) {
+    if (prompt.includes("SECRET or CREDENTIAL")) {
       return Promise.resolve(
         JSON.stringify({
           detected: secrets,

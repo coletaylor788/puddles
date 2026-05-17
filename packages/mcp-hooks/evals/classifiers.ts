@@ -1,4 +1,4 @@
-import type { CopilotLLMClient } from "../src/copilot-llm.js";
+import type { LLMClient } from "../src/llm-client.js";
 import { classifyBoolean, type ClassificationResult } from "../src/classify.js";
 import {
   SECRETS_PROMPT,
@@ -21,7 +21,7 @@ import type { EvalName } from "./types.js";
 export type BooleanClassifier = (content: string) => Promise<ClassificationResult>;
 
 export function makeBooleanClassifier(
-  llm: CopilotLLMClient,
+  llm: LLMClient,
   evalName: Exclude<EvalName, "redact">,
 ): BooleanClassifier {
   const prompt = PROMPT_FOR_EVAL[evalName];

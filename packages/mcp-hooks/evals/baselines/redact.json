@@ -1,6 +1,6 @@
 {
   "eval": "redact",
-  "model": "claude-haiku-4.5",
+  "model": "claude-haiku-4-5",
   "createdAt": "2026-05-02T21:20:13.227Z",
   "gitSha": "599d4474615c75d2c44991e8c148d119e6aa07df",
   "promptHash": "eca2eb9a6714",

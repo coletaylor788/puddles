@@ -24,7 +24,7 @@ LeakGuard and SendApproval share the same LLM classification prompt (secrets/sen
 | PII | **BLOCK** | Trust-dependent (approval flow) |
 | Clean content | ALLOW | Destination-dependent (approval flow) |
 
-All hooks use a configurable LLM (default: `claude-haiku-4.5`) via the GitHub Copilot API, matching OpenClaw's existing auth pattern.
+All hooks use a configurable LLM (default: `claude-haiku-4-5`) via your `LLMClient` adapter.
 
 ## Context: How This Fits Together
 
@@ -46,110 +46,55 @@ The library is consumer-agnostic. It exports hook classes; consumers call them d
 
 ## LLM Client Design
 
-### Matching OpenClaw's Copilot Pattern
+### Provider-agnostic LLMClient interface
 
-OpenClaw uses a two-step token exchange to call models via GitHub Copilot subscription:
+The library defines a minimal `LLMClient` interface plus a `loadLLMProvider(specifier, opts)` helper that dynamic-imports a default-exported adapter class. Adapters live outside this package — consumers wire up whichever provider they use (OpenAI-compatible endpoint, Anthropic SDK, a local model, a corporate proxy, etc.).
 
-1. **GitHub token** (PAT) → exchange at `https://api.github.com/copilot_internal/v2/token`
-2. **Copilot API token** returned → use with OpenAI-compatible endpoint at `https://api.individual.githubcopilot.com/v1/chat/completions`
-
-Our library replicates this exact pattern:
+**Contract:**
 
 ```typescript
-// Step 1: Exchange GitHub PAT for Copilot token
-const res = await fetch("https://api.github.com/copilot_internal/v2/token", {
-  headers: { Authorization: `Bearer ${githubPat}` },
-});
-const { token, expires_at } = await res.json();
-
-// Step 2: Call model via OpenAI-compatible API
-const openai = new OpenAI({
-  baseURL: "https://api.individual.githubcopilot.com/v1",
-  apiKey: token,
-});
-
-const response = await openai.chat.completions.create({
-  model: "claude-haiku-4.5",  // configurable
-  messages: [
-    { role: "system", content: systemPrompt },
-    { role: "user", content: contentToAnalyze },
-  ],
-});
+interface LLMClient {
+  // Single method — given content and a classification prompt, return a
+  // structured result. Throws on transport / auth / parse errors so callers
+  // fail closed rather than silently allowing traffic through.
+  classify(content: string, systemPrompt: string): Promise<ClassificationResult>;
+}
 ```
 
-### Copilot-Specific Headers
+Implementations must:
 
-Matching OpenClaw, requests include:
-```
-User-Agent: GitHubCopilotChat/0.35.0
-Editor-Version: vscode/1.107.0
-Editor-Plugin-Version: copilot-chat/0.35.0
-Copilot-Integration-Id: vscode-chat
-```
+1. **Throw on errors** — network failures, auth failures, malformed responses all surface as exceptions. The hooks fail closed (block) on classifier errors; they never assume "no response means clean."
+2. **Strip code fences** — models routinely wrap JSON in ```` ```json ```` fences even when told not to. The adapter normalizes these out before parsing so hook code sees raw JSON.
+3. **Be stateless from the hook's perspective** — any token caching, refresh, or connection pooling is the adapter's concern. Hooks just call `classify()` per request.
 
-### Token Caching (In-Memory)
-
-All consumers (OpenClaw plugins, container proxy) are long-running processes, so in-memory caching is sufficient. Each process exchanges its own token on startup and caches it for the token's lifetime (~30 min).
-
-**In-memory state:**
-```typescript
-type TokenState = {
-  token: string;
-  expiresAt: number;       // milliseconds since epoch
-  baseUrl: string;         // derived API base URL
-  refreshInFlight?: Promise<void>;  // deduplication within process
-};
-```
-
-**Lifecycle:**
-1. First hook call → read GitHub PAT from keychain → exchange for Copilot token → cache in memory
-2. Subsequent calls → use cached token (nanoseconds)
-3. 5 minutes before expiry → proactive refresh in background
-4. On auth error → immediate refresh + retry
-
-**Expiry handling (matching OpenClaw):**
-- `expires_at` from GitHub can be seconds or milliseconds — detect via threshold (`> 10_000_000_000` = already ms, otherwise multiply by 1000)
-- Token considered "usable" if `expiresAt - now > 5 minutes` (safety margin)
-- Retry on failure: retry after 60 seconds
-- Minimum refresh delay: 5 seconds (prevent tight loops)
-
-**Base URL derivation from token:**
-- Token is semicolon-delimited key-value pairs
-- Extract `proxy-ep=...` field via regex `/(?:^|;)\s*proxy-ep=([^;\s]+)/i`
-- Transform: strip protocol → replace `proxy.` prefix with `api.` → prepend `https://`
-- Fallback: `https://api.individual.githubcopilot.com`
-
-**Concurrent request deduplication:**
-- If a token refresh is in-flight, subsequent callers await the same promise
-
-**Security invariants:**
-- GitHub PAT: keychain only (service: `mcp-hooks`, key: `github-pat`)
-- Copilot API token: in-memory only, never persisted
-- No secrets in env vars, no disk files
-
-### Credential Source
-
-The GitHub PAT is read directly from the **macOS Keychain** — no env vars, no config files. The `CopilotLLMClient` accepts an optional credential resolver, but defaults to keychain lookup:
+### Loading a provider
 
 ```typescript
-// Default: read from keychain (same store OpenClaw uses)
-const llm = new CopilotLLMClient({ model: "claude-haiku-4.5" });
+import { loadLLMProvider } from "mcp-hooks";
 
-// Or: caller provides the token directly (e.g., OpenClaw passes its own)
-const llm = new CopilotLLMClient({ 
-  model: "claude-haiku-4.5",
-  githubToken: existingToken,
+// Specifier is a module path; the default export is an LLMClient class.
+const llm = await loadLLMProvider("./my-provider-adapter.js", {
+  model: "claude-haiku-4-5",
+  // ...any other opts your adapter accepts (endpoint, credentials resolver, etc.)
 });
+
+const guard = new LeakGuard({ llm });
 ```
 
-**Keychain lookup:** service `openclaw`, key `github-copilot-token` (matching OpenClaw's own storage). Uses Node's `keytar` or equivalent native keychain binding.
+The `opts` bag is passed straight through to the adapter's constructor. mcp-hooks doesn't care what's in it — credential plumbing, base URLs, headers, retry policy are all the adapter's job.
 
-**No env vars.** No disk files. The GitHub PAT lives in keychain, the Copilot API token lives in memory. Nothing sensitive touches the filesystem or process environment.
+### Credential handling
+
+mcp-hooks itself reads no credentials. Adapters are free to source secrets however they like (OS keychain, env var, file, in-memory injection). The recommended pattern for long-running agents is:
+
+- Adapter constructor takes an optional `credentialResolver: () => Promise<string>` callback
+- Defaults to keychain lookup if not provided
+- Sensitive material stays in memory; never persisted by mcp-hooks
 
 ### Model Configuration
 
-- Default: `claude-haiku-4.5`
-- Configurable at `CopilotLLMClient` construction
+- Default: `claude-haiku-4-5`
+- Configurable at adapter construction
 - Can be overridden per-hook if needed
 
 ## Hook Architecture
@@ -203,7 +148,7 @@ const [injection, redaction] = await Promise.all([
 
 **Purpose**: Universal blocker for secrets, sensitive data, and PII on all outbound tool calls (web_search queries, web_fetch URLs, exec commands, etc.).
 
-**Configuration**: `llm: CopilotLLMClient`
+**Configuration**: `llm: LLMClient`
 
 **LLM Classification** (three parallel calls, each focused on one category):
 
@@ -232,7 +177,7 @@ Each prompt is simple and single-purpose — "does this content contain X? yes/n
 **Purpose**: Destination-aware trust check for deliberate communication (email, iMessage, Slack, etc.). Manages two-tier trust and approval flow.
 
 **Configuration**:
-- `llm: CopilotLLMClient` — LLM client for classification
+- `llm: LLMClient` — LLM client for classification
 - `trustStore: TrustStore` — manages destination trust resolution
 
 **Trust Levels:**
@@ -404,7 +349,7 @@ packages/
     ├── src/
     │   ├── index.ts                # Public API exports
     │   ├── types.ts                # HookResult, HookAction, TrustLevel
-    │   ├── copilot-llm.ts          # CopilotLLMClient (token exchange + caching)
+    │   ├── llm-client.ts          # LLMClient interface + loadLLMProvider helper
     │   ├── trust-store.ts          # TrustStore (persistence, resolution, approval handling)
     │   ├── egress/
     │   │   ├── leak-guard.ts       # LeakGuard — universal egress blocker
@@ -414,7 +359,7 @@ packages/
     │       └── secret-redactor.ts  # SecretRedactor (regex + LLM)
     ├── tests/
     │   ├── types.test.ts
-    │   ├── copilot-llm.test.ts
+    │   ├── llm-client.test.ts
     │   ├── trust-store.test.ts
     │   ├── leak-guard.test.ts
     │   ├── send-approval.test.ts
@@ -431,10 +376,7 @@ packages/
   "name": "mcp-hooks",
   "version": "0.1.0",
   "type": "module",
-  "dependencies": {
-    "openai": "^4.0.0",
-    "keytar": "^7.0.0"
-  },
+  "dependencies": {},
   "devDependencies": {
     "typescript": "^5.0.0",
     "vitest": "^3.0.0",
@@ -443,13 +385,13 @@ packages/
 }
 ```
 
-Note: Uses a native keychain binding (e.g., `keytar`) to read the GitHub PAT from macOS Keychain. Token exchange uses Node `fetch` (built-in). No secrets in env vars or config files.
+Note: mcp-hooks itself has no runtime dependencies on any LLM SDK or credential store. Provider adapters (loaded via `loadLLMProvider`) bring their own dependencies — an OpenAI-compatible adapter pulls in `openai`, a keychain-backed adapter pulls in `keytar`, etc.
 
 ## Testing Approach
 
 ### Unit Tests (mocked LLM, fast, isolated)
 
-- **CopilotLLMClient** — Mock `fetch` for token exchange. Test: token caching, expiry detection (seconds vs ms), refresh scheduling, concurrent dedup, auth error retry, proxy-ep parsing, keychain read.
+- **LLMClient interface + loadLLMProvider** — Test dynamic-import resolution, default-export validation, opts pass-through. Mock adapter for unit-test coverage of error propagation (throws on transport/auth/parse failures), code-fence stripping, and the fail-closed contract.
 - **LeakGuard** — Mock LLM responses. Test each category independently: secrets detected → block, sensitive detected → block, PII detected → block, clean content → allow. Test the sensitive/general distinction (specific health data vs general inquiry).
 - **SendApproval** — Mock LLM + TrustStore. Test all cells of the decision matrix: secrets always block, PII to unknown → block, PII to approved → block, PII to trusted → allow, clean to unknown → approval needed, clean to approved → allow.
 - **InjectionGuard** — Mock LLM. Test: injection detected → block, clean content → allow. Test various injection patterns (system prompt override, role-play, exfiltration, delimiter abuse).
@@ -457,11 +399,11 @@ Note: Uses a native keychain binding (e.g., `keytar`) to read the GitHub PAT fro
 - **TrustStore** — No LLM. Test: resolve unknown/approved/trusted, approve() tier upgrade, trust() tier upgrade, domain matching, contact overrides domain, handleApprovalDecision() logic, file persistence (write + reload), seed domains.
 - **Edge cases** — Empty content, unicode, very long content, malformed LLM responses (invalid JSON, missing fields), content with mixed categories (secrets + PII in same text).
 
-### Integration Tests (real Copilot API, requires PAT in keychain)
+### Integration Tests (real LLM provider, requires configured adapter)
 
-Integration tests hit the real LLM via Copilot API. They require a GitHub PAT stored in keychain and run separately from unit tests (`pnpm test:integration`).
+Integration tests hit a real LLM via whichever adapter the caller wires up. They require the adapter's credentials to be available and run separately from unit tests (`pnpm test:integration`).
 
-- **CopilotLLMClient** — Real token exchange against `api.github.com`, verify token returned, verify model call succeeds, verify token caching across calls.
+- **LLMClient round-trip** — Real `classify()` call via the configured adapter, verify a parseable response is returned.
 - **LeakGuard end-to-end** — Real LLM classifies content containing an API key → verify block. Real LLM classifies clean content → verify allow. Real LLM classifies "what are symptoms of diabetes?" → verify allow (not sensitive).
 - **SendApproval end-to-end** — Real LLM classification with TrustStore backed by temp file. Verify full trust lifecycle: unknown → approval → approve → re-check → allowed.
 - **InjectionGuard end-to-end** — Real LLM detects "ignore previous instructions" → block. Real LLM allows "please ignore the previous email, here's the correction" → allow.
@@ -475,7 +417,7 @@ Integration tests hit the real LLM via Copilot API. They require a GitHub PAT st
 ### Implementation
 - [x] Scaffold package structure (`packages/mcp-hooks/`, package.json, tsconfig, src layout)
 - [x] Implement `types.ts` (HookResult, interfaces)
-- [x] Implement `copilot-llm.ts` (CopilotLLMClient with token exchange + in-memory caching)
+- [x] Implement `llm-client.ts` (LLMClient interface + `loadLLMProvider` dynamic-import helper)
 - [x] Implement `egress/leak-guard.ts` (LLM classification, blocks secrets/sensitive/PII on non-send tools)
 - [x] Implement `egress/send-approval.ts` + `trust-store.ts` (destination-aware trust + approval flow)
 - [x] Implement `ingress/injection-guard.ts` (system prompt + classification)
@@ -484,8 +426,8 @@ Integration tests hit the real LLM via Copilot API. They require a GitHub PAT st
 ### Testing
 - [x] All unit tests written (92 tests, mocked LLM)
 - [x] All unit tests passing
-- [x] Integration tests written (real Copilot API — `tests/integration.test.ts`)
-- [x] Integration tests passing (requires PAT in keychain; verified in commit 66cb14f)
+- [x] Integration tests written (real LLM via configured adapter — `tests/integration.test.ts`)
+- [x] Integration tests passing (requires adapter credentials available; verified in commit 66cb14f)
 
 ### Cleanup
 - [x] Code linting passes (`npm run lint`)

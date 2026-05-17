@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { CopilotLLMClient } from "../src/copilot-llm.js";
+import type { LLMClient } from "../src/llm-client.js";
 import { LeakGuard } from "../src/egress/leak-guard.js";
 
 function makeMockLLM() {
   return {
     classify: vi.fn(),
     destroy: vi.fn(),
-  } as unknown as CopilotLLMClient & { classify: ReturnType<typeof vi.fn> };
+  } as unknown as LLMClient & { classify: ReturnType<typeof vi.fn> };
 }
 
 describe("LeakGuard", () => {

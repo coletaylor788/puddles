@@ -1,12 +1,12 @@
-import type { CopilotLLMClient } from "../copilot-llm.js";
+import type { LLMClient } from "../llm-client.js";
 import type { HookResult } from "../types.js";
 import { classifyBoolean } from "../classify.js";
 import { SECRETS_PROMPT, SENSITIVE_PROMPT, PII_PROMPT } from "../prompts.js";
 
 export class LeakGuard {
-  private llm: CopilotLLMClient;
+  private llm: LLMClient;
 
-  constructor(options: { llm: CopilotLLMClient }) {
+  constructor(options: { llm: LLMClient }) {
     this.llm = options.llm;
   }
 

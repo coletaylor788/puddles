@@ -5,10 +5,11 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import {
-  CopilotLLMClient,
   InjectionGuard,
   SecretRedactor,
+  loadLLMProvider,
   type IngressHook,
+  type LLMClient,
 } from "mcp-hooks";
 import { connectMcpBridge, McpBridge } from "./mcp-bridge.js";
 import { gmailPrefilter } from "./prefilter.js";
@@ -33,6 +34,15 @@ interface SecureGmailConfig {
   gmailMcpCommand: string;
   gmailMcpArgs?: string[];
   gmailMcpCwd?: string;
+  /**
+   * Module specifier whose default export is a class implementing
+   * mcp-hooks' `LLMClient` interface. The plugin dynamic-imports this and
+   * constructs `new Provider({ model, ...llmProviderOptions })` at startup.
+   */
+  llmProvider: string;
+  /** Forwarded verbatim to the provider class constructor (merged with `{ model }`). */
+  llmProviderOptions?: Record<string, unknown>;
+  /** Model id forwarded to the provider class constructor. */
   model?: string;
   /** Override path for the audit log file. */
   auditLogPath?: string;
@@ -259,10 +269,33 @@ const secureGmailPlugin = {
       );
       return;
     }
+    if (!config.llmProvider) {
+      api.logger.error?.(
+        "[secure-gmail] missing required config: llmProvider (module specifier whose default export implements mcp-hooks LLMClient)",
+      );
+      return;
+    }
 
-    const llm = new CopilotLLMClient({
-      model: config.model ?? "claude-haiku-4.5",
-    });
+    // Lazy load the LLM provider on first hook call so that:
+    //  (a) plugin registration stays synchronous, and
+    //  (b) bad provider config surfaces in the audit log at first use
+    //      rather than wedging the gateway at startup.
+    const providerSpec = config.llmProvider;
+    const providerOptions: Record<string, unknown> = {
+      ...(config.llmProviderOptions ?? {}),
+    };
+    if (config.model !== undefined) providerOptions.model = config.model;
+    let providerPromise: Promise<LLMClient> | null = null;
+    const llm: LLMClient = {
+      async classify(content, prompt, options) {
+        if (!providerPromise) {
+          providerPromise = loadLLMProvider(providerSpec, providerOptions);
+        }
+        const real = await providerPromise;
+        return real.classify(content, prompt, options);
+      },
+    };
+
     const ingress: IngressHook[] = [
       new InjectionGuard({ llm, prefilter: gmailPrefilter }),
       new SecretRedactor({ llm, prefilter: gmailPrefilter }),

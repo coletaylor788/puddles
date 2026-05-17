@@ -11,7 +11,7 @@
   },
   "configSchema": {
     "type": "object",
-    "required": ["applePimMcpCommand"],
+    "required": ["applePimMcpCommand", "llmProvider"],
     "additionalProperties": false,
     "properties": {
       "applePimMcpCommand": {
@@ -38,10 +38,18 @@
         "description": "Email domains whose attendees auto-pass SendApproval (e.g. ['example.com']). Matching is case-insensitive.",
         "default": []
       },
+      "llmProvider": {
+        "type": "string",
+        "description": "Node module specifier whose default export is a class implementing mcp-hooks' LLMClient interface (e.g. a workspace package name or absolute path). The plugin dynamic-imports this at startup and constructs it with `{ model, ...llmProviderOptions }`."
+      },
+      "llmProviderOptions": {
+        "type": "object",
+        "description": "Extra constructor options forwarded to the llmProvider class (merged with { model }).",
+        "additionalProperties": true
+      },
       "model": {
         "type": "string",
-        "description": "Copilot model used by hook LLM checks.",
-        "default": "claude-haiku-4.5"
+        "description": "Model id passed to the llmProvider class constructor. The provider decides what counts as a valid id."
       },
       "auditLogPath": {
         "type": "string",

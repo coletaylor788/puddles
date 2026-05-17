@@ -1,4 +1,4 @@
-import type { CopilotLLMClient } from "../copilot-llm.js";
+import type { LLMClient } from "../llm-client.js";
 import type { HookResult } from "../types.js";
 import { classifyBoolean } from "../classify.js";
 import { INJECTION_PROMPT } from "../prompts.js";
@@ -35,11 +35,11 @@ export type InjectionGuardPrefilter = (
 
 export class InjectionGuard {
   readonly name = "InjectionGuard";
-  private llm: CopilotLLMClient;
+  private llm: LLMClient;
   private prefilter?: InjectionGuardPrefilter;
 
   constructor(options: {
-    llm: CopilotLLMClient;
+    llm: LLMClient;
     prefilter?: InjectionGuardPrefilter;
   }) {
     this.llm = options.llm;

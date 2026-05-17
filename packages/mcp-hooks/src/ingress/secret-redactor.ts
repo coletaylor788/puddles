@@ -1,4 +1,4 @@
-import type { CopilotLLMClient } from "../copilot-llm.js";
+import type { LLMClient } from "../llm-client.js";
 import type { HookResult } from "../types.js";
 import { REDACT_PROMPT } from "../prompts.js";
 
@@ -77,11 +77,11 @@ export type SecretRedactorPrefilter = (
 
 export class SecretRedactor {
   readonly name = "SecretRedactor";
-  private llm: CopilotLLMClient;
+  private llm: LLMClient;
   private prefilter?: SecretRedactorPrefilter;
 
   constructor(options: {
-    llm: CopilotLLMClient;
+    llm: LLMClient;
     prefilter?: SecretRedactorPrefilter;
   }) {
     this.llm = options.llm;

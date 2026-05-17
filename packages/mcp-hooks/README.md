@@ -1,6 +1,14 @@
 # mcp-hooks
 
-Security hooks for MCP tool pipelines. Provides egress and ingress content scanning powered by LLM classification via GitHub Copilot API.
+Security hooks for MCP tool pipelines. Provides egress and ingress content
+scanning powered by LLM classification.
+
+The LLM backend is pluggable. `mcp-hooks` ships no concrete provider — it
+defines the `LLMClient` interface and a `loadLLMProvider()` helper for
+dynamic-importing your implementation by module specifier. You bring (or
+write) a class that implements `LLMClient`, point a config field or
+`--llm-provider` CLI flag at the module that exports it as default, and the
+hooks consume it.
 
 ## Hooks
 
@@ -18,11 +26,78 @@ Security hooks for MCP tool pipelines. Provides egress and ingress content scann
 | **InjectionGuard** | Detects prompt injection attacks in external content | All tools returning external data |
 | **SecretRedactor** | Redacts secrets (2FA codes, API keys, reset links, etc.) via regex + LLM | MCP tools returning authenticated data |
 
+## LLM client
+
+The hooks consume any object that implements the `LLMClient` interface:
+
+```ts
+export interface LLMClient {
+  classify(content: string, systemPrompt: string, options?: ClassifyOptions): Promise<string>;
+  destroy?(): void;
+}
+```
+
+Contract for implementers:
+
+- `classify()` sends one user turn under one system prompt and returns the
+  assistant text. Strip markdown code fences before returning —
+  `stripCodeFences()` (exported from this package) is the canonical helper.
+- Errors (network, parse, auth) MUST throw. Hooks catch and convert thrown
+  errors into fail-open `allow` decisions.
+- Honor `options.label` in log lines if you log; honor `options.maxTokens`
+  and `options.temperature` if your backend supports them.
+
+A minimal Anthropic adapter (for illustration; not shipped here):
+
+```ts
+import Anthropic from "@anthropic-ai/sdk";
+import { stripCodeFences, type LLMClient, type ClassifyOptions } from "mcp-hooks";
+
+export default class AnthropicLLMClient implements LLMClient {
+  private client: Anthropic;
+  private model: string;
+  constructor(opts: { model: string; apiKey?: string }) {
+    this.model = opts.model;
+    this.client = new Anthropic({ apiKey: opts.apiKey ?? process.env.ANTHROPIC_API_KEY });
+  }
+  async classify(content: string, systemPrompt: string, options: ClassifyOptions = {}) {
+    const r = await this.client.messages.create({
+      model: this.model,
+      max_tokens: options.maxTokens ?? 1024,
+      temperature: options.temperature ?? 0,
+      system: systemPrompt,
+      messages: [{ role: "user", content }],
+    });
+    return stripCodeFences(
+      r.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join(""),
+    );
+  }
+}
+```
+
+Export it as the default from a Node-resolvable module (workspace package or
+absolute path) and consumers point at that specifier.
+
+### Loading a provider dynamically
+
+`loadLLMProvider(specifier, options)` resolves the module via Node's
+`import()`, picks `default`, and constructs `new Default(options)`:
+
+```ts
+import { loadLLMProvider } from "mcp-hooks";
+
+const llm = await loadLLMProvider("my-llm-adapter", { model: "haiku-4-5" });
+```
+
+OpenClaw plugins in this repo accept `llmProvider` (module specifier) +
+`llmProviderOptions` + `model` in their config; the eval CLI takes
+`--llm-provider=<spec>` and `--model=<id>`.
+
 ## Usage
 
 ```typescript
 import {
-  CopilotLLMClient,
+  loadLLMProvider,
   LeakGuard,
   ContactsEgressGuard,
   ContactsTrustResolver,
@@ -30,8 +105,7 @@ import {
   SecretRedactor,
 } from "mcp-hooks";
 
-// LLM client — reads GitHub PAT from keychain, exchanges for Copilot token
-const llm = new CopilotLLMClient({ model: "claude-haiku-4.5" });
+const llm = await loadLLMProvider("my-llm-adapter", { model: "haiku-4-5" });
 
 // Egress: block leaks on non-send tools
 const leakGuard = new LeakGuard({ llm });
@@ -84,13 +158,10 @@ and emits only values whose key is in a configured set:
 
 ```typescript
 import {
-  CopilotLLMClient,
   InjectionGuard,
   SecretRedactor,
   makeUntrustedKeysPrefilter,
 } from "mcp-hooks";
-
-const llm = new CopilotLLMClient({ model: "claude-haiku-4.5" });
 
 // Sender-controlled JSON keys for a Gmail-like response.
 // Keys NOT listed here are treated as trusted envelope and are not
@@ -165,67 +236,26 @@ Decision flow per call:
 Fail-closed: if `contacts-cli` can't read AddressBook (e.g. TCC
 permission revoked), every destination is untrusted until repaired.
 
-## LLM Client
+## Logging
 
-Uses GitHub Copilot API via two-step token exchange:
-
-1. GitHub PAT (from keychain) → `api.github.com/copilot_internal/v2/token`
-2. Copilot token → `api.individual.githubcopilot.com/v1/chat/completions`
-
-Tokens cached in-memory with proactive refresh (5 min before expiry).
-
-### Credential Setup
-
-Store your GitHub PAT in macOS Keychain (service `openclaw`, account `github-pat` —
-shared with OpenClaw itself):
-```bash
-security add-generic-password -s openclaw -a github-pat -w "ghp_your_token_here" \
-  -T /opt/homebrew/opt/node@22/bin/node \
-  -T /opt/homebrew/bin/node \
-  -T '' \
-  -U
-```
-The `-T` flags pre-authorize the binaries that will read the entry. Both node
-paths matter — the gateway invokes one path directly, and helper subprocesses
-may resolve through the brew-managed symlink (a separate ACL identity). Without
-these, headless callers (LaunchAgents) hang on an invisible Keychain prompt —
-see `docs/openclaw-setup/04-secure-gmail.md` §7 for the full recovery
-procedure if you've already created an entry without these flags.
-
-Or pass directly:
-```typescript
-const llm = new CopilotLLMClient({ githubToken: "ghp_..." });
-```
-
-### Timeouts and logging
-
-All chat completion calls are bounded by a hard timeout (default 30s, override
-with `requestTimeoutMs`) using both the OpenAI SDK's `timeout`/`maxRetries: 0`
-options and an `AbortSignal`. A `slowCallMs` warning (default 10s) fires for
-chronic slowness before it becomes a wedge. The token-exchange fetch is bounded
-separately by `tokenExchangeTimeoutMs` (default 15s).
-
-Every call emits structured JSON to stderr (lands in
-`~/.openclaw/logs/gateway.err.log`):
+Every classify call goes through `classifyBoolean()` which emits structured
+JSON to stderr (lands in `~/.openclaw/logs/gateway.err.log` for openclaw
+deployments). Adapter implementations should also emit their own
+`llm_call_*` events using the `log()` helper exported from this package, so
+operators can diagnose wedges/hangs uniformly:
 
 | Event | Fields |
 |---|---|
-| `llm_call_start` | `call_id`, `label`, `model`, `content_len`, `timeout_ms` |
-| `llm_call_done` | `call_id`, `label`, `elapsed_ms`, `outcome: "ok"`, `response_len` |
-| `llm_call_slow` | `call_id`, `label`, `elapsed_ms`, `threshold_ms` |
-| `llm_call_timeout` | `call_id`, `label`, `elapsed_ms`, `error` |
-| `llm_call_error` | `call_id`, `label`, `elapsed_ms`, `error` |
 | `classify_start` / `classify_done` | `label`, `elapsed_ms`, `outcome`, `detected` |
-| `token_refresh_start` / `token_refresh_done` / `token_refresh_error` | `elapsed_ms`, `expires_in_ms` |
 
 `label` identifies the caller (e.g. `leak.secrets`, `injection`, `secret-redact`,
-`contacts-egress.sensitive`) so wedges can be diagnosed quickly.
+`contacts-egress.sensitive`).
 
 ## Development
 
 ```bash
 npm install
-npm test          # Run tests
+npm test          # Run tests (LLM is stubbed; no provider required)
 npm run build     # Compile TypeScript
 npm run lint      # Type check
 ```

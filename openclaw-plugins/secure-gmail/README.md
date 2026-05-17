@@ -49,20 +49,19 @@ architecture rationale.
 
 ### Prerequisites — secrets and auth
 
-This plugin shells out to `gmail-mcp` and uses `mcp-hooks`, both of which need
-credentials in the macOS Keychain. Set those up **before** installing the
-plugin or it will fail to start / fall back to fail-open behavior:
+This plugin shells out to `gmail-mcp` and uses `mcp-hooks`. Both need pieces
+in place **before** installing the plugin or it will fail to start / fall
+back to fail-open behavior:
 
-| What | Keychain entry | How to set up |
+| What | Where | How to set up |
 |---|---|---|
-| Gmail OAuth refresh token | service `gmail-mcp`, account `token` | Follow [`servers/gmail-mcp/README.md`](../../servers/gmail-mcp/README.md#setup) — Google Cloud OAuth credentials → `~/.config/gmail-mcp/credentials.json` → run the `authenticate` tool / `run_oauth_flow()` once to mint and store the refresh token |
-| GitHub Copilot PAT (used by InjectionGuard / SecretRedactor) | service `openclaw`, account `github-pat` | Follow [`packages/mcp-hooks/README.md`](../../packages/mcp-hooks/README.md#credential-setup) — generate a PAT with `read:user`, store via `security add-generic-password` |
+| Gmail OAuth refresh token | macOS Keychain — service `gmail-mcp`, account `token` | Follow [`servers/gmail-mcp/README.md`](../../servers/gmail-mcp/README.md#setup) — Google Cloud OAuth credentials → `~/.config/gmail-mcp/credentials.json` → run the `authenticate` tool / `run_oauth_flow()` once to mint and store the refresh token |
+| An `LLMClient` implementation | A Node module resolvable from the gateway (workspace package, absolute path) whose default export is your provider class | See [`packages/mcp-hooks/README.md`](../../packages/mcp-hooks/README.md) — implement the `LLMClient` interface against whichever LLM you want (Anthropic, OpenAI, a local model, etc.). The plugin loads it via `loadLLMProvider(config.llmProvider, { model, ...llmProviderOptions })`. |
 
-You can verify both with:
+You can verify the Gmail token with:
 
 ```bash
-security find-generic-password -s gmail-mcp -a token   >/dev/null && echo "gmail-mcp token: OK"
-security find-generic-password -s openclaw  -a github-pat >/dev/null && echo "copilot PAT: OK"
+security find-generic-password -s gmail-mcp -a token >/dev/null && echo "gmail-mcp token: OK"
 ```
 
 ### Build, install, enable
@@ -88,11 +87,10 @@ plugin knows where to find gmail-mcp.
 | `gmailMcpCommand` | ✅ | — | Path to the gmail-mcp Python interpreter |
 | `gmailMcpArgs` | | `["-m", "gmail_mcp"]` | Args appended to the command |
 | `gmailMcpCwd` | | — | Working directory for the subprocess |
-| `model` | | `claude-haiku-4.5` | Copilot model used by hook LLM checks |
+| `llmProvider` | ✅ | — | Node module specifier whose default export implements `mcp-hooks` `LLMClient` (see [`packages/mcp-hooks/README.md`](../../packages/mcp-hooks/README.md)) |
+| `llmProviderOptions` | | `{}` | Extra opts forwarded to the provider constructor (merged with `{ model }`) |
+| `model` | | — | Model id forwarded to the provider constructor |
 | `skipTools` | | `["authenticate", "archive_email", "add_label"]` | Tools registered without ingress hooks |
-
-The Copilot PAT used by the hooks must be in the macOS Keychain — see the
-[Prerequisites](#prerequisites--secrets-and-auth) section above.
 
 ### OpenClaw config example
 
@@ -107,7 +105,8 @@ The Copilot PAT used by the hooks must be in the macOS Keychain — see the
         "config": {
           "gmailMcpCommand": "/Users/<you>/git/puddles/servers/gmail-mcp/.venv/bin/python",
           "gmailMcpArgs": ["-m", "gmail_mcp"],
-          "model": "claude-haiku-4.5"
+          "llmProvider": "my-llm-adapter",
+          "model": "haiku-4-5"
         }
       }
     }
@@ -123,7 +122,7 @@ pnpm install
 
 # from this directory
 pnpm test                # unit tests only (mocked MCP + hooks; fast, no auth)
-pnpm test:integration    # integration tests (real gmail-mcp + real Copilot LLM)
+pnpm test:integration    # integration tests (real gmail-mcp + real LLM provider)
 pnpm test:all            # everything
 pnpm lint                # tsc --noEmit
 pnpm build               # emits dist/
@@ -134,15 +133,15 @@ The integration tests cover:
 | File | What it exercises | Setup required |
 |---|---|---|
 | `tests/integration.mcp-bridge.test.ts` | Spawns the real gmail-mcp subprocess, completes the MCP handshake, calls `listTools` | `cd servers/gmail-mcp && .venv/bin/pip install -e .` |
-| `tests/integration.hooks.test.ts` | Runs `InjectionGuard` + `SecretRedactor` against canned email fixtures using the real GitHub Copilot API | GitHub PAT in macOS Keychain (service: `openclaw`, account: `github-pat`) — see [packages/mcp-hooks/README.md](../../packages/mcp-hooks/README.md#credential-setup) |
-| `tests/integration.e2e.test.ts` | End-to-end: wrapped `list_emails` against the real gmail-mcp + real Copilot hooks + your real Gmail inbox | All of the above **plus** gmail-mcp authenticated (refresh token in keychain, service: `gmail-mcp`, account: `token`) |
+| `tests/integration.hooks.test.ts` | Runs `InjectionGuard` + `SecretRedactor` against canned email fixtures using a real LLM provider | `LLM_PROVIDER_MODULE` (Node module specifier) and optional `LLM_PROVIDER_MODEL` exported in the environment |
+| `tests/integration.e2e.test.ts` | End-to-end: wrapped `list_emails` against the real gmail-mcp + real hooks + your real Gmail inbox | All of the above **plus** gmail-mcp authenticated (refresh token in keychain, service: `gmail-mcp`, account: `token`) |
 
 Tests skip automatically when their prerequisites are missing.
 
 ## Manual integration smoke test
 
 1. Confirm gmail-mcp is authenticated (`gmail-mcp authenticate` once).
-2. Confirm the Copilot PAT is in the keychain.
+2. Confirm an LLM provider is wired up via `llmProvider` in the OpenClaw config (and any provider-specific env vars are set).
 3. Add the OpenClaw config block above.
 4. Start an OpenClaw session and ask the agent to list emails.
 5. Verify in the OpenClaw logs that `[secure-gmail] registering N gmail tools`
@@ -169,6 +168,6 @@ secure-gmail/
     ├── mcp-bridge.test.ts              # unit
     ├── wrap-tool.test.ts               # unit
     ├── integration.mcp-bridge.test.ts  # spawns real gmail-mcp
-    ├── integration.hooks.test.ts       # hits real Copilot API
+    ├── integration.hooks.test.ts       # hits real LLM provider
     └── integration.e2e.test.ts         # full pipeline against real Gmail
 ```

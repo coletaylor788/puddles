@@ -1,6 +1,6 @@
 {
   "eval": "injection",
-  "model": "claude-haiku-4.5",
+  "model": "claude-haiku-4-5",
   "createdAt": "2026-05-02T18:14:50.126Z",
   "gitSha": "9cdae5aae4f2822c73503640208ef2e8dfd133b7",
   "promptHash": "d7e22e54d9d6",

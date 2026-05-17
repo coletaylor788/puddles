@@ -5,10 +5,11 @@ import { homedir } from "node:os";
 import {
   ContactsEgressGuard,
   ContactsTrustResolver,
-  CopilotLLMClient,
   InjectionGuard,
   SecretRedactor,
+  loadLLMProvider,
   type IngressHook,
+  type LLMClient,
 } from "mcp-hooks";
 import type { Tool as McpTool } from "@modelcontextprotocol/sdk/types.js";
 import { getBridge, shutdownAll, type BridgeSpec } from "./bridge-cache.js";
@@ -42,6 +43,15 @@ interface SecureAppleCalendarConfig {
   trustedAttendeeDomains?: string[];
   /** Override path to the contacts-cli binary. Defaults to "contacts-cli" on PATH. */
   contactsCliPath?: string;
+  /**
+   * Module specifier whose default export is a class implementing
+   * mcp-hooks' `LLMClient` interface. The plugin dynamic-imports this and
+   * constructs `new Provider({ model, ...llmProviderOptions })` at startup.
+   */
+  llmProvider: string;
+  /** Forwarded verbatim to the provider class constructor (merged with `{ model }`). */
+  llmProviderOptions?: Record<string, unknown>;
+  /** Model id forwarded to the provider class constructor. */
   model?: string;
   /** Override path for the audit log file. */
   auditLogPath?: string;
@@ -350,13 +360,35 @@ const secureAppleCalendarPlugin = {
       );
       return;
     }
+    if (!config.llmProvider) {
+      api.logger.error?.(
+        "[secure-apple-calendar] missing required config: llmProvider (module specifier whose default export implements mcp-hooks LLMClient)",
+      );
+      return;
+    }
 
     // Hooks, LLM, audit, trust resolver are SHARED across all agents — the
     // security wrappers don't depend on per-agent identity. Only the bridge
     // (and thus the apple-pim allow/blocklist) varies per agent.
-    const llm = new CopilotLLMClient({
-      model: config.model ?? "claude-haiku-4.5",
-    });
+    //
+    // The LLM provider is dynamic-imported lazily on first hook call so plugin
+    // registration stays sync and bad provider config surfaces in the audit
+    // log at first use rather than wedging the gateway at startup.
+    const providerSpec = config.llmProvider;
+    const providerOptions: Record<string, unknown> = {
+      ...(config.llmProviderOptions ?? {}),
+    };
+    if (config.model !== undefined) providerOptions.model = config.model;
+    let providerPromise: Promise<LLMClient> | null = null;
+    const llm: LLMClient = {
+      async classify(content, prompt, options) {
+        if (!providerPromise) {
+          providerPromise = loadLLMProvider(providerSpec, providerOptions);
+        }
+        const real = await providerPromise;
+        return real.classify(content, prompt, options);
+      },
+    };
     const contacts = new ContactsTrustResolver({
       cliPath: config.contactsCliPath,
       logger: { warn: (m) => api.logger.warn?.(m) },

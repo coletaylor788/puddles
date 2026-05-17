@@ -713,7 +713,7 @@ Each eval run produces a JSON report:
 ```json
 {
   "eval": "secrets",
-  "model": "claude-haiku-4.5",
+  "model": "claude-haiku-4-5",
   "timestamp": "2026-04-13T...",
   "total": 100,
   "correct": 94,
@@ -734,7 +734,7 @@ Reports saved to `packages/mcp-hooks/evals/results/` (gitignored) for comparison
 - ~5,300 cases × 1 LLM call each = ~5,300 Haiku calls
 - Haiku is fast (~200ms/call) and cheap
 - Parallel execution (batches of 20-50): ~20-30 minutes total
-- Cost: negligible on a Copilot subscription
+- Cost: negligible on a LLM provider plan
 
 ## Prompt Iteration Workflow
 
@@ -800,7 +800,7 @@ Phases 2b and 3 are deferred.
 - [x] `evals/datasets/redact.json` — 20 cases (15 positive, 5 negative)
 - [x] Secret-scanning hardening: `.github/secret_scanning.yml` excludes `evals/datasets/**` and `evals/baselines/**`; secret-shaped fixtures stored as `content_b64`
 
-#### Baseline run (claude-haiku-4.5, 2026-04-25)
+#### Baseline run (claude-haiku-4-5, 2026-04-25)
 
 | Eval      | n   | Acc   | P    | R    | F1   | FPR   |
 | --------- | --- | ----- | ---- | ---- | ---- | ----- |

@@ -1,4 +1,4 @@
-import type { CopilotLLMClient } from "../copilot-llm.js";
+import type { LLMClient } from "../llm-client.js";
 import type { EgressHook, HookResult } from "../types.js";
 import { classifyBoolean } from "../classify.js";
 import { SECRETS_PROMPT, SENSITIVE_PROMPT } from "../prompts.js";
@@ -41,7 +41,7 @@ export class ContactsEgressGuard implements EgressHook {
   private readonly contacts: ContactsTrustResolver;
   private readonly trustedDomains: ReadonlySet<string>;
   private readonly extractDestinations: ExtractDestinations;
-  private readonly llm?: CopilotLLMClient;
+  private readonly llm?: LLMClient;
   private readonly runContentClassifiers: boolean;
 
   constructor(opts: ContactsEgressGuardOptions) {
@@ -128,7 +128,7 @@ export interface ContactsEgressGuardOptions {
    * content before checking destinations. PII classifier is intentionally
    * dropped — it only existed to drive the old approval-escalation ladder.
    */
-  llm?: CopilotLLMClient;
+  llm?: LLMClient;
   /** Default: true if `llm` is provided. Set false to disable classifiers. */
   runContentClassifiers?: boolean;
 }

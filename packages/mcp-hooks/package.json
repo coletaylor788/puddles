@@ -7,12 +7,9 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "test": "vitest run --exclude tests/integration.test.ts",
-    "test:integration": "vitest run tests/integration.test.ts",
-    "test:all": "vitest run",
-    "test:watch": "vitest --exclude tests/integration.test.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "lint": "tsc --noEmit",
-    "setup-auth": "npx tsx scripts/setup-auth.ts",
     "eval": "tsx evals/cli.ts",
     "eval:secrets": "tsx evals/cli.ts --eval=secrets",
     "eval:sensitive": "tsx evals/cli.ts --eval=sensitive",
@@ -21,10 +18,7 @@
     "eval:redact": "tsx evals/cli.ts --eval=redact",
     "generate": "tsx evals/generate.ts"
   },
-  "dependencies": {
-    "openai": "^4.0.0",
-    "keytar": "^7.0.0"
-  },
+  "dependencies": {},
   "devDependencies": {
     "typescript": "^5.0.0",
     "vitest": "^3.0.0",

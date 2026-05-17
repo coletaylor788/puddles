@@ -110,7 +110,7 @@ OpenClaw
       "model": {
         "type": "string",
         "description": "LLM model for hook analysis",
-        "default": "claude-haiku-4.5"
+        "default": "claude-haiku-4-5"
       }
     }
   }
@@ -176,7 +176,7 @@ openclaw-plugins/secure-apple-calendar/
             "/Users/<you>/git/Apple-PIM-Agent-Plugin/mcp-server/dist/server.js"
           ],
           "trustedAttendeeDomains": ["<work-domain>", "<personal-domain>"],
-          "model": "claude-haiku-4.5"
+          "model": "claude-haiku-4-5"
         }
       }
     }
@@ -234,7 +234,7 @@ If/when the agent needs read access to contacts (e.g., "what's Alice's email?" b
 - [x] Unit: skipped actions (`list`, `schema`, `delete`) pass through without hooks
 - [x] Unit: unknown actions fail-closed (ingress applied)
 - [x] Unit: SendApproval custom `extractDestinations` override (in `packages/mcp-hooks`)
-- [x] Integration: InjectionGuard + SecretRedactor + LeakGuard against real Copilot LLM with calendar fixtures (6 tests)
+- [x] Integration: InjectionGuard + SecretRedactor + LeakGuard against real LLM provider with calendar fixtures (6 tests)
 - [ ] Integration: plugin loads in OpenClaw on the mini; apple-pim MCP server spawns; only calendar tool visible — operational, deferred
 - [ ] Integration: shared-calendar live read with injected description triggers InjectionGuard — operational, deferred
 - [ ] Integration: `create` with external attendee triggers SendApproval flow — operational, deferred

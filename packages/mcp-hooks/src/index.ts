@@ -2,7 +2,13 @@ export { type HookAction, type HookResult } from "./types.js";
 export { type ContentClassification } from "./types.js";
 export { type EgressHook, type IngressHook } from "./types.js";
 
-export { CopilotLLMClient } from "./copilot-llm.js";
+export {
+  type LLMClient,
+  type ClassifyOptions,
+  stripCodeFences,
+} from "./llm-client.js";
+export { loadLLMProvider } from "./load-llm-provider.js";
+export { log, sanitize, type LogFields } from "./logger.js";
 
 export { LeakGuard } from "./egress/leak-guard.js";
 export {

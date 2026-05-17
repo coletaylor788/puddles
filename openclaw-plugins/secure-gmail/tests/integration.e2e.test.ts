@@ -1,12 +1,12 @@
 /**
- * End-to-end integration test: spawn real gmail-mcp + real Copilot LLM,
+ * End-to-end integration test: spawn real gmail-mcp + a real LLM provider,
  * call wrapped list_emails against the user's real inbox, verify the full
  * pipeline (bridge → registered tool → wrapped execute → hooks → result).
  *
  * Read-only: only invokes list_emails with max_results=3.
  *
- * Skipped automatically when the gmail-mcp venv, Copilot PAT, or gmail-mcp
- * OAuth token are not present.
+ * Skipped automatically when the gmail-mcp venv, `LLM_PROVIDER_MODULE`, or
+ * gmail-mcp OAuth token are not present.
  */
 import { describe, it, expect } from "vitest";
 import { existsSync } from "node:fs";
@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { connectMcpBridge, type McpBridge } from "../src/mcp-bridge.js";
 import { wrapMcpTool } from "../src/wrap-tool.js";
-import { CopilotLLMClient, InjectionGuard, SecretRedactor } from "mcp-hooks";
+import { InjectionGuard, SecretRedactor, loadLLMProvider } from "mcp-hooks";
 import type { Tool as McpTool } from "@modelcontextprotocol/sdk/types.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -22,10 +22,10 @@ const repoRoot = resolve(here, "../../..");
 const gmailMcpVenv = resolve(repoRoot, "servers/gmail-mcp/.venv/bin/python");
 const gmailMcpCwd = resolve(repoRoot, "servers/gmail-mcp");
 
+const providerSpec = process.env.LLM_PROVIDER_MODULE;
 const hasVenv = existsSync(gmailMcpVenv);
 const hasGmailToken = await checkKeychain("gmail-mcp", "token");
-const hasCopilotPat = await checkKeychain("openclaw", "github-pat");
-const ready = hasVenv && hasGmailToken && hasCopilotPat;
+const ready = hasVenv && hasGmailToken && Boolean(providerSpec);
 
 const describeIfReady = ready ? describe : describe.skip;
 
@@ -43,7 +43,9 @@ describeIfReady("e2e: wrapped list_emails against real Gmail + real hooks", () =
       const listEmails = tools.find((t) => t.name === "list_emails");
       expect(listEmails, "list_emails should be registered by gmail-mcp").toBeDefined();
 
-      const llm = new CopilotLLMClient({ model: "claude-haiku-4.5" });
+      const llm = await loadLLMProvider(providerSpec!, {
+        model: process.env.LLM_PROVIDER_MODEL,
+      });
       const wrapped = wrapMcpTool(listEmails as McpTool, bridge, {
         ingress: [new InjectionGuard({ llm }), new SecretRedactor({ llm })],
       });

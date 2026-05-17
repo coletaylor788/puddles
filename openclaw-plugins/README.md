@@ -24,17 +24,15 @@ The folder is currently empty — concrete plugins are added by:
 | Plugin | Plan | Purpose |
 |---|---|---|
 | `secure-gmail` | [010](../docs/plans/010-secure-gmail-plugin.md) | Wraps Gmail MCP tools with egress + ingress hooks |
-| `secure-web` | [012](../docs/plans/012-secure-web-providers.md) | Replaces OpenClaw's built-in `web_fetch` / `web_search` providers with hook-wrapped versions |
-
-Plans 011 (async injection-guard) and 014 (egress approval) will add further
-plugins to this folder.
+| `secure-apple-calendar` | [017](../docs/plans/017-secure-apple-calendar.md) | Wraps apple-pim's calendar MCP tool with ingress + egress hooks |
 
 ## Prerequisites
 
 - [OpenClaw](https://openclaw.dev) installed
-- GitHub Copilot subscription (mcp-hooks classifies via the Copilot API)
-- GitHub PAT stored in macOS Keychain — see
-  [`packages/mcp-hooks/README.md`](../packages/mcp-hooks/README.md#credential-setup)
+- An `LLMClient` implementation reachable from the gateway — see
+  [`packages/mcp-hooks/README.md`](../packages/mcp-hooks/README.md) for the
+  interface contract. Each plugin loads it dynamically via the
+  `llmProvider` config field.
 
 ## Installing dependencies
 
@@ -57,7 +55,7 @@ Add the plugin's absolute path to your OpenClaw config:
     "load": {
       "paths": [
         "/Users/<you>/git/puddles/openclaw-plugins/secure-gmail",
-        "/Users/<you>/git/puddles/openclaw-plugins/secure-web"
+        "/Users/<you>/git/puddles/openclaw-plugins/secure-apple-calendar"
       ]
     }
   }

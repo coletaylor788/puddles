@@ -1,4 +1,4 @@
-import type { CopilotLLMClient } from "./copilot-llm.js";
+import type { LLMClient } from "./llm-client.js";
 import { log } from "./logger.js";
 
 /**
@@ -9,7 +9,7 @@ import { log } from "./logger.js";
  * collapse to "fail open" but evals want to track separately:
  *  - "ok"          — model returned valid JSON; trust `detected`/`evidence`
  *  - "parse_error" — model returned invalid/unexpected JSON
- *  - "api_error"   — network or API failure (already wrapped by CopilotLLMClient)
+ *  - "api_error"   — network or API failure (wrapped by the LLM client adapter)
  *
  * Production hooks should treat anything other than `ok` as `detected: false`
  * (preserving fail-open behavior). The eval harness uses `outcome` to compute
@@ -30,7 +30,7 @@ export interface ClassificationResult {
  * (never throws) — failure modes are surfaced via `outcome`.
  */
 export async function classifyBoolean(
-  llm: CopilotLLMClient,
+  llm: LLMClient,
   content: string,
   prompt: string,
   label = "unlabeled",

@@ -111,15 +111,16 @@ architecture rationale (the same constraint shaped secure-gmail).
    calendars, add the account in System Settings → Internet Accounts and
    enable Calendars. Sync latency means newly-created events take seconds
    to a minute to appear in EventKit.
-4. **GitHub Copilot PAT** in the macOS Keychain (used by the hook LLM
-   checks). Service `openclaw`, account `github-pat`. See
-   [`packages/mcp-hooks/README.md`](../../packages/mcp-hooks/README.md#credential-setup).
+4. **An `LLMClient` implementation** — a Node module resolvable from the
+   gateway whose default export implements `mcp-hooks` `LLMClient`. See
+   [`packages/mcp-hooks/README.md`](../../packages/mcp-hooks/README.md) for
+   the contract and a sample adapter. The plugin loads it via
+   `loadLLMProvider(config.llmProvider, { model, ...llmProviderOptions })`.
 
 Verify:
 
 ```bash
 ls /abs/path/to/Apple-PIM-Agent-Plugin/mcp-server/dist/server.js && echo "apple-pim mcp: OK"
-security find-generic-password -s openclaw -a github-pat >/dev/null && echo "copilot PAT: OK"
 ```
 
 ### (Recommended) apple-pim domain config
@@ -163,11 +164,10 @@ After enabling, add the config block below.
 | `applePimMcpEnv` | | — | Extra env vars passed to the subprocess. |
 | `configDir` | | — | Gateway-level default `APPLE_PIM_CONFIG_DIR`. Overridden per-agent if `<workspaceDir>/apple-pim/config.json` exists. See [Per-agent calendar filtering](#per-agent-calendar-filtering). |
 | `trustedAttendeeDomains` | | `[]` | Email domains whose attendees auto-pass the egress guard without a Contacts lookup. Case-insensitive; leading `@` accepted. |
-| `model` | | `claude-haiku-4.5` | Copilot model used by hook LLM checks. |
+| `llmProvider` | ✅ | — | Node module specifier whose default export implements `mcp-hooks` `LLMClient` (see [`packages/mcp-hooks/README.md`](../../packages/mcp-hooks/README.md)). |
+| `llmProviderOptions` | | `{}` | Extra opts forwarded to the provider constructor (merged with `{ model }`). |
+| `model` | | — | Model id forwarded to the provider constructor. |
 | `auditLogPath` | | `~/.openclaw/logs/secure-apple-calendar-audit.jsonl` | JSONL audit log. |
-
-The Copilot PAT used by the hooks must be in the macOS Keychain — see
-Prerequisites above.
 
 ### OpenClaw config example
 
@@ -185,7 +185,8 @@ Prerequisites above.
             "/Users/<you>/git/Apple-PIM-Agent-Plugin/mcp-server/dist/server.js"
           ],
           "trustedAttendeeDomains": ["example.com"],
-          "model": "claude-haiku-4.5"
+          "llmProvider": "my-llm-adapter",
+          "model": "haiku-4-5"
         }
       }
     }
@@ -302,7 +303,7 @@ pnpm install
 
 # from this directory
 pnpm test                # unit tests only (mocked MCP + hooks; fast, no auth)
-pnpm test:integration    # integration tests (real Copilot LLM)
+pnpm test:integration    # integration tests (real LLM provider)
 pnpm test:all            # everything
 pnpm lint                # tsc --noEmit
 pnpm build               # emits dist/
@@ -310,13 +311,14 @@ pnpm build               # emits dist/
 
 The integration test (`tests/integration.hooks.test.ts`) runs
 `InjectionGuard` and `SecretRedactor` against canned calendar-shaped
-fixtures using the real GitHub Copilot API. It skips automatically when
-no PAT is reachable in the keychain.
+fixtures using a real LLM provider. It skips automatically unless
+`LLM_PROVIDER_MODULE` (and optionally `LLM_PROVIDER_MODEL`) are set in
+the environment.
 
 ## Manual integration smoke test
 
 1. Confirm apple-pim's MCP server and Swift CLIs are installed.
-2. Confirm the Copilot PAT is in the keychain.
+2. Confirm an LLM provider is wired up via `llmProvider` in the OpenClaw config (and any provider-specific env vars are set).
 3. Add the OpenClaw config block above.
 4. Start an OpenClaw session and ask the agent: "What's on my calendar
    tomorrow?". Verify it returns events and that
@@ -348,5 +350,5 @@ secure-apple-calendar/
 └── tests/
     ├── action-map.test.ts        # unit
     ├── wrap-tool.test.ts         # unit
-    └── integration.hooks.test.ts # hits real Copilot API
+    └── integration.hooks.test.ts # hits real LLM provider
 ```

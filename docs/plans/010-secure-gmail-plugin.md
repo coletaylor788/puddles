@@ -83,7 +83,7 @@ openclaw-plugins/secure-gmail/
 └── README.md
 ```
 
-Depends on `packages/mcp-hooks/` for `LeakGuard`, `SendApproval`, `InjectionGuard`, `SecretRedactor`, `CopilotLLMClient`, `TrustStore`.
+Depends on `packages/mcp-hooks/` for `LeakGuard`, `SendApproval`, `InjectionGuard`, `SecretRedactor`, `LLMClient adapter`, `TrustStore`.
 
 ---
 
@@ -135,8 +135,8 @@ OpenClaw
       },
       "model": {
         "type": "string",
-        "description": "Copilot model used by hook LLM checks",
-        "default": "claude-haiku-4.5"
+        "description": "model used by hook LLM checks",
+        "default": "claude-haiku-4-5"
       },
       "skipTools": {
         "type": "array",
@@ -154,7 +154,7 @@ OpenClaw
 ```typescript
 // src/plugin.ts
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
-import { InjectionGuard, SecretRedactor, CopilotLLMClient } from "mcp-hooks";
+import { InjectionGuard, SecretRedactor, LLMClient adapter } from "mcp-hooks";
 import { connectGmailMcp } from "./mcp-bridge.js";
 import { wrapWithHooks } from "./wrap-tool.js";
 
@@ -170,7 +170,7 @@ export default {
       skipTools?: string[];
     };
 
-    const llm = new CopilotLLMClient({ model: config.model ?? "claude-haiku-4.5" });
+    const llm = new LLMClient adapter({ model: config.model ?? "claude-haiku-4-5" });
     const injectionGuard = new InjectionGuard({ llm });
     const secretRedactor = new SecretRedactor({ llm });
     const skip = new Set(config.skipTools ?? ["authenticate", "archive_email", "add_label"]);
@@ -259,7 +259,7 @@ Future instances (e.g., secure-calendar, secure-slack) copy this structure and o
         "config": {
           "gmailMcpCommand": "~/git/puddles/servers/gmail-mcp/.venv/bin/python",
           "gmailMcpArgs": ["-m", "gmail_mcp"],
-          "model": "claude-haiku-4.5"
+          "model": "claude-haiku-4-5"
         }
       }
     }
@@ -295,11 +295,11 @@ Future instances (e.g., secure-calendar, secure-slack) copy this structure and o
 **Automated integration tests (real subprocess + real LLM) — 8/8 passing:**
 - [x] Spawn real gmail-mcp via stdio, complete handshake, `listTools` returns the expected tool surface
 - [x] gmail-mcp returns `isError: true` (not a thrown protocol error) for unknown tool names
-- [x] Real `InjectionGuard` blocks a clear prompt-injection email body via Copilot API
+- [x] Real `InjectionGuard` blocks a clear prompt-injection email body via the configured LLM provider
 - [x] Real `InjectionGuard` allows a clean email body
 - [x] Real `SecretRedactor` redacts a 6-digit 2FA code
 - [x] Real `SecretRedactor` leaves clean prose untouched
-- [x] Full pipeline: wrapped `list_emails` → real gmail-mcp → real Copilot hooks → real inbox returns content
+- [x] Full pipeline: wrapped `list_emails` → real gmail-mcp → real LLM-backed hooks → real inbox returns content
 - [x] Skip-listed tool (`authenticate`) wraps and exposes correct shape with empty ingress
 
 **Manual end-to-end smoke (optional — requires OpenClaw running):**

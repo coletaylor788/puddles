@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { CopilotLLMClient } from "../src/copilot-llm.js";
+import type { LLMClient } from "../src/llm-client.js";
 import { LeakGuard } from "../src/egress/leak-guard.js";
 import { SecretRedactor } from "../src/ingress/secret-redactor.js";
 import { InjectionGuard } from "../src/ingress/injection-guard.js";
@@ -8,7 +8,7 @@ function makeMockLLM() {
   return {
     classify: vi.fn(),
     destroy: vi.fn(),
-  } as unknown as CopilotLLMClient & { classify: ReturnType<typeof vi.fn> };
+  } as unknown as LLMClient & { classify: ReturnType<typeof vi.fn> };
 }
 
 describe("Integration Tests", () => {
@@ -21,7 +21,7 @@ describe("Integration Tests", () => {
   describe("LeakGuard + real classification flow", () => {
     it("should block content with secrets (full flow)", async () => {
       llm.classify.mockImplementation((_content: string, prompt: string) => {
-        if (prompt.includes("secrets or credentials")) {
+        if (prompt.includes("SECRET or CREDENTIAL")) {
           return Promise.resolve(
             JSON.stringify({ detected: true, evidence: "API key sk-abc..." }),
           );

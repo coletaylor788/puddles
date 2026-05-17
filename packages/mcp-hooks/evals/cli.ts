@@ -1,16 +1,18 @@
 #!/usr/bin/env tsx
 /**
  * Eval CLI. Examples:
- *   pnpm eval                        # run all 5 evals
- *   pnpm eval --eval=secrets         # run one
- *   pnpm eval --eval=injection -v    # verbose per-case logging
- *   pnpm eval --eval=all --concurrency=2 --output-dir=evals/baselines
+ *   pnpm eval --llm-provider=my-llm-adapter                    # run all 5 with one provider
+ *   pnpm eval --eval=secrets --llm-provider=./adapters/x.js    # run one with a local adapter
+ *   pnpm eval --eval=injection --llm-provider=my-llm-adapter -v
+ *   pnpm eval --eval=all --llm-provider=my-llm-adapter --output-dir=evals/baselines
  *
- * Skips with a warning if no Copilot PAT is reachable in the keychain.
+ * `--llm-provider` is a Node module specifier whose default export implements
+ * mcp-hooks' `LLMClient` interface. The CLI exits without running if it is
+ * not provided.
  */
 import { resolve } from "node:path";
 import { mkdir } from "node:fs/promises";
-import { CopilotLLMClient } from "../src/copilot-llm.js";
+import { loadLLMProvider } from "../src/load-llm-provider.js";
 import { runEval, defaultDatasetPath, datasetExists } from "./runner.js";
 import type { EvalName, EvalReport } from "./types.js";
 
@@ -21,7 +23,8 @@ interface ParsedArgs {
   retries: number;
   timeoutMs: number;
   outputDir: string | null;
-  model: string;
+  llmProvider: string | null;
+  model: string | null;
   datasetDir: string | null;
 }
 
@@ -30,15 +33,16 @@ const ALL_EVALS: EvalName[] = ["secrets", "sensitive", "pii", "injection", "reda
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
 
-  if (!(await hasPat())) {
-    console.warn(
-      "[eval] No Copilot PAT in keychain (service 'openclaw' or 'mcp-hooks').",
+  if (!args.llmProvider) {
+    console.error(
+      "[eval] --llm-provider=<module-specifier> is required (see packages/mcp-hooks/README.md).",
     );
-    console.warn("[eval] See packages/mcp-hooks/README.md#credential-setup. Skipping.");
-    process.exit(0);
+    process.exit(1);
   }
 
-  const llm = new CopilotLLMClient({ model: args.model });
+  const providerOptions: Record<string, unknown> = {};
+  if (args.model) providerOptions.model = args.model;
+  const llm = await loadLLMProvider(args.llmProvider, providerOptions);
   const evalsToRun: EvalName[] = args.evalName === "all" ? ALL_EVALS : [args.evalName];
   const reports: EvalReport[] = [];
 
@@ -58,11 +62,12 @@ async function main(): Promise<void> {
       await mkdir(resolve(outputPath, ".."), { recursive: true });
     }
 
-    console.log(`\n=== ${evalName} (model=${args.model}) ===`);
+    const modelLabel = args.model ?? "<provider-default>";
+    console.log(`\n=== ${evalName} (provider=${args.llmProvider}, model=${modelLabel}) ===`);
     const report = await runEval({
       evalName,
       llm,
-      model: args.model,
+      model: args.model ?? "<provider-default>",
       datasetPath,
       outputPath,
       concurrency: args.concurrency,
@@ -85,7 +90,7 @@ async function main(): Promise<void> {
     console.error(`\n[eval] ${totalFailures} eval(s) had no successful responses`);
     process.exit(2);
   }
-  // CopilotLLMClient / keytar can leave handles open that keep the
+  // The LLM client / its transport can leave handles open that keep the
   // event loop alive. Force exit on success.
   process.exit(0);
 }
@@ -119,7 +124,8 @@ function parseArgs(argv: string[]): ParsedArgs {
     retries: 2,
     timeoutMs: 30_000,
     outputDir: null,
-    model: "claude-haiku-4.5",
+    llmProvider: null,
+    model: null,
     datasetDir: null,
   };
   for (const arg of argv) {
@@ -129,6 +135,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     else if (arg.startsWith("--retries=")) out.retries = Number(arg.slice(10));
     else if (arg.startsWith("--timeout-ms=")) out.timeoutMs = Number(arg.slice(13));
     else if (arg.startsWith("--output-dir=")) out.outputDir = arg.slice(13);
+    else if (arg.startsWith("--llm-provider=")) out.llmProvider = arg.slice(15);
     else if (arg.startsWith("--model=")) out.model = arg.slice(8);
     else if (arg.startsWith("--dataset-dir=")) out.datasetDir = arg.slice(14);
     else if (arg === "--help" || arg === "-h") {
@@ -144,32 +151,21 @@ function parseArgs(argv: string[]): ParsedArgs {
 }
 
 function printHelp(): void {
-  console.log(`Usage: tsx evals/cli.ts [options]
+  console.log(`Usage: tsx evals/cli.ts --llm-provider=<module> [options]
 
 Options:
+  --llm-provider=<spec> Node module specifier whose default export implements
+                        mcp-hooks' LLMClient interface (REQUIRED)
   --eval=<name>         secrets|sensitive|pii|injection|redact|all (default: all)
   --concurrency=<n>     concurrent LLM calls (default: 4)
   --retries=<n>         retries per case on transient failure (default: 2)
   --timeout-ms=<n>      per-call timeout (default: 30000)
-  --model=<id>          Copilot model id (default: claude-haiku-4.5)
+  --model=<id>          model id forwarded to the provider's constructor
   --output-dir=<path>   write report JSON files into this directory
   --dataset-dir=<path>  override datasets/ path (used by tests)
   -v, --verbose         log each case as it runs
   -h, --help            this help text
 `);
-}
-
-async function hasPat(): Promise<boolean> {
-  try {
-    const { default: keytar } = await import("keytar");
-    for (const service of ["openclaw", "mcp-hooks"]) {
-      const accounts = await keytar.findCredentials(service);
-      if (accounts.length > 0) return true;
-    }
-    return false;
-  } catch {
-    return false;
-  }
 }
 
 main().catch((err) => {

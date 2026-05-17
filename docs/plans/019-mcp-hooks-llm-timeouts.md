@@ -4,8 +4,8 @@
 
 ## Problem
 
-`CopilotLLMClient.classify()` calls `client.chat.completions.create({...})` with no
-`timeout`, no `maxRetries: 0`, and no `AbortSignal`. When github-copilot's chat API is
+`LLMClient adapter.classify()` calls `client.chat.completions.create({...})` with no
+`timeout`, no `maxRetries: 0`, and no `AbortSignal`. When <your-provider>'s chat API is
 flaky (we've seen `Connect Timeout` on the token-exchange path repeatedly), the call
 hangs forever. Every ingress hook (`InjectionGuard`, `SecretRedactor`) and egress hook
 (`LeakGuard`, `ContactsEgressGuard`) goes through `classifyBoolean` → `classify`, so a
@@ -43,7 +43,7 @@ Mirror Plan 009 / `gmail-mcp/_async.py` at the TS LLM layer:
 - `packages/mcp-hooks/src/logger.ts` — `log(event, fields)` JSON-to-stderr + `sanitize()`.
 
 **Modified:**
-- `packages/mcp-hooks/src/copilot-llm.ts` — add timeout, abort, slow-warn, logging.
+- `packages/mcp-hooks/src/llm-client.ts` — add timeout, abort, slow-warn, logging.
 - `packages/mcp-hooks/src/classify.ts` — add `label` param, log start/done.
 - `packages/mcp-hooks/src/egress/leak-guard.ts` — pass labels.
 - `packages/mcp-hooks/src/egress/contacts-egress-guard.ts` — pass labels.
@@ -53,7 +53,7 @@ Mirror Plan 009 / `gmail-mcp/_async.py` at the TS LLM layer:
 - `packages/mcp-hooks/README.md` — document timeouts + log format.
 
 **New tests:**
-- `packages/mcp-hooks/tests/copilot-llm-timeout.test.ts` — hangs are aborted within timeout.
+- `packages/mcp-hooks/tests/llm-client-timeout.test.ts` — hangs are aborted within timeout.
 - `packages/mcp-hooks/tests/classify-label.test.ts` — label propagated to logs.
 - `packages/mcp-hooks/tests/logger.test.ts` — sanitize + JSON shape.
 
@@ -61,7 +61,7 @@ Mirror Plan 009 / `gmail-mcp/_async.py` at the TS LLM layer:
 
 | Knob | Default | Override |
 |---|---|---|
-| `requestTimeoutMs` | 30_000 | `CopilotLLMClient` ctor opt |
+| `requestTimeoutMs` | 30_000 | `LLMClient adapter` ctor opt |
 | `slowCallMs` | 10_000 | ctor opt |
 | `tokenExchangeTimeoutMs` | 15_000 | ctor opt |
 
@@ -92,8 +92,8 @@ After merge:
 
 ### Implementation
 - [x] Create `logger.ts` with `log(event, fields)` + `sanitize()`
-- [x] Add timeout/abort/slow-warn/logging to `copilot-llm.ts:classify()`
-- [x] Add `AbortSignal.timeout` to `copilot-llm.ts:refreshToken()` fetch
+- [x] Add timeout/abort/slow-warn/logging to `llm-client.ts:classify()`
+- [x] Add `AbortSignal.timeout` to `llm-client.ts:refreshToken()` fetch
 - [x] Add optional `label` arg to `classifyBoolean` + log start/done
 - [x] Update `leak-guard.ts` callsites with labels
 - [x] Update `contacts-egress-guard.ts` callsites with labels
@@ -102,7 +102,7 @@ After merge:
 
 ### Testing
 - [x] `logger.test.ts` written + passing
-- [x] `copilot-llm-timeout.test.ts` written + passing (mocked hanging SDK)
+- [x] `llm-client-timeout.test.ts` written + passing (mocked hanging SDK)
 - [x] `classify-label.test.ts` written + passing
 - [x] Existing mcp-hooks suite still green
 - [x] secure-gmail + secure-apple-calendar suites still green

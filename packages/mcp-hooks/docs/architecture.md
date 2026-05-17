@@ -21,8 +21,12 @@ It does two things:
 2. **Ingress checks** — inspect inbound tool outputs (email bodies, web pages,
    API responses) before they reach the model.
 
-All semantic decisions are LLM-powered, classified via the GitHub Copilot API
-using the same two-step token exchange OpenClaw uses.
+All semantic decisions are LLM-powered, classified through any backend that
+implements the `LLMClient` interface. The package ships no concrete adapter
+— consumers BYO provider and point at the implementing module via config
+(`llmProvider` on OpenClaw plugins) or CLI flag (`--llm-provider` on the
+eval harness). See the README for the interface contract and a sample
+implementation.
 
 ---
 
@@ -33,7 +37,8 @@ packages/mcp-hooks/
 ├── src/
 │   ├── index.ts              # Public API surface
 │   ├── types.ts              # HookResult, HookAction, ContentClassification
-│   ├── copilot-llm.ts        # CopilotLLMClient — token exchange + caching + classify()
+│   ├── llm-client.ts         # LLMClient interface + stripCodeFences helper
+│   ├── load-llm-provider.ts  # loadLLMProvider() — dynamic-import + construct an adapter
 │   ├── contacts/
 │   │   └── contacts-trust.ts # ContactsTrustResolver — iCloud Contacts membership lookup
 │   ├── egress/
@@ -43,14 +48,12 @@ packages/mcp-hooks/
 │       ├── injection-guard.ts # InjectionGuard — prompt-injection detector
 │       └── secret-redactor.ts # SecretRedactor — regex + LLM redaction
 ├── tests/
-│   ├── copilot-llm.test.ts
 │   ├── contacts-trust.test.ts
 │   ├── leak-guard.test.ts
 │   ├── contacts-egress-guard.test.ts
 │   ├── injection-guard.test.ts
 │   ├── secret-redactor.test.ts
-│   ├── wiring.test.ts          # End-to-end wiring with mocked LLM
-│   └── integration.test.ts     # Real Copilot API (requires PAT in keychain)
+│   └── wiring.test.ts          # End-to-end wiring with mocked LLM
 └── docs/
     └── architecture.md         # this file
 ```
@@ -74,7 +77,11 @@ interface EgressHook  { check(toolName, content, params?): Promise<HookResult>; 
 interface IngressHook { check(toolName, content): Promise<HookResult>; }
 
 // Implementations
-class CopilotLLMClient { /* …token mgmt + classify(content, systemPrompt) */ }
+interface LLMClient {
+  classify(content: string, systemPrompt: string, options?: { temperature?: number; maxTokens?: number; label?: string }): Promise<string>;
+  destroy?(): void;
+}
+function loadLLMProvider(spec: string, opts: Record<string, unknown>): Promise<LLMClient>;
 class ContactsTrustResolver { /* …iCloud Contacts membership lookup via contacts-cli */ }
 
 class LeakGuard           implements EgressHook  { constructor({ llm }) }
@@ -119,47 +126,50 @@ Important behavioral details:
 
 ---
 
-## CopilotLLMClient
+## LLM client
 
-The single point of LLM access. One instance per process is the expected
-pattern; share it across hooks.
+The hooks consume any object that implements `LLMClient`. One instance per
+process is the expected pattern; share it across hooks.
 
-### Token lifecycle
+```ts
+interface LLMClient {
+  classify(content: string, systemPrompt: string, options?: ClassifyOptions): Promise<string>;
+  destroy?(): void;
+}
+```
 
-1. **Bootstrap** — first `classify()` call triggers a refresh.
-2. **Refresh** —
-   - Read GitHub PAT from keychain (`service: openclaw`, `account: github-pat`)
-     unless an explicit `githubToken` was passed.
-   - GET `https://api.github.com/copilot_internal/v2/token` with the PAT.
-   - Parse response `{ token, expires_at }`. `expires_at` may be seconds or
-     milliseconds — values `> 10_000_000_000` are treated as ms, otherwise
-     multiplied by 1000.
-   - Derive base URL from the `proxy-ep=…` field embedded in the token (regex
-     `/(?:^|;)\s*proxy-ep=([^;\s]+)/i`); strip protocol, swap `proxy.` →
-     `api.`, prepend `https://`. Falls back to
-     `https://api.individual.githubcopilot.com`.
-   - Construct an `OpenAI` client pointed at that base URL with the Copilot
-     headers (`User-Agent`, `Editor-Version`, `Editor-Plugin-Version`,
-     `Copilot-Integration-Id`).
-3. **Use** — `classify(content, systemPrompt)` calls
-   `chat.completions.create` at `temperature: 0` and returns the assistant
-   message with markdown code fences stripped.
-4. **Proactive refresh** — `setTimeout` schedules a refresh
-   `5 minutes` before expiry, with `60s` retry on failure and a `5s` floor to
-   prevent tight loops.
-5. **Concurrent dedup** — if a refresh is in flight, additional callers `await`
-   the same promise.
+### `loadLLMProvider(specifier, options)`
 
-### State
+The package does not ship a concrete adapter. Use `loadLLMProvider()` to
+dynamic-import a module whose **default export** is a class that constructs
+to something satisfying `LLMClient`:
 
-Token state lives only in memory (`this.tokenState`). The Copilot API token
-never touches disk or env vars. The GitHub PAT is read fresh from keychain each
-refresh cycle.
+```ts
+import { loadLLMProvider } from "mcp-hooks";
+const llm = await loadLLMProvider("my-llm-adapter", { model: "haiku-4-5" });
+```
 
-### Cleanup
+Failure modes (all `throw` with a descriptive message):
 
-`destroy()` clears the refresh timer. Long-running consumers that rotate
-clients should call this; one-shot scripts can ignore it.
+- empty specifier
+- module fails to resolve / import
+- module has no default export
+
+### Adapter contract
+
+Implementers must:
+
+- Implement `classify(content, systemPrompt, options?) => Promise<string>` —
+  send one user turn under one system prompt, return the assistant text.
+- Strip markdown code fences via `stripCodeFences()` before returning.
+- Throw on errors (network, parse, auth). Hooks catch and convert thrown
+  errors into fail-open `allow` decisions.
+- Honor `options.label`, `options.maxTokens`, `options.temperature` where
+  applicable.
+- Optionally implement `destroy()` for cleanup of timers/sockets.
+
+A reference implementation skeleton lives in
+[`packages/mcp-hooks/README.md`](../README.md#llm-client).
 
 ---
 
@@ -209,7 +219,7 @@ new ContactsEgressGuard({
   contacts: new ContactsTrustResolver(),
   // optional:
   trustedDomains: ["mycompany.com"],   // case-insensitive; "@" prefix tolerated
-  llm: copilotClient,                   // enables secrets/sensitive classifiers
+  llm: myProviderInstance,              // enables secrets/sensitive classifiers
   runContentClassifiers: true,          // explicit override (default: !!llm)
   extractDestinations: (toolName, params) => /* string[] */,
 });
@@ -296,13 +306,11 @@ drift, that's fine. If they don't, dedup later when a third consumer appears.
 
 | Suite | Command | What it covers |
 |---|---|---|
-| Unit (mocked LLM) | `npm test` | 92 tests across all modules; deterministic |
-| Integration (real Copilot API) | `npx vitest run tests/integration.test.ts` | Real token exchange + real classification of canonical inputs |
+| Unit (mocked LLM) | `npm test` | tests across all modules; deterministic |
 | Type check / lint | `npm run lint` (`tsc --noEmit`) | Strict TS, no implicit any |
 
-Unit tests mock `fetch` for token exchange and stub `CopilotLLMClient.classify`
-for hook tests. Integration tests require a GitHub PAT in keychain and are
-excluded from the default `npm test` run via `vitest --exclude`.
+Unit tests stub `LLMClient.classify` directly — no network, no real adapter.
+Adapter-specific integration tests live in the adapter's own package.
 
 ---
 
@@ -315,8 +323,10 @@ To add a new hook:
 3. Fail open on LLM errors (catch JSON.parse and request failures, return
    `{ action: "allow" }`).
 4. Export from `src/index.ts`.
-5. Add a unit test file alongside, mocking `CopilotLLMClient.classify`.
-6. Add an integration test case in `tests/integration.test.ts`.
+5. Add a unit test file alongside, stubbing `LLMClient.classify`.
+6. Add adapter-specific integration coverage in the adapter's own package
+   (e.g. `puddles/packages/mcp-hooks/tests/anthropic.integration.test.ts`,
+   not this list).
 
 To support a new tool destination shape in ContactsEgressGuard, pass a custom
 `extractDestinations` function in the constructor. The default extractor reads
@@ -326,9 +336,10 @@ common param keys (`to`, `recipient`, `recipients`, `email`, `address`).
 
 ## Operational notes
 
-- **Keychain bootstrap:** Store the GitHub PAT once with
-  `security add-generic-password -s "openclaw" -a "github-pat" -w "<pat>"`.
-  Storage is shared with OpenClaw itself.
+- **Auth bootstrap:** the LLM auth model is whatever your `LLMClient`
+  implementation requires. The hooks pass `LLMClient.classify()` opaquely
+  — they don't care if your adapter reads an env var, a keychain entry, a
+  config file, or hits a local model.
 - **Trust source of truth:** iCloud Contacts. To revoke trust for a
   recipient, delete or edit them in Contacts.app. To inspect what
   ContactsEgressGuard sees, run

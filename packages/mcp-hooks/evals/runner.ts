@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { createHash } from "node:crypto";
 import { execSync } from "node:child_process";
-import type { CopilotLLMClient } from "../src/copilot-llm.js";
+import type { LLMClient } from "../src/llm-client.js";
 import { SecretRedactor } from "../src/ingress/secret-redactor.js";
 import type {
   BooleanEvalCase,
@@ -19,7 +19,7 @@ import { decodeBooleanCase, decodeRedactCase } from "./load.js";
 
 export interface RunOptions {
   evalName: EvalName;
-  llm: CopilotLLMClient;
+  llm: LLMClient;
   model: string;
   datasetPath: string;
   outputPath?: string;
@@ -85,7 +85,7 @@ async function runBooleanBatch(
     category: string;
     difficulty: "easy" | "medium" | "hard";
   }>,
-  llm: CopilotLLMClient,
+  llm: LLMClient,
   evalName: Exclude<EvalName, "redact">,
   opts: BatchOpts,
 ): Promise<CaseRunResult[]> {
@@ -121,7 +121,7 @@ async function runRedactBatch(
     category: string;
     difficulty: "easy" | "medium" | "hard";
   }>,
-  llm: CopilotLLMClient,
+  llm: LLMClient,
   opts: BatchOpts,
 ): Promise<CaseRunResult[]> {
   const redactor = new SecretRedactor({ llm });

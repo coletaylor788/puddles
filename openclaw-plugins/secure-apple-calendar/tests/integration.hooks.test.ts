@@ -1,14 +1,16 @@
 /**
- * Integration test: run InjectionGuard + SecretRedactor against the real
- * GitHub Copilot LLM (using the PAT in the macOS Keychain). Covers the
- * calendar-specific threat surfaces:
+ * Integration test: run InjectionGuard + SecretRedactor against a real LLM
+ * provider. Covers the calendar-specific threat surfaces:
  *
  *  - InjectionGuard on event-description-shaped content (the highest-risk
  *    surface for this plugin — meeting descriptions from external attendees
  *    routinely contain conferencing URLs and natural-language instructions).
  *  - SecretRedactor on event-notes content with a 2FA-shaped code.
  *
- * Skipped automatically when no Copilot token is reachable in the keychain.
+ * Skipped automatically unless `LLM_PROVIDER_MODULE` is set in the environment.
+ * That env var is a Node module specifier whose default export implements
+ * mcp-hooks' `LLMClient` interface; `LLM_PROVIDER_MODEL` is forwarded as
+ * `{ model }` to the provider's constructor.
  *
  * NOTE: hooks fail open by design (see packages/mcp-hooks/docs/architecture.md),
  * so a network/API failure surfaces as `action: "allow"` rather than a test
@@ -17,20 +19,24 @@
  */
 import { describe, it, expect, beforeAll } from "vitest";
 import {
-  CopilotLLMClient,
   InjectionGuard,
   SecretRedactor,
+  loadLLMProvider,
+  type LLMClient,
 } from "mcp-hooks";
 
-const hasPat = await checkPatAvailable();
-const describeIfAuth = hasPat ? describe : describe.skip;
+const providerSpec = process.env.LLM_PROVIDER_MODULE;
+const describeIfProvider = providerSpec ? describe : describe.skip;
 
-describeIfAuth("integration: hooks against real Copilot LLM (calendar)", () => {
+describeIfProvider("integration: hooks against real LLM provider (calendar)", () => {
   let injectionGuard: InjectionGuard;
   let secretRedactor: SecretRedactor;
+  let llm: LLMClient;
 
-  beforeAll(() => {
-    const llm = new CopilotLLMClient({ model: "claude-haiku-4.5" });
+  beforeAll(async () => {
+    llm = await loadLLMProvider(providerSpec!, {
+      model: process.env.LLM_PROVIDER_MODEL,
+    });
     injectionGuard = new InjectionGuard({ llm });
     secretRedactor = new SecretRedactor({ llm });
   });
@@ -102,17 +108,3 @@ describeIfAuth("integration: hooks against real Copilot LLM (calendar)", () => {
     expect(verdict.action).toBe("allow");
   }, 60_000);
 });
-
-async function checkPatAvailable(): Promise<boolean> {
-  try {
-    const { default: keytar } = await import("keytar");
-    const candidates = ["openclaw", "mcp-hooks"];
-    for (const service of candidates) {
-      const accounts = await keytar.findCredentials(service);
-      if (accounts.length > 0) return true;
-    }
-    return false;
-  } catch {
-    return false;
-  }
-}

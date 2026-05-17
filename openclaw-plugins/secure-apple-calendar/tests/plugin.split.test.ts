@@ -30,16 +30,16 @@ vi.mock("../src/mcp-bridge.js", () => ({
   McpBridge: class {},
 }));
 
-// Hooks make real LLM calls in normal use. Mock CopilotLLMClient and the
-// hook constructors to be no-ops so we test ONLY the registration/gating
-// surface.
+// Hooks make real LLM calls in normal use. Stub `loadLLMProvider` to skip
+// the dynamic import and the hook constructors to be no-ops so we test ONLY
+// the registration/gating surface.
 vi.mock("mcp-hooks", async () => {
   const actual = await vi.importActual<typeof import("mcp-hooks")>("mcp-hooks");
   return {
     ...actual,
-    CopilotLLMClient: class {
-      constructor(_opts: unknown) {}
-    },
+    loadLLMProvider: async () => ({
+      classify: async () => "",
+    }),
     InjectionGuard: class {
       name = "InjectionGuard";
       async check() {
@@ -121,6 +121,7 @@ describe("secure-apple-calendar plugin: read/write split", () => {
     const api = makeStubApi({
       applePimMcpCommand: "node",
       applePimMcpArgs: ["/dev/null"],
+      llmProvider: "test-stub-llm-provider",
       auditLogPath: "/tmp/secure-apple-calendar-test.jsonl",
     });
     secureAppleCalendarPlugin.register(api);
@@ -294,6 +295,7 @@ describe("secure-apple-calendar plugin: per-agent factory dispatch", () => {
     const { api, factories } = makeFactoryStubApi({
       applePimMcpCommand: "node",
       applePimMcpArgs: ["/dev/null"],
+      llmProvider: "test-stub-llm-provider",
       auditLogPath: "/tmp/x.jsonl",
     });
     secureAppleCalendarPlugin.register(api);
@@ -305,6 +307,7 @@ describe("secure-apple-calendar plugin: per-agent factory dispatch", () => {
     const { api, factories } = makeFactoryStubApi({
       applePimMcpCommand: "node",
       applePimMcpArgs: ["/dev/null"],
+      llmProvider: "test-stub-llm-provider",
       auditLogPath: "/tmp/x.jsonl",
     });
     secureAppleCalendarPlugin.register(api);
@@ -340,6 +343,7 @@ describe("secure-apple-calendar plugin: per-agent factory dispatch", () => {
     const { api, factories } = makeFactoryStubApi({
       applePimMcpCommand: "node",
       applePimMcpArgs: ["/dev/null"],
+      llmProvider: "test-stub-llm-provider",
       auditLogPath: "/tmp/x.jsonl",
     });
     secureAppleCalendarPlugin.register(api);

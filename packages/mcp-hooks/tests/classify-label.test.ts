@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { classifyBoolean } from "../src/classify.js";
-import type { CopilotLLMClient } from "../src/copilot-llm.js";
+import type { LLMClient } from "../src/llm-client.js";
 
-function fakeLLM(impl: (content: string, prompt: string) => Promise<string>): CopilotLLMClient {
-  return { classify: vi.fn(impl) } as unknown as CopilotLLMClient;
+function fakeLLM(impl: (content: string, prompt: string) => Promise<string>): LLMClient {
+  return { classify: vi.fn(impl) } as unknown as LLMClient;
 }
 
 describe("classifyBoolean labels", () => {
