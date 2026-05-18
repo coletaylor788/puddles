@@ -46,11 +46,15 @@ export interface ClassifyOptions {
  *   - leading/trailing whitespace
  *
  * Idempotent: passing already-unwrapped text returns it unchanged.
+ *
+ * Regex shape note: only one ambiguous quantifier (`[\s\S]*?`). The opening
+ * language tag is a closed alternation, no `\s*\n?` chains around the inner
+ * capture — that prevents the polynomial backtracking pattern CodeQL flags
+ * (ReDoS via overlapping `\n?` + `\s*` against newline-heavy input).
  */
 export function stripCodeFences(text: string): string {
   const trimmed = text.trim();
-  // Greedy match anywhere in the text for a ```(json|other)?\n ... \n``` block.
-  const fenced = trimmed.match(/```(?:json|JSON)?\s*\n?([\s\S]*?)\n?\s*```/);
+  const fenced = trimmed.match(/```(?:json|JSON)?([\s\S]*?)```/);
   if (fenced) return fenced[1]!.trim();
   return trimmed;
 }

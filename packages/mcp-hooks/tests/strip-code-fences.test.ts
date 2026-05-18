@@ -34,6 +34,19 @@ describe("stripCodeFences", () => {
     const plain = '{"detected":true}';
     expect(stripCodeFences(stripCodeFences(plain))).toBe(plain);
   });
+
+  it("runs in linear time on pathological newline-heavy input without closing fence (ReDoS guard)", () => {
+    // Pre-fix regex had `\s*\n?...\n?\s*` ambiguity that backtracked O(n²).
+    // 50k newlines should complete in single-digit ms with the simplified
+    // pattern; if the regex regresses to polynomial backtracking, this test
+    // will hit the vitest default 5s timeout and fail loudly.
+    const evil = "```" + "\n".repeat(50_000);
+    const start = Date.now();
+    const result = stripCodeFences(evil);
+    const elapsed = Date.now() - start;
+    expect(result).toBe(evil.trim());
+    expect(elapsed).toBeLessThan(100);
+  });
 });
 
 describe("parseJsonLoose", () => {
