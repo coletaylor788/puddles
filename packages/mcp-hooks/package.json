@@ -1,0 +1,28 @@
+{
+  "name": "mcp-hooks",
+  "version": "0.1.0",
+  "description": "Security hooks for MCP tool pipelines",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit",
+    "eval": "tsx evals/cli.ts",
+    "eval:secrets": "tsx evals/cli.ts --eval=secrets",
+    "eval:sensitive": "tsx evals/cli.ts --eval=sensitive",
+    "eval:pii": "tsx evals/cli.ts --eval=pii",
+    "eval:injection": "tsx evals/cli.ts --eval=injection",
+    "eval:redact": "tsx evals/cli.ts --eval=redact",
+    "generate": "tsx evals/generate.ts"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "vitest": "^3.0.0",
+    "tsx": "^4.0.0",
+    "@types/node": "^22.0.0"
+  }
+}

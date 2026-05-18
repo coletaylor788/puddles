@@ -1,0 +1,60 @@
+{
+  "id": "secure-apple-calendar",
+  "name": "Secure Apple Calendar",
+  "version": "0.1.0",
+  "description": "Wraps apple-pim's calendar MCP tool with mcp-hooks ingress (InjectionGuard + SecretRedactor) and egress (SendApproval) security.",
+  "contracts": {
+    "tools": [
+      "calendar_read",
+      "calendar_write"
+    ]
+  },
+  "configSchema": {
+    "type": "object",
+    "required": ["applePimMcpCommand", "llmProvider"],
+    "additionalProperties": false,
+    "properties": {
+      "applePimMcpCommand": {
+        "type": "string",
+        "description": "Command to spawn the apple-pim MCP server (typically 'node')."
+      },
+      "applePimMcpArgs": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Args to spawn the apple-pim MCP server (e.g. ['/abs/path/to/apple-pim/mcp-server/dist/server.js'])."
+      },
+      "applePimMcpCwd": {
+        "type": "string",
+        "description": "Working directory for the apple-pim MCP subprocess (optional)."
+      },
+      "applePimMcpEnv": {
+        "type": "object",
+        "description": "Extra env vars passed to the apple-pim MCP subprocess (e.g. APPLE_PIM_PROFILE).",
+        "additionalProperties": { "type": "string" }
+      },
+      "trustedAttendeeDomains": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Email domains whose attendees auto-pass SendApproval (e.g. ['example.com']). Matching is case-insensitive.",
+        "default": []
+      },
+      "llmProvider": {
+        "type": "string",
+        "description": "Node module specifier whose default export is a class implementing mcp-hooks' LLMClient interface (e.g. a workspace package name or absolute path). The plugin dynamic-imports this at startup and constructs it with `{ model, ...llmProviderOptions }`."
+      },
+      "llmProviderOptions": {
+        "type": "object",
+        "description": "Extra constructor options forwarded to the llmProvider class (merged with { model }).",
+        "additionalProperties": true
+      },
+      "model": {
+        "type": "string",
+        "description": "Model id passed to the llmProvider class constructor. The provider decides what counts as a valid id."
+      },
+      "auditLogPath": {
+        "type": "string",
+        "description": "Override path for the JSONL audit log (default: ~/.openclaw/logs/secure-apple-calendar-audit.jsonl)."
+      }
+    }
+  }
+}
