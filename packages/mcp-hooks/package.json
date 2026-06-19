@@ -21,7 +21,7 @@
   "dependencies": {},
   "devDependencies": {
     "typescript": "^5.0.0",
-    "vitest": "^3.0.0",
+    "vitest": "^3.2.6",
     "tsx": "^4.0.0",
     "@types/node": "^22.0.0"
   }
