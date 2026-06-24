@@ -2,15 +2,18 @@
 
 Patches we maintain on top of the OpenClaw npm release on the Mac mini. Each
 patches a specific bug or capability gap that hasn't been fixed (or isn't
-fixable) upstream. They mutate files inside the installed `dist/` bundle,
-get clobbered on every `npm install -g openclaw@<ver>` upgrade, and must
-be re-applied afterward.
+fixable) upstream. They mutate files inside the installed `dist/` bundle or
+under `~/.openclaw/sandbox-build/`, get clobbered on every
+`npm install -g openclaw@<ver>` upgrade, and must be re-applied afterward.
 
 ## The patches
 
 | Patch | Doc | Patcher | Status |
 |---|---|---|---|
-| Cron+subagent announce-delivery | [`cron-announce-fix.md`](./cron-announce-fix.md) | [`apply-cron-announce-fix.mjs`](./apply-cron-announce-fix.mjs) | Verified on 2026.4.20 + 2026.5.12 |
+| Cron+subagent announce-delivery | [`cron-announce-fix.md`](./cron-announce-fix.md) | [`apply-cron-announce-fix.mjs`](./apply-cron-announce-fix.mjs) | Verified on 2026.4.20, 2026.5.12, 2026.5.20, 2026.6.1 |
+| Browser sandbox user-data-dir env override | [`browser-userdata-dir-fix.md`](./browser-userdata-dir-fix.md) | [`apply-browser-userdata-dir-fix.mjs`](./apply-browser-userdata-dir-fix.mjs) | Verified on 2026.5.12, 2026.5.20, 2026.6.1. Pending upstream PR (see plan 023). |
+| Cross-agent subagent spawn tool-inheritance | [`subagent-cross-agent-spawn-fix.md`](./subagent-cross-agent-spawn-fix.md) | [`apply-subagent-cross-agent-spawn-fix.mjs`](./apply-subagent-cross-agent-spawn-fix.mjs) | Verified on 2026.5.20, 2026.6.1 (6.1 added a second site in the new ACP runtime — patcher handles both). Pending upstream PR (see plan 025). |
+| `skill_workshop` for sandboxed agents | [`skill-workshop-sandbox-fix.md`](./skill-workshop-sandbox-fix.md) | [`apply-skill-workshop-sandbox-fix.mjs`](./apply-skill-workshop-sandbox-fix.mjs) | Verified on 2026.6.1. Required because 6.x made `skills/` an RO sandbox mount AND gated `skill_workshop` on un-sandboxed agents — sandboxed agents had no path to author skills. |
 
 Bug reports (filed/draft upstream) live alongside the patches:
 
@@ -27,14 +30,20 @@ bash /path/to/puddles/docs/openclaw-setup/patches/apply-and-deploy.sh
 ```
 
 It:
-1. Applies each patcher in turn against `~/.npm-global/lib/node_modules/openclaw/dist/`.
-2. Mirrors any patched files into the `plugin-runtime-deps` copy (older OpenClaw
-   versions; no-op on 2026.5.12+).
-3. Clears `~/.openclaw/tmp/node-compile-cache/` so the patched code actually
+1. Applies each `dist/`-targeting patcher against
+   `~/.npm-global/lib/node_modules/openclaw/dist/`.
+2. Applies each `sandbox-build/`-targeting patcher against
+   `~/.openclaw/sandbox-build/`.
+3. Mirrors any patched `dist/` files into the `plugin-runtime-deps` copy
+   (older OpenClaw versions; no-op on 2026.5.12+).
+4. Clears `~/.openclaw/tmp/node-compile-cache/` so the patched code actually
    runs (the cache is *very* sticky — patches without this step have no
    effect).
-4. Restarts the gateway LaunchAgent.
-5. Prints per-patch verification markers.
+5. Restarts the gateway LaunchAgent.
+6. If the browser sandbox entrypoint is patched, rebuilds the
+   `openclaw-sandbox-browser:bookworm-slim` image and recreates the
+   `browser-agent` container so the patched entrypoint takes effect.
+7. Prints per-patch verification markers.
 
 If any patcher exits non-zero (e.g., `pattern not found` because OpenClaw
 refactored the surrounding code, or `pattern not unique` because a new line
@@ -51,10 +60,14 @@ got added), do one of:
 
 OpenClaw's bundled `dist/` files have hash suffixes that change on every
 release (e.g. `subagent-announce-D8Kxq2.js` → `subagent-announce-Fp93ab.js`).
-Every patcher in this folder discovers its target files by **content
-signature** (a stable substring inside the file), not by filename. That
-makes them tolerant to rebuilds within a release. If a content signature
+Every `dist/`-targeting patcher in this folder discovers its target files by
+**content signature** (a stable substring inside the file), not by filename.
+That makes them tolerant to rebuilds within a release. If a content signature
 ever becomes stale, the patcher fails loudly with the unmatched signature.
+
+`sandbox-build/`-targeting patchers operate on stable filenames
+(`scripts/sandbox-browser-entrypoint.sh`, `Dockerfile.sandbox`, etc.) since
+those aren't bundled and don't carry hash suffixes.
 
 ## Caveats that apply to every patch in this folder
 
@@ -70,6 +83,10 @@ ever becomes stale, the patcher fails loudly with the unmatched signature.
   `~/.openclaw/plugin-runtime-deps/openclaw-<ver>/dist/` that some plugin
   code paths load from. The wrapper mirrors patched files there too. Newer
   versions no longer use this path; the wrapper detects and skips.
+- **Sandbox-browser image refresh.** Patches that touch the sandbox-browser
+  entrypoint or Dockerfile only take effect after a `docker build` and
+  `openclaw sandbox recreate --agent <id>`. The wrapper does both
+  automatically when it detects a patched entrypoint.
 - **Reverting.** Each patcher writes `.bak.<marker>` backups on first apply.
   To revert a specific patch, restore that patcher's backups; see the
   patch's own doc for the marker suffix and exact files.
@@ -77,11 +94,14 @@ ever becomes stale, the patcher fails loudly with the unmatched signature.
 ## Adding a new patch
 
 1. Write the patcher as `apply-<short-name>-fix.mjs`. Pure node, no deps.
-   Take a `dist/` directory as arg, find files by content signature, write
+   Take its target directory as arg (`dist/` or `sandbox-build/`), find files
+   by content signature (or stable filename for sandbox-build), write
    `.bak.<marker>` backups on first apply, fail loudly on missing/non-unique
    signatures.
 2. Write `<short-name>-fix.md` documenting the change (what bug it patches,
    why, what it changes, which file signatures it targets, what verification
    markers look like).
-3. Add an entry to `apply-and-deploy.sh` invoking the new patcher.
+3. Add an entry to the appropriate array in `apply-and-deploy.sh` (`PATCHERS`
+   for `dist/`, `SANDBOX_BUILD_PATCHERS` for `sandbox-build/`) and add the
+   marker to `MARKERS`.
 4. Add a row to the "The patches" table above.

@@ -27,6 +27,9 @@ verified four-scenario test matrix.
 | OpenClaw version | Status |
 |---|---|
 | `2026.4.20` | ✓ verified end-to-end on mini |
+| `2026.5.12` | ✓ verified end-to-end on mini |
+| `2026.5.20` | ✓ verified end-to-end on mini |
+| `2026.6.1`  | ✓ verified end-to-end on mini (C4 import anchor broadened to `from "./agent-delivery-` to survive an import-shape change) |
 
 The patcher discovers files by content signatures (not by hash-suffixed
 filenames), so it tolerates rebuilds within the same release. If upstream

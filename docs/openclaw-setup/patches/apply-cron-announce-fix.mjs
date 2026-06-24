@@ -174,22 +174,60 @@ function require1(s, find, label) {
   console.log(`Change 4 → ${f}`);
   let s = load(f);
 
-  // Add a lazy import helper for matchesMessagingToolDeliveryTarget (avoids any
-  // static circular import risk between delivery.runtime and run-delivery.runtime).
-  // Discover the run-delivery.runtime file by the same signature used in Change 2.
-  const runDeliveryFile = findFileBySignature(
-    "async function dispatchCronDelivery(params) {",
-    "run-delivery.runtime-*.js");
-  const importBlockEndAnchor = `import { n as resolveAgentOutboundTarget, t as resolveAgentDeliveryPlan } from "./agent-delivery-`;
-  const lazyHelperMarker = "/*FIX4-C4:lazy-matches-helper*/";
+  // Add an inline matcher for messagingTool sent targets vs. the current delivery target.
+  //
+  // Why inline (and not a lazy import): the original patch imported
+  // `matchesMessagingToolDeliveryTarget` from run-delivery.runtime, but that export
+  // was removed in OpenClaw 2026.6.1 — the lazy loader then resolved to `undefined`
+  // and crashed announce delivery with `TypeError: __c4_match is not a function`,
+  // silently dropping ~26 subagent completion announces on this host. The matcher
+  // logic is small enough (field equality + light bluebubbles `to` normalization)
+  // that inlining is cleaner than chasing the upstream symbol.
+  //
+  // Anchor on `from "./agent-delivery-` — stable across re-exports in 2026.6.1
+  // even though the destructure shape changed.
+  const importBlockEndAnchor = `from "./agent-delivery-`;
+
+  // Migrate any pre-existing broken lazy-helper block (from older patcher).
+  // The full block is the marker line + 8 lines of helper body, terminated by `}\n`.
+  const legacyMarker = "/*FIX4-C4:lazy-matches-helper*/";
+  const legacyIdx = s.indexOf(legacyMarker);
+  if (legacyIdx >= 0) {
+    const closingIdx = s.indexOf("}\n", legacyIdx);
+    if (closingIdx < 0) throw new Error("[C4] found legacy FIX4-C4:lazy-matches-helper marker but could not locate its closing brace; aborting rather than corrupt the file");
+    s = s.slice(0, legacyIdx) + s.slice(closingIdx + 2);
+    console.log("  migrated away from FIX4-C4:lazy-matches-helper (broken in 2026.6.1)");
+  }
+
+  const lazyHelperMarker = "/*FIX4-C4:inline-matcher*/";
   if (!s.includes(lazyHelperMarker)) {
     const idx = s.indexOf(importBlockEndAnchor);
-    if (idx < 0) throw new Error("[C4] could not find import anchor for lazy-helper insertion");
+    if (idx < 0) throw new Error("[C4] could not find import anchor for inline-matcher insertion");
     const lineEnd = s.indexOf("\n", idx);
     if (lineEnd < 0) throw new Error("[C4] truncated import line");
     const before = s.slice(0, lineEnd + 1);
     const after = s.slice(lineEnd + 1);
-    const helper = `${lazyHelperMarker}\nlet __c4_matchesMessagingToolDeliveryTarget;\nasync function __c4_loadMatcher() {\n\tif (__c4_matchesMessagingToolDeliveryTarget) return __c4_matchesMessagingToolDeliveryTarget;\n\tconst mod = await import("./${runDeliveryFile}");\n\t__c4_matchesMessagingToolDeliveryTarget = mod.matchesMessagingToolDeliveryTarget;\n\treturn __c4_matchesMessagingToolDeliveryTarget;\n}\n`;
+    const helper = `${lazyHelperMarker}
+function __c4_matchesMessagingToolDeliveryTarget(target, expected) {
+\tif (!target || !expected) return false;
+\tconst rawTargetTo = typeof target.to === "string" ? target.to.trim() : "";
+\tconst rawExpectedTo = typeof expected.to === "string" ? expected.to.trim() : "";
+\tif (!rawTargetTo || !rawExpectedTo) return false;
+\t// Normalize bluebubbles "<provider>:chat_guid:any;-;<phone>" → "<phone>" so the
+\t// E.164 form used by the announce wake's resolved deliveryTarget matches the
+\t// chat_guid form recorded by the messaging tool send.
+\tconst normalize = (value) => {
+\t\tconst match = /;-;([^;]+)$/.exec(value);
+\t\treturn match ? match[1] : value;
+\t};
+\tif (normalize(rawTargetTo) !== normalize(rawExpectedTo)) return false;
+\tconst targetAccount = target.accountId ?? null;
+\tconst expectedAccount = expected.accountId ?? null;
+\tif (targetAccount !== null && expectedAccount !== null && targetAccount !== expectedAccount) return false;
+\treturn true;
+}
+async function __c4_loadMatcher() { return __c4_matchesMessagingToolDeliveryTarget; }
+`;
     s = before + helper + after;
   }
 
