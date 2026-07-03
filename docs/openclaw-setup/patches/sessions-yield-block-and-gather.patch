@@ -1,0 +1,517 @@
+diff --git a/src/agents/openclaw-tools.ts b/src/agents/openclaw-tools.ts
+index c2f149b480..204e92222b 100644
+--- a/src/agents/openclaw-tools.ts
++++ b/src/agents/openclaw-tools.ts
+@@ -1,7 +1,7 @@
+ import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+ import type { SourceReplyDeliveryMode } from "../auto-reply/get-reply-options.types.js";
+ import type { InboundEventKind } from "../channels/inbound-event/kind.js";
+-import { selectApplicableRuntimeConfig } from "../config/config.js";
++import { getRuntimeConfig, selectApplicableRuntimeConfig } from "../config/config.js";
+ import type { OpenClawConfig } from "../config/types.openclaw.js";
+ import { callGateway } from "../gateway/call.js";
+ import { isEmbeddedMode } from "../infra/embedded-mode.js";
+@@ -57,6 +57,7 @@ import { createSessionsListTool } from "./tools/sessions-list-tool.js";
+ import { createSessionsSendTool } from "./tools/sessions-send-tool.js";
+ import { createSessionsSpawnTool } from "./tools/sessions-spawn-tool.js";
+ import { createSessionsYieldTool } from "./tools/sessions-yield-tool.js";
++import { gatherYieldDescendants } from "./yield-descendant-gather.js";
+ import { createSkillWorkshopTool } from "./tools/skill-workshop-tool.js";
+ import { createSubagentsTool } from "./tools/subagents-tool.js";
+ import { createTranscriptsTool } from "./tools/transcripts-tool.js";
+@@ -522,6 +523,11 @@ export function createOpenClawTools(
+     createSessionsYieldTool({
+       sessionId: options?.sessionId,
+       onYield: options?.onYield,
++      gatherDescendants: () =>
++        gatherYieldDescendants({
++          cfg: resolvedConfig ?? getRuntimeConfig(),
++          agentSessionKey: options?.agentSessionKey,
++        }),
+     }),
+     createSubagentsTool({
+       agentSessionKey: options?.agentSessionKey,
+diff --git a/src/agents/subagent-announce-delivery.ts b/src/agents/subagent-announce-delivery.ts
+index 888ff84c95..5262a7cb30 100644
+--- a/src/agents/subagent-announce-delivery.ts
++++ b/src/agents/subagent-announce-delivery.ts
+@@ -70,6 +70,7 @@ import {
+ import type { DeliveryContext } from "./subagent-announce-origin.js";
+ import { getSubagentDepthFromSessionStore } from "./subagent-depth.js";
+ import { resolveRequesterStoreKey } from "./subagent-requester-store-key.js";
++import { isYieldGathering, isYieldGathered } from "./tools/yield-gather-state.js";
+ import type { SpawnSubagentMode } from "./subagent-spawn.types.js";
+ 
+ const DEFAULT_SUBAGENT_ANNOUNCE_TIMEOUT_MS = 120_000;
+@@ -1195,6 +1196,23 @@ async function sendSubagentAnnounceDirectly(params: {
+     cfg,
+     params.targetRequesterSessionKey,
+   );
++  // Block-at-yield single writer: when this requester's sessions_yield is
++  // currently blocking in-turn to gather descendant results, SUPPRESS this
++  // announce entirely. That yielding turn stays active and owns the one
++  // synthesis, so a concurrent descendant completion must not steer or deliver
++  // its raw text — this eliminates the multi-subagent interim leak and the
++  // double-fire. The yield tool reads each child's frozen result directly once
++  // all descendants drain, then the orchestrator synthesizes from them.
++  if (isYieldGathering(canonicalRequesterSessionKey)) {
++    return { delivered: true, path: "none", terminal: true };
++  }
++  // Late-announce guard: even after the gather returns, a subagent whose result
++  // this turn already gathered+synthesized can fire its completion announce a few
++  // seconds later. Suppress it — its content is already in the delivered
++  // synthesis, so delivering it now is a raw-text leak.
++  if (params.sourceSessionKey && isYieldGathered(params.sourceSessionKey)) {
++    return { delivered: true, path: "none", terminal: true };
++  }
+   try {
+     const completionDirectOrigin = normalizeDeliveryContext(params.completionDirectOrigin);
+     const directOrigin = normalizeDeliveryContext(params.directOrigin);
+diff --git a/src/agents/subagent-registry-maintenance.ts b/src/agents/subagent-registry-maintenance.ts
+index 6e42657b5d..6db02dd197 100644
+--- a/src/agents/subagent-registry-maintenance.ts
++++ b/src/agents/subagent-registry-maintenance.ts
+@@ -38,7 +38,7 @@ export function listSessionMaintenanceProtectedSubagentSessionKeys(): string[] {
+     if (!shouldPreserveForMaintenance(entry)) {
+       continue;
+     }
+-    const childSessionKey = entry.childSessionKey.trim();
++    const childSessionKey = (entry.childSessionKey ?? "").trim();
+     if (childSessionKey) {
+       keys.add(childSessionKey);
+     }
+diff --git a/src/agents/subagent-registry-queries.ts b/src/agents/subagent-registry-queries.ts
+index a4e3f1c276..23ddb85608 100644
+--- a/src/agents/subagent-registry-queries.ts
++++ b/src/agents/subagent-registry-queries.ts
+@@ -106,7 +106,7 @@ export function buildSubagentRunReadIndexFromRuns(params: {
+   const activeDescendantCountBySessionKey = new Map<string, number>();
+ 
+   for (const entry of params.inMemoryRuns ?? []) {
+-    const childSessionKey = entry.childSessionKey.trim();
++    const childSessionKey = (entry.childSessionKey ?? "").trim();
+     if (!childSessionKey) {
+       continue;
+     }
+@@ -127,7 +127,7 @@ export function buildSubagentRunReadIndexFromRuns(params: {
+   }
+ 
+   for (const [runId, entry] of runs.entries()) {
+-    const childSessionKey = entry.childSessionKey.trim();
++    const childSessionKey = (entry.childSessionKey ?? "").trim();
+     const controllerSessionKey = resolveControllerSessionKey(entry);
+     if (controllerSessionKey) {
+       let controllerRuns = runsByControllerSessionKey.get(controllerSessionKey);
+@@ -385,6 +385,14 @@ function forEachDescendantRun(
+       if (entry.requesterSessionKey !== requester) {
+         continue;
+       }
++      // Defensive: a run record can exist with no childSessionKey yet (transient
++      // registration, or a run type that never gets a child session). It is not a
++      // trackable descendant — skip it rather than throwing on `.trim()` of
++      // undefined, which would crash every descendant walk (countActiveDescendantRuns,
++      // listDescendantRunsForRequester, the yield gather) for the whole requester.
++      if (!entry.childSessionKey) {
++        continue;
++      }
+       const childKey = entry.childSessionKey.trim();
+       const existing = latestByChildSessionKey.get(childKey);
+       if (!existing || entry.createdAt > existing[1].createdAt) {
+@@ -401,7 +409,7 @@ function forEachDescendantRun(
+         continue;
+       }
+       visitor(runId, entry);
+-      const childKey = entry.childSessionKey.trim();
++      const childKey = (entry.childSessionKey ?? "").trim();
+       if (!childKey || visited.has(childKey)) {
+         continue;
+       }
+diff --git a/src/agents/tools/sessions-yield-tool.test.ts b/src/agents/tools/sessions-yield-tool.test.ts
+index 7b6a1ecb2b..dd9c2e0b17 100644
+--- a/src/agents/tools/sessions-yield-tool.test.ts
++++ b/src/agents/tools/sessions-yield-tool.test.ts
+@@ -5,6 +5,8 @@ type SessionsYieldDetails = {
+   status?: string;
+   message?: string;
+   error?: string;
++  results?: string;
++  instruction?: string;
+ };
+ 
+ describe("sessions_yield tool", () => {
+@@ -47,4 +49,55 @@ describe("sessions_yield tool", () => {
+     expect(details.status).toBe("error");
+     expect(details.error).toBe("Yield not supported in this context");
+   });
++
++  it("blocks and returns gathered subagent results without ending the turn", async () => {
++    const onYield = vi.fn();
++    const gatherDescendants = vi
++      .fn()
++      .mockResolvedValue({ active: true, results: "Court booked 7pm.\n\nWork cal clear." });
++    const tool = createSessionsYieldTool({
++      sessionId: "test-session",
++      onYield,
++      gatherDescendants,
++    });
++    const result = await tool.execute("call-1", {});
++    const details = result.details as SessionsYieldDetails;
++    expect(gatherDescendants).toHaveBeenCalledOnce();
++    expect(details.status).toBe("subagent_results");
++    expect(details.results).toContain("Court booked 7pm.");
++    expect(details.results).toContain("Work cal clear.");
++    expect(details.instruction).toMatch(/synthesize/i);
++    // Crucially: the turn is NOT ended — main stays active to synthesize.
++    expect(onYield).not.toHaveBeenCalled();
++  });
++
++  it("falls through to a normal yield when no descendants are active", async () => {
++    const onYield = vi.fn();
++    const gatherDescendants = vi.fn().mockResolvedValue({ active: false });
++    const tool = createSessionsYieldTool({
++      sessionId: "test-session",
++      onYield,
++      gatherDescendants,
++    });
++    const result = await tool.execute("call-1", {});
++    const details = result.details as SessionsYieldDetails;
++    expect(gatherDescendants).toHaveBeenCalledOnce();
++    expect(details.status).toBe("yielded");
++    expect(onYield).toHaveBeenCalledOnce();
++  });
++
++  it("returns a placeholder when descendants finish with no readable content", async () => {
++    const onYield = vi.fn();
++    const gatherDescendants = vi.fn().mockResolvedValue({ active: true });
++    const tool = createSessionsYieldTool({
++      sessionId: "test-session",
++      onYield,
++      gatherDescendants,
++    });
++    const result = await tool.execute("call-1", {});
++    const details = result.details as SessionsYieldDetails;
++    expect(details.status).toBe("subagent_results");
++    expect(details.results).toMatch(/no readable content/i);
++    expect(onYield).not.toHaveBeenCalled();
++  });
+ });
+diff --git a/src/agents/tools/sessions-yield-tool.ts b/src/agents/tools/sessions-yield-tool.ts
+index 04f8b6691d..14b226ef42 100644
+--- a/src/agents/tools/sessions-yield-tool.ts
++++ b/src/agents/tools/sessions-yield-tool.ts
+@@ -1,6 +1,7 @@
+ import { Type } from "typebox";
+ import type { AnyAgentTool } from "./common.js";
+ import { jsonResult, readStringParam } from "./common.js";
++import type { YieldDescendantGatherResult } from "../yield-descendant-gather.js";
+ 
+ const SessionsYieldToolSchema = Type.Object({
+   message: Type.Optional(Type.String()),
+@@ -9,6 +10,14 @@ const SessionsYieldToolSchema = Type.Object({
+ export function createSessionsYieldTool(opts?: {
+   sessionId?: string;
+   onYield?: (message: string) => Promise<void> | void;
++  /**
++   * When supplied, sessions_yield first checks for active descendant subagents.
++   * If any are running it BLOCKS in-turn until they drain, returns their combined
++   * replies inline, and does NOT end the turn — so the orchestrator synthesizes
++   * from real results in its same active turn (deterministic single writer). When
++   * no descendants are active it falls through to the normal end-turn yield.
++   */
++  gatherDescendants?: () => Promise<YieldDescendantGatherResult>;
+ }): AnyAgentTool {
+   return {
+     label: "Yield",
+@@ -21,6 +30,19 @@ export function createSessionsYieldTool(opts?: {
+       if (!opts?.sessionId) {
+         return jsonResult({ status: "error", error: "No session context" });
+       }
++      if (opts?.gatherDescendants) {
++        const gathered = await opts.gatherDescendants();
++        if (gathered.active) {
++          return jsonResult({
++            status: "subagent_results",
++            results:
++              gathered.results ??
++              "(subagents finished but returned no readable content)",
++            instruction:
++              "Your subagents have finished. Synthesize the results above into your final reply to the user now. Do NOT call sessions_yield again.",
++          });
++        }
++      }
+       if (!opts?.onYield) {
+         return jsonResult({ status: "error", error: "Yield not supported in this context" });
+       }
+diff --git a/src/agents/tools/yield-gather-state.test.ts b/src/agents/tools/yield-gather-state.test.ts
+new file mode 100644
+index 0000000000..002dc348cb
+--- /dev/null
++++ b/src/agents/tools/yield-gather-state.test.ts
+@@ -0,0 +1,44 @@
++import { describe, expect, it } from "vitest";
++import {
++  clearYieldGathering,
++  isYieldGathering,
++  markYieldGathering,
++} from "./yield-gather-state.js";
++
++describe("yield-gather-state", () => {
++  it("marks, reports, and clears a session key", () => {
++    const key = "agent:main:imessage:direct:+test-1";
++    expect(isYieldGathering(key)).toBe(false);
++    markYieldGathering(key);
++    expect(isYieldGathering(key)).toBe(true);
++    clearYieldGathering(key);
++    expect(isYieldGathering(key)).toBe(false);
++  });
++
++  it("tracks keys independently", () => {
++    const a = "agent:main:imessage:direct:+test-a";
++    const b = "agent:main:imessage:direct:+test-b";
++    markYieldGathering(a);
++    expect(isYieldGathering(a)).toBe(true);
++    expect(isYieldGathering(b)).toBe(false);
++    clearYieldGathering(a);
++  });
++
++  it("ignores empty/whitespace keys", () => {
++    markYieldGathering("   ");
++    expect(isYieldGathering("   ")).toBe(false);
++    expect(isYieldGathering("")).toBe(false);
++  });
++
++  it("shares state across module callers via globalThis", () => {
++    // A second resolution of the store (as happens across separate chunks) must
++    // observe the same Set — this is what lets the announce path see the yield
++    // tool's flag even when bundled into a different chunk.
++    const key = "agent:main:imessage:direct:+test-global";
++    markYieldGathering(key);
++    const store = (globalThis as unknown as { __ocYieldGather?: { keys: Set<string> } })
++      .__ocYieldGather;
++    expect(store?.keys.has(key)).toBe(true);
++    clearYieldGathering(key);
++  });
++});
+diff --git a/src/agents/tools/yield-gather-state.ts b/src/agents/tools/yield-gather-state.ts
+new file mode 100644
+index 0000000000..4422086dba
+--- /dev/null
++++ b/src/agents/tools/yield-gather-state.ts
+@@ -0,0 +1,72 @@
++/**
++ * Cross-module state coordinating block-at-yield gather with announce delivery.
++ * Backed by `globalThis` so it's a true singleton even across bundled chunks.
++ *
++ * - `keys`: requester session keys whose `sessions_yield` is CURRENTLY blocking
++ *   in-turn to gather descendants. While set, the announce path suppresses
++ *   delivery for that requester (the yielding turn owns the single synthesis).
++ * - `done`: child (subagent) session keys whose results have ALREADY been
++ *   gathered by a completed yield. Their announces must stay suppressed even
++ *   after the gather returns — a subagent completion announce can fire several
++ *   seconds after the gather delivered its content via main's synthesis, and
++ *   without this it would deliver the raw subagent text as a late leak.
++ */
++type YieldGatherStore = { keys: Set<string>; done: Set<string> };
++
++const DONE_CAP = 500;
++
++function store(): YieldGatherStore {
++  const g = globalThis as unknown as { __ocYieldGather?: YieldGatherStore };
++  if (!g.__ocYieldGather) {
++    g.__ocYieldGather = { keys: new Set<string>(), done: new Set<string>() };
++  } else if (!g.__ocYieldGather.done) {
++    g.__ocYieldGather.done = new Set<string>();
++  }
++  return g.__ocYieldGather;
++}
++
++export function markYieldGathering(sessionKey: string): void {
++  const key = sessionKey?.trim();
++  if (key) {
++    store().keys.add(key);
++  }
++}
++
++export function clearYieldGathering(sessionKey: string): void {
++  const key = sessionKey?.trim();
++  if (key) {
++    store().keys.delete(key);
++  }
++}
++
++export function isYieldGathering(sessionKey: string): boolean {
++  const key = sessionKey?.trim();
++  return key ? store().keys.has(key) : false;
++}
++
++/** Record a child session key whose result a yield gather has delivered. */
++export function markYieldGathered(childSessionKey: string): void {
++  const key = childSessionKey?.trim();
++  if (!key) {
++    return;
++  }
++  const done = store().done;
++  done.add(key);
++  // Bound growth over a long-lived session (child keys are unique UUIDs).
++  if (done.size > DONE_CAP) {
++    const excess = done.size - DONE_CAP;
++    let i = 0;
++    for (const k of done) {
++      if (i++ >= excess) {
++        break;
++      }
++      done.delete(k);
++    }
++  }
++}
++
++/** True once a yield gather has already delivered this subagent's result. */
++export function isYieldGathered(childSessionKey: string): boolean {
++  const key = childSessionKey?.trim();
++  return key ? store().done.has(key) : false;
++}
+diff --git a/src/agents/yield-descendant-gather.ts b/src/agents/yield-descendant-gather.ts
+new file mode 100644
+index 0000000000..4b67c677ca
+--- /dev/null
++++ b/src/agents/yield-descendant-gather.ts
+@@ -0,0 +1,117 @@
++import type { OpenClawConfig } from "../config/config.js";
++import { readDescendantSubagentFallbackReply } from "../cron/isolated-agent/subagent-followup.js";
++import { resolveSubagentController } from "./subagent-control.js";
++import { listDescendantRunsForRequester } from "./subagent-registry-read.js";
++import { resolveRequesterStoreKey } from "./subagent-requester-store-key.js";
++import {
++  clearYieldGathering,
++  markYieldGathered,
++  markYieldGathering,
++} from "./tools/yield-gather-state.js";
++import { waitForAgentRunsToDrain } from "./run-wait.js";
++
++export type YieldDescendantGatherResult = {
++  /** True when the caller had active descendant subagents that we waited on. */
++  active: boolean;
++  /** Combined subagent replies (joined) when any usable content was read. */
++  results?: string;
++};
++
++/**
++ * Block the yielding turn in-place until the caller's descendant subagents drain,
++ * then read their combined replies. Keeping the turn ACTIVE (rather than ending it
++ * and re-waking) is the deterministic single-writer path: the orchestrator never
++ * goes inactive, so there is no announce/steer race and no fresh-session rotation.
++ *
++ * While waiting, the requester's announce delivery is SUPPRESSED (yield-gather
++ * flag) so a descendant completion can't steer/deliver its raw text — this turn
++ * owns the single synthesis. The flag is keyed by the descendants' own
++ * requesterSessionKey passed through `resolveRequesterStoreKey`, i.e. the exact
++ * key the announce path canonicalizes, so suppression cannot miss on key drift.
++ */
++export async function gatherYieldDescendants(params: {
++  cfg: OpenClawConfig;
++  agentSessionKey?: string;
++  timeoutMs?: number;
++}): Promise<YieldDescendantGatherResult> {
++  const suppressionKeys = new Set<string>();
++  // Bulletproof: a throw anywhere inside MUST NOT break sessions_yield (that
++  // would strand the orchestrator mid-turn, spamming "tool broken" and leaking
++  // interim text). Any failure degrades to a normal yield (active: false) and
++  // always clears the suppression flag.
++  try {
++    let requesterKey: string | undefined;
++    try {
++      requesterKey = resolveSubagentController({
++        cfg: params.cfg,
++        agentSessionKey: params.agentSessionKey,
++      }).controllerSessionKey;
++    } catch {
++      requesterKey = params.agentSessionKey;
++    }
++    if (!requesterKey) {
++      return { active: false };
++    }
++
++    const activeRuns = listDescendantRunsForRequester(requesterKey).filter(
++      (entry) => typeof entry.endedAt !== "number",
++    );
++    if (activeRuns.length === 0) {
++      return { active: false };
++    }
++
++    // Mark every key the announce path might canonicalize to, so suppression is
++    // exact regardless of which session-key spelling a descendant recorded.
++    suppressionKeys.add(resolveRequesterStoreKey(params.cfg, requesterKey));
++    for (const entry of activeRuns) {
++      const canonical = resolveRequesterStoreKey(params.cfg, entry.requesterSessionKey);
++      if (canonical) {
++        suppressionKeys.add(canonical);
++      }
++    }
++
++    const runStartedFloor =
++      Math.min(...activeRuns.map((entry) => entry.createdAt ?? Date.now())) - 1;
++
++    for (const key of suppressionKeys) {
++      markYieldGathering(key);
++    }
++    const deadlineAtMs = Date.now() + Math.max(1_000, params.timeoutMs ?? 300_000);
++    await waitForAgentRunsToDrain({
++      deadlineAtMs,
++      initialPendingRunIds: activeRuns.map((entry) => entry.runId),
++      getPendingRunIds: () =>
++        listDescendantRunsForRequester(requesterKey!)
++          .filter((entry) => typeof entry.endedAt !== "number")
++          .map((entry) => entry.runId),
++    });
++    // Mark every descendant we waited on as gathered. Its result is now part of
++    // this turn's synthesis, so its completion announce — which can fire seconds
++    // AFTER this gather clears the requester flag — must stay suppressed, else it
++    // delivers the raw subagent text as a late leak.
++    for (const entry of listDescendantRunsForRequester(requesterKey)) {
++      if (entry.childSessionKey && (entry.endedAt ?? 0) >= runStartedFloor) {
++        markYieldGathered(entry.childSessionKey);
++      }
++    }
++    let results: string | undefined;
++    try {
++      results = await readDescendantSubagentFallbackReply({
++        sessionKey: requesterKey,
++        runStartedAt: runStartedFloor,
++      });
++    } catch {
++      results = undefined;
++    }
++    return { active: true, results: results?.trim() || undefined };
++  } catch {
++    // Descendants were active but something downstream failed: keep the turn
++    // active (active: true) with no results rather than ending it, so main can
++    // recover via its own tools instead of going inactive and leaking.
++    return { active: suppressionKeys.size > 0, results: undefined };
++  } finally {
++    for (const key of suppressionKeys) {
++      clearYieldGathering(key);
++    }
++  }
++}
+diff --git a/src/cron/isolated-agent/subagent-followup.ts b/src/cron/isolated-agent/subagent-followup.ts
+index 84d4a0ed93..155841dfc3 100644
+--- a/src/cron/isolated-agent/subagent-followup.ts
++++ b/src/cron/isolated-agent/subagent-followup.ts
+@@ -22,7 +22,7 @@ export async function readDescendantSubagentFallbackReply(params: {
+       (entry) =>
+         typeof entry.endedAt === "number" &&
+         entry.endedAt >= params.runStartedAt &&
+-        entry.childSessionKey.trim().length > 0,
++        (entry.childSessionKey ?? "").trim().length > 0,
+     )
+     .toSorted((a, b) => (a.endedAt ?? 0) - (b.endedAt ?? 0));
+   if (descendants.length === 0) {
+@@ -31,7 +31,7 @@ export async function readDescendantSubagentFallbackReply(params: {
+ 
+   const latestByChild = new Map<string, (typeof descendants)[number]>();
+   for (const entry of descendants) {
+-    const childKey = entry.childSessionKey.trim();
++    const childKey = (entry.childSessionKey ?? "").trim();
+     if (!childKey) {
+       continue;
+     }

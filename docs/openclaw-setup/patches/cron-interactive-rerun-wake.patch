@@ -1,0 +1,173 @@
+diff --git a/src/agents/subagent-announce-delivery.ts b/src/agents/subagent-announce-delivery.ts
+index 888ff84c95..e447a733f4 100644
+--- a/src/agents/subagent-announce-delivery.ts
++++ b/src/agents/subagent-announce-delivery.ts
+@@ -45,7 +45,9 @@ import { mediaUrlsFromGeneratedAttachments } from "./generated-attachments.js";
+ import type { AgentInternalEvent } from "./internal-events.js";
+ import { isSessionWriteLockAcquireError } from "./session-write-lock-error.js";
+ import {
++  abortAndDrainEmbeddedAgentRun,
+   callGateway,
++  clearSessionQueues,
+   createBoundDeliveryRouter,
+   dispatchGatewayMethodInProcess,
+   getGlobalHookRunner,
+@@ -56,6 +58,7 @@ import {
+   loadSessionStore,
+   queueEmbeddedAgentMessageWithOutcomeAsync,
+   resolveActiveEmbeddedRunSessionId,
++  resolveActiveEmbeddedRunSessionIdBySessionFile,
+   resolveAgentIdFromSessionKey,
+   resolveConversationIdFromTargets,
+   resolveExternalBestEffortDeliveryTarget,
+@@ -69,6 +72,7 @@ import {
+ } from "./subagent-announce-dispatch.js";
+ import type { DeliveryContext } from "./subagent-announce-origin.js";
+ import { getSubagentDepthFromSessionStore } from "./subagent-depth.js";
++import { countActiveDescendantRuns } from "./subagent-announce.registry.runtime.js";
+ import { resolveRequesterStoreKey } from "./subagent-requester-store-key.js";
+ import type { SpawnSubagentMode } from "./subagent-spawn.types.js";
+ 
+@@ -86,6 +90,9 @@ type SubagentAnnounceDeliveryDeps = {
+     text: string,
+     options?: EmbeddedAgentQueueMessageOptions,
+   ) => EmbeddedAgentQueueMessageOutcome | Promise<EmbeddedAgentQueueMessageOutcome>;
++  abortAndDrainEmbeddedAgentRun: typeof abortAndDrainEmbeddedAgentRun;
++  resolveActiveEmbeddedRunSessionIdBySessionFile: typeof resolveActiveEmbeddedRunSessionIdBySessionFile;
++  clearSessionQueues: typeof clearSessionQueues;
+   sendMessage: typeof sendMessage;
+ };
+ 
+@@ -104,6 +111,9 @@ const defaultSubagentAnnounceDeliveryDeps: SubagentAnnounceDeliveryDeps = {
+   isRequesterSessionAbandoned: (requesterSessionKey, sessionId) =>
+     isEmbeddedRunAbandoned({ sessionKey: requesterSessionKey, sessionId }),
+   queueEmbeddedAgentMessageWithOutcome: queueEmbeddedAgentMessageWithOutcomeAsync,
++  abortAndDrainEmbeddedAgentRun,
++  resolveActiveEmbeddedRunSessionIdBySessionFile,
++  clearSessionQueues,
+   sendMessage,
+ };
+ 
+@@ -1358,6 +1368,39 @@ async function sendSubagentAnnounceDirectly(params: {
+           wakeOutcome,
+         )}`,
+       );
++      // Interactive lock-race fix: a still-active, channel-bound requester must
++      // NOT fall through to a fresh dispatch — that spawns a competing embedded
++      // run on the same transcript and trips the session-file fence (takeover or
++      // 60s lock timeout → raw leak). Enqueue best-effort instead; the live run
++      // drains its steer queue when its current turn ends. Cron run-keys keep the
++      // existing inactive short-circuit below.
++      if (
++        !isCronRunSessionKey(canonicalRequesterSessionKey) &&
++        !requiresMessageToolDelivery &&
++        wakeOutcome.reason !== "not_streaming" &&
++        wakeOutcome.reason !== "no_active_run" &&
++        resolveRequesterSessionActivity(canonicalRequesterSessionKey).isActive
++      ) {
++        const enqueueOnlyOptions: EmbeddedAgentQueueMessageOptions = { ...wakeOptions };
++        delete enqueueOnlyOptions.waitForTranscriptCommit;
++        const enqueueOutcome = await resolveActiveWakeWithRetries(
++          requesterActivity.sessionId,
++          params.triggerMessage,
++          enqueueOnlyOptions,
++          params.signal,
++        );
++        if (enqueueOutcome.queued) {
++          return {
++            delivered: true,
++            deliveredAt: enqueueOutcome.deliveredAtMs,
++            enqueuedAt: enqueueOutcome.enqueuedAtMs,
++            path: "steered",
++          };
++        }
++        // Not queued means the run is no longer streaming/active, so the fresh
++        // dispatch below is safe (no live run holds the transcript lock). Fall
++        // through rather than report a phantom delivery.
++      }
+     }
+     if (
+       params.expectsCompletionMessage &&
+@@ -1381,6 +1424,50 @@ async function sendSubagentAnnounceDirectly(params: {
+         path: "none",
+       };
+     }
++    // Single-writer re-run wake: a yielded/inactive non-cron main can't be steered
++    // (no live turn), and the fresh dispatch below would otherwise contend with the
++    // finishing child / not-yet-disposed prior run on main's own transcript file —
++    // EmbeddedAttemptSessionTakeoverError or SessionWriteLockTimeout → raw leak. Abort
++    // and drain the stale holder so the re-run is the sole writer on a clean file owner.
++    // The re-run keeps main's EXISTING sessionId/transcript (do NOT pass a fresh sessionId
++    // — a rotated sessionId clears sessionFile in the agent method, wiping main's context
++    // so it can't synthesize). This is what makes sessions_yield deliver real synthesis.
++    if (
++      params.expectsCompletionMessage &&
++      !params.requesterIsSubagent &&
++      !requesterActivity.isActive &&
++      requesterActivity.sessionId &&
++      expectedMediaUrls.length === 0 &&
++      (shouldDeliverAgentFinal || subagentDirectMessageCompletionRequiresMessageTool)
++    ) {
++      // Multi-subagent: if other descendants are still running, SUPPRESS this
++      // announce entirely (no leak, no premature re-run) and wait for the last one.
++      // Only the final completion re-runs main, with ALL results, so the user gets
++      // exactly one clean synthesis instead of a verbose interim per subagent.
++      if (countActiveDescendantRuns(canonicalRequesterSessionKey) > 0) {
++        return { delivered: true, path: "none", terminal: true };
++      }
++      const requesterSessionFile = requesterEntry?.sessionFile;
++      const holderSessionId =
++        (requesterSessionFile
++          ? subagentAnnounceDeliveryDeps.resolveActiveEmbeddedRunSessionIdBySessionFile(
++              requesterSessionFile,
++            )
++          : undefined) ?? requesterActivity.sessionId;
++      await subagentAnnounceDeliveryDeps
++        .abortAndDrainEmbeddedAgentRun({
++          sessionId: holderSessionId,
++          sessionKey: canonicalRequesterSessionKey,
++          settleMs: 5_000,
++          forceClear: true,
++          reason: "announce_rerun_single_writer",
++        })
++        .catch(() => undefined);
++      subagentAnnounceDeliveryDeps.clearSessionQueues([
++        canonicalRequesterSessionKey,
++        holderSessionId,
++      ]);
++    }
+     const directAgentThreadId = shouldDeliverAgentFinal
+       ? stringifyRouteThreadId(deliveryTarget.threadId)
+       : sessionOnlyOriginChannel
+@@ -1437,7 +1524,8 @@ async function sendSubagentAnnounceDirectly(params: {
+         params.expectsCompletionMessage &&
+         (shouldDeliverAgentFinal || subagentDirectMessageCompletionRequiresMessageTool) &&
+         isSubagentCompletion &&
+-        isIncompleteAnnounceAgentResultError(err)
++        isIncompleteAnnounceAgentResultError(err) &&
++        !isSessionWriteLockAnnounceAgentError(err)
+       ) {
+         const textDelivery = await deliverTextCompletionDirect({
+           cfg,
+@@ -1450,6 +1538,21 @@ async function sendSubagentAnnounceDirectly(params: {
+           return textDelivery;
+         }
+       }
++      // A yielded interactive main makes the fresh dispatch contend with the
++      // finishing child on the same transcript → fence takeover / lock timeout.
++      // Don't dump raw child text: enqueue best-effort for the live session to
++      // drain on its next turn and drop, instead of leaking to the channel.
++      if (
++        isSessionWriteLockAnnounceAgentError(err) &&
++        expectedMediaUrls.length === 0 &&
++        !isCronRunSessionKey(canonicalRequesterSessionKey) &&
++        requesterActivity.sessionId
++      ) {
++        await resolveQueueEmbeddedAgentMessageOutcome(requesterActivity.sessionId, params.triggerMessage, {
++          steeringMode: "all",
++        }).catch(() => undefined);
++        return { delivered: false, path: "none", reason: "requester_lock_contended", terminal: true };
++      }
+       if (
+         activeRequesterWakeFailed &&
+         agentMediatedCompletion &&
