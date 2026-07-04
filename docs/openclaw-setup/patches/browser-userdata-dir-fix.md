@@ -1,6 +1,11 @@
 # Browser sandbox user-data-dir env override + stale-singleton cleanup
 
-**Status:** Local patch, pending upstream PR. Verified against OpenClaw 2026.5.12.
+**Status:** ✅ Re-ported to source + verified on OpenClaw 2026.6.11 (still pending upstream PR).
+
+> **2026.6.11:** now a **source** patch — `browser-userdata-dir-fix.patch` (edits
+> `scripts/sandbox-browser-entrypoint.sh`). `apply-and-deploy.sh` copies the patched
+> entrypoint to the mini's sandbox-build + rebuilds the browser image. The old
+> `apply-browser-userdata-dir-fix.mjs` is retired.
 
 ## What this patches
 

@@ -1,7 +1,11 @@
 # OpenClaw patch: make `skill_workshop` available to sandboxed agents
 
-**Status:** Verified on OpenClaw 2026.6.1.
-**Patcher:** `apply-skill-workshop-sandbox-fix.mjs`
+**Status:** ✅ Re-ported to source + verified on OpenClaw 2026.6.11.
+
+> **2026.6.11:** now a **source** patch — `skill-workshop-sandbox-fix.patch` (applied by
+> `apply-and-deploy.sh` + built from source). The old `apply-*.mjs` dist chunk-surgery is retired.
+
+**Patcher (retired — see `.patch`):** `apply-skill-workshop-sandbox-fix.mjs`
 **Backup suffix:** `.bak.skillworkshop` (beside the patched file)
 **Idempotency marker:** `FIX-SKILL-WORKSHOP-IN-SANDBOX` (`/* FIX-SKILL-WORKSHOP-IN-SANDBOX */` in patched code)
 

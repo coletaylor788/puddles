@@ -1,0 +1,42 @@
+diff --git a/src/agents/openclaw-tools.ts b/src/agents/openclaw-tools.ts
+index 81ac6a76e0..8eed0922d5 100644
+--- a/src/agents/openclaw-tools.ts
++++ b/src/agents/openclaw-tools.ts
+@@ -476,21 +476,22 @@ export function createOpenClawTools(
+       sessionAgentId,
+       config: resolvedConfig,
+     }),
+-    ...(options?.sandboxed
+-      ? []
+-      : [
+-          createSkillWorkshopTool({
+-            workspaceDir,
+-            config: resolvedConfig,
+-            agentId: sessionAgentId,
+-            origin: {
+-              agentId: sessionAgentId,
+-              ...(skillWorkshopSessionKey ? { sessionKey: skillWorkshopSessionKey } : {}),
+-              ...(skillWorkshopRunId ? { runId: skillWorkshopRunId } : {}),
+-              ...(skillWorkshopMessageId ? { messageId: skillWorkshopMessageId } : {}),
+-            },
+-          }),
+-        ]),
++    // FIX-SKILL-WORKSHOP-IN-SANDBOX: skill_workshop is fully gateway-routed via
++    // proposal-based flows (no direct FS access), so it is safe in sandboxed
++    // subagents too. Drop the sandboxed gate that previously withheld it.
++    ...[
++      createSkillWorkshopTool({
++        workspaceDir,
++        config: resolvedConfig,
++        agentId: sessionAgentId,
++        origin: {
++          agentId: sessionAgentId,
++          ...(skillWorkshopSessionKey ? { sessionKey: skillWorkshopSessionKey } : {}),
++          ...(skillWorkshopRunId ? { runId: skillWorkshopRunId } : {}),
++          ...(skillWorkshopMessageId ? { messageId: skillWorkshopMessageId } : {}),
++        },
++      }),
++    ],
+     ...(includeUpdatePlanTool ? [createUpdatePlanTool()] : []),
+     createSessionsListTool({
+       agentSessionKey: options?.agentSessionKey,

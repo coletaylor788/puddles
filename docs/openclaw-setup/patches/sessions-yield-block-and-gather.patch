@@ -1,8 +1,8 @@
 diff --git a/src/agents/openclaw-tools.ts b/src/agents/openclaw-tools.ts
-index c2f149b480..204e92222b 100644
+index 1b886b2258..81ac6a76e0 100644
 --- a/src/agents/openclaw-tools.ts
 +++ b/src/agents/openclaw-tools.ts
-@@ -1,7 +1,7 @@
+@@ -6,7 +6,7 @@
  import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
  import type { SourceReplyDeliveryMode } from "../auto-reply/get-reply-options.types.js";
  import type { InboundEventKind } from "../channels/inbound-event/kind.js";
@@ -11,15 +11,15 @@ index c2f149b480..204e92222b 100644
  import type { OpenClawConfig } from "../config/types.openclaw.js";
  import { callGateway } from "../gateway/call.js";
  import { isEmbeddedMode } from "../infra/embedded-mode.js";
-@@ -57,6 +57,7 @@ import { createSessionsListTool } from "./tools/sessions-list-tool.js";
- import { createSessionsSendTool } from "./tools/sessions-send-tool.js";
- import { createSessionsSpawnTool } from "./tools/sessions-spawn-tool.js";
- import { createSessionsYieldTool } from "./tools/sessions-yield-tool.js";
+@@ -71,6 +71,7 @@ import { createUpdatePlanTool } from "./tools/update-plan-tool.js";
+ import { createVideoGenerateTool } from "./tools/video-generate-tool.js";
+ import { createWebFetchTool, createWebSearchTool } from "./tools/web-tools.js";
+ import { resolveWorkspaceRoot } from "./workspace-dir.js";
 +import { gatherYieldDescendants } from "./yield-descendant-gather.js";
- import { createSkillWorkshopTool } from "./tools/skill-workshop-tool.js";
- import { createSubagentsTool } from "./tools/subagents-tool.js";
- import { createTranscriptsTool } from "./tools/transcripts-tool.js";
-@@ -522,6 +523,11 @@ export function createOpenClawTools(
+ 
+ type OpenClawToolsDeps = {
+   callGateway: typeof callGateway;
+@@ -539,6 +540,11 @@ export function createOpenClawTools(
      createSessionsYieldTool({
        sessionId: options?.sessionId,
        onYield: options?.onYield,
@@ -32,18 +32,18 @@ index c2f149b480..204e92222b 100644
      createSubagentsTool({
        agentSessionKey: options?.agentSessionKey,
 diff --git a/src/agents/subagent-announce-delivery.ts b/src/agents/subagent-announce-delivery.ts
-index 888ff84c95..5262a7cb30 100644
+index 3b6e3925b6..9468da6eb4 100644
 --- a/src/agents/subagent-announce-delivery.ts
 +++ b/src/agents/subagent-announce-delivery.ts
-@@ -70,6 +70,7 @@ import {
- import type { DeliveryContext } from "./subagent-announce-origin.js";
+@@ -77,6 +77,7 @@ import type { DeliveryContext } from "./subagent-announce-origin.js";
  import { getSubagentDepthFromSessionStore } from "./subagent-depth.js";
  import { resolveRequesterStoreKey } from "./subagent-requester-store-key.js";
-+import { isYieldGathering, isYieldGathered } from "./tools/yield-gather-state.js";
  import type { SpawnSubagentMode } from "./subagent-spawn.types.js";
++import { isYieldGathering, isYieldGathered } from "./tools/yield-gather-state.js";
  
  const DEFAULT_SUBAGENT_ANNOUNCE_TIMEOUT_MS = 120_000;
-@@ -1195,6 +1196,23 @@ async function sendSubagentAnnounceDirectly(params: {
+ type SubagentAnnounceDeliveryDeps = {
+@@ -1336,6 +1337,23 @@ async function sendSubagentAnnounceDirectly(params: {
      cfg,
      params.targetRequesterSessionKey,
    );
@@ -68,10 +68,10 @@ index 888ff84c95..5262a7cb30 100644
      const completionDirectOrigin = normalizeDeliveryContext(params.completionDirectOrigin);
      const directOrigin = normalizeDeliveryContext(params.directOrigin);
 diff --git a/src/agents/subagent-registry-maintenance.ts b/src/agents/subagent-registry-maintenance.ts
-index 6e42657b5d..6db02dd197 100644
+index 02d73fed04..bf87ebf65f 100644
 --- a/src/agents/subagent-registry-maintenance.ts
 +++ b/src/agents/subagent-registry-maintenance.ts
-@@ -38,7 +38,7 @@ export function listSessionMaintenanceProtectedSubagentSessionKeys(): string[] {
+@@ -44,7 +44,7 @@ export function listSessionMaintenanceProtectedSubagentSessionKeys(): string[] {
      if (!shouldPreserveForMaintenance(entry)) {
        continue;
      }
@@ -81,10 +81,10 @@ index 6e42657b5d..6db02dd197 100644
        keys.add(childSessionKey);
      }
 diff --git a/src/agents/subagent-registry-queries.ts b/src/agents/subagent-registry-queries.ts
-index a4e3f1c276..23ddb85608 100644
+index 0f141fa1fe..2b2fffdf26 100644
 --- a/src/agents/subagent-registry-queries.ts
 +++ b/src/agents/subagent-registry-queries.ts
-@@ -106,7 +106,7 @@ export function buildSubagentRunReadIndexFromRuns(params: {
+@@ -116,7 +116,7 @@ export function buildSubagentRunReadIndexFromRuns(params: {
    const activeDescendantCountBySessionKey = new Map<string, number>();
  
    for (const entry of params.inMemoryRuns ?? []) {
@@ -93,7 +93,7 @@ index a4e3f1c276..23ddb85608 100644
      if (!childSessionKey) {
        continue;
      }
-@@ -127,7 +127,7 @@ export function buildSubagentRunReadIndexFromRuns(params: {
+@@ -137,7 +137,7 @@ export function buildSubagentRunReadIndexFromRuns(params: {
    }
  
    for (const [runId, entry] of runs.entries()) {
@@ -102,7 +102,7 @@ index a4e3f1c276..23ddb85608 100644
      const controllerSessionKey = resolveControllerSessionKey(entry);
      if (controllerSessionKey) {
        let controllerRuns = runsByControllerSessionKey.get(controllerSessionKey);
-@@ -385,6 +385,14 @@ function forEachDescendantRun(
+@@ -401,6 +401,14 @@ function forEachDescendantRun(
        if (entry.requesterSessionKey !== requester) {
          continue;
        }
@@ -117,7 +117,7 @@ index a4e3f1c276..23ddb85608 100644
        const childKey = entry.childSessionKey.trim();
        const existing = latestByChildSessionKey.get(childKey);
        if (!existing || entry.createdAt > existing[1].createdAt) {
-@@ -401,7 +409,7 @@ function forEachDescendantRun(
+@@ -417,7 +425,7 @@ function forEachDescendantRun(
          continue;
        }
        visitor(runId, entry);
@@ -127,10 +127,10 @@ index a4e3f1c276..23ddb85608 100644
          continue;
        }
 diff --git a/src/agents/tools/sessions-yield-tool.test.ts b/src/agents/tools/sessions-yield-tool.test.ts
-index 7b6a1ecb2b..dd9c2e0b17 100644
+index b6dab8f7b0..a5723491ca 100644
 --- a/src/agents/tools/sessions-yield-tool.test.ts
 +++ b/src/agents/tools/sessions-yield-tool.test.ts
-@@ -5,6 +5,8 @@ type SessionsYieldDetails = {
+@@ -7,6 +7,8 @@ type SessionsYieldDetails = {
    status?: string;
    message?: string;
    error?: string;
@@ -139,7 +139,7 @@ index 7b6a1ecb2b..dd9c2e0b17 100644
  };
  
  describe("sessions_yield tool", () => {
-@@ -47,4 +49,55 @@ describe("sessions_yield tool", () => {
+@@ -51,4 +53,55 @@ describe("sessions_yield tool", () => {
      expect(details.status).toBe("error");
      expect(details.error).toBe("Yield not supported in this context");
    });
@@ -196,18 +196,18 @@ index 7b6a1ecb2b..dd9c2e0b17 100644
 +  });
  });
 diff --git a/src/agents/tools/sessions-yield-tool.ts b/src/agents/tools/sessions-yield-tool.ts
-index 04f8b6691d..14b226ef42 100644
+index 1675f316d1..ff22e04dc2 100644
 --- a/src/agents/tools/sessions-yield-tool.ts
 +++ b/src/agents/tools/sessions-yield-tool.ts
-@@ -1,6 +1,7 @@
+@@ -4,6 +4,7 @@
+  * Ends the current turn after subagent spawning so completion events can resume the session later.
+  */
  import { Type } from "typebox";
++import type { YieldDescendantGatherResult } from "../yield-descendant-gather.js";
  import type { AnyAgentTool } from "./common.js";
  import { jsonResult, readStringParam } from "./common.js";
-+import type { YieldDescendantGatherResult } from "../yield-descendant-gather.js";
  
- const SessionsYieldToolSchema = Type.Object({
-   message: Type.Optional(Type.String()),
-@@ -9,6 +10,14 @@ const SessionsYieldToolSchema = Type.Object({
+@@ -15,6 +16,14 @@ const SessionsYieldToolSchema = Type.Object({
  export function createSessionsYieldTool(opts?: {
    sessionId?: string;
    onYield?: (message: string) => Promise<void> | void;
@@ -222,7 +222,7 @@ index 04f8b6691d..14b226ef42 100644
  }): AnyAgentTool {
    return {
      label: "Yield",
-@@ -21,6 +30,19 @@ export function createSessionsYieldTool(opts?: {
+@@ -27,6 +36,17 @@ export function createSessionsYieldTool(opts?: {
        if (!opts?.sessionId) {
          return jsonResult({ status: "error", error: "No session context" });
        }
@@ -231,9 +231,7 @@ index 04f8b6691d..14b226ef42 100644
 +        if (gathered.active) {
 +          return jsonResult({
 +            status: "subagent_results",
-+            results:
-+              gathered.results ??
-+              "(subagents finished but returned no readable content)",
++            results: gathered.results ?? "(subagents finished but returned no readable content)",
 +            instruction:
 +              "Your subagents have finished. Synthesize the results above into your final reply to the user now. Do NOT call sessions_yield again.",
 +          });
@@ -244,16 +242,12 @@ index 04f8b6691d..14b226ef42 100644
        }
 diff --git a/src/agents/tools/yield-gather-state.test.ts b/src/agents/tools/yield-gather-state.test.ts
 new file mode 100644
-index 0000000000..002dc348cb
+index 0000000000..89a70e356a
 --- /dev/null
 +++ b/src/agents/tools/yield-gather-state.test.ts
-@@ -0,0 +1,44 @@
+@@ -0,0 +1,40 @@
 +import { describe, expect, it } from "vitest";
-+import {
-+  clearYieldGathering,
-+  isYieldGathering,
-+  markYieldGathering,
-+} from "./yield-gather-state.js";
++import { clearYieldGathering, isYieldGathering, markYieldGathering } from "./yield-gather-state.js";
 +
 +describe("yield-gather-state", () => {
 +  it("marks, reports, and clears a session key", () => {
@@ -372,12 +366,13 @@ index 0000000000..4422086dba
 +}
 diff --git a/src/agents/yield-descendant-gather.ts b/src/agents/yield-descendant-gather.ts
 new file mode 100644
-index 0000000000..4b67c677ca
+index 0000000000..0a7de0e373
 --- /dev/null
 +++ b/src/agents/yield-descendant-gather.ts
 @@ -0,0 +1,117 @@
 +import type { OpenClawConfig } from "../config/config.js";
 +import { readDescendantSubagentFallbackReply } from "../cron/isolated-agent/subagent-followup.js";
++import { waitForAgentRunsToDrain } from "./run-wait.js";
 +import { resolveSubagentController } from "./subagent-control.js";
 +import { listDescendantRunsForRequester } from "./subagent-registry-read.js";
 +import { resolveRequesterStoreKey } from "./subagent-requester-store-key.js";
@@ -386,7 +381,6 @@ index 0000000000..4b67c677ca
 +  markYieldGathered,
 +  markYieldGathering,
 +} from "./tools/yield-gather-state.js";
-+import { waitForAgentRunsToDrain } from "./run-wait.js";
 +
 +export type YieldDescendantGatherResult = {
 +  /** True when the caller had active descendant subagents that we waited on. */
@@ -494,10 +488,10 @@ index 0000000000..4b67c677ca
 +  }
 +}
 diff --git a/src/cron/isolated-agent/subagent-followup.ts b/src/cron/isolated-agent/subagent-followup.ts
-index 84d4a0ed93..155841dfc3 100644
+index a3a20b38d1..ce4e878e71 100644
 --- a/src/cron/isolated-agent/subagent-followup.ts
 +++ b/src/cron/isolated-agent/subagent-followup.ts
-@@ -22,7 +22,7 @@ export async function readDescendantSubagentFallbackReply(params: {
+@@ -23,7 +23,7 @@ export async function readDescendantSubagentFallbackReply(params: {
        (entry) =>
          typeof entry.endedAt === "number" &&
          entry.endedAt >= params.runStartedAt &&
@@ -506,7 +500,7 @@ index 84d4a0ed93..155841dfc3 100644
      )
      .toSorted((a, b) => (a.endedAt ?? 0) - (b.endedAt ?? 0));
    if (descendants.length === 0) {
-@@ -31,7 +31,7 @@ export async function readDescendantSubagentFallbackReply(params: {
+@@ -32,7 +32,7 @@ export async function readDescendantSubagentFallbackReply(params: {
  
    const latestByChild = new Map<string, (typeof descendants)[number]>();
    for (const entry of descendants) {

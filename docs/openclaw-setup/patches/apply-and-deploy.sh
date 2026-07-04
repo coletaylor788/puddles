@@ -1,217 +1,106 @@
 #!/bin/bash
-# Apply all local OpenClaw patches to this Mac mini host and restart the gateway.
+# Build OpenClaw from SOURCE with the puddles patches, then deploy to the mini.
 #
-# Idempotent: re-running on already-patched dist files is a no-op for each patcher.
-# Backups: each patcher writes its own .bak.<marker> sibling on first apply.
+# This replaces the old in-place dist chunk-surgery flow. The patches are now
+# version-controlled git-diff `.patch` files applied to an OpenClaw source
+# checkout; we build from source, pack, and install the package on the mini.
 #
-# Run on the mini directly (or via SSH). No arguments — discovers paths from the
-# default Homebrew + npm-global layout.
+# Prereqs:
+#   - An OpenClaw checkout at the TARGET RELEASE, clean tree, in $OPENCLAW_SRC
+#     (e.g. `git -C <src> fetch && git -C <src> checkout <release-tag-or-sha>`).
+#   - Build toolchain (pnpm + the Node in package.json `engines`) on THIS host.
+#   - SSH access to the mini ($MINI_HOST), docker on the mini for the browser image.
+#
+# Usage:
+#   OPENCLAW_SRC=~/git/openclaw ./apply-and-deploy.sh
+#
+# NOTE: this is the source-build pipeline. Run it from a build host (not the
+# mini) — it builds here, then installs the packed tarball on the mini over SSH.
 
 set -euo pipefail
 
-DIST="${OPENCLAW_DIST:-/Users/puddles/.npm-global/lib/node_modules/openclaw/dist}"
-PRD_BASE="${OPENCLAW_PRD_BASE:-/Users/puddles/.openclaw/plugin-runtime-deps}"
-NODE_CACHE="${OPENCLAW_NODE_CACHE:-/Users/puddles/.openclaw/tmp/node-compile-cache}"
-SANDBOX_BUILD="${OPENCLAW_SANDBOX_BUILD:-/Users/puddles/.openclaw/sandbox-build}"
+OPENCLAW_SRC="${OPENCLAW_SRC:?set OPENCLAW_SRC to your OpenClaw source checkout at the target release}"
+MINI_HOST="${MINI_HOST:-mini-ts}"
+MINI_SANDBOX_BUILD="${MINI_SANDBOX_BUILD:-/Users/puddles/.openclaw/sandbox-build}"
+GATEWAY_LABEL="${GATEWAY_LABEL:-ai.openclaw.gateway}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
-# Upstream source for sandbox-build files (not shipped in the npm package, per
-# docs/gateway/sandboxing.md). Pinned to a SHA for reproducibility; override
-# OPENCLAW_SANDBOX_REF to test a newer revision. Bump deliberately.
-SANDBOX_BUILD_UPSTREAM_REPO="${OPENCLAW_SANDBOX_REPO:-openclaw/openclaw}"
-SANDBOX_BUILD_UPSTREAM_REF="${OPENCLAW_SANDBOX_REF:-229490a4892460fd439fcde3b94265ae68b5e779}"
-
-# Patchers that mutate files under DIST. Each takes the dist dir as arg.
-PATCHERS=(
-  "$HERE/apply-cron-announce-fix.mjs"
-  "$HERE/apply-subagent-cross-agent-spawn-fix.mjs"
-  "$HERE/apply-skill-workshop-sandbox-fix.mjs"
+# Public source patches, applied in order to a clean checkout of the target release.
+PATCHES=(
+  sessions-yield-block-and-gather
+  subagent-cross-agent-spawn-fix
+  skill-workshop-sandbox-fix
+  browser-userdata-dir-fix
 )
+# NOTE: apply-cron-announce-fix is intentionally NOT listed — it is under
+# validate-then-decide review against this release (see cron-announce-fix.md).
 
-# Patchers that mutate files under SANDBOX_BUILD. Each takes the sandbox-build
-# dir as arg. Trigger a rebuild + recreate phase below.
-SANDBOX_BUILD_PATCHERS=(
-  "$HERE/apply-browser-userdata-dir-fix.mjs"
-)
-
-# Markers each patcher leaves in patched files (for verification).
-# Format: "marker:per-file-expected-count[,filename-glob]". Counts are summed across matches.
-MARKERS=(
-  "FIX4"
-  "FIX-SUBAGENT-CROSS-AGENT-SCOPE"
-  "FIX-SKILL-WORKSHOP-IN-SANDBOX"
-  "FIX-BROWSER-USERDATA-DIR"
-  "FIX-BROWSER-SINGLETON-CLEAN"
-)
-
-[ -d "$DIST" ] || { echo "dist not found: $DIST"; exit 1; }
-
-# Use Homebrew's node (matches the gateway's node) to apply patches.
-PATH="/opt/homebrew/bin:$PATH"
-
-for P in "${PATCHERS[@]}"; do
-  [ -f "$P" ] || { echo "patcher missing: $P"; exit 1; }
-  echo "==> $(basename "$P")"
-  node "$P" "$DIST"
-  echo
-done
-
-# Refresh sandbox-build/{Dockerfile.sandbox-browser,scripts/sandbox-browser-entrypoint.sh}
-# from upstream BEFORE running patchers. These files aren't shipped in the npm
-# package, so without this we end up with whatever ancient snapshot first
-# populated the dir, and miss upstream-required changes (e.g., the
-# 2026-05-12-cdp-relay-auth contract label that 5.20+ enforces).
-#
-# fetch_if_changed: writes the upstream file only if content differs from local;
-# backs up any pre-existing local file once (.bak.pre-upstream-bootstrap) so
-# manual edits survive the first auto-fetch. Subsequent runs with the same SHA
-# are no-ops.
-fetch_if_changed() {
-  local url="$1" dest="$2" tmp
-  tmp="$(mktemp "${dest}.new.XXXXXX")"
-  if ! curl -sSfL "$url" -o "$tmp"; then
-    rm -f "$tmp"
-    echo "    FAILED to fetch $url"
-    return 1
-  fi
-  if [ -f "$dest" ] && cmp -s "$tmp" "$dest"; then
-    rm -f "$tmp"
+echo "==> Applying ${#PATCHES[@]} source patches to $OPENCLAW_SRC"
+cd "$OPENCLAW_SRC"
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  echo "    ERROR: $OPENCLAW_SRC has uncommitted changes. Check out a clean target release first." >&2
+  exit 1
+fi
+for p in "${PATCHES[@]}"; do
+  f="$HERE/$p.patch"
+  [ -f "$f" ] || { echo "    missing patch: $f" >&2; exit 1; }
+  if git apply --check "$f" 2>/dev/null; then
+    git apply "$f"
+    echo "    applied $p"
+  elif git apply --reverse --check "$f" 2>/dev/null; then
+    echo "    already applied: $p (skipping)"
   else
-    if [ -f "$dest" ] && [ ! -f "$dest.bak.pre-upstream-bootstrap" ]; then
-      cp "$dest" "$dest.bak.pre-upstream-bootstrap"
-    fi
-    mv "$tmp" "$dest"
-    echo "    updated $dest"
+    echo "    ERROR: $p does not apply to this checkout (upstream refactor?)." >&2
+    exit 1
   fi
-}
-
-echo "==> Refreshing sandbox-build from upstream (${SANDBOX_BUILD_UPSTREAM_REPO}@${SANDBOX_BUILD_UPSTREAM_REF:0:12})"
-mkdir -p "$SANDBOX_BUILD/scripts"
-BASE_URL="https://raw.githubusercontent.com/${SANDBOX_BUILD_UPSTREAM_REPO}/${SANDBOX_BUILD_UPSTREAM_REF}"
-fetch_if_changed "$BASE_URL/scripts/docker/sandbox/Dockerfile.browser" \
-  "$SANDBOX_BUILD/Dockerfile.sandbox-browser"
-fetch_if_changed "$BASE_URL/scripts/sandbox-browser-entrypoint.sh" \
-  "$SANDBOX_BUILD/scripts/sandbox-browser-entrypoint.sh"
-chmod +x "$SANDBOX_BUILD/scripts/sandbox-browser-entrypoint.sh"
-echo
-
-for P in "${SANDBOX_BUILD_PATCHERS[@]}"; do
-  [ -f "$P" ] || { echo "patcher missing: $P"; exit 1; }
-  echo "==> $(basename "$P")"
-  node "$P" "$SANDBOX_BUILD"
-  echo
 done
 
-echo "==> Mirroring patched files into plugin-runtime-deps copy"
-PRD_DIST=""
-if [ -d "$PRD_BASE" ]; then
-  PRD_DIST=$(find "$PRD_BASE" -type d -name dist -path "*openclaw-*" -mindepth 2 -maxdepth 3 2>/dev/null | head -1 || true)
-fi
-if [ -n "$PRD_DIST" ] && [ -d "$PRD_DIST" ]; then
-  echo "    target: $PRD_DIST"
-  for F in $(grep -l "FIX4" "$DIST"/*.js 2>/dev/null); do
-    NAME=$(basename "$F")
-    if [ -f "$PRD_DIST/$NAME" ]; then
-      cp "$F" "$PRD_DIST/$NAME"
-      echo "    copied $NAME"
-    fi
-  done
-else
-  echo "    (no plugin-runtime-deps dist mirror found under $PRD_BASE — skipping; not needed in OpenClaw 5.12+)"
-fi
+echo "==> Building from source (pnpm build)"
+NODE_OPTIONS=--max-old-space-size=8192 pnpm build
 
-echo
-echo "==> Clearing node compile cache"
-if [ -d "$NODE_CACHE" ]; then
-  find "$NODE_CACHE" -mindepth 2 -delete 2>/dev/null || true
-  echo "    cleared $NODE_CACHE"
-else
-  echo "    (no compile cache at $NODE_CACHE — skipping)"
-fi
+echo "==> Packing"
+rm -f openclaw-*.tgz
+TARBALL="$(npm pack --silent | tail -1)"
+[ -f "$TARBALL" ] || { echo "    pack produced no tarball" >&2; exit 1; }
+echo "    $TARBALL"
 
-echo
-echo "==> Restarting OpenClaw gateway (LaunchAgent)"
-if launchctl print "gui/$(id -u)/ai.openclaw.gateway" >/dev/null 2>&1; then
-  launchctl kickstart -k "gui/$(id -u)/ai.openclaw.gateway"
-  sleep 5
-  PID=$(launchctl print "gui/$(id -u)/ai.openclaw.gateway" 2>&1 | awk -F"= " '/pid =/ {print $2; exit}')
-  echo "    gateway restarted, PID=$PID"
-else
-  echo "    (no LaunchAgent ai.openclaw.gateway found in user domain — restart manually)"
-fi
+echo "==> Installing on $MINI_HOST + migrating auth + restarting gateway"
+scp "$TARBALL" "$MINI_HOST:/tmp/$TARBALL"
+ssh "$MINI_HOST" "
+  set -e
+  npm install -g '/tmp/$TARBALL'
+  # 2026.6.x moved provider auth JSON->SQLite with no auto-migration; doctor --fix
+  # imports the legacy auth-profiles.json into the per-agent SQLite store (backs up
+  # + removes the old files). Idempotent once migrated.
+  openclaw doctor --fix --yes </dev/null || true
+  launchctl kickstart -k gui/\$(id -u)/$GATEWAY_LABEL
+  echo '    installed + gateway restarted'
+"
 
-# Rebuild the sandbox-browser image + recreate browser-agent if the entrypoint
-# patch is in place. Docker build is layer-cached, so this is cheap on no-op runs.
-echo
-echo "==> Sandbox-browser image refresh (if entrypoint is patched)"
-ENTRYPOINT="$SANDBOX_BUILD/scripts/sandbox-browser-entrypoint.sh"
-if [ -f "$ENTRYPOINT" ] && grep -qE "FIX-BROWSER-(USERDATA-DIR|SINGLETON-CLEAN)" "$ENTRYPOINT" 2>/dev/null; then
-  if command -v docker >/dev/null 2>&1; then
-    echo "    rebuilding openclaw-sandbox-browser:bookworm-slim..."
-    docker build -f "$SANDBOX_BUILD/Dockerfile.sandbox-browser" \
-      -t openclaw-sandbox-browser:bookworm-slim "$SANDBOX_BUILD" >/dev/null
-    echo "    image rebuilt"
-    if command -v openclaw >/dev/null 2>&1; then
-      echo "    recreating browser-agent sandboxes (regular + browser)..."
-      # --agent only removes the regular sandbox. Need a second call with
-      # --browser to also remove the browser-sandbox container so it picks up
-      # the new image + bind + env on next use.
+echo "==> Refreshing sandbox-browser entrypoint + image (patched entrypoint is NOT in the npm package)"
+# The browser patch lives in scripts/sandbox-browser-entrypoint.sh, which the npm
+# package does not ship, so copy the built/patched source file to the mini's
+# sandbox-build and rebuild the image if the FIX-BROWSER markers are present.
+ENTRY_SRC="$OPENCLAW_SRC/scripts/sandbox-browser-entrypoint.sh"
+if [ -f "$ENTRY_SRC" ] && grep -qE "FIX-BROWSER-(USERDATA-DIR|SINGLETON-CLEAN)" "$ENTRY_SRC"; then
+  scp "$ENTRY_SRC" "$MINI_HOST:$MINI_SANDBOX_BUILD/scripts/sandbox-browser-entrypoint.sh"
+  ssh "$MINI_HOST" "
+    set -e
+    chmod +x '$MINI_SANDBOX_BUILD/scripts/sandbox-browser-entrypoint.sh'
+    if command -v docker >/dev/null 2>&1 && [ -f '$MINI_SANDBOX_BUILD/Dockerfile.sandbox-browser' ]; then
+      docker build -f '$MINI_SANDBOX_BUILD/Dockerfile.sandbox-browser' \
+        -t openclaw-sandbox-browser:bookworm-slim '$MINI_SANDBOX_BUILD' >/dev/null
       openclaw sandbox recreate --agent browser-agent --force || true
       openclaw sandbox recreate --browser --agent browser-agent --force || true
-      echo "    browser-agent recreated"
+      echo '    browser image rebuilt + browser-agent recreated'
     else
-      echo "    (openclaw CLI not on PATH — recreate manually:"
-      echo "       openclaw sandbox recreate --agent browser-agent --force"
-      echo "       openclaw sandbox recreate --browser --agent browser-agent --force)"
+      echo '    (docker or Dockerfile missing on mini — rebuild the browser image manually)'
     fi
-  else
-    echo "    (docker not on PATH — rebuild manually)"
-  fi
+  "
 else
-  echo "    (entrypoint not patched or not found — skipping rebuild)"
+  echo "    (browser entrypoint not patched — skipping image rebuild)"
 fi
 
 echo
-echo "==> Verification: per-patch markers in deployed files"
-echo "--- FIX4 (cron-announce) ---"
-grep -l "FIX4" "$DIST"/*.js 2>/dev/null | while IFS= read -r F; do
-  N=$(grep -c "FIX4" "$F" 2>/dev/null || true)
-  echo "    $(basename "$F"): ${N:-0} markers"
-done
-
-echo "--- FIX-SUBAGENT-CROSS-AGENT-SCOPE (subagent-spawn) ---"
-if grep -l "FIX-SUBAGENT-CROSS-AGENT-SCOPE" "$DIST"/*.js 2>/dev/null | grep -q .; then
-  grep -l "FIX-SUBAGENT-CROSS-AGENT-SCOPE" "$DIST"/*.js 2>/dev/null | while IFS= read -r F; do
-    N=$(grep -c "FIX-SUBAGENT-CROSS-AGENT-SCOPE" "$F" 2>/dev/null || true)
-    echo "    $(basename "$F"): ${N:-0} markers"
-  done
-else
-  echo "    FIX-SUBAGENT-CROSS-AGENT-SCOPE: NOT APPLIED"
-fi
-
-echo "--- FIX-SKILL-WORKSHOP-IN-SANDBOX (skill-workshop sandboxed-agent gate) ---"
-if grep -l "FIX-SKILL-WORKSHOP-IN-SANDBOX" "$DIST"/*.js 2>/dev/null | grep -q .; then
-  grep -l "FIX-SKILL-WORKSHOP-IN-SANDBOX" "$DIST"/*.js 2>/dev/null | while IFS= read -r F; do
-    N=$(grep -c "FIX-SKILL-WORKSHOP-IN-SANDBOX" "$F" 2>/dev/null || true)
-    echo "    $(basename "$F"): ${N:-0} markers"
-  done
-else
-  echo "    FIX-SKILL-WORKSHOP-IN-SANDBOX: NOT APPLIED"
-fi
-
-echo "--- FIX-BROWSER-USERDATA-DIR / FIX-BROWSER-SINGLETON-CLEAN (sandbox-browser entrypoint) ---"
-if [ -f "$ENTRYPOINT" ]; then
-  for M in FIX-BROWSER-USERDATA-DIR FIX-BROWSER-SINGLETON-CLEAN; do
-    if grep -q "$M" "$ENTRYPOINT" 2>/dev/null; then
-      N=$(grep -c "$M" "$ENTRYPOINT" 2>/dev/null || true)
-      echo "    $M: $(basename "$ENTRYPOINT") ${N:-0} markers"
-    else
-      echo "    $M: NOT APPLIED"
-    fi
-  done
-else
-  echo "    (entrypoint not patched)"
-fi
-
-echo
-echo "Done. Run a cron job to validate (e.g. \`openclaw cron run <id>\`)."
+echo "==> Deployed. Validate:"
+echo "    ssh $MINI_HOST 'openclaw --version && openclaw cron run <id>'"

@@ -1,0 +1,43 @@
+diff --git a/src/agents/acp-spawn.ts b/src/agents/acp-spawn.ts
+index e5089d723f..091afc0d16 100644
+--- a/src/agents/acp-spawn.ts
++++ b/src/agents/acp-spawn.ts
+@@ -1480,8 +1480,14 @@ export async function spawnAcpDirect(
+         key: sessionKey,
+         spawnedBy: requesterInternalKey,
+         ...subagentEnvelopeState.childSessionPatch,
+-        ...inheritedToolAllowPatch(ctx.inheritedToolAllowlist),
+-        ...inheritedToolDenyPatch(ctx.inheritedToolDenylist),
++        // FIX-CROSS-AGENT-SPAWN: only inherit tool allow/deny for same-agent
++        // spawns; cross-agent spawns keep the child agent's own tool set.
++        ...(targetAgentId === parseAgentSessionKey(requesterInternalKey)?.agentId
++          ? inheritedToolAllowPatch(ctx.inheritedToolAllowlist)
++          : {}),
++        ...(targetAgentId === parseAgentSessionKey(requesterInternalKey)?.agentId
++          ? inheritedToolDenyPatch(ctx.inheritedToolDenylist)
++          : {}),
+         ...(params.label ? { label: params.label } : {}),
+       },
+       timeoutMs: 10_000,
+diff --git a/src/agents/subagent-spawn.ts b/src/agents/subagent-spawn.ts
+index 7b211df54d..8aeee46c66 100644
+--- a/src/agents/subagent-spawn.ts
++++ b/src/agents/subagent-spawn.ts
+@@ -1329,8 +1329,15 @@ export async function spawnSubagentDirect(
+     spawnDepth: childDepth,
+     subagentRole: childCapabilities.role === "main" ? null : childCapabilities.role,
+     subagentControlScope: childCapabilities.controlScope,
+-    ...inheritedToolAllowPatch(ctx.inheritedToolAllowlist),
+-    ...inheritedToolDenyPatch(ctx.inheritedToolDenylist),
++    // FIX-CROSS-AGENT-SPAWN: only inherit tool allow/deny restrictions for
++    // same-agent spawns. Cross-agent spawns (e.g. main -> reader) must keep the
++    // child agent's own configured tool set, matching the workspaceDir gate above.
++    ...(targetAgentId === requesterAgentId
++      ? inheritedToolAllowPatch(ctx.inheritedToolAllowlist)
++      : {}),
++    ...(targetAgentId === requesterAgentId
++      ? inheritedToolDenyPatch(ctx.inheritedToolDenylist)
++      : {}),
+     ...plan.initialSessionPatch,
+   };
+ 

@@ -1,0 +1,26 @@
+diff --git a/scripts/sandbox-browser-entrypoint.sh b/scripts/sandbox-browser-entrypoint.sh
+index ed8c60057d..e5bc49e5af 100755
+--- a/scripts/sandbox-browser-entrypoint.sh
++++ b/scripts/sandbox-browser-entrypoint.sh
+@@ -90,6 +90,12 @@ trap 'cleanup 143' TERM
+ 
+ mkdir -p "${HOME}" "${HOME}/.chrome" "${XDG_CONFIG_HOME}" "${XDG_CACHE_HOME}"
+ 
++# FIX-BROWSER-SINGLETON-CLEAN: remove stale Chromium Singleton* symlinks left by
++# unclean shutdown. Container is fresh at entrypoint-run time, so no live
++# Chromium owns these.
++_OPENCLAW_UDD="${OPENCLAW_BROWSER_USER_DATA_DIR:-${HOME}/.chrome}"
++rm -f "${_OPENCLAW_UDD}/SingletonLock" "${_OPENCLAW_UDD}/SingletonCookie" "${_OPENCLAW_UDD}/SingletonSocket" 2>/dev/null || true
++
+ Xvfb :1 -screen 0 1280x800x24 -ac -nolisten tcp &
+ XVFB_PID=$!
+ echo "[sandbox] Xvfb started (PID: ${XVFB_PID})"
+@@ -103,7 +109,7 @@ fi
+ CHROME_ARGS=(
+   "--remote-debugging-address=127.0.0.1"
+   "--remote-debugging-port=${CHROME_CDP_PORT}"
+-  "--user-data-dir=${HOME}/.chrome"
++  "--user-data-dir=${OPENCLAW_BROWSER_USER_DATA_DIR:-${HOME}/.chrome}" # FIX-BROWSER-USERDATA-DIR
+   "--no-first-run"
+   "--no-default-browser-check"
+   "--disable-dev-shm-usage"

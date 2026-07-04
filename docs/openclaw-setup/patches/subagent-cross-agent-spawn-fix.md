@@ -1,6 +1,11 @@
 # OpenClaw — cross-agent subagent spawn strips child's tools
 
-**Patcher:** `apply-subagent-cross-agent-spawn-fix.mjs`
+> **2026.6.11:** re-ported to a **source** patch — `subagent-cross-agent-spawn-fix.patch`
+> (git-diff against the OpenClaw checkout, applied by `apply-and-deploy.sh` + built from
+> source). The old `apply-*.mjs` dist chunk-surgery is retired. Verified on 2026.6.11
+> (a reader subagent spawned from `main` receives its own full tool set).
+
+**Patcher (retired — see `.patch`):** `apply-subagent-cross-agent-spawn-fix.mjs`
 **Marker:** `FIX-SUBAGENT-CROSS-AGENT-SCOPE`
 **Target files (6.1):** `openclaw-tools-<hash>.js` (legacy `sessions_spawn`) and `acp-spawn-<hash>.js` (new ACP runtime). In 5.20 the only site was `subagent-spawn-<hash>.js`.
 **Verified against:** OpenClaw 2026.5.20, 2026.6.1
