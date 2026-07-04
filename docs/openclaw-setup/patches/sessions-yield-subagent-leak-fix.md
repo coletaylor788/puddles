@@ -9,7 +9,18 @@
 > in git history (checkpoint commit before this consolidation) if ever needed. Everything
 > below is the final, validated understanding.
 
+## Why not the upstream fix (PR #91370 / issue #90944) — tested and it does NOT cover our case
+
+The `sessions_yield` raw-leak is a known upstream bug ([issue #90944](https://github.com/openclaw/openclaw/issues/90944), P1) with an open fix ([PR #91370](https://github.com/openclaw/openclaw/pull/91370), *"skip text-direct fallback for sessions_yield completions"*). It's a cleaner announce-side approach than our block-at-yield, so we ported it to our version (`2e08f0f`) and tested it standalone on the deployment host, **instrumented** with `stamp` / `skip` / `deliver` probes.
+
+**Result: it does not fix our flow.** On a real interactive reader+browser test the trace was: **`stamps=0`, `skips=0`, and both the reader and the browser-agent hit the raw text-direct delivery with `paused=false`** — i.e. both leaked, exactly as before, and the fix never engaged.
+
+**Root cause of the mismatch:** #91370 stamps `completedFromYieldPause` in `completeSubagentRun` only when the **completing subagent's own** `pauseReason === "sessions_yield"`. That precondition holds for #90944's scenario — *a subagent that is itself yield-paused*. It does **not** hold for ours: when **top-level main** calls `sessions_yield`, it's *main's* run that pauses; its **direct-child** reader/browser subagents keep running and complete normally, carrying `pauseReason = undefined`. So the flag is never stamped, `requesterPausedForYield` is always false, the text-direct skip never fires, and every child announce leaks. Verified live — the port was correct (stamp→forward→skip wired right); the condition it checks is simply never true in our flow.
+
+**Conclusion:** #91370 addresses a *different leak surface* (a yield-paused subagent) than ours (main yields while its direct children run to completion). We stay on our **block-at-yield + late-announce done-set**, which handles our surface by keeping main the live writer and suppressing gathered children's late announces. (If we ever contribute upstream, the useful signal for #90944/#91370 is that the top-level-main-yields case is not covered — but that's a separate conversation, not a competing PR.)
+
 ---
+
 
 ## Symptom (what the user sees)
 A main agent that spawns a subagent and delivers its **raw output** to the channel — either
