@@ -5,10 +5,12 @@
 > source). The old `apply-*.mjs` dist chunk-surgery is retired. Verified on 2026.6.11
 > (a reader subagent spawned from `main` receives its own full tool set).
 
-**Patcher (retired — see `.patch`):** `apply-subagent-cross-agent-spawn-fix.mjs`
-**Marker:** `FIX-SUBAGENT-CROSS-AGENT-SCOPE`
-**Target files (6.1):** `openclaw-tools-<hash>.js` (legacy `sessions_spawn`) and `acp-spawn-<hash>.js` (new ACP runtime). In 5.20 the only site was `subagent-spawn-<hash>.js`.
-**Verified against:** OpenClaw 2026.5.20, 2026.6.1
+**Source diff:** `subagent-cross-agent-spawn-fix.patch` (git-diff against the
+OpenClaw source; applied by `apply-and-deploy.sh`, then built from source).
+**Retired patcher:** `apply-subagent-cross-agent-spawn-fix.mjs` (dist chunk-surgery).
+**Target source (6.x):** both spawn sites — the legacy `sessions_spawn` path and
+the new ACP-runtime spawn (`spawnAcpDirect`). In 5.20 there was only the one site.
+**Verified against:** OpenClaw 2026.6.11 (also 2026.5.20, 2026.6.1 under the retired patcher).
 
 ## Symptom
 
@@ -63,7 +65,7 @@ const inheritedWorkspaceDir = targetAgentId !== requesterAgentId
   : toolSpawnMetadata.workspaceDir;
 ```
 
-### Site 1 — legacy `sessions_spawn` (openclaw-tools-<hash>.js)
+### Site 1 — legacy `sessions_spawn` path
 
 `requesterAgentId` and `targetAgentId` are both directly in scope.
 
@@ -79,7 +81,7 @@ const inheritedWorkspaceDir = targetAgentId !== requesterAgentId
   ? inheritedToolDenyPatch(ctx.inheritedToolDenylist) : {}),
 ```
 
-### Site 2 — new ACP runtime spawn (acp-spawn-<hash>.js, added in 6.x)
+### Site 2 — new ACP runtime spawn (`spawnAcpDirect`, added in 6.x)
 
 Inside `spawnAcpDirect(params, ctx)` the same two-spread bug exists, but
 only `targetAgentId` is directly in scope. `requesterAgentId` is derived
@@ -105,6 +107,23 @@ the equality fails, and inheritance is skipped — the conservative
 Same-agent spawns still get the privilege-inheritance guarantee.
 Cross-agent spawns get a clean resolution from the target agent's own
 config.
+
+## How to apply / revert
+
+Applied from source as part of the from-source deploy — `apply-and-deploy.sh`
+runs `git apply subagent-cross-agent-spawn-fix.patch` against the clean OpenClaw
+checkout, then builds + installs (see the patches
+[`README.md`](./README.md)). To apply standalone against a checkout:
+
+```bash
+cd <openclaw-checkout>            # clean, at the target release
+git apply /path/to/puddles/docs/openclaw-setup/patches/subagent-cross-agent-spawn-fix.patch
+```
+
+**Revert:** don't include the patch in the deploy (drop it from the `PATCHES`
+list), or `git checkout .` the source checkout before building. Because the fix
+ships in the built package, reverting is just building without the patch — there
+are no in-place `dist/` backups to restore.
 
 ## Stale session entries
 

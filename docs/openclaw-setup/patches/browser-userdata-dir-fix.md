@@ -9,8 +9,8 @@
 
 ## What this patches
 
-`~/.openclaw/sandbox-build/scripts/sandbox-browser-entrypoint.sh`, two coupled
-changes:
+`scripts/sandbox-browser-entrypoint.sh` (in the OpenClaw source checkout — the
+same file the built image copies in), two coupled changes:
 
 **Change 1 — `FIX-BROWSER-USERDATA-DIR`** (one line in the Chromium args array):
 
@@ -48,8 +48,9 @@ comes up, and `browser-agent` reports "browser failed to come up." Cleaning
 them on each entrypoint run is safe because the container is freshly created —
 no Chromium owns the lock yet.
 
-Both changes are independently idempotent: the patcher checks each marker and
-skips the change if present.
+Both changes carry markers (`FIX-BROWSER-USERDATA-DIR`,
+`FIX-BROWSER-SINGLETON-CLEAN`) that also let `apply-and-deploy.sh` detect a
+patched entrypoint and trigger the image rebuild.
 
 ## Why this is needed
 
@@ -99,48 +100,49 @@ a discoverable, type-validated config key (matches the shape of
 `headless`, `enableNoVnc`, etc.). Until landed, the env-var seam is the
 workaround.
 
-## File signature
+## Patch target
 
-The patcher locates the file at:
-
-```
-~/.openclaw/sandbox-build/scripts/sandbox-browser-entrypoint.sh
-```
-
-(Override with the first CLI arg or `$OPENCLAW_SANDBOX_BUILD`.)
+The `.patch` edits `scripts/sandbox-browser-entrypoint.sh` in the OpenClaw
+source checkout:
 
 - Change 1 targets the unique line `"--user-data-dir=${HOME}/.chrome"`.
 - Change 2 targets the unique `mkdir -p ...` line that creates the
-  `${HOME}/.chrome` dir; the patcher inserts the cleanup block immediately
-  after it.
+  `${HOME}/.chrome` dir; the cleanup block is inserted immediately after it.
 
-Both replacements carry markers (`FIX-BROWSER-USERDATA-DIR`,
-`FIX-BROWSER-SINGLETON-CLEAN`) for idempotency and post-patch verification.
+This entrypoint is **not shipped in the npm package**, so unlike the other
+patches it isn't picked up by installing the built tarball. Instead
+`apply-and-deploy.sh` copies the patched entrypoint to the mini's
+`~/.openclaw/sandbox-build/scripts/` and rebuilds the browser image (see below).
 
-## Re-applying after an OpenClaw upgrade
+## How to apply
 
-The `~/.openclaw/sandbox-build/` tree is restored from the npm package on
-fresh installs. After `npm install -g openclaw@<ver>`, run the wrapper:
+Applied from source as part of the from-source deploy. `apply-and-deploy.sh`:
+1. `git apply browser-userdata-dir-fix.patch` against the clean OpenClaw checkout.
+2. Detects the `FIX-BROWSER-*` markers in the built entrypoint and **copies it to
+   the mini's `~/.openclaw/sandbox-build/scripts/`**.
+3. **Rebuilds the `openclaw-sandbox-browser:bookworm-slim` Docker image** (the
+   entrypoint is `COPY`ed in at build time).
+4. **Recreates the browser-agent's sandbox container** so it picks up the new
+   image.
+
+To apply the source edit standalone against a checkout:
 
 ```bash
-bash /path/to/puddles/docs/openclaw-setup/patches/apply-and-deploy.sh
+cd <openclaw-checkout>            # clean, at the target release
+git apply /path/to/puddles/docs/openclaw-setup/patches/browser-userdata-dir-fix.patch
 ```
-
-The wrapper:
-1. Re-applies both entrypoint changes (no-op on changes already applied).
-2. **Rebuilds the sandbox-browser Docker image** (the entrypoint is `COPY`ed
-   in at build time, so the image needs to refresh).
-3. **Recreates the browser-agent's sandbox container** so it picks up the
-   new image.
 
 The profile dir (cookies/login state) is on a host bind mount outside the
 container, so it survives recreate.
 
 ## Reverting
 
+Don't include the patch in the deploy (drop it from the `PATCHES` list in
+`apply-and-deploy.sh`), or `git checkout .` the source checkout before building.
+Then rebuild the browser image + recreate the container from the unpatched
+entrypoint:
+
 ```bash
-cp ~/.openclaw/sandbox-build/scripts/sandbox-browser-entrypoint.sh.bak.fix-browser-userdata-dir \
-   ~/.openclaw/sandbox-build/scripts/sandbox-browser-entrypoint.sh
 docker build -f ~/.openclaw/sandbox-build/Dockerfile.sandbox-browser \
   -t openclaw-sandbox-browser:bookworm-slim ~/.openclaw/sandbox-build
 openclaw sandbox recreate --browser --agent browser-agent --force

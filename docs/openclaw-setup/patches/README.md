@@ -1,107 +1,102 @@
 # OpenClaw local patches
 
-Patches we maintain on top of the OpenClaw npm release on the Mac mini. Each
-patches a specific bug or capability gap that hasn't been fixed (or isn't
-fixable) upstream. They mutate files inside the installed `dist/` bundle or
-under `~/.openclaw/sandbox-build/`, get clobbered on every
-`npm install -g openclaw@<ver>` upgrade, and must be re-applied afterward.
+Patches we maintain on top of OpenClaw for the Mac mini gateway. Each closes a
+specific bug or capability gap that hasn't been fixed (or isn't fixable)
+upstream.
+
+## Strategy: source patches, not dist chunk-surgery
+
+These are **git-diff `.patch` files applied to an OpenClaw source checkout**,
+which is then **built from source, packed, and installed as a package**. This
+replaced the old approach of surgically editing the installed `dist/` bundle in
+place.
+
+Why the switch:
+
+- **Reproducible.** Each `.patch` applies cleanly to the stock release and
+  exactly reconstructs the intended build. No discovering hash-suffixed
+  `dist/` chunks by content signature, no `pattern not unique` guesswork.
+- **Survives rebuilds cleanly.** The patch is against readable source, so an
+  upstream refactor produces an honest `git apply` reject you can re-port,
+  rather than a silently-stale chunk signature.
+- **No sticky-cache / mirror footguns.** The retired dist-surgery flow had to
+  clear `~/.openclaw/tmp/node-compile-cache/` and mirror patched files into
+  `plugin-runtime-deps` or the edits wouldn't take effect. A from-source build
+  sidesteps all of that.
+- **Preserves sandboxed-subagent tool-bridging.** A from-source build keeps the
+  reader / browser-agent subagents wired to their full plugin tool sets — the
+  earlier worry that source builds would break tool-bridging was disproven
+  (verified on 2026.6.11).
+
+The retired `apply-*.mjs` dist patchers no longer describe the deploy; each
+patch doc keeps a short "retired — see `.patch`" note pointing at its source
+diff.
 
 ## The patches
 
-| Patch | Doc | Patcher | Status |
+| Patch | Doc | Source diff | Status |
 |---|---|---|---|
-| Cron+subagent announce-delivery | [`cron-announce-fix.md`](./cron-announce-fix.md) | [`apply-cron-announce-fix.mjs`](./apply-cron-announce-fix.mjs) | Verified on 2026.4.20, 2026.5.12, 2026.5.20, 2026.6.1 |
-| Browser sandbox user-data-dir env override | [`browser-userdata-dir-fix.md`](./browser-userdata-dir-fix.md) | [`apply-browser-userdata-dir-fix.mjs`](./apply-browser-userdata-dir-fix.mjs) | Verified on 2026.5.12, 2026.5.20, 2026.6.1. Pending upstream PR (see plan 023). |
-| Cross-agent subagent spawn tool-inheritance | [`subagent-cross-agent-spawn-fix.md`](./subagent-cross-agent-spawn-fix.md) | [`apply-subagent-cross-agent-spawn-fix.mjs`](./apply-subagent-cross-agent-spawn-fix.mjs) | Verified on 2026.5.20, 2026.6.1 (6.1 added a second site in the new ACP runtime — patcher handles both). Pending upstream PR (see plan 025). |
-| `skill_workshop` for sandboxed agents | [`skill-workshop-sandbox-fix.md`](./skill-workshop-sandbox-fix.md) | [`apply-skill-workshop-sandbox-fix.mjs`](./apply-skill-workshop-sandbox-fix.mjs) | Verified on 2026.6.1. Required because 6.x made `skills/` an RO sandbox mount AND gated `skill_workshop` on un-sandboxed agents — sandboxed agents had no path to author skills. |
+| `sessions_yield` block-at-yield + gather (cron + interactive) | [`sessions-yield-subagent-leak-fix.md`](./sessions-yield-subagent-leak-fix.md) | [`sessions-yield-block-and-gather.patch`](./sessions-yield-block-and-gather.patch) | Verified on 2026.6.11 |
+| Cross-agent subagent spawn tool-inheritance | [`subagent-cross-agent-spawn-fix.md`](./subagent-cross-agent-spawn-fix.md) | [`subagent-cross-agent-spawn-fix.patch`](./subagent-cross-agent-spawn-fix.patch) | Verified on 2026.6.11. Pending upstream PR (see plan 025). |
+| `skill_workshop` for sandboxed agents | [`skill-workshop-sandbox-fix.md`](./skill-workshop-sandbox-fix.md) | [`skill-workshop-sandbox-fix.patch`](./skill-workshop-sandbox-fix.patch) | Verified on 2026.6.11 |
+| Browser sandbox user-data-dir env override + singleton cleanup | [`browser-userdata-dir-fix.md`](./browser-userdata-dir-fix.md) | [`browser-userdata-dir-fix.patch`](./browser-userdata-dir-fix.patch) | Verified on 2026.6.11. Pending upstream PR (see plan 023). |
 
-Bug reports (filed/draft upstream) live alongside the patches:
+> **Retired:** a former cron+subagent announce-delivery fix (`cron-announce`) was
+> retired on 2026.6.11 — superseded by block-at-yield, and its external
+> announce-delivery path verified clean (a test cron delivered its main synthesis
+> to imessage, no raw-subagent leak). The patcher + its docs are removed; see git
+> history (commit `ccb2d56`) for the original patch and bug report.
 
-- [`cron-announce-bug-report.md`](./cron-announce-bug-report.md) — full
-  architectural rationale for the cron-announce fix, with live trace evidence.
+## How to deploy after an OpenClaw upgrade
 
-## How to re-apply everything after an OpenClaw upgrade
-
-After `npm install -g openclaw@<ver>` (or whatever upgrade flow you use),
-run the wrapper:
+Run the pipeline wrapper from a **build host** (not the mini) — it builds
+locally, then installs the packed tarball on the mini over SSH:
 
 ```bash
-bash /path/to/puddles/docs/openclaw-setup/patches/apply-and-deploy.sh
+OPENCLAW_SRC=~/git/openclaw \
+  bash /path/to/puddles/docs/openclaw-setup/patches/apply-and-deploy.sh
 ```
 
-It:
-1. Applies each `dist/`-targeting patcher against
-   `~/.npm-global/lib/node_modules/openclaw/dist/`.
-2. Applies each `sandbox-build/`-targeting patcher against
-   `~/.openclaw/sandbox-build/`.
-3. Mirrors any patched `dist/` files into the `plugin-runtime-deps` copy
-   (older OpenClaw versions; no-op on 2026.5.12+).
-4. Clears `~/.openclaw/tmp/node-compile-cache/` so the patched code actually
-   runs (the cache is *very* sticky — patches without this step have no
-   effect).
-5. Restarts the gateway LaunchAgent.
-6. If the browser sandbox entrypoint is patched, rebuilds the
-   `openclaw-sandbox-browser:bookworm-slim` image and recreates the
-   `browser-agent` container so the patched entrypoint takes effect.
-7. Prints per-patch verification markers.
+`$OPENCLAW_SRC` must be a **clean** OpenClaw checkout at the **target release**
+(`git -C <src> fetch && git -C <src> checkout <release-tag-or-sha>`). The
+wrapper:
 
-If any patcher exits non-zero (e.g., `pattern not found` because OpenClaw
-refactored the surrounding code, or `pattern not unique` because a new line
-got added), do one of:
+1. **Applies** each source `.patch` (in list order) to the clean checkout with
+   `git apply`. Already-applied patches are detected (reverse-check) and
+   skipped; a patch that no longer applies fails loudly (upstream refactor →
+   re-port it).
+2. **Builds** from source (`pnpm build`).
+3. **Packs** the result (`npm pack`) into a tarball.
+4. **Installs** the tarball on the mini (`npm install -g <tarball>`).
+5. **Migrates auth** — runs `openclaw doctor --fix --yes`. 2026.6.x moved
+   provider auth from the legacy `auth-profiles.json` into a per-agent SQLite
+   store, and **bare upgrades don't auto-migrate** (you'd get "No API key
+   found"). `doctor --fix` imports the legacy JSON into SQLite (backs up +
+   removes the old files); it's idempotent once migrated. **Required** on
+   2026.6.x upgrades.
+6. **Restarts** the gateway LaunchAgent (`launchctl kickstart -k`).
+7. **Refreshes the sandbox-browser image** — the browser patch edits
+   `scripts/sandbox-browser-entrypoint.sh`, which the npm package does **not**
+   ship, so the wrapper copies the patched entrypoint to the mini's
+   `sandbox-build`, rebuilds the `openclaw-sandbox-browser:bookworm-slim` image,
+   and recreates the `browser-agent` container. (Skipped if the entrypoint
+   carries no `FIX-BROWSER-*` marker.)
 
-- **Upstream fix landed.** Compare with the relevant bug report; if the bug
-  is fixed in the new version, delete that patcher's entry from
-  `apply-and-deploy.sh` and remove the patch dir.
-- **Code restructured.** Open the patcher's `.mjs` file, find the `FIND` /
-  `REPLACE` constants, update them to match the new file's structure,
-  preserving the logical change. Re-run.
-
-## Discovering files by signature (not by hashed filename)
-
-OpenClaw's bundled `dist/` files have hash suffixes that change on every
-release (e.g. `subagent-announce-D8Kxq2.js` → `subagent-announce-Fp93ab.js`).
-Every `dist/`-targeting patcher in this folder discovers its target files by
-**content signature** (a stable substring inside the file), not by filename.
-That makes them tolerant to rebuilds within a release. If a content signature
-ever becomes stale, the patcher fails loudly with the unmatched signature.
-
-`sandbox-build/`-targeting patchers operate on stable filenames
-(`scripts/sandbox-browser-entrypoint.sh`, `Dockerfile.sandbox`, etc.) since
-those aren't bundled and don't carry hash suffixes.
-
-## Caveats that apply to every patch in this folder
-
-- **Not signed.** Each apply mutates files inside the upstream bundle.
-  You're running locally-modified code with no upstream signature. Only
-  appropriate for hosts you control (i.e. your own gateway).
-- **Compile cache is sticky.** Always clear
-  `~/.openclaw/tmp/node-compile-cache/` after patching — the wrapper does
-  this automatically. Without it, patches don't take effect even after a
-  gateway restart.
-- **Plugin-runtime-deps mirror.** OpenClaw releases prior to 2026.5 keep a
-  separate copy of `dist/` under
-  `~/.openclaw/plugin-runtime-deps/openclaw-<ver>/dist/` that some plugin
-  code paths load from. The wrapper mirrors patched files there too. Newer
-  versions no longer use this path; the wrapper detects and skips.
-- **Sandbox-browser image refresh.** Patches that touch the sandbox-browser
-  entrypoint or Dockerfile only take effect after a `docker build` and
-  `openclaw sandbox recreate --agent <id>`. The wrapper does both
-  automatically when it detects a patched entrypoint.
-- **Reverting.** Each patcher writes `.bak.<marker>` backups on first apply.
-  To revert a specific patch, restore that patcher's backups; see the
-  patch's own doc for the marker suffix and exact files.
+Validate afterward (`openclaw --version`, run a cron with a subagent).
 
 ## Adding a new patch
 
-1. Write the patcher as `apply-<short-name>-fix.mjs`. Pure node, no deps.
-   Take its target directory as arg (`dist/` or `sandbox-build/`), find files
-   by content signature (or stable filename for sandbox-build), write
-   `.bak.<marker>` backups on first apply, fail loudly on missing/non-unique
-   signatures.
-2. Write `<short-name>-fix.md` documenting the change (what bug it patches,
-   why, what it changes, which file signatures it targets, what verification
-   markers look like).
-3. Add an entry to the appropriate array in `apply-and-deploy.sh` (`PATCHERS`
-   for `dist/`, `SANDBOX_BUILD_PATCHERS` for `sandbox-build/`) and add the
-   marker to `MARKERS`.
-4. Add a row to the "The patches" table above.
+1. Make the change in an OpenClaw **source checkout** (clean, at the target
+   release).
+2. `git diff > <short-name>.patch` in this directory.
+3. Add `<short-name>` to the `PATCHES` array in `apply-and-deploy.sh` (in the
+   order it should apply).
+4. Write `<short-name>.md` documenting the change: what bug it patches, why, the
+   actual code change, and how it was verified.
+5. Add a row to the "The patches" table above.
+
+## Caveat
+
+- **Not signed.** You're building and running a locally-modified OpenClaw with
+  no upstream signature. Only appropriate for hosts you control (i.e. your own
+  gateway).

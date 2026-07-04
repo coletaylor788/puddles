@@ -5,17 +5,17 @@
 > **2026.6.11:** now a **source** patch — `skill-workshop-sandbox-fix.patch` (applied by
 > `apply-and-deploy.sh` + built from source). The old `apply-*.mjs` dist chunk-surgery is retired.
 
-**Patcher (retired — see `.patch`):** `apply-skill-workshop-sandbox-fix.mjs`
-**Backup suffix:** `.bak.skillworkshop` (beside the patched file)
-**Idempotency marker:** `FIX-SKILL-WORKSHOP-IN-SANDBOX` (`/* FIX-SKILL-WORKSHOP-IN-SANDBOX */` in patched code)
+**Source diff:** `skill-workshop-sandbox-fix.patch` (git-diff against the OpenClaw
+source; applied by `apply-and-deploy.sh`, then built from source).
+**Retired patcher:** `apply-skill-workshop-sandbox-fix.mjs` (dist chunk-surgery).
 
 ## What this patches
 
-One file, one mechanical change:
+One file, one mechanical change, in `createOpenClawTools()`:
 
-| # | File (signature) | Change |
+| # | Source site | Change |
 |---|---|---|
-| V1 | `openclaw-tools-*.js` (signature `...options?.sandboxed ? [] : [createSkillWorkshopTool(`) | Drop the `options?.sandboxed` gate so the `skill_workshop` tool is registered for sandboxed agents too. |
+| V1 | the `...options?.sandboxed ? [] : [createSkillWorkshopTool(` ternary | Drop the `options?.sandboxed` gate so the `skill_workshop` tool is registered for sandboxed agents too. |
 
 ## Why this exists
 
@@ -172,44 +172,27 @@ and `skill_workshop apply <id>` from a separate session.
 
 | OpenClaw version | Status |
 |---|---|
-| `2026.6.1` | ✓ verified on mini — sandboxed main agent now lists `skill_workshop` in available tools, can create + apply proposals end-to-end |
-
-The patcher discovers the target file by content signature
-(`...options?.sandboxed ? [] : [createSkillWorkshopTool(`), not by
-hash-suffixed filename, so it tolerates rebuilds within the same
-release. Fails loudly if the signature changes (upstream refactor) or
-matches multiple files (ambiguous discovery).
+| `2026.6.11` | ✓ verified on mini (from-source build) — sandboxed main agent lists `skill_workshop` in available tools, can create + apply proposals end-to-end |
+| `2026.6.1` | ✓ verified on mini (under the retired dist patcher) |
 
 ## How to apply
 
-```bash
-node /path/to/puddles/docs/openclaw-setup/patches/apply-skill-workshop-sandbox-fix.mjs \
-     ~/.npm-global/lib/node_modules/openclaw/dist
-```
-
-Then clear the compile cache and restart:
+Applied from source as part of the from-source deploy — `apply-and-deploy.sh`
+runs `git apply skill-workshop-sandbox-fix.patch` against the clean OpenClaw
+checkout, then builds + installs (see the patches [`README.md`](./README.md)).
+To apply standalone against a checkout:
 
 ```bash
-rm -rf ~/.openclaw/tmp/node-compile-cache/v*-arm64-*/*
-launchctl kickstart -k gui/$(id -u)/ai.openclaw.gateway
+cd <openclaw-checkout>            # clean, at the target release
+git apply /path/to/puddles/docs/openclaw-setup/patches/skill-workshop-sandbox-fix.patch
 ```
-
-(Or just run `./apply-and-deploy.sh` for the full pipeline.)
 
 ## How to verify
 
-After apply + gateway restart:
-
-```bash
-grep -c "FIX-SKILL-WORKSHOP-IN-SANDBOX" \
-  /Users/puddles/.npm-global/lib/node_modules/openclaw/dist/openclaw-tools-*.js
-# expect: 1
-```
-
-The pre-existing `tools.allow allowlist contains unknown entries
-(skill_workshop)` warning should disappear from `gateway.err.log` on
-subsequent restarts (the tool is now registered, so it's not "unknown"
-in the agent's runtime anymore).
+After the from-source deploy + gateway restart, the pre-existing `tools.allow
+allowlist contains unknown entries (skill_workshop)` warning should disappear
+from `gateway.err.log` (the tool is now registered, so it's not "unknown" in the
+agent's runtime anymore).
 
 Functional test: ask the sandboxed agent (e.g. over its main channel)
 to make a trivial update to an existing skill. Expected behavior:
@@ -221,12 +204,10 @@ to make a trivial update to an existing skill. Expected behavior:
 
 ## How to revert
 
-```bash
-DIST=/Users/puddles/.npm-global/lib/node_modules/openclaw/dist
-for F in "$DIST"/*.bak.skillworkshop; do cp "$F" "${F%.bak.skillworkshop}"; done
-rm -rf ~/.openclaw/tmp/node-compile-cache/v*-arm64-*/*
-launchctl kickstart -k gui/$(id -u)/ai.openclaw.gateway
-```
+Don't include the patch in the deploy (drop it from the `PATCHES` list in
+`apply-and-deploy.sh`), or `git checkout .` the source checkout before building.
+Because the fix ships in the built package, reverting is just building without
+the patch — there are no in-place `dist/` backups to restore.
 
 You'll probably also want to drop `skill_workshop` from the agent's
 `tools.allow` to silence the "unknown entries" warning.
