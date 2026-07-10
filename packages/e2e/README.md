@@ -135,10 +135,12 @@ separate provider-specific package outside this repo.
 
 ---
 
-## Known findings
+## Known findings (real issues the suite surfaced)
 
-- `memory_search` once reported itself **down** ("embedding provider has no API
-  key") during harness development, but recovered on a later run — so it appears
-  **intermittent**. The `H-recall` test asserts backend health and will surface a
-  regression if it degrades again (worth watching, per the gateway-PATH / qmd
-  embedding gotcha).
+- **`memory_search` semantic backend is DOWN** — it reports "embedding provider has
+  no API key" and the agent falls back to grepping raw memory files. (Active-memory
+  *recall injection* still works — it surfaces facts into context — but the
+  `memory_search` **tool** is broken.) Likely the qmd/embedding PATH gotcha. The
+  `H-recall` test asserts backend health and therefore **fails** on purpose — it's a
+  live bug flag, not a harness defect. Fix the embedding provider config and it goes
+  green. (It was briefly intermittent during development, then consistently down.)

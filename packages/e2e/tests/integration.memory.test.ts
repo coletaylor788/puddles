@@ -26,6 +26,10 @@ d("integration: H — memory stack", () => {
   );
 
   it(
+    // KNOWN-FAILING (real bug): memory_search's embedding backend is currently down
+    // ("no API key"), so the agent reports it's broken → this test fails on purpose
+    // as a live bug flag. It goes green when the embedding provider is fixed.
+    // `it.skip` it if you want the suite fully green in the meantime.
     "H-recall: memory_search backend is healthy (recalls or reports empty — not 'down')",
     async () => {
       const msg = "Search your long-term memory for anything about volleyball, then answer in one sentence.";
