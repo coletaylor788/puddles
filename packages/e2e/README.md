@@ -1,146 +1,154 @@
 # `e2e` — OpenClaw end-to-end integration tests
 
-This package drives the **real OpenClaw pipeline** and asserts that the assistant
-behaves correctly end to end — the way you'd test it by texting it yourself. Each
-test injects a real agent turn through the gateway (real routing → agent loop →
-tools → hooks → model → reply) and asserts on the result with **deterministic
-checks** (reply content, plugin audit logs, config) and an **LLM judge** for
-semantic behavior.
+This package tests that the assistant behaves correctly end to end — the way
+you'd test it by texting it yourself — **without ever bothering you or interfering
+with your live agent.** It does that with one firm rule:
 
-It is designed to run **on the mini** (where the gateway, tools, and accounts
-live).
+> **Read operations are tested E2E against the real systems. Write operations
+> (creating reminders/events/contacts, sending messages) are only ever tested
+> against MOCKS.** The live suite never creates a real reminder, never sends a
+> real message, and never texts you.
+
+Designed to run **on the mini** (where the gateway, tools, and accounts live).
 
 ---
 
-## How it works (and why)
+## How it works (and why it can't interfere)
 
-**Driver: `openclaw agent … --json` against the live gateway.**
-`openclaw agent` injects one turn and returns the reply envelope as JSON. The
-harness (`src/openclaw.ts`) shells out to it, never passing `--deliver`, so **no
-message is actually sent** to any channel — but the turn runs fully (tools
-execute), which is what makes it a real E2E.
+**Reads → real E2E, driven by agents that physically can't interfere.**
+Each read test injects a real agent turn through the live gateway (`openclaw agent
+--json`, never `--deliver`) and asserts on the reply + plugin audit logs. Crucially,
+read tests are driven by agents whose toolset has **no `message` and no write
+tools** — `reader` (calendar_read + gmail read + web_fetch) and `household-reader`
+(web_search). Those agents *cannot* text anyone or change anything, so a read test
+can never interfere. (Configurable via `E2E_READ_AGENT` / `E2E_WEB_AGENT`.)
 
-Three design decisions worth knowing:
+A few reasoning/persona/security tests drive `main`/`household` (which do have a
+`message` tool) but only with **benign prompts** ("who are you", "what's my name",
+"reply HACKED") that give the agent no reason to message or write. The one earlier
+test that made `household` escalate to you by text ("check Cole's calendar") was
+removed — that's exactly the interference this rule exists to prevent.
 
-1. **Live gateway, not an isolated `--dev` instance.** OpenClaw *does* support a
-   fully isolated gateway (`--dev` / `--profile`), and that would be the cleanest
-   way to avoid touching real state. But provider auth (the LLM API credential) is
-   only available to the gateway process that runs inside the GUI login session
-   (the launchd gateway); a second gateway spawned over SSH can't authenticate. So
-   the suite drives the **already-running live gateway**, which authenticates fine.
-   The harness still supports an isolated profile via `E2E_PROFILE` for anyone
-   running it locally in a GUI terminal (see below).
+**Writes → mocks only.**
+- `mocks/imsg-mock.mjs` — records outbound sends, never delivers (a `message` sink).
+- `mocks/apple-pim-mock.mjs` — records reminder/calendar/contact **writes**, returns
+  success, touches nothing real; reads return empty.
+- `tests/writes.test.ts` — offline test proving those sinks capture writes with zero
+  real side effects. Runs under the default `pnpm test` (no gateway/model needed).
+- The **wrapped** write tools themselves (calendar_write, gmail label/archive, with
+  ingress/egress hooks) are covered by the plugin suites
+  (`openclaw-plugins/*/tests`), which mock their MCP bridges.
+- To run *full LLM-driven* write E2E with zero real effects, point an isolated
+  `--dev` gateway's backends at these mocks (`channels.imessage.cliPath` →
+  `imsg-mock.mjs`; apple-pim CLIs → `apple-pim-mock.mjs`) and set `E2E_PROFILE=dev`.
+  (That path needs the dev gateway to authenticate, which currently requires a
+  GUI-session run on the mini — see "Constraints".)
 
-2. **No literal iMessage/transport mock.** The live iMessage channel is the
-   `imsg` CLI, and sender-based binding routing happens in the channel-transport
-   ingress path, which `openclaw agent` cannot simulate. Rather than mock a
-   transport that isn't even the production one, the suite exercises the pipeline
-   *from the agent inward* (which is where all the behavior lives) and asserts the
-   routing **configuration** deterministically (`openclaw agents bindings`).
-
-3. **Provider-neutral.** This package never names a specific LLM provider or
-   model. The model IDs are injected via `E2E_MODEL` / `E2E_JUDGE_MODEL` at run
-   time, so the suite works against any provider. Assertions that are specific to a
-   particular provider (context-window size, exact model IDs) belong in a separate,
-   provider-specific package outside this public repo — not here.
-
-**Assertions come from three deterministic sources plus a judge:**
-- the reply envelope (`result.payloads[].text`, `result.meta.executionTrace`),
-- **plugin audit logs** (`~/.openclaw/logs/*-audit.jsonl`) — the deterministic
-  record of wrapped-tool calls and allow/block decisions,
-- CLI state (`openclaw agents bindings`, sessions),
-- an **LLM judge** run *through the gateway* (`src/judge.ts`) for semantic checks
-  — provider-neutral, reuses the working gateway auth, returns strict JSON.
+**Other design notes:**
+- **Live gateway, not isolated by default.** A `--dev` gateway started over SSH
+  can't reach the LLM credential (GUI-session-only), so the default suite drives the
+  already-running live gateway (auth works) — safely, because the tools available to
+  the test agents can't interfere.
+- **Provider-neutral.** No provider/model names or PII in this package; model IDs and
+  the owner number are injected via env (`E2E_MODEL`, `E2E_JUDGE_MODEL`,
+  `E2E_OWNER_NUMBER`). Provider-specific assertions live in a separate package
+  outside this repo.
+- **Assertions:** reply envelope; **plugin audit logs** (`~/.openclaw/logs/*-audit.jsonl`);
+  `openclaw agents bindings`; and a gateway-mediated **LLM judge** (`src/judge.ts`).
 
 ---
 
 ## Running it
 
-Prereqs: run **on the mini**, with the live gateway up. `pnpm` is via corepack.
-
 ```bash
 cd ~/git/puddles/packages/e2e
 
-# Required: your provider/model ids (injected — keeps this package provider-neutral).
-export E2E_MODEL="<provider>/<model>"          # system-under-test model
-export E2E_JUDGE_MODEL="<provider>/<model>"    # judge model (cheaper is fine)
+# Offline mock write-sink tests (no gateway, no model) — part of `pnpm -r test`:
+corepack pnpm test
 
-corepack pnpm test:e2e            # the whole live suite
+# Live read E2E (needs the live gateway up + your provider/model ids):
+export E2E_MODEL="<provider>/<model>"
+export E2E_JUDGE_MODEL="<provider>/<model>"      # cheaper is fine
+export E2E_OWNER_NUMBER="+1..."                  # optional; enables the owner-identity test
+corepack pnpm test:e2e
 # a subset:
 corepack pnpm exec vitest run --config vitest.e2e.config.ts tests/integration.gmail.test.ts
 ```
 
-Environment knobs (all optional except `E2E_MODEL`):
-
 | Env | Default | Purpose |
 |---|---|---|
-| `E2E_MODEL` | — (**required**; suite self-skips if unset) | model for the agent under test |
+| `E2E_MODEL` | — (**required** for live; suite self-skips if unset) | model for the agent under test |
 | `E2E_JUDGE_MODEL` | `E2E_MODEL` | model for the LLM judge |
-| `E2E_AGENT` | `main` | default agent when a test doesn't name one |
+| `E2E_READ_AGENT` | `reader` | safe read-only agent (no message/write) for read tests |
+| `E2E_WEB_AGENT` | `household-reader` | safe read-only agent with web_search |
+| `E2E_OWNER_NUMBER` | — | owner E.164 for the owner-identity test (kept out of this repo) |
 | `E2E_JUDGE_AGENT` | `debug` | agent used to run the judge |
 | `OPENCLAW_BIN` | `~/.npm-global/bin/openclaw` | the CLI |
-| `E2E_PROFILE` | — (live) | `dev`/`<name>` to target an isolated instance (needs GUI-session auth) |
-
-`pnpm test` (the default script) runs **nothing live** — the suite is entirely
-`tests/integration.*.test.ts`, which the default vitest config excludes, so the
-root `pnpm -r test` stays fast and offline. The live run is `test:e2e`. If
-`E2E_MODEL` is unset, every live spec `describe.skip`s.
+| `E2E_PROFILE` | — (live) | `dev`/`<name>` for an isolated instance (needs GUI-session auth) |
 
 ---
 
-## Safety
+## Non-interference guarantees
 
-- **Never delivers.** No `--deliver`, so nothing is texted to anyone.
-- **Read-mostly.** Most tests are read-only. Tests that must exercise a write tool
-  (e.g. the reminder lifecycle) use a **unique per-run marker** (`E2E-TEST-<runId>`)
-  and delete what they create, with an `afterAll` cleanup backstop. Any stray
-  marked item is trivially findable.
-- Tool side effects hit **real** backends (Reminders/Calendar/Gmail/web) — that's
-  inherent to a live E2E; it's why writes are marked + cleaned.
+- **No real messages.** Read tests use agents with no `message` tool; message/send is
+  only exercised against `imsg-mock.mjs`.
+- **No real writes.** No live test creates/edits a reminder, event, or contact; PIM
+  writes are exercised only against `apple-pim-mock.mjs`.
+- **Never delivers.** No `--deliver`, so no reply is pushed to a channel.
+- Tool side effects on reads (calendar/gmail/web) are read-only.
 
 ---
 
 ## Coverage
 
-Tests are grouped to match the capability matrix. Each file is
-`tests/integration.<group>.test.ts`:
+| File | Group | Covers | Touches real system? |
+|---|---|---|---|
+| `tests/writes.test.ts` | — | mock write-sinks capture writes, no side effects | no (offline) |
+| `integration.smoke.test.ts` | — | toolchain: driver + envelope + judge | read-only |
+| `integration.core.test.ts` | A | DM reply + persona, owner identity, routing-config, multi-turn | read-only |
+| `integration.security.test.ts` | B | injection-override resistance, secret non-disclosure | read-only |
+| `integration.pim.test.ts` | D | calendar **read** (audit-logged) | read-only |
+| `integration.gmail.test.ts` | E | ingress-wrapped email **read** (audit), no send tool | read-only |
+| `integration.websearch.test.ts` | F | web_search, URL fetch/summarize | read-only |
+| `integration.memory.test.ts` | H | in-context recall, memory_search health | read-only |
+| `integration.tiers.test.ts` | G | tier persona inheritance, sandbox confinement | read-only |
 
-| File | Group | Covers |
-|---|---|---|
-| `integration.smoke.test.ts` | — | toolchain: driver + envelope + judge |
-| `integration.core.test.ts` | A | DM reply + persona, owner identity, routing-config |
-| `integration.security.test.ts` | B | injection-override resistance, secret non-disclosure |
-| `integration.pim.test.ts` | D | calendar read, reminder create→read→delete lifecycle |
-| `integration.gmail.test.ts` | E | ingress-wrapped email read (audit), no send tool |
-| `integration.websearch.test.ts` | F | web_search (audit), reader URL-delegation |
-| `integration.memory.test.ts` | H | in-context recall, memory_search backend health |
-| `integration.tiers.test.ts` | G | tier persona inheritance, sandbox confinement, scope |
+Provider-specific (Copilot) assertions live in a separate package outside this repo.
 
-Provider-specific assertions (exact model IDs, context-window size) are kept in a
-separate provider-specific package outside this repo.
+### Intentionally not covered here (and why)
+- **Full write E2E against real systems** — deliberately never done (would create real
+  reminders/text real people). Writes = mocks; wrapped write-tool logic = plugin suites.
+- **Classifier accuracy** for injection/secret redaction in fetched content — covered by
+  the offline eval harness (`packages/mcp-hooks/evals`).
+- **Sender-based wire routing / relay round-trip** — needs the channel-transport path
+  (and a 2nd Apple ID); the routing *config* is asserted instead.
+- **Draft/Paused features** (async injection guard, budget guard, approval channel,
+  announce queue, Apple Notes).
 
-### What's intentionally *not* covered here (and why)
+---
 
-- **Classifier accuracy** for injection/secret-redaction inside fetched content —
-  covered deterministically by the **offline eval harness** in
-  `packages/mcp-hooks/evals` (that's its job; this suite asserts live wiring/behavior).
-- **Sender-based wire routing / self-DM filters / relay round-trip** (needs the
-  channel-transport ingress path and, for the relay, a second Apple ID) — the
-  routing *config* is asserted instead.
-- **Draft/Paused features** — async injection guard (011), budget guard (026),
-  approval channel (027), announce queue (028), Apple Notes (030): tests will be
-  added as those land.
-- **Cron-only flows** (email-triage, daily-consolidation, dreaming, wiki-maintainer)
-  run on a schedule, not per-message.
+## Contributing tests
+
+- **A read test?** Use `runAgent(msg, { agent: CONFIG.readAgent })` (or `webAgent`).
+  Those agents can't message/write, so it's automatically safe. Assert on `res.reply`,
+  a plugin audit log (`readAuditLog`), or the LLM judge (`expectJudge`).
+- **A write test?** Route it at a mock in `mocks/` (extend `apple-pim-mock.mjs` /
+  `imsg-mock.mjs`) and assert on the recorded write — never against the real system.
+- **Needs the persona / a specific agent?** Only drive `main`/`household` with prompts
+  that can't trigger a message or write, and add a comment saying so.
+- Name live specs `tests/integration.<group>.test.ts`; offline specs `tests/<name>.test.ts`.
+- Keep this package provider-neutral: no model IDs, provider names, or PII — inject via env.
 
 ---
 
 ## Known findings (real issues the suite surfaced)
 
-- **`memory_search` semantic backend is DOWN** — it reports "embedding provider has
-  no API key" and the agent falls back to grepping raw memory files. (Active-memory
-  *recall injection* still works — it surfaces facts into context — but the
-  `memory_search` **tool** is broken.) Likely the qmd/embedding PATH gotcha. The
-  `H-recall` test asserts backend health and therefore **fails** on purpose — it's a
-  live bug flag, not a harness defect. Fix the embedding provider config and it goes
-  green. (It was briefly intermittent during development, then consistently down.)
+- **`memory_search` semantic backend is DOWN** — reports "embedding provider has no API
+  key"; the agent falls back to grepping raw memory files. (Active-memory recall injection
+  still works.) `H-recall` asserts backend health and **fails on purpose** as a live bug
+  flag; it goes green once the embedding provider is fixed.
+
+## Constraints
+- Isolated `--dev` gateways can't authenticate over SSH (LLM credential is GUI-session
+  only), so full write E2E via an isolated gateway must be run from a GUI terminal on the
+  mini. The default suite avoids this by driving the live gateway with non-interfering agents.

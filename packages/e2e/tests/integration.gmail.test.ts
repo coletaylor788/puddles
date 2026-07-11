@@ -1,11 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { runAgent, readAuditLog, now } from "../src/openclaw.js";
 import { expectJudge } from "../src/judge.js";
-import { E2E_ENABLED } from "../src/config.js";
+import { E2E_ENABLED, CONFIG } from "../src/config.js";
 
-// Group E — Gmail (secure-gmail). Read-only (no send/label/archive triggered).
-// Deterministic assertions come from the secure-gmail audit log; semantic ones
-// from the judge. Reads real (delegated) Gmail — content stays in the test process.
+// Group E — Gmail (secure-gmail). READ-only, driven by the read-only `reader`
+// agent (no message/write tools → cannot interfere). Deterministic assertions
+// from the secure-gmail audit log; semantic ones from the judge. Reads real
+// (delegated) Gmail — content stays in the test process.
 const d = E2E_ENABLED ? describe : describe.skip;
 
 d("integration: E — Gmail (secure-gmail)", () => {
@@ -15,7 +16,7 @@ d("integration: E — Gmail (secure-gmail)", () => {
       const since = now();
       const res = await runAgent(
         "Read my most recent email and tell me who it's from and its subject, in one short sentence.",
-        { agent: "reader" },
+        { agent: CONFIG.readAgent },
       );
       expect(res.status).toBe("ok");
       const audit = await readAuditLog("secure-gmail-audit.jsonl", { sinceMs: since });

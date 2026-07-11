@@ -1,22 +1,22 @@
 import { describe, it, expect } from "vitest";
 import { runAgent } from "../src/openclaw.js";
 import { expectJudge } from "../src/judge.js";
-import { E2E_ENABLED } from "../src/config.js";
+import { E2E_ENABLED, CONFIG } from "../src/config.js";
 
-// Group F — web search & delegation. Read-only (web reads only). Provider-neutral:
-// the deterministic "which plugin served web_search" check is provider-specific and
-// lives in the private package; here we assert the behavior (a live lookup happened).
+// Group F — web search & delegation. READ-only, driven by read-only agents that
+// have no message/write tools (guaranteed non-interference). Provider-neutral:
+// the "which plugin served web_search" audit check is provider-specific and lives
+// in the private package.
 const d = E2E_ENABLED ? describe : describe.skip;
 
 d("integration: F — web search & delegation", () => {
   it(
     "F1: answers a current-info question via web search",
     async () => {
-      // A live weather answer can only come from a real web lookup (the model
-      // can't know it from training). Assert deterministically that the reply is
-      // Seattle weather content — robust, provider-neutral, no flaky judge.
+      // Live weather can only come from a real web lookup. Deterministic keyword
+      // check, no flaky judge. Driven by the read-only web agent (no message/write).
       const msg = "What's the weather forecast for Seattle this weekend? One or two sentences.";
-      const res = await runAgent(msg, { agent: "main" });
+      const res = await runAgent(msg, { agent: CONFIG.webAgent });
       expect(res.status).toBe("ok");
       const reply = res.reply.toLowerCase();
       expect(reply).toContain("seattle");
@@ -28,10 +28,11 @@ d("integration: F — web search & delegation", () => {
   );
 
   it(
-    "F3: summarizes a URL by delegating to the reader subagent",
+    "F3: fetches and summarizes a URL (read-only)",
     async () => {
+      // Driven by the read-only reader agent (web_fetch; no message/write).
       const msg = "Please fetch and summarize the page at https://example.com in one sentence.";
-      const res = await runAgent(msg, { agent: "main" });
+      const res = await runAgent(msg, { agent: CONFIG.readAgent });
       expect(res.status).toBe("ok");
       await expectJudge({
         userMessage: msg,

@@ -17,6 +17,14 @@ export interface E2EConfig {
   defaultAgent: string;
   /** Agent used to run the gateway-mediated LLM judge. */
   judgeAgent: string;
+  /**
+   * A read-only agent that has NO message/write/PIM-write tools, so driving it
+   * can never text anyone or create/modify anything (guaranteed non-interference).
+   * On this deployment `reader` has calendar_read + gmail read + web_fetch.
+   */
+  readAgent: string;
+  /** A read-only agent that additionally has web_search (no message/write). */
+  webAgent: string;
   /** OpenClaw state dir to read sessions/trajectories/audit-logs from. */
   stateDir: string;
   /** Extra root CLI args for an isolated profile (e.g. ["--dev"]); [] for the live instance. */
@@ -42,6 +50,8 @@ export const CONFIG: E2EConfig = {
   judgeModel: env("E2E_JUDGE_MODEL", env("E2E_MODEL")),
   defaultAgent: env("E2E_AGENT", "main"),
   judgeAgent: env("E2E_JUDGE_AGENT", "debug"),
+  readAgent: env("E2E_READ_AGENT", "reader"),
+  webAgent: env("E2E_WEB_AGENT", "household-reader"),
   stateDir,
   profileArgs,
   ownerNumber: env("E2E_OWNER_NUMBER"),
