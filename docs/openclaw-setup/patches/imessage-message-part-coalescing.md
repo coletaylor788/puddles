@@ -1,0 +1,123 @@
+# Selective iMessage message-part coalescing
+
+**Status:** Verified in an isolated fixture against OpenClaw 2026.6.11.
+
+## Symptom
+
+One iMessage composition can reach OpenClaw as multiple `imsg` notifications:
+
+1. A short text or caption row.
+2. A URL-preview or image-attachment row shortly afterward.
+
+Without coalescing, the first row starts an agent turn before the payload
+arrives. The reply therefore lacks the link or image, and the payload starts a
+second turn after the fact.
+
+OpenClaw's existing `channels.imessage.coalesceSameSenderDms` compatibility mode
+solves structurally marked URL previews, but it can hold every direct message
+for the full compatibility window and does not reliably join caption-plus-image
+rows after `imsg` advertises balloon metadata.
+
+## Fix
+
+The source patch classifies each eligible direct-message row:
+
+- **Lead-in:** a non-empty, payload-free fragment of at most three words with no
+  terminal sentence punctuation. It waits for the existing bounded split-send
+  window.
+- **Payload:** a standalone HTTP(S) URL, a structurally standalone URL-preview
+  balloon, or a real attachment. It joins an immediately preceding lead-in from
+  the same account, conversation, and sender, then flushes immediately.
+- **Instant:** prose, questions, complete messages, standalone payloads,
+  non-URL balloons, reactions, and outgoing echoes. These do not wait for the
+  compatibility window.
+
+If multiple short messages precede a payload, only the immediately preceding
+lead-in joins it; earlier messages remain separate turns. Group messages keep
+their existing per-message behavior.
+
+The existing merge bounds remain unchanged: 4,000 text characters, 20
+attachments, and 10 source rows, with every source GUID retained for replay
+deduplication.
+
+## Enable
+
+After deploying the patched OpenClaw build:
+
+```bash
+openclaw config set channels.imessage.coalesceSameSenderDms true
+```
+
+Image attachment ingestion is off by default. Enable it when caption-plus-image
+coalescing is required:
+
+```bash
+openclaw config set channels.imessage.includeAttachments true
+```
+
+The default local attachment root is
+`/Users/*/Library/Messages/Attachments`. Set
+`channels.imessage.attachmentRoots` explicitly if Messages stores attachments
+elsewhere.
+
+The compatibility window defaults to 7 seconds only when no explicit iMessage
+or global inbound debounce is configured. Payload arrival flushes a matched pair
+immediately; the window is only the maximum wait for an unmatched short
+lead-in.
+
+To set a different upper bound:
+
+```bash
+openclaw config set messages.inbound.byChannel.imessage 3000
+```
+
+Keep the window long enough to cover the observed gap between Messages.app
+parts on the host.
+
+## Verification
+
+The patch adds regression coverage for:
+
+- short lead-in plus URL-preview row;
+- short caption plus image attachment;
+- two rapid short text messages remaining two turns;
+- a following composition retaining its own coalescing window during payload
+  flush;
+- non-URL balloons and complete messages bypassing the hold;
+- empty-text URL balloons still being treated as payloads;
+- embedded scheme-less URLs and control commands bypassing the hold;
+- invalid conversation anchors failing open instead of sharing a coalescing key;
+- the existing merge caps, reply context, cursor, and GUID tracking.
+
+The focused coalescer and monitor suites pass all 65 tests after a clean reverse
+and reapplication of the exported patch.
+
+Manual smoke test after deployment:
+
+1. Send a caption and image as one iMessage composition.
+2. Send a short instruction and link as one composition.
+3. Send two short, genuinely separate text messages rapidly.
+4. Confirm the first two cases each produce one `embedded run start` and the
+   third produces two turns in the gateway log.
+
+## Apply and revert
+
+`apply-and-deploy.sh` applies
+`imessage-message-part-coalescing.patch` to a clean OpenClaw source checkout,
+builds it, and installs the packed result.
+
+To apply only the source edit:
+
+```bash
+cd <openclaw-checkout>
+git apply /path/to/puddles/docs/openclaw-setup/patches/imessage-message-part-coalescing.patch
+```
+
+To revert, remove `imessage-message-part-coalescing` from `PATCHES`, rebuild and
+deploy the prior stack, then unset the opt-in:
+
+```bash
+openclaw config unset channels.imessage.coalesceSameSenderDms
+```
+
+No message data or persistent state migration is involved.
