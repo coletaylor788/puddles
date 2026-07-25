@@ -30,6 +30,7 @@ PATCHES=(
   sessions-yield-block-and-gather
   subagent-cross-agent-spawn-fix
   skill-workshop-sandbox-fix
+  imessage-message-part-coalescing
   browser-userdata-dir-fix
 )
 # NOTE: apply-cron-announce-fix is intentionally NOT listed — it is under
