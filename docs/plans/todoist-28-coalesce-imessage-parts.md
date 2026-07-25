@@ -1,6 +1,6 @@
 # Coalesce split iMessage message parts
 
-- **Status:** In progress - validation complete, independent review pending
+- **Status:** In progress - implementation review clear, publication pending
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-24
 - **Owner:** Cole Taylor
@@ -51,7 +51,8 @@ The coalescing implementation and deployment-topology correction are merged and
 deployed. PR #26 adds the missing cumulative integration pool. Fresh review
 corrections are implemented: no credentialed suites remain outside default test
 discovery, child commands can be interrupted safely, worktree deregistration is
-verified, and recording mocks fail closed. Production is out of scope for these
+verified, and recording mocks fail closed. A fresh independent review found no
+actionable high-confidence defects. Production is out of scope for these
 isolated test-infrastructure corrections.
 
 ### Scope and acceptance criteria
@@ -153,8 +154,12 @@ isolated test-infrastructure corrections.
 - The final managed lifecycle passed repository build and lint, 237 isolated
   workspace tests, 289 mapped OpenClaw tests, one isolated browser-entrypoint
   candidate test, and verified candidate deregistration.
-- Remaining validation: obtain a fresh clean review and confirm the first
-  Integration workflow run on `main`.
+- A fresh independent review of the validated implementation found no
+  actionable high-confidence defects. The pinned upstream revision protects
+  the external debouncer contract; real-provider hook round trips remain manual
+  rather than credentialed CI.
+- Remaining validation: confirm pull-request checks and the first Integration
+  workflow run on `main`.
 
 ### Rollout and rollback
 
@@ -188,8 +193,8 @@ No data migration or persistent message-state conversion is involved.
   stale-registration cleanup, blocked signal handlers, fail-open recording
   mocks, and unnecessary operational detail in this public plan. All five
   corrections are implemented and pending full validation.
-- A fresh terminal review is required after the corrections are validated and
-  the complete lifecycle passes.
+- A fresh independent review of the validated corrections found no actionable
+  high-confidence defects.
 
 ### Checklist
 
@@ -223,8 +228,8 @@ No data migration or persistent message-state conversion is involved.
 - [x] Make recording mocks require state and reject unknown operations.
 - [x] Remove host-specific operational detail from public artifacts.
 - [x] Rerun the complete managed lifecycle after fresh-review corrections.
-- [ ] Obtain and record a clean terminal independent review for the exact
-  handoff diff.
+- [x] Obtain and record a clean independent review of the validated
+  implementation.
 - [ ] Push and merge PR #26.
 - [ ] Confirm the first cumulative Integration workflow run on `main`.
 - [ ] Update issue #28 to Ready for review and complete the Todoist handoff.
