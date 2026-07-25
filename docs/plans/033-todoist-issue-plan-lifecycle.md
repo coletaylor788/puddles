@@ -8,157 +8,154 @@
 
 ### Problem
 
-Plans and their tracking issues can both accumulate design, status, and evidence.
-That duplication makes it unclear which record is authoritative and allows the
-human-facing summary to drift from the operational implementation detail.
+Plans and their issues can both accumulate design, status, and evidence, while
+workflow and reviewer skills can both accumulate audit criteria. Those
+duplications make ownership unclear and allow human design, operational detail,
+and review expectations to drift.
 
 ### Outcome
 
 Every new or substantively updated repository plan has one predictable two-part
-structure. The plan is the detailed source of truth: a concise current design
-for people followed by complete operational detail for agents. Its issue remains
-a small status ledger that links to the plan.
+structure. The plan is the detailed source of truth, and its issue is a small
+status ledger that links to it. The safe feature workflow owns review
+orchestration; the adversarial review skill owns substantive audit criteria and
+the reporting contract.
 
 ### Approach
 
-Use the format when creating a plan or making a substantive update to an
-existing plan; untouched historical plans do not require migration. Use `Human
-design` for the current problem, outcome, approach, and safety model. Use `Agent
-details` for state, requirements, decisions, execution, evidence, rollout,
-review, and checklist state. Rewrite and synchronize both parts whenever
-substantive information changes rather than adding chronological fragments.
+Use `Human design` for the concise current problem, outcome, approach, and safety
+model. Use `Agent details` for complete operational state, requirements,
+decisions, execution, evidence, rollout, review, and checklist state. Rewrite
+and synchronize both parts whenever substantive information changes. Untouched
+historical plans do not require migration.
 
-Keep the linked issue limited to current status and completed milestones. Put
-all design reasoning and operational detail in the plan.
+Keep the linked issue limited to current status and completed milestones. Keep
+`safe-feature-development` focused on launching fresh independent reviewers and
+iterating on findings. Keep complete-change review criteria and concrete
+reporting requirements in `adversarial-review`.
 
 ### Safety and rollout
 
 This is a documentation workflow change with no runtime or production mutation.
-Adopt it through the repository instructions and safe feature workflow in pull
-request [#27](https://github.com/coletaylor788/puddles/pull/27). Roll back by
-reverting those documentation changes if the format proves unusable.
+Adopt it through pull request
+[#27](https://github.com/coletaylor788/puddles/pull/27). Centralizing audit
+criteria reduces contradictory guidance while preserving the correction,
+revalidation, and re-review loop. Roll back by reverting the documentation
+changes if the contract proves unusable.
 
 ## Agent details
 
 ### State
 
-Implementation, branch publication, accessible issue linking, and pull request
-creation are complete. Three review rounds identified a stale issue ledger,
-ambiguous historical-plan migration scope, an inaccessible pre-publication plan
-link, and stale publication state in this plan. Those findings are corrected.
-Final post-bookkeeping validation and a fresh independent review are next.
+The strict plan and issue lifecycle and audit-ownership refactor are implemented
+in pull request #27. Targeted structural validation is complete: the safe feature
+workflow keeps only review orchestration and remediation, while the adversarial
+review skill owns all substantive review criteria. A fresh independent review of
+both skills and the complete diff is next.
 
 ### Scope and acceptance criteria
 
-- Add this plan using exactly two top-level content sections after its title and
-  allowed metadata.
-- Keep `Human design` limited to the required four subsections and `Agent
-  details` limited to the required eight subsections, in the specified order.
+- Add this plan with only allowed metadata and the exact required H2 and H3
+  sections in order.
 - Make the plan the detailed source of truth and the linked issue a minimal
   status ledger.
-- Add a concise always-on requirement for all repository plans.
-- Apply the format to newly created or substantively updated plans without
-  forcing an unrelated migration of untouched historical plans.
-- Define the exact plan and issue mechanics in `safe-feature-development` and
-  bump its version.
-- Keep the public contract provider-neutral and exclude user-scoped automation
+- Require the format concisely for new or substantively updated plans without
+  migrating untouched historical plans.
+- Define exact plan and issue mechanics in `safe-feature-development` and bump
+  its version from 1.2.0 to 1.3.0.
+- Keep only independent-review orchestration and finding remediation in the safe
+  workflow's audit step.
+- Move complete-diff and new-file inspection, requirements completeness,
+  architecture, security, isolation, data flow, state, failure atomicity,
+  process lifecycle, path and symlink handling, concurrency, compatibility,
+  rollback, whack-a-mole, validation-adequacy, and concrete reporting criteria
+  into `adversarial-review`.
+- Add adversarial-review metadata at version 1.1.0 while preserving the existing
+  project-specific concerns exactly in substance.
+- Keep public content provider-neutral and exclude user-scoped automation
   behavior.
-- Validate structure and consistency, then obtain a clean fresh independent
-  adversarial review over the complete diff.
-- Update issue #25 to `Ready for review`, commit and push the focused branch,
-  and open a non-draft pull request linked to the issue without merging it.
+- Validate both skills, the plan, issue ledger, live plan link, pull request, and
+  public-content boundaries.
+- Obtain a clean fresh independent adversarial review after final bookkeeping.
+- Leave issue #25 and non-draft pull request #27 ready for coordinator review
+  without merging.
 
 ### Architecture and decisions
 
 - `.github/copilot-instructions.md` is the concise always-on policy entry point.
-  It requires the format and synchronization for new or substantively updated
-  plans but delegates mechanics.
-- `.github/skills/safe-feature-development/SKILL.md` is the canonical
-  operational contract. Its Plan phase defines allowed metadata, exact heading
-  names and order, whole-plan synchronization, and the minimal issue shape.
-- Repository plans carry detailed current design and operational state. Issues
-  carry only a plan link, current status, and completed milestones.
-- Updates rewrite current truth instead of preserving an append-only chronology.
-  Review history remains concise and current in the required `Review log`.
-- The skill version moves from 1.2.0 to 1.3.0 because this adds a backward-
-  compatible workflow contract.
+  Detailed mechanics remain in the skills.
+- `.github/skills/safe-feature-development/SKILL.md` owns the development loop.
+  Its Plan phase defines the plan and issue contract. Its Audit phase launches a
+  fresh independent subagent, requires the adversarial skill against the complete
+  diff, and owns correction, test-environment redeployment, applicable local
+  gates, the full integration pool, and repeated review.
+- `.github/skills/adversarial-review/SKILL.md` is the single owner of substantive
+  complete-change review criteria and actionable reporting. Version 1.1.0 marks
+  that expanded responsibility.
+- Plans carry detailed current design and operational state. Issues carry only a
+  plan link, current status, and completed milestones.
+- Updates rewrite current truth instead of preserving duplicate narratives or
+  append-only status fragments.
 
 ### Implementation
 
-Implemented changes:
-
-1. Added plan 033 in the strict format.
-2. Added the concise repository-wide plan rule to the sources-of-truth guidance.
-3. Replaced the skill's issue-as-source language and expanded its Plan phase
-   with the exact two-part plan and minimal issue contracts.
-4. Re-read and updated this whole plan after implementation, validation, and the
-   first two reviews; final review remains.
-5. Synchronized issue #25 after the first review identified its stale status,
-   while retaining only the allowed ledger content.
-6. Scoped adoption after the second review identified that an unconditional
-   rule could prompt unrelated migration of untouched historical plans.
-7. Published the branch, updated the issue to its accessible branch plan link,
-   and verified that the linked plan resolves.
-8. Opened non-draft pull request #27 linked to issue #25.
-9. Rewrote the plan after the third review identified that publication had made
-   its prior state stale.
+1. Added plan 033 and the concise repository-wide plan rule.
+2. Defined the exact synchronized plan and minimal issue formats in the safe
+   workflow Plan phase.
+3. Reduced the safe workflow Audit phase to fresh-review orchestration and the
+   existing remediation, redeployment, validation, and re-review loop.
+4. Expanded and versioned adversarial review as the owner of complete-change
+   criteria, validation adequacy, whack-a-mole analysis, and concrete reporting.
+5. Preserved the existing project-specific adversarial concerns in substance.
+6. Published the focused branch, linked the issue to its accessible plan, and
+   opened non-draft pull request #27.
 
 ### Validation
 
 Completed targeted checks:
 
-- parsed both lifecycle skill YAML frontmatter blocks and verified version
-  1.3.0 for the safe workflow;
-- verified plan 033's exact H1, H2, and H3 names, counts, and order;
-- verified plan metadata uses only the allowed keys and required order;
-- confirmed that repository instructions and the safe workflow enforce one
-  consistent contract without duplicating detailed mechanics;
-- passed `git diff --check`;
-- passed changed-public-content scans for prohibited provider, non-public, and
-  user-scoped automation references.
+- parsed both skill frontmatter blocks and verified versions 1.3.0 and 1.1.0;
+- verified plan 033's exact metadata and heading names, counts, and order;
+- confirmed safe feature development retains orchestration requirements without
+  duplicating the substantive audit checklist;
+- confirmed every required substantive criterion is present in adversarial review
+  and the project-specific concerns remain unchanged in substance;
+- verified the issue ledger, live plan link, and non-draft pull request state;
+- passed `git diff --check` and changed-public-content boundary scans.
 
 No runtime build, integration environment, deployment, or production validation
-applies because only Markdown workflow documentation changes. Targeted checks
-passed again after the final publication and pull request bookkeeping update,
-including the live issue link and non-draft pull request state.
+applies because only Markdown workflow documentation changes. Fresh independent
+review remains pending and will repeat after final bookkeeping.
 
 ### Rollout and rollback
 
 Rollout is non-draft pull request
 [#27](https://github.com/coletaylor788/puddles/pull/27), linked to issue #25.
-After merge, future repository plans and their issue ledgers follow this
-contract. No deployment or data migration is required.
+After merge, new and substantively updated plans use the synchronized format,
+and review criteria have one skill owner. No deployment or data migration is
+required.
 
-Rollback is a normal revert of the documentation commit. Existing plans are not
-rewritten by this change, and no runtime state needs restoration.
+Rollback is a normal revert of the documentation commits. Untouched historical
+plans and runtime state require no restoration.
 
 ### Review log
 
-The first review found one medium-severity synchronization defect: issue #25
-still described implementation as next after the plan recorded completed work.
-The issue ledger is corrected.
-
-The second review found two medium-severity rollout defects: the unconditional
-plan rule could cause unrelated migration of untouched historical plans, and the
-issue's main-branch plan link returns 404 before merge. Adoption is now scoped
-to new or substantively updated plans. The branch is published and the ledger
-links to its accessible branch copy.
-
-The third review found one medium-severity synchronization defect: the published
-plan still described branch publication as pending. This full update records
-publication, link verification, and pull request creation as complete. A fresh
-post-bookkeeping review remains; any further actionable high-confidence finding
-will be fixed, revalidated, and reviewed again.
+Earlier review rounds corrected stale issue and plan state, clarified historical
+plan migration scope, and made the pre-merge plan link accessible. The last
+published state was clean before audit ownership was refactored. Both refactored
+skills now pass targeted validation. Fresh review of the complete updated diff is
+pending. Any actionable high-confidence finding will be fixed, revalidated, and
+reviewed again.
 
 ### Checklist
 
 - [x] Read the current repository instructions and both lifecycle skills
-- [x] Inspect issue #25 and the existing plan convention
-- [x] Define the strict plan and minimal issue contracts
-- [x] Add plan 033 in the required two-part format
-- [x] Update the concise always-on repository instructions
+- [x] Define and implement the strict plan and minimal issue contracts
 - [x] Update and version the safe feature workflow
-- [x] Revalidate the complete final bookkeeping diff and accessible issue link
+- [x] Move substantive audit criteria into adversarial review
+- [x] Preserve safe workflow review orchestration and remediation
+- [x] Add and version adversarial review skill metadata
+- [x] Publish the branch and open non-draft pull request #27
+- [x] Revalidate both skills, plan, ledger, PR, and public-content boundaries
 - [ ] Obtain a clean fresh independent adversarial review
 - [ ] Update issue #25 to `Ready for review`
-- [x] Commit, push, and open a non-draft pull request

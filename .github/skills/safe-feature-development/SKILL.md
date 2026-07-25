@@ -89,15 +89,9 @@ global safety or publication boundary.
      all required pre-promotion gates are green.
 
 5. **Audit the full change**
-   - Review the entire diff and all new files, not only the latest fix.
-   - Check architecture, security, isolation, data flow, state ownership,
-     failure atomicity, process lifecycle, path and symlink handling,
-     concurrency, backward compatibility, and rollback.
-   - Look specifically for whack-a-mole fixes: a local correction that moves the
-     same risk to another agent, plugin, command, profile, or failure boundary.
-   - Launch a fresh independent reviewer that did not implement the change.
-     Instruct it to invoke the repository-local `adversarial-review` skill and
-     review the complete feature diff.
+   - Launch a fresh independent subagent that did not implement the change.
+     Require it to invoke and follow the repository-local `adversarial-review`
+     skill against the complete feature diff.
    - Resolve every actionable, high-confidence finding by returning to local
      implementation, correcting it, redeploying to the test environment, and
      rerunning applicable local gates plus the full configured integration test
