@@ -40,6 +40,12 @@ Before editing, read the documentation nearest the affected component:
 Do not substitute repository-wide generic test commands for the component's
 documented lifecycle.
 
+Every new or substantively updated repository plan must use the strict two-part
+`Human design` and `Agent details` format defined by
+`safe-feature-development`. Keep both parts synchronized whenever the plan
+changes. The plan is the detailed source of truth; its issue is only a concise
+status ledger that links to the plan.
+
 ## Publication safety
 
 - Keep public code, documentation, plans, commit messages, and logs
