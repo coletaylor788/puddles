@@ -98,6 +98,10 @@ before read-only candidate validation.
   logged as failed calls and returned as structured errors.
 - Offload authentication and service construction to the existing worker-thread
   boundary so a bounded slow Keychain call cannot freeze concurrent MCP I/O.
+- Serialize credential refresh-and-persist with OAuth replacement so stale
+  refreshes cannot overwrite newly authorized credentials.
+- Bound OAuth browser waiting and refresh HTTP below their worker deadlines, and
+  translate service-construction timeouts into structured tool errors.
 - Leave the environment-variable backend unchanged.
 - Skip live mailbox-mutation tests in automation; use isolated cumulative
   coverage plus explicit read-only Gmail smoke tests.
@@ -126,7 +130,7 @@ before read-only candidate validation.
 
 Completed locally:
 
-- `CI=true .venv/bin/python -m pytest tests/ -q` - 107 passed and 19 live
+- `CI=true .venv/bin/python -m pytest tests/ -q` - 110 passed and 19 live
   mailbox tests skipped.
 - `.venv/bin/ruff check src/ tests/` - passed.
 - `.venv/bin/python -m compileall -q src tests` - passed.
@@ -139,6 +143,9 @@ Completed locally:
 - An adversarial review found bounded Keychain calls still blocked the shared
   event loop; authentication now uses the existing worker-thread bridge, with a
   focused concurrency regression.
+- A fresh review found interactive OAuth blocking, stale-refresh overwrite, and
+  mismatched refresh/worker timeout boundaries; deterministic regressions cover
+  each corrected failure path.
 - `packages/e2e/tests/gmail-keychain.test.ts` - two isolated regressions passed,
   covering long create/update values, content-only refresh ACL behavior, bounded
   timeouts, and sensitive traceback sanitization.
@@ -190,6 +197,11 @@ Rollback:
 - The first repository adversarial review found synchronous Keychain calls
   could freeze concurrent MCP I/O for five seconds; the calls are now offloaded
   and the focused and complete managed lifecycles pass.
+- A fresh repository adversarial review found three additional concurrency
+  boundaries: interactive OAuth blocking, stale refresh persistence, and an
+  outer timeout shorter than refresh I/O. OAuth is now offloaded and
+  inner-bounded, while credential refresh-and-store is serialized with OAuth
+  replacement.
 - The next review must invoke the repository adversarial-review workflow after
   cumulative E2E integration and OAuth validation.
 
@@ -203,6 +215,8 @@ Rollback:
 - [x] Preserve long OAuth JSON values.
 - [x] Translate Keychain failures at the MCP tool boundary.
 - [x] Keep slow Keychain access off the shared MCP event loop.
+- [x] Prevent stale refreshes from overwriting OAuth replacement.
+- [x] Bound OAuth and refresh work below their worker deadlines.
 - [x] Remove the Python `keyring` dependency.
 - [x] Update user, architecture, migration, security, and rollback docs.
 - [x] Add focused success, error, timeout, cache, write, and race tests.

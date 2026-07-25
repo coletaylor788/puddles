@@ -8,7 +8,10 @@ Supports two storage backends, selected automatically:
 
 import json
 import os
+import threading
 import time
+from contextlib import nullcontext
+from functools import partial
 
 import httplib2
 from google.auth.transport.requests import Request
@@ -27,6 +30,7 @@ from .logging_setup import log
 # defaults to no timeout and a stalled Google response will hang the worker
 # thread forever.
 HTTP_SOCKET_TIMEOUT_S = 30
+OAUTH_BROWSER_TIMEOUT_S = 600
 KEYCHAIN_CACHE_TTL_S = 60
 
 
@@ -66,6 +70,7 @@ def _use_env_backend() -> bool:
 _cached_creds: Credentials | None = None
 _cached_keychain_creds: Credentials | None = None
 _cached_keychain_loaded_at: float | None = None
+_credential_lock = threading.RLock()
 
 
 def _env_is_authenticated() -> bool:
@@ -103,29 +108,30 @@ def _env_load_credentials() -> None:
 
 def _keychain_load_credentials() -> Credentials | None:
     global _cached_keychain_creds, _cached_keychain_loaded_at
-    now = time.monotonic()
-    if (
-        _cached_keychain_creds is not None
-        and _cached_keychain_loaded_at is not None
-        and now - _cached_keychain_loaded_at < KEYCHAIN_CACHE_TTL_S
-    ):
+    with _credential_lock:
+        now = time.monotonic()
+        if (
+            _cached_keychain_creds is not None
+            and _cached_keychain_loaded_at is not None
+            and now - _cached_keychain_loaded_at < KEYCHAIN_CACHE_TTL_S
+        ):
+            return _cached_keychain_creds
+
+        _cached_keychain_creds = None
+        _cached_keychain_loaded_at = None
+        token_data = read_token()
+        if not token_data:
+            return None
+
+        try:
+            _cached_keychain_creds = Credentials.from_authorized_user_info(
+                json.loads(token_data),
+                SCOPES,
+            )
+        except (json.JSONDecodeError, ValueError):
+            return None
+        _cached_keychain_loaded_at = now
         return _cached_keychain_creds
-
-    _cached_keychain_creds = None
-    _cached_keychain_loaded_at = None
-    token_data = read_token()
-    if not token_data:
-        return None
-
-    try:
-        _cached_keychain_creds = Credentials.from_authorized_user_info(
-            json.loads(token_data),
-            SCOPES,
-        )
-    except (json.JSONDecodeError, ValueError):
-        return None
-    _cached_keychain_loaded_at = now
-    return _cached_keychain_creds
 
 
 def _keychain_is_authenticated() -> bool:
@@ -139,10 +145,11 @@ def _keychain_get_token() -> Credentials | None:
 def _keychain_store_token(creds: Credentials) -> None:
     global _cached_keychain_creds, _cached_keychain_loaded_at
 
-    token_data = creds.to_json()
-    write_token(token_data)
-    _cached_keychain_creds = creds
-    _cached_keychain_loaded_at = time.monotonic()
+    with _credential_lock:
+        token_data = creds.to_json()
+        write_token(token_data)
+        _cached_keychain_creds = creds
+        _cached_keychain_loaded_at = time.monotonic()
 
 
 # --- Public API ---
@@ -205,7 +212,7 @@ def _refresh_credentials(creds: Credentials, *, source: str) -> bool:
 
     start = time.monotonic()
     try:
-        creds.refresh(Request())
+        creds.refresh(partial(Request(), timeout=HTTP_SOCKET_TIMEOUT_S))
     except Exception as exc:
         log(
             "error",
@@ -240,22 +247,26 @@ def run_oauth_flow() -> str:
     Raises:
         FileNotFoundError: If credentials.json is missing
     """
-    # Check if we already have valid credentials with correct scopes
-    creds = get_token()
-    if creds and creds.valid and _has_required_scopes(creds):
-        # Already authenticated with correct scopes - just get the email
-        service = _build_service(creds)
+    ready_creds = None
+    credential_context = nullcontext() if _use_env_backend() else _credential_lock
+    with credential_context:
+        creds = get_token()
+        if creds and creds.valid and _has_required_scopes(creds):
+            ready_creds = creds
+        elif (
+            creds
+            and creds.expired
+            and creds.refresh_token
+            and _has_required_scopes(creds)
+            and _refresh_credentials(creds, source="oauth_flow")
+        ):
+            store_token(creds)
+            ready_creds = creds
+
+    if ready_creds is not None:
+        service = _build_service(ready_creds)
         profile = service.users().getProfile(userId="me").execute()
         return profile.get("emailAddress", "unknown")
-
-    # Try to refresh expired token (only if scopes are correct)
-    if creds and creds.expired and creds.refresh_token and _has_required_scopes(creds):
-        if _refresh_credentials(creds, source="oauth_flow"):
-            store_token(creds)
-            service = _build_service(creds)
-            profile = service.users().getProfile(userId="me").execute()
-            return profile.get("emailAddress", "unknown")
-        # Refresh failed, fall through to re-authenticate
 
     # Need to run OAuth flow (either no token, invalid, or missing scopes)
     credentials_path = get_credentials_path()
@@ -267,7 +278,10 @@ def run_oauth_flow() -> str:
         )
 
     flow = InstalledAppFlow.from_client_secrets_file(str(credentials_path), SCOPES)
-    creds = flow.run_local_server(port=0)
+    creds = flow.run_local_server(
+        port=0,
+        timeout_seconds=OAUTH_BROWSER_TIMEOUT_S,
+    )
 
     # Store token in Keychain
     store_token(creds)
@@ -286,16 +300,25 @@ def get_gmail_service():
     Returns:
         Gmail API service object, or None if not authenticated
     """
-    creds = get_token()
-
-    if not creds:
-        return None
-
-    # Refresh token if expired
-    if creds.expired and creds.refresh_token:
-        if not _refresh_credentials(creds, source="get_service"):
+    if _use_env_backend():
+        creds = get_token()
+        if not creds:
             return None
-        store_token(creds)
+        if creds.expired and creds.refresh_token:
+            if not _refresh_credentials(creds, source="get_service"):
+                return None
+    else:
+        # Keep refresh and persistence atomic with respect to OAuth replacement.
+        # If an interactive flow finishes while an old refresh is running, the
+        # newly authorized credential must be the final stored value.
+        with _credential_lock:
+            creds = get_token()
+            if not creds:
+                return None
+            if creds.expired and creds.refresh_token:
+                if not _refresh_credentials(creds, source="get_service"):
+                    return None
+                store_token(creds)
 
     if not creds.valid:
         return None
