@@ -134,7 +134,7 @@ before read-only candidate validation.
 Completed locally:
 
 - `CI=true .venv/bin/python -m pytest tests/ --ignore=tests/integration -q` -
-  144 safe tests passed; live mailbox tests were not collected.
+  145 safe tests passed; live mailbox tests were not collected.
 - `.venv/bin/ruff check src/ tests/` - passed.
 - `.venv/bin/python -m compileall -q src tests` - passed.
 - `git diff --check` - passed.
@@ -187,12 +187,15 @@ Completed locally:
   before backend selection. Default config resolution is now lazy, and a
   fresh-process regression proves environment-only auth starts with no `HOME`
   and an unmapped UID.
+- A ninth review found service construction bypassed the intended 60-second
+  credential cache. Valid credentials now use the cache fast path; only expired
+  credentials enter the cross-process refresh/persistence transaction.
 - `packages/e2e/tests/gmail-keychain.test.ts` - two isolated regressions passed,
   covering long create/update values, content-only refresh ACL behavior, bounded
   timeouts, and sensitive traceback sanitization.
 - `node packages/e2e/bin/openclaw-test-env.mjs ci` - passed repository build and
   lint, 241 workspace tests (112 hooks, 25 cumulative E2E, 61 calendar, 43
-  secure Gmail), the 144-test safe Gmail Python suite plus Ruff and compilation,
+  secure Gmail), the 145-test safe Gmail Python suite plus Ruff and compilation,
   289 mapped OpenClaw tests, and one candidate browser test; temporary worktree
   cleanup completed.
 
@@ -262,6 +265,8 @@ Rollback:
   eager Keychain lock resolution in environment-only containers.
 - The eighth fresh review found and corrected import-time default-config home
   resolution for environment-only containers.
+- The ninth fresh review found and corrected uncached Keychain reads during
+  valid service construction.
 - The next review must invoke the repository adversarial-review workflow after
   cumulative E2E integration and OAuth validation.
 

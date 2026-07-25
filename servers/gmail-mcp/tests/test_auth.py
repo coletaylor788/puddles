@@ -468,10 +468,10 @@ class TestKeychainStoreToken:
         new_creds.valid = True
 
         with (
-            patch("gmail_mcp.auth.read_token", side_effect=["old", "new"]),
+            patch("gmail_mcp.auth.read_token", side_effect=["old", "old", "new"]),
             patch(
                 "gmail_mcp.auth._credentials_from_token_data",
-                side_effect=[old_creds, new_creds],
+                side_effect=[old_creds, old_creds, new_creds],
             ),
             patch("gmail_mcp.auth._refresh_credentials", return_value=True),
             patch("gmail_mcp.auth.write_token") as mock_write,
@@ -853,6 +853,26 @@ class TestGetGmailService:
         ):
             result = get_gmail_service()
             assert result == mock_service
+
+    def test_reuses_valid_keychain_cache_for_service_construction(self):
+        """Auth check and service construction share one Keychain read."""
+        token_data = json.dumps({
+            "token": "access-token",
+            "refresh_token": "refresh-token",
+            "client_id": "client-id",
+            "client_secret": "client-secret",
+            "expiry": "2099-01-01T00:00:00Z",
+        })
+        mock_service = MagicMock()
+
+        with (
+            patch("gmail_mcp.auth.read_token", return_value=token_data) as mock_read,
+            patch("gmail_mcp.auth._build_service", return_value=mock_service),
+        ):
+            assert is_authenticated() is True
+            assert get_gmail_service() is mock_service
+
+        mock_read.assert_called_once()
 
     def test_refreshes_expired_token(self):
         """Refreshes token when expired and has refresh_token."""
