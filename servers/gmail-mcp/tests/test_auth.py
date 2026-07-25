@@ -2,6 +2,8 @@
 
 import json
 import subprocess
+import threading
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -284,6 +286,58 @@ class TestKeychainStoreToken:
             assert "-U" in retry_command
             assert "-T" not in retry_command
 
+    def test_oauth_store_wins_over_inflight_stale_refresh(self):
+        """A refresh started first cannot overwrite a newer OAuth credential."""
+        import gmail_mcp.auth
+
+        refresh_entered = threading.Event()
+        release_refresh = threading.Event()
+        oauth_stored = threading.Event()
+        writes = []
+
+        old_creds = MagicMock()
+        old_creds.expired = True
+        old_creds.refresh_token = "old-refresh"
+        old_creds.valid = True
+        old_creds.to_json.return_value = "old"
+
+        new_creds = MagicMock()
+        new_creds.to_json.return_value = "new"
+
+        gmail_mcp.auth._cached_keychain_creds = old_creds
+        gmail_mcp.auth._cached_keychain_loaded_at = time.monotonic()
+
+        def slow_refresh(*_args, **_kwargs):
+            refresh_entered.set()
+            release_refresh.wait(timeout=1)
+            return True
+
+        def store_oauth_result():
+            store_token(new_creds)
+            oauth_stored.set()
+
+        with (
+            patch("gmail_mcp.auth._refresh_credentials", side_effect=slow_refresh),
+            patch("gmail_mcp.auth.write_token", side_effect=writes.append),
+            patch("gmail_mcp.auth._build_service", return_value=MagicMock()),
+        ):
+            refresh_thread = threading.Thread(target=get_gmail_service)
+            refresh_thread.start()
+            assert refresh_entered.wait(timeout=0.5)
+
+            oauth_thread = threading.Thread(target=store_oauth_result)
+            oauth_thread.start()
+            assert not oauth_stored.wait(timeout=0.05)
+
+            release_refresh.set()
+            refresh_thread.join(timeout=1)
+            oauth_thread.join(timeout=1)
+
+        assert not refresh_thread.is_alive()
+        assert not oauth_thread.is_alive()
+        assert writes == ["old", "new"]
+        assert gmail_mcp.auth._cached_keychain_creds is new_creds
+
 
 class TestKeychainCommand:
     """Tests for bounded macOS Keychain command execution."""
@@ -360,7 +414,10 @@ class TestRunOauthFlow:
 
             assert email == "test@gmail.com"
             mock_store.assert_called_once_with(mock_creds)
-            mock_flow.run_local_server.assert_called_once_with(port=0)
+            mock_flow.run_local_server.assert_called_once_with(
+                port=0,
+                timeout_seconds=600,
+            )
 
     def test_returns_email_when_already_authenticated(self):
         """Returns email without browser flow when already authenticated."""

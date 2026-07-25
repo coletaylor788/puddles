@@ -14,12 +14,25 @@ from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
 from ._async import run_blocking
-from .auth import get_gmail_service, is_authenticated, run_oauth_flow
+from .auth import (
+    HTTP_SOCKET_TIMEOUT_S,
+    OAUTH_BROWSER_TIMEOUT_S,
+    get_gmail_service,
+    is_authenticated,
+    run_oauth_flow,
+)
 from .keychain import KeychainAccessError
 from .logging_setup import log
 
 # Initialize MCP server
 server = Server("gmail-mcp")
+
+AUTH_SERVICE_TIMEOUT_S = HTTP_SOCKET_TIMEOUT_S * 2 + 10
+OAUTH_WORKER_TIMEOUT_S = OAUTH_BROWSER_TIMEOUT_S + 160
+
+
+class AuthenticationUnavailableError(RuntimeError):
+    """Authentication work could not complete within its safety bound."""
 
 
 @server.list_tools()
@@ -185,7 +198,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             raise ValueError(f"Unknown tool: {name}")
         ok = True
         return result
-    except KeychainAccessError as e:
+    except (AuthenticationUnavailableError, KeychainAccessError) as e:
         return [
             TextContent(
                 type="text",
@@ -205,7 +218,11 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 async def _authenticate() -> list[TextContent]:
     """Handle authenticate tool call."""
     try:
-        email = run_oauth_flow()
+        email = await run_blocking(
+            run_oauth_flow,
+            op="auth.oauth_flow",
+            timeout=OAUTH_WORKER_TIMEOUT_S,
+        )
         return [
             TextContent(
                 type="text",
@@ -229,10 +246,16 @@ async def _is_authenticated_async() -> bool:
 
 
 async def _get_gmail_service_async():
-    return await run_blocking(
-        get_gmail_service,
-        op="auth.get_service",
-    )
+    try:
+        return await run_blocking(
+            get_gmail_service,
+            op="auth.get_service",
+            timeout=AUTH_SERVICE_TIMEOUT_S,
+        )
+    except asyncio.TimeoutError as exc:
+        raise AuthenticationUnavailableError(
+            "Gmail authentication timed out"
+        ) from exc
 
 
 async def _list_emails(arguments: dict[str, Any]) -> list[TextContent]:
