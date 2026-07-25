@@ -97,6 +97,21 @@ After all checklist items are complete:
 ### 8. Verify Complete
 **You are not done until every checkbox in the plan is checked and changes are pushed.**
 
+### OpenClaw Deployment Topology
+
+Before running `docs/openclaw-setup/patches/apply-and-deploy.sh`, identify the
+current host (`hostname` or `scutil --get LocalHostName`) and choose the target
+mode explicitly:
+
+- **Running on the target Mac mini:** leave `MINI_HOST` unset. The wrapper builds,
+  installs, restarts, and refreshes the browser sandbox locally. Do not require
+  SSH or a second build host, and do not try to SSH back into the same machine.
+- **Running on another host:** set `MINI_HOST=<approved-target-host>`. Only this
+  explicit remote mode uses `scp` and `ssh`.
+
+Never infer that deployment is remote from an old alias or default. A missing
+`MINI_HOST` always means local deployment.
+
 ### ⚠️ IMPORTANT
 - **You are NOT done until the entire plan checklist is complete and changes are pushed.**
 - **You may NOT skip any checklist item without explicit user approval.**

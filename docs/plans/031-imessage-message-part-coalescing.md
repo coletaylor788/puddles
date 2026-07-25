@@ -1,8 +1,9 @@
 # Plan 031 — Coalesce iMessage message parts
 
-**Status:** Complete
+**Status:** Deployment in progress
 **Started:** 2026-07-23
 **Completed:** 2026-07-23
+**Reopened for deployment:** 2026-07-24
 
 ## Summary
 
@@ -78,8 +79,8 @@ conversation, and sender.
 ## Rollout
 
 Use the existing `docs/openclaw-setup/patches/apply-and-deploy.sh` lifecycle only
-after isolated validation. Production deployment is not performed from this
-task unless that configured host is reachable and the full lifecycle can run.
+after isolated validation. The target Mac mini deploys locally by default;
+`MINI_HOST` is reserved for an intentional remote deployment.
 Enable `channels.imessage.coalesceSameSenderDms` after deployment.
 
 ## Rollback
@@ -112,3 +113,10 @@ persistent message-state conversion is required.
 ### Documentation
 - [x] Patch index and iMessage setup guidance updated
 - [x] Plan marked complete with date
+
+### Deployment follow-up
+- [x] Correct local-versus-remote deployment guidance
+- [x] Validate local and explicit remote wrapper branches
+- [ ] Merge the lifecycle correction
+- [ ] Deploy on the target Mac mini
+- [ ] Validate production and mark the issue ready for review

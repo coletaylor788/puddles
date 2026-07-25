@@ -50,13 +50,18 @@ diff.
 
 ## How to deploy after an OpenClaw upgrade
 
-Run the pipeline wrapper from a **build host** (not the mini) — it builds
-locally, then installs the packed tarball on the mini over SSH:
+Run the pipeline wrapper on the target Mac mini. It builds and installs locally,
+without requiring SSH:
 
 ```bash
 OPENCLAW_SRC=~/git/openclaw \
   bash /path/to/puddles/docs/openclaw-setup/patches/apply-and-deploy.sh
 ```
+
+**Decision rule:** first identify the current host with `hostname` or
+`scutil --get LocalHostName`. If it is the target Mac mini, leave `MINI_HOST`
+unset. Do not SSH back into the same machine and do not wait for a separate build
+host.
 
 `$OPENCLAW_SRC` must be a **clean** OpenClaw checkout at the **target release**
 (`git -C <src> fetch && git -C <src> checkout <release-tag-or-sha>`). The
@@ -68,7 +73,7 @@ wrapper:
    re-port it).
 2. **Builds** from source (`pnpm build`).
 3. **Packs** the result (`npm pack`) into a tarball.
-4. **Installs** the tarball on the mini (`npm install -g <tarball>`).
+4. **Installs** the tarball on the current host (`npm install -g <tarball>`).
 5. **Migrates auth** — runs `openclaw doctor --fix --yes`. 2026.6.x moved
    provider auth from the legacy `auth-profiles.json` into a per-agent SQLite
    store, and **bare upgrades don't auto-migrate** (you'd get "No API key
@@ -82,6 +87,16 @@ wrapper:
    `sandbox-build`, rebuilds the `openclaw-sandbox-browser:bookworm-slim` image,
    and recreates the `browser-agent` container. (Skipped if the entrypoint
    carries no `FIX-BROWSER-*` marker.)
+
+To build on one host and deploy to another, set `MINI_HOST` explicitly:
+
+```bash
+MINI_HOST=<target-host> OPENCLAW_SRC=~/git/openclaw \
+  bash /path/to/puddles/docs/openclaw-setup/patches/apply-and-deploy.sh
+```
+
+Only explicit remote deploys use `scp` and `ssh`; the script has no remote-host
+default.
 
 Validate afterward (`openclaw --version`, run a cron with a subagent).
 
