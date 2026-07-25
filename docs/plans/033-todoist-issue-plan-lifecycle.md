@@ -54,8 +54,8 @@ unusable.
 The strict plan and issue lifecycle, audit-ownership refactor, and terminal
 exact-commit review mechanism are implemented and structurally validated in pull
 request #27. All in-diff plan and checklist bookkeeping is final. The terminal
-review result and reviewed commit identifier are recorded only in issue #25, so
-that result cannot make this plan stale by changing the reviewed diff.
+review result and reviewed commit identifier belong only in issue #25, so
+recording that result cannot make this plan stale by changing the reviewed diff.
 
 ### Scope and acceptance criteria
 
@@ -161,7 +161,7 @@ plan creates an infinite invalidation loop and that the PR overstated current
 review completion. The terminal exact-commit ledger mechanism resolves the loop;
 the PR claim is removed. A filename concern was not applied because the requested
 plan path and existing issue scope explicitly use that name. All in-diff findings
-and bookkeeping are resolved. The terminal review result is recorded against the
+and bookkeeping are resolved. The terminal review result belongs against the
 exact handoff commit in issue #25 without another plan edit.
 
 ### Checklist
