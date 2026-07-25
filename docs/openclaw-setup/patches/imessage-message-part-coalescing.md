@@ -104,7 +104,8 @@ Manual smoke test after deployment:
 
 `apply-and-deploy.sh` applies
 `imessage-message-part-coalescing.patch` to a clean OpenClaw source checkout,
-builds it, and installs the packed result.
+builds it, and installs the packed result on the current host. Set `MINI_HOST`
+only when intentionally deploying to a different host over SSH.
 
 To apply only the source edit:
 
