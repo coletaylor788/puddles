@@ -1,9 +1,10 @@
 # Plan 031 — Coalesce iMessage message parts
 
-**Status:** Deployment in progress
+**Status:** Complete
 **Started:** 2026-07-23
 **Completed:** 2026-07-23
 **Reopened for deployment:** 2026-07-24
+**Deployed:** 2026-07-24
 
 ## Summary
 
@@ -117,6 +118,6 @@ persistent message-state conversion is required.
 ### Deployment follow-up
 - [x] Correct local-versus-remote deployment guidance
 - [x] Validate local and explicit remote wrapper branches
-- [ ] Merge the lifecycle correction
-- [ ] Deploy on the target Mac mini
-- [ ] Validate production and mark the issue ready for review
+- [x] Merge the lifecycle correction
+- [x] Deploy on the target Mac mini
+- [x] Validate production and mark the issue ready for review
