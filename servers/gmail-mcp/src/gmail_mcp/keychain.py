@@ -22,7 +22,7 @@ def _run_security(
     missing_ok: bool = False,
     allowed_returncodes: tuple[int, ...] = (),
     sensitive_args: bool = False,
-) -> subprocess.CompletedProcess[str]:
+) -> subprocess.CompletedProcess[bytes]:
     """Run a bounded macOS Keychain command and sanitize failures."""
     timeout = (
         KEYCHAIN_ACCESS_TIMEOUT_S
@@ -35,7 +35,7 @@ def _run_security(
         result = subprocess.run(
             [SECURITY_COMMAND, *args],
             capture_output=True,
-            text=True,
+            text=False,
             timeout=timeout,
             check=False,
         )
@@ -54,7 +54,13 @@ def _run_security(
     if result.returncode in allowed_returncodes:
         return result
     if result.returncode != 0:
-        detail = result.stderr.strip() or f"security exited with status {result.returncode}"
+        stderr = result.stderr
+        detail = (
+            stderr.strip()
+            if isinstance(stderr, str)
+            else stderr.decode("utf-8", errors="replace").strip()
+        )
+        detail = detail or f"security exited with status {result.returncode}"
         raise KeychainAccessError(f"macOS Keychain access failed: {detail}")
     return result
 
@@ -74,7 +80,14 @@ def read_token() -> str | None:
     )
     if result.returncode == 44:
         return None
-    token_data = result.stdout.rstrip("\n")
+    stdout = result.stdout
+    if isinstance(stdout, str):
+        token_data = stdout.rstrip("\n")
+    else:
+        try:
+            token_data = stdout.decode("utf-8").rstrip("\n")
+        except UnicodeDecodeError:
+            return None
     return token_data or None
 
 

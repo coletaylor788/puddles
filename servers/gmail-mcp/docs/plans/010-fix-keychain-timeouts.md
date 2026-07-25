@@ -134,7 +134,7 @@ before read-only candidate validation.
 Completed locally:
 
 - `CI=true .venv/bin/python -m pytest tests/ --ignore=tests/integration -q` -
-  132 safe tests passed; live mailbox tests were not collected.
+  133 safe tests passed; live mailbox tests were not collected.
 - `.venv/bin/ruff check src/ tests/` - passed.
 - `.venv/bin/python -m compileall -q src tests` - passed.
 - `git diff --check` - passed.
@@ -169,12 +169,17 @@ Completed locally:
   the OS account home, refresh has one owner, browser/token timeouts are
   normalized, each Keychain write shares one deadline, and required authorized
   user fields must be non-empty strings.
+- A fifth review found the declared OAuth dependency range did not always export
+  its timeout type and binary Keychain corruption could fail during implicit
+  subprocess decoding. Timeout normalization now uses the compatible base
+  exception across the declared range, and Keychain output is captured as bytes
+  and decoded explicitly so invalid UTF-8 is unauthenticated.
 - `packages/e2e/tests/gmail-keychain.test.ts` - two isolated regressions passed,
   covering long create/update values, content-only refresh ACL behavior, bounded
   timeouts, and sensitive traceback sanitization.
 - `node packages/e2e/bin/openclaw-test-env.mjs ci` - passed repository build and
-  lint, 240 workspace tests (112 hooks, 24 cumulative E2E, 61 calendar, 43
-  secure Gmail), the 132-test safe Gmail Python suite plus Ruff and compilation,
+  lint, 241 workspace tests (112 hooks, 25 cumulative E2E, 61 calendar, 43
+  secure Gmail), the 133-test safe Gmail Python suite plus Ruff and compilation,
   289 mapped OpenClaw tests, and one candidate browser test; temporary worktree
   cleanup completed.
 
@@ -236,6 +241,8 @@ Rollback:
 - The fourth fresh review found and corrected canonical OS-account lock
   identity, duplicate environment refresh, concrete OAuth timeout classes,
   cumulative Keychain-write timing, and required-field validation.
+- The fifth fresh review found and corrected declared-version OAuth timeout
+  compatibility and binary Keychain corruption handling.
 - The next review must invoke the repository adversarial-review workflow after
   cumulative E2E integration and OAuth validation.
 

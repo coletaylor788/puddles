@@ -123,6 +123,26 @@ assert keychain.read_token() == second
     expect(writes[1]).not.toContain("-T");
   });
 
+  it("treats binary Keychain corruption as unauthenticated", async () => {
+    const fixture = createFixture();
+    writeFileSync(fixture.state, Buffer.from([0xff, 0xfe]));
+    const probe = `
+import sys
+sys.path.insert(0, ${JSON.stringify(fixture.source)})
+import gmail_mcp.keychain as keychain
+keychain.SECURITY_COMMAND = ${JSON.stringify(fixture.fakeSecurity)}
+assert keychain.read_token() is None
+`;
+
+    await execFileAsync("python3", ["-c", probe], {
+      env: {
+        ...process.env,
+        FAKE_SECURITY_LOG: fixture.log,
+        FAKE_SECURITY_STATE: fixture.state,
+      },
+    });
+  });
+
   it("bounds write timeouts without rendering sensitive arguments", async () => {
     const fixture = createFixture();
     writeFileSync(fixture.state, "existing");
