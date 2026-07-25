@@ -108,6 +108,11 @@ Same-agent spawns still get the privilege-inheritance guarantee.
 Cross-agent spawns get a clean resolution from the target agent's own
 config.
 
+The source patch includes regressions for both spawn implementations. Each
+asserts that same-agent spawns retain inherited allow/deny policy while
+cross-agent spawns omit it. The shared patch lifecycle runs both files on every
+change.
+
 ## How to apply / revert
 
 Applied from source as part of the from-source deploy — `apply-and-deploy.sh`

@@ -13,6 +13,34 @@ Designed to run **on the mini** (where the gateway, tools, and accounts live).
 
 ---
 
+## Required cumulative pull-request gate
+
+Every behavior change contributes a committed regression to this package and
+runs the full accumulated pool:
+
+```bash
+node packages/e2e/bin/openclaw-test-env.mjs ci
+```
+
+The `ci` lifecycle runs the repository build, lint, and offline tests, then
+creates a detached worktree from the pinned upstream OpenClaw revision, applies
+all maintained source patches in deployment order, and runs every test mapped
+in `openclaw-patch-suite.json`. It never edits the configured source checkout
+or the running gateway. Set `OPENCLAW_SRC` when the checkout is not at
+`~/git/openclaw`.
+
+OpenClaw patch changes must update both the patch's own tests and the cumulative
+manifest. Tests embedded in a patch but absent from the manifest are rejected by
+the offline suite. The pull-request workflow runs this same lifecycle.
+
+The separate live read-only suite is available through:
+
+```bash
+node packages/e2e/bin/openclaw-test-env.mjs live
+```
+
+---
+
 ## How it works (and why it can't interfere)
 
 **Reads → real E2E, driven by agents that physically can't interfere.**
@@ -51,8 +79,7 @@ removed — that's exactly the interference this rule exists to prevent.
   the test agents can't interfere.
 - **Provider-neutral.** No provider/model names or PII in this package; model IDs and
   the owner number are injected via env (`E2E_MODEL`, `E2E_JUDGE_MODEL`,
-  `E2E_OWNER_NUMBER`). Provider-specific assertions live in a separate package
-  outside this repo.
+  `E2E_OWNER_NUMBER`).
 - **Assertions:** reply envelope; **plugin audit logs** (`~/.openclaw/logs/*-audit.jsonl`);
   `openclaw agents bindings`; and a gateway-mediated **LLM judge** (`src/judge.ts`).
 
@@ -113,8 +140,6 @@ corepack pnpm exec vitest run --config vitest.e2e.config.ts tests/integration.gm
 | `integration.memory.test.ts` | H | in-context recall, memory_search health | read-only |
 | `integration.tiers.test.ts` | G | tier persona inheritance, sandbox confinement | read-only |
 
-Provider-specific (Copilot) assertions live in a separate package outside this repo.
-
 ### Intentionally not covered here (and why)
 - **Full write E2E against real systems** — deliberately never done (would create real
   reminders/text real people). Writes = mocks; wrapped write-tool logic = plugin suites.
@@ -129,6 +154,10 @@ Provider-specific (Copilot) assertions live in a separate package outside this r
 
 ## Contributing tests
 
+- **Changing behavior?** Add a committed regression and run the `ci` lifecycle,
+  not only the new test. Preserve prior regressions in the cumulative pool.
+- **Changing an OpenClaw source patch?** Include the focused test change in the
+  patch and map its test file in `openclaw-patch-suite.json`.
 - **A read test?** Use `runAgent(msg, { agent: CONFIG.readAgent })` (or `webAgent`).
   Those agents can't message/write, so it's automatically safe. Assert on `res.reply`,
   a plugin audit log (`readAuditLog`), or the LLM judge (`expectJudge`).
