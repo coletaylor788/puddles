@@ -265,6 +265,16 @@ def _credentials_from_token_data(token_data: str | None) -> Credentials | None:
             not isinstance(token_info["token"], str) or not token_info["token"].strip()
         ):
             return None
+        stored_scopes = token_info.get("scopes")
+        if isinstance(stored_scopes, str):
+            token_info["scopes"] = stored_scopes.split()
+        elif stored_scopes is not None:
+            if not isinstance(stored_scopes, list) or any(
+                not isinstance(scope, str) or not scope.strip()
+                for scope in stored_scopes
+            ):
+                return None
+            token_info["scopes"] = [scope.strip() for scope in stored_scopes]
         return Credentials.from_authorized_user_info(token_info)
     except (AttributeError, json.JSONDecodeError, TypeError, ValueError):
         return None
