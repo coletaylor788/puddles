@@ -1,6 +1,8 @@
 """Unit tests for server module."""
 
+import asyncio
 import json
+import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -95,6 +97,27 @@ class TestListEmails:
             assert len(result) == 1
             assert "Not authenticated" in result[0].text
             assert "authenticate" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_auth_check_does_not_block_event_loop(self):
+        """Slow Keychain access runs in a worker thread."""
+        entered = threading.Event()
+        release = threading.Event()
+
+        def slow_auth_check():
+            entered.set()
+            release.wait(timeout=1)
+            return False
+
+        with patch("gmail_mcp.server.is_authenticated", side_effect=slow_auth_check):
+            task = asyncio.create_task(_list_emails({}))
+            await asyncio.wait_for(asyncio.to_thread(entered.wait), timeout=0.5)
+            await asyncio.sleep(0)
+            assert not task.done()
+            release.set()
+            result = await task
+
+        assert "Not authenticated" in result[0].text
 
     @pytest.mark.asyncio
     async def test_returns_error_when_service_unavailable(self):

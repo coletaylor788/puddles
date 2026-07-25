@@ -220,9 +220,24 @@ async def _authenticate() -> list[TextContent]:
         return [TextContent(type="text", text=f"Error during authentication: {e}")]
 
 
+async def _is_authenticated_async() -> bool:
+    return await run_blocking(
+        is_authenticated,
+        op="auth.is_authenticated",
+        timeout=6,
+    )
+
+
+async def _get_gmail_service_async():
+    return await run_blocking(
+        get_gmail_service,
+        op="auth.get_service",
+    )
+
+
 async def _list_emails(arguments: dict[str, Any]) -> list[TextContent]:
     """Handle list_emails tool call."""
-    if not is_authenticated():
+    if not await _is_authenticated_async():
         return [
             TextContent(
                 type="text",
@@ -230,7 +245,7 @@ async def _list_emails(arguments: dict[str, Any]) -> list[TextContent]:
             )
         ]
 
-    service = get_gmail_service()
+    service = await _get_gmail_service_async()
     if not service:
         return [
             TextContent(
@@ -374,7 +389,7 @@ def _extract_body_parts(payload: dict) -> tuple[str | None, str | None, list[dic
 
 async def _get_email(arguments: dict[str, Any]) -> list[TextContent]:
     """Handle get_email tool call."""
-    if not is_authenticated():
+    if not await _is_authenticated_async():
         return [
             TextContent(
                 type="text",
@@ -382,7 +397,7 @@ async def _get_email(arguments: dict[str, Any]) -> list[TextContent]:
             )
         ]
 
-    service = get_gmail_service()
+    service = await _get_gmail_service_async()
     if not service:
         return [
             TextContent(
@@ -472,7 +487,7 @@ def _sanitize_filename(filename: str) -> str:
 
 async def _get_attachments(arguments: dict[str, Any]) -> list[TextContent]:
     """Handle get_attachments tool call."""
-    if not is_authenticated():
+    if not await _is_authenticated_async():
         return [
             TextContent(
                 type="text",
@@ -480,7 +495,7 @@ async def _get_attachments(arguments: dict[str, Any]) -> list[TextContent]:
             )
         ]
 
-    service = get_gmail_service()
+    service = await _get_gmail_service_async()
     if not service:
         return [
             TextContent(
@@ -569,7 +584,7 @@ async def _get_attachments(arguments: dict[str, Any]) -> list[TextContent]:
 
 async def _archive_email(arguments: dict[str, Any]) -> list[TextContent]:
     """Handle archive_email tool call."""
-    if not is_authenticated():
+    if not await _is_authenticated_async():
         return [
             TextContent(
                 type="text",
@@ -577,7 +592,7 @@ async def _archive_email(arguments: dict[str, Any]) -> list[TextContent]:
             )
         ]
 
-    service = get_gmail_service()
+    service = await _get_gmail_service_async()
     if not service:
         return [
             TextContent(
@@ -665,7 +680,7 @@ async def _get_label_id(service, label_name: str) -> str | None:
 
 async def _add_label(arguments: dict[str, Any]) -> list[TextContent]:
     """Handle add_label tool call."""
-    if not is_authenticated():
+    if not await _is_authenticated_async():
         return [
             TextContent(
                 type="text",
@@ -673,7 +688,7 @@ async def _add_label(arguments: dict[str, Any]) -> list[TextContent]:
             )
         ]
 
-    service = get_gmail_service()
+    service = await _get_gmail_service_async()
     if not service:
         return [
             TextContent(
