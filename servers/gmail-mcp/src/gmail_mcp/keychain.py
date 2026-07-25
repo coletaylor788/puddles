@@ -1,7 +1,10 @@
 """Bounded macOS Keychain access for Gmail OAuth credentials."""
 
+import os
+import pwd
 import subprocess
 import time
+from pathlib import Path
 
 from .config import KEYCHAIN_SERVICE
 
@@ -9,6 +12,11 @@ KEYCHAIN_ACCESS_TIMEOUT_S = 5
 KEYCHAIN_ACCOUNT = "token"
 SECURITY_COMMAND = "/usr/bin/security"
 KEYCHAIN_DUPLICATE_ITEM_STATUS = 45
+
+
+def _login_keychain_path() -> Path:
+    account_home = Path(pwd.getpwuid(os.getuid()).pw_dir)
+    return account_home / "Library" / "Keychains" / "login.keychain-db"
 
 
 class KeychainAccessError(RuntimeError):
@@ -75,6 +83,7 @@ def read_token() -> str | None:
             "-a",
             KEYCHAIN_ACCOUNT,
             "-w",
+            str(_login_keychain_path()),
         ],
         missing_ok=True,
     )
@@ -99,6 +108,7 @@ def _item_exists(*, deadline: float | None = None) -> bool:
             KEYCHAIN_SERVICE,
             "-a",
             KEYCHAIN_ACCOUNT,
+            str(_login_keychain_path()),
         ],
         deadline=deadline,
         missing_ok=True,
@@ -133,6 +143,7 @@ def write_token(token_data: str, *, deadline: float | None = None) -> None:
     # trusted /usr/bin/security executable to read this item.
     encoded = token_data.encode().hex()
     args.extend(["-X", encoded])
+    args.append(str(_login_keychain_path()))
     result = _run_security(
         args,
         deadline=write_deadline,
@@ -152,6 +163,7 @@ def write_token(token_data: str, *, deadline: float | None = None) -> None:
                 KEYCHAIN_ACCOUNT,
                 "-X",
                 encoded,
+                str(_login_keychain_path()),
             ],
             deadline=write_deadline,
             sensitive_args=True,

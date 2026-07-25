@@ -81,6 +81,43 @@ async def test_run_blocking_cancels_work_still_queued_at_timeout(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_run_blocking_cancels_work_still_queued_by_caller(monkeypatch):
+    """Caller cancellation cannot leave queued side effects behind."""
+    loop = asyncio.get_running_loop()
+    executor = ThreadPoolExecutor(max_workers=1)
+    release_worker = threading.Event()
+    late_call_started = threading.Event()
+    cancellation = threading.Event()
+    occupied = loop.run_in_executor(executor, release_worker.wait)
+
+    async def saturated_to_thread(call):
+        return await loop.run_in_executor(executor, call)
+
+    monkeypatch.setattr(_async.asyncio, "to_thread", saturated_to_thread)
+    task = asyncio.create_task(
+        _async.run_blocking(
+            late_call_started.set,
+            op="unit.cancelled",
+            timeout=1,
+            cancellation=cancellation,
+        )
+    )
+    await asyncio.sleep(0)
+    task.cancel()
+    try:
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    finally:
+        release_worker.set()
+        await occupied
+        await asyncio.sleep(0.05)
+        executor.shutdown(wait=True)
+
+    assert cancellation.is_set()
+    assert not late_call_started.is_set()
+
+
+@pytest.mark.asyncio
 async def test_run_blocking_does_not_block_event_loop():
     """While a blocking call sleeps in a worker thread, the event loop must stay responsive."""
     counter = {"n": 0}

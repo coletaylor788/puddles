@@ -92,6 +92,9 @@ Tokens are stored in macOS Keychain using `/usr/bin/security`.
 **Account name:** `token`
 **Password:** JSON containing refresh token
 
+Reads and writes explicitly target the operating-system account's
+`~/Library/Keychains/login.keychain-db`; they do not search across keychains.
+
 Keychain calls have a five-second timeout. This matters for background
 LaunchAgents: macOS approval prompts are not visible there, so an untrusted
 executable would otherwise block forever. New token entries explicitly trust
@@ -117,7 +120,10 @@ so a timed-out worker cannot later replace credentials. The deadline starts
 before executor submission; queued work is cancelled and also rejects an
 already-expired deadline before any read, browser launch, refresh, or write.
 Persisted scopes are preserved and checked rather than replaced with the
-requested scope list.
+requested scope list. When Google reports a narrower `granted_scopes` set, that
+effective grant is validated and stored. Caller cancellation sets a cooperative
+signal checked before browser launch, refresh, cache replacement, and
+persistence, while queued executor work is cancelled before it starts.
 
 ### Viewing in Keychain Access
 
@@ -136,7 +142,8 @@ To sign out or switch accounts:
 
 Or via command line:
 ```bash
-security delete-generic-password -s "gmail-mcp"
+security delete-generic-password -s "gmail-mcp" \
+  "$HOME/Library/Keychains/login.keychain-db"
 ```
 
 ### Migrating an existing token
@@ -150,9 +157,11 @@ and click **Always Allow** on the access prompt:
 
 ```bash
 security set-generic-password-partition-list \
-  -S apple-tool: -s gmail-mcp -a token
+  -S apple-tool: -s gmail-mcp -a token \
+  "$HOME/Library/Keychains/login.keychain-db"
 security find-generic-password \
-  -s gmail-mcp -a token -w >/dev/null
+  -s gmail-mcp -a token -w \
+  "$HOME/Library/Keychains/login.keychain-db" >/dev/null
 ```
 
 The first command updates the item's access-control partition list. Older items

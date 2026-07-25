@@ -87,15 +87,18 @@ login-keychain password, and click **Always Allow** on the access prompt:
 
 ```bash
 security set-generic-password-partition-list \
-  -S apple-tool: -s gmail-mcp -a token
+  -S apple-tool: -s gmail-mcp -a token \
+  "$HOME/Library/Keychains/login.keychain-db"
 security find-generic-password \
-  -s gmail-mcp -a token -w >/dev/null
+  -s gmail-mcp -a token -w \
+  "$HOME/Library/Keychains/login.keychain-db" >/dev/null
 ```
 
 The first command adds the Apple command-line-tool partition. The second adds
 `/usr/bin/security` to an older item's explicit trusted-application list without
 printing or replacing the token. New OAuth tokens use both access rules
-immediately.
+immediately. Every command targets the login keychain explicitly so another
+keychain in the user's search list cannot shadow the credential.
 
 ## Available Tools
 
