@@ -163,6 +163,12 @@ class TestKeychainGetToken:
         with patch("gmail_mcp.auth.read_token", return_value="not json"):
             assert get_token() is None
 
+    @pytest.mark.parametrize("token_data", ["null", "[]", '"text"', "42"])
+    def test_returns_none_on_non_object_json(self, token_data):
+        """Valid JSON with the wrong shape is unauthenticated."""
+        with patch("gmail_mcp.auth.read_token", return_value=token_data):
+            assert get_token() is None
+
     def test_returns_credentials_when_valid_token(self):
         """Returns Credentials object when valid token exists."""
         token_data = {
@@ -318,6 +324,11 @@ class TestKeychainStoreToken:
 
         with (
             patch("gmail_mcp.auth._refresh_credentials", side_effect=slow_refresh),
+            patch("gmail_mcp.auth.read_token", return_value="old"),
+            patch(
+                "gmail_mcp.auth._credentials_from_token_data",
+                return_value=old_creds,
+            ),
             patch("gmail_mcp.auth.write_token", side_effect=writes.append),
             patch("gmail_mcp.auth._build_service", return_value=MagicMock()),
         ):
@@ -336,6 +347,33 @@ class TestKeychainStoreToken:
         assert not refresh_thread.is_alive()
         assert not oauth_thread.is_alive()
         assert writes == ["old", "new"]
+        assert gmail_mcp.auth._cached_keychain_creds is new_creds
+
+    def test_external_replacement_discards_stale_refresh(self):
+        """A cross-process replacement wins over an in-flight refresh."""
+        import gmail_mcp.auth
+
+        old_creds = MagicMock()
+        old_creds.expired = True
+        old_creds.refresh_token = "old-refresh"
+        old_creds.valid = True
+
+        new_creds = MagicMock()
+        new_creds.valid = True
+
+        with (
+            patch("gmail_mcp.auth.read_token", side_effect=["old", "new"]),
+            patch(
+                "gmail_mcp.auth._credentials_from_token_data",
+                side_effect=[old_creds, new_creds],
+            ),
+            patch("gmail_mcp.auth._refresh_credentials", return_value=True),
+            patch("gmail_mcp.auth.write_token") as mock_write,
+            patch("gmail_mcp.auth._build_service", return_value=MagicMock()),
+        ):
+            assert get_gmail_service() is not None
+
+        mock_write.assert_not_called()
         assert gmail_mcp.auth._cached_keychain_creds is new_creds
 
 
@@ -369,12 +407,64 @@ class TestKeychainCommand:
             with pytest.raises(KeychainAccessError, match="could not start"):
                 is_authenticated()
 
+
+class TestAuthenticationBounds:
+    """Tests for operation-wide OAuth and refresh deadlines."""
+
+    def test_refresh_request_caps_each_attempt_to_remaining_deadline(self):
+        import gmail_mcp.auth
+
+        transport = MagicMock(return_value=MagicMock())
+        with (
+            patch("gmail_mcp.auth.Request", return_value=transport),
+            patch("gmail_mcp.auth.time.monotonic", side_effect=[100.0, 110.0]),
+        ):
+            request = gmail_mcp.auth._DeadlineRequest(45)
+            request("https://oauth.example/token", timeout=120)
+
+        transport.assert_called_once_with(
+            "https://oauth.example/token",
+            timeout=30,
+        )
+
+    def test_refresh_request_rejects_attempt_after_deadline(self):
+        import gmail_mcp.auth
+
+        transport = MagicMock()
+        with (
+            patch("gmail_mcp.auth.Request", return_value=transport),
+            patch("gmail_mcp.auth.time.monotonic", side_effect=[100.0, 146.0]),
+        ):
+            request = gmail_mcp.auth._DeadlineRequest(45)
+            with pytest.raises(TimeoutError, match="deadline exceeded"):
+                request("https://oauth.example/token")
+
+        transport.assert_not_called()
+
+    def test_oauth_token_exchange_has_http_timeout(self):
+        import gmail_mcp.auth
+
+        flow = object.__new__(gmail_mcp.auth._BoundedInstalledAppFlow)
+        with patch.object(
+            gmail_mcp.auth.InstalledAppFlow,
+            "fetch_token",
+            return_value="token",
+        ) as parent_fetch:
+            assert flow.fetch_token(code="authorization-code") == "token"
+
+        parent_fetch.assert_called_once_with(
+            code="authorization-code",
+            timeout=30,
+        )
+
+
 class TestRunOauthFlow:
     """Tests for run_oauth_flow()."""
 
     def test_raises_when_credentials_missing(self, tmp_path):
         """Raises FileNotFoundError when credentials.json doesn't exist and no token."""
         with (
+            patch("gmail_mcp.auth._use_env_backend", return_value=True),
             patch("gmail_mcp.auth.get_token", return_value=None),
             patch("gmail_mcp.auth.get_credentials_path", return_value=tmp_path / "missing.json"),
         ):
@@ -401,10 +491,11 @@ class TestRunOauthFlow:
         }
 
         with (
+            patch("gmail_mcp.auth._use_env_backend", return_value=True),
             patch("gmail_mcp.auth.get_token", return_value=None),
             patch("gmail_mcp.auth.get_credentials_path", return_value=creds_file),
             patch(
-                "gmail_mcp.auth.InstalledAppFlow.from_client_secrets_file",
+                "gmail_mcp.auth._BoundedInstalledAppFlow.from_client_secrets_file",
                 return_value=mock_flow,
             ),
             patch("gmail_mcp.auth.store_token") as mock_store,
@@ -416,7 +507,9 @@ class TestRunOauthFlow:
             mock_store.assert_called_once_with(mock_creds)
             mock_flow.run_local_server.assert_called_once_with(
                 port=0,
+                authorization_prompt_message=None,
                 timeout_seconds=600,
+                browser="gmail-mcp-background",
             )
 
     def test_returns_email_when_already_authenticated(self):
@@ -434,6 +527,7 @@ class TestRunOauthFlow:
         }
 
         with (
+            patch("gmail_mcp.auth._use_env_backend", return_value=True),
             patch("gmail_mcp.auth.get_token", return_value=mock_creds),
             patch("gmail_mcp.auth.build", return_value=mock_service),
         ):
@@ -458,6 +552,7 @@ class TestRunOauthFlow:
         }
 
         with (
+            patch("gmail_mcp.auth._use_env_backend", return_value=True),
             patch("gmail_mcp.auth.get_token", return_value=mock_creds),
             patch("gmail_mcp.auth.store_token") as mock_store,
             patch("gmail_mcp.auth.build", return_value=mock_service),
@@ -486,10 +581,11 @@ class TestRunOauthFlow:
         }
 
         with (
+            patch("gmail_mcp.auth._use_env_backend", return_value=True),
             patch("gmail_mcp.auth.get_token", return_value=mock_old_creds),
             patch("gmail_mcp.auth.get_credentials_path") as mock_path,
             patch(
-                "gmail_mcp.auth.InstalledAppFlow.from_client_secrets_file",
+                "gmail_mcp.auth._BoundedInstalledAppFlow.from_client_secrets_file",
                 return_value=mock_flow,
             ),
             patch("gmail_mcp.auth.store_token") as mock_store,
@@ -510,7 +606,10 @@ class TestGetGmailService:
 
     def test_returns_none_when_not_authenticated(self):
         """Returns None when no token exists."""
-        with patch("gmail_mcp.auth.get_token", return_value=None):
+        with (
+            patch("gmail_mcp.auth._use_env_backend", return_value=True),
+            patch("gmail_mcp.auth.get_token", return_value=None),
+        ):
             assert get_gmail_service() is None
 
     def test_returns_service_when_authenticated(self):
@@ -522,6 +621,7 @@ class TestGetGmailService:
         mock_service = MagicMock()
 
         with (
+            patch("gmail_mcp.auth._use_env_backend", return_value=True),
             patch("gmail_mcp.auth.get_token", return_value=mock_creds),
             patch("gmail_mcp.auth.build", return_value=mock_service),
         ):
@@ -538,6 +638,7 @@ class TestGetGmailService:
         mock_service = MagicMock()
 
         with (
+            patch("gmail_mcp.auth._use_env_backend", return_value=True),
             patch("gmail_mcp.auth.get_token", return_value=mock_creds),
             patch("gmail_mcp.auth.store_token") as mock_store,
             patch("gmail_mcp.auth.build", return_value=mock_service),
@@ -555,5 +656,8 @@ class TestGetGmailService:
         mock_creds.refresh_token = "refresh"
         mock_creds.refresh.side_effect = Exception("Refresh failed")
 
-        with patch("gmail_mcp.auth.get_token", return_value=mock_creds):
+        with (
+            patch("gmail_mcp.auth._use_env_backend", return_value=True),
+            patch("gmail_mcp.auth.get_token", return_value=mock_creds),
+        ):
             assert get_gmail_service() is None

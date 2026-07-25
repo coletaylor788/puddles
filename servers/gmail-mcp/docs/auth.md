@@ -98,6 +98,15 @@ executable would otherwise block forever. New token entries explicitly trust
 `/usr/bin/security`, whose path is stable across Homebrew Python upgrades.
 Parsed credentials are cached for at most 60 seconds to avoid duplicate
 Keychain reads while still observing sign-out or token replacement promptly.
+Refresh-and-write transactions use an owner-only lock file at
+`~/.config/gmail-mcp/credential.lock`, then compare the Keychain value again
+before persistence. This prevents concurrent server processes and a stale
+refresh from overwriting a newer browser authorization.
+
+OAuth browser waiting, token exchange, refresh retries, Keychain commands, and
+Gmail HTTP calls each have an inner deadline below the MCP worker deadline.
+Browser launch uses the non-blocking system `/usr/bin/open` path, so a stalled
+AppleScript browser controller cannot freeze the server.
 
 ### Viewing in Keychain Access
 

@@ -18,11 +18,12 @@ The pull-request workflow runs this exact command on macOS. The lifecycle:
 1. builds and lints all workspace packages;
 2. runs all isolated workspace tests, including deployment and recording-mock
    behavior;
-3. creates a detached worktree at the pinned OpenClaw revision;
-4. restores that worktree's frozen dependencies;
-5. applies every maintained source patch in deployment order;
-6. executes every mapped OpenClaw regression; and
-7. executes candidate tests that need both the Puddles harness and patched
+3. runs the Gmail server's safe Python tests, lint, and compilation;
+4. creates a detached worktree at the pinned OpenClaw revision;
+5. restores that worktree's frozen dependencies;
+6. applies every maintained source patch in deployment order;
+7. executes every mapped OpenClaw regression; and
+8. executes candidate tests that need both the Puddles harness and patched
    OpenClaw source.
 
 The temporary worktree is removed on success, failure, and termination.
@@ -91,6 +92,7 @@ suites, and uncommitted checks do not count.
 - local-default versus explicit-remote deployment routing;
 - patched browser entrypoint profile and singleton cleanup;
 - recording message and PIM write adapters;
+- Gmail Keychain, refresh concurrency, timeout, and MCP error translation;
 - manifest completeness and pinned-source enforcement; and
 - shared utility parsing and complexity regressions.
 

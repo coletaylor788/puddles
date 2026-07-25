@@ -15,8 +15,10 @@ from mcp.types import TextContent, Tool
 
 from ._async import run_blocking
 from .auth import (
+    CREDENTIAL_LOCK_TIMEOUT_S,
     HTTP_SOCKET_TIMEOUT_S,
     OAUTH_BROWSER_TIMEOUT_S,
+    REFRESH_DEADLINE_S,
     get_gmail_service,
     is_authenticated,
     run_oauth_flow,
@@ -27,8 +29,20 @@ from .logging_setup import log
 # Initialize MCP server
 server = Server("gmail-mcp")
 
-AUTH_SERVICE_TIMEOUT_S = HTTP_SOCKET_TIMEOUT_S * 2 + 10
-OAUTH_WORKER_TIMEOUT_S = OAUTH_BROWSER_TIMEOUT_S + 160
+AUTH_CHECK_TIMEOUT_S = CREDENTIAL_LOCK_TIMEOUT_S + HTTP_SOCKET_TIMEOUT_S
+AUTH_SERVICE_TIMEOUT_S = (
+    CREDENTIAL_LOCK_TIMEOUT_S
+    + REFRESH_DEADLINE_S
+    + HTTP_SOCKET_TIMEOUT_S
+    + 45
+)
+OAUTH_WORKER_TIMEOUT_S = (
+    CREDENTIAL_LOCK_TIMEOUT_S * 2
+    + REFRESH_DEADLINE_S
+    + OAUTH_BROWSER_TIMEOUT_S
+    + HTTP_SOCKET_TIMEOUT_S * 2
+    + 45
+)
 
 
 class AuthenticationUnavailableError(RuntimeError):
@@ -238,11 +252,16 @@ async def _authenticate() -> list[TextContent]:
 
 
 async def _is_authenticated_async() -> bool:
-    return await run_blocking(
-        is_authenticated,
-        op="auth.is_authenticated",
-        timeout=6,
-    )
+    try:
+        return await run_blocking(
+            is_authenticated,
+            op="auth.is_authenticated",
+            timeout=AUTH_CHECK_TIMEOUT_S,
+        )
+    except asyncio.TimeoutError as exc:
+        raise AuthenticationUnavailableError(
+            "Gmail authentication check timed out"
+        ) from exc
 
 
 async def _get_gmail_service_async():
