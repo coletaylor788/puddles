@@ -479,7 +479,7 @@ class TestKeychainStoreToken:
         old_creds.refresh_token = "old-refresh"
         old_creds.valid = True
         old_creds.granted_scopes = None
-        old_creds.scopes = None
+        old_creds.scopes = SCOPES
         old_creds.to_json.return_value = '{"token":"old"}'
 
         new_creds = MagicMock()
@@ -526,7 +526,7 @@ class TestKeychainStoreToken:
 
         assert not refresh_thread.is_alive()
         assert not oauth_thread.is_alive()
-        assert writes == ['{"token": "old"}', '{"token": "new"}']
+        assert [json.loads(token)["token"] for token in writes] == ["old", "new"]
         assert gmail_mcp.auth._cached_keychain_creds is new_creds
 
     def test_external_replacement_discards_stale_refresh(self):
@@ -1027,17 +1027,65 @@ class TestRunOauthFlow:
             "emailAddress": "refreshed@gmail.com"
         }
 
+        def complete_refresh(_request):
+            mock_creds.valid = True
+
         with (
             patch("gmail_mcp.auth._use_env_backend", return_value=True),
             patch("gmail_mcp.auth.get_token", return_value=mock_creds),
             patch("gmail_mcp.auth.store_token") as mock_store,
             patch("gmail_mcp.auth.build", return_value=mock_service),
         ):
+            mock_creds.refresh.side_effect = complete_refresh
             email = run_oauth_flow()
 
             assert email == "refreshed@gmail.com"
             mock_creds.refresh.assert_called_once()
             mock_store.assert_called_once_with(mock_creds)
+
+    def test_reauths_when_refresh_loses_required_grant(self, tmp_path):
+        """A narrowed refresh cannot be reported as successful authentication."""
+        mock_creds = MagicMock()
+        mock_creds.valid = False
+        mock_creds.expired = True
+        mock_creds.refresh_token = "refresh"
+        mock_creds.scopes = SCOPES
+        mock_creds.granted_scopes = None
+
+        def narrow_refresh(_request):
+            mock_creds.valid = True
+            mock_creds.granted_scopes = [
+                "https://www.googleapis.com/auth/gmail.modify"
+            ]
+
+        mock_creds.refresh.side_effect = narrow_refresh
+        new_creds = MagicMock()
+        new_creds.refresh_token = "new-refresh"
+        new_creds.scopes = SCOPES
+        new_creds.granted_scopes = None
+        mock_flow = MagicMock()
+        mock_flow.run_local_server.return_value = new_creds
+        creds_file = tmp_path / "credentials.json"
+        creds_file.write_text('{"installed": {"client_id": "x", "client_secret": "y"}}')
+        mock_service = MagicMock()
+        mock_service.users.return_value.getProfile.return_value.execute.return_value = {
+            "emailAddress": "recovered@example.test"
+        }
+
+        with (
+            patch("gmail_mcp.auth._use_env_backend", return_value=True),
+            patch("gmail_mcp.auth.get_token", return_value=mock_creds),
+            patch("gmail_mcp.auth.get_credentials_path", return_value=creds_file),
+            patch(
+                "gmail_mcp.auth._BoundedInstalledAppFlow.from_client_secrets_file",
+                return_value=mock_flow,
+            ),
+            patch("gmail_mcp.auth.store_token"),
+            patch("gmail_mcp.auth._build_service", return_value=mock_service),
+        ):
+            assert run_oauth_flow() == "recovered@example.test"
+
+        mock_flow.run_local_server.assert_called_once()
 
     def test_reauths_when_scopes_missing(self):
         """Forces re-authentication when token is missing required scopes."""
@@ -1236,3 +1284,40 @@ class TestGetGmailService:
             patch("gmail_mcp.auth.get_token", return_value=mock_creds),
         ):
             assert get_gmail_service() is None
+
+    def test_does_not_persist_keychain_refresh_with_narrower_grant(self):
+        """A narrowed refresh cannot replace broader persisted credentials."""
+        mock_creds = MagicMock()
+        mock_creds.expired = True
+        mock_creds.refresh_token = "refresh"
+        mock_creds.valid = True
+        mock_creds.scopes = SCOPES
+        mock_creds.granted_scopes = None
+
+        def narrow_refresh(*_args, **_kwargs):
+            mock_creds.granted_scopes = [
+                "https://www.googleapis.com/auth/gmail.modify"
+            ]
+            return True
+
+        with (
+            patch("gmail_mcp.auth._use_env_backend", return_value=False),
+            patch("gmail_mcp.auth.get_token", return_value=mock_creds),
+            patch("gmail_mcp.auth.read_token", side_effect=["before", "before"]),
+            patch(
+                "gmail_mcp.auth._credentials_from_token_data",
+                return_value=mock_creds,
+            ),
+            patch(
+                "gmail_mcp.auth._refresh_credentials",
+                side_effect=narrow_refresh,
+            ),
+            patch(
+                "gmail_mcp.auth._keychain_store_token_unlocked"
+            ) as mock_store,
+            patch("gmail_mcp.auth._build_service") as mock_build,
+        ):
+            assert get_gmail_service() is None
+
+        mock_store.assert_not_called()
+        mock_build.assert_not_called()
