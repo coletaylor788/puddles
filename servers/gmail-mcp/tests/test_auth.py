@@ -102,6 +102,22 @@ class TestEnvBackend:
         get_token()
         mock_creds.refresh.assert_not_called()
 
+    def test_env_backend_does_not_resolve_keychain_account_home(self, monkeypatch):
+        """Unmapped container UIDs do not break environment-only startup."""
+        import gmail_mcp.auth
+
+        monkeypatch.setenv(
+            GOOGLE_TOKEN_ENV,
+            json.dumps({
+                "token": "access-token",
+                "refresh_token": "refresh-token",
+                "client_id": "client-id",
+                "client_secret": "client-secret",
+            }),
+        )
+        with patch("gmail_mcp.auth.pwd.getpwuid", side_effect=KeyError("unmapped")):
+            assert gmail_mcp.auth.is_authenticated() is True
+
     def test_store_token_is_noop(self, monkeypatch):
         """store_token does nothing when env backend is active."""
         monkeypatch.setenv(GOOGLE_TOKEN_ENV, '{"token": "x"}')
@@ -197,6 +213,7 @@ class TestKeychainGetToken:
             ("client_id", {}),
             ("client_secret", 1),
             ("client_secret", ""),
+            ("client_secret", " \t "),
         ],
     )
     def test_returns_none_on_invalid_required_fields(self, field, value):
@@ -211,7 +228,7 @@ class TestKeychainGetToken:
         with patch("gmail_mcp.auth.read_token", return_value=json.dumps(token_info)):
             assert get_token() is None
 
-    @pytest.mark.parametrize("value", [None, [], {}, True, 1, ""])
+    @pytest.mark.parametrize("value", [None, [], {}, True, 1, "", " \t "])
     def test_returns_none_on_invalid_access_token(self, value):
         """A present OAuth access token must be a non-empty string."""
         token_info = {
