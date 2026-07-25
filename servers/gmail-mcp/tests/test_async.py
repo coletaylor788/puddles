@@ -4,7 +4,9 @@ import asyncio
 import io
 import json
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -47,6 +49,35 @@ async def test_run_blocking_times_out(monkeypatch):
     assert len(timeout_events) == 1
     assert timeout_events[0]["op"] == "unit.slow"
     assert timeout_events[0]["timeout_s"] == 0.05
+
+
+@pytest.mark.asyncio
+async def test_run_blocking_cancels_work_still_queued_at_timeout(monkeypatch):
+    """Executor saturation cannot start a side effect after timeout."""
+    loop = asyncio.get_running_loop()
+    executor = ThreadPoolExecutor(max_workers=1)
+    release_worker = threading.Event()
+    late_call_started = threading.Event()
+    occupied = loop.run_in_executor(executor, release_worker.wait)
+
+    async def saturated_to_thread(call):
+        return await loop.run_in_executor(executor, call)
+
+    monkeypatch.setattr(_async.asyncio, "to_thread", saturated_to_thread)
+    try:
+        with pytest.raises(asyncio.TimeoutError):
+            await _async.run_blocking(
+                late_call_started.set,
+                op="unit.queued",
+                timeout=0.05,
+            )
+    finally:
+        release_worker.set()
+        await occupied
+        await asyncio.sleep(0.05)
+        executor.shutdown(wait=True)
+
+    assert not late_call_started.is_set()
 
 
 @pytest.mark.asyncio

@@ -228,8 +228,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 async def _authenticate() -> list[TextContent]:
     """Handle authenticate tool call."""
     try:
+        deadline = time.monotonic() + OAUTH_OPERATION_TIMEOUT_S
         email = await run_blocking(
-            run_oauth_flow,
+            lambda: run_oauth_flow(deadline=deadline),
             op="auth.oauth_flow",
             timeout=OAUTH_WORKER_TIMEOUT_S,
         )
@@ -267,9 +268,10 @@ async def _is_authenticated_async() -> bool:
 
 
 async def _get_gmail_service_async():
+    deadline = time.monotonic() + AUTH_SERVICE_TIMEOUT_S - 10
     try:
         return await run_blocking(
-            get_gmail_service,
+            lambda: get_gmail_service(deadline=deadline),
             op="auth.get_service",
             timeout=AUTH_SERVICE_TIMEOUT_S,
         )

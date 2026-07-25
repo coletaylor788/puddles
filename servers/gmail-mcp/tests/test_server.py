@@ -120,7 +120,7 @@ class TestAuthenticate:
         entered = threading.Event()
         release = threading.Event()
 
-        def slow_oauth():
+        def slow_oauth(**_kwargs):
             entered.set()
             release.wait(timeout=1)
             return "test@gmail.com"
