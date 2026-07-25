@@ -134,7 +134,7 @@ before read-only candidate validation.
 Completed locally:
 
 - `CI=true .venv/bin/python -m pytest tests/ --ignore=tests/integration -q` -
-  163 safe tests passed; live mailbox tests were not collected.
+  164 safe tests passed; live mailbox tests were not collected.
 - `.venv/bin/ruff check src/ tests/` - passed.
 - `.venv/bin/python -m compileall -q src tests` - passed.
 - `git diff --check` - passed.
@@ -214,12 +214,15 @@ Completed locally:
   Already-started authentication writes now receive a short bounded drain
   before cancellation propagates, and scopes are normalized or rejected before
   SDK construction.
+- A fifteenth review found AnyIO level cancellation could repeatedly interrupt
+  the bounded drain. The drain now runs inside an AnyIO shield, with a task-group
+  regression covering cancellation during an active credential write.
 - `packages/e2e/tests/gmail-keychain.test.ts` - two isolated regressions passed,
   covering long create/update values, content-only refresh ACL behavior, bounded
   timeouts, and sensitive traceback sanitization.
 - `node packages/e2e/bin/openclaw-test-env.mjs ci` - passed repository build and
   lint, 241 workspace tests (112 hooks, 25 cumulative E2E, 61 calendar, 43
-  secure Gmail), the 163-test safe Gmail Python suite plus Ruff and compilation,
+  secure Gmail), the 164-test safe Gmail Python suite plus Ruff and compilation,
   289 mapped OpenClaw tests, and one candidate browser test; temporary worktree
   cleanup completed.
 
@@ -302,6 +305,8 @@ Rollback:
   Keychain-domain ambiguity.
 - The fourteenth fresh review found and corrected in-flight Keychain-write
   cancellation ordering and malformed persisted scope parsing.
+- The fifteenth fresh review found and corrected AnyIO level-cancellation
+  interruption of the bounded credential-write drain.
 - The next review must invoke the repository adversarial-review workflow after
   cumulative E2E integration and OAuth validation.
 

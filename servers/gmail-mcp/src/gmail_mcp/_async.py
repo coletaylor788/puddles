@@ -30,6 +30,8 @@ import threading
 import time
 from typing import Any, Callable, TypeVar
 
+import anyio
+
 from .logging_setup import log
 
 T = TypeVar("T")
@@ -146,13 +148,14 @@ async def _drain_cancelled_work(
     if not started.is_set():
         work.cancel()
         return
-    try:
-        await asyncio.wait_for(
-            asyncio.shield(work),
-            timeout=CANCELLATION_DRAIN_TIMEOUT_S,
-        )
-    except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
-        pass
+    with anyio.CancelScope(shield=True):
+        try:
+            await asyncio.wait_for(
+                asyncio.shield(work),
+                timeout=CANCELLATION_DRAIN_TIMEOUT_S,
+            )
+        except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
+            pass
 
 
 def _result_size(result: Any) -> int | None:

@@ -8,6 +8,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+import anyio
 import pytest
 
 from gmail_mcp import _async
@@ -147,6 +148,39 @@ async def test_cancellation_drains_started_authentication_write():
     with pytest.raises(asyncio.CancelledError):
         await task
 
+    assert cancellation.is_set()
+    assert write_finished.is_set()
+
+
+@pytest.mark.asyncio
+async def test_anyio_cancellation_drains_started_authentication_write():
+    """AnyIO level cancellation cannot interrupt the bounded write drain."""
+    write_started = threading.Event()
+    release_write = threading.Event()
+    write_finished = threading.Event()
+    cancellation = threading.Event()
+
+    def credential_write():
+        write_started.set()
+        release_write.wait(timeout=1)
+        write_finished.set()
+
+    async def run_write():
+        await _async.run_blocking(
+            credential_write,
+            op="unit.anyio_credential_write",
+            timeout=1,
+            cancellation=cancellation,
+        )
+
+    release_timer = threading.Timer(0.1, release_write.set)
+    async with anyio.create_task_group() as task_group:
+        task_group.start_soon(run_write)
+        await asyncio.wait_for(asyncio.to_thread(write_started.wait), timeout=0.5)
+        release_timer.start()
+        task_group.cancel_scope.cancel()
+
+    release_timer.join(timeout=1)
     assert cancellation.is_set()
     assert write_finished.is_set()
 
