@@ -4,14 +4,13 @@ description: "Implement features safely from research through test-environment i
 compatibility: "Requires the target repository's existing build, test, deployment, and rollback tools. Uses repository-provided test and production lifecycles when available."
 metadata:
   author: Cole Taylor
-  version: "1.2.0"
+  version: "1.3.0"
 ---
 
 # Safe Feature Development
 
-Track feature development in an issue. Keep it current as the living source of
-truth, with a brief human-readable summary first and the detailed agent status,
-decisions, validation, rollout, rollback, and review log after it.
+Track feature development in a repository plan as the detailed source of truth.
+Use its issue only as a concise status ledger that links to the plan.
 
 Use this workflow for feature implementation, behavior changes, migrations,
 runtime configuration, plugins, integrations, and deployment automation. Follow
@@ -29,9 +28,36 @@ global safety or publication boundary.
      mutation surfaces, ports, processes, and artifacts that must stay isolated.
 
 2. **Plan**
-   - For significant work, create the repository's expected plan artifact with
-     design, APIs, safety model, implementation order, validation, rollout,
-     rollback, and a live checklist.
+   - For significant work, create or update the repository's expected plan
+     artifact. After one H1 title, include compact metadata containing only
+     `Status`, `Issue`, `Last updated`, and optionally `Owner`.
+   - After the title and metadata, the plan must contain exactly two top-level
+     content sections in this order:
+     1. `## Human design`, with exactly `### Problem`, `### Outcome`,
+        `### Approach`, and `### Safety and rollout`. Keep it concise, current,
+        and understandable without implementation context. State decisions and
+        current behavior rather than an append-only chronology.
+     2. `## Agent details`, with exactly `### State`,
+        `### Scope and acceptance criteria`, `### Architecture and decisions`,
+        `### Implementation`, `### Validation`, `### Rollout and rollback`,
+        `### Review log`, and `### Checklist`. Keep it complete, operational,
+        and consistent with `Human design`.
+   - Do not add another top-level section, an append-only status log, or a
+     duplicate design narrative elsewhere in the plan.
+   - On every substantive change, re-read and rewrite the entire `Human design`
+     section as needed so it remains one coherent current design. Re-evaluate
+     and fully update `Agent details` in the same pass so requirements,
+     decisions, steps, evidence, risks, and checklist state remain current and
+     synchronized. Apply this rule after research and after implementation,
+     validation, rollout, or review changes; never append a fragment as a
+     substitute for updating the whole plan.
+   - Start the issue body with the plan link, followed only by `## Status` and
+     `## Done`. `Status` may contain only the current state, last updated, next
+     step, and blockers. `Done` is a concise current list of completed
+     milestones. Keep design, decisions, implementation steps, validation
+     evidence, rollout and rollback, risks, and review detail in the plan.
+     Issue comments, when needed, must likewise contain only concise status and
+     completed milestones.
    - Resolve material design ambiguity before implementation. Do not stop after
      planning when implementation has already been requested and the design is
      approved.
