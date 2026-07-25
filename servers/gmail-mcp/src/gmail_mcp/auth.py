@@ -463,21 +463,25 @@ def get_gmail_service():
                 return None
             store_token(creds)
     else:
-        with _credential_transaction():
-            token_before = read_token()
-            creds = _credentials_from_token_data(token_before)
-            _cache_keychain_credentials(creds)
-            if not creds:
-                return None
-            if creds.expired and creds.refresh_token:
-                if not _refresh_credentials(creds, source="get_service"):
+        creds = get_token()
+        if not creds:
+            return None
+        if creds.expired and creds.refresh_token:
+            with _credential_transaction():
+                token_before = read_token()
+                creds = _credentials_from_token_data(token_before)
+                _cache_keychain_credentials(creds)
+                if not creds:
                     return None
-                token_current = read_token()
-                if token_current != token_before:
-                    creds = _credentials_from_token_data(token_current)
-                    _cache_keychain_credentials(creds)
-                else:
-                    _keychain_store_token_unlocked(creds)
+                if creds.expired and creds.refresh_token:
+                    if not _refresh_credentials(creds, source="get_service"):
+                        return None
+                    token_current = read_token()
+                    if token_current != token_before:
+                        creds = _credentials_from_token_data(token_current)
+                        _cache_keychain_credentials(creds)
+                    else:
+                        _keychain_store_token_unlocked(creds)
 
     if not creds or not creds.valid:
         return None
