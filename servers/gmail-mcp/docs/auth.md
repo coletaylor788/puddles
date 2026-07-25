@@ -103,7 +103,8 @@ Refresh-and-write transactions use an owner-only lock file at
 before persistence. This prevents concurrent server processes and a stale
 refresh from overwriting a newer browser authorization. The lock path is tied
 to the fixed Keychain service/account identity and does not move when
-`GMAIL_MCP_CONFIG_DIR` changes.
+`GMAIL_MCP_CONFIG_DIR` or the process `HOME` environment changes; it derives
+from the canonical operating-system account home.
 
 OAuth browser waiting, token exchange, refresh retries, Keychain commands, and
 Gmail HTTP calls each have an inner deadline below the MCP worker deadline.

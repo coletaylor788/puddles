@@ -1,6 +1,7 @@
 """Bounded macOS Keychain access for Gmail OAuth credentials."""
 
 import subprocess
+import time
 
 from .config import KEYCHAIN_SERVICE
 
@@ -17,17 +18,25 @@ class KeychainAccessError(RuntimeError):
 def _run_security(
     args: list[str],
     *,
+    deadline: float | None = None,
     missing_ok: bool = False,
     allowed_returncodes: tuple[int, ...] = (),
     sensitive_args: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     """Run a bounded macOS Keychain command and sanitize failures."""
+    timeout = (
+        KEYCHAIN_ACCESS_TIMEOUT_S
+        if deadline is None
+        else max(0.0, deadline - time.monotonic())
+    )
+    if timeout <= 0:
+        raise KeychainAccessError("macOS Keychain access timed out")
     try:
         result = subprocess.run(
             [SECURITY_COMMAND, *args],
             capture_output=True,
             text=True,
-            timeout=KEYCHAIN_ACCESS_TIMEOUT_S,
+            timeout=timeout,
             check=False,
         )
     except subprocess.TimeoutExpired as exc:
@@ -69,7 +78,7 @@ def read_token() -> str | None:
     return token_data or None
 
 
-def _item_exists() -> bool:
+def _item_exists(*, deadline: float | None = None) -> bool:
     result = _run_security(
         [
             "find-generic-password",
@@ -78,6 +87,7 @@ def _item_exists() -> bool:
             "-a",
             KEYCHAIN_ACCOUNT,
         ],
+        deadline=deadline,
         missing_ok=True,
     )
     return result.returncode == 0
@@ -85,7 +95,8 @@ def _item_exists() -> bool:
 
 def write_token(token_data: str) -> None:
     """Create or update the exact Gmail OAuth token item."""
-    exists = _item_exists()
+    deadline = time.monotonic() + KEYCHAIN_ACCESS_TIMEOUT_S
+    exists = _item_exists(deadline=deadline)
     args = [
         "add-generic-password",
         "-s",
@@ -109,6 +120,7 @@ def write_token(token_data: str) -> None:
     args.extend(["-X", encoded])
     result = _run_security(
         args,
+        deadline=deadline,
         allowed_returncodes=(KEYCHAIN_DUPLICATE_ITEM_STATUS,) if not exists else (),
         sensitive_args=True,
     )
@@ -126,5 +138,6 @@ def write_token(token_data: str) -> None:
                 "-X",
                 encoded,
             ],
+            deadline=deadline,
             sensitive_args=True,
         )
