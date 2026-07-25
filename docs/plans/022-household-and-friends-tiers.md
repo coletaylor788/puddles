@@ -16,6 +16,7 @@ this changelog records when the load-bearing pieces landed:
 - **2026-07-05** — Phase 1 (household) built + validated on the default provider; the build's corrections are folded into the sections below.
 - **2026-07-07** — persona inheritance moved to the `persona-inherit` hook (tier persona symlinks removed); household `USER.md` roster added; escalation e2e confirmed on the wire (the webchat "duplicate + announce step" was a session-viewer artifact, not a real double-send).
 - **2026-07-09** — escalation return-relay wired into main (`AGENTS.md`, Reply-gesture-only); verified end-to-end on real iMessage.
+- 2026-07-24 — Foundry provider brought up live on **DeepSeek-V4-Flash** (cole-foundry/eastus, Global Standard); tier model-catalog + provider config updated.
 
 **Validated PASS on the default provider:** sandbox confinement, workspace containment, persona inheritance via `persona-inherit` hook (household loads main's SOUL/IDENTITY/TOOLS verbatim; tier can't edit them; sandbox has no symlink to escape), tool surfaces, message-chat-pin cross-chat block, cron allowlist, no-upward-A2A, injection refusal, scoped reply, worker-scope-negative, self-spawn, PIM reminder scoping, escalation-to-Cole e2e (one clean wire delivery; webchat viewer shows internal A2A steps but nothing leaks to real channels). main untouched + healthy throughout. **Return relay now built + verified on real iMessage (2026-07-09):** main relays Cole's Reply-gesture answers back to household via `sessions_send` (see [How relays to Cole work](#how-relays-to-cole-work-verified)). **Deferred to cutover:** self-DM filter, groups, and full-loop validation on a **real partner number** (all need real inbound + Cole; the return relay so far was tested with Cole on both ends via the scratch binding).
 
@@ -67,14 +68,14 @@ browser). Workers are isolated per tier: a prompt injection that lands in
 `sessions_yield`, for parallel work.
 
 **Model split.** All multiplayer agents (the two tiers + their four
-workers) run on **MiniMax M2.5 hosted on Azure AI Foundry**, served
+workers) run on **DeepSeek-V4-Flash hosted on Azure AI Foundry**, served
 via OpenClaw's bundled `microsoft-foundry` provider. This isolates
 multiplayer traffic from main's LLM quota, gives us provider
 diversification, and keeps the inference call inside an Azure tenant
 (no-training data posture, key managed in Azure rather than directly
-with MiniMax). Main and its existing workers keep their existing
+with the model vendor). Main and its existing workers keep their existing
 provider, unchanged. See
-[Multiplayer model: MiniMax M2.5 on Azure Foundry](#multiplayer-model-minimax-m25-on-azure-foundry).
+[Multiplayer model: DeepSeek-V4-Flash on Azure Foundry](#multiplayer-model-deepseek-v4-flash-on-azure-foundry).
 
 > **Note on file citations.** OpenClaw's installed dist uses hashed
 > filenames (e.g. `channel-B3h3eRer.js`, `session-key-BOpfMTUN.js`).
@@ -93,7 +94,7 @@ built and validated on main's **existing, already-provisioned default
 model** (no per-agent override) so all setup and Tier-A/B validation
 runs with zero metered Foundry/Azure consumption. The Foundry/Entra
 provider bring-up (**Phase 0**) and the per-tier switch to
-`microsoft-foundry/FW-MiniMax-M2.5` are deferred to the **end** of
+`microsoft-foundry/DeepSeek-V4-Flash` are deferred to the **end** of
 Phase 1 — the "cutover" — so the metered deployment only ever sees the
 final smoke test + the real-traffic Tier-C pass, never the iterative
 testing.
@@ -115,23 +116,23 @@ autonomous middle:
   behavioral testing (tools, A2A, workspace hierarchy, hooks, workers,
   elevation) is already done on the default provider; the cutover only
   confirms the metered provider *answers*. Residual risk accepted:
-  MiniMax may tool-call / reason slightly differently than the test
+  DeepSeek-V4-Flash may tool-call / reason slightly differently than the test
   provider — the hello-world confirms auth + connectivity, not behavior
-  parity. If a tier misbehaves on MiniMax in real traffic, that's the
+  parity. If a tier misbehaves on DeepSeek-V4-Flash in real traffic, that's the
   first place to look.
 
 | Phase | Scope | Agents added | Bindings | When |
 |---|---|---|---|---|
 | **Phase 1 (build+validate)** | household end-to-end on the **default** provider (self-validating) | `household`, `household-reader`, `household-browser-agent` | scratch handle | First — validate before the metered Foundry cutover |
-| **Phase 0 (cutover)** | Foundry/Entra bring-up + switch tiers to MiniMax (**hands-on**) | none | swap scratch → partner DM | **Late** — end of Phase 1, just before Tier C |
+| **Phase 0 (cutover)** | Foundry/Entra bring-up + switch tiers to DeepSeek-V4-Flash (**hands-on**) | none | swap scratch → partner DM | **Late** — end of Phase 1, just before Tier C |
 | **Phase 2** | extend to friends (self-validating) | `friends`, `friends-reader`, `friends-browser-agent` | one trusted friend DM | When Cole decides Phase 1 looks good (manual advance — no quantitative gate) |
 
 **Phase 0 (hands-on provider cutover — runs late):**
 
 - Azure Foundry + Entra auth on the mini (native device-code flow; `az` optional — see [Auth on the mini](#auth-on-the-mini-entra-id-not-api-key))
 - Entra scope verification + decision matrix (may require the `foundry-entra-scope-fix` patch — a judgment call)
-- `models.providers.microsoft-foundry` provider config + flip tier `model` overrides to `microsoft-foundry/FW-MiniMax-M2.5`
-- **Exit gate:** `openclaw infer --model microsoft-foundry/FW-MiniMax-M2.5 "say hi"` returns a MiniMax response, then a tier smoke turn on Foundry. Only then the real-number + Tier-C pass.
+- `models.providers.microsoft-foundry` provider config + flip tier `model` overrides to `microsoft-foundry/DeepSeek-V4-Flash`
+- **Exit gate:** `openclaw infer --model microsoft-foundry/DeepSeek-V4-Flash "say hi"` returns a DeepSeek V4 Flash response, then a tier smoke turn on Foundry. Only then the real-number + Tier-C pass.
 
 **Shared work that ships in Phase 1 (not duplicated in Phase 2):**
 
@@ -671,10 +672,10 @@ items).
 
 ---
 
-## Multiplayer model: MiniMax M2.5 on Azure Foundry
+## Multiplayer model: DeepSeek-V4-Flash on Azure Foundry
 
 Non-main tiers (`household`, `friends`) and their workers
-(`<tier>-reader`, `<tier>-browser-agent`) run on **MiniMax M2.5**
+(`<tier>-reader`, `<tier>-browser-agent`) run on **DeepSeek-V4-Flash**
 deployed as a serverless model in **Azure AI Foundry**, served via
 OpenClaw's bundled `microsoft-foundry` provider plugin
 (`enabledByDefault: true`, verified on the mini). Main and its
@@ -688,32 +689,32 @@ Why this shape:
 - **Provider diversification.** If main's provider rate-limits or has an
   outage, multiplayer keeps working.
 - **Data posture via Azure tenancy.** The model call lands inside
-  Azure (no direct API relationship with MiniMax); usage governed by
+  Azure (no direct API relationship with the model vendor); usage governed by
   Azure's data-handling terms for Foundry-hosted models.
 
 ### Provisioned resource (already done)
 
-The Foundry resource and MiniMax-M2.5 deployment exist; values used
+The Foundry resource and DeepSeek-V4-Flash deployment exist; values used
 below come from Cole's actual deployment:
 
 | Field          | Value                                                                |
 |---             |---                                                                   |
 | Resource group | (Cole's `openclaw-*` resource group in subscription)                 |
-| Resource name  | `openclaw-wus2-resource` (kind `AIServices`)                         |
-| Region         | `westus2`                                                            |
-| Endpoint       | `https://openclaw-wus2-resource.services.ai.azure.com/`              |
-| Deployment     | `FW-MiniMax-M2.5` (Fireworks-hosted MiniMax serverless)              |
+| Resource name  | `cole-foundry` (kind `AIServices`)                                   |
+| Region         | `eastus`                                                             |
+| Endpoint       | `https://cole-foundry.services.ai.azure.com/`                        |
+| Deployment     | `DeepSeek-V4-Flash` (DeepSeek serverless — Foundry Models, Global Standard) |
 | Auth           | Entra ID (`DefaultAzureCredential` / `az login`-cached refresh)      |
-| Model ref      | `microsoft-foundry/FW-MiniMax-M2.5`                                  |
+| Model ref      | `microsoft-foundry/DeepSeek-V4-Flash`                                |
 
 Verified via Cole's working Python smoke test (`DefaultAzureCredential` →
 `get_bearer_token_provider` → `OpenAI(base_url=…/openai/v1, api_key=token_provider)` →
-`chat.completions.create(model="FW-MiniMax-M2.5", …)`).
+`chat.completions.create(model="DeepSeek-V4-Flash", …)`).
 
 ### Auth on the mini (Entra ID, not API key)
 
 The `puddles` user on the mini needs an `az login`-cached refresh token
-for the Azure tenant that owns `openclaw-wus2-resource`. Once cached,
+for the Azure tenant that owns `cole-foundry`. Once cached,
 OpenClaw's `microsoft-foundry` provider uses it (via
 `prepareFoundryRuntimeAuth` in the installed source) to fetch fresh
 bearer tokens at inference time.
@@ -736,7 +737,7 @@ Why Entra over API key:
 ### Entra auth verification (pre-deploy)
 
 Entra-only, no API-key fallback. Run these as `puddles` on the mini
-**before** flipping `main` (or any tier) to `microsoft-foundry/FW-MiniMax-M2.5`.
+**before** flipping `main` (or any tier) to `microsoft-foundry/DeepSeek-V4-Flash`.
 The point is to catch a scope mismatch in seconds with a curl, not
 in minutes with a half-broken dispatch.
 
@@ -756,8 +757,8 @@ TOKEN=$(az account get-access-token \
 curl -sS -w '\nHTTP %{http_code}\n' \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"model":"FW-MiniMax-M2.5","messages":[{"role":"user","content":"ping"}],"max_tokens":4}' \
-  https://openclaw-wus2-resource.services.ai.azure.com/openai/v1/chat/completions
+  -d '{"model":"DeepSeek-V4-Flash","messages":[{"role":"user","content":"ping"}],"max_tokens":4}' \
+  https://cole-foundry.services.ai.azure.com/openai/v1/chat/completions
 
 # 3. (Only if step 2 returned 401.) Confirm Cole's Python scope works:
 TOKEN2=$(az account get-access-token \
@@ -766,8 +767,8 @@ TOKEN2=$(az account get-access-token \
 curl -sS -w '\nHTTP %{http_code}\n' \
   -H "Authorization: Bearer $TOKEN2" \
   -H "Content-Type: application/json" \
-  -d '{"model":"FW-MiniMax-M2.5","messages":[{"role":"user","content":"ping"}],"max_tokens":4}' \
-  https://openclaw-wus2-resource.services.ai.azure.com/openai/v1/chat/completions
+  -d '{"model":"DeepSeek-V4-Flash","messages":[{"role":"user","content":"ping"}],"max_tokens":4}' \
+  https://cole-foundry.services.ai.azure.com/openai/v1/chat/completions
 ```
 
 **Decision matrix:**
@@ -776,7 +777,7 @@ curl -sS -w '\nHTTP %{http_code}\n' \
 |---|---|---|
 | 200 | n/a | Ship as-is. OpenClaw default scope works; no patch needed. |
 | 401 | 200 | Add patch `docs/openclaw-setup/patches/foundry-entra-scope-fix.md` + `.mjs`: rewrite `COGNITIVE_SERVICES_RESOURCE` in `shared-Cct4jrKw.js` from `https://cognitiveservices.azure.com` → `https://ai.azure.com`. Re-run step 2 with patched OpenClaw. |
-| 401 | 401 | Tenant/role problem — neither scope works. Confirm `puddles@`'s Entra principal has `Cognitive Services User` (or `AzureML Data Scientist` / equivalent) role on `openclaw-wus2-resource`. Do **not** flip to API key; fix the role and retry. |
+| 401 | 401 | Tenant/role problem — neither scope works. Confirm `puddles@`'s Entra principal has `Cognitive Services User` (or `AzureML Data Scientist` / equivalent) role on `cole-foundry`. Do **not** flip to API key; fix the role and retry. |
 | 4xx (not 401) | n/a | Endpoint/deployment misconfigured (wrong base URL, wrong model id, deployment not in `Succeeded` state). Fix the resource side; auth is fine. |
 
 Once step 2 returns 200, OpenClaw's `prepareFoundryRuntimeAuth`
@@ -797,13 +798,13 @@ the bearer token at runtime via the auth profile:
 
 ```jsonc
 "models.providers.microsoft-foundry": {
-  "baseUrl": "https://openclaw-wus2-resource.services.ai.azure.com/",
-  "api":     "openai-completions",
+  "baseUrl": "https://cole-foundry.services.ai.azure.com/",
+  "api":     "openai-responses",
   "models": [
     {
-      "id":   "FW-MiniMax-M2.5",
-      "name": "MiniMax-M2.5",
-      "api":  "openai-completions",
+      "id":   "DeepSeek-V4-Flash",
+      "name": "DeepSeek-V4-Flash",
+      "api":  "openai-responses",
       "reasoning": false,
       "input": ["text"],
       "contextWindow": 128000,
@@ -815,11 +816,11 @@ the bearer token at runtime via the auth profile:
 
 Notes:
 - The provider auto-appends `/openai/v1` to `baseUrl` (it strips any
-  trailing `/openai/...` first), then calls OpenAI-compatible chat
-  completions.
-- `api: "openai-completions"` (not `openai-responses`) because
-  MiniMax doesn't trigger the gpt-/o*-class default in
-  `usesFoundryResponsesByDefault`.
+  trailing `/openai/...` first), then calls the OpenAI-compatible
+  Responses API the deployment exposes.
+- `api: "openai-responses"`: DeepSeek-V4-Flash is a `text` model served
+  on the Responses API (128k context) at `…/openai/v1`, so the provider
+  talks the Responses shape rather than the older chat-completions shape.
 - The `auth.profiles[<id>]` and `auth.order["microsoft-foundry"]`
   entries are populated automatically by `openclaw auth add` — no
   hand edit.
@@ -829,13 +830,13 @@ Notes:
 ### Per-agent model override
 
 All multiplayer agents carry an explicit
-`"model": "microsoft-foundry/FW-MiniMax-M2.5"` field.
+`"model": "microsoft-foundry/DeepSeek-V4-Flash"` field.
 
 | Agent                                                       | Model                                  |
 |---                                                          |---                                     |
-| `household`, `friends`                                      | `microsoft-foundry/FW-MiniMax-M2.5`    |
-| `household-reader`, `friends-reader`                        | `microsoft-foundry/FW-MiniMax-M2.5`    |
-| `household-browser-agent`, `friends-browser-agent`          | `microsoft-foundry/FW-MiniMax-M2.5`    |
+| `household`, `friends`                                      | `microsoft-foundry/DeepSeek-V4-Flash`  |
+| `household-reader`, `friends-reader`                        | `microsoft-foundry/DeepSeek-V4-Flash`  |
+| `household-browser-agent`, `friends-browser-agent`          | `microsoft-foundry/DeepSeek-V4-Flash`  |
 
 Single deployment for all six agents (one model, one cost line).
 Split into a second cheaper deployment later only if usage data
@@ -917,7 +918,7 @@ Add to `~/.openclaw/openclaw.json` `agents.list`:
   "workspace": "/Users/puddles/Library/Mobile Documents/com~apple~CloudDocs/puddles-workspace/household",
   "agentDir":  "/Users/puddles/.openclaw/agents/household/agent",
   "identity": { "name": "Puddles", "emoji": "🦆" },
-  "model": "microsoft-foundry/FW-MiniMax-M2.5",   // MiniMax-M2.5 on Azure Foundry — see Multiplayer model §
+  "model": "microsoft-foundry/DeepSeek-V4-Flash",   // DeepSeek-V4-Flash on Azure Foundry — see Multiplayer model §
   "fastModeDefault": true,                        // chat-facing; mirror main
 
   // Inherits from agents.defaults: thinkingDefault: "high",
@@ -1012,7 +1013,7 @@ Same shape as household with four deltas:
   "workspace": "/Users/puddles/Library/Mobile Documents/com~apple~CloudDocs/puddles-workspace/friends",
   "agentDir":  "/Users/puddles/.openclaw/agents/friends/agent",
   "identity": { "name": "Puddles", "emoji": "🦆" },
-  "model": "microsoft-foundry/FW-MiniMax-M2.5",   // MiniMax-M2.5 on Azure Foundry
+  "model": "microsoft-foundry/DeepSeek-V4-Flash",   // DeepSeek-V4-Flash on Azure Foundry
   "fastModeDefault": true,
 
   "subagents": { "allowAgents": ["friends", "friends-reader", "friends-browser-agent"] },
@@ -1086,7 +1087,7 @@ Sizing the tier caps must include expected worker turn cost.
   "workspace": "/Users/puddles/Library/Mobile Documents/com~apple~CloudDocs/puddles-workspace/household-reader",
   "agentDir":  "/Users/puddles/.openclaw/agents/household-reader/agent",
   "identity": { "name": "household-reader" },
-  "model": "microsoft-foundry/FW-MiniMax-M2.5",   // MiniMax-M2.5 on Azure Foundry
+  "model": "microsoft-foundry/DeepSeek-V4-Flash",   // DeepSeek-V4-Flash on Azure Foundry
   "thinkingDefault": "low",                       // overrides default "high"
 
   // Inherits sandbox defaults; only override the browser switch.
@@ -1114,7 +1115,7 @@ Sizing the tier caps must include expected worker turn cost.
   "workspace": "/Users/puddles/Library/Mobile Documents/com~apple~CloudDocs/puddles-workspace/household-browser-agent",
   "agentDir":  "/Users/puddles/.openclaw/agents/household-browser-agent/agent",
   "identity": { "name": "household-browser-agent" },
-  "model": "microsoft-foundry/FW-MiniMax-M2.5",   // MiniMax-M2.5 on Azure Foundry
+  "model": "microsoft-foundry/DeepSeek-V4-Flash",   // DeepSeek-V4-Flash on Azure Foundry
   "thinkingDefault": "medium",                    // overrides default "high"
 
   // Sandbox defaults already include browser enabled with the right image.
@@ -1566,11 +1567,11 @@ Two providers, split by trust tier:
   the mini). No per-agent override.
 - **Multiplayer tiers + their workers** (household, friends,
   `<tier>-reader`, `<tier>-browser-agent`) override to
-  `microsoft-foundry/FW-MiniMax-M2.5` — MiniMax-M2.5 deployed in
-  Azure AI Foundry (deployment `FW-MiniMax-M2.5` in resource
-  `openclaw-wus2-resource`), served via OpenClaw's bundled
+  `microsoft-foundry/DeepSeek-V4-Flash` — DeepSeek-V4-Flash deployed in
+  Azure AI Foundry (deployment `DeepSeek-V4-Flash` in resource
+  `cole-foundry`), served via OpenClaw's bundled
   `microsoft-foundry` provider with Entra ID auth. See
-  [Multiplayer model: MiniMax M2.5 on Azure Foundry](#multiplayer-model-minimax-m25-on-azure-foundry)
+  [Multiplayer model: DeepSeek-V4-Flash on Azure Foundry](#multiplayer-model-deepseek-v4-flash-on-azure-foundry)
   for provider config + mini auth setup.
 
 `thinkingDefault` is overridden only where it differs from the default
@@ -1959,7 +1960,7 @@ granted (secure wrappers only). *(Plan 021 status: ✅ Complete.)*
 ### Phase 0 — provider bring-up (hands-on with Cole)
 
 The only phase that needs a human in the loop. It ends at a hard gate:
-`openclaw infer` returns a MiniMax response. Nothing in Phase 1 starts
+`openclaw infer` returns a DeepSeek V4 Flash response. Nothing in Phase 1 starts
 until that gate is green.
 
 1. Set up Entra ID auth for the Foundry resource on the mini
@@ -1971,10 +1972,10 @@ until that gate is green.
    — two curls confirm the scope OpenClaw uses works against your
    deployment; if not, drop in the `foundry-entra-scope-fix` patch
    per the decision matrix there (the one judgment call in this phase).
-2. **Gate:** `openclaw infer --model microsoft-foundry/FW-MiniMax-M2.5 "say hi"`
-   on the mini returns a MiniMax response. Any 401 here means OpenClaw's
+2. **Gate:** `openclaw infer --model microsoft-foundry/DeepSeek-V4-Flash "say hi"`
+   on the mini returns a DeepSeek V4 Flash response. Any 401 here means OpenClaw's
    auth path diverged from the curl test — re-run verification. See
-   [Multiplayer model: MiniMax M2.5 on Azure Foundry](#multiplayer-model-minimax-m25-on-azure-foundry).
+   [Multiplayer model: DeepSeek-V4-Flash on Azure Foundry](#multiplayer-model-deepseek-v4-flash-on-azure-foundry).
 
 ### Phase 1 — household end-to-end (self-validating after Phase 0)
 
@@ -2140,17 +2141,17 @@ execute and validate the test autonomously and only advance when green.
 **Modified (mini, not in repo) — `~/.openclaw/openclaw.json`** (via `openclaw config patch` / `openclaw agents add`, validated writes; back up first):
 - `bindings`: add household → partner DM (scratch handle during validation; real partner E.164 swapped in last)
 - `agents.list`: add `household`, `household-reader`, `household-browser-agent`
-  (all with `model: "microsoft-foundry/FW-MiniMax-M2.5"` overrides);
+  (all with `model: "microsoft-foundry/DeepSeek-V4-Flash"` overrides);
   modify `main`'s `subagents.allowAgents` (add household trio; main
   keeps its existing `reader` / `browser-agent`), `sandbox.docker.binds[]`
   (add household sibling bind), `env.CRON_ALLOWED_TARGETS=""`. **Main's
   `workspace` is unchanged** (stays at `$WS`); `reader` / `browser-agent`
   workspaces are unchanged (existing subdirs of `$WS`).
 - `models.providers.microsoft-foundry` *(landed in Phase 0)*: the Foundry
-  `baseUrl` (`https://openclaw-wus2-resource.services.ai.azure.com/`),
-  `api: "openai-completions"`, and the `FW-MiniMax-M2.5` model entry
+  `baseUrl` (`https://cole-foundry.services.ai.azure.com/`),
+  `api: "openai-responses"`, and the `DeepSeek-V4-Flash` model entry
   (see
-  [Multiplayer model: MiniMax M2.5 on Azure Foundry](#multiplayer-model-minimax-m25-on-azure-foundry)).
+  [Multiplayer model: DeepSeek-V4-Flash on Azure Foundry](#multiplayer-model-deepseek-v4-flash-on-azure-foundry)).
 - `auth.profiles` / `auth.order["microsoft-foundry"]` *(landed in Phase 0)*:
   populated automatically by `openclaw auth add microsoft-foundry` (no
   hand-edit).
@@ -2168,9 +2169,9 @@ execute and validate the test autonomously and only advance when green.
   token, no API key stored in `secrets.json`.)
 
 **Provisioned outside the mini (already done by Cole):**
-- Azure AI Services (Foundry) resource `openclaw-wus2-resource`
-  in `westus2`, deployment `FW-MiniMax-M2.5` (Fireworks-hosted
-  MiniMax serverless). Entra access for the `puddles` mini user
+- Azure AI Services (Foundry) resource `cole-foundry`
+  in `eastus`, deployment `DeepSeek-V4-Flash` (DeepSeek serverless —
+  Foundry Models, Global Standard). Entra access for the `puddles` mini user
   granted via the tenant's normal AAD setup.
 
 **No migration (verified):** main's workspace already lives at `$WS`
@@ -2191,7 +2192,7 @@ are additive siblings. Nothing moves. See [Sequencing](#sequencing).
 **Modified (mini, not in repo) — `~/.openclaw/openclaw.json`:**
 - `bindings`: add friends → one trusted friend DM
 - `agents.list`: add `friends`, `friends-reader`, `friends-browser-agent`
-  (all with `model: "microsoft-foundry/FW-MiniMax-M2.5"`)
+  (all with `model: "microsoft-foundry/DeepSeek-V4-Flash"`)
 - `agents.list[main]`: **append** to `subagents.allowAgents` (friends
   trio); **append** to `sandbox.docker.binds[]` (friends sibling bind)
 - `agents.list[household]`: **append** to `sandbox.docker.binds[]`
@@ -2251,11 +2252,11 @@ Remaining for Cole to answer before deploy:
    we ship a tiny resource-swap patch into
    `docs/openclaw-setup/patches/` (one-line change in
    `shared-Cct4jrKw.js`) — we do **not** fall back to API key.
-8. ~~**M2.5 vs M2.7.**~~ **Resolved — locked to M2.5.** Azure
-   Foundry's Fireworks-hosted MiniMax catalog only offers
-   `FW-MiniMax-M2.5`; M2.7 is not available on this serving path. If
-   Microsoft adds M2.7 later it's a one-line `openclaw.json` change
-   plus a deployment swap.
+8. ~~**Multiplayer model choice.**~~ **Resolved — DeepSeek-V4-Flash.**
+   The Foundry deployment brought up live is `DeepSeek-V4-Flash`
+   (DeepSeek serverless, Global Standard). If a different model is
+   preferred later it's a one-line `openclaw.json` change plus a
+   deployment swap.
 
 ---
 
@@ -2264,16 +2265,16 @@ Remaining for Cole to answer before deploy:
 ### Phase 0 — provider bring-up (hands-on with Cole)
 
 The interactive gate. Everything here needs Cole at the keyboard; the
-phase is done when the smoke test returns a MiniMax response.
+phase is done when the smoke test returns a DeepSeek V4 Flash response.
 
-- [ ] **Foundry + MiniMax already provisioned** (`openclaw-wus2-resource`
-      in `westus2`, deployment `FW-MiniMax-M2.5`). Remaining mini-side
+- [ ] **Foundry + DeepSeek-V4-Flash already provisioned** (`cole-foundry`
+      in `eastus`, deployment `DeepSeek-V4-Flash`). Remaining mini-side
       work:
   - [ ] As `puddles` on the mini: `az login --use-device-code` (one
         time; cache refresh token under `~/.azure/`)
   - [ ] Confirm `puddles`'s Entra identity has access to
-        `openclaw-wus2-resource` (test:
-        `az cognitiveservices account show --name openclaw-wus2-resource
+        `cole-foundry` (test:
+        `az cognitiveservices account show --name cole-foundry
         --resource-group <RG>` returns the resource)
   - [ ] **Entra scope verification** — run the two curls in
         [Entra auth verification (pre-deploy)](#entra-auth-verification-pre-deploy)
@@ -2285,15 +2286,15 @@ phase is done when the smoke test returns a MiniMax response.
   - [ ] `openclaw auth add microsoft-foundry` (pick the Entra ID
         method) — registers the auth profile
   - [ ] Add `models.providers.microsoft-foundry` to `openclaw.json`
-        (baseUrl + api + FW-MiniMax-M2.5 model entry — see Multiplayer
+        (baseUrl + api + DeepSeek-V4-Flash model entry — see Multiplayer
         model §)
-  - [ ] **Exit gate:** `openclaw infer --model microsoft-foundry/FW-MiniMax-M2.5 "say hi"`
-        on the mini → response from MiniMax via Foundry (any 401 here
+  - [ ] **Exit gate:** `openclaw infer --model microsoft-foundry/DeepSeek-V4-Flash "say hi"`
+        on the mini → response from DeepSeek V4 Flash via Foundry (any 401 here
         means OpenClaw's auth path diverged from the curl test; re-run
         verification). Phase 1 does not start until this is green.
 
 ### Pre-flight (Phase 1)
-- [ ] Phase 0 exit gate green (`openclaw infer` returns a MiniMax response)
+- [ ] Phase 0 exit gate green (`openclaw infer` returns a DeepSeek V4 Flash response)
 - [ ] User reviews and approves plan (all Open Qs resolved)
 - [ ] Plan 021 shipped (hard prerequisite) — ✅ done
 - [ ] Gather: partner phone (E.164), Cole's canonical iMessage handle.
@@ -2346,7 +2347,7 @@ phase is done when the smoke test returns a MiniMax response.
 
 ### Phase 1 verify (household only)
 - [ ] DM auto-reply (household — partner DM)
-- [ ] **Multiplayer agents are calling Foundry (MiniMax), not main's provider** —
+- [ ] **Multiplayer agents are calling Foundry (DeepSeek V4 Flash), not main's provider** —
       confirm via `~/.openclaw/logs/gateway.log` (provider field on
       the inference call shows `microsoft-foundry`) or Azure metrics
       on the Foundry deployment after a household turn
