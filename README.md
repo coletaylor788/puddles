@@ -8,6 +8,12 @@ A collection of [Model Context Protocol (MCP)](https://modelcontextprotocol.io/)
 |--------|-------------|--------|
 | [gmail-mcp](./servers/gmail-mcp/) | Gmail integration - read, search, and manage emails | ✅ Ready |
 
+## Host tools
+
+| Tool | Description |
+|------|-------------|
+| [keychain-helper](./tools/keychain-helper/) | Stable native per-user bridge from explicitly allowlisted macOS Keychain items to upgradeable local processes |
+
 ## Quick Start
 
 Each server is self-contained with its own dependencies and setup instructions. See the individual server READMEs for details.
@@ -83,6 +89,8 @@ puddles/
 │       └── docs/           # Server documentation
 ├── scripts/
 │   └── mac-mini/           # Host scripts for the Mac Mini server
+├── tools/
+│   └── keychain-helper/    # Stable allowlisted macOS Keychain reader
 ├── docs/
 │   ├── plans/              # Cross-cutting implementation plans
 │   └── openclaw-setup/     # Mac Mini setup guides
