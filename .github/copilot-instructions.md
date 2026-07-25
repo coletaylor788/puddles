@@ -89,12 +89,29 @@ After implementation is complete:
 - Mark plan as complete with date in the status line
 - **Check off documentation items in the plan**
 
-### 7. Commit & Push
+### 7. Adversarial Review
+For every feature or behavior change:
+1. Finish all feature and documentation changes, including plan status and
+   checklist bookkeeping
+2. Launch a separate review agent that did not implement the change
+3. Instruct the agent to invoke the repository-local `adversarial-review` skill
+   and review the complete feature diff
+4. Resolve every actionable, high-confidence finding: fix it and rerun the
+   applicable tests and lint checks, or record why it is rejected or accepted
+   as a residual risk
+5. Repeat with a fresh independent review agent until no actionable,
+   high-confidence findings remain unresolved
+6. If the feature diff changes after a clear review for any reason, including
+   plan or checklist bookkeeping, rerun validation and repeat the fresh review
+
+This gate is mandatory even when the normal implementation and tests pass.
+
+### 8. Commit & Push
 After all checklist items are complete:
 - Commit all changes with a descriptive message
 - Push to remote
 
-### 8. Verify Complete
+### 9. Verify Complete
 **You are not done until every checkbox in the plan is checked and changes are pushed.**
 
 ### OpenClaw Deployment Topology
