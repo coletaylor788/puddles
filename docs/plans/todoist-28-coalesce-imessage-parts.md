@@ -1,6 +1,6 @@
 # Coalesce split iMessage message parts
 
-- **Status:** In progress - implementation review clear, publication pending
+- **Status:** Complete - 2026-07-24
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-24
 - **Owner:** Cole Taylor
@@ -48,12 +48,10 @@ Rollback disables coalescing and redeploys the prior reviewed patch stack.
 ### State
 
 The coalescing implementation and deployment-topology correction are merged and
-deployed. PR #26 adds the missing cumulative integration pool. Fresh review
-corrections are implemented: no credentialed suites remain outside default test
-discovery, child commands can be interrupted safely, worktree deregistration is
-verified, and recording mocks fail closed. A fresh independent review found no
-actionable high-confidence defects. Production is out of scope for these
-isolated test-infrastructure corrections.
+deployed. PR #26 merged the cumulative integration pool after all pull-request
+checks and two fresh independent reviews cleared the final diff. The first
+cumulative workflow on `main` passed. No additional production deployment was
+performed for the test-infrastructure work.
 
 ### Scope and acceptance criteria
 
@@ -158,8 +156,8 @@ isolated test-infrastructure corrections.
   actionable high-confidence defects. The pinned upstream revision protects
   the external debouncer contract; real-provider hook round trips remain manual
   rather than credentialed CI.
-- Remaining validation: confirm pull-request checks and the first Integration
-  workflow run on `main`.
+- Pull-request checks passed on the final handoff commit, PR #26 merged, and the
+  first cumulative Integration workflow passed on `main`.
 
 ### Rollout and rollback
 
@@ -195,6 +193,8 @@ No data migration or persistent message-state conversion is involved.
   corrections are implemented and pending full validation.
 - A fresh independent review of the validated corrections found no actionable
   high-confidence defects.
+- A second fresh independent review of the exact published handoff diff also
+  found no actionable high-confidence defects before merge.
 
 ### Checklist
 
@@ -230,6 +230,6 @@ No data migration or persistent message-state conversion is involved.
 - [x] Rerun the complete managed lifecycle after fresh-review corrections.
 - [x] Obtain and record a clean independent review of the validated
   implementation.
-- [ ] Push and merge PR #26.
-- [ ] Confirm the first cumulative Integration workflow run on `main`.
-- [ ] Update issue #28 to Ready for review and complete the Todoist handoff.
+- [x] Push and merge PR #26.
+- [x] Confirm the first cumulative Integration workflow run on `main`.
+- [x] Prepare issue #28 and the Todoist ready-for-review handoff.
