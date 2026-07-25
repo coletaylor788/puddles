@@ -110,6 +110,10 @@ OAuth browser waiting, token exchange, refresh retries, Keychain commands, and
 Gmail HTTP calls each have an inner deadline below the MCP worker deadline.
 Browser launch uses the non-blocking system `/usr/bin/open` path, so a stalled
 AppleScript browser controller cannot freeze the server.
+Recovery OAuth explicitly requests offline consent and refuses to persist a
+result without a refresh token. One cumulative inner deadline is propagated
+through callback waiting, token exchange, lock acquisition, and Keychain write,
+so a timed-out worker cannot later replace credentials.
 
 ### Viewing in Keychain Access
 

@@ -106,10 +106,12 @@ def _item_exists(*, deadline: float | None = None) -> bool:
     return result.returncode == 0
 
 
-def write_token(token_data: str) -> None:
+def write_token(token_data: str, *, deadline: float | None = None) -> None:
     """Create or update the exact Gmail OAuth token item."""
-    deadline = time.monotonic() + KEYCHAIN_ACCESS_TIMEOUT_S
-    exists = _item_exists(deadline=deadline)
+    write_deadline = time.monotonic() + KEYCHAIN_ACCESS_TIMEOUT_S
+    if deadline is not None:
+        write_deadline = min(write_deadline, deadline)
+    exists = _item_exists(deadline=write_deadline)
     args = [
         "add-generic-password",
         "-s",
@@ -133,7 +135,7 @@ def write_token(token_data: str) -> None:
     args.extend(["-X", encoded])
     result = _run_security(
         args,
-        deadline=deadline,
+        deadline=write_deadline,
         allowed_returncodes=(KEYCHAIN_DUPLICATE_ITEM_STATUS,) if not exists else (),
         sensitive_args=True,
     )
@@ -151,6 +153,6 @@ def write_token(token_data: str) -> None:
                 "-X",
                 encoded,
             ],
-            deadline=deadline,
+            deadline=write_deadline,
             sensitive_args=True,
         )

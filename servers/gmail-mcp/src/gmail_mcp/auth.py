@@ -36,6 +36,7 @@ from .logging_setup import log
 # thread forever.
 HTTP_SOCKET_TIMEOUT_S = 30
 OAUTH_BROWSER_TIMEOUT_S = 600
+OAUTH_OPERATION_TIMEOUT_S = 900
 REFRESH_DEADLINE_S = 45
 CREDENTIAL_LOCK_TIMEOUT_S = 90
 KEYCHAIN_CACHE_TTL_S = 60
@@ -92,16 +93,33 @@ class _DeadlineRequest:
             raise TimeoutError("credential refresh deadline exceeded")
 
 
+class OAuthFlowError(RuntimeError):
+    """Raised when browser OAuth cannot produce usable credentials."""
+
+
+class OAuthFlowTimeoutError(OAuthFlowError, TimeoutError):
+    """Raised when browser OAuth exceeds a configured network or user deadline."""
+
+
 class _BoundedInstalledAppFlow(InstalledAppFlow):
-    """Ensure the authorization-code exchange has a socket timeout."""
+    """Ensure the authorization-code exchange has a cumulative deadline."""
+
+    _puddles_deadline: float | None = None
 
     def fetch_token(self, **kwargs: Any):
-        kwargs.setdefault("timeout", HTTP_SOCKET_TIMEOUT_S)
-        return super().fetch_token(**kwargs)
-
-
-class OAuthFlowTimeoutError(TimeoutError):
-    """Raised when browser OAuth exceeds a configured network or user deadline."""
+        timeout = HTTP_SOCKET_TIMEOUT_S
+        if self._puddles_deadline is not None:
+            timeout = min(timeout, self._puddles_deadline - time.monotonic())
+            if timeout <= 0:
+                raise OAuthFlowTimeoutError("Gmail OAuth flow timed out")
+        kwargs["timeout"] = min(kwargs.get("timeout", timeout), timeout)
+        result = super().fetch_token(**kwargs)
+        if (
+            self._puddles_deadline is not None
+            and time.monotonic() > self._puddles_deadline
+        ):
+            raise OAuthFlowTimeoutError("Gmail OAuth flow timed out")
+        return result
 
 
 webbrowser.register(
@@ -137,10 +155,12 @@ _credential_lock = threading.RLock()
 
 
 @contextmanager
-def _credential_transaction():
+def _credential_transaction(*, deadline: float | None = None):
     """Serialize Keychain writes across Gmail MCP processes."""
-    deadline = time.monotonic() + CREDENTIAL_LOCK_TIMEOUT_S
-    remaining = max(0.0, deadline - time.monotonic())
+    lock_deadline = time.monotonic() + CREDENTIAL_LOCK_TIMEOUT_S
+    if deadline is not None:
+        lock_deadline = min(lock_deadline, deadline)
+    remaining = max(0.0, lock_deadline - time.monotonic())
     local_acquired = _credential_lock.acquire(timeout=remaining)
     if not local_acquired:
         raise KeychainAccessError("Gmail credential update is busy in this process")
@@ -170,7 +190,7 @@ def _credential_transaction():
                 acquired = True
                 break
             except BlockingIOError:
-                remaining = deadline - time.monotonic()
+                remaining = lock_deadline - time.monotonic()
                 if remaining <= 0:
                     raise KeychainAccessError(
                         "Gmail credential update is busy in another process"
@@ -271,14 +291,22 @@ def _keychain_get_token() -> Credentials | None:
     return _keychain_load_credentials()
 
 
-def _keychain_store_token_unlocked(creds: Credentials) -> None:
-    write_token(creds.to_json())
+def _keychain_store_token_unlocked(
+    creds: Credentials,
+    *,
+    deadline: float | None = None,
+) -> None:
+    write_token(creds.to_json(), deadline=deadline)
     _cache_keychain_credentials(creds)
 
 
-def _keychain_store_token(creds: Credentials) -> None:
-    with _credential_transaction():
-        _keychain_store_token_unlocked(creds)
+def _keychain_store_token(
+    creds: Credentials,
+    *,
+    deadline: float | None = None,
+) -> None:
+    with _credential_transaction(deadline=deadline):
+        _keychain_store_token_unlocked(creds, deadline=deadline)
 
 
 # --- Public API ---
@@ -306,7 +334,7 @@ def get_token() -> Credentials | None:
     return _keychain_get_token()
 
 
-def store_token(creds: Credentials) -> None:
+def store_token(creds: Credentials, *, deadline: float | None = None) -> None:
     """Save credentials to the active backend.
 
     Args:
@@ -314,7 +342,7 @@ def store_token(creds: Credentials) -> None:
     """
     if _use_env_backend():
         return  # env var is read-only; token seeded externally
-    _keychain_store_token(creds)
+    _keychain_store_token(creds, deadline=deadline)
 
 
 def _has_required_scopes(creds: Credentials) -> bool:
@@ -378,6 +406,7 @@ def run_oauth_flow() -> str:
     Raises:
         FileNotFoundError: If credentials.json is missing
     """
+    oauth_deadline = time.monotonic() + OAUTH_OPERATION_TIMEOUT_S
     ready_creds = None
     use_env_backend = _use_env_backend()
     credential_context = nullcontext() if use_env_backend else _credential_transaction()
@@ -428,17 +457,33 @@ def run_oauth_flow() -> str:
         str(credentials_path),
         SCOPES,
     )
+    flow._puddles_deadline = oauth_deadline
+    remaining_browser_time = min(
+        OAUTH_BROWSER_TIMEOUT_S,
+        oauth_deadline - time.monotonic(),
+    )
+    if remaining_browser_time <= 0:
+        raise OAuthFlowTimeoutError("Gmail OAuth flow timed out")
     try:
         creds = flow.run_local_server(
             port=0,
             authorization_prompt_message=None,
-            timeout_seconds=OAUTH_BROWSER_TIMEOUT_S,
+            timeout_seconds=remaining_browser_time,
+            access_type="offline",
+            prompt="consent",
         )
     except (AttributeError, RequestsTimeout) as exc:
         raise OAuthFlowTimeoutError("Gmail OAuth flow timed out") from exc
 
-    # Store token in Keychain
-    store_token(creds)
+    if time.monotonic() > oauth_deadline:
+        raise OAuthFlowTimeoutError("Gmail OAuth flow timed out")
+    if (
+        not isinstance(creds.refresh_token, str)
+        or not creds.refresh_token.strip()
+    ):
+        raise OAuthFlowError("Google OAuth did not return a refresh token")
+
+    store_token(creds, deadline=oauth_deadline)
 
     # Get user's email address
     service = _build_service(creds)

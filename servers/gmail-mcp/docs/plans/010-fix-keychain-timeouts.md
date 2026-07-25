@@ -134,7 +134,7 @@ before read-only candidate validation.
 Completed locally:
 
 - `CI=true .venv/bin/python -m pytest tests/ --ignore=tests/integration -q` -
-  145 safe tests passed; live mailbox tests were not collected.
+  147 safe tests passed; live mailbox tests were not collected.
 - `.venv/bin/ruff check src/ tests/` - passed.
 - `.venv/bin/python -m compileall -q src tests` - passed.
 - `git diff --check` - passed.
@@ -190,12 +190,17 @@ Completed locally:
 - A ninth review found service construction bypassed the intended 60-second
   credential cache. Valid credentials now use the cache fast path; only expired
   credentials enter the cross-process refresh/persistence transaction.
+- A tenth review found recovery OAuth could omit a refresh token and an outer
+  worker timeout could still allow late persistence. Recovery now forces
+  offline consent, validates a nonblank refresh token before writing, and
+  propagates one cumulative inner deadline through callback, exchange, lock,
+  and Keychain persistence.
 - `packages/e2e/tests/gmail-keychain.test.ts` - two isolated regressions passed,
   covering long create/update values, content-only refresh ACL behavior, bounded
   timeouts, and sensitive traceback sanitization.
 - `node packages/e2e/bin/openclaw-test-env.mjs ci` - passed repository build and
   lint, 241 workspace tests (112 hooks, 25 cumulative E2E, 61 calendar, 43
-  secure Gmail), the 145-test safe Gmail Python suite plus Ruff and compilation,
+  secure Gmail), the 147-test safe Gmail Python suite plus Ruff and compilation,
   289 mapped OpenClaw tests, and one candidate browser test; temporary worktree
   cleanup completed.
 
@@ -267,6 +272,8 @@ Rollback:
   resolution for environment-only containers.
 - The ninth fresh review found and corrected uncached Keychain reads during
   valid service construction.
+- The tenth fresh review found and corrected unusable recovery credentials and
+  post-timeout OAuth persistence.
 - The next review must invoke the repository adversarial-review workflow after
   cumulative E2E integration and OAuth validation.
 
