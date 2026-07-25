@@ -11,7 +11,11 @@ import { join } from "node:path";
 
 const argv = process.argv.slice(2);
 const cmd = argv[0] ?? "";
-const stateDir = process.env.E2E_MOCK_STATE || "/tmp/e2e-mock-state";
+const stateDir = process.env.E2E_MOCK_STATE;
+if (!stateDir) {
+  process.stderr.write("E2E_MOCK_STATE is required\n");
+  process.exit(2);
+}
 mkdirSync(stateDir, { recursive: true });
 
 function record(file, obj) {
@@ -28,8 +32,10 @@ if (cmd === "watch") {
   // No inbound events from the mock; stay quiet until killed.
   process.stdout.write(JSON.stringify({ ok: true, watching: true, mock: true }) + "\n");
   setInterval(() => {}, 1 << 30);
-} else {
-  // Any other subcommand (info/health/etc.): benign success.
+} else if (["chats", "health", "history", "info", "status", "version"].includes(cmd)) {
   process.stdout.write(JSON.stringify({ ok: true, mock: true, cmd }) + "\n");
   process.exit(0);
+} else {
+  process.stderr.write(`Unsupported mock imsg command: ${cmd || "<empty>"}\n`);
+  process.exit(2);
 }

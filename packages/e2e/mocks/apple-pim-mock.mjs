@@ -14,26 +14,52 @@ import { join } from "node:path";
 const argv = process.argv.slice(2);
 const tool = basename(process.argv[1] || "apple-pim").replace(/\.mjs$/, "");
 const sub = (argv[0] || "").toLowerCase();
-const stateDir = process.env.E2E_MOCK_STATE || "/tmp/e2e-mock-state";
+const stateDir = process.env.E2E_MOCK_STATE;
+if (!stateDir) {
+  process.stderr.write("E2E_MOCK_STATE is required\n");
+  process.exit(2);
+}
 mkdirSync(stateDir, { recursive: true });
 
-const WRITE = /^(create|add|new|update|edit|set|delete|remove|complete|rm)/;
-const READ = /^(list|items|query|get|show|search|find|read|calendars|lists)/;
+const WRITE = new Set([
+  "add",
+  "complete",
+  "create",
+  "delete",
+  "edit",
+  "new",
+  "remove",
+  "rm",
+  "set",
+  "update",
+]);
+const READ = new Set([
+  "calendars",
+  "find",
+  "get",
+  "items",
+  "list",
+  "lists",
+  "query",
+  "read",
+  "search",
+  "show",
+]);
 
 function ok(obj) {
   process.stdout.write(JSON.stringify({ ok: true, mock: true, ...obj }) + "\n");
   process.exit(0);
 }
 
-if (WRITE.test(sub)) {
+if (WRITE.has(sub)) {
   appendFileSync(
     join(stateDir, "apple-pim-writes.jsonl"),
     JSON.stringify({ ts: Date.now(), tool, sub, argv }) + "\n",
   );
   ok({ id: `mock-${tool}-${Date.now()}`, recorded: true });
-} else if (READ.test(sub)) {
-  // Reads are exercised E2E against the REAL system elsewhere; the mock returns empty.
+} else if (READ.has(sub)) {
   ok({ items: [] });
 } else {
-  ok({ sub });
+  process.stderr.write(`Unsupported mock apple-pim command: ${sub || "<empty>"}\n`);
+  process.exit(2);
 }

@@ -1,12 +1,13 @@
-export function cleanupWorktree(params) {
+export async function cleanupWorktree(params) {
   const errors = [];
   if (params.worktreeCreated) {
     try {
-      params.runCommand("git", [
+      await params.runCommand("git", [
         "-C",
         params.source,
         "worktree",
         "remove",
+        "--force",
         "--force",
         params.candidate,
       ]);
@@ -15,12 +16,33 @@ export function cleanupWorktree(params) {
     }
   }
   try {
-    params.removeDirectory(params.stateRoot);
+    await params.removeDirectory(params.stateRoot);
   } catch (error) {
     errors.push(error);
   }
   try {
-    params.runCommand("git", ["-C", params.source, "worktree", "prune"]);
+    await params.runCommand("git", [
+      "-C",
+      params.source,
+      "worktree",
+      "prune",
+      "--expire",
+      "now",
+    ]);
+  } catch (error) {
+    errors.push(error);
+  }
+  try {
+    const worktrees = await params.captureCommand("git", [
+      "-C",
+      params.source,
+      "worktree",
+      "list",
+      "--porcelain",
+    ]);
+    if (worktrees.split("\n").includes(`worktree ${params.candidate}`)) {
+      throw new Error(`Candidate worktree is still registered: ${params.candidate}`);
+    }
   } catch (error) {
     errors.push(error);
   }

@@ -1,11 +1,15 @@
 #!/usr/bin/env node
 
-import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { cleanupWorktree } from "../src/worktree-cleanup.mjs";
+import {
+  installSignalHandlers,
+  isHandlingSignal,
+  runCommand,
+} from "../src/process-runner.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const packageDir = resolve(here, "..");
@@ -15,22 +19,13 @@ const suite = JSON.parse(
   readFileSync(join(packageDir, "openclaw-patch-suite.json"), "utf8"),
 );
 let activeCleanup;
-let handlingSignal = false;
 
 function run(command, args, options = {}) {
-  console.log(`+ ${command} ${args.join(" ")}`);
-  const result = spawnSync(command, args, {
+  return runCommand(command, args, {
     cwd: options.cwd ?? repoRoot,
     env: options.env ?? process.env,
-    encoding: "utf8",
-    stdio: "inherit",
+    capture: options.capture,
   });
-  if (result.error) {
-    throw result.error;
-  }
-  if (result.status !== 0) {
-    throw new Error(`${command} exited with status ${result.status}`);
-  }
 }
 
 function sourcePath() {
@@ -38,20 +33,20 @@ function sourcePath() {
   return resolve(configured ? configured.replace(/^~(?=\/)/, homedir()) : join(homedir(), "git", "openclaw"));
 }
 
-function runRepositoryGates() {
-  run("corepack", ["pnpm", "build"]);
-  run("corepack", ["pnpm", "lint"]);
-  run("corepack", ["pnpm", "test"]);
+async function runRepositoryGates() {
+  await run("corepack", ["pnpm", "build"]);
+  await run("corepack", ["pnpm", "lint"]);
+  await run("corepack", ["pnpm", "test"]);
 }
 
-function runPatchSuite() {
+async function runPatchSuite() {
   const source = sourcePath();
   if (!existsSync(join(source, ".git"))) {
     throw new Error(
       `OPENCLAW_SRC must point to a git checkout containing ${suite.openclawRef}: ${source}`,
     );
   }
-  run("git", ["-C", source, "cat-file", "-e", `${suite.openclawRef}^{commit}`]);
+  await run("git", ["-C", source, "cat-file", "-e", `${suite.openclawRef}^{commit}`]);
 
   const stateRoot = mkdtempSync(join(tmpdir(), "puddles-openclaw-test-"));
   const candidate = join(stateRoot, "candidate");
@@ -59,33 +54,36 @@ function runPatchSuite() {
   let primaryError;
   const cleanupErrors = [];
 
+  let cleanupPromise;
   const cleanup = () => {
-    cleanupErrors.push(
-      ...cleanupWorktree({
+    cleanupPromise ??= cleanupWorktree({
         source,
         candidate,
         stateRoot,
         worktreeCreated,
         runCommand: run,
+        captureCommand: (command, args) => run(command, args, { capture: true }),
         removeDirectory: (path) => rmSync(path, { recursive: true, force: true }),
-      }),
-    );
-    return cleanupErrors;
+      }).then((errors) => {
+        cleanupErrors.push(...errors);
+        return cleanupErrors;
+      });
+    return cleanupPromise;
   };
   activeCleanup = cleanup;
 
   try {
-    run("git", ["-C", source, "worktree", "add", "--detach", candidate, suite.openclawRef]);
+    await run("git", ["-C", source, "worktree", "add", "--detach", candidate, suite.openclawRef]);
     worktreeCreated = true;
-    run("corepack", ["pnpm", "install", "--frozen-lockfile"], {
+    await run("corepack", ["pnpm", "install", "--frozen-lockfile"], {
       cwd: candidate,
       env: { ...process.env, CI: process.env.CI ?? "true" },
     });
 
     for (const patch of suite.patches) {
       const patchFile = join(patchDir, `${patch.name}.patch`);
-      run("git", ["apply", "--check", patchFile], { cwd: candidate });
-      run("git", ["apply", patchFile], { cwd: candidate });
+      await run("git", ["apply", "--check", patchFile], { cwd: candidate });
+      await run("git", ["apply", patchFile], { cwd: candidate });
     }
 
     const tests = [...new Set(suite.patches.flatMap((patch) => patch.tests))];
@@ -95,7 +93,7 @@ function runPatchSuite() {
       }
     }
     if (tests.length > 0) {
-      run("corepack", ["pnpm", "exec", "vitest", "run", ...tests], {
+      await run("corepack", ["pnpm", "exec", "vitest", "run", ...tests], {
         cwd: candidate,
         env: { ...process.env, CI: process.env.CI ?? "true" },
       });
@@ -110,7 +108,7 @@ function runPatchSuite() {
       }
     }
     if (candidateTests.length > 0) {
-      run(
+      await run(
         "corepack",
         [
           "pnpm",
@@ -135,7 +133,7 @@ function runPatchSuite() {
   } catch (error) {
     primaryError = error;
   } finally {
-    cleanup();
+    await cleanup();
     activeCleanup = undefined;
   }
 
@@ -150,32 +148,18 @@ function runPatchSuite() {
   }
 }
 
-for (const [signal, exitCode] of [
-  ["SIGHUP", 129],
-  ["SIGINT", 130],
-  ["SIGTERM", 143],
-]) {
-  process.once(signal, () => {
-    if (handlingSignal) {
-      return;
-    }
-    handlingSignal = true;
-    const errors = activeCleanup?.() ?? [];
-    for (const error of errors) {
-      console.error(`Signal cleanup failed: ${error.message}`);
-    }
-    process.exit(exitCode);
-  });
-}
+installSignalHandlers({
+  cleanup: async () => (await activeCleanup?.()) ?? [],
+});
 
 const command = process.argv[2];
 
 try {
   if (command === "ci") {
-    runRepositoryGates();
-    runPatchSuite();
+    await runRepositoryGates();
+    await runPatchSuite();
   } else if (command === "patches") {
-    runPatchSuite();
+    await runPatchSuite();
   } else {
     console.error(
       "Usage: openclaw-test-env.mjs <ci|patches>\n" +
@@ -185,6 +169,8 @@ try {
     process.exitCode = 2;
   }
 } catch (error) {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
+  if (!isHandlingSignal()) {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  }
 }
