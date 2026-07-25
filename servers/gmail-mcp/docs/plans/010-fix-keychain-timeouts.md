@@ -96,6 +96,8 @@ before read-only candidate validation.
 - Suppress sensitive command arguments from timeout exception chaining.
 - Translate `KeychainAccessError` only at the MCP tool boundary so failures are
   logged as failed calls and returned as structured errors.
+- Offload authentication and service construction to the existing worker-thread
+  boundary so a bounded slow Keychain call cannot freeze concurrent MCP I/O.
 - Leave the environment-variable backend unchanged.
 - Skip live mailbox-mutation tests in automation; use isolated cumulative
   coverage plus explicit read-only Gmail smoke tests.
@@ -112,17 +114,19 @@ before read-only candidate validation.
    timeout failures.
 5. Remove `keyring`, update MCP error translation, and document migration,
    security boundary, rollout, and rollback.
-6. Add focused unit coverage and a committed cumulative `packages/e2e`
+6. Offload synchronous authentication checks and service construction from the
+   shared MCP event loop.
+7. Add focused unit coverage and a committed cumulative `packages/e2e`
    regression that executes the stdlib-only Keychain module against a
    deny-by-default fake command.
-7. Reauthenticate, validate credential shape without values, and run candidate
+8. Reauthenticate, validate credential shape without values, and run candidate
    and production read-only Gmail smoke tests.
 
 ### Validation
 
 Completed locally:
 
-- `CI=true .venv/bin/python -m pytest tests/ -q` - 106 passed and 19 live
+- `CI=true .venv/bin/python -m pytest tests/ -q` - 107 passed and 19 live
   mailbox tests skipped.
 - `.venv/bin/ruff check src/ tests/` - passed.
 - `.venv/bin/python -m compileall -q src tests` - passed.
@@ -132,6 +136,9 @@ Completed locally:
   content-only update round trips passed.
 - Multiple independent reviews found recurring ACL updates, create races,
   long-value truncation, and stale security documentation; all were corrected.
+- An adversarial review found bounded Keychain calls still blocked the shared
+  event loop; authentication now uses the existing worker-thread bridge, with a
+  focused concurrency regression.
 - `packages/e2e/tests/gmail-keychain.test.ts` - two isolated regressions passed,
   covering long create/update values, content-only refresh ACL behavior, bounded
   timeouts, and sensitive traceback sanitization.
@@ -180,6 +187,9 @@ Rollback:
 - Follow-up reviews found and resolved a concurrent-create race, the broader
   same-user trust boundary, 128-byte prompted-write truncation, and
   contradictory documentation.
+- The first repository adversarial review found synchronous Keychain calls
+  could freeze concurrent MCP I/O for five seconds; the calls are now offloaded
+  and the focused and complete managed lifecycles pass.
 - The next review must invoke the repository adversarial-review workflow after
   cumulative E2E integration and OAuth validation.
 
@@ -192,6 +202,7 @@ Rollback:
 - [x] Handle concurrent creation safely.
 - [x] Preserve long OAuth JSON values.
 - [x] Translate Keychain failures at the MCP tool boundary.
+- [x] Keep slow Keychain access off the shared MCP event loop.
 - [x] Remove the Python `keyring` dependency.
 - [x] Update user, architecture, migration, security, and rollback docs.
 - [x] Add focused success, error, timeout, cache, write, and race tests.
