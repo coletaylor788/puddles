@@ -134,7 +134,7 @@ before read-only candidate validation.
 Completed locally:
 
 - `CI=true .venv/bin/python -m pytest tests/ --ignore=tests/integration -q` -
-  123 safe tests passed; live mailbox tests were not collected.
+  132 safe tests passed; live mailbox tests were not collected.
 - `.venv/bin/ruff check src/ tests/` - passed.
 - `.venv/bin/python -m compileall -q src tests` - passed.
 - `git diff --check` - passed.
@@ -162,12 +162,19 @@ Completed locally:
   explicitly; one absolute lock deadline and canonical path cover all waiters;
   late responses and malformed fields fail closed; and OAuth timeouts are
   structured failures.
+- A fourth review found environment-controlled home paths could split the lock,
+  environment credentials refreshed twice, library OAuth timeouts were not
+  translated, multi-command Keychain writes reset their budget, and SDK-accepted
+  malformed required fields looked authenticated. The lock now derives from
+  the OS account home, refresh has one owner, browser/token timeouts are
+  normalized, each Keychain write shares one deadline, and required authorized
+  user fields must be non-empty strings.
 - `packages/e2e/tests/gmail-keychain.test.ts` - two isolated regressions passed,
   covering long create/update values, content-only refresh ACL behavior, bounded
   timeouts, and sensitive traceback sanitization.
 - `node packages/e2e/bin/openclaw-test-env.mjs ci` - passed repository build and
   lint, 240 workspace tests (112 hooks, 24 cumulative E2E, 61 calendar, 43
-  secure Gmail), the 123-test safe Gmail Python suite plus Ruff and compilation,
+  secure Gmail), the 132-test safe Gmail Python suite plus Ruff and compilation,
   289 mapped OpenClaw tests, and one candidate browser test; temporary worktree
   cleanup completed.
 
@@ -226,6 +233,9 @@ Rollback:
 - The third fresh review found and corrected the final managed-test safety,
   absolute-deadline, canonical-lock, late-response, malformed-object, and OAuth
   timeout translation gaps.
+- The fourth fresh review found and corrected canonical OS-account lock
+  identity, duplicate environment refresh, concrete OAuth timeout classes,
+  cumulative Keychain-write timing, and required-field validation.
 - The next review must invoke the repository adversarial-review workflow after
   cumulative E2E integration and OAuth validation.
 

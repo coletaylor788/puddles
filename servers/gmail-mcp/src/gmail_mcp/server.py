@@ -19,6 +19,7 @@ from .auth import (
     HTTP_SOCKET_TIMEOUT_S,
     OAUTH_BROWSER_TIMEOUT_S,
     REFRESH_DEADLINE_S,
+    OAuthFlowTimeoutError,
     get_gmail_service,
     is_authenticated,
     run_oauth_flow,
@@ -247,7 +248,7 @@ async def _authenticate() -> list[TextContent]:
         return [TextContent(type="text", text=f"Error: {e}")]
     except KeychainAccessError:
         raise
-    except asyncio.TimeoutError as exc:
+    except (asyncio.TimeoutError, OAuthFlowTimeoutError) as exc:
         raise AuthenticationUnavailableError(
             "Gmail OAuth flow timed out"
         ) from exc

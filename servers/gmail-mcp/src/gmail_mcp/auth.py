@@ -9,20 +9,23 @@ Supports two storage backends, selected automatically:
 import fcntl
 import json
 import os
+import pwd
 import threading
 import time
 import webbrowser
 from contextlib import contextmanager, nullcontext
+from pathlib import Path
 from typing import Any
 
 import httplib2
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_httplib2 import AuthorizedHttp
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google_auth_oauthlib.flow import InstalledAppFlow, WSGITimeoutError
 from googleapiclient.discovery import build
+from requests.exceptions import Timeout as RequestsTimeout
 
-from .config import DEFAULT_CONFIG_DIR, GOOGLE_TOKEN_ENV, get_credentials_path
+from .config import GOOGLE_TOKEN_ENV, get_credentials_path
 from .keychain import KeychainAccessError, read_token, write_token
 from .logging_setup import log
 
@@ -37,8 +40,15 @@ REFRESH_DEADLINE_S = 45
 CREDENTIAL_LOCK_TIMEOUT_S = 90
 KEYCHAIN_CACHE_TTL_S = 60
 CREDENTIAL_LOCK_FILE = "credential.lock"
-CREDENTIAL_LOCK_PATH = DEFAULT_CONFIG_DIR / CREDENTIAL_LOCK_FILE
 OAUTH_BROWSER_NAME = "gmail-mcp-background"
+
+
+def _canonical_credential_lock_path() -> Path:
+    account_home = Path(pwd.getpwuid(os.getuid()).pw_dir)
+    return account_home / ".config" / "gmail-mcp" / CREDENTIAL_LOCK_FILE
+
+
+CREDENTIAL_LOCK_PATH = _canonical_credential_lock_path()
 
 
 def _build_service(creds: Credentials):
@@ -84,6 +94,10 @@ class _BoundedInstalledAppFlow(InstalledAppFlow):
     def fetch_token(self, **kwargs: Any):
         kwargs.setdefault("timeout", HTTP_SOCKET_TIMEOUT_S)
         return super().fetch_token(**kwargs)
+
+
+class OAuthFlowTimeoutError(TimeoutError):
+    """Raised when browser OAuth exceeds a configured network or user deadline."""
 
 
 webbrowser.register(
@@ -181,8 +195,6 @@ def _env_get_token() -> Credentials | None:
     global _cached_creds
     if _cached_creds is None:
         _env_load_credentials()
-    if _cached_creds and _cached_creds.expired and _cached_creds.refresh_token:
-        _refresh_credentials(_cached_creds, source="env")
     return _cached_creds
 
 
@@ -205,6 +217,12 @@ def _credentials_from_token_data(token_data: str | None) -> Credentials | None:
     try:
         token_info = json.loads(token_data)
         if not isinstance(token_info, dict):
+            return None
+        required_fields = ("refresh_token", "client_id", "client_secret")
+        if any(
+            not isinstance(token_info.get(field), str) or not token_info[field]
+            for field in required_fields
+        ):
             return None
         return Credentials.from_authorized_user_info(token_info, SCOPES)
     except (AttributeError, json.JSONDecodeError, TypeError, ValueError):
@@ -400,12 +418,15 @@ def run_oauth_flow() -> str:
         str(credentials_path),
         SCOPES,
     )
-    creds = flow.run_local_server(
-        port=0,
-        authorization_prompt_message=None,
-        timeout_seconds=OAUTH_BROWSER_TIMEOUT_S,
-        browser=OAUTH_BROWSER_NAME,
-    )
+    try:
+        creds = flow.run_local_server(
+            port=0,
+            authorization_prompt_message=None,
+            timeout_seconds=OAUTH_BROWSER_TIMEOUT_S,
+            browser=OAUTH_BROWSER_NAME,
+        )
+    except (RequestsTimeout, WSGITimeoutError) as exc:
+        raise OAuthFlowTimeoutError("Gmail OAuth flow timed out") from exc
 
     # Store token in Keychain
     store_token(creds)

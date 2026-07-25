@@ -89,8 +89,8 @@ class TestEnvBackend:
         assert creds is not None
         assert creds.token == "access_token"
 
-    def test_get_token_refreshes_expired(self, monkeypatch):
-        """Refreshes expired credentials from env var."""
+    def test_get_token_leaves_refresh_to_service_owner(self, monkeypatch):
+        """Token retrieval does not start a duplicate environment refresh."""
         import gmail_mcp.auth
 
         mock_creds = MagicMock()
@@ -100,7 +100,7 @@ class TestEnvBackend:
         monkeypatch.setenv(GOOGLE_TOKEN_ENV, "{}")
 
         get_token()
-        mock_creds.refresh.assert_called_once()
+        mock_creds.refresh.assert_not_called()
 
     def test_store_token_is_noop(self, monkeypatch):
         """store_token does nothing when env backend is active."""
@@ -187,6 +187,28 @@ class TestKeychainGetToken:
                 "expiry": 1,
             }),
         ):
+            assert get_token() is None
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("refresh_token", None),
+            ("refresh_token", []),
+            ("client_id", {}),
+            ("client_secret", 1),
+            ("client_secret", ""),
+        ],
+    )
+    def test_returns_none_on_invalid_required_fields(self, field, value):
+        """Required authorized-user fields must be non-empty strings."""
+        token_info = {
+            "token": "access-token",
+            "refresh_token": "refresh-token",
+            "client_id": "client-id",
+            "client_secret": "client-secret",
+        }
+        token_info[field] = value
+        with patch("gmail_mcp.auth.read_token", return_value=json.dumps(token_info)):
             assert get_token() is None
 
     def test_returns_credentials_when_valid_token(self):
@@ -427,6 +449,30 @@ class TestKeychainCommand:
             with pytest.raises(KeychainAccessError, match="could not start"):
                 is_authenticated()
 
+    def test_write_uses_one_deadline_across_duplicate_retry(self):
+        """Existence, create, and race retry share one five-second budget."""
+        import gmail_mcp.keychain
+
+        with (
+            patch(
+                "gmail_mcp.keychain.time.monotonic",
+                side_effect=[100.0, 101.0, 103.0, 104.5],
+            ),
+            patch("gmail_mcp.keychain.subprocess.run") as mock_run,
+        ):
+            mock_run.side_effect = [
+                subprocess.CompletedProcess([], 44, "", "not found"),
+                subprocess.CompletedProcess([], 45, "", "duplicate"),
+                subprocess.CompletedProcess([], 0, "", ""),
+            ]
+            gmail_mcp.keychain.write_token('{"token":"value"}')
+
+        assert [call.kwargs["timeout"] for call in mock_run.call_args_list] == [
+            4.0,
+            2.0,
+            0.5,
+        ]
+
 
 class TestAuthenticationBounds:
     """Tests for operation-wide OAuth and refresh deadlines."""
@@ -505,6 +551,14 @@ class TestAuthenticationBounds:
 
         assert not holder.is_alive()
 
+    def test_lock_path_ignores_environment_home(self, monkeypatch):
+        """All processes for the OS account derive the same lock identity."""
+        import gmail_mcp.auth
+
+        expected = gmail_mcp.auth._canonical_credential_lock_path()
+        monkeypatch.setenv("HOME", "/tmp/unrelated-home")
+        assert gmail_mcp.auth._canonical_credential_lock_path() == expected
+
     def test_oauth_token_exchange_has_http_timeout(self):
         import gmail_mcp.auth
 
@@ -575,6 +629,30 @@ class TestRunOauthFlow:
                 timeout_seconds=600,
                 browser="gmail-mcp-background",
             )
+
+    def test_translates_browser_wait_timeout(self, tmp_path):
+        """The OAuth library timeout becomes the server's timeout type."""
+        import gmail_mcp.auth
+
+        creds_file = tmp_path / "credentials.json"
+        creds_file.write_text('{"installed": {"client_id": "x", "client_secret": "y"}}')
+        mock_flow = MagicMock()
+        mock_flow.run_local_server.side_effect = gmail_mcp.auth.WSGITimeoutError()
+
+        with (
+            patch("gmail_mcp.auth._use_env_backend", return_value=True),
+            patch("gmail_mcp.auth.get_token", return_value=None),
+            patch("gmail_mcp.auth.get_credentials_path", return_value=creds_file),
+            patch(
+                "gmail_mcp.auth._BoundedInstalledAppFlow.from_client_secrets_file",
+                return_value=mock_flow,
+            ),
+            pytest.raises(
+                gmail_mcp.auth.OAuthFlowTimeoutError,
+                match="OAuth flow timed out",
+            ),
+        ):
+            run_oauth_flow()
 
     def test_returns_email_when_already_authenticated(self):
         """Returns email without browser flow when already authenticated."""
