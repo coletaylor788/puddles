@@ -103,6 +103,10 @@ class OAuthFlowTimeoutError(OAuthFlowError, TimeoutError):
     """Raised when browser OAuth exceeds a configured network or user deadline."""
 
 
+class AuthenticationCancelledError(RuntimeError):
+    """Raised when the async caller no longer wants authentication side effects."""
+
+
 class _BoundedInstalledAppFlow(InstalledAppFlow):
     """Ensure the authorization-code exchange has a cumulative deadline."""
 
@@ -154,6 +158,11 @@ _cached_creds: Credentials | None = None
 _cached_keychain_creds: Credentials | None = None
 _cached_keychain_loaded_at: float | None = None
 _credential_lock = threading.RLock()
+
+
+def _check_cancellation(cancellation: threading.Event | None) -> None:
+    if cancellation is not None and cancellation.is_set():
+        raise AuthenticationCancelledError("Gmail authentication was cancelled")
 
 
 @contextmanager
@@ -232,7 +241,7 @@ def _env_load_credentials() -> None:
     if not token_json:
         return
     token_info = json.loads(token_json)
-    _cached_creds = Credentials.from_authorized_user_info(token_info)
+    _cached_creds = Credentials.from_authorized_user_info(token_info, SCOPES)
 
 
 # --- Keychain backend ---
@@ -267,7 +276,10 @@ def _cache_keychain_credentials(creds: Credentials | None) -> None:
     _cached_keychain_loaded_at = time.monotonic() if creds is not None else None
 
 
-def _keychain_load_credentials() -> Credentials | None:
+def _keychain_load_credentials(
+    *,
+    cancellation: threading.Event | None = None,
+) -> Credentials | None:
     global _cached_keychain_creds, _cached_keychain_loaded_at
     with _credential_lock:
         now = time.monotonic()
@@ -278,7 +290,10 @@ def _keychain_load_credentials() -> Credentials | None:
         ):
             return _cached_keychain_creds
 
-        _cached_keychain_creds = _credentials_from_token_data(read_token())
+        _check_cancellation(cancellation)
+        loaded_creds = _credentials_from_token_data(read_token())
+        _check_cancellation(cancellation)
+        _cached_keychain_creds = loaded_creds
         _cached_keychain_loaded_at = (
             now if _cached_keychain_creds is not None else None
         )
@@ -289,16 +304,35 @@ def _keychain_is_authenticated() -> bool:
     return _keychain_load_credentials() is not None
 
 
-def _keychain_get_token() -> Credentials | None:
-    return _keychain_load_credentials()
+def _keychain_get_token(
+    *,
+    cancellation: threading.Event | None = None,
+) -> Credentials | None:
+    return _keychain_load_credentials(cancellation=cancellation)
+
+
+def _effective_scopes(creds: Credentials):
+    granted_scopes = getattr(creds, "granted_scopes", None)
+    return granted_scopes if granted_scopes is not None else creds.scopes
+
+
+def _credentials_json(creds: Credentials) -> str:
+    token_info = json.loads(creds.to_json())
+    effective_scopes = _effective_scopes(creds)
+    if effective_scopes is not None:
+        token_info["scopes"] = list(effective_scopes)
+    return json.dumps(token_info)
 
 
 def _keychain_store_token_unlocked(
     creds: Credentials,
     *,
     deadline: float | None = None,
+    cancellation: threading.Event | None = None,
 ) -> None:
-    write_token(creds.to_json(), deadline=deadline)
+    _check_cancellation(cancellation)
+    write_token(_credentials_json(creds), deadline=deadline)
+    _check_cancellation(cancellation)
     _cache_keychain_credentials(creds)
 
 
@@ -306,9 +340,15 @@ def _keychain_store_token(
     creds: Credentials,
     *,
     deadline: float | None = None,
+    cancellation: threading.Event | None = None,
 ) -> None:
+    _check_cancellation(cancellation)
     with _credential_transaction(deadline=deadline):
-        _keychain_store_token_unlocked(creds, deadline=deadline)
+        _keychain_store_token_unlocked(
+            creds,
+            deadline=deadline,
+            cancellation=cancellation,
+        )
 
 
 # --- Public API ---
@@ -325,18 +365,27 @@ def is_authenticated() -> bool:
     return _keychain_is_authenticated()
 
 
-def get_token() -> Credentials | None:
+def get_token(
+    *,
+    cancellation: threading.Event | None = None,
+) -> Credentials | None:
     """Retrieve Google OAuth credentials.
 
     Returns:
         Credentials object if found and valid, None otherwise
     """
     if _use_env_backend():
+        _check_cancellation(cancellation)
         return _env_get_token()
-    return _keychain_get_token()
+    return _keychain_get_token(cancellation=cancellation)
 
 
-def store_token(creds: Credentials, *, deadline: float | None = None) -> None:
+def store_token(
+    creds: Credentials,
+    *,
+    deadline: float | None = None,
+    cancellation: threading.Event | None = None,
+) -> None:
     """Save credentials to the active backend.
 
     Args:
@@ -344,7 +393,11 @@ def store_token(creds: Credentials, *, deadline: float | None = None) -> None:
     """
     if _use_env_backend():
         return  # env var is read-only; token seeded externally
-    _keychain_store_token(creds, deadline=deadline)
+    _keychain_store_token(
+        creds,
+        deadline=deadline,
+        cancellation=cancellation,
+    )
 
 
 def _has_required_scopes(creds: Credentials) -> bool:
@@ -356,9 +409,10 @@ def _has_required_scopes(creds: Credentials) -> bool:
     Returns:
         True if all required scopes are present, False otherwise
     """
-    if not creds.scopes:
+    scopes = _effective_scopes(creds)
+    if not scopes:
         return False
-    return all(scope in creds.scopes for scope in SCOPES)
+    return all(scope in scopes for scope in SCOPES)
 
 
 def _refresh_credentials(
@@ -366,6 +420,7 @@ def _refresh_credentials(
     *,
     source: str,
     deadline: float | None = None,
+    cancellation: threading.Event | None = None,
 ) -> bool:
     """Refresh OAuth credentials in place, logging timing and outcome.
 
@@ -376,9 +431,11 @@ def _refresh_credentials(
 
     start = time.monotonic()
     try:
+        _check_cancellation(cancellation)
         request = _DeadlineRequest(REFRESH_DEADLINE_S, deadline=deadline)
         creds.refresh(request)
         request.ensure_within_deadline()
+        _check_cancellation(cancellation)
     except Exception as exc:
         log(
             "error",
@@ -400,7 +457,11 @@ def _refresh_credentials(
     return True
 
 
-def run_oauth_flow(*, deadline: float | None = None) -> str:
+def run_oauth_flow(
+    *,
+    deadline: float | None = None,
+    cancellation: threading.Event | None = None,
+) -> str:
     """Run OAuth flow to authenticate with Gmail.
 
     If already authenticated with a valid token and correct scopes, returns
@@ -414,6 +475,7 @@ def run_oauth_flow(*, deadline: float | None = None) -> str:
         FileNotFoundError: If credentials.json is missing
     """
     oauth_deadline = deadline or time.monotonic() + OAUTH_OPERATION_TIMEOUT_S
+    _check_cancellation(cancellation)
     if time.monotonic() >= oauth_deadline:
         raise OAuthFlowTimeoutError("Gmail OAuth flow timed out")
     ready_creds = None
@@ -424,13 +486,15 @@ def run_oauth_flow(*, deadline: float | None = None) -> str:
         else _credential_transaction(deadline=oauth_deadline)
     )
     with credential_context:
+        _check_cancellation(cancellation)
         token_before = None if use_env_backend else read_token()
         creds = (
-            get_token()
+            get_token(cancellation=cancellation)
             if use_env_backend
             else _credentials_from_token_data(token_before)
         )
         if not use_env_backend:
+            _check_cancellation(cancellation)
             _cache_keychain_credentials(creds)
         if creds and creds.valid and _has_required_scopes(creds):
             ready_creds = creds
@@ -443,6 +507,7 @@ def run_oauth_flow(*, deadline: float | None = None) -> str:
                 creds,
                 source="oauth_flow",
                 deadline=oauth_deadline,
+                cancellation=cancellation,
             )
         ):
             token_current = token_before if use_env_backend else read_token()
@@ -453,10 +518,12 @@ def run_oauth_flow(*, deadline: float | None = None) -> str:
                     _keychain_store_token_unlocked(
                         creds,
                         deadline=oauth_deadline,
+                        cancellation=cancellation,
                     )
                 ready_creds = creds
             else:
                 replacement_creds = _credentials_from_token_data(token_current)
+                _check_cancellation(cancellation)
                 _cache_keychain_credentials(replacement_creds)
                 if (
                     replacement_creds
@@ -490,6 +557,7 @@ def run_oauth_flow(*, deadline: float | None = None) -> str:
     )
     if remaining_browser_time <= 0:
         raise OAuthFlowTimeoutError("Gmail OAuth flow timed out")
+    _check_cancellation(cancellation)
     try:
         creds = flow.run_local_server(
             port=0,
@@ -503,6 +571,7 @@ def run_oauth_flow(*, deadline: float | None = None) -> str:
 
     if time.monotonic() > oauth_deadline:
         raise OAuthFlowTimeoutError("Gmail OAuth flow timed out")
+    _check_cancellation(cancellation)
     if (
         not isinstance(creds.refresh_token, str)
         or not creds.refresh_token.strip()
@@ -511,7 +580,11 @@ def run_oauth_flow(*, deadline: float | None = None) -> str:
     if not _has_required_scopes(creds):
         raise OAuthFlowError("Google OAuth did not grant the required Gmail scopes")
 
-    store_token(creds, deadline=oauth_deadline)
+    store_token(
+        creds,
+        deadline=oauth_deadline,
+        cancellation=cancellation,
+    )
 
     # Get user's email address
     service = _build_service(creds)
@@ -521,7 +594,11 @@ def run_oauth_flow(*, deadline: float | None = None) -> str:
     return email
 
 
-def get_gmail_service(*, deadline: float | None = None):
+def get_gmail_service(
+    *,
+    deadline: float | None = None,
+    cancellation: threading.Event | None = None,
+):
     """Get authenticated Gmail API service.
 
     Returns:
@@ -529,9 +606,10 @@ def get_gmail_service(*, deadline: float | None = None):
     """
     if deadline is not None and time.monotonic() >= deadline:
         raise TimeoutError("Gmail service deadline exceeded")
+    _check_cancellation(cancellation)
 
     if _use_env_backend():
-        creds = get_token()
+        creds = get_token(cancellation=cancellation)
         if not creds:
             return None
         if creds.expired and creds.refresh_token:
@@ -539,17 +617,20 @@ def get_gmail_service(*, deadline: float | None = None):
                 creds,
                 source="get_service",
                 deadline=deadline,
+                cancellation=cancellation,
             ):
                 return None
             store_token(creds)
     else:
-        creds = get_token()
+        creds = get_token(cancellation=cancellation)
         if not creds:
             return None
         if creds.expired and creds.refresh_token:
             with _credential_transaction(deadline=deadline):
+                _check_cancellation(cancellation)
                 token_before = read_token()
                 creds = _credentials_from_token_data(token_before)
+                _check_cancellation(cancellation)
                 _cache_keychain_credentials(creds)
                 if not creds:
                     return None
@@ -558,16 +639,19 @@ def get_gmail_service(*, deadline: float | None = None):
                         creds,
                         source="get_service",
                         deadline=deadline,
+                        cancellation=cancellation,
                     ):
                         return None
                     token_current = read_token()
                     if token_current != token_before:
                         creds = _credentials_from_token_data(token_current)
+                        _check_cancellation(cancellation)
                         _cache_keychain_credentials(creds)
                     else:
                         _keychain_store_token_unlocked(
                             creds,
                             deadline=deadline,
+                            cancellation=cancellation,
                         )
 
     if not creds or not creds.valid or not _has_required_scopes(creds):

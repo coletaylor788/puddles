@@ -134,7 +134,7 @@ before read-only candidate validation.
 Completed locally:
 
 - `CI=true .venv/bin/python -m pytest tests/ --ignore=tests/integration -q` -
-  152 safe tests passed; live mailbox tests were not collected.
+  157 safe tests passed; live mailbox tests were not collected.
 - `.venv/bin/ruff check src/ tests/` - passed.
 - `.venv/bin/python -m compileall -q src tests` - passed.
 - `git diff --check` - passed.
@@ -203,12 +203,18 @@ Completed locally:
   stored scope parsing replaced actual grants with requested scopes. Deadlines
   now begin before submission, queued work is cancelled and fails closed before
   side effects, and persisted grants are preserved and validated.
+- A thirteenth review found caller cancellation still left workers alive,
+  `granted_scopes` was not authoritative, environment-token scope compatibility
+  regressed, and implicit Keychain search could read and write different items.
+  Cooperative cancellation now gates side effects and persistence, actual
+  grants are stored and checked, environment parsing retains its existing scope
+  contract, and every command targets the canonical login keychain.
 - `packages/e2e/tests/gmail-keychain.test.ts` - two isolated regressions passed,
   covering long create/update values, content-only refresh ACL behavior, bounded
   timeouts, and sensitive traceback sanitization.
 - `node packages/e2e/bin/openclaw-test-env.mjs ci` - passed repository build and
   lint, 241 workspace tests (112 hooks, 25 cumulative E2E, 61 calendar, 43
-  secure Gmail), the 152-test safe Gmail Python suite plus Ruff and compilation,
+  secure Gmail), the 157-test safe Gmail Python suite plus Ruff and compilation,
   289 mapped OpenClaw tests, and one candidate browser test; temporary worktree
   cleanup completed.
 
@@ -286,6 +292,9 @@ Rollback:
   concurrently replaced credentials.
 - The twelfth fresh review found and corrected queue-time side effects and
   fabricated persisted scopes.
+- The thirteenth fresh review found and corrected caller-cancellation side
+  effects, effective-grant persistence, environment compatibility, and
+  Keychain-domain ambiguity.
 - The next review must invoke the repository adversarial-review workflow after
   cumulative E2E integration and OAuth validation.
 

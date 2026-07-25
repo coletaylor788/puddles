@@ -5,6 +5,7 @@ import base64
 import json
 import os
 import re
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -229,10 +230,15 @@ async def _authenticate() -> list[TextContent]:
     """Handle authenticate tool call."""
     try:
         deadline = time.monotonic() + OAUTH_OPERATION_TIMEOUT_S
+        cancellation = threading.Event()
         email = await run_blocking(
-            lambda: run_oauth_flow(deadline=deadline),
+            lambda: run_oauth_flow(
+                deadline=deadline,
+                cancellation=cancellation,
+            ),
             op="auth.oauth_flow",
             timeout=OAUTH_WORKER_TIMEOUT_S,
+            cancellation=cancellation,
         )
         return [
             TextContent(
@@ -269,11 +275,16 @@ async def _is_authenticated_async() -> bool:
 
 async def _get_gmail_service_async():
     deadline = time.monotonic() + AUTH_SERVICE_TIMEOUT_S - 10
+    cancellation = threading.Event()
     try:
         return await run_blocking(
-            lambda: get_gmail_service(deadline=deadline),
+            lambda: get_gmail_service(
+                deadline=deadline,
+                cancellation=cancellation,
+            ),
             op="auth.get_service",
             timeout=AUTH_SERVICE_TIMEOUT_S,
+            cancellation=cancellation,
         )
     except asyncio.TimeoutError as exc:
         raise AuthenticationUnavailableError(

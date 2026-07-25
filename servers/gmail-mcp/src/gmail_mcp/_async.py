@@ -26,6 +26,7 @@ is bypassed.
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 from typing import Any, Callable, TypeVar
 
@@ -55,6 +56,7 @@ async def run_blocking(
     *,
     op: str,
     timeout: float = DEFAULT_TIMEOUT_S,
+    cancellation: threading.Event | None = None,
 ) -> T:
     """Run a blocking callable in a worker thread with a timeout + slow warnings.
 
@@ -82,6 +84,8 @@ async def run_blocking(
     try:
         result = await asyncio.wait_for(asyncio.shield(work), timeout=timeout)
     except asyncio.TimeoutError:
+        if cancellation is not None:
+            cancellation.set()
         # Prevent calls that are still queued in the executor from starting
         # after their caller has already observed a timeout.
         work.cancel()
@@ -93,6 +97,11 @@ async def run_blocking(
             elapsed_ms=elapsed_ms,
             timeout_s=timeout,
         )
+        raise
+    except asyncio.CancelledError:
+        if cancellation is not None:
+            cancellation.set()
+        work.cancel()
         raise
     except Exception as exc:
         elapsed_ms = int((time.monotonic() - start) * 1000)
