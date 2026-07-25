@@ -104,6 +104,7 @@ webbrowser.register(
     OAUTH_BROWSER_NAME,
     None,
     webbrowser.BackgroundBrowser("/usr/bin/open"),
+    preferred=True,
 )
 
 # Gmail API scopes
@@ -222,6 +223,10 @@ def _credentials_from_token_data(token_data: str | None) -> Credentials | None:
         if any(
             not isinstance(token_info.get(field), str) or not token_info[field]
             for field in required_fields
+        ):
+            return None
+        if "token" in token_info and (
+            not isinstance(token_info["token"], str) or not token_info["token"]
         ):
             return None
         return Credentials.from_authorized_user_info(token_info, SCOPES)
@@ -423,7 +428,6 @@ def run_oauth_flow() -> str:
             port=0,
             authorization_prompt_message=None,
             timeout_seconds=OAUTH_BROWSER_TIMEOUT_S,
-            browser=OAUTH_BROWSER_NAME,
         )
     except (AttributeError, RequestsTimeout) as exc:
         raise OAuthFlowTimeoutError("Gmail OAuth flow timed out") from exc
