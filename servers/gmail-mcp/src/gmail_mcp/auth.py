@@ -48,7 +48,11 @@ def _canonical_credential_lock_path() -> Path:
     return account_home / ".config" / "gmail-mcp" / CREDENTIAL_LOCK_FILE
 
 
-CREDENTIAL_LOCK_PATH = _canonical_credential_lock_path()
+CREDENTIAL_LOCK_PATH: Path | None = None
+
+
+def _credential_lock_path() -> Path:
+    return CREDENTIAL_LOCK_PATH or _canonical_credential_lock_path()
 
 
 def _build_service(creds: Credentials):
@@ -144,7 +148,7 @@ def _credential_transaction():
     descriptor = None
     acquired = False
     try:
-        lock_path = CREDENTIAL_LOCK_PATH
+        lock_path = _credential_lock_path()
         try:
             lock_path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
         except OSError as exc:
@@ -221,12 +225,13 @@ def _credentials_from_token_data(token_data: str | None) -> Credentials | None:
             return None
         required_fields = ("refresh_token", "client_id", "client_secret")
         if any(
-            not isinstance(token_info.get(field), str) or not token_info[field]
+            not isinstance(token_info.get(field), str)
+            or not token_info[field].strip()
             for field in required_fields
         ):
             return None
         if "token" in token_info and (
-            not isinstance(token_info["token"], str) or not token_info["token"]
+            not isinstance(token_info["token"], str) or not token_info["token"].strip()
         ):
             return None
         return Credentials.from_authorized_user_info(token_info, SCOPES)

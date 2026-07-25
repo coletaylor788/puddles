@@ -134,7 +134,7 @@ before read-only candidate validation.
 Completed locally:
 
 - `CI=true .venv/bin/python -m pytest tests/ --ignore=tests/integration -q` -
-  140 safe tests passed; live mailbox tests were not collected.
+  143 safe tests passed; live mailbox tests were not collected.
 - `.venv/bin/ruff check src/ tests/` - passed.
 - `.venv/bin/python -m compileall -q src tests` - passed.
 - `git diff --check` - passed.
@@ -179,12 +179,16 @@ Completed locally:
   Present tokens now require non-empty strings, and the bounded `/usr/bin/open`
   controller is registered as Python's preferred default so every declared
   release uses the nonblocking path.
+- A seventh review found whitespace-only credential fields remained accepted and
+  eager OS-account lookup could break environment-only containers with unmapped
+  UIDs. Field validation now rejects blank strings after trimming, and canonical
+  Keychain lock resolution occurs lazily only inside a Keychain transaction.
 - `packages/e2e/tests/gmail-keychain.test.ts` - two isolated regressions passed,
   covering long create/update values, content-only refresh ACL behavior, bounded
   timeouts, and sensitive traceback sanitization.
 - `node packages/e2e/bin/openclaw-test-env.mjs ci` - passed repository build and
   lint, 241 workspace tests (112 hooks, 25 cumulative E2E, 61 calendar, 43
-  secure Gmail), the 140-test safe Gmail Python suite plus Ruff and compilation,
+  secure Gmail), the 143-test safe Gmail Python suite plus Ruff and compilation,
   289 mapped OpenClaw tests, and one candidate browser test; temporary worktree
   cleanup completed.
 
@@ -250,6 +254,8 @@ Rollback:
   compatibility and binary Keychain corruption handling.
 - The sixth fresh review found and corrected malformed access-token acceptance
   and old-version browser-controller compatibility.
+- The seventh fresh review found and corrected whitespace-only credentials and
+  eager Keychain lock resolution in environment-only containers.
 - The next review must invoke the repository adversarial-review workflow after
   cumulative E2E integration and OAuth validation.
 
