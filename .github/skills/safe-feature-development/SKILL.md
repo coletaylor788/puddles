@@ -100,6 +100,12 @@ global safety or publication boundary.
    - If the diff changes after a clear review for any reason, run the relevant
      validation again, redeploy and rerun the full configured integration pool
      when the change can affect it, and obtain a fresh adversarial review.
+   - After all in-diff plan, checklist, and other bookkeeping is final, run one
+     terminal fresh review against the exact commit to be handed off. Record the
+     clean result and reviewed commit identifier only in the issue's allowed
+     `Status` or `Done` ledger so recording the result does not change the
+     reviewed diff. Do not change the diff afterward; any change invalidates the
+     terminal result and restarts validation and fresh review.
 
 6. **Promote through the configured lifecycle**
    - If the repository provides an approved automatic test-to-production
