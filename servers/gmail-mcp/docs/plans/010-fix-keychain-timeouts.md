@@ -134,7 +134,7 @@ before read-only candidate validation.
 Completed locally:
 
 - `CI=true .venv/bin/python -m pytest tests/ --ignore=tests/integration -q` -
-  164 safe tests passed; live mailbox tests were not collected.
+  166 safe tests passed; live mailbox tests were not collected.
 - `.venv/bin/ruff check src/ tests/` - passed.
 - `.venv/bin/python -m compileall -q src tests` - passed.
 - `git diff --check` - passed.
@@ -217,12 +217,19 @@ Completed locally:
 - A fifteenth review found AnyIO level cancellation could repeatedly interrupt
   the bounded drain. The drain now runs inside an AnyIO shield, with a task-group
   regression covering cancellation during an active credential write.
+- A sixteenth review found a successful refresh could lose a required actual
+  grant but still be persisted and reported ready. Refreshed credentials now
+  pass validity and effective-scope checks before persistence; otherwise browser
+  recovery continues.
+- A seventeenth review found the same post-refresh persistence invariant was
+  missing from normal Gmail service construction. Both authentication
+  entrypoints now refuse to persist invalid or narrowed refreshed credentials.
 - `packages/e2e/tests/gmail-keychain.test.ts` - two isolated regressions passed,
   covering long create/update values, content-only refresh ACL behavior, bounded
   timeouts, and sensitive traceback sanitization.
 - `node packages/e2e/bin/openclaw-test-env.mjs ci` - passed repository build and
   lint, 241 workspace tests (112 hooks, 25 cumulative E2E, 61 calendar, 43
-  secure Gmail), the 164-test safe Gmail Python suite plus Ruff and compilation,
+  secure Gmail), the 166-test safe Gmail Python suite plus Ruff and compilation,
   289 mapped OpenClaw tests, and one candidate browser test; temporary worktree
   cleanup completed.
 
@@ -307,8 +314,13 @@ Rollback:
   cancellation ordering and malformed persisted scope parsing.
 - The fifteenth fresh review found and corrected AnyIO level-cancellation
   interruption of the bounded credential-write drain.
-- The next review must invoke the repository adversarial-review workflow after
-  cumulative E2E integration and OAuth validation.
+- The sixteenth fresh review found and corrected post-refresh validity and
+  effective-grant revalidation.
+- The seventeenth fresh review found and corrected the parallel narrowed-refresh
+  persistence path in normal Gmail service construction.
+- The eighteenth fresh review found no actionable issue after both refresh
+  entrypoints adopted the same validity and effective-grant invariant.
+- An exact-commit terminal review remains after OAuth and cumulative validation.
 
 ### Checklist
 

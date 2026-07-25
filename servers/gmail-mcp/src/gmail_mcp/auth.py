@@ -522,15 +522,16 @@ def run_oauth_flow(
         ):
             token_current = token_before if use_env_backend else read_token()
             if token_current == token_before:
-                if use_env_backend:
-                    store_token(creds)
-                else:
-                    _keychain_store_token_unlocked(
-                        creds,
-                        deadline=oauth_deadline,
-                        cancellation=cancellation,
-                    )
-                ready_creds = creds
+                if creds.valid and _has_required_scopes(creds):
+                    if use_env_backend:
+                        store_token(creds)
+                    else:
+                        _keychain_store_token_unlocked(
+                            creds,
+                            deadline=oauth_deadline,
+                            cancellation=cancellation,
+                        )
+                    ready_creds = creds
             else:
                 replacement_creds = _credentials_from_token_data(token_current)
                 _check_cancellation(cancellation)
@@ -658,11 +659,12 @@ def get_gmail_service(
                         _check_cancellation(cancellation)
                         _cache_keychain_credentials(creds)
                     else:
-                        _keychain_store_token_unlocked(
-                            creds,
-                            deadline=deadline,
-                            cancellation=cancellation,
-                        )
+                        if creds.valid and _has_required_scopes(creds):
+                            _keychain_store_token_unlocked(
+                                creds,
+                                deadline=deadline,
+                                cancellation=cancellation,
+                            )
 
     if not creds or not creds.valid or not _has_required_scopes(creds):
         return None
