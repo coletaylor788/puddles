@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -55,7 +56,7 @@ export const CONFIG: E2EConfig = {
   stateDir,
   profileArgs,
   ownerNumber: env("E2E_OWNER_NUMBER"),
-  runId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+  runId: randomUUID(),
 };
 
 /**

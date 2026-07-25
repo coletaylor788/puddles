@@ -12,11 +12,28 @@ export function parseJsonLoose(text: string | undefined | null): any {
   } catch {
     /* fall through */
   }
-  // 2) strip code fences
-  const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fence) {
+  // 2) strip an unlabelled or JSON code fence without a backtracking regex.
+  const fenceStart = s.indexOf("```");
+  if (fenceStart >= 0) {
+    let contentStart = fenceStart + 3;
+    const language = s.slice(contentStart, contentStart + 4);
+    if (
+      language.toLowerCase() === "json" &&
+      /\s/.test(s[contentStart + 4] ?? "")
+    ) {
+      contentStart += 4;
+    } else if (!/\s/.test(s[contentStart] ?? "")) {
+      contentStart = -1;
+    }
+    while (contentStart >= 0 && /\s/.test(s[contentStart] ?? "")) {
+      contentStart += 1;
+    }
+    const fenceEnd = contentStart >= 0 ? s.indexOf("```", contentStart) : -1;
+    const fenced = fenceEnd >= 0 ? s.slice(contentStart, fenceEnd).trim() : "";
     try {
-      return JSON.parse(fence[1].trim());
+      if (fenced) {
+        return JSON.parse(fenced);
+      }
     } catch {
       /* fall through */
     }

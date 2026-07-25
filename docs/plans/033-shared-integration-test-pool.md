@@ -38,7 +38,7 @@ real channels or personal-data services.
   OpenClaw tests pass.
 - Run an independent full-diff review.
 
-Final result: repository build and lint passed; 225 workspace tests, 289 mapped
+Final result: repository build and lint passed; 228 workspace tests, 289 mapped
 OpenClaw tests, and the isolated browser-entrypoint candidate test passed. Three
 independent adversarial passes resolved all findings and ended clear.
 
