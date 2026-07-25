@@ -211,6 +211,19 @@ class TestKeychainGetToken:
         with patch("gmail_mcp.auth.read_token", return_value=json.dumps(token_info)):
             assert get_token() is None
 
+    @pytest.mark.parametrize("value", [None, [], {}, True, 1, ""])
+    def test_returns_none_on_invalid_access_token(self, value):
+        """A present OAuth access token must be a non-empty string."""
+        token_info = {
+            "token": value,
+            "refresh_token": "refresh-token",
+            "client_id": "client-id",
+            "client_secret": "client-secret",
+            "expiry": "2099-01-01T00:00:00Z",
+        }
+        with patch("gmail_mcp.auth.read_token", return_value=json.dumps(token_info)):
+            assert get_token() is None
+
     def test_returns_credentials_when_valid_token(self):
         """Returns Credentials object when valid token exists."""
         token_data = {
@@ -638,8 +651,15 @@ class TestRunOauthFlow:
                 port=0,
                 authorization_prompt_message=None,
                 timeout_seconds=600,
-                browser="gmail-mcp-background",
             )
+
+    def test_registered_browser_launch_is_nonblocking(self):
+        """Old OAuth library versions use the preferred background controller."""
+        import gmail_mcp.auth
+
+        browser = gmail_mcp.auth.webbrowser.get()
+        assert isinstance(browser, gmail_mcp.auth.webbrowser.BackgroundBrowser)
+        assert browser.name == "/usr/bin/open"
 
     def test_translates_browser_wait_timeout(self, tmp_path):
         """The OAuth library timeout becomes the server's timeout type."""
