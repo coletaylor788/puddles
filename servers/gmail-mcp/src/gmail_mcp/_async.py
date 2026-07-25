@@ -82,6 +82,9 @@ async def run_blocking(
     try:
         result = await asyncio.wait_for(asyncio.shield(work), timeout=timeout)
     except asyncio.TimeoutError:
+        # Prevent calls that are still queued in the executor from starting
+        # after their caller has already observed a timeout.
+        work.cancel()
         elapsed_ms = int((time.monotonic() - start) * 1000)
         log(
             "error",

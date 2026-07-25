@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from gmail_mcp.auth import (
+    SCOPES,
     _use_env_backend,
     get_gmail_service,
     get_token,
@@ -293,6 +294,29 @@ class TestKeychainGetToken:
             assert creds.token == "access_token"
             assert creds.refresh_token == "refresh_token"
 
+    def test_preserves_persisted_scopes_instead_of_fabricating_required_scopes(self):
+        """An underscoped stored credential remains visibly underscoped."""
+        import gmail_mcp.auth
+
+        readonly_scope = "https://www.googleapis.com/auth/gmail.readonly"
+        token_data = {
+            "token": "access_token",
+            "refresh_token": "refresh_token",
+            "client_id": "client_id",
+            "client_secret": "client_secret",
+            "expiry": "2099-01-01T00:00:00Z",
+            "scopes": [readonly_scope],
+        }
+        with patch(
+            "gmail_mcp.auth.read_token",
+            return_value=json.dumps(token_data),
+        ):
+            creds = get_token()
+
+        assert creds is not None
+        assert list(creds.scopes) == [readonly_scope]
+        assert gmail_mcp.auth._has_required_scopes(creds) is False
+
     def test_caches_credentials_after_first_read(self):
         """Reads Keychain only once within the short cache window."""
         token_data = json.dumps({
@@ -469,6 +493,7 @@ class TestKeychainStoreToken:
 
         new_creds = MagicMock()
         new_creds.valid = True
+        new_creds.scopes = SCOPES
 
         with (
             patch("gmail_mcp.auth.read_token", side_effect=["old", "old", "new"]),
@@ -637,6 +662,30 @@ class TestAuthenticationBounds:
         monkeypatch.setenv("HOME", "/tmp/unrelated-home")
         assert gmail_mcp.auth._canonical_credential_lock_path() == expected
 
+    def test_expired_oauth_submission_does_not_start_side_effects(self):
+        """Queued OAuth work fails before reading credentials or opening a browser."""
+        with (
+            patch("gmail_mcp.auth.read_token") as mock_read,
+            patch(
+                "gmail_mcp.auth._BoundedInstalledAppFlow.from_client_secrets_file"
+            ) as mock_flow,
+            pytest.raises(TimeoutError, match="OAuth flow timed out"),
+        ):
+            run_oauth_flow(deadline=time.monotonic() - 1)
+
+        mock_read.assert_not_called()
+        mock_flow.assert_not_called()
+
+    def test_expired_service_submission_does_not_read_keychain(self):
+        """Queued service construction fails before any credential read."""
+        with (
+            patch("gmail_mcp.auth.read_token") as mock_read,
+            pytest.raises(TimeoutError, match="service deadline exceeded"),
+        ):
+            get_gmail_service(deadline=time.monotonic() - 1)
+
+        mock_read.assert_not_called()
+
     def test_oauth_token_exchange_has_http_timeout(self):
         import gmail_mcp.auth
 
@@ -677,6 +726,7 @@ class TestRunOauthFlow:
 
         mock_creds = MagicMock()
         mock_creds.refresh_token = "refresh-token"
+        mock_creds.scopes = SCOPES
         mock_creds.to_json.return_value = '{"token": "test"}'
 
         mock_flow = MagicMock()
@@ -784,6 +834,7 @@ class TestRunOauthFlow:
         creds_file.write_text('{"installed": {"client_id": "x", "client_secret": "y"}}')
         mock_creds = MagicMock()
         mock_creds.refresh_token = "refresh-token"
+        mock_creds.scopes = SCOPES
         mock_flow = MagicMock()
 
         def finish_late(**_kwargs):
@@ -872,6 +923,7 @@ class TestRunOauthFlow:
         # New creds from OAuth flow
         mock_new_creds = MagicMock()
         mock_new_creds.refresh_token = "refresh-token"
+        mock_new_creds.scopes = SCOPES
         mock_flow = MagicMock()
         mock_flow.run_local_server.return_value = mock_new_creds
 
@@ -918,6 +970,7 @@ class TestRunOauthFlow:
 
         new_creds = MagicMock()
         new_creds.refresh_token = "new-refresh"
+        new_creds.scopes = SCOPES
         mock_flow = MagicMock()
         mock_flow.run_local_server.return_value = new_creds
 
@@ -964,6 +1017,7 @@ class TestGetGmailService:
         mock_creds = MagicMock()
         mock_creds.expired = False
         mock_creds.valid = True
+        mock_creds.scopes = SCOPES
 
         mock_service = MagicMock()
 
@@ -983,6 +1037,7 @@ class TestGetGmailService:
             "client_id": "client-id",
             "client_secret": "client-secret",
             "expiry": "2099-01-01T00:00:00Z",
+            "scopes": SCOPES,
         })
         mock_service = MagicMock()
 
@@ -1001,6 +1056,7 @@ class TestGetGmailService:
         mock_creds.expired = True
         mock_creds.refresh_token = "refresh"
         mock_creds.valid = True
+        mock_creds.scopes = SCOPES
 
         mock_service = MagicMock()
 

@@ -74,8 +74,10 @@ def _build_service(creds: Credentials):
 class _DeadlineRequest:
     """Apply one deadline across all retries in a credential refresh."""
 
-    def __init__(self, timeout: float) -> None:
+    def __init__(self, timeout: float, *, deadline: float | None = None) -> None:
         self._deadline = time.monotonic() + timeout
+        if deadline is not None:
+            self._deadline = min(self._deadline, deadline)
         self._request = Request()
 
     def __call__(self, *args: Any, **kwargs: Any):
@@ -230,7 +232,7 @@ def _env_load_credentials() -> None:
     if not token_json:
         return
     token_info = json.loads(token_json)
-    _cached_creds = Credentials.from_authorized_user_info(token_info, SCOPES)
+    _cached_creds = Credentials.from_authorized_user_info(token_info)
 
 
 # --- Keychain backend ---
@@ -254,7 +256,7 @@ def _credentials_from_token_data(token_data: str | None) -> Credentials | None:
             not isinstance(token_info["token"], str) or not token_info["token"].strip()
         ):
             return None
-        return Credentials.from_authorized_user_info(token_info, SCOPES)
+        return Credentials.from_authorized_user_info(token_info)
     except (AttributeError, json.JSONDecodeError, TypeError, ValueError):
         return None
 
@@ -359,7 +361,12 @@ def _has_required_scopes(creds: Credentials) -> bool:
     return all(scope in creds.scopes for scope in SCOPES)
 
 
-def _refresh_credentials(creds: Credentials, *, source: str) -> bool:
+def _refresh_credentials(
+    creds: Credentials,
+    *,
+    source: str,
+    deadline: float | None = None,
+) -> bool:
     """Refresh OAuth credentials in place, logging timing and outcome.
 
     Returns True on success, False on any exception. The caller decides
@@ -369,7 +376,7 @@ def _refresh_credentials(creds: Credentials, *, source: str) -> bool:
 
     start = time.monotonic()
     try:
-        request = _DeadlineRequest(REFRESH_DEADLINE_S)
+        request = _DeadlineRequest(REFRESH_DEADLINE_S, deadline=deadline)
         creds.refresh(request)
         request.ensure_within_deadline()
     except Exception as exc:
@@ -393,7 +400,7 @@ def _refresh_credentials(creds: Credentials, *, source: str) -> bool:
     return True
 
 
-def run_oauth_flow() -> str:
+def run_oauth_flow(*, deadline: float | None = None) -> str:
     """Run OAuth flow to authenticate with Gmail.
 
     If already authenticated with a valid token and correct scopes, returns
@@ -406,10 +413,16 @@ def run_oauth_flow() -> str:
     Raises:
         FileNotFoundError: If credentials.json is missing
     """
-    oauth_deadline = time.monotonic() + OAUTH_OPERATION_TIMEOUT_S
+    oauth_deadline = deadline or time.monotonic() + OAUTH_OPERATION_TIMEOUT_S
+    if time.monotonic() >= oauth_deadline:
+        raise OAuthFlowTimeoutError("Gmail OAuth flow timed out")
     ready_creds = None
     use_env_backend = _use_env_backend()
-    credential_context = nullcontext() if use_env_backend else _credential_transaction()
+    credential_context = (
+        nullcontext()
+        if use_env_backend
+        else _credential_transaction(deadline=oauth_deadline)
+    )
     with credential_context:
         token_before = None if use_env_backend else read_token()
         creds = (
@@ -426,14 +439,21 @@ def run_oauth_flow() -> str:
             and creds.expired
             and creds.refresh_token
             and _has_required_scopes(creds)
-            and _refresh_credentials(creds, source="oauth_flow")
+            and _refresh_credentials(
+                creds,
+                source="oauth_flow",
+                deadline=oauth_deadline,
+            )
         ):
             token_current = token_before if use_env_backend else read_token()
             if token_current == token_before:
                 if use_env_backend:
                     store_token(creds)
                 else:
-                    _keychain_store_token_unlocked(creds)
+                    _keychain_store_token_unlocked(
+                        creds,
+                        deadline=oauth_deadline,
+                    )
                 ready_creds = creds
             else:
                 replacement_creds = _credentials_from_token_data(token_current)
@@ -488,6 +508,8 @@ def run_oauth_flow() -> str:
         or not creds.refresh_token.strip()
     ):
         raise OAuthFlowError("Google OAuth did not return a refresh token")
+    if not _has_required_scopes(creds):
+        raise OAuthFlowError("Google OAuth did not grant the required Gmail scopes")
 
     store_token(creds, deadline=oauth_deadline)
 
@@ -499,18 +521,25 @@ def run_oauth_flow() -> str:
     return email
 
 
-def get_gmail_service():
+def get_gmail_service(*, deadline: float | None = None):
     """Get authenticated Gmail API service.
 
     Returns:
         Gmail API service object, or None if not authenticated
     """
+    if deadline is not None and time.monotonic() >= deadline:
+        raise TimeoutError("Gmail service deadline exceeded")
+
     if _use_env_backend():
         creds = get_token()
         if not creds:
             return None
         if creds.expired and creds.refresh_token:
-            if not _refresh_credentials(creds, source="get_service"):
+            if not _refresh_credentials(
+                creds,
+                source="get_service",
+                deadline=deadline,
+            ):
                 return None
             store_token(creds)
     else:
@@ -518,23 +547,30 @@ def get_gmail_service():
         if not creds:
             return None
         if creds.expired and creds.refresh_token:
-            with _credential_transaction():
+            with _credential_transaction(deadline=deadline):
                 token_before = read_token()
                 creds = _credentials_from_token_data(token_before)
                 _cache_keychain_credentials(creds)
                 if not creds:
                     return None
                 if creds.expired and creds.refresh_token:
-                    if not _refresh_credentials(creds, source="get_service"):
+                    if not _refresh_credentials(
+                        creds,
+                        source="get_service",
+                        deadline=deadline,
+                    ):
                         return None
                     token_current = read_token()
                     if token_current != token_before:
                         creds = _credentials_from_token_data(token_current)
                         _cache_keychain_credentials(creds)
                     else:
-                        _keychain_store_token_unlocked(creds)
+                        _keychain_store_token_unlocked(
+                            creds,
+                            deadline=deadline,
+                        )
 
-    if not creds or not creds.valid:
+    if not creds or not creds.valid or not _has_required_scopes(creds):
         return None
 
     return _build_service(creds)

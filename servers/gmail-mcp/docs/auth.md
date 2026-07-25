@@ -113,7 +113,11 @@ AppleScript browser controller cannot freeze the server.
 Recovery OAuth explicitly requests offline consent and refuses to persist a
 result without a refresh token. One cumulative inner deadline is propagated
 through callback waiting, token exchange, lock acquisition, and Keychain write,
-so a timed-out worker cannot later replace credentials.
+so a timed-out worker cannot later replace credentials. The deadline starts
+before executor submission; queued work is cancelled and also rejects an
+already-expired deadline before any read, browser launch, refresh, or write.
+Persisted scopes are preserved and checked rather than replaced with the
+requested scope list.
 
 ### Viewing in Keychain Access
 
