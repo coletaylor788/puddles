@@ -435,7 +435,10 @@ class TestKeychainStoreToken:
                 "gmail_mcp.auth._credentials_from_token_data",
                 return_value=old_creds,
             ),
-            patch("gmail_mcp.auth.write_token", side_effect=writes.append),
+            patch(
+                "gmail_mcp.auth.write_token",
+                side_effect=lambda token, **_kwargs: writes.append(token),
+            ),
             patch("gmail_mcp.auth._build_service", return_value=MagicMock()),
         ):
             refresh_thread = threading.Thread(target=get_gmail_service)
@@ -673,6 +676,7 @@ class TestRunOauthFlow:
         creds_file.write_text('{"installed": {"client_id": "x", "client_secret": "y"}}')
 
         mock_creds = MagicMock()
+        mock_creds.refresh_token = "refresh-token"
         mock_creds.to_json.return_value = '{"token": "test"}'
 
         mock_flow = MagicMock()
@@ -697,11 +701,16 @@ class TestRunOauthFlow:
             email = run_oauth_flow()
 
             assert email == "test@gmail.com"
-            mock_store.assert_called_once_with(mock_creds)
+            stored_creds = mock_store.call_args.args[0]
+            store_deadline = mock_store.call_args.kwargs["deadline"]
+            assert stored_creds is mock_creds
+            assert store_deadline > time.monotonic()
             mock_flow.run_local_server.assert_called_once_with(
                 port=0,
                 authorization_prompt_message=None,
                 timeout_seconds=600,
+                access_type="offline",
+                prompt="consent",
             )
 
     def test_registered_browser_launch_is_nonblocking(self):
@@ -737,6 +746,70 @@ class TestRunOauthFlow:
             ),
         ):
             run_oauth_flow()
+
+    def test_rejects_oauth_without_refresh_token(self, tmp_path):
+        """Recovery never persists credentials that cannot refresh."""
+        import gmail_mcp.auth
+
+        creds_file = tmp_path / "credentials.json"
+        creds_file.write_text('{"installed": {"client_id": "x", "client_secret": "y"}}')
+        mock_creds = MagicMock()
+        mock_creds.refresh_token = None
+        mock_flow = MagicMock()
+        mock_flow.run_local_server.return_value = mock_creds
+
+        with (
+            patch("gmail_mcp.auth._use_env_backend", return_value=True),
+            patch("gmail_mcp.auth.get_token", return_value=None),
+            patch("gmail_mcp.auth.get_credentials_path", return_value=creds_file),
+            patch(
+                "gmail_mcp.auth._BoundedInstalledAppFlow.from_client_secrets_file",
+                return_value=mock_flow,
+            ),
+            patch("gmail_mcp.auth.store_token") as mock_store,
+            pytest.raises(
+                gmail_mcp.auth.OAuthFlowError,
+                match="did not return a refresh token",
+            ),
+        ):
+            run_oauth_flow()
+
+        mock_store.assert_not_called()
+
+    def test_oauth_deadline_prevents_late_persistence(self, tmp_path, monkeypatch):
+        """A worker finishing after its inner deadline cannot write Keychain."""
+        import gmail_mcp.auth
+
+        creds_file = tmp_path / "credentials.json"
+        creds_file.write_text('{"installed": {"client_id": "x", "client_secret": "y"}}')
+        mock_creds = MagicMock()
+        mock_creds.refresh_token = "refresh-token"
+        mock_flow = MagicMock()
+
+        def finish_late(**_kwargs):
+            time.sleep(0.1)
+            return mock_creds
+
+        mock_flow.run_local_server.side_effect = finish_late
+        monkeypatch.setattr(gmail_mcp.auth, "OAUTH_OPERATION_TIMEOUT_S", 0.05)
+
+        with (
+            patch("gmail_mcp.auth._use_env_backend", return_value=True),
+            patch("gmail_mcp.auth.get_token", return_value=None),
+            patch("gmail_mcp.auth.get_credentials_path", return_value=creds_file),
+            patch(
+                "gmail_mcp.auth._BoundedInstalledAppFlow.from_client_secrets_file",
+                return_value=mock_flow,
+            ),
+            patch("gmail_mcp.auth.store_token") as mock_store,
+            pytest.raises(
+                gmail_mcp.auth.OAuthFlowTimeoutError,
+                match="OAuth flow timed out",
+            ),
+        ):
+            run_oauth_flow()
+
+        mock_store.assert_not_called()
 
     def test_returns_email_when_already_authenticated(self):
         """Returns email without browser flow when already authenticated."""
@@ -798,6 +871,7 @@ class TestRunOauthFlow:
 
         # New creds from OAuth flow
         mock_new_creds = MagicMock()
+        mock_new_creds.refresh_token = "refresh-token"
         mock_flow = MagicMock()
         mock_flow.run_local_server.return_value = mock_new_creds
 
@@ -824,7 +898,8 @@ class TestRunOauthFlow:
             assert email == "reauthed@gmail.com"
             # Should have run the OAuth flow, not just returned existing token
             mock_flow.run_local_server.assert_called_once()
-            mock_store.assert_called_once_with(mock_new_creds)
+            assert mock_store.call_args.args == (mock_new_creds,)
+            assert mock_store.call_args.kwargs["deadline"] > time.monotonic()
 
 
 class TestGetGmailService:

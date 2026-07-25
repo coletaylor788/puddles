@@ -17,8 +17,9 @@ from ._async import run_blocking
 from .auth import (
     CREDENTIAL_LOCK_TIMEOUT_S,
     HTTP_SOCKET_TIMEOUT_S,
-    OAUTH_BROWSER_TIMEOUT_S,
+    OAUTH_OPERATION_TIMEOUT_S,
     REFRESH_DEADLINE_S,
+    OAuthFlowError,
     OAuthFlowTimeoutError,
     get_gmail_service,
     is_authenticated,
@@ -37,13 +38,7 @@ AUTH_SERVICE_TIMEOUT_S = (
     + HTTP_SOCKET_TIMEOUT_S
     + 45
 )
-OAUTH_WORKER_TIMEOUT_S = (
-    CREDENTIAL_LOCK_TIMEOUT_S * 2
-    + REFRESH_DEADLINE_S
-    + OAUTH_BROWSER_TIMEOUT_S
-    + HTTP_SOCKET_TIMEOUT_S * 2
-    + 45
-)
+OAUTH_WORKER_TIMEOUT_S = OAUTH_OPERATION_TIMEOUT_S + 30
 
 
 class AuthenticationUnavailableError(RuntimeError):
@@ -252,6 +247,8 @@ async def _authenticate() -> list[TextContent]:
         raise AuthenticationUnavailableError(
             "Gmail OAuth flow timed out"
         ) from exc
+    except OAuthFlowError as exc:
+        raise AuthenticationUnavailableError(str(exc)) from exc
     except Exception as e:
         return [TextContent(type="text", text=f"Error during authentication: {e}")]
 
