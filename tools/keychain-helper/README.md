@@ -10,8 +10,9 @@ Mach service. It accepts one local alias, maps that alias through an owner-only
 allowlist, reads exactly one generic-password item, and writes only its secret
 data to stdout.
 
-See [plan 032](../../docs/plans/032-stable-per-user-keychain-helper.md) for the
-threat model, current consumer inventory, rollout, and rollback design.
+See the
+[stable Keychain plan](../../docs/plans/todoist-23-stable-keychain-helper.md)
+for the threat model, current consumer inventory, rollout, and rollback design.
 
 ## Requirements
 
