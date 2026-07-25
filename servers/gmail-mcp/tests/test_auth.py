@@ -276,6 +276,37 @@ class TestKeychainGetToken:
         with patch("gmail_mcp.auth.read_token", return_value=json.dumps(token_info)):
             assert get_token() is None
 
+    @pytest.mark.parametrize(
+        "scopes",
+        [1, {}, [1], ["https://www.googleapis.com/auth/gmail.modify", " "]],
+    )
+    def test_returns_none_on_invalid_persisted_scopes(self, scopes):
+        """Persisted scopes must be a string or list of nonblank strings."""
+        token_info = {
+            "token": "access-token",
+            "refresh_token": "refresh-token",
+            "client_id": "client-id",
+            "client_secret": "client-secret",
+            "scopes": scopes,
+        }
+        with patch("gmail_mcp.auth.read_token", return_value=json.dumps(token_info)):
+            assert get_token() is None
+
+    def test_normalizes_legacy_space_separated_scopes(self):
+        """Legacy serialized scope strings remain compatible."""
+        token_info = {
+            "token": "access-token",
+            "refresh_token": "refresh-token",
+            "client_id": "client-id",
+            "client_secret": "client-secret",
+            "scopes": " ".join(SCOPES),
+        }
+        with patch("gmail_mcp.auth.read_token", return_value=json.dumps(token_info)):
+            creds = get_token()
+
+        assert creds is not None
+        assert list(creds.scopes) == SCOPES
+
     def test_returns_credentials_when_valid_token(self):
         """Returns Credentials object when valid token exists."""
         token_data = {

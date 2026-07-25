@@ -118,6 +118,40 @@ async def test_run_blocking_cancels_work_still_queued_by_caller(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_cancellation_drains_started_authentication_write():
+    """Cancellation is not returned before a bounded credential write finishes."""
+    write_started = threading.Event()
+    release_write = threading.Event()
+    write_finished = threading.Event()
+    cancellation = threading.Event()
+
+    def credential_write():
+        write_started.set()
+        release_write.wait(timeout=1)
+        write_finished.set()
+
+    task = asyncio.create_task(
+        _async.run_blocking(
+            credential_write,
+            op="unit.credential_write",
+            timeout=1,
+            cancellation=cancellation,
+        )
+    )
+    await asyncio.wait_for(asyncio.to_thread(write_started.wait), timeout=0.5)
+    task.cancel()
+    await asyncio.sleep(0.05)
+    assert not task.done()
+
+    release_write.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert cancellation.is_set()
+    assert write_finished.is_set()
+
+
+@pytest.mark.asyncio
 async def test_run_blocking_does_not_block_event_loop():
     """While a blocking call sleeps in a worker thread, the event loop must stay responsive."""
     counter = {"n": 0}

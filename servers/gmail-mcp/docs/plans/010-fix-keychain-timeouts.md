@@ -134,7 +134,7 @@ before read-only candidate validation.
 Completed locally:
 
 - `CI=true .venv/bin/python -m pytest tests/ --ignore=tests/integration -q` -
-  157 safe tests passed; live mailbox tests were not collected.
+  163 safe tests passed; live mailbox tests were not collected.
 - `.venv/bin/ruff check src/ tests/` - passed.
 - `.venv/bin/python -m compileall -q src tests` - passed.
 - `git diff --check` - passed.
@@ -209,12 +209,17 @@ Completed locally:
   Cooperative cancellation now gates side effects and persistence, actual
   grants are stored and checked, environment parsing retains its existing scope
   contract, and every command targets the canonical login keychain.
+- A fourteenth review found cancellation could still return during an in-flight
+  Keychain subprocess and malformed stored scope shapes could escape parsing.
+  Already-started authentication writes now receive a short bounded drain
+  before cancellation propagates, and scopes are normalized or rejected before
+  SDK construction.
 - `packages/e2e/tests/gmail-keychain.test.ts` - two isolated regressions passed,
   covering long create/update values, content-only refresh ACL behavior, bounded
   timeouts, and sensitive traceback sanitization.
 - `node packages/e2e/bin/openclaw-test-env.mjs ci` - passed repository build and
   lint, 241 workspace tests (112 hooks, 25 cumulative E2E, 61 calendar, 43
-  secure Gmail), the 157-test safe Gmail Python suite plus Ruff and compilation,
+  secure Gmail), the 163-test safe Gmail Python suite plus Ruff and compilation,
   289 mapped OpenClaw tests, and one candidate browser test; temporary worktree
   cleanup completed.
 
@@ -295,6 +300,8 @@ Rollback:
 - The thirteenth fresh review found and corrected caller-cancellation side
   effects, effective-grant persistence, environment compatibility, and
   Keychain-domain ambiguity.
+- The fourteenth fresh review found and corrected in-flight Keychain-write
+  cancellation ordering and malformed persisted scope parsing.
 - The next review must invoke the repository adversarial-review workflow after
   cumulative E2E integration and OAuth validation.
 

@@ -123,7 +123,11 @@ Persisted scopes are preserved and checked rather than replaced with the
 requested scope list. When Google reports a narrower `granted_scopes` set, that
 effective grant is validated and stored. Caller cancellation sets a cooperative
 signal checked before browser launch, refresh, cache replacement, and
-persistence, while queued executor work is cancelled before it starts.
+persistence, while queued executor work is cancelled before it starts. If
+cancellation arrives during the non-cancellable Keychain subprocess, the async
+boundary briefly drains that bounded write before returning cancellation.
+Stored scopes accept the legacy space-separated form or a list of nonblank
+strings; malformed scope shapes are unauthenticated.
 
 ### Viewing in Keychain Access
 
