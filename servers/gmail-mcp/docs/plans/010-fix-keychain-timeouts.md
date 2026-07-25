@@ -133,8 +133,8 @@ before read-only candidate validation.
 
 Completed locally:
 
-- `CI=true .venv/bin/python -m pytest tests/ -q` - 119 passed and 19 live
-  mailbox tests skipped.
+- `CI=true .venv/bin/python -m pytest tests/ --ignore=tests/integration -q` -
+  123 safe tests passed; live mailbox tests were not collected.
 - `.venv/bin/ruff check src/ tests/` - passed.
 - `.venv/bin/python -m compileall -q src tests` - passed.
 - `git diff --check` - passed.
@@ -154,12 +154,20 @@ Completed locally:
   deadlines, bounded background browser launch and token exchange, a
   cross-process lock plus compare-before-write, shape validation, and managed
   Python gates correct them.
+- A third review found inherited CI values could enable live mailbox tests,
+  same-process lock wait was outside its deadline, configurable lock roots could
+  split serialization, late refresh responses could still persist, malformed
+  object fields could escape, and OAuth timeout translation was incomplete.
+  The managed gate now forces `CI=true` and excludes `tests/integration`
+  explicitly; one absolute lock deadline and canonical path cover all waiters;
+  late responses and malformed fields fail closed; and OAuth timeouts are
+  structured failures.
 - `packages/e2e/tests/gmail-keychain.test.ts` - two isolated regressions passed,
   covering long create/update values, content-only refresh ACL behavior, bounded
   timeouts, and sensitive traceback sanitization.
 - `node packages/e2e/bin/openclaw-test-env.mjs ci` - passed repository build and
-  lint, 239 workspace tests (112 hooks, 23 cumulative E2E, 61 calendar, 43
-  secure Gmail), the 119-test safe Gmail Python suite plus Ruff and compilation,
+  lint, 240 workspace tests (112 hooks, 24 cumulative E2E, 61 calendar, 43
+  secure Gmail), the 123-test safe Gmail Python suite plus Ruff and compilation,
   289 mapped OpenClaw tests, and one candidate browser test; temporary worktree
   cleanup completed.
 
@@ -215,6 +223,9 @@ Rollback:
   and cumulative-gate gaps. The managed lifecycle now includes the complete safe
   Gmail Python suite, and the runtime uses inner operation deadlines,
   cross-process serialization, and compare-before-write persistence.
+- The third fresh review found and corrected the final managed-test safety,
+  absolute-deadline, canonical-lock, late-response, malformed-object, and OAuth
+  timeout translation gaps.
 - The next review must invoke the repository adversarial-review workflow after
   cumulative E2E integration and OAuth validation.
 

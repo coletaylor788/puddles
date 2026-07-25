@@ -101,7 +101,9 @@ Keychain reads while still observing sign-out or token replacement promptly.
 Refresh-and-write transactions use an owner-only lock file at
 `~/.config/gmail-mcp/credential.lock`, then compare the Keychain value again
 before persistence. This prevents concurrent server processes and a stale
-refresh from overwriting a newer browser authorization.
+refresh from overwriting a newer browser authorization. The lock path is tied
+to the fixed Keychain service/account identity and does not move when
+`GMAIL_MCP_CONFIG_DIR` changes.
 
 OAuth browser waiting, token exchange, refresh retries, Keychain commands, and
 Gmail HTTP calls each have an inner deadline below the MCP worker deadline.

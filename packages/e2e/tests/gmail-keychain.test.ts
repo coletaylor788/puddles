@@ -76,6 +76,18 @@ afterEach(() => {
 });
 
 describe("Gmail Keychain backend", () => {
+  it("keeps the managed Gmail gate isolated from live mailbox tests", () => {
+    const runner = readFileSync(
+      join(repoRoot, "packages", "e2e", "bin", "openclaw-test-env.mjs"),
+      "utf8",
+    );
+
+    expect(runner).toContain(
+      '["-m", "pytest", "tests/", "--ignore=tests/integration", "-q"]',
+    );
+    expect(runner).toContain('env: { ...process.env, CI: "true" }');
+  });
+
   it("preserves long values and never reapplies ACLs during refresh", async () => {
     const fixture = createFixture();
     const probe = `
