@@ -1,0 +1,39 @@
+{
+  "openclawRef": "a1063aa4c83fc5469a677f992a4335604c3727bc",
+  "patches": [
+    {
+      "name": "sessions-yield-block-and-gather",
+      "tests": [
+        "src/agents/tools/sessions-yield-tool.test.ts",
+        "src/agents/tools/yield-gather-state.test.ts"
+      ]
+    },
+    {
+      "name": "subagent-cross-agent-spawn-fix",
+      "tests": [
+        "src/agents/acp-spawn.test.ts",
+        "src/agents/subagent-spawn.test.ts"
+      ]
+    },
+    {
+      "name": "skill-workshop-sandbox-fix",
+      "tests": [
+        "src/agents/tools/skill-workshop-tool.test.ts"
+      ]
+    },
+    {
+      "name": "imessage-message-part-coalescing",
+      "tests": [
+        "extensions/imessage/src/monitor.last-route.test.ts",
+        "extensions/imessage/src/monitor/coalesce.test.ts"
+      ]
+    },
+    {
+      "name": "browser-userdata-dir-fix",
+      "tests": [],
+      "candidateTests": [
+        "tests/candidate.browser-entrypoint.test.ts"
+      ]
+    }
+  ]
+}

@@ -56,6 +56,31 @@ status ledger that links to the plan.
 - Route automated external writes and message delivery through explicit test
   doubles. Tests must not mutate live accounts or send real messages.
 
+## Shared cumulative integration pool
+
+Every feature, behavior change, and bug fix must contribute a committed
+regression to the shared test pool and run the entire accumulated pool before
+merge:
+
+- Use `packages/e2e/` for cross-component, deployment, and OpenClaw patch
+  integration coverage. Keep focused package tests beside their implementation
+  as well.
+- Run `node packages/e2e/bin/openclaw-test-env.mjs ci`. This is the required
+  managed lifecycle whenever that runner exists on the active branch.
+- OpenClaw source patches must add or update tests in the patch and register
+  every applicable test target in
+  `packages/e2e/openclaw-patch-suite.json`. The manifest is cumulative: do not
+  replace prior regressions with only the newest feature's tests.
+- Tests embedded only inside a `.patch` are insufficient unless the shared
+  runner exposes and executes them. Temporary session mocks or uncommitted
+  checks do not count.
+- The pull request must visibly contain the committed test artifact and report
+  the exact shared-pool command. Do not declare a behavior change complete when
+  only unit tests or only the newly added test passed.
+- Live production checks must remain read-only and must never deliver messages.
+  Route all write and delivery behavior through deny-by-default recording
+  mocks.
+
 ## OpenClaw deployment topology
 
 When deployment is in scope, use

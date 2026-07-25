@@ -1,3 +1,159 @@
+diff --git a/src/agents/acp-spawn.test.ts b/src/agents/acp-spawn.test.ts
+--- a/src/agents/acp-spawn.test.ts
++++ b/src/agents/acp-spawn.test.ts
+@@ -900,6 +900,69 @@ describe("spawnAcpDirect", () => {
+     expect(transcriptCalls[0]?.threadId).toBeUndefined();
+     expect(transcriptCalls[1]?.threadId).toBe("child-thread");
+   });
++
++  it("does not inherit requester tool policy for cross-agent ACP spawns", async () => {
++    const result = await spawnAcpDirect(
++      {
++        task: "Use the target agent tool policy",
++        agentId: "codex",
++      },
++      {
++        agentSessionKey: "agent:main:main",
++        inheritedToolAllowlist: [
++          "apply_patch",
++          "edit",
++          "exec",
++          "process",
++          "read",
++          "write",
++          "message",
++        ],
++        inheritedToolDenylist: ["message"],
++      },
++    );
++
++    expectAcceptedSpawn(result);
++    const patch = expectRecordFields(gatewayRequest("sessions.patch").params, {});
++    expect(patch).not.toHaveProperty("inheritedToolAllow");
++    expect(patch).not.toHaveProperty("inheritedToolDeny");
++  });
++
++  it("preserves requester tool policy for same-agent ACP spawns", async () => {
++    const result = await spawnAcpDirect(
++      {
++        task: "Keep the requester tool policy",
++        agentId: "codex",
++      },
++      {
++        agentSessionKey: "agent:codex:main",
++        inheritedToolAllowlist: [
++          "apply_patch",
++          "edit",
++          "exec",
++          "process",
++          "read",
++          "write",
++          "message",
++        ],
++        inheritedToolDenylist: ["message"],
++      },
++    );
++
++    expectAcceptedSpawn(result);
++    expectSessionPatchFields({
++      inheritedToolAllow: [
++        "apply_patch",
++        "edit",
++        "exec",
++        "process",
++        "read",
++        "write",
++        "message",
++      ],
++      inheritedToolDeny: ["message"],
++    });
++  });
+-
++
+   it("allows ACP resume IDs recorded for the requester session", async () => {
+     const resumeSessionId = "codex-inner-resume";
+diff --git a/src/agents/subagent-spawn.test.ts b/src/agents/subagent-spawn.test.ts
+--- a/src/agents/subagent-spawn.test.ts
++++ b/src/agents/subagent-spawn.test.ts
+@@ -231,6 +231,77 @@ describe("spawnSubagentDirect seam flow", () => {
+     expect(registerInput.requesterSessionKey).toBe("global");
+     expect(registerInput.requesterAgentId).toBe("main");
+   });
++
++  it("preserves requester tool policy for same-agent spawns", async () => {
++    let persistedStore: Record<string, Record<string, unknown>> | undefined;
++    installSessionStoreCaptureMock(hoisted.updateSessionStoreMock, {
++      onStore: (store) => {
++        persistedStore = store;
++      },
++    });
++
++    const result = await spawnSubagentDirect(
++      {
++        task: "keep requester restrictions",
++      },
++      {
++        agentSessionKey: "agent:main:main",
++        inheritedToolAllowlist: ["read"],
++        inheritedToolDenylist: ["exec"],
++      },
++    );
++
++    expect(result.status).toBe("accepted");
++    const childEntry = persistedStore?.[result.childSessionKey as string];
++    expect(childEntry?.inheritedToolAllow).toEqual(["read"]);
++    expect(childEntry?.inheritedToolDeny).toEqual(["exec"]);
++  });
++
++  it("does not inherit requester tool policy for cross-agent spawns", async () => {
++    hoisted.configOverride = createConfigOverride({
++      agents: {
++        defaults: {
++          workspace: os.tmpdir(),
++        },
++        list: [
++          {
++            id: "main",
++            workspace: "/tmp/workspace-main",
++            subagents: {
++              allowAgents: ["worker"],
++            },
++          },
++          {
++            id: "worker",
++            workspace: "/tmp/workspace-worker",
++          },
++        ],
++      },
++    });
++    let persistedStore: Record<string, Record<string, unknown>> | undefined;
++    installSessionStoreCaptureMock(hoisted.updateSessionStoreMock, {
++      onStore: (store) => {
++        persistedStore = store;
++      },
++    });
++
++    const result = await spawnSubagentDirect(
++      {
++        task: "use worker restrictions",
++        agentId: "worker",
++      },
++      {
++        agentSessionKey: "agent:main:main",
++        inheritedToolAllowlist: ["read"],
++        inheritedToolDenylist: ["exec"],
++      },
++    );
++
++    expect(result.status).toBe("accepted");
++    const childEntry = persistedStore?.[result.childSessionKey as string];
++    expect(childEntry).not.toHaveProperty("inheritedToolAllow");
++    expect(childEntry).not.toHaveProperty("inheritedToolDeny");
++  });
+-
++
+   it("accepts a spawned run across session patching, runtime-model persistence, registry registration, and lifecycle emission", async () => {
+     const operations: string[] = [];
 diff --git a/src/agents/acp-spawn.ts b/src/agents/acp-spawn.ts
 index e5089d723f..091afc0d16 100644
 --- a/src/agents/acp-spawn.ts

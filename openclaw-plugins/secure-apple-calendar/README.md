@@ -302,18 +302,13 @@ additions:
 pnpm install
 
 # from this directory
-pnpm test                # unit tests only (mocked MCP + hooks; fast, no auth)
-pnpm test:integration    # integration tests (real LLM provider)
-pnpm test:all            # everything
-pnpm lint                # tsc --noEmit
-pnpm build               # emits dist/
+pnpm test    # isolated tests (mocked MCP + hooks; no auth)
+pnpm lint    # tsc --noEmit
+pnpm build   # emits dist/
 ```
 
-The integration test (`tests/integration.hooks.test.ts`) runs
-`InjectionGuard` and `SecretRedactor` against canned calendar-shaped
-fixtures using a real LLM provider. It skips automatically unless
-`LLM_PROVIDER_MODULE` (and optionally `LLM_PROVIDER_MODEL`) are set in
-the environment.
+All committed automated tests are isolated, credential-free, and included by
+the default repository test command.
 
 ## Manual integration smoke test
 
@@ -348,7 +343,9 @@ secure-apple-calendar/
 │   ├── wrap-tool.ts       # wrap one MCP tool with per-call ingress + egress
 │   └── action-map.ts      # per-action hook routing for `calendar`
 └── tests/
-    ├── action-map.test.ts        # unit
-    ├── wrap-tool.test.ts         # unit
-    └── integration.hooks.test.ts # hits real LLM provider
+    ├── action-map.test.ts
+    ├── bridge-cache.test.ts
+    ├── plugin.split.test.ts
+    ├── prefilter.test.ts
+    └── wrap-tool.test.ts
 ```

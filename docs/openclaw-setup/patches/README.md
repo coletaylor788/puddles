@@ -110,6 +110,16 @@ Validate afterward (`openclaw --version`, run a cron with a subagent).
 4. Write `<short-name>.md` documenting the change: what bug it patches, why, the
    actual code change, and how it was verified.
 5. Add a row to the "The patches" table above.
+6. Add or update focused tests in the source patch, register their paths under
+   the patch in `packages/e2e/openclaw-patch-suite.json`, and run the full
+   cumulative lifecycle:
+
+   ```bash
+   node packages/e2e/bin/openclaw-test-env.mjs ci
+   ```
+
+   Embedded patch tests that are not registered and executed by this shared
+   pool do not satisfy the integration requirement.
 
 ## Caveat
 

@@ -121,22 +121,13 @@ plugin knows where to find gmail-mcp.
 pnpm install
 
 # from this directory
-pnpm test                # unit tests only (mocked MCP + hooks; fast, no auth)
-pnpm test:integration    # integration tests (real gmail-mcp + real LLM provider)
-pnpm test:all            # everything
-pnpm lint                # tsc --noEmit
-pnpm build               # emits dist/
+pnpm test    # isolated tests (mocked MCP + hooks; no auth)
+pnpm lint    # tsc --noEmit
+pnpm build   # emits dist/
 ```
 
-The integration tests cover:
-
-| File | What it exercises | Setup required |
-|---|---|---|
-| `tests/integration.mcp-bridge.test.ts` | Spawns the real gmail-mcp subprocess, completes the MCP handshake, calls `listTools` | `cd servers/gmail-mcp && .venv/bin/pip install -e .` |
-| `tests/integration.hooks.test.ts` | Runs `InjectionGuard` + `SecretRedactor` against canned email fixtures using a real LLM provider | `LLM_PROVIDER_MODULE` (Node module specifier) and optional `LLM_PROVIDER_MODEL` exported in the environment |
-| `tests/integration.e2e.test.ts` | End-to-end: wrapped `list_emails` against the real gmail-mcp + real hooks + your real Gmail inbox | All of the above **plus** gmail-mcp authenticated (refresh token in keychain, service: `gmail-mcp`, account: `token`) |
-
-Tests skip automatically when their prerequisites are missing.
+All committed automated tests are isolated, credential-free, and included by
+the default repository test command.
 
 ## Manual integration smoke test
 
@@ -165,9 +156,9 @@ secure-gmail/
 │   ├── mcp-bridge.ts      # spawns gmail-mcp via stdio + listTools/callTool/close
 │   └── wrap-tool.ts       # wrapMcpTool(): MCP tool -> AnyAgentTool with ingress
 └── tests/
-    ├── mcp-bridge.test.ts              # unit
-    ├── wrap-tool.test.ts               # unit
-    ├── integration.mcp-bridge.test.ts  # spawns real gmail-mcp
-    ├── integration.hooks.test.ts       # hits real LLM provider
-    └── integration.e2e.test.ts         # full pipeline against real Gmail
+    ├── mcp-bridge.test.ts
+    ├── plugin.attachments.test.ts
+    ├── plugin.ingress-routing.test.ts
+    ├── prefilter.test.ts
+    └── wrap-tool.test.ts
 ```
