@@ -436,8 +436,14 @@ def run_oauth_flow() -> str:
                     _keychain_store_token_unlocked(creds)
                 ready_creds = creds
             else:
-                ready_creds = _credentials_from_token_data(token_current)
-                _cache_keychain_credentials(ready_creds)
+                replacement_creds = _credentials_from_token_data(token_current)
+                _cache_keychain_credentials(replacement_creds)
+                if (
+                    replacement_creds
+                    and replacement_creds.valid
+                    and _has_required_scopes(replacement_creds)
+                ):
+                    ready_creds = replacement_creds
 
     if ready_creds is not None:
         service = _build_service(ready_creds)

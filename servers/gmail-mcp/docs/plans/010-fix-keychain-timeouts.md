@@ -134,7 +134,7 @@ before read-only candidate validation.
 Completed locally:
 
 - `CI=true .venv/bin/python -m pytest tests/ --ignore=tests/integration -q` -
-  147 safe tests passed; live mailbox tests were not collected.
+  148 safe tests passed; live mailbox tests were not collected.
 - `.venv/bin/ruff check src/ tests/` - passed.
 - `.venv/bin/python -m compileall -q src tests` - passed.
 - `git diff --check` - passed.
@@ -195,12 +195,16 @@ Completed locally:
   offline consent, validates a nonblank refresh token before writing, and
   propagates one cumulative inner deadline through callback, exchange, lock,
   and Keychain persistence.
+- An eleventh review found a concurrent replacement was parsed but not checked
+  for validity and required scopes before being accepted. Replacement
+  credentials now pass the same readiness checks or recovery continues through
+  browser OAuth.
 - `packages/e2e/tests/gmail-keychain.test.ts` - two isolated regressions passed,
   covering long create/update values, content-only refresh ACL behavior, bounded
   timeouts, and sensitive traceback sanitization.
 - `node packages/e2e/bin/openclaw-test-env.mjs ci` - passed repository build and
   lint, 241 workspace tests (112 hooks, 25 cumulative E2E, 61 calendar, 43
-  secure Gmail), the 147-test safe Gmail Python suite plus Ruff and compilation,
+  secure Gmail), the 148-test safe Gmail Python suite plus Ruff and compilation,
   289 mapped OpenClaw tests, and one candidate browser test; temporary worktree
   cleanup completed.
 
@@ -274,6 +278,8 @@ Rollback:
   valid service construction.
 - The tenth fresh review found and corrected unusable recovery credentials and
   post-timeout OAuth persistence.
+- The eleventh fresh review found and corrected readiness validation for
+  concurrently replaced credentials.
 - The next review must invoke the repository adversarial-review workflow after
   cumulative E2E integration and OAuth validation.
 
