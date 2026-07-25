@@ -21,7 +21,7 @@ import httplib2
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_httplib2 import AuthorizedHttp
-from google_auth_oauthlib.flow import InstalledAppFlow, WSGITimeoutError
+from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from requests.exceptions import Timeout as RequestsTimeout
 
@@ -425,7 +425,7 @@ def run_oauth_flow() -> str:
             timeout_seconds=OAUTH_BROWSER_TIMEOUT_S,
             browser=OAUTH_BROWSER_NAME,
         )
-    except (RequestsTimeout, WSGITimeoutError) as exc:
+    except (AttributeError, RequestsTimeout) as exc:
         raise OAuthFlowTimeoutError("Gmail OAuth flow timed out") from exc
 
     # Store token in Keychain

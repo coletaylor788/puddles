@@ -441,6 +441,17 @@ class TestKeychainCommand:
             with pytest.raises(KeychainAccessError, match="timed out"):
                 is_authenticated()
 
+    def test_binary_keychain_value_is_unauthenticated(self):
+        """Non-UTF-8 Keychain corruption does not escape token parsing."""
+        with patch("gmail_mcp.keychain.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                [],
+                0,
+                b"\xff\xfe",
+                b"",
+            )
+            assert is_authenticated() is False
+
     def test_missing_security_command_surfaces_actionable_error(self):
         with patch(
             "gmail_mcp.keychain.subprocess.run",
@@ -637,7 +648,9 @@ class TestRunOauthFlow:
         creds_file = tmp_path / "credentials.json"
         creds_file.write_text('{"installed": {"client_id": "x", "client_secret": "y"}}')
         mock_flow = MagicMock()
-        mock_flow.run_local_server.side_effect = gmail_mcp.auth.WSGITimeoutError()
+        mock_flow.run_local_server.side_effect = AttributeError(
+            "authorization response missing"
+        )
 
         with (
             patch("gmail_mcp.auth._use_env_backend", return_value=True),
