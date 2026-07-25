@@ -56,12 +56,12 @@ suspected.
 
 ### State
 
-The backend, focused tests, long-value regression, documentation, and initial
-independent reviews are implemented locally. Stable access to the exact
+The backend, focused tests, cumulative regression, documentation, and initial
+independent reviews are implemented locally. The branch is rebased onto current
+`main`, and the complete managed lifecycle passes. Stable access to the exact
 Keychain item completes without interaction, but its current 128-byte value is
 invalid JSON. Cole must complete one browser OAuth flow through the candidate
-before read-only candidate validation. Current remote `main` now provides the
-mandatory cumulative E2E lifecycle, which must be integrated after rebasing.
+before read-only candidate validation.
 
 ### Scope and acceptance criteria
 
@@ -113,7 +113,8 @@ mandatory cumulative E2E lifecycle, which must be integrated after rebasing.
 5. Remove `keyring`, update MCP error translation, and document migration,
    security boundary, rollout, and rollback.
 6. Add focused unit coverage and a committed cumulative `packages/e2e`
-   regression after rebasing current `main`.
+   regression that executes the stdlib-only Keychain module against a
+   deny-by-default fake command.
 7. Reauthenticate, validate credential shape without values, and run candidate
    and production read-only Gmail smoke tests.
 
@@ -122,7 +123,7 @@ mandatory cumulative E2E lifecycle, which must be integrated after rebasing.
 Completed locally:
 
 - `CI=true .venv/bin/python -m pytest tests/ -q` - 106 passed and 19 live
-  mailbox tests skipped before the latest sanitization-only adjustment.
+  mailbox tests skipped.
 - `.venv/bin/ruff check src/ tests/` - passed.
 - `.venv/bin/python -m compileall -q src tests` - passed.
 - `git diff --check` - passed.
@@ -131,14 +132,18 @@ Completed locally:
   content-only update round trips passed.
 - Multiple independent reviews found recurring ACL updates, create races,
   long-value truncation, and stale security documentation; all were corrected.
+- `packages/e2e/tests/gmail-keychain.test.ts` - two isolated regressions passed,
+  covering long create/update values, content-only refresh ACL behavior, bounded
+  timeouts, and sensitive traceback sanitization.
+- `node packages/e2e/bin/openclaw-test-env.mjs ci` - passed repository build and
+  lint, 239 workspace tests (112 hooks, 23 cumulative E2E, 61 calendar, 43
+  secure Gmail), 289 mapped OpenClaw tests, and one candidate browser test;
+  temporary worktree cleanup completed.
 
 Still required:
 
-- Rerun focused gates after the latest sanitization change.
 - Complete interactive OAuth and validate only JSON shape and required fields.
 - Run a candidate read-only Gmail API call.
-- Add the cumulative E2E regression and run
-  `node packages/e2e/bin/openclaw-test-env.mjs ci`.
 - Obtain clean adversarial reviews after final bookkeeping and against the
   exact handoff commit.
 - Promote through the configured lifecycle and run read-only production
@@ -190,11 +195,11 @@ Rollback:
 - [x] Remove the Python `keyring` dependency.
 - [x] Update user, architecture, migration, security, and rollback docs.
 - [x] Add focused success, error, timeout, cache, write, and race tests.
-- [ ] Rebase current remote `main` and add cumulative E2E coverage.
-- [ ] Pass focused tests, lint, compilation, and diff checks after rebase.
+- [x] Rebase current remote `main` and add cumulative E2E coverage.
+- [x] Pass focused tests, lint, compilation, and diff checks after rebase.
 - [ ] Complete browser OAuth reauthentication.
 - [ ] Validate credential shape and candidate read-only Gmail access.
-- [ ] Pass the complete managed cumulative E2E lifecycle.
+- [x] Pass the complete managed cumulative E2E lifecycle.
 - [ ] Obtain clean adversarial reviews and exact-commit terminal review.
 - [ ] Commit, push, and open the focused Gmail pull request.
 - [ ] Promote through the configured lifecycle.

@@ -14,7 +14,8 @@ from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
 from ._async import run_blocking
-from .auth import KeychainAccessError, get_gmail_service, is_authenticated, run_oauth_flow
+from .auth import get_gmail_service, is_authenticated, run_oauth_flow
+from .keychain import KeychainAccessError
 from .logging_setup import log
 
 # Initialize MCP server

@@ -7,7 +7,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from gmail_mcp.auth import (
-    KeychainAccessError,
     _use_env_backend,
     get_gmail_service,
     get_token,
@@ -16,6 +15,7 @@ from gmail_mcp.auth import (
     store_token,
 )
 from gmail_mcp.config import GOOGLE_TOKEN_ENV
+from gmail_mcp.keychain import KeychainAccessError
 
 
 # Ensure env backend is not active during Keychain tests
@@ -132,7 +132,7 @@ class TestKeychainIsAuthenticated:
 
     def test_returns_false_when_no_token(self):
         """Returns False when no token in Keychain."""
-        with patch("gmail_mcp.auth._keychain_read_token", return_value=None):
+        with patch("gmail_mcp.auth.read_token", return_value=None):
             assert is_authenticated() is False
 
     def test_returns_true_when_token_exists(self):
@@ -144,7 +144,7 @@ class TestKeychainIsAuthenticated:
             "client_id": "client_id",
             "client_secret": "client_secret",
         })
-        with patch("gmail_mcp.auth._keychain_read_token", return_value=token_data):
+        with patch("gmail_mcp.auth.read_token", return_value=token_data):
             assert is_authenticated() is True
 
 
@@ -153,12 +153,12 @@ class TestKeychainGetToken:
 
     def test_returns_none_when_no_token(self):
         """Returns None when no token in Keychain."""
-        with patch("gmail_mcp.auth._keychain_read_token", return_value=None):
+        with patch("gmail_mcp.auth.read_token", return_value=None):
             assert get_token() is None
 
     def test_returns_none_on_invalid_json(self):
         """Returns None when token data is not valid JSON."""
-        with patch("gmail_mcp.auth._keychain_read_token", return_value="not json"):
+        with patch("gmail_mcp.auth.read_token", return_value="not json"):
             assert get_token() is None
 
     def test_returns_credentials_when_valid_token(self):
@@ -171,7 +171,7 @@ class TestKeychainGetToken:
             "client_secret": "client_secret",
         }
         with patch(
-            "gmail_mcp.auth._keychain_read_token",
+            "gmail_mcp.auth.read_token",
             return_value=json.dumps(token_data),
         ):
             creds = get_token()
@@ -189,7 +189,7 @@ class TestKeychainGetToken:
             "client_secret": "client_secret",
         })
         with patch(
-            "gmail_mcp.auth._keychain_read_token",
+            "gmail_mcp.auth.read_token",
             return_value=token_data,
         ) as mock_read:
             assert is_authenticated() is True
@@ -214,7 +214,7 @@ class TestKeychainGetToken:
         })
         with (
             patch(
-                "gmail_mcp.auth._keychain_read_token",
+                "gmail_mcp.auth.read_token",
                 side_effect=[first, second],
             ) as mock_read,
             patch(
@@ -235,7 +235,7 @@ class TestKeychainStoreToken:
         mock_creds = MagicMock()
         mock_creds.to_json.return_value = '{"token": "test"}'
 
-        with patch("gmail_mcp.auth.subprocess.run") as mock_run:
+        with patch("gmail_mcp.keychain.subprocess.run") as mock_run:
             mock_run.side_effect = [
                 subprocess.CompletedProcess([], 44, "", "not found"),
                 subprocess.CompletedProcess([], 0, "", ""),
@@ -252,7 +252,7 @@ class TestKeychainStoreToken:
         mock_creds = MagicMock()
         mock_creds.to_json.return_value = '{"token": "refreshed"}'
 
-        with patch("gmail_mcp.auth.subprocess.run") as mock_run:
+        with patch("gmail_mcp.keychain.subprocess.run") as mock_run:
             mock_run.side_effect = [
                 subprocess.CompletedProcess([], 0, "metadata", ""),
                 subprocess.CompletedProcess([], 0, "", ""),
@@ -269,7 +269,7 @@ class TestKeychainStoreToken:
         mock_creds = MagicMock()
         mock_creds.to_json.return_value = '{"token": "test"}'
 
-        with patch("gmail_mcp.auth.subprocess.run") as mock_run:
+        with patch("gmail_mcp.keychain.subprocess.run") as mock_run:
             mock_run.side_effect = [
                 subprocess.CompletedProcess([], 44, "", "not found"),
                 subprocess.CompletedProcess([], 45, "", "already exists"),
@@ -289,19 +289,19 @@ class TestKeychainCommand:
     """Tests for bounded macOS Keychain command execution."""
 
     def test_missing_item_is_unauthenticated(self):
-        with patch("gmail_mcp.auth.subprocess.run") as mock_run:
+        with patch("gmail_mcp.keychain.subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess([], 44, "", "not found")
             assert is_authenticated() is False
 
     def test_permission_failure_is_not_silently_treated_as_missing(self):
-        with patch("gmail_mcp.auth.subprocess.run") as mock_run:
+        with patch("gmail_mcp.keychain.subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess([], 1, "", "denied")
             with pytest.raises(KeychainAccessError, match="denied"):
                 is_authenticated()
 
     def test_timeout_surfaces_actionable_error(self):
         with patch(
-            "gmail_mcp.auth.subprocess.run",
+            "gmail_mcp.keychain.subprocess.run",
             side_effect=subprocess.TimeoutExpired(["security"], 5),
         ):
             with pytest.raises(KeychainAccessError, match="timed out"):
@@ -309,7 +309,7 @@ class TestKeychainCommand:
 
     def test_missing_security_command_surfaces_actionable_error(self):
         with patch(
-            "gmail_mcp.auth.subprocess.run",
+            "gmail_mcp.keychain.subprocess.run",
             side_effect=FileNotFoundError("/usr/bin/security"),
         ):
             with pytest.raises(KeychainAccessError, match="could not start"):

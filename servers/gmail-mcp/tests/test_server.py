@@ -55,7 +55,7 @@ class TestAuthenticate:
     @pytest.mark.asyncio
     async def test_keychain_failure_reaches_tool_boundary(self):
         """Keychain failures are translated by call_tool and logged as failures."""
-        from gmail_mcp.auth import KeychainAccessError
+        from gmail_mcp.keychain import KeychainAccessError
 
         with (
             patch(
@@ -69,7 +69,7 @@ class TestAuthenticate:
     @pytest.mark.asyncio
     async def test_keychain_failure_returns_tool_error(self):
         """Keychain failures become explicit tool results instead of MCP exceptions."""
-        from gmail_mcp.auth import KeychainAccessError
+        from gmail_mcp.keychain import KeychainAccessError
 
         with patch(
             "gmail_mcp.server._list_emails",
