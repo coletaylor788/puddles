@@ -247,6 +247,10 @@ async def _authenticate() -> list[TextContent]:
         return [TextContent(type="text", text=f"Error: {e}")]
     except KeychainAccessError:
         raise
+    except asyncio.TimeoutError as exc:
+        raise AuthenticationUnavailableError(
+            "Gmail OAuth flow timed out"
+        ) from exc
     except Exception as e:
         return [TextContent(type="text", text=f"Error during authentication: {e}")]
 

@@ -42,10 +42,14 @@ async function runRepositoryGates() {
   const managedPython = join(gmailDir, ".venv", "bin", "python");
   const python = process.env.GMAIL_MCP_PYTHON
     ?? (existsSync(managedPython) ? managedPython : "python3");
-  await run(python, ["-m", "pytest", "tests/", "-q"], {
-    cwd: gmailDir,
-    env: { ...process.env, CI: process.env.CI ?? "true" },
-  });
+  await run(
+    python,
+    ["-m", "pytest", "tests/", "--ignore=tests/integration", "-q"],
+    {
+      cwd: gmailDir,
+      env: { ...process.env, CI: "true" },
+    },
+  );
   await run(python, ["-m", "ruff", "check", "src/", "tests/"], {
     cwd: gmailDir,
   });

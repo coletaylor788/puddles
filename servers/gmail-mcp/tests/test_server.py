@@ -85,6 +85,20 @@ class TestAuthenticate:
         }
 
     @pytest.mark.asyncio
+    async def test_oauth_timeout_returns_structured_tool_error(self):
+        """OAuth worker timeouts are explicit failed tool calls."""
+        with patch(
+            "gmail_mcp.server.run_oauth_flow",
+            side_effect=asyncio.TimeoutError,
+        ):
+            result = await call_tool("authenticate", {})
+
+        payload = json.loads(result[0].text)
+        assert payload == {
+            "error": "Authentication unavailable: Gmail OAuth flow timed out",
+        }
+
+    @pytest.mark.asyncio
     async def test_oauth_flow_does_not_block_event_loop(self):
         """Interactive OAuth runs in a worker thread."""
         entered = threading.Event()

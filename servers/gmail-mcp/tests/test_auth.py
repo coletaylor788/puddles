@@ -22,7 +22,7 @@ from gmail_mcp.keychain import KeychainAccessError
 
 # Ensure env backend is not active during Keychain tests
 @pytest.fixture(autouse=True)
-def _clear_env_token(monkeypatch):
+def _clear_env_token(monkeypatch, tmp_path):
     """Remove GOOGLE_MCP_TOKEN and reset credential caches for each test."""
     monkeypatch.delenv(GOOGLE_TOKEN_ENV, raising=False)
     import gmail_mcp.auth
@@ -30,6 +30,11 @@ def _clear_env_token(monkeypatch):
     gmail_mcp.auth._cached_creds = None
     gmail_mcp.auth._cached_keychain_creds = None
     gmail_mcp.auth._cached_keychain_loaded_at = None
+    monkeypatch.setattr(
+        gmail_mcp.auth,
+        "CREDENTIAL_LOCK_PATH",
+        tmp_path / "credential.lock",
+    )
 
 
 class TestBackendSelection:
@@ -167,6 +172,21 @@ class TestKeychainGetToken:
     def test_returns_none_on_non_object_json(self, token_data):
         """Valid JSON with the wrong shape is unauthenticated."""
         with patch("gmail_mcp.auth.read_token", return_value=token_data):
+            assert get_token() is None
+
+    def test_returns_none_on_invalid_object_fields(self):
+        """SDK type errors in credential fields are treated as malformed data."""
+        with patch(
+            "gmail_mcp.auth.read_token",
+            return_value=json.dumps({
+                "token": "access-token",
+                "refresh_token": "refresh-token",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "client_id": "client-id",
+                "client_secret": "client-secret",
+                "expiry": 1,
+            }),
+        ):
             assert get_token() is None
 
     def test_returns_credentials_when_valid_token(self):
@@ -417,7 +437,10 @@ class TestAuthenticationBounds:
         transport = MagicMock(return_value=MagicMock())
         with (
             patch("gmail_mcp.auth.Request", return_value=transport),
-            patch("gmail_mcp.auth.time.monotonic", side_effect=[100.0, 110.0]),
+            patch(
+                "gmail_mcp.auth.time.monotonic",
+                side_effect=[100.0, 110.0, 110.0],
+            ),
         ):
             request = gmail_mcp.auth._DeadlineRequest(45)
             request("https://oauth.example/token", timeout=120)
@@ -440,6 +463,47 @@ class TestAuthenticationBounds:
                 request("https://oauth.example/token")
 
         transport.assert_not_called()
+
+    def test_refresh_request_rejects_response_after_deadline(self):
+        import gmail_mcp.auth
+
+        transport = MagicMock(return_value=MagicMock())
+        with (
+            patch("gmail_mcp.auth.Request", return_value=transport),
+            patch(
+                "gmail_mcp.auth.time.monotonic",
+                side_effect=[100.0, 100.0, 100.1],
+            ),
+        ):
+            request = gmail_mcp.auth._DeadlineRequest(0.05)
+            with pytest.raises(TimeoutError, match="deadline exceeded"):
+                request("https://oauth.example/token")
+
+    def test_local_credential_lock_wait_is_bounded(self, monkeypatch):
+        import gmail_mcp.auth
+
+        entered = threading.Event()
+        release = threading.Event()
+
+        def hold_transaction():
+            with gmail_mcp.auth._credential_transaction():
+                entered.set()
+                release.wait(timeout=1)
+
+        holder = threading.Thread(target=hold_transaction)
+        holder.start()
+        assert entered.wait(timeout=0.5)
+        monkeypatch.setattr(gmail_mcp.auth, "CREDENTIAL_LOCK_TIMEOUT_S", 0.05)
+
+        try:
+            with pytest.raises(KeychainAccessError, match="busy in this process"):
+                with gmail_mcp.auth._credential_transaction():
+                    raise AssertionError("unreachable")
+        finally:
+            release.set()
+            holder.join(timeout=1)
+
+        assert not holder.is_alive()
 
     def test_oauth_token_exchange_has_http_timeout(self):
         import gmail_mcp.auth

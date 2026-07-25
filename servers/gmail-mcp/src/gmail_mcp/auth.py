@@ -22,7 +22,7 @@ from google_auth_httplib2 import AuthorizedHttp
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
-from .config import GOOGLE_TOKEN_ENV, get_config_dir, get_credentials_path
+from .config import DEFAULT_CONFIG_DIR, GOOGLE_TOKEN_ENV, get_credentials_path
 from .keychain import KeychainAccessError, read_token, write_token
 from .logging_setup import log
 
@@ -37,6 +37,7 @@ REFRESH_DEADLINE_S = 45
 CREDENTIAL_LOCK_TIMEOUT_S = 90
 KEYCHAIN_CACHE_TTL_S = 60
 CREDENTIAL_LOCK_FILE = "credential.lock"
+CREDENTIAL_LOCK_PATH = DEFAULT_CONFIG_DIR / CREDENTIAL_LOCK_FILE
 OAUTH_BROWSER_NAME = "gmail-mcp-background"
 
 
@@ -68,7 +69,13 @@ class _DeadlineRequest:
             raise TimeoutError("credential refresh deadline exceeded")
         requested_timeout = kwargs.pop("timeout", HTTP_SOCKET_TIMEOUT_S)
         kwargs["timeout"] = min(requested_timeout, HTTP_SOCKET_TIMEOUT_S, remaining)
-        return self._request(*args, **kwargs)
+        response = self._request(*args, **kwargs)
+        self.ensure_within_deadline()
+        return response
+
+    def ensure_within_deadline(self) -> None:
+        if time.monotonic() > self._deadline:
+            raise TimeoutError("credential refresh deadline exceeded")
 
 
 class _BoundedInstalledAppFlow(InstalledAppFlow):
@@ -113,30 +120,50 @@ _credential_lock = threading.RLock()
 @contextmanager
 def _credential_transaction():
     """Serialize Keychain writes across Gmail MCP processes."""
-    with _credential_lock:
-        lock_path = get_config_dir() / CREDENTIAL_LOCK_FILE
-        flags = os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
-        descriptor = os.open(lock_path, flags, 0o600)
-        acquired = False
+    deadline = time.monotonic() + CREDENTIAL_LOCK_TIMEOUT_S
+    remaining = max(0.0, deadline - time.monotonic())
+    local_acquired = _credential_lock.acquire(timeout=remaining)
+    if not local_acquired:
+        raise KeychainAccessError("Gmail credential update is busy in this process")
+
+    descriptor = None
+    acquired = False
+    try:
+        lock_path = CREDENTIAL_LOCK_PATH
         try:
+            lock_path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
+        except OSError as exc:
+            raise KeychainAccessError(
+                f"Gmail credential lock directory is unavailable: {exc}"
+            ) from exc
+        flags = os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
+        try:
+            descriptor = os.open(lock_path, flags, 0o600)
             os.fchmod(descriptor, 0o600)
-            deadline = time.monotonic() + CREDENTIAL_LOCK_TIMEOUT_S
-            while True:
-                try:
-                    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    acquired = True
-                    break
-                except BlockingIOError:
-                    if time.monotonic() >= deadline:
-                        raise KeychainAccessError(
-                            "Gmail credential update is busy in another process"
-                        ) from None
-                    time.sleep(0.05)
-            yield
-        finally:
+        except OSError as exc:
+            raise KeychainAccessError(
+                f"Gmail credential lock is unavailable: {exc}"
+            ) from exc
+
+        while True:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                acquired = True
+                break
+            except BlockingIOError:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise KeychainAccessError(
+                        "Gmail credential update is busy in another process"
+                    ) from None
+                time.sleep(min(0.05, remaining))
+        yield
+    finally:
+        if descriptor is not None:
             if acquired:
                 fcntl.flock(descriptor, fcntl.LOCK_UN)
             os.close(descriptor)
+        _credential_lock.release()
 
 
 def _env_is_authenticated() -> bool:
@@ -180,7 +207,7 @@ def _credentials_from_token_data(token_data: str | None) -> Credentials | None:
         if not isinstance(token_info, dict):
             return None
         return Credentials.from_authorized_user_info(token_info, SCOPES)
-    except (json.JSONDecodeError, ValueError):
+    except (AttributeError, json.JSONDecodeError, TypeError, ValueError):
         return None
 
 
@@ -286,7 +313,9 @@ def _refresh_credentials(creds: Credentials, *, source: str) -> bool:
 
     start = time.monotonic()
     try:
-        creds.refresh(_DeadlineRequest(REFRESH_DEADLINE_S))
+        request = _DeadlineRequest(REFRESH_DEADLINE_S)
+        creds.refresh(request)
+        request.ensure_within_deadline()
     except Exception as exc:
         log(
             "error",
