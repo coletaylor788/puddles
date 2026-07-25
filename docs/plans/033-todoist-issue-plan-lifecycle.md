@@ -34,19 +34,19 @@ all design reasoning and operational detail in the plan.
 ### Safety and rollout
 
 This is a documentation workflow change with no runtime or production mutation.
-Adopt it through the repository instructions and safe feature workflow. Roll
-back by reverting those documentation changes if the format proves unusable.
+Adopt it through the repository instructions and safe feature workflow in pull
+request [#27](https://github.com/coletaylor788/puddles/pull/27). Roll back by
+reverting those documentation changes if the format proves unusable.
 
 ## Agent details
 
 ### State
 
-Implementation is complete on the issue branch. Two review rounds identified a
-stale issue ledger, ambiguous historical-plan migration scope, and a plan link
-that cannot resolve until the branch is published. The ledger status is
-synchronized, adoption is now scoped to new or substantively updated plans, and
-post-fix validation plus branch publication are next. A fresh independent review
-will follow with an accessible branch plan link.
+Implementation, branch publication, accessible issue linking, and pull request
+creation are complete. Three review rounds identified a stale issue ledger,
+ambiguous historical-plan migration scope, an inaccessible pre-publication plan
+link, and stale publication state in this plan. Those findings are corrected.
+Final post-bookkeeping validation and a fresh independent review are next.
 
 ### Scope and acceptance criteria
 
@@ -97,8 +97,11 @@ Implemented changes:
    while retaining only the allowed ledger content.
 6. Scoped adoption after the second review identified that an unconditional
    rule could prompt unrelated migration of untouched historical plans.
-7. Publish the branch, update the issue to its accessible branch plan link, and
-   rerun validation and fresh independent review.
+7. Published the branch, updated the issue to its accessible branch plan link,
+   and verified that the linked plan resolves.
+8. Opened non-draft pull request #27 linked to issue #25.
+9. Rewrote the plan after the third review identified that publication had made
+   its prior state stale.
 
 ### Validation
 
@@ -116,13 +119,15 @@ Completed targeted checks:
 
 No runtime build, integration environment, deployment, or production validation
 applies because only Markdown workflow documentation changes. Targeted checks
-must run again after the second review corrections and branch-link update.
+passed again after the final publication and pull request bookkeeping update,
+including the live issue link and non-draft pull request state.
 
 ### Rollout and rollback
 
-Rollout is the non-draft pull request linked to issue #25. After merge, future
-repository plans and their issue ledgers follow this contract. No deployment or
-data migration is required.
+Rollout is non-draft pull request
+[#27](https://github.com/coletaylor788/puddles/pull/27), linked to issue #25.
+After merge, future repository plans and their issue ledgers follow this
+contract. No deployment or data migration is required.
 
 Rollback is a normal revert of the documentation commit. Existing plans are not
 rewritten by this change, and no runtime state needs restoration.
@@ -136,10 +141,14 @@ The issue ledger is corrected.
 The second review found two medium-severity rollout defects: the unconditional
 plan rule could cause unrelated migration of untouched historical plans, and the
 issue's main-branch plan link returns 404 before merge. Adoption is now scoped
-to new or substantively updated plans. The branch will be published and the
-ledger switched to its accessible branch plan link before fresh review. Any
-further actionable high-confidence finding will be fixed, revalidated, and
-reviewed again.
+to new or substantively updated plans. The branch is published and the ledger
+links to its accessible branch copy.
+
+The third review found one medium-severity synchronization defect: the published
+plan still described branch publication as pending. This full update records
+publication, link verification, and pull request creation as complete. A fresh
+post-bookkeeping review remains; any further actionable high-confidence finding
+will be fixed, revalidated, and reviewed again.
 
 ### Checklist
 
@@ -149,7 +158,7 @@ reviewed again.
 - [x] Add plan 033 in the required two-part format
 - [x] Update the concise always-on repository instructions
 - [x] Update and version the safe feature workflow
-- [ ] Revalidate the complete post-fix diff and accessible issue link
+- [x] Revalidate the complete final bookkeeping diff and accessible issue link
 - [ ] Obtain a clean fresh independent adversarial review
 - [ ] Update issue #25 to `Ready for review`
-- [ ] Commit, push, and open a non-draft pull request
+- [x] Commit, push, and open a non-draft pull request
