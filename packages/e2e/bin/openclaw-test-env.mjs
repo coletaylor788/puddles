@@ -37,6 +37,21 @@ async function runRepositoryGates() {
   await run("corepack", ["pnpm", "build"]);
   await run("corepack", ["pnpm", "lint"]);
   await run("corepack", ["pnpm", "test"]);
+
+  const gmailDir = join(repoRoot, "servers", "gmail-mcp");
+  const managedPython = join(gmailDir, ".venv", "bin", "python");
+  const python = process.env.GMAIL_MCP_PYTHON
+    ?? (existsSync(managedPython) ? managedPython : "python3");
+  await run(python, ["-m", "pytest", "tests/", "-q"], {
+    cwd: gmailDir,
+    env: { ...process.env, CI: process.env.CI ?? "true" },
+  });
+  await run(python, ["-m", "ruff", "check", "src/", "tests/"], {
+    cwd: gmailDir,
+  });
+  await run(python, ["-m", "compileall", "-q", "src", "tests"], {
+    cwd: gmailDir,
+  });
 }
 
 async function runPatchSuite() {

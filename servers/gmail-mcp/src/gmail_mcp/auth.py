@@ -6,12 +6,14 @@ Supports two storage backends, selected automatically:
 - macOS Keychain (/usr/bin/security): for local macOS development
 """
 
+import fcntl
 import json
 import os
 import threading
 import time
-from contextlib import nullcontext
-from functools import partial
+import webbrowser
+from contextlib import contextmanager, nullcontext
+from typing import Any
 
 import httplib2
 from google.auth.transport.requests import Request
@@ -20,8 +22,8 @@ from google_auth_httplib2 import AuthorizedHttp
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
-from .config import GOOGLE_TOKEN_ENV, get_credentials_path
-from .keychain import read_token, write_token
+from .config import GOOGLE_TOKEN_ENV, get_config_dir, get_credentials_path
+from .keychain import KeychainAccessError, read_token, write_token
 from .logging_setup import log
 
 # Socket-level timeout (seconds) for every Gmail API HTTP request. This is
@@ -31,7 +33,11 @@ from .logging_setup import log
 # thread forever.
 HTTP_SOCKET_TIMEOUT_S = 30
 OAUTH_BROWSER_TIMEOUT_S = 600
+REFRESH_DEADLINE_S = 45
+CREDENTIAL_LOCK_TIMEOUT_S = 90
 KEYCHAIN_CACHE_TTL_S = 60
+CREDENTIAL_LOCK_FILE = "credential.lock"
+OAUTH_BROWSER_NAME = "gmail-mcp-background"
 
 
 def _build_service(creds: Credentials):
@@ -47,6 +53,37 @@ def _build_service(creds: Credentials):
     """
     http = AuthorizedHttp(creds, http=httplib2.Http(timeout=HTTP_SOCKET_TIMEOUT_S))
     return build("gmail", "v1", http=http, cache_discovery=False)
+
+
+class _DeadlineRequest:
+    """Apply one deadline across all retries in a credential refresh."""
+
+    def __init__(self, timeout: float) -> None:
+        self._deadline = time.monotonic() + timeout
+        self._request = Request()
+
+    def __call__(self, *args: Any, **kwargs: Any):
+        remaining = self._deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("credential refresh deadline exceeded")
+        requested_timeout = kwargs.pop("timeout", HTTP_SOCKET_TIMEOUT_S)
+        kwargs["timeout"] = min(requested_timeout, HTTP_SOCKET_TIMEOUT_S, remaining)
+        return self._request(*args, **kwargs)
+
+
+class _BoundedInstalledAppFlow(InstalledAppFlow):
+    """Ensure the authorization-code exchange has a socket timeout."""
+
+    def fetch_token(self, **kwargs: Any):
+        kwargs.setdefault("timeout", HTTP_SOCKET_TIMEOUT_S)
+        return super().fetch_token(**kwargs)
+
+
+webbrowser.register(
+    OAUTH_BROWSER_NAME,
+    None,
+    webbrowser.BackgroundBrowser("/usr/bin/open"),
+)
 
 # Gmail API scopes
 # - gmail.modify: read, write, and modify emails (includes archive)
@@ -71,6 +108,35 @@ _cached_creds: Credentials | None = None
 _cached_keychain_creds: Credentials | None = None
 _cached_keychain_loaded_at: float | None = None
 _credential_lock = threading.RLock()
+
+
+@contextmanager
+def _credential_transaction():
+    """Serialize Keychain writes across Gmail MCP processes."""
+    with _credential_lock:
+        lock_path = get_config_dir() / CREDENTIAL_LOCK_FILE
+        flags = os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(lock_path, flags, 0o600)
+        acquired = False
+        try:
+            os.fchmod(descriptor, 0o600)
+            deadline = time.monotonic() + CREDENTIAL_LOCK_TIMEOUT_S
+            while True:
+                try:
+                    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    acquired = True
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        raise KeychainAccessError(
+                            "Gmail credential update is busy in another process"
+                        ) from None
+                    time.sleep(0.05)
+            yield
+        finally:
+            if acquired:
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+            os.close(descriptor)
 
 
 def _env_is_authenticated() -> bool:
@@ -106,6 +172,24 @@ def _env_load_credentials() -> None:
 # --- Keychain backend ---
 
 
+def _credentials_from_token_data(token_data: str | None) -> Credentials | None:
+    if not token_data:
+        return None
+    try:
+        token_info = json.loads(token_data)
+        if not isinstance(token_info, dict):
+            return None
+        return Credentials.from_authorized_user_info(token_info, SCOPES)
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+
+def _cache_keychain_credentials(creds: Credentials | None) -> None:
+    global _cached_keychain_creds, _cached_keychain_loaded_at
+    _cached_keychain_creds = creds
+    _cached_keychain_loaded_at = time.monotonic() if creds is not None else None
+
+
 def _keychain_load_credentials() -> Credentials | None:
     global _cached_keychain_creds, _cached_keychain_loaded_at
     with _credential_lock:
@@ -117,20 +201,10 @@ def _keychain_load_credentials() -> Credentials | None:
         ):
             return _cached_keychain_creds
 
-        _cached_keychain_creds = None
-        _cached_keychain_loaded_at = None
-        token_data = read_token()
-        if not token_data:
-            return None
-
-        try:
-            _cached_keychain_creds = Credentials.from_authorized_user_info(
-                json.loads(token_data),
-                SCOPES,
-            )
-        except (json.JSONDecodeError, ValueError):
-            return None
-        _cached_keychain_loaded_at = now
+        _cached_keychain_creds = _credentials_from_token_data(read_token())
+        _cached_keychain_loaded_at = (
+            now if _cached_keychain_creds is not None else None
+        )
         return _cached_keychain_creds
 
 
@@ -142,14 +216,14 @@ def _keychain_get_token() -> Credentials | None:
     return _keychain_load_credentials()
 
 
-def _keychain_store_token(creds: Credentials) -> None:
-    global _cached_keychain_creds, _cached_keychain_loaded_at
+def _keychain_store_token_unlocked(creds: Credentials) -> None:
+    write_token(creds.to_json())
+    _cache_keychain_credentials(creds)
 
-    with _credential_lock:
-        token_data = creds.to_json()
-        write_token(token_data)
-        _cached_keychain_creds = creds
-        _cached_keychain_loaded_at = time.monotonic()
+
+def _keychain_store_token(creds: Credentials) -> None:
+    with _credential_transaction():
+        _keychain_store_token_unlocked(creds)
 
 
 # --- Public API ---
@@ -212,7 +286,7 @@ def _refresh_credentials(creds: Credentials, *, source: str) -> bool:
 
     start = time.monotonic()
     try:
-        creds.refresh(partial(Request(), timeout=HTTP_SOCKET_TIMEOUT_S))
+        creds.refresh(_DeadlineRequest(REFRESH_DEADLINE_S))
     except Exception as exc:
         log(
             "error",
@@ -248,9 +322,17 @@ def run_oauth_flow() -> str:
         FileNotFoundError: If credentials.json is missing
     """
     ready_creds = None
-    credential_context = nullcontext() if _use_env_backend() else _credential_lock
+    use_env_backend = _use_env_backend()
+    credential_context = nullcontext() if use_env_backend else _credential_transaction()
     with credential_context:
-        creds = get_token()
+        token_before = None if use_env_backend else read_token()
+        creds = (
+            get_token()
+            if use_env_backend
+            else _credentials_from_token_data(token_before)
+        )
+        if not use_env_backend:
+            _cache_keychain_credentials(creds)
         if creds and creds.valid and _has_required_scopes(creds):
             ready_creds = creds
         elif (
@@ -260,8 +342,16 @@ def run_oauth_flow() -> str:
             and _has_required_scopes(creds)
             and _refresh_credentials(creds, source="oauth_flow")
         ):
-            store_token(creds)
-            ready_creds = creds
+            token_current = token_before if use_env_backend else read_token()
+            if token_current == token_before:
+                if use_env_backend:
+                    store_token(creds)
+                else:
+                    _keychain_store_token_unlocked(creds)
+                ready_creds = creds
+            else:
+                ready_creds = _credentials_from_token_data(token_current)
+                _cache_keychain_credentials(ready_creds)
 
     if ready_creds is not None:
         service = _build_service(ready_creds)
@@ -277,10 +367,15 @@ def run_oauth_flow() -> str:
             "Please download OAuth credentials from Google Cloud Console and save them there."
         )
 
-    flow = InstalledAppFlow.from_client_secrets_file(str(credentials_path), SCOPES)
+    flow = _BoundedInstalledAppFlow.from_client_secrets_file(
+        str(credentials_path),
+        SCOPES,
+    )
     creds = flow.run_local_server(
         port=0,
+        authorization_prompt_message=None,
         timeout_seconds=OAUTH_BROWSER_TIMEOUT_S,
+        browser=OAUTH_BROWSER_NAME,
     )
 
     # Store token in Keychain
@@ -307,20 +402,25 @@ def get_gmail_service():
         if creds.expired and creds.refresh_token:
             if not _refresh_credentials(creds, source="get_service"):
                 return None
+            store_token(creds)
     else:
-        # Keep refresh and persistence atomic with respect to OAuth replacement.
-        # If an interactive flow finishes while an old refresh is running, the
-        # newly authorized credential must be the final stored value.
-        with _credential_lock:
-            creds = get_token()
+        with _credential_transaction():
+            token_before = read_token()
+            creds = _credentials_from_token_data(token_before)
+            _cache_keychain_credentials(creds)
             if not creds:
                 return None
             if creds.expired and creds.refresh_token:
                 if not _refresh_credentials(creds, source="get_service"):
                     return None
-                store_token(creds)
+                token_current = read_token()
+                if token_current != token_before:
+                    creds = _credentials_from_token_data(token_current)
+                    _cache_keychain_credentials(creds)
+                else:
+                    _keychain_store_token_unlocked(creds)
 
-    if not creds.valid:
+    if not creds or not creds.valid:
         return None
 
     return _build_service(creds)

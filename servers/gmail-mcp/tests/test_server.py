@@ -171,6 +171,23 @@ class TestListEmails:
         }
 
     @pytest.mark.asyncio
+    async def test_auth_check_timeout_returns_structured_tool_error(self):
+        """A concurrent auth-check timeout is translated at the tool boundary."""
+        with (
+            patch(
+                "gmail_mcp.server.is_authenticated",
+                side_effect=asyncio.TimeoutError,
+            ),
+            patch("gmail_mcp.server.AUTH_CHECK_TIMEOUT_S", 0.05),
+        ):
+            result = await call_tool("list_emails", {})
+
+        payload = json.loads(result[0].text)
+        assert payload == {
+            "error": "Authentication unavailable: Gmail authentication check timed out",
+        }
+
+    @pytest.mark.asyncio
     async def test_returns_no_emails_message(self):
         """Returns message when no emails found."""
         mock_service = MagicMock()
