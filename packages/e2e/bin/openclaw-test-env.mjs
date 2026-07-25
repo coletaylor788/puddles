@@ -5,6 +5,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { cleanupWorktree } from "../src/worktree-cleanup.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const packageDir = resolve(here, "..");
@@ -13,6 +14,8 @@ const patchDir = join(repoRoot, "docs", "openclaw-setup", "patches");
 const suite = JSON.parse(
   readFileSync(join(packageDir, "openclaw-patch-suite.json"), "utf8"),
 );
+let activeCleanup;
+let handlingSignal = false;
 
 function run(command, args, options = {}) {
   console.log(`+ ${command} ${args.join(" ")}`);
@@ -41,10 +44,6 @@ function runRepositoryGates() {
   run("corepack", ["pnpm", "test"]);
 }
 
-function runLiveSuite() {
-  run("corepack", ["pnpm", "--filter", "e2e", "test:e2e"]);
-}
-
 function runPatchSuite() {
   const source = sourcePath();
   if (!existsSync(join(source, ".git"))) {
@@ -58,7 +57,22 @@ function runPatchSuite() {
   const candidate = join(stateRoot, "candidate");
   let worktreeCreated = false;
   let primaryError;
-  let cleanupError;
+  const cleanupErrors = [];
+
+  const cleanup = () => {
+    cleanupErrors.push(
+      ...cleanupWorktree({
+        source,
+        candidate,
+        stateRoot,
+        worktreeCreated,
+        runCommand: run,
+        removeDirectory: (path) => rmSync(path, { recursive: true, force: true }),
+      }),
+    );
+    return cleanupErrors;
+  };
+  activeCleanup = cleanup;
 
   try {
     run("git", ["-C", source, "worktree", "add", "--detach", candidate, suite.openclawRef]);
@@ -121,25 +135,37 @@ function runPatchSuite() {
   } catch (error) {
     primaryError = error;
   } finally {
-    try {
-      if (worktreeCreated) {
-        run("git", ["-C", source, "worktree", "remove", "--force", candidate]);
-      }
-      rmSync(stateRoot, { recursive: true, force: true });
-    } catch (error) {
-      cleanupError = error;
-    }
+    cleanup();
+    activeCleanup = undefined;
   }
 
   if (primaryError) {
-    if (cleanupError) {
-      console.error(`Cleanup also failed: ${cleanupError.message}`);
+    for (const error of cleanupErrors) {
+      console.error(`Cleanup also failed: ${error.message}`);
     }
     throw primaryError;
   }
-  if (cleanupError) {
-    throw cleanupError;
+  if (cleanupErrors.length > 0) {
+    throw new AggregateError(cleanupErrors, "OpenClaw test worktree cleanup failed");
   }
+}
+
+for (const [signal, exitCode] of [
+  ["SIGHUP", 129],
+  ["SIGINT", 130],
+  ["SIGTERM", 143],
+]) {
+  process.once(signal, () => {
+    if (handlingSignal) {
+      return;
+    }
+    handlingSignal = true;
+    const errors = activeCleanup?.() ?? [];
+    for (const error of errors) {
+      console.error(`Signal cleanup failed: ${error.message}`);
+    }
+    process.exit(exitCode);
+  });
 }
 
 const command = process.argv[2];
@@ -150,14 +176,11 @@ try {
     runPatchSuite();
   } else if (command === "patches") {
     runPatchSuite();
-  } else if (command === "live") {
-    runLiveSuite();
   } else {
     console.error(
-      "Usage: openclaw-test-env.mjs <ci|patches|live>\n" +
+      "Usage: openclaw-test-env.mjs <ci|patches>\n" +
         "  ci       run repository gates and the isolated cumulative patch suite\n" +
-        "  patches  run only the isolated cumulative patch suite\n" +
-        "  live     run the read-only live gateway suite",
+        "  patches  run only the isolated cumulative patch suite",
     );
     process.exitCode = 2;
   }

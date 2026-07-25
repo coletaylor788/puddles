@@ -6,11 +6,9 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // OFFLINE (no gateway / no model): proves the mock write-sinks capture writes and
-// NEVER touch a real system. These are the backends an isolated test gateway
-// routes writes to, so full write E2E can run with zero real texts/reminders/
-// events. Live READS are covered E2E in the integration.* specs; the wrapped
-// write-tool logic (calendar_write, gmail label/archive, hooks) is covered by the
-// plugin suites (openclaw-plugins/*/tests), which mock their bridges.
+// NEVER touch a real system. The wrapped write-tool logic (calendar_write,
+// gmail label/archive, hooks) is covered by the plugin suites, which mock their
+// bridges.
 const here = dirname(fileURLToPath(import.meta.url));
 const mocks = join(here, "..", "mocks");
 const IMSG = join(mocks, "imsg-mock.mjs");
@@ -57,7 +55,7 @@ describe("writes: mock write-sinks capture writes, no real side effects", () => 
     expect(writes.map((w) => w.sub)).toEqual(["create", "add", "delete"]);
   });
 
-  it("does NOT record READ operations (reads run E2E against the real system)", () => {
+  it("does NOT record read operations", () => {
     const before = lines("apple-pim-writes.jsonl").length;
     const r = run(PIM, ["list"]);
     expect(r.ok).toBe(true);
