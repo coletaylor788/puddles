@@ -3,11 +3,13 @@
 Supports two storage backends, selected automatically:
 - Environment variable (GOOGLE_MCP_TOKEN): for Azure/Linux deployments
   where secrets are injected by Key Vault
-- macOS Keychain (keyring): for local macOS development
+- macOS Keychain (/usr/bin/security): for local macOS development
 """
 
 import json
 import os
+import subprocess
+import time
 
 import httplib2
 from google.auth.transport.requests import Request
@@ -25,6 +27,15 @@ from .logging_setup import log
 # defaults to no timeout and a stalled Google response will hang the worker
 # thread forever.
 HTTP_SOCKET_TIMEOUT_S = 30
+KEYCHAIN_ACCESS_TIMEOUT_S = 5
+KEYCHAIN_CACHE_TTL_S = 60
+KEYCHAIN_ACCOUNT = "token"
+SECURITY_COMMAND = "/usr/bin/security"
+KEYCHAIN_DUPLICATE_ITEM_STATUS = 45
+
+
+class KeychainAccessError(RuntimeError):
+    """Raised when macOS Keychain access fails or times out."""
 
 
 def _build_service(creds: Credentials):
@@ -61,6 +72,8 @@ def _use_env_backend() -> bool:
 # --- Environment variable backend ---
 
 _cached_creds: Credentials | None = None
+_cached_keychain_creds: Credentials | None = None
+_cached_keychain_loaded_at: float | None = None
 
 
 def _env_is_authenticated() -> bool:
@@ -96,33 +109,160 @@ def _env_load_credentials() -> None:
 # --- Keychain backend ---
 
 
-def _keychain_is_authenticated() -> bool:
-    import keyring
+def _run_security(
+    args: list[str],
+    *,
+    missing_ok: bool = False,
+    allowed_returncodes: tuple[int, ...] = (),
+    sensitive_args: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    """Run a bounded macOS Keychain command and sanitize failures."""
+    try:
+        result = subprocess.run(
+            [SECURITY_COMMAND, *args],
+            capture_output=True,
+            text=True,
+            timeout=KEYCHAIN_ACCESS_TIMEOUT_S,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise KeychainAccessError(
+            "macOS Keychain access timed out. Unlock the login keychain and "
+            "verify that /usr/bin/security is trusted for the gmail-mcp token."
+        ) from (None if sensitive_args else exc)
+    except OSError as exc:
+        raise KeychainAccessError(
+            f"macOS Keychain command could not start: {exc}"
+        ) from exc
 
-    token_data = keyring.get_password(KEYCHAIN_SERVICE, "token")
-    return token_data is not None
+    if result.returncode == 44 and missing_ok:
+        return result
+    if result.returncode in allowed_returncodes:
+        return result
+    if result.returncode != 0:
+        detail = result.stderr.strip() or f"security exited with status {result.returncode}"
+        raise KeychainAccessError(f"macOS Keychain access failed: {detail}")
+    return result
 
 
-def _keychain_get_token() -> Credentials | None:
-    import keyring
+def _keychain_read_token() -> str | None:
+    result = _run_security(
+        [
+            "find-generic-password",
+            "-s",
+            KEYCHAIN_SERVICE,
+            "-a",
+            KEYCHAIN_ACCOUNT,
+            "-w",
+        ],
+        missing_ok=True,
+    )
+    if result.returncode == 44:
+        return None
+    token_data = result.stdout.rstrip("\n")
+    return token_data or None
 
-    token_data = keyring.get_password(KEYCHAIN_SERVICE, "token")
+
+def _keychain_item_exists() -> bool:
+    result = _run_security(
+        [
+            "find-generic-password",
+            "-s",
+            KEYCHAIN_SERVICE,
+            "-a",
+            KEYCHAIN_ACCOUNT,
+        ],
+        missing_ok=True,
+    )
+    return result.returncode == 0
+
+
+def _keychain_write_token(token_data: str) -> None:
+    exists = _keychain_item_exists()
+    args = [
+        "add-generic-password",
+        "-s",
+        KEYCHAIN_SERVICE,
+        "-a",
+        KEYCHAIN_ACCOUNT,
+    ]
+    if exists:
+        # Updating the ACL with `-T` requires interactive authorization even
+        # when this executable is already trusted. Refresh only the secret.
+        args.append("-U")
+    else:
+        args.extend(["-T", SECURITY_COMMAND])
+    # Prompted `-w` input is limited to 128 bytes and silently truncates OAuth
+    # JSON. `-X` preserves arbitrary-length data. This briefly exposes the
+    # hexadecimal value to same-user process inspection, which does not widen
+    # the documented trust boundary: same-user code can already invoke the
+    # trusted /usr/bin/security executable to read this item.
+    args.extend(["-X", token_data.encode().hex()])
+    result = _run_security(
+        args,
+        allowed_returncodes=(KEYCHAIN_DUPLICATE_ITEM_STATUS,) if not exists else (),
+        sensitive_args=True,
+    )
+    if not exists and result.returncode == KEYCHAIN_DUPLICATE_ITEM_STATUS:
+        # Another process created the item after the metadata check. Retry as
+        # a content-only update rather than failing a completed OAuth flow.
+        _run_security(
+            [
+                "add-generic-password",
+                "-U",
+                "-s",
+                KEYCHAIN_SERVICE,
+                "-a",
+                KEYCHAIN_ACCOUNT,
+                "-X",
+                token_data.encode().hex(),
+            ],
+            sensitive_args=True,
+        )
+
+
+def _keychain_load_credentials() -> Credentials | None:
+    global _cached_keychain_creds, _cached_keychain_loaded_at
+    now = time.monotonic()
+    if (
+        _cached_keychain_creds is not None
+        and _cached_keychain_loaded_at is not None
+        and now - _cached_keychain_loaded_at < KEYCHAIN_CACHE_TTL_S
+    ):
+        return _cached_keychain_creds
+
+    _cached_keychain_creds = None
+    _cached_keychain_loaded_at = None
+    token_data = _keychain_read_token()
     if not token_data:
         return None
 
     try:
-        token_info = json.loads(token_data)
-        creds = Credentials.from_authorized_user_info(token_info, SCOPES)
-        return creds
+        _cached_keychain_creds = Credentials.from_authorized_user_info(
+            json.loads(token_data),
+            SCOPES,
+        )
     except (json.JSONDecodeError, ValueError):
         return None
+    _cached_keychain_loaded_at = now
+    return _cached_keychain_creds
+
+
+def _keychain_is_authenticated() -> bool:
+    return _keychain_load_credentials() is not None
+
+
+def _keychain_get_token() -> Credentials | None:
+    return _keychain_load_credentials()
 
 
 def _keychain_store_token(creds: Credentials) -> None:
-    import keyring
+    global _cached_keychain_creds, _cached_keychain_loaded_at
 
     token_data = creds.to_json()
-    keyring.set_password(KEYCHAIN_SERVICE, "token", token_data)
+    _keychain_write_token(token_data)
+    _cached_keychain_creds = creds
+    _cached_keychain_loaded_at = time.monotonic()
 
 
 # --- Public API ---

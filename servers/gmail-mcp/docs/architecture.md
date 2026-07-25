@@ -89,7 +89,7 @@ See [tools.md](./tools.md) for details.
 | `google-api-python-client>=2.100.0` | Gmail API client |
 | `google-auth-httplib2>=0.1.0` | HTTP transport for auth |
 | `google-auth-oauthlib>=1.0.0` | OAuth 2.0 flow |
-| `keyring>=24.0.0` | macOS Keychain access |
+| `/usr/bin/security` | macOS Keychain access (system executable) |
 
 ---
 
