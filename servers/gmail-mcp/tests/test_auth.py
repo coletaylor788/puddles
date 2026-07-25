@@ -901,6 +901,52 @@ class TestRunOauthFlow:
             assert mock_store.call_args.args == (mock_new_creds,)
             assert mock_store.call_args.kwargs["deadline"] > time.monotonic()
 
+    def test_reauths_when_concurrent_replacement_is_not_ready(self, tmp_path):
+        """An invalid or underscoped replacement cannot bypass recovery OAuth."""
+        old_creds = MagicMock()
+        old_creds.valid = False
+        old_creds.expired = True
+        old_creds.refresh_token = "old-refresh"
+        old_creds.scopes = [
+            "https://www.googleapis.com/auth/gmail.modify",
+            "https://www.googleapis.com/auth/gmail.send",
+        ]
+
+        replacement_creds = MagicMock()
+        replacement_creds.valid = False
+        replacement_creds.scopes = ["https://www.googleapis.com/auth/gmail.readonly"]
+
+        new_creds = MagicMock()
+        new_creds.refresh_token = "new-refresh"
+        mock_flow = MagicMock()
+        mock_flow.run_local_server.return_value = new_creds
+
+        creds_file = tmp_path / "credentials.json"
+        creds_file.write_text('{"installed": {"client_id": "x", "client_secret": "y"}}')
+        mock_service = MagicMock()
+        mock_service.users.return_value.getProfile.return_value.execute.return_value = {
+            "emailAddress": "new@example.test"
+        }
+
+        with (
+            patch("gmail_mcp.auth.read_token", side_effect=["old", "replacement"]),
+            patch(
+                "gmail_mcp.auth._credentials_from_token_data",
+                side_effect=[old_creds, replacement_creds],
+            ),
+            patch("gmail_mcp.auth._refresh_credentials", return_value=True),
+            patch("gmail_mcp.auth.get_credentials_path", return_value=creds_file),
+            patch(
+                "gmail_mcp.auth._BoundedInstalledAppFlow.from_client_secrets_file",
+                return_value=mock_flow,
+            ),
+            patch("gmail_mcp.auth.store_token"),
+            patch("gmail_mcp.auth._build_service", return_value=mock_service),
+        ):
+            assert run_oauth_flow() == "new@example.test"
+
+        mock_flow.run_local_server.assert_called_once()
+
 
 class TestGetGmailService:
     """Tests for get_gmail_service()."""
