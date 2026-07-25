@@ -1,11 +1,13 @@
 """Unit tests for auth module."""
 
 import json
+import subprocess
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from gmail_mcp.auth import (
+    KeychainAccessError,
     _use_env_backend,
     get_gmail_service,
     get_token,
@@ -13,17 +15,19 @@ from gmail_mcp.auth import (
     run_oauth_flow,
     store_token,
 )
-from gmail_mcp.config import GOOGLE_TOKEN_ENV, KEYCHAIN_SERVICE
+from gmail_mcp.config import GOOGLE_TOKEN_ENV
 
 
 # Ensure env backend is not active during Keychain tests
 @pytest.fixture(autouse=True)
 def _clear_env_token(monkeypatch):
-    """Remove GOOGLE_MCP_TOKEN env var and reset cached creds for each test."""
+    """Remove GOOGLE_MCP_TOKEN and reset credential caches for each test."""
     monkeypatch.delenv(GOOGLE_TOKEN_ENV, raising=False)
     import gmail_mcp.auth
 
     gmail_mcp.auth._cached_creds = None
+    gmail_mcp.auth._cached_keychain_creds = None
+    gmail_mcp.auth._cached_keychain_loaded_at = None
 
 
 class TestBackendSelection:
@@ -128,12 +132,19 @@ class TestKeychainIsAuthenticated:
 
     def test_returns_false_when_no_token(self):
         """Returns False when no token in Keychain."""
-        with patch("keyring.get_password", return_value=None):
+        with patch("gmail_mcp.auth._keychain_read_token", return_value=None):
             assert is_authenticated() is False
 
     def test_returns_true_when_token_exists(self):
         """Returns True when token exists in Keychain."""
-        with patch("keyring.get_password", return_value='{"token": "data"}'):
+        token_data = json.dumps({
+            "token": "access_token",
+            "refresh_token": "refresh_token",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "client_id": "client_id",
+            "client_secret": "client_secret",
+        })
+        with patch("gmail_mcp.auth._keychain_read_token", return_value=token_data):
             assert is_authenticated() is True
 
 
@@ -142,12 +153,12 @@ class TestKeychainGetToken:
 
     def test_returns_none_when_no_token(self):
         """Returns None when no token in Keychain."""
-        with patch("keyring.get_password", return_value=None):
+        with patch("gmail_mcp.auth._keychain_read_token", return_value=None):
             assert get_token() is None
 
     def test_returns_none_on_invalid_json(self):
         """Returns None when token data is not valid JSON."""
-        with patch("keyring.get_password", return_value="not json"):
+        with patch("gmail_mcp.auth._keychain_read_token", return_value="not json"):
             assert get_token() is None
 
     def test_returns_credentials_when_valid_token(self):
@@ -159,26 +170,150 @@ class TestKeychainGetToken:
             "client_id": "client_id",
             "client_secret": "client_secret",
         }
-        with patch("keyring.get_password", return_value=json.dumps(token_data)):
+        with patch(
+            "gmail_mcp.auth._keychain_read_token",
+            return_value=json.dumps(token_data),
+        ):
             creds = get_token()
             assert creds is not None
             assert creds.token == "access_token"
             assert creds.refresh_token == "refresh_token"
 
+    def test_caches_credentials_after_first_read(self):
+        """Reads Keychain only once within the short cache window."""
+        token_data = json.dumps({
+            "token": "access_token",
+            "refresh_token": "refresh_token",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "client_id": "client_id",
+            "client_secret": "client_secret",
+        })
+        with patch(
+            "gmail_mcp.auth._keychain_read_token",
+            return_value=token_data,
+        ) as mock_read:
+            assert is_authenticated() is True
+            assert get_token() is not None
+            mock_read.assert_called_once()
+
+    def test_reloads_credentials_after_cache_ttl(self):
+        """Observes external Keychain changes after the cache expires."""
+        first = json.dumps({
+            "token": "first",
+            "refresh_token": "refresh",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "client_id": "client_id",
+            "client_secret": "client_secret",
+        })
+        second = json.dumps({
+            "token": "second",
+            "refresh_token": "refresh",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "client_id": "client_id",
+            "client_secret": "client_secret",
+        })
+        with (
+            patch(
+                "gmail_mcp.auth._keychain_read_token",
+                side_effect=[first, second],
+            ) as mock_read,
+            patch(
+                "gmail_mcp.auth.time.monotonic",
+                side_effect=[100.0, 161.0],
+            ),
+        ):
+            assert get_token().token == "first"
+            assert get_token().token == "second"
+            assert mock_read.call_count == 2
+
 
 class TestKeychainStoreToken:
     """Tests for store_token() with Keychain backend."""
 
-    def test_saves_token_to_keyring(self):
-        """Token is saved to Keychain with correct service/account."""
+    def test_new_token_trusts_security_and_preserves_full_data(self):
+        """New tokens trust /usr/bin/security and use untruncated hex data."""
         mock_creds = MagicMock()
         mock_creds.to_json.return_value = '{"token": "test"}'
 
-        with patch("keyring.set_password") as mock_set:
+        with patch("gmail_mcp.auth.subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                subprocess.CompletedProcess([], 44, "", "not found"),
+                subprocess.CompletedProcess([], 0, "", ""),
+            ]
             store_token(mock_creds)
 
-            mock_set.assert_called_once_with(KEYCHAIN_SERVICE, "token", '{"token": "test"}')
+            command = mock_run.call_args_list[1].args[0]
+            assert "-U" not in command
+            assert command.count("/usr/bin/security") == 2
+            assert command[-2:] == ["-X", '{"token": "test"}'.encode().hex()]
 
+    def test_existing_token_update_does_not_modify_acl(self):
+        """Refreshes update only the secret to avoid an interactive ACL prompt."""
+        mock_creds = MagicMock()
+        mock_creds.to_json.return_value = '{"token": "refreshed"}'
+
+        with patch("gmail_mcp.auth.subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                subprocess.CompletedProcess([], 0, "metadata", ""),
+                subprocess.CompletedProcess([], 0, "", ""),
+            ]
+            store_token(mock_creds)
+
+            command = mock_run.call_args_list[1].args[0]
+            assert "-U" in command
+            assert "-T" not in command
+            assert command[-2:] == ["-X", '{"token": "refreshed"}'.encode().hex()]
+
+    def test_create_race_retries_as_content_only_update(self):
+        """A concurrent create does not discard a completed OAuth flow."""
+        mock_creds = MagicMock()
+        mock_creds.to_json.return_value = '{"token": "test"}'
+
+        with patch("gmail_mcp.auth.subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                subprocess.CompletedProcess([], 44, "", "not found"),
+                subprocess.CompletedProcess([], 45, "", "already exists"),
+                subprocess.CompletedProcess([], 0, "", ""),
+            ]
+            store_token(mock_creds)
+
+            create_command = mock_run.call_args_list[1].args[0]
+            retry_command = mock_run.call_args_list[2].args[0]
+            assert "-T" in create_command
+            assert "-U" not in create_command
+            assert "-U" in retry_command
+            assert "-T" not in retry_command
+
+
+class TestKeychainCommand:
+    """Tests for bounded macOS Keychain command execution."""
+
+    def test_missing_item_is_unauthenticated(self):
+        with patch("gmail_mcp.auth.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess([], 44, "", "not found")
+            assert is_authenticated() is False
+
+    def test_permission_failure_is_not_silently_treated_as_missing(self):
+        with patch("gmail_mcp.auth.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess([], 1, "", "denied")
+            with pytest.raises(KeychainAccessError, match="denied"):
+                is_authenticated()
+
+    def test_timeout_surfaces_actionable_error(self):
+        with patch(
+            "gmail_mcp.auth.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(["security"], 5),
+        ):
+            with pytest.raises(KeychainAccessError, match="timed out"):
+                is_authenticated()
+
+    def test_missing_security_command_surfaces_actionable_error(self):
+        with patch(
+            "gmail_mcp.auth.subprocess.run",
+            side_effect=FileNotFoundError("/usr/bin/security"),
+        ):
+            with pytest.raises(KeychainAccessError, match="could not start"):
+                is_authenticated()
 
 class TestRunOauthFlow:
     """Tests for run_oauth_flow()."""

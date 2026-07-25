@@ -15,6 +15,7 @@ from gmail_mcp.server import (
     _get_label_id,
     _list_emails,
     _sanitize_filename,
+    call_tool,
 )
 
 
@@ -50,6 +51,36 @@ class TestAuthenticate:
 
             assert len(result) == 1
             assert "Error during authentication" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_keychain_failure_reaches_tool_boundary(self):
+        """Keychain failures are translated by call_tool and logged as failures."""
+        from gmail_mcp.auth import KeychainAccessError
+
+        with (
+            patch(
+                "gmail_mcp.server.run_oauth_flow",
+                side_effect=KeychainAccessError("access timed out"),
+            ),
+            pytest.raises(KeychainAccessError, match="access timed out"),
+        ):
+            await _authenticate()
+
+    @pytest.mark.asyncio
+    async def test_keychain_failure_returns_tool_error(self):
+        """Keychain failures become explicit tool results instead of MCP exceptions."""
+        from gmail_mcp.auth import KeychainAccessError
+
+        with patch(
+            "gmail_mcp.server._list_emails",
+            side_effect=KeychainAccessError("access timed out"),
+        ):
+            result = await call_tool("list_emails", {})
+
+        payload = json.loads(result[0].text)
+        assert payload == {
+            "error": "Authentication unavailable: access timed out",
+        }
 
 
 class TestListEmails:

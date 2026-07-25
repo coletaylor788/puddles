@@ -14,7 +14,7 @@ from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
 from ._async import run_blocking
-from .auth import get_gmail_service, is_authenticated, run_oauth_flow
+from .auth import KeychainAccessError, get_gmail_service, is_authenticated, run_oauth_flow
 from .logging_setup import log
 
 # Initialize MCP server
@@ -184,6 +184,13 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             raise ValueError(f"Unknown tool: {name}")
         ok = True
         return result
+    except KeychainAccessError as e:
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps({"error": f"Authentication unavailable: {e}"}),
+            )
+        ]
     finally:
         log(
             "info",
@@ -206,6 +213,8 @@ async def _authenticate() -> list[TextContent]:
         ]
     except FileNotFoundError as e:
         return [TextContent(type="text", text=f"Error: {e}")]
+    except KeychainAccessError:
+        raise
     except Exception as e:
         return [TextContent(type="text", text=f"Error during authentication: {e}")]
 
