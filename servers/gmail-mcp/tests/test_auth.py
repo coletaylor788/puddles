@@ -1,7 +1,9 @@
 """Unit tests for auth module."""
 
 import json
+import os
 import subprocess
+import sys
 import threading
 import time
 from unittest.mock import MagicMock, patch
@@ -117,6 +119,38 @@ class TestEnvBackend:
         )
         with patch("gmail_mcp.auth.pwd.getpwuid", side_effect=KeyError("unmapped")):
             assert gmail_mcp.auth.is_authenticated() is True
+
+    def test_env_backend_imports_without_home_or_passwd_entry(self):
+        """Environment-only startup does not resolve a filesystem home."""
+        token_data = json.dumps({
+            "token": "access-token",
+            "refresh_token": "refresh-token",
+            "client_id": "client-id",
+            "client_secret": "client-secret",
+        })
+        env = {
+            key: value
+            for key, value in os.environ.items()
+            if key not in {"HOME", "GMAIL_MCP_CONFIG_DIR"}
+        }
+        env[GOOGLE_TOKEN_ENV] = token_data
+        probe = """
+import pwd
+pwd.getpwuid = lambda uid: (_ for _ in ()).throw(KeyError(uid))
+import gmail_mcp.auth as auth
+assert auth.is_authenticated()
+"""
+
+        result = subprocess.run(
+            [sys.executable, "-c", probe],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+            env=env,
+        )
+
+        assert result.returncode == 0, result.stderr
 
     def test_store_token_is_noop(self, monkeypatch):
         """store_token does nothing when env backend is active."""
