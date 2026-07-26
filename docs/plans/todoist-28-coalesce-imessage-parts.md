@@ -1,6 +1,6 @@
 # Coalesce split iMessage message parts
 
-- **Status:** In progress - synchronizing current main before promotion
+- **Status:** In progress - ready for synchronized exact-commit review
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-26
 - **Owner:** Cole Taylor
@@ -83,8 +83,14 @@ tests pass again, and patch reproduction is byte-for-byte. The complete
 lifecycle is green again, and fresh independent review found no actionable
 high-confidence defects. Exact commit `b99bff1f` also passed terminal review,
 and PR #38 CodeQL checks are green, but current `main` conflicts with the branch.
-Synchronizing `main` will require repeated lifecycle validation and terminal
-review before merge.
+Current `main` is now merged with the complete third-correction plan preserved,
+and the managed lifecycle is green. Fresh synchronized review found the 669 ms
+value was asserted only against resolved policy rather than exercised through
+the real debouncer. Both 669 ms and 12.416-second paths now run through the real
+debouncer, all 74 focused tests pass, and patch reproduction is byte-for-byte.
+The complete lifecycle is green again, and fresh independent review found no
+actionable high-confidence defects. Final exact-commit review, merge, and
+rollout remain.
 
 ### Scope and acceptance criteria
 
@@ -250,6 +256,9 @@ review before merge.
 - Final terminal remediation separates candidates so comma parsing cannot
   remove the payload noun from existing deictic questions such as
   `Check this link, is that the one?`.
+- Exact-timing remediation parameterizes the real-debouncer regression for the
+  669 ms comma-delimited production shape and the prior 12.416-second
+  punctuationless shape, using distinct row IDs that preserve replay ordering.
 
 ### Validation
 
@@ -350,6 +359,24 @@ review before merge.
   registrations pruned.
 - PR #38 passed all CodeQL checks at exact reviewed commit `b99bff1f`, but
   GitHub reports the branch conflicts with current `main`.
+- Current `main` merged as `c61294b`; the synchronized managed lifecycle passes
+  repository build and lint, 238 workspace tests, 297 cumulative mapped
+  OpenClaw tests, one isolated candidate test, and candidate deregistration.
+- Exact-timing focused suites pass all 74 tests. Both observed gaps advance the
+  real fake clock, remain undispatched before payload arrival, and produce one
+  merged dispatch. The regenerated patch reapplies cleanly and reproduces all
+  four files byte-for-byte.
+- The exact-timing managed lifecycle passes repository build and lint, 238
+  workspace tests, 298 cumulative mapped OpenClaw tests, one isolated candidate
+  test, and candidate deregistration.
+- Fresh independent review verified current-main ancestry, merge resolution,
+  both real-debouncer timing paths, cursor/replay ordering, mapped test
+  discovery, and clean patch application with no actionable high-confidence
+  findings. Residual validation gaps remain the final post-deployment
+  Messages.app smoke and RPC reconnect/teardown races outside source-level
+  notification mocks.
+- The final real-timer fixtures were removed and OpenClaw worktree registrations
+  pruned.
 - A fresh independent reviewer verified patch preimages, clean application,
   mapped test discovery, and the complete comma-boundary remediation with no
   actionable high-confidence findings. Residual validation gaps are the final
@@ -458,6 +485,12 @@ No data migration or persistent message-state conversion is involved.
   actionable high-confidence defects.
 - Terminal fresh review found no actionable high-confidence defects in exact
   commit `b99bff1f42f2fda18c01f1291a0a8a5082272486`.
+- Fresh synchronized review found the exact 669 ms gap was only compared with
+  the resolved timeout in a monitor mock; the real debouncer still exercised
+  only the prior 12.416-second gap. The accepted correction adds a 669 ms
+  real-timer case while retaining the long-gap case.
+- Fresh complete-diff review after exact real-timer remediation found no
+  actionable high-confidence defects.
 
 ### Checklist
 
@@ -520,7 +553,7 @@ No data migration or persistent message-state conversion is involved.
   OpenClaw timing.
 - [x] Add a committed real-path regression for the newly observed failure.
 - [x] Correct the demonstrated boundary without broadening unrelated batching.
-- [ ] Rerun the complete cumulative lifecycle after syncing current `main`.
-- [ ] Obtain a clean independent review of the synchronized third correction.
+- [x] Rerun the complete cumulative lifecycle after exact real-timer coverage.
+- [x] Obtain a clean independent review of the synchronized third correction.
 - [ ] Merge, verify `main`, deploy locally, and validate production read-only.
 - [ ] Return issue #28 and Todoist to Ready for review after the third smoke fix.

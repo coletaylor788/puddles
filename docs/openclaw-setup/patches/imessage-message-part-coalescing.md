@@ -96,7 +96,7 @@ The patch adds regression coverage for:
 - punctuation-only prefixes remaining standalone questions;
 - period and exclamation prefixes not activating the comma-only exception;
 - existing deictic questions retaining payload nouns before an internal comma;
-- real debouncer timing across that 12.4-second gap;
+- real debouncer timing across both the 669 ms and 12.4-second gaps;
 - repeated referential lead-ins retaining the first absolute deadline;
 - unmatched payload-referential question dispatching alone after the hold;
 - common unrelated deictic questions bypassing the hold;
@@ -111,7 +111,7 @@ The patch adds regression coverage for:
 - invalid conversation anchors failing open instead of sharing a coalescing key;
 - the existing merge caps, reply context, cursor, and GUID tracking.
 
-The focused coalescer and monitor suites pass all 73 tests after a clean reverse
+The focused coalescer and monitor suites pass all 74 tests after a clean reverse
 and reapplication of the exported patch.
 
 Manual smoke test after deployment:
