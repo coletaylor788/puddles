@@ -1,8 +1,8 @@
 # Coalesce split iMessage message parts
 
-- **Status:** Complete - 2026-07-24
+- **Status:** In progress - production link regression investigation
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
-- **Last updated:** 2026-07-24
+- **Last updated:** 2026-07-25
 - **Owner:** Cole Taylor
 
 ## Human design
@@ -13,6 +13,8 @@ A single Messages.app composition can arrive as separate text, link-preview, and
 attachment rows. Processing each row immediately starts multiple agent turns,
 so the first response can lack the link or image context. The fix must not merge
 genuinely separate rapid messages or make iMessage delivery less reliable.
+Production smoke evidence now shows images coalescing while a newly sent link
+still triggered a response without the link context.
 
 ### Outcome
 
@@ -24,14 +26,13 @@ coverage in the required pull-request workflow.
 
 ### Approach
 
-Maintain the provider-neutral OpenClaw source patch against the pinned release.
-Hold only short unfinished lead-ins, key pending state by account, valid
-conversation anchor, and sender, and append only an immediately following
-standalone URL preview or real attachment. Keep focused tests inside the patch
-and expose every patch regression through the isolated cumulative
-`packages/e2e` runner. Do not drive configured agents or live systems from the
-required pool. Deploy only through the documented local-or-explicit-remote
-wrapper.
+Correlate the reported production timestamp with read-only OpenClaw and iMessage
+logs to capture the real split-link event shape, then update the provider-neutral
+OpenClaw source patch to recognize that shape without broadening unrelated
+message batching. Keep focused tests inside the patch and expose every
+regression through the isolated cumulative `packages/e2e` runner. Do not drive
+configured agents or live systems from the required pool. Deploy only through
+the documented local-or-explicit-remote wrapper.
 
 ### Safety and rollout
 
@@ -41,22 +42,25 @@ safe conversation key cannot be formed. Automated tests use temporary
 worktrees, focused source harnesses, and recording mocks; they never connect to
 the configured gateway, send messages, or mutate personal data. On the target
 host, `MINI_HOST` stays unset; only an intentional remote deployment sets it.
+Production investigation is read-only and scoped to the reported time window.
 Rollback disables coalescing and redeploys the prior reviewed patch stack.
 
 ## Agent details
 
 ### State
 
-The coalescing implementation and deployment-topology correction are merged and
-deployed. PR #26 merged the cumulative integration pool after all pull-request
-checks and two fresh independent reviews cleared the final diff. The first
-cumulative workflow on `main` passed. No additional production deployment was
-performed for the test-infrastructure work.
+The original image and link coalescing patch is merged and deployed, and the
+cumulative integration lifecycle is active on `main`. Cole's latest production
+smoke test confirms image handling but reports that a link test still dispatched
+without link context. The task is reopened for log correlation, exact
+reproduction, correction, cumulative validation, review, and safe redeployment.
 
 ### Scope and acceptance criteria
 
 - Near-simultaneous lead-in text plus a standalone URL preview from the same
   account, direct conversation, and sender dispatches as one logical turn.
+- The production event shape observed around the reported link test is covered
+  by a committed regression and produces one logical inbound turn.
 - Lead-in text plus a real image attachment dispatches as one logical turn.
 - Rapid but genuinely separate short text messages remain separate turns.
 - Complete URL-bearing prose, control commands, reactions, outgoing echoes, and
@@ -77,6 +81,8 @@ performed for the test-infrastructure work.
   split-send window rather than adding configuration.
 - Hold only short unfinished lead-ins. Standalone payloads flush immediately
   unless they can join the immediately preceding eligible lead-in.
+- Base link classification on the observed normalized inbound shape rather than
+  assuming Messages.app always emits a standalone URL row.
 - Scope pending state by account, valid conversation anchor, and sender.
 - Preserve limits of 4,000 text characters, 20 attachments, and 10 source rows.
 - Require `channels.imessage.includeAttachments: true` for image ingestion.
@@ -136,6 +142,9 @@ performed for the test-infrastructure work.
   verifies the candidate is absent.
 - Both recording mocks require explicit isolated state and reject unsupported
   operations.
+- Reopened correction: correlate the reported production logs, identify why the
+  link row bypassed coalescing, and update the patch and cumulative regression
+  mapping without changing image or separate-message behavior.
 
 ### Validation
 
@@ -158,6 +167,9 @@ performed for the test-infrastructure work.
   rather than credentialed CI.
 - Pull-request checks passed on the final handoff commit, PR #26 merged, and the
   first cumulative Integration workflow passed on `main`.
+- New production evidence: images pass a quick smoke test, while the reported
+  link composition reached the agent without link context. Exact log
+  correlation and reproduction are pending.
 
 ### Rollout and rollback
 
@@ -195,6 +207,9 @@ No data migration or persistent message-state conversion is involved.
   high-confidence defects.
 - A second fresh independent review of the exact published handoff diff also
   found no actionable high-confidence defects before merge.
+- Cole reopened the task after a production link smoke test exposed a behavior
+  not represented by the existing link regressions. A new independent review is
+  required after the correction and complete lifecycle pass.
 
 ### Checklist
 
@@ -233,3 +248,11 @@ No data migration or persistent message-state conversion is involved.
 - [x] Push and merge PR #26.
 - [x] Confirm the first cumulative Integration workflow run on `main`.
 - [x] Prepare issue #28 and the Todoist ready-for-review handoff.
+- [ ] Correlate read-only production logs with the reported link test.
+- [ ] Add a focused regression for the observed split-link event shape.
+- [ ] Correct link coalescing without broadening separate-message batching.
+- [ ] Run focused tests and the complete managed cumulative lifecycle.
+- [ ] Obtain a clean independent review of the complete correction diff.
+- [ ] Merge the correction and confirm the cumulative workflow on `main`.
+- [ ] Deploy through the approved lifecycle and validate production read-only.
+- [ ] Return issue #28 and Todoist to Ready for review.
