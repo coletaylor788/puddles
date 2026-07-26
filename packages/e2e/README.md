@@ -91,7 +91,8 @@ suites, and uncommitted checks do not count.
 - local-default versus explicit-remote deployment routing;
 - patched browser entrypoint profile and singleton cleanup;
 - recording message and PIM write adapters;
-- manifest completeness and pinned-source enforcement; and
+- manifest completeness and pinned-source enforcement;
+- reusable adversarial-review worker and anti-churn workflow contracts; and
 - shared utility parsing and complexity regressions.
 
 ## Adding coverage
