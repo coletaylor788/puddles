@@ -1,6 +1,6 @@
 # Coalesce split iMessage message parts
 
-- **Status:** In progress - link correction implemented, cumulative validation pending
+- **Status:** In progress - link correction validated, independent review pending
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-25
 - **Owner:** Cole Taylor
@@ -60,7 +60,7 @@ integration lifecycle is active on `main`. Read-only correlation reproduced
 Cole's link failure and showed that complete payload-referential questions were
 dispatched before their URL balloons. A narrow correction and the observed
 regression are implemented in an isolated pinned OpenClaw fixture; cumulative
-validation, review, merge, and safe redeployment remain.
+validation passes, while independent review, merge, and safe redeployment remain.
 
 ### Scope and acceptance criteria
 
@@ -195,6 +195,9 @@ validation, review, merge, and safe redeployment remain.
 - Updated focused coalescer and monitor suites pass 67 tests, including a
   policy-respecting monitor regression that would dispatch twice under the prior
   classifier.
+- The managed cumulative lifecycle passes repository build and lint, 237
+  workspace tests, 291 mapped OpenClaw tests, one candidate test, and verified
+  candidate deregistration.
 
 ### Rollout and rollback
 
@@ -276,7 +279,7 @@ No data migration or persistent message-state conversion is involved.
 - [x] Correlate read-only production logs with the reported link test.
 - [x] Add a focused regression for the observed split-link event shape.
 - [x] Correct link coalescing without broadening separate-message batching.
-- [ ] Run focused tests and the complete managed cumulative lifecycle.
+- [x] Run focused tests and the complete managed cumulative lifecycle.
 - [ ] Obtain a clean independent review of the complete correction diff.
 - [ ] Merge the correction and confirm the cumulative workflow on `main`.
 - [ ] Deploy through the approved lifecycle and validate production read-only.
