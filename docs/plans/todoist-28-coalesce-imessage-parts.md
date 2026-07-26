@@ -1,67 +1,60 @@
 # Coalesce split iMessage message parts
 
-- **Status:** Complete - 2026-07-25
+- **Status:** In progress - second production link failure under investigation
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
-- **Pull request:** https://github.com/coletaylor788/puddles/pull/34
-- **Last updated:** 2026-07-25
+- **Last updated:** 2026-07-26
 - **Owner:** Cole Taylor
 
 ## Human design
 
 ### Problem
 
-A single Messages.app composition can arrive as separate text, link-preview, and
+Messages.app can emit one composition as separate text, link-preview, and
 attachment rows. Processing each row immediately starts multiple agent turns,
-so the first response can lack the link or image context. The fix must not merge
-genuinely separate rapid messages or make iMessage delivery less reliable.
-Production smoke evidence now shows images coalescing while a newly sent link
-still triggered a response without the link context. Read-only correlation found
-two examples where a four-to-six-word question explicitly referring to “this”
-arrived one second before its URL-preview balloon, but the question dispatched
-immediately because the original lead-in classifier allowed only unfinished
-fragments of at most three words.
+so the first response lacks later payload context. Image batching works, but two
+successive production link smokes still split after the link-aware classifier
+was deployed. The latest text omitted a terminal question mark and reached the
+runtime 12.4 seconds before its URL-preview row, so it missed both the narrow
+question classifier and the seven-second compatibility hold. The fix must cover
+that real link-preview shape without merging genuinely separate messages.
 
 ### Outcome
 
-Eligible same-sender direct-message parts arriving within the existing bounded
-split-send window become one logical inbound turn. Complete messages, commands,
-reactions, groups, outgoing echoes, and separate short texts retain their prior
-behavior. Every maintained OpenClaw patch has visible cumulative integration
-coverage in the required pull-request workflow.
+Eligible same-sender direct-message text and payload rows from one composition
+become one logical inbound turn across the observed image and link-preview
+latencies. Unrelated complete messages, commands, reactions, groups, outgoing
+echoes, and rapid separate texts retain their prior behavior. The exact
+production timing shapes remain committed to the cumulative integration pool.
 
 ### Approach
 
-Extend the provider-neutral OpenClaw source patch with a narrow bounded class for
-short questions that both refer deictically to an accompanying payload and
-either name a payload type or use the specific “how/what about this one?” shape.
-Hold those prompts for the existing split-send window so an immediately
-following URL-preview balloon can join them. Keep unrelated complete questions
-instant and preserve separate text turns. Keep focused tests inside the patch
-and expose every regression through the isolated cumulative `packages/e2e`
-runner. Do not drive configured agents or live systems from the required pool.
-Deploy only through the documented local-or-explicit-remote wrapper.
+Recognize a bounded punctuationless payload question only when the final clause
+has an interrogative shape, deictic reference, and payload noun or narrow
+comparison phrase. Give that classified referential path a 15-second cap, while
+short captions keep the existing seven-second compatibility hold and ordinary
+messages remain immediate. Add the exact observed prompt and 12.4-second runtime
+gap to focused tests exposed through the cumulative `packages/e2e` runner, then
+deploy through the documented local wrapper.
 
 ### Safety and rollout
 
-The behavior is opt-in through the existing same-sender DM coalescing setting,
-uses bounded text, attachment, row-count, and time limits, and fails open when a
-safe conversation key cannot be formed. Automated tests use temporary
-worktrees, focused source harnesses, and recording mocks; they never connect to
-the configured gateway, send messages, or mutate personal data. On the target
-host, `MINI_HOST` stays unset; only an intentional remote deployment sets it.
-Production investigation is read-only and scoped to the reported time window.
-Rollback disables coalescing and redeploys the prior reviewed patch stack.
+The behavior remains opt-in, sender/conversation scoped, size bounded, and
+fail-open when no safe key exists. Any longer wait must be payload-referential,
+explicitly capped, and covered by timeout and separate-message regressions.
+Automated tests use temporary worktrees and deny delivery; production
+investigation remains read-only. On the target host, `MINI_HOST` stays unset.
+Rollback disables coalescing or redeploys the prior reviewed patch stack.
 
 ## Agent details
 
 ### State
 
-The corrected coalescing patch is merged, validated on `main`, and deployed
-locally. Read-only correlation reproduced Cole's link failure and showed that
-complete payload-referential questions dispatched before their URL balloons.
-The narrowed heuristic and timeout hardening pass focused and cumulative tests
-with no actionable independent-review findings. The installed artifact contains
-the reviewed matcher, and the gateway and iMessage provider are healthy.
+The first link correction is merged, validated, and deployed, but Cole's second
+live question-plus-link smoke still split. Read-only correlation found Messages
+rows 6813/6814 only 0.8 seconds apart, while their OpenClaw runs began 12.4
+seconds apart. The text was “New topic. Have a test for you. What link is this”:
+its punctuationless final question clause bypassed the classifier, and the
+runtime gap also exceeds the seven-second compatibility hold.
 
 ### Scope and acceptance criteria
 
@@ -69,8 +62,11 @@ the reviewed matcher, and the gateway and iMessage provider are healthy.
   account, direct conversation, and sender dispatches as one logical turn.
 - The production event shape observed around the reported link test is covered
   by a committed regression and produces one logical inbound turn.
+- The latest post-deployment failure is correlated by row and runtime-start
+  time, and its 12.4-second boundary is covered by a committed regression.
 - Short payload-referential questions may wait for the bounded split-send
-  window; unrelated complete questions remain immediate.
+  window needed for observed URL previews; unrelated complete questions remain
+  immediate.
 - Lead-in text plus a real image attachment dispatches as one logical turn.
 - Rapid but genuinely separate short text messages remain separate turns.
 - Complete URL-bearing prose, control commands, reactions, outgoing echoes, and
@@ -97,6 +93,12 @@ the reviewed matcher, and the gateway and iMessage provider are healthy.
   contain an explicit deictic reference plus a payload noun, or match the narrow
   “how/what about this one?” comparison shape. Do not hold common unrelated
   questions or complete URL-bearing prose.
+- Treat a punctuationless final clause as referential only when it starts with a
+  narrow interrogative, remains at most eight words, and contains the existing
+  deictic plus payload-kind or comparison signals.
+- Use a 15-second per-entry hold only for payload-referential lead-ins. Preserve
+  the existing seven-second compatibility hold for short unfinished captions
+  and do not widen ordinary text batching.
 - Scope pending state by account, valid conversation anchor, and sender.
 - Preserve limits of 4,000 text characters, 20 attachments, and 10 source rows.
 - Require `channels.imessage.includeAttachments: true` for image ingestion.
@@ -171,6 +173,10 @@ the reviewed matcher, and the gateway and iMessage provider are healthy.
   alone after the bounded window.
 - The exported source patch was regenerated from the isolated pinned fixture and
   reapplied cleanly to a second detached fixture.
+- Second reopened correction: rows 6813/6814 were created 0.8 seconds apart, but
+  OpenClaw runs began 12.4 seconds apart. The source patch must recognize the
+  exact punctuationless final question and use the debouncer's per-entry timing
+  hook for a 15-second referential hold.
 
 ### Validation
 
@@ -214,6 +220,9 @@ the reviewed matcher, and the gateway and iMessage provider are healthy.
 - Read-only post-deployment checks confirm OpenClaw 2026.6.11 at the pinned
   `a1063aa` source, loopback gateway connectivity, the exact narrowed matcher in
   the installed bundle, and a running iMessage account with no last error.
+- Cole's second live smoke still split after deployment. Correlation establishes
+  the exact prompt and timing root cause; validation remains incomplete until
+  committed classifier, duration, and one-turn regressions pass.
 
 ### Rollout and rollback
 
@@ -270,6 +279,9 @@ No data migration or persistent message-state conversion is involved.
   `main` commit passed.
 - A third fresh independent review of the exact PR commit `691010e` found no
   actionable high-confidence defects before merge.
+- Cole reopened the task after the deployed question-plus-link smoke still
+  split, with an observed longer delay for links than images. Fresh validation
+  and independent review are required after the timing correction.
 
 ### Checklist
 
@@ -319,3 +331,10 @@ No data migration or persistent message-state conversion is involved.
 - [x] Merge the correction and confirm the cumulative workflow on `main`.
 - [x] Deploy through the approved lifecycle and validate production read-only.
 - [x] Return issue #28 and Todoist to Ready for review.
+- [x] Correlate the second post-deployment link smoke by row and dispatch time.
+- [ ] Add a regression for the measured link-preview delay boundary.
+- [ ] Correct only the bounded payload-referential link timing path.
+- [ ] Rerun focused tests and the complete cumulative lifecycle.
+- [ ] Obtain a clean independent review of the complete timing correction.
+- [ ] Merge, verify `main`, deploy locally, and validate production read-only.
+- [ ] Return issue #28 and Todoist to Ready for review after the second smoke fix.
