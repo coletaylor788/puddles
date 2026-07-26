@@ -1,8 +1,9 @@
 # Coalesce split iMessage message parts
 
-- **Status:** Complete - 2026-07-24
+- **Status:** Complete - 2026-07-25
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
-- **Last updated:** 2026-07-24
+- **Pull request:** https://github.com/coletaylor788/puddles/pull/34
+- **Last updated:** 2026-07-25
 - **Owner:** Cole Taylor
 
 ## Human design
@@ -13,6 +14,12 @@ A single Messages.app composition can arrive as separate text, link-preview, and
 attachment rows. Processing each row immediately starts multiple agent turns,
 so the first response can lack the link or image context. The fix must not merge
 genuinely separate rapid messages or make iMessage delivery less reliable.
+Production smoke evidence now shows images coalescing while a newly sent link
+still triggered a response without the link context. Read-only correlation found
+two examples where a four-to-six-word question explicitly referring to “this”
+arrived one second before its URL-preview balloon, but the question dispatched
+immediately because the original lead-in classifier allowed only unfinished
+fragments of at most three words.
 
 ### Outcome
 
@@ -24,14 +31,15 @@ coverage in the required pull-request workflow.
 
 ### Approach
 
-Maintain the provider-neutral OpenClaw source patch against the pinned release.
-Hold only short unfinished lead-ins, key pending state by account, valid
-conversation anchor, and sender, and append only an immediately following
-standalone URL preview or real attachment. Keep focused tests inside the patch
-and expose every patch regression through the isolated cumulative
-`packages/e2e` runner. Do not drive configured agents or live systems from the
-required pool. Deploy only through the documented local-or-explicit-remote
-wrapper.
+Extend the provider-neutral OpenClaw source patch with a narrow bounded class for
+short questions that both refer deictically to an accompanying payload and
+either name a payload type or use the specific “how/what about this one?” shape.
+Hold those prompts for the existing split-send window so an immediately
+following URL-preview balloon can join them. Keep unrelated complete questions
+instant and preserve separate text turns. Keep focused tests inside the patch
+and expose every regression through the isolated cumulative `packages/e2e`
+runner. Do not drive configured agents or live systems from the required pool.
+Deploy only through the documented local-or-explicit-remote wrapper.
 
 ### Safety and rollout
 
@@ -41,22 +49,28 @@ safe conversation key cannot be formed. Automated tests use temporary
 worktrees, focused source harnesses, and recording mocks; they never connect to
 the configured gateway, send messages, or mutate personal data. On the target
 host, `MINI_HOST` stays unset; only an intentional remote deployment sets it.
+Production investigation is read-only and scoped to the reported time window.
 Rollback disables coalescing and redeploys the prior reviewed patch stack.
 
 ## Agent details
 
 ### State
 
-The coalescing implementation and deployment-topology correction are merged and
-deployed. PR #26 merged the cumulative integration pool after all pull-request
-checks and two fresh independent reviews cleared the final diff. The first
-cumulative workflow on `main` passed. No additional production deployment was
-performed for the test-infrastructure work.
+The corrected coalescing patch is merged, validated on `main`, and deployed
+locally. Read-only correlation reproduced Cole's link failure and showed that
+complete payload-referential questions dispatched before their URL balloons.
+The narrowed heuristic and timeout hardening pass focused and cumulative tests
+with no actionable independent-review findings. The installed artifact contains
+the reviewed matcher, and the gateway and iMessage provider are healthy.
 
 ### Scope and acceptance criteria
 
 - Near-simultaneous lead-in text plus a standalone URL preview from the same
   account, direct conversation, and sender dispatches as one logical turn.
+- The production event shape observed around the reported link test is covered
+  by a committed regression and produces one logical inbound turn.
+- Short payload-referential questions may wait for the bounded split-send
+  window; unrelated complete questions remain immediate.
 - Lead-in text plus a real image attachment dispatches as one logical turn.
 - Rapid but genuinely separate short text messages remain separate turns.
 - Complete URL-bearing prose, control commands, reactions, outgoing echoes, and
@@ -77,6 +91,12 @@ performed for the test-infrastructure work.
   split-send window rather than adding configuration.
 - Hold only short unfinished lead-ins. Standalone payloads flush immediately
   unless they can join the immediately preceding eligible lead-in.
+- Base link classification on the observed normalized inbound shape rather than
+  assuming Messages.app always emits a standalone URL row.
+- Also hold question-terminated prompts of at most eight words only when they
+  contain an explicit deictic reference plus a payload noun, or match the narrow
+  “how/what about this one?” comparison shape. Do not hold common unrelated
+  questions or complete URL-bearing prose.
 - Scope pending state by account, valid conversation anchor, and sender.
 - Preserve limits of 4,000 text characters, 20 attachments, and 10 source rows.
 - Require `channels.imessage.includeAttachments: true` for image ingestion.
@@ -136,6 +156,21 @@ performed for the test-infrastructure work.
   verifies the candidate is absent.
 - Both recording mocks require explicit isolated state and reject unsupported
   operations.
+- Reopened correction: correlate the reported production logs, identify why the
+  link row bypassed coalescing, and update the patch and cumulative regression
+  mapping without changing image or separate-message behavior.
+- Read-only correlation confirmed two failures: each question row reached the
+  agent before a URL-preview balloon from the same sender and chat arrived one
+  second later. Messages metadata contains no shared composition identifier, so
+  the correction must use a conservative prompt-shape heuristic.
+- The patch now treats only bounded question-terminated prompts with explicit
+  deictic payload references as lead-ins. Focused classifier and monitor
+  regressions use the observed question-plus-URL shape.
+- Review hardening further requires a payload noun or the narrow “how/what about
+  this one?” comparison shape, and proves unmatched held questions dispatch
+  alone after the bounded window.
+- The exported source patch was regenerated from the isolated pinned fixture and
+  reapplied cleanly to a second detached fixture.
 
 ### Validation
 
@@ -158,13 +193,37 @@ performed for the test-infrastructure work.
   rather than credentialed CI.
 - Pull-request checks passed on the final handoff commit, PR #26 merged, and the
   first cumulative Integration workflow passed on `main`.
+- New production evidence: images pass a quick smoke test, while the reported
+  link composition reached the agent without link context. Exact log
+  correlation reproduced two separate question-first turns followed by
+  URL-balloon turns.
+- Updated focused coalescer and monitor suites pass 67 tests, including a
+  policy-respecting monitor regression that cannot produce one merged dispatch
+  under the prior classifier.
+- The managed cumulative lifecycle passes repository build and lint, 237
+  workspace tests, 291 mapped OpenClaw tests, one candidate test, and verified
+  candidate deregistration.
+- Hardened focused coalescer and monitor suites pass 68 tests; common unrelated
+  deictic questions remain instant and unmatched referential questions flush
+  alone.
+- The complete managed lifecycle passes repository build and lint, 237 workspace
+  tests, 292 mapped OpenClaw tests, one candidate test, and verified candidate
+  deregistration with the hardened patch at `01ca706`.
+- The exact final PR commit passed the same complete lifecycle, CodeQL, and
+  pull-request Integration checks before merge.
+- Read-only post-deployment checks confirm OpenClaw 2026.6.11 at the pinned
+  `a1063aa` source, loopback gateway connectivity, the exact narrowed matcher in
+  the installed bundle, and a running iMessage account with no last error.
 
 ### Rollout and rollback
 
 Production rollout uses
 `docs/openclaw-setup/patches/apply-and-deploy.sh` from a reviewed Puddles
 `main` worktree with `OPENCLAW_SRC` pinned to the approved OpenClaw checkout.
-`MINI_HOST` is unset for local deployment.
+`MINI_HOST` is unset for local deployment. The correction was deployed from a
+disposable pinned worktree; all five reviewed patches applied, the package and
+browser image rebuilt, and the gateway restarted. No automated live message was
+sent. Cole's review action is the documented question-plus-link smoke test.
 
 Rollback:
 
@@ -195,6 +254,22 @@ No data migration or persistent message-state conversion is involved.
   high-confidence defects.
 - A second fresh independent review of the exact published handoff diff also
   found no actionable high-confidence defects before merge.
+- Cole reopened the task after a production link smoke test exposed a behavior
+  not represented by the existing link regressions. A new independent review is
+  required after the correction and complete lifecycle pass.
+- The first correction review found no actionable defects but identified a
+  broader-than-intended false-positive surface for common deictic questions and
+  missing standalone-timeout coverage. Both were hardened before promotion.
+- A fresh independent review of the hardened complete feature diff at `e2f5ce3`
+  found no actionable high-confidence defects. Residual automated boundaries are
+  the real debouncer timer implementation and the final Messages.app smoke test.
+- After review bookkeeping, the exact promotion commit `1e8fdaa` passed the
+  complete lifecycle again and a second fresh independent review found no
+  actionable high-confidence defects.
+- Pull request #34 merged as `a4bde1f`; the first Integration run on that exact
+  `main` commit passed.
+- A third fresh independent review of the exact PR commit `691010e` found no
+  actionable high-confidence defects before merge.
 
 ### Checklist
 
@@ -233,3 +308,14 @@ No data migration or persistent message-state conversion is involved.
 - [x] Push and merge PR #26.
 - [x] Confirm the first cumulative Integration workflow run on `main`.
 - [x] Prepare issue #28 and the Todoist ready-for-review handoff.
+- [x] Correlate read-only production logs with the reported link test.
+- [x] Add a focused regression for the observed split-link event shape.
+- [x] Correct link coalescing without broadening separate-message batching.
+- [x] Run focused tests and the complete managed cumulative lifecycle.
+- [x] Obtain a clean independent review of the complete correction diff.
+- [x] Narrow the heuristic so common deictic questions remain immediate.
+- [x] Cover standalone held-question timeout and policy behavior.
+- [x] Rerun the complete cumulative lifecycle after review hardening.
+- [x] Merge the correction and confirm the cumulative workflow on `main`.
+- [x] Deploy through the approved lifecycle and validate production read-only.
+- [x] Return issue #28 and Todoist to Ready for review.

@@ -1,6 +1,6 @@
 # Fix broken Gmail tools
 
-- **Status:** In progress - integrating current main
+- **Status:** In progress - validating merged current main
 - **Issue:** https://github.com/coletaylor788/puddles/issues/15
 - **Last updated:** 2026-07-25
 - **Owner:** Gmail repair worker
@@ -56,15 +56,14 @@ exposure is suspected.
 ### State
 
 PR #31 contains the completed Gmail repair and recovered credential evidence.
-Current `main` is `04b05a1de49662b7cb6787f544fdfd67c08ca138`; the PR is
-conflicting only in `packages/e2e/README.md`, where both branches updated
-cumulative lifecycle documentation. The isolated branch must merge current
-`main`, retain both sets of accurate instructions, rerun focused Gmail and full
-managed gates, and receive a complete-current-diff review from one retained
-replacement reviewer because the prior review worker is unavailable. The
-previous exact-commit review of `7a23b26` is superseded by this merge. Production
-deployment remains unrun because the repository has no safe configured Gmail
-promotion/rollback lifecycle.
+Current `main` at `04b05a1de49662b7cb6787f544fdfd67c08ca138` is merged
+locally. The sole `packages/e2e/README.md` conflict was additive: the Gmail
+branch documented safe Python gates and Gmail regression coverage, while `main`
+documented reusable-reviewer workflow coverage. The resolution preserves both.
+Focused Gmail and full managed gates plus complete-current-diff review remain.
+The previous exact-commit review of `7a23b26` is superseded by this merge.
+Production deployment remains unrun because the repository has no safe
+configured Gmail promotion/rollback lifecycle.
 
 ### Scope and acceptance criteria
 
@@ -158,8 +157,6 @@ Completed for pushed candidate `c9dbabe`:
 
 Required for the current mainline refresh:
 
-- Merge `04b05a1de49662b7cb6787f544fdfd67c08ca138` and resolve the sole
-  `packages/e2e/README.md` conflict without dropping cumulative documentation.
 - Rerun focused Gmail tests, lint, compilation, and the complete managed
   lifecycle.
 - Use one retained replacement reviewer for the changed complete diff, then run
@@ -212,6 +209,8 @@ independent of code, unless exposure is suspected.
 - The prior reviewer handle is unavailable. One independent replacement will be
   retained for the complete merged-diff remediation loop, followed by the
   required terminal fresh exact-commit review.
+- Current-main conflict resolution is additive and preserves Gmail lifecycle
+  coverage plus the reusable-reviewer workflow coverage added by `main`.
 
 ### Checklist
 
@@ -234,7 +233,7 @@ independent of code, unless exposure is suspected.
 - [x] Confirm no safe configured Gmail production promotion lifecycle exists.
 - [x] Finalize in-diff plan and checklist for terminal exact-commit review.
 - [x] Fetch current `main` and identify the sole README merge conflict.
-- [ ] Merge current `main` and preserve cumulative lifecycle documentation.
+- [x] Merge current `main` and preserve cumulative lifecycle documentation.
 - [ ] Rerun focused Gmail and complete managed validation.
 - [ ] Complete the retained replacement-reviewer loop.
 - [ ] Finalize and push the conflict-free exact handoff commit.
