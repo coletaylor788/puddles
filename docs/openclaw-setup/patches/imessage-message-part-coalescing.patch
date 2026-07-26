@@ -1,5 +1,5 @@
 diff --git a/extensions/imessage/src/monitor.last-route.test.ts b/extensions/imessage/src/monitor.last-route.test.ts
-index e5c6a3c7ef..206c80988f 100644
+index e5c6a3c7ef..234c098890 100644
 --- a/extensions/imessage/src/monitor.last-route.test.ts
 +++ b/extensions/imessage/src/monitor.last-route.test.ts
 @@ -22,10 +22,28 @@ type DispatchInboundMessageParams = {
@@ -171,12 +171,152 @@ index e5c6a3c7ef..206c80988f 100644
              balloon_bundle_id: "com.apple.messages.URLBalloonProvider",
              created_at: new Date(Date.now() - 1000).toISOString(),
            },
-@@ -1764,7 +1846,324 @@ describe("iMessage monitor last-route updates", () => {
+@@ -1764,9 +1846,467 @@ describe("iMessage monitor last-route updates", () => {
      expect(dispatchInboundMessageMock).toHaveBeenCalledTimes(1);
      const mergedBody = dispatchInboundMessageMock.mock.calls[0]?.[0].ctx.Body ?? "";
      expect(mergedBody).toContain("summarize");
--    expect(mergedBody).toContain("https://example.com/article");
 +    expect(mergedBody).toContain("www.example.com/article");
++  });
++
++  it("merges a payload-referential question with the following URL balloon row", async () => {
++    debouncerControl.holdEntries = true;
++    debouncerControl.respectDebouncePolicy = true;
++
++    let onNotification: ((message: { method: string; params: unknown }) => void) | undefined;
++    const client = {
++      request: vi.fn(async (method: string) => {
++        if (method === "watch.subscribe") {
++          return { subscription: 1 };
++        }
++        throw new Error(`unexpected imsg method ${method}`);
++      }),
++      waitForClose: vi.fn(async () => {
++        for (const row of [
++          {
++            id: 93,
++            guid: "LIVE-GUID-93",
++            text: "Next quiz, what website is this?",
++            created_at: new Date(Date.now() - 2000).toISOString(),
++          },
++          {
++            id: 94,
++            guid: "LIVE-GUID-94",
++            text: "https://example.com/article",
++            balloon_bundle_id: "com.apple.messages.URLBalloonProvider",
++            created_at: new Date(Date.now() - 1000).toISOString(),
++          },
++        ]) {
++          onNotification?.({
++            method: "message",
++            params: {
++              message: {
++                ...row,
++                chat_id: 123,
++                sender: "+15550001111",
++                is_from_me: false,
++                is_group: false,
++              },
++            },
++          });
++        }
++        await vi.waitFor(() => {
++          expect(dispatchInboundMessageMock).toHaveBeenCalledTimes(1);
++        });
++      }),
++      stop: vi.fn(async () => {}),
++    };
++    createIMessageRpcClientMock.mockImplementation(async (params) => {
++      if (!params?.onNotification) {
++        throw new Error("expected iMessage notification handler");
++      }
++      onNotification = params.onNotification;
++      return client as never;
++    });
++
++    await monitorIMessageProvider({
++      config: {
++        channels: {
++          imessage: {
++            coalesceSameSenderDms: true,
++            dmPolicy: "allowlist",
++            allowFrom: ["+15550001111"],
++            sendReadReceipts: false,
++          },
++        },
++        session: { mainKey: "main" },
++      } as never,
++      runtime: { error: vi.fn(), exit: vi.fn(), log: vi.fn() },
++    });
++
++    expect(dispatchInboundMessageMock).toHaveBeenCalledTimes(1);
++    const mergedBody = dispatchInboundMessageMock.mock.calls[0]?.[0].ctx.Body ?? "";
++    expect(mergedBody).toContain("Next quiz, what website is this?");
+     expect(mergedBody).toContain("https://example.com/article");
+   });
+
++  it("dispatches an unmatched payload-referential question after the hold window", async () => {
++    debouncerControl.holdEntries = true;
++    debouncerControl.respectDebouncePolicy = true;
++
++    let onNotification: ((message: { method: string; params: unknown }) => void) | undefined;
++    const client = {
++      request: vi.fn(async (method: string) => {
++        if (method === "watch.subscribe") {
++          return { subscription: 1 };
++        }
++        throw new Error(`unexpected imsg method ${method}`);
++      }),
++      waitForClose: vi.fn(async () => {
++        onNotification?.({
++          method: "message",
++          params: {
++            message: {
++              id: 95,
++              guid: "LIVE-GUID-95",
++              text: "Next quiz, what website is this?",
++              created_at: new Date().toISOString(),
++              chat_id: 123,
++              sender: "+15550001111",
++              is_from_me: false,
++              is_group: false,
++            },
++          },
++        });
++        await vi.waitFor(() => {
++          expect(debouncerControl.flush).toBeDefined();
++        });
++        expect(dispatchInboundMessageMock).not.toHaveBeenCalled();
++        await debouncerControl.flush?.();
++      }),
++      stop: vi.fn(async () => {}),
++    };
++    createIMessageRpcClientMock.mockImplementation(async (params) => {
++      if (!params?.onNotification) {
++        throw new Error("expected iMessage notification handler");
++      }
++      onNotification = params.onNotification;
++      return client as never;
++    });
++
++    await monitorIMessageProvider({
++      config: {
++        channels: {
++          imessage: {
++            coalesceSameSenderDms: true,
++            dmPolicy: "allowlist",
++            allowFrom: ["+15550001111"],
++            sendReadReceipts: false,
++          },
++        },
++        session: { mainKey: "main" },
++      } as never,
++      runtime: { error: vi.fn(), exit: vi.fn(), log: vi.fn() },
++    });
++
++    expect(dispatchInboundMessageMock).toHaveBeenCalledTimes(1);
++    expect(dispatchInboundMessageMock.mock.calls[0]?.[0].ctx.Body).toContain(
++      "Next quiz, what website is this?",
++    );
 +  });
 +
 +  it("merges a caption with its image without draining the next composition", async () => {
@@ -494,11 +634,13 @@ index e5c6a3c7ef..206c80988f 100644
 +    });
 +
 +    expect(catchupTestControl.advance).not.toHaveBeenCalled();
-   });
- 
++  });
++
    it("keeps ordinary buffered DMs separate after balloon metadata is observed", async () => {
+     debouncerControl.holdEntries = true;
+
 diff --git a/extensions/imessage/src/monitor/coalesce.test.ts b/extensions/imessage/src/monitor/coalesce.test.ts
-index 5fd7162d78..30d3604bfd 100644
+index 5fd7162d78..1046e8ff48 100644
 --- a/extensions/imessage/src/monitor/coalesce.test.ts
 +++ b/extensions/imessage/src/monitor/coalesce.test.ts
 @@ -1,12 +1,17 @@
@@ -519,7 +661,7 @@ index 5fd7162d78..30d3604bfd 100644
    shouldCombineIMessagePayloadBucket,
  } from "./coalesce.js";
  import type { IMessagePayload } from "./types.js";
-@@ -209,6 +214,145 @@ describe("isStandaloneIMessageUrlPreviewPayload", () => {
+@@ -209,6 +214,170 @@ describe("isStandaloneIMessageUrlPreviewPayload", () => {
    });
  });
  
@@ -530,10 +672,29 @@ index 5fd7162d78..30d3604bfd 100644
 +    expect(isIMessageSplitLeadIn({ text: "look at this", hasMedia: false })).toBe(true);
 +  });
 +
-+  it("rejects complete, long, empty, and payload-bearing messages", () => {
++  it("matches bounded questions that explicitly refer to a following payload", () => {
++    expect(
++      isIMessageSplitLeadIn({
++        text: "Next quiz, what website is this?",
++        hasMedia: false,
++      }),
++    ).toBe(true);
++    expect(isIMessageSplitLeadIn({ text: "How about this one?", hasMedia: false })).toBe(true);
++  });
++
++  it("rejects unrelated, long, empty, and payload-bearing messages", () => {
 +    expect(isIMessageSplitLeadIn({ text: "what's for dinner?", hasMedia: false })).toBe(false);
++    expect(isIMessageSplitLeadIn({ text: "Is that you?", hasMedia: false })).toBe(false);
++    expect(isIMessageSplitLeadIn({ text: "Who did that?", hasMedia: false })).toBe(false);
++    expect(isIMessageSplitLeadIn({ text: "Can I have one?", hasMedia: false })).toBe(false);
 +    expect(
 +      isIMessageSplitLeadIn({ text: "please take a careful look at this", hasMedia: false }),
++    ).toBe(false);
++    expect(
++      isIMessageSplitLeadIn({
++        text: "Could you please tell me what website is shown in this?",
++        hasMedia: false,
++      }),
 +    ).toBe(false);
 +    expect(isIMessageSplitLeadIn({ text: "", hasMedia: false })).toBe(false);
 +    expect(isIMessageSplitLeadIn({ text: "Save this", hasMedia: true })).toBe(false);
@@ -618,7 +779,7 @@ index 5fd7162d78..30d3604bfd 100644
 +    ).toBe("payload");
 +  });
 +
-+  it("keeps non-URL balloons and complete messages instant", () => {
++  it("keeps non-URL balloons and unrelated complete messages instant", () => {
 +    expect(
 +      resolveIMessageDmCoalesceMode({
 +        payload: makePayload({
@@ -645,10 +806,16 @@ index 5fd7162d78..30d3604bfd 100644
 +    ).toBe("instant");
 +  });
 +
-+  it("holds only short unfinished text as a lead-in", () => {
++  it("holds short unfinished text and bounded payload-referential questions", () => {
 +    expect(
 +      resolveIMessageDmCoalesceMode({
 +        payload: makePayload({ text: "Look at this" }),
++        hasMedia: false,
++      }),
++    ).toBe("lead-in");
++    expect(
++      resolveIMessageDmCoalesceMode({
++        payload: makePayload({ text: "Next quiz, what website is this?" }),
 +        hasMedia: false,
 +      }),
 +    ).toBe("lead-in");
@@ -666,25 +833,31 @@ index 5fd7162d78..30d3604bfd 100644
    it("combines a command row with a structurally marked URL balloon row", () => {
      const command = makePayload({ text: "summarize", guid: "row-1" });
 diff --git a/extensions/imessage/src/monitor/coalesce.ts b/extensions/imessage/src/monitor/coalesce.ts
-index 096146b162..702e7b645e 100644
+index 096146b162..b30969c142 100644
 --- a/extensions/imessage/src/monitor/coalesce.ts
 +++ b/extensions/imessage/src/monitor/coalesce.ts
-@@ -18,12 +18,39 @@ export const MAX_COALESCED_TEXT_CHARS = 4000;
+@@ -18,12 +18,56 @@ export const MAX_COALESCED_TEXT_CHARS = 4000;
  export const MAX_COALESCED_ATTACHMENTS = 20;
  export const MAX_COALESCED_ENTRIES = 10;
  export const IMESSAGE_URL_BALLOON_BUNDLE_ID = "com.apple.messages.URLBalloonProvider";
 +export const IMESSAGE_SPLIT_LEAD_IN_MAX_WORDS = 3;
++export const IMESSAGE_SPLIT_REFERENTIAL_QUESTION_MAX_WORDS = 8;
 +
 +const URL_PATTERN = /\b(?:https?:\/\/|www\.)\S+/i;
++const PAYLOAD_REFERENCE_PATTERN = /\b(?:this|that|these|those|one|here)\b/i;
++const PAYLOAD_KIND_PATTERN =
++  /\b(?:websites?|sites?|links?|pages?|images?|photos?|pictures?|articles?|videos?|files?|attachments?)\b/i;
++const PAYLOAD_COMPARISON_PATTERN =
++  /\b(?:how|what)\s+about\s+(?:this|that|these|those)(?:\s+(?:one|ones))?\b/i;
 +
 +export function iMessageTextHasUrl(text: string | null | undefined): boolean {
 +  return URL_PATTERN.test(text ?? "");
 +}
 +
 +/**
-+ * Match only the short, unfinished text fragments that Apple can emit before
-+ * the payload row of one URL or attachment composition. Complete sentences,
-+ * payload-bearing rows, and longer prose dispatch normally.
++ * Match text that narrowly signals an immediately following payload row:
++ * either a short unfinished fragment or a bounded question with an explicit
++ * deictic reference. Other complete messages dispatch normally.
 + */
 +export function isIMessageSplitLeadIn(params: {
 +  text: string | null | undefined;
@@ -694,11 +867,22 @@ index 096146b162..702e7b645e 100644
 +    return false;
 +  }
 +  const text = (params.text ?? "").trim();
-+  if (!text || iMessageTextHasUrl(text) || /[.?!…]$/.test(text)) {
++  if (!text || iMessageTextHasUrl(text)) {
 +    return false;
 +  }
 +  const words = text.split(/\s+/).filter(Boolean);
-+  return words.length >= 1 && words.length <= IMESSAGE_SPLIT_LEAD_IN_MAX_WORDS;
++  if (words.length === 0) {
++    return false;
++  }
++  if (
++    text.endsWith("?") &&
++    words.length <= IMESSAGE_SPLIT_REFERENTIAL_QUESTION_MAX_WORDS &&
++    PAYLOAD_REFERENCE_PATTERN.test(text) &&
++    (PAYLOAD_KIND_PATTERN.test(text) || PAYLOAD_COMPARISON_PATTERN.test(text))
++  ) {
++    return true;
++  }
++  return !/[.?!…]$/.test(text) && words.length <= IMESSAGE_SPLIT_LEAD_IN_MAX_WORDS;
 +}
  
  export function hasIMessageUrlBalloonBundleID(payload: IMessagePayload): boolean {
@@ -710,7 +894,7 @@ index 096146b162..702e7b645e 100644
    if (/\s/.test(text)) {
      return false;
    }
-@@ -43,7 +70,7 @@ export function isStandaloneIMessageUrlPreviewPayload(payload: IMessagePayload):
+@@ -43,7 +87,7 @@ export function isStandaloneIMessageUrlPreviewPayload(payload: IMessagePayload):
      return false;
    }
    const text = (payload.text ?? "").trim();
@@ -719,7 +903,7 @@ index 096146b162..702e7b645e 100644
  }
  
  // imsg omits `balloon_bundle_id` for non-balloon rows, so a present value is
-@@ -53,6 +80,58 @@ export function hasIMessageBalloonMetadata(payload: IMessagePayload): boolean {
+@@ -53,6 +97,58 @@ export function hasIMessageBalloonMetadata(payload: IMessagePayload): boolean {
    return typeof payload.balloon_bundle_id === "string" && payload.balloon_bundle_id.length > 0;
  }
  
