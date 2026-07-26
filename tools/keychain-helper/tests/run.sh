@@ -158,6 +158,7 @@ HOME="$consumer_home" \
 
 fake_install="$tmp/fake-install.sh"
 fake_rollback="$tmp/fake-rollback.sh"
+fake_sync="$tmp/fake-sync.sh"
 printf '%s\n' \
   '#!/bin/sh' \
   'set -eu' \
@@ -166,12 +167,14 @@ printf '%s\n' \
   'snapshot="$home/fake-install-snapshot-$$"' \
   'mkdir -p "$snapshot"' \
   'chmod 0700 "$snapshot"' \
-  'printf "%s\n" "$snapshot" >"$handoff"' \
-  'chmod 0600 "$handoff"' \
-  '[ "${PUDDLES_FAKE_INSTALL_MODE:-success}" != "fail" ] || exit 70' \
   'helper_dir="$home/.local/libexec/puddles-keychain-helper"' \
   'wrapper_dir="$home/.local/bin"' \
   'mkdir -p "$helper_dir" "$wrapper_dir"' \
+  'if [ -f "$helper_dir/puddles-keychain-helper" ]; then cp -p "$helper_dir/puddles-keychain-helper" "$snapshot/helper"; else : >"$snapshot/helper.absent"; fi' \
+  'if [ -f "$wrapper_dir/puddles-with-keychain-secret" ]; then cp -p "$wrapper_dir/puddles-with-keychain-secret" "$snapshot/wrapper"; else : >"$snapshot/wrapper.absent"; fi' \
+  'printf "%s\n" "$snapshot" >"$handoff"' \
+  'chmod 0600 "$handoff"' \
+  '[ "${PUDDLES_FAKE_INSTALL_MODE:-success}" != "fail" ] || exit 70' \
   'printf "%s\n" "#!/bin/sh" "if [ \"${1:-}\" = \"--approve\" ]; then exit 0; fi" "if [ \"${PUDDLES_FAKE_DURABLE:-1}\" = \"1\" ]; then printf synthetic-secret-value; exit 0; fi" "exit 69" >"$helper_dir/puddles-keychain-helper"' \
   'chmod 0500 "$helper_dir/puddles-keychain-helper"' \
   'printf "%s\n" "#!/bin/sh" "exit 0" >"$wrapper_dir/puddles-with-keychain-secret"' \
@@ -183,10 +186,17 @@ printf '%s\n' \
   'set -eu' \
   'snapshot=$1' \
   'printf "%s\n" "$snapshot" >>"${PUDDLES_FAKE_ROLLBACK_LOG:?}"' \
-  'rm -f "${PUDDLES_FAKE_HOME:?}/.local/libexec/puddles-keychain-helper/puddles-keychain-helper"' \
-  'rm -f "${PUDDLES_FAKE_HOME:?}/.local/bin/puddles-with-keychain-secret"' \
+  'helper="${PUDDLES_FAKE_HOME:?}/.local/libexec/puddles-keychain-helper/puddles-keychain-helper"' \
+  'wrapper="${PUDDLES_FAKE_HOME:?}/.local/bin/puddles-with-keychain-secret"' \
+  'if [ -f "$snapshot/helper" ]; then cp -p "$snapshot/helper" "$helper"; elif [ -f "$snapshot/helper.absent" ]; then rm -f "$helper"; fi' \
+  'if [ -f "$snapshot/wrapper" ]; then cp -p "$snapshot/wrapper" "$wrapper"; elif [ -f "$snapshot/wrapper.absent" ]; then rm -f "$wrapper"; fi' \
   >"$fake_rollback"
-chmod 0500 "$fake_install" "$fake_rollback"
+printf '%s\n' \
+  '#!/bin/sh' \
+  'set -eu' \
+  'printf "sync\n" >>"${PUDDLES_FAKE_SYNC_LOG:?}"' \
+  >"$fake_sync"
+chmod 0500 "$fake_install" "$fake_rollback" "$fake_sync"
 
 setup_script="$project_dir/scripts/interactive-setup.sh"
 setup_home="$tmp/setup-recovery-home"
@@ -194,6 +204,7 @@ setup_config="$setup_home/.config/puddles-keychain-helper"
 stale_state="$setup_config/.interactive-setup.stale"
 stale_snapshot="$setup_home/stale-install-snapshot"
 rollback_log="$tmp/setup-rollback.log"
+sync_log="$tmp/setup-sync.log"
 mkdir -p "$stale_state" "$stale_snapshot"
 chmod 0700 "$setup_config" "$stale_state" "$stale_snapshot"
 printf 'original-allowlist\n' >"$stale_state/allowlist-backup"
@@ -212,8 +223,10 @@ expect_failure env \
   PUDDLES_KEYCHAIN_HELPER_TEST_HOME="$setup_home" \
   PUDDLES_KEYCHAIN_HELPER_TEST_INSTALL_SCRIPT="$fake_install" \
   PUDDLES_KEYCHAIN_HELPER_TEST_ROLLBACK_SCRIPT="$fake_rollback" \
+  PUDDLES_KEYCHAIN_HELPER_TEST_SYNC_COMMAND="$fake_sync" \
   PUDDLES_FAKE_INSTALL_MODE=fail \
   PUDDLES_FAKE_ROLLBACK_LOG="$rollback_log" \
+  PUDDLES_FAKE_SYNC_LOG="$sync_log" \
   PUDDLES_FAKE_HOME="$setup_home" \
   "$setup_script" user-123
 [ "$(cat "$setup_config/allowlist.tsv")" = "original-allowlist" ] ||
@@ -222,10 +235,13 @@ expect_failure env \
   fail "stale setup recovery left its pending marker"
 [ "$(wc -l <"$rollback_log" | tr -d ' ')" -eq 2 ] ||
   fail "stale and current failed setup snapshots were not rolled back"
+[ "$(wc -l <"$sync_log" | tr -d ' ')" -ge 6 ] ||
+  fail "stale setup recovery did not sync durable state transitions"
 
 nondurable_home="$tmp/setup-nondurable-home"
 nondurable_config="$nondurable_home/.config/puddles-keychain-helper"
 nondurable_log="$tmp/nondurable-rollback.log"
+nondurable_sync_log="$tmp/nondurable-sync.log"
 mkdir -p "$nondurable_config"
 chmod 0700 "$nondurable_config"
 printf 'prior-allowlist\n' >"$nondurable_config/allowlist.tsv"
@@ -235,23 +251,61 @@ expect_failure env \
   PUDDLES_KEYCHAIN_HELPER_TEST_HOME="$nondurable_home" \
   PUDDLES_KEYCHAIN_HELPER_TEST_INSTALL_SCRIPT="$fake_install" \
   PUDDLES_KEYCHAIN_HELPER_TEST_ROLLBACK_SCRIPT="$fake_rollback" \
+  PUDDLES_KEYCHAIN_HELPER_TEST_SYNC_COMMAND="$fake_sync" \
   PUDDLES_FAKE_DURABLE=0 \
   PUDDLES_FAKE_ROLLBACK_LOG="$nondurable_log" \
+  PUDDLES_FAKE_SYNC_LOG="$nondurable_sync_log" \
   PUDDLES_FAKE_HOME="$nondurable_home" \
   "$setup_script" user-123
 [ "$(cat "$nondurable_config/allowlist.tsv")" = "prior-allowlist" ] ||
   fail "nondurable approval did not restore the prior allowlist"
 [ "$(wc -l <"$nondurable_log" | tr -d ' ')" -eq 1 ] ||
   fail "nondurable approval did not roll back the install"
+[ "$(wc -l <"$nondurable_sync_log" | tr -d ' ')" -ge 5 ] ||
+  fail "nondurable approval rollback did not sync durable state transitions"
+
+reapproval_home="$tmp/setup-reapproval-home"
+reapproval_config="$reapproval_home/.config/puddles-keychain-helper"
+reapproval_helper_dir="$reapproval_home/.local/libexec/puddles-keychain-helper"
+reapproval_wrapper_dir="$reapproval_home/.local/bin"
+reapproval_log="$tmp/reapproval-rollback.log"
+reapproval_sync_log="$tmp/reapproval-sync.log"
+mkdir -p "$reapproval_config" "$reapproval_helper_dir" "$reapproval_wrapper_dir"
+chmod 0700 "$reapproval_config"
+printf 'prior-allowlist\n' >"$reapproval_config/allowlist.tsv"
+printf '%s\n' '#!/bin/sh' 'printf old-helper' >"$reapproval_helper_dir/puddles-keychain-helper"
+printf '%s\n' '#!/bin/sh' 'exit 0' >"$reapproval_wrapper_dir/puddles-with-keychain-secret"
+chmod 0600 "$reapproval_config/allowlist.tsv"
+chmod 0500 \
+  "$reapproval_helper_dir/puddles-keychain-helper" \
+  "$reapproval_wrapper_dir/puddles-with-keychain-secret"
+expect_failure env \
+  PUDDLES_KEYCHAIN_HELPER_TESTING=1 \
+  PUDDLES_KEYCHAIN_HELPER_TEST_HOME="$reapproval_home" \
+  PUDDLES_KEYCHAIN_HELPER_TEST_INSTALL_SCRIPT="$fake_install" \
+  PUDDLES_KEYCHAIN_HELPER_TEST_ROLLBACK_SCRIPT="$fake_rollback" \
+  PUDDLES_KEYCHAIN_HELPER_TEST_SYNC_COMMAND="$fake_sync" \
+  PUDDLES_FAKE_DURABLE=0 \
+  PUDDLES_FAKE_ROLLBACK_LOG="$reapproval_log" \
+  PUDDLES_FAKE_SYNC_LOG="$reapproval_sync_log" \
+  PUDDLES_FAKE_HOME="$reapproval_home" \
+  "$setup_script" user-123
+[ "$("$reapproval_helper_dir/puddles-keychain-helper")" = "old-helper" ] ||
+  fail "failed reapproval did not restore the approved helper"
+[ "$(cat "$reapproval_config/allowlist.tsv")" = "prior-allowlist" ] ||
+  fail "failed reapproval did not restore the prior allowlist"
 
 successful_home="$tmp/setup-success-home"
 successful_log="$tmp/successful-rollback.log"
+successful_sync_log="$tmp/successful-sync.log"
 PUDDLES_KEYCHAIN_HELPER_TESTING=1 \
   PUDDLES_KEYCHAIN_HELPER_TEST_HOME="$successful_home" \
   PUDDLES_KEYCHAIN_HELPER_TEST_INSTALL_SCRIPT="$fake_install" \
   PUDDLES_KEYCHAIN_HELPER_TEST_ROLLBACK_SCRIPT="$fake_rollback" \
+  PUDDLES_KEYCHAIN_HELPER_TEST_SYNC_COMMAND="$fake_sync" \
   PUDDLES_FAKE_DURABLE=1 \
   PUDDLES_FAKE_ROLLBACK_LOG="$successful_log" \
+  PUDDLES_FAKE_SYNC_LOG="$successful_sync_log" \
   PUDDLES_FAKE_HOME="$successful_home" \
   "$setup_script" user-123 >/dev/null
 successful_config="$successful_home/.config/puddles-keychain-helper"
@@ -264,6 +318,8 @@ successful_config="$successful_home/.config/puddles-keychain-helper"
 grep -q '^todoist-api-token	todoist-cli	user-123$' \
   "$successful_config/allowlist.tsv" ||
   fail "successful setup wrote the wrong allowlist"
+[ "$(wc -l <"$successful_sync_log" | tr -d ' ')" -ge 5 ] ||
+  fail "successful setup did not sync durable state transitions"
 
 requirement_before=$(codesign -d -r- "$helper" 2>&1 | sed -n 's/^designated => //p')
 cdhash_before=$(codesign -d -vvv "$helper" 2>&1 | sed -n 's/^CDHash=//p')
@@ -278,6 +334,10 @@ cdhash_after=$(codesign -d -vvv "$helper" 2>&1 | sed -n 's/^CDHash=//p')
 
 prefix="$tmp/prefix"
 snapshot_handoff="$tmp/install-snapshot"
+current_user=$(id -un)
+production_home=$(dscl . -read "/Users/$current_user" NFSHomeDirectory |
+  sed -n 's/^NFSHomeDirectory: //p')
+[ -n "$production_home" ] || fail "could not resolve production home"
 install_output=$(PUDDLES_KEYCHAIN_HELPER_TESTING=1 \
   "$project_dir/scripts/install.sh" \
   --test-prefix "$prefix" \
@@ -306,15 +366,15 @@ installed_after_failure=$(codesign -d -vvv "$installed_helper" 2>&1 | sed -n 's/
 
 expect_failure env PUDDLES_KEYCHAIN_HELPER_TESTING=1 \
   "$project_dir/scripts/install.sh" \
-  --test-prefix "$HOME/.local" \
+  --test-prefix "$production_home/.local" \
   --test-adhoc
 expect_failure env PUDDLES_KEYCHAIN_HELPER_TESTING=1 \
   "$project_dir/scripts/install.sh" \
-  --test-prefix "$HOME/.local/" \
+  --test-prefix "$production_home/.local/" \
   --test-adhoc
 expect_failure env PUDDLES_KEYCHAIN_HELPER_TESTING=1 \
   "$project_dir/scripts/install.sh" \
-  --test-prefix "$HOME/.LOCAL" \
+  --test-prefix "$production_home/.LOCAL" \
   --test-adhoc
 expect_failure env PUDDLES_KEYCHAIN_HELPER_TESTING=1 \
   "$project_dir/scripts/install.sh" \

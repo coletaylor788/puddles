@@ -3,7 +3,7 @@ set -eu
 umask 077
 
 usage() {
-  echo "usage: install.sh (--signing-identity-sha1 HASH | --test-adhoc --test-prefix PATH) [--snapshot-output-file PATH] [--test-variant-two]" >&2
+  echo "usage: install.sh (--signing-identity-sha1 HASH | --test-adhoc --test-prefix PATH) [--snapshot-output-file PATH] [--replace-approved-helper] [--test-variant-two]" >&2
   exit 64
 }
 
@@ -20,6 +20,7 @@ test_adhoc=0
 test_variant_two=0
 test_prefix=
 snapshot_output_file=
+replace_approved_helper=0
 
 canonicalize_prefix() {
   path=$1
@@ -66,6 +67,10 @@ while [ "$#" -gt 0 ]; do
       snapshot_output_file=$2
       shift 2
       ;;
+    --replace-approved-helper)
+      replace_approved_helper=1
+      shift
+      ;;
     --test-adhoc)
       test_adhoc=1
       shift
@@ -95,6 +100,16 @@ case "$prefix" in
   /*) ;;
   *) usage ;;
 esac
+if [ "$replace_approved_helper" -eq 1 ] && [ "$test_adhoc" -eq 0 ]; then
+  [ "${PUDDLES_KEYCHAIN_HELPER_REAPPROVAL:-}" = "1" ] || {
+    echo "helper replacement is allowed only during explicit interactive reapproval" >&2
+    exit 77
+  }
+  [ -n "$snapshot_output_file" ] || {
+    echo "helper replacement requires a durable rollback snapshot handoff" >&2
+    exit 77
+  }
+fi
 production_prefix=$(canonicalize_prefix "$home_dir/.local")
 prefix=$(canonicalize_prefix "$prefix")
 if [ "$test_adhoc" -eq 1 ]; then
@@ -246,7 +261,9 @@ if [ -f "$transaction" ]; then
   rm -f "$transaction"
 fi
 
-if [ "$test_adhoc" -eq 0 ] && [ -e "$helper_path" ]; then
+if [ "$test_adhoc" -eq 0 ] &&
+  [ "$replace_approved_helper" -ne 1 ] &&
+  [ -e "$helper_path" ]; then
   echo "The Keychain-approved helper is already installed; refusing to replace it." >&2
   echo "Helper updates require a deliberate rollback/removal and new interactive approval." >&2
   exit 65

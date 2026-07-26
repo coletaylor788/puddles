@@ -22,6 +22,7 @@ testing=${PUDDLES_KEYCHAIN_HELPER_TESTING:-0}
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 install_script=${PUDDLES_KEYCHAIN_HELPER_TEST_INSTALL_SCRIPT:-"$script_dir/install.sh"}
 rollback_script=${PUDDLES_KEYCHAIN_HELPER_TEST_ROLLBACK_SCRIPT:-"$script_dir/rollback-install.sh"}
+sync_command=${PUDDLES_KEYCHAIN_HELPER_TEST_SYNC_COMMAND:-/bin/sync}
 
 if [ "$testing" = "1" ]; then
   identity_sha1=0000000000000000000000000000000000000000
@@ -163,16 +164,33 @@ recover_state() {
   fi
 }
 
+sync_state() {
+  "$sync_command"
+}
+
+finalize_state() {
+  state=$1
+  sync_state
+  rm -f "$pending_setup"
+  sync_state
+  rm -rf "$state"
+  sync_state
+}
+
 cleanup() {
   status=$?
   trap - EXIT HUP INT TERM
   if [ -n "$setup_state" ] && [ -d "$setup_state" ]; then
     if [ "$completed" -eq 1 ]; then
-      rm -rf "$setup_state"
-      rm -f "$pending_setup"
+      if ! finalize_state "$setup_state"; then
+        echo "Interactive setup finalization failed; inspect: $setup_state" >&2
+        status=75
+      fi
     elif recover_state "$setup_state"; then
-      rm -rf "$setup_state"
-      rm -f "$pending_setup"
+      if ! finalize_state "$setup_state"; then
+        echo "Interactive setup finalization failed; inspect: $setup_state" >&2
+        status=75
+      fi
     else
       echo "Interactive setup recovery failed; state preserved at: $setup_state" >&2
       status=75
@@ -206,8 +224,7 @@ if [ -e "$pending_setup" ] || [ -L "$pending_setup" ]; then
   }
   stale_state=$(sed -n '1p' "$pending_setup")
   recover_state "$stale_state"
-  rm -rf "$stale_state"
-  rm -f "$pending_setup"
+  finalize_state "$stale_state"
 fi
 
 setup_state=$(mktemp -d "$config_dir/.interactive-setup.XXXXXX")
@@ -233,7 +250,9 @@ pending_new="$pending_setup.new.$$"
 printf '%s\n' "$setup_state" >"$pending_new"
 chmod 0600 "$pending_new"
 mv -f "$pending_new" "$pending_setup"
+sync_state
 mv -f "$temporary" "$allowlist"
+sync_state
 
 snapshot_handoff="$setup_state/install-snapshot"
 if [ "$testing" = "1" ]; then
@@ -242,17 +261,29 @@ if [ "$testing" = "1" ]; then
       "$install_script" "$snapshot_handoff" "$home_dir"
   )
 else
-  install_output=$(
-    "$install_script" \
-      --signing-identity-sha1 "$identity_sha1" \
-      --snapshot-output-file "$snapshot_handoff"
-  )
+  helper="$home_dir/.local/libexec/puddles-keychain-helper/puddles-keychain-helper"
+  if [ -e "$helper" ]; then
+    install_output=$(
+      PUDDLES_KEYCHAIN_HELPER_REAPPROVAL=1 \
+        "$install_script" \
+        --signing-identity-sha1 "$identity_sha1" \
+        --snapshot-output-file "$snapshot_handoff" \
+        --replace-approved-helper
+    )
+  else
+    install_output=$(
+      "$install_script" \
+        --signing-identity-sha1 "$identity_sha1" \
+        --snapshot-output-file "$snapshot_handoff"
+    )
+  fi
 fi
 install_snapshot=$(sed -n '1p' "$snapshot_handoff")
 [ -d "$install_snapshot" ] || {
   echo "Installer did not return a valid rollback snapshot" >&2
   exit 75
 }
+sync_state
 
 helper="$home_dir/.local/libexec/puddles-keychain-helper/puddles-keychain-helper"
 echo "Approve Always Allow only for the todoist-cli item." >&2
