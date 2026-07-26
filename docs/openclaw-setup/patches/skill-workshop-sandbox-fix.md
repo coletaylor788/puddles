@@ -11,11 +11,12 @@ source; applied by `apply-and-deploy.sh`, then built from source).
 
 ## What this patches
 
-One file, one mechanical change, in `createOpenClawTools()`:
+The runtime change in `createOpenClawTools()` and its focused regression:
 
 | # | Source site | Change |
 |---|---|---|
 | V1 | the `...options?.sandboxed ? [] : [createSkillWorkshopTool(` ternary | Drop the `options?.sandboxed` gate so the `skill_workshop` tool is registered for sandboxed agents too. |
+| T1 | `src/agents/tools/skill-workshop-tool.test.ts` | Assert that sandboxed tool sets include `skill_workshop`. |
 
 ## Why this exists
 

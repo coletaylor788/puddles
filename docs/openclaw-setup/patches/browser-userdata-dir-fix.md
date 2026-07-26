@@ -52,6 +52,11 @@ Both changes carry markers (`FIX-BROWSER-USERDATA-DIR`,
 `FIX-BROWSER-SINGLETON-CLEAN`) that also let `apply-and-deploy.sh` detect a
 patched entrypoint and trigger the image rebuild.
 
+The shared candidate-source integration test executes the patched entrypoint
+with fake Xvfb, Chromium, and CDP probes. It verifies the configured
+`--user-data-dir`, removes all three stale singleton files, and cannot touch a
+real browser or profile.
+
 ## Why this is needed
 
 `browser-agent`'s Chromium profile (cookies, localStorage, IndexedDB) needs to

@@ -1,0 +1,40 @@
+name: Integration
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  cumulative:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out Puddles
+        uses: actions/checkout@v4
+
+      - name: Check out pinned OpenClaw source
+        uses: actions/checkout@v4
+        with:
+          repository: openclaw/openclaw
+          ref: a1063aa4c83fc5469a677f992a4335604c3727bc
+          path: .openclaw-source
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.0"
+
+      - name: Enable package managers
+        run: corepack enable
+
+      - name: Install Puddles dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run cumulative integration lifecycle
+        env:
+          OPENCLAW_SRC: ${{ github.workspace }}/.openclaw-source
+        run: node packages/e2e/bin/openclaw-test-env.mjs ci

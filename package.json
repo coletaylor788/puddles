@@ -4,9 +4,10 @@
   "version": "0.0.0",
   "description": "Puddles personal-agent monorepo: MCP servers, OpenClaw plugins, and host setup",
   "scripts": {
-    "build": "pnpm -r --filter \"./packages/**\" --filter \"./openclaw-plugins/**\" build",
-    "test": "pnpm -r --filter \"./packages/**\" --filter \"./openclaw-plugins/**\" test",
-    "lint": "pnpm -r --filter \"./packages/**\" --filter \"./openclaw-plugins/**\" lint"
+    "build": "corepack pnpm -r --filter \"./packages/**\" --filter \"./openclaw-plugins/**\" build",
+    "test": "corepack pnpm -r --filter \"./packages/**\" --filter \"./openclaw-plugins/**\" test",
+    "test:integration": "node packages/e2e/bin/openclaw-test-env.mjs ci",
+    "lint": "corepack pnpm -r --filter \"./packages/**\" --filter \"./openclaw-plugins/**\" lint"
   },
   "packageManager": "pnpm@10.31.0",
   "pnpm": {
