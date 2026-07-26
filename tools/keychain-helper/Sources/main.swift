@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import LocalAuthentication
 import Security
 
 private let identifier = "com.coletaylor788.puddles.keychain-helper"
@@ -44,7 +45,7 @@ private enum HelperError: Error {
     var message: String {
         switch self {
         case .usage:
-            return "usage: puddles-keychain-helper <alias>"
+            return "usage: puddles-keychain-helper [--approve] <alias>"
         case let .config(reason):
             return "allowlist error: \(reason)"
         case .unknownAlias:
@@ -195,8 +196,19 @@ private func loadAllowlist() throws -> [String: SecretSelector] {
     return result
 }
 
-private func readSecret(_ selector: SecretSelector) throws -> Data {
+private func readSecret(
+    _ selector: SecretSelector,
+    allowInteraction: Bool
+) throws -> Data {
     #if TESTING
+    if let expected = ProcessInfo.processInfo.environment[
+        "PUDDLES_KEYCHAIN_HELPER_TEST_EXPECT_INTERACTION"
+    ] {
+        let actual = allowInteraction ? "allow" : "deny"
+        guard expected == actual else {
+            throw HelperError.keychain("unexpected interaction mode")
+        }
+    }
     switch ProcessInfo.processInfo.environment[
         "PUDDLES_KEYCHAIN_HELPER_TEST_RESULT"
     ] {
@@ -223,9 +235,15 @@ private func readSecret(_ selector: SecretSelector) throws -> Data {
         kSecReturnData: true,
         kSecMatchLimit: kSecMatchLimitOne,
     ]
+    var effectiveQuery = query
+    if !allowInteraction {
+        let context = LAContext()
+        context.interactionNotAllowed = true
+        effectiveQuery[kSecUseAuthenticationContext] = context
+    }
 
     var item: CFTypeRef?
-    let status = SecItemCopyMatching(query as CFDictionary, &item)
+    let status = SecItemCopyMatching(effectiveQuery as CFDictionary, &item)
     switch status {
     case errSecSuccess:
         guard let data = item as? Data, !data.isEmpty else {
@@ -251,10 +269,18 @@ private func requireEnvironmentSafeSecret(_ data: Data) throws {
 }
 
 private func run() throws {
-    guard CommandLine.arguments.count == 2 else {
+    let arguments = Array(CommandLine.arguments.dropFirst())
+    let alias: String
+    let allowInteraction: Bool
+    if arguments.count == 1 {
+        alias = arguments[0]
+        allowInteraction = false
+    } else if arguments.count == 2, arguments[0] == "--approve" {
+        alias = arguments[1]
+        allowInteraction = true
+    } else {
         throw HelperError.usage
     }
-    let alias = CommandLine.arguments[1]
     guard isValidAlias(alias) else {
         throw HelperError.unknownAlias
     }
@@ -262,7 +288,10 @@ private func run() throws {
     guard let selector = allowlist[alias] else {
         throw HelperError.unknownAlias
     }
-    let secret = try readSecret(selector)
+    let secret = try readSecret(
+        selector,
+        allowInteraction: allowInteraction
+    )
     if ProcessInfo.processInfo.environment[
         "PUDDLES_KEYCHAIN_HELPER_REQUIRE_TEXT"
     ] == "1" {

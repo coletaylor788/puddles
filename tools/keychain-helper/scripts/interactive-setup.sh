@@ -18,110 +18,249 @@ case "$todoist_user_id" in
   ''|*[!0-9]*) usage ;;
 esac
 
-identity_name="Puddles Keychain Helper Signing"
-identity_sha1=$(
-  security find-identity -v -p codesigning |
-    awk -v name="\"$identity_name\"" '
-      index($0, name) { identity = $2; count += 1 }
-      END {
-        if (count != 1) exit 1
-        print identity
-      }
-    '
-) || {
-  echo "Expected exactly one valid Code Signing identity named: $identity_name" >&2
-  exit 69
-}
-case "$identity_sha1" in
-  *[!0-9A-Fa-f]*|'') usage ;;
-esac
-[ "${#identity_sha1}" -eq 40 ] || {
-  echo "The signing identity did not have a 40-character SHA-1 hash" >&2
-  exit 69
-}
+testing=${PUDDLES_KEYCHAIN_HELPER_TESTING:-0}
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+install_script=${PUDDLES_KEYCHAIN_HELPER_TEST_INSTALL_SCRIPT:-"$script_dir/install.sh"}
+rollback_script=${PUDDLES_KEYCHAIN_HELPER_TEST_ROLLBACK_SCRIPT:-"$script_dir/rollback-install.sh"}
 
-current_user=$(id -un)
-home_dir=$(dscl . -read "/Users/$current_user" NFSHomeDirectory |
-  sed -n 's/^NFSHomeDirectory: //p')
-[ -n "$home_dir" ] || {
-  echo "Could not resolve the current user's home directory" >&2
-  exit 69
-}
+if [ "$testing" = "1" ]; then
+  identity_sha1=0000000000000000000000000000000000000000
+  home_dir=${PUDDLES_KEYCHAIN_HELPER_TEST_HOME:?test home must be set}
+else
+  identity_name="Puddles Keychain Helper Signing"
+  identity_sha1=$(
+    security find-identity -v -p codesigning |
+      awk -v name="\"$identity_name\"" '
+        index($0, name) { identity = $2; count += 1 }
+        END {
+          if (count != 1) exit 1
+          print identity
+        }
+      '
+  ) || {
+    echo "Expected exactly one valid Code Signing identity named: $identity_name" >&2
+    exit 69
+  }
+  case "$identity_sha1" in
+    *[!0-9A-Fa-f]*|'') usage ;;
+  esac
+  [ "${#identity_sha1}" -eq 40 ] || {
+    echo "The signing identity did not have a 40-character SHA-1 hash" >&2
+    exit 69
+  }
+
+  current_user=$(id -un)
+  home_dir=$(dscl . -read "/Users/$current_user" NFSHomeDirectory |
+    sed -n 's/^NFSHomeDirectory: //p')
+  [ -n "$home_dir" ] || {
+    echo "Could not resolve the current user's home directory" >&2
+    exit 69
+  }
+fi
 
 config_dir="$home_dir/.config/puddles-keychain-helper"
 allowlist="$config_dir/allowlist.tsv"
-script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+pending_setup="$config_dir/pending-interactive-setup"
+setup_lock="$config_dir/interactive-setup.lock"
+lock_owned=0
+completed=0
+setup_state=
+install_snapshot=
+
+assert_secure_dir() {
+  path=$1
+  [ -d "$path" ] && [ ! -L "$path" ] || {
+    echo "setup directory is missing, not a directory, or a symlink: $path" >&2
+    exit 73
+  }
+  metadata=$(stat -f '%u %Lp' "$path")
+  owner=${metadata%% *}
+  mode=${metadata#* }
+  [ "$owner" = "$(id -u)" ] || {
+    echo "setup directory is not owned by the current user: $path" >&2
+    exit 73
+  }
+  [ $((0$mode & 0077)) -eq 0 ] || {
+    echo "setup directory grants group or other access: $path" >&2
+    exit 73
+  }
+  if ls -lde "$path" | sed -n '2,$p' | grep -v ' deny ' | grep -q .; then
+    echo "setup directory has an ACL that can grant access: $path" >&2
+    exit 73
+  fi
+}
+
+assert_secure_file() {
+  path=$1
+  [ -f "$path" ] && [ ! -L "$path" ] || {
+    echo "setup state is missing, not a regular file, or a symlink: $path" >&2
+    exit 73
+  }
+  metadata=$(stat -f '%u %Lp' "$path")
+  owner=${metadata%% *}
+  mode=${metadata#* }
+  [ "$owner" = "$(id -u)" ] || {
+    echo "setup state is not owned by the current user: $path" >&2
+    exit 73
+  }
+  [ $((0$mode & 0077)) -eq 0 ] || {
+    echo "setup state grants group or other access: $path" >&2
+    exit 73
+  }
+  if ls -le "$path" | sed -n '2,$p' | grep -v ' deny ' | grep -q .; then
+    echo "setup state has an ACL that can grant access: $path" >&2
+    exit 73
+  fi
+}
+
+validate_setup_state() {
+  state=$1
+  case "$state" in
+    "$config_dir"/.interactive-setup.*) ;;
+    *)
+      echo "pending setup state is outside the config directory" >&2
+      exit 73
+      ;;
+  esac
+  assert_secure_dir "$state"
+}
+
+release_lock() {
+  if [ "$lock_owned" -eq 1 ]; then
+    current_pid=$(sed -n '1p' "$setup_lock" 2>/dev/null || true)
+    if [ "$current_pid" = "$$" ]; then
+      rm -f "$setup_lock"
+    fi
+    lock_owned=0
+  fi
+}
+
+recover_state() {
+  state=$1
+  validate_setup_state "$state"
+  snapshot_file="$state/install-snapshot"
+  if [ -f "$snapshot_file" ]; then
+    assert_secure_file "$snapshot_file"
+    snapshot=$(sed -n '1p' "$snapshot_file")
+    [ -n "$snapshot" ] || {
+      echo "pending setup snapshot is empty" >&2
+      return 1
+    }
+    if [ "$testing" = "1" ]; then
+      PUDDLES_KEYCHAIN_HELPER_TESTING=1 \
+        "$rollback_script" "$snapshot"
+    else
+      "$rollback_script" --snapshot "$snapshot"
+    fi
+  fi
+
+  if [ -f "$state/allowlist-present" ]; then
+    assert_secure_file "$state/allowlist-present"
+    assert_secure_file "$state/allowlist-backup"
+    mv -f "$state/allowlist-backup" "$allowlist"
+  else
+    rm -f "$allowlist"
+  fi
+}
+
+cleanup() {
+  status=$?
+  trap - EXIT HUP INT TERM
+  if [ -n "$setup_state" ] && [ -d "$setup_state" ]; then
+    if [ "$completed" -eq 1 ]; then
+      rm -rf "$setup_state"
+      rm -f "$pending_setup"
+    elif recover_state "$setup_state"; then
+      rm -rf "$setup_state"
+      rm -f "$pending_setup"
+    else
+      echo "Interactive setup recovery failed; state preserved at: $setup_state" >&2
+      status=75
+    fi
+  fi
+  release_lock
+  exit "$status"
+}
+
 [ ! -L "$config_dir" ] || {
   echo "Refusing to use a symlinked helper config directory" >&2
   exit 73
 }
 install -d -m 0700 "$config_dir"
-setup_state=$(mktemp -d "$config_dir/.interactive-setup.XXXXXX")
-chmod 0700 "$setup_state"
+assert_secure_dir "$config_dir"
 
-backup="$setup_state/allowlist-backup"
-had_allowlist=0
-if [ -e "$allowlist" ] || [ -L "$allowlist" ]; then
-  [ -f "$allowlist" ] && [ ! -L "$allowlist" ] || {
-    echo "Refusing to replace a non-regular or symlinked allowlist" >&2
+if /usr/bin/shlock -f "$setup_lock" -p "$$"; then
+  lock_owned=1
+else
+  echo "another interactive helper setup is running" >&2
+  exit 75
+fi
+trap cleanup EXIT
+trap 'exit 130' HUP INT TERM
+
+if [ -e "$pending_setup" ] || [ -L "$pending_setup" ]; then
+  assert_secure_file "$pending_setup"
+  [ "$(wc -l <"$pending_setup" | tr -d ' ')" -eq 1 ] || {
+    echo "pending setup marker is malformed" >&2
     exit 73
   }
-  cp -p "$allowlist" "$backup"
-  had_allowlist=1
+  stale_state=$(sed -n '1p' "$pending_setup")
+  recover_state "$stale_state"
+  rm -rf "$stale_state"
+  rm -f "$pending_setup"
+fi
+
+setup_state=$(mktemp -d "$config_dir/.interactive-setup.XXXXXX")
+chmod 0700 "$setup_state"
+assert_secure_dir "$setup_state"
+
+if [ -e "$allowlist" ] || [ -L "$allowlist" ]; then
+  assert_secure_file "$allowlist"
+  cp -p "$allowlist" "$setup_state/allowlist-backup"
+  : >"$setup_state/allowlist-present"
+  chmod 0600 "$setup_state/allowlist-present"
 fi
 
 temporary="$setup_state/allowlist"
-completed=0
-install_snapshot=
-snapshot_handoff="$setup_state/install-snapshot"
-cleanup() {
-  status=$?
-  trap - EXIT HUP INT TERM
-  rm -f "$temporary"
-  if [ -z "$install_snapshot" ] && [ -f "$snapshot_handoff" ]; then
-    install_snapshot=$(sed -n '1p' "$snapshot_handoff")
-  fi
-  if [ "$completed" -ne 1 ] && [ -n "$install_snapshot" ]; then
-    if ! "$script_dir/rollback-install.sh" \
-      --snapshot "$install_snapshot" >/dev/null; then
-      echo "Interactive setup rollback failed; inspect: $install_snapshot" >&2
-      status=75
-    fi
-  fi
-  if [ "$completed" -eq 1 ]; then
-    rm -f "$backup"
-  elif [ "$had_allowlist" -eq 1 ]; then
-    mv -f "$backup" "$allowlist"
-  else
-    rm -f "$allowlist"
-  fi
-  rm -rf "$setup_state"
-  exit "$status"
-}
-trap cleanup EXIT
-trap 'exit 130' HUP INT TERM
 printf '%s\n%s\t%s\t%s\n' \
   'puddles-keychain-helper-v1' \
   'todoist-api-token' 'todoist-cli' "$todoist_account" \
   >"$temporary"
 chmod -N "$temporary"
 chmod 0600 "$temporary"
+
+pending_new="$pending_setup.new.$$"
+printf '%s\n' "$setup_state" >"$pending_new"
+chmod 0600 "$pending_new"
+mv -f "$pending_new" "$pending_setup"
 mv -f "$temporary" "$allowlist"
 
-install_output=$(
-  "$script_dir/install.sh" \
-    --signing-identity-sha1 "$identity_sha1" \
-    --snapshot-output-file "$snapshot_handoff"
-)
+snapshot_handoff="$setup_state/install-snapshot"
+if [ "$testing" = "1" ]; then
+  install_output=$(
+    PUDDLES_KEYCHAIN_HELPER_TESTING=1 \
+      "$install_script" "$snapshot_handoff" "$home_dir"
+  )
+else
+  install_output=$(
+    "$install_script" \
+      --signing-identity-sha1 "$identity_sha1" \
+      --snapshot-output-file "$snapshot_handoff"
+  )
+fi
 install_snapshot=$(sed -n '1p' "$snapshot_handoff")
 [ -d "$install_snapshot" ] || {
   echo "Installer did not return a valid rollback snapshot" >&2
   exit 75
 }
-printf '%s\n' "$install_output"
 
 helper="$home_dir/.local/libexec/puddles-keychain-helper/puddles-keychain-helper"
-echo "Approve Always Allow only for the todoist-cli item."
-"$helper" todoist-api-token >/dev/null
+echo "Approve Always Allow only for the todoist-cli item." >&2
+"$helper" --approve todoist-api-token >/dev/null
+if ! "$helper" todoist-api-token >/dev/null; then
+  echo "Approval was not durable; choose Always Allow and retry setup." >&2
+  exit 69
+fi
 completed=1
-echo "Interactive Keychain approval completed."
+printf '%s\n' "$install_output"
+echo "Interactive Keychain approval completed and verified noninteractively."

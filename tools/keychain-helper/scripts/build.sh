@@ -54,9 +54,9 @@ temporary=$(mktemp "$output_dir/.puddles-keychain-helper.XXXXXX")
 trap 'rm -f "$temporary"' EXIT HUP INT TERM
 
 if [ "$test_adhoc" -eq 1 ]; then
-  swift_flags="-warnings-as-errors -framework Security -D TESTING"
+  swift_flags="-warnings-as-errors -framework Security -framework LocalAuthentication -D TESTING"
 else
-  swift_flags="-warnings-as-errors -framework Security -O"
+  swift_flags="-warnings-as-errors -framework Security -framework LocalAuthentication -O"
 fi
 if [ "$test_variant_two" -eq 1 ]; then
   swift_flags="$swift_flags -D REBUILD_VARIANT_TWO"

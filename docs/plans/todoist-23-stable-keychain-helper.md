@@ -1,6 +1,6 @@
 # Stable per-user Keychain access
 
-**Status:** Ready for review — combined implementation validated
+**Status:** In progress — focused fixes validated
 **Issue:** [#23](https://github.com/coletaylor788/puddles/issues/23)
 **Last updated:** 2026-07-25
 **Owner:** Implementation agent
@@ -28,8 +28,10 @@ could not restore the invalid credential.
   without depending on the current Homebrew Python binary.
 - Neither path exposes a network listener, enumerates secrets, logs values, or
   broadens access beyond the approved same-user boundary.
-- Both changes have committed regression coverage, clean independent review,
-  production read-only validation, and proven rollback.
+- Both changes have committed regression coverage and clean candidate
+  validation. Todoist has production read-only validation and proven rollback.
+  Gmail is candidate-validated only because no approved rollback-capable
+  production lifecycle exists.
 
 ### Approach
 
@@ -52,6 +54,9 @@ one abstraction:
 
 - Automated helper tests use a compile-time in-memory secret backend and cannot
   open Keychain or trigger authorization UI.
+- Normal helper reads must explicitly forbid authentication UI. Initial setup
+  uses a separate approval mode and then requires a noninteractive verification
+  read before declaring approval durable.
 - Gmail OAuth was the only required interactive action. The browser flow wrote
   the replacement credential through the reviewed long-value path; no command
   printed, copied, or persisted the credential outside Keychain.
@@ -90,6 +95,12 @@ one abstraction:
   `7a23b266b683fbb74e651e46424f265250dbe1d3`.
 - Gmail production deployment was not run because no approved snapshotting and
   rollback-capable promotion lifecycle exists.
+- Terminal review of helper-plan commit `0cf4370` found three actionable
+  issues: runtime reads allowed Keychain UI, interactive setup lacked durable
+  SIGKILL recovery, and this plan overstated Gmail production evidence.
+- All three findings are fixed locally. Focused shell syntax, production Swift
+  compilation, and the prompt-proof helper lifecycle pass. Cumulative managed
+  CI and a new exact-commit adversarial review remain.
 
 ### Scope and acceptance criteria
 
@@ -99,6 +110,9 @@ one abstraction:
 - [x] Never log secret values or place them in command arguments.
 - [x] Sign and install at a stable path with secure path, ACL, symlink,
   transaction, interruption, concurrency, and rollback handling.
+- [x] Make normal helper reads fail noninteractively and isolate UI to explicit
+  setup approval mode.
+- [x] Persist and recover interactive setup state across SIGKILL or power loss.
 - [x] Migrate Todoist and pass a live read through the injected environment.
 - [x] Prove Todoist launcher rollback and reinstall.
 - [x] Restore a complete Gmail OAuth credential through the issue #15 candidate.
@@ -120,7 +134,9 @@ one abstraction:
   matches the approved local model but is broader than per-executable
   isolation.
 - **Helper API:** `puddles-keychain-helper <alias>` writes only the selected
-  secret bytes to stdout. It uses `SecItemCopyMatching` with
+  secret bytes to stdout and forbids authentication UI. Setup alone uses
+  `puddles-keychain-helper --approve <alias>`, followed by a normal
+  noninteractive verification read. Both use `SecItemCopyMatching` with
   `kSecMatchLimitOne`.
 - **Allowlist:** Fixed path
   `~/.config/puddles-keychain-helper/allowlist.tsv`; regular non-symlink,
@@ -155,6 +171,9 @@ one abstraction:
    - Keep pull request #29 focused on the helper, installer, wrappers,
      documentation, and regressions.
    - Preserve the deployed immutable helper and Todoist launcher.
+   - Add explicit setup-only approval mode and make runtime reads
+     noninteractive.
+   - Add durable setup transaction recovery and stale-operation locking.
 3. **Gmail repair coordination**
    - Resume the existing issue #15 session and branch; do not duplicate its
      implementation in pull request #29.
@@ -195,6 +214,11 @@ Completed for helper pull request #29:
 - Todoist launcher rollback restored the original symlink; reinstall and live
   read passed.
 - Multiple independent reviews; final staged review was clean.
+- Post-review hardening adds explicit `--approve` mode, default
+  noninteractive authentication context, durable setup recovery, durable
+  approval verification, and regression coverage for each path.
+- Post-review `bash -n`, warning-free production Swift compilation, and
+  `tools/keychain-helper/tests/run.sh` pass.
 
 Completed on issue #15's candidate:
 
@@ -217,8 +241,11 @@ Completed on issue #15's candidate:
 - Exact terminal adversarial review found no actionable finding on commit
   `7a23b266b683fbb74e651e46424f265250dbe1d3`.
 
-Out-of-diff handoff after this plan commit:
+Still required:
 
+- Bring the active branch onto the current cumulative integration pool and add
+  the helper regression to it.
+- Run full managed CI after the fixes.
 - Run terminal fresh adversarial review against the final helper-plan commit.
 - Synchronize issue #23 and both Todoist tasks with the combined review handoff.
 
@@ -278,6 +305,13 @@ Gmail rollback:
 - The rebuilt helper experimentally satisfied the previous designated
   requirement but still prompted. The design changed to immutable approved
   binary rather than claiming transparent helper upgrades.
+- Terminal review of commit `0cf4370` found that runtime reads still allowed
+  Keychain UI, setup had no durable SIGKILL recovery, and the plan overstated
+  Gmail production validation. All three findings are actionable and reopen
+  implementation.
+- Runtime reads now use an interaction-disabled authentication context; setup
+  has explicit approval mode, a second noninteractive verification read, a
+  durable pending marker, stale-state recovery, and operation locking.
 - Gmail coordination confirmed that the existing credential is invalid and
   issue #15 is the sole owner of its recovery. The helper never wrote the Gmail
   item or changed Gmail configuration.
@@ -306,6 +340,11 @@ Gmail rollback:
 - [x] Migrate Todoist and pass live read-only validation.
 - [x] Prove Todoist and helper rollback paths.
 - [x] Push helper pull request #29.
+- [x] Add explicit approval mode and noninteractive runtime reads.
+- [x] Add durable interactive setup recovery.
+- [x] Rerun prompt-proof focused lifecycle after fixes.
+- [ ] Add the regression to the current cumulative integration pool.
+- [ ] Run full managed CI after fixes.
 
 #### Gmail
 
@@ -324,12 +363,12 @@ Gmail rollback:
 - [x] Run the full managed `packages/e2e` CI lifecycle.
 - [x] Resolve failures and rerun all affected gates.
 - [x] Obtain a clean terminal adversarial review for the exact Gmail commit.
-- [x] Prepare the exact final helper-plan commit for terminal adversarial
-  review; record the result only in issue #23.
+- [ ] Resolve helper terminal-review findings and prepare a new exact commit.
+- [ ] Obtain a clean terminal adversarial review for that commit.
 
 #### Handoff
 
-- [x] Mark this plan ready for review with final PR, validation, deployment
+- [ ] Mark this plan ready for review with final PR, validation, deployment
   limitation, and rollback evidence.
-- [x] Prepare issue #23 to be set to Ready for review after terminal review.
-- [x] Prepare both Todoist task review handoffs with raw issue links.
+- [ ] Prepare issue #23 to be set to Ready for review after terminal review.
+- [ ] Prepare both Todoist task review handoffs with raw issue links.

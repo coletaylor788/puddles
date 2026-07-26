@@ -38,13 +38,25 @@ run_helper() {
     "$helper" "$@"
 }
 
-actual=$(run_helper gmail-oauth-token)
+actual=$(
+  PUDDLES_KEYCHAIN_HELPER_TEST_EXPECT_INTERACTION=deny \
+    run_helper gmail-oauth-token
+)
 [ "$actual" = "$synthetic_secret" ] || fail "allowlisted read differed"
+unset actual
+
+actual=$(
+  PUDDLES_KEYCHAIN_HELPER_TEST_EXPECT_INTERACTION=allow \
+    run_helper --approve gmail-oauth-token
+)
+[ "$actual" = "$synthetic_secret" ] || fail "approval read differed"
 unset actual
 
 expect_failure run_helper unknown-alias
 expect_failure run_helper
 expect_failure run_helper gmail-oauth-token extra
+expect_failure run_helper --approve
+expect_failure run_helper --approve gmail-oauth-token extra
 
 cp "$allowlist" "$tmp/allowlist.good"
 printf 'wrong-version\ngmail-oauth-token\tgmail-mcp\ttoken\n' >"$allowlist"
@@ -143,6 +155,115 @@ HOME="$consumer_home" \
   PUDDLES_KEYCHAIN_HELPER_TEST_ALLOWLIST="$allowlist" \
   PUDDLES_KEYCHAIN_HELPER_TEST_RESULT=success \
   "$project_dir/consumers/td" expected-argument
+
+fake_install="$tmp/fake-install.sh"
+fake_rollback="$tmp/fake-rollback.sh"
+printf '%s\n' \
+  '#!/bin/sh' \
+  'set -eu' \
+  'handoff=$1' \
+  'home=$2' \
+  'snapshot="$home/fake-install-snapshot-$$"' \
+  'mkdir -p "$snapshot"' \
+  'chmod 0700 "$snapshot"' \
+  'printf "%s\n" "$snapshot" >"$handoff"' \
+  'chmod 0600 "$handoff"' \
+  '[ "${PUDDLES_FAKE_INSTALL_MODE:-success}" != "fail" ] || exit 70' \
+  'helper_dir="$home/.local/libexec/puddles-keychain-helper"' \
+  'wrapper_dir="$home/.local/bin"' \
+  'mkdir -p "$helper_dir" "$wrapper_dir"' \
+  'printf "%s\n" "#!/bin/sh" "if [ \"${1:-}\" = \"--approve\" ]; then exit 0; fi" "if [ \"${PUDDLES_FAKE_DURABLE:-1}\" = \"1\" ]; then printf synthetic-secret-value; exit 0; fi" "exit 69" >"$helper_dir/puddles-keychain-helper"' \
+  'chmod 0500 "$helper_dir/puddles-keychain-helper"' \
+  'printf "%s\n" "#!/bin/sh" "exit 0" >"$wrapper_dir/puddles-with-keychain-secret"' \
+  'chmod 0500 "$wrapper_dir/puddles-with-keychain-secret"' \
+  'printf "Rollback snapshot: %s\n" "$snapshot"' \
+  >"$fake_install"
+printf '%s\n' \
+  '#!/bin/sh' \
+  'set -eu' \
+  'snapshot=$1' \
+  'printf "%s\n" "$snapshot" >>"${PUDDLES_FAKE_ROLLBACK_LOG:?}"' \
+  'rm -f "${PUDDLES_FAKE_HOME:?}/.local/libexec/puddles-keychain-helper/puddles-keychain-helper"' \
+  'rm -f "${PUDDLES_FAKE_HOME:?}/.local/bin/puddles-with-keychain-secret"' \
+  >"$fake_rollback"
+chmod 0500 "$fake_install" "$fake_rollback"
+
+setup_script="$project_dir/scripts/interactive-setup.sh"
+setup_home="$tmp/setup-recovery-home"
+setup_config="$setup_home/.config/puddles-keychain-helper"
+stale_state="$setup_config/.interactive-setup.stale"
+stale_snapshot="$setup_home/stale-install-snapshot"
+rollback_log="$tmp/setup-rollback.log"
+mkdir -p "$stale_state" "$stale_snapshot"
+chmod 0700 "$setup_config" "$stale_state" "$stale_snapshot"
+printf 'original-allowlist\n' >"$stale_state/allowlist-backup"
+: >"$stale_state/allowlist-present"
+printf '%s\n' "$stale_snapshot" >"$stale_state/install-snapshot"
+printf '%s\n' "$stale_state" >"$setup_config/pending-interactive-setup"
+printf 'interrupted-allowlist\n' >"$setup_config/allowlist.tsv"
+chmod 0600 \
+  "$stale_state/allowlist-backup" \
+  "$stale_state/allowlist-present" \
+  "$stale_state/install-snapshot" \
+  "$setup_config/pending-interactive-setup" \
+  "$setup_config/allowlist.tsv"
+expect_failure env \
+  PUDDLES_KEYCHAIN_HELPER_TESTING=1 \
+  PUDDLES_KEYCHAIN_HELPER_TEST_HOME="$setup_home" \
+  PUDDLES_KEYCHAIN_HELPER_TEST_INSTALL_SCRIPT="$fake_install" \
+  PUDDLES_KEYCHAIN_HELPER_TEST_ROLLBACK_SCRIPT="$fake_rollback" \
+  PUDDLES_FAKE_INSTALL_MODE=fail \
+  PUDDLES_FAKE_ROLLBACK_LOG="$rollback_log" \
+  PUDDLES_FAKE_HOME="$setup_home" \
+  "$setup_script" user-123
+[ "$(cat "$setup_config/allowlist.tsv")" = "original-allowlist" ] ||
+  fail "stale setup recovery did not restore the original allowlist"
+[ ! -e "$setup_config/pending-interactive-setup" ] ||
+  fail "stale setup recovery left its pending marker"
+[ "$(wc -l <"$rollback_log" | tr -d ' ')" -eq 2 ] ||
+  fail "stale and current failed setup snapshots were not rolled back"
+
+nondurable_home="$tmp/setup-nondurable-home"
+nondurable_config="$nondurable_home/.config/puddles-keychain-helper"
+nondurable_log="$tmp/nondurable-rollback.log"
+mkdir -p "$nondurable_config"
+chmod 0700 "$nondurable_config"
+printf 'prior-allowlist\n' >"$nondurable_config/allowlist.tsv"
+chmod 0600 "$nondurable_config/allowlist.tsv"
+expect_failure env \
+  PUDDLES_KEYCHAIN_HELPER_TESTING=1 \
+  PUDDLES_KEYCHAIN_HELPER_TEST_HOME="$nondurable_home" \
+  PUDDLES_KEYCHAIN_HELPER_TEST_INSTALL_SCRIPT="$fake_install" \
+  PUDDLES_KEYCHAIN_HELPER_TEST_ROLLBACK_SCRIPT="$fake_rollback" \
+  PUDDLES_FAKE_DURABLE=0 \
+  PUDDLES_FAKE_ROLLBACK_LOG="$nondurable_log" \
+  PUDDLES_FAKE_HOME="$nondurable_home" \
+  "$setup_script" user-123
+[ "$(cat "$nondurable_config/allowlist.tsv")" = "prior-allowlist" ] ||
+  fail "nondurable approval did not restore the prior allowlist"
+[ "$(wc -l <"$nondurable_log" | tr -d ' ')" -eq 1 ] ||
+  fail "nondurable approval did not roll back the install"
+
+successful_home="$tmp/setup-success-home"
+successful_log="$tmp/successful-rollback.log"
+PUDDLES_KEYCHAIN_HELPER_TESTING=1 \
+  PUDDLES_KEYCHAIN_HELPER_TEST_HOME="$successful_home" \
+  PUDDLES_KEYCHAIN_HELPER_TEST_INSTALL_SCRIPT="$fake_install" \
+  PUDDLES_KEYCHAIN_HELPER_TEST_ROLLBACK_SCRIPT="$fake_rollback" \
+  PUDDLES_FAKE_DURABLE=1 \
+  PUDDLES_FAKE_ROLLBACK_LOG="$successful_log" \
+  PUDDLES_FAKE_HOME="$successful_home" \
+  "$setup_script" user-123 >/dev/null
+successful_config="$successful_home/.config/puddles-keychain-helper"
+[ ! -e "$successful_config/pending-interactive-setup" ] ||
+  fail "successful setup left its pending marker"
+[ ! -e "$successful_config/interactive-setup.lock" ] ||
+  fail "successful setup left its operation lock"
+[ ! -s "$successful_log" ] ||
+  fail "successful setup unexpectedly rolled back"
+grep -q '^todoist-api-token	todoist-cli	user-123$' \
+  "$successful_config/allowlist.tsv" ||
+  fail "successful setup wrote the wrong allowlist"
 
 requirement_before=$(codesign -d -r- "$helper" 2>&1 | sed -n 's/^designated => //p')
 cdhash_before=$(codesign -d -vvv "$helper" 2>&1 | sed -n 's/^CDHash=//p')

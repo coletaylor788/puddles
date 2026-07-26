@@ -8,7 +8,7 @@ the stable helper instead of receiving their own Keychain grants.
 The helper is intentionally not a daemon. It opens no TCP, HTTP, Unix socket, or
 Mach service. It accepts one local alias, maps that alias through an owner-only
 allowlist, reads exactly one generic-password item, and writes only its secret
-data to stdout.
+data to stdout. Normal reads fail instead of opening Keychain authorization UI.
 
 See the
 [stable Keychain plan](../../docs/plans/todoist-23-stable-keychain-helper.md)
@@ -110,7 +110,21 @@ tools/keychain-helper/scripts/interactive-setup.sh user-TODOIST_USER_ID
 The script creates the Todoist allowlist entry, installs the signed helper, and
 discards secret output while triggering one prompt for `todoist-cli`. Verify the
 helper and item names, enter the login password, and choose **Always Allow** only
-for that prompt.
+for that prompt. Setup then repeats the read with UI disabled; a one-time
+**Allow** response fails verification and rolls the installation back.
+
+Setup records a durable pending transaction before replacing the allowlist. If
+the process is killed or the machine loses power, rerunning the same command
+restores the previous allowlist and installation before starting over.
+
+The setup-only command is:
+
+```text
+puddles-keychain-helper --approve <alias>
+```
+
+Do not use `--approve` in background consumers. Normal
+`puddles-keychain-helper <alias>` calls are deliberately noninteractive.
 
 ## Child process wrapper
 
