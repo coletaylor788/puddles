@@ -21,6 +21,7 @@ test_variant_two=0
 test_prefix=
 snapshot_output_file=
 replace_approved_helper=0
+sync_command=${PUDDLES_KEYCHAIN_HELPER_TEST_SYNC_COMMAND:-/bin/sync}
 
 canonicalize_prefix() {
   path=$1
@@ -137,6 +138,10 @@ assert_secure_dir() {
   [ -d "$path" ] && [ ! -L "$path" ] || {
     echo "installation directory is missing, not a directory, or a symlink: $path" >&2
     exit 73
+  }
+
+  sync_state() {
+    "$sync_command"
   }
   metadata=$(stat -f '%u %Lp' "$path")
   owner=${metadata%% *}
@@ -259,6 +264,7 @@ if [ -f "$transaction" ]; then
   pending_snapshot=$(sed -n '1p' "$transaction")
   run_rollback "$pending_snapshot" >/dev/null
   rm -f "$transaction"
+  sync_state
 fi
 
 if [ "$test_adhoc" -eq 0 ] &&
@@ -291,6 +297,7 @@ if [ -n "$snapshot_output_file" ]; then
   chmod 0600 "$snapshot_output_new"
   mv -f "$snapshot_output_new" "$snapshot_output_file"
 fi
+sync_state
 
 set -- --output "$stage/puddles-keychain-helper"
 if [ "$test_adhoc" -eq 1 ]; then
@@ -303,16 +310,20 @@ if [ "$test_variant_two" -eq 1 ]; then
 fi
 "$script_dir/build.sh" "$@"
 install -m 0500 "$project_dir/scripts/puddles-with-keychain-secret" "$stage/puddles-with-keychain-secret"
+sync_state
 
 transaction_new="$transaction.new.$$"
 promotion_started=1
 printf '%s\n' "$snapshot" >"$transaction_new"
 chmod 0600 "$transaction_new"
 mv -f "$transaction_new" "$transaction"
+sync_state
 mv -f "$stage/puddles-keychain-helper" "$helper_path"
 mv -f "$stage/puddles-with-keychain-secret" "$wrapper_path"
 rmdir "$stage"
+sync_state
 mv -f "$transaction" "$committed_transaction"
+sync_state
 completed=1
 
 printf 'Installed helper: %s\n' "$helper_path"

@@ -175,10 +175,12 @@ printf '%s\n' \
   'printf "%s\n" "$snapshot" >"$handoff"' \
   'chmod 0600 "$handoff"' \
   '[ "${PUDDLES_FAKE_INSTALL_MODE:-success}" != "fail" ] || exit 70' \
-  'printf "%s\n" "#!/bin/sh" "if [ \"${1:-}\" = \"--approve\" ]; then exit 0; fi" "if [ \"${PUDDLES_FAKE_DURABLE:-1}\" = \"1\" ]; then printf synthetic-secret-value; exit 0; fi" "exit 69" >"$helper_dir/puddles-keychain-helper"' \
-  'chmod 0500 "$helper_dir/puddles-keychain-helper"' \
-  'printf "%s\n" "#!/bin/sh" "exit 0" >"$wrapper_dir/puddles-with-keychain-secret"' \
-  'chmod 0500 "$wrapper_dir/puddles-with-keychain-secret"' \
+  'printf "%s\n" "#!/bin/sh" "if [ \"${1:-}\" = \"--approve\" ]; then exit 0; fi" "if [ \"${PUDDLES_FAKE_DURABLE:-1}\" = \"1\" ]; then printf synthetic-secret-value; exit 0; fi" "exit 69" >"$helper_dir/puddles-keychain-helper.new"' \
+  'chmod 0500 "$helper_dir/puddles-keychain-helper.new"' \
+  'mv -f "$helper_dir/puddles-keychain-helper.new" "$helper_dir/puddles-keychain-helper"' \
+  'printf "%s\n" "#!/bin/sh" "exit 0" >"$wrapper_dir/puddles-with-keychain-secret.new"' \
+  'chmod 0500 "$wrapper_dir/puddles-with-keychain-secret.new"' \
+  'mv -f "$wrapper_dir/puddles-with-keychain-secret.new" "$wrapper_dir/puddles-with-keychain-secret"' \
   'printf "Rollback snapshot: %s\n" "$snapshot"' \
   >"$fake_install"
 printf '%s\n' \
@@ -186,15 +188,19 @@ printf '%s\n' \
   'set -eu' \
   'snapshot=$1' \
   'printf "%s\n" "$snapshot" >>"${PUDDLES_FAKE_ROLLBACK_LOG:?}"' \
+  '[ "${PUDDLES_FAKE_ROLLBACK_FAIL:-0}" != "1" ] || exit 71' \
   'helper="${PUDDLES_FAKE_HOME:?}/.local/libexec/puddles-keychain-helper/puddles-keychain-helper"' \
   'wrapper="${PUDDLES_FAKE_HOME:?}/.local/bin/puddles-with-keychain-secret"' \
-  'if [ -f "$snapshot/helper" ]; then cp -p "$snapshot/helper" "$helper"; elif [ -f "$snapshot/helper.absent" ]; then rm -f "$helper"; fi' \
-  'if [ -f "$snapshot/wrapper" ]; then cp -p "$snapshot/wrapper" "$wrapper"; elif [ -f "$snapshot/wrapper.absent" ]; then rm -f "$wrapper"; fi' \
+  'if [ -f "$snapshot/helper" ]; then cp -p "$snapshot/helper" "$helper.rollback"; mv -f "$helper.rollback" "$helper"; elif [ -f "$snapshot/helper.absent" ]; then rm -f "$helper"; fi' \
+  'if [ -f "$snapshot/wrapper" ]; then cp -p "$snapshot/wrapper" "$wrapper.rollback"; mv -f "$wrapper.rollback" "$wrapper"; elif [ -f "$snapshot/wrapper.absent" ]; then rm -f "$wrapper"; fi' \
   >"$fake_rollback"
 printf '%s\n' \
   '#!/bin/sh' \
   'set -eu' \
   'printf "sync\n" >>"${PUDDLES_FAKE_SYNC_LOG:?}"' \
+  'count=$(wc -l <"${PUDDLES_FAKE_SYNC_LOG}" | tr -d " ")' \
+  '[ "${PUDDLES_FAKE_SYNC_FAIL:-0}" != "1" ] || exit 72' \
+  '[ -z "${PUDDLES_FAKE_SYNC_FAIL_AT:-}" ] || [ "$count" -ne "$PUDDLES_FAKE_SYNC_FAIL_AT" ] || exit 72' \
   >"$fake_sync"
 chmod 0500 "$fake_install" "$fake_rollback" "$fake_sync"
 
@@ -264,6 +270,57 @@ expect_failure env \
 [ "$(wc -l <"$nondurable_sync_log" | tr -d ' ')" -ge 5 ] ||
   fail "nondurable approval rollback did not sync durable state transitions"
 
+rollback_failure_home="$tmp/setup-rollback-failure-home"
+rollback_failure_config="$rollback_failure_home/.config/puddles-keychain-helper"
+rollback_failure_log="$tmp/rollback-failure.log"
+rollback_failure_sync_log="$tmp/rollback-failure-sync.log"
+mkdir -p "$rollback_failure_config"
+chmod 0700 "$rollback_failure_config"
+printf 'prior-allowlist\n' >"$rollback_failure_config/allowlist.tsv"
+chmod 0600 "$rollback_failure_config/allowlist.tsv"
+expect_failure env \
+  PUDDLES_KEYCHAIN_HELPER_TESTING=1 \
+  PUDDLES_KEYCHAIN_HELPER_TEST_HOME="$rollback_failure_home" \
+  PUDDLES_KEYCHAIN_HELPER_TEST_INSTALL_SCRIPT="$fake_install" \
+  PUDDLES_KEYCHAIN_HELPER_TEST_ROLLBACK_SCRIPT="$fake_rollback" \
+  PUDDLES_KEYCHAIN_HELPER_TEST_SYNC_COMMAND="$fake_sync" \
+  PUDDLES_FAKE_DURABLE=0 \
+  PUDDLES_FAKE_ROLLBACK_FAIL=1 \
+  PUDDLES_FAKE_ROLLBACK_LOG="$rollback_failure_log" \
+  PUDDLES_FAKE_SYNC_LOG="$rollback_failure_sync_log" \
+  PUDDLES_FAKE_HOME="$rollback_failure_home" \
+  "$setup_script" user-123
+[ -f "$rollback_failure_config/pending-interactive-setup" ] ||
+  fail "rollback failure did not preserve the pending setup marker"
+rollback_failure_state=$(cat "$rollback_failure_config/pending-interactive-setup")
+[ -d "$rollback_failure_state" ] ||
+  fail "rollback failure did not preserve setup recovery state"
+
+sync_failure_home="$tmp/setup-sync-failure-home"
+sync_failure_config="$sync_failure_home/.config/puddles-keychain-helper"
+sync_failure_log="$tmp/sync-failure-rollback.log"
+sync_failure_sync_log="$tmp/sync-failure.log"
+mkdir -p "$sync_failure_config"
+chmod 0700 "$sync_failure_config"
+printf 'prior-allowlist\n' >"$sync_failure_config/allowlist.tsv"
+chmod 0600 "$sync_failure_config/allowlist.tsv"
+expect_failure env \
+  PUDDLES_KEYCHAIN_HELPER_TESTING=1 \
+  PUDDLES_KEYCHAIN_HELPER_TEST_HOME="$sync_failure_home" \
+  PUDDLES_KEYCHAIN_HELPER_TEST_INSTALL_SCRIPT="$fake_install" \
+  PUDDLES_KEYCHAIN_HELPER_TEST_ROLLBACK_SCRIPT="$fake_rollback" \
+  PUDDLES_KEYCHAIN_HELPER_TEST_SYNC_COMMAND="$fake_sync" \
+  PUDDLES_FAKE_SYNC_FAIL=1 \
+  PUDDLES_FAKE_ROLLBACK_LOG="$sync_failure_log" \
+  PUDDLES_FAKE_SYNC_LOG="$sync_failure_sync_log" \
+  PUDDLES_FAKE_HOME="$sync_failure_home" \
+  "$setup_script" user-123
+[ -f "$sync_failure_config/pending-interactive-setup" ] ||
+  fail "sync failure did not preserve the pending setup marker"
+sync_failure_state=$(cat "$sync_failure_config/pending-interactive-setup")
+[ -d "$sync_failure_state" ] ||
+  fail "sync failure did not preserve setup recovery state"
+
 reapproval_home="$tmp/setup-reapproval-home"
 reapproval_config="$reapproval_home/.config/puddles-keychain-helper"
 reapproval_helper_dir="$reapproval_home/.local/libexec/puddles-keychain-helper"
@@ -292,8 +349,10 @@ expect_failure env \
   "$setup_script" user-123
 [ "$("$reapproval_helper_dir/puddles-keychain-helper")" = "old-helper" ] ||
   fail "failed reapproval did not restore the approved helper"
-[ "$(cat "$reapproval_config/allowlist.tsv")" = "prior-allowlist" ] ||
+if [ "$(cat "$reapproval_config/allowlist.tsv")" != "prior-allowlist" ]; then
+  cat "$tmp/expected.stderr" >&2
   fail "failed reapproval did not restore the prior allowlist"
+fi
 
 successful_home="$tmp/setup-success-home"
 successful_log="$tmp/successful-rollback.log"
@@ -436,10 +495,26 @@ rollback_recovered_v1=$(codesign -d -vvv "$installed_helper" 2>&1 | sed -n 's/^C
 [ ! -f "$prefix/state/puddles-keychain-helper/pending-rollback" ] ||
   fail "completed rollback left its transaction marker"
 
+rollback_sync_log="$tmp/rollback-transaction-sync.log"
+expect_failure env \
+  PUDDLES_KEYCHAIN_HELPER_TESTING=1 \
+  PUDDLES_KEYCHAIN_HELPER_TEST_SYNC_COMMAND="$fake_sync" \
+  PUDDLES_FAKE_SYNC_LOG="$rollback_sync_log" \
+  PUDDLES_FAKE_SYNC_FAIL_AT=2 \
+  "$project_dir/scripts/rollback-install.sh" \
+  --test-prefix "$prefix" \
+  --snapshot "$snapshot_v1"
+[ -f "$prefix/state/puddles-keychain-helper/pending-rollback" ] ||
+  fail "rollback sync failure did not preserve its transaction marker"
+: >"$rollback_sync_log"
 PUDDLES_KEYCHAIN_HELPER_TESTING=1 \
+  PUDDLES_KEYCHAIN_HELPER_TEST_SYNC_COMMAND="$fake_sync" \
+  PUDDLES_FAKE_SYNC_LOG="$rollback_sync_log" \
   "$project_dir/scripts/rollback-install.sh" \
   --test-prefix "$prefix" \
   --snapshot "$snapshot_v1" >/dev/null
+[ ! -f "$prefix/state/puddles-keychain-helper/pending-rollback" ] ||
+  fail "resumed rollback left its transaction marker"
 [ ! -e "$prefix/state/puddles-keychain-helper/operation.lock" ] ||
   fail "successful rollback left its operation lock"
 restored_v1=$(codesign -d -vvv "$installed_helper" 2>&1 | sed -n 's/^CDHash=//p')

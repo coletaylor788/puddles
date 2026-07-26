@@ -17,6 +17,7 @@ home_dir=$(dscl . -read "/Users/$current_user" NFSHomeDirectory |
 prefix="$home_dir/.local"
 snapshot=
 test_prefix=
+sync_command=${PUDDLES_KEYCHAIN_HELPER_TEST_SYNC_COMMAND:-/bin/sync}
 
 canonicalize_prefix() {
   path=$1
@@ -104,6 +105,10 @@ assert_secure_dir() {
   [ -d "$path" ] && [ ! -L "$path" ] || {
     echo "rollback directory is missing, not a directory, or a symlink: $path" >&2
     exit 73
+  }
+
+  sync_state() {
+    "$sync_command"
   }
   metadata=$(stat -f '%u %Lp' "$path")
   owner=${metadata%% *}
@@ -204,6 +209,7 @@ fi
 if [ "$wrapper_restore" -eq 1 ]; then
   install -m 0500 "$resolved_snapshot/wrapper" "$wrapper_stage"
 fi
+sync_state
 
 if [ ! -f "$transaction" ]; then
   transaction_new="$transaction.new.$$"
@@ -211,6 +217,7 @@ if [ ! -f "$transaction" ]; then
   chmod 0600 "$transaction_new"
   mv -f "$transaction_new" "$transaction"
 fi
+sync_state
 if [ "$helper_restore" -eq 1 ]; then
   mv -f "$helper_stage" "$helper_path"
 else
@@ -221,7 +228,9 @@ if [ "$wrapper_restore" -eq 1 ]; then
 else
   rm -f "$wrapper_path"
 fi
+sync_state
 rm -f "$transaction"
+sync_state
 release_lock
 trap - EXIT HUP INT TERM
 

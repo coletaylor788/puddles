@@ -138,10 +138,10 @@ release_lock() {
 
 recover_state() {
   state=$1
-  validate_setup_state "$state"
+  validate_setup_state "$state" || return 1
   snapshot_file="$state/install-snapshot"
   if [ -f "$snapshot_file" ]; then
-    assert_secure_file "$snapshot_file"
+    assert_secure_file "$snapshot_file" || return 1
     snapshot=$(sed -n '1p' "$snapshot_file")
     [ -n "$snapshot" ] || {
       echo "pending setup snapshot is empty" >&2
@@ -149,19 +149,22 @@ recover_state() {
     }
     if [ "$testing" = "1" ]; then
       PUDDLES_KEYCHAIN_HELPER_TESTING=1 \
-        "$rollback_script" "$snapshot"
+        "$rollback_script" "$snapshot" ||
+        return 1
     else
-      "$rollback_script" --snapshot "$snapshot"
+      "$rollback_script" --snapshot "$snapshot" ||
+        return 1
     fi
   fi
 
   if [ -f "$state/allowlist-present" ]; then
-    assert_secure_file "$state/allowlist-present"
-    assert_secure_file "$state/allowlist-backup"
-    mv -f "$state/allowlist-backup" "$allowlist"
+    assert_secure_file "$state/allowlist-present" || return 1
+    assert_secure_file "$state/allowlist-backup" || return 1
+    mv -f "$state/allowlist-backup" "$allowlist" || return 1
   else
-    rm -f "$allowlist"
+    rm -f "$allowlist" || return 1
   fi
+  return 0
 }
 
 sync_state() {
@@ -170,11 +173,11 @@ sync_state() {
 
 finalize_state() {
   state=$1
-  sync_state
-  rm -f "$pending_setup"
-  sync_state
-  rm -rf "$state"
-  sync_state
+  sync_state || return 1
+  rm -f "$pending_setup" || return 1
+  sync_state || return 1
+  rm -rf "$state" || return 1
+  sync_state || return 1
 }
 
 cleanup() {
@@ -223,8 +226,8 @@ if [ -e "$pending_setup" ] || [ -L "$pending_setup" ]; then
     exit 73
   }
   stale_state=$(sed -n '1p' "$pending_setup")
-  recover_state "$stale_state"
-  finalize_state "$stale_state"
+  recover_state "$stale_state" || exit 75
+  finalize_state "$stale_state" || exit 75
 fi
 
 setup_state=$(mktemp -d "$config_dir/.interactive-setup.XXXXXX")
@@ -250,9 +253,9 @@ pending_new="$pending_setup.new.$$"
 printf '%s\n' "$setup_state" >"$pending_new"
 chmod 0600 "$pending_new"
 mv -f "$pending_new" "$pending_setup"
-sync_state
+sync_state || exit 75
 mv -f "$temporary" "$allowlist"
-sync_state
+sync_state || exit 75
 
 snapshot_handoff="$setup_state/install-snapshot"
 if [ "$testing" = "1" ]; then
@@ -283,7 +286,7 @@ install_snapshot=$(sed -n '1p' "$snapshot_handoff")
   echo "Installer did not return a valid rollback snapshot" >&2
   exit 75
 }
-sync_state
+sync_state || exit 75
 
 helper="$home_dir/.local/libexec/puddles-keychain-helper/puddles-keychain-helper"
 echo "Approve Always Allow only for the todoist-cli item." >&2

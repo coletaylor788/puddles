@@ -1,6 +1,6 @@
 # Stable per-user Keychain access
 
-**Status:** Ready for review — implementation and validation complete
+**Status:** In progress — managed CI green, retained review pending
 **Issue:** [#23](https://github.com/coletaylor788/puddles/issues/23)
 **Last updated:** 2026-07-25
 **Owner:** Implementation agent
@@ -253,6 +253,15 @@ Completed for helper pull request #29:
 - The fixed helper's normal noninteractive read, Todoist environment backend,
   live task read, setup cleanup, and signed rollback snapshot integrity all
   pass.
+- Terminal review of commit `3dbe4fe` found two remaining durability defects:
+  conditional recovery functions could swallow failures, and install/rollback
+  transaction phases were not independently synced against power loss.
+- Recovery now explicitly propagates every rollback, sync, and mutation failure.
+  Install and rollback sync snapshots, handoffs, pending markers, promoted or
+  restored binaries, and committed or removed markers.
+- The complete managed lifecycle passes after these final durability changes
+  with 238 workspace tests, 289 mapped OpenClaw tests, one candidate browser
+  test, and clean cleanup.
 
 Completed on issue #15's candidate:
 
@@ -277,7 +286,8 @@ Completed on issue #15's candidate:
 
 Still required:
 
-- Run terminal fresh adversarial review against the final helper-plan commit.
+- Run the retained replacement adversarial reviewer against the exact final
+  commit and resume it for any remediation rechecks.
 - Synchronize issue #23 and both Todoist tasks with the combined review handoff.
 
 ### Rollout and rollback
@@ -355,6 +365,12 @@ Gmail rollback:
   durable snapshot handoff, and restores the old approved binary on failure.
 - Production reapproval and live validation passed; the signed old-binary
   rollback snapshot remains intact.
+- Terminal review of `3dbe4fe` found swallowed conditional recovery failures and
+  unsynchronized install/rollback transaction phases. Both are fixed with
+  explicit error propagation and phase synchronization.
+- Full managed CI passed after the fixes. The previous one-shot reviewer cannot
+  be resumed, so the next independent replacement reviewer will be retained for
+  the remainder of the review loop.
 - Gmail coordination confirmed that the existing credential is invalid and
   issue #15 is the sole owner of its recovery. The helper never wrote the Gmail
   item or changed Gmail configuration.
@@ -387,11 +403,15 @@ Gmail rollback:
 - [x] Add durable interactive setup recovery.
 - [x] Rerun prompt-proof focused lifecycle after fixes.
 - [x] Add filesystem synchronization and safe marker/state removal ordering.
+- [x] Propagate every recovery rollback, sync, and state-mutation failure.
+- [x] Synchronize install and rollback snapshots, markers, promotions,
+  restorations, and transaction completion.
 - [x] Add explicit interactive replacement with rollback to the approved
   binary on failed reapproval.
 - [x] Reapprove and live-validate the fixed production helper.
 - [x] Track the regression in the current cumulative integration pool.
 - [x] Run full managed CI after fixes.
+- [x] Rerun full managed CI after final durability fixes.
 
 #### Gmail
 
@@ -411,6 +431,8 @@ Gmail rollback:
 - [x] Resolve failures and rerun all affected gates.
 - [x] Obtain a clean terminal adversarial review for the exact Gmail commit.
 - [x] Resolve fresh helper adversarial findings and prepare a new exact commit.
+- [ ] Run the retained replacement adversarial reviewer after durability
+  fixes.
 - [x] Prepare the exact final commit for terminal adversarial review; record the
   result only in issue #23's ledger.
 
