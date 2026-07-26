@@ -14,7 +14,11 @@ attachment rows. Processing each row immediately starts multiple agent turns,
 so the first response can lack the link or image context. The fix must not merge
 genuinely separate rapid messages or make iMessage delivery less reliable.
 Production smoke evidence now shows images coalescing while a newly sent link
-still triggered a response without the link context.
+still triggered a response without the link context. Read-only correlation found
+two examples where a four-to-six-word question explicitly referring to “this”
+arrived one second before its URL-preview balloon, but the question dispatched
+immediately because the original lead-in classifier allowed only unfinished
+fragments of at most three words.
 
 ### Outcome
 
@@ -26,13 +30,15 @@ coverage in the required pull-request workflow.
 
 ### Approach
 
-Correlate the reported production timestamp with read-only OpenClaw and iMessage
-logs to capture the real split-link event shape, then update the provider-neutral
-OpenClaw source patch to recognize that shape without broadening unrelated
-message batching. Keep focused tests inside the patch and expose every
-regression through the isolated cumulative `packages/e2e` runner. Do not drive
-configured agents or live systems from the required pool. Deploy only through
-the documented local-or-explicit-remote wrapper.
+Extend the provider-neutral OpenClaw source patch with a narrow bounded class for
+short questions that explicitly refer to an accompanying payload, such as “this”
+or “this one.” Hold those prompts for the existing split-send window so an
+immediately following URL-preview balloon can join them. Keep unrelated complete
+questions instant and preserve separate text turns. Keep focused tests inside
+the patch and expose every regression through the isolated cumulative
+`packages/e2e` runner. Do not drive configured agents or live systems from the
+required pool. Deploy only through the documented local-or-explicit-remote
+wrapper.
 
 ### Safety and rollout
 
@@ -61,6 +67,8 @@ reproduction, correction, cumulative validation, review, and safe redeployment.
   account, direct conversation, and sender dispatches as one logical turn.
 - The production event shape observed around the reported link test is covered
   by a committed regression and produces one logical inbound turn.
+- Short payload-referential questions may wait for the bounded split-send
+  window; unrelated complete questions remain immediate.
 - Lead-in text plus a real image attachment dispatches as one logical turn.
 - Rapid but genuinely separate short text messages remain separate turns.
 - Complete URL-bearing prose, control commands, reactions, outgoing echoes, and
@@ -83,6 +91,9 @@ reproduction, correction, cumulative validation, review, and safe redeployment.
   unless they can join the immediately preceding eligible lead-in.
 - Base link classification on the observed normalized inbound shape rather than
   assuming Messages.app always emits a standalone URL row.
+- Also hold question-terminated prompts of at most eight words only when they
+  contain an explicit deictic payload reference. Do not hold unrelated questions
+  or complete URL-bearing prose.
 - Scope pending state by account, valid conversation anchor, and sender.
 - Preserve limits of 4,000 text characters, 20 attachments, and 10 source rows.
 - Require `channels.imessage.includeAttachments: true` for image ingestion.
@@ -145,6 +156,10 @@ reproduction, correction, cumulative validation, review, and safe redeployment.
 - Reopened correction: correlate the reported production logs, identify why the
   link row bypassed coalescing, and update the patch and cumulative regression
   mapping without changing image or separate-message behavior.
+- Read-only correlation confirmed two failures: each question row reached the
+  agent before a URL-preview balloon from the same sender and chat arrived one
+  second later. Messages metadata contains no shared composition identifier, so
+  the correction must use a conservative prompt-shape heuristic.
 
 ### Validation
 
@@ -169,7 +184,8 @@ reproduction, correction, cumulative validation, review, and safe redeployment.
   first cumulative Integration workflow passed on `main`.
 - New production evidence: images pass a quick smoke test, while the reported
   link composition reached the agent without link context. Exact log
-  correlation and reproduction are pending.
+  correlation reproduced two separate question-first turns followed by
+  URL-balloon turns.
 
 ### Rollout and rollback
 
@@ -248,7 +264,7 @@ No data migration or persistent message-state conversion is involved.
 - [x] Push and merge PR #26.
 - [x] Confirm the first cumulative Integration workflow run on `main`.
 - [x] Prepare issue #28 and the Todoist ready-for-review handoff.
-- [ ] Correlate read-only production logs with the reported link test.
+- [x] Correlate read-only production logs with the reported link test.
 - [ ] Add a focused regression for the observed split-link event shape.
 - [ ] Correct link coalescing without broadening separate-message batching.
 - [ ] Run focused tests and the complete managed cumulative lifecycle.
