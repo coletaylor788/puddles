@@ -1,6 +1,6 @@
 # Stable per-user Keychain access
 
-**Status:** In progress — managed CI green, retained recheck pending
+**Status:** Ready for terminal review — combined handoff green
 **Issue:** [#23](https://github.com/coletaylor788/puddles/issues/23)
 **Last updated:** 2026-07-25
 **Owner:** Implementation agent
@@ -96,8 +96,9 @@ one abstraction:
   and listed at most one message without printing mailbox content.
 - Focused, cumulative, full managed lifecycle, remote CI, and CodeQL gates are
   green for the Gmail candidate.
-- Pull request #31 and issue #15 are ready for review at exact reviewed commit
-  `7a23b266b683fbb74e651e46424f265250dbe1d3`.
+- Pull request #31 is conflict-free and ready for review at exact reviewed
+  commit `264cf751563feea873a312f2c8338c26b326de5d`; all remote cumulative and
+  CodeQL checks pass.
 - Gmail production deployment was not run because no approved snapshotting and
   rollback-capable promotion lifecycle exists.
 - Terminal review of helper-plan commit `0cf4370` found three actionable
@@ -288,15 +289,17 @@ Completed on issue #15's candidate:
 - ACL inspection confirmed `/usr/bin/security` trust and the `apple-tool`
   partition.
 - Focused cumulative Gmail E2E passed 4/4 and TypeScript lint passed.
-- Full managed lifecycle passed with 241 workspace tests, 166 Gmail tests, 289
-  mapped OpenClaw tests, one candidate browser test, and clean cleanup.
+- Post-merge full managed lifecycle passed with 242 workspace tests, 166 Gmail
+  tests, 292 mapped OpenClaw tests, one candidate browser test, and clean
+  cleanup.
 - Remote cumulative CI and CodeQL passed.
 - Exact terminal adversarial review found no actionable finding on commit
-  `7a23b266b683fbb74e651e46424f265250dbe1d3`.
+  `264cf751563feea873a312f2c8338c26b326de5d`.
 
-Still required:
+Out-of-diff handoff after this plan commit:
 
-- Resume retained reviewer session `0f9deb55-e103-48c8-81e7-aa2dbdb71931`.
+- Resume retained reviewer session `0f9deb55-e103-48c8-81e7-aa2dbdb71931`
+  for the docs-only exact-commit check.
 - Synchronize issue #23 and both Todoist tasks with the combined review handoff.
 
 ### Rollout and rollback
@@ -393,10 +396,13 @@ Gmail rollback:
 - Final helper staged review reported no significant issues before commit
   `bd41ab1d32ae67e21bbafc2d91003cca08068062`.
 - Gmail terminal adversarial review reported no actionable finding on exact
-  commit `7a23b266b683fbb74e651e46424f265250dbe1d3`.
-- Pending: terminal fresh adversarial review for the final tracker-normalized
-  helper commit. Its result will be recorded only in issue #23's ledger so the
-  reviewed diff remains unchanged.
+  commit `264cf751563feea873a312f2c8338c26b326de5d` after current-main conflict
+  resolution.
+- Retained helper review reported no actionable finding on exact commit
+  `1cb9ad3db1e43a47f3f69122eb52b5e14cf41692`.
+- Pending: docs-only terminal recheck of the final combined plan commit. Its
+  result will be recorded only in issue #23's ledger so the reviewed diff
+  remains unchanged.
 
 ### Checklist
 
@@ -451,7 +457,7 @@ Gmail rollback:
 - [x] Resolve failures and rerun all affected gates.
 - [x] Obtain a clean terminal adversarial review for the exact Gmail commit.
 - [x] Resolve fresh helper adversarial findings and prepare a new exact commit.
-- [ ] Resolve retained-review findings and resume reviewer session
+- [x] Resolve retained-review findings and resume reviewer session
   `0f9deb55-e103-48c8-81e7-aa2dbdb71931`.
 - [x] Prepare the exact final commit for terminal adversarial review; record the
   result only in issue #23's ledger.
