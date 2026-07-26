@@ -1,6 +1,6 @@
 # Coalesce split iMessage message parts
 
-- **Status:** In progress - link correction validated, independent review pending
+- **Status:** In progress - heuristic hardened, cumulative revalidation pending
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-25
 - **Owner:** Cole Taylor
@@ -31,14 +31,14 @@ coverage in the required pull-request workflow.
 ### Approach
 
 Extend the provider-neutral OpenClaw source patch with a narrow bounded class for
-short questions that explicitly refer to an accompanying payload, such as “this”
-or “this one.” Hold those prompts for the existing split-send window so an
-immediately following URL-preview balloon can join them. Keep unrelated complete
-questions instant and preserve separate text turns. Keep focused tests inside
-the patch and expose every regression through the isolated cumulative
-`packages/e2e` runner. Do not drive configured agents or live systems from the
-required pool. Deploy only through the documented local-or-explicit-remote
-wrapper.
+short questions that both refer deictically to an accompanying payload and
+either name a payload type or use the specific “how/what about this one?” shape.
+Hold those prompts for the existing split-send window so an immediately
+following URL-preview balloon can join them. Keep unrelated complete questions
+instant and preserve separate text turns. Keep focused tests inside the patch
+and expose every regression through the isolated cumulative `packages/e2e`
+runner. Do not drive configured agents or live systems from the required pool.
+Deploy only through the documented local-or-explicit-remote wrapper.
 
 ### Safety and rollout
 
@@ -60,7 +60,9 @@ integration lifecycle is active on `main`. Read-only correlation reproduced
 Cole's link failure and showed that complete payload-referential questions were
 dispatched before their URL balloons. A narrow correction and the observed
 regression are implemented in an isolated pinned OpenClaw fixture; cumulative
-validation passes, while independent review, merge, and safe redeployment remain.
+validation passed before review. Review-driven heuristic and timeout hardening
+now pass focused tests; cumulative revalidation, fresh review, merge, and safe
+redeployment remain.
 
 ### Scope and acceptance criteria
 
@@ -93,8 +95,9 @@ validation passes, while independent review, merge, and safe redeployment remain
 - Base link classification on the observed normalized inbound shape rather than
   assuming Messages.app always emits a standalone URL row.
 - Also hold question-terminated prompts of at most eight words only when they
-  contain an explicit deictic payload reference. Do not hold unrelated questions
-  or complete URL-bearing prose.
+  contain an explicit deictic reference plus a payload noun, or match the narrow
+  “how/what about this one?” comparison shape. Do not hold common unrelated
+  questions or complete URL-bearing prose.
 - Scope pending state by account, valid conversation anchor, and sender.
 - Preserve limits of 4,000 text characters, 20 attachments, and 10 source rows.
 - Require `channels.imessage.includeAttachments: true` for image ingestion.
@@ -164,6 +167,9 @@ validation passes, while independent review, merge, and safe redeployment remain
 - The patch now treats only bounded question-terminated prompts with explicit
   deictic payload references as lead-ins. Focused classifier and monitor
   regressions use the observed question-plus-URL shape.
+- Review hardening further requires a payload noun or the narrow “how/what about
+  this one?” comparison shape, and proves unmatched held questions dispatch
+  alone after the bounded window.
 - The exported source patch was regenerated from the isolated pinned fixture and
   reapplied cleanly to a second detached fixture.
 
@@ -193,11 +199,14 @@ validation passes, while independent review, merge, and safe redeployment remain
   correlation reproduced two separate question-first turns followed by
   URL-balloon turns.
 - Updated focused coalescer and monitor suites pass 67 tests, including a
-  policy-respecting monitor regression that would dispatch twice under the prior
-  classifier.
+  policy-respecting monitor regression that cannot produce one merged dispatch
+  under the prior classifier.
 - The managed cumulative lifecycle passes repository build and lint, 237
   workspace tests, 291 mapped OpenClaw tests, one candidate test, and verified
   candidate deregistration.
+- Hardened focused coalescer and monitor suites pass 68 tests; common unrelated
+  deictic questions remain instant and unmatched referential questions flush
+  alone.
 
 ### Rollout and rollback
 
@@ -238,6 +247,9 @@ No data migration or persistent message-state conversion is involved.
 - Cole reopened the task after a production link smoke test exposed a behavior
   not represented by the existing link regressions. A new independent review is
   required after the correction and complete lifecycle pass.
+- The first correction review found no actionable defects but identified a
+  broader-than-intended false-positive surface for common deictic questions and
+  missing standalone-timeout coverage. Both are being hardened before promotion.
 
 ### Checklist
 
@@ -281,6 +293,9 @@ No data migration or persistent message-state conversion is involved.
 - [x] Correct link coalescing without broadening separate-message batching.
 - [x] Run focused tests and the complete managed cumulative lifecycle.
 - [ ] Obtain a clean independent review of the complete correction diff.
+- [x] Narrow the heuristic so common deictic questions remain immediate.
+- [x] Cover standalone held-question timeout and policy behavior.
+- [ ] Rerun the complete cumulative lifecycle after review hardening.
 - [ ] Merge the correction and confirm the cumulative workflow on `main`.
 - [ ] Deploy through the approved lifecycle and validate production read-only.
 - [ ] Return issue #28 and Todoist to Ready for review.

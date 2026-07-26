@@ -23,9 +23,9 @@ rows after `imsg` advertises balloon metadata.
 The source patch classifies each eligible direct-message row:
 
 - **Lead-in:** either a payload-free unfinished fragment of at most three words,
-  or a question of at most eight words that explicitly refers to an accompanying
-  payload with terms such as “this” or “this one.” It waits for the existing
-  bounded split-send window.
+  or a question of at most eight words that combines a deictic reference with a
+  payload noun, or uses the narrow “how/what about this one?” shape. It waits for
+  the existing bounded split-send window.
 - **Payload:** a standalone HTTP(S) URL, a structurally standalone URL-preview
   balloon, or a real attachment. It joins an immediately preceding lead-in from
   the same account, conversation, and sender, then flushes immediately.
@@ -81,6 +81,8 @@ The patch adds regression coverage for:
 
 - short lead-in plus URL-preview row;
 - bounded payload-referential question plus URL-preview row;
+- unmatched payload-referential question dispatching alone after the hold;
+- common unrelated deictic questions bypassing the hold;
 - short caption plus image attachment;
 - two rapid short text messages remaining two turns;
 - a following composition retaining its own coalescing window during payload
@@ -91,7 +93,7 @@ The patch adds regression coverage for:
 - invalid conversation anchors failing open instead of sharing a coalescing key;
 - the existing merge caps, reply context, cursor, and GUID tracking.
 
-The focused coalescer and monitor suites pass all 67 tests after a clean reverse
+The focused coalescer and monitor suites pass all 68 tests after a clean reverse
 and reapplication of the exported patch.
 
 Manual smoke test after deployment:
