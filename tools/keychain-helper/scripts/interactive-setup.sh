@@ -63,7 +63,11 @@ config_dir="$home_dir/.config/puddles-keychain-helper"
 allowlist="$config_dir/allowlist.tsv"
 pending_setup="$config_dir/pending-interactive-setup"
 setup_lock="$config_dir/interactive-setup.lock"
+prefix="$home_dir/.local"
+operation_state_dir="$prefix/state/puddles-keychain-helper"
+operation_lock="$operation_state_dir/operation.lock"
 lock_owned=0
+operation_lock_owned=0
 completed=0
 setup_state=
 install_snapshot=
@@ -114,6 +118,40 @@ assert_secure_file() {
   fi
 }
 
+assert_operation_dir() {
+  path=$1
+  [ -d "$path" ] && [ ! -L "$path" ] || {
+    echo "operation directory is missing, not a directory, or a symlink: $path" >&2
+    exit 73
+  }
+  metadata=$(stat -f '%u %Lp' "$path")
+  owner=${metadata%% *}
+  mode=${metadata#* }
+  [ "$owner" = "$(id -u)" ] || {
+    echo "operation directory is not owned by the current user: $path" >&2
+    exit 73
+  }
+  [ $((0$mode & 0022)) -eq 0 ] || {
+    echo "operation directory is group- or other-writable: $path" >&2
+    exit 73
+  }
+  if ls -lde "$path" | sed -n '2,$p' | grep -v ' deny ' | grep -q .; then
+    echo "operation directory has an ACL that can grant access: $path" >&2
+    exit 73
+  fi
+}
+
+ensure_operation_dir() {
+  path=$1
+  if [ -e "$path" ] || [ -L "$path" ]; then
+    assert_operation_dir "$path"
+    return
+  fi
+  mkdir "$path"
+  chmod 0700 "$path"
+  assert_operation_dir "$path"
+}
+
 validate_setup_state() {
   state=$1
   case "$state" in
@@ -127,6 +165,13 @@ validate_setup_state() {
 }
 
 release_lock() {
+  if [ "$operation_lock_owned" -eq 1 ]; then
+    current_pid=$(sed -n '1p' "$operation_lock" 2>/dev/null || true)
+    if [ "$current_pid" = "$$" ]; then
+      rm -f "$operation_lock"
+    fi
+    operation_lock_owned=0
+  fi
   if [ "$lock_owned" -eq 1 ]; then
     current_pid=$(sed -n '1p' "$setup_lock" 2>/dev/null || true)
     if [ "$current_pid" = "$$" ]; then
@@ -160,7 +205,10 @@ recover_state() {
   if [ -f "$state/allowlist-present" ]; then
     assert_secure_file "$state/allowlist-present" || return 1
     assert_secure_file "$state/allowlist-backup" || return 1
-    mv -f "$state/allowlist-backup" "$allowlist" || return 1
+    restore_candidate="$state/allowlist-restore"
+    rm -f "$restore_candidate" || return 1
+    cp -p "$state/allowlist-backup" "$restore_candidate" || return 1
+    mv -f "$restore_candidate" "$allowlist" || return 1
   else
     rm -f "$allowlist" || return 1
   fi
@@ -209,11 +257,25 @@ cleanup() {
 }
 install -d -m 0700 "$config_dir"
 assert_secure_dir "$config_dir"
+ensure_operation_dir "$prefix"
+ensure_operation_dir "$prefix/state"
+ensure_operation_dir "$operation_state_dir"
 
 if /usr/bin/shlock -f "$setup_lock" -p "$$"; then
   lock_owned=1
 else
   echo "another interactive helper setup is running" >&2
+  exit 75
+fi
+if /usr/bin/shlock -f "$operation_lock" -p "$$"; then
+  operation_lock_owned=1
+  PUDDLES_KEYCHAIN_HELPER_LOCK_STATE=$operation_state_dir
+  PUDDLES_KEYCHAIN_HELPER_LOCK_OWNER=$$
+  export PUDDLES_KEYCHAIN_HELPER_LOCK_STATE
+  export PUDDLES_KEYCHAIN_HELPER_LOCK_OWNER
+else
+  release_lock
+  echo "another helper install or rollback is running" >&2
   exit 75
 fi
 trap cleanup EXIT

@@ -132,6 +132,7 @@ committed_transaction="$state_dir/last-install"
 rollback_transaction="$state_dir/pending-rollback"
 operation_lock="$state_dir/operation.lock"
 lock_owned=0
+lock_owner_pid=
 
 assert_secure_dir() {
   path=$1
@@ -172,8 +173,30 @@ ensure_secure_dir() {
 }
 
 acquire_lock() {
+  inherited_state=${PUDDLES_KEYCHAIN_HELPER_LOCK_STATE:-}
+  inherited_owner=${PUDDLES_KEYCHAIN_HELPER_LOCK_OWNER:-}
+  if [ -n "$inherited_state" ] || [ -n "$inherited_owner" ]; then
+    [ "$inherited_state" = "$state_dir" ] || {
+      echo "invalid inherited helper operation lock state" >&2
+      exit 75
+    }
+    case "$inherited_owner" in
+      ''|*[!0-9]*)
+        echo "invalid inherited helper operation lock owner" >&2
+        exit 75
+        ;;
+    esac
+    [ "$(sed -n '1p' "$operation_lock" 2>/dev/null || true)" = "$inherited_owner" ] &&
+      kill -0 "$inherited_owner" 2>/dev/null || {
+      echo "inherited helper operation lock is not active" >&2
+      exit 75
+    }
+    lock_owner_pid=$inherited_owner
+    return
+  fi
   if /usr/bin/shlock -f "$operation_lock" -p "$$"; then
     lock_owned=1
+    lock_owner_pid=$$
     return
   fi
   echo "another helper install or rollback is running" >&2
@@ -220,12 +243,14 @@ run_rollback() {
   rollback_snapshot=$1
   if [ "$test_adhoc" -eq 1 ]; then
     PUDDLES_KEYCHAIN_HELPER_TESTING=1 \
-      PUDDLES_KEYCHAIN_HELPER_LOCK_HELD="$state_dir" \
+      PUDDLES_KEYCHAIN_HELPER_LOCK_STATE="$state_dir" \
+      PUDDLES_KEYCHAIN_HELPER_LOCK_OWNER="$lock_owner_pid" \
       "$script_dir/rollback-install.sh" \
       --test-prefix "$prefix" \
       --snapshot "$rollback_snapshot"
   else
-    PUDDLES_KEYCHAIN_HELPER_LOCK_HELD="$state_dir" \
+    PUDDLES_KEYCHAIN_HELPER_LOCK_STATE="$state_dir" \
+      PUDDLES_KEYCHAIN_HELPER_LOCK_OWNER="$lock_owner_pid" \
       "$script_dir/rollback-install.sh" \
       --snapshot "$rollback_snapshot"
   fi

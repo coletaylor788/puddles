@@ -164,6 +164,7 @@ printf '%s\n' \
   'set -eu' \
   'handoff=$1' \
   'home=$2' \
+  'if [ "${PUDDLES_FAKE_EXPECT_OPERATION_LOCK:-0}" = "1" ]; then [ "$(cat "${PUDDLES_KEYCHAIN_HELPER_LOCK_STATE:?}/operation.lock")" = "${PUDDLES_KEYCHAIN_HELPER_LOCK_OWNER:?}" ] || exit 73; if /usr/bin/shlock -f "${PUDDLES_KEYCHAIN_HELPER_LOCK_STATE}/operation.lock" -p "$$"; then rm -f "${PUDDLES_KEYCHAIN_HELPER_LOCK_STATE}/operation.lock"; exit 74; fi; fi' \
   'snapshot="$home/fake-install-snapshot-$$"' \
   'mkdir -p "$snapshot"' \
   'chmod 0700 "$snapshot"' \
@@ -175,8 +176,7 @@ printf '%s\n' \
   'printf "%s\n" "$snapshot" >"$handoff"' \
   'chmod 0600 "$handoff"' \
   '[ "${PUDDLES_FAKE_INSTALL_MODE:-success}" != "fail" ] || exit 70' \
-  'printf "%s\n" "#!/bin/sh" "if [ \"${1:-}\" = \"--approve\" ]; then exit 0; fi" "if [ \"${PUDDLES_FAKE_DURABLE:-1}\" = \"1\" ]; then printf synthetic-secret-value; exit 0; fi" "exit 69" >"$helper_dir/puddles-keychain-helper.new"' \
-  'chmod 0500 "$helper_dir/puddles-keychain-helper.new"' \
+  'install -m 0500 "${PUDDLES_FAKE_HELPER_SOURCE:?}" "$helper_dir/puddles-keychain-helper.new"' \
   'mv -f "$helper_dir/puddles-keychain-helper.new" "$helper_dir/puddles-keychain-helper"' \
   'printf "%s\n" "#!/bin/sh" "exit 0" >"$wrapper_dir/puddles-with-keychain-secret.new"' \
   'chmod 0500 "$wrapper_dir/puddles-with-keychain-secret.new"' \
@@ -187,6 +187,7 @@ printf '%s\n' \
   '#!/bin/sh' \
   'set -eu' \
   'snapshot=$1' \
+  'if [ "${PUDDLES_FAKE_EXPECT_OPERATION_LOCK:-0}" = "1" ]; then [ "$(cat "${PUDDLES_KEYCHAIN_HELPER_LOCK_STATE:?}/operation.lock")" = "${PUDDLES_KEYCHAIN_HELPER_LOCK_OWNER:?}" ] || exit 73; if /usr/bin/shlock -f "${PUDDLES_KEYCHAIN_HELPER_LOCK_STATE}/operation.lock" -p "$$"; then rm -f "${PUDDLES_KEYCHAIN_HELPER_LOCK_STATE}/operation.lock"; exit 74; fi; fi' \
   'printf "%s\n" "$snapshot" >>"${PUDDLES_FAKE_ROLLBACK_LOG:?}"' \
   '[ "${PUDDLES_FAKE_ROLLBACK_FAIL:-0}" != "1" ] || exit 71' \
   'helper="${PUDDLES_FAKE_HOME:?}/.local/libexec/puddles-keychain-helper/puddles-keychain-helper"' \
@@ -233,6 +234,8 @@ expect_failure env \
   PUDDLES_FAKE_INSTALL_MODE=fail \
   PUDDLES_FAKE_ROLLBACK_LOG="$rollback_log" \
   PUDDLES_FAKE_SYNC_LOG="$sync_log" \
+  PUDDLES_FAKE_EXPECT_OPERATION_LOCK=1 \
+  PUDDLES_FAKE_HELPER_SOURCE="$project_dir/tests/fixtures/fake-helper.sh" \
   PUDDLES_FAKE_HOME="$setup_home" \
   "$setup_script" user-123
 [ "$(cat "$setup_config/allowlist.tsv")" = "original-allowlist" ] ||
@@ -261,6 +264,8 @@ expect_failure env \
   PUDDLES_FAKE_DURABLE=0 \
   PUDDLES_FAKE_ROLLBACK_LOG="$nondurable_log" \
   PUDDLES_FAKE_SYNC_LOG="$nondurable_sync_log" \
+  PUDDLES_FAKE_EXPECT_OPERATION_LOCK=1 \
+  PUDDLES_FAKE_HELPER_SOURCE="$project_dir/tests/fixtures/fake-helper.sh" \
   PUDDLES_FAKE_HOME="$nondurable_home" \
   "$setup_script" user-123
 [ "$(cat "$nondurable_config/allowlist.tsv")" = "prior-allowlist" ] ||
@@ -288,6 +293,8 @@ expect_failure env \
   PUDDLES_FAKE_ROLLBACK_FAIL=1 \
   PUDDLES_FAKE_ROLLBACK_LOG="$rollback_failure_log" \
   PUDDLES_FAKE_SYNC_LOG="$rollback_failure_sync_log" \
+  PUDDLES_FAKE_EXPECT_OPERATION_LOCK=1 \
+  PUDDLES_FAKE_HELPER_SOURCE="$project_dir/tests/fixtures/fake-helper.sh" \
   PUDDLES_FAKE_HOME="$rollback_failure_home" \
   "$setup_script" user-123
 [ -f "$rollback_failure_config/pending-interactive-setup" ] ||
@@ -313,6 +320,8 @@ expect_failure env \
   PUDDLES_FAKE_SYNC_FAIL=1 \
   PUDDLES_FAKE_ROLLBACK_LOG="$sync_failure_log" \
   PUDDLES_FAKE_SYNC_LOG="$sync_failure_sync_log" \
+  PUDDLES_FAKE_EXPECT_OPERATION_LOCK=1 \
+  PUDDLES_FAKE_HELPER_SOURCE="$project_dir/tests/fixtures/fake-helper.sh" \
   PUDDLES_FAKE_HOME="$sync_failure_home" \
   "$setup_script" user-123
 [ -f "$sync_failure_config/pending-interactive-setup" ] ||
@@ -320,6 +329,25 @@ expect_failure env \
 sync_failure_state=$(cat "$sync_failure_config/pending-interactive-setup")
 [ -d "$sync_failure_state" ] ||
   fail "sync failure did not preserve setup recovery state"
+expect_failure env \
+  PUDDLES_KEYCHAIN_HELPER_TESTING=1 \
+  PUDDLES_KEYCHAIN_HELPER_TEST_HOME="$sync_failure_home" \
+  PUDDLES_KEYCHAIN_HELPER_TEST_INSTALL_SCRIPT="$fake_install" \
+  PUDDLES_KEYCHAIN_HELPER_TEST_ROLLBACK_SCRIPT="$fake_rollback" \
+  PUDDLES_KEYCHAIN_HELPER_TEST_SYNC_COMMAND="$fake_sync" \
+  PUDDLES_FAKE_INSTALL_MODE=fail \
+  PUDDLES_FAKE_ROLLBACK_LOG="$sync_failure_log" \
+  PUDDLES_FAKE_SYNC_LOG="$sync_failure_sync_log" \
+  PUDDLES_FAKE_EXPECT_OPERATION_LOCK=1 \
+  PUDDLES_FAKE_HELPER_SOURCE="$project_dir/tests/fixtures/fake-helper.sh" \
+  PUDDLES_FAKE_HOME="$sync_failure_home" \
+  "$setup_script" user-123
+[ "$(cat "$sync_failure_config/allowlist.tsv")" = "prior-allowlist" ] ||
+  fail "retry recovery did not restore the original allowlist"
+[ ! -e "$sync_failure_config/pending-interactive-setup" ] ||
+  fail "retry recovery left the pending setup marker"
+[ ! -d "$sync_failure_state" ] ||
+  fail "retry recovery left stale setup state"
 
 reapproval_home="$tmp/setup-reapproval-home"
 reapproval_config="$reapproval_home/.config/puddles-keychain-helper"
@@ -345,6 +373,8 @@ expect_failure env \
   PUDDLES_FAKE_DURABLE=0 \
   PUDDLES_FAKE_ROLLBACK_LOG="$reapproval_log" \
   PUDDLES_FAKE_SYNC_LOG="$reapproval_sync_log" \
+  PUDDLES_FAKE_EXPECT_OPERATION_LOCK=1 \
+  PUDDLES_FAKE_HELPER_SOURCE="$project_dir/tests/fixtures/fake-helper.sh" \
   PUDDLES_FAKE_HOME="$reapproval_home" \
   "$setup_script" user-123
 [ "$("$reapproval_helper_dir/puddles-keychain-helper")" = "old-helper" ] ||
@@ -365,6 +395,8 @@ PUDDLES_KEYCHAIN_HELPER_TESTING=1 \
   PUDDLES_FAKE_DURABLE=1 \
   PUDDLES_FAKE_ROLLBACK_LOG="$successful_log" \
   PUDDLES_FAKE_SYNC_LOG="$successful_sync_log" \
+  PUDDLES_FAKE_EXPECT_OPERATION_LOCK=1 \
+  PUDDLES_FAKE_HELPER_SOURCE="$project_dir/tests/fixtures/fake-helper.sh" \
   PUDDLES_FAKE_HOME="$successful_home" \
   "$setup_script" user-123 >/dev/null
 successful_config="$successful_home/.config/puddles-keychain-helper"

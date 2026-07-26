@@ -90,6 +90,7 @@ state_dir="$prefix/state/puddles-keychain-helper"
 transaction="$state_dir/pending-rollback"
 operation_lock="$state_dir/operation.lock"
 lock_owned=0
+lock_owner_pid=
 resolved_snapshot=$(realpath "$snapshot")
 resolved_state=$(realpath "$state_dir")
 case "$resolved_snapshot" in
@@ -128,11 +129,30 @@ assert_secure_dir() {
 }
 
 acquire_lock() {
-  if [ "${PUDDLES_KEYCHAIN_HELPER_LOCK_HELD:-}" = "$state_dir" ]; then
+  inherited_state=${PUDDLES_KEYCHAIN_HELPER_LOCK_STATE:-}
+  inherited_owner=${PUDDLES_KEYCHAIN_HELPER_LOCK_OWNER:-}
+  if [ -n "$inherited_state" ] || [ -n "$inherited_owner" ]; then
+    [ "$inherited_state" = "$state_dir" ] || {
+      echo "invalid inherited helper operation lock state" >&2
+      exit 75
+    }
+    case "$inherited_owner" in
+      ''|*[!0-9]*)
+        echo "invalid inherited helper operation lock owner" >&2
+        exit 75
+        ;;
+    esac
+    [ "$(sed -n '1p' "$operation_lock" 2>/dev/null || true)" = "$inherited_owner" ] &&
+      kill -0 "$inherited_owner" 2>/dev/null || {
+      echo "inherited helper operation lock is not active" >&2
+      exit 75
+    }
+    lock_owner_pid=$inherited_owner
     return
   fi
   if /usr/bin/shlock -f "$operation_lock" -p "$$"; then
     lock_owned=1
+    lock_owner_pid=$$
     return
   fi
   echo "another helper install or rollback is running" >&2

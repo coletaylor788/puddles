@@ -1,6 +1,6 @@
 # Stable per-user Keychain access
 
-**Status:** Ready for terminal review — implementation and validation complete
+**Status:** In progress — managed CI green, retained recheck pending
 **Issue:** [#23](https://github.com/coletaylor788/puddles/issues/23)
 **Last updated:** 2026-07-25
 **Owner:** Implementation agent
@@ -262,6 +262,16 @@ Completed for helper pull request #29:
 - The complete managed lifecycle passes after these final durability changes
   with 238 workspace tests, 289 mapped OpenClaw tests, one candidate browser
   test, and clean cleanup.
+- Retained review of `fb3826c` found two actionable races: recovery consumes its
+  only allowlist backup before the pending marker is durably cleared, and
+  interactive setup does not hold the shared install/rollback lock through
+  approval and verification.
+- Recovery now restores the allowlist from a retained copy and deletes the
+  original backup only after marker removal is synced. Interactive setup holds
+  the shared operation lock through nested install/rollback, approval,
+  noninteractive verification, and finalization.
+- Full managed CI passes after both retained-review fixes with 238 workspace
+  tests, 289 mapped OpenClaw tests, one candidate test, and clean cleanup.
 
 Completed on issue #15's candidate:
 
@@ -284,10 +294,9 @@ Completed on issue #15's candidate:
 - Exact terminal adversarial review found no actionable finding on commit
   `7a23b266b683fbb74e651e46424f265250dbe1d3`.
 
-Out-of-diff handoff after this plan commit:
+Still required:
 
-- Run the retained replacement adversarial reviewer against the exact final
-  commit and resume it for any remediation rechecks.
+- Resume retained reviewer session `0f9deb55-e103-48c8-81e7-aa2dbdb71931`.
 - Synchronize issue #23 and both Todoist tasks with the combined review handoff.
 
 ### Rollout and rollback
@@ -371,6 +380,13 @@ Gmail rollback:
 - Full managed CI passed after the fixes. The previous one-shot reviewer cannot
   be resumed, so the next independent replacement reviewer will be retained for
   the remainder of the review loop.
+- Retained review of `fb3826c` confirmed prior fixes and found two actionable
+  races: consumed backup state can wedge retry recovery, and setup releases the
+  operation lock before approval/verification.
+- Retry recovery now succeeds after a simulated sync failure, and test helpers
+  prove the shared operation lock cannot be reacquired during install,
+  approval, verification, or rollback.
+- Full managed CI passed after these retained-review fixes.
 - Gmail coordination confirmed that the existing credential is invalid and
   issue #15 is the sole owner of its recovery. The helper never wrote the Gmail
   item or changed Gmail configuration.
@@ -406,6 +422,10 @@ Gmail rollback:
 - [x] Propagate every recovery rollback, sync, and state-mutation failure.
 - [x] Synchronize install and rollback snapshots, markers, promotions,
   restorations, and transaction completion.
+- [x] Retain allowlist backup state until the pending marker is durably cleared.
+- [x] Hold the shared operation lock for the complete interactive setup
+  transaction.
+- [x] Prove retry recovery and setup-versus-install/rollback serialization.
 - [x] Add explicit interactive replacement with rollback to the approved
   binary on failed reapproval.
 - [x] Reapprove and live-validate the fixed production helper.
@@ -431,8 +451,8 @@ Gmail rollback:
 - [x] Resolve failures and rerun all affected gates.
 - [x] Obtain a clean terminal adversarial review for the exact Gmail commit.
 - [x] Resolve fresh helper adversarial findings and prepare a new exact commit.
-- [x] Prepare the retained replacement adversarial reviewer for the exact final
-  commit; record its result only in issue #23.
+- [ ] Resolve retained-review findings and resume reviewer session
+  `0f9deb55-e103-48c8-81e7-aa2dbdb71931`.
 - [x] Prepare the exact final commit for terminal adversarial review; record the
   result only in issue #23's ledger.
 
