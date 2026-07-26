@@ -25,8 +25,13 @@ The source patch classifies each eligible direct-message row:
 - **Lead-in:** either a payload-free unfinished fragment of at most three words,
   or a question of at most eight words that combines a deictic reference with a
   payload noun, or uses the narrow “how/what about this one?” shape. A
-  punctuationless final clause must also begin with a narrow interrogative. It
-  waits for a bounded split-send window.
+  punctuationless final clause must also begin with a narrow interrogative. A
+  final comma-delimited `what is/what's the <payload noun>` clause may omit the
+  deictic only when preceding setup contains a letter or number and ends in
+  comma-plus-whitespace; punctuation-only and sentence-punctuation prefixes do
+  not qualify. Comma parsing is isolated to that exception so existing deictic
+  questions keep their whole-question match. It waits for a bounded split-send
+  window.
 - **Payload:** a standalone HTTP(S) URL, a structurally standalone URL-preview
   balloon, or a real attachment. It joins an immediately preceding lead-in from
   the same account, conversation, and sender, then flushes immediately.
@@ -86,7 +91,12 @@ The patch adds regression coverage for:
 - short lead-in plus URL-preview row;
 - bounded payload-referential question plus URL-preview row;
 - the observed punctuationless final question and 12.4-second runtime gap;
-- real debouncer timing across that 12.4-second gap;
+- the observed comma-delimited `Okay you failed. New test, what’s the link`
+  prompt and 669 ms URL-preview row gap;
+- punctuation-only prefixes remaining standalone questions;
+- period and exclamation prefixes not activating the comma-only exception;
+- existing deictic questions retaining payload nouns before an internal comma;
+- real debouncer timing across both the 669 ms and 12.4-second gaps;
 - repeated referential lead-ins retaining the first absolute deadline;
 - unmatched payload-referential question dispatching alone after the hold;
 - common unrelated deictic questions bypassing the hold;
@@ -101,7 +111,7 @@ The patch adds regression coverage for:
 - invalid conversation anchors failing open instead of sharing a coalescing key;
 - the existing merge caps, reply context, cursor, and GUID tracking.
 
-The focused coalescer and monitor suites pass all 72 tests after a clean reverse
+The focused coalescer and monitor suites pass all 74 tests after a clean reverse
 and reapplication of the exported patch.
 
 Manual smoke test after deployment:
