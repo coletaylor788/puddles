@@ -1,6 +1,6 @@
 # Coalesce split iMessage message parts
 
-- **Status:** In progress - hardened correction validated, fresh review pending
+- **Status:** In progress - hardened correction reviewed, promotion pending
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-25
 - **Owner:** Cole Taylor
@@ -61,8 +61,8 @@ Cole's link failure and showed that complete payload-referential questions were
 dispatched before their URL balloons. A narrow correction and the observed
 regression are implemented in an isolated pinned OpenClaw fixture; cumulative
 validation passed before review. Review-driven heuristic and timeout hardening
-now pass focused and cumulative tests; fresh review, merge, and safe redeployment
-remain.
+now pass focused and cumulative tests with no actionable independent-review
+findings; promotion and safe redeployment remain.
 
 ### Scope and acceptance criteria
 
@@ -252,7 +252,10 @@ No data migration or persistent message-state conversion is involved.
   required after the correction and complete lifecycle pass.
 - The first correction review found no actionable defects but identified a
   broader-than-intended false-positive surface for common deictic questions and
-  missing standalone-timeout coverage. Both are being hardened before promotion.
+  missing standalone-timeout coverage. Both were hardened before promotion.
+- A fresh independent review of the hardened complete feature diff at `e2f5ce3`
+  found no actionable high-confidence defects. Residual automated boundaries are
+  the real debouncer timer implementation and the final Messages.app smoke test.
 
 ### Checklist
 
@@ -295,7 +298,7 @@ No data migration or persistent message-state conversion is involved.
 - [x] Add a focused regression for the observed split-link event shape.
 - [x] Correct link coalescing without broadening separate-message batching.
 - [x] Run focused tests and the complete managed cumulative lifecycle.
-- [ ] Obtain a clean independent review of the complete correction diff.
+- [x] Obtain a clean independent review of the complete correction diff.
 - [x] Narrow the heuristic so common deictic questions remain immediate.
 - [x] Cover standalone held-question timeout and policy behavior.
 - [x] Rerun the complete cumulative lifecycle after review hardening.
