@@ -1,6 +1,6 @@
 # Stable per-user Keychain access
 
-**Status:** In progress — reopened for Gmail completion
+**Status:** Ready for review — combined implementation validated
 **Issue:** [#23](https://github.com/coletaylor788/puddles/issues/23)
 **Last updated:** 2026-07-25
 **Owner:** Implementation agent
@@ -14,19 +14,18 @@ signatures use build-specific code hashes, so macOS Keychain grants tied to
 those executables stop matching and background tools wait on invisible approval
 prompts.
 
-Todoist is now routed through a small immutable native helper, but Gmail remains
-broken. Its existing OAuth value was truncated to 128 bytes during an earlier
-migration and is invalid JSON. Gmail also needs safe credential writes during
-OAuth and token refresh, which the read-only helper intentionally does not
-provide.
+Todoist needed a stable read-only path. Gmail additionally needed safe
+credential writes during OAuth and token refresh. An earlier Gmail migration
+had truncated its OAuth JSON to 128 bytes, so durable executable identity alone
+could not restore the invalid credential.
 
 ### Outcome
 
 - Todoist continues to read its token through the approved immutable helper
   without depending on the current Homebrew Node binary.
-- Gmail is reauthenticated once and uses the stable, bounded
-  `/usr/bin/security` read/write backend implemented by issue #15, without
-  depending on the current Homebrew Python binary.
+- Gmail has a restored complete OAuth credential and a validated stable,
+  bounded `/usr/bin/security` read/write backend implemented by issue #15,
+  without depending on the current Homebrew Python binary.
 - Neither path exposes a network listener, enumerates secrets, logs values, or
   broadens access beyond the approved same-user boundary.
 - Both changes have committed regression coverage, clean independent review,
@@ -44,9 +43,8 @@ one abstraction:
    supports complete OAuth JSON reads and writes, including refresh updates,
    and avoids interpreter-specific ACL trust.
 3. Reauthenticate Gmail interactively from issue #15's isolated candidate,
-   validate the stored JSON shape without printing values, run the candidate
-   read-only Gmail smoke, and promote only through the repository's configured
-   lifecycle.
+   validate the stored JSON shape without printing values, and run the
+   candidate read-only Gmail smoke.
 4. Keep the helper and Gmail changes in their existing focused pull requests,
    with this plan and issue #23 tracking the combined user outcome.
 
@@ -54,14 +52,18 @@ one abstraction:
 
 - Automated helper tests use a compile-time in-memory secret backend and cannot
   open Keychain or trigger authorization UI.
-- Gmail OAuth is the only required interactive action. The browser flow writes
+- Gmail OAuth was the only required interactive action. The browser flow wrote
   the replacement credential through the reviewed long-value path; no command
-  prints, copies, or persists the credential outside Keychain.
+  printed, copied, or persisted the credential outside Keychain.
 - Live Gmail validation is read-only. Tests that mutate a mailbox remain
   disabled outside explicit fixtures.
 - The helper binary is immutable because macOS prompted after a rebuilt binary
   even when it satisfied the prior certificate-pinned designated requirement.
   Updating it requires deliberate reapproval.
+- The repository has no configured snapshotting, rollback-capable Gmail
+  production promotion lifecycle. The candidate was not copied into the
+  configured primary checkout and production was not restarted. This
+  limitation is explicit in the focused Gmail plan and pull request.
 - Roll back Todoist by restoring its package-generated launcher. Roll back
   Gmail by deploying the preceding server revision and restarting through the
   configured lifecycle. Credential rotation is required only if exposure is
@@ -77,12 +79,17 @@ one abstraction:
   launcher rollback/reinstall both passed.
 - The local helper allowlist contains only the Todoist alias.
 - Gmail configuration and credential were not changed by issue #23.
-- Issue #15 owns the Gmail backend repair. Its implementation, focused tests,
-  lint, long-value fixtures, ACL checks, and independent review are complete.
-- Cole reports that the interactive OAuth reauthentication completed. The
-  issue #15 candidate must now verify that the replacement is complete
-  authorized-user JSON, then run its read-only Gmail smoke and remaining
-  lifecycle gates.
+- Issue #15 owns the Gmail backend repair. The replacement credential is a
+  complete 779-byte authorized-user JSON object with required nonblank fields,
+  refresh token, and effective grants; no values were printed.
+- The issue #15 candidate constructed the Gmail service, read profile metadata,
+  and listed at most one message without printing mailbox content.
+- Focused, cumulative, full managed lifecycle, remote CI, and CodeQL gates are
+  green for the Gmail candidate.
+- Pull request #31 and issue #15 are ready for review at exact reviewed commit
+  `7a23b266b683fbb74e651e46424f265250dbe1d3`.
+- Gmail production deployment was not run because no approved snapshotting and
+  rollback-capable promotion lifecycle exists.
 
 ### Scope and acceptance criteria
 
@@ -94,17 +101,18 @@ one abstraction:
   transaction, interruption, concurrency, and rollback handling.
 - [x] Migrate Todoist and pass a live read through the injected environment.
 - [x] Prove Todoist launcher rollback and reinstall.
-- [ ] Restore a complete Gmail OAuth credential through the issue #15 candidate.
-- [ ] Pass candidate read-only Gmail API smoke without interactive Keychain
+- [x] Restore a complete Gmail OAuth credential through the issue #15 candidate.
+- [x] Pass candidate read-only Gmail API smoke without interactive Keychain
   access or timeout.
-- [ ] Commit and expose the Gmail regression in the shared cumulative test pool.
-- [ ] Run the full configured `packages/e2e` managed lifecycle when present.
-- [ ] Obtain clean terminal adversarial reviews for the exact helper and Gmail
-  commits handed off.
-- [ ] Promote Gmail through the configured lifecycle and pass read-only
-  production validation, or record that no approved lifecycle exists.
-- [ ] Keep issue #23's ledger and both Todoist tasks synchronized with final
-  evidence and review actions.
+- [x] Commit and expose the Gmail regression in the shared cumulative test pool.
+- [x] Run the full configured `packages/e2e` managed lifecycle.
+- [x] Obtain a clean terminal adversarial review for the exact Gmail commit.
+- [x] Record that no approved Gmail production lifecycle exists; do not invent
+  one or modify the configured primary checkout.
+- [x] Prepare the final helper-plan commit for terminal adversarial review; its
+  result will be recorded only in issue #23's ledger.
+- [x] Prepare issue #23 and both Todoist task handoffs with final evidence and
+  review actions.
 
 ### Architecture and decisions
 
@@ -159,8 +167,8 @@ one abstraction:
      where the runner exists, following `packages/e2e/README.md`.
 5. **Audit and promotion**
    - Run fresh adversarial review after final bookkeeping on each exact commit.
-   - Promote Gmail only through the configured lifecycle and run read-only
-     production validation.
+   - Inspect the configured production lifecycle. If it lacks snapshot and
+     rollback support, do not deploy and record the limitation.
 6. **Handoff**
    - Update this complete plan, then issue #23's concise ledger.
    - Link the focused pull requests and move both owning Todoist tasks to the
@@ -188,27 +196,31 @@ Completed for helper pull request #29:
   read passed.
 - Multiple independent reviews; final staged review was clean.
 
-Completed on issue #15's candidate, pending reauthentication recheck:
+Completed on issue #15's candidate:
 
-- 106 safe tests passed; 19 live mailbox mutation tests skipped.
+- Post-OAuth shape check: present 779-byte JSON object, required authorized-user
+  fields nonblank, refresh token present, and required effective grants
+  present; no values printed.
+- Candidate read-only smoke constructed the service, read profile metadata, and
+  listed at most one message; no mailbox content printed.
+- 166 safe Python tests passed with live integration tests excluded.
 - Ruff and Python compilation passed.
 - Stable exact-item read completed in about 20 ms without a prompt.
 - Temporary Keychain fixtures round-tripped 312-byte creates and 362-byte
   content-only updates.
 - ACL inspection confirmed `/usr/bin/security` trust and the `apple-tool`
   partition.
-- Independent full-diff review was clean.
+- Focused cumulative Gmail E2E passed 4/4 and TypeScript lint passed.
+- Full managed lifecycle passed with 241 workspace tests, 166 Gmail tests, 289
+  mapped OpenClaw tests, one candidate browser test, and clean cleanup.
+- Remote cumulative CI and CodeQL passed.
+- Exact terminal adversarial review found no actionable finding on commit
+  `7a23b266b683fbb74e651e46424f265250dbe1d3`.
 
-Still required:
+Out-of-diff handoff after this plan commit:
 
-- Confirm the reauthenticated Gmail value is complete authorized-user JSON
-  without printing values.
-- Run candidate read-only Gmail API smoke.
-- Add/confirm cumulative `packages/e2e` regression registration and run the
-  full managed `ci` lifecycle.
-- Rerun applicable focused gates after any change.
-- Run terminal fresh adversarial review against each exact handoff commit.
-- Run configured production read-only health and Gmail smoke after promotion.
+- Run terminal fresh adversarial review against the final helper-plan commit.
+- Synchronize issue #23 and both Todoist tasks with the combined review handoff.
 
 ### Rollout and rollback
 
@@ -238,21 +250,24 @@ entries and the signing identity only after no consumer depends on them.
 
 Gmail rollout:
 
-1. Run issue #15's candidate OAuth flow interactively.
-2. Validate credential shape and candidate read-only Gmail access.
-3. Run focused and shared managed test lifecycles.
-4. Commit, push, and open/update the focused Gmail pull request.
-5. Promote through the configured lifecycle.
-6. Restart only the managed gateway/service through that lifecycle.
-7. Run read-only production Gmail smoke and confirm no Keychain timeout or
-   prompt.
+1. Interactive OAuth, credential validation, candidate read-only smoke,
+   focused tests, managed CI, remote CI, CodeQL, commit, push, and focused pull
+   request are complete.
+2. Production deployment was not run. Repository inspection found only manual
+   primary-checkout install/restart instructions, not an approved snapshotting
+   and rollback-capable promotion lifecycle.
+3. After review and merge, an authorized operator must use or establish an
+   approved production lifecycle before deploying the Gmail code, then run the
+   documented read-only production smoke.
 
 Gmail rollback:
 
-1. Preserve the original post-promotion failure.
-2. Deploy the preceding server revision through the same lifecycle.
-3. Restart and revalidate production health/read-only Gmail access.
-4. Keep the newly reauthenticated credential unless exposure is suspected; it
+1. Production rollback was not exercised because production deployment was not
+   run.
+2. Any later authorized lifecycle must preserve the preceding server revision,
+   restore it on post-promotion failure, restart, and revalidate read-only Gmail
+   access.
+3. Keep the newly reauthenticated credential unless exposure is suspected; it
    replaces an already-invalid value and is not a code rollback artifact.
 
 ### Review log
@@ -268,9 +283,11 @@ Gmail rollback:
   item or changed Gmail configuration.
 - Final helper staged review reported no significant issues before commit
   `bd41ab1d32ae67e21bbafc2d91003cca08068062`.
-- Pending: terminal fresh adversarial review for the tracker-normalized helper
-  commit and the final Gmail commit after OAuth validation and integration
-  coverage.
+- Gmail terminal adversarial review reported no actionable finding on exact
+  commit `7a23b266b683fbb74e651e46424f265250dbe1d3`.
+- Pending: terminal fresh adversarial review for the final tracker-normalized
+  helper commit. Its result will be recorded only in issue #23's ledger so the
+  reviewed diff remains unchanged.
 
 ### Checklist
 
@@ -294,22 +311,25 @@ Gmail rollback:
 
 - [x] Diagnose the invalid 128-byte credential and stable-backend requirement.
 - [x] Implement and locally validate the issue #15 Gmail backend.
-- [ ] Complete interactive OAuth reauthentication.
-- [ ] Pass candidate read-only Gmail smoke.
-- [ ] Commit, push, and open/update the Gmail pull request.
-- [ ] Promote through the configured lifecycle.
-- [ ] Pass production read-only Gmail validation.
+- [x] Complete interactive OAuth reauthentication.
+- [x] Pass candidate read-only Gmail smoke.
+- [x] Commit, push, and open the Gmail pull request.
+- [x] Inspect production lifecycle and record that safe promotion is
+  unavailable.
+- [x] Leave production unchanged rather than inventing an unsafe deployment.
 
 #### Integration and review
 
-- [ ] Confirm committed regressions in the shared cumulative integration pool.
-- [ ] Run the full managed `packages/e2e` CI lifecycle.
-- [ ] Resolve any failures and rerun all affected gates.
-- [ ] Obtain clean terminal adversarial reviews for exact handoff commits.
+- [x] Confirm committed regressions in the shared cumulative integration pool.
+- [x] Run the full managed `packages/e2e` CI lifecycle.
+- [x] Resolve failures and rerun all affected gates.
+- [x] Obtain a clean terminal adversarial review for the exact Gmail commit.
+- [x] Prepare the exact final helper-plan commit for terminal adversarial
+  review; record the result only in issue #23.
 
 #### Handoff
 
-- [ ] Mark this plan complete with final commit, PR, deployment, validation, and
-  rollback evidence.
-- [ ] Set issue #23 ledger to Ready for review.
-- [ ] Update both Todoist tasks with raw issue links and next review actions.
+- [x] Mark this plan ready for review with final PR, validation, deployment
+  limitation, and rollback evidence.
+- [x] Prepare issue #23 to be set to Ready for review after terminal review.
+- [x] Prepare both Todoist task review handoffs with raw issue links.
