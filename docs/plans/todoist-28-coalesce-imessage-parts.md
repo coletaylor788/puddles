@@ -2,6 +2,7 @@
 
 - **Status:** In progress - hardened correction reviewed, promotion pending
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
+- **Pull request:** https://github.com/coletaylor788/puddles/pull/34
 - **Last updated:** 2026-07-25
 - **Owner:** Cole Taylor
 
@@ -62,7 +63,8 @@ dispatched before their URL balloons. A narrow correction and the observed
 regression are implemented in an isolated pinned OpenClaw fixture; cumulative
 validation passed before review. Review-driven heuristic and timeout hardening
 now pass focused and cumulative tests with no actionable independent-review
-findings; promotion and safe redeployment remain.
+findings. Pull request #34 is awaiting required CI before merge and safe
+redeployment.
 
 ### Scope and acceptance criteria
 
@@ -256,6 +258,9 @@ No data migration or persistent message-state conversion is involved.
 - A fresh independent review of the hardened complete feature diff at `e2f5ce3`
   found no actionable high-confidence defects. Residual automated boundaries are
   the real debouncer timer implementation and the final Messages.app smoke test.
+- After review bookkeeping, the exact promotion commit `1e8fdaa` passed the
+  complete lifecycle again and a second fresh independent review found no
+  actionable high-confidence defects.
 
 ### Checklist
 
