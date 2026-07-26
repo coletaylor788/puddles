@@ -4,7 +4,7 @@ description: "Implement features safely from research through test-environment i
 compatibility: "Requires the target repository's existing build, test, deployment, and rollback tools. Uses repository-provided test and production lifecycles when available."
 metadata:
   author: Cole Taylor
-  version: "1.3.0"
+  version: "1.4.0"
 ---
 
 # Safe Feature Development
@@ -91,15 +91,36 @@ global safety or publication boundary.
 5. **Audit the full change**
    - Launch a fresh independent subagent that did not implement the change.
      Require it to invoke and follow the repository-local `adversarial-review`
-     skill against the complete feature diff.
-   - Resolve every actionable, high-confidence finding by returning to local
-     implementation, correcting it, redeploying to the test environment, and
-     rerunning applicable local gates plus the full configured integration test
-     pool. Then launch another fresh adversarial reviewer and repeat the full
-     audit until no actionable, high-confidence findings remain unresolved.
+     skill against the complete feature diff. Retain its worker handle for the
+     entire remediation loop.
+   - Triage every finding using engineering judgment before changing the
+     implementation. Accept and resolve concrete, well-supported defects that
+     materially affect requirements, correctness, safety, or regression risk.
+     Challenge speculative, duplicate, already-resolved, or non-actionable
+     feedback; do not make churn changes merely to satisfy a reviewer.
+   - For a significant finding you dispute, resume the same reviewer with the
+     contrary evidence and rationale, ask it to re-evaluate the concern, and
+     converge on an accepted fix, a revised finding, a withdrawal, or an explicit
+     residual risk or blocker. If focused evidence-based discussion cannot
+     resolve a material disagreement, escalate it for a decision instead of
+     repeating review cycles.
+   - After accepted fixes, return to local implementation, redeploy to the test
+     environment, and rerun applicable local gates plus the full configured
+     integration test pool. Then resume or restart that same reviewer through
+     the retained worker handle. Tell it which findings were addressed, disputed,
+     revised, or withdrawn, what files or behavior changed, and which validation
+     reran, and require it to re-check the complete current diff. Do not launch a
+     new review worker for a routine remediation re-check, and do not require a
+     new finding or code change in each round. Repeat with the same reviewer until
+     no actionable, high-confidence findings remain unresolved.
    - If the diff changes after a clear review for any reason, run the relevant
      validation again, redeploy and rerun the full configured integration pool
-     when the change can affect it, and obtain a fresh adversarial review.
+     when the change can affect it, then resume the same reviewer with the change
+     and validation summary for another complete-current-diff review.
+   - If the retained reviewer fails or cannot be resumed, launch a fresh
+     independent replacement, require a complete-current-diff review, and retain
+     the replacement's worker handle for the rest of the remediation loop. Never
+     skip or narrow review because the original worker is unavailable.
    - After all in-diff plan, checklist, and other bookkeeping is final, run one
      terminal fresh review against the exact commit to be handed off. Record the
      clean result and reviewed commit identifier only in the issue's allowed
@@ -138,7 +159,8 @@ Feature work is complete only when:
 
 - the requested behavior is implemented and documented;
 - all applicable local and test-environment gates are green;
-- the full-diff audit and fresh adversarial review are clean;
+- the reusable-worker full-diff audit loop and terminal fresh adversarial review
+  are clean;
 - managed processes and temporary state are cleaned up;
 - configured promotion and read-only production validation succeeded, or
   production was explicitly out of scope and promotion and rollback were proven
