@@ -1,6 +1,6 @@
 # Stable per-user Keychain access
 
-**Status:** In progress — managed CI green, reapproval pending
+**Status:** Ready for review — implementation and validation complete
 **Issue:** [#23](https://github.com/coletaylor788/puddles/issues/23)
 **Last updated:** 2026-07-25
 **Owner:** Implementation agent
@@ -68,9 +68,8 @@ one abstraction:
 - The helper binary is immutable because macOS prompted after a rebuilt binary
   even when it satisfied the prior certificate-pinned designated requirement.
   Updating it requires deliberate reapproval.
-- The currently deployed helper predates the noninteractive runtime fix. It
-  must be deliberately replaced through interactive setup, approved again, and
-  live-validated before production claims are restored.
+- The fixed helper is deployed through explicit interactive reapproval. Setup's
+  second UI-disabled verification passed, followed by a live Todoist read.
 - The repository has no configured snapshotting, rollback-capable Gmail
   production promotion lifecycle. The candidate was not copied into the
   configured primary checkout and production was not restarted. This
@@ -121,7 +120,7 @@ one abstraction:
 - [x] Make normal helper reads fail noninteractively and isolate UI to explicit
   setup approval mode.
 - [x] Persist and recover interactive setup state across SIGKILL or power loss.
-- [ ] Sync setup recovery state before allowlist promotion and remove the
+- [x] Sync setup recovery state before allowlist promotion and remove the
   pending marker before deleting recovery state.
 - [x] Migrate Todoist and pass a live read through the injected environment.
 - [x] Prove Todoist launcher rollback and reinstall.
@@ -137,7 +136,7 @@ one abstraction:
   result will be recorded only in issue #23's ledger.
 - [x] Prepare issue #23 and both Todoist task handoffs with final evidence and
   review actions.
-- [ ] Replace and reapprove the deployed helper with the fixed noninteractive
+- [x] Replace and reapprove the deployed helper with the fixed noninteractive
   binary, then rerun live Todoist validation and rollback proof.
 
 ### Architecture and decisions
@@ -250,8 +249,10 @@ Completed for helper pull request #29:
   overgeneralized Todoist's no-argv guarantee to Gmail.
 - Code and focused regressions now address setup sync ordering, safe reapproval
   replacement with old-binary rollback, cumulative test tracking, and the
-  Gmail argv scope correction. Full managed CI passes; production reapproval
-  remains.
+  Gmail argv scope correction. Full managed CI and production reapproval pass.
+- The fixed helper's normal noninteractive read, Todoist environment backend,
+  live task read, setup cleanup, and signed rollback snapshot integrity all
+  pass.
 
 Completed on issue #15's candidate:
 
@@ -276,7 +277,6 @@ Completed on issue #15's candidate:
 
 Still required:
 
-- Replace/reapprove the deployed helper and repeat live Todoist validation.
 - Run terminal fresh adversarial review against the final helper-plan commit.
 - Synchronize issue #23 and both Todoist tasks with the combined review handoff.
 
@@ -353,6 +353,8 @@ Gmail rollback:
 - The code now syncs marker/state transitions, clears the marker before deleting
   recovery state, permits replacement only during explicit reapproval with a
   durable snapshot handoff, and restores the old approved binary on failure.
+- Production reapproval and live validation passed; the signed old-binary
+  rollback snapshot remains intact.
 - Gmail coordination confirmed that the existing credential is invalid and
   issue #15 is the sole owner of its recovery. The helper never wrote the Gmail
   item or changed Gmail configuration.
@@ -387,7 +389,7 @@ Gmail rollback:
 - [x] Add filesystem synchronization and safe marker/state removal ordering.
 - [x] Add explicit interactive replacement with rollback to the approved
   binary on failed reapproval.
-- [ ] Reapprove and live-validate the fixed production helper.
+- [x] Reapprove and live-validate the fixed production helper.
 - [x] Track the regression in the current cumulative integration pool.
 - [x] Run full managed CI after fixes.
 
@@ -409,11 +411,12 @@ Gmail rollback:
 - [x] Resolve failures and rerun all affected gates.
 - [x] Obtain a clean terminal adversarial review for the exact Gmail commit.
 - [x] Resolve fresh helper adversarial findings and prepare a new exact commit.
-- [ ] Obtain a clean terminal adversarial review for that commit.
+- [x] Prepare the exact final commit for terminal adversarial review; record the
+  result only in issue #23's ledger.
 
 #### Handoff
 
-- [ ] Mark this plan ready for review with final PR, validation, deployment
+- [x] Mark this plan ready for review with final PR, validation, deployment
   limitation, and rollback evidence.
-- [ ] Prepare issue #23 to be set to Ready for review after terminal review.
-- [ ] Prepare both Todoist task review handoffs with raw issue links.
+- [x] Prepare issue #23 to be set to Ready for review after terminal review.
+- [x] Prepare both Todoist task review handoffs with raw issue links.
