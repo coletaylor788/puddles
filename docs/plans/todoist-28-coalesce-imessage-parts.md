@@ -1,6 +1,6 @@
 # Coalesce split iMessage message parts
 
-- **Status:** In progress - heuristic hardened, cumulative revalidation pending
+- **Status:** In progress - hardened correction validated, fresh review pending
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-25
 - **Owner:** Cole Taylor
@@ -61,8 +61,8 @@ Cole's link failure and showed that complete payload-referential questions were
 dispatched before their URL balloons. A narrow correction and the observed
 regression are implemented in an isolated pinned OpenClaw fixture; cumulative
 validation passed before review. Review-driven heuristic and timeout hardening
-now pass focused tests; cumulative revalidation, fresh review, merge, and safe
-redeployment remain.
+now pass focused and cumulative tests; fresh review, merge, and safe redeployment
+remain.
 
 ### Scope and acceptance criteria
 
@@ -207,6 +207,9 @@ redeployment remain.
 - Hardened focused coalescer and monitor suites pass 68 tests; common unrelated
   deictic questions remain instant and unmatched referential questions flush
   alone.
+- The complete managed lifecycle passes repository build and lint, 237 workspace
+  tests, 292 mapped OpenClaw tests, one candidate test, and verified candidate
+  deregistration with the hardened patch at `01ca706`.
 
 ### Rollout and rollback
 
@@ -295,7 +298,7 @@ No data migration or persistent message-state conversion is involved.
 - [ ] Obtain a clean independent review of the complete correction diff.
 - [x] Narrow the heuristic so common deictic questions remain immediate.
 - [x] Cover standalone held-question timeout and policy behavior.
-- [ ] Rerun the complete cumulative lifecycle after review hardening.
+- [x] Rerun the complete cumulative lifecycle after review hardening.
 - [ ] Merge the correction and confirm the cumulative workflow on `main`.
 - [ ] Deploy through the approved lifecycle and validate production read-only.
 - [ ] Return issue #28 and Todoist to Ready for review.
