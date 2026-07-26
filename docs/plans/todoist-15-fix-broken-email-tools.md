@@ -1,6 +1,6 @@
 # Fix broken Gmail tools
 
-- **Status:** In progress - validating merged current main
+- **Status:** Ready for review
 - **Issue:** https://github.com/coletaylor788/puddles/issues/15
 - **Last updated:** 2026-07-25
 - **Owner:** Gmail repair worker
@@ -60,10 +60,12 @@ Current `main` at `04b05a1de49662b7cb6787f544fdfd67c08ca138` is merged
 locally. The sole `packages/e2e/README.md` conflict was additive: the Gmail
 branch documented safe Python gates and Gmail regression coverage, while `main`
 documented reusable-reviewer workflow coverage. The resolution preserves both.
-Focused Gmail and full managed gates plus complete-current-diff review remain.
-The previous exact-commit review of `7a23b26` is superseded by this merge.
-Production deployment remains unrun because the repository has no safe
-configured Gmail promotion/rollback lifecycle.
+Focused Gmail and full managed gates pass on merge commit `fbbe69f`. One retained
+replacement reviewer found no actionable issue in the complete merged diff. The
+previous exact-commit review of `7a23b26` is superseded by this merge; the final
+commit will receive the required terminal fresh review and remote checks without
+further in-diff bookkeeping. Production deployment remains unrun because the
+repository has no safe configured Gmail promotion/rollback lifecycle.
 
 ### Scope and acceptance criteria
 
@@ -154,27 +156,26 @@ Completed for pushed candidate `c9dbabe`:
   content.
 - Adversarial review pass 18 found no actionable issue after both refresh
   entrypoints adopted the same validity and effective-grant invariant.
+- After merging current `main`, focused Gmail validation passed 166 safe tests,
+  Ruff, compilation, and diff checks.
+- The post-merge complete managed lifecycle passed 242 workspace tests (112
+  hooks, 26 cumulative E2E, 61 calendar, 43 secure Gmail), 166 safe Gmail tests,
+  292 mapped OpenClaw tests, and one candidate browser test; cleanup passed.
 
 Required for the current mainline refresh:
 
-- Rerun focused Gmail tests, lint, compilation, and the complete managed
-  lifecycle.
-- Use one retained replacement reviewer for the changed complete diff, then run
-  the required terminal fresh review on the exact final commit.
-- Push the merge, confirm PR #31 is mergeable, and wait for remote checks.
+- Commit and push this final bookkeeping, run the required terminal fresh review
+  on the exact commit, confirm PR #31 is mergeable, and wait for remote checks.
+  Record those post-commit results only in issue #15.
 
 ### Rollout and rollback
 
 Current handoff:
 
-1. Merge current `main` in the isolated branch and preserve both sides of the
-   cumulative lifecycle documentation.
-2. Pass focused Gmail and complete managed lifecycle validation.
-3. Resume one retained replacement reviewer until the complete merged diff is
-   clean, then finalize the in-diff plan.
-4. Commit and push final bookkeeping, obtain a clean terminal review of the exact
-   commit, and confirm PR #31 is mergeable with green checks.
-5. Hand off the reviewed PR with the explicit production lifecycle limitation.
+1. Commit and push this final in-diff bookkeeping.
+2. Obtain a clean terminal review of the exact commit without changing the diff,
+   and confirm PR #31 is mergeable with green checks.
+3. Hand off the reviewed PR with the explicit production lifecycle limitation.
 
 Future rollout requires an approved mechanism that snapshots the currently
 deployed Gmail server revision, atomically installs the reviewed revision
@@ -211,6 +212,11 @@ independent of code, unless exposure is suspected.
   required terminal fresh exact-commit review.
 - Current-main conflict resolution is additive and preserves Gmail lifecycle
   coverage plus the reusable-reviewer workflow coverage added by `main`.
+- Post-merge focused and managed validation is green.
+- The retained replacement reviewer examined the complete current diff after the
+  merge and found no actionable issue. Residual limitations are the documented
+  absence of production deployment and intentional exclusion of live mutation
+  tests.
 
 ### Checklist
 
@@ -234,7 +240,6 @@ independent of code, unless exposure is suspected.
 - [x] Finalize in-diff plan and checklist for terminal exact-commit review.
 - [x] Fetch current `main` and identify the sole README merge conflict.
 - [x] Merge current `main` and preserve cumulative lifecycle documentation.
-- [ ] Rerun focused Gmail and complete managed validation.
-- [ ] Complete the retained replacement-reviewer loop.
-- [ ] Finalize and push the conflict-free exact handoff commit.
-- [ ] Obtain terminal fresh exact-commit review and green remote checks.
+- [x] Rerun focused Gmail and complete managed validation.
+- [x] Complete the retained replacement-reviewer loop.
+- [x] Finalize in-diff bookkeeping for the conflict-free handoff commit.
