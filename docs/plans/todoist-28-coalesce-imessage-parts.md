@@ -407,6 +407,8 @@ review action.
   referential deadline.
 - Both disposable deployment worktrees were removed, their registrations were
   pruned, and the temporary Corepack shim was deleted.
+- PR #39 publishes this plan-only rollout closeout. Its cumulative Integration
+  and CodeQL pull-request checks passed.
 
 ### Rollout and rollback
 
@@ -516,6 +518,9 @@ No data migration or persistent message-state conversion is involved.
   real-timer case while retaining the long-gap case.
 - Fresh complete-diff review after exact real-timer remediation found no
   actionable high-confidence defects.
+- Fresh independent review of the complete third correction plus the rollout
+  closeout found no actionable high-confidence defects. The remaining manual
+  boundary is Cole's final Messages.app question-plus-link smoke.
 
 ### Checklist
 
