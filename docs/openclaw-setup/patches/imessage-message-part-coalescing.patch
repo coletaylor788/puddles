@@ -1267,7 +1267,7 @@ index e5c6a3c7ef..795d6b8ae2 100644
    });
  });
 diff --git a/extensions/imessage/src/monitor/coalesce.test.ts b/extensions/imessage/src/monitor/coalesce.test.ts
-index 5fd7162d78..565300e87b 100644
+index 5fd7162d78..45fbfb6517 100644
 --- a/extensions/imessage/src/monitor/coalesce.test.ts
 +++ b/extensions/imessage/src/monitor/coalesce.test.ts
 @@ -1,12 +1,18 @@
@@ -1289,7 +1289,7 @@ index 5fd7162d78..565300e87b 100644
    shouldCombineIMessagePayloadBucket,
  } from "./coalesce.js";
  import type { IMessagePayload } from "./types.js";
-@@ -209,6 +215,198 @@ describe("isStandaloneIMessageUrlPreviewPayload", () => {
+@@ -209,6 +215,204 @@ describe("isStandaloneIMessageUrlPreviewPayload", () => {
    });
  });
 
@@ -1308,6 +1308,12 @@ index 5fd7162d78..565300e87b 100644
 +      }),
 +    ).toBe(true);
 +    expect(isIMessageSplitLeadIn({ text: "How about this one?", hasMedia: false })).toBe(true);
++    expect(
++      isIMessageSplitLeadIn({
++        text: "Check this link, is that the one?",
++        hasMedia: false,
++      }),
++    ).toBe(true);
 +  });
 +
 +  it("matches a narrow punctuationless final question clause", () => {
@@ -1489,10 +1495,10 @@ index 5fd7162d78..565300e87b 100644
    it("combines a command row with a structurally marked URL balloon row", () => {
      const command = makePayload({ text: "summarize", guid: "row-1" });
 diff --git a/extensions/imessage/src/monitor/coalesce.ts b/extensions/imessage/src/monitor/coalesce.ts
-index 096146b162..0ce7c78b9f 100644
+index 096146b162..470e78993f 100644
 --- a/extensions/imessage/src/monitor/coalesce.ts
 +++ b/extensions/imessage/src/monitor/coalesce.ts
-@@ -18,12 +18,85 @@ export const MAX_COALESCED_TEXT_CHARS = 4000;
+@@ -18,12 +18,93 @@ export const MAX_COALESCED_TEXT_CHARS = 4000;
  export const MAX_COALESCED_ATTACHMENTS = 20;
  export const MAX_COALESCED_ENTRIES = 10;
  export const IMESSAGE_URL_BALLOON_BUNDLE_ID = "com.apple.messages.URLBalloonProvider";
@@ -1527,24 +1533,32 @@ index 096146b162..0ce7c78b9f 100644
 +  }
 +  const terminalQuestion = text.endsWith("?");
 +  const questionText = terminalQuestion ? text.slice(0, -1).trim() : text;
-+  const candidate = questionText.split(/(?:[.?!…]\s+|,\s+)/).at(-1)?.trim() ?? "";
-+  const candidateStart = questionText.length - candidate.length;
-+  const leadingText = questionText.slice(0, candidateStart);
++  const referentialCandidate = terminalQuestion
++    ? questionText
++    : (questionText.split(/[.?!…]\s+/).at(-1)?.trim() ?? "");
++  const referentialWords = referentialCandidate.split(/\s+/).filter(Boolean);
++  const matchesReferentialQuestion =
++    referentialWords.length > 0 &&
++    referentialWords.length <= IMESSAGE_SPLIT_REFERENTIAL_QUESTION_MAX_WORDS &&
++    (terminalQuestion || PUNCTUATIONLESS_QUESTION_PATTERN.test(referentialCandidate)) &&
++    PAYLOAD_REFERENCE_PATTERN.test(referentialCandidate) &&
++    (PAYLOAD_KIND_PATTERN.test(referentialCandidate) ||
++      PAYLOAD_COMPARISON_PATTERN.test(referentialCandidate));
++
++  const definiteScope = questionText.split(/[.?!…]\s+/).at(-1)?.trim() ?? "";
++  const definiteCandidate = definiteScope.split(/,\s+/).at(-1)?.trim() ?? "";
++  const candidateStart = definiteScope.length - definiteCandidate.length;
++  const leadingText = definiteScope.slice(0, candidateStart);
 +  const hasCommaDelimitedContext =
 +    /[\p{L}\p{N}]/u.test(leadingText) && /,\s+$/u.test(leadingText);
-+  const words = candidate.split(/\s+/).filter(Boolean);
-+  if (words.length === 0) {
-+    return false;
-+  }
-+  if (!terminalQuestion && !PUNCTUATIONLESS_QUESTION_PATTERN.test(candidate)) {
-+    return false;
-+  }
-+  return (
-+    words.length <= IMESSAGE_SPLIT_REFERENTIAL_QUESTION_MAX_WORDS &&
-+    ((PAYLOAD_REFERENCE_PATTERN.test(candidate) &&
-+      (PAYLOAD_KIND_PATTERN.test(candidate) || PAYLOAD_COMPARISON_PATTERN.test(candidate))) ||
-+      (hasCommaDelimitedContext && DEFINITE_PAYLOAD_QUESTION_PATTERN.test(candidate)))
-+  );
++  const definiteWords = definiteCandidate.split(/\s+/).filter(Boolean);
++  const matchesDefinitePayloadQuestion =
++    definiteWords.length > 0 &&
++    definiteWords.length <= IMESSAGE_SPLIT_REFERENTIAL_QUESTION_MAX_WORDS &&
++    hasCommaDelimitedContext &&
++    DEFINITE_PAYLOAD_QUESTION_PATTERN.test(definiteCandidate);
++
++  return matchesReferentialQuestion || matchesDefinitePayloadQuestion;
 +}
 +
 +/**
@@ -1579,7 +1593,7 @@ index 096146b162..0ce7c78b9f 100644
    if (/\s/.test(text)) {
      return false;
    }
-@@ -43,7 +116,7 @@ export function isStandaloneIMessageUrlPreviewPayload(payload: IMessagePayload):
+@@ -43,7 +124,7 @@ export function isStandaloneIMessageUrlPreviewPayload(payload: IMessagePayload):
      return false;
    }
    const text = (payload.text ?? "").trim();
@@ -1588,7 +1602,7 @@ index 096146b162..0ce7c78b9f 100644
  }
 
  // imsg omits `balloon_bundle_id` for non-balloon rows, so a present value is
-@@ -53,6 +126,58 @@ export function hasIMessageBalloonMetadata(payload: IMessagePayload): boolean {
+@@ -53,6 +134,58 @@ export function hasIMessageBalloonMetadata(payload: IMessagePayload): boolean {
    return typeof payload.balloon_bundle_id === "string" && payload.balloon_bundle_id.length > 0;
  }
 

@@ -29,7 +29,9 @@ The source patch classifies each eligible direct-message row:
   final comma-delimited `what is/what's the <payload noun>` clause may omit the
   deictic only when preceding setup contains a letter or number and ends in
   comma-plus-whitespace; punctuation-only and sentence-punctuation prefixes do
-  not qualify. It waits for a bounded split-send window.
+  not qualify. Comma parsing is isolated to that exception so existing deictic
+  questions keep their whole-question match. It waits for a bounded split-send
+  window.
 - **Payload:** a standalone HTTP(S) URL, a structurally standalone URL-preview
   balloon, or a real attachment. It joins an immediately preceding lead-in from
   the same account, conversation, and sender, then flushes immediately.
@@ -93,6 +95,7 @@ The patch adds regression coverage for:
   prompt and 669 ms URL-preview row gap;
 - punctuation-only prefixes remaining standalone questions;
 - period and exclamation prefixes not activating the comma-only exception;
+- existing deictic questions retaining payload nouns before an internal comma;
 - real debouncer timing across that 12.4-second gap;
 - repeated referential lead-ins retaining the first absolute deadline;
 - unmatched payload-referential question dispatching alone after the hold;

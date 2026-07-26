@@ -30,10 +30,9 @@ production timing shapes remain committed to the cumulative integration pool.
 
 ### Approach
 
-Treat the final comma-delimited clause as the candidate question when it passes
-the existing interrogative, payload-noun, and word-count guards. Preserve the
-existing deictic requirement generally, with one bounded addition for a
-preceded `what is/what's the <payload noun>` final clause. The preceding setup
+Preserve the existing whole-question/final-sentence candidate for deictic
+payload questions. Evaluate a separate final comma-delimited candidate only for
+the bounded `what is/what's the <payload noun>` addition. Its preceding setup
 must contain a Unicode letter or number and end in comma-plus-whitespace;
 delimiter-only prefixes and sentence-punctuation prefixes do not qualify. Do
 not hold that question under the 15-second referential policy without that
@@ -78,7 +77,11 @@ fixed. The implementation now requires comma-plus-whitespace, all 73 focused
 tests pass, and the regenerated patch reproduces all four files byte-for-byte.
 The complete managed lifecycle is green again, and a fresh independent reviewer
 found no actionable high-confidence defects. Final exact-commit review, merge,
-and rollout remain.
+and rollout remained, but terminal review found comma slicing changed the
+existing deictic matcher. Candidate handling is now separated, all 73 focused
+tests pass again, and patch reproduction is byte-for-byte. The complete
+lifecycle is green again, and fresh independent review found no actionable
+high-confidence defects. Final exact-commit review, merge, and rollout remain.
 
 ### Scope and acceptance criteria
 
@@ -122,9 +125,10 @@ and rollout remain.
 - Treat a punctuationless final clause as referential only when it starts with a
   narrow interrogative, remains at most eight words, and contains the existing
   deictic plus payload-kind or comparison signals.
-- Split the final candidate at a comma as well as sentence punctuation. Permit
-  `what is/what's the <payload noun>` without a deictic only when preceding
-  setup text contains a Unicode letter or number and its delimiter is
+- Preserve the existing terminal whole-question and punctuationless
+  final-sentence candidate for deictic matching. Use a separate final
+  comma-delimited candidate for `what is/what's the <payload noun>` only when
+  preceding setup contains a Unicode letter or number and ends in
   comma-plus-whitespace; support straight and curly apostrophes.
 - Use a 15-second absolute deadline only for payload-referential lead-ins.
   Preserve the first pending deadline when later eligible rows arrive, keep the
@@ -240,6 +244,9 @@ and rollout remain.
 - Terminal-review remediation additionally requires the lexical prefix to end
   in comma-plus-whitespace, so period and exclamation sentence boundaries do
   not activate the definite-payload exception.
+- Final terminal remediation separates candidates so comma parsing cannot
+  remove the payload noun from existing deictic questions such as
+  `Check this link, is that the one?`.
 
 ### Validation
 
@@ -324,6 +331,20 @@ and rollout remain.
 - The terminal-remediation managed lifecycle passes repository build and lint,
   238 workspace tests, 297 cumulative mapped OpenClaw tests, one isolated
   candidate test, and candidate deregistration.
+- After separating classifier candidates, all 73 focused tests pass, including
+  `Check this link, is that the one?`, while the exact production prompt and all
+  comma-boundary exclusions remain green. The regenerated patch reapplies
+  cleanly and reproduces all four files byte-for-byte.
+- The separated-candidate managed lifecycle passes repository build and lint,
+  238 workspace tests, 297 cumulative mapped OpenClaw tests, one isolated
+  candidate test, and candidate deregistration.
+- Fresh independent review verified the full diff, classifier semantics, patch
+  pre/postimage hashes, pinned preimages, test mapping, and documentation with
+  no actionable high-confidence findings. Residual validation gaps remain the
+  final post-deployment Messages.app smoke and transport reconnect/teardown
+  races not exercised by source-level notification mocks.
+- The final separated-candidate fixtures were removed and OpenClaw worktree
+  registrations pruned.
 - A fresh independent reviewer verified patch preimages, clean application,
   mapped test discovery, and the complete comma-boundary remediation with no
   actionable high-confidence findings. Residual validation gaps are the final
@@ -423,6 +444,13 @@ No data migration or persistent message-state conversion is involved.
   to comma-plus-whitespace and adds both negative regressions.
 - Fresh complete-diff review after the comma-boundary fix found no actionable
   high-confidence defects.
+- Terminal review of exact commit `d6a6c94a1dc161d356cd8cc454b440c674dc6a84`
+  found comma slicing regressed an existing deictic question shape by removing
+  its payload noun. The accepted correction preserves the original deictic
+  candidate and uses a separate candidate only for the definite-payload
+  exception.
+- Fresh complete-diff review after separating the candidates found no
+  actionable high-confidence defects.
 
 ### Checklist
 
