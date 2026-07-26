@@ -79,8 +79,10 @@ one abstraction:
 - Gmail configuration and credential were not changed by issue #23.
 - Issue #15 owns the Gmail backend repair. Its implementation, focused tests,
   lint, long-value fixtures, ACL checks, and independent review are complete.
-- Gmail is blocked on one interactive OAuth reauthentication because the
-  current `gmail-mcp` / `token` value is exactly 128 bytes and invalid JSON.
+- Cole reports that the interactive OAuth reauthentication completed. The
+  issue #15 candidate must now verify that the replacement is complete
+  authorized-user JSON, then run its read-only Gmail smoke and remaining
+  lifecycle gates.
 
 ### Scope and acceptance criteria
 
@@ -199,8 +201,8 @@ Completed on issue #15's candidate, pending reauthentication recheck:
 
 Still required:
 
-- Reauthenticate Gmail and confirm complete authorized-user JSON without
-  printing values.
+- Confirm the reauthenticated Gmail value is complete authorized-user JSON
+  without printing values.
 - Run candidate read-only Gmail API smoke.
 - Add/confirm cumulative `packages/e2e` regression registration and run the
   full managed `ci` lifecycle.
