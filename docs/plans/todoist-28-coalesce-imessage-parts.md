@@ -1,6 +1,6 @@
 # Coalesce split iMessage message parts
 
-- **Status:** In progress - timing correction validated and independently reviewed
+- **Status:** Complete - delayed link correction merged, deployed, and validated
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-26
 - **Owner:** Cole Taylor
@@ -59,7 +59,9 @@ review found that trailing debounce could restart that deadline, the
 implementation now preserves the first deadline and focused suites pass 72
 tests against the real debouncer. The revised complete lifecycle passes all
 repository and cumulative integration gates, and independent re-review found no
-actionable defects.
+actionable defects. The correction is merged, its exact `main` Integration run
+passed, and local production runs the reviewed artifact with healthy gateway and
+iMessage state.
 
 ### Scope and acceptance criteria
 
@@ -248,16 +250,24 @@ actionable defects.
   isolated browser-entrypoint candidate test, and candidate worktree
   deregistration. One stale candidate registration from an earlier run was
   separately removed and pruning confirmed no managed candidate remains.
+- Pull-request Integration and CodeQL passed, PR #36 merged as `a7e13fe`, and
+  the first Integration run on that exact `main` commit passed.
+- Local read-only production checks confirm OpenClaw 2026.6.11 at pinned source
+  `a1063aa`, valid configuration, a reachable loopback gateway, a healthy event
+  loop, the exact deadline implementation in the installed bundle, and a
+  running iMessage account with no last error.
 
 ### Rollout and rollback
 
 Production rollout uses
 `docs/openclaw-setup/patches/apply-and-deploy.sh` from a reviewed Puddles
 `main` worktree with `OPENCLAW_SRC` pinned to the approved OpenClaw checkout.
-`MINI_HOST` is unset for local deployment. The correction was deployed from a
-disposable pinned worktree; all five reviewed patches applied, the package and
-browser image rebuilt, and the gateway restarted. No automated live message was
-sent. Cole's review action is the documented question-plus-link smoke test.
+`MINI_HOST` was unset for local deployment. The absolute-deadline correction was
+deployed from disposable worktrees pinned to merged Puddles `a7e13fe` and
+OpenClaw `a1063aa`; all five reviewed patches applied, the package and browser
+image rebuilt, and the gateway restarted. Automated validation remained
+read-only and all disposable worktrees were removed. Cole's review action is the
+documented question-plus-link smoke test.
 
 Rollback:
 
@@ -316,6 +326,9 @@ No data migration or persistent message-state conversion is involved.
   no actionable high-confidence defects. Remaining validation boundaries are the
   final live Messages.app smoke and transport reconnect/teardown races not
   exercised by the real-debouncer fake-clock tests.
+- A terminal fresh reviewer found no actionable high-confidence defects in exact
+  commit `8353a3e747b568085242f0410b648bbd39f5b088`. Pull-request checks passed
+  before merge.
 
 ### Checklist
 
@@ -371,5 +384,6 @@ No data migration or persistent message-state conversion is involved.
 - [x] Rerun focused tests after the timing correction.
 - [x] Rerun the complete cumulative lifecycle after review correction.
 - [x] Obtain a clean independent review of the complete timing correction.
-- [ ] Merge, verify `main`, deploy locally, and validate production read-only.
-- [ ] Return issue #28 and Todoist to Ready for review after the second smoke fix.
+- [x] Merge the timing correction and verify the exact `main` Integration run.
+- [x] Deploy locally and validate production read-only.
+- [x] Document the Ready for review handoff for issue #28 and Todoist.
