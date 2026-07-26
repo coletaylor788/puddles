@@ -1,6 +1,6 @@
 # Coalesce split iMessage message parts
 
-- **Status:** Complete - delayed link correction merged, deployed, and validated
+- **Status:** In progress - ready for exact-commit review and promotion
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-26
 - **Owner:** Cole Taylor
@@ -11,12 +11,14 @@
 
 Messages.app can emit one composition as separate text, link-preview, and
 attachment rows. Processing each row immediately starts multiple agent turns,
-so the first response lacks later payload context. Image batching works, but two
-successive production link smokes still split after the link-aware classifier
-was deployed. The latest text omitted a terminal question mark and reached the
-runtime 12.4 seconds before its URL-preview row, so it missed both the narrow
-question classifier and the seven-second compatibility hold. The fix must cover
-that real link-preview shape without merging genuinely separate messages.
+so the first response lacks later payload context. Image batching works, but
+three successive production link smokes have split despite two deployed
+corrections. The prior failure omitted terminal punctuation and had a 12.4-second
+runtime gap; a 15-second absolute payload-referential deadline covered that
+measured shape in tests. The latest lead-in and URL-preview rows arrived only
+669 ms apart, but the payload question followed a comma and escaped the
+sentence-punctuation classifier, so a run started immediately. The fix must
+cover that exact clause shape without merging genuinely separate messages.
 
 ### Outcome
 
@@ -28,14 +30,17 @@ production timing shapes remain committed to the cumulative integration pool.
 
 ### Approach
 
-Recognize a bounded punctuationless payload question only when the final clause
-has an interrogative shape, deictic reference, and payload noun or narrow
-comparison phrase. Give that classified referential path a 15-second absolute
-deadline, while short captions keep the existing seven-second compatibility
-hold and ordinary messages remain immediate. Later eligible rows reuse the
-first deadline instead of restarting it. Exercise the real debouncer across the
-exact 12.4-second runtime gap through the cumulative `packages/e2e` runner, then
-deploy through the documented local wrapper.
+Treat the final comma-delimited clause as the candidate question when it passes
+the existing interrogative, payload-noun, and word-count guards. Preserve the
+existing deictic requirement generally, with one bounded addition for a
+preceded `what is/what's the <payload noun>` final clause. The preceding setup
+must contain a Unicode letter or number; delimiter-only prefixes do not qualify.
+Do not hold that question under the 15-second referential policy without lexical
+setup text. The existing seven-second unfinished-caption fallback remains
+unchanged. Keep the 15-second first absolute deadline and every existing
+exclusion unchanged. Add Cole's exact lead-in plus the 669 ms URL-preview timing
+to the real-debouncer regressions exposed through cumulative `packages/e2e`,
+then deploy only through the documented local wrapper.
 
 ### Safety and rollout
 
@@ -50,18 +55,23 @@ Rollback disables coalescing or redeploys the prior reviewed patch stack.
 
 ### State
 
-The first link correction is merged, validated, and deployed, but Cole's second
-live question-plus-link smoke still split. Read-only correlation found Messages
-rows 6813/6814 only 0.8 seconds apart, while their OpenClaw runs began 12.4
-seconds apart. The correction recognizes the punctuationless final question and
-gives only payload-referential lead-ins a 15-second absolute deadline. After
-review found that trailing debounce could restart that deadline, the
-implementation now preserves the first deadline and focused suites pass 72
-tests against the real debouncer. The revised complete lifecycle passes all
-repository and cumulative integration gates, and independent re-review found no
-actionable defects. The correction is merged, its exact `main` Integration run
-passed, and local production runs the reviewed artifact with healthy gateway and
-iMessage state.
+The first two corrections are merged, validated, and deployed. The second
+correction recognized the punctuationless final question, preserved a
+15-second first absolute deadline, passed 72 focused tests plus the cumulative
+lifecycle, and reached healthy production. Cole's third live question-plus-link
+smoke nevertheless failed at 2026-07-26T20:38:08.790Z. Read-only correlation
+found Messages rows 6817/6818 at 20:37:36.809Z and 20:37:37.477Z, only 669 ms
+apart. The first run started at 20:37:38.151Z and finished at 20:37:52.219Z;
+the URL run then started at 20:37:52.905Z. The classifier examined `New test,
+what's the link` as one sentence clause, so its interrogative guard missed the
+comma-delimited final question; the final question also uses the definite
+article rather than the existing deictic tokens. A clean pinned fixture now
+implements the narrow clause correction. Independent review found
+punctuation-only prefixes could incorrectly count as setup. The implementation
+now requires lexical setup, all 73 focused tests pass, and the remediated patch
+reproduces all four files byte-for-byte. The complete managed lifecycle is green
+again, and a fresh replacement reviewer found no actionable high-confidence
+defects. Final bookkeeping, exact-commit review, merge, and rollout remain.
 
 ### Scope and acceptance criteria
 
@@ -71,6 +81,8 @@ iMessage state.
   by a committed regression and produces one logical inbound turn.
 - The latest post-deployment failure is correlated by row and runtime-start
   time, and its 12.4-second boundary is covered by a committed regression.
+- The third post-deployment failure is correlated by Messages row and agent-run
+  timing, proving classifier bypass rather than delayed URL-preview arrival.
 - Short payload-referential questions may wait for the bounded split-send
   window needed for observed URL previews; unrelated complete questions remain
   immediate.
@@ -103,6 +115,10 @@ iMessage state.
 - Treat a punctuationless final clause as referential only when it starts with a
   narrow interrogative, remains at most eight words, and contains the existing
   deictic plus payload-kind or comparison signals.
+- Split the final candidate at a comma as well as sentence punctuation. Permit
+  `what is/what's the <payload noun>` without a deictic only when preceding
+  setup text contains a Unicode letter or number; support straight and curly
+  apostrophes.
 - Use a 15-second absolute deadline only for payload-referential lead-ins.
   Preserve the first pending deadline when later eligible rows arrive, keep the
   existing seven-second compatibility deadline for short unfinished captions,
@@ -197,6 +213,23 @@ iMessage state.
 - The complete source patch was regenerated from the minimal pinned fixture,
   reapplied to a fresh detached fixture, and compared byte-for-byte across all
   four patched source and test files.
+- Third reopened correction: evaluate a final comma-delimited clause through the
+  existing narrow payload-question guards. Permit `what is/what's the <payload
+  noun>` only when a preceding setup clause is present, so `New test, what's the
+  link` receives the bounded referential hold while a standalone punctuated
+  question and ordinary complete prose remain instant. A punctuationless
+  three-word standalone question retains the pre-existing seven-second caption
+  fallback rather than being upgraded to 15 seconds.
+- The clean pinned fixture implements the exact production prompt,
+  `Okay you failed. New test, what’s the link`, adds its 669 ms row timing to the
+  monitor table, and runs the same prompt through the real debouncer while
+  retaining the prior long-gap timing boundary.
+- The complete source patch was regenerated from that fixture, normalized only
+  for patch-file whitespace, applied to a second pinned fixture, and reproduced
+  all four patched source and test files byte-for-byte.
+- Review remediation requires lexical setup before the definite-payload
+  exception; punctuation-only delimiter prefixes remain ordinary standalone
+  questions.
 
 ### Validation
 
@@ -256,18 +289,39 @@ iMessage state.
   `a1063aa`, valid configuration, a reachable loopback gateway, a healthy event
   loop, the exact deadline implementation in the installed bundle, and a
   running iMessage account with no last error.
+- Cole's first manual question-plus-link smoke after that deployment failed.
+  Read-only correlation identified the comma-clause classifier bypass.
+- The corrected focused coalescer and monitor suites pass all 73 tests. Coverage
+  includes the exact curly-apostrophe prompt, the 669 ms URL-preview timing,
+  the real debouncer, standalone punctuated questions, and unrelated comma
+  clauses.
+- The exported patch applies cleanly to pinned OpenClaw `a1063aa` and its four
+  outputs match the focused-test fixture byte-for-byte.
+- The third-correction managed lifecycle passes repository build and lint, 238
+  workspace tests, 297 cumulative mapped OpenClaw tests, one isolated
+  browser-entrypoint candidate test, and candidate deregistration.
+- After review remediation, the 73 focused tests pass again, including
+  punctuation-only comma and sentence-delimiter prefixes. The regenerated patch
+  reapplies cleanly and reproduces all four fixture files byte-for-byte.
+- The post-remediation managed lifecycle passes repository build and lint, 238
+  workspace tests, 297 cumulative mapped OpenClaw tests, one isolated candidate
+  test, and candidate deregistration.
+- Both disposable pinned fixtures used to generate and verify the source patch
+  were removed and OpenClaw worktree registrations pruned.
 
 ### Rollout and rollback
 
 Production rollout uses
 `docs/openclaw-setup/patches/apply-and-deploy.sh` from a reviewed Puddles
 `main` worktree with `OPENCLAW_SRC` pinned to the approved OpenClaw checkout.
-`MINI_HOST` was unset for local deployment. The absolute-deadline correction was
-deployed from disposable worktrees pinned to merged Puddles `a7e13fe` and
-OpenClaw `a1063aa`; all five reviewed patches applied, the package and browser
-image rebuilt, and the gateway restarted. Automated validation remained
-read-only and all disposable worktrees were removed. Cole's review action is the
-documented question-plus-link smoke test.
+`MINI_HOST` was unset for the last local deployment. The absolute-deadline
+correction was deployed from disposable worktrees pinned to merged Puddles
+`a7e13fe` and OpenClaw `a1063aa`; all five reviewed patches applied, the package
+and browser image rebuilt, and the gateway restarted. Automated validation
+remained read-only and all disposable worktrees were removed. The third
+correction is reproduced in the managed test environment and independently
+reviewed; after terminal exact-commit review and merge, deploy it locally with
+`MINI_HOST` unset and repeat the read-only health checks.
 
 Rollback:
 
@@ -329,6 +383,19 @@ No data migration or persistent message-state conversion is involved.
 - A terminal fresh reviewer found no actionable high-confidence defects in exact
   commit `8353a3e747b568085242f0410b648bbd39f5b088`. Pull-request checks passed
   before merge.
+- Cole reopened the task after the reviewed and deployed absolute-deadline
+  correction still failed a live link smoke. A fresh complete-diff review is
+  required after the next evidence-driven correction.
+- The third-correction reviewer found that a length-only setup check accepted
+  punctuation-only prefixes. The accepted correction requires a Unicode letter
+  or number before the final clause and adds direct negative regressions.
+- The original completed reviewer cannot be resumed through the available agent
+  interface; a fresh independent replacement must review the complete
+  post-remediation diff.
+- The fresh replacement reviewer verified the complete remediated diff,
+  including Unicode-regex runtime support, test discovery, and the four-file
+  OpenClaw patch, and found no actionable high-confidence defects. The residual
+  validation gap is the final live Messages.app smoke after deployment.
 
 ### Checklist
 
@@ -387,3 +454,11 @@ No data migration or persistent message-state conversion is involved.
 - [x] Merge the timing correction and verify the exact `main` Integration run.
 - [x] Deploy locally and validate production read-only.
 - [x] Document the Ready for review handoff for issue #28 and Todoist.
+- [x] Correlate the third failed production link smoke across Messages and
+  OpenClaw timing.
+- [x] Add a committed real-path regression for the newly observed failure.
+- [x] Correct the demonstrated boundary without broadening unrelated batching.
+- [x] Rerun the complete cumulative lifecycle after 73 focused tests pass.
+- [x] Obtain a clean independent review of the complete third correction.
+- [ ] Merge, verify `main`, deploy locally, and validate production read-only.
+- [ ] Return issue #28 and Todoist to Ready for review after the third smoke fix.
