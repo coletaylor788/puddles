@@ -1,6 +1,6 @@
 # Coalesce split iMessage message parts
 
-- **Status:** In progress - ready for final exact-commit review and promotion
+- **Status:** In progress - synchronizing current main before promotion
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-26
 - **Owner:** Cole Taylor
@@ -81,7 +81,10 @@ and rollout remained, but terminal review found comma slicing changed the
 existing deictic matcher. Candidate handling is now separated, all 73 focused
 tests pass again, and patch reproduction is byte-for-byte. The complete
 lifecycle is green again, and fresh independent review found no actionable
-high-confidence defects. Final exact-commit review, merge, and rollout remain.
+high-confidence defects. Exact commit `b99bff1f` also passed terminal review,
+and PR #38 CodeQL checks are green, but current `main` conflicts with the branch.
+Synchronizing `main` will require repeated lifecycle validation and terminal
+review before merge.
 
 ### Scope and acceptance criteria
 
@@ -345,6 +348,8 @@ high-confidence defects. Final exact-commit review, merge, and rollout remain.
   races not exercised by source-level notification mocks.
 - The final separated-candidate fixtures were removed and OpenClaw worktree
   registrations pruned.
+- PR #38 passed all CodeQL checks at exact reviewed commit `b99bff1f`, but
+  GitHub reports the branch conflicts with current `main`.
 - A fresh independent reviewer verified patch preimages, clean application,
   mapped test discovery, and the complete comma-boundary remediation with no
   actionable high-confidence findings. Residual validation gaps are the final
@@ -451,6 +456,8 @@ No data migration or persistent message-state conversion is involved.
   exception.
 - Fresh complete-diff review after separating the candidates found no
   actionable high-confidence defects.
+- Terminal fresh review found no actionable high-confidence defects in exact
+  commit `b99bff1f42f2fda18c01f1291a0a8a5082272486`.
 
 ### Checklist
 
@@ -513,7 +520,7 @@ No data migration or persistent message-state conversion is involved.
   OpenClaw timing.
 - [x] Add a committed real-path regression for the newly observed failure.
 - [x] Correct the demonstrated boundary without broadening unrelated batching.
-- [x] Rerun the complete cumulative lifecycle after focused tests pass.
-- [x] Obtain a clean independent review of the complete third correction.
+- [ ] Rerun the complete cumulative lifecycle after syncing current `main`.
+- [ ] Obtain a clean independent review of the synchronized third correction.
 - [ ] Merge, verify `main`, deploy locally, and validate production read-only.
 - [ ] Return issue #28 and Todoist to Ready for review after the third smoke fix.
