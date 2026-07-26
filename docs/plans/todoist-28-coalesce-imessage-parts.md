@@ -1,6 +1,6 @@
 # Coalesce split iMessage message parts
 
-- **Status:** In progress - hardened correction reviewed, promotion pending
+- **Status:** Complete - 2026-07-25
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Pull request:** https://github.com/coletaylor788/puddles/pull/34
 - **Last updated:** 2026-07-25
@@ -56,15 +56,12 @@ Rollback disables coalescing and redeploys the prior reviewed patch stack.
 
 ### State
 
-The original coalescing patch is merged and deployed, and the cumulative
-integration lifecycle is active on `main`. Read-only correlation reproduced
-Cole's link failure and showed that complete payload-referential questions were
-dispatched before their URL balloons. A narrow correction and the observed
-regression are implemented in an isolated pinned OpenClaw fixture; cumulative
-validation passed before review. Review-driven heuristic and timeout hardening
-now pass focused and cumulative tests with no actionable independent-review
-findings. Pull request #34 is awaiting required CI before merge and safe
-redeployment.
+The corrected coalescing patch is merged, validated on `main`, and deployed
+locally. Read-only correlation reproduced Cole's link failure and showed that
+complete payload-referential questions dispatched before their URL balloons.
+The narrowed heuristic and timeout hardening pass focused and cumulative tests
+with no actionable independent-review findings. The installed artifact contains
+the reviewed matcher, and the gateway and iMessage provider are healthy.
 
 ### Scope and acceptance criteria
 
@@ -212,13 +209,21 @@ redeployment.
 - The complete managed lifecycle passes repository build and lint, 237 workspace
   tests, 292 mapped OpenClaw tests, one candidate test, and verified candidate
   deregistration with the hardened patch at `01ca706`.
+- The exact final PR commit passed the same complete lifecycle, CodeQL, and
+  pull-request Integration checks before merge.
+- Read-only post-deployment checks confirm OpenClaw 2026.6.11 at the pinned
+  `a1063aa` source, loopback gateway connectivity, the exact narrowed matcher in
+  the installed bundle, and a running iMessage account with no last error.
 
 ### Rollout and rollback
 
 Production rollout uses
 `docs/openclaw-setup/patches/apply-and-deploy.sh` from a reviewed Puddles
 `main` worktree with `OPENCLAW_SRC` pinned to the approved OpenClaw checkout.
-`MINI_HOST` is unset for local deployment.
+`MINI_HOST` is unset for local deployment. The correction was deployed from a
+disposable pinned worktree; all five reviewed patches applied, the package and
+browser image rebuilt, and the gateway restarted. No automated live message was
+sent. Cole's review action is the documented question-plus-link smoke test.
 
 Rollback:
 
@@ -261,6 +266,10 @@ No data migration or persistent message-state conversion is involved.
 - After review bookkeeping, the exact promotion commit `1e8fdaa` passed the
   complete lifecycle again and a second fresh independent review found no
   actionable high-confidence defects.
+- Pull request #34 merged as `a4bde1f`; the first Integration run on that exact
+  `main` commit passed.
+- A third fresh independent review of the exact PR commit `691010e` found no
+  actionable high-confidence defects before merge.
 
 ### Checklist
 
@@ -307,6 +316,6 @@ No data migration or persistent message-state conversion is involved.
 - [x] Narrow the heuristic so common deictic questions remain immediate.
 - [x] Cover standalone held-question timeout and policy behavior.
 - [x] Rerun the complete cumulative lifecycle after review hardening.
-- [ ] Merge the correction and confirm the cumulative workflow on `main`.
-- [ ] Deploy through the approved lifecycle and validate production read-only.
-- [ ] Return issue #28 and Todoist to Ready for review.
+- [x] Merge the correction and confirm the cumulative workflow on `main`.
+- [x] Deploy through the approved lifecycle and validate production read-only.
+- [x] Return issue #28 and Todoist to Ready for review.
