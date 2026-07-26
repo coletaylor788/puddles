@@ -1,6 +1,6 @@
 # Coalesce split iMessage message parts
 
-- **Status:** In progress - second production link failure under investigation
+- **Status:** In progress - timing correction validated and independently reviewed
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-26
 - **Owner:** Cole Taylor
@@ -30,10 +30,11 @@ production timing shapes remain committed to the cumulative integration pool.
 
 Recognize a bounded punctuationless payload question only when the final clause
 has an interrogative shape, deictic reference, and payload noun or narrow
-comparison phrase. Give that classified referential path a 15-second cap, while
-short captions keep the existing seven-second compatibility hold and ordinary
-messages remain immediate. Add the exact observed prompt and 12.4-second runtime
-gap to focused tests exposed through the cumulative `packages/e2e` runner, then
+comparison phrase. Give that classified referential path a 15-second absolute
+deadline, while short captions keep the existing seven-second compatibility
+hold and ordinary messages remain immediate. Later eligible rows reuse the
+first deadline instead of restarting it. Exercise the real debouncer across the
+exact 12.4-second runtime gap through the cumulative `packages/e2e` runner, then
 deploy through the documented local wrapper.
 
 ### Safety and rollout
@@ -52,9 +53,13 @@ Rollback disables coalescing or redeploys the prior reviewed patch stack.
 The first link correction is merged, validated, and deployed, but Cole's second
 live question-plus-link smoke still split. Read-only correlation found Messages
 rows 6813/6814 only 0.8 seconds apart, while their OpenClaw runs began 12.4
-seconds apart. The text was “New topic. Have a test for you. What link is this”:
-its punctuationless final question clause bypassed the classifier, and the
-runtime gap also exceeds the seven-second compatibility hold.
+seconds apart. The correction recognizes the punctuationless final question and
+gives only payload-referential lead-ins a 15-second absolute deadline. After
+review found that trailing debounce could restart that deadline, the
+implementation now preserves the first deadline and focused suites pass 72
+tests against the real debouncer. The revised complete lifecycle passes all
+repository and cumulative integration gates, and independent re-review found no
+actionable defects.
 
 ### Scope and acceptance criteria
 
@@ -96,8 +101,9 @@ runtime gap also exceeds the seven-second compatibility hold.
 - Treat a punctuationless final clause as referential only when it starts with a
   narrow interrogative, remains at most eight words, and contains the existing
   deictic plus payload-kind or comparison signals.
-- Use a 15-second per-entry hold only for payload-referential lead-ins. Preserve
-  the existing seven-second compatibility hold for short unfinished captions
+- Use a 15-second absolute deadline only for payload-referential lead-ins.
+  Preserve the first pending deadline when later eligible rows arrive, keep the
+  existing seven-second compatibility deadline for short unfinished captions,
   and do not widen ordinary text batching.
 - Scope pending state by account, valid conversation anchor, and sender.
 - Preserve limits of 4,000 text characters, 20 attachments, and 10 source rows.
@@ -177,6 +183,18 @@ runtime gap also exceeds the seven-second compatibility hold.
   OpenClaw runs began 12.4 seconds apart. The source patch must recognize the
   exact punctuationless final question and use the debouncer's per-entry timing
   hook for a 15-second referential hold.
+- The fixture extracts a bounded trailing interrogative clause, reuses the
+  existing deictic and payload-kind signals, and leaves declarative
+  punctuationless text instant.
+- The monitor assigns 15 seconds only when the default seven-second compatibility
+  timing is active. Explicit user-configured iMessage debounce timing remains
+  authoritative.
+- The monitor records the first compatibility deadline per coalescing key,
+  resolves later debounce intervals against its remaining time, and clears only
+  the matching deadline when that bucket flushes.
+- The complete source patch was regenerated from the minimal pinned fixture,
+  reapplied to a fresh detached fixture, and compared byte-for-byte across all
+  four patched source and test files.
 
 ### Validation
 
@@ -220,9 +238,16 @@ runtime gap also exceeds the seven-second compatibility hold.
 - Read-only post-deployment checks confirm OpenClaw 2026.6.11 at the pinned
   `a1063aa` source, loopback gateway connectivity, the exact narrowed matcher in
   the installed bundle, and a running iMessage account with no last error.
-- Cole's second live smoke still split after deployment. Correlation establishes
-  the exact prompt and timing root cause; validation remains incomplete until
-  committed classifier, duration, and one-turn regressions pass.
+- Focused coalescer and monitor suites pass 72 tests. They exercise the exact
+  punctuationless prompt through the real debouncer across its 12.4-second gap,
+  prove payload arrival produces one merged dispatch, prove repeated lead-ins do
+  not extend the first deadline, reject declarative text, and preserve explicit
+  timing overrides.
+- The reviewed candidate passes the complete managed lifecycle with repository
+  build and lint, 238 workspace tests, 296 cumulative mapped OpenClaw tests, one
+  isolated browser-entrypoint candidate test, and candidate worktree
+  deregistration. One stale candidate registration from an earlier run was
+  separately removed and pruning confirmed no managed candidate remains.
 
 ### Rollout and rollback
 
@@ -282,6 +307,15 @@ No data migration or persistent message-state conversion is involved.
 - Cole reopened the task after the deployed question-plus-link smoke still
   split, with an observed longer delay for links than images. Fresh validation
   and independent review are required after the timing correction.
+- The timing-correction review found that repeated eligible rows could restart
+  the generic trailing-debounce timer and that the measured-gap regression used
+  a mock rather than the real clock. The implementation now preserves the first
+  absolute deadline, both real-timer regressions pass, and the complete lifecycle
+  is green.
+- A fresh replacement reviewer re-checked the complete corrected diff and found
+  no actionable high-confidence defects. Remaining validation boundaries are the
+  final live Messages.app smoke and transport reconnect/teardown races not
+  exercised by the real-debouncer fake-clock tests.
 
 ### Checklist
 
@@ -332,9 +366,10 @@ No data migration or persistent message-state conversion is involved.
 - [x] Deploy through the approved lifecycle and validate production read-only.
 - [x] Return issue #28 and Todoist to Ready for review.
 - [x] Correlate the second post-deployment link smoke by row and dispatch time.
-- [ ] Add a regression for the measured link-preview delay boundary.
-- [ ] Correct only the bounded payload-referential link timing path.
-- [ ] Rerun focused tests and the complete cumulative lifecycle.
-- [ ] Obtain a clean independent review of the complete timing correction.
+- [x] Add a regression for the measured link-preview delay boundary.
+- [x] Correct only the bounded payload-referential link timing path.
+- [x] Rerun focused tests after the timing correction.
+- [x] Rerun the complete cumulative lifecycle after review correction.
+- [x] Obtain a clean independent review of the complete timing correction.
 - [ ] Merge, verify `main`, deploy locally, and validate production read-only.
 - [ ] Return issue #28 and Todoist to Ready for review after the second smoke fix.
