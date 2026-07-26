@@ -60,9 +60,9 @@ one abstraction:
 - Normal helper reads must explicitly forbid authentication UI. Initial setup
   uses a separate approval mode and then requires a noninteractive verification
   read before declaring approval durable.
-- Gmail OAuth was the only required interactive action. The browser flow wrote
-  the replacement credential through the reviewed long-value path; no command
-  printed, copied, or persisted the credential outside Keychain.
+- Gmail OAuth was Gmail's only required interactive action. The browser flow
+  wrote the replacement credential through the reviewed long-value path; no
+  command printed, copied, or persisted the credential outside Keychain.
 - Live Gmail validation is read-only. Tests that mutate a mailbox remain
   disabled outside explicit fixtures.
 - The helper binary is immutable because macOS prompted after a rebuilt binary
@@ -74,10 +74,11 @@ one abstraction:
   production promotion lifecycle. The candidate was not copied into the
   configured primary checkout and production was not restarted. This
   limitation is explicit in the focused Gmail plan and pull request.
-- Roll back Todoist by restoring its package-generated launcher. Roll back
-  Gmail by deploying the preceding server revision and restarting through the
-  configured lifecycle. Credential rotation is required only if exposure is
-  suspected, not for routine code rollback.
+- Roll back Todoist by restoring its package-generated launcher. Gmail
+  production rollback is unavailable and unexercised until an approved
+  lifecycle is established; that future lifecycle must preserve and restore
+  the preceding server revision. Credential rotation is required only if
+  exposure is suspected, not for routine code rollback.
 
 ## Agent details
 
@@ -101,13 +102,13 @@ one abstraction:
   CodeQL checks pass.
 - Gmail production deployment was not run because no approved snapshotting and
   rollback-capable promotion lifecycle exists.
-- Terminal review of helper-plan commit `0cf4370` found three actionable
+- Historical terminal review of helper-plan commit `0cf4370` found three actionable
   issues: runtime reads allowed Keychain UI, interactive setup lacked durable
   SIGKILL recovery, and this plan overstated Gmail production evidence.
-- All three findings are fixed locally. Focused shell syntax, production Swift
-  compilation, prompt-proof helper lifecycle, cumulative helper regression,
-  and the complete managed CI lifecycle pass. Exact-commit adversarial review
-  remains.
+- All three findings are fixed. Helper exact commit
+  `1cb9ad3db1e43a47f3f69122eb52b5e14cf41692` has a clean retained review,
+  and all focused, cumulative, and managed lifecycle gates pass. Only the
+  docs-only final plan commit requires recheck.
 
 ### Scope and acceptance criteria
 
@@ -400,6 +401,9 @@ Gmail rollback:
   resolution.
 - Retained helper review reported no actionable finding on exact commit
   `1cb9ad3db1e43a47f3f69122eb52b5e14cf41692`.
+- Docs-only review of `d757e39` found three contradictions in Gmail rollback,
+  interactive-action scope, and historical review status; all are corrected in
+  the final plan candidate.
 - Pending: docs-only terminal recheck of the final combined plan commit. Its
   result will be recorded only in issue #23's ledger so the reviewed diff
   remains unchanged.
