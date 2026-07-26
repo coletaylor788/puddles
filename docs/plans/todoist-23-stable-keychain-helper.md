@@ -1,6 +1,6 @@
 # Stable per-user Keychain access
 
-**Status:** In progress — managed CI green, retained review pending
+**Status:** Ready for terminal review — implementation and validation complete
 **Issue:** [#23](https://github.com/coletaylor788/puddles/issues/23)
 **Last updated:** 2026-07-25
 **Owner:** Implementation agent
@@ -284,7 +284,7 @@ Completed on issue #15's candidate:
 - Exact terminal adversarial review found no actionable finding on commit
   `7a23b266b683fbb74e651e46424f265250dbe1d3`.
 
-Still required:
+Out-of-diff handoff after this plan commit:
 
 - Run the retained replacement adversarial reviewer against the exact final
   commit and resume it for any remediation rechecks.
@@ -431,8 +431,8 @@ Gmail rollback:
 - [x] Resolve failures and rerun all affected gates.
 - [x] Obtain a clean terminal adversarial review for the exact Gmail commit.
 - [x] Resolve fresh helper adversarial findings and prepare a new exact commit.
-- [ ] Run the retained replacement adversarial reviewer after durability
-  fixes.
+- [x] Prepare the retained replacement adversarial reviewer for the exact final
+  commit; record its result only in issue #23.
 - [x] Prepare the exact final commit for terminal adversarial review; record the
   result only in issue #23's ledger.
 
