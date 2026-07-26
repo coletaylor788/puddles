@@ -1,6 +1,6 @@
 # Coalesce split iMessage message parts
 
-- **Status:** In progress - ready for synchronized exact-commit review
+- **Status:** Complete - ready for review
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-26
 - **Owner:** Cole Taylor
@@ -89,8 +89,18 @@ value was asserted only against resolved policy rather than exercised through
 the real debouncer. Both 669 ms and 12.416-second paths now run through the real
 debouncer, all 74 focused tests pass, and patch reproduction is byte-for-byte.
 The complete lifecycle is green again, and fresh independent review found no
-actionable high-confidence defects. Final exact-commit review, merge, and
-rollout remain.
+actionable high-confidence defects. PR #38 merged as exact `main` commit
+`e82db0e6441496f06acae4dd066804ef7d526c14`; its Integration and CodeQL runs
+passed. The reviewed stack was deployed locally from clean disposable
+worktrees pinned to that Puddles commit and OpenClaw `a1063aa`; all five
+patches applied, the package and browser image rebuilt, the gateway restarted,
+and no SSH was used. Read-only checks confirm valid configuration, a reachable
+active gateway, a healthy event loop, a running error-free iMessage account,
+enabled coalescing and attachment ingestion, and the exact reviewed classifier
+and deadline logic in the installed bundle. Both disposable deployment
+worktrees and their registrations were removed. The implementation and local
+rollout are complete; Cole's final Messages.app smoke remains the manual
+review action.
 
 ### Scope and acceptance criteria
 
@@ -382,20 +392,35 @@ rollout remain.
   actionable high-confidence findings. Residual validation gaps are the final
   post-deployment Messages.app smoke and transport reconnect/teardown races not
   exercised by source-level notification mocks.
+- PR #38 merged as `e82db0e6441496f06acae4dd066804ef7d526c14`.
+  Integration run `30222444716` and CodeQL run `30222444475` passed on that
+  exact `main` commit.
+- The local deployment wrapper completed from clean disposable Puddles and
+  OpenClaw worktrees pinned to `e82db0e` and `a1063aa`. It applied all five
+  patches, built and installed OpenClaw, ran doctor, restarted the gateway,
+  rebuilt the browser image, and recreated the browser-agent runtime. The
+  read-only production checks passed: OpenClaw reports `2026.6.11 (a1063aa)`,
+  the active config is valid, the loopback gateway is reachable and active, the
+  event loop is not degraded, iMessage is running with no last error, both
+  coalescing and attachment ingestion are enabled, and the installed bundle
+  contains the separate referential/definite candidates plus the 15-second
+  referential deadline.
+- Both disposable deployment worktrees were removed, their registrations were
+  pruned, and the temporary Corepack shim was deleted.
 
 ### Rollout and rollback
 
 Production rollout uses
 `docs/openclaw-setup/patches/apply-and-deploy.sh` from a reviewed Puddles
 `main` worktree with `OPENCLAW_SRC` pinned to the approved OpenClaw checkout.
-`MINI_HOST` was unset for the last local deployment. The absolute-deadline
-correction was deployed from disposable worktrees pinned to merged Puddles
-`a7e13fe` and OpenClaw `a1063aa`; all five reviewed patches applied, the package
-and browser image rebuilt, and the gateway restarted. Automated validation
-remained read-only and all disposable worktrees were removed. The third
-correction is reproduced in the managed test environment and independently
-reviewed; after terminal exact-commit review and merge, deploy it locally with
-`MINI_HOST` unset and repeat the read-only health checks.
+`MINI_HOST` was unset for the current local deployment. The third correction was
+deployed from clean disposable worktrees pinned to merged Puddles `e82db0e` and
+OpenClaw `a1063aa`; all five reviewed patches applied, the package and browser
+image rebuilt, and the gateway restarted. Automated production validation
+remained read-only and passed. Both disposable worktrees and their registrations
+were removed. The remaining manual review action is to repeat the exact
+question-plus-link Messages.app smoke; rollback remains available without data
+migration.
 
 Rollback:
 
@@ -555,5 +580,5 @@ No data migration or persistent message-state conversion is involved.
 - [x] Correct the demonstrated boundary without broadening unrelated batching.
 - [x] Rerun the complete cumulative lifecycle after exact real-timer coverage.
 - [x] Obtain a clean independent review of the synchronized third correction.
-- [ ] Merge, verify `main`, deploy locally, and validate production read-only.
-- [ ] Return issue #28 and Todoist to Ready for review after the third smoke fix.
+- [x] Merge, verify `main`, deploy locally, and validate production read-only.
+- [x] Return issue #28 and Todoist to Ready for review after the third smoke fix.
