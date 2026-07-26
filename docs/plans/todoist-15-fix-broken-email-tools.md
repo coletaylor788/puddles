@@ -1,6 +1,6 @@
 # Fix broken Gmail tools
 
-- **Status:** Ready for review
+- **Status:** In progress - integrating current main
 - **Issue:** https://github.com/coletaylor788/puddles/issues/15
 - **Last updated:** 2026-07-25
 - **Owner:** Gmail repair worker
@@ -32,7 +32,8 @@ trust, update existing data without changing ACLs, and use hexadecimal input for
 long JSON. Serialize OAuth replacement and refresh persistence across processes,
 enforce shared deadlines and cancellation, and reject malformed or
 scope-narrowed credentials. Keep this focused Gmail backend separate from other
-credential helpers.
+credential helpers. Integrate current `main` without weakening either branch's
+cumulative test documentation or coverage.
 
 ### Safety and rollout
 
@@ -43,25 +44,27 @@ The recovered credential is inspected only for length and shape, and live Gmail
 checks are read-only. The repository has a managed candidate test lifecycle but
 no snapshotting, rollback-capable Gmail production promotion lifecycle; its
 documentation only describes manual installation from the primary checkout.
-This handoff therefore stops at a reviewed pull request rather than inventing
-production access or modifying that checkout. After merge, production rollout
-requires a separately approved lifecycle. The recovered credential remains
-valid independently of code rollout unless exposure is suspected.
+This handoff therefore stops at a reviewed, conflict-free pull request rather
+than inventing production access or modifying that checkout. Mainline merges are
+resolved in the isolated branch and must preserve the complete cumulative test
+pool. After merge, production rollout requires a separately approved lifecycle.
+The recovered credential remains valid independently of code rollout unless
+exposure is suspected.
 
 ## Agent details
 
 ### State
 
-Candidate `c9dbabe365abdbe89d077a11326e60fc600db9c8` is pushed to draft
-PR #31. It replaces Python `keyring` access and adds cumulative regression
-coverage. Cole completed browser OAuth recovery; structural inspection
-confirmed a complete 779-byte authorized-user object with required fields,
-refresh token, and effective grants without exposing values. Candidate Gmail
-profile and one-message list reads succeeded. Focused tests, the complete
-managed lifecycle, remote CI, and adversarial review pass 18 are green. The
-reserved plan migration is ready to commit, push, and receive terminal
-exact-commit review. Production deployment is not run because the repository
-has no safe configured Gmail promotion/rollback lifecycle.
+PR #31 contains the completed Gmail repair and recovered credential evidence.
+Current `main` is `04b05a1de49662b7cb6787f544fdfd67c08ca138`; the PR is
+conflicting only in `packages/e2e/README.md`, where both branches updated
+cumulative lifecycle documentation. The isolated branch must merge current
+`main`, retain both sets of accurate instructions, rerun focused Gmail and full
+managed gates, and receive a complete-current-diff review from one retained
+replacement reviewer because the prior review worker is unavailable. The
+previous exact-commit review of `7a23b26` is superseded by this merge. Production
+deployment remains unrun because the repository has no safe configured Gmail
+promotion/rollback lifecycle.
 
 ### Scope and acceptance criteria
 
@@ -121,6 +124,9 @@ has no safe configured Gmail promotion/rollback lifecycle.
 7. Inspect the repository for a configured Gmail promotion/rollback lifecycle.
    Do not deploy when only manual primary-checkout instructions exist; report
    the limitation in the review handoff.
+8. Merge current `main`, resolve the cumulative E2E README conflict by preserving
+   both branches' managed-lifecycle documentation, rerun all required gates, and
+   review the complete merged diff before restoring review readiness.
 
 ### Validation
 
@@ -150,20 +156,28 @@ Completed for pushed candidate `c9dbabe`:
 - Adversarial review pass 18 found no actionable issue after both refresh
   entrypoints adopted the same validity and effective-grant invariant.
 
-Still required outside this final diff:
+Required for the current mainline refresh:
 
-- Commit and push the reserved plan migration.
-- Obtain a terminal fresh review against that exact committed handoff diff and
-  record the result only in issue #15.
+- Merge `04b05a1de49662b7cb6787f544fdfd67c08ca138` and resolve the sole
+  `packages/e2e/README.md` conflict without dropping cumulative documentation.
+- Rerun focused Gmail tests, lint, compilation, and the complete managed
+  lifecycle.
+- Use one retained replacement reviewer for the changed complete diff, then run
+  the required terminal fresh review on the exact final commit.
+- Push the merge, confirm PR #31 is mergeable, and wait for remote checks.
 
 ### Rollout and rollback
 
 Current handoff:
 
-1. Commit and push the reserved plan migration and update draft PR #31.
-2. Obtain a clean terminal review of that exact commit without changing the
-   diff afterward.
-3. Hand off the reviewed PR with the explicit production lifecycle limitation.
+1. Merge current `main` in the isolated branch and preserve both sides of the
+   cumulative lifecycle documentation.
+2. Pass focused Gmail and complete managed lifecycle validation.
+3. Resume one retained replacement reviewer until the complete merged diff is
+   clean, then finalize the in-diff plan.
+4. Commit and push final bookkeeping, obtain a clean terminal review of the exact
+   commit, and confirm PR #31 is mergeable with green checks.
+5. Hand off the reviewed PR with the explicit production lifecycle limitation.
 
 Future rollout requires an approved mechanism that snapshots the currently
 deployed Gmail server revision, atomically installs the reviewed revision
@@ -193,8 +207,11 @@ independent of code, unless exposure is suspected.
 - Reviews 16-17 corrected post-refresh validity and effective-grant checks in
   both OAuth recovery and normal service construction.
 - Review 18 found no actionable issue on candidate `c9dbabe`.
-- The terminal exact-commit review is the final issue-ledger gate after this
-  plan migration is committed; its result will not alter the reviewed diff.
+- Terminal review found no actionable issue on `7a23b26`; merging newer `main`
+  invalidates that exact-commit result.
+- The prior reviewer handle is unavailable. One independent replacement will be
+  retained for the complete merged-diff remediation loop, followed by the
+  required terminal fresh exact-commit review.
 
 ### Checklist
 
@@ -216,3 +233,9 @@ independent of code, unless exposure is suspected.
 - [x] Confirm remote cumulative and CodeQL checks pass.
 - [x] Confirm no safe configured Gmail production promotion lifecycle exists.
 - [x] Finalize in-diff plan and checklist for terminal exact-commit review.
+- [x] Fetch current `main` and identify the sole README merge conflict.
+- [ ] Merge current `main` and preserve cumulative lifecycle documentation.
+- [ ] Rerun focused Gmail and complete managed validation.
+- [ ] Complete the retained replacement-reviewer loop.
+- [ ] Finalize and push the conflict-free exact handoff commit.
+- [ ] Obtain terminal fresh exact-commit review and green remote checks.
