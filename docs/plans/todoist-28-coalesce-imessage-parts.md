@@ -1,6 +1,6 @@
 # Coalesce split iMessage message parts
 
-- **Status:** In progress - production link regression investigation
+- **Status:** In progress - link correction implemented, cumulative validation pending
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-25
 - **Owner:** Cole Taylor
@@ -55,11 +55,12 @@ Rollback disables coalescing and redeploys the prior reviewed patch stack.
 
 ### State
 
-The original image and link coalescing patch is merged and deployed, and the
-cumulative integration lifecycle is active on `main`. Cole's latest production
-smoke test confirms image handling but reports that a link test still dispatched
-without link context. The task is reopened for log correlation, exact
-reproduction, correction, cumulative validation, review, and safe redeployment.
+The original coalescing patch is merged and deployed, and the cumulative
+integration lifecycle is active on `main`. Read-only correlation reproduced
+Cole's link failure and showed that complete payload-referential questions were
+dispatched before their URL balloons. A narrow correction and the observed
+regression are implemented in an isolated pinned OpenClaw fixture; cumulative
+validation, review, merge, and safe redeployment remain.
 
 ### Scope and acceptance criteria
 
@@ -160,6 +161,11 @@ reproduction, correction, cumulative validation, review, and safe redeployment.
   agent before a URL-preview balloon from the same sender and chat arrived one
   second later. Messages metadata contains no shared composition identifier, so
   the correction must use a conservative prompt-shape heuristic.
+- The patch now treats only bounded question-terminated prompts with explicit
+  deictic payload references as lead-ins. Focused classifier and monitor
+  regressions use the observed question-plus-URL shape.
+- The exported source patch was regenerated from the isolated pinned fixture and
+  reapplied cleanly to a second detached fixture.
 
 ### Validation
 
@@ -186,6 +192,9 @@ reproduction, correction, cumulative validation, review, and safe redeployment.
   link composition reached the agent without link context. Exact log
   correlation reproduced two separate question-first turns followed by
   URL-balloon turns.
+- Updated focused coalescer and monitor suites pass 67 tests, including a
+  policy-respecting monitor regression that would dispatch twice under the prior
+  classifier.
 
 ### Rollout and rollback
 
@@ -265,8 +274,8 @@ No data migration or persistent message-state conversion is involved.
 - [x] Confirm the first cumulative Integration workflow run on `main`.
 - [x] Prepare issue #28 and the Todoist ready-for-review handoff.
 - [x] Correlate read-only production logs with the reported link test.
-- [ ] Add a focused regression for the observed split-link event shape.
-- [ ] Correct link coalescing without broadening separate-message batching.
+- [x] Add a focused regression for the observed split-link event shape.
+- [x] Correct link coalescing without broadening separate-message batching.
 - [ ] Run focused tests and the complete managed cumulative lifecycle.
 - [ ] Obtain a clean independent review of the complete correction diff.
 - [ ] Merge the correction and confirm the cumulative workflow on `main`.

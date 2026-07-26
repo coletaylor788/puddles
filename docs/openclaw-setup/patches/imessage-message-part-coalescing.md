@@ -6,7 +6,7 @@
 
 One iMessage composition can reach OpenClaw as multiple `imsg` notifications:
 
-1. A short text or caption row.
+1. A text prompt or caption row.
 2. A URL-preview or image-attachment row shortly afterward.
 
 Without coalescing, the first row starts an agent turn before the payload
@@ -22,15 +22,16 @@ rows after `imsg` advertises balloon metadata.
 
 The source patch classifies each eligible direct-message row:
 
-- **Lead-in:** a non-empty, payload-free fragment of at most three words with no
-  terminal sentence punctuation. It waits for the existing bounded split-send
-  window.
+- **Lead-in:** either a payload-free unfinished fragment of at most three words,
+  or a question of at most eight words that explicitly refers to an accompanying
+  payload with terms such as “this” or “this one.” It waits for the existing
+  bounded split-send window.
 - **Payload:** a standalone HTTP(S) URL, a structurally standalone URL-preview
   balloon, or a real attachment. It joins an immediately preceding lead-in from
   the same account, conversation, and sender, then flushes immediately.
-- **Instant:** prose, questions, complete messages, standalone payloads,
-  non-URL balloons, reactions, and outgoing echoes. These do not wait for the
-  compatibility window.
+- **Instant:** unrelated questions, prose, complete messages, standalone
+  payloads, non-URL balloons, reactions, and outgoing echoes. These do not wait
+  for the compatibility window.
 
 If multiple short messages precede a payload, only the immediately preceding
 lead-in joins it; earlier messages remain separate turns. Group messages keep
@@ -79,23 +80,24 @@ parts on the host.
 The patch adds regression coverage for:
 
 - short lead-in plus URL-preview row;
+- bounded payload-referential question plus URL-preview row;
 - short caption plus image attachment;
 - two rapid short text messages remaining two turns;
 - a following composition retaining its own coalescing window during payload
   flush;
-- non-URL balloons and complete messages bypassing the hold;
+- non-URL balloons and unrelated complete messages bypassing the hold;
 - empty-text URL balloons still being treated as payloads;
 - embedded scheme-less URLs and control commands bypassing the hold;
 - invalid conversation anchors failing open instead of sharing a coalescing key;
 - the existing merge caps, reply context, cursor, and GUID tracking.
 
-The focused coalescer and monitor suites pass all 65 tests after a clean reverse
+The focused coalescer and monitor suites pass all 67 tests after a clean reverse
 and reapplication of the exported patch.
 
 Manual smoke test after deployment:
 
 1. Send a caption and image as one iMessage composition.
-2. Send a short instruction and link as one composition.
+2. Send a payload-referential question and link as one composition.
 3. Send two short, genuinely separate text messages rapidly.
 4. Confirm the first two cases each produce one `embedded run start` and the
    third produces two turns in the gateway log.
