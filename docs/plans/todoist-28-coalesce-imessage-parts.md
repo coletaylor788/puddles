@@ -1,6 +1,6 @@
 # Coalesce split iMessage message parts
 
-- **Status:** In progress - ready for exact-commit review and promotion
+- **Status:** In progress - ready for final exact-commit review and promotion
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-26
 - **Owner:** Cole Taylor
@@ -34,13 +34,14 @@ Treat the final comma-delimited clause as the candidate question when it passes
 the existing interrogative, payload-noun, and word-count guards. Preserve the
 existing deictic requirement generally, with one bounded addition for a
 preceded `what is/what's the <payload noun>` final clause. The preceding setup
-must contain a Unicode letter or number; delimiter-only prefixes do not qualify.
-Do not hold that question under the 15-second referential policy without lexical
-setup text. The existing seven-second unfinished-caption fallback remains
-unchanged. Keep the 15-second first absolute deadline and every existing
-exclusion unchanged. Add Cole's exact lead-in plus the 669 ms URL-preview timing
-to the real-debouncer regressions exposed through cumulative `packages/e2e`,
-then deploy only through the documented local wrapper.
+must contain a Unicode letter or number and end in comma-plus-whitespace;
+delimiter-only prefixes and sentence-punctuation prefixes do not qualify. Do
+not hold that question under the 15-second referential policy without that
+comma-delimited lexical setup. The existing seven-second unfinished-caption
+fallback remains unchanged. Keep the 15-second first absolute deadline and
+every existing exclusion unchanged. Add Cole's exact lead-in plus the 669 ms
+URL-preview timing to the real-debouncer regressions exposed through cumulative
+`packages/e2e`, then deploy only through the documented local wrapper.
 
 ### Safety and rollout
 
@@ -71,7 +72,13 @@ punctuation-only prefixes could incorrectly count as setup. The implementation
 now requires lexical setup, all 73 focused tests pass, and the remediated patch
 reproduces all four files byte-for-byte. The complete managed lifecycle is green
 again, and a fresh replacement reviewer found no actionable high-confidence
-defects. Final bookkeeping, exact-commit review, merge, and rollout remain.
+defects. Terminal exact-commit review then found the definite-payload exception
+also activated after sentence punctuation. That comma-boundary finding must be
+fixed. The implementation now requires comma-plus-whitespace, all 73 focused
+tests pass, and the regenerated patch reproduces all four files byte-for-byte.
+The complete managed lifecycle is green again, and a fresh independent reviewer
+found no actionable high-confidence defects. Final exact-commit review, merge,
+and rollout remain.
 
 ### Scope and acceptance criteria
 
@@ -117,8 +124,8 @@ defects. Final bookkeeping, exact-commit review, merge, and rollout remain.
   deictic plus payload-kind or comparison signals.
 - Split the final candidate at a comma as well as sentence punctuation. Permit
   `what is/what's the <payload noun>` without a deictic only when preceding
-  setup text contains a Unicode letter or number; support straight and curly
-  apostrophes.
+  setup text contains a Unicode letter or number and its delimiter is
+  comma-plus-whitespace; support straight and curly apostrophes.
 - Use a 15-second absolute deadline only for payload-referential lead-ins.
   Preserve the first pending deadline when later eligible rows arrive, keep the
   existing seven-second compatibility deadline for short unfinished captions,
@@ -230,6 +237,9 @@ defects. Final bookkeeping, exact-commit review, merge, and rollout remain.
 - Review remediation requires lexical setup before the definite-payload
   exception; punctuation-only delimiter prefixes remain ordinary standalone
   questions.
+- Terminal-review remediation additionally requires the lexical prefix to end
+  in comma-plus-whitespace, so period and exclamation sentence boundaries do
+  not activate the definite-payload exception.
 
 ### Validation
 
@@ -308,6 +318,17 @@ defects. Final bookkeeping, exact-commit review, merge, and rollout remain.
   test, and candidate deregistration.
 - Both disposable pinned fixtures used to generate and verify the source patch
   were removed and OpenClaw worktree registrations pruned.
+- After terminal-review remediation, all 73 focused tests pass again, including
+  lexical period and exclamation prefix exclusions. The regenerated patch
+  reapplies cleanly and reproduces all four fixture files byte-for-byte.
+- The terminal-remediation managed lifecycle passes repository build and lint,
+  238 workspace tests, 297 cumulative mapped OpenClaw tests, one isolated
+  candidate test, and candidate deregistration.
+- A fresh independent reviewer verified patch preimages, clean application,
+  mapped test discovery, and the complete comma-boundary remediation with no
+  actionable high-confidence findings. Residual validation gaps are the final
+  post-deployment Messages.app smoke and transport reconnect/teardown races not
+  exercised by source-level notification mocks.
 
 ### Rollout and rollback
 
@@ -396,6 +417,12 @@ No data migration or persistent message-state conversion is involved.
   including Unicode-regex runtime support, test discovery, and the four-file
   OpenClaw patch, and found no actionable high-confidence defects. The residual
   validation gap is the final live Messages.app smoke after deployment.
+- Terminal review of exact commit `c0c233c8060d7f290f9ab8e28383ff5cd83b9ca0`
+  found the definite-payload exception accepted lexical setup separated by a
+  period or exclamation mark. The accepted correction restricts the exception
+  to comma-plus-whitespace and adds both negative regressions.
+- Fresh complete-diff review after the comma-boundary fix found no actionable
+  high-confidence defects.
 
 ### Checklist
 
@@ -458,7 +485,7 @@ No data migration or persistent message-state conversion is involved.
   OpenClaw timing.
 - [x] Add a committed real-path regression for the newly observed failure.
 - [x] Correct the demonstrated boundary without broadening unrelated batching.
-- [x] Rerun the complete cumulative lifecycle after 73 focused tests pass.
+- [x] Rerun the complete cumulative lifecycle after focused tests pass.
 - [x] Obtain a clean independent review of the complete third correction.
 - [ ] Merge, verify `main`, deploy locally, and validate production read-only.
 - [ ] Return issue #28 and Todoist to Ready for review after the third smoke fix.

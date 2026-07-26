@@ -27,8 +27,9 @@ The source patch classifies each eligible direct-message row:
   payload noun, or uses the narrow “how/what about this one?” shape. A
   punctuationless final clause must also begin with a narrow interrogative. A
   final comma-delimited `what is/what's the <payload noun>` clause may omit the
-  deictic only when preceding setup contains a letter or number; punctuation-only
-  prefixes do not qualify. It waits for a bounded split-send window.
+  deictic only when preceding setup contains a letter or number and ends in
+  comma-plus-whitespace; punctuation-only and sentence-punctuation prefixes do
+  not qualify. It waits for a bounded split-send window.
 - **Payload:** a standalone HTTP(S) URL, a structurally standalone URL-preview
   balloon, or a real attachment. It joins an immediately preceding lead-in from
   the same account, conversation, and sender, then flushes immediately.
@@ -91,6 +92,7 @@ The patch adds regression coverage for:
 - the observed comma-delimited `Okay you failed. New test, what’s the link`
   prompt and 669 ms URL-preview row gap;
 - punctuation-only prefixes remaining standalone questions;
+- period and exclamation prefixes not activating the comma-only exception;
 - real debouncer timing across that 12.4-second gap;
 - repeated referential lead-ins retaining the first absolute deadline;
 - unmatched payload-referential question dispatching alone after the hold;
