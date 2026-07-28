@@ -91,6 +91,7 @@ suites, and uncommitted checks do not count.
 - local-default versus explicit-remote deployment routing;
 - patched browser entrypoint profile and singleton cleanup;
 - recording message and PIM write adapters;
+- recording Todoist task writes and denying unsupported Todoist operations;
 - manifest completeness and pinned-source enforcement;
 - reusable adversarial-review worker and anti-churn workflow contracts; and
 - shared utility parsing and complexity regressions.
