@@ -90,8 +90,10 @@ wrapper:
    complete clone aborts before package replacement and restarts the prior
    gateway.
 6. **Installs** the tarball on the current host (`npm install -g <tarball>`).
-7. **Migrates state** — runs `openclaw doctor --fix --yes` while the gateway is
-   stopped. Migration failure
+7. **Migrates state** — runs `openclaw doctor --fix --yes` with
+   `OPENCLAW_SERVICE_REPAIR_POLICY=external` while the gateway is stopped, then
+   verifies the service remains unloaded. Migration failure or unexpected
+   activation
    is fatal; the deploy no longer restarts the gateway and reports success after
    a failed repair.
 8. **Restarts and probes** the gateway LaunchAgent. The deploy waits for the
@@ -99,13 +101,17 @@ wrapper:
    readiness does not arrive within the configured bound. An environment-
    selected remote gateway cannot satisfy this probe.
 9. **Rolls back automatically** on package, migration, interruption, restart,
-   or readiness failure by restoring the previous package, replacing the whole
-   runtime tree with its exact clone, restoring the service definition,
+   or readiness failure by restoring the previous package, cloning the saved
+   runtime into a complete staging tree, atomically swapping that tree with the
+   failed runtime via `renamex_np(RENAME_SWAP)`, restoring the service definition,
    restarting the prior gateway, and checking the same local port. State created
    by a failed migration is retained separately in the recovery directory for
    diagnosis. The original failure remains nonzero, and rollback failures are
    reported separately. If rollback cannot confirm gateway shutdown, it makes
    no package or state changes and reports the retained recovery path.
+   Reverse-clone or atomic-swap failure leaves the current runtime in place and
+   suppresses gateway restart. Previous-package or plist restoration failure is
+   likewise restart-blocking so uncertain code/config combinations never run.
 10. **Refreshes the sandbox-browser image while the gateway remains stopped and
    the target lock remains held** — the browser patch edits
    `scripts/sandbox-browser-entrypoint.sh`, which the npm package does **not**
@@ -127,10 +133,11 @@ Tests and controlled deployments can override it with `GATEWAY_PORT`,
 `GATEWAY_HEALTH_ATTEMPTS`, and `GATEWAY_HEALTH_INTERVAL_SECONDS`; all must be
 positive integers.
 
-Recovery uses macOS `cp -cR`, so the complete multi-gigabyte runtime tree is a
-copy-on-write clone rather than a second physical copy. The target volume must
-support cloning; the deploy fails closed before package replacement when it
-does not.
+Recovery calls macOS `clonefile(2)` directly, so the complete multi-gigabyte
+runtime tree is an atomic copy-on-write clone rather than a second physical
+copy. Unlike `cp -cR`, this never falls back to a physical copy. The target
+volume must support cloning; `ENOTSUP`, `EXDEV`, and other clone failures abort
+before package replacement and restart the prior gateway.
 
 To build on one host and deploy to another, set `MINI_HOST` explicitly:
 

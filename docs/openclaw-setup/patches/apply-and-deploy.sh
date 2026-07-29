@@ -129,6 +129,41 @@ wait_for_gateway() {
   return 1
 }
 
+clone_runtime_tree() {
+  python3 - clone "$1" "$2" <<'PY'
+import ctypes
+import os
+import sys
+
+source, destination = map(os.fsencode, sys.argv[2:4])
+libc = ctypes.CDLL("/usr/lib/libSystem.B.dylib", use_errno=True)
+clonefile = libc.clonefile
+clonefile.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int]
+clonefile.restype = ctypes.c_int
+if clonefile(source, destination, 0) != 0:
+    error = ctypes.get_errno()
+    raise OSError(error, os.strerror(error), os.fsdecode(destination))
+PY
+}
+
+swap_runtime_trees() {
+  python3 - swap "$1" "$2" <<'PY'
+import ctypes
+import os
+import sys
+
+current, restored = map(os.fsencode, sys.argv[2:4])
+libc = ctypes.CDLL("/usr/lib/libSystem.B.dylib", use_errno=True)
+renamex_np = libc.renamex_np
+renamex_np.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint]
+renamex_np.restype = ctypes.c_int
+RENAME_SWAP = 0x00000002
+if renamex_np(current, restored, RENAME_SWAP) != 0:
+    error = ctypes.get_errno()
+    raise OSError(error, os.strerror(error))
+PY
+}
+
 stop_gateway() {
   service="gui/$(id -u)/$GATEWAY_LABEL"
   if ! launchctl bootout "$service" 2>/dev/null; then
@@ -163,6 +198,7 @@ rollback_and_exit() {
   shift
   reason="$1"
   rollback_failed=0
+  restart_blocked=0
   trap - ERR INT TERM HUP
   set +e
   ROLLBACK_ACTIVE=1
@@ -174,21 +210,32 @@ rollback_and_exit() {
     exit "$original_status"
   fi
   if [ "$PACKAGE_CHANGED" -eq 1 ]; then
-    npm install -g "$PREVIOUS_TARBALL" || rollback_failed=1
+    npm install -g "$PREVIOUS_TARBALL" || {
+      rollback_failed=1
+      restart_blocked=1
+    }
   fi
   if [ "$SNAPSHOT_READY" -eq 1 ]; then
-    state_move_failed=0
+    RESTORED_STATE="$RECOVERY_DIR/restored-runtime-state"
+    rm -rf "$RESTORED_STATE"
     rm -rf "$FAILED_STATE"
-    if [ -e "$STATE_DIR" ]; then
-      mv "$STATE_DIR" "$FAILED_STATE" || {
-        rollback_failed=1
-        state_move_failed=1
-      }
+    if [ ! -d "$STATE_DIR" ]; then
+      echo "    ERROR: current runtime state is missing; refusing non-atomic restore" >&2
+      rollback_failed=1
+      restart_blocked=1
+    elif ! clone_runtime_tree "$STATE_SNAPSHOT" "$RESTORED_STATE"; then
+      rollback_failed=1
+      restart_blocked=1
+    elif ! swap_runtime_trees "$STATE_DIR" "$RESTORED_STATE"; then
+      rollback_failed=1
+      restart_blocked=1
+    else
+      mv "$RESTORED_STATE" "$FAILED_STATE" || rollback_failed=1
     fi
-    if [ "$state_move_failed" -eq 0 ]; then
-      cp -cR "$STATE_SNAPSHOT" "$STATE_DIR" || rollback_failed=1
-    fi
-    cp -p "$PLIST_SNAPSHOT" "$GATEWAY_PLIST" || rollback_failed=1
+    cp -p "$PLIST_SNAPSHOT" "$GATEWAY_PLIST" || {
+      rollback_failed=1
+      restart_blocked=1
+    }
   fi
   if [ "$SANDBOX_ENTRY_CHANGED" -eq 1 ]; then
     if [ "$SANDBOX_ENTRY_EXISTED" -eq 1 ]; then
@@ -206,7 +253,9 @@ rollback_and_exit() {
     openclaw sandbox recreate --agent browser-agent --force || rollback_failed=1
     openclaw sandbox recreate --browser --agent browser-agent --force || rollback_failed=1
   fi
-  if ! restart_gateway; then
+  if [ "$restart_blocked" -eq 1 ]; then
+    echo "    ERROR: gateway restart skipped because critical rollback restoration failed" >&2
+  elif ! restart_gateway; then
     echo "    ERROR: rollback gateway restart failed" >&2
     rollback_failed=1
   elif ! wait_for_gateway; then
@@ -285,17 +334,30 @@ else
   exit 1
 fi
 
+[ -d "$STATE_DIR" ] || {
+  echo "    ERROR: runtime state directory is missing: $STATE_DIR" >&2
+  exit 1
+}
+[ -r "$GATEWAY_PLIST" ] || {
+  echo "    ERROR: readable gateway service definition is missing: $GATEWAY_PLIST" >&2
+  exit 1
+}
 GATEWAY_QUIESCED=1
 stop_gateway
 [ -d "$STATE_DIR" ] || rollback_and_exit 1 "runtime state directory is missing: $STATE_DIR"
-[ -f "$GATEWAY_PLIST" ] || rollback_and_exit 1 "gateway service definition is missing: $GATEWAY_PLIST"
-cp -cR "$STATE_DIR" "$STATE_SNAPSHOT"
+[ -r "$GATEWAY_PLIST" ] || rollback_and_exit 1 "readable gateway service definition is missing: $GATEWAY_PLIST"
+clone_runtime_tree "$STATE_DIR" "$STATE_SNAPSHOT"
 cp -p "$GATEWAY_PLIST" "$PLIST_SNAPSHOT"
 SNAPSHOT_READY=1
 echo "    recovery snapshot: $RECOVERY_DIR"
 PACKAGE_CHANGED=1
 npm install -g "$CANDIDATE_TARBALL" || rollback_and_exit "$?" "package installation failed"
-openclaw doctor --fix --yes </dev/null || rollback_and_exit "$?" "required state migration failed"
+OPENCLAW_SERVICE_REPAIR_POLICY=external \
+  openclaw doctor --fix --yes </dev/null ||
+  rollback_and_exit "$?" "required state migration failed"
+if launchctl print "gui/$(id -u)/$GATEWAY_LABEL" >/dev/null 2>&1; then
+  rollback_and_exit 1 "doctor activated the externally managed gateway"
+fi
 refresh_browser_sandbox
 restart_gateway || rollback_and_exit "$?" "gateway restart failed"
 wait_for_gateway || rollback_and_exit "$?" "gateway did not become healthy on local port $GATEWAY_PORT after $HEALTH_ATTEMPTS attempts"

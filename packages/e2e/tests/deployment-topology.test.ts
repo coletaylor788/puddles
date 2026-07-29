@@ -31,9 +31,13 @@ interface DeploymentOptions {
   healthFailures?: number;
   healthAttempts?: number;
   lockHeld?: boolean;
+  missingPlist?: boolean;
+  previousInstallFails?: boolean;
   remoteGatewayHealthy?: boolean;
+  reverseCloneFails?: boolean;
   rollbackShutdownNeverCompletes?: boolean;
   browserBuildInterrupts?: boolean;
+  cloneFails?: boolean;
   sandboxRecreateFails?: boolean;
   shutdownDelayChecks?: number;
   sourceLockHeld?: boolean;
@@ -82,10 +86,12 @@ function runDeployment(options: DeploymentOptions = {}): DeploymentResult {
     "original-entrypoint",
   );
   writeFileSync(join(root, "gateway-loaded"), "loaded");
-  writeFileSync(
-    join(root, "Library", "LaunchAgents", "ai.openclaw.gateway.plist"),
-    "original-plist",
-  );
+  if (!options.missingPlist) {
+    writeFileSync(
+      join(root, "Library", "LaunchAgents", "ai.openclaw.gateway.plist"),
+      "original-plist",
+    );
+  }
   if (options.lockHeld) {
     mkdirSync(join(root, ".openclaw-deploy.lock"));
     writeFileSync(join(root, ".openclaw-deploy.lock", "pid"), "other");
@@ -105,6 +111,9 @@ if [ "$name" = npm ]; then
     printf '%s\\n' "$MOCK_NPM_ROOT"
   elif [ "\${1:-}" = install ]; then
     [ -f "\${3:-}" ] || exit 66
+    if [ "\${MOCK_PREVIOUS_INSTALL_FAILS:-0}" = 1 ] && printf '%s' "\${3:-}" | grep -q 'openclaw-previous\\.tgz$'; then
+      exit 67
+    fi
   elif [ "\${1:-}" = pack ]; then
     destination=
     ignore_scripts=
@@ -133,6 +142,22 @@ if [ "$name" = npm ]; then
       printf '%s\\n' openclaw-test.tgz
     fi
   fi
+elif [ "$name" = python3 ]; then
+  if [ "\${2:-}" = clone ]; then
+    clone_count=0
+    [ -f "$MOCK_CLONE_COUNT" ] && clone_count="$(cat "$MOCK_CLONE_COUNT")"
+    clone_count=$((clone_count + 1))
+    printf '%s\\n' "$clone_count" > "$MOCK_CLONE_COUNT"
+    if [ "$clone_count" -eq "\${MOCK_CLONE_FAIL_ON_CALL:-0}" ]; then
+      exit 95
+    fi
+    cp -cR "$3" "$4"
+  elif [ "\${2:-}" = swap ]; then
+    swap_tmp="$3.swap"
+    mv "$3" "$swap_tmp"
+    mv "$4" "$3"
+    mv "$swap_tmp" "$4"
+  fi
 elif [ "$name" = git ]; then
   for arg in "$@"; do
     if [ "$arg" = puddles-deploy.lock ]; then
@@ -141,6 +166,12 @@ elif [ "$name" = git ]; then
     fi
   done
 elif [ "$name" = openclaw ]; then
+  if [ "\${1:-}" = doctor ]; then
+    printf '%s' "\${OPENCLAW_SERVICE_REPAIR_POLICY:-auto}" > "$MOCK_DOCTOR_POLICY"
+    if [ "\${OPENCLAW_SERVICE_REPAIR_POLICY:-auto}" != external ]; then
+      : > "$MOCK_LAUNCH_STATE"
+    fi
+  fi
   if [ "\${1:-}" = doctor ] && [ "\${MOCK_DOCTOR_MUTATES:-0}" = 1 ]; then
     printf '%s' mutated-config > "$HOME/.openclaw/openclaw.json"
     rm -f "$HOME/.openclaw/tasks/existing"
@@ -185,6 +216,7 @@ elif [ "$name" = sqlite3 ]; then
   esac
 elif [ "$name" = docker ]; then
   [ -d "$HOME/.openclaw-deploy.lock" ] || exit 88
+  [ ! -f "$MOCK_LAUNCH_STATE" ] || exit 89
   : > "$MOCK_DOCKER_LOCK_SEEN"
   if [ "\${1:-}" = image ] && [ "\${2:-}" = inspect ]; then
     printf '%s\\n' sha256:previous-browser
@@ -236,6 +268,7 @@ fi
   for (const command of [
     "git",
     "pnpm",
+    "python3",
     "npm",
     "openclaw",
     "docker",
@@ -259,13 +292,21 @@ fi
     MOCK_DOCTOR_FAILS: options.doctorFails ? "1" : "0",
     MOCK_DOCTOR_INTERRUPTS: options.doctorInterrupts ? "1" : "0",
     MOCK_DOCTOR_MUTATES: options.doctorMutates ? "1" : "0",
+    MOCK_DOCTOR_POLICY: join(root, "doctor-policy"),
     MOCK_BROWSER_BUILD_INTERRUPTS: options.browserBuildInterrupts ? "1" : "0",
+    MOCK_CLONE_COUNT: join(root, "clone-count"),
+    MOCK_CLONE_FAIL_ON_CALL: options.cloneFails
+      ? "1"
+      : options.reverseCloneFails
+        ? "2"
+        : "0",
     MOCK_BOOTOUT_COUNT: join(root, "bootout-count"),
     MOCK_DOCKER_LOCK_SEEN: join(root, "docker-lock-seen"),
     MOCK_HEALTH_COUNT: join(root, "health-count"),
     MOCK_HEALTH_FAILURES: String(options.healthFailures ?? 0),
     MOCK_LAUNCH_STATE: join(root, "gateway-loaded"),
     MOCK_NPM_ROOT: npmRoot,
+    MOCK_PREVIOUS_INSTALL_FAILS: options.previousInstallFails ? "1" : "0",
     MOCK_REMOTE_GATEWAY_HEALTHY: options.remoteGatewayHealthy ? "1" : "0",
     MOCK_ROLLBACK_SHUTDOWN_NEVER_COMPLETES:
       options.rollbackShutdownNeverCompletes ? "1" : "0",
@@ -334,6 +375,17 @@ describe("OpenClaw deployment topology", () => {
     expect(existsSync(join(result.root, ".openclaw-deploy.lock"))).toBe(false);
     expect(existsSync(join(result.root, "source-build.lock"))).toBe(false);
     expect(existsSync(join(result.root, "docker-lock-seen"))).toBe(true);
+    expect(readFileSync(join(result.root, "doctor-policy"), "utf8")).toBe(
+      "external",
+    );
+    const dockerBuildIndex = lines.findIndex((line) =>
+      line.startsWith("docker\tbuild\t"),
+    );
+    const explicitStartIndex = lines.findIndex((line) =>
+      line.startsWith("launchctl\tbootstrap\t"),
+    );
+    expect(dockerBuildIndex).toBeGreaterThan(-1);
+    expect(explicitStartIndex).toBeGreaterThan(dockerBuildIndex);
     expect(
       existsSync(join(result.root, "openclaw", "openclaw-stale.tgz")),
     ).toBe(true);
@@ -482,6 +534,67 @@ describe("OpenClaw deployment topology", () => {
       .slice(bootoutIndex + 1, installIndex)
       .filter((line) => line.startsWith("launchctl\tprint\t"));
     expect(shutdownPrints.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("fails closed when runtime cloning is unsupported", () => {
+    const result = runDeployment({ cloneFails: true });
+    expect(result.status).not.toBe(0);
+    expect(result.lines).toContainEqual(
+      expect.stringMatching(/^python3\t-\tclone\t.*\.openclaw\t.*runtime-state$/),
+    );
+    expect(result.lines).not.toContainEqual(
+      expect.stringMatching(/^npm\tinstall\t-g/),
+    );
+    expect(
+      readFileSync(join(result.root, ".openclaw", "openclaw.json"), "utf8"),
+    ).toBe("original-config");
+    expect(existsSync(join(result.root, "gateway-loaded"))).toBe(true);
+  });
+
+  it("does not stop the gateway when the service plist is missing", () => {
+    const result = runDeployment({ missingPlist: true });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(
+      "readable gateway service definition is missing",
+    );
+    expect(existsSync(join(result.root, "gateway-loaded"))).toBe(true);
+    expect(result.lines).not.toContainEqual(
+      expect.stringMatching(/^launchctl\tbootout\t/),
+    );
+  });
+
+  it("does not restart the gateway when reverse cloning fails", () => {
+    const result = runDeployment({
+      doctorFails: true,
+      doctorMutates: true,
+      reverseCloneFails: true,
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(
+      "gateway restart skipped because critical rollback restoration failed",
+    );
+    expect(
+      readFileSync(join(result.root, ".openclaw", "openclaw.json"), "utf8"),
+    ).toBe("mutated-config");
+    expect(existsSync(join(result.root, "gateway-loaded"))).toBe(false);
+    expect(result.lines).not.toContainEqual(
+      expect.stringMatching(/^launchctl\tbootstrap\t/),
+    );
+  });
+
+  it("does not restart when previous-package installation fails", () => {
+    const result = runDeployment({
+      doctorFails: true,
+      previousInstallFails: true,
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(
+      "gateway restart skipped because critical rollback restoration failed",
+    );
+    expect(existsSync(join(result.root, "gateway-loaded"))).toBe(false);
+    expect(result.lines).not.toContainEqual(
+      expect.stringMatching(/^launchctl\tbootstrap\t/),
+    );
   });
 
   it("restores the browser entrypoint when interrupted after installation", () => {
