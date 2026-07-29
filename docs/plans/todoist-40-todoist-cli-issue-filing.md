@@ -1,6 +1,6 @@
 # Todoist CLI issue filing
 
-**Status:** Automated merge process
+**Status:** Automated merge finalization
 **Issue:** [#40](https://github.com/coletaylor788/puddles/issues/40)
 **Last updated:** 2026-07-28
 
@@ -49,12 +49,18 @@ agent-owned: Cole is not asked to review or merge the pull request manually.
 ### State
 
 Implementation, full managed validation, reusable-worker review, and terminal
-exact-commit review are complete and clean. Pull request #42 is conflict-free,
-has no unresolved review threads, and all GitHub checks pass. The prior handoff
-incorrectly asked Cole to review and merge it; the ledger is being corrected so
-the configured automated merge process owns landing. This bookkeeping-only
-change will receive a fresh exact-commit review before the branch is returned to
-that process. The live OpenClaw agent and Todoist account have not been mutated.
+exact-commit review are complete and clean. Pull request #42 is conflict-free
+and has no unresolved review threads. The bookkeeping handoff correction was
+committed as `4a83820a8d6d85c69efbabf1c73f9707118237b7` and passed a
+fresh terminal review. Its required cumulative GitHub check failed on an
+unrelated timing assertion in the pinned OpenClaw candidate suite: a computed
+debounce was `14999` ms instead of exactly `15000` ms while 297 sibling tests
+passed. The docs-only commit cannot affect that runtime, so the failure is
+classified as a pre-existing timing flake. The narrow failed-job rerun passed
+unchanged, returning pull request #42 to a clean, conflict-free, fully green
+state. This final source-of-truth update will receive required checks and a
+fresh exact-commit review before automatic landing. The live OpenClaw agent and
+Todoist account have not been mutated.
 
 ### Scope and acceptance criteria
 
@@ -158,14 +164,26 @@ Completed:
   `node packages/e2e/bin/openclaw-test-env.mjs ci` with the same green
   workspace, package, patched OpenClaw, candidate, and cleanup results.
 
-- GitHub checks on commit `1c29f390eec18ce72fcb208fe6345fd97065908f`
-  passed, including the cumulative integration workflow and CodeQL.
-- Pull request #42 is mergeable with a clean merge state, no review threads or
-  review comments, and all checks successful.
+- GitHub checks on implementation commit
+  `1c29f390eec18ce72fcb208fe6345fd97065908f` passed, including the
+  cumulative integration workflow and CodeQL.
+- The bookkeeping-only commit
+  `4a83820a8d6d85c69efbabf1c73f9707118237b7` passed fresh terminal
+  adversarial review and all CodeQL checks. Its required cumulative integration
+  check reached the pinned OpenClaw candidate suite, passed 297 of 298 tests,
+  and failed one exact debounce assertion with `14999` ms instead of `15000`
+  ms. The implementation commit previously passed this same suite, and the
+  latest commit changes only this plan.
+- Pull request #42 remains conflict-free with no review threads or review
+  comments.
+- The targeted failed-job rerun passed on
+  `4a83820a8d6d85c69efbabf1c73f9707118237b7` without any test or
+  implementation change, confirming the prior 1 ms mismatch was transient.
 
 Pending:
 
-- Fresh terminal exact-commit review of the bookkeeping-only handoff correction.
+- Commit this final plan synchronization, pass its required checks, and complete
+  fresh exact-commit review before returning to automated merge.
 
 Automated validation makes no authenticated Todoist request or live external
 write. The independent reviewers separately checked the shipped CLI's command
@@ -210,7 +228,11 @@ idempotency, and isolation, and returned clean. A fresh terminal reviewer then
 reviewed exact commit `1c29f390eec18ce72fcb208fe6345fd97065908f` and
 reported no high-confidence defects. Because this plan now corrects the stale
 manual-review handoff, a fresh terminal review of the resulting bookkeeping
-commit remains pending.
+commit `4a83820a8d6d85c69efbabf1c73f9707118237b7` also returned clean.
+The subsequent required cumulative-check failure is classified as an unrelated
+1 ms timing flake in the pinned candidate suite; it is a CI gate, not a review
+finding or a reason to alter shared assertions. The targeted failed-job rerun
+passed unchanged.
 
 ### Checklist
 
@@ -225,5 +247,8 @@ commit remains pending.
 - [x] Commit and terminal-review the feature implementation.
 - [x] Bring PR review, checks, and mergeability conditions to ready.
 - [x] Correct the stale handoff so Cole is not assigned agent-owned review or merge.
-- [ ] Commit and terminal-review the bookkeeping-only handoff correction.
+- [x] Commit and terminal-review the bookkeeping-only handoff correction.
+- [x] Classify the required cumulative-check failure without weakening CI.
+- [x] Confirm the targeted failed-job rerun passes.
+- [ ] Commit, validate, and terminal-review the final plan synchronization.
 - [ ] Return the ready PR to the automated merge process.
