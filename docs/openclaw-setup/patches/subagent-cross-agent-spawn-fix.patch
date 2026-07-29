@@ -1,10 +1,161 @@
+diff --git a/docs/gateway/config-agents.md b/docs/gateway/config-agents.md
+index 869d35882d..931c258d8e 100644
+--- a/docs/gateway/config-agents.md
++++ b/docs/gateway/config-agents.md
+@@ -1104,7 +1104,7 @@ for provider examples and precedence.
+ - `identity` derives defaults: `ackReaction` from `emoji`, `mentionPatterns` from `name`/`emoji`.
+ - `subagents.allowAgents`: allowlist of configured agent ids for explicit `sessions_spawn.agentId` targets (`["*"]` = any configured target; default: same agent only). Include the requester id when self-targeted `agentId` calls should be allowed. Stale entries whose agent config was deleted are rejected by `sessions_spawn` and omitted from `agents_list`; run `openclaw doctor --fix` to clean them up, or add a minimal `agents.list[]` entry if that target should remain spawnable while inheriting defaults.
+ - Sandbox inheritance guard: if the requester session is sandboxed, `sessions_spawn` rejects targets that would run unsandboxed.
+-- `subagents.requireAgentId`: when true, block `sessions_spawn` calls that omit `agentId` (forces explicit profile selection; default: false).
++- `subagents.requireAgentId`: when true, block `sessions_spawn` calls that omit `agentId`. Cron-run callers default to `true` when unset; other callers default to `false`.
+ - `subagents.maxConcurrent`: max concurrent child-agent runs across subagent execution. Default: `8`.
+ - `subagents.maxChildrenPerAgent`: max active children a single agent session can spawn. Default: `5`.
+ - `subagents.maxSpawnDepth`: max nesting depth for sub-agent spawning (`1`-`5`). Default: `1` (no nesting).
+diff --git a/docs/tools/subagents.md b/docs/tools/subagents.md
+index d3d3c26b13..a8e1e76aec 100644
+--- a/docs/tools/subagents.md
++++ b/docs/tools/subagents.md
+@@ -345,7 +345,7 @@ See [Configuration reference](/gateway/configuration-reference) and
+   Default configured target-agent allowlist used when the requester agent does not set its own `subagents.allowAgents`.
+ </ParamField>
+ <ParamField path="agents.defaults.subagents.requireAgentId" type="boolean" default="false">
+-  Block `sessions_spawn` calls that omit `agentId` (forces explicit profile selection). Per-agent override: `agents.list[].subagents.requireAgentId`.
++  Block `sessions_spawn` calls that omit `agentId` (forces explicit profile selection). Per-agent override: `agents.list[].subagents.requireAgentId`. Cron-run callers default to `true` when neither setting is configured; other callers default to `false`.
+ </ParamField>
+ <ParamField path="agents.defaults.subagents.announceTimeoutMs" type="number" default="120000">
+   Per-call timeout for gateway `agent` announce delivery attempts. Values are positive integer milliseconds and are clamped to the platform-safe timer maximum. Transient retries can make the total announce wait longer than one configured timeout.
 diff --git a/src/agents/acp-spawn.test.ts b/src/agents/acp-spawn.test.ts
+index e0a33f481e..45fcc98370 100644
 --- a/src/agents/acp-spawn.test.ts
 +++ b/src/agents/acp-spawn.test.ts
-@@ -900,6 +900,69 @@ describe("spawnAcpDirect", () => {
-     expect(transcriptCalls[0]?.threadId).toBeUndefined();
+@@ -912,6 +912,194 @@ describe("spawnAcpDirect", () => {
      expect(transcriptCalls[1]?.threadId).toBe("child-thread");
    });
+ 
++  it("requires explicit agentId for cron ACP runs by default", async () => {
++    replaceSpawnConfig({
++      ...createDefaultSpawnConfig(),
++      acp: {
++        ...createDefaultSpawnConfig().acp,
++        defaultAgent: "codex",
++      },
++    });
++
++    const result = await spawnAcpDirect(
++      {
++        task: "run an unattended coding task",
++      },
++      {
++        agentSessionKey: "agent:main:cron:code-maintenance:run:run-1",
++      },
++    );
++
++    expect(expectFailedSpawn(result, "forbidden").error).toContain(
++      "requires explicit agentId",
++    );
++    expect(hoisted.initializeSessionMock).not.toHaveBeenCalled();
++  });
++
++  it("requires explicit agentId for top-level ACP runs when configured", async () => {
++    replaceSpawnConfig({
++      ...createDefaultSpawnConfig(),
++      acp: {
++        ...createDefaultSpawnConfig().acp,
++        defaultAgent: "codex",
++      },
++      agents: {
++        defaults: {
++          subagents: {
++            allowAgents: ["codex"],
++            maxSpawnDepth: 2,
++            requireAgentId: true,
++          },
++        },
++      },
++    });
++
++    const result = await spawnAcpDirect(
++      {
++        task: "run a top-level coding task",
++      },
++      {
++        agentSessionKey: "agent:main:main",
++      },
++    );
++
++    expect(expectFailedSpawn(result, "forbidden").error).toContain(
++      "requires explicit agentId",
++    );
++    expect(hoisted.initializeSessionMock).not.toHaveBeenCalled();
++  });
++
++  it("reports disabled ACP before cron target selection", async () => {
++    replaceSpawnConfig({
++      ...createDefaultSpawnConfig(),
++      acp: {
++        ...createDefaultSpawnConfig().acp,
++        enabled: false,
++        defaultAgent: "codex",
++      },
++    });
++
++    const result = await spawnAcpDirect(
++      {
++        task: "run while ACP is disabled",
++      },
++      {
++        agentSessionKey: "agent:main:cron:code-maintenance:run:disabled",
++      },
++    );
++
++    expect(expectFailedSpawn(result, "forbidden").error).toContain(
++      "ACP is disabled by policy",
++    );
++  });
++
++  it("allows cron ACP runs to opt into implicit agent targeting", async () => {
++    replaceSpawnConfig({
++      ...createDefaultSpawnConfig(),
++      acp: {
++        ...createDefaultSpawnConfig().acp,
++        defaultAgent: "codex",
++      },
++      agents: {
++        defaults: {
++          subagents: {
++            allowAgents: ["codex"],
++            maxSpawnDepth: 2,
++            requireAgentId: false,
++          },
++        },
++      },
++    });
++
++    const result = await spawnAcpDirect(
++      {
++        task: "run an intentional implicit coding task",
++      },
++      {
++        agentSessionKey: "agent:main:cron:code-maintenance:run:run-2",
++      },
++    );
++
++    expectAcceptedSpawn(result);
++  });
++
++  it("accepts an explicitly targeted cron ACP run", async () => {
++    const result = await spawnAcpDirect(
++      {
++        task: "run an explicitly targeted coding task",
++        agentId: "codex",
++      },
++      {
++        agentSessionKey: "agent:main:cron:code-maintenance:run:run-3",
++      },
++    );
++
++    expectAcceptedSpawn(result);
++  });
 +
 +  it("does not inherit requester tool policy for cross-agent ACP spawns", async () => {
 +    const result = await spawnAcpDirect(
@@ -68,18 +219,177 @@ diff --git a/src/agents/acp-spawn.test.ts b/src/agents/acp-spawn.test.ts
 +      inheritedToolDeny: ["message"],
 +    });
 +  });
--
 +
    it("allows ACP resume IDs recorded for the requester session", async () => {
      const resumeSessionId = "codex-inner-resume";
+     const ownedSessionKey = "agent:codex:acp:owned";
+diff --git a/src/agents/acp-spawn.ts b/src/agents/acp-spawn.ts
+index d463046cd1..c287ee636d 100644
+--- a/src/agents/acp-spawn.ts
++++ b/src/agents/acp-spawn.ts
+@@ -65,6 +65,7 @@ import {
+ } from "../infra/outbound/session-binding-service.js";
+ import { createSubsystemLogger } from "../logging/subsystem.js";
+ import {
++  isCronSessionKey,
+   isSubagentSessionKey,
+   normalizeAgentId,
+   normalizeOptionalAgentId,
+@@ -862,17 +863,6 @@ function resolveAcpSubagentEnvelopeState(params: {
+     };
+   }
+ 
+-  const requireAgentId =
+-    resolveAgentConfig(params.cfg, params.requesterAgentId)?.subagents?.requireAgentId ??
+-    params.cfg.agents?.defaults?.subagents?.requireAgentId ??
+-    false;
+-  if (requireAgentId && !params.requestedAgentId?.trim()) {
+-    return {
+-      error:
+-        "sessions_spawn requires explicit agentId when requireAgentId is configured. Use agents_list to see allowed agent ids.",
+-    };
+-  }
+-
+   const targetPolicy = resolveSubagentTargetPolicy({
+     requesterAgentId: params.requesterAgentId,
+     targetAgentId: params.targetAgentId,
+@@ -1285,6 +1275,18 @@ export async function spawnAcpDirect(
+       error: "ACP is disabled by policy (`acp.enabled=false`).",
+     });
+   }
++  const requireAgentId =
++    resolveAgentConfig(cfg, requesterAgentId)?.subagents?.requireAgentId ??
++    cfg.agents?.defaults?.subagents?.requireAgentId ??
++    isCronSessionKey(requesterInternalKey);
++  if (requireAgentId && !params.agentId?.trim()) {
++    return createAcpSpawnFailure({
++      status: "forbidden",
++      errorCode: "subagent_policy",
++      error:
++        "sessions_spawn requires explicit agentId for this requester. Use agents_list to see allowed agent ids.",
++    });
++  }
+   const streamToParentRequested = params.streamTo === "parent";
+   const parentSessionKey = normalizeOptionalString(ctx.agentSessionKey);
+   if (streamToParentRequested && !parentSessionKey) {
+@@ -1480,8 +1482,14 @@ export async function spawnAcpDirect(
+         key: sessionKey,
+         spawnedBy: requesterInternalKey,
+         ...subagentEnvelopeState.childSessionPatch,
+-        ...inheritedToolAllowPatch(ctx.inheritedToolAllowlist),
+-        ...inheritedToolDenyPatch(ctx.inheritedToolDenylist),
++        // FIX-CROSS-AGENT-SPAWN: only inherit tool allow/deny for same-agent
++        // spawns; cross-agent spawns keep the child agent's own tool set.
++        ...(targetAgentId === parseAgentSessionKey(requesterInternalKey)?.agentId
++          ? inheritedToolAllowPatch(ctx.inheritedToolAllowlist)
++          : {}),
++        ...(targetAgentId === parseAgentSessionKey(requesterInternalKey)?.agentId
++          ? inheritedToolDenyPatch(ctx.inheritedToolDenylist)
++          : {}),
+         ...(params.label ? { label: params.label } : {}),
+       },
+       timeoutMs: 10_000,
 diff --git a/src/agents/subagent-spawn.test.ts b/src/agents/subagent-spawn.test.ts
+index 1c863991e5..6ece470290 100644
 --- a/src/agents/subagent-spawn.test.ts
 +++ b/src/agents/subagent-spawn.test.ts
-@@ -231,6 +231,77 @@ describe("spawnSubagentDirect seam flow", () => {
-     expect(registerInput.requesterSessionKey).toBe("global");
+@@ -187,6 +187,92 @@ describe("spawnSubagentDirect seam flow", () => {
+     expect(result.childSessionKey).toMatch(/^agent:task-manager:subagent:/);
+   });
+ 
++  it("requires explicit agentId for cron runs by default", async () => {
++    const result = await spawnSubagentDirect(
++      {
++        task: "read email through the reader profile",
++        taskName: "email_reader",
++      },
++      {
++        agentSessionKey: "agent:main:cron:email-triage:run:run-1",
++        inheritedToolAllowlist: ["sessions_spawn", "archive_email", "add_label"],
++      },
++    );
++
++    expect(result.status).toBe("forbidden");
++    expect(result.error).toContain("requires explicit agentId");
++    expect(gatewayRequestRecords().some((request) => request.method === "agent")).toBe(false);
++  });
++
++  it("allows cron runs to opt into implicit same-agent spawns", async () => {
++    hoisted.configOverride = createConfigOverride({
++      agents: {
++        defaults: {
++          workspace: os.tmpdir(),
++        },
++        list: [
++          {
++            id: "main",
++            workspace: "/tmp/workspace-main",
++            subagents: {
++              requireAgentId: false,
++            },
++          },
++        ],
++      },
++    });
++
++    const result = await spawnSubagentDirect(
++      {
++        task: "run an intentional same-agent child",
++      },
++      {
++        agentSessionKey: "agent:main:cron:same-agent:run:run-1",
++      },
++    );
++
++    expect(result.status).toBe("accepted");
++    expect(result.childSessionKey).toMatch(/^agent:main:subagent:/);
++  });
++
++  it("allows an explicitly targeted cron coordinator self-spawn", async () => {
++    hoisted.configOverride = createConfigOverride({
++      agents: {
++        defaults: {
++          workspace: os.tmpdir(),
++        },
++        list: [
++          {
++            id: "main",
++            workspace: "/tmp/workspace-main",
++            subagents: {
++              allowAgents: ["main", "reader"],
++              requireAgentId: true,
++            },
++          },
++          {
++            id: "reader",
++            workspace: "/tmp/workspace-reader",
++          },
++        ],
++      },
++    });
++
++    const result = await spawnSubagentDirect(
++      {
++        task: "run an intentional coordinator worker",
++        agentId: "main",
++      },
++      {
++        agentSessionKey: "agent:main:cron:parallel-work:run:run-1",
++        inheritedToolAllowlist: ["read", "sessions_spawn"],
++      },
++    );
++
++    expect(result.status).toBe("accepted");
++    expect(result.childSessionKey).toMatch(/^agent:main:subagent:/);
++  });
++
+   it("registers the target agent id for cross-agent task attribution", async () => {
+     hoisted.configOverride = createConfigOverride({
+       session: {
+@@ -232,6 +318,125 @@ describe("spawnSubagentDirect seam flow", () => {
      expect(registerInput.requesterAgentId).toBe("main");
    });
-+
+ 
 +  it("preserves requester tool policy for same-agent spawns", async () => {
 +    let persistedStore: Record<string, Record<string, unknown>> | undefined;
 +    installSessionStoreCaptureMock(hoisted.updateSessionStoreMock, {
@@ -150,36 +460,92 @@ diff --git a/src/agents/subagent-spawn.test.ts b/src/agents/subagent-spawn.test.
 +    expect(childEntry).not.toHaveProperty("inheritedToolAllow");
 +    expect(childEntry).not.toHaveProperty("inheritedToolDeny");
 +  });
--
++
++  it("keeps an explicitly targeted cron reader on the reader tool policy", async () => {
++    hoisted.configOverride = createConfigOverride({
++      agents: {
++        defaults: {
++          workspace: os.tmpdir(),
++        },
++        list: [
++          {
++            id: "main",
++            workspace: "/tmp/workspace-main",
++            subagents: {
++              allowAgents: ["reader"],
++            },
++          },
++          {
++            id: "reader",
++            workspace: "/tmp/workspace-reader",
++          },
++        ],
++      },
++    });
++    let persistedStore: Record<string, Record<string, unknown>> | undefined;
++    installSessionStoreCaptureMock(hoisted.updateSessionStoreMock, {
++      onStore: (store) => {
++        persistedStore = store;
++      },
++    });
++
++    const result = await spawnSubagentDirect(
++      {
++        task: "list unread email without changing the mailbox",
++        taskName: "email_reader",
++        agentId: "reader",
++      },
++      {
++        agentSessionKey: "agent:main:cron:email-triage:run:run-2",
++        inheritedToolAllowlist: ["sessions_spawn", "archive_email", "add_label"],
++        inheritedToolDenylist: ["list_emails", "get_email"],
++      },
++    );
++
++    expect(result.status).toBe("accepted");
++    expect(result.childSessionKey).toMatch(/^agent:reader:subagent:/);
++    const childEntry = persistedStore?.[result.childSessionKey as string];
++    expect(childEntry).not.toHaveProperty("inheritedToolAllow");
++    expect(childEntry).not.toHaveProperty("inheritedToolDeny");
++  });
 +
    it("accepts a spawned run across session patching, runtime-model persistence, registry registration, and lifecycle emission", async () => {
      const operations: string[] = [];
-diff --git a/src/agents/acp-spawn.ts b/src/agents/acp-spawn.ts
-index e5089d723f..091afc0d16 100644
---- a/src/agents/acp-spawn.ts
-+++ b/src/agents/acp-spawn.ts
-@@ -1480,8 +1480,14 @@ export async function spawnAcpDirect(
-         key: sessionKey,
-         spawnedBy: requesterInternalKey,
-         ...subagentEnvelopeState.childSessionPatch,
--        ...inheritedToolAllowPatch(ctx.inheritedToolAllowlist),
--        ...inheritedToolDenyPatch(ctx.inheritedToolDenylist),
-+        // FIX-CROSS-AGENT-SPAWN: only inherit tool allow/deny for same-agent
-+        // spawns; cross-agent spawns keep the child agent's own tool set.
-+        ...(targetAgentId === parseAgentSessionKey(requesterInternalKey)?.agentId
-+          ? inheritedToolAllowPatch(ctx.inheritedToolAllowlist)
-+          : {}),
-+        ...(targetAgentId === parseAgentSessionKey(requesterInternalKey)?.agentId
-+          ? inheritedToolDenyPatch(ctx.inheritedToolDenylist)
-+          : {}),
-         ...(params.label ? { label: params.label } : {}),
-       },
-       timeoutMs: 10_000,
+     let persistedStore: Record<string, Record<string, unknown>> | undefined;
 diff --git a/src/agents/subagent-spawn.ts b/src/agents/subagent-spawn.ts
-index 7b211df54d..8aeee46c66 100644
+index 2ce1c4cda0..689b97450b 100644
 --- a/src/agents/subagent-spawn.ts
 +++ b/src/agents/subagent-spawn.ts
-@@ -1329,8 +1329,15 @@ export async function spawnSubagentDirect(
+@@ -33,7 +33,12 @@ import type { SubagentSpawnPreparation } from "../context-engine/types.js";
+ import { stringifyRouteThreadId } from "../plugin-sdk/channel-route.js";
+ import { listRegisteredPluginAgentPromptGuidance } from "../plugins/command-registry-state.js";
+ import type { SubagentLifecycleHookRunner } from "../plugins/hooks.js";
+-import { isValidAgentId, normalizeAgentId, parseAgentSessionKey } from "../routing/session-key.js";
++import {
++  isCronSessionKey,
++  isValidAgentId,
++  normalizeAgentId,
++  parseAgentSessionKey,
++} from "../routing/session-key.js";
+ import { resolveUserPath } from "../utils.js";
+ import type { DeliveryContext } from "../utils/delivery-context.types.js";
+ import { listAgentIds, resolveAgentDir } from "./agent-scope-config.js";
+@@ -1182,12 +1187,12 @@ export async function spawnSubagentDirect(
+   const requireAgentId =
+     resolveAgentConfig(cfg, requesterAgentId)?.subagents?.requireAgentId ??
+     cfg.agents?.defaults?.subagents?.requireAgentId ??
+-    false;
++    isCronSessionKey(requesterInternalKey);
+   if (requireAgentId && !requestedAgentId?.trim()) {
+     return {
+       status: "forbidden",
+       error:
+-        "sessions_spawn requires explicit agentId when requireAgentId is configured. Use agents_list to see allowed agent ids.",
++        "sessions_spawn requires explicit agentId for this requester. Use agents_list to see allowed agent ids.",
+     };
+   }
+   const targetAgentId = requestedAgentId ? normalizeAgentId(requestedAgentId) : requesterAgentId;
+@@ -1332,8 +1337,15 @@ export async function spawnSubagentDirect(
      spawnDepth: childDepth,
      subagentRole: childCapabilities.role === "main" ? null : childCapabilities.role,
      subagentControlScope: childCapabilities.controlScope,
@@ -197,3 +563,200 @@ index 7b211df54d..8aeee46c66 100644
      ...plan.initialSessionPatch,
    };
  
+diff --git a/src/agents/tools/sessions-spawn-tool.test.ts b/src/agents/tools/sessions-spawn-tool.test.ts
+index 1cf0c030b6..6a26d5ecc6 100644
+--- a/src/agents/tools/sessions-spawn-tool.test.ts
++++ b/src/agents/tools/sessions-spawn-tool.test.ts
+@@ -382,6 +382,12 @@ describe("sessions_spawn tool", () => {
+     expect(requireSchemaProperty(schema.properties, "taskName").description).toContain(
+       "Stable alias",
+     );
++    expect(requireSchemaProperty(schema.properties, "taskName").description).toContain(
++      "does not select an agent profile",
++    );
++    expect(requireSchemaProperty(schema.properties, "agentId").description).toContain(
++      "Required for scheduled/cron callers",
++    );
+ 
+     const result = await tool.execute("call-task-name", {
+       task: "review subagent handling",
+diff --git a/src/agents/tools/sessions-spawn-tool.ts b/src/agents/tools/sessions-spawn-tool.ts
+index 22e5c6240d..9fbe61dbf7 100644
+--- a/src/agents/tools/sessions-spawn-tool.ts
++++ b/src/agents/tools/sessions-spawn-tool.ts
+@@ -169,14 +169,19 @@ function createSessionsSpawnToolSchema(params: {
+     taskName: Type.Optional(
+       Type.String({
+         description:
+-          "Stable alias for later targeting; lowercase letters/digits/underscores/hyphens, starts letter.",
++          "Stable alias for later targeting; does not select an agent profile. Lowercase letters/digits/underscores/hyphens, starts letter.",
+       }),
+     ),
+     label: Type.Optional(Type.String()),
+     runtime: optionalStringEnum(
+       params.acpAvailable ? SESSIONS_SPAWN_RUNTIMES : (["subagent"] as const),
+     ),
+-    agentId: Type.Optional(Type.String()),
++    agentId: Type.Optional(
++      Type.String({
++        description:
++          "Target agent profile. Required for scheduled/cron callers; omit only for same-agent spawns when policy allows.",
++      }),
++    ),
+     model: Type.Optional(Type.String()),
+     thinking: Type.Optional(Type.String()),
+     cwd: Type.Optional(Type.String()),
+diff --git a/src/config/types.agent-defaults.ts b/src/config/types.agent-defaults.ts
+index 4fe2cbd351..95cfd35445 100644
+--- a/src/config/types.agent-defaults.ts
++++ b/src/config/types.agent-defaults.ts
+@@ -491,7 +491,7 @@ export type AgentDefaultsConfig = {
+     runTimeoutSeconds?: number;
+     /** Gateway timeout in ms for sub-agent announce delivery calls (default: 120000). */
+     announceTimeoutMs?: number;
+-    /** Require explicit agentId in sessions_spawn (no default same-as-caller). Default: false. */
++    /** Require explicit agentId in sessions_spawn. Default: false; cron-run callers default to true when unset. */
+     requireAgentId?: boolean;
+   };
+   /** Optional sandbox settings for non-main sessions. */
+diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.discord-group.json b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.discord-group.json
+index 484070a9db..e2b0308a50 100644
+--- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.discord-group.json
++++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.discord-group.json
+@@ -138,6 +138,7 @@
+     "inputSchema": {
+       "properties": {
+         "agentId": {
++          "description": "Target agent profile. Required for scheduled/cron callers; omit only for same-agent spawns when policy allows.",
+           "type": "string"
+         },
+         "attachAs": {
+@@ -209,7 +210,7 @@
+           "type": "string"
+         },
+         "taskName": {
+-          "description": "Stable alias for later targeting; lowercase letters/digits/underscores/hyphens, starts letter.",
++          "description": "Stable alias for later targeting; does not select an agent profile. Lowercase letters/digits/underscores/hyphens, starts letter.",
+           "type": "string"
+         },
+         "thinking": {
+diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.heartbeat-turn.json b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.heartbeat-turn.json
+index e74fdee1a0..c73acec9e1 100644
+--- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.heartbeat-turn.json
++++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.heartbeat-turn.json
+@@ -138,6 +138,7 @@
+     "inputSchema": {
+       "properties": {
+         "agentId": {
++          "description": "Target agent profile. Required for scheduled/cron callers; omit only for same-agent spawns when policy allows.",
+           "type": "string"
+         },
+         "attachAs": {
+@@ -209,7 +210,7 @@
+           "type": "string"
+         },
+         "taskName": {
+-          "description": "Stable alias for later targeting; lowercase letters/digits/underscores/hyphens, starts letter.",
++          "description": "Stable alias for later targeting; does not select an agent profile. Lowercase letters/digits/underscores/hyphens, starts letter.",
+           "type": "string"
+         },
+         "thinking": {
+diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.telegram-direct.json b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.telegram-direct.json
+index fd531c5a6f..032b6123b5 100644
+--- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.telegram-direct.json
++++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.telegram-direct.json
+@@ -138,6 +138,7 @@
+     "inputSchema": {
+       "properties": {
+         "agentId": {
++          "description": "Target agent profile. Required for scheduled/cron callers; omit only for same-agent spawns when policy allows.",
+           "type": "string"
+         },
+         "attachAs": {
+@@ -209,7 +210,7 @@
+           "type": "string"
+         },
+         "taskName": {
+-          "description": "Stable alias for later targeting; lowercase letters/digits/underscores/hyphens, starts letter.",
++          "description": "Stable alias for later targeting; does not select an agent profile. Lowercase letters/digits/underscores/hyphens, starts letter.",
+           "type": "string"
+         },
+         "thinking": {
+diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/discord-group-codex-message-tool.md b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/discord-group-codex-message-tool.md
+index d936e33352..63e1cb0d58 100644
+--- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/discord-group-codex-message-tool.md
++++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/discord-group-codex-message-tool.md
+@@ -225,8 +225,8 @@ This is the deterministic model-bound layer stack OpenClaw can snapshot for the
+     "roughTokens": 0
+   },
+   "dynamicToolsJson": {
+-    "chars": 53471,
+-    "roughTokens": 13368
++    "chars": 53644,
++    "roughTokens": 13411
+   },
+   "openClawDeveloperInstructions": {
+     "chars": 3245,
+@@ -237,8 +237,8 @@ This is the deterministic model-bound layer stack OpenClaw can snapshot for the
+     "roughTokens": 6943
+   },
+   "totalWithDynamicToolsJson": {
+-    "chars": 81243,
+-    "roughTokens": 20311
++    "chars": 81416,
++    "roughTokens": 20354
+   },
+   "userInputText": {
+     "chars": 1442,
+diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-direct-codex-message-tool.md b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-direct-codex-message-tool.md
+index 9bb7fddcbc..4851645d6e 100644
+--- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-direct-codex-message-tool.md
++++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-direct-codex-message-tool.md
+@@ -225,8 +225,8 @@ This is the deterministic model-bound layer stack OpenClaw can snapshot for the
+     "roughTokens": 0
+   },
+   "dynamicToolsJson": {
+-    "chars": 53160,
+-    "roughTokens": 13290
++    "chars": 53333,
++    "roughTokens": 13334
+   },
+   "openClawDeveloperInstructions": {
+     "chars": 2136,
+@@ -237,8 +237,8 @@ This is the deterministic model-bound layer stack OpenClaw can snapshot for the
+     "roughTokens": 6563
+   },
+   "totalWithDynamicToolsJson": {
+-    "chars": 79414,
+-    "roughTokens": 19854
++    "chars": 79587,
++    "roughTokens": 19897
+   },
+   "userInputText": {
+     "chars": 1033,
+diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-heartbeat-codex-tool.md b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-heartbeat-codex-tool.md
+index f004bd6819..3ffd6888f2 100644
+--- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-heartbeat-codex-tool.md
++++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-heartbeat-codex-tool.md
+@@ -226,8 +226,8 @@ This is the deterministic model-bound layer stack OpenClaw can snapshot for the
+     "roughTokens": 0
+   },
+   "dynamicToolsJson": {
+-    "chars": 54450,
+-    "roughTokens": 13613
++    "chars": 54623,
++    "roughTokens": 13656
+   },
+   "openClawDeveloperInstructions": {
+     "chars": 2155,
+@@ -238,8 +238,8 @@ This is the deterministic model-bound layer stack OpenClaw can snapshot for the
+     "roughTokens": 6799
+   },
+   "totalWithDynamicToolsJson": {
+-    "chars": 81647,
+-    "roughTokens": 20412
++    "chars": 81820,
++    "roughTokens": 20455
+   },
+   "userInputText": {
+     "chars": 1271,

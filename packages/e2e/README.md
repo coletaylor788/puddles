@@ -21,8 +21,9 @@ The pull-request workflow runs this exact command on macOS. The lifecycle:
 3. creates a detached worktree at the pinned OpenClaw revision;
 4. restores that worktree's frozen dependencies;
 5. applies every maintained source patch in deployment order;
-6. executes every mapped OpenClaw regression; and
-7. executes candidate tests that need both the Puddles harness and patched
+6. verifies generated OpenClaw prompt snapshots are current;
+7. executes every mapped OpenClaw regression; and
+8. executes candidate tests that need both the Puddles harness and patched
    OpenClaw source.
 
 The temporary worktree is removed on success, failure, and termination.

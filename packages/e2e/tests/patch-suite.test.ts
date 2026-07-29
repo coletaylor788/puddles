@@ -71,4 +71,22 @@ describe("OpenClaw cumulative patch suite", () => {
   it("pins the upstream source revision used by the patch pool", () => {
     expect(suite.openclawRef).toMatch(/^[0-9a-f]{40}$/);
   });
+
+  it("checks generated prompt snapshots after applying the patch stack", () => {
+    const runner = readFileSync(
+      join(packageDir, "bin", "openclaw-test-env.mjs"),
+      "utf8",
+    );
+    const finalApply = runner.indexOf('await run("git", ["apply", patchFile]');
+    const snapshotCheck = runner.indexOf(
+      'await run("corepack", ["pnpm", "prompt:snapshots:check"]',
+    );
+    const mappedTests = runner.indexOf(
+      "const tests = [...new Set(suite.patches.flatMap((patch) => patch.tests))]",
+    );
+
+    expect(finalApply).toBeGreaterThan(-1);
+    expect(snapshotCheck).toBeGreaterThan(finalApply);
+    expect(mappedTests).toBeGreaterThan(snapshotCheck);
+  });
 });

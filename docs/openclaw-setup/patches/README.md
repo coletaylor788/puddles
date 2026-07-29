@@ -26,7 +26,7 @@ Why the switch:
 - **Preserves sandboxed-subagent tool-bridging.** A from-source build keeps the
   reader / browser-agent subagents wired to their full plugin tool sets — the
   earlier worry that source builds would break tool-bridging was disproven
-  (verified on 2026.6.11).
+  (live source build verified on 2026.7.1 at `0790d9f`).
 
 The retired `apply-*.mjs` dist patchers no longer describe the deploy; each
 patch doc keeps a short "retired — see `.patch`" note pointing at its source
@@ -36,11 +36,11 @@ diff.
 
 | Patch | Doc | Source diff | Status |
 |---|---|---|---|
-| `sessions_yield` block-at-yield + gather (cron + interactive) | [`sessions-yield-subagent-leak-fix.md`](./sessions-yield-subagent-leak-fix.md) | [`sessions-yield-block-and-gather.patch`](./sessions-yield-block-and-gather.patch) | Verified on 2026.6.11 |
-| Cross-agent subagent spawn tool-inheritance | [`subagent-cross-agent-spawn-fix.md`](./subagent-cross-agent-spawn-fix.md) | [`subagent-cross-agent-spawn-fix.patch`](./subagent-cross-agent-spawn-fix.patch) | Verified on 2026.6.11. Pending upstream PR (see plan 025). |
-| `skill_workshop` for sandboxed agents | [`skill-workshop-sandbox-fix.md`](./skill-workshop-sandbox-fix.md) | [`skill-workshop-sandbox-fix.patch`](./skill-workshop-sandbox-fix.patch) | Verified on 2026.6.11 |
-| Selective iMessage text/link/image part coalescing | [`imessage-message-part-coalescing.md`](./imessage-message-part-coalescing.md) | [`imessage-message-part-coalescing.patch`](./imessage-message-part-coalescing.patch) | Verified in an isolated fixture on 2026.6.11 |
-| Browser sandbox user-data-dir env override + singleton cleanup | [`browser-userdata-dir-fix.md`](./browser-userdata-dir-fix.md) | [`browser-userdata-dir-fix.patch`](./browser-userdata-dir-fix.patch) | Verified on 2026.6.11. Pending upstream PR (see plan 023). |
+| `sessions_yield` block-at-yield + gather (cron + interactive) | [`sessions-yield-subagent-leak-fix.md`](./sessions-yield-subagent-leak-fix.md) | [`sessions-yield-block-and-gather.patch`](./sessions-yield-block-and-gather.patch) | Live source build verified on 2026.7.1 (`0790d9f`) |
+| Explicit cron subagent targeting + cross-agent tool inheritance | [`subagent-cross-agent-spawn-fix.md`](./subagent-cross-agent-spawn-fix.md) | [`subagent-cross-agent-spawn-fix.patch`](./subagent-cross-agent-spawn-fix.patch) | Live source build verified on 2026.7.1 (`0790d9f`). Pending upstream PR (see plan 025). |
+| `skill_workshop` for sandboxed agents | [`skill-workshop-sandbox-fix.md`](./skill-workshop-sandbox-fix.md) | [`skill-workshop-sandbox-fix.patch`](./skill-workshop-sandbox-fix.patch) | Live source build verified on 2026.7.1 (`0790d9f`) |
+| Selective iMessage text/link/image part coalescing | [`imessage-message-part-coalescing.md`](./imessage-message-part-coalescing.md) | [`imessage-message-part-coalescing.patch`](./imessage-message-part-coalescing.patch) | Live source build verified on 2026.7.1 (`0790d9f`) |
+| Browser sandbox user-data-dir env override + stale-singleton cleanup | [`browser-userdata-dir-fix.md`](./browser-userdata-dir-fix.md) | [`browser-userdata-dir-fix.patch`](./browser-userdata-dir-fix.patch) | Live source build and browser image refresh verified on 2026.7.1 (`0790d9f`). Pending upstream PR (see plan 023). |
 
 > **Retired:** a former cron+subagent announce-delivery fix (`cron-announce`) was
 > retired on 2026.6.11 — superseded by block-at-yield, and its external
@@ -72,8 +72,16 @@ wrapper:
    skipped; a patch that no longer applies fails loudly (upstream refactor →
    re-port it).
 2. **Builds** from source (`pnpm build`).
-3. **Packs** the result (`npm pack`) into a tarball.
-4. **Installs** the tarball on the current host (`npm install -g <tarball>`).
+3. **Packs patched runtime workspaces** — currently `packages/ai` — into a
+   durable deployment-artifact directory, temporarily binds the root manifest to
+   that exact tarball, then packs the root package. The wrapper disables pnpm's
+   dependency auto-install during prepack and restores both `package.json` and
+   `pnpm-lock.yaml` on exit.
+4. **Installs** the root tarball on the current host. Local deployments retain
+   both artifacts under `~/.openclaw/deploy-artifacts`; explicit remote
+   deployments transfer both to the target's corresponding durable directory.
+   This keeps the installed root package's `file:` dependency resolvable and
+   prevents npm from substituting unpatched registry code.
 5. **Migrates auth** — runs `openclaw doctor --fix --yes`. 2026.6.x moved
    provider auth from the legacy `auth-profiles.json` into a per-agent SQLite
    store, and **bare upgrades don't auto-migrate** (you'd get "No API key
@@ -97,6 +105,13 @@ MINI_HOST=<target-host> OPENCLAW_SRC=~/git/openclaw \
 
 Only explicit remote deploys use `scp` and `ssh`; the script has no remote-host
 default.
+
+Use a disposable clean source worktree for each deployment. `EXIT`, `INT`,
+`TERM`, and `HUP` restore packaging inputs, but an uncatchable process kill can
+interrupt cleanup; if that happens, inspect `package.json` and `pnpm-lock.yaml`
+and restore them from the worktree before retrying. Source patches intentionally
+remain applied, so discard the deployment worktree after the run rather than
+reusing it.
 
 Validate afterward (`openclaw --version`, run a cron with a subagent).
 

@@ -1,5 +1,5 @@
 {
-  "openclawRef": "a1063aa4c83fc5469a677f992a4335604c3727bc",
+  "openclawRef": "0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c",
   "patches": [
     {
       "name": "sessions-yield-block-and-gather",
@@ -12,7 +12,8 @@
       "name": "subagent-cross-agent-spawn-fix",
       "tests": [
         "src/agents/acp-spawn.test.ts",
-        "src/agents/subagent-spawn.test.ts"
+        "src/agents/subagent-spawn.test.ts",
+        "src/agents/tools/sessions-spawn-tool.test.ts"
       ]
     },
     {

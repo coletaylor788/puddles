@@ -23,11 +23,33 @@ OPENCLAW_SRC="${OPENCLAW_SRC:?set OPENCLAW_SRC to your OpenClaw source checkout 
 MINI_HOST="${MINI_HOST:-}"
 MINI_SANDBOX_BUILD="${MINI_SANDBOX_BUILD:-/Users/puddles/.openclaw/sandbox-build}"
 GATEWAY_LABEL="${GATEWAY_LABEL:-ai.openclaw.gateway}"
+OPENCLAW_DEPLOY_ARTIFACT_DIR="${OPENCLAW_DEPLOY_ARTIFACT_DIR:-$HOME/.openclaw/deploy-artifacts}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REMOTE_DEPLOY=false
 if [ -n "$MINI_HOST" ]; then
   REMOTE_DEPLOY=true
 fi
+ARTIFACT_DIR=""
+PACKAGE_JSON_BACKUP=""
+LOCKFILE_BACKUP=""
+KEEP_LOCAL_ARTIFACTS=false
+
+cleanup_packaging() {
+  if [ -n "$PACKAGE_JSON_BACKUP" ] && [ -f "$PACKAGE_JSON_BACKUP" ]; then
+    cp "$PACKAGE_JSON_BACKUP" "$OPENCLAW_SRC/package.json"
+    rm -f "$PACKAGE_JSON_BACKUP"
+  fi
+  if [ -n "$LOCKFILE_BACKUP" ] && [ -f "$LOCKFILE_BACKUP" ]; then
+    cp "$LOCKFILE_BACKUP" "$OPENCLAW_SRC/pnpm-lock.yaml"
+    rm -f "$LOCKFILE_BACKUP"
+  fi
+  if ! $KEEP_LOCAL_ARTIFACTS && [ -n "$ARTIFACT_DIR" ] && [ -d "$ARTIFACT_DIR" ]; then
+    rm -rf "$ARTIFACT_DIR"
+  fi
+}
+trap cleanup_packaging EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM HUP
 
 # Public source patches, applied in order to a clean checkout of the target release.
 PATCHES=(
@@ -63,18 +85,67 @@ done
 echo "==> Building from source (pnpm build)"
 NODE_OPTIONS=--max-old-space-size=8192 pnpm build
 
-echo "==> Packing"
-rm -f openclaw-*.tgz
-TARBALL="$(npm pack --silent | tail -1)"
-[ -f "$TARBALL" ] || { echo "    pack produced no tarball" >&2; exit 1; }
+echo "==> Packing patched runtime workspaces + root package"
+mkdir -p "$OPENCLAW_DEPLOY_ARTIFACT_DIR"
+ARTIFACT_DIR="$(mktemp -d "$OPENCLAW_DEPLOY_ARTIFACT_DIR/build.XXXXXX")"
+PACKAGE_JSON_BACKUP="$(mktemp "${TMPDIR:-/tmp}/puddles-openclaw-package.XXXXXX")"
+LOCKFILE_BACKUP="$(mktemp "${TMPDIR:-/tmp}/puddles-openclaw-lockfile.XXXXXX")"
+cp package.json "$PACKAGE_JSON_BACKUP"
+cp pnpm-lock.yaml "$LOCKFILE_BACKUP"
+
+AI_TARBALL="$(
+  cd packages/ai
+  npm pack --silent --pack-destination "$ARTIFACT_DIR" | tail -1
+)"
+AI_TARBALL_PATH="$ARTIFACT_DIR/$AI_TARBALL"
+[ -f "$AI_TARBALL_PATH" ] || {
+  echo "    packages/ai pack produced no tarball" >&2
+  exit 1
+}
+
+if $REMOTE_DEPLOY; then
+  REMOTE_ARTIFACT_DIR="$(
+    ssh "$MINI_HOST" 'printf "%s" "$HOME/.openclaw/deploy-artifacts"'
+  )"
+  case "$REMOTE_ARTIFACT_DIR" in
+    /*) ;;
+    *)
+      echo "    remote artifact directory is not absolute: $REMOTE_ARTIFACT_DIR" >&2
+      exit 1
+      ;;
+  esac
+  AI_INSTALL_REF="$REMOTE_ARTIFACT_DIR/$AI_TARBALL"
+else
+  AI_INSTALL_REF="$AI_TARBALL_PATH"
+fi
+node - "$AI_INSTALL_REF" <<'NODE'
+const fs = require("node:fs");
+const packagePath = "package.json";
+const installRef = process.argv[2];
+const manifest = JSON.parse(fs.readFileSync(packagePath, "utf8"));
+if (manifest.dependencies?.["@openclaw/ai"] !== "workspace:*") {
+  throw new Error("expected dependencies[@openclaw/ai] to be workspace:*");
+}
+manifest.dependencies["@openclaw/ai"] = `file:${installRef}`;
+fs.writeFileSync(packagePath, `${JSON.stringify(manifest, null, 2)}\n`);
+NODE
+
+TARBALL="$(
+  PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN=false \
+    npm pack --silent --pack-destination "$ARTIFACT_DIR" | tail -1
+)"
+TARBALL_PATH="$ARTIFACT_DIR/$TARBALL"
+[ -f "$TARBALL_PATH" ] || { echo "    root pack produced no tarball" >&2; exit 1; }
+echo "    $AI_TARBALL"
 echo "    $TARBALL"
 
 if $REMOTE_DEPLOY; then
   echo "==> Installing on $MINI_HOST + migrating auth + restarting gateway"
-  scp "$TARBALL" "$MINI_HOST:/tmp/$TARBALL"
+  ssh "$MINI_HOST" "mkdir -p '$REMOTE_ARTIFACT_DIR'"
+  scp "$AI_TARBALL_PATH" "$TARBALL_PATH" "$MINI_HOST:$REMOTE_ARTIFACT_DIR/"
   ssh "$MINI_HOST" "
     set -e
-    npm install -g '/tmp/$TARBALL'
+    npm install -g '$REMOTE_ARTIFACT_DIR/$TARBALL'
     # 2026.6.x moved provider auth JSON->SQLite with no auto-migration; doctor --fix
     # imports the legacy auth-profiles.json into the per-agent SQLite store (backs up
     # + removes the old files). Idempotent once migrated.
@@ -84,7 +155,8 @@ if $REMOTE_DEPLOY; then
   "
 else
   echo "==> Installing locally + migrating auth + restarting gateway"
-  npm install -g "$OPENCLAW_SRC/$TARBALL"
+  npm install -g "$TARBALL_PATH"
+  KEEP_LOCAL_ARTIFACTS=true
   openclaw doctor --fix --yes </dev/null || true
   launchctl kickstart -k "gui/$(id -u)/$GATEWAY_LABEL"
   echo "    installed + gateway restarted"

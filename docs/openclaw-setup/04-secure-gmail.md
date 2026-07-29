@@ -444,11 +444,22 @@ openclaw config set 'agents.list[0]' '{
       }
     }
   },
-  "subagents": { "allowAgents": ["reader","browser-agent"] }
+  "subagents": {
+    "allowAgents": ["main","reader","browser-agent"],
+    "requireAgentId": true
+  }
 }' --strict-json
 ```
 
 Indexes (`[0]` for main, `[2]` for reader) match guide 03's order. If you reordered your agents, run `openclaw config get 'agents.list'` first and adjust.
+
+`requireAgentId` makes profile selection explicit. In particular, scheduled
+triage must call `sessions_spawn(agentId="reader", ...)`; `taskName` only labels
+the child for later targeting and never selects the reader profile. The
+maintained OpenClaw patch also applies this guard to cron runs by default so
+older configurations fail closed instead of silently creating a restricted
+same-agent child. Keeping `main` in `allowAgents` preserves intentional
+same-agent fan-out, but those calls must likewise use `agentId="main"`.
 
 ### 8.3 Verify `debug` and `browser-agent` got nothing
 

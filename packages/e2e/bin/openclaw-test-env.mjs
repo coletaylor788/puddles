@@ -86,6 +86,11 @@ async function runPatchSuite() {
       await run("git", ["apply", patchFile], { cwd: candidate });
     }
 
+    await run("corepack", ["pnpm", "prompt:snapshots:check"], {
+      cwd: candidate,
+      env: { ...process.env, CI: process.env.CI ?? "true" },
+    });
+
     const tests = [...new Set(suite.patches.flatMap((patch) => patch.tests))];
     for (const test of tests) {
       if (!existsSync(join(candidate, test))) {
