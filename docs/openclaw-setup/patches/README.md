@@ -72,21 +72,65 @@ wrapper:
    skipped; a patch that no longer applies fails loudly (upstream refactor →
    re-port it).
 2. **Builds** from source (`pnpm build`).
-3. **Packs** the result (`npm pack`) into a tarball.
-4. **Installs** the tarball on the current host (`npm install -g <tarball>`).
-5. **Migrates auth** — runs `openclaw doctor --fix --yes`. 2026.6.x moved
-   provider auth from the legacy `auth-profiles.json` into a per-agent SQLite
-   store, and **bare upgrades don't auto-migrate** (you'd get "No API key
-   found"). `doctor --fix` imports the legacy JSON into SQLite (backs up +
-   removes the old files); it's idempotent once migrated. **Required** on
-   2026.6.x upgrades.
-6. **Restarts** the gateway LaunchAgent (`launchctl kickstart -k`).
-7. **Refreshes the sandbox-browser image** — the browser patch edits
+3. **Serializes and packs the source build** — acquires a lock in the source
+   checkout's Git administrative directory before patch application, build, or
+   pack, and holds it through deployment. `npm pack` writes to a per-invocation
+   temporary directory, so concurrent invocations neither mutate shared build
+   output nor delete or consume one another's candidate.
+4. **Serializes deployment** — acquires a target-host lock so global package,
+   state migration, restart, and rollback operations cannot overlap. Remote
+   deployments use a unique staging filename.
+5. **Quiesces and snapshots recovery state** — stops the gateway and boundedly
+   waits until launchd no longer reports the service before any state copy,
+   packs the currently installed OpenClaw package with lifecycle scripts
+   disabled (production installs do not contain the source-only prepack
+   toolchain), clones the complete `~/.openclaw`
+   runtime tree with APFS copy-on-write semantics, and preserves the gateway
+   service definition under `~/.openclaw-deploy-backups/`. Failure to make the
+   complete clone aborts before package replacement and restarts the prior
+   gateway.
+6. **Installs** the tarball on the current host (`npm install -g <tarball>`).
+7. **Migrates state** — runs `openclaw doctor --fix --yes` while the gateway is
+   stopped. Migration failure
+   is fatal; the deploy no longer restarts the gateway and reports success after
+   a failed repair.
+8. **Restarts and probes** the gateway LaunchAgent. The deploy waits for the
+   payload-free `openclaw gateway health --port <local-port>` probe and fails if
+   readiness does not arrive within the configured bound. An environment-
+   selected remote gateway cannot satisfy this probe.
+9. **Rolls back automatically** on package, migration, interruption, restart,
+   or readiness failure by restoring the previous package, replacing the whole
+   runtime tree with its exact clone, restoring the service definition,
+   restarting the prior gateway, and checking the same local port. State created
+   by a failed migration is retained separately in the recovery directory for
+   diagnosis. The original failure remains nonzero, and rollback failures are
+   reported separately. If rollback cannot confirm gateway shutdown, it makes
+   no package or state changes and reports the retained recovery path.
+10. **Refreshes the sandbox-browser image while the gateway remains stopped and
+   the target lock remains held** — the browser patch edits
    `scripts/sandbox-browser-entrypoint.sh`, which the npm package does **not**
    ship, so the wrapper copies the patched entrypoint to the mini's
-   `sandbox-build`, rebuilds the `openclaw-sandbox-browser:bookworm-slim` image,
-   and recreates the `browser-agent` container. (Skipped if the entrypoint
-   carries no `FIX-BROWSER-*` marker.)
+   `sandbox-build`, builds a uniquely tagged candidate image, promotes it only
+   after a successful build, and recreates the `browser-agent` container. The
+   previous entrypoint and production image identity are restored if recreation,
+   interruption, gateway restart, or readiness fails. The gateway starts only
+   after this rollback-capable work finishes. (Skipped if the entrypoint carries
+   no `FIX-BROWSER-*` marker.)
+
+Do not use `openclaw update` for this patched production install. The built-in
+updater bypasses this patch stack, recovery snapshot, migration gate, readiness
+probe, and rollback. Move the source checkout to the intended release only when
+that upgrade is explicitly approved, then rerun `apply-and-deploy.sh`.
+
+The readiness bound defaults to 30 one-second attempts on local port `18789`.
+Tests and controlled deployments can override it with `GATEWAY_PORT`,
+`GATEWAY_HEALTH_ATTEMPTS`, and `GATEWAY_HEALTH_INTERVAL_SECONDS`; all must be
+positive integers.
+
+Recovery uses macOS `cp -cR`, so the complete multi-gigabyte runtime tree is a
+copy-on-write clone rather than a second physical copy. The target volume must
+support cloning; the deploy fails closed before package replacement when it
+does not.
 
 To build on one host and deploy to another, set `MINI_HOST` explicitly:
 
