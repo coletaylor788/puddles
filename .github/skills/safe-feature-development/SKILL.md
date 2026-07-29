@@ -158,9 +158,9 @@ requester's final validation and task-completion decision.
      and fresh terminal review before pushing the new candidate and repeating
      all remote integration gates.
    - When the terminal-reviewed candidate is remotely green, mergeable, and has
-     no unresolved required review, record its exact head commit and proceed to
-     promotion. Do not merge a candidate before its applicable promotion and
-     production validation complete.
+     no unresolved required review, record its exact head commit and the current
+     base-branch commit, then proceed to promotion. Do not merge a candidate
+     before its applicable promotion and production validation complete.
 
 7. **Promote through the configured lifecycle**
    - If the repository provides an approved automatic test-to-production
@@ -189,15 +189,16 @@ requester's final validation and task-completion decision.
 
 9. **Land and close out**
    - Immediately before merge, fetch the pull-request state again and confirm its
-     head is the exact terminal-reviewed, remotely approved candidate that
-     completed applicable promotion and production validation. Confirm required
-     checks and review remain green and the pull request remains mergeable.
-   - If the head, required checks or review, or mergeability changed after
-     promotion, roll back the promoted candidate using the recorded recovery
-     state, revalidate production health, and restart at the applicable
-     implementation, validation, review, and remote-integration step. Preserve
-     the remote-state failure and surface rollback failures as additional
-     errors.
+     head and base are the exact remotely approved commits recorded before
+     promotion, and that the head completed applicable promotion and production
+     validation. Confirm required checks and review remain green and the pull
+     request remains mergeable.
+   - If the head, approved base, required checks or review, or mergeability
+     changed after promotion, roll back the promoted candidate using the
+     recorded recovery state, revalidate production health, update and
+     revalidate the candidate against the current base, and restart at the
+     applicable review and remote-integration step. Preserve the remote-state
+     failure and surface rollback failures as additional errors.
    - If the candidate and gates still match, merge it using the repository's
      configured method. Do not stop at an open pull request or a
      `Ready for review` state unless a controlling instruction explicitly

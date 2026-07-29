@@ -28,10 +28,11 @@ for final requester validation and the requester’s task-completion decision.
 The always-on repository instructions define the ownership boundary. The safe
 feature workflow prepares remote integration before promotion, promotes and
 production-validates the exact remotely approved candidate, then rechecks that
-same head immediately before autonomous landing. Terminal review protects a
-landing candidate rather than a handoff commit. A shared-pool regression locks
-the phase order, design checkpoint, remote gates, candidate identity, rollback,
-merge, landed-state verification, and final requester-validation boundary.
+same head and approved base immediately before autonomous landing. Terminal
+review protects a landing candidate rather than a handoff commit. A shared-pool
+regression locks the phase order, design checkpoint, remote gates, head-and-base
+identity, rollback, merge, landed-state verification, and final
+requester-validation boundary.
 
 ### Safety and rollout
 
@@ -39,9 +40,10 @@ Workers still honor repository protections, permissions, explicit
 stop-before-landing requests, unresolved material decisions, and every existing
 validation and review gate. Remote CI, required review, conflicts, and
 mergeability are resolved before promotion. The exact approved head is then
-promoted and validated before merge; if its head or gates change, promotion is
-rolled back before remediation. This process-only change has no runtime
-deployment; rollback is a normal revert.
+promoted and validated before merge; if the approved head, approved base, or
+remote gates change, promotion is rolled back and the candidate is updated and
+revalidated against the current base before remediation continues. This
+process-only change has no runtime deployment; rollback is a normal revert.
 
 ## Agent details
 
@@ -50,9 +52,16 @@ deployment; rollback is a normal revert.
 The complete ownership and checkpoint policy, remote-before-promotion lifecycle,
 landing rollback paths, regression, and coverage index are implemented.
 Focused and full managed validation pass. Independent complete-diff review is
-clean after all accepted findings were remediated. In-diff bookkeeping is final;
-terminal exact-commit review and remote landing results belong only in the issue
-ledger so they do not invalidate the reviewed candidate.
+clean after all pre-terminal findings were remediated. The terminal-review
+regression omission is fixed: a closeout-scoped assertion now requires
+repository issue completion before final landed-result reporting. Focused and
+full managed validation pass on that correction. Re-review found one additional
+medium identity gap: base-branch drift after promotion can change the merge
+result without changing the PR head. The finding is fixed by recording and
+revalidating both approved commits. A follow-up review found the Human design
+still described head-only identity; that low-severity plan inconsistency is now
+corrected. Focused and full managed validation pass, the synchronized complete
+diff is clean, and in-diff bookkeeping is final.
 
 ### Scope and acceptance criteria
 
@@ -144,6 +153,19 @@ ledger so they do not invalidate the reviewed candidate.
     Focused and full managed validation pass.
 16. Completed clean independent full-diff re-review and finalized this plan for
     the immutable landing candidate.
+17. Terminal review of candidate `1f9672c1e0d383f6fb2c2f8020a5d91ca3ad64e9`
+    found one medium regression omission. Add a closeout-scoped assertion that
+    requires repository issue completion before final landed-result reporting,
+    then repeat validation and review. The assertion is added and focused plus
+    full managed validation pass.
+18. Record both approved head and base commits before promotion. Before merge,
+    require both identities unchanged; base drift triggers rollback, candidate
+    update and revalidation, and repeated remote gates. Added regression coverage;
+    focused and full managed validation pass.
+19. Synchronized the Human design with the implemented approved head-and-base
+    identity and rollback contract.
+20. Completed clean independent re-review of the synchronized complete diff and
+    finalized this plan for a corrected immutable landing candidate.
 
 ### Validation
 
@@ -161,7 +183,7 @@ Research evidence:
 - A prior completed workflow merged only after interpreting a later approval as
   separate merge authorization, confirming the implicit authorization gap.
 
-Completed on the final implementation:
+Completed on the corrected implementation:
 
 - `corepack pnpm --filter e2e exec vitest run
   tests/review-workflow.test.ts` passed with 2 tests.
@@ -170,15 +192,16 @@ Completed on the final implementation:
   lint, 239 isolated workspace tests, 298 mapped OpenClaw tests, and 1 candidate
   test completed; the temporary worktree was removed and pruned.
 - Independent complete-diff review found no remaining actionable,
-  high-confidence defects after the accepted remediation loop.
+  high-confidence defects after the accepted remediation loop and final plan
+  synchronization.
 
 Remaining external ledger gates:
 
-- terminal fresh review of the exact landing candidate;
+- a new terminal fresh review of the corrected exact landing candidate;
 - remote PR checks, mergeability, landing, and post-landing verification.
 
-Those remaining results must be recorded only in issue #44; changing this plan
-after terminal review would invalidate the candidate.
+Those remaining results belong only in issue #44 so recording them cannot
+invalidate the exact candidate.
 
 ### Rollout and rollback
 
@@ -246,6 +269,24 @@ coverage-index changes together.
 - 2026-07-29: Final independent complete-diff re-review found no actionable
   high-confidence defects. Its residual gap is the intentionally pending
   terminal exact-commit and remote landing lifecycle.
+- 2026-07-29: Terminal review of exact candidate `1f9672c1e0d383f6fb2c2f8020a5d91ca3ad64e9`
+  found one medium regression omission: repository issue completion was not
+  enforced by tests. The finding was accepted and invalidated that candidate.
+- 2026-07-29: Added closeout-scoped issue-completion coverage; focused and full
+  managed validation pass on the corrected diff.
+- 2026-07-29: Re-review verified issue closeout and found one medium identity
+  gap: base-branch drift after promotion could change the merge result while
+  head, checks, review, and mergeability remained acceptable. The finding is
+  accepted and fixed.
+- 2026-07-29: Focused and full managed validation passed after approved-base
+  identity was added.
+- 2026-07-29: Re-review verified the implementation and found one low plan
+  inconsistency: Human design still described head-only identity. The design now
+  requires approved head and base identity with rollback and current-base
+  revalidation.
+- 2026-07-29: Independent re-review of the synchronized complete diff found no
+  actionable high-confidence defects. Terminal exact-commit and remote landing
+  gates remain intentionally external to this immutable plan.
 
 ### Checklist
 
@@ -270,4 +311,9 @@ coverage-index changes together.
 - [x] Lock the post-merge state re-fetch sequence in regression coverage.
 - [x] Complete independent adversarial review and all accepted remediation,
   using fresh replacements when completed workers could not be resumed.
-- [x] Finalize in-diff bookkeeping for the exact landing candidate.
+- [x] Lock repository issue completion before final result reporting.
+- [x] Rerun focused and full managed validation.
+- [x] Record and revalidate approved base identity before merge.
+- [x] Synchronize Human design with approved head-and-base identity.
+- [x] Complete independent review of the corrected complete diff.
+- [x] Finalize in-diff bookkeeping for the corrected landing candidate.

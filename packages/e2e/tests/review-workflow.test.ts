@@ -121,16 +121,16 @@ describe("adversarial review workflow", () => {
       /Do not stop at an open pull request or a\s+`Ready for review` state/i,
     );
     expect(remoteIntegrationWorkflow).toMatch(
-      /terminal-reviewed candidate is remotely green, mergeable, and has\s+no unresolved required review[\s\S]*exact head commit[\s\S]*Do not merge a candidate before its applicable promotion and\s+production validation complete/i,
+      /terminal-reviewed candidate is remotely green, mergeable, and has\s+no unresolved required review[\s\S]*exact head commit and the current\s+base-branch commit[\s\S]*Do not merge a candidate[\s\S]*promotion and production validation complete/i,
     );
     expect(remoteIntegrationWorkflow).toMatch(
       /Any candidate change invalidates the terminal review[\s\S]*applicable validation, full integration pool, retained-review recheck,[\s\S]*fresh terminal review[\s\S]*repeating\s+all remote integration gates/i,
     );
     expect(closeoutWorkflow).toMatch(
-      /Immediately before merge[\s\S]*exact terminal-reviewed, remotely approved candidate that\s+completed applicable promotion and production validation/i,
+      /Immediately before merge[\s\S]*head and base are the exact remotely approved commits recorded before\s+promotion[\s\S]*head completed applicable promotion and production\s+validation/i,
     );
     expect(closeoutWorkflow).toMatch(
-      /head, required checks or review, or mergeability changed after\s+promotion[\s\S]*roll back the promoted candidate[\s\S]*revalidate production\s+health[\s\S]*restart at the applicable\s+implementation, validation, review, and remote-integration step/i,
+      /head, approved base, required checks or review, or mergeability\s+changed after promotion[\s\S]*roll back the promoted candidate[\s\S]*revalidate production health[\s\S]*update and\s+revalidate the candidate against the current base[\s\S]*restart at the\s+applicable review and remote-integration step/i,
     );
     expect(closeoutWorkflow).toMatch(
       /merge it using the repository's\s+configured method[\s\S]*After the merge command, re-fetch the pull request and default branch[\s\S]*exact candidate cannot be confirmed landed/i,
@@ -143,6 +143,9 @@ describe("adversarial review workflow", () => {
     );
     expect(closeoutWorkflow).toMatch(
       /requester's final validation and\s+external task-completion decision/i,
+    );
+    expect(closeoutWorkflow).toMatch(
+      /Mark the repository issue complete and report the landed outcome[\s\S]*requester's final validation and\s+external task-completion decision/i,
     );
     expect(safeWorkflow).not.toMatch(/exact commit to be handed off/i);
   });
