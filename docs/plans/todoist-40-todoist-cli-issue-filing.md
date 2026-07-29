@@ -1,6 +1,6 @@
 # Todoist CLI issue filing
 
-**Status:** Ready for terminal review
+**Status:** Automated merge process
 **Issue:** [#40](https://github.com/coletaylor788/puddles/issues/40)
 **Last updated:** 2026-07-28
 
@@ -27,7 +27,8 @@ existing sandbox base. A transactional installer builds and smoke-tests the
 image, installs the skill without clobbering user content, configures only the
 selected agent, and recreates its sandbox. The task-to-issue recipe creates one
 concise task with a detailed description and the `agent` label; the existing
-monitor remains responsible for GitHub issue creation.
+monitor remains responsible for GitHub issue creation and the configured
+automated merge process owns pull-request landing.
 
 ### Safety and rollout
 
@@ -40,19 +41,20 @@ the installer refuses non-main agents by default and documentation requires a
 trusted agent boundary. Automated tests use a deny-by-default recording CLI and
 never contact Todoist or GitHub. No automatic production promotion path exists,
 so production installation remains an explicit operator action; fixture tests
-prove install failure recovery and rollback.
+prove install failure recovery and rollback. Repository review and merge are
+agent-owned: Cole is not asked to review or merge the pull request manually.
 
 ## Agent details
 
 ### State
 
-Implementation and full managed validation are complete. The accepted low-risk
-review gap is remediated: the installer rejects a token exported only in its
-shell because that cannot guarantee that the OpenClaw daemon can resolve the
-stored reference. Focused and complete managed validation are green after the
-change, and complete-current-diff adversarial re-review is clean. The finalized
-diff is ready to commit for terminal exact-commit review. The live OpenClaw
-agent and Todoist account have not been mutated.
+Implementation, full managed validation, reusable-worker review, and terminal
+exact-commit review are complete and clean. Pull request #42 is conflict-free,
+has no unresolved review threads, and all GitHub checks pass. The prior handoff
+incorrectly asked Cole to review and merge it; the ledger is being corrected so
+the configured automated merge process owns landing. This bookkeeping-only
+change will receive a fresh exact-commit review before the branch is returned to
+that process. The live OpenClaw agent and Todoist account have not been mutated.
 
 ### Scope and acceptance criteria
 
@@ -109,6 +111,9 @@ agent and Todoist account have not been mutated.
 - No OpenClaw source patch or production auto-deployment is needed. The
   repository supplies a controlled operator installer and deterministic
   rollback.
+- Pull request review and merge use the configured automated merge lifecycle.
+  The worker resolves actionable review, CI, or conflict conditions but never
+  merges manually and never assigns that agent-owned step to Cole.
 
 ### Implementation
 
@@ -125,6 +130,9 @@ agent and Todoist account have not been mutated.
   guide index.
 - Added `packages/e2e/mocks/todoist-mock.mjs`, expanded shared write-sink
   coverage, and added focused installer/image/skill tests.
+- Opened pull request #42 and brought its review, checks, and mergeability
+  conditions to ready; corrected the task handoff to leave landing with the
+  automated merge process.
 
 ### Validation
 
@@ -150,14 +158,21 @@ Completed:
   `node packages/e2e/bin/openclaw-test-env.mjs ci` with the same green
   workspace, package, patched OpenClaw, candidate, and cleanup results.
 
+- GitHub checks on commit `1c29f390eec18ce72fcb208fe6345fd97065908f`
+  passed, including the cumulative integration workflow and CodeQL.
+- Pull request #42 is mergeable with a clean merge state, no review threads or
+  review comments, and all checks successful.
+
 Pending:
 
-- Terminal exact-commit adversarial review.
+- Fresh terminal exact-commit review of the bookkeeping-only handoff correction.
 
 Automated validation makes no authenticated Todoist request or live external
 write. The independent reviewers separately checked the shipped CLI's command
 flags, env-token behavior, OpenClaw env substitution and config addressing,
 skill schema, Docker user contract, dependency lock, and rollback ordering.
+The handoff correction changes only this plan; it does not affect runtime
+behavior or the committed regressions.
 
 Residual first-install checks are intentionally operator-facing rather than
 automated live tests: confirm the returned Todoist JSON includes a URL, recreate
@@ -168,12 +183,13 @@ env substitution without printing the credential.
 
 There is no configured automatic promotion lifecycle for local sandbox
 capabilities, so automated validation did not mutate the live agent. After
-review, an operator may run the documented installer after placing the token in
+merge, an operator may run the documented installer after placing the token in
 the trusted global environment. The installer records prior state before
 mutation and restores it plus prior managed skill content if configuration or
 sandbox recreation fails. The rollback action restores that state, recreates
 the sandbox, and leaves unrelated images, skills, agents, and credentials
-untouched.
+untouched. The automated merge lifecycle, not Cole, lands the ready pull
+request; this worker does not merge or enable auto-merge manually.
 
 ### Review log
 
@@ -190,8 +206,11 @@ was accepted and remediated by requiring the trusted state `.env`; a regression
 proves a shell-only export fails before image build or mutation. A replacement
 reviewer then re-checked the complete remediated diff, independently verified
 the npm artifact, CLI command surface, env-token behavior, rollback,
-idempotency, and isolation, and returned clean. Terminal exact-commit review
-remains pending.
+idempotency, and isolation, and returned clean. A fresh terminal reviewer then
+reviewed exact commit `1c29f390eec18ce72fcb208fe6345fd97065908f` and
+reported no high-confidence defects. Because this plan now corrects the stale
+manual-review handoff, a fresh terminal review of the resulting bookkeeping
+commit remains pending.
 
 ### Checklist
 
@@ -203,6 +222,8 @@ remains pending.
 - [x] Pass focused validation and an unauthenticated candidate image build.
 - [x] Pass focused and shared managed validation after token-source remediation.
 - [x] Complete current-diff adversarial re-check with no actionable findings.
-- [x] Finalize all in-diff plan and implementation bookkeeping.
-- [ ] Commit the final diff and pass terminal exact-commit review.
-- [ ] Update the issue and Todoist task for review without completing the task.
+- [x] Commit and terminal-review the feature implementation.
+- [x] Bring PR review, checks, and mergeability conditions to ready.
+- [x] Correct the stale handoff so Cole is not assigned agent-owned review or merge.
+- [ ] Commit and terminal-review the bookkeeping-only handoff correction.
+- [ ] Return the ready PR to the automated merge process.
