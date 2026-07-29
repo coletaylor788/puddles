@@ -48,6 +48,10 @@ cleanup_outer() {
 }
 trap cleanup_outer EXIT
 
+shell_quote() {
+  printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
+
 case "$GATEWAY_HEALTH_ATTEMPTS" in
   ""|*[!0-9]*|0) echo "GATEWAY_HEALTH_ATTEMPTS must be a positive integer" >&2; exit 1 ;;
 esac
@@ -460,17 +464,21 @@ if $REMOTE_DEPLOY; then
     REMOTE_ENTRYPOINT="${REMOTE_TARBALL%.tgz}-sandbox-browser-entrypoint.sh"
     scp "$ENTRY_CANDIDATE" "$MINI_HOST:$REMOTE_ENTRYPOINT"
   fi
+  REMOTE_COMMAND="/bin/bash -s --"
+  for arg in \
+    "$REMOTE_TARBALL" \
+    "$GATEWAY_LABEL" \
+    "$GATEWAY_PORT" \
+    "$GATEWAY_HEALTH_ATTEMPTS" \
+    "$GATEWAY_HEALTH_INTERVAL_SECONDS" \
+    true \
+    "$REMOTE_ENTRYPOINT" \
+    "$MINI_SANDBOX_BUILD" \
+    "$REMOTE_CLONE_HELPER"; do
+    REMOTE_COMMAND="$REMOTE_COMMAND $(shell_quote "$arg")"
+  done
   target_deploy_script |
-    ssh "$MINI_HOST" /bin/bash -s -- \
-      "$REMOTE_TARBALL" \
-      "$GATEWAY_LABEL" \
-      "$GATEWAY_PORT" \
-      "$GATEWAY_HEALTH_ATTEMPTS" \
-      "$GATEWAY_HEALTH_INTERVAL_SECONDS" \
-      true \
-      "$REMOTE_ENTRYPOINT" \
-      "$MINI_SANDBOX_BUILD" \
-      "$REMOTE_CLONE_HELPER"
+    ssh "$MINI_HOST" "$REMOTE_COMMAND"
 else
   echo "==> Installing locally + migrating state + verifying gateway"
   target_deploy_script |

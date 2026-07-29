@@ -1,6 +1,6 @@
 # Restore Puddles responsiveness
 
-**Status:** Replacement landing candidate
+**Status:** Final landing candidate
 **Issue:** https://github.com/coletaylor788/puddles/issues/46
 **Last updated:** 2026-07-29
 
@@ -52,7 +52,9 @@ configuration validates, and the native iMessage monitor/private API probe is
 ready. No test message was sent. Thirty review findings are remediated. Focused
 validation and the full managed lifecycle pass, and the final complete-diff
 review found no actionable issues. The replacement candidate is ready to commit
-and terminal-review.
+and terminal-review. Terminal review found OpenSSH argument serialization loses
+quoting for remote paths containing spaces. Explicit shell escaping is in place,
+29 focused tests pass, and final full-diff review found no actionable issues.
 
 ### Scope and acceptance criteria
 
@@ -60,6 +62,7 @@ and terminal-review.
 - Fail nonzero on package, migration, browser, discovery, restart, readiness,
   interruption, or rollback errors.
 - Serialize shared source builds and all target-host deployment mutations.
+- Shell-escape every remote command argument before OpenSSH serialization.
 - Confirm gateway shutdown before snapshot/restore and keep it stopped through
   migration and browser work.
 - Probe only the configured local gateway port after explicit restart.
@@ -97,6 +100,8 @@ and terminal-review.
   diagnostic list behavior remains best-effort.
 - Rollback restores runtime/browser state and recreates sandboxes with the
   patched candidate CLI before reinstalling the previous package.
+- Remote deployment constructs one explicitly escaped command string rather than
+  relying on OpenSSH to preserve local argv boundaries.
 
 ### Implementation
 
@@ -115,6 +120,8 @@ and terminal-review.
    locks, staging, browser rollback, package failures, clone failures/topology,
    doctor quiescence, APFS metadata, discovery errors, candidate-CLI rollback,
    signal deferral, and preflight ordering.
+7. Completed: shell-escaped remote target arguments and added path-with-spaces
+   coverage.
 
 ### Validation
 
@@ -126,6 +133,15 @@ and terminal-review.
 - Twenty-eight focused deployment tests and patch-manifest tests pass.
 - `node packages/e2e/bin/openclaw-test-env.mjs ci` passes with workspace
   build/lint, 265 workspace tests, 319 cumulative patch tests, and candidate
+  browser-entrypoint coverage.
+- Remote-argument remediation invalidates these results; all gates must rerun.
+- Twenty-nine focused deployment tests and patch-manifest tests pass after
+  remote-argument remediation; the full lifecycle must rerun.
+- The first full rerun passed deployment coverage but one unrelated parser
+  performance assertion measured 103.6 ms against a 100 ms threshold. The exact
+  retry was fully green.
+- `node packages/e2e/bin/openclaw-test-env.mjs ci` passes with workspace
+  build/lint, 266 workspace tests, 319 cumulative patch tests, and candidate
   browser-entrypoint coverage.
 - A previous run had one unrelated 14,999/15,000 ms timing miss; the exact
   subsequent runs were green.
@@ -150,9 +166,11 @@ suppresses restart.
   remediated.
 - The first two terminal candidates found clone fallback and recursive clone
   host risk; both were remediated and the lifecycle restarted.
-- Final replacement full-diff review found no actionable issues.
-- Residual gaps: configured production promotion/read-only validation,
-  power-loss/SIGKILL recovery, and mocked external process boundaries.
+- Terminal review of `bea3d35` found remote argv quoting loss; remediation is
+  complete.
+- Final replacement full-diff review found no actionable issues. Residual gaps
+  are real remote-host deployment, production promotion/read-only validation,
+  and SIGKILL/power-loss recovery.
 - Pending: terminal exact-commit review of the replacement candidate.
 
 ### Checklist

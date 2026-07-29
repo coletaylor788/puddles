@@ -48,6 +48,7 @@ interface DeploymentOptions {
   missingPlist?: boolean;
   previousInstallFails?: boolean;
   previousCliSwallowsDiscovery?: boolean;
+  remotePathsWithSpaces?: boolean;
   remoteGatewayHealthy?: boolean;
   reverseCloneFails?: boolean;
   rollbackShutdownNeverCompletes?: boolean;
@@ -77,14 +78,19 @@ function runDeployment(options: DeploymentOptions = {}): DeploymentResult {
   const bin = join(root, "bin");
   const log = join(root, "commands.log");
   const npmRoot = join(root, "npm-root");
-  const remoteStaging = join(root, "remote-staging");
+  const remoteStaging = options.remotePathsWithSpaces
+    ? join(root, "remote staging")
+    : join(root, "remote-staging");
+  const sandboxBuild = options.remotePathsWithSpaces
+    ? join(root, "sandbox build")
+    : join(root, "sandbox");
   const tempDir = join(root, "tmp");
   const sourceLock = join(root, "source-build.lock");
   mkdirSync(source);
   mkdirSync(bin);
   mkdirSync(join(npmRoot, "openclaw"), { recursive: true });
   mkdirSync(join(source, "scripts"), { recursive: true });
-  mkdirSync(join(root, "sandbox", "scripts"), { recursive: true });
+  mkdirSync(join(sandboxBuild, "scripts"), { recursive: true });
   mkdirSync(remoteStaging);
   mkdirSync(tempDir);
   mkdirSync(join(root, ".openclaw", "state"), { recursive: true });
@@ -98,9 +104,9 @@ function runDeployment(options: DeploymentOptions = {}): DeploymentResult {
     "# FIX-BROWSER-USERDATA-DIR\n",
   );
   writeFileSync(join(source, "openclaw-stale.tgz"), "unrelated");
-  writeFileSync(join(root, "sandbox", "Dockerfile.sandbox-browser"), "FROM scratch");
+  writeFileSync(join(sandboxBuild, "Dockerfile.sandbox-browser"), "FROM scratch");
   writeFileSync(
-    join(root, "sandbox", "scripts", "sandbox-browser-entrypoint.sh"),
+    join(sandboxBuild, "scripts", "sandbox-browser-entrypoint.sh"),
     "original-entrypoint",
   );
   writeFileSync(join(root, "gateway-loaded"), "loaded");
@@ -306,7 +312,7 @@ elif [ "$name" = launchctl ]; then
   fi
 elif [ "$name" = ssh ]; then
   shift
-  exec "$@"
+  exec /bin/bash -c "$1"
 fi
 `;
   for (const command of [
@@ -369,7 +375,7 @@ fi
     MOCK_SOURCE_LOCK: sourceLock,
     MOCK_STOP_INTERRUPTS: options.stopInterrupts ? "1" : "0",
     OPENCLAW_SRC: source,
-    MINI_SANDBOX_BUILD: join(root, "sandbox"),
+    MINI_SANDBOX_BUILD: sandboxBuild,
     PATH: `${bin}:/usr/bin:/bin`,
     REMOTE_STAGING_DIR: remoteStaging,
     TMPDIR: tempDir,
@@ -609,6 +615,22 @@ describe("OpenClaw deployment topology", () => {
     );
     expect(lines).toContain("openclaw\tdoctor\t--fix\t--yes");
     expect(lines).toContain("openclaw\tgateway\thealth\t--port\t18789");
+  });
+
+  it("preserves remote argument boundaries when paths contain spaces", () => {
+    const result = runDeployment({
+      miniHost: "approved-mini",
+      remotePathsWithSpaces: true,
+    });
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.lines).toContainEqual(
+      expect.stringMatching(
+        /^ssh\tapproved-mini\t\/bin\/bash -s -- '.*remote staging\/puddles-openclaw-.*\.tgz'.*'.*sandbox build'.*$/,
+      ),
+    );
+    expect(result.lines).toContainEqual(
+      expect.stringMatching(/^docker\tbuild\t-f\t.*sandbox build\/Dockerfile/),
+    );
   });
 
   for (const miniHost of [undefined, "approved-mini"]) {
