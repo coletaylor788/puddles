@@ -1,6 +1,6 @@
 # Todoist CLI issue filing
 
-**Status:** Automated merge finalization
+**Status:** Blocked on automatic landing controller
 **Issue:** [#40](https://github.com/coletaylor788/puddles/issues/40)
 **Last updated:** 2026-07-28
 
@@ -58,9 +58,13 @@ debounce was `14999` ms instead of exactly `15000` ms while 297 sibling tests
 passed. The docs-only commit cannot affect that runtime, so the failure is
 classified as a pre-existing timing flake. The narrow failed-job rerun passed
 unchanged, returning pull request #42 to a clean, conflict-free, fully green
-state. This final source-of-truth update will receive required checks and a
-fresh exact-commit review before automatic landing. The live OpenClaw agent and
-Todoist account have not been mutated.
+state. Final plan synchronization commit
+`9422a1c8f8e8f7f1e351fd08526410b590396b6d` passed all required
+checks and a fresh exact-commit review. The project session tracks PR #42, but
+the automatic landing controller has not acted across repeated idle cycles.
+Repository work is complete; confirmation that automatic landing is enabled is
+the only blocker. The live OpenClaw agent and Todoist account have not been
+mutated.
 
 ### Scope and acceptance criteria
 
@@ -179,11 +183,16 @@ Completed:
 - The targeted failed-job rerun passed on
   `4a83820a8d6d85c69efbabf1c73f9707118237b7` without any test or
   implementation change, confirming the prior 1 ms mismatch was transient.
+- Final plan synchronization commit
+  `9422a1c8f8e8f7f1e351fd08526410b590396b6d` passed all required
+  GitHub checks and fresh terminal exact-commit adversarial review.
+- Pull request #42 remains open, cleanly mergeable, fully green, and tracked by
+  this project session after repeated idle/controller cycles.
 
 Pending:
 
-- Commit this final plan synchronization, pass its required checks, and complete
-  fresh exact-commit review before returning to automated merge.
+- Confirm whether the app's automatic landing controller is enabled for this
+  workspace. No repository review or manual merge is requested from Cole.
 
 Automated validation makes no authenticated Todoist request or live external
 write. The independent reviewers separately checked the shipped CLI's command
@@ -233,6 +242,10 @@ The subsequent required cumulative-check failure is classified as an unrelated
 1 ms timing flake in the pinned candidate suite; it is a CI gate, not a review
 finding or a reason to alter shared assertions. The targeted failed-job rerun
 passed unchanged.
+Final commit `9422a1c8f8e8f7f1e351fd08526410b590396b6d` then passed
+all required checks and a fresh terminal review with no findings. The remaining
+blocker is operational: the tracked, ready pull request has not been consumed
+by the automatic landing controller.
 
 ### Checklist
 
@@ -250,5 +263,6 @@ passed unchanged.
 - [x] Commit and terminal-review the bookkeeping-only handoff correction.
 - [x] Classify the required cumulative-check failure without weakening CI.
 - [x] Confirm the targeted failed-job rerun passes.
-- [ ] Commit, validate, and terminal-review the final plan synchronization.
+- [x] Commit, validate, and terminal-review the final plan synchronization.
+- [ ] Confirm automatic landing is enabled for this workspace.
 - [ ] Return the ready PR to the automated merge process.
