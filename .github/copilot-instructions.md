@@ -26,6 +26,20 @@ adversarial review, configured promotion, production validation, and rollback.
 Component instructions may add requirements but must not weaken that workflow,
 publication boundaries, test isolation, or secret handling.
 
+## Worker ownership and checkpoints
+
+An approved implementation request authorizes the worker to complete the normal
+repository lifecycle: commit, push, open or update a non-draft pull request,
+resolve review feedback and conflicts, wait for required remote checks, merge,
+and verify the landed result. A controlling instruction may explicitly limit any
+of those actions, and repository permissions and protections always apply.
+
+Pause at design only when the requester explicitly asks to review, approve, or
+iterate on the design. After that approval, or when no design checkpoint was
+requested, continue autonomously through landing. Do not hand routine
+agent-owned pull-request review or merge work to the requester. Return the
+landed result for the requester's final validation and task-completion decision.
+
 ## Sources of truth
 
 Before editing, read the documentation nearest the affected component:
