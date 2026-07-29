@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Terminal review  
+**Status:** Ready for review
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -207,7 +207,7 @@ Completed:
 - The initial `node packages/e2e/bin/openclaw-test-env.mjs ci` run passed:
   - repository build and lint;
   - 238 repository package/plugin tests;
-  - 410 tests across all 14 mapped patched-source files;
+  - 410 tests across all 8 mapped patched-source test files;
   - the candidate browser test;
   - detached-worktree cleanup and stale-registration pruning.
 - The managed regressions prove omitted-target denial, explicit override,
@@ -235,7 +235,7 @@ Completed:
   - repository build and lint;
   - 241 repository package/plugin tests;
   - current prompt snapshots;
-  - 418 tests across all 14 mapped patched-source files;
+  - 418 tests across all 8 mapped patched-source test files;
   - candidate browser test and managed cleanup.
 - Promotion-guidance remediation:
   - leaf-level policy contract — 3 passed;
@@ -387,7 +387,8 @@ policy snapshot, and durable deployment artifacts remain available.
   complete and final re-check completed with no actionable findings.
 - Production: reviewed source build promoted successfully; read-only gateway,
   policy, guard, reader, and cron-shaped delegation checks are green.
-- Terminal exact-commit review: pending.
+- Terminal exact-commit review: result is recorded only in the issue ledger after
+  the final commit so the reviewed diff remains unchanged.
 
 ### Checklist
 
@@ -400,5 +401,6 @@ policy snapshot, and durable deployment artifacts remain available.
 - [x] Complete reusable-worker adversarial review and remediation.
 - [x] Complete applicable promotion and read-only production validation.
 - [x] Finalize and commit the exact handoff diff.
-- [ ] Complete terminal exact-commit adversarial review.
+- [x] Prepare the exact handoff commit for terminal adversarial review; record
+  its result only in the issue ledger.
 - [ ] Set issue and Todoist task to ready for review without completing the task.
