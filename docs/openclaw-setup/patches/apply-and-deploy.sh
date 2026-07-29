@@ -28,6 +28,7 @@ GATEWAY_PORT="${GATEWAY_PORT:-18789}"
 GATEWAY_HEALTH_ATTEMPTS="${GATEWAY_HEALTH_ATTEMPTS:-30}"
 GATEWAY_HEALTH_INTERVAL_SECONDS="${GATEWAY_HEALTH_INTERVAL_SECONDS:-1}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
+CLONE_HELPER="$HERE/clone-runtime-tree.py"
 STAGING_DIR=""
 SOURCE_LOCK_DIR=""
 SOURCE_LOCK_ACQUIRED=false
@@ -56,6 +57,10 @@ esac
 case "$GATEWAY_PORT" in
   ""|*[!0-9]*|0) echo "GATEWAY_PORT must be a positive integer" >&2; exit 1 ;;
 esac
+[ -f "$CLONE_HELPER" ] || {
+  echo "missing runtime clone helper: $CLONE_HELPER" >&2
+  exit 1
+}
 
 target_deploy_script() {
   cat <<'TARGET_DEPLOY'
@@ -69,6 +74,7 @@ HEALTH_INTERVAL_SECONDS="$5"
 CLEANUP_CANDIDATE="$6"
 ENTRY_SOURCE="$7"
 SANDBOX_BUILD="$8"
+CLONE_HELPER="$9"
 STATE_DIR="${OPENCLAW_STATE_DIR:-$HOME/.openclaw}"
 BACKUP_ROOT="${OPENCLAW_DEPLOY_BACKUP_ROOT:-$HOME/.openclaw-deploy-backups}"
 LOCK_DIR="${OPENCLAW_DEPLOY_LOCK_DIR:-$HOME/.openclaw-deploy.lock}"
@@ -97,6 +103,7 @@ cleanup() {
   if [ "$CLEANUP_CANDIDATE" = "true" ]; then
     rm -f "$CANDIDATE_TARBALL"
     [ -n "$ENTRY_SOURCE" ] && rm -f "$ENTRY_SOURCE"
+    rm -f "$CLONE_HELPER"
   fi
   if [ "$BROWSER_IMAGE_OWNED" -eq 1 ] && command -v docker >/dev/null 2>&1; then
     docker image rm "$CANDIDATE_BROWSER_IMAGE" >/dev/null 2>&1 || true
@@ -130,20 +137,7 @@ wait_for_gateway() {
 }
 
 clone_runtime_tree() {
-  python3 - clone "$1" "$2" <<'PY'
-import ctypes
-import os
-import sys
-
-source, destination = map(os.fsencode, sys.argv[2:4])
-libc = ctypes.CDLL("/usr/lib/libSystem.B.dylib", use_errno=True)
-clonefile = libc.clonefile
-clonefile.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int]
-clonefile.restype = ctypes.c_int
-if clonefile(source, destination, 0) != 0:
-    error = ctypes.get_errno()
-    raise OSError(error, os.strerror(error), os.fsdecode(destination))
-PY
+  python3 "$CLONE_HELPER" "$1" "$2"
 }
 
 swap_runtime_trees() {
@@ -198,8 +192,12 @@ rollback_and_exit() {
   shift
   reason="$1"
   rollback_failed=0
+  rollback_signal=""
   restart_blocked=0
-  trap - ERR INT TERM HUP
+  trap - ERR
+  trap 'rollback_signal="${rollback_signal:+$rollback_signal,}INT"' INT
+  trap 'rollback_signal="${rollback_signal:+$rollback_signal,}TERM"' TERM
+  trap 'rollback_signal="${rollback_signal:+$rollback_signal,}HUP"' HUP
   set +e
   ROLLBACK_ACTIVE=1
   echo "    ERROR: $reason; rolling back from $RECOVERY_DIR" >&2
@@ -208,12 +206,6 @@ rollback_and_exit() {
     echo "    ERROR: rollback aborted before mutation because gateway shutdown was not confirmed" >&2
     echo "    ERROR: rollback was incomplete; recovery state remains at $RECOVERY_DIR" >&2
     exit "$original_status"
-  fi
-  if [ "$PACKAGE_CHANGED" -eq 1 ]; then
-    npm install -g "$PREVIOUS_TARBALL" || {
-      rollback_failed=1
-      restart_blocked=1
-    }
   fi
   if [ "$SNAPSHOT_READY" -eq 1 ]; then
     RESTORED_STATE="$RECOVERY_DIR/restored-runtime-state"
@@ -239,19 +231,43 @@ rollback_and_exit() {
   fi
   if [ "$SANDBOX_ENTRY_CHANGED" -eq 1 ]; then
     if [ "$SANDBOX_ENTRY_EXISTED" -eq 1 ]; then
-      cp -p "$SANDBOX_ENTRY_BACKUP" "$SANDBOX_ENTRY_DEST" || rollback_failed=1
+      cp -p "$SANDBOX_ENTRY_BACKUP" "$SANDBOX_ENTRY_DEST" || {
+        rollback_failed=1
+        restart_blocked=1
+      }
     else
-      rm -f "$SANDBOX_ENTRY_DEST" || rollback_failed=1
+      rm -f "$SANDBOX_ENTRY_DEST" || {
+        rollback_failed=1
+        restart_blocked=1
+      }
     fi
   fi
   if [ "$BROWSER_IMAGE_PROMOTED" -eq 1 ]; then
     if [ -n "$PREVIOUS_BROWSER_IMAGE_ID" ]; then
-      docker tag "$PREVIOUS_BROWSER_IMAGE_ID" "$BROWSER_IMAGE" || rollback_failed=1
+      docker tag "$PREVIOUS_BROWSER_IMAGE_ID" "$BROWSER_IMAGE" || {
+        rollback_failed=1
+        restart_blocked=1
+      }
     else
-      docker image rm "$BROWSER_IMAGE" >/dev/null 2>&1 || rollback_failed=1
+      docker image rm "$BROWSER_IMAGE" >/dev/null 2>&1 || {
+        rollback_failed=1
+        restart_blocked=1
+      }
     fi
-    openclaw sandbox recreate --agent browser-agent --force || rollback_failed=1
-    openclaw sandbox recreate --browser --agent browser-agent --force || rollback_failed=1
+    openclaw sandbox recreate --agent browser-agent --force || {
+      rollback_failed=1
+      restart_blocked=1
+    }
+    openclaw sandbox recreate --browser --agent browser-agent --force || {
+      rollback_failed=1
+      restart_blocked=1
+    }
+  fi
+  if [ "$PACKAGE_CHANGED" -eq 1 ]; then
+    npm install -g "$PREVIOUS_TARBALL" || {
+      rollback_failed=1
+      restart_blocked=1
+    }
   fi
   if [ "$restart_blocked" -eq 1 ]; then
     echo "    ERROR: gateway restart skipped because critical rollback restoration failed" >&2
@@ -264,6 +280,9 @@ rollback_and_exit() {
   fi
   if [ "$rollback_failed" -ne 0 ]; then
     echo "    ERROR: rollback was incomplete; recovery state remains at $RECOVERY_DIR" >&2
+  fi
+  if [ -n "$rollback_signal" ]; then
+    echo "    rollback completed to a safe terminal state after deferred signal(s): $rollback_signal" >&2
   fi
   exit "$original_status"
 }
@@ -320,6 +339,20 @@ refresh_browser_sandbox() {
   fi
 }
 
+[ -d "$STATE_DIR" ] || {
+  echo "    ERROR: runtime state directory is missing: $STATE_DIR" >&2
+  exit 1
+}
+[ ! -L "$STATE_DIR" ] || {
+  echo "    ERROR: runtime state directory must not be a symlink: $STATE_DIR" >&2
+  exit 1
+}
+[ -r "$GATEWAY_PLIST" ] || {
+  echo "    ERROR: readable gateway service definition is missing: $GATEWAY_PLIST" >&2
+  exit 1
+}
+python3 "$CLONE_HELPER" --validate-destination "$STATE_DIR" "$STATE_SNAPSHOT"
+
 install -d -m 700 "$RECOVERY_DIR"
 GLOBAL_ROOT="$(npm root -g)"
 if [ -d "$GLOBAL_ROOT/openclaw" ]; then
@@ -334,17 +367,10 @@ else
   exit 1
 fi
 
-[ -d "$STATE_DIR" ] || {
-  echo "    ERROR: runtime state directory is missing: $STATE_DIR" >&2
-  exit 1
-}
-[ -r "$GATEWAY_PLIST" ] || {
-  echo "    ERROR: readable gateway service definition is missing: $GATEWAY_PLIST" >&2
-  exit 1
-}
 GATEWAY_QUIESCED=1
 stop_gateway
 [ -d "$STATE_DIR" ] || rollback_and_exit 1 "runtime state directory is missing: $STATE_DIR"
+[ ! -L "$STATE_DIR" ] || rollback_and_exit 1 "runtime state directory became a symlink: $STATE_DIR"
 [ -r "$GATEWAY_PLIST" ] || rollback_and_exit 1 "readable gateway service definition is missing: $GATEWAY_PLIST"
 clone_runtime_tree "$STATE_DIR" "$STATE_SNAPSHOT"
 cp -p "$GATEWAY_PLIST" "$PLIST_SNAPSHOT"
@@ -373,6 +399,7 @@ PATCHES=(
   subagent-cross-agent-spawn-fix
   skill-workshop-sandbox-fix
   imessage-message-part-coalescing
+  sandbox-discovery-failure-fix
   browser-userdata-dir-fix
 )
 # NOTE: apply-cron-announce-fix is intentionally NOT listed — it is under
@@ -426,7 +453,9 @@ if $REMOTE_DEPLOY; then
   echo "==> Installing on $MINI_HOST + migrating state + verifying gateway"
   REMOTE_TARBALL="$REMOTE_STAGING_DIR/puddles-openclaw-$(date -u +%Y%m%dT%H%M%SZ)-$$-$RANDOM.tgz"
   REMOTE_ENTRYPOINT=""
+  REMOTE_CLONE_HELPER="${REMOTE_TARBALL%.tgz}-clone-runtime-tree.py"
   scp "$TARBALL" "$MINI_HOST:$REMOTE_TARBALL"
+  scp "$CLONE_HELPER" "$MINI_HOST:$REMOTE_CLONE_HELPER"
   if [ -n "$ENTRY_CANDIDATE" ]; then
     REMOTE_ENTRYPOINT="${REMOTE_TARBALL%.tgz}-sandbox-browser-entrypoint.sh"
     scp "$ENTRY_CANDIDATE" "$MINI_HOST:$REMOTE_ENTRYPOINT"
@@ -440,7 +469,8 @@ if $REMOTE_DEPLOY; then
       "$GATEWAY_HEALTH_INTERVAL_SECONDS" \
       true \
       "$REMOTE_ENTRYPOINT" \
-      "$MINI_SANDBOX_BUILD"
+      "$MINI_SANDBOX_BUILD" \
+      "$REMOTE_CLONE_HELPER"
 else
   echo "==> Installing locally + migrating state + verifying gateway"
   target_deploy_script |
@@ -452,7 +482,8 @@ else
       "$GATEWAY_HEALTH_INTERVAL_SECONDS" \
       false \
       "$ENTRY_CANDIDATE" \
-      "$MINI_SANDBOX_BUILD"
+      "$MINI_SANDBOX_BUILD" \
+      "$CLONE_HELPER"
 fi
 
 echo

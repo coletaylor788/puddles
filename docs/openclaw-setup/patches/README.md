@@ -40,6 +40,7 @@ diff.
 | Cross-agent subagent spawn tool-inheritance | [`subagent-cross-agent-spawn-fix.md`](./subagent-cross-agent-spawn-fix.md) | [`subagent-cross-agent-spawn-fix.patch`](./subagent-cross-agent-spawn-fix.patch) | Verified on 2026.6.11. Pending upstream PR (see plan 025). |
 | `skill_workshop` for sandboxed agents | [`skill-workshop-sandbox-fix.md`](./skill-workshop-sandbox-fix.md) | [`skill-workshop-sandbox-fix.patch`](./skill-workshop-sandbox-fix.patch) | Verified on 2026.6.11 |
 | Selective iMessage text/link/image part coalescing | [`imessage-message-part-coalescing.md`](./imessage-message-part-coalescing.md) | [`imessage-message-part-coalescing.patch`](./imessage-message-part-coalescing.patch) | Verified in an isolated fixture on 2026.6.11 |
+| Sandbox recreate discovery failure propagation | [`sandbox-discovery-failure-fix.md`](./sandbox-discovery-failure-fix.md) | [`sandbox-discovery-failure-fix.patch`](./sandbox-discovery-failure-fix.patch) | Verified in the managed patch pool on 2026.7.29 |
 | Browser sandbox user-data-dir env override + singleton cleanup | [`browser-userdata-dir-fix.md`](./browser-userdata-dir-fix.md) | [`browser-userdata-dir-fix.patch`](./browser-userdata-dir-fix.patch) | Verified on 2026.6.11. Pending upstream PR (see plan 023). |
 
 > **Retired:** a former cron+subagent announce-delivery fix (`cron-announce`) was
@@ -96,23 +97,7 @@ wrapper:
    activation
    is fatal; the deploy no longer restarts the gateway and reports success after
    a failed repair.
-8. **Restarts and probes** the gateway LaunchAgent. The deploy waits for the
-   payload-free `openclaw gateway health --port <local-port>` probe and fails if
-   readiness does not arrive within the configured bound. An environment-
-   selected remote gateway cannot satisfy this probe.
-9. **Rolls back automatically** on package, migration, interruption, restart,
-   or readiness failure by restoring the previous package, cloning the saved
-   runtime into a complete staging tree, atomically swapping that tree with the
-   failed runtime via `renamex_np(RENAME_SWAP)`, restoring the service definition,
-   restarting the prior gateway, and checking the same local port. State created
-   by a failed migration is retained separately in the recovery directory for
-   diagnosis. The original failure remains nonzero, and rollback failures are
-   reported separately. If rollback cannot confirm gateway shutdown, it makes
-   no package or state changes and reports the retained recovery path.
-   Reverse-clone or atomic-swap failure leaves the current runtime in place and
-   suppresses gateway restart. Previous-package or plist restoration failure is
-   likewise restart-blocking so uncertain code/config combinations never run.
-10. **Refreshes the sandbox-browser image while the gateway remains stopped and
+8. **Refreshes the sandbox-browser image while the gateway remains stopped and
    the target lock remains held** — the browser patch edits
    `scripts/sandbox-browser-entrypoint.sh`, which the npm package does **not**
    ship, so the wrapper copies the patched entrypoint to the mini's
@@ -122,6 +107,19 @@ wrapper:
    interruption, gateway restart, or readiness fails. The gateway starts only
    after this rollback-capable work finishes. (Skipped if the entrypoint carries
    no `FIX-BROWSER-*` marker.)
+9. **Restarts and probes** the gateway LaunchAgent. The deploy waits for the
+   payload-free `openclaw gateway health --port <local-port>` probe and fails if
+   readiness does not arrive within the configured bound. An environment-
+   selected remote gateway cannot satisfy this probe.
+10. **Rolls back automatically** on package, migration, interruption, browser,
+    restart, or readiness failure. After confirmed shutdown it restores runtime,
+    plist, entrypoint, and image state, then recreates sandboxes with the patched
+    candidate CLI so discovery errors remain visible. Only after recreation does
+    it reinstall the previous package, restart the prior gateway, and check the
+    same local port. State created by a failed migration is retained separately
+    for diagnosis. Shutdown, reverse-clone, atomic-swap, browser restoration,
+    previous-package, or plist failure is restart-blocking. Signals are deferred
+    until rollback reaches a safe terminal state.
 
 Do not use `openclaw update` for this patched production install. The built-in
 updater bypasses this patch stack, recovery snapshot, migration gate, readiness
@@ -133,11 +131,23 @@ Tests and controlled deployments can override it with `GATEWAY_PORT`,
 `GATEWAY_HEALTH_ATTEMPTS`, and `GATEWAY_HEALTH_INTERVAL_SECONDS`; all must be
 positive integers.
 
-Recovery calls macOS `clonefile(2)` directly, so the complete multi-gigabyte
-runtime tree is an atomic copy-on-write clone rather than a second physical
-copy. Unlike `cp -cR`, this never falls back to a physical copy. The target
-volume must support cloning; `ENOTSUP`, `EXDEV`, and other clone failures abort
-before package replacement and restart the prior gateway.
+Recovery traverses the runtime tree in userspace and calls macOS `clonefile(2)`
+only for regular files. It recreates directories, symlinks, and hard links and
+uses non-recursive, no-follow `copyfile(3)` metadata operations to preserve
+POSIX attributes, ACLs, and extended attributes without invoking the strongly
+discouraged recursive directory clone. Unlike `cp -cR`, regular-file cloning
+never falls back to a physical copy. `ENOTSUP`, `EXDEV`, unsupported entry
+types, and other failures abort before package replacement and restart the
+prior gateway.
+The helper enables `COPYFILE_STATE_PRESERVE_SUID` and explicitly reapplies
+source modes after native copy operations so setuid/setgid bits survive even
+when the platform clone path clears them.
+Before creating output, the helper rejects destinations inside the source by
+both lexical ancestry and existing-ancestor filesystem identity, covering
+case-insensitive APFS aliases and symlinked path components.
+The configured runtime root itself must be a real directory; deployment rejects
+a symlinked root before stopping the gateway so rollback never replaces root
+topology.
 
 To build on one host and deploy to another, set `MINI_HOST` explicitly:
 

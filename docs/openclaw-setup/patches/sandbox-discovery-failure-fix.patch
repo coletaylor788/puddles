@@ -1,0 +1,52 @@
+diff --git a/src/commands/sandbox.test.ts b/src/commands/sandbox.test.ts
+index fed6db627f..8489dab42c 100644
+--- a/src/commands/sandbox.test.ts
++++ b/src/commands/sandbox.test.ts
+@@ -304,6 +304,32 @@ describe("sandboxRecreateCommand", () => {
+   });
+ 
+   describe("execution", () => {
++    it("should propagate container discovery errors", async () => {
++      mocks.listSandboxContainers.mockRejectedValue(new Error("Docker registry unavailable"));
++
++      await expect(
++        sandboxRecreateCommand(
++          { all: true, browser: false, force: true },
++          runtime as never,
++        ),
++      ).rejects.toThrow("Docker registry unavailable");
++
++      expect(mocks.removeSandboxContainer).not.toHaveBeenCalled();
++    });
++
++    it("should propagate browser discovery errors", async () => {
++      mocks.listSandboxBrowsers.mockRejectedValue(new Error("Browser registry unavailable"));
++
++      await expect(
++        sandboxRecreateCommand(
++          { all: true, browser: true, force: true },
++          runtime as never,
++        ),
++      ).rejects.toThrow("Browser registry unavailable");
++
++      expect(mocks.removeSandboxBrowserContainer).not.toHaveBeenCalled();
++    });
++
+     it("should show message when no containers match", async () => {
+       await sandboxRecreateCommand({ all: true, browser: false, force: true }, runtime as never);
+ 
+diff --git a/src/commands/sandbox.ts b/src/commands/sandbox.ts
+index 9a7f99ff11..6027d80469 100644
+--- a/src/commands/sandbox.ts
++++ b/src/commands/sandbox.ts
+@@ -121,8 +121,8 @@ function validateRecreateOptions(opts: SandboxRecreateOptions, runtime: RuntimeE
+ }
+ 
+ async function fetchAndFilterContainers(opts: SandboxRecreateOptions): Promise<FilteredContainers> {
+-  const allContainers = await listSandboxContainers().catch(() => []);
+-  const allBrowsers = await listSandboxBrowsers().catch(() => []);
++  const allContainers = opts.browser ? [] : await listSandboxContainers();
++  const allBrowsers = opts.browser ? await listSandboxBrowsers() : [];
+ 
+   let containers = opts.browser ? [] : allContainers;
+   let browsers = opts.browser ? allBrowsers : [];

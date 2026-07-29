@@ -3,10 +3,16 @@ import { spawnSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
+  linkSync,
+  lstatSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
+  readlinkSync,
+  renameSync,
   rmSync,
+  statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -21,9 +27,17 @@ const deployScript = join(
   "patches",
   "apply-and-deploy.sh",
 );
+const cloneHelper = join(
+  repoRoot,
+  "docs",
+  "openclaw-setup",
+  "patches",
+  "clone-runtime-tree.py",
+);
 const tempRoots: string[] = [];
 
 interface DeploymentOptions {
+  backupRootInsideState?: boolean;
   miniHost?: string;
   doctorFails?: boolean;
   doctorInterrupts?: boolean;
@@ -33,14 +47,18 @@ interface DeploymentOptions {
   lockHeld?: boolean;
   missingPlist?: boolean;
   previousInstallFails?: boolean;
+  previousCliSwallowsDiscovery?: boolean;
   remoteGatewayHealthy?: boolean;
   reverseCloneFails?: boolean;
   rollbackShutdownNeverCompletes?: boolean;
+  rollbackHealthInterrupts?: boolean;
   browserBuildInterrupts?: boolean;
   cloneFails?: boolean;
   sandboxRecreateFails?: boolean;
+  sandboxRecreateFailsPersistently?: boolean;
   shutdownDelayChecks?: number;
   sourceLockHeld?: boolean;
+  symlinkStateRoot?: boolean;
   stopInterrupts?: boolean;
 }
 
@@ -86,6 +104,11 @@ function runDeployment(options: DeploymentOptions = {}): DeploymentResult {
     "original-entrypoint",
   );
   writeFileSync(join(root, "gateway-loaded"), "loaded");
+  if (options.symlinkStateRoot) {
+    const stateTarget = join(root, "state-target");
+    renameSync(join(root, ".openclaw"), stateTarget);
+    symlinkSync(stateTarget, join(root, ".openclaw"));
+  }
   if (!options.missingPlist) {
     writeFileSync(
       join(root, "Library", "LaunchAgents", "ai.openclaw.gateway.plist"),
@@ -113,6 +136,11 @@ if [ "$name" = npm ]; then
     [ -f "\${3:-}" ] || exit 66
     if [ "\${MOCK_PREVIOUS_INSTALL_FAILS:-0}" = 1 ] && printf '%s' "\${3:-}" | grep -q 'openclaw-previous\\.tgz$'; then
       exit 67
+    fi
+    if printf '%s' "\${3:-}" | grep -q 'openclaw-previous\\.tgz$'; then
+      printf '%s' previous > "$MOCK_PACKAGE_STATE"
+    else
+      printf '%s' candidate > "$MOCK_PACKAGE_STATE"
     fi
   elif [ "\${1:-}" = pack ]; then
     destination=
@@ -143,7 +171,13 @@ if [ "$name" = npm ]; then
     fi
   fi
 elif [ "$name" = python3 ]; then
-  if [ "\${2:-}" = clone ]; then
+  if printf '%s' "\${1:-}" | grep -q 'clone-runtime-tree\\.py$'; then
+    if [ "\${2:-}" = --validate-destination ]; then
+      case "\${4:-}" in
+        "\${3:-}"|"\${3:-}"/*) exit 95 ;;
+      esac
+      exit 0
+    fi
     clone_count=0
     [ -f "$MOCK_CLONE_COUNT" ] && clone_count="$(cat "$MOCK_CLONE_COUNT")"
     clone_count=$((clone_count + 1))
@@ -151,7 +185,7 @@ elif [ "$name" = python3 ]; then
     if [ "$clone_count" -eq "\${MOCK_CLONE_FAIL_ON_CALL:-0}" ]; then
       exit 95
     fi
-    cp -cR "$3" "$4"
+    cp -cR "$2" "$3"
   elif [ "\${2:-}" = swap ]; then
     swap_tmp="$3.swap"
     mv "$3" "$swap_tmp"
@@ -186,6 +220,10 @@ elif [ "$name" = openclaw ]; then
     exit 42
   fi
   if [ "\${1:-}" = gateway ] && [ "\${2:-}" = health ]; then
+    if [ "\${MOCK_ROLLBACK_HEALTH_INTERRUPTS:-0}" = 1 ] && [ "$(cat "$MOCK_PACKAGE_STATE" 2>/dev/null)" = previous ] && [ ! -f "$MOCK_ROLLBACK_SIGNAL_SENT" ]; then
+      : > "$MOCK_ROLLBACK_SIGNAL_SENT"
+      kill -TERM "$PPID"
+    fi
     has_local_port=0
     for arg in "$@"; do
       [ "$arg" = --port ] && has_local_port=1
@@ -206,6 +244,12 @@ elif [ "$name" = openclaw ]; then
       : > "$MOCK_SANDBOX_FAILED"
       exit 47
     fi
+  fi
+  if [ "\${1:-}" = sandbox ] && [ "\${2:-}" = recreate ] && [ "\${MOCK_SANDBOX_FAILS_PERSISTENTLY:-0}" = 1 ]; then
+    if [ "\${MOCK_PREVIOUS_CLI_SWALLOWS_DISCOVERY:-0}" = 1 ] && [ "$(cat "$MOCK_PACKAGE_STATE" 2>/dev/null)" = previous ]; then
+      exit 0
+    fi
+    exit 48
   fi
 elif [ "$name" = sqlite3 ]; then
   case "\${2:-}" in
@@ -307,11 +351,19 @@ fi
     MOCK_LAUNCH_STATE: join(root, "gateway-loaded"),
     MOCK_NPM_ROOT: npmRoot,
     MOCK_PREVIOUS_INSTALL_FAILS: options.previousInstallFails ? "1" : "0",
+    MOCK_PREVIOUS_CLI_SWALLOWS_DISCOVERY:
+      options.previousCliSwallowsDiscovery ? "1" : "0",
     MOCK_REMOTE_GATEWAY_HEALTHY: options.remoteGatewayHealthy ? "1" : "0",
     MOCK_ROLLBACK_SHUTDOWN_NEVER_COMPLETES:
       options.rollbackShutdownNeverCompletes ? "1" : "0",
+    MOCK_ROLLBACK_HEALTH_INTERRUPTS: options.rollbackHealthInterrupts ? "1" : "0",
+    MOCK_ROLLBACK_SIGNAL_SENT: join(root, "rollback-signal-sent"),
+    MOCK_PACKAGE_STATE: join(root, "package-state"),
     MOCK_SANDBOX_FAILED: join(root, "sandbox-failed"),
     MOCK_SANDBOX_FAIL_ONCE: options.sandboxRecreateFails ? "1" : "0",
+    MOCK_SANDBOX_FAILS_PERSISTENTLY: options.sandboxRecreateFailsPersistently
+      ? "1"
+      : "0",
     MOCK_SHUTDOWN_DELAY: join(root, "shutdown-delay"),
     MOCK_SHUTDOWN_DELAY_CHECKS: String(options.shutdownDelayChecks ?? 0),
     MOCK_SOURCE_LOCK: sourceLock,
@@ -322,6 +374,15 @@ fi
     REMOTE_STAGING_DIR: remoteStaging,
     TMPDIR: tempDir,
   };
+  if (options.backupRootInsideState) {
+    env.OPENCLAW_DEPLOY_BACKUP_ROOT = join(
+      root,
+      ".openclaw",
+      "deploy-backups",
+    );
+  } else {
+    delete env.OPENCLAW_DEPLOY_BACKUP_ROOT;
+  }
   if (options.miniHost) {
     env.MINI_HOST = options.miniHost;
   } else {
@@ -349,6 +410,146 @@ afterEach(() => {
   for (const root of tempRoots.splice(0)) {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+describe("runtime clone helper", () => {
+  it("clones files individually while preserving links and directory metadata", () => {
+    const root = mkdtempSync(join(tmpdir(), "puddles-clone-test-"));
+    tempRoots.push(root);
+    const source = join(root, "source");
+    const destination = join(root, "destination");
+    const nested = join(source, "nested");
+    mkdirSync(nested, { recursive: true });
+    chmodSync(nested, 0o750);
+    writeFileSync(join(nested, "state.json"), "state");
+    linkSync(join(nested, "state.json"), join(source, "state-hardlink.json"));
+    symlinkSync("nested/state.json", join(source, "state-link.json"));
+    chmodSync(nested, 0o2750);
+    chmodSync(join(nested, "state.json"), 0o6750);
+    expect(
+      spawnSync(
+        "xattr",
+        ["-w", "com.apple.puddles-test", "directory", nested],
+        { encoding: "utf8" },
+      ).status,
+    ).toBe(0);
+    expect(
+      spawnSync(
+        "xattr",
+        [
+          "-s",
+          "-w",
+          "com.apple.puddles-test",
+          "symlink",
+          join(source, "state-link.json"),
+        ],
+        { encoding: "utf8" },
+      ).status,
+    ).toBe(0);
+    expect(
+      spawnSync("chmod", ["+a", "everyone allow readattr", nested], {
+        encoding: "utf8",
+      }).status,
+    ).toBe(0);
+    expect(
+      spawnSync(
+        "chmod",
+        [
+          "-h",
+          "+a",
+          "everyone allow readattr",
+          join(source, "state-link.json"),
+        ],
+        { encoding: "utf8" },
+      ).status,
+    ).toBe(0);
+
+    const result = spawnSync("python3", [cloneHelper, source, destination], {
+      encoding: "utf8",
+    });
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(readFileSync(join(destination, "nested", "state.json"), "utf8")).toBe(
+      "state",
+    );
+    expect(readlinkSync(join(destination, "state-link.json"))).toBe(
+      "nested/state.json",
+    );
+    expect(statSync(join(destination, "nested", "state.json")).ino).toBe(
+      statSync(join(destination, "state-hardlink.json")).ino,
+    );
+    expect(lstatSync(join(destination, "nested")).mode & 0o7777).toBe(0o2750);
+    expect(
+      lstatSync(join(destination, "nested", "state.json")).mode & 0o7777,
+    ).toBe(0o6750);
+    expect(
+      spawnSync(
+        "xattr",
+        ["-p", "com.apple.puddles-test", join(destination, "nested")],
+        { encoding: "utf8" },
+      ).stdout.trim(),
+    ).toBe("directory");
+    expect(
+      spawnSync(
+        "xattr",
+        [
+          "-s",
+          "-p",
+          "com.apple.puddles-test",
+          join(destination, "state-link.json"),
+        ],
+        { encoding: "utf8" },
+      ).stdout.trim(),
+    ).toBe("symlink");
+    expect(
+      spawnSync("ls", ["-lde", join(destination, "nested")], {
+        encoding: "utf8",
+      }).stdout,
+    ).toContain("group:everyone allow readattr");
+    expect(
+      spawnSync("ls", ["-lde", join(destination, "state-link.json")], {
+        encoding: "utf8",
+      }).stdout,
+    ).toContain("group:everyone allow readattr");
+  });
+
+  it("rejects a clone destination inside the source tree", () => {
+    const root = mkdtempSync(join(tmpdir(), "puddles-clone-path-test-"));
+    tempRoots.push(root);
+    const source = join(root, "source");
+    const destination = join(source, "backup", "runtime");
+    mkdirSync(source);
+    writeFileSync(join(source, "state.json"), "state");
+
+    const result = spawnSync("python3", [cloneHelper, source, destination], {
+      encoding: "utf8",
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(
+      "runtime clone destination must be outside the source",
+    );
+    expect(existsSync(destination)).toBe(false);
+  });
+
+  it("rejects a differently-cased APFS alias inside the source tree", () => {
+    const root = mkdtempSync(join(repoRoot, ".puddles-clone-case-test-"));
+    tempRoots.push(root);
+    const source = join(root, "source");
+    mkdirSync(source);
+    writeFileSync(join(source, "state.json"), "state");
+    const caseVariantSource = source.replace(/^\/Users\//, "/users/");
+    expect(caseVariantSource).not.toBe(source);
+    expect(existsSync(caseVariantSource)).toBe(true);
+    const destination = join(caseVariantSource, "backup", "runtime");
+
+    const result = spawnSync("python3", [cloneHelper, source, destination], {
+      encoding: "utf8",
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(
+      "runtime clone destination must be outside the source",
+    );
+    expect(existsSync(destination)).toBe(false);
+  });
 });
 
 describe("OpenClaw deployment topology", () => {
@@ -540,7 +741,9 @@ describe("OpenClaw deployment topology", () => {
     const result = runDeployment({ cloneFails: true });
     expect(result.status).not.toBe(0);
     expect(result.lines).toContainEqual(
-      expect.stringMatching(/^python3\t-\tclone\t.*\.openclaw\t.*runtime-state$/),
+      expect.stringMatching(
+        /^python3\t.*clone-runtime-tree\.py\t.*\.openclaw\t.*runtime-state$/,
+      ),
     );
     expect(result.lines).not.toContainEqual(
       expect.stringMatching(/^npm\tinstall\t-g/),
@@ -560,6 +763,39 @@ describe("OpenClaw deployment topology", () => {
     expect(existsSync(join(result.root, "gateway-loaded"))).toBe(true);
     expect(result.lines).not.toContainEqual(
       expect.stringMatching(/^launchctl\tbootout\t/),
+    );
+  });
+
+  it("does not stop or replace a symlinked runtime root", () => {
+    const result = runDeployment({ symlinkStateRoot: true });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(
+      "runtime state directory must not be a symlink",
+    );
+    expect(lstatSync(join(result.root, ".openclaw")).isSymbolicLink()).toBe(true);
+    expect(
+      readFileSync(join(result.root, ".openclaw", "openclaw.json"), "utf8"),
+    ).toBe("original-config");
+    expect(existsSync(join(result.root, "gateway-loaded"))).toBe(true);
+    expect(result.lines).not.toContainEqual(
+      expect.stringMatching(/^launchctl\tbootout\t/),
+    );
+  });
+
+  it("rejects an in-tree backup root before creating artifacts or stopping", () => {
+    const result = runDeployment({ backupRootInsideState: true });
+    expect(result.status).not.toBe(0);
+    expect(
+      existsSync(join(result.root, ".openclaw", "deploy-backups")),
+    ).toBe(false);
+    expect(existsSync(join(result.root, "gateway-loaded"))).toBe(true);
+    expect(result.lines).not.toContainEqual(
+      expect.stringMatching(/^launchctl\tbootout\t/),
+    );
+    expect(result.lines).not.toContainEqual(
+      expect.stringMatching(
+        /^npm\tpack\t.*npm-root\/openclaw\t--ignore-scripts/,
+      ),
     );
   });
 
@@ -638,6 +874,45 @@ describe("OpenClaw deployment topology", () => {
           "openclaw\tsandbox\trecreate\t--agent\tbrowser-agent\t--force",
       ).length,
     ).toBeGreaterThanOrEqual(2);
+  });
+
+  it("does not restart when browser rollback recreation keeps failing", () => {
+    const result = runDeployment({
+      previousCliSwallowsDiscovery: true,
+      sandboxRecreateFailsPersistently: true,
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(
+      "gateway restart skipped because critical rollback restoration failed",
+    );
+    expect(existsSync(join(result.root, "gateway-loaded"))).toBe(false);
+    expect(result.lines).not.toContainEqual(
+      expect.stringMatching(/^launchctl\tbootstrap\t/),
+    );
+    const rollbackRecreateIndex = result.lines
+      .map((line, index) => ({ index, line }))
+      .filter(({ line }) =>
+        line.startsWith("openclaw\tsandbox\trecreate\t"),
+      )
+      .at(-1)?.index;
+    const previousInstallIndex = result.lines.findIndex((line) =>
+      line.match(/^npm\tinstall\t-g\t.*openclaw-previous\.tgz$/),
+    );
+    expect(rollbackRecreateIndex).toBeDefined();
+    expect(previousInstallIndex).toBeGreaterThan(rollbackRecreateIndex!);
+  });
+
+  it("defers rollback signals through restart health validation", () => {
+    const result = runDeployment({
+      rollbackHealthInterrupts: true,
+      sandboxRecreateFails: true,
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(
+      "rollback completed to a safe terminal state after deferred signal(s): TERM",
+    );
+    expect(existsSync(join(result.root, "gateway-loaded"))).toBe(true);
+    expect(existsSync(join(result.root, "rollback-signal-sent"))).toBe(true);
   });
 
   it("does not mutate package or state when rollback shutdown times out", () => {
