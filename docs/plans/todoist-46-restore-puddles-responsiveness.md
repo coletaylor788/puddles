@@ -55,6 +55,17 @@ review found no actionable issues. The replacement candidate is ready to commit
 and terminal-review. Terminal review found OpenSSH argument serialization loses
 quoting for remote paths containing spaces. Explicit shell escaping is in place,
 29 focused tests pass, and final full-diff review found no actionable issues.
+Terminal review found first-time image tag failure with no prior production
+image could incorrectly block gateway recovery. Identity-aware rollback is
+complete, and 30 focused tests plus the full managed lifecycle pass. Clean
+review is running.
+Image-promotion review found Docker inspection errors were treated as confirmed
+image absence. Explicit absence/error handling is complete, and 32 focused tests
+plus the full managed lifecycle pass. Clean review is running.
+Docker-inspection review found candidate image inspection still used command
+substitution and could trigger nested rollback twice. Remediation is in
+place, and 33 focused tests plus the full managed lifecycle pass. Clean review
+found no actionable issues.
 
 ### Scope and acceptance criteria
 
@@ -73,6 +84,13 @@ quoting for remote paths containing spaces. Explicit shell escaping is in place,
 - Restore through a staged reverse clone and atomic swap.
 - Recreate sandboxes with the patched candidate CLI before package rollback.
 - Never restart after critical package, plist, runtime, browser, or swap failure.
+- Distinguish attempted browser image promotion from confirmed candidate tag
+  ownership, and remove a no-prior-image tag only when its image identity matches
+  the candidate.
+- Abort promotion when prior image identity cannot be inspected, and make
+  rollback inspection failure restart-blocking.
+- Route candidate inspection through the same explicit status helper so ERR
+  traps cannot fire inside command substitution.
 - Pass focused tests and `node packages/e2e/bin/openclaw-test-env.mjs ci`.
 - Complete terminal review, remote checks, configured promotion, production
   validation, and landing.
@@ -96,6 +114,12 @@ quoting for remote paths containing spaces. Explicit shell escaping is in place,
   `renamex_np(RENAME_SWAP)`.
 - Installed package backup uses `npm pack --ignore-scripts`.
 - Browser images use unique candidate tags and preserve prior image identity.
+- Rollback compares production and candidate image IDs when no prior production
+  image existed, avoiding failure on an absent tag.
+- Docker inspection recognizes only an explicit no-such-image response as
+  absence; all other failures propagate.
+- Prior, candidate, and rollback image inspection share one non-throwing status
+  interface.
 - The maintained sandbox discovery patch propagates recreate discovery errors;
   diagnostic list behavior remains best-effort.
 - Rollback restores runtime/browser state and recreates sandboxes with the
@@ -122,6 +146,12 @@ quoting for remote paths containing spaces. Explicit shell escaping is in place,
    signal deferral, and preflight ordering.
 7. Completed: shell-escaped remote target arguments and added path-with-spaces
    coverage.
+8. Completed: made first-time image tag failure rollback identity-aware and
+   add no-prior-image coverage.
+9. Completed: distinguished Docker absence from inspection failure in
+   promotion and rollback, with both regressions.
+10. Completed: moved candidate inspection to the explicit status helper and
+    verify exactly one rollback on call-two failure.
 
 ### Validation
 
@@ -142,6 +172,25 @@ quoting for remote paths containing spaces. Explicit shell escaping is in place,
   retry was fully green.
 - `node packages/e2e/bin/openclaw-test-env.mjs ci` passes with workspace
   build/lint, 266 workspace tests, 319 cumulative patch tests, and candidate
+  browser-entrypoint coverage.
+- Image-promotion remediation invalidates these results; all gates must rerun.
+- Thirty focused deployment tests and patch-manifest tests pass after image
+  promotion remediation; the full lifecycle also passes.
+- `node packages/e2e/bin/openclaw-test-env.mjs ci` passes with workspace
+  build/lint, 267 workspace tests, 319 cumulative patch tests, and candidate
+  browser-entrypoint coverage.
+- Docker-inspection remediation invalidates these results; all gates must rerun.
+- Thirty-two focused deployment tests and patch-manifest tests pass after Docker
+  inspection remediation; the full lifecycle also passes.
+- `node packages/e2e/bin/openclaw-test-env.mjs ci` passes with workspace
+  build/lint, 269 workspace tests, 319 cumulative patch tests, and candidate
+  browser-entrypoint coverage.
+- Candidate-inspection remediation invalidates these results; all gates must
+  rerun.
+- Thirty-three focused deployment tests and patch-manifest tests pass after
+  candidate-inspection remediation; the full lifecycle also passes.
+- `node packages/e2e/bin/openclaw-test-env.mjs ci` passes with workspace
+  build/lint, 270 workspace tests, 319 cumulative patch tests, and candidate
   browser-entrypoint coverage.
 - A previous run had one unrelated 14,999/15,000 ms timing miss; the exact
   subsequent runs were green.
@@ -168,6 +217,15 @@ suppresses restart.
   host risk; both were remediated and the lifecycle restarted.
 - Terminal review of `bea3d35` found remote argv quoting loss; remediation is
   complete.
+- Terminal review of `25d0cb6` found first-promotion rollback could fail on an
+  absent tag; remediation is complete.
+- Image-promotion review found Docker inspection errors masqueraded as absence;
+  remediation is complete.
+- Docker-inspection review found candidate inspection could roll back twice;
+  remediation is complete.
+- Final replacement full-diff review found no actionable issues. Residual gaps
+  are real remote-host deployment, production read-only validation, and
+  SIGKILL/power-loss recovery.
 - Final replacement full-diff review found no actionable issues. Residual gaps
   are real remote-host deployment, production promotion/read-only validation,
   and SIGKILL/power-loss recovery.

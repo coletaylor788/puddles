@@ -42,10 +42,13 @@ interface DeploymentOptions {
   doctorFails?: boolean;
   doctorInterrupts?: boolean;
   doctorMutates?: boolean;
+  dockerTagFails?: boolean;
   healthFailures?: number;
   healthAttempts?: number;
+  imageInspectFailureCall?: number;
   lockHeld?: boolean;
   missingPlist?: boolean;
+  noPreviousBrowserImage?: boolean;
   previousInstallFails?: boolean;
   previousCliSwallowsDiscovery?: boolean;
   remotePathsWithSpaces?: boolean;
@@ -269,10 +272,29 @@ elif [ "$name" = docker ]; then
   [ ! -f "$MOCK_LAUNCH_STATE" ] || exit 89
   : > "$MOCK_DOCKER_LOCK_SEEN"
   if [ "\${1:-}" = image ] && [ "\${2:-}" = inspect ]; then
-    printf '%s\\n' sha256:previous-browser
+    inspect_count=0
+    [ -f "$MOCK_IMAGE_INSPECT_COUNT" ] && inspect_count="$(cat "$MOCK_IMAGE_INSPECT_COUNT")"
+    inspect_count=$((inspect_count + 1))
+    printf '%s\\n' "$inspect_count" > "$MOCK_IMAGE_INSPECT_COUNT"
+    if [ "$inspect_count" -eq "\${MOCK_IMAGE_INSPECT_FAILURE_CALL:-0}" ]; then
+      echo 'Error response from daemon: registry state unavailable' >&2
+      exit 50
+    fi
+    image=
+    for image in "$@"; do :; done
+    if printf '%s' "$image" | grep -q 'puddles-deploy-'; then
+      printf '%s\\n' sha256:candidate-browser
+    elif [ "\${MOCK_NO_PREVIOUS_BROWSER_IMAGE:-0}" = 1 ]; then
+      echo "Error response from daemon: No such image: $image" >&2
+      exit 1
+    else
+      printf '%s\\n' sha256:previous-browser
+    fi
   elif [ "\${1:-}" = build ] && [ "\${MOCK_BROWSER_BUILD_INTERRUPTS:-0}" = 1 ]; then
       kill -TERM "$PPID"
       exit 143
+  elif [ "\${1:-}" = tag ] && [ "\${MOCK_DOCKER_TAG_FAILS:-0}" = 1 ] && printf '%s' "\${2:-}" | grep -q 'puddles-deploy-'; then
+    exit 49
   fi
 elif [ "$name" = scp ]; then
   source_path="$1"
@@ -342,6 +364,7 @@ fi
     MOCK_DOCTOR_FAILS: options.doctorFails ? "1" : "0",
     MOCK_DOCTOR_INTERRUPTS: options.doctorInterrupts ? "1" : "0",
     MOCK_DOCTOR_MUTATES: options.doctorMutates ? "1" : "0",
+    MOCK_DOCKER_TAG_FAILS: options.dockerTagFails ? "1" : "0",
     MOCK_DOCTOR_POLICY: join(root, "doctor-policy"),
     MOCK_BROWSER_BUILD_INTERRUPTS: options.browserBuildInterrupts ? "1" : "0",
     MOCK_CLONE_COUNT: join(root, "clone-count"),
@@ -354,8 +377,11 @@ fi
     MOCK_DOCKER_LOCK_SEEN: join(root, "docker-lock-seen"),
     MOCK_HEALTH_COUNT: join(root, "health-count"),
     MOCK_HEALTH_FAILURES: String(options.healthFailures ?? 0),
+    MOCK_IMAGE_INSPECT_COUNT: join(root, "image-inspect-count"),
+    MOCK_IMAGE_INSPECT_FAILURE_CALL: String(options.imageInspectFailureCall ?? 0),
     MOCK_LAUNCH_STATE: join(root, "gateway-loaded"),
     MOCK_NPM_ROOT: npmRoot,
+    MOCK_NO_PREVIOUS_BROWSER_IMAGE: options.noPreviousBrowserImage ? "1" : "0",
     MOCK_PREVIOUS_INSTALL_FAILS: options.previousInstallFails ? "1" : "0",
     MOCK_PREVIOUS_CLI_SWALLOWS_DISCOVERY:
       options.previousCliSwallowsDiscovery ? "1" : "0",
@@ -896,6 +922,55 @@ describe("OpenClaw deployment topology", () => {
           "openclaw\tsandbox\trecreate\t--agent\tbrowser-agent\t--force",
       ).length,
     ).toBeGreaterThanOrEqual(2);
+  });
+
+  it("recovers when first-time browser image tagging fails", () => {
+    const result = runDeployment({
+      dockerTagFails: true,
+      noPreviousBrowserImage: true,
+    });
+    expect(result.status).not.toBe(0);
+    expect(existsSync(join(result.root, "gateway-loaded"))).toBe(true);
+    expect(result.stderr).not.toContain(
+      "gateway restart skipped because critical rollback restoration failed",
+    );
+    expect(result.lines).not.toContain(
+      "docker\timage\trm\topenclaw-sandbox-browser:bookworm-slim",
+    );
+  });
+
+  it("aborts promotion when prior image inspection fails", () => {
+    const result = runDeployment({ imageInspectFailureCall: 1 });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("failed to inspect browser image");
+    expect(existsSync(join(result.root, "gateway-loaded"))).toBe(true);
+    expect(result.lines).not.toContainEqual(
+      expect.stringMatching(/^docker\tbuild\t/),
+    );
+  });
+
+  it("rolls back exactly once when candidate image inspection fails", () => {
+    const result = runDeployment({ imageInspectFailureCall: 2 });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("failed to inspect browser image");
+    expect(
+      result.stderr.match(/rolling back from/g),
+    ).toHaveLength(1);
+    expect(existsSync(join(result.root, "gateway-loaded"))).toBe(true);
+  });
+
+  it("does not restart when rollback image inspection fails", () => {
+    const result = runDeployment({
+      imageInspectFailureCall: 3,
+      noPreviousBrowserImage: true,
+      sandboxRecreateFails: true,
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("failed to inspect browser image");
+    expect(result.stderr).toContain(
+      "gateway restart skipped because critical rollback restoration failed",
+    );
+    expect(existsSync(join(result.root, "gateway-loaded"))).toBe(false);
   });
 
   it("does not restart when browser rollback recreation keeps failing", () => {

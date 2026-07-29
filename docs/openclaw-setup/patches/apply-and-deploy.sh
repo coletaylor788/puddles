@@ -101,7 +101,8 @@ LOCK_ACQUIRED=0
 SANDBOX_ENTRY_CHANGED=0
 SANDBOX_ENTRY_EXISTED=0
 BROWSER_IMAGE_OWNED=0
-BROWSER_IMAGE_PROMOTED=0
+BROWSER_IMAGE_PROMOTION_OWNED=0
+CANDIDATE_BROWSER_IMAGE_ID=""
 
 cleanup() {
   if [ "$CLEANUP_CANDIDATE" = "true" ]; then
@@ -191,6 +192,35 @@ restart_gateway() {
   launchctl bootstrap "gui/$(id -u)" "$GATEWAY_PLIST"
 }
 
+inspect_image_id() {
+  local image="$1"
+  local inspect_error_file="$RECOVERY_DIR/.image-inspect-error"
+  local inspect_output=""
+  local inspect_output_file="$RECOVERY_DIR/.image-inspect-output"
+  INSPECTED_IMAGE_ID=""
+  INSPECT_IMAGE_STATUS="error"
+  rm -f "$inspect_error_file" "$inspect_output_file"
+  if docker image inspect --format '{{.Id}}' "$image" \
+    >"$inspect_output_file" 2>"$inspect_error_file"; then
+    INSPECTED_IMAGE_ID="$(cat "$inspect_output_file")"
+    INSPECT_IMAGE_STATUS="found"
+    rm -f "$inspect_error_file" "$inspect_output_file"
+    return 0
+  fi
+  inspect_output="$(cat "$inspect_error_file" 2>/dev/null || true)"
+  rm -f "$inspect_error_file" "$inspect_output_file"
+  case "$inspect_output" in
+    *"No such image"*|*"No such object"*)
+      INSPECT_IMAGE_STATUS="absent"
+      return 0
+      ;;
+    *)
+      echo "    ERROR: failed to inspect browser image $image: $inspect_output" >&2
+      return 0
+      ;;
+  esac
+}
+
 rollback_and_exit() {
   original_status="$1"
   shift
@@ -246,17 +276,29 @@ rollback_and_exit() {
       }
     fi
   fi
-  if [ "$BROWSER_IMAGE_PROMOTED" -eq 1 ]; then
+  if [ "$BROWSER_IMAGE_PROMOTION_OWNED" -eq 1 ]; then
     if [ -n "$PREVIOUS_BROWSER_IMAGE_ID" ]; then
       docker tag "$PREVIOUS_BROWSER_IMAGE_ID" "$BROWSER_IMAGE" || {
         rollback_failed=1
         restart_blocked=1
       }
     else
-      docker image rm "$BROWSER_IMAGE" >/dev/null 2>&1 || {
+      current_browser_image_id=""
+      inspect_image_id "$BROWSER_IMAGE"
+      if [ "$INSPECT_IMAGE_STATUS" = "found" ]; then
+        current_browser_image_id="$INSPECTED_IMAGE_ID"
+      elif [ "$INSPECT_IMAGE_STATUS" = "error" ]; then
         rollback_failed=1
         restart_blocked=1
-      }
+      fi
+      if [ "$restart_blocked" -eq 0 ] &&
+         [ -n "$CANDIDATE_BROWSER_IMAGE_ID" ] &&
+         [ "$current_browser_image_id" = "$CANDIDATE_BROWSER_IMAGE_ID" ]; then
+        docker image rm "$BROWSER_IMAGE" >/dev/null 2>&1 || {
+          rollback_failed=1
+          restart_blocked=1
+        }
+      fi
     fi
     openclaw sandbox recreate --agent browser-agent --force || {
       rollback_failed=1
@@ -328,11 +370,22 @@ refresh_browser_sandbox() {
   install -m 0755 "$ENTRY_SOURCE" "$SANDBOX_ENTRY_DEST"
 
   if command -v docker >/dev/null 2>&1 && [ -f "$SANDBOX_BUILD/Dockerfile.sandbox-browser" ]; then
-    PREVIOUS_BROWSER_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$BROWSER_IMAGE" 2>/dev/null || true)"
+    inspect_image_id "$BROWSER_IMAGE"
+    if [ "$INSPECT_IMAGE_STATUS" = "found" ]; then
+      PREVIOUS_BROWSER_IMAGE_ID="$INSPECTED_IMAGE_ID"
+    elif [ "$INSPECT_IMAGE_STATUS" = "absent" ]; then
+      PREVIOUS_BROWSER_IMAGE_ID=""
+    else
+      return 1
+    fi
     BROWSER_IMAGE_OWNED=1
     docker build -f "$SANDBOX_BUILD/Dockerfile.sandbox-browser" \
       -t "$CANDIDATE_BROWSER_IMAGE" "$SANDBOX_BUILD" >/dev/null
-    BROWSER_IMAGE_PROMOTED=1
+    inspect_image_id "$CANDIDATE_BROWSER_IMAGE"
+    [ "$INSPECT_IMAGE_STATUS" = "found" ] || return 1
+    CANDIDATE_BROWSER_IMAGE_ID="$INSPECTED_IMAGE_ID"
+    [ -n "$CANDIDATE_BROWSER_IMAGE_ID" ] || return 1
+    BROWSER_IMAGE_PROMOTION_OWNED=1
     docker tag "$CANDIDATE_BROWSER_IMAGE" "$BROWSER_IMAGE"
     openclaw sandbox recreate --agent browser-agent --force
     openclaw sandbox recreate --browser --agent browser-agent --force
