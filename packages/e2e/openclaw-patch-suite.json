@@ -29,6 +29,12 @@
       ]
     },
     {
+      "name": "sandbox-discovery-failure-fix",
+      "tests": [
+        "src/commands/sandbox.test.ts"
+      ]
+    },
+    {
       "name": "browser-userdata-dir-fix",
       "tests": [],
       "candidateTests": [
