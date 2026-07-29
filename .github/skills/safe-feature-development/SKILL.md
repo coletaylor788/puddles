@@ -4,7 +4,7 @@ description: "Implement features safely from research through test-environment i
 compatibility: "Requires the target repository's existing build, test, deployment, and rollback tools. Uses repository-provided test and production lifecycles when available."
 metadata:
   author: Cole Taylor
-  version: "1.4.0"
+  version: "1.5.0"
 ---
 
 # Safe Feature Development
@@ -16,6 +16,21 @@ Use this workflow for feature implementation, behavior changes, migrations,
 runtime configuration, plugins, integrations, and deployment automation. Follow
 more specific repository instructions as additional constraints. Never weaken a
 global safety or publication boundary.
+
+## Ownership and checkpoints
+
+Treat an approved implementation request as authorization to complete the normal
+repository lifecycle, including commit, push, non-draft pull request creation or
+update, remote-check and review remediation, merge, and post-landing
+verification. A controlling instruction may explicitly stop or limit those
+actions, and repository permissions and protections always apply.
+
+Pause before implementation only when the requester explicitly asks to review,
+approve, or iterate on the design. Record the current design in the plan and
+wait at that checkpoint. After approval, or when no design checkpoint was
+requested, continue autonomously through landing. Do not turn pull-request review
+or merge into a routine requester handoff. Return the landed result for the
+requester's final validation and task-completion decision.
 
 ## Required loop
 
@@ -61,6 +76,9 @@ global safety or publication boundary.
    - Resolve material design ambiguity before implementation. Do not stop after
      planning when implementation has already been requested and the design is
      approved.
+   - If the requester explicitly asked to review, approve, or iterate on the
+     design, pause here with the plan current and ask the exact unresolved
+     design question. Otherwise, do not add a human approval gate.
 
 3. **Implement locally and deploy to the test environment**
    - Implement and iterate locally using the repository's established
@@ -121,19 +139,35 @@ global safety or publication boundary.
      independent replacement, require a complete-current-diff review, and retain
      the replacement's worker handle for the rest of the remediation loop. Never
      skip or narrow review because the original worker is unavailable.
-   - After all in-diff plan, checklist, and other bookkeeping is final, run one
-     terminal fresh review against the exact commit to be handed off. Record the
-     clean result and reviewed commit identifier only in the issue's allowed
-     `Status` or `Done` ledger so recording the result does not change the
-     reviewed diff. Do not change the diff afterward; any change invalidates the
-     terminal result and restarts validation and fresh review.
+   - After all in-diff plan, checklist, and other bookkeeping is final, create
+     the landing candidate commit and run one terminal fresh review against that
+     exact commit. Record the clean result and reviewed commit identifier only in
+     the issue's allowed `Status` or `Done` ledger so recording the result does
+     not change the reviewed diff. Do not change the candidate afterward; any
+     change invalidates the terminal result and restarts validation and fresh
+     review.
 
-6. **Promote through the configured lifecycle**
+6. **Prepare remote integration**
+   - Push the exact terminal-reviewed candidate and create or update a non-draft
+     pull request. Include the committed regression and exact validation command
+     and results required by the repository.
+   - Wait for all required remote checks. Resolve actionable review feedback,
+     unresolved review threads, merge conflicts, and integration failures
+     yourself. Any candidate change invalidates the terminal review and requires
+     the applicable validation, full integration pool, retained-review recheck,
+     and fresh terminal review before pushing the new candidate and repeating
+     all remote integration gates.
+   - When the terminal-reviewed candidate is remotely green, mergeable, and has
+     no unresolved required review, record its exact head commit and proceed to
+     promotion. Do not merge a candidate before its applicable promotion and
+     production validation complete.
+
+7. **Promote through the configured lifecycle**
    - If the repository provides an approved automatic test-to-production
-     lifecycle and deployment is in scope, use that lifecycle after all
-     pre-promotion gates pass. Do not manually copy artifacts or add an
-     additional approval gate unless a controlling instruction explicitly
-     requires one.
+     lifecycle and deployment is in scope, use that lifecycle on the exact
+     remotely approved candidate after all pre-promotion gates pass. Do not
+     manually copy artifacts or add an additional approval gate unless a
+     controlling instruction explicitly requires one.
    - Promotion must durably record recovery state before destructive work and
      use atomic replacement where supported.
    - If the task explicitly forbids production impact, do not promote. Validate
@@ -142,7 +176,7 @@ global safety or publication boundary.
      access. Finish test-environment validation and report that deployment was
      not run.
 
-7. **Validate production and roll back on failure**
+8. **Validate production and roll back on failure**
    - After promotion, run the configured production integration, health, and
      smoke checks. Automated production tests must be read-only and must use
      explicit production state and configuration paths.
@@ -152,6 +186,36 @@ global safety or publication boundary.
      deployment.
    - Preserve the original failure. Surface rollback or cleanup failures as
      additional errors rather than hiding them.
+
+9. **Land and close out**
+   - Immediately before merge, fetch the pull-request state again and confirm its
+     head is the exact terminal-reviewed, remotely approved candidate that
+     completed applicable promotion and production validation. Confirm required
+     checks and review remain green and the pull request remains mergeable.
+   - If the head, required checks or review, or mergeability changed after
+     promotion, roll back the promoted candidate using the recorded recovery
+     state, revalidate production health, and restart at the applicable
+     implementation, validation, review, and remote-integration step. Preserve
+     the remote-state failure and surface rollback failures as additional
+     errors.
+   - If the candidate and gates still match, merge it using the repository's
+     configured method. Do not stop at an open pull request or a
+     `Ready for review` state unless a controlling instruction explicitly
+     requires a stop before landing, repository policy or permissions block the
+     merge, or a material decision genuinely requires requester input.
+   - After the merge command, re-fetch the pull request and default branch. If
+     the exact candidate cannot be confirmed landed, treat the landing as
+     failed: roll back the promoted candidate, revalidate production health,
+     preserve the landing failure, surface rollback failures as additional
+     errors, and restart remote integration.
+   - Once landing is confirmed, verify the default branch contains the expected
+     change and required post-merge checks pass. Run any configured post-landing
+     production validation and use the documented rollback on failure.
+   - Mark the repository issue complete and report the landed outcome, validation
+     status, and residual risks for the requester's final validation and
+     external task-completion decision. Feedback after landing starts a new
+     implementation cycle rather than retroactively making routine integration
+     a requester responsibility.
 
 ## Completion gate
 
@@ -166,8 +230,14 @@ Feature work is complete only when:
   production was explicitly out of scope and promotion and rollback were proven
   in fixtures, or no configured promotion lifecycle exists and that limitation
   was reported;
-- any task tracker handoff accurately states validation and residual risks; and
-- commit or push occurs only when the controlling instructions request it.
+- when the repository uses pull requests, the same terminal-reviewed candidate
+  that completed applicable promotion and production validation is remotely
+  green, required review is resolved, the pull request is merged, and the
+  expected default-branch result is verified, unless a controlling instruction
+  or concrete policy or permission blocker explicitly prevents landing; and
+- the final tracker report accurately states the landed result, validation,
+  residual risks, and any explicit landing blocker for the requester's final
+  validation and task-completion decision.
 
 ## Puddles lifecycle
 

@@ -3,6 +3,10 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const repoRoot = resolve(import.meta.dirname, "..", "..", "..");
+const repoInstructions = readFileSync(
+  resolve(repoRoot, ".github/copilot-instructions.md"),
+  "utf8",
+);
 const safeWorkflow = readFileSync(
   resolve(repoRoot, ".github/skills/safe-feature-development/SKILL.md"),
   "utf8",
@@ -14,7 +18,7 @@ const reviewWorkflow = readFileSync(
 
 describe("adversarial review workflow", () => {
   it("reuses one reviewer throughout remediation without narrowing review", () => {
-    expect(safeWorkflow).toContain('version: "1.4.0"');
+    expect(safeWorkflow).toContain('version: "1.5.0"');
     expect(safeWorkflow).toMatch(/retain its worker handle/i);
     expect(safeWorkflow).toMatch(/resume or restart that same reviewer/i);
     expect(safeWorkflow).toMatch(
@@ -28,7 +32,7 @@ describe("adversarial review workflow", () => {
       "Then launch another fresh adversarial reviewer",
     );
     expect(safeWorkflow).toMatch(
-      /terminal fresh review against the exact\s+commit/i,
+      /terminal fresh review against that\s+exact commit/i,
     );
     expect(safeWorkflow).toMatch(
       /Triage every finding using engineering judgment/i,
@@ -56,5 +60,90 @@ describe("adversarial review workflow", () => {
     expect(reviewWorkflow).toMatch(/residual validation gap,\s+not as a defect/i);
     expect(reviewWorkflow).toMatch(/Withdraw or revise a finding/i);
     expect(reviewWorkflow).toMatch(/do not defend it merely for consistency/i);
+  });
+
+  it("keeps design as the only optional checkpoint and lands agent-owned work", () => {
+    const ownershipWorkflow = safeWorkflow.slice(
+      safeWorkflow.indexOf("## Ownership and checkpoints"),
+      safeWorkflow.indexOf("## Required loop"),
+    );
+    const remoteIntegrationWorkflow = safeWorkflow.slice(
+      safeWorkflow.indexOf("6. **Prepare remote integration**"),
+      safeWorkflow.indexOf("7. **Promote through the configured lifecycle**"),
+    );
+    const closeoutWorkflow = safeWorkflow.slice(
+      safeWorkflow.indexOf("9. **Land and close out**"),
+      safeWorkflow.indexOf("## Completion gate"),
+    );
+
+    expect(repoInstructions).toMatch(
+      /approved implementation request authorizes the worker[\s\S]*commit, push[\s\S]*merge,[\s\S]*verify the landed result/i,
+    );
+    expect(repoInstructions).toMatch(
+      /Pause at design only when the requester explicitly asks/i,
+    );
+    expect(repoInstructions).toMatch(
+      /Do not hand routine\s+agent-owned pull-request review or merge work to the requester/i,
+    );
+    expect(repoInstructions).toMatch(
+      /controlling instruction may explicitly limit[\s\S]*permissions and protections always apply/i,
+    );
+
+    expect(safeWorkflow).toMatch(
+      /approved implementation request as authorization[\s\S]*commit, push[\s\S]*merge,[\s\S]*post-landing\s+verification/i,
+    );
+    expect(ownershipWorkflow).toMatch(
+      /controlling instruction may explicitly stop or limit[\s\S]*permissions and protections always apply/i,
+    );
+    expect(safeWorkflow).toMatch(
+      /Pause before implementation only when the requester explicitly asks/i,
+    );
+    expect(safeWorkflow).toMatch(/Otherwise, do not add a human approval gate/i);
+    expect(safeWorkflow).toMatch(/6\. \*\*Prepare remote integration\*\*/);
+    expect(safeWorkflow).toMatch(/9\. \*\*Land and close out\*\*/);
+    expect(
+      safeWorkflow.indexOf("6. **Prepare remote integration**"),
+    ).toBeLessThan(
+      safeWorkflow.indexOf("7. **Promote through the configured lifecycle**"),
+    );
+    expect(
+      safeWorkflow.indexOf("7. **Promote through the configured lifecycle**"),
+    ).toBeLessThan(
+      safeWorkflow.indexOf("8. **Validate production and roll back on failure**"),
+    );
+    expect(
+      safeWorkflow.indexOf("8. **Validate production and roll back on failure**"),
+    ).toBeLessThan(safeWorkflow.indexOf("9. **Land and close out**"));
+    expect(remoteIntegrationWorkflow).toMatch(
+      /required remote checks[\s\S]*unresolved review threads[\s\S]*merge conflicts/i,
+    );
+    expect(closeoutWorkflow).toMatch(
+      /Do not stop at an open pull request or a\s+`Ready for review` state/i,
+    );
+    expect(remoteIntegrationWorkflow).toMatch(
+      /terminal-reviewed candidate is remotely green, mergeable, and has\s+no unresolved required review[\s\S]*exact head commit[\s\S]*Do not merge a candidate before its applicable promotion and\s+production validation complete/i,
+    );
+    expect(remoteIntegrationWorkflow).toMatch(
+      /Any candidate change invalidates the terminal review[\s\S]*applicable validation, full integration pool, retained-review recheck,[\s\S]*fresh terminal review[\s\S]*repeating\s+all remote integration gates/i,
+    );
+    expect(closeoutWorkflow).toMatch(
+      /Immediately before merge[\s\S]*exact terminal-reviewed, remotely approved candidate that\s+completed applicable promotion and production validation/i,
+    );
+    expect(closeoutWorkflow).toMatch(
+      /head, required checks or review, or mergeability changed after\s+promotion[\s\S]*roll back the promoted candidate[\s\S]*revalidate production\s+health[\s\S]*restart at the applicable\s+implementation, validation, review, and remote-integration step/i,
+    );
+    expect(closeoutWorkflow).toMatch(
+      /merge it using the repository's\s+configured method[\s\S]*After the merge command, re-fetch the pull request and default branch[\s\S]*exact candidate cannot be confirmed landed/i,
+    );
+    expect(safeWorkflow).toMatch(
+      /exact candidate cannot be confirmed landed[\s\S]*roll back the promoted candidate[\s\S]*revalidate production health[\s\S]*preserve the landing failure[\s\S]*rollback failures as additional\s+errors[\s\S]*restart remote integration/i,
+    );
+    expect(safeWorkflow).toMatch(
+      /Once landing is confirmed[\s\S]*default branch contains the expected\s+change[\s\S]*post-merge checks pass/i,
+    );
+    expect(closeoutWorkflow).toMatch(
+      /requester's final validation and\s+external task-completion decision/i,
+    );
+    expect(safeWorkflow).not.toMatch(/exact commit to be handed off/i);
   });
 });
