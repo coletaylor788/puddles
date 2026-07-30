@@ -54,17 +54,13 @@ Pull request #42 merged exact terminal-reviewed candidate
 cumulative integration, and dependency checks passed. `origin/main` contains
 the Todoist skill, installer, image lock, documentation, regressions, and safe
 feature development 1.6.0. Repository work is complete; final live validation
-requires access to Cole's Todoist token and configured main-agent runtime.
-Before that handoff, docs-only PR #50 must land this normalized plan. Its
-cumulative check twice reproduced a maintained iMessage patch-test defect:
-`resolveDebounceMs` subtracts current wall-clock time from a 15-second deadline,
-so an exact `15000` assertion intermittently receives `14999`. A bounded
-assertion now requires at least the larger of 14.9 seconds or one millisecond
-beyond the observed production gap, and at most the configured 15 seconds. The
-complete managed lifecycle passes with all 319 mapped tests.
-Independent complete-diff review verified the deadline-minus-current-time root
-cause, tight bounds, patch applyability, plan accuracy, and absence of runtime
-regressions. Exact corrected candidate
+requires access to Cole's Todoist token and configured main-agent runtime. A
+docs-only follow-up exposed and fixed a maintained iMessage patch-test defect:
+remaining debounce time is deadline minus current wall-clock time, so the test
+now requires at least the larger of 14.9 seconds or one millisecond beyond the
+observed production gap, and at most the configured 15 seconds. Independent
+review verified the root cause, tight bounds, patch applyability, and absence of
+runtime regressions. Exact corrected candidate
 `69ea766499c6335987a9006f8adb2f661abd3213` passed remote checks and
 merged through PR #50 as
 `a385758f8cb925e46ddb9380996a93aaf0d54458`. Post-merge checks are
