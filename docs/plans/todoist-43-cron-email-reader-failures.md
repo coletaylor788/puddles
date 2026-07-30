@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Reviewing latest-main landing candidate
+**Status:** Integrating ACP policy remediation
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -60,13 +60,17 @@ and cleanup; exact-commit review found no code, patch, test, or security defect.
 That review identified only stale tracking presentation, which the synchronized
 plan and issue ledger resolve. Current `main` at `f7a049a` is now integrated as
 candidate `93f3e3c`; the merge changed only the two repository plans relative to
-the reviewed candidate, leaving runtime and test bytes identical. The complete
-managed lifecycle passes with 288 repository tests, seven current prompt
-snapshots, 464 mapped patched-source tests, the candidate browser test, and
-cleanup. Terminal exact-commit review is being refreshed before remote gates.
-Production remains healthy on the prior reviewed host-combined build, and the
-cron definition remains unchanged. Exact-candidate remote checks, host-combined
-promotion, merge, and post-merge validation remain.
+the reviewed candidate, leaving runtime and test bytes identical. The complete managed lifecycle passes with 288 repository tests, seven current
+prompt snapshots, 464 mapped patched-source tests, the candidate browser test,
+and cleanup. Terminal review then found that ACP requester command-policy guards
+still rejected explicit cross-agent targets before the non-inheritance decision,
+and that the cross-agent regression used a permissive parent that could not
+detect this. Both findings are accepted. Remote candidate `b482a80` contains the
+remediation and integrates current `main` at `6dc4e03`; those exact bytes must be
+integrated, fully validated, and independently re-reviewed. Production remains
+healthy on the prior reviewed host-combined build, and the cron definition
+remains unchanged. Exact-candidate remote checks, host-combined promotion, merge,
+and post-merge validation remain.
 
 ### Scope and acceptance criteria
 
@@ -463,6 +467,11 @@ lifecycle.
   288 repository tests, seven current prompt snapshots, 464 mapped
   patched-source tests, the candidate browser test, and cleanup. Refresh terminal
   review before remote gates.
+- Terminal review of `30e8e6c` found two medium ACP defects: requester command
+  policy was checked before cross-agent target resolution, and the purported
+  regression used a permissive parent. Both findings are accepted. Remote
+  candidate `b482a80` contains the remediation on current `main` `6dc4e03`;
+  integrate and validate it before re-review.
 
 ### Checklist
 
