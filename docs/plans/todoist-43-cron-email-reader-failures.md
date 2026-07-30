@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Reviewing newest-base candidate
+**Status:** Reviewing final exact landing candidate
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -55,18 +55,15 @@ The native and ACP cron guards, cross-agent policy isolation, generated
 snapshots, setup guidance, and cumulative regressions are implemented on
 OpenClaw `0790d9f`. All terminal-review findings are remediated: global ACP
 same-agent restrictions use the explicit requester override, coordinator updates
-fail closed, distinct ACP defaults remain valid, and the explicit false override
-is proven with a same-profile regression. The branch now includes current
-`main`, the remote follow-up commits, and provider-neutral rollout wording.
-`CI=true node packages/e2e/bin/openclaw-test-env.mjs ci` passes with 286
-repository tests, current prompt snapshots, 451 mapped patched-source tests, the
-candidate browser test, and cleanup. A fresh terminal review of the merged
-candidate remains before remote checks and promotion. Production remains healthy
-on the prior combined build. Terminal review is clean, but `main` advanced again
-with equivalent patch-context regeneration; newest-base integration and full
-validation now pass with current `main`'s regenerated sessions-yield/iMessage
-patches and deployment lifecycle intact. Fresh terminal review and remote checks
-remain. The cron definition remains unchanged.
+fail closed, distinct ACP defaults remain valid, the explicit false override is
+proven with a same-profile regression, and the model-facing schema states the
+distinct-default exception. The branch now includes current `main`, regenerated
+sessions-yield/iMessage patches, and all parallel landing follow-ups. The
+complete managed lifecycle passes with 288 repository tests, current prompt
+snapshots, 464 mapped patched-source tests, the candidate browser test, and
+cleanup. A fresh terminal review, refreshed remote checks, exact-head combined
+promotion, merge, and post-merge verification remain. Production is healthy on
+the prior combined build. The cron definition remains unchanged.
 
 ### Scope and acceptance criteria
 
@@ -339,6 +336,9 @@ Completed:
   the complete managed lifecycle passed again with repository build/lint, 286
   repository tests, current prompt snapshots, 451 mapped patched-source tests,
   the candidate browser test, and cleanup.
+- Fresh complete-diff re-review verified the corrected schema contract across
+  implementation, assertion, three JSON snapshots, and three Markdown metadata
+  snapshots with no actionable findings.
 - Combined-lifecycle preflight correctly blocked production mutation because the
   host-local manifest still pins repository head `7c887496`. Production remains
   healthy on OpenClaw `2026.7.1-2` / `0790d9f`; no recovery snapshot was needed.
@@ -435,11 +435,16 @@ lifecycle.
 - Terminal exact-commit review found one remaining low topology disclosure
   in rollout wording. It is replaced with provider-neutral guidance for hosts
   requiring additional local components.
-- Final integration merged the parallel landing follow-ups and latest default
-  branch without changing the issue-43 runtime intent; the complete managed
-  lifecycle remained green and terminal review was clean. `main` advanced again
-  with a benign patch-context conflict; current `main`'s representation was
-  retained and the complete lifecycle passed with 288 repository tests, current
+- Terminal exact-commit review found one low model-facing contract mismatch:
+  schema text required `agentId` for every cron caller despite the supported
+  distinct ACP default. Schema coverage and snapshots now state that exception;
+  the complete managed lifecycle passed again with repository build/lint, 286
+  repository tests, current prompt snapshots, 451 mapped patched-source tests,
+  the candidate browser test, and cleanup.
+- Corrected-schema complete-diff re-review found no actionable findings.
+- Final integration merged the newest default branch and parallel schema/plan
+  follow-ups. Current `main`'s regenerated patch representations were retained;
+  the complete managed lifecycle passes with 288 repository tests, current
   snapshots, 464 mapped patched-source tests, candidate test, and cleanup.
   Fresh terminal review pending.
 - Terminal exact-commit review: result is recorded only in the issue ledger after
