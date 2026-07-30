@@ -26,7 +26,7 @@ Why the switch:
 - **Preserves sandboxed-subagent tool-bridging.** A from-source build keeps the
   reader / browser-agent subagents wired to their full plugin tool sets — the
   earlier worry that source builds would break tool-bridging was disproven
-  (verified on 2026.6.11).
+  (verified on 2026.7.1 at `0790d9f`).
 
 The retired `apply-*.mjs` dist patchers no longer describe the deploy; each
 patch doc keeps a short "retired — see `.patch`" note pointing at its source
@@ -36,12 +36,12 @@ diff.
 
 | Patch | Doc | Source diff | Status |
 |---|---|---|---|
-| `sessions_yield` block-at-yield + gather (cron + interactive) | [`sessions-yield-subagent-leak-fix.md`](./sessions-yield-subagent-leak-fix.md) | [`sessions-yield-block-and-gather.patch`](./sessions-yield-block-and-gather.patch) | Verified on 2026.6.11 |
-| Cross-agent subagent spawn tool-inheritance | [`subagent-cross-agent-spawn-fix.md`](./subagent-cross-agent-spawn-fix.md) | [`subagent-cross-agent-spawn-fix.patch`](./subagent-cross-agent-spawn-fix.patch) | Verified on 2026.6.11. Pending upstream PR (see plan 025). |
-| `skill_workshop` for sandboxed agents | [`skill-workshop-sandbox-fix.md`](./skill-workshop-sandbox-fix.md) | [`skill-workshop-sandbox-fix.patch`](./skill-workshop-sandbox-fix.patch) | Verified on 2026.6.11 |
-| Selective iMessage text/link/image part coalescing | [`imessage-message-part-coalescing.md`](./imessage-message-part-coalescing.md) | [`imessage-message-part-coalescing.patch`](./imessage-message-part-coalescing.patch) | Verified in an isolated fixture on 2026.6.11 |
+| `sessions_yield` block-at-yield + gather (cron + interactive) | [`sessions-yield-subagent-leak-fix.md`](./sessions-yield-subagent-leak-fix.md) | [`sessions-yield-block-and-gather.patch`](./sessions-yield-block-and-gather.patch) | Verified on 2026.7.1 (`0790d9f`) |
+| Explicit cron subagent targeting + cross-agent tool inheritance | [`subagent-cross-agent-spawn-fix.md`](./subagent-cross-agent-spawn-fix.md) | [`subagent-cross-agent-spawn-fix.patch`](./subagent-cross-agent-spawn-fix.patch) | Verified on 2026.7.1 (`0790d9f`). Pending upstream PR (see plan 025). |
+| `skill_workshop` for sandboxed agents | [`skill-workshop-sandbox-fix.md`](./skill-workshop-sandbox-fix.md) | [`skill-workshop-sandbox-fix.patch`](./skill-workshop-sandbox-fix.patch) | Verified on 2026.7.1 (`0790d9f`) |
+| Selective iMessage text/link/image part coalescing | [`imessage-message-part-coalescing.md`](./imessage-message-part-coalescing.md) | [`imessage-message-part-coalescing.patch`](./imessage-message-part-coalescing.patch) | Verified on 2026.7.1 (`0790d9f`) |
 | Sandbox recreate discovery failure propagation | [`sandbox-discovery-failure-fix.md`](./sandbox-discovery-failure-fix.md) | [`sandbox-discovery-failure-fix.patch`](./sandbox-discovery-failure-fix.patch) | Verified in the managed patch pool on 2026.7.29 |
-| Browser sandbox user-data-dir env override + singleton cleanup | [`browser-userdata-dir-fix.md`](./browser-userdata-dir-fix.md) | [`browser-userdata-dir-fix.patch`](./browser-userdata-dir-fix.patch) | Verified on 2026.6.11. Pending upstream PR (see plan 023). |
+| Browser sandbox user-data-dir env override + singleton cleanup | [`browser-userdata-dir-fix.md`](./browser-userdata-dir-fix.md) | [`browser-userdata-dir-fix.patch`](./browser-userdata-dir-fix.patch) | Verified on 2026.7.1 (`0790d9f`). Pending upstream PR (see plan 023). |
 
 > **Retired:** a former cron+subagent announce-delivery fix (`cron-announce`) was
 > retired on 2026.6.11 — superseded by block-at-yield, and its external

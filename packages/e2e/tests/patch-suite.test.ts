@@ -71,4 +71,74 @@ describe("OpenClaw cumulative patch suite", () => {
   it("pins the upstream source revision used by the patch pool", () => {
     expect(suite.openclawRef).toMatch(/^[0-9a-f]{40}$/);
   });
+
+  it("keeps the CI checkout synchronized with the patch-suite pin", () => {
+    const workflow = readFileSync(
+      join(repoRoot, ".github", "workflows", "integration.yml"),
+      "utf8",
+    );
+    const match = workflow.match(
+      /repository:\s*openclaw\/openclaw\s*\n\s*ref:\s*([0-9a-f]{40})/,
+    );
+
+    expect(match?.[1]).toBe(suite.openclawRef);
+  });
+
+  it("checks generated prompt snapshots after applying the patch stack", () => {
+    const runner = readFileSync(
+      join(packageDir, "bin", "openclaw-test-env.mjs"),
+      "utf8",
+    );
+    const finalApply = runner.indexOf('await run("git", ["apply", patchFile]');
+    const snapshotCheck = runner.indexOf(
+      'await run("corepack", ["pnpm", "prompt:snapshots:check"]',
+    );
+    const mappedTests = runner.indexOf(
+      "const tests = [...new Set(suite.patches.flatMap((patch) => patch.tests))]",
+    );
+
+    expect(finalApply).toBeGreaterThan(-1);
+    expect(snapshotCheck).toBeGreaterThan(finalApply);
+    expect(mappedTests).toBeGreaterThan(snapshotCheck);
+  });
+
+  it("uses a SQLite WAL-reset-safe Node runtime in CI", () => {
+    const workflow = readFileSync(
+      join(repoRoot, ".github", "workflows", "integration.yml"),
+      "utf8",
+    );
+    const match = workflow.match(/node-version:\s*"(\d+)\.(\d+)\.(\d+)"/);
+    const version = match?.slice(1).map(Number);
+    const isWalResetSafe = ([major, minor, patch]: number[]) => {
+      if (major === 22) {
+        return minor > 22 || (minor === 22 && patch >= 3);
+      }
+      if (major === 24) {
+        return minor > 15 || (minor === 15 && patch >= 0);
+      }
+      if (major === 25) {
+        return minor > 9 || (minor === 9 && patch >= 0);
+      }
+      return major >= 26;
+    };
+
+    expect(version).toBeDefined();
+    expect(isWalResetSafe(version!)).toBe(true);
+    for (const unsafe of [
+      [22, 22, 2],
+      [23, 11, 1],
+      [24, 14, 1],
+      [25, 8, 0],
+    ]) {
+      expect(isWalResetSafe(unsafe), unsafe.join(".")).toBe(false);
+    }
+    for (const safe of [
+      [22, 22, 3],
+      [24, 15, 0],
+      [25, 9, 0],
+      [26, 0, 0],
+    ]) {
+      expect(isWalResetSafe(safe), safe.join(".")).toBe(true);
+    }
+  });
 });
