@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Validating strengthened ACP compatibility coverage
+**Status:** Reviewing final ACP compatibility candidate
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -65,7 +65,8 @@ it identified stale plan wording and an inverse-gate coverage gap because all
 incompatible cases were cross-agent. The plan is synchronized and the table now
 covers both same- and cross-agent incompatibility. The isolated patched-source
 lifecycle passes with seven current snapshots, 470 mapped tests, the candidate
-browser test, and cleanup; full cumulative validation remains.
+browser test, and cleanup. The full cumulative lifecycle also passes with 288
+repository tests. Final exact-commit review remains.
 Production remains healthy on the prior reviewed host-combined build, and the
 cron definition remains unchanged. Exact-candidate review and remote checks,
 host-combined promotion, merge, and post-merge validation remain.
@@ -508,6 +509,9 @@ lifecycle.
   a same-agent requester so either relation-specific gate regresses the suite.
   The isolated patched-source lifecycle passes with seven current snapshots, 470
   mapped tests, the candidate browser test, and cleanup.
+- Final cumulative validation after the inverse-gate coverage change passes with
+  repository build/lint, 288 repository tests, seven current prompt snapshots,
+  470 mapped patched-source tests, the candidate browser test, and cleanup.
 
 ### Checklist
 
