@@ -1,6 +1,6 @@
 # Coalesce split iMessage message parts
 
-- **Status:** Proposal complete - ready to land for Cole's review
+- **Status:** Proposal landed - ready for Cole's design review
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-30
 - **Owner:** Cole Taylor
@@ -864,6 +864,10 @@ retained predecessor reader.
   material findings. The remaining validation gaps are intentionally deferred
   to the unapproved implementation: prove synchronous destination affinity and
   run the complete managed suite against the exact target OpenClaw revision.
+- PR #65 landed the exact reviewed documentation-only candidate as
+  `de118104bf7f34b793ef6adc347713f20e06640a`. CodeQL and the cumulative managed
+  integration workflow passed. No runtime, configuration, deployment, cron,
+  Messages, delivery, or mailbox mutation occurred.
 
 ### Checklist
 
@@ -875,5 +879,5 @@ retained predecessor reader.
 - [x] Trace exact normal queue, multimodal, transcript, payload, and delivery behavior.
 - [x] Finalize queue-drain ownership, races, tests, rollout, and rollback.
 - [x] Complete independent adversarial review of the revised proposal and remediation.
-- [ ] Land the revised investigation-only plan and pass remote checks.
-- [ ] Hand issue #28 and Todoist to Cole for design approval without deployment.
+- [x] Land the revised investigation-only plan and pass remote checks.
+- [x] Prepare issue #28 and Todoist for Cole's design approval without deployment.
