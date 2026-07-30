@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Integrating newest main
+**Status:** Reviewing newest-base candidate
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -64,7 +64,9 @@ candidate browser test, and cleanup. A fresh terminal review of the merged
 candidate remains before remote checks and promotion. Production remains healthy
 on the prior combined build. Terminal review is clean, but `main` advanced again
 with equivalent patch-context regeneration; newest-base integration and full
-validation are pending. The cron definition remains unchanged.
+validation now pass with current `main`'s regenerated sessions-yield/iMessage
+patches and deployment lifecycle intact. Fresh terminal review and remote checks
+remain. The cron definition remains unchanged.
 
 ### Scope and acceptance criteria
 
@@ -436,7 +438,10 @@ lifecycle.
 - Final integration merged the parallel landing follow-ups and latest default
   branch without changing the issue-43 runtime intent; the complete managed
   lifecycle remained green and terminal review was clean. `main` advanced again
-  with a benign patch-context conflict; newest-base integration pending.
+  with a benign patch-context conflict; current `main`'s representation was
+  retained and the complete lifecycle passed with 288 repository tests, current
+  snapshots, 464 mapped patched-source tests, candidate test, and cleanup.
+  Fresh terminal review pending.
 - Terminal exact-commit review: result is recorded only in the issue ledger after
   the final commit so the reviewed diff remains unchanged.
 

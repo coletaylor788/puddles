@@ -1,5 +1,5 @@
 diff --git a/src/agents/openclaw-tools.ts b/src/agents/openclaw-tools.ts
-index 65c966f1cc..b4bc6f3b72 100644
+index 1b886b2258..81ac6a76e0 100644
 --- a/src/agents/openclaw-tools.ts
 +++ b/src/agents/openclaw-tools.ts
 @@ -6,7 +6,7 @@
@@ -11,7 +11,7 @@ index 65c966f1cc..b4bc6f3b72 100644
  import type { OpenClawConfig } from "../config/types.openclaw.js";
  import { callGateway } from "../gateway/call.js";
  import { isEmbeddedMode } from "../infra/embedded-mode.js";
-@@ -72,6 +72,7 @@ import { createUpdatePlanTool } from "./tools/update-plan-tool.js";
+@@ -71,6 +71,7 @@ import { createUpdatePlanTool } from "./tools/update-plan-tool.js";
  import { createVideoGenerateTool } from "./tools/video-generate-tool.js";
  import { createWebFetchTool, createWebSearchTool } from "./tools/web-tools.js";
  import { resolveWorkspaceRoot } from "./workspace-dir.js";
@@ -19,7 +19,7 @@ index 65c966f1cc..b4bc6f3b72 100644
  
  type OpenClawToolsDeps = {
    callGateway: typeof callGateway;
-@@ -549,6 +550,11 @@ export function createOpenClawTools(
+@@ -539,6 +540,11 @@ export function createOpenClawTools(
      createSessionsYieldTool({
        sessionId: options?.sessionId,
        onYield: options?.onYield,
@@ -68,10 +68,10 @@ index 3b6e3925b6..9468da6eb4 100644
      const completionDirectOrigin = normalizeDeliveryContext(params.completionDirectOrigin);
      const directOrigin = normalizeDeliveryContext(params.directOrigin);
 diff --git a/src/agents/subagent-registry-maintenance.ts b/src/agents/subagent-registry-maintenance.ts
-index f0b814ecf2..4f00d682d3 100644
+index 02d73fed04..bf87ebf65f 100644
 --- a/src/agents/subagent-registry-maintenance.ts
 +++ b/src/agents/subagent-registry-maintenance.ts
-@@ -49,7 +49,7 @@ export function listSessionMaintenanceProtectedSubagentSessionKeys(): string[] {
+@@ -44,7 +44,7 @@ export function listSessionMaintenanceProtectedSubagentSessionKeys(): string[] {
      if (!shouldPreserveForMaintenance(entry)) {
        continue;
      }
@@ -81,10 +81,10 @@ index f0b814ecf2..4f00d682d3 100644
        keys.add(childSessionKey);
      }
 diff --git a/src/agents/subagent-registry-queries.ts b/src/agents/subagent-registry-queries.ts
-index 90a2385793..30af0192c6 100644
+index 0f141fa1fe..2b2fffdf26 100644
 --- a/src/agents/subagent-registry-queries.ts
 +++ b/src/agents/subagent-registry-queries.ts
-@@ -117,7 +117,7 @@ export function buildSubagentRunReadIndexFromRuns(params: {
+@@ -116,7 +116,7 @@ export function buildSubagentRunReadIndexFromRuns(params: {
    const activeDescendantCountBySessionKey = new Map<string, number>();
  
    for (const entry of params.inMemoryRuns ?? []) {
@@ -93,7 +93,7 @@ index 90a2385793..30af0192c6 100644
      if (!childSessionKey) {
        continue;
      }
-@@ -144,7 +144,7 @@ export function buildSubagentRunReadIndexFromRuns(params: {
+@@ -137,7 +137,7 @@ export function buildSubagentRunReadIndexFromRuns(params: {
    }
  
    for (const [runId, entry] of runs.entries()) {
@@ -102,7 +102,7 @@ index 90a2385793..30af0192c6 100644
      const controllerSessionKey = resolveControllerSessionKey(entry);
      if (controllerSessionKey) {
        let controllerRuns = runsByControllerSessionKey.get(controllerSessionKey);
-@@ -409,6 +409,14 @@ function forEachDescendantRun(
+@@ -401,4 +401,12 @@ function forEachDescendantRun(
        if (entry.requesterSessionKey !== requester) {
          continue;
        }
@@ -115,9 +115,7 @@ index 90a2385793..30af0192c6 100644
 +        continue;
 +      }
        const childKey = entry.childSessionKey.trim();
-       const existing = latestByChildSessionKey.get(childKey);
-       if (!existing || compareSubagentRunGeneration(entry, existing[1]) > 0) {
-@@ -425,7 +433,7 @@ function forEachDescendantRun(
+@@ -417,7 +425,7 @@ function forEachDescendantRun(
          continue;
        }
        visitor(runId, entry);

@@ -8,6 +8,8 @@ One iMessage composition can reach OpenClaw as multiple `imsg` notifications:
 
 1. A text prompt or caption row.
 2. A URL-preview or image-attachment row shortly afterward.
+3. Optional trailing text whose notification can arrive several seconds after
+   its source row was created.
 
 Without coalescing, the first row starts an agent turn before the payload
 arrives. The reply therefore lacks the link or image, and the payload starts a
@@ -34,14 +36,25 @@ The source patch classifies each eligible direct-message row:
   window.
 - **Payload:** a standalone HTTP(S) URL, a structurally standalone URL-preview
   balloon, or a real attachment. It joins an immediately preceding lead-in from
-  the same account, conversation, and sender, then flushes immediately.
+  the same account, conversation, and sender. A matched pair remains buffered
+  only until the lead-in's existing absolute deadline so a delayed continuation
+  can join; standalone payloads remain immediate.
+- **Continuation:** a same-key row that explicitly replies to the pending payload
+  or latest continuation GUID and has a parseable source timestamp zero to one
+  second after that row. It joins without extending the first deadline.
+  Payload-joined state is retained even when the payload lacks a usable GUID or
+  timestamp; that malformed metadata cannot anchor a continuation, but a later
+  lead-in or unchained payload still starts a separate composition.
 - **Instant:** unrelated questions, prose, complete messages, standalone
   payloads, non-URL balloons, reactions, and outgoing echoes. These do not wait
   for the compatibility window.
 
 If multiple short messages precede a payload, only the immediately preceding
 lead-in joins it; earlier messages remain separate turns. Group messages keep
-their existing per-message behavior.
+their existing per-message behavior. After one payload joins, an unchained
+second payload flushes that pending composition and dispatches as its own
+immediate turn. A new eligible lead-in flushes the prior pair and starts a fresh
+composition deadline.
 
 The existing merge bounds remain unchanged: 4,000 text characters, 20
 attachments, and 10 source rows, with every source GUID retained for replay
@@ -71,9 +84,11 @@ The compatibility window defaults to 7 seconds only when no explicit iMessage
 or global inbound debounce is configured. Under that default, classified
 payload-referential questions use a 15-second cap to cover slower URL-preview
 notifications; short unfinished captions keep the 7-second cap. Later eligible
-rows reuse the first row's absolute deadline rather than restarting it. Payload
-arrival flushes a matched pair immediately. Explicit inbound timing remains
-authoritative.
+rows reuse the first row's absolute deadline rather than restarting it. A
+matched payload remains buffered to that deadline; standalone payloads remain
+immediate. Explicit positive inbound timing supplies that absolute deadline;
+explicit zero keeps dispatch immediate. If timer execution is delayed past the
+deadline, the overdue bucket flushes before a later row is enqueued.
 
 To set a different upper bound:
 
@@ -97,7 +112,22 @@ The patch adds regression coverage for:
 - period and exclamation prefixes not activating the comma-only exception;
 - existing deictic questions retaining payload nouns before an internal comma;
 - real debouncer timing across both the 669 ms and 12.4-second gaps;
+- the observed text-link-text reply chain, including its 5.348-second
+  lead-in-to-link source gap, 114 ms link-to-trailing source gap, and delayed
+  trailing notification;
+- the same sandwich behavior under an explicit nonzero iMessage debounce;
+- an unchained second URL flushing separately without inheriting the pending
+  composition deadline;
+- back-to-back text-link-text compositions retaining independent continuation
+  buckets;
+- a joined payload without a GUID and with a malformed timestamp still closing
+  its composition bucket without qualifying as a continuation anchor;
+- quickly reply-chained non-URL balloons remaining structurally instant;
+- broken reply chains, malformed timestamps, out-of-order source times, and
+  source gaps above one second remaining separate;
 - repeated referential lead-ins retaining the first absolute deadline;
+- a payload observed after an overdue absolute deadline remaining separate even
+  when the timer callback has not run;
 - unmatched payload-referential question dispatching alone after the hold;
 - common unrelated deictic questions bypassing the hold;
 - explicit iMessage debounce timing overriding compatibility defaults;
@@ -108,19 +138,22 @@ The patch adds regression coverage for:
 - non-URL balloons and unrelated complete messages bypassing the hold;
 - empty-text URL balloons still being treated as payloads;
 - embedded scheme-less URLs and control commands bypassing the hold;
+- media-bearing control commands bypassing the hold without being merged into
+  conversational text;
 - invalid conversation anchors failing open instead of sharing a coalescing key;
 - the existing merge caps, reply context, cursor, and GUID tracking.
 
-The focused coalescer and monitor suites pass all 74 tests after a clean reverse
-and reapplication of the exported patch.
+The focused coalescer and monitor suites pass all 87 tests after a clean
+reapplication of the exported patch.
 
 Manual smoke test after deployment:
 
 1. Send a caption and image as one iMessage composition.
 2. Send a payload-referential question and link as one composition.
-3. Send two short, genuinely separate text messages rapidly.
-4. Confirm the first two cases each produce one `embedded run start` and the
-   third produces two turns in the gateway log.
+3. Send text, a link, and trailing text as one composition.
+4. Send two short, genuinely separate text messages rapidly.
+5. Confirm the first three cases each produce one `embedded run start` and the
+   fourth produces two turns in the gateway log.
 
 ## Apply and revert
 
