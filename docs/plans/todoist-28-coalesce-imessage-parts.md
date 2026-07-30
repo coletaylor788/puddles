@@ -1,6 +1,6 @@
 # Coalesce split iMessage message parts
 
-- **Status:** In progress - landing tracker closeout
+- **Status:** Complete - ready for review
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-29
 - **Owner:** Cole Taylor
@@ -53,9 +53,8 @@ reviewed patch stack. Promotion rejects candidate or rollback tarballs that
 retain `workspace:` dependency protocols or cannot be normalized before
 stopping the gateway. The reviewed candidate is merged and deployed; its
 retained recovery snapshot supports rollback if the final manual Messages.app
-smoke exposes a regression. The repository closeout lands before the final
-external Ready for review mutation so the tracker always links to a current
-default-branch plan.
+smoke exposes a regression. The repository closeout is on the default branch,
+so the final external Ready for review mutation links to this current plan.
 
 ## Agent details
 
@@ -71,7 +70,9 @@ terminal-review, pull-request, and post-merge gates. Exact candidate `af5bdf2`
 was promoted locally from OpenClaw `0790d9f`, merged by PR #51 as `863666f`, and
 revalidated read-only in production. The gateway is healthy and iMessage is
 configured and running. The issue ledger now reflects the landed outcome. The
-plan-only closeout must land before the final Todoist result and label change.
+reviewed plan-only closeout merged as `c873bb0`, and its Integration and CodeQL
+checks passed on `main`. The repository work is complete; only the final issue
+and Todoist Ready for review mutations remain.
 
 ### Scope and acceptance criteria
 
@@ -497,6 +498,9 @@ plan-only closeout must land before the final Todoist result and label change.
   configuration, a loaded service, healthy gateway, configured/running
   iMessage, concrete installed package dependencies, and the bounded
   continuation logic in the installed bundle.
+- The corrected plan-only closeout passed terminal review and pull-request
+  checks, merged as `c873bb0`, and passed Integration and CodeQL on that exact
+  `main` commit.
 
 ### Rollout and rollback
 
@@ -689,6 +693,10 @@ No data migration or persistent message-state conversion is involved.
   ledger was synchronized, and the checklist now records only preparation of
   the final handoff; the Todoist result and label mutation remain the last
   external step after this plan is visible on `main`.
+- A fresh replacement reviewer found no actionable high-confidence findings in
+  corrected closeout `d8b73e3`. It verified the plan schema, issue/Todoist state,
+  merge and workflow evidence, recovery snapshot, installed version, running
+  gateway, and six-patch stack before the closeout merged as `c873bb0`.
 
 ### Checklist
 
