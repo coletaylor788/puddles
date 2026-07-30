@@ -1,6 +1,6 @@
 # Coalesce split iMessage message parts
 
-- **Status:** In progress - landing replacement-marker reconciliation
+- **Status:** Complete - ready for review (2026-07-30)
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-30
 - **Owner:** Cole Taylor
@@ -88,7 +88,8 @@ post-landing checks fail. Only the exact reviewed and promoted public/private
 tuple could land. The follow-up lifecycle additionally binds each extracted
 patch to its suite-pinned SHA-256 before promotion. The landed merge commits and
 marker now provide the durable repository and byte identity for the installed
-runtime.
+runtime. The replacement-marker reconciliation is landed on `main`, and its
+post-merge Integration and CodeQL checks pass.
 
 ## Agent details
 
@@ -138,6 +139,10 @@ valid; gateway connectivity is healthy; iMessage is enabled, configured,
 running, and working; and deployment/source locks are absent. The lifecycle ran
 no cron job, changed no cron definition, delivered no message, and performed no
 mailbox mutation.
+Replacement-marker reconciliation commit `4bf0dd4...` passed terminal
+exact-commit review and pull-request checks, merged through PR #60 as
+`7f4fa5866340871b17cec4ada2466d2e2e065b71`, and passed Integration run
+`30537262588` and CodeQL run `30537262326` on that exact `main` merge.
 
 ### Scope and acceptance criteria
 
@@ -953,6 +958,9 @@ No data migration or persistent message-state conversion is involved.
   diff, landed tuples, installed marker and symbols, snapshot artifacts,
   runtime health, and tracker state. It found no actionable high-confidence
   defects.
+- Terminal review of immutable PR #60 commit `4bf0dd4...` found no actionable
+  high-confidence defects. It merged as `7f4fa58...`; Integration and CodeQL
+  passed on that exact merge.
 
 ### Checklist
 
@@ -1065,5 +1073,5 @@ No data migration or persistent message-state conversion is involved.
   recovery snapshot, and dependent follow-up landing.
 - [x] Obtain a clean independent review of the replacement-marker
   reconciliation.
-- [ ] Land the replacement-marker plan reconciliation, then restore
+- [x] Land the replacement-marker plan reconciliation, then restore
   issue #28 and Todoist to Ready for review.
