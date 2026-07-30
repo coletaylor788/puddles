@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Integrating current deployment lifecycle
+**Status:** Preparing current-base exact landing candidate
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -87,8 +87,11 @@ verification remained, but `main` then advanced to `863666f` with the reviewed
 iMessage and deployment lifecycle. That base conflicts only in the previously
 ported sessions-yield patch; resolution retains current `main`'s newly ported
 patch while preserving this branch's reader changes in their separate patch.
-Validation and review must be refreshed after the merge. The cron definition
-remains unchanged.
+The complete managed pool now passes with 288 repository tests, current prompt
+snapshots, 464 mapped patched-source tests, the candidate browser test, and
+cleanup. Fresh complete-diff review found no actionable findings. The exact
+commit, terminal review, remote gates, promotion, merge, and post-merge
+verification remain. The cron definition remains unchanged.
 
 ### Scope and acceptance criteria
 
@@ -366,7 +369,11 @@ Completed:
   snapshots with no actionable findings.
 - Before promotion, `main` advanced to `863666f` with the reviewed iMessage and
   deployment lifecycle. The sessions-yield patch conflict resolves to current
-  `main`'s newly ported version; refreshed managed validation remains.
+  `main`'s newly ported version. The complete managed lifecycle passed with
+  repository build/lint, 288 repository tests, current prompt snapshots, 464
+  mapped patched-source tests, the candidate browser test, and cleanup.
+- Fresh complete-diff review of the current-base integration found no actionable
+  findings; terminal review and remote validation remain.
 - Combined-lifecycle preflight correctly blocked production mutation because the
   host-local manifest still pins repository head `7c887496`. Production remains
   healthy on OpenClaw `2026.7.1-2` / `0790d9f`; no recovery snapshot was needed.
@@ -473,6 +480,7 @@ lifecycle.
 - Exact candidate `759bf45` received a clean terminal review, but current-base
   movement invalidated that landing tuple before promotion. Integration of
   `863666f` is in progress.
+- Current-base complete-diff review is clean.
 - Terminal exact-commit review: result is recorded only in the issue ledger after
   the final commit so the reviewed diff remains unchanged.
 
