@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Integrating latest main for exact landing
+**Status:** Validating latest-main landing candidate
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -57,13 +57,14 @@ OpenClaw `0790d9f`. All prior review findings are remediated. Candidate
 `e3ae601` passed the complete managed pool with 288 repository tests, current
 prompt snapshots, 464 mapped patched-source tests, the candidate browser test,
 and cleanup; exact-commit review found no code, patch, test, or security defect.
-That review identified only stale tracking presentation, which this plan and
-issue ledger correction resolve. `main` has since advanced to `f7a049a` through
-the reviewed iMessage landing and overlaps the shared patch stack, so it must be
-integrated and the cumulative pool and terminal review refreshed before remote
-gates. Production remains healthy on the prior reviewed host-combined build, and
-the cron definition remains unchanged. Exact-candidate remote checks,
-host-combined promotion, merge, and post-merge validation remain.
+That review identified only stale tracking presentation, which the synchronized
+plan and issue ledger resolve. Current `main` at `f7a049a` is now integrated as
+candidate `2b63c26`; the merge changed only the two repository plans relative to
+the reviewed candidate, leaving runtime and test bytes identical. The cumulative
+pool and terminal review are being refreshed before remote gates. Production
+remains healthy on the prior reviewed host-combined build, and the cron
+definition remains unchanged. Exact-candidate remote checks, host-combined
+promotion, merge, and post-merge validation remain.
 
 ### Scope and acceptance criteria
 
@@ -454,8 +455,10 @@ lifecycle.
   security defect and confirmed no runtime loss. Its only actionable finding was
   the stale issue ledger, corrected with this synchronized plan milestone.
 - `main` subsequently advanced to `f7a049a` through the reviewed iMessage
-  landing and overlaps the shared patch stack. Integrate that base, rerun the
-  complete managed pool, and refresh terminal review before remote gates.
+  landing. Candidate `2b63c26` integrates that base conflict-free; only the two
+  repository plans differ from `e3ae601`, so runtime and test bytes remain
+  unchanged. Refresh the complete managed pool and terminal review before remote
+  gates.
 
 ### Checklist
 
