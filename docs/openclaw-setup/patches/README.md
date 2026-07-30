@@ -75,18 +75,21 @@ wrapper:
 2. **Builds** from source (`pnpm build`).
 3. **Serializes and packs the source build** — acquires a lock in the source
    checkout's Git administrative directory before patch application, build, or
-   pack, and holds it through deployment. `npm pack` writes to a per-invocation
-   temporary directory, so concurrent invocations neither mutate shared build
+   pack, and holds it through deployment. `pnpm pack` writes to a per-invocation
+   temporary directory and rewrites workspace dependency protocols to concrete
+   release versions. The wrapper rejects unresolved `workspace:` dependencies
+   before deployment, so concurrent invocations neither mutate shared build
    output nor delete or consume one another's candidate.
 4. **Serializes deployment** — acquires a target-host lock so global package,
    state migration, restart, and rollback operations cannot overlap. Remote
    deployments use a unique staging filename.
-5. **Quiesces and snapshots recovery state** — stops the gateway and boundedly
-   waits until launchd no longer reports the service before any state copy,
-   packs the currently installed OpenClaw package with lifecycle scripts
-   disabled (production installs do not contain the source-only prepack
-   toolchain), clones the complete `~/.openclaw`
-   runtime tree with APFS copy-on-write semantics, and preserves the gateway
+5. **Quiesces and snapshots recovery state** — first packs the currently
+   installed OpenClaw package with lifecycle scripts disabled, replaces any
+   workspace dependency protocols with the installed dependency versions, and
+   verifies that rollback tarball is reinstallable. It then stops the gateway,
+   boundedly waits until launchd no longer reports the service, clones the
+   complete `~/.openclaw` runtime tree with APFS copy-on-write semantics, and
+   preserves the gateway
    service definition under `~/.openclaw-deploy-backups/`. Failure to make the
    complete clone aborts before package replacement and restarts the prior
    gateway.
