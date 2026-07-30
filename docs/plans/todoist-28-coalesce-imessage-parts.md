@@ -1,6 +1,6 @@
 # Coalesce split iMessage message parts
 
-- **Status:** In progress - reviewing resynchronized sandwich correction
+- **Status:** In progress - terminal-reviewing resynchronized correction
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-29
 - **Owner:** Cole Taylor
@@ -615,6 +615,11 @@ No data migration or persistent message-state conversion is involved.
   assertion. Focused, cumulative, portability, byte-reproduction, and
   production-release mapped validation all pass again; fresh reusable-worker and
   terminal reviews remain required before promotion.
+- A fresh reusable-worker review of exact synchronized commit `8b03058` found no
+  actionable high-confidence defects. It confirmed the conflict resolution
+  preserved both the current-main debounce assertion stabilization and the full
+  sandwich state machine. The final exact landing candidate still requires a
+  terminal fresh review.
 
 ### Checklist
 
@@ -687,7 +692,7 @@ No data migration or persistent message-state conversion is involved.
 - [x] Correct the premature payload flush without merging unrelated trailing
   messages.
 - [x] Run focused tests and the complete cumulative managed lifecycle.
-- [ ] Obtain a clean reusable-worker adversarial review after current-main
+- [x] Obtain a clean reusable-worker adversarial review after current-main
   synchronization.
 - [ ] Obtain a clean terminal adversarial review of the exact landing candidate.
 - [ ] Promote the exact remotely green candidate, validate production read-only,
