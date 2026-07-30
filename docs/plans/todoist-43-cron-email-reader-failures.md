@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Validating ACP command-policy remediation
+**Status:** Reviewing ACP command-policy remediation
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -71,8 +71,9 @@ resolution but now enforce required requester command access for every ACP
 target. Compatible cross-agent ACP calls still omit inherited session policy;
 native cross-agent reader isolation remains unchanged. The isolated patched
 source suite passes with seven current snapshots, 470 mapped tests, the
-candidate browser test, and cleanup. Full repository validation and independent
-re-review remain. Production remains on the prior reviewed build.
+candidate browser test, and cleanup. The complete managed lifecycle also passes
+with 288 repository tests. Independent re-review remains. Production remains on
+the prior reviewed build.
 Production remains healthy on the prior reviewed host-combined build, and the
 cron definition remains unchanged. Exact-candidate remote checks, host-combined
 promotion, merge, and post-merge validation remain.
@@ -504,6 +505,9 @@ lifecycle.
   deny, group, pattern, and wildcard cases fail. The isolated patched-source
   lifecycle passes with seven current snapshots, 470 mapped tests, the
   candidate browser test, and cleanup.
+- Complete remediation validation passes with repository build/lint, 288
+  repository tests, seven current prompt snapshots, 470 mapped patched-source
+  tests, the candidate browser test, and cleanup.
 
 ### Checklist
 
