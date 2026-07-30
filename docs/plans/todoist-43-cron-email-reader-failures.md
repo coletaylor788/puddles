@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Preparing exact ACP isolation candidate
+**Status:** Preparing final current-base candidate
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -100,8 +100,12 @@ worktree. The complete managed pool now passes with 288 repository tests,
 current prompt snapshots, 470 mapped patched-source tests, the candidate browser
 test, and cleanup. Fresh complete-diff review found no actionable findings,
 verified all generated blob hashes, and passed targeted repository contracts.
-The exact commit, terminal review, remote gates, promotion, merge, and post-merge
-verification remain. The cron definition remains unchanged.
+Exact commit `8d4a474` then passed terminal review and remote Integration/CodeQL.
+Before promotion, `main` advanced to `6dc4e03` only through an unrelated plan
+update, which is integrated conflict-free as `2892b93`. Because no runtime,
+patch, test, workflow, or deployment file changed, the full managed result
+remains applicable; exact-current-base review and remote gates must be refreshed.
+The cron definition remains unchanged.
 
 ### Scope and acceptance criteria
 
@@ -399,6 +403,9 @@ Completed:
   and cleanup.
 - Fresh complete-diff re-review found no actionable findings, verified all 15
   generated source blob hashes, and passed targeted repository contracts.
+- Exact candidate `8d4a474` passed terminal review and remote Integration/CodeQL.
+  `main` then advanced to `6dc4e03` through only an unrelated plan update, now
+  integrated as `2892b93`; no managed runtime gate was affected.
 - Combined-lifecycle preflight correctly blocked production mutation because the
   host-local manifest still pins repository head `7c887496`. Production remains
   healthy on OpenClaw `2026.7.1-2` / `0790d9f`; no recovery snapshot was needed.
@@ -510,6 +517,9 @@ lifecycle.
   compatibility preflights. The finding is accepted and remediated; full
   validation passes and review re-check remains.
 - ACP isolation remediation re-review is clean.
+- Terminal review and remote gates were clean for `8d4a474`, but plan-only base
+  movement invalidated the landing tuple before promotion. Current-base exact
+  review remains.
 - Terminal exact-commit review: result is recorded only in the issue ledger after
   the final commit so the reviewed diff remains unchanged.
 
