@@ -1,6 +1,6 @@
 # Todoist CLI issue filing
 
-**Status:** Reopened for process clarification and landing
+**Status:** Ready for terminal review
 **Issue:** [#40](https://github.com/coletaylor788/puddles/issues/40)
 **Last updated:** 2026-07-29
 
@@ -48,10 +48,16 @@ returns the landed result to Cole for final validation.
 The Todoist implementation passed focused tests, real image smoke validation,
 the full managed integration pool, multiple complete-diff reviews, remote
 checks, and exact-commit terminal review. Pull request #42 remains open. Current
-`main` now contains safe-feature-development 1.5.0 and explicit worker ownership
-through merge, resolving the earlier landing ambiguity. The task is reopened to
-integrate that lifecycle and add Cole's requested clear-help escalation
-contract before landing.
+`main` is integrated, resolving the earlier landing ambiguity. The shared safe
+feature workflow is advanced to 1.6.0 with Cole's requested clear-help
+escalation contract, and the cumulative regression is implemented. Focused and
+full managed validation pass. The first reopened review is clean; its only
+residual coverage gap is closed by asserting the concise/self-contained preface
+and the plan/issue-before-asking requirement. Focused and full validation pass
+again. Because the completed reviewer cannot be resumed through the available
+interface, a fresh replacement re-checked the complete current diff and returned
+clean. In-diff bookkeeping is final; the exact landing candidate and terminal
+review are next.
 
 ### Scope and acceptance criteria
 
@@ -94,16 +100,21 @@ contract before landing.
 
 ### Implementation
 
-1. Merge current `origin/main` into the feature branch and resolve any plan or
-   lifecycle conflicts without weakening current-main policy.
-2. Update `.github/skills/safe-feature-development/SKILL.md` to 1.6.0 with a
+1. Merged current `origin/main` into the feature branch without conflicts or
+   weakening current-main policy.
+2. Updated `.github/skills/safe-feature-development/SKILL.md` to 1.6.0 with a
    clear, evidence-based help-request contract.
-3. Extend the shared review-workflow regression to assert the new contract.
-4. Rerun focused tests and
+3. Extended the shared review-workflow regression to assert every required
+   request element, prohibit vague status-shaped asks, and require continued
+   investigation when the needed action cannot be stated clearly. After review,
+   also asserted that requests are concise/self-contained and that the plan and
+   issue ledger are updated before asking.
+4. Updated the cumulative coverage index.
+5. Rerun focused tests and
    `node packages/e2e/bin/openclaw-test-env.mjs ci`.
-5. Re-run independent complete-diff review, finalize bookkeeping, create the
+6. Re-run independent complete-diff review, finalize bookkeeping, create the
    exact landing candidate, and run fresh terminal review.
-6. Push, resolve remote integration conditions, merge the exact approved
+7. Push, resolve remote integration conditions, merge the exact approved
    candidate, verify `main`, and hand off only final live installation
    validation.
 
@@ -121,8 +132,14 @@ Previously completed for the Todoist implementation:
 
 Required for this reopened cycle:
 
-- focused `review-workflow.test.ts` and Todoist tests;
-- the complete managed lifecycle;
+- focused `review-workflow.test.ts` and Todoist tests: 19 tests passed;
+- E2E TypeScript lint and `git diff --check`;
+- `node packages/e2e/bin/openclaw-test-env.mjs ci`: workspace build and lint,
+  112 mcp-hooks tests, 64 e2e tests, 61 calendar tests, 43 Gmail tests, 319
+  mapped OpenClaw tests, one candidate test, and managed cleanup passed;
+- after closing the residual contract-coverage gap, repeated the 19 focused
+  tests, E2E lint, diff check, and complete managed lifecycle with identical
+  green results;
 - complete-current-diff adversarial review after integrating current `main`;
 - fresh terminal review of the exact landing candidate;
 - all required remote checks on that candidate;
@@ -148,8 +165,13 @@ and clean terminal reviews. Review identified and the implementation fixed a
 shell-only token success-shaped failure. A transient 1 ms upstream timing
 assertion passed on unchanged rerun without weakening CI. The prior vague
 automatic-controller question is superseded by current-main worker ownership
-and this explicit clear-help contract. The reopened diff requires a new
-complete-current-diff review and terminal review before landing.
+and this explicit clear-help contract. Current `main` is integrated and the
+contract plus regression are implemented. Focused and full managed validation
+pass. The first reopened review found no actionable defects and identified two
+unasserted contract lines as a residual gap; both are now covered and validation
+is green. A fresh replacement complete-current-diff review returned clean.
+Terminal review of the exact landing candidate remains before remote integration
+and merge.
 
 ### Checklist
 
@@ -157,10 +179,10 @@ complete-current-diff review and terminal review before landing.
 - [x] Implement and validate the Todoist CLI capability and regressions.
 - [x] Complete the original review and remote integration gates.
 - [x] Identify the vague-help process gap from Cole's follow-up.
-- [ ] Integrate current `main`.
-- [ ] Add the clear-help contract and shared regression.
-- [ ] Pass focused and full managed validation.
-- [ ] Complete reopened complete-diff review and remediation.
+- [x] Integrate current `main`.
+- [x] Add the clear-help contract and shared regression.
+- [x] Pass focused and full managed validation.
+- [x] Complete replacement review of the final current diff.
 - [ ] Finalize, commit, and terminal-review the exact landing candidate.
 - [ ] Pass remote checks, merge, and verify the default branch.
 - [ ] Hand off the landed result for Cole's final live validation.
