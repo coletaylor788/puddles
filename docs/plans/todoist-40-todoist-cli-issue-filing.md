@@ -1,6 +1,6 @@
 # Todoist CLI issue filing
 
-**Status:** Ready for terminal review
+**Status:** Landed; awaiting final live validation
 **Issue:** [#40](https://github.com/coletaylor788/puddles/issues/40)
 **Last updated:** 2026-07-29
 
@@ -28,10 +28,10 @@ The landed change provides a locked Todoist CLI sandbox image, source-managed
 skill, transactional installer and rollback, setup documentation, isolated
 recording regressions, and the clear-help lifecycle contract. Repository work is
 landed. A docs-only plan follow-up exposed a recurrent 1 ms wall-clock race in a
-maintained iMessage patch test. Fix that shared regression at the source without
-weakening its 15-second debounce contract, land the corrected plan, then proceed
-to the documented live operator validation. The bounded semantic assertion is
-implemented and the complete managed lifecycle passes.
+maintained iMessage patch test. The shared regression is fixed at the source
+without weakening its 15-second debounce contract, the corrected follow-up is
+landed, and all post-merge checks pass. Only documented live operator validation
+remains.
 
 ### Safety and rollout
 
@@ -40,8 +40,9 @@ Todoist content remains untrusted data and credentials remain in
 never authenticate or write to live services. The installer records recovery
 state before mutation and rolls back config, skill, and sandbox changes on
 failure. The flaky test fix must preserve both the configured upper bound and a
-tight lower bound while allowing elapsed execution time. Cole's remaining action
-is live environment validation, not repository review or merge work.
+tight lower bound while allowing elapsed execution time; the landed bounds do
+so. Cole's remaining action is live environment validation, not repository
+review or merge work.
 
 ## Agent details
 
@@ -63,7 +64,12 @@ beyond the observed production gap, and at most the configured 15 seconds. The
 complete managed lifecycle passes with all 319 mapped tests.
 Independent complete-diff review verified the deadline-minus-current-time root
 cause, tight bounds, patch applyability, plan accuracy, and absence of runtime
-regressions. In-diff bookkeeping is final.
+regressions. Exact corrected candidate
+`69ea766499c6335987a9006f8adb2f661abd3213` passed remote checks and
+merged through PR #50 as
+`a385758f8cb925e46ddb9380996a93aaf0d54458`. Post-merge checks are
+all green. Repository implementation, review, landing, plan normalization, and
+post-merge verification are complete. Only credentialed live validation remains.
 
 ### Scope and acceptance criteria
 
@@ -158,10 +164,8 @@ Not automated by design:
 Those checks require the operator's local credential and explicit request, and
 must not be exercised by repository automation.
 
-Pending for the plan follow-up:
-
-- complete terminal review of the exact corrected candidate;
-- pass remote checks, land PR #50, and verify post-merge checks.
+The plan follow-up's post-merge CodeQL and cumulative integration checks passed
+on `a385758f8cb925e46ddb9380996a93aaf0d54458`.
 
 ### Rollout and rollback
 
@@ -191,6 +195,11 @@ The maintained patch assertion is now bounded to the actual deadline-minus-now
 contract, and the full managed lifecycle passes. Independent review confirmed
 the 100 ms tolerance preserves the configured upper bound, catches meaningful
 window reductions, retains every observed-gap guarantee, and applies cleanly.
+Fresh terminal review of exact candidate
+`69ea766499c6335987a9006f8adb2f661abd3213` returned clean. All PR #50
+remote gates passed and the candidate merged as
+`a385758f8cb925e46ddb9380996a93aaf0d54458`.
+All checks on that merge commit passed.
 
 ### Checklist
 
@@ -202,8 +211,8 @@ window reductions, retains every observed-gap guarantee, and applies cleanly.
 - [x] Normalize the landed plan and issue ledger.
 - [x] Fix the maintained clock-sensitive assertion without weakening semantics.
 - [x] Revalidate and complete-diff review the normalized plan follow-up.
-- [ ] Commit and terminal-review the corrected follow-up candidate.
-- [ ] Pass remote checks, land PR #50, and verify post-merge checks.
+- [x] Commit and terminal-review the corrected follow-up candidate.
+- [x] Verify PR #50 post-merge checks.
 - [ ] Complete the documented live install and read-only authentication check.
 - [ ] File one explicit low-risk task and confirm single-issue routing.
 - [ ] Cole validates the live result and decides whether to complete the
