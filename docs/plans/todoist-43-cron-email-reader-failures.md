@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Reviewing final landing candidate
+**Status:** Integrating latest main
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -60,8 +60,9 @@ drift contract now require an OpenClaw-compatible SQLite-safe Node release,
 currently 22.23.1. Terminal review found the contract must encode separate floors
 for Node 22, 24, and 25 rather than accepting every newer major; those boundaries
 are now regression-tested and the full lifecycle is green. The serial Vitest
-workaround remains removed. Fresh terminal review and remote checks remain. The
-cron definition remains unchanged.
+workaround remains removed and terminal review is clean. The base advanced
+again, so latest-main integration and validation are pending before remote
+checks. The cron definition remains unchanged.
 
 ### Scope and acceptance criteria
 
@@ -349,7 +350,8 @@ lifecycle.
 - Landing: current-main conflicts and workflow pin drift are resolved locally and
   revalidated. Terminal landing review rejected the serial-test diagnosis and
   identified Node/SQLite runtime drift. Workflow 22.23.1 and per-major floor
-  contracts are green; fresh terminal review and remote checks pending.
+  contracts are green and terminal review is clean. The base advanced again;
+  latest-main integration, validation, and a fresh terminal review are pending.
 - Terminal exact-commit review: result is recorded only in the issue ledger after
   the final commit so the reviewed diff remains unchanged.
 
