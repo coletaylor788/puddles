@@ -568,7 +568,11 @@ rewinding cron/message state.
 - The first immutable-candidate review found no design defect but caught that the
   branch predated PR #63 and would have reverted its review-policy files if
   merged. The proposal was rebased onto current `main` with those files
-  preserved; terminal review of the new exact candidate is pending.
+  preserved.
+- Terminal review of the exact rebased candidate found no actionable defects,
+  confirmed PR #63 remained byte-identical, and verified the complete safety and
+  deterministic-test contract. Remote CodeQL and cumulative integration checks
+  passed on that candidate; merge is pending.
 
 ### Checklist
 
