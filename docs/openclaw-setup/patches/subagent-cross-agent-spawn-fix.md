@@ -100,10 +100,10 @@ const inheritedWorkspaceDir = targetAgentId !== requesterAgentId
 
 ### Site 2 — new ACP runtime spawn (`spawnAcpDirect`, added in 6.x)
 
-Inside `spawnAcpDirect(params, ctx)` the same two-spread bug exists, but
-only `targetAgentId` is directly in scope. `requesterAgentId` is derived
-on the fly from `requesterInternalKey` using the `parseAgentSessionKey`
-helper already imported at the top of the file:
+Inside `spawnAcpDirect(params, ctx)` the same two-spread bug exists.
+`requesterAgentId` is already resolved from either
+`requesterAgentIdOverride` or the parsed requester session key, so it also
+handles global session scope where the key itself carries no agent ID:
 
 ```js
 // Before:
@@ -111,19 +111,16 @@ helper already imported at the top of the file:
 ...inheritedToolDenyPatch(ctx.inheritedToolDenylist),
 
 // After:
-...(targetAgentId === parseAgentSessionKey(requesterInternalKey)?.agentId
+...(targetAgentId === requesterAgentId
   ? inheritedToolAllowPatch(ctx.inheritedToolAllowlist) : {}),
-...(targetAgentId === parseAgentSessionKey(requesterInternalKey)?.agentId
+...(targetAgentId === requesterAgentId
   ? inheritedToolDenyPatch(ctx.inheritedToolDenylist) : {}),
 ```
 
-If `requesterInternalKey` is missing the derived `agentId` is `undefined`,
-the equality fails, and inheritance is skipped — the conservative
-"don't inherit on uncertainty" outcome, which matches the goal.
-
 Same-agent spawns still get the privilege-inheritance guarantee.
 Cross-agent spawns get a clean resolution from the target agent's own
-config.
+config. Global-scope requests use their explicit requester override for the same
+comparison.
 
 For native subagents requested from a cron run, omitted `agentId` now fails
 before child creation and directs the caller to `agents_list`. ACP cron calls
@@ -160,16 +157,18 @@ UPDATED_ALLOW="$(
   printf '%s' "$CURRENT_SUBAGENTS" |
     node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const v=JSON.parse(s);if(!Array.isArray(v.allowAgents)){console.error("agents.list[0].subagents.allowAgents is unset; merge agents.defaults.subagents.allowAgents explicitly before promotion");process.exit(1)}process.stdout.write(JSON.stringify([...new Set(["main",...v.allowAgents])]))})'
 )"
+openclaw config set 'agents.list[0].subagents.requireAgentId' true --strict-json
 openclaw config set 'agents.list[0].subagents.allowAgents' \
   "$UPDATED_ALLOW" \
   --strict-json
-openclaw config set 'agents.list[0].subagents.requireAgentId' true --strict-json
 openclaw config get 'agents.list[0].subagents'
 ```
 
 Strict shell error handling prevents a failed read, derivation, or leaf update
-from falling through to a partial policy mutation. The derived array preserves
-every existing target and adds `main` idempotently.
+from continuing. The restrictive `requireAgentId` setting is written first, so
+a later allowlist failure leaves delegation fail-closed rather than newly
+permitting implicit self-spawn. The derived array preserves every existing
+target and adds `main` idempotently.
 If the per-agent allowlist is absent, the command stops before any mutation:
 inspect `agents.defaults.subagents.allowAgents`, copy every inherited target into
 the explicit per-agent array, add `main`, and rerun the leaf-level commands.

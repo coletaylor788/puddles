@@ -51,6 +51,13 @@ describe("coordinator agent setup contract", () => {
     expect(content).toContain(
       "config set 'agents.list[0].subagents.requireAgentId'",
     );
+    expect(
+      content.indexOf(
+        "config set 'agents.list[0].subagents.requireAgentId'",
+      ),
+    ).toBeLessThan(
+      content.indexOf("config set 'agents.list[0].subagents.allowAgents'"),
+    );
     expect(content).not.toMatch(
       /config set 'agents\.list\[0\]\.subagents'[\s\\]/,
     );

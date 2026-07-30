@@ -28,7 +28,7 @@ diff --git a/src/agents/acp-spawn.test.ts b/src/agents/acp-spawn.test.ts
 index e0a33f481e..901f450326 100644
 --- a/src/agents/acp-spawn.test.ts
 +++ b/src/agents/acp-spawn.test.ts
-@@ -912,6 +912,225 @@ describe("spawnAcpDirect", () => {
+@@ -912,6 +912,262 @@ describe("spawnAcpDirect", () => {
      expect(transcriptCalls[1]?.threadId).toBe("child-thread");
    });
  
@@ -251,6 +251,43 @@ index e0a33f481e..901f450326 100644
 +    });
 +  });
 +
++  it("preserves requester tool policy for global same-agent ACP spawns", async () => {
++    const result = await spawnAcpDirect(
++      {
++        task: "Keep the global requester's tool policy",
++        agentId: "codex",
++      },
++      {
++        agentSessionKey: "global",
++        requesterAgentIdOverride: "codex",
++        inheritedToolAllowlist: [
++          "apply_patch",
++          "edit",
++          "exec",
++          "process",
++          "read",
++          "write",
++          "message",
++        ],
++        inheritedToolDenylist: ["message"],
++      },
++    );
++
++    expectAcceptedSpawn(result);
++    expectSessionPatchFields({
++      inheritedToolAllow: [
++        "apply_patch",
++        "edit",
++        "exec",
++        "process",
++        "read",
++        "write",
++        "message",
++      ],
++      inheritedToolDeny: ["message"],
++    });
++  });
++
    it("allows ACP resume IDs recorded for the requester session", async () => {
      const resumeSessionId = "codex-inner-resume";
      const ownedSessionKey = "agent:codex:acp:owned";
@@ -319,10 +356,10 @@ index d463046cd1..e3082c7f88 100644
 -        ...inheritedToolDenyPatch(ctx.inheritedToolDenylist),
 +        // FIX-CROSS-AGENT-SPAWN: only inherit tool allow/deny for same-agent
 +        // spawns; cross-agent spawns keep the child agent's own tool set.
-+        ...(targetAgentId === parseAgentSessionKey(requesterInternalKey)?.agentId
++        ...(targetAgentId === requesterAgentId
 +          ? inheritedToolAllowPatch(ctx.inheritedToolAllowlist)
 +          : {}),
-+        ...(targetAgentId === parseAgentSessionKey(requesterInternalKey)?.agentId
++        ...(targetAgentId === requesterAgentId
 +          ? inheritedToolDenyPatch(ctx.inheritedToolDenylist)
 +          : {}),
          ...(params.label ? { label: params.label } : {}),

@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Preparing exact landing candidate
+**Status:** Preparing revised exact landing candidate
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -31,17 +31,21 @@ resolves to the requester profile. Retain explicit configuration overrides and
 distinct ACP harness defaults. Clarify the model-facing schema so `taskName`
 cannot be mistaken for profile selection. Cover ambiguous scheduled spawns,
 overrides, explicit scheduled `reader` delegation, and explicit scheduled
-coordinator self-spawn. Normalize the live coordinator policy before promotion
-so `main` remains an allowed explicit target. Include generated prompt snapshots
-and upstream documentation for the conditional defaults.
+coordinator self-spawn. Preserve same-agent tool restrictions when global ACP
+scope identifies the requester through an explicit override. Normalize the live
+coordinator policy before promotion by enabling explicit targeting before adding
+`main` as an allowed target, so interrupted updates fail closed. Include
+generated prompt snapshots and upstream documentation for the conditional
+defaults.
 
 ### Safety and rollout
 
 Keep the existing cron job and its least-privilege `toolsAllow` unchanged. Tests
 use synthetic session state and mocked gateway calls; they never access Gmail,
 send messages, or mutate accounts. Promote only through the maintained OpenClaw
-patch lifecycle. Validate the installed guard and reader access with read-only
-checks, and rebuild without the patch to roll back.
+patch lifecycle. Coordinator policy updates apply the restrictive flag before
+the expanded allowlist. Validate the installed guard and reader access with
+read-only checks, and rebuild without the patch to roll back.
 
 ## Agent details
 
@@ -57,9 +61,16 @@ the current base in candidate `9cfdd05`. The merge was conflict-free, retained
 current `main`'s atomic deployment and rollback lifecycle, and passed the complete
 managed pool with 286 repository tests, current prompt snapshots, 449 mapped
 patched-source tests, the candidate browser test, and cleanup. A fresh reusable
-full-diff review found no actionable defects. The exact landing commit, terminal
-fresh review, remote checks, and merge invariants remain before landing. The cron
-definition remains unchanged.
+full-diff review found no actionable defects. Terminal exact-commit review then
+found that global ACP same-agent requests could lose inherited restrictions and
+that the documented two-step coordinator update could fail open between writes.
+Both findings are accepted and remediated with focused regressions. The focused
+setup contract and complete managed pool now pass with 286 repository tests,
+current prompt snapshots, 451 mapped patched-source tests, the candidate browser
+test, and cleanup. A fresh independent replacement review verified both
+remediations and found no actionable defects across all changed files. The
+revised exact landing commit, terminal fresh review, remote checks, and merge
+invariants remain before landing. The cron definition remains unchanged.
 
 ### Scope and acceptance criteria
 
@@ -104,6 +115,10 @@ definition remains unchanged.
   descendants rely on the promoted `requireAgentId=true` policy.
 - Same-agent children continue to inherit parent restrictions; explicit
   cross-agent children continue to use the target profile's tool policy.
+- ACP inheritance compares against the already-resolved requester agent ID so
+  global session scope honors `requesterAgentIdOverride`.
+- Coordinator promotion sets `requireAgentId=true` before expanding
+  `allowAgents`; interruption therefore leaves delegation fail-closed.
 - The fix belongs in the existing provider-neutral
   `subagent-cross-agent-spawn-fix` source patch and configured deployment order.
 - Model-facing schema changes include their generated OpenClaw prompt snapshots
@@ -154,6 +169,11 @@ Implemented:
     cumulative patch manifest, enforced by a repository contract test.
 20. Keep the integration workflow on a Node release whose embedded SQLite meets
     the pinned OpenClaw WAL-reset safety floor.
+21. Compare ACP targets with the resolved requester ID and cover global-scope
+    same-agent inheritance.
+22. Order coordinator policy updates so the restrictive explicit-target flag is
+    committed before the self-target allowlist expansion, with a repository
+    contract test.
 
 Feature implementation, review remediation, release porting, promotion, and
 read-only production validation are complete. Cole requested full landing, so
@@ -304,6 +324,18 @@ Completed:
     managed cleanup.
   - fresh reusable full-diff review found no actionable findings; refreshed
     remote CI and post-merge validation remain the only validation gaps.
+- Terminal exact-commit review of `796a52a` found two actionable issues:
+  global-scope same-agent ACP inheritance ignored the explicit requester
+  override, and the documented coordinator update expanded the self-target
+  allowlist before enabling explicit targets. Both are remediated.
+- Terminal-review remediation validation:
+  - focused coordinator setup contract — 3 passed;
+  - complete managed lifecycle — repository build/lint, 286 repository tests,
+    current prompt snapshots, 451 mapped patched-source tests, candidate browser
+    test, and cleanup.
+- Fresh independent replacement review verified both remediations and all 15
+  changed files with no actionable findings. Remote CI, production confirmation,
+  and post-merge validation remain.
 
 ### Rollout and rollback
 
@@ -368,7 +400,12 @@ lifecycle.
   and passed the complete lifecycle. Pull request #48 then became remote-green,
   but `main` advanced to `a385758`. Candidate `9cfdd05` integrates the reviewed
   feature history onto that exact base and passed the complete managed lifecycle;
-  refreshed reusable review is clean.
+  refreshed reusable review was clean. Terminal exact-commit review found one
+  high ACP inheritance defect and one medium policy-update ordering defect. Both
+  findings are accepted, remediated, and fully revalidated. The original
+  completed reviewer cannot be resumed through the available worker interface,
+  so a fresh independent replacement re-checked the complete current diff and
+  found no actionable defects.
 - Terminal exact-commit review: result is recorded only in the issue ledger after
   the final commit so the reviewed diff remains unchanged.
 
@@ -387,5 +424,6 @@ lifecycle.
   its result only in the issue ledger.
 - [x] Revalidate the integrated current-main candidate and complete reusable
   full-diff review.
+- [x] Validate and re-review terminal-review remediation.
 - [ ] Complete pull request landing and post-merge validation.
 - [ ] Set issue and Todoist task to ready for review without completing the task.
