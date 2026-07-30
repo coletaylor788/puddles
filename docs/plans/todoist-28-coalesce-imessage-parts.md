@@ -54,7 +54,8 @@ retain `workspace:` dependency protocols or cannot be normalized before
 stopping the gateway. The reviewed candidate is merged and deployed; its
 retained recovery snapshot supports rollback if the final manual Messages.app
 smoke exposes a regression. The repository closeout is on the default branch,
-so the final external Ready for review mutation links to this current plan.
+and the final issue and Todoist Ready for review handoff links to this current
+plan.
 
 ## Agent details
 
@@ -71,8 +72,9 @@ was promoted locally from OpenClaw `0790d9f`, merged by PR #51 as `863666f`, and
 revalidated read-only in production. The gateway is healthy and iMessage is
 configured and running. The issue ledger now reflects the landed outcome. The
 reviewed plan-only closeout merged as `c873bb0`, and its Integration and CodeQL
-checks passed on `main`. The repository work is complete; only the final issue
-and Todoist Ready for review mutations remain.
+checks passed on `main`. Final plan-state commit `74a92bb` merged as `f7a049a`
+and passed Integration and CodeQL on `main`. Issue #28 and the Todoist task are
+both Ready for review, so no worker-owned lifecycle step remains.
 
 ### Scope and acceptance criteria
 
@@ -501,6 +503,10 @@ and Todoist Ready for review mutations remain.
 - The corrected plan-only closeout passed terminal review and pull-request
   checks, merged as `c873bb0`, and passed Integration and CodeQL on that exact
   `main` commit.
+- The final Ready for review plan state passed terminal review and pull-request
+  checks, merged as `f7a049a`, and passed Integration and CodeQL on that exact
+  `main` commit. Issue #28 was set to Ready for review, and Todoist received the
+  signed result comment before `agent` was replaced with `ready_for_review`.
 
 ### Rollout and rollback
 
@@ -697,6 +703,8 @@ No data migration or persistent message-state conversion is involved.
   corrected closeout `d8b73e3`. It verified the plan schema, issue/Todoist state,
   merge and workflow evidence, recovery snapshot, installed version, running
   gateway, and six-patch stack before the closeout merged as `c873bb0`.
+- A fresh terminal reviewer found no actionable high-confidence findings in
+  final plan-state commit `74a92bb` before it merged as `f7a049a`.
 
 ### Checklist
 
@@ -782,5 +790,4 @@ No data migration or persistent message-state conversion is involved.
 - [x] Repeat reusable-worker and terminal reviews after packaging remediation.
 - [x] Promote the exact remotely green candidate, validate production read-only,
   then merge and verify exact `main`.
-- [x] Prepare final issue #28 and Todoist Ready for review handoff content and
-  routing after the sandwich fix.
+- [x] Return issue #28 and Todoist to Ready for review after the sandwich fix.
