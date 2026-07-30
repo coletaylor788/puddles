@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Reviewing ACP compatibility remediation
+**Status:** Preparing exact landing candidate
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -49,25 +49,17 @@ checks, and rebuild without the patch to roll back.
 
 The native and ACP cron guards, cross-agent policy isolation, generated
 snapshots, setup guidance, and cumulative regressions are implemented on
-OpenClaw `0790d9f`. Production runs a reviewed combined deployment containing
-these public patches, with healthy gateway and read-only Gmail validation. The
-branch now includes current `main`'s atomic deployment and rollback lifecycle;
-the complete integrated lifecycle is green. A fresh terminal review of the
-landing candidate is clean. Remote Integration exposed cross-file Vitest mock
-failures after the OpenClaw pin upgrade. Terminal review traced the deterministic
-root cause to workflow Node 22.22.0, whose embedded SQLite is rejected by the
-pinned source; local validation used safe Node 22.23.1. The workflow runtime and
-drift contract now require an OpenClaw-compatible SQLite-safe Node release,
-currently 22.23.1. Terminal review found the contract must encode separate floors
-for Node 22, 24, and 25 rather than accepting every newer major; those boundaries
-are now regression-tested and the full lifecycle is green. The serial Vitest
-workaround remains removed and terminal review is clean. The base advanced
-again; latest `main` is now integrated and the full lifecycle is green. Fresh
-review found the ACP cron default was broader than the reader failure mode. ACP
-now preserves distinct `acp.defaultAgent` routing while requiring explicit IDs
-for same-profile defaults or configured `requireAgentId=true`; the full lifecycle
-is green. Fresh terminal review and remote checks remain. The cron definition
-remains unchanged.
+OpenClaw `0790d9f`. Production already runs the reviewed combined deployment
+containing these public patches, with healthy gateway and read-only Gmail
+validation. Pull request #48 was remote-green at `7c887496`, but `main` advanced
+to `a385758`; this session integrated that exact reviewed feature history onto
+the current base in candidate `9cfdd05`. The merge was conflict-free, retained
+current `main`'s atomic deployment and rollback lifecycle, and passed the complete
+managed pool with 286 repository tests, current prompt snapshots, 449 mapped
+patched-source tests, the candidate browser test, and cleanup. A fresh reusable
+full-diff review found no actionable defects. The exact landing commit, terminal
+fresh review, remote checks, and merge invariants remain before landing. The cron
+definition remains unchanged.
 
 ### Scope and acceptance criteria
 
@@ -165,8 +157,8 @@ Implemented:
 
 Feature implementation, review remediation, release porting, promotion, and
 read-only production validation are complete. Cole requested full landing, so
-the pull request is being integrated with current `main` and rerun through all
-required checks.
+the reviewed feature history is integrated with current `main` and is being
+rerun through all invalidated validation and review gates.
 
 ### Validation
 
@@ -301,6 +293,17 @@ Completed:
   - ACP compatibility remediation passed 158 focused tests and the complete
     lifecycle with 286 repository tests, current snapshots, 449 mapped
     patched-source tests, candidate test, and cleanup.
+  - pull request #48 was remote-green and mergeable at `7c887496` over the
+    previously integrated base;
+  - current `main` advanced to `a385758`;
+  - the reviewed feature history merged conflict-free onto that base as
+    `9cfdd05`;
+  - `node packages/e2e/bin/openclaw-test-env.mjs ci` passed on the integrated
+    candidate with repository build/lint, 286 repository tests, current prompt
+    snapshots, 449 mapped patched-source tests, the candidate browser test, and
+    managed cleanup.
+  - fresh reusable full-diff review found no actionable findings; refreshed
+    remote CI and post-merge validation remain the only validation gaps.
 
 ### Rollout and rollback
 
@@ -358,15 +361,14 @@ lifecycle.
   lifecycle preserved the public patches and validated the materialized graph.
 - Production: reviewed source build promoted successfully; read-only gateway,
   policy, guard, reader, and cron-shaped delegation checks are green.
-- Landing: current-main conflicts and workflow pin drift are resolved locally and
-  revalidated. Terminal landing review rejected the serial-test diagnosis and
-  identified Node/SQLite runtime drift. Workflow 22.23.1 and per-major floor
-  contracts are green and terminal review is clean. The base advanced again;
-  latest-main integration and validation passed with 286 repository tests,
-  current snapshots, 447 mapped patched-source tests, candidate test, and
-  cleanup. Latest review found ACP default-agent overreach; remediation preserves
-  distinct harness defaults and is green. Fresh terminal review and remote checks
-  pending.
+- Landing: prior current-main conflicts and workflow pin drift are resolved.
+  Terminal landing review rejected the serial-test diagnosis and identified
+  Node/SQLite runtime drift. Workflow 22.23.1 and per-major floor contracts are
+  green. ACP default-agent review remediation preserves distinct harness defaults
+  and passed the complete lifecycle. Pull request #48 then became remote-green,
+  but `main` advanced to `a385758`. Candidate `9cfdd05` integrates the reviewed
+  feature history onto that exact base and passed the complete managed lifecycle;
+  refreshed reusable review is clean.
 - Terminal exact-commit review: result is recorded only in the issue ledger after
   the final commit so the reviewed diff remains unchanged.
 
@@ -383,5 +385,7 @@ lifecycle.
 - [x] Finalize and commit the exact handoff diff.
 - [x] Prepare the exact handoff commit for terminal adversarial review; record
   its result only in the issue ledger.
+- [x] Revalidate the integrated current-main candidate and complete reusable
+  full-diff review.
 - [ ] Complete pull request landing and post-merge validation.
 - [ ] Set issue and Todoist task to ready for review without completing the task.
