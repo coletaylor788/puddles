@@ -1,5 +1,7 @@
 # OpenClaw — `sessions_yield` subagent-announce leak (cron + interactive)
 
+> **2026.7.1:** source patch re-ported and live-verified at `0790d9f`.
+
 **Status:** ✅ **FIXED + validated live (2026-07-02).** One unified fix covering cron *and* interactive.
 **Fix diff:** [`sessions-yield-block-and-gather.patch`](./sessions-yield-block-and-gather.patch) (against OpenClaw source; 10 files).
 **Deployed:** deployment host `dist.blockyield_v3`, rollback `~/restore-cron-patch.sh`.

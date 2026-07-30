@@ -1,16 +1,25 @@
-# OpenClaw — cross-agent subagent spawn strips child's tools
+# OpenClaw — explicit cron targets and cross-agent tool policy
 
-> **2026.6.11:** re-ported to a **source** patch — `subagent-cross-agent-spawn-fix.patch`
+> **2026.7.1:** ported and live-verified at `0790d9f` in the maintained source
+> patch `subagent-cross-agent-spawn-fix.patch`.
+>
+> **2026.6.11:** re-ported to a **source** patch
 > (git-diff against the OpenClaw checkout, applied by `apply-and-deploy.sh` + built from
 > source). The old `apply-*.mjs` dist chunk-surgery is retired. Verified on 2026.6.11
 > (a reader subagent spawned from `main` receives its own full tool set).
+>
+> **2026-07-29:** scheduled native subagent calls, and ACP calls whose configured
+> default resolves to the requester profile, now require an explicit `agentId` by
+> default. This prevents unattended jobs from silently spawning a restricted
+> same-agent child while preserving distinct `acp.defaultAgent` routing.
 
 **Source diff:** `subagent-cross-agent-spawn-fix.patch` (git-diff against the
 OpenClaw source; applied by `apply-and-deploy.sh`, then built from source).
 **Retired patcher:** `apply-subagent-cross-agent-spawn-fix.mjs` (dist chunk-surgery).
-**Target source (6.x):** both spawn sites — the legacy `sessions_spawn` path and
-the new ACP-runtime spawn (`spawnAcpDirect`). In 5.20 there was only the one site.
-**Verified against:** OpenClaw 2026.6.11 (also 2026.5.20, 2026.6.1 under the retired patcher).
+**Target source (2026.7.1-2):** both spawn sites — the native `sessions_spawn`
+path and ACP-runtime spawn (`spawnAcpDirect`). In 5.20 there was only one site.
+**Verification:** OpenClaw 2026.7.1 and 2026.6.11 live (also 2026.5.20 and
+2026.6.1 under the retired patcher).
 
 ## Symptom
 
@@ -30,6 +39,14 @@ strips every plugin tool the parent doesn't already have:
 The same agents invoked directly via the CLI (`openclaw agent --agent
 reader …`) come up with their full configured tool list. The bug only
 manifests on the spawn path.
+
+A second failure mode appears in unattended cron runs. `agentId` is optional in
+the `sessions_spawn` schema, while `taskName` is only a stable handle. If a model
+calls `sessions_spawn(taskName="email_reader", ...)` without
+`agentId="reader"`, OpenClaw silently defaults to a same-agent child. A
+least-privilege cron `toolsAllow` then propagates to that child, so it cannot use
+the reader profile's tools. Interactive runs that explicitly target `reader`
+continue to work.
 
 ## Root cause
 
@@ -83,10 +100,10 @@ const inheritedWorkspaceDir = targetAgentId !== requesterAgentId
 
 ### Site 2 — new ACP runtime spawn (`spawnAcpDirect`, added in 6.x)
 
-Inside `spawnAcpDirect(params, ctx)` the same two-spread bug exists, but
-only `targetAgentId` is directly in scope. `requesterAgentId` is derived
-on the fly from `requesterInternalKey` using the `parseAgentSessionKey`
-helper already imported at the top of the file:
+Inside `spawnAcpDirect(params, ctx)` the same two-spread bug exists.
+`requesterAgentId` is already resolved from either
+`requesterAgentIdOverride` or the parsed requester session key, so it also
+handles global session scope where the key itself carries no agent ID:
 
 ```js
 // Before:
@@ -94,24 +111,84 @@ helper already imported at the top of the file:
 ...inheritedToolDenyPatch(ctx.inheritedToolDenylist),
 
 // After:
-...(targetAgentId === parseAgentSessionKey(requesterInternalKey)?.agentId
+...(targetAgentId === requesterAgentId
   ? inheritedToolAllowPatch(ctx.inheritedToolAllowlist) : {}),
-...(targetAgentId === parseAgentSessionKey(requesterInternalKey)?.agentId
+...(targetAgentId === requesterAgentId
   ? inheritedToolDenyPatch(ctx.inheritedToolDenylist) : {}),
 ```
 
-If `requesterInternalKey` is missing the derived `agentId` is `undefined`,
-the equality fails, and inheritance is skipped — the conservative
-"don't inherit on uncertainty" outcome, which matches the goal.
-
 Same-agent spawns still get the privilege-inheritance guarantee.
 Cross-agent spawns get a clean resolution from the target agent's own
-config.
+config. Global-scope requests use their explicit requester override for the same
+comparison.
 
-The source patch includes regressions for both spawn implementations. Each
-asserts that same-agent spawns retain inherited allow/deny policy while
-cross-agent spawns omit it. The shared patch lifecycle runs both files on every
-change.
+ACP command-tool compatibility remains a requester-side security boundary.
+The `sessions_spawn` wrapper forwards inherited policy to `spawnAcpDirect`,
+which resolves the effective target before rejecting requester allow or deny
+rules that would withhold ACP's required host command tools. This applies to
+every ACP target because an external harness cannot enforce an OpenClaw target
+profile's tool policy. Compatible cross-agent ACP calls still omit inherited
+session policy, while native cross-agent children use their target profile.
+
+For native subagents requested from a cron run, omitted `agentId` now fails
+before child creation and directs the caller to `agents_list`. ACP cron calls
+apply that default only when `acp.defaultAgent` resolves to the requester
+profile; a distinct ACP harness default remains valid. ACP denials name
+`acp.defaultAgent` as the target source. An explicit
+`subagents.requireAgentId=false` setting still opts into prior implicit behavior.
+The model-facing schema also states that `taskName` does not select a profile.
+
+ACP now enforces configured `requireAgentId=true` consistently for top-level and
+subagent requesters, regardless of the default harness. ACP-disabled policy
+errors still take precedence over target-selection errors.
+
+The source patch includes regressions for both spawn implementations. They
+assert that same-agent spawns retain inherited allow/deny policy, compatible
+cross-agent ACP spawns omit inherited session policy, incompatible ACP
+requester policy is rejected for every target, ambiguous cron spawns fail before
+creating a child, the explicit false override remains available, an explicit
+cron `reader` spawn keeps the reader policy, and the tool schema distinguishes
+`taskName` from `agentId`. The patch also carries
+the regenerated Codex dynamic-tool JSON and Markdown prompt snapshots affected
+by the schema descriptions. The shared patch lifecycle runs every changed test
+file and `prompt:snapshots:check` after applying the complete patch stack.
+
+Before promoting on an existing installation, ensure every coordinator that
+uses explicit targeting includes itself in `subagents.allowAgents`. For the
+documented `main` profile, preserve all current worker targets and add `main`,
+then set `requireAgentId: true`. Verify only that subtree before deployment:
+
+```bash
+set -euo pipefail
+CURRENT_SUBAGENTS="$(openclaw config get 'agents.list[0].subagents' --json)"
+printf '%s\n' "$CURRENT_SUBAGENTS"
+UPDATED_ALLOW="$(
+  printf '%s' "$CURRENT_SUBAGENTS" |
+    node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const v=JSON.parse(s);if(!Array.isArray(v.allowAgents)){console.error("agents.list[0].subagents.allowAgents is unset; merge agents.defaults.subagents.allowAgents explicitly before promotion");process.exit(1)}process.stdout.write(JSON.stringify([...new Set(["main",...v.allowAgents])]))})'
+)"
+openclaw config set 'agents.list[0].subagents.requireAgentId' true --strict-json
+openclaw config set 'agents.list[0].subagents.allowAgents' \
+  "$UPDATED_ALLOW" \
+  --strict-json
+openclaw config get 'agents.list[0].subagents'
+```
+
+Strict shell error handling prevents a failed read, derivation, or leaf update
+from continuing. The restrictive `requireAgentId` setting is written first, so
+a later allowlist failure leaves delegation fail-closed rather than newly
+permitting implicit self-spawn. The derived array preserves every existing
+target and adds `main` idempotently.
+If the per-agent allowlist is absent, the command stops before any mutation:
+inspect `agents.defaults.subagents.allowAgents`, copy every inherited target into
+the explicit per-agent array, add `main`, and rerun the leaf-level commands.
+Never replace the whole `subagents` object: it may contain additional targets or
+settings. This policy change is separate from the cron definition and does not
+alter any scheduled job.
+
+The runtime's automatic default applies to the immediate cron session key. A
+same-agent child has a normal subagent key, so cron coordinators that fan out
+must also use the promoted `requireAgentId: true` policy to keep descendant
+delegation explicit.
 
 ## How to apply / revert
 
@@ -128,7 +205,9 @@ git apply /path/to/puddles/docs/openclaw-setup/patches/subagent-cross-agent-spaw
 **Revert:** don't include the patch in the deploy (drop it from the `PATCHES`
 list), or `git checkout .` the source checkout before building. Because the fix
 ships in the built package, reverting is just building without the patch — there
-are no in-place `dist/` backups to restore.
+are no in-place `dist/` backups to restore. If promotion also set
+`requireAgentId: true`, restore the previously recorded `subagents` object after
+installing the prior package.
 
 ## Stale session entries
 
