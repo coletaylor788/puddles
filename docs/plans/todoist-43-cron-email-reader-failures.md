@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Validating integrated ACP policy remediation
+**Status:** Reviewing integrated ACP policy remediation
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -61,8 +61,10 @@ targets and by covering restricted allow, deny, group, pattern, and wildcard
 policies. The remediated candidate passed 288 repository tests, current prompt
 snapshots, 470 mapped patched-source tests, the candidate browser test, complete
 review, and remote Integration and CodeQL. Current `main` `6dc4e03` and the
-remote candidate `b482a80` are now integrated locally; the exact merge result
-must pass the full managed lifecycle and terminal review before publication.
+remote candidate `b482a80` are integrated as `8f3e030`. The exact merge result
+passes the full managed lifecycle with 288 repository tests, seven current
+prompt snapshots, 470 mapped patched-source tests, the candidate browser test,
+and cleanup. Terminal review remains before publication.
 Production remains healthy on the prior reviewed host-combined build, and the
 cron definition remains unchanged. Exact-candidate remote checks, host-combined
 promotion, merge, and post-merge validation remain.
@@ -478,7 +480,10 @@ lifecycle.
   snapshots, 470 mapped patched-source tests, the candidate browser test, and
   cleanup. Independent review and remote Integration and CodeQL were green.
 - Current `main` `6dc4e03` and remote candidate `b482a80` are integrated locally.
-  Validate and re-review the exact merge result before publishing it.
+  Exact merge `8f3e030` passes the complete managed lifecycle with repository
+  build/lint, 288 repository tests, seven current prompt snapshots, 470 mapped
+  patched-source tests, the candidate browser test, and cleanup. Re-review the
+  exact committed result before publishing it.
 
 ### Checklist
 
