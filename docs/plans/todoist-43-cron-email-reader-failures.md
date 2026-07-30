@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Reviewing integrated ACP policy remediation
+**Status:** Remediating ACP command-policy escalation
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -61,10 +61,14 @@ targets and by covering restricted allow, deny, group, pattern, and wildcard
 policies. The remediated candidate passed 288 repository tests, current prompt
 snapshots, 470 mapped patched-source tests, the candidate browser test, complete
 review, and remote Integration and CodeQL. Current `main` `6dc4e03` and the
-remote candidate `b482a80` are integrated as `8f3e030`. The exact merge result
-passes the full managed lifecycle with 288 repository tests, seven current
-prompt snapshots, 470 mapped patched-source tests, the candidate browser test,
-and cleanup. Terminal review remains before publication.
+remote candidate `b482a80` are integrated as `8f3e030`. The exact merge result passed the full managed lifecycle with 288 repository
+tests, seven current prompt snapshots, 470 mapped patched-source tests, the
+candidate browser test, and cleanup. Terminal review then found a high-severity
+ACP regression: gating required command-policy compatibility on same-agent
+targets lets restricted requesters launch full cross-agent ACP harnesses. The
+finding is accepted. Keep compatibility checks after target resolution, but
+enforce them for every ACP target; native cross-agent reader isolation remains
+unchanged. Production remains on the prior reviewed build.
 Production remains healthy on the prior reviewed host-combined build, and the
 cron definition remains unchanged. Exact-candidate remote checks, host-combined
 promotion, merge, and post-merge validation remain.
@@ -484,6 +488,12 @@ lifecycle.
   build/lint, 288 repository tests, seven current prompt snapshots, 470 mapped
   patched-source tests, the candidate browser test, and cleanup. Re-review the
   exact committed result before publishing it.
+- Terminal review of `5e870b5` found that same-agent-only ACP compatibility
+  checks permit restricted requesters to escalate through a cross-agent ACP
+  harness. Accept the high-severity finding: preserve post-resolution ordering,
+  enforce required command-policy compatibility for every ACP target, and
+  replace the escalation-encoding regression with ACP-compatible cross-agent
+  non-inheritance coverage.
 
 ### Checklist
 
