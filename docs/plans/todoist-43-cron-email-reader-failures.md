@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Promoting exact remote-green candidate
+**Status:** Preparing final plan-only landing head
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -73,9 +73,14 @@ coverage, and publication safety. Exact head `83b0d08` is published over base
 exact public patch bytes through the reviewed host-combined lifecycle, validate
 the read-only production path, then recheck the unchanged pull request tuple
 before landing.
-Production remains healthy on the prior reviewed host-combined build, and the
-cron definition remains unchanged. Exact-candidate review and remote checks,
-host-combined promotion, merge, and post-merge validation remain.
+The reviewed host-combined `b482a80` promotion proved direct reader `READ_OK` and
+cron-shaped `CRON_READER_OK` without delivery, mailbox mutation, or cron
+invocation, then rolled back successfully when the public head advanced. The
+current pull-request head `4b5d84a` differs from reviewed and remote-green
+`83b0d08` only by plan status text; production is restored to the healthy
+unmarked predecessor. Publish this synchronized plan, terminal-review that exact
+plan-only head, then repin/revalidate the host-combined candidate for promotion
+and landing. The cron definition remains unchanged.
 
 ### Scope and acceptance criteria
 
@@ -525,6 +530,12 @@ lifecycle.
 - Exact published head `83b0d08` over base `6dc4e03` passed hosted cumulative
   Integration and all CodeQL analyses. Promotion must pin and verify this exact
   remote-green public SHA before production mutation.
+- A host-combined promotion of the predecessor proved direct `READ_OK` and
+  cron-shaped `CRON_READER_OK`, then rolled back successfully on substantive head
+  drift. Current production is the healthy unmarked predecessor with config
+  restored byte-for-byte and no deployment lock.
+- Current head `4b5d84a` is byte-identical to `83b0d08` outside this plan. Final
+  plan synchronization and exact terminal review remain before private repinning.
 
 ### Checklist
 
