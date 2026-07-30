@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Preparing revised exact landing candidate
+**Status:** Publishing final landing candidate
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -53,24 +53,30 @@ read-only checks, and rebuild without the patch to roll back.
 
 The native and ACP cron guards, cross-agent policy isolation, generated
 snapshots, setup guidance, and cumulative regressions are implemented on
-OpenClaw `0790d9f`. Production already runs the reviewed combined deployment
-containing these public patches, with healthy gateway and read-only Gmail
-validation. Pull request #48 was remote-green at `7c887496`, but `main` advanced
-to `a385758`; this session integrated that exact reviewed feature history onto
-the current base in candidate `9cfdd05`. The merge was conflict-free, retained
-current `main`'s atomic deployment and rollback lifecycle, and passed the complete
-managed pool with 286 repository tests, current prompt snapshots, 449 mapped
-patched-source tests, the candidate browser test, and cleanup. A fresh reusable
-full-diff review found no actionable defects. Terminal exact-commit review then
-found that global ACP same-agent requests could lose inherited restrictions and
-that the documented two-step coordinator update could fail open between writes.
-Both findings are accepted and remediated with focused regressions. The focused
-setup contract and complete managed pool now pass with 286 repository tests,
-current prompt snapshots, 451 mapped patched-source tests, the candidate browser
-test, and cleanup. A fresh independent replacement review verified both
-remediations and found no actionable defects across all changed files. The
-revised exact landing commit, terminal fresh review, remote checks, and merge
-invariants remain before landing. The cron definition remains unchanged.
+OpenClaw `0790d9f`. Terminal review found and drove remediation for global ACP
+same-agent inheritance and fail-closed coordinator update ordering. Candidate
+`0ef8ed1` then passed the full managed pool, clean replacement and terminal
+reviews, and refreshed remote Integration and CodeQL checks. Before promotion,
+`main` advanced to `3e1f3d1` with an unrelated plan-only merge; that base is now
+integrated conflict-free as candidate `9b919e0`, which passed the complete
+managed pool with 286 repository tests, current prompt snapshots, 451 mapped
+patched-source tests, the candidate browser test, and cleanup. Production remains
+unchanged and healthy on the prior host-combined build. The host-combined
+lifecycle currently pins the older repository head, so it must be updated,
+validated, and reviewed against the final candidate before promotion.
+Final-base review found that the explicit `requireAgentId=false` ACP regression
+used a distinct default and therefore did not prove the same-profile
+compatibility escape hatch. The test now uses an implicit same-profile `main`
+target with the explicit false override. The complete managed pool passes again
+with 286 repository tests, current prompt snapshots, 451 mapped patched-source
+tests, the candidate browser test, and cleanup. Review is being refreshed before
+the host-combined lifecycle update. Re-check found one remaining source JSDoc overclaim
+that treated every ACP cron default as explicit-target-only; it now states the
+implemented native and same-profile ACP distinction. The complete managed pool
+passes again with 286 repository tests, current prompt snapshots, 451 mapped
+patched-source tests, the candidate browser test, and cleanup. Final re-review
+remains before sealing the exact candidate. The cron definition remains
+unchanged.
 
 ### Scope and acceptance criteria
 
@@ -336,6 +342,27 @@ Completed:
 - Fresh independent replacement review verified both remediations and all 15
   changed files with no actionable findings. Remote CI, production confirmation,
   and post-merge validation remain.
+- Revised exact commit `0ef8ed1` received a clean terminal review and passed
+  refreshed Integration and CodeQL checks.
+- Before promotion, `main` advanced to `3e1f3d1` with only the unrelated
+  Todoist-filing plan changed. That base merged conflict-free as `9b919e0`;
+  the complete managed lifecycle passed again with repository build/lint, 286
+  repository tests, current prompt snapshots, 451 mapped patched-source tests,
+  the candidate browser test, and cleanup.
+- Combined-lifecycle preflight correctly blocked production mutation because the
+  host-local manifest still pins repository head `7c887496`. Production remains
+  healthy on OpenClaw `2026.7.1-2` / `0790d9f`; no recovery snapshot was needed.
+- Final-base review found one medium test-quality gap: the explicit
+  `requireAgentId=false` ACP regression used a distinct default that would be
+  accepted even without the override. The regression now uses a same-profile
+  implicit `main` target. The full managed lifecycle passed again with repository
+  build/lint, 286 repository tests, current prompt snapshots, 451 mapped
+  patched-source tests, the candidate browser test, and cleanup.
+- Remediation re-check confirmed the override regression and found one low source
+  JSDoc mismatch. The comment now distinguishes native and same-profile ACP cron
+  defaults. The complete managed lifecycle passed again with repository
+  build/lint, 286 repository tests, current prompt snapshots, 451 mapped
+  patched-source tests, the candidate browser test, and cleanup.
 
 ### Rollout and rollback
 
@@ -406,6 +433,15 @@ lifecycle.
   completed reviewer cannot be resumed through the available worker interface,
   so a fresh independent replacement re-checked the complete current diff and
   found no actionable defects.
+- Final-base review found one medium ineffective-regression defect in ACP override
+  coverage. The finding is accepted, remediated with a same-profile implicit
+  target, and fully revalidated; review re-check is pending.
+- Re-check confirmed the functional fix and found one low source-comment
+  overclaim about ACP cron defaults. The comment is aligned with the implemented
+  same-profile condition and fully revalidated; final review remains.
+- Final complete-diff review found one low publication-boundary defect in plan
+  wording. Provider-specific repository details are removed in favor of
+  provider-neutral host-combined lifecycle terms.
 - Terminal exact-commit review: result is recorded only in the issue ledger after
   the final commit so the reviewed diff remains unchanged.
 

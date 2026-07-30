@@ -28,7 +28,7 @@ diff --git a/src/agents/acp-spawn.test.ts b/src/agents/acp-spawn.test.ts
 index e0a33f481e..901f450326 100644
 --- a/src/agents/acp-spawn.test.ts
 +++ b/src/agents/acp-spawn.test.ts
-@@ -912,6 +912,262 @@ describe("spawnAcpDirect", () => {
+@@ -912,6 +912,264 @@ describe("spawnAcpDirect", () => {
      expect(transcriptCalls[1]?.threadId).toBe("child-thread");
    });
  
@@ -148,13 +148,15 @@ index e0a33f481e..901f450326 100644
 +    replaceSpawnConfig({
 +      ...createDefaultSpawnConfig(),
 +      acp: {
-+        ...createDefaultSpawnConfig().acp,
-+        defaultAgent: "codex",
++        enabled: true,
++        backend: "acpx",
++        allowedAgents: ["main"],
++        defaultAgent: "main",
 +      },
 +      agents: {
 +        defaults: {
 +          subagents: {
-+            allowAgents: ["codex"],
++            allowAgents: ["main"],
 +            maxSpawnDepth: 2,
 +            requireAgentId: false,
 +          },
@@ -691,7 +693,7 @@ index 4fe2cbd351..95cfd35445 100644
      /** Gateway timeout in ms for sub-agent announce delivery calls (default: 120000). */
      announceTimeoutMs?: number;
 -    /** Require explicit agentId in sessions_spawn (no default same-as-caller). Default: false. */
-+    /** Require explicit agentId in sessions_spawn. Default: false; cron-run callers default to true when unset. */
++    /** Require explicit agentId in sessions_spawn. Default: false; native and same-profile ACP cron callers default to true when unset. */
      requireAgentId?: boolean;
    };
    /** Optional sandbox settings for non-main sessions. */
