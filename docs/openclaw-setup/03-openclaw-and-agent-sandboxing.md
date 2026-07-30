@@ -209,7 +209,10 @@ openclaw config set 'agents.list[0]' '{
     ],
     "sandbox": { "tools": { "alsoAllow": ["cron","web_search"] } }
   },
-  "subagents": { "allowAgents": ["reader","browser-agent"] }
+  "subagents": {
+    "allowAgents": ["main","reader","browser-agent"],
+    "requireAgentId": true
+  }
 }' --strict-json
 
 openclaw config set 'agents.list[1]' '{
@@ -260,7 +263,7 @@ openclaw config set 'agents.list[3]' '{
 
 What each one is for:
 
-- **`main`** — Puddles. The only agent that talks to me. Has `apply_patch`, `exec`, `edit`, `write`, `cron` — the tools it needs to actually do things on my behalf. It can `sessions_spawn` `reader` and `browser-agent` (and only those — note `subagents.allowAgents`). `web_fetch` is **deliberately not** in `main`'s allowlist; if `main` wants a URL it goes through `reader`. This single rule is most of the security model.
+- **`main`** — Puddles. The only agent that talks to me. Has `apply_patch`, `exec`, `edit`, `write`, `cron` — the tools it needs to actually do things on my behalf. It can `sessions_spawn` itself, `reader`, and `browser-agent` (and only those — note `subagents.allowAgents`); including `main` preserves intentional same-agent fan-out, while `requireAgentId` prevents `taskName` or prose from silently selecting it. `web_fetch` is **deliberately not** in `main`'s allowlist; if `main` wants a URL it goes through `reader`. This single rule is most of the security model.
 - **`debug`** — me, when I'm SSHed into the box and want a no-sandbox session to investigate something. `sandbox.mode: "off"` is intentional — it's how I poke at the gateway from inside an agent loop. Never expose this agent to a channel.
 - **`reader`** — the ingestion worker. Single-turn. No persona. Sandboxed, browser disabled (it doesn't need one). The allowlist has `read`, `web_fetch`, `write` (scratch only), and the `sessions_*` calls it needs to yield. **Note:** the production install adds Gmail tools (`list_emails`, `get_email`, etc.) to `reader`'s allowlist once the secure-gmail plugin is installed — that's covered in guide 04. Don't add them here.
 - **`browser-agent`** — the browsing worker. Multi-turn but bounded (parent gives it a task, it does the task, yields). Sandboxed, browser enabled. Higher attack surface than `reader` because it's multi-turn.
