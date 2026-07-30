@@ -1,268 +1,166 @@
 # Todoist CLI issue filing
 
-**Status:** Blocked on automatic landing controller
+**Status:** Reopened for process clarification and landing
 **Issue:** [#40](https://github.com/coletaylor788/puddles/issues/40)
-**Last updated:** 2026-07-28
+**Last updated:** 2026-07-29
 
 ## Human design
 
 ### Problem
 
-Puddles' sandbox did not contain Todoist's `td` CLI or instructions for using
-it. Cole therefore had to retype requests into Todoist before the existing
-agent-task monitor could turn them into repository issues.
+Puddles lacked a repository-managed Todoist CLI capability, so Cole had to
+retype requests before the existing task monitor could create actionable
+repository issues. The implementation is complete, but its handoff exposed a
+second process gap: an unclear request for help did not explain what was blocked,
+why the worker could not resolve it, or what Cole needed to decide.
 
 ### Outcome
 
-The trusted main agent can create well-formed tasks in a chosen Todoist project,
-including the `agent` label that routes actionable work to the existing issue
-worker. The capability is reproducible from this repository, while worker
-agents remain unable to access Todoist credentials.
+The trusted main agent can create detailed `agent`-labeled Todoist tasks that
+the existing monitor routes into the repository workflow. The shared safe
+feature workflow also requires every requester-help escalation to state the
+blocker, relevant evidence and attempted resolution, why requester input is
+necessary, the exact decision or action needed, and what happens next.
 
 ### Approach
 
-A repository-managed OpenClaw skill defines safe Todoist task creation, and a
-custom main-agent sandbox image layers a locked official Todoist CLI onto the
-existing sandbox base. A transactional installer builds and smoke-tests the
-image, installs the skill without clobbering user content, configures only the
-selected agent, and recreates its sandbox. The task-to-issue recipe creates one
-concise task with a detailed description and the `agent` label; the existing
-monitor remains responsible for GitHub issue creation and the configured
-automated merge process owns pull-request landing.
+Retain the locked Todoist CLI sandbox image, source-managed skill,
+transactional installer, documentation, and isolated regressions. Integrate the
+current `main` lifecycle, add the clear-help requirement to
+`safe-feature-development`, add a cumulative regression for that contract, and
+rerun the full validation and independent review lifecycle. Then merge the
+remotely approved candidate and verify the landed default branch.
 
 ### Safety and rollout
 
-Todoist task fields and command output are untrusted data, never instructions.
-The token must exist in OpenClaw's trusted global state `.env`; a shell-only
-export is rejected because it would not guarantee daemon-time substitution of
-the uncommitted `${TODOIST_API_TOKEN}` reference. The token is exposed only to
-the selected sandbox. Because that sandbox and Docker metadata can access it,
-the installer refuses non-main agents by default and documentation requires a
-trusted agent boundary. Automated tests use a deny-by-default recording CLI and
-never contact Todoist or GitHub. No automatic production promotion path exists,
-so production installation remains an explicit operator action; fixture tests
-prove install failure recovery and rollback. Repository review and merge are
-agent-owned: Cole is not asked to review or merge the pull request manually.
+Todoist content remains untrusted data, credentials remain in trusted local
+state, and automated tests use deny-by-default recording doubles. Help requests
+must be concise and actionable without exposing secrets or delegating routine
+worker-owned work. No configured production promotion path exists for this
+local sandbox capability, so automated validation does not mutate the live
+agent. The worker merges only the exact reviewed, remotely green candidate and
+returns the landed result to Cole for final validation.
 
 ## Agent details
 
 ### State
 
-Implementation, full managed validation, reusable-worker review, and terminal
-exact-commit review are complete and clean. Pull request #42 is conflict-free
-and has no unresolved review threads. The bookkeeping handoff correction was
-committed as `4a83820a8d6d85c69efbabf1c73f9707118237b7` and passed a
-fresh terminal review. Its required cumulative GitHub check failed on an
-unrelated timing assertion in the pinned OpenClaw candidate suite: a computed
-debounce was `14999` ms instead of exactly `15000` ms while 297 sibling tests
-passed. The docs-only commit cannot affect that runtime, so the failure is
-classified as a pre-existing timing flake. The narrow failed-job rerun passed
-unchanged, returning pull request #42 to a clean, conflict-free, fully green
-state. Final plan synchronization commit
-`9422a1c8f8e8f7f1e351fd08526410b590396b6d` passed all required
-checks and a fresh exact-commit review. The project session tracks PR #42, but
-the automatic landing controller has not acted across repeated idle cycles.
-Repository work is complete; confirmation that automatic landing is enabled is
-the only blocker. The live OpenClaw agent and Todoist account have not been
-mutated.
+The Todoist implementation passed focused tests, real image smoke validation,
+the full managed integration pool, multiple complete-diff reviews, remote
+checks, and exact-commit terminal review. Pull request #42 remains open. Current
+`main` now contains safe-feature-development 1.5.0 and explicit worker ownership
+through merge, resolving the earlier landing ambiguity. The task is reopened to
+integrate that lifecycle and add Cole's requested clear-help escalation
+contract before landing.
 
 ### Scope and acceptance criteria
 
-- A provider-neutral OpenClaw skill teaches the selected trusted agent to use
-  `td`, treat Todoist content as untrusted, and create actionable
-  `agent`-labeled tasks only on explicit user request.
-- A custom sandbox image uses Node 24.18.0 pinned by multi-platform digest and
-  `@doist/todoist-cli` 3.0.5 pinned through an npm lockfile and verified at
-  build time.
-- The idempotent installer requires daemon-readable trusted token
-  configuration, discovers the selected agent, builds and smoke-tests before
-  mutation, preserves user-authored skills, records recovery state, applies the
-  image and token reference, recreates the sandbox, and rolls back partial
-  failures.
-- Explicit rollback restores the prior agent config and removes only the
-  marked managed skill without deleting unrelated content.
-- Real credentials, account data, GitHub credentials, and live writes remain
-  outside the repository and test suite.
-- Focused installer and contract coverage plus a Todoist recording double are
-  part of the cumulative integration pool.
-- Documentation covers prerequisites, authentication, task-to-issue usage,
-  verification, exposure boundaries, upgrade, and rollback.
+- Keep the provider-neutral Todoist skill, locked CLI image, safe credential
+  boundary, transactional install/rollback, documentation, and recording tests.
+- Preserve task-to-issue ownership: the main agent files one detailed
+  `agent`-labeled Todoist task; the existing monitor owns issue deduplication,
+  planning, routing, and lifecycle labels.
+- Update `safe-feature-development` so any request for human help clearly
+  identifies:
+  - the concrete blocker and relevant context;
+  - what the worker already tried or verified;
+  - why the worker cannot safely resolve it autonomously;
+  - the exact decision, information, permission, or action requested; and
+  - the consequence or next step after the answer.
+- Explicitly prohibit vague status-shaped asks and delegation of routine
+  worker-owned review, CI, merge, or landing work.
+- Add a committed shared-pool regression for the help-request contract.
+- Integrate current `main`, pass applicable focused and full managed validation,
+  complete the reusable-review and terminal-review gates, pass remote checks,
+  merge, and verify the default branch.
 
 ### Architecture and decisions
 
-- `scripts/mac-mini/todoist-cli/Dockerfile` copies a locked Node/CLI stage into
-  the configured OpenClaw sandbox base. This preserves the base image's tools
-  and contract rather than replacing it.
-- `scripts/mac-mini/todoist-cli/package-lock.json` locks the official CLI and
-  all transitive npm dependencies; image builds use `npm ci --ignore-scripts`.
-- `openclaw-skills/todoist-cli/SKILL.md` lives in source control and is copied
-  atomically into the selected workspace with `.puddles-managed`. An existing
-  unmarked directory fails closed. The skill omits host-binary gating because
-  `td` intentionally exists only inside the sandbox.
-- `scripts/mac-mini/install-openclaw-todoist-cli.sh` resolves the agent index
-  from `agents.list`, defaults only `main` to the standard workspace, and
-  requires explicit acknowledgement for any non-main agent.
-- `~/.openclaw/.env` is the required trusted local source for
-  `TODOIST_API_TOKEN`. A value exported only to the installer shell is
-  insufficient because the separately running daemon may not inherit it.
-  OpenClaw keeps `${TODOIST_API_TOKEN}` in configuration and resolves it into
-  the selected sandbox. OAuth login inside the sandbox is prohibited because
-  Linux keyring fallback can persist plaintext credentials in the workspace.
-- Recovery state stores no credential. It records the prior per-agent image,
-  selected index/workspace, and installed image before config mutation.
-  Candidate build and `td --version` run before recovery or OpenClaw changes.
-- The selected sandbox can inspect its own credential, which is inherent in
-  granting arbitrary `exec` access to an authenticated CLI. Todoist access is
-  therefore limited to the trusted main agent; untrusted-input and shared
-  agents remain out of scope.
-- The workflow files Todoist tasks, not GitHub issues directly. The existing
-  monitor remains the single authority for deduplication, issue creation,
-  planning, routing, and lifecycle labels.
-- No OpenClaw source patch or production auto-deployment is needed. The
-  repository supplies a controlled operator installer and deterministic
-  rollback.
-- Pull request review and merge use the configured automated merge lifecycle.
-  The worker resolves actionable review, CI, or conflict conditions but never
-  merges manually and never assigns that agent-owned step to Cole.
+- Todoist CLI remains isolated to the trusted main-agent sandbox. Node 24.18.0
+  is digest-pinned and `@doist/todoist-cli` 3.0.5 is npm-lockfile pinned.
+- `TODOIST_API_TOKEN` must exist in OpenClaw's trusted global state `.env`; a
+  shell-only export fails before build or mutation.
+- The source-managed skill treats Todoist output as untrusted and stops after
+  task creation rather than creating a duplicate GitHub issue.
+- Installer recovery stores no credential, preserves unmarked user skills, and
+  restores prior config and sandbox state on failure.
+- The shared workflow version will advance from current-main 1.5.0 to 1.6.0.
+  The help-request requirement belongs in ownership/checkpoint guidance and
+  stopping/escalation behavior, with a contract assertion in
+  `packages/e2e/tests/review-workflow.test.ts`.
+- Current `main` is authoritative for landing: the worker owns normal review,
+  checks, merge, and post-landing verification unless a concrete policy,
+  permission, safety, or material-decision blocker requires requester input.
 
 ### Implementation
 
-- Added the source-managed Todoist skill with explicit-mutation, untrusted-data,
-  credential, response-validation, and issue-worker handoff rules.
-- Added the image overlay, exact package manifest, and generated npm lockfile.
-- Added the install/rollback script with trusted global token validation,
-  dry-run, main-agent default denial, agent/workspace discovery,
-  candidate-first ordering, no-clobber skill installation, durable recovery,
-  failure rollback, and explicit uninstall.
-- Tightened trusted token validation after review so an installer-shell export
-  cannot create a success-shaped configuration that the daemon cannot resolve.
-- Added `docs/openclaw-setup/05-todoist-cli.md` and linked it from the setup
-  guide index.
-- Added `packages/e2e/mocks/todoist-mock.mjs`, expanded shared write-sink
-  coverage, and added focused installer/image/skill tests.
-- Opened pull request #42 and brought its review, checks, and mergeability
-  conditions to ready; corrected the task handoff to leave landing with the
-  automated merge process.
+1. Merge current `origin/main` into the feature branch and resolve any plan or
+   lifecycle conflicts without weakening current-main policy.
+2. Update `.github/skills/safe-feature-development/SKILL.md` to 1.6.0 with a
+   clear, evidence-based help-request contract.
+3. Extend the shared review-workflow regression to assert the new contract.
+4. Rerun focused tests and
+   `node packages/e2e/bin/openclaw-test-env.mjs ci`.
+5. Re-run independent complete-diff review, finalize bookkeeping, create the
+   exact landing candidate, and run fresh terminal review.
+6. Push, resolve remote integration conditions, merge the exact approved
+   candidate, verify `main`, and hand off only final live installation
+   validation.
 
 ### Validation
 
-Completed:
+Previously completed for the Todoist implementation:
 
-- `bash -n scripts/mac-mini/install-openclaw-todoist-cli.sh`.
-- `node --check packages/e2e/mocks/todoist-mock.mjs`.
-- `corepack pnpm --filter e2e exec vitest run
-  tests/todoist-cli.test.ts tests/writes.test.ts`: 16 tests passed.
-- `corepack pnpm --filter e2e lint`.
-- Built the actual locked Docker image from the configured local
-  `openclaw-sandbox:bookworm-slim` base and verified
-  `docker run --rm --entrypoint td <candidate> --version` returned `3.0.5`;
-  the temporary tagged image was removed.
-- `node packages/e2e/bin/openclaw-test-env.mjs ci`: workspace build and lint
-  passed; package suites passed 112, 31, 61, and 43 tests; the isolated patched
-  OpenClaw suite passed 298 tests; and the candidate browser suite passed one
-  test. Managed cleanup removed the detached candidate worktree.
-- After token-source remediation, repeated shell syntax validation and the 16
-  focused tests, including explicit denial when only the installer process has
-  `TODOIST_API_TOKEN`.
-- After token-source remediation, repeated
-  `node packages/e2e/bin/openclaw-test-env.mjs ci` with the same green
-  workspace, package, patched OpenClaw, candidate, and cleanup results.
+- installer shell syntax and recording-mock syntax checks;
+- 16 focused Todoist installer/write-sink tests;
+- locked candidate image build and `td --version` 3.0.5 smoke;
+- repeated full managed lifecycle with all package, patched OpenClaw, candidate,
+  cleanup, CodeQL, and remote cumulative gates green;
+- complete-diff and exact-commit adversarial reviews with no actionable
+  findings.
 
-- GitHub checks on implementation commit
-  `1c29f390eec18ce72fcb208fe6345fd97065908f` passed, including the
-  cumulative integration workflow and CodeQL.
-- The bookkeeping-only commit
-  `4a83820a8d6d85c69efbabf1c73f9707118237b7` passed fresh terminal
-  adversarial review and all CodeQL checks. Its required cumulative integration
-  check reached the pinned OpenClaw candidate suite, passed 297 of 298 tests,
-  and failed one exact debounce assertion with `14999` ms instead of `15000`
-  ms. The implementation commit previously passed this same suite, and the
-  latest commit changes only this plan.
-- Pull request #42 remains conflict-free with no review threads or review
-  comments.
-- The targeted failed-job rerun passed on
-  `4a83820a8d6d85c69efbabf1c73f9707118237b7` without any test or
-  implementation change, confirming the prior 1 ms mismatch was transient.
-- Final plan synchronization commit
-  `9422a1c8f8e8f7f1e351fd08526410b590396b6d` passed all required
-  GitHub checks and fresh terminal exact-commit adversarial review.
-- Pull request #42 remains open, cleanly mergeable, fully green, and tracked by
-  this project session after repeated idle/controller cycles.
+Required for this reopened cycle:
 
-Pending:
+- focused `review-workflow.test.ts` and Todoist tests;
+- the complete managed lifecycle;
+- complete-current-diff adversarial review after integrating current `main`;
+- fresh terminal review of the exact landing candidate;
+- all required remote checks on that candidate;
+- confirmation that the merged default branch contains the expected feature
+  and workflow contract.
 
-- Confirm whether the app's automatic landing controller is enabled for this
-  workspace. No repository review or manual merge is requested from Cole.
-
-Automated validation makes no authenticated Todoist request or live external
-write. The independent reviewers separately checked the shipped CLI's command
-flags, env-token behavior, OpenClaw env substitution and config addressing,
-skill schema, Docker user contract, dependency lock, and rollback ordering.
-The handoff correction changes only this plan; it does not affect runtime
-behavior or the committed regressions.
-
-Residual first-install checks are intentionally operator-facing rather than
-automated live tests: confirm the returned Todoist JSON includes a URL, recreate
-the real main sandbox and run a benign in-sandbox smoke, and verify daemon-time
-env substitution without printing the credential.
+No automated validation may authenticate to Todoist, create a live task, or
+mutate the configured OpenClaw agent.
 
 ### Rollout and rollback
 
-There is no configured automatic promotion lifecycle for local sandbox
-capabilities, so automated validation did not mutate the live agent. After
-merge, an operator may run the documented installer after placing the token in
-the trusted global environment. The installer records prior state before
-mutation and restores it plus prior managed skill content if configuration or
-sandbox recreation fails. The rollback action restores that state, recreates
-the sandbox, and leaves unrelated images, skills, agents, and credentials
-untouched. The automated merge lifecycle, not Cole, lands the ready pull
-request; this worker does not merge or enable auto-merge manually.
+There is no configured automatic production deployment for the local sandbox
+capability. Merge is the repository landing step; live installation remains a
+documented operator action after landing. The installer provides durable
+recovery and explicit rollback. If remote state changes before merge, revalidate
+the candidate against the current base. If landing cannot be confirmed, treat
+it as failed and restart remote integration rather than reporting success.
 
 ### Review log
 
-The first independent adversarial reviewer examined the complete diff and
-reported no high-confidence defects. After formatting-only cleanup, an
-independent replacement again reviewed the complete diff and returned clean.
-Both verified the official CLI command shape and authentication behavior
-against version 3.0.5, OpenClaw config/env semantics, the skill contract,
-sandbox runtime, dependency lock, and installer rollback ordering. The
-replacement noted that accepting a shell-only token could produce an apparently
-successful install when the separately running daemon lacked that environment.
-Although classified as a low-risk validation gap, the concrete failure scenario
-was accepted and remediated by requiring the trusted state `.env`; a regression
-proves a shell-only export fails before image build or mutation. A replacement
-reviewer then re-checked the complete remediated diff, independently verified
-the npm artifact, CLI command surface, env-token behavior, rollback,
-idempotency, and isolation, and returned clean. A fresh terminal reviewer then
-reviewed exact commit `1c29f390eec18ce72fcb208fe6345fd97065908f` and
-reported no high-confidence defects. Because this plan now corrects the stale
-manual-review handoff, a fresh terminal review of the resulting bookkeeping
-commit `4a83820a8d6d85c69efbabf1c73f9707118237b7` also returned clean.
-The subsequent required cumulative-check failure is classified as an unrelated
-1 ms timing flake in the pinned candidate suite; it is a CI gate, not a review
-finding or a reason to alter shared assertions. The targeted failed-job rerun
-passed unchanged.
-Final commit `9422a1c8f8e8f7f1e351fd08526410b590396b6d` then passed
-all required checks and a fresh terminal review with no findings. The remaining
-blocker is operational: the tracked, ready pull request has not been consumed
-by the automatic landing controller.
+The original feature received multiple clean independent complete-diff reviews
+and clean terminal reviews. Review identified and the implementation fixed a
+shell-only token success-shaped failure. A transient 1 ms upstream timing
+assertion passed on unchanged rerun without weakening CI. The prior vague
+automatic-controller question is superseded by current-main worker ownership
+and this explicit clear-help contract. The reopened diff requires a new
+complete-current-diff review and terminal review before landing.
 
 ### Checklist
 
-- [x] Verify Todoist tracking comment and issue ledger.
-- [x] Create the required synchronized plan artifact.
-- [x] Complete architecture and trust-boundary research.
-- [x] Select the design and synchronize the plan.
-- [x] Implement image, installer, skill, documentation, and regressions.
-- [x] Pass focused validation and an unauthenticated candidate image build.
-- [x] Pass focused and shared managed validation after token-source remediation.
-- [x] Complete current-diff adversarial re-check with no actionable findings.
-- [x] Commit and terminal-review the feature implementation.
-- [x] Bring PR review, checks, and mergeability conditions to ready.
-- [x] Correct the stale handoff so Cole is not assigned agent-owned review or merge.
-- [x] Commit and terminal-review the bookkeeping-only handoff correction.
-- [x] Classify the required cumulative-check failure without weakening CI.
-- [x] Confirm the targeted failed-job rerun passes.
-- [x] Commit, validate, and terminal-review the final plan synchronization.
-- [ ] Confirm automatic landing is enabled for this workspace.
-- [ ] Return the ready PR to the automated merge process.
+- [x] Verify Todoist tracking and issue ledger.
+- [x] Implement and validate the Todoist CLI capability and regressions.
+- [x] Complete the original review and remote integration gates.
+- [x] Identify the vague-help process gap from Cole's follow-up.
+- [ ] Integrate current `main`.
+- [ ] Add the clear-help contract and shared regression.
+- [ ] Pass focused and full managed validation.
+- [ ] Complete reopened complete-diff review and remediation.
+- [ ] Finalize, commit, and terminal-review the exact landing candidate.
+- [ ] Pass remote checks, merge, and verify the default branch.
+- [ ] Hand off the landed result for Cole's final live validation.
