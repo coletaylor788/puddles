@@ -122,12 +122,13 @@ Cross-agent spawns get a clean resolution from the target agent's own
 config. Global-scope requests use their explicit requester override for the same
 comparison.
 
-ACP command-tool compatibility checks follow the same boundary. The
-`sessions_spawn` wrapper forwards inherited policy to `spawnAcpDirect`, which
-resolves the effective target before rejecting unsupported requester allow or
-deny rules. Same-agent ACP children remain restricted; cross-agent ACP children
-are evaluated against their target profile instead of being rejected by the
-requester's command policy.
+ACP command-tool compatibility remains a requester-side security boundary.
+The `sessions_spawn` wrapper forwards inherited policy to `spawnAcpDirect`,
+which resolves the effective target before rejecting requester allow or deny
+rules that would withhold ACP's required host command tools. This applies to
+every ACP target because an external harness cannot enforce an OpenClaw target
+profile's tool policy. Compatible cross-agent ACP calls still omit inherited
+session policy, while native cross-agent children use their target profile.
 
 For native subagents requested from a cron run, omitted `agentId` now fails
 before child creation and directs the caller to `agents_list`. ACP cron calls
@@ -142,11 +143,12 @@ subagent requesters, regardless of the default harness. ACP-disabled policy
 errors still take precedence over target-selection errors.
 
 The source patch includes regressions for both spawn implementations. They
-assert that same-agent spawns retain inherited allow/deny policy, cross-agent
-spawns omit it and bypass same-agent-only command compatibility rejection,
-ambiguous cron spawns fail before creating a child, the explicit false override
-remains available, an explicit cron `reader` spawn keeps the reader policy, and
-the tool schema distinguishes `taskName` from `agentId`. The patch also carries
+assert that same-agent spawns retain inherited allow/deny policy, compatible
+cross-agent ACP spawns omit inherited session policy, incompatible ACP
+requester policy is rejected for every target, ambiguous cron spawns fail before
+creating a child, the explicit false override remains available, an explicit
+cron `reader` spawn keeps the reader policy, and the tool schema distinguishes
+`taskName` from `agentId`. The patch also carries
 the regenerated Codex dynamic-tool JSON and Markdown prompt snapshots affected
 by the schema descriptions. The shared patch lifecycle runs every changed test
 file and `prompt:snapshots:check` after applying the complete patch stack.

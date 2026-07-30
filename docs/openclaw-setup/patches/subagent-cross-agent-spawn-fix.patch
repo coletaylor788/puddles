@@ -28,7 +28,7 @@ diff --git a/src/agents/acp-spawn.test.ts b/src/agents/acp-spawn.test.ts
 index e0a33f481e..81ad8004fb 100644
 --- a/src/agents/acp-spawn.test.ts
 +++ b/src/agents/acp-spawn.test.ts
-@@ -912,6 +912,311 @@ describe("spawnAcpDirect", () => {
+@@ -912,6 +912,319 @@ describe("spawnAcpDirect", () => {
      expect(transcriptCalls[1]?.threadId).toBe("child-thread");
    });
  
@@ -198,8 +198,16 @@ index e0a33f481e..81ad8004fb 100644
 +      },
 +      {
 +        agentSessionKey: "agent:main:main",
-+        inheritedToolAllowlist: ["sessions_spawn"],
-+        inheritedToolDenylist: ["exec"],
++        inheritedToolAllowlist: [
++          "apply_patch",
++          "edit",
++          "exec",
++          "process",
++          "read",
++          "write",
++          "custom_plugin_tool",
++        ],
++        inheritedToolDenylist: ["custom_control_tool"],
 +      },
 +    );
 +
@@ -282,14 +290,14 @@ index e0a33f481e..81ad8004fb 100644
 +      inheritedToolDenylist: undefined,
 +      expected: "requester does not allow apply_patch",
 +    },
-+  ])("rejects incompatible requester $label policy for same-agent ACP spawns", async (testCase) => {
++  ])("rejects incompatible requester $label policy for cross-agent ACP spawns", async (testCase) => {
 +    const result = await spawnAcpDirect(
 +      {
 +        task: "Keep incompatible requester policy out of ACP",
 +        agentId: "codex",
 +      },
 +      {
-+        agentSessionKey: "agent:codex:main",
++        agentSessionKey: "agent:main:main",
 +        inheritedToolAllowlist: testCase.inheritedToolAllowlist,
 +        inheritedToolDenylist: testCase.inheritedToolDenylist,
 +      },
@@ -425,36 +433,34 @@ index d463046cd1..4044eed3e9 100644
    const spawnMode = resolveSpawnMode({
      requestedMode: params.mode,
      threadRequested: requestThreadBinding,
-@@ -1359,6 +1348,28 @@ export async function spawnAcpDirect(
+@@ -1359,6 +1348,26 @@ export async function spawnAcpDirect(
      });
    }
    const targetAgentId = targetAgentResult.agentId;
-+  if (targetAgentId === requesterAgentId) {
-+    const acpUnsupportedInheritedTool = findAcpUnsupportedInheritedToolDeny(
-+      ctx.inheritedToolDenylist,
-+    );
-+    if (acpUnsupportedInheritedTool) {
-+      return createAcpSpawnFailure({
-+        status: "forbidden",
-+        errorCode: "runtime_policy",
-+        error: formatAcpInheritedToolDenyError(acpUnsupportedInheritedTool),
-+      });
-+    }
-+    const acpUnsupportedInheritedAllow = findAcpUnsupportedInheritedToolAllow(
-+      ctx.inheritedToolAllowlist,
-+    );
-+    if (acpUnsupportedInheritedAllow) {
-+      return createAcpSpawnFailure({
-+        status: "forbidden",
-+        errorCode: "runtime_policy",
-+        error: formatAcpInheritedToolAllowError(acpUnsupportedInheritedAllow),
-+      });
-+    }
++  const acpUnsupportedInheritedTool = findAcpUnsupportedInheritedToolDeny(
++    ctx.inheritedToolDenylist,
++  );
++  if (acpUnsupportedInheritedTool) {
++    return createAcpSpawnFailure({
++      status: "forbidden",
++      errorCode: "runtime_policy",
++      error: formatAcpInheritedToolDenyError(acpUnsupportedInheritedTool),
++    });
++  }
++  const acpUnsupportedInheritedAllow = findAcpUnsupportedInheritedToolAllow(
++    ctx.inheritedToolAllowlist,
++  );
++  if (acpUnsupportedInheritedAllow) {
++    return createAcpSpawnFailure({
++      status: "forbidden",
++      errorCode: "runtime_policy",
++      error: formatAcpInheritedToolAllowError(acpUnsupportedInheritedAllow),
++    });
 +  }
    const agentPolicyError = resolveAcpAgentPolicyError(cfg, targetAgentId);
    if (agentPolicyError) {
      return createAcpSpawnFailure({
-@@ -1480,8 +1491,14 @@ export async function spawnAcpDirect(
+@@ -1480,8 +1489,14 @@ export async function spawnAcpDirect(
          key: sessionKey,
          spawnedBy: requesterInternalKey,
          ...subagentEnvelopeState.childSessionPatch,

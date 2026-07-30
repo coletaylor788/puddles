@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Remediating ACP command-policy escalation
+**Status:** Validating ACP command-policy remediation
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -66,9 +66,13 @@ tests, seven current prompt snapshots, 470 mapped patched-source tests, the
 candidate browser test, and cleanup. Terminal review then found a high-severity
 ACP regression: gating required command-policy compatibility on same-agent
 targets lets restricted requesters launch full cross-agent ACP harnesses. The
-finding is accepted. Keep compatibility checks after target resolution, but
-enforce them for every ACP target; native cross-agent reader isolation remains
-unchanged. Production remains on the prior reviewed build.
+finding is accepted and remediated. Compatibility checks remain after target
+resolution but now enforce required requester command access for every ACP
+target. Compatible cross-agent ACP calls still omit inherited session policy;
+native cross-agent reader isolation remains unchanged. The isolated patched
+source suite passes with seven current snapshots, 470 mapped tests, the
+candidate browser test, and cleanup. Full repository validation and independent
+re-review remain. Production remains on the prior reviewed build.
 Production remains healthy on the prior reviewed host-combined build, and the
 cron definition remains unchanged. Exact-candidate remote checks, host-combined
 promotion, merge, and post-merge validation remain.
@@ -494,6 +498,12 @@ lifecycle.
   enforce required command-policy compatibility for every ACP target, and
   replace the escalation-encoding regression with ACP-compatible cross-agent
   non-inheritance coverage.
+- ACP escalation remediation is implemented. Required command-tool
+  compatibility now applies to every resolved ACP target; compatible
+  cross-agent calls omit inherited session policy, while restrictive allow,
+  deny, group, pattern, and wildcard cases fail. The isolated patched-source
+  lifecycle passes with seven current snapshots, 470 mapped tests, the
+  candidate browser test, and cleanup.
 
 ### Checklist
 
