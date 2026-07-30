@@ -1,6 +1,6 @@
 # Coalesce split iMessage message parts
 
-- **Status:** In progress - landing final reviewed reconciliation
+- **Status:** Complete - ready for review (2026-07-30)
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-30
 - **Owner:** Cole Taylor
@@ -17,8 +17,9 @@ not prove the installed patch stack. Recovery restored the exact predecessor,
 and a first marker-aware promotion correctly rolled back when its required
 public pull-request tuple changed. The stable reviewed tuple has now promoted
 the complete combined runtime with a durable patchset marker and the sandwich
-continuation state machine, and both exact candidates have landed. Production
-is healthy; only final plan landing and tracker reconciliation remain.
+continuation state machine, and both exact candidates have landed. The reviewed
+reconciliation plan is on `main`, post-merge checks pass, and production is
+healthy.
 
 ### Outcome
 
@@ -31,9 +32,10 @@ delivering messages, then promoted the exact reviewed combined tuple with
 recovery snapshot `20260730T084333Z-0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`.
 Public candidate `5b771f91...` landed as `ceff0eba...`, private candidate
 `d97c1b30...` landed as `95bfe75f...`, and production was rechecked read-only.
-Completion lands this reviewed final plan and synchronizes the trackers. Any future tuple
-drift or failed runtime check must use the retained snapshot and reviewed
-rollback path rather than bypassing lifecycle guards.
+The reviewed final plan landed as `1e053e71...`; the remaining handoff only
+synchronizes issue #28 and Todoist to Ready for review. Any future tuple drift or
+failed runtime check must use the retained snapshot and reviewed rollback path
+rather than bypassing lifecycle guards.
 
 ### Approach
 
@@ -112,6 +114,9 @@ deployment lock is absent. Private PR #6 landed as
 `95bfe75f342ad1c2959d956ca4f4221627ce9a10` and public PR #48 landed as
 `ceff0eba07b6f7644a7fea95eded87a4bcc2801b`; Integration run `30528271011` and
 CodeQL run `30528271254` passed on the exact public merge.
+Final reconciliation PR #58 then merged exact reviewed commit `ad2d6c6...` as
+`1e053e71da13e33ca8e30f4c5125642d91bbf5e7`; Integration run `30530769411`
+and CodeQL run `30530768988` passed on that exact `main` merge.
 
 ### Scope and acceptance criteria
 
@@ -628,6 +633,9 @@ CodeQL run `30528271254` passed on the exact public merge.
   Integration run `30528271011` and CodeQL run `30528271254` passed.
   Post-landing production checks returned the same marker, installed sandwich
   symbols, healthy gateway/iMessage state, unchanged cron hash, and absent lock.
+- Final reconciliation commit `ad2d6c6...` passed terminal exact-commit review
+  and all PR checks, merged through PR #58 as `1e053e71...`, and passed
+  Integration run `30530769411` and CodeQL run `30530768988` on `main`.
 
 ### Rollout and rollback
 
@@ -885,6 +893,9 @@ No data migration or persistent message-state conversion is involved.
   lock state. It found no actionable high-confidence defects. The remaining
   live Messages.app smoke is intentionally excluded by the no-delivery
   constraint.
+- Terminal review of immutable PR #58 commit `ad2d6c6...` found no actionable
+  high-confidence defects. The exact commit merged as `1e053e71...`; Integration
+  and CodeQL passed on that merge.
 
 ### Checklist
 
@@ -991,5 +1002,5 @@ No data migration or persistent message-state conversion is involved.
 - [x] Land only the exact public/private candidates that passed promotion and
   production validation.
 - [x] Obtain a clean independent review of the corrected final reconciliation.
-- [ ] Land the reconciled plan and report the exact production action and
+- [x] Land the reconciled plan and report the exact production action and
   recovery artifact to the dependent worker.
