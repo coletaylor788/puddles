@@ -1,6 +1,6 @@
 # Coalesce split iMessage message parts
 
-- **Status:** In progress - promoting reviewed sandwich correction
+- **Status:** In progress - resynchronizing sandwich correction with current main
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-29
 - **Owner:** Cole Taylor
@@ -64,7 +64,11 @@ separated by tens of seconds. The premature payload flush, not source creation
 latency, is the demonstrated boundary. The corrected patch retains matched
 payloads through the first absolute deadline, admits only bounded exact-chain
 continuations, passes focused and cumulative validation on both maintained
-OpenClaw releases, and has a clean reusable-worker review.
+OpenClaw releases, and has clean reusable-worker and terminal reviews at
+`8ae2dea`. The default branch advanced after publication and the pull request is
+now conflicting, so that terminal candidate is invalidated before promotion.
+The correction must be synchronized, revalidated, and reviewed again; production
+was not changed.
 
 ### Scope and acceptance criteria
 
