@@ -1,6 +1,6 @@
 # Coalesce split iMessage message parts
 
-- **Status:** Complete - ready for review (2026-07-30)
+- **Status:** Proposed - independently reviewed; landing in progress
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-30
 - **Owner:** Cole Taylor
@@ -9,1069 +9,582 @@
 
 ### Problem
 
-Messages.app can emit one composition as separate text, link-preview, image, and
-trailing-text rows. The sandwich correction is landed and tested. Its original
-local promotion temporarily replaced the combined `2026.7.1-2` runtime with an
-unmarked source package reporting `2026.7.1`, so later promotion guards could
-not prove the installed patch stack. Recovery restored the exact predecessor,
-and a first marker-aware promotion correctly rolled back when its required
-public pull-request tuple changed. The stable reviewed tuple has now promoted
-the complete combined runtime with a durable patchset marker and the sandwich
-continuation state machine, and both exact candidates have landed. The reviewed
-reconciliation plan is on `main`, post-merge checks pass, and production is
-healthy. A later combined-lifecycle hardening follow-up replaced the first
-durable marker through the same guarded path without changing the public
-iMessage candidate. The replacement marker binds the installed patch bytes to
-the exact landed public and dependent private heads.
+The deployed iMessage coalescer fixes split text, link, image, and trailing-text
+compositions, but it waits before starting some turns. With the current live
+configuration, ordinary complete messages remain immediate; short unfinished
+lead-ins can wait up to seven seconds and narrowly payload-referential questions
+can wait up to fifteen seconds. Model work starts only after that hold, so a
+classified message pays both the composition window and normal response time.
+
+Cole proposed starting promptly, then checking for newer input before replying.
+OpenClaw's default queue mode is `steer`, but steering is not an in-progress
+prompt update. The embedded agent consumes queued steering only after the current
+assistant/tool turn finishes, after that stale turn's events may already have
+entered agent state. The production steering contract also does not carry
+images. Existing steering therefore cannot safely reconcile a split composition
+inside one active reasoning branch.
+
+There is also an unavoidable limit: the gateway cannot know that a future part
+will arrive. Guaranteeing one context-complete reply across an observed
+12.4-second notification gap still requires retaining an absolute deadline
+somewhere. The latency improvement comes from overlapping that deadline with
+useful model work, not from eliminating it.
 
 ### Outcome
 
-Eligible same-sender direct-message text, payload, and trailing-text rows from
-one composition become one logical inbound turn across observed Messages.app
-latencies. Production also exposes a durable identity accepted by combined
-promotion guards. Reconciliation first restored the prior marked package from
-recovery snapshot `20260730T042702Z-32096` without changing cron state or
-delivering messages, then promoted and landed the exact reviewed combined tuple.
-Public candidate `5b771f91...` remains landed as `ceff0eba...`. The dependent
-follow-up candidate `1915cc1...` landed as `0b13edc...` and replaced the earlier
-private landing through recovery snapshot
-`20260730T104410Z-0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`. Production was
-rechecked read-only with the sandwich continuation state machine still
-installed. Any future tuple drift or failed runtime check must use the retained
-snapshot and reviewed rollback path rather than bypassing lifecycle guards.
+Replace “wait, then process” with an event-driven **overlapped composition
+window** for the same narrow iMessage lead-ins:
+
+- dispatch the first part and start the agent immediately;
+- release the iMessage per-key intake lock after durable run admission rather
+  than holding it until reply completion;
+- keep the existing absolute 7/15-second composition deadline running in
+  parallel;
+- admit correlated later text, links, images, and trailing text into the same
+  logical turn while it is still open;
+- permit speculative reasoning and read-only work, but commit no tool mutation,
+  approval, block reply, direct message-tool send, or other visible effect before
+  the composition seals;
+- keep speculative assistant/tool transcript output in a versioned branch rather
+  than canonical session history, promoting only the winning sealed version;
+- hold only the candidate final delivery when it finishes before the deadline;
+- deliver as soon as the deadline closes and all admitted input is reflected in
+  the final answer; and
+- preserve one user-visible reply when a correlated part lands during the
+  active-run/final-delivery race.
+
+This changes no-payload classified-message latency from approximately
+`composition wait + agent time` to `max(composition wait, agent time)`. When a
+later correlated part arrives, the safe replacement branch begins from the
+latest admitted input, so response time is approximately `part arrival +
+replacement agent time`; earlier speculative work may be discarded. Complete
+unrelated messages keep their current immediate path.
+The delivery guarantee is at-most-once, not exactly-once: because the current
+iMessage adapter cannot reconcile an unknown send after a process crash, a crash
+between platform acceptance and local acknowledgement can omit the reply rather
+than risk duplicating it. Adding transport reconciliation is a separate
+prerequisite for a stronger guarantee.
+Production remains unchanged until Cole approves an implementation.
 
 ### Approach
 
-Keep a matched lead-in and link buffered until the lead-in's existing absolute
-deadline instead of flushing at link arrival. Admit trailing text only when its
-`reply_to_guid` continues the pending payload chain and its source timestamp is
-within one second of that payload; production history shows split composition
-parts under 425 ms while unrelated replies are much later. A non-matching row
-bypasses the held bucket and retains its existing separate-message behavior.
-Reproduce the exact delayed notification through the real inbound debouncer,
-expose it through cumulative `packages/e2e`, and deploy only through the
-documented local wrapper. Package the source candidate with the repository's
-native pnpm tooling so workspace dependencies become installable release
-versions, and make the rollback artifact independently installable before the
-gateway is stopped. Exercise both successful rollback normalization and the
-fail-closed path when an installed workspace dependency cannot be resolved. For
-this incident, the retained `2026.7.1-2` tarball and service snapshot were
-validated, recovery was serialized through the existing deployment lock and
-lifecycle boundaries, and current runtime/cron data were preserved. The
-dependent combined lifecycle installs `PUDDLES_PATCHSET.json` only while its
-exact reviewed public and private landing tuple remains stable; tuple drift
-rolls back to the predecessor and requires repeated validation/review. Its test
-lifecycle builds after patch application and validates the exact frozen staged
-package so stale artifact assertions fail before promotion. Final checks verify
-the marker, installed sandwich continuation state machine, package/service
-identity, gateway health, iMessage connectivity, unchanged cron hash, and
-absent deployment lock without delivering messages.
+Use events and existing run coordination rather than polling Messages.app.
+
+1. The iMessage monitor keeps the current account/conversation/sender key,
+   lead-in/payload/continuation classifier, source-order bounds, replay keys, and
+   first absolute deadline, but durably admits and dispatches the lead-in
+   immediately. Its per-key ingest chain ends after admission, not after the
+   agent reply, so later parts can reach the active operation.
+2. Active-mode eligibility is decided before any pre-seal plugin hook runs.
+   Every reachable hook must declare itself pure/read-only or advertise and honor
+   the same fail-closed effect barrier; otherwise that turn uses the existing
+   buffered path. Effectful fire-and-forget hooks are not eligible because their
+   barrier cannot be proven; pure telemetry hooks may remain asynchronous.
+   Typing indicators and ordinary read receipts are explicitly exempt
+   non-content signals; they cannot deliver answer text, media, tool output, or
+   approval.
+3. A provider-neutral composition-run coordinator accepts a structured inbound
+   envelope, not text alone. It carries ordered prompt text, images, source
+   message identity, replay ownership, and reply context. Admitted source rows
+   remain in the durable composition record rather than being appended to
+   canonical session history while the composition is open.
+4. Each eligible turn has an input version and three phases:
+   `accepting`, `sealing`, and `delivered`. A correlated part claimed before the
+   seal increments the version. Finalization may deliver only when the version
+   it answered is still current and the absolute composition deadline is closed.
+5. A pre-seal commit barrier permits model reasoning and known read-only tools
+   but blocks every unknown or mutating tool, approval request, streamed block,
+   direct message-tool send, and other external or visible effect. If input
+   changes while a planned effect is waiting, that uncommitted plan is discarded
+   and regenerated from the new version.
+6. Every input version runs in an isolated speculative branch forked from the
+   same canonical session history plus all source parts admitted so far. Model,
+   assistant, and read-only tool events stay in that branch. They do not enter
+   the live `AgentSession` event stream, transcript, memory extraction, or
+   compaction before seal.
+7. A newer correlated text, link, image, or trailing-text part increments the
+   input version, invalidates and cancels only the side-effect-free speculative
+   branch, and starts a replacement branch from canonical history plus every
+   admitted part in source order. A short internal restart coalescing interval
+   may collapse parts that arrive together, but it cannot extend the first
+   absolute deadline. Because pre-seal mutations and canonical writes are
+   blocked, replacement can repeat reasoning and read-only work without
+   duplicating effects. Existing `steer` remains only for genuinely separate
+   messages after the composition boundary; it is not used to update a
+   speculative composition branch.
+8. When the deadline closes, sealing atomically claims the current version. If
+   that branch is complete, its combined user turn and winning assistant/tool
+   suffix are promoted together into canonical history. If it is still running,
+   it may continue but any newly admitted pre-seal version invalidates it. A part
+   that wins the admission race during sealing reopens replacement synthesis;
+   a row that loses the atomic deadline/seal boundary follows normal queue
+   behavior. A failed winning branch emits one deterministic context-complete
+   failure notice rather than releasing an older stale answer.
+9. A durable unresolved-composition record links replay claims, canonical base
+   revision, input version, deadline, speculative branch generation, and delivery
+   disposition. Restart recovery resumes records that have not entered outbound
+   delivery. A record whose platform send outcome is unknown becomes
+   `delivery_unknown`, is never blindly retried, and surfaces a local diagnostic;
+   this preserves at-most-once delivery at the cost of a possible omitted reply.
+10. A part claimed after the absolute deadline follows normal queue behavior.
+   Genuinely separate messages are never marked as composition continuations and
+   retain the normal `steer` or follow-up policy.
+
+Do not implement “check once before send” as a database poll. It cannot repair an
+already generated answer, duplicates the monitor's ownership, and still races a
+part arriving one instruction later. Do not cancel and restart an ordinary
+active run: tools or transcript events may already have committed. Restart is
+safe only for the new isolated speculative branch while its mutation,
+canonical-history, and delivery barriers remain closed.
 
 ### Safety and rollout
 
-The behavior remains opt-in, sender/conversation scoped, size bounded, and
-fail-open when no safe key exists. Any post-payload hold must be narrowly
-eligible, require both an explicit reply chain and a one-second source-time
-bound, preserve the first absolute deadline, and have regressions for unrelated
-text and timeout dispatch. Automated tests use temporary worktrees and deny
-delivery; production investigation remains read-only. On the target host,
-`MINI_HOST` stays unset. Rollback disables coalescing or redeploys the prior
-reviewed patch stack. Promotion rejects candidate or rollback tarballs that
-retain `workspace:` dependency protocols or cannot be normalized before
-stopping the gateway. Recovery must not restore the old runtime-state clone
-because doing so could rewind cron or other post-snapshot state; only the
-validated prior package and matching service definition may be restored while
-the gateway is safely quiesced. The combined lifecycle retains the same target
-lock and atomic rollback guards. Automated checks remain read-only and must not
-deliver messages. All retained snapshots remain available if landing or
-post-landing checks fail. Only the exact reviewed and promoted public/private
-tuple could land. The follow-up lifecycle additionally binds each extracted
-patch to its suite-pinned SHA-256 before promotion. The landed merge commits and
-marker now provide the durable repository and byte identity for the installed
-runtime. The replacement-marker reconciliation is landed on `main`, and its
-post-merge Integration and CodeQL checks pass.
+This cycle is investigation and proposal only. Do not change patches, runtime
+configuration, cron, production packages, gateway state, Messages data, or
+delivery behavior. Do not send test messages.
+
+A later implementation should be opt-in behind a new iMessage strategy value so
+the known-safe buffered mode remains available. It must preserve the first
+absolute deadline, current row/character/attachment limits, replay and catchup
+ordering, command and malformed-anchor fail-open behavior, and at-most-one
+visible reply outside the documented unknown-send crash boundary. Unknown tools
+are treated as mutating before seal. Unknown writes remain denied in tests.
+Speculative assistant/tool events cannot enter canonical transcript history
+before seal. Unsupported pre-seal hooks force the buffered path before any hook
+invocation.
+Promotion uses the existing exact-byte lifecycle. A durable circuit breaker
+quarantines implicated active records and returns new turns to buffered mode
+after a machine-detectable invariant breach. Package rollback is allowed only
+after admission stops and every new-format record is terminally resolved; it
+then restores the retained package/service snapshot without rewinding runtime or
+cron state.
+
+Quarantine is keyed and exclusive. Once an operation is quarantined, neither
+active-mode nor buffered-mode dispatch may run or steer on that key. New input is
+durably queued outside the active run until quarantine reaches a terminal state.
 
 ## Agent details
 
 ### State
 
-Read-only correlation found rows 7071/7072/7073 created at 00:24:16.206Z,
-00:24:21.554Z, and 00:24:21.668Z with an exact reply chain. The URL started a
-turn at 00:24:22Z, while the trailing row started a second turn at 00:24:30Z.
-The correction retains a matched payload through the first absolute deadline
-and admits only bounded exact-chain continuations. The implementation,
-packaging, rollback, cumulative integration, and exact frozen combined graph
-passed their focused, full-lifecycle, reusable, terminal, and remote checks.
-Recovery first restored the safe `2026.7.1-2 (0790d9f)` predecessor from
-`20260730T042702Z-32096`; a transient marker-aware promotion then rolled back
-when its public tuple moved. Stable public candidate `5b771f91...` and private
-candidate `d97c1b30...` subsequently passed full combined validation and terminal
-review. Their atomic promotion created snapshot
-`20260730T084333Z-0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c` and installed marker
-deployment `8491ddf6-668b-487d-8623-7c7dff0a0e31`, SHA-256
-`c48b5745394a3bc697b3b9bc5c8d5e29bcd0746acdcd295ae8f6cda9234789c8`.
-The marker identifies all six public and both private patches. Package, CLI,
-gateway, and plist report `2026.7.1-2 (0790d9f)`; the installed bundle contains
-`isIMessageSplitContinuation` and `dmCoalescePayloadStateByKey`; configuration
-is valid; the gateway is loaded, running, reachable, and healthy; iMessage is
-configured, running, and working; the cron-tree SHA-256 remains
-`ec493dd79dc7fdcf8b4ca12087d2322934da7cd2a92eb46490c3342f5a0f1279`; and the
-deployment lock is absent. Private PR #6 landed as
-`95bfe75f342ad1c2959d956ca4f4221627ce9a10` and public PR #48 landed as
-`ceff0eba07b6f7644a7fea95eded87a4bcc2801b`; Integration run `30528271011` and
-CodeQL run `30528271254` passed on the exact public merge.
-Final reconciliation PR #58 then merged exact reviewed commit `ad2d6c6...` as
-`1e053e71da13e33ca8e30f4c5125642d91bbf5e7`; Integration run `30530769411`
-and CodeQL run `30530768988` passed on that exact `main` merge.
-A later hardening follow-up retained public head `5b771f91...`, passed complete
-combined validation and clean terminal review at dependent private head
-`1915cc147cdb13c656270dfc5d04d718aedc256c`, and landed as
-`0b13edc0202b52eda139165bb0fdc8e85122c4e7`. Its guarded promotion replaced the
-older durable marker, recorded recovery snapshot
-`20260730T104410Z-0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`, and installed
-deployment `73b08dc8-5c4d-40ed-808a-d46ee0eaa45d`. Marker SHA-256 is
+The original feature is landed and healthy on exact-byte deployment
+`73b08dc8-5c4d-40ed-808a-d46ee0eaa45d`, marker SHA-256
 `cf9933e69bd2d7fda0ba164a5d3a290f9a9bb454d7ad8c90f0d4334b17029983`.
-The marker records the exact public/private heads, all six public and two
-private patches, and every suite-pinned patch hash. Package, CLI, and gateway
-remain `2026.7.1-2 (0790d9f)`; the installed bundle contains
-`isIMessageSplitContinuation` and active continuation-chain state; config is
-valid; gateway connectivity is healthy; iMessage is enabled, configured,
-running, and working; and deployment/source locks are absent. The lifecycle ran
-no cron job, changed no cron definition, delivered no message, and performed no
-mailbox mutation.
-Replacement-marker reconciliation commit `4bf0dd4...` passed terminal
-exact-commit review and pull-request checks, merged through PR #60 as
-`7f4fa5866340871b17cec4ada2466d2e2e065b71`, and passed Integration run
-`30537262588` and CodeQL run `30537262326` on that exact `main` merge.
+The public iMessage candidate
+`5b771f91b9c949c8752b29b2c16c004bb5e2a8ce` and dependent private hardening
+candidate `1915cc147cdb13c656270dfc5d04d718aedc256c` are landed. The retained
+recovery snapshot is
+`~/.openclaw/deploy-snapshots/20260730T104410Z-0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`.
+
+Read-only configuration inspection found:
+
+- `channels.imessage.coalesceSameSenderDms=true`;
+- `channels.imessage.includeAttachments=true`;
+- no explicit iMessage/global inbound debounce; and
+- no explicit global/iMessage queue mode or queue debounce.
+
+The maintained patch therefore supplies the seven-second compatibility window
+and fifteen-second payload-referential window. OpenClaw revision
+`0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c` supplies default queue mode `steer`
+with a 500 ms steering debounce, cap 20, and summarize drop policy.
+
+No implementation, deployment, rollback, or production mutation has occurred in
+this design cycle.
 
 ### Scope and acceptance criteria
 
-- Near-simultaneous lead-in text plus a standalone URL preview from the same
-  account, direct conversation, and sender dispatches as one logical turn.
-- Lead-in text, a URL-preview row, and trailing text from one Messages.app
-  composition dispatch as one logical turn in source order.
-- The exact 5.348-second lead-in-to-link gap, 114 ms link-to-trailing source gap,
-  and delayed trailing notification run through the real inbound debouncer.
-- The production event shape observed around the reported link test is covered
-  by a committed regression and produces one logical inbound turn.
-- The latest post-deployment failure is correlated by row and runtime-start
-  time, and its 12.4-second boundary is covered by a committed regression.
-- The third post-deployment failure is correlated by Messages row and agent-run
-  timing, proving classifier bypass rather than delayed URL-preview arrival.
-- Short payload-referential questions may wait for the bounded split-send
-  window needed for observed URL previews; unrelated complete questions remain
-  immediate.
-- Lead-in text plus a real image attachment dispatches as one logical turn.
-- Rapid but genuinely separate short text messages remain separate turns.
-- A text message sent after a completed text-plus-link composition remains a
-  separate turn when it is outside the observed composition boundary.
-- Complete URL-bearing prose, control commands, reactions, outgoing echoes, and
-  group messages preserve immediate behavior.
-- Control commands remain immediate even when their source row also carries
-  media; they never join held conversational text.
-- Invalid conversation anchors fail open instead of sharing pending state.
-- Replay GUID handling and recovery, catchup, and cursor ordering remain safe.
-- Coalescing stays opt-in and requires attachment ingestion for image context.
-- Every maintained OpenClaw patch regression is committed, mapped, and run by
-  the cumulative shared integration lifecycle.
-- Local deployment uses no SSH; remote deployment occurs only with an explicit
-  approved `MINI_HOST`.
-- Production runs a reviewed `main` artifact with valid configuration and a
-  healthy iMessage provider.
-- Production package, CLI, gateway, and service identities agree on the durable
-  predecessor version marker `2026.7.1-2`; the combined preflight accepts that
-  pre-marker package without `PUDDLES_PATCHSET.json`.
-- Final production contains the bounded sandwich continuation state machine and
-  a patchset marker tied to the exact landed public/private candidates.
-- Recovery leaves current cron, runtime configuration, and message state
-  unchanged and performs no message delivery.
+For the proposed later implementation:
+
+- Ordinary complete iMessages start and deliver with no composition hold.
+- Eligible short or payload-referential lead-ins start model work immediately.
+- Their first absolute 7/15-second deadline is never extended by later parts.
+- Text-link, image-caption, and exact text-link-text compositions produce one
+  context-complete visible reply in source order.
+- Starting work early does not permit a stale reply to escape before a
+  pre-deadline correlated part is incorporated.
+- Correlated input durably admitted before sealing survives replay/catchup and
+  process interruption without duplicate or lost turns.
+- The iMessage intake lock is released after durable turn admission, allowing a
+  later part to reach an unresolved active operation.
+- Before seal, no mutating tool, approval, block stream, direct message-tool
+  output, or other visible effect can commit.
+- Speculative assistant and tool transcript output cannot enter canonical
+  history; only the winning sealed version is atomically promoted.
+- Any pre-seal hook without explicit pure/read-only or effect-barrier capability
+  forces that turn onto the buffered path before any hook runs.
+- A stale branch remains suppressed even when its current replacement fails;
+  one explicit composition failure disposition is visible instead.
+- A crash-unknown iMessage send is never retried blindly; the system may omit
+  that reply but cannot duplicate it.
+- Genuine separate messages, controls, reactions, groups, outgoing echoes,
+  malformed anchors, and post-deadline rows preserve current behavior.
+- No ordinary active run is cancelled and restarted after effects or canonical
+  transcript writes may have begun; only isolated pre-seal speculative branches
+  are replaceable.
+- The design is provider-neutral above the iMessage classifier and supports
+  multimodal active-turn input without provider-specific APIs.
+- The implementation is opt-in, cumulatively tested, remotely reviewed,
+  promoted through the exact-byte lifecycle, and automatically rolled back on
+  health, context, duplicate-reply, or latency-gate failure.
+
+This proposal itself is complete when it is independently reviewed, landed, and
+handed to Cole without production changes.
 
 ### Architecture and decisions
 
-- Reuse `channels.imessage.coalesceSameSenderDms` and the existing bounded
-  split-send window rather than adding configuration.
-- Hold a payload through the existing first absolute deadline only when it joins
-  an eligible lead-in. Standalone payloads remain immediate.
-- Resolve that deadline from explicit positive inbound timing when configured;
-  explicit zero remains immediate, and only the default compatibility path
-  upgrades payload-referential lead-ins to 15 seconds.
-- Treat a following row as composition continuation only when it has the same
-  safe key, replies to the pending payload or continuation GUID, has parseable
-  source timestamps, and was created zero to 1,000 ms afterward. Update the
-  continuation anchor for another explicitly chained part without extending the
-  deadline.
-- Once a payload has joined a lead-in, another payload may retain that deadline
-  only by satisfying the same continuation chain. An unchained payload flushes
-  the pending composition and dispatches separately without inheriting its wait.
-- Record that a payload joined independently of whether its GUID and timestamp
-  can anchor a continuation. Missing or malformed metadata disables continuation
-  admission but cannot let a later lead-in or payload reuse the old deadline.
-- Pack the candidate with pnpm so workspace dependency protocols are rewritten
-  to concrete installable versions. Clone and normalize any workspace
-  dependencies in the installed-package rollback snapshot before npm packing,
-  then validate both tarball manifests before stopping the gateway.
-- Treat package/service version disagreement as an invalid promotion even when
-  gateway health is green. A `2026.7.1-2` predecessor without
-  `PUDDLES_PATCHSET.json` remains valid because the reviewed combined preflight
-  requires the exact version, not a predecessor patchset manifest.
-- Reuse the deployment lock, gateway stop/readiness bounds, validated recovery
-  tarball, and retained plist rather than copying an ad hoc build. Do not restore
-  the runtime-state clone during this reconciliation because that would rewind
-  unrelated post-snapshot state, including cron.
-- A new lead-in after a pending payload flushes the prior composition and starts
-  a fresh absolute deadline so back-to-back sandwich compositions retain their
-  own continuations.
-- Base link classification on the observed normalized inbound shape rather than
-  assuming Messages.app always emits a standalone URL row.
-- Never promote structurally excluded non-URL balloons into continuations, even
-  when they are quickly reply-chained.
-- Also hold question-terminated prompts of at most eight words only when they
-  contain an explicit deictic reference plus a payload noun, or match the narrow
-  “how/what about this one?” comparison shape. Do not hold common unrelated
-  questions or complete URL-bearing prose.
-- Treat a punctuationless final clause as referential only when it starts with a
-  narrow interrogative, remains at most eight words, and contains the existing
-  deictic plus payload-kind or comparison signals.
-- Preserve the existing terminal whole-question and punctuationless
-  final-sentence candidate for deictic matching. Use a separate final
-  comma-delimited candidate for `what is/what's the <payload noun>` only when
-  preceding setup contains a Unicode letter or number and ends in
-  comma-plus-whitespace; support straight and curly apostrophes.
-- Use a 15-second absolute deadline only for payload-referential lead-ins.
-  Preserve the first pending deadline when later eligible rows arrive, keep the
-  existing seven-second compatibility deadline for short unfinished captions,
-  and do not widen ordinary text batching.
-- Treat a deadline as closed once wall time reaches it even if its timer callback
-  is delayed; flush the overdue bucket before enqueueing a later row.
-- A non-matching or control row retains its existing immediate behavior and does
-  not join the pending composition.
-- Scope pending state by account, valid conversation anchor, and sender.
-- Preserve limits of 4,000 text characters, 20 attachments, and 10 source rows.
-- Require `channels.imessage.includeAttachments: true` for image ingestion.
-- Keep the source patch reproducible against pinned OpenClaw 2026.6.11.
-- Treat tests embedded only in a patch as undiscoverable until the shared runner
-  applies that patch and executes its mapped tests.
-- Keep `packages/e2e/openclaw-patch-suite.json` cumulative and aligned with
-  `apply-and-deploy.sh` patch order.
-- Use cryptographic run identifiers and linear fenced-JSON parsing in shared
-  test utilities.
-- Keep live automated production checks read-only and deny message delivery by
-  default.
-- Do not treat a benign prompt or omitted `--deliver` flag as a write-safety
-  boundary. The required pool must not drive configured agent profiles.
-- Use focused source-level harnesses for agent behavior and recording adapters
-  that reject unknown mutation for write paths.
-- Exercise the managed lifecycle on macOS so target-specific shell and process
-  behavior is covered.
-- Make worktree, filesystem, and signal cleanup independent and idempotent.
-- Run child commands asynchronously so termination can be forwarded and cleanup
-  can execute before process exit.
-- Reject unknown mock operations and require a unique recording directory.
-- Do not retain credentialed integration files that the required lifecycle
-  intentionally excludes.
+Current behavior and reusable primitives:
+
+- The iMessage patch classifies `lead-in`, `payload`, `continuation`, and
+  `instant` rows. Only lead-ins wait; complete unrelated messages are instant.
+- A payload-referential default-path lead-in gets 15 seconds; a short unfinished
+  lead-in gets 7 seconds. Explicit inbound timing overrides both, and zero is
+  immediate.
+- The production reply queue defaults to `steer`. A later text message reaching
+  `runReplyAgent` while the same session is active is queued, but
+  `AgentSession.steer()` consumes it only after the current assistant/tool turn
+  has finished. By then stale events can already be part of active agent state.
+  Steering therefore remains suitable for normal follow-up policy, not for
+  replacing a speculative composition prompt.
+- Transcript-commit waiting and user-turn transcript recorders already exist,
+  but current `AgentSession` execution is not an isolated branch that can safely
+  discard an already-produced suffix.
+- `ReplyBackendQueueMessageOptions` and the embedded steering target carry text
+  only; current-turn image data is not accepted. A fresh replacement run can use
+  the normal multimodal initial-prompt contract instead of extending steering.
+- The foreground reply fence already waits for newer active generations and
+  suppresses an older payload only after a newer visible generation wins.
+- The current channel inbound debouncer serializes each key through completion
+  of `onFlush`, and the iMessage flush awaits `handleMessageNow`; overlap
+  therefore requires a new admission boundary rather than merely changing the
+  timer.
+- Replay dedupe, follow-up message-id dedupe, reply-operation registration,
+  abort primitives, and per-session queue ownership already exist.
+- The production iMessage adapter does not implement unknown-send
+  reconciliation, and outbound recovery correctly refuses blind replay.
+- `before_dispatch` can handle a turn before the normal agent run exists, so the
+  active-mode capability gate must run at channel-turn admission rather than
+  trusting only a returned payload.
+- `message_received`, prompt, model, tool-lifecycle, claiming, and dispatch hooks
+  can all run before seal. Fire-and-forget execution is safe only for hooks
+  declared pure/read-only; every effectful hook must be awaited behind the
+  barrier or active mode is ineligible.
+- The embedded agent persists assistant transcript output before downstream
+  delivery, so delivery suppression alone cannot remove a stale answer from
+  canonical history.
+
+Recommended state ownership:
+
+- **iMessage composition state:** owns correlation key, source rows, replay keys,
+  current part anchor, absolute deadline, and whether a row is a true
+  continuation.
+- **Provider-neutral composition-run coordinator:** owns the canonical base
+  revision, active input version, `accepting/sealing/delivered` phase, branch
+  cancellation, and replacement generation.
+- **Durable unresolved-composition record:** owns crash recovery from initial
+  admission through `delivered`, `failed`, or `delivery_unknown`.
+- **Speculation commit barrier:** owns whether tool or delivery effects may
+  execute for the current input version.
+- **Speculative transcript branch:** durably owns the combined source prompt and
+  model, assistant, and read-only tool events for one input version. It is
+  isolated from the live `AgentSession`; only the sealed winner is atomically
+  promoted to canonical session history. Abandoned versions are never visible
+  to later turns.
+- **Composition invalidation fence:** owns which candidate may become visible;
+  unlike the general foreground fence, invalidation does not depend on a newer
+  visible success.
+- **Follow-up queue:** owns genuinely separate or post-deadline input that is not
+  part of the open composition.
+- **Circuit breaker/quarantine:** immediately blocks delivery for every record
+  implicated in an invariant breach, stops new active-turn admissions, and
+  blocks all dispatch and steering on each implicated key. New rows wait in a
+  durable quarantine queue; only records with proven ownership may drain.
+
+The seal is an atomic ownership boundary. An inbound row either increments the
+active version before seal or is assigned to normal post-deadline queue policy;
+it cannot be acknowledged in neither place or both. A branch whose answered
+version is stale cannot promote or deliver. Replay disposition and unresolved
+reply ownership transition together in durable state before ingress
+acknowledges the row. Outbound intent becomes durable before platform send.
+Without transport reconciliation, a crash after possible platform acceptance
+records `delivery_unknown` and does not retry.
+
+Buffered mode is a strategy fallback, not a quarantine bypass. It may accept a
+key only after the quarantined operation is terminal and active-run registration
+for that key is cleared.
+
+Canonical transcript promotion and composition sealing are one durable
+transaction. A crash may leave a recoverable speculative branch or a promoted
+winner, but never a canonical stale suffix plus an unresolved newer version.
+
+Options considered:
+
+| Option | Decision | Reason |
+|---|---|---|
+| Reduce the 7/15-second window | Reject | Known link notifications arrived after 5.3 and 12.4 seconds; shortening the bound reintroduces split replies. |
+| Poll Messages.app immediately before send | Reject | The answer is already frozen, monitor ownership is duplicated, and the send boundary still races. |
+| Use existing text steering only | Reject | It is consumed after the current turn, misses images, and cannot discard stale active-session events. |
+| Interrupt and restart an ordinary active run | Reject | It can duplicate tool side effects and leave stale canonical transcript state. |
+| Always make a second visible follow-up turn | Reject | It preserves the original confusing two-reply behavior. |
+| Overlap the deadline with isolated versioned branches, restart only side-effect-free speculation, and durably seal the winner | Recommend | It hides the wait when input does not change, accepts normal multimodal prompts, prevents stale branch state from becoming canonical, and preserves at-most-one visible reply except for explicitly unknown transport delivery. |
+
+Residual tradeoff: a fast direct answer can still wait until the absolute
+deadline because future input is unknowable. Mutating work may also wait for the
+seal; reducing conversational latency must not speculate irreversible effects.
+Read-only model/tool work can overlap the window. A later implementation must
+classify known tool effects through the established mutation metadata and treat
+unknown effects as blocked. A late part discards earlier speculative compute and
+starts replacement synthesis, so this design improves perceived latency but can
+increase model/read-only-tool cost. The existing part cap plus a bounded,
+non-deadline-extending restart coalescer limits churn.
 
 ### Implementation
 
-- PR #16 added the selective iMessage coalescer, monitor integration, regression
-  tests, patch documentation, and rollout guidance.
-- PR #19 corrected deployment topology so an unset `MINI_HOST` always deploys
-  locally and only an explicit host uses SSH/SCP.
-- PR #21 recorded and completed the approved local production rollout.
-- PR #26 adds:
-  - the shared `packages/e2e` lifecycle and pull-request workflow;
-  - a cumulative patch-to-regression manifest;
-  - local/remote deployment routing tests;
-  - an isolated browser-entrypoint process test;
-  - real same-agent and cross-agent spawn policy regressions;
-  - fail-closed manifest path checks;
-  - isolated pinned dependency restoration and process cleanup; and
-  - CodeQL-driven randomness and linear-parser hardening.
-- `.github/copilot-instructions.md` requires every feature, behavior change, and
-  bug fix to contribute committed coverage and run the entire shared pool.
-- The dormant credentialed live-agent files and command were removed because
-  they could execute configured write tools and were intentionally excluded
-  from CI. The required pool now contains only tests that run in `ci`.
-- The pull-request workflow uses `macos-latest`.
-- Termination handlers run the same idempotent cleanup path as normal failure.
-  Worktree removal, directory deletion, and stale-registration pruning are
-  attempted independently, and all cleanup failures remain visible.
-- Credentialed plugin suites and separate integration-only configurations were
-  removed; a repository regression prevents integration exclusions from
-  returning.
-- Child commands use asynchronous process groups. Termination is forwarded with
-  a bounded grace period before forced termination and cleanup.
-- Cleanup double-forces candidate removal, prunes registrations immediately, and
-  verifies the candidate is absent.
-- Both recording mocks require explicit isolated state and reject unsupported
-  operations.
-- Reopened correction: correlate the reported production logs, identify why the
-  link row bypassed coalescing, and update the patch and cumulative regression
-  mapping without changing image or separate-message behavior.
-- Read-only correlation confirmed two failures: each question row reached the
-  agent before a URL-preview balloon from the same sender and chat arrived one
-  second later. Messages metadata contains no shared composition identifier, so
-  the correction must use a conservative prompt-shape heuristic.
-- The patch now treats only bounded question-terminated prompts with explicit
-  deictic payload references as lead-ins. Focused classifier and monitor
-  regressions use the observed question-plus-URL shape.
-- Review hardening further requires a payload noun or the narrow “how/what about
-  this one?” comparison shape, and proves unmatched held questions dispatch
-  alone after the bounded window.
-- The exported source patch was regenerated from the isolated pinned fixture and
-  reapplied cleanly to a second detached fixture.
-- Second reopened correction: rows 6813/6814 were created 0.8 seconds apart, but
-  OpenClaw runs began 12.4 seconds apart. The source patch must recognize the
-  exact punctuationless final question and use the debouncer's per-entry timing
-  hook for a 15-second referential hold.
-- The fixture extracts a bounded trailing interrogative clause, reuses the
-  existing deictic and payload-kind signals, and leaves declarative
-  punctuationless text instant.
-- The monitor assigns 15 seconds only when the default seven-second compatibility
-  timing is active. Explicit user-configured iMessage debounce timing remains
-  authoritative.
-- The monitor records the first compatibility deadline per coalescing key,
-  resolves later debounce intervals against its remaining time, and clears only
-  the matching deadline when that bucket flushes.
-- The complete source patch was regenerated from the minimal pinned fixture,
-  reapplied to a fresh detached fixture, and compared byte-for-byte across all
-  four patched source and test files.
-- Third reopened correction: evaluate a final comma-delimited clause through the
-  existing narrow payload-question guards. Permit `what is/what's the <payload
-  noun>` only when a preceding setup clause is present, so `New test, what's the
-  link` receives the bounded referential hold while a standalone punctuated
-  question and ordinary complete prose remain instant. A punctuationless
-  three-word standalone question retains the pre-existing seven-second caption
-  fallback rather than being upgraded to 15 seconds.
-- The clean pinned fixture implements the exact production prompt,
-  `Okay you failed. New test, what’s the link`, adds its 669 ms row timing to the
-  monitor table, and runs the same prompt through the real debouncer while
-  retaining the prior long-gap timing boundary.
-- The complete source patch was regenerated from that fixture, normalized only
-  for patch-file whitespace, applied to a second pinned fixture, and reproduced
-  all four patched source and test files byte-for-byte.
-- Review remediation requires lexical setup before the definite-payload
-  exception; punctuation-only delimiter prefixes remain ordinary standalone
-  questions.
-- Terminal-review remediation additionally requires the lexical prefix to end
-  in comma-plus-whitespace, so period and exclamation sentence boundaries do
-  not activate the definite-payload exception.
-- Final terminal remediation separates candidates so comma parsing cannot
-  remove the payload noun from existing deictic questions such as
-  `Check this link, is that the one?`.
-- Exact-timing remediation parameterizes the real-debouncer regression for the
-  669 ms comma-delimited production shape and the prior 12.416-second
-  punctuationless shape, using distinct row IDs that preserve replay ordering.
-- Fourth reopened correction: correlate Cole's successful text-plus-link prefix
-  and separately delivered trailing text, reproduce the exact three-row order
-  through the real debouncer, and change only the demonstrated premature-flush
-  boundary.
-- Correlation identified rows 7071/7072/7073 as an explicit reply chain. The URL
-  and trailing text were adjacent and created 114 ms apart, but the current
-  `enqueueInboundEntry` flushes every payload immediately, before the delayed
-  trailing notification can join.
-- The implementation retains a matched payload until the existing first
-  deadline, classifies only reply-chained source-time-bounded rows as
-  continuations, merges contiguous lead-in/payload/continuation units, and
-  leaves standalone payloads and non-matching rows immediate.
-- Deployment remediation switches the source candidate to lifecycle-disabled
-  `pnpm pack`, validates that its manifest has no workspace protocols, rewrites
-  workspace dependencies in the npm-packed rollback artifact from the installed
-  dependency versions, and validates that artifact before stopping the gateway.
-- Review remediation adds a deployment-harness variant with a missing installed
-  workspace dependency manifest and requires the wrapper to fail before any
-  launchd or package mutation. The variant uses the same real tarball path as
-  successful normalization rather than mocking the helper result.
-- Production reconciliation validates the retained prior package and service
-  snapshot, determines the marker contract used by subsequent combined
-  promotion guards, and restores a guard-compatible identity through serialized
-  recovery without changing cron or delivering messages.
-- Final rollout updates the combined manifest to a stable current public
-  candidate, reruns the complete frozen-graph lifecycle and reviews, promotes
-  atomically, verifies sandwich symbols and health read-only, then lands only
-  the exact promoted public/private tuple.
+If Cole approves:
+
+1. Add an opt-in active-turn strategy alongside the current buffered iMessage
+   strategy; keep buffered behavior as the default during validation.
+2. Add an admission-time capability scan for every hook reachable before seal:
+   message-received, claim, prompt/model, dispatch, tool-lifecycle, and reply
+   hooks. Each must declare pure/read-only or fail-closed barrier support.
+   Unsupported hooks select buffered mode before any hook runs. Pure telemetry
+   may remain fire-and-forget; effectful hooks must be awaited with the barrier
+   token. Typing/read receipts remain exempt non-content signals.
+3. Refactor the iMessage classifier to open an absolute composition record while
+   durably admitting its lead-in immediately. Split the current debounce
+   ownership so the per-key intake chain is released after admission while the
+   reply operation continues independently.
+4. Add a provider-neutral composition-run coordinator that snapshots canonical
+   session history, builds one ordered multimodal initial prompt from every
+   admitted source part, and starts an isolated branch for the current input
+   version. Do not append open-composition input or branch output to the live
+   `AgentSession`.
+5. On a correlated admission, atomically increment the version, invalidate and
+   cancel the prior isolated branch, and start a replacement from the same
+   canonical base plus all admitted text/images. Coalesce only near-simultaneous
+   restart requests within a bounded internal interval that never changes the
+   first absolute deadline. Keep existing steering solely for unrelated
+   post-composition queue behavior.
+6. Add a pre-dispatch/pre-run commit barrier. Reuse established tool-mutation
+   metadata, block unknown/mutating tools and every visible delivery path, and
+   invalidate uncommitted planned effects when the input version changes.
+7. Add durable versioned speculative transcript branches for assistant, model,
+   and read-only tool events. Ensure branch events never enter the live session,
+   memory, or compaction inputs. Atomically promote the combined user turn and
+   sealed winning suffix into canonical history and discard stale branches
+   across restart.
+8. Add versioned `accepting/sealing/delivered` state and a
+   composition-specific stale-candidate invalidation fence.
+9. Define one atomic admission/seal boundary. A correlated part admitted before
+   it reopens replacement synthesis even if the old branch emitted
+   `message_end`; a row after it follows normal queue policy. On winning-branch
+   failure, emit one deterministic composition failure notice and never release
+   an older candidate.
+10. Persist unresolved composition/outbox ownership together with replay
+   disposition. Resume replacement synthesis, promotion, delivery, or explicit
+   failure after restart. Mark unknown platform sends `delivery_unknown` and
+   never replay them without a future iMessage reconciliation capability.
+11. Add a durable active-turn circuit breaker that stops admission, immediately
+    fences implicated records, and blocks all active and buffered dispatch plus
+    steering on implicated keys. Queue new rows durably outside the composition,
+    clear its registration at terminal quarantine, then admit queued rows under
+    buffered mode. Drain only records whose ownership remains proven.
+12. Add a rollback drain gate: disable admission, terminally resolve or
+    quarantine all active-turn records, verify zero unresolved new-format
+    ownership, and only then permit predecessor package installation.
+13. Document configuration, content-free metrics, canary gates, rollout
+    thresholds, and rollback.
+
+No executable work starts before design approval.
 
 ### Validation
 
-- Original focused OpenClaw validation: 65 coalescer and monitor tests passed,
-  covering links, images, separate texts, commands, races, replay, and catchup
-  cursors.
-- Managed cumulative lifecycle:
-  `OPENCLAW_SRC=/path/to/openclaw node packages/e2e/bin/openclaw-test-env.mjs ci`.
-- CodeQL JavaScript/TypeScript and Python analyses passed after replacing
-  insecure random identifiers and the backtracking fenced-JSON regex.
-- Focused post-review validation passed E2E type checking and 21 isolated tests,
-  including real locked-worktree cleanup, subprocess termination, test
-  discovery, and fail-closed mock coverage.
-- The final managed lifecycle passed repository build and lint, 237 isolated
-  workspace tests, 289 mapped OpenClaw tests, one isolated browser-entrypoint
-  candidate test, and verified candidate deregistration.
-- A fresh independent review of the validated implementation found no
-  actionable high-confidence defects. The pinned upstream revision protects
-  the external debouncer contract; real-provider hook round trips remain manual
-  rather than credentialed CI.
-- Pull-request checks passed on the final handoff commit, PR #26 merged, and the
-  first cumulative Integration workflow passed on `main`.
-- New production evidence: images pass a quick smoke test, while the reported
-  link composition reached the agent without link context. Exact log
-  correlation reproduced two separate question-first turns followed by
-  URL-balloon turns.
-- Updated focused coalescer and monitor suites pass 67 tests, including a
-  policy-respecting monitor regression that cannot produce one merged dispatch
-  under the prior classifier.
-- The managed cumulative lifecycle passes repository build and lint, 237
-  workspace tests, 291 mapped OpenClaw tests, one candidate test, and verified
-  candidate deregistration.
-- Hardened focused coalescer and monitor suites pass 68 tests; common unrelated
-  deictic questions remain instant and unmatched referential questions flush
-  alone.
-- The complete managed lifecycle passes repository build and lint, 237 workspace
-  tests, 292 mapped OpenClaw tests, one candidate test, and verified candidate
-  deregistration with the hardened patch at `01ca706`.
-- The exact final PR commit passed the same complete lifecycle, CodeQL, and
-  pull-request Integration checks before merge.
-- Read-only post-deployment checks confirm OpenClaw 2026.6.11 at the pinned
-  `a1063aa` source, loopback gateway connectivity, the exact narrowed matcher in
-  the installed bundle, and a running iMessage account with no last error.
-- Focused coalescer and monitor suites pass 72 tests. They exercise the exact
-  punctuationless prompt through the real debouncer across its 12.4-second gap,
-  prove payload arrival produces one merged dispatch, prove repeated lead-ins do
-  not extend the first deadline, reject declarative text, and preserve explicit
-  timing overrides.
-- The reviewed candidate passes the complete managed lifecycle with repository
-  build and lint, 238 workspace tests, 296 cumulative mapped OpenClaw tests, one
-  isolated browser-entrypoint candidate test, and candidate worktree
-  deregistration. One stale candidate registration from an earlier run was
-  separately removed and pruning confirmed no managed candidate remains.
-- Pull-request Integration and CodeQL passed, PR #36 merged as `a7e13fe`, and
-  the first Integration run on that exact `main` commit passed.
-- Local read-only production checks confirm OpenClaw 2026.6.11 at pinned source
-  `a1063aa`, valid configuration, a reachable loopback gateway, a healthy event
-  loop, the exact deadline implementation in the installed bundle, and a
-  running iMessage account with no last error.
-- Cole's first manual question-plus-link smoke after that deployment failed.
-  Read-only correlation identified the comma-clause classifier bypass.
-- The corrected focused coalescer and monitor suites pass all 73 tests. Coverage
-  includes the exact curly-apostrophe prompt, the 669 ms URL-preview timing,
-  the real debouncer, standalone punctuated questions, and unrelated comma
-  clauses.
-- The exported patch applies cleanly to pinned OpenClaw `a1063aa` and its four
-  outputs match the focused-test fixture byte-for-byte.
-- The third-correction managed lifecycle passes repository build and lint, 238
-  workspace tests, 297 cumulative mapped OpenClaw tests, one isolated
-  browser-entrypoint candidate test, and candidate deregistration.
-- After review remediation, the 73 focused tests pass again, including
-  punctuation-only comma and sentence-delimiter prefixes. The regenerated patch
-  reapplies cleanly and reproduces all four fixture files byte-for-byte.
-- The post-remediation managed lifecycle passes repository build and lint, 238
-  workspace tests, 297 cumulative mapped OpenClaw tests, one isolated candidate
-  test, and candidate deregistration.
-- Both disposable pinned fixtures used to generate and verify the source patch
-  were removed and OpenClaw worktree registrations pruned.
-- After terminal-review remediation, all 73 focused tests pass again, including
-  lexical period and exclamation prefix exclusions. The regenerated patch
-  reapplies cleanly and reproduces all four fixture files byte-for-byte.
-- The terminal-remediation managed lifecycle passes repository build and lint,
-  238 workspace tests, 297 cumulative mapped OpenClaw tests, one isolated
-  candidate test, and candidate deregistration.
-- After separating classifier candidates, all 73 focused tests pass, including
-  `Check this link, is that the one?`, while the exact production prompt and all
-  comma-boundary exclusions remain green. The regenerated patch reapplies
-  cleanly and reproduces all four files byte-for-byte.
-- The separated-candidate managed lifecycle passes repository build and lint,
-  238 workspace tests, 297 cumulative mapped OpenClaw tests, one isolated
-  candidate test, and candidate deregistration.
-- Fresh independent review verified the full diff, classifier semantics, patch
-  pre/postimage hashes, pinned preimages, test mapping, and documentation with
-  no actionable high-confidence findings. Residual validation gaps remain the
-  final post-deployment Messages.app smoke and transport reconnect/teardown
-  races not exercised by source-level notification mocks.
-- The final separated-candidate fixtures were removed and OpenClaw worktree
-  registrations pruned.
-- PR #38 passed all CodeQL checks at exact reviewed commit `b99bff1f`, but
-  GitHub reports the branch conflicts with current `main`.
-- Current `main` merged as `c61294b`; the synchronized managed lifecycle passes
-  repository build and lint, 238 workspace tests, 297 cumulative mapped
-  OpenClaw tests, one isolated candidate test, and candidate deregistration.
-- Exact-timing focused suites pass all 74 tests. Both observed gaps advance the
-  real fake clock, remain undispatched before payload arrival, and produce one
-  merged dispatch. The regenerated patch reapplies cleanly and reproduces all
-  four files byte-for-byte.
-- The exact-timing managed lifecycle passes repository build and lint, 238
-  workspace tests, 298 cumulative mapped OpenClaw tests, one isolated candidate
-  test, and candidate deregistration.
-- Fresh independent review verified current-main ancestry, merge resolution,
-  both real-debouncer timing paths, cursor/replay ordering, mapped test
-  discovery, and clean patch application with no actionable high-confidence
-  findings. Residual validation gaps remain the final post-deployment
-  Messages.app smoke and RPC reconnect/teardown races outside source-level
-  notification mocks.
-- The final real-timer fixtures were removed and OpenClaw worktree registrations
-  pruned.
-- A fresh independent reviewer verified patch preimages, clean application,
-  mapped test discovery, and the complete comma-boundary remediation with no
-  actionable high-confidence findings. Residual validation gaps are the final
-  post-deployment Messages.app smoke and transport reconnect/teardown races not
-  exercised by source-level notification mocks.
-- PR #38 merged as `e82db0e6441496f06acae4dd066804ef7d526c14`.
-  Integration run `30222444716` and CodeQL run `30222444475` passed on that
-  exact `main` commit.
-- The local deployment wrapper completed from clean disposable Puddles and
-  OpenClaw worktrees pinned to `e82db0e` and `a1063aa`. It applied all five
-  patches, built and installed OpenClaw, ran doctor, restarted the gateway,
-  rebuilt the browser image, and recreated the browser-agent runtime. The
-  read-only production checks passed: OpenClaw reports `2026.6.11 (a1063aa)`,
-  the active config is valid, the loopback gateway is reachable and active, the
-  event loop is not degraded, iMessage is running with no last error, both
-  coalescing and attachment ingestion are enabled, and the installed bundle
-  contains the separate referential/definite candidates plus the 15-second
-  referential deadline.
-- Both disposable deployment worktrees were removed, their registrations were
-  pruned, and the temporary Corepack shim was deleted.
-- PR #39 publishes this plan-only rollout closeout. Its cumulative Integration
-  and CodeQL pull-request checks passed.
-- The fourth production sandwich shape has not yet been correlated or reproduced;
-  focused and cumulative validation must be rerun after the evidence-driven fix.
-- Read-only production correlation confirms the first transcript turn contained
-  rows 7071/7072 and the second contained row 7073. The first agent pipeline
-  started at 00:24:22Z and the second at 00:24:30Z. The source rows provide both
-  exact timestamps and a 7071 -> 7072 -> 7073 `reply_to_guid` chain.
-- The pinned fixture now keeps only matched lead-in/payload pairs through their
-  existing first deadline and admits continuations only through an exact reply
-  chain with a zero-to-1,000 ms source-time gap. The observed delayed
-  text-link-text sequence produces one dispatch through the real debouncer.
-- All 87 focused coalescer and monitor tests pass. The regenerated patch applies
-  with the complete six-patch stack to a second clean pinned fixture, and all
-  four iMessage outputs reproduce byte-for-byte. The monitor coverage includes
-  a joined payload with no GUID and a malformed timestamp, proving that the next
-  composition gets a fresh bucket while the malformed row cannot anchor a
-  continuation.
-- The complete managed lifecycle passes repository build and lint, 281 workspace
-  tests, 332 cumulative mapped OpenClaw tests, one isolated browser-entrypoint
-  candidate test, and candidate deregistration.
-- The complete six-patch stack now applies to production OpenClaw
-  `2026.7.1-2 (0790d9f)`. The only incompatible preimage was unrelated comparison
-  context in the yield patch; narrowing that hunk without changing its code
-  makes it apply to both the pinned and production releases. All 336 mapped
-  source tests pass on the production release, including the 87 iMessage tests.
-- After the portability-only patch-hunk change, the complete pinned-release
-  managed lifecycle passes again with the same build, lint, 280 workspace-test,
-  332 mapped-source-test, candidate-test, and cleanup coverage after the
-  metadata-safe payload-state remediation and synchronization with current
-  `main`.
-- The deployment fixture now rejects an unresolved candidate workspace
-  dependency before package installation or gateway shutdown and proves a
-  normalized rollback tarball can reinstall. All 34 deployment-topology tests
-  and E2E type checking pass. Real isolated-prefix installs also pass for both
-  pnpm-packed candidate and normalized prior-package tarballs.
-- After packaging remediation, the complete managed lifecycle passes build,
-  lint, 281 workspace tests, 332 mapped OpenClaw tests, the isolated candidate
-  test, and worktree cleanup.
-- The fresh packaging-remediation review reran all 34 deployment-topology tests
-  and found one actionable coverage gap: rollback normalization failure was not
-  driven through the integration harness.
-- The accepted review regression passes with 35 deployment-topology tests, all
-  66 isolated E2E workspace tests, and E2E TypeScript checking. It proves a
-  missing installed workspace dependency manifest exits before `launchctl
-  bootout` or `npm install -g`.
-- The complete post-review managed lifecycle passes build and lint, 282
-  workspace tests, 332 mapped OpenClaw tests, the isolated candidate test, and
-  worktree cleanup.
-- The fresh replacement reviewer independently reapplied the iMessage patch,
-  passed all 87 focused tests, passed all 35 deployment-topology tests, all 66
-  isolated E2E tests, E2E type checking, and all 282 workspace tests, and found
-  no actionable high-confidence defects.
-- Exact candidate `af5bdf2` passed terminal review, pull-request Integration,
-  and all CodeQL checks. PR #51 merged as `863666f`; Integration and CodeQL
-  passed again on that exact `main` commit.
-- Local promotion from clean OpenClaw `0790d9f` recorded recovery snapshot
-  `20260730T042702Z-32096`, applied all six patches, built and installed the
-  candidate, migrated state, rebuilt the browser image, restarted the gateway,
-  and passed readiness.
-- Post-landing read-only checks confirm source revision `0790d9f`, valid
-  configuration, a loaded service, healthy gateway, configured/running
-  iMessage, concrete installed package dependencies, and the bounded
-  continuation logic in the installed bundle.
-- The corrected plan-only closeout passed terminal review and pull-request
-  checks, merged as `c873bb0`, and passed Integration and CodeQL on that exact
-  `main` commit.
-- The final Ready for review plan state passed terminal review and pull-request
-  checks, merged as `f7a049a`, and passed Integration and CodeQL on that exact
-  `main` commit. Issue #28 was set to Ready for review, and Todoist received the
-  signed result comment before `agent` was replaced with `ready_for_review`.
-- Reconciliation evidence: live CLI/package version is `2026.7.1` at source
-  `0790d9f`; `PUDDLES_PATCHSET.json` is absent; the loaded plist comment remains
-  `OpenClaw Gateway (v2026.7.1-2)`; gateway health passes and iMessage is
-  configured/running. Snapshot `20260730T042702Z-32096` contains normalized
-  `openclaw-2026.7.1-2.tgz` with concrete `@openclaw/ai` version `2026.7.1` and
-  the matching service plist.
-- The target recovery path acquired the deployment lock, created safety snapshot
-  `20260730T063203Z-51528`, installed the retained package, preserved the live
-  plist, and passed readiness. Before/after configuration SHA-256 remained
-  `5cbd61ceb8181d1f49a960aab01e2fed2f9a1c71f9ab8858702359c425de4ff3`;
-  cron-tree SHA-256 remained
-  `ec493dd79dc7fdcf8b4ca12087d2322934da7cd2a92eb46490c3342f5a0f1279`.
-  CLI/gateway now report `2026.7.1-2 (0790d9f)`, config is valid, the service is
-  loaded/running, connectivity is OK, and iMessage is running.
-- The first combined retry recorded snapshot
-  `20260730T063718Z-0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c` and failed its
-  pre-swap validator with `installed guard artifact is missing: Required for
-  scheduled/cron callers`. Automatic rollback restored the prior package,
-  configuration, browser entrypoint, and healthy gateway. The same configuration
-  and cron-tree hashes remain unchanged.
-- The corrected combined lifecycle passed its full frozen-graph validation,
-  retained review, and terminal review, then temporarily promoted atomically
-  with recovery snapshot
-  `20260730T071847Z-0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`.
-  Its candidate marker recorded deployment
-  `ff7bd5fc-c2b9-4878-9053-1a1f8d62ad85`, all six public patches, and both
-  combined private patches. Marker SHA-256 is
-  `afc128c50526cd0a9572cd1e3cf87c9ed5c559c50ca55d7a511d493117cd02be`.
-  The public head then changed before landing, so the lifecycle atomically
-  restored the exact predecessor. Current package, CLI, gateway, and plist report
-  `2026.7.1-2 (0790d9f)` with no `PUDDLES_PATCHSET.json`; configuration is valid,
-  the service is loaded/running, gateway connectivity is OK, iMessage is
-  configured/running, the deployment lock is absent, and cron-tree SHA-256 remains
-  `ec493dd79dc7fdcf8b4ca12087d2322934da7cd2a92eb46490c3342f5a0f1279`.
-- Current installed-bundle inspection does not find the sandwich continuation
-  symbols present in the rolled-back source candidate, proving final combined
-  promotion remains required rather than treating healthy predecessor recovery
-  as feature completion.
-- Stable public candidate `5b771f91b9c949c8752b29b2c16c004bb5e2a8ce`
-  against base `6dc4e03c5b1a79ff682e76ad7eea8a6348ef4456` passed Integration
-  and CodeQL. Private candidate `d97c1b30dadad688f036844dc2cd66ae95203e1a`
-  against base `5293f1161a75587bd38d7e1cc8a11d517499fb69` passed full combined
-  validation and terminal review.
-- Atomic promotion recorded recovery snapshot
-  `20260730T084333Z-0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c` and installed
-  deployment marker `8491ddf6-668b-487d-8623-7c7dff0a0e31`, SHA-256
-  `c48b5745394a3bc697b3b9bc5c8d5e29bcd0746acdcd295ae8f6cda9234789c8`.
-  The marker contains all six public and both private patch IDs. Read-only
-  inspection finds `isIMessageSplitContinuation` and
-  `dmCoalescePayloadStateByKey` in the installed bundle.
-- Post-promotion checks report package, CLI, gateway, and plist identity
-  `2026.7.1-2 (0790d9f)`; valid configuration; loaded/running gateway with
-  successful connectivity and health probes; configured/running/working
-  iMessage; unchanged cron-tree SHA-256
-  `ec493dd79dc7fdcf8b4ca12087d2322934da7cd2a92eb46490c3342f5a0f1279`;
-  and no deployment lock.
-- Exact private candidate `d97c1b30...` merged as `95bfe75f...`, followed by
-  exact public candidate `5b771f91...` as `ceff0eba...`. The public merge's
-  Integration run `30528271011` and CodeQL run `30528271254` passed.
-  Post-landing production checks returned the same marker, installed sandwich
-  symbols, healthy gateway/iMessage state, unchanged cron hash, and absent lock.
-- Final reconciliation commit `ad2d6c6...` passed terminal exact-commit review
-  and all PR checks, merged through PR #58 as `1e053e71...`, and passed
-  Integration run `30530769411` and CodeQL run `30530768988` on `main`.
-- The dependent hardening follow-up at `1915cc1...` passed 62 private tests,
-  633 mapped patched-source tests across 24 files, the browser candidate, root
-  and UI builds, frozen production staging, CLI bootstrap, the production
-  validator, cleanup, and a fresh clean terminal review. It landed as
-  `0b13edc...`.
-- Replacement promotion snapshot
-  `20260730T104410Z-0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c` passed its
-  recorded package, configuration, and browser-image checksum verification.
-  Installed marker `73b08dc8-5c4d-40ed-808a-d46ee0eaa45d`, SHA-256
-  `cf9933e69bd2d7fda0ba164a5d3a290f9a9bb454d7ad8c90f0d4334b17029983`,
-  binds public head `5b771f91...`, dependent private head `1915cc1...`, and all
-  suite-pinned patch hashes.
-- Post-replacement read-only checks confirm `2026.7.1-2 (0790d9f)`, valid
-  config, running/reachable gateway, working iMessage, installed sandwich
-  continuation symbols, and absent deployment/source locks. The production
-  validator passed the gateway, reader boundary, cron guard, and fixed
-  no-match Gmail read. No cron job or definition, message delivery, or mailbox
-  state was mutated.
+The later implementation must add focused OpenClaw tests and register them in
+`packages/e2e/openclaw-patch-suite.json`, then pass
+`node packages/e2e/bin/openclaw-test-env.mjs ci`.
+
+Required deterministic scenarios:
+
+- complete text remains immediate;
+- lead-in model work begins before the 7/15-second deadline;
+- a second part reaches the active operation while the first reply promise
+  remains unresolved through the real inbound debouncer;
+- no payload arrives and a fast candidate releases exactly at the deadline;
+- no payload arrives and a slow candidate releases immediately after completion;
+- link text arrives during model generation, invalidates the old branch, and is
+  present in the replacement branch's combined prompt;
+- trailing text arrives during a read-only tool step, cancels the old branch,
+  and is reflected in the replacement final output;
+- image arrives during the active run and retains image order and prompt context;
+- correlated input arrives while the run is sealing;
+- correlated input arrives after `message_end` but before seal/delivery, and no
+  stale assistant or tool event appears in the replacement provider prompt or
+  canonical transcript;
+- correlated input arrives exactly at and just after the absolute deadline;
+- speculative branch cancellation succeeds, races completion, times out, or
+  loses its worker without exposing stale state;
+- replacement synthesis succeeds, fails, or is interrupted;
+- multiple rapid correlated parts are restart-coalesced without extending the
+  first deadline, reordering input, or exceeding the configured part cap;
+- known mutating, unknown, approval, block-streaming, direct-send, and normal
+  final-delivery paths remain blocked before seal;
+- every pre-seal hook family is capability-scanned before invocation;
+- unsupported or undeclared hooks force buffered mode before any hook runs;
+- pure asynchronous hooks cannot perform effects; supported effectful hooks are
+  awaited and require a valid barrier token;
+- hook capability changes after admission invalidate active eligibility safely;
+- stale speculative assistant/tool output never enters canonical transcript
+  history, later prompt context, memory extraction, or compaction;
+- the winning branch promotes atomically with seal across restart;
+- typing and read-receipt exemptions cannot carry reply content or media;
+- input changes while a mutating tool plan waits and no stale effect executes;
+- replay/catchup restart occurs before and after winning-branch promotion;
+- crashes occur before and after durable admission, branch replacement, replay
+  disposition, sealing, canonical promotion, candidate persistence, and visible
+  delivery;
+- crashes occur before, during, and after speculative transcript promotion;
+- recovery yields one resumed reply or one explicit failure, never a lost or
+  duplicated turn before outbound platform acceptance;
+- crash before send retries safely, crash after acknowledged send does not
+  retry, and crash with unknown send outcome records an omission-risk diagnostic
+  without duplicate delivery;
+- a failed or silent replacement never releases a stale predecessor branch;
+- two simultaneous compositions on one key serialize without sharing versions;
+- two accounts/conversations/senders remain isolated;
+- genuinely separate rapid messages preserve normal queue policy;
+- commands, reactions, groups, echoes, malformed anchors, row caps, media caps,
+  and cursor ordering remain unchanged;
+- no path emits two visible replies for one correlated composition;
+- recording mocks reject all unknown writes and no live delivery occurs;
+- rollback with unresolved records is rejected; drain/quarantine permits
+  rollback only after zero unresolved new-format ownership remains.
+- every circuit-breaker trigger persists across restart, quarantines the
+  implicated key, blocks active and buffered steering/dispatch, and releases
+  durably queued rows only after terminal cleanup;
+- gateway health, iMessage health, replay conflict, cross-key admission,
+  duplicate intent, restart overflow, unresolved timeout, context-version
+  mismatch, and p95 latency each trigger deterministic breaker coverage; and
+- all new durable composition, transcript-branch, quarantine, and breaker state
+  is absent before predecessor package rollback.
+
+Latency assertions should prove:
+
+- complete messages add no new wait;
+- classified no-payload messages take roughly
+  `max(agent duration, composition deadline)`, not their sum; and
+- a late correlated part never extends the first absolute deadline; the expected
+  time is its arrival plus replacement synthesis, not an unsupported claim that
+  the already-running model can adopt it in place.
+
+Investigation evidence was static and read-only. No managed lifecycle or
+production smoke was run because no executable artifact changed.
 
 ### Rollout and rollback
 
-The sandwich rollout used
-`docs/openclaw-setup/patches/apply-and-deploy.sh` with `MINI_HOST` unset and
-`OPENCLAW_SRC` pinned to clean OpenClaw `0790d9f`. The wrapper applied all six
-patches, produced and validated installable candidate and rollback tarballs,
-recorded recovery snapshot `20260730T042702Z-32096`, installed the candidate,
-migrated state, rebuilt the browser image, restarted the gateway, and passed
-readiness. Automated production validation remained read-only and did not
-deliver messages. The disposable promotion worktrees and temporary package
-manager shims were removed. No data migration or persistent message-state
-conversion is involved.
+After approval and green local/test gates:
 
-That lifecycle intentionally completed, but its source tarball reported
-`2026.7.1` and omitted a durable patchset marker. Reconciliation used the exact
-serialized target path with recovery tarball
-`20260730T042702Z-32096/openclaw-2026.7.1-2.tgz`, preserved current runtime state
-and the matching plist, and created safety snapshot
-`20260730T063203Z-51528`. The prior `2026.7.1-2` runtime is healthy and satisfies
-the combined lifecycle's precondition, but it predates `PUDDLES_PATCHSET.json`.
-The first reviewed combined retry failed candidate validation before package
-swap and rolled back cleanly. The lifecycle was corrected so its test path
-builds after applying patches and validates the exact frozen staged package with
-the production validator. A first corrected promotion recorded snapshot
-`20260730T071847Z-0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`, then rolled back
-when the public head changed. The stable replacement tuple repeated full
-validation and terminal review before atomic promotion recorded snapshot
-`20260730T084333Z-0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`. Production now
-runs marked deployment `8491ddf6-668b-487d-8623-7c7dff0a0e31` with all expected
-patch IDs and the installed sandwich state machine. Read-only checks preserve
-the cron tree and confirm valid config, healthy gateway connectivity, working
-iMessage, and an absent deployment lock. Exact private and public candidates
-then landed as `95bfe75f...` and `ceff0eba...`; public post-merge Integration and
-CodeQL passed, and repeated production checks returned the same healthy marked
-runtime.
+1. Land the reviewed candidate remotely without enabling the new strategy.
+2. Exercise the strategy in the isolated recording transport with the same
+   configuration and deterministic latency/invariant thresholds intended for
+   production.
+3. Promote the exact candidate through
+   `docs/openclaw-setup/patches/apply-and-deploy.sh` with `MINI_HOST` unset on the
+   target Mac mini.
+4. Validate marker, config, gateway, iMessage, locks, and no-mutation evidence
+   read-only.
+5. Enable the active-turn strategy only for a configured canary conversation
+   scope.
+6. Observe structured, content-free metrics for lead-in classification, branch
+   starts/cancellations/replacements, seal races, duplicate suppression, and
+   latency.
+7. Automatically trip the durable circuit breaker to buffered mode on duplicate
+   delivery intent, unresolved-record timeout, replay ownership conflict,
+   cross-key admission, restart overflow, configured p95 latency breach,
+   gateway health failure, or iMessage health failure. The breaker immediately
+   quarantines implicated active records before any further delivery. All
+   dispatch and steering for each implicated key remains blocked; newly arrived
+   rows wait durably until terminal cleanup clears active-run ownership.
+8. Expand scope only after the canary observation bound passes. A semantic
+   context omission reported outside machine-detectable gates triggers the same
+   documented buffered-mode rollback before diagnosis. Machine context coverage
+   verifies that every admitted source message identity is present in the sealed
+   input version and committed transcript; it cannot prove answer quality.
 
-The subsequent combined hardening follow-up preserved the same public iMessage
-candidate while binding patch extraction to exact reviewed commits and
-suite-pinned hashes. After complete combined validation and terminal review, it
-landed dependent private head `1915cc1...` as `0b13edc...` and replaced the older
-marked runtime through the guarded lifecycle. Current recovery snapshot is
-`20260730T104410Z-0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`; current deployment
-is `73b08dc8-5c4d-40ed-808a-d46ee0eaa45d`. Post-landing validation confirms the
-same installed sandwich behavior and healthy service without cron, message, or
-mailbox mutation.
-
-Rollback:
-
-1. Unset `channels.imessage.coalesceSameSenderDms`.
-2. Remove the coalescing patch from the reviewed patch list.
-3. Rebuild and deploy the prior pinned stack with the documented topology.
-4. Validate configuration, gateway health, and iMessage channel status.
-
-No data migration or persistent message-state conversion is involved.
+The canary scope, observation duration, minimum sample count, p95 threshold, and
+maximum restart/invariant counts must be explicit configuration validated in
+the isolated lifecycle; rollout cannot proceed with omitted thresholds.
+Configuration and circuit-breaker rollback return new turns to buffered mode.
+Package rollback first disables active-turn admission, drains or quarantines all
+records to terminal states, and verifies zero unresolved new-format ownership.
+If that gate cannot pass, the package remains installed in buffered mode until
+records are safely resolved. Only then may the guarded lifecycle restore the
+retained package and service snapshot, without restoring the old runtime tree or
+rewinding cron/message state.
 
 ### Review log
 
-- Multiple independent adversarial reviews of the implementation and cumulative
-  test infrastructure found lifecycle, cleanup, test-discovery, and security
-  gaps; all actionable findings were corrected and revalidated.
-- PR #26 CodeQL initially found three high-severity utility findings; all were
-  fixed and both language analyses are green.
-- The terminal independent review after syncing current `main` found four
-  actionable issues: unsafe live write capability, live behavioral suites
-  omitted from CI, missing macOS CI coverage, and incomplete interruption
-  cleanup. The implementation has addressed all four and the complete lifecycle
-  passes.
-- A fresh review found excluded credentialed plugin suites, incomplete
-  stale-registration cleanup, blocked signal handlers, fail-open recording
-  mocks, and unnecessary operational detail in this public plan. All five
-  corrections are implemented and pending full validation.
-- A fresh independent review of the validated corrections found no actionable
-  high-confidence defects.
-- A second fresh independent review of the exact published handoff diff also
-  found no actionable high-confidence defects before merge.
-- Cole reopened the task after a production link smoke test exposed a behavior
-  not represented by the existing link regressions. A new independent review is
-  required after the correction and complete lifecycle pass.
-- The first correction review found no actionable defects but identified a
-  broader-than-intended false-positive surface for common deictic questions and
-  missing standalone-timeout coverage. Both were hardened before promotion.
-- A fresh independent review of the hardened complete feature diff at `e2f5ce3`
-  found no actionable high-confidence defects. Residual automated boundaries are
-  the real debouncer timer implementation and the final Messages.app smoke test.
-- After review bookkeeping, the exact promotion commit `1e8fdaa` passed the
-  complete lifecycle again and a second fresh independent review found no
-  actionable high-confidence defects.
-- Pull request #34 merged as `a4bde1f`; the first Integration run on that exact
-  `main` commit passed.
-- A third fresh independent review of the exact PR commit `691010e` found no
-  actionable high-confidence defects before merge.
-- Cole reopened the task after the deployed question-plus-link smoke still
-  split, with an observed longer delay for links than images. Fresh validation
-  and independent review are required after the timing correction.
-- The timing-correction review found that repeated eligible rows could restart
-  the generic trailing-debounce timer and that the measured-gap regression used
-  a mock rather than the real clock. The implementation now preserves the first
-  absolute deadline, both real-timer regressions pass, and the complete lifecycle
-  is green.
-- A fresh replacement reviewer re-checked the complete corrected diff and found
-  no actionable high-confidence defects. Remaining validation boundaries are the
-  final live Messages.app smoke and transport reconnect/teardown races not
-  exercised by the real-debouncer fake-clock tests.
-- A terminal fresh reviewer found no actionable high-confidence defects in exact
-  commit `8353a3e747b568085242f0410b648bbd39f5b088`. Pull-request checks passed
-  before merge.
-- Cole reopened the task after the reviewed and deployed absolute-deadline
-  correction still failed a live link smoke. A fresh complete-diff review is
-  required after the next evidence-driven correction.
-- The third-correction reviewer found that a length-only setup check accepted
-  punctuation-only prefixes. The accepted correction requires a Unicode letter
-  or number before the final clause and adds direct negative regressions.
-- The original completed reviewer cannot be resumed through the available agent
-  interface; a fresh independent replacement must review the complete
-  post-remediation diff.
-- The fresh replacement reviewer verified the complete remediated diff,
-  including Unicode-regex runtime support, test discovery, and the four-file
-  OpenClaw patch, and found no actionable high-confidence defects. The residual
-  validation gap is the final live Messages.app smoke after deployment.
-- Terminal review of exact commit `c0c233c8060d7f290f9ab8e28383ff5cd83b9ca0`
-  found the definite-payload exception accepted lexical setup separated by a
-  period or exclamation mark. The accepted correction restricts the exception
-  to comma-plus-whitespace and adds both negative regressions.
-- Fresh complete-diff review after the comma-boundary fix found no actionable
-  high-confidence defects.
-- Terminal review of exact commit `d6a6c94a1dc161d356cd8cc454b440c674dc6a84`
-  found comma slicing regressed an existing deictic question shape by removing
-  its payload noun. The accepted correction preserves the original deictic
-  candidate and uses a separate candidate only for the definite-payload
-  exception.
-- Fresh complete-diff review after separating the candidates found no
-  actionable high-confidence defects.
-- Terminal fresh review found no actionable high-confidence defects in exact
-  commit `b99bff1f42f2fda18c01f1291a0a8a5082272486`.
-- Fresh synchronized review found the exact 669 ms gap was only compared with
-  the resolved timeout in a monitor mock; the real debouncer still exercised
-  only the prior 12.416-second gap. The accepted correction adds a 669 ms
-  real-timer case while retaining the long-gap case.
-- Fresh complete-diff review after exact real-timer remediation found no
-  actionable high-confidence defects.
-- Fresh independent review of the complete third correction plus the rollout
-  closeout found no actionable high-confidence defects. The remaining manual
-  boundary is Cole's final Messages.app question-plus-link smoke.
-- Cole's text-link-text smoke reopened the task because the trailing text became
-  a second turn. A fresh complete-diff review is required after correlation,
-  implementation, and cumulative validation.
-- A fresh independent complete-diff review found no actionable
-  high-confidence defects. Residual gates are patch portability to production
-  OpenClaw 2026.7.1-2, deployment, the live Messages.app smoke, and terminal
-  review of the exact handoff commit.
-- A later fresh review found explicit nonzero debounce configuration still
-  caused matched payloads to flush immediately. The accepted correction derives
-  the first absolute deadline from effective explicit timing while preserving
-  explicit zero, and runs the exact sandwich through the real debouncer in both
-  default and explicit-positive configurations.
-- The next fresh review found an unchained second payload could inherit the
-  first composition's deadline. The accepted correction makes it flush the
-  pending pair and dispatch as a separate immediate turn; a monitor regression
-  covers lead-in, chained URL, then unchained URL.
-- A subsequent fresh review found media classification could precede control
-  detection and merge an attachment-bearing `/stop` into held prose. The
-  accepted correction detects non-empty controls independently of media before
-  coalescing and proves the command dispatches ahead of a held lead-in.
-- The next fresh review found a delayed timer callback could let a payload enter
-  after the absolute deadline. The accepted correction clears expired state,
-  flushes the overdue bucket before enqueue, and proves the late payload remains
-  a separate turn.
-- A later review found back-to-back sandwich compositions shared stale state and
-  structurally instant balloons could be promoted by reply chaining. The
-  accepted corrections start a fresh bucket on a post-payload lead-in and
-  exclude all balloon metadata from continuation promotion; both paths have
-  monitor regressions.
-- The next fresh review found that payload-boundary state existed only when the
-  joined payload had valid continuation metadata. The accepted correction always
-  records that a payload joined while making its GUID/timestamp continuation
-  anchor optional, so malformed metadata cannot admit a continuation or let a
-  later composition reuse the old deadline. Focused and production-release
-  mapped suites pass 87 and 336 tests respectively after the correction.
-- A fresh independent review of the complete metadata-safe diff found no
-  actionable high-confidence defects. Residual non-blocking gaps are the final
-  live Messages.app sandwich smoke, transport reconnect/teardown races outside
-  the source-notification harness, and anchorless RPC-repair ordering.
-- After exact commit `8ae2dea` passed a clean terminal review, `main` advanced
-  with a stabilization for the pre-existing 15-second debounce assertion and the
-  pull request became conflicting. The synchronized patch preserves the
-  sandwich implementation and adopts the stabilization's bounded timing
-  assertion. Focused, cumulative, portability, byte-reproduction, and
-  production-release mapped validation all pass again; fresh reusable-worker and
-  terminal reviews remain required before promotion.
-- A fresh reusable-worker review of exact synchronized commit `8b03058` found no
-  actionable high-confidence defects. It confirmed the conflict resolution
-  preserved both the current-main debounce assertion stabilization and the full
-  sandwich state machine. The final exact landing candidate still requires a
-  terminal fresh review.
-- Exact candidate `7ae3f32` passed terminal review and all remote checks.
-  Promotion built and packed successfully, but the local npm package install
-  failed. Reinstalling the recorded previous package also failed, so the wrapper
-  safely left the gateway stopped and retained recovery state at
-  `~/.openclaw-deploy-backups/20260730T032244Z-89073`. Production recovery is the
-  immediate priority; this failed promotion did not reach merge.
-- Recovery verified that the prior `2026.7.1-2` package, runtime config, and
-  service definition matched the retained snapshot, then restarted the gateway
-  to a healthy iMessage state. The deterministic install failure came from
-  `npm pack` preserving `@openclaw/ai: workspace:*`; npm 10 exits during
-  dependency resolution, and the same invalid protocol made the rollback
-  tarball un-installable. A pnpm-packed candidate and a normalized pnpm-packed
-  prior package both install successfully in isolated prefixes.
-- A fresh complete-diff packaging review found no implementation defect but
-  required a regression proving an unresolved dependency in the prior installed
-  package aborts rollback normalization before gateway shutdown. That accepted
-  finding is fixed and the complete cumulative lifecycle is green.
-- A fresh independent replacement rechecked the complete current diff and found
-  no actionable high-confidence defects. Residual non-blocking gaps are the
-  final live Messages.app sandwich smoke and transport reconnect/teardown races
-  outside the source-notification harness.
-- A fresh terminal reviewer independently verified exact immutable candidate
-  `af5bdf2`, including 87 focused iMessage tests, 35 deployment tests, 282
-  workspace tests, 332 mapped tests, real pnpm packaging, and production-release
-  assumptions, with no actionable high-confidence findings.
-- Review of the first plan-closeout commit found its checklist prematurely
-  implied that the issue and Todoist handoff had already occurred. The issue
-  ledger was synchronized, and the checklist now records only preparation of
-  the final handoff; the Todoist result and label mutation remain the last
-  external step after this plan is visible on `main`.
-- A fresh replacement reviewer found no actionable high-confidence findings in
-  corrected closeout `d8b73e3`. It verified the plan schema, issue/Todoist state,
-  merge and workflow evidence, recovery snapshot, installed version, running
-  gateway, and six-patch stack before the closeout merged as `c873bb0`.
-- A fresh terminal reviewer found no actionable high-confidence findings in
-  final plan-state commit `74a92bb` before it merged as `f7a049a`.
-- A later combined promotion detected an identity invariant that the reviewed
-  lifecycle did not enforce: the installed source package lost the prior
-  combined-runtime suffix and has no patchset manifest. Reconciliation review
-  must verify the chosen recovery path preserves runtime/cron state and leaves a
-  durable marker accepted by subsequent promotion guards.
-- The first combined retry exposed a second fail-closed lifecycle gap: combined
-  CI did not validate the exact post-patch frozen graph used by production.
-  Retry requires full combined validation and independent review after that
-  lifecycle is corrected.
-- The corrected combined candidate passed complete frozen-graph validation,
-  clean retained review, and clean terminal exact-commit review before promotion.
-- A fresh independent review cross-checked the reconciliation evidence and found
-  no initial issue, but the terminal exact-commit review correctly caught that a
-  later tuple-drift rollback had removed the transient patchset marker. The plan
-  now records the actual restored predecessor rather than the transient state.
-  No live delivery smoke was run under the explicit no-delivery constraint.
-- Review of that correction found the restored predecessor also lacks the
-  sandwich continuation state machine. Healthy rollback is therefore an
-  intermediate safety state, not completion; final combined promotion and exact
-  tuple landing remain required.
-- Stable public head `5b771f91...` and private head `d97c1b30...` passed the
-  complete frozen-graph lifecycle and terminal private review. The exact tuple
-  promoted successfully, passed independent read-only production checks, landed
-  as public merge `ceff0eba...` and private merge `95bfe75f...`, and passed
-  repeated production and public post-merge checks. A fresh review of the final
-  plan-only reconciliation remains.
-- The first final-reconciliation review independently verified the external
-  evidence and found one inaccurate marker hash: both plan occurrences omitted
-  the digest's final `8`. The accepted correction records the full 64-character
-  SHA-256; a fresh replacement review remains required because the diff changed.
-- The fresh replacement review independently rechecked the complete
-  reconciliation, exact public/private merge commits, post-merge workflows,
-  marker contents and hash, snapshot, installed symbols, health, cron hash, and
-  lock state. It found no actionable high-confidence defects. The remaining
-  live Messages.app smoke is intentionally excluded by the no-delivery
-  constraint.
-- Terminal review of immutable PR #58 commit `ad2d6c6...` found no actionable
-  high-confidence defects. The exact commit merged as `1e053e71...`; Integration
-  and CodeQL passed on that merge.
-- The later exact-byte hardening follow-up passed reusable remediation review,
-  complete combined validation, and fresh terminal review at `1915cc1...` with
-  no actionable findings before promotion and landing. Read-only post-landing
-  evidence confirms the iMessage state machine remains installed.
-- A fresh independent review verified the complete replacement-marker plan
-  diff, landed tuples, installed marker and symbols, snapshot artifacts,
-  runtime health, and tracker state. It found no actionable high-confidence
-  defects.
-- Terminal review of immutable PR #60 commit `4bf0dd4...` found no actionable
-  high-confidence defects. It merged as `7f4fa58...`; Integration and CodeQL
-  passed on that exact merge.
+- The landed buffered coalescer and exact-byte deployment lifecycle previously
+  completed reusable and terminal adversarial review with no unresolved
+  actionable findings.
+- The replacement-marker reconciliation landed through PR #60 and final handoff
+  through PR #61; Integration and CodeQL passed on both exact merges.
+- The latency investigation traced the maintained patch, live non-secret timing
+  settings, exact production queue/steering contracts, transcript adoption,
+  foreground delivery fence, and multimodal gap.
+- Independent review found that the first draft did not release the debouncer
+  after admission, gate speculative side effects, suppress stale output after a
+  failed successor, persist replay/reply ownership atomically, or define
+  executable rollback. The proposal now includes each required boundary.
+- Independent remediation review is pending before handoff.
+- Remediation review then identified unknown-send delivery ambiguity,
+  predecessor rollback incompatibility, incomplete circuit-breaker quarantine,
+  non-executable health/context gates, and pre-run hook bypass. The proposal now
+  documents at-most-once unknown-send behavior, rollback draining, immediate
+  quarantine, machine context/health gates, and admission-level hook fencing.
+- Final remediation review is pending before handoff.
+- Final review found that hook-owned effects could precede the returned payload
+  fence, quarantined operations could still accept buffered steering, and
+  breaker restart tests were incomplete. The proposal now fails closed to
+  buffered mode before unsupported hooks, enforces per-key quarantine across
+  both strategies, and requires deterministic coverage for every breaker trigger
+  and restart state.
+- Clean final review is pending before handoff.
+- Clean review then found that delivery suppression left stale speculative
+  assistant output in canonical transcript history and that non-dispatch hooks
+  could bypass the barrier. The proposal now uses durable versioned transcript
+  branches with atomic winner promotion and fail-closed capability scanning for
+  every pre-seal hook family.
+- Terminal review then found that `AgentSession.steer()` consumes later input
+  only after the current assistant/tool turn finishes, so stale events can
+  already exist in active agent state before steering. The proposal now runs
+  each version in an isolated speculative fork, cancels and replaces only that
+  side-effect-free branch from canonical history plus all admitted input, and
+  atomically promotes only the sealed winner. Existing steering is not used to
+  update a composition branch.
+- Fresh independent review found no actionable defects. It verified that input
+  arriving after `message_end` but before seal cannot leak stale branch events
+  into either the replacement provider prompt or canonical transcript. Remaining
+  gaps are implementation-level validation details already represented in the
+  required deterministic test matrix.
+- The first immutable-candidate review found no design defect but caught that the
+  branch predated PR #63 and would have reverted its review-policy files if
+  merged. The proposal was rebased onto current `main` with those files
+  preserved.
+- Terminal review of the exact rebased candidate found no actionable defects,
+  confirmed PR #63 remained byte-identical, and verified the complete safety and
+  deterministic-test contract. Remote CodeQL and cumulative integration checks
+  passed on that candidate; merge is pending.
 
 ### Checklist
 
-- [x] Implement selective iMessage part coalescing.
-- [x] Cover image, link, command, separate-message, replay, race, and catchup
-  behavior in focused tests.
-- [x] Document the source patch, deployment, and rollback.
-- [x] Merge and deploy the coalescing implementation.
-- [x] Correct local-versus-remote deployment guidance and tests.
-- [x] Add the cumulative shared OpenClaw integration runner and manifest.
-- [x] Expose embedded patch regressions through the managed lifecycle.
-- [x] Add deployment-topology and browser-entrypoint integration coverage.
-- [x] Strengthen repository instructions for mandatory cumulative coverage.
-- [x] Resolve CodeQL findings and pass both language analyses.
-- [x] Pass the complete managed lifecycle after syncing current `main`.
-- [x] Restore production from reviewed `main`, validate config, and confirm
-  healthy gateway and iMessage process state.
-- [x] Observe one user-originated inbound iMessage after the latest restart.
-- [x] Remove unsafe configured-agent tests and retain behavior in isolated
-  source, deployment, candidate, and recording-mock tests.
-- [x] Ensure every retained package integration test runs in the managed `ci`
-  command.
-- [x] Run the required workflow on macOS.
-- [x] Make temporary worktree cleanup signal-aware and resilient to partial
-  failures.
-- [x] Pass the complete managed lifecycle after resolving review findings.
-- [x] Remove or safely replace excluded credentialed plugin integration files
-  and enforce that retained integration tests run.
-- [x] Make child execution asynchronous and prove signal cleanup in a subprocess.
-- [x] Force and verify stale worktree deregistration after cleanup failures.
-- [x] Make recording mocks require state and reject unknown operations.
-- [x] Remove host-specific operational detail from public artifacts.
-- [x] Rerun the complete managed lifecycle after fresh-review corrections.
-- [x] Obtain and record a clean independent review of the validated
-  implementation.
-- [x] Push and merge PR #26.
-- [x] Confirm the first cumulative Integration workflow run on `main`.
-- [x] Prepare issue #28 and the Todoist ready-for-review handoff.
-- [x] Correlate read-only production logs with the reported link test.
-- [x] Add a focused regression for the observed split-link event shape.
-- [x] Correct link coalescing without broadening separate-message batching.
-- [x] Run focused tests and the complete managed cumulative lifecycle.
-- [x] Obtain a clean independent review of the complete correction diff.
-- [x] Narrow the heuristic so common deictic questions remain immediate.
-- [x] Cover standalone held-question timeout and policy behavior.
-- [x] Rerun the complete cumulative lifecycle after review hardening.
-- [x] Merge the correction and confirm the cumulative workflow on `main`.
-- [x] Deploy through the approved lifecycle and validate production read-only.
-- [x] Return issue #28 and Todoist to Ready for review.
-- [x] Correlate the second post-deployment link smoke by row and dispatch time.
-- [x] Add a regression for the measured link-preview delay boundary.
-- [x] Correct only the bounded payload-referential link timing path.
-- [x] Rerun focused tests after the timing correction.
-- [x] Rerun the complete cumulative lifecycle after review correction.
-- [x] Obtain a clean independent review of the complete timing correction.
-- [x] Merge the timing correction and verify the exact `main` Integration run.
-- [x] Deploy locally and validate production read-only.
-- [x] Document the Ready for review handoff for issue #28 and Todoist.
-- [x] Correlate the third failed production link smoke across Messages and
-  OpenClaw timing.
-- [x] Add a committed real-path regression for the newly observed failure.
-- [x] Correct the demonstrated boundary without broadening unrelated batching.
-- [x] Rerun the complete cumulative lifecycle after exact real-timer coverage.
-- [x] Obtain a clean independent review of the synchronized third correction.
-- [x] Merge, verify `main`, deploy locally, and validate production read-only.
-- [x] Return issue #28 and Todoist to Ready for review after the third smoke fix.
-- [x] Correlate the text-link-text production transcript, Messages rows, and run
-  timing.
-- [x] Add a committed real-debouncer regression for the exact sandwich sequence.
-- [x] Correct the premature payload flush without merging unrelated trailing
-  messages.
-- [x] Run focused tests and the complete cumulative managed lifecycle.
-- [x] Obtain a clean reusable-worker adversarial review after current-main
-  synchronization.
-- [x] Obtain a clean terminal adversarial review of the exact landing candidate.
-- [x] Recover and validate the prior production package, runtime state, service,
-  gateway, and iMessage health after the failed promotion.
-- [x] Produce and validate installable candidate and rollback tarballs without
-  unresolved workspace dependency protocols.
-- [x] Add cumulative deployment coverage for workspace-safe packaging.
-- [x] Rerun the complete lifecycle after packaging remediation.
-- [x] Cover rollback normalization failure before production mutation.
-- [x] Repeat reusable-worker and terminal reviews after packaging remediation.
-- [x] Promote the exact remotely green candidate, validate production read-only,
-  then merge and verify exact `main`.
-- [x] Return issue #28 and Todoist to Ready for review after the sandwich fix.
-- [x] Confirm the unmarked package, missing patchset manifest, version-mismatched
-  plist, retained prior package, and healthy gateway read-only.
-- [x] Determine the exact combined-promotion marker contract and select the
-  reviewed recovery path.
-- [x] Restore the exact prior package identity without changing cron/runtime
-  data or delivering messages.
-- [x] Prove the combined lifecycle installed its reviewed marker transiently and
-  rolled back to the exact predecessor when its landing tuple changed.
-- [x] Confirm the first combined retry failed before package swap and restored
-  the exact healthy predecessor without changing cron.
-- [x] Verify the restored predecessor package/service identity, configuration,
-  gateway health, iMessage connectivity, and absence of sandwich symbols
-  read-only.
-- [x] Revalidate and review the combined stack against a stable current public
-  candidate.
-- [x] Promote and verify the installed patchset marker and sandwich continuation
-  state machine read-only.
-- [x] Land only the exact public/private candidates that passed promotion and
-  production validation.
-- [x] Obtain a clean independent review of the corrected final reconciliation.
-- [x] Land the reconciled plan and report the exact production action and
-  recovery artifact to the dependent worker.
-- [x] Verify the later exact-byte combined promotion, replacement marker,
-  recovery snapshot, and dependent follow-up landing.
-- [x] Obtain a clean independent review of the replacement-marker
-  reconciliation.
-- [x] Land the replacement-marker plan reconciliation, then restore
-  issue #28 and Todoist to Ready for review.
+- [x] Land and validate bounded iMessage text/link/image/sandwich coalescing.
+- [x] Promote and reconcile the exact-byte production patch stack.
+- [x] Reopen the task at an investigation-only design checkpoint.
+- [x] Identify the exact current 7/15-second latency paths.
+- [x] Trace production prompt admission, steering consumption, transcript
+  persistence, follow-up fallback, and final-delivery fencing.
+- [x] Compare feasible reconciliation designs and select a recommendation.
+- [x] Define state ownership, race behavior, integration tests, rollout, and
+  rollback.
+- [x] Complete independent adversarial review of the proposal.
+- [ ] Land the investigation-only plan update and pass remote documentation gates.
+- [ ] Set issue #28 and Todoist to Ready for design review without deployment.
