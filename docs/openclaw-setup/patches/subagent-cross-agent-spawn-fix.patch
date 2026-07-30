@@ -28,7 +28,7 @@ diff --git a/src/agents/acp-spawn.test.ts b/src/agents/acp-spawn.test.ts
 index e0a33f481e..81ad8004fb 100644
 --- a/src/agents/acp-spawn.test.ts
 +++ b/src/agents/acp-spawn.test.ts
-@@ -912,6 +912,319 @@ describe("spawnAcpDirect", () => {
+@@ -912,6 +912,325 @@ describe("spawnAcpDirect", () => {
      expect(transcriptCalls[1]?.threadId).toBe("child-thread");
    });
  
@@ -256,48 +256,54 @@ index e0a33f481e..81ad8004fb 100644
 +  it.each([
 +    {
 +      label: "deny",
++      requesterAgentId: "codex",
 +      inheritedToolAllowlist: undefined,
 +      inheritedToolDenylist: ["exec"],
 +      expected: "requester denies exec",
 +    },
 +    {
 +      label: "filesystem group deny",
++      requesterAgentId: "main",
 +      inheritedToolAllowlist: undefined,
 +      inheritedToolDenylist: ["group:fs"],
 +      expected: "requester denies apply_patch",
 +    },
 +    {
 +      label: "runtime group deny",
++      requesterAgentId: "main",
 +      inheritedToolAllowlist: undefined,
 +      inheritedToolDenylist: ["group:runtime"],
 +      expected: "requester denies exec",
 +    },
 +    {
 +      label: "pattern deny",
++      requesterAgentId: "main",
 +      inheritedToolAllowlist: undefined,
 +      inheritedToolDenylist: ["exec*"],
 +      expected: "requester denies exec",
 +    },
 +    {
 +      label: "wildcard deny",
++      requesterAgentId: "main",
 +      inheritedToolAllowlist: undefined,
 +      inheritedToolDenylist: ["*"],
 +      expected: "requester denies apply_patch",
 +    },
 +    {
 +      label: "allow",
++      requesterAgentId: "main",
 +      inheritedToolAllowlist: ["sessions_spawn"],
 +      inheritedToolDenylist: undefined,
 +      expected: "requester does not allow apply_patch",
 +    },
-+  ])("rejects incompatible requester $label policy for cross-agent ACP spawns", async (testCase) => {
++  ])("rejects incompatible requester $label policy for ACP spawns", async (testCase) => {
 +    const result = await spawnAcpDirect(
 +      {
 +        task: "Keep incompatible requester policy out of ACP",
 +        agentId: "codex",
 +      },
 +      {
-+        agentSessionKey: "agent:main:main",
++        agentSessionKey: `agent:${testCase.requesterAgentId}:main`,
 +        inheritedToolAllowlist: testCase.inheritedToolAllowlist,
 +        inheritedToolDenylist: testCase.inheritedToolDenylist,
 +      },

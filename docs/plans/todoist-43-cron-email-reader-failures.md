@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Reviewing ACP command-policy remediation
+**Status:** Validating strengthened ACP compatibility coverage
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -53,30 +53,22 @@ read-only checks, and rebuild without the patch to roll back.
 
 The native and ACP cron guards, cross-agent policy isolation, generated
 snapshots, setup guidance, and cumulative regressions are implemented on
-OpenClaw `0790d9f`. Terminal review found that duplicate ACP compatibility
-preflights rejected restrictive requester policies before cross-agent isolation,
-while the corresponding regression used a permissive parent. Both findings are
-remediated by validating requester command policy only for same-agent ACP
-targets and by covering restricted allow, deny, group, pattern, and wildcard
-policies. The remediated candidate passed 288 repository tests, current prompt
-snapshots, 470 mapped patched-source tests, the candidate browser test, complete
-review, and remote Integration and CodeQL. Current `main` `6dc4e03` and the
-remote candidate `b482a80` are integrated as `8f3e030`. The exact merge result passed the full managed lifecycle with 288 repository
-tests, seven current prompt snapshots, 470 mapped patched-source tests, the
-candidate browser test, and cleanup. Terminal review then found a high-severity
-ACP regression: gating required command-policy compatibility on same-agent
-targets lets restricted requesters launch full cross-agent ACP harnesses. The
-finding is accepted and remediated. Compatibility checks remain after target
-resolution but now enforce required requester command access for every ACP
-target. Compatible cross-agent ACP calls still omit inherited session policy;
-native cross-agent reader isolation remains unchanged. The isolated patched
-source suite passes with seven current snapshots, 470 mapped tests, the
-candidate browser test, and cleanup. The complete managed lifecycle also passes
-with 288 repository tests. Independent re-review remains. Production remains on
-the prior reviewed build.
+OpenClaw `0790d9f`. ACP compatibility checks now run after target resolution but
+enforce the requester's required host command access for every ACP target,
+preventing restricted agents from escalating through a cross-agent harness.
+Compatible cross-agent ACP calls omit inherited session policy, while native
+cross-agent reader calls use the reader profile. The complete managed lifecycle
+passes with 288 repository tests, seven current prompt snapshots, 470 mapped
+patched-source tests, the candidate browser test, and cleanup. Independent
+re-review found the code remediation sound and mutation-tested the regressions;
+it identified stale plan wording and an inverse-gate coverage gap because all
+incompatible cases were cross-agent. The plan is synchronized and the table now
+covers both same- and cross-agent incompatibility. The isolated patched-source
+lifecycle passes with seven current snapshots, 470 mapped tests, the candidate
+browser test, and cleanup; full cumulative validation remains.
 Production remains healthy on the prior reviewed host-combined build, and the
-cron definition remains unchanged. Exact-candidate remote checks, host-combined
-promotion, merge, and post-merge validation remain.
+cron definition remains unchanged. Exact-candidate review and remote checks,
+host-combined promotion, merge, and post-merge validation remain.
 
 ### Scope and acceptance criteria
 
@@ -124,8 +116,8 @@ promotion, merge, and post-merge validation remain.
 - ACP inheritance compares against the already-resolved requester agent ID so
   global session scope honors `requesterAgentIdOverride`.
 - ACP command compatibility checks run after effective target resolution and
-  apply only to same-agent children; the tool wrapper no longer rejects
-  cross-agent policy before the runtime can classify it.
+  apply to every resolved ACP target; the tool wrapper no longer duplicates
+  them.
 - Coordinator promotion sets `requireAgentId=true` before expanding
   `allowAgents`; interruption therefore leaves delegation fail-closed.
 - The fix belongs in the existing provider-neutral
@@ -184,8 +176,9 @@ Implemented:
     committed before the self-target allowlist expansion, with a repository
     contract test.
 23. Centralize ACP inherited-policy compatibility validation in
-    `spawnAcpDirect` after target resolution, retain same-agent denial coverage,
-    and make the cross-agent regression use an actually restrictive policy.
+    `spawnAcpDirect` after target resolution, enforce it for every ACP target,
+    and cover both same- and cross-agent denial plus compatible cross-agent
+    non-inheritance.
 
 Feature implementation, review remediation, release porting, promotion, and
 read-only production validation are complete. Cole requested full landing, so
@@ -508,6 +501,13 @@ lifecycle.
 - Complete remediation validation passes with repository build/lint, 288
   repository tests, seven current prompt snapshots, 470 mapped patched-source
   tests, the candidate browser test, and cleanup.
+- Security remediation re-review found no code defect and mutation-tested the
+  cross-agent escalation regression. It found stale architecture wording and an
+  inverse-gate coverage gap because every incompatible-policy case used a
+  cross-agent target. The plan wording is corrected and one table case now uses
+  a same-agent requester so either relation-specific gate regresses the suite.
+  The isolated patched-source lifecycle passes with seven current snapshots, 470
+  mapped tests, the candidate browser test, and cleanup.
 
 ### Checklist
 
