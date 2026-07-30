@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Preparing current-base exact landing candidate
+**Status:** Preparing exact ACP isolation candidate
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -91,6 +91,16 @@ The complete managed pool now passes with 288 repository tests, current prompt
 snapshots, 464 mapped patched-source tests, the candidate browser test, and
 cleanup. Fresh complete-diff review found no actionable findings. The exact
 commit, terminal review, remote gates, promotion, merge, and post-merge
+verification remained. Terminal review then found duplicate ACP compatibility
+preflights still rejected restrictive requester policies before cross-agent
+isolation. Compatibility validation is now centralized after target resolution:
+same-agent ACP children remain restricted, while cross-agent children use the
+target profile. Focused validation passed in a disposable patched-source
+worktree. The complete managed pool now passes with 288 repository tests,
+current prompt snapshots, 470 mapped patched-source tests, the candidate browser
+test, and cleanup. Fresh complete-diff review found no actionable findings,
+verified all generated blob hashes, and passed targeted repository contracts.
+The exact commit, terminal review, remote gates, promotion, merge, and post-merge
 verification remain. The cron definition remains unchanged.
 
 ### Scope and acceptance criteria
@@ -138,6 +148,9 @@ verification remain. The cron definition remains unchanged.
   cross-agent children continue to use the target profile's tool policy.
 - ACP inheritance compares against the already-resolved requester agent ID so
   global session scope honors `requesterAgentIdOverride`.
+- ACP command compatibility checks run after effective target resolution and
+  apply only to same-agent children; the tool wrapper no longer rejects
+  cross-agent policy before the runtime can classify it.
 - Coordinator promotion sets `requireAgentId=true` before expanding
   `allowAgents`; interruption therefore leaves delegation fail-closed.
 - The fix belongs in the existing provider-neutral
@@ -195,6 +208,9 @@ Implemented:
 22. Order coordinator policy updates so the restrictive explicit-target flag is
     committed before the self-target allowlist expansion, with a repository
     contract test.
+23. Centralize ACP inherited-policy compatibility validation in
+    `spawnAcpDirect` after target resolution, retain same-agent denial coverage,
+    and make the cross-agent regression use an actually restrictive policy.
 
 Feature implementation, review remediation, release porting, promotion, and
 read-only production validation are complete. Cole requested full landing, so
@@ -374,6 +390,15 @@ Completed:
   mapped patched-source tests, the candidate browser test, and cleanup.
 - Fresh complete-diff review of the current-base integration found no actionable
   findings; terminal review and remote validation remain.
+- Terminal exact-commit review found one medium ACP isolation defect: duplicate
+  wrapper/runtime compatibility preflights rejected restrictive requester policy
+  before cross-agent classification. The wrapper preflight is removed, runtime
+  checks are same-agent-only after target resolution, and the complete managed
+  lifecycle passes with repository build/lint, 288 repository tests, current
+  prompt snapshots, 470 mapped patched-source tests, the candidate browser test,
+  and cleanup.
+- Fresh complete-diff re-review found no actionable findings, verified all 15
+  generated source blob hashes, and passed targeted repository contracts.
 - Combined-lifecycle preflight correctly blocked production mutation because the
   host-local manifest still pins repository head `7c887496`. Production remains
   healthy on OpenClaw `2026.7.1-2` / `0790d9f`; no recovery snapshot was needed.
@@ -481,6 +506,10 @@ lifecycle.
   movement invalidated that landing tuple before promotion. Integration of
   `863666f` is in progress.
 - Current-base complete-diff review is clean.
+- Terminal review found incomplete ACP cross-agent isolation at duplicate
+  compatibility preflights. The finding is accepted and remediated; full
+  validation passes and review re-check remains.
+- ACP isolation remediation re-review is clean.
 - Terminal exact-commit review: result is recorded only in the issue ledger after
   the final commit so the reviewed diff remains unchanged.
 
