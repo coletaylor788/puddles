@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Publishing final candidate for remote gates
+**Status:** Promoting exact remote-green candidate
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -68,8 +68,11 @@ lifecycle passes with seven current snapshots, 470 mapped tests, the candidate
 browser test, and cleanup. The full cumulative lifecycle also passes with 288
 repository tests. Final exact-commit review found no actionable defects and
 independently verified patch integrity, ACP security enforcement, inverse-gate
-coverage, and publication safety. Required hosted checks remain before exact
-promotion and landing.
+coverage, and publication safety. Exact head `83b0d08` is published over base
+`6dc4e03`; cumulative Integration and all CodeQL analyses passed. Promote those
+exact public patch bytes through the reviewed host-combined lifecycle, validate
+the read-only production path, then recheck the unchanged pull request tuple
+before landing.
 Production remains healthy on the prior reviewed host-combined build, and the
 cron definition remains unchanged. Exact-candidate review and remote checks,
 host-combined promotion, merge, and post-merge validation remain.
@@ -519,6 +522,9 @@ lifecycle.
   verified all patch hunks and counts, unconditional ACP compatibility after
   target resolution, both same- and cross-agent inverse-gate regressions,
   cron-target semantics, promotion ordering, and publication safety.
+- Exact published head `83b0d08` over base `6dc4e03` passed hosted cumulative
+  Integration and all CodeQL analyses. Promotion must pin and verify this exact
+  remote-green public SHA before production mutation.
 
 ### Checklist
 
