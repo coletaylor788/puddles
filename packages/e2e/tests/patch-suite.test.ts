@@ -101,4 +101,14 @@ describe("OpenClaw cumulative patch suite", () => {
     expect(snapshotCheck).toBeGreaterThan(finalApply);
     expect(mappedTests).toBeGreaterThan(snapshotCheck);
   });
+
+  it("runs mapped source suites serially to isolate global mocks", () => {
+    const runner = readFileSync(
+      join(packageDir, "bin", "openclaw-test-env.mjs"),
+      "utf8",
+    );
+
+    expect(runner).toContain('"--no-file-parallelism"');
+    expect(runner).toContain('"--maxWorkers=1"');
+  });
 });

@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Reviewing landing candidate
+**Status:** Reviewing final landing candidate
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -52,8 +52,11 @@ OpenClaw `0790d9f`. Production runs a reviewed combined deployment containing
 these public patches, with healthy gateway and read-only Gmail validation. The
 branch now includes current `main`'s atomic deployment and rollback lifecycle;
 the complete integrated lifecycle is green. A fresh terminal review of the
-landing candidate and remote required checks remain. The cron definition remains
-unchanged.
+landing candidate is clean. Remote Integration exposed cross-file Vitest mock
+contamination when mapped ACP and iMessage suites run concurrently on the CI
+runner; the cumulative runner now executes mapped suites serially and the full
+CI-equivalent lifecycle is green. Fresh terminal review and remote checks remain.
+The cron definition remains unchanged.
 
 ### Scope and acceptance criteria
 
@@ -145,6 +148,8 @@ Implemented:
     sandbox recovery lifecycle during landing.
 19. Keep the integration workflow's OpenClaw checkout ref synchronized with the
     cumulative patch manifest, enforced by a repository contract test.
+20. Run mapped OpenClaw source suites without file-level parallelism so their
+    global gateway/module mocks cannot contaminate one another on CI runners.
 
 Feature implementation, review remediation, release porting, promotion, and
 read-only production validation are complete. Cole requested full landing, so
@@ -272,6 +277,12 @@ Completed:
     intact;
   - complete managed lifecycle passed with 275 repository tests, current
     snapshots, 447 mapped patched-source tests, candidate test, and cleanup.
+  - remote Integration then reproduced cross-file mock contamination under
+    concurrent Vitest scheduling;
+  - serial mapped-suite execution added and enforced by a contract test;
+  - `CI=true node packages/e2e/bin/openclaw-test-env.mjs ci` passed with 276
+    repository tests, current snapshots, 447 mapped patched-source tests,
+    candidate test, and cleanup.
 
 ### Rollout and rollback
 
@@ -330,7 +341,9 @@ lifecycle.
 - Production: reviewed source build promoted successfully; read-only gateway,
   policy, guard, reader, and cron-shaped delegation checks are green.
 - Landing: current-main conflicts and workflow pin drift are resolved locally and
-  revalidated; terminal candidate review and remote checks pending.
+  revalidated; terminal candidate review is clean. Remote CI isolation
+  remediation is green; fresh terminal candidate review and remote checks
+  pending.
 - Terminal exact-commit review: result is recorded only in the issue ledger after
   the final commit so the reviewed diff remains unchanged.
 
