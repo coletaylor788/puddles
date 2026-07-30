@@ -1,6 +1,6 @@
 # Coalesce split iMessage message parts
 
-- **Status:** In progress - resynchronizing sandwich correction with current main
+- **Status:** In progress - reviewing resynchronized sandwich correction
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-29
 - **Owner:** Cole Taylor
@@ -65,10 +65,12 @@ latency, is the demonstrated boundary. The corrected patch retains matched
 payloads through the first absolute deadline, admits only bounded exact-chain
 continuations, passes focused and cumulative validation on both maintained
 OpenClaw releases, and has clean reusable-worker and terminal reviews at
-`8ae2dea`. The default branch advanced after publication and the pull request is
-now conflicting, so that terminal candidate is invalidated before promotion.
-The correction must be synchronized, revalidated, and reviewed again; production
-was not changed.
+`8ae2dea`. The default branch advanced after publication with a stabilization for
+an existing debounce assertion. The conflict was resolved by carrying that
+stabilization into the regenerated sandwich patch. The synchronized stack again
+passes 87 focused tests, 336 production-release mapped tests, byte reproduction,
+and the complete cumulative lifecycle. The prior terminal candidate remains
+invalidated, fresh reviews are required, and production was not changed.
 
 ### Scope and acceptance criteria
 
@@ -606,6 +608,13 @@ No data migration or persistent message-state conversion is involved.
   actionable high-confidence defects. Residual non-blocking gaps are the final
   live Messages.app sandwich smoke, transport reconnect/teardown races outside
   the source-notification harness, and anchorless RPC-repair ordering.
+- After exact commit `8ae2dea` passed a clean terminal review, `main` advanced
+  with a stabilization for the pre-existing 15-second debounce assertion and the
+  pull request became conflicting. The synchronized patch preserves the
+  sandwich implementation and adopts the stabilization's bounded timing
+  assertion. Focused, cumulative, portability, byte-reproduction, and
+  production-release mapped validation all pass again; fresh reusable-worker and
+  terminal reviews remain required before promotion.
 
 ### Checklist
 
@@ -678,7 +687,8 @@ No data migration or persistent message-state conversion is involved.
 - [x] Correct the premature payload flush without merging unrelated trailing
   messages.
 - [x] Run focused tests and the complete cumulative managed lifecycle.
-- [x] Obtain a clean reusable-worker adversarial review.
+- [ ] Obtain a clean reusable-worker adversarial review after current-main
+  synchronization.
 - [ ] Obtain a clean terminal adversarial review of the exact landing candidate.
 - [ ] Promote the exact remotely green candidate, validate production read-only,
   then merge and verify exact `main`.
