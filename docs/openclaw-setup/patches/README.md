@@ -26,7 +26,7 @@ Why the switch:
 - **Preserves sandboxed-subagent tool-bridging.** A from-source build keeps the
   reader / browser-agent subagents wired to their full plugin tool sets — the
   earlier worry that source builds would break tool-bridging was disproven
-  (live source build verified on 2026.7.1 at `0790d9f`).
+  (verified on 2026.7.1 at `0790d9f`).
 
 The retired `apply-*.mjs` dist patchers no longer describe the deploy; each
 patch doc keeps a short "retired — see `.patch`" note pointing at its source
@@ -36,11 +36,12 @@ diff.
 
 | Patch | Doc | Source diff | Status |
 |---|---|---|---|
-| `sessions_yield` block-at-yield + gather (cron + interactive) | [`sessions-yield-subagent-leak-fix.md`](./sessions-yield-subagent-leak-fix.md) | [`sessions-yield-block-and-gather.patch`](./sessions-yield-block-and-gather.patch) | Live source build verified on 2026.7.1 (`0790d9f`) |
-| Explicit cron subagent targeting + cross-agent tool inheritance | [`subagent-cross-agent-spawn-fix.md`](./subagent-cross-agent-spawn-fix.md) | [`subagent-cross-agent-spawn-fix.patch`](./subagent-cross-agent-spawn-fix.patch) | Live source build verified on 2026.7.1 (`0790d9f`). Pending upstream PR (see plan 025). |
-| `skill_workshop` for sandboxed agents | [`skill-workshop-sandbox-fix.md`](./skill-workshop-sandbox-fix.md) | [`skill-workshop-sandbox-fix.patch`](./skill-workshop-sandbox-fix.patch) | Live source build verified on 2026.7.1 (`0790d9f`) |
-| Selective iMessage text/link/image part coalescing | [`imessage-message-part-coalescing.md`](./imessage-message-part-coalescing.md) | [`imessage-message-part-coalescing.patch`](./imessage-message-part-coalescing.patch) | Live source build verified on 2026.7.1 (`0790d9f`) |
-| Browser sandbox user-data-dir env override + stale-singleton cleanup | [`browser-userdata-dir-fix.md`](./browser-userdata-dir-fix.md) | [`browser-userdata-dir-fix.patch`](./browser-userdata-dir-fix.patch) | Live source build and browser image refresh verified on 2026.7.1 (`0790d9f`). Pending upstream PR (see plan 023). |
+| `sessions_yield` block-at-yield + gather (cron + interactive) | [`sessions-yield-subagent-leak-fix.md`](./sessions-yield-subagent-leak-fix.md) | [`sessions-yield-block-and-gather.patch`](./sessions-yield-block-and-gather.patch) | Verified on 2026.7.1 (`0790d9f`) |
+| Explicit cron subagent targeting + cross-agent tool inheritance | [`subagent-cross-agent-spawn-fix.md`](./subagent-cross-agent-spawn-fix.md) | [`subagent-cross-agent-spawn-fix.patch`](./subagent-cross-agent-spawn-fix.patch) | Verified on 2026.7.1 (`0790d9f`). Pending upstream PR (see plan 025). |
+| `skill_workshop` for sandboxed agents | [`skill-workshop-sandbox-fix.md`](./skill-workshop-sandbox-fix.md) | [`skill-workshop-sandbox-fix.patch`](./skill-workshop-sandbox-fix.patch) | Verified on 2026.7.1 (`0790d9f`) |
+| Selective iMessage text/link/image part coalescing | [`imessage-message-part-coalescing.md`](./imessage-message-part-coalescing.md) | [`imessage-message-part-coalescing.patch`](./imessage-message-part-coalescing.patch) | Verified on 2026.7.1 (`0790d9f`) |
+| Sandbox recreate discovery failure propagation | [`sandbox-discovery-failure-fix.md`](./sandbox-discovery-failure-fix.md) | [`sandbox-discovery-failure-fix.patch`](./sandbox-discovery-failure-fix.patch) | Verified in the managed patch pool on 2026.7.29 |
+| Browser sandbox user-data-dir env override + singleton cleanup | [`browser-userdata-dir-fix.md`](./browser-userdata-dir-fix.md) | [`browser-userdata-dir-fix.patch`](./browser-userdata-dir-fix.patch) | Verified on 2026.7.1 (`0790d9f`). Pending upstream PR (see plan 023). |
 
 > **Retired:** a former cron+subagent announce-delivery fix (`cron-announce`) was
 > retired on 2026.6.11 — superseded by block-at-yield, and its external
@@ -72,29 +73,81 @@ wrapper:
    skipped; a patch that no longer applies fails loudly (upstream refactor →
    re-port it).
 2. **Builds** from source (`pnpm build`).
-3. **Packs patched runtime workspaces** — currently `packages/ai` — into a
-   durable deployment-artifact directory, temporarily binds the root manifest to
-   that exact tarball, then packs the root package. The wrapper disables pnpm's
-   dependency auto-install during prepack and restores both `package.json` and
-   `pnpm-lock.yaml` on exit.
-4. **Installs** the root tarball on the current host. Local deployments retain
-   both artifacts under `~/.openclaw/deploy-artifacts`; explicit remote
-   deployments transfer both to the target's corresponding durable directory.
-   This keeps the installed root package's `file:` dependency resolvable and
-   prevents npm from substituting unpatched registry code.
-5. **Migrates auth** — runs `openclaw doctor --fix --yes`. 2026.6.x moved
-   provider auth from the legacy `auth-profiles.json` into a per-agent SQLite
-   store, and **bare upgrades don't auto-migrate** (you'd get "No API key
-   found"). `doctor --fix` imports the legacy JSON into SQLite (backs up +
-   removes the old files); it's idempotent once migrated. **Required** on
-   2026.6.x upgrades.
-6. **Restarts** the gateway LaunchAgent (`launchctl kickstart -k`).
-7. **Refreshes the sandbox-browser image** — the browser patch edits
+3. **Serializes and packs the source build** — acquires a lock in the source
+   checkout's Git administrative directory before patch application, build, or
+   pack, and holds it through deployment. `npm pack` writes to a per-invocation
+   temporary directory, so concurrent invocations neither mutate shared build
+   output nor delete or consume one another's candidate.
+4. **Serializes deployment** — acquires a target-host lock so global package,
+   state migration, restart, and rollback operations cannot overlap. Remote
+   deployments use a unique staging filename.
+5. **Quiesces and snapshots recovery state** — stops the gateway and boundedly
+   waits until launchd no longer reports the service before any state copy,
+   packs the currently installed OpenClaw package with lifecycle scripts
+   disabled (production installs do not contain the source-only prepack
+   toolchain), clones the complete `~/.openclaw`
+   runtime tree with APFS copy-on-write semantics, and preserves the gateway
+   service definition under `~/.openclaw-deploy-backups/`. Failure to make the
+   complete clone aborts before package replacement and restarts the prior
+   gateway.
+6. **Installs** the tarball on the current host (`npm install -g <tarball>`).
+7. **Migrates state** — runs `openclaw doctor --fix --yes` with
+   `OPENCLAW_SERVICE_REPAIR_POLICY=external` while the gateway is stopped, then
+   verifies the service remains unloaded. Migration failure or unexpected
+   activation
+   is fatal; the deploy no longer restarts the gateway and reports success after
+   a failed repair.
+8. **Refreshes the sandbox-browser image while the gateway remains stopped and
+   the target lock remains held** — the browser patch edits
    `scripts/sandbox-browser-entrypoint.sh`, which the npm package does **not**
    ship, so the wrapper copies the patched entrypoint to the mini's
-   `sandbox-build`, rebuilds the `openclaw-sandbox-browser:bookworm-slim` image,
-   and recreates the `browser-agent` container. (Skipped if the entrypoint
-   carries no `FIX-BROWSER-*` marker.)
+   `sandbox-build`, builds a uniquely tagged candidate image, promotes it only
+   after a successful build, and recreates the `browser-agent` container. The
+   previous entrypoint and production image identity are restored if recreation,
+   interruption, gateway restart, or readiness fails. The gateway starts only
+   after this rollback-capable work finishes. (Skipped if the entrypoint carries
+   no `FIX-BROWSER-*` marker.)
+9. **Restarts and probes** the gateway LaunchAgent. The deploy waits for the
+   payload-free `openclaw gateway health --port <local-port>` probe and fails if
+   readiness does not arrive within the configured bound. An environment-
+   selected remote gateway cannot satisfy this probe.
+10. **Rolls back automatically** on package, migration, interruption, browser,
+    restart, or readiness failure. After confirmed shutdown it restores runtime,
+    plist, entrypoint, and image state, then recreates sandboxes with the patched
+    candidate CLI so discovery errors remain visible. Only after recreation does
+    it reinstall the previous package, restart the prior gateway, and check the
+    same local port. State created by a failed migration is retained separately
+    for diagnosis. Shutdown, reverse-clone, atomic-swap, browser restoration,
+    previous-package, or plist failure is restart-blocking. Signals are deferred
+    until rollback reaches a safe terminal state.
+
+Do not use `openclaw update` for this patched production install. The built-in
+updater bypasses this patch stack, recovery snapshot, migration gate, readiness
+probe, and rollback. Move the source checkout to the intended release only when
+that upgrade is explicitly approved, then rerun `apply-and-deploy.sh`.
+
+The readiness bound defaults to 30 one-second attempts on local port `18789`.
+Tests and controlled deployments can override it with `GATEWAY_PORT`,
+`GATEWAY_HEALTH_ATTEMPTS`, and `GATEWAY_HEALTH_INTERVAL_SECONDS`; all must be
+positive integers.
+
+Recovery traverses the runtime tree in userspace and calls macOS `clonefile(2)`
+only for regular files. It recreates directories, symlinks, and hard links and
+uses non-recursive, no-follow `copyfile(3)` metadata operations to preserve
+POSIX attributes, ACLs, and extended attributes without invoking the strongly
+discouraged recursive directory clone. Unlike `cp -cR`, regular-file cloning
+never falls back to a physical copy. `ENOTSUP`, `EXDEV`, unsupported entry
+types, and other failures abort before package replacement and restart the
+prior gateway.
+The helper enables `COPYFILE_STATE_PRESERVE_SUID` and explicitly reapplies
+source modes after native copy operations so setuid/setgid bits survive even
+when the platform clone path clears them.
+Before creating output, the helper rejects destinations inside the source by
+both lexical ancestry and existing-ancestor filesystem identity, covering
+case-insensitive APFS aliases and symlinked path components.
+The configured runtime root itself must be a real directory; deployment rejects
+a symlinked root before stopping the gateway so rollback never replaces root
+topology.
 
 To build on one host and deploy to another, set `MINI_HOST` explicitly:
 
@@ -105,13 +158,6 @@ MINI_HOST=<target-host> OPENCLAW_SRC=~/git/openclaw \
 
 Only explicit remote deploys use `scp` and `ssh`; the script has no remote-host
 default.
-
-Use a disposable clean source worktree for each deployment. `EXIT`, `INT`,
-`TERM`, and `HUP` restore packaging inputs, but an uncatchable process kill can
-interrupt cleanup; if that happens, inspect `package.json` and `pnpm-lock.yaml`
-and restore them from the worktree before retrying. Source patches intentionally
-remain applied, so discard the deployment worktree after the run rather than
-reusing it.
 
 Validate afterward (`openclaw --version`, run a cron with a subagent).
 

@@ -93,7 +93,8 @@ suites, and uncommitted checks do not count.
 - patched browser entrypoint profile and singleton cleanup;
 - recording message and PIM write adapters;
 - manifest completeness and pinned-source enforcement;
-- reusable adversarial-review worker and anti-churn workflow contracts; and
+- reusable adversarial-review worker, anti-churn, and worker-owned completion
+  workflow contracts; and
 - shared utility parsing and complexity regressions.
 
 ## Adding coverage

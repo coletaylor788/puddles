@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Landing
+**Status:** Reviewing landing candidate
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -46,40 +46,14 @@ checks, and rebuild without the patch to roll back.
 
 ### State
 
-Native and ACP cron guards, explicit self-target coverage, prompt snapshots,
-managed snapshot enforcement, setup examples, and upstream documentation are
-implemented and validated. The promotion hazard is remediated: the documented
-command derives the new allowlist from the recorded live policy and mutates only
-two leaf keys. The inherited-default edge case now fails closed before mutation,
-and strict shell error handling prevents partial mutation. ACP-disabled errors
-retain precedence, configured top-level ACP targeting is covered, and the source
-JSDoc matches the conditional default. Full managed validation and independent
-complete-diff review are clean. Initial promotion exposed that the patch
-lifecycle still targets 2026.6.11 while the live config/runtime are 2026.7.1-2.
-The older package installed but restart was refused; package and policy rollback
-restored a healthy 2026.7.1-2 gateway. The changed patches are now ported, the
-remaining stack applies cleanly, and the managed lifecycle passes on the live
-release commit. Independent review found one low documentation overclaim:
-2026.7.1-2 is source-tested and promotion-pending, not yet live-verified.
-The patch table and changed patch docs now make that distinction. The cron
-definition remains unchanged. Final independent re-check found no actionable
-finding; promotion can retry on the matching 2026.7.1-2 release. The final subagent patch header and verification
-line now use the same source-tested/live-promotion-pending qualifier.
-Matching-release installation then failed during npm dependency resolution.
-Investigation traced this to the root package retaining
-`@openclaw/ai: workspace:*`; registry substitution would silently discard
-patched runtime workspace code. The deploy wrapper now packs patched
-`packages/ai`, binds the root artifact to that exact tarball for local and remote
-installation, and restores the source manifest on exit. Validation is green;
-independent review found prepack/source-mutation and artifact-lifetime gaps.
-Those gaps are remediated and the complete managed lifecycle is green.
-Re-review found one bounded post-install artifact-retention issue; it is fixed
-and revalidated. Final review found one low test gap in the remote root install
-path assertion; local and remote install paths are now asserted exactly and the
-targeted suite passes. Final independent re-check found no actionable finding;
-the reviewed source build is promoted, and read-only production validation
-succeeded, including a cron-shaped main-to-reader Gmail read with no delivery or
-mailbox mutation.
+The native and ACP cron guards, cross-agent policy isolation, generated
+snapshots, setup guidance, and cumulative regressions are implemented on
+OpenClaw `0790d9f`. Production runs a reviewed combined deployment containing
+these public patches, with healthy gateway and read-only Gmail validation. The
+branch now includes current `main`'s atomic deployment and rollback lifecycle;
+the complete integrated lifecycle is green. A fresh terminal review of the
+landing candidate and remote required checks remain. The cron definition remains
+unchanged.
 
 ### Scope and acceptance criteria
 
@@ -119,11 +93,6 @@ mailbox mutation.
   leaf update cannot fall through to a partial second mutation.
 - The patch manifest and deployment source must match the live runtime release;
   version regressions are not promotable.
-- Source deployment packs patched runtime workspaces and installs those exact
-  artifacts instead of resolving patched workspace code from the registry.
-- Installed file dependencies remain in a durable deployment artifact directory;
-  the wrapper restores both manifest and lockfile and disables prepack's
-  dependency auto-install.
 - The cron-key default applies to the immediate scheduled requester; coordinator
   descendants rely on the promoted `requireAgentId=true` policy.
 - Same-agent children continue to inherit parent restrictions; explicit
@@ -170,23 +139,17 @@ Implemented:
     default.
 16. Port the complete patch stack and cumulative manifest to the live
     2026.7.1-2 commit.
-17. Pack patched `packages/ai` as a deployment artifact and bind the root package
-    to that exact tarball before `npm pack`, with lifecycle regressions and
-    rollback.
-18. Preserve durable local/remote artifact paths, restore package manifest and
-    lockfile, disable prepack dependency mutation, and test exact local/remote
-    references plus failure cleanup.
+17. Investigate source-workspace packaging after a public-only install failure;
+    use the host's reviewed combined lifecycle for the materialized runtime graph.
+18. Preserve current `main`'s atomic public deployment, rollback, readiness, and
+    sandbox recovery lifecycle during landing.
 19. Keep the integration workflow's OpenClaw checkout ref synchronized with the
     cumulative patch manifest, enforced by a repository contract test.
 
-Feature implementation, review remediation, and release porting are complete.
-Deployment packaging remediation is implemented and independently reviewed.
-The first packaging review produced accepted findings; hardening is complete.
-Promotion and read-only production validation are complete.
-The final handoff diff is validated and ready for exact-commit review.
-Cole requested full landing rather than review handoff. The open pull request is
-being updated onto current `main`; CI pin drift and merge conflicts are being
-resolved before merge.
+Feature implementation, review remediation, release porting, promotion, and
+read-only production validation are complete. Cole requested full landing, so
+the pull request is being integrated with current `main` and rerun through all
+required checks.
 
 ### Validation
 
@@ -274,48 +237,17 @@ Completed:
   - complete managed lifecycle passed with repository build/lint, 242 repository
     tests, current snapshots, 426 mapped patched-source tests, candidate test,
     and cleanup.
-- Matching-release packaging:
-  - source build and root package creation succeeded on 2026.7.1-2;
-  - global npm install failed during `workspace:*` dependency resolution before
-    gateway restart;
-  - rollback restored package, policy, and healthy gateway;
-  - throwaway-prefix proof succeeded after packing patched `packages/ai` and
-    binding the root package to that local artifact.
-- Packaging remediation:
-  - deploy wrapper packs patched `packages/ai` before the root package;
-  - local artifacts use an absolute local file reference, while remote promotion
-    transfers both artifacts and uses the remote `/tmp` reference;
-  - root `package.json` is restored on exit;
-  - deployment topology tests prove exact workspace binding, local/remote
-    transfer behavior, and manifest restoration;
-  - targeted tests passed, followed by the complete managed lifecycle with 242
-    repository tests, current snapshots, 426 mapped patched-source tests,
-    candidate test, and cleanup.
-- Packaging review findings accepted:
-  - root prepack may auto-install after the temporary manifest rewrite and mutate
-    lockfile/workspace links;
-  - tests must assert exact local and remote file references;
-  - temporary backups and dependency artifacts need explicit lifecycle handling;
-  - operator documentation must describe the two-artifact packaging and recovery.
-- Packaging hardening:
-  - disables pnpm dependency auto-install during root prepack;
-  - restores both `package.json` and `pnpm-lock.yaml` and deletes backups;
-  - retains local artifacts in a durable directory and transfers remote artifacts
-    to a durable target directory;
-  - tests exact local/remote `file:` references, source restoration, and failure
-    cleanup;
-  - complete managed lifecycle passes with 243 repository tests, current
-    snapshots, 426 mapped patched-source tests, candidate test, and cleanup.
-- Packaging re-review remediation:
-  - local artifact retention now begins immediately after successful install, so
-    restart or browser-refresh failure preserves recovery tarballs;
-  - deployment tests cover local success, remote success, pre-install pack
-    failure, and post-install restart failure;
-  - full managed lifecycle passes with 244 repository tests, current snapshots,
-    426 mapped patched-source tests, candidate test, and cleanup.
+- Deployment integration:
+  - early public-only source-install attempts failed safely and rolled back;
+  - the release port and public patch pool remained green throughout;
+  - current `main`'s atomic package/state/browser rollback lifecycle superseded
+    the draft public-only packaging changes during conflict resolution;
+  - the host combined lifecycle materialized the full runtime dependency graph,
+    preserved all public patches, and completed production promotion.
 - Production promotion and validation:
-  - deployed the reviewed `0790d9f` source build and refreshed the browser image;
-  - installed root package retains a durable patched `@openclaw/ai` artifact;
+  - deployed the reviewed `0790d9f` combined source build and refreshed the
+    browser image;
+  - installed runtime graph contains the expected patched AI workspace;
   - gateway connectivity and event-loop health are green;
   - coordinator policy preserves all existing targets and requires explicit
     agent IDs;
@@ -335,22 +267,25 @@ Completed:
 - Landing:
   - required CI failure traced to the integration workflow checking out the old
     OpenClaw pin while the cumulative manifest uses `0790d9f`;
-  - workflow/manifest pin contract and current-main integration pending.
+  - workflow/manifest pin contract added;
+  - current `main` integrated with its six-patch atomic deployment lifecycle
+    intact;
+  - complete managed lifecycle passed with 275 repository tests, current
+    snapshots, 447 mapped patched-source tests, candidate test, and cleanup.
 
 ### Rollout and rollback
 
 Apply and deploy only through
 `docs/openclaw-setup/patches/apply-and-deploy.sh` with `MINI_HOST` unset on the
-target Mac mini. Before deployment, record the current live
-`agents.list[0].subagents` object, preserve all existing worker targets while
-adding `main`, set `requireAgentId=true`, and verify that subtree. The wrapper
-then builds and packs the complete patch stack, installs the package, migrates
-auth, and restarts the gateway. Roll back by installing the previous package and
-restoring the recorded policy object; revalidate gateway health after either
-failure.
+target Mac mini for the provider-neutral stack. The wrapper serializes build and
+deployment, snapshots package/runtime/service/browser state, probes readiness,
+and rolls back automatically on failure. Hosts with an additional local overlay
+must use their reviewed combined lifecycle so the public stack and complete
+runtime dependency graph promote atomically.
 
-Production now runs the pinned `0790d9f` source build. Recovery package, prior
-policy snapshot, and durable deployment artifacts remain available.
+Production runs a combined build at pinned source `0790d9f` containing these
+public patches. Checksummed rollback snapshots are retained by the host
+lifecycle.
 
 ### Review log
 
@@ -388,16 +323,14 @@ policy snapshot, and durable deployment artifacts remain available.
   one low status-wording overclaim. Re-check is technically clean and found one
   remaining qualifier in the subagent patch doc; remediation complete and final
   re-check completed with no actionable findings.
-- Packaging diagnosis: matching-release installation failure was traced to
-  unpublishable workspace protocol and unbundled patched runtime code. The
-  first review findings are remediated and revalidated; fresh complete-diff
-  review found one low artifact-retention issue, now remediated and revalidated;
-  final re-check found one low remote install-path assertion gap; remediation
-  complete and final re-check completed with no actionable findings.
+- Deployment integration review: source-workspace packaging and rollback risks
+  were investigated and independently reviewed. Current `main` superseded the
+  draft public-only wrapper with its atomic lifecycle; the host combined
+  lifecycle preserved the public patches and validated the materialized graph.
 - Production: reviewed source build promoted successfully; read-only gateway,
   policy, guard, reader, and cron-shaped delegation checks are green.
-- Landing: pull request conflicts with current `main` and required cumulative CI
-  is failing on workflow pin drift; remediation in progress.
+- Landing: current-main conflicts and workflow pin drift are resolved locally and
+  revalidated; terminal candidate review and remote checks pending.
 - Terminal exact-commit review: result is recorded only in the issue ledger after
   the final commit so the reviewed diff remains unchanged.
 
@@ -414,4 +347,5 @@ policy snapshot, and durable deployment artifacts remain available.
 - [x] Finalize and commit the exact handoff diff.
 - [x] Prepare the exact handoff commit for terminal adversarial review; record
   its result only in the issue ledger.
+- [ ] Complete pull request landing and post-merge validation.
 - [ ] Set issue and Todoist task to ready for review without completing the task.
