@@ -38,6 +38,7 @@ const tempRoots: string[] = [];
 
 interface DeploymentOptions {
   backupRootInsideState?: boolean;
+  candidateWorkspaceDependency?: boolean;
   miniHost?: string;
   doctorFails?: boolean;
   doctorInterrupts?: boolean;
@@ -92,6 +93,21 @@ function runDeployment(options: DeploymentOptions = {}): DeploymentResult {
   mkdirSync(source);
   mkdirSync(bin);
   mkdirSync(join(npmRoot, "openclaw"), { recursive: true });
+  mkdirSync(join(npmRoot, "openclaw", "node_modules", "@openclaw", "ai"), {
+    recursive: true,
+  });
+  writeFileSync(
+    join(npmRoot, "openclaw", "package.json"),
+    JSON.stringify({
+      name: "openclaw",
+      version: "2026.7.1-2",
+      dependencies: { "@openclaw/ai": "workspace:*" },
+    }),
+  );
+  writeFileSync(
+    join(npmRoot, "openclaw", "node_modules", "@openclaw", "ai", "package.json"),
+    JSON.stringify({ name: "@openclaw/ai", version: "2026.7.1" }),
+  );
   mkdirSync(join(source, "scripts"), { recursive: true });
   mkdirSync(join(sandboxBuild, "scripts"), { recursive: true });
   mkdirSync(remoteStaging);
@@ -138,11 +154,37 @@ name="$(basename "$0")"
 printf '%s' "$name" >> "$COMMAND_LOG"
 for arg in "$@"; do printf '\\t%s' "$arg" >> "$COMMAND_LOG"; done
 printf '\\n' >> "$COMMAND_LOG"
-if [ "$name" = npm ]; then
+if [ "$name" = pnpm ]; then
+  if [ "\${1:-}" = pack ]; then
+    destination=
+    shift
+    while [ "$#" -gt 0 ]; do
+      if [ "$1" = --pack-destination ]; then
+        destination="$2"
+        shift 2
+      else
+        shift
+      fi
+    done
+    pack_root="$TMPDIR/mock-candidate-package-$$"
+    mkdir -p "$pack_root/package"
+    candidate_dependency=2026.7.1
+    if [ "\${MOCK_CANDIDATE_WORKSPACE_DEPENDENCY:-0}" = 1 ]; then
+      candidate_dependency='workspace:*'
+    fi
+    printf '%s' '{"name":"openclaw","version":"2026.7.1","dependencies":{"@openclaw/ai":"'"$candidate_dependency"'"}}' > "$pack_root/package/package.json"
+    /usr/bin/tar -czf "$destination/openclaw-test.tgz" -C "$pack_root" package
+    rm -rf "$pack_root"
+    printf '%s\\n' "$destination/openclaw-test.tgz"
+  fi
+elif [ "$name" = npm ]; then
   if [ "\${1:-}" = root ]; then
     printf '%s\\n' "$MOCK_NPM_ROOT"
   elif [ "\${1:-}" = install ]; then
     [ -f "\${3:-}" ] || exit 66
+    if /usr/bin/tar -xOf "\${3:-}" package/package.json | grep -q 'workspace:'; then
+      exit 68
+    fi
     if [ "\${MOCK_PREVIOUS_INSTALL_FAILS:-0}" = 1 ] && printf '%s' "\${3:-}" | grep -q 'openclaw-previous\\.tgz$'; then
       exit 67
     fi
@@ -172,11 +214,14 @@ if [ "$name" = npm ]; then
     done
     if [ -n "$previous" ]; then
       [ -n "$ignore_scripts" ] || exit 65
-      : > "$destination/openclaw-previous.tgz"
+      pack_root="$TMPDIR/mock-previous-package-$$"
+      mkdir -p "$pack_root/package"
+      printf '%s' '{"name":"openclaw","version":"2026.7.1-2","dependencies":{"@openclaw/ai":"workspace:*"}}' > "$pack_root/package/package.json"
+      /usr/bin/tar -czf "$destination/openclaw-previous.tgz" -C "$pack_root" package
+      rm -rf "$pack_root"
       printf '%s\\n' openclaw-previous.tgz
     else
-      : > "$destination/openclaw-test.tgz"
-      printf '%s\\n' openclaw-test.tgz
+      exit 64
     fi
   fi
 elif [ "$name" = python3 ]; then
@@ -354,6 +399,7 @@ fi
     writeFileSync(path, mock);
     chmodSync(path, 0o755);
   }
+  symlinkSync(process.execPath, join(bin, "node"));
 
   const env: NodeJS.ProcessEnv = {
     ...process.env,
@@ -362,6 +408,9 @@ fi
     GATEWAY_HEALTH_INTERVAL_SECONDS: "1",
     HOME: root,
     MOCK_DOCTOR_FAILS: options.doctorFails ? "1" : "0",
+    MOCK_CANDIDATE_WORKSPACE_DEPENDENCY: options.candidateWorkspaceDependency
+      ? "1"
+      : "0",
     MOCK_DOCTOR_INTERRUPTS: options.doctorInterrupts ? "1" : "0",
     MOCK_DOCTOR_MUTATES: options.doctorMutates ? "1" : "0",
     MOCK_DOCKER_TAG_FAILS: options.dockerTagFails ? "1" : "0",
@@ -585,6 +634,20 @@ describe("runtime clone helper", () => {
 });
 
 describe("OpenClaw deployment topology", () => {
+  it("rejects unresolved candidate workspace dependencies before deployment", () => {
+    const result = runDeployment({ candidateWorkspaceDependency: true });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(
+      "candidate package contains unresolved workspace dependencies",
+    );
+    expect(result.lines).not.toContainEqual(
+      expect.stringMatching(/^launchctl\tbootout\t/),
+    );
+    expect(result.lines).not.toContainEqual(
+      expect.stringMatching(/^npm\tinstall\t-g\t/),
+    );
+  });
+
   it("deploys locally by default without SSH or SCP", () => {
     const result = runDeployment();
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
@@ -603,6 +666,11 @@ describe("OpenClaw deployment topology", () => {
     expect(lines).toContainEqual(
       expect.stringMatching(
         /^npm\tpack\t.*npm-root\/openclaw\t--ignore-scripts\t--silent\t--pack-destination\t/,
+      ),
+    );
+    expect(lines).toContainEqual(
+      expect.stringMatching(
+        /^pnpm\tpack\t--config\.ignore-scripts=true\t--pack-destination\t/,
       ),
     );
     expect(existsSync(join(result.root, ".openclaw-deploy.lock"))).toBe(false);

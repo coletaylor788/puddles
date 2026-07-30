@@ -52,6 +52,29 @@ shell_quote() {
   printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
 }
 
+validate_tarball_dependencies() {
+  tar -xOf "$1" package/package.json | node -e '
+    let input = "";
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => { input += chunk; });
+    process.stdin.on("end", () => {
+      const manifest = JSON.parse(input);
+      const unresolved = [];
+      for (const section of ["dependencies", "optionalDependencies", "peerDependencies"]) {
+        for (const [name, spec] of Object.entries(manifest[section] ?? {})) {
+          if (typeof spec === "string" && spec.startsWith("workspace:")) {
+            unresolved.push(`${section}.${name}=${spec}`);
+          }
+        }
+      }
+      if (unresolved.length > 0) {
+        console.error(`unresolved workspace dependencies: ${unresolved.join(", ")}`);
+        process.exitCode = 1;
+      }
+    });
+  '
+}
+
 case "$GATEWAY_HEALTH_ATTEMPTS" in
   ""|*[!0-9]*|0) echo "GATEWAY_HEALTH_ATTEMPTS must be a positive integer" >&2; exit 1 ;;
 esac
@@ -143,6 +166,78 @@ wait_for_gateway() {
 
 clone_runtime_tree() {
   python3 "$CLONE_HELPER" "$1" "$2"
+}
+
+validate_tarball_dependencies() {
+  tar -xOf "$1" package/package.json | node -e '
+    let input = "";
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => { input += chunk; });
+    process.stdin.on("end", () => {
+      const manifest = JSON.parse(input);
+      const unresolved = [];
+      for (const section of ["dependencies", "optionalDependencies", "peerDependencies"]) {
+        for (const [name, spec] of Object.entries(manifest[section] ?? {})) {
+          if (typeof spec === "string" && spec.startsWith("workspace:")) {
+            unresolved.push(`${section}.${name}=${spec}`);
+          }
+        }
+      }
+      if (unresolved.length > 0) {
+        console.error(`unresolved workspace dependencies: ${unresolved.join(", ")}`);
+        process.exitCode = 1;
+      }
+    });
+  '
+}
+
+normalize_tarball_workspace_dependencies() {
+  tarball="$1"
+  package_root="$2"
+  repack_dir="$(mktemp -d "$RECOVERY_DIR/package-repack.XXXXXX")"
+  if ! tar -xzf "$tarball" -C "$repack_dir"; then
+    rm -rf "$repack_dir"
+    return 1
+  fi
+  if ! node - "$repack_dir/package/package.json" "$package_root" <<'NODE'
+const fs = require("node:fs");
+const path = require("node:path");
+
+const [manifestPath, packageRoot] = process.argv.slice(2);
+const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+for (const section of ["dependencies", "optionalDependencies", "peerDependencies"]) {
+  for (const [name, spec] of Object.entries(manifest[section] ?? {})) {
+    if (typeof spec !== "string" || !spec.startsWith("workspace:")) {
+      continue;
+    }
+    const dependencyManifest = path.join(
+      packageRoot,
+      "node_modules",
+      ...name.split("/"),
+      "package.json",
+    );
+    const dependencyVersion = JSON.parse(
+      fs.readFileSync(dependencyManifest, "utf8"),
+    ).version;
+    if (typeof dependencyVersion !== "string" || dependencyVersion.length === 0) {
+      throw new Error(`missing installed version for workspace dependency ${name}`);
+    }
+    manifest[section][name] = dependencyVersion;
+  }
+}
+fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+NODE
+  then
+    rm -rf "$repack_dir"
+    return 1
+  fi
+  repacked="$repack_dir/repacked.tgz"
+  if ! tar -czf "$repacked" -C "$repack_dir" package; then
+    rm -rf "$repack_dir"
+    return 1
+  fi
+  mv "$repacked" "$tarball"
+  rm -rf "$repack_dir"
 }
 
 swap_runtime_trees() {
@@ -419,6 +514,14 @@ if [ -d "$GLOBAL_ROOT/openclaw" ]; then
     echo "    ERROR: failed to preserve the currently installed package" >&2
     exit 1
   }
+  normalize_tarball_workspace_dependencies "$PREVIOUS_TARBALL" "$GLOBAL_ROOT/openclaw" || {
+    echo "    ERROR: failed to normalize the currently installed package snapshot" >&2
+    exit 1
+  }
+  validate_tarball_dependencies "$PREVIOUS_TARBALL" || {
+    echo "    ERROR: currently installed package snapshot is not reinstallable" >&2
+    exit 1
+  }
 else
   echo "    ERROR: no existing OpenClaw package is available to snapshot" >&2
   exit 1
@@ -495,9 +598,17 @@ NODE_OPTIONS=--max-old-space-size=8192 pnpm build
 
 echo "==> Packing"
 STAGING_DIR="$(mktemp -d "${TMPDIR:-/tmp}/puddles-openclaw-deploy.XXXXXX")"
-TARBALL_NAME="$(npm pack --silent --pack-destination "$STAGING_DIR" | tail -1)"
-TARBALL="$STAGING_DIR/$TARBALL_NAME"
+TARBALL="$(pnpm pack --config.ignore-scripts=true --pack-destination "$STAGING_DIR" | tail -1)"
+case "$TARBALL" in
+  /*) ;;
+  *) TARBALL="$STAGING_DIR/$TARBALL" ;;
+esac
 [ -f "$TARBALL" ] || { echo "    pack produced no tarball" >&2; exit 1; }
+validate_tarball_dependencies "$TARBALL" || {
+  echo "    ERROR: candidate package contains unresolved workspace dependencies" >&2
+  exit 1
+}
+TARBALL_NAME="$(basename "$TARBALL")"
 echo "    $TARBALL_NAME"
 
 ENTRY_SRC="$OPENCLAW_SRC/scripts/sandbox-browser-entrypoint.sh"

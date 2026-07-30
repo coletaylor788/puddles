@@ -1,6 +1,6 @@
 # Coalesce split iMessage message parts
 
-- **Status:** In progress - terminal-reviewing resynchronized correction
+- **Status:** In progress - reviewing deployment packaging remediation
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-29
 - **Owner:** Cole Taylor
@@ -35,7 +35,10 @@ parts under 425 ms while unrelated replies are much later. A non-matching row
 bypasses the held bucket and retains its existing separate-message behavior.
 Reproduce the exact delayed notification through the real inbound debouncer,
 expose it through cumulative `packages/e2e`, and deploy only through the
-documented local wrapper.
+documented local wrapper. Package the source candidate with the repository's
+native pnpm tooling so workspace dependencies become installable release
+versions, and make the rollback artifact independently installable before the
+gateway is stopped.
 
 ### Safety and rollout
 
@@ -46,7 +49,9 @@ bound, preserve the first absolute deadline, and have regressions for unrelated
 text and timeout dispatch. Automated tests use temporary worktrees and deny
 delivery; production investigation remains read-only. On the target host,
 `MINI_HOST` stays unset. Rollback disables coalescing or redeploys the prior
-reviewed patch stack.
+reviewed patch stack. Promotion must reject candidate or rollback tarballs that
+retain `workspace:` dependency protocols. The failed first attempt has already
+restored the prior package, config, service definition, and healthy gateway.
 
 ## Agent details
 
@@ -127,6 +132,10 @@ invalidated, fresh reviews are required, and production was not changed.
 - Record that a payload joined independently of whether its GUID and timestamp
   can anchor a continuation. Missing or malformed metadata disables continuation
   admission but cannot let a later lead-in or payload reuse the old deadline.
+- Pack the candidate with pnpm so workspace dependency protocols are rewritten
+  to concrete installable versions. Clone and normalize any workspace
+  dependencies in the installed-package rollback snapshot before npm packing,
+  then validate both tarball manifests before stopping the gateway.
 - A new lead-in after a pending payload flushes the prior composition and starts
   a fresh absolute deadline so back-to-back sandwich compositions retain their
   own continuations.
@@ -282,6 +291,10 @@ invalidated, fresh reviews are required, and production was not changed.
   deadline, classifies only reply-chained source-time-bounded rows as
   continuations, merges contiguous lead-in/payload/continuation units, and
   leaves standalone payloads and non-matching rows immediate.
+- Deployment remediation switches the source candidate to lifecycle-disabled
+  `pnpm pack`, validates that its manifest has no workspace protocols, rewrites
+  workspace dependencies in the npm-packed rollback artifact from the installed
+  dependency versions, and validates that artifact before stopping the gateway.
 
 ### Validation
 
@@ -438,7 +451,7 @@ invalidated, fresh reviews are required, and production was not changed.
   a joined payload with no GUID and a malformed timestamp, proving that the next
   composition gets a fresh bucket while the malformed row cannot anchor a
   continuation.
-- The complete managed lifecycle passes repository build and lint, 280 workspace
+- The complete managed lifecycle passes repository build and lint, 281 workspace
   tests, 332 cumulative mapped OpenClaw tests, one isolated browser-entrypoint
   candidate test, and candidate deregistration.
 - The complete six-patch stack now applies to production OpenClaw
@@ -451,6 +464,14 @@ invalidated, fresh reviews are required, and production was not changed.
   332 mapped-source-test, candidate-test, and cleanup coverage after the
   metadata-safe payload-state remediation and synchronization with current
   `main`.
+- The deployment fixture now rejects an unresolved candidate workspace
+  dependency before package installation or gateway shutdown and proves a
+  normalized rollback tarball can reinstall. All 34 deployment-topology tests
+  and E2E type checking pass. Real isolated-prefix installs also pass for both
+  pnpm-packed candidate and normalized prior-package tarballs.
+- After packaging remediation, the complete managed lifecycle passes build,
+  lint, 281 workspace tests, 332 mapped OpenClaw tests, the isolated candidate
+  test, and worktree cleanup.
 
 ### Rollout and rollback
 
@@ -462,10 +483,14 @@ deployed from clean disposable worktrees pinned to merged Puddles `e82db0e` and
 OpenClaw `a1063aa`; all five reviewed patches applied, the package and browser
 image rebuilt, and the gateway restarted. Automated production validation
 remained read-only and passed. Both disposable worktrees and their registrations
-were removed. The fourth sandwich correction has passed the reusable-worker review
-and must pass terminal exact-commit review, remote checks, and the configured
-promotion lifecycle before another local deployment. Rollback remains available
-without data migration.
+were removed. The fourth sandwich correction passed both review layers and remote
+checks, but its first promotion attempt failed because npm-packed source and
+rollback tarballs retained a non-installable workspace dependency protocol. The
+prior package, exact config, service definition, and healthy gateway are
+restored. Correct the wrapper to produce and validate installable candidate and
+rollback tarballs before quiescing production, cover that behavior through the
+cumulative deployment fixture, then restart review and promotion. No data
+migration is required.
 
 Production currently reports OpenClaw `2026.7.1-2 (0790d9f)` while the managed
 patch pool remains pinned to `a1063aa`/2026.6.11. The complete stack applies and
@@ -620,6 +645,19 @@ No data migration or persistent message-state conversion is involved.
   preserved both the current-main debounce assertion stabilization and the full
   sandwich state machine. The final exact landing candidate still requires a
   terminal fresh review.
+- Exact candidate `7ae3f32` passed terminal review and all remote checks.
+  Promotion built and packed successfully, but the local npm package install
+  failed. Reinstalling the recorded previous package also failed, so the wrapper
+  safely left the gateway stopped and retained recovery state at
+  `~/.openclaw-deploy-backups/20260730T032244Z-89073`. Production recovery is the
+  immediate priority; this failed promotion did not reach merge.
+- Recovery verified that the prior `2026.7.1-2` package, runtime config, and
+  service definition matched the retained snapshot, then restarted the gateway
+  to a healthy iMessage state. The deterministic install failure came from
+  `npm pack` preserving `@openclaw/ai: workspace:*`; npm 10 exits during
+  dependency resolution, and the same invalid protocol made the rollback
+  tarball un-installable. A pnpm-packed candidate and a normalized pnpm-packed
+  prior package both install successfully in isolated prefixes.
 
 ### Checklist
 
@@ -695,6 +733,13 @@ No data migration or persistent message-state conversion is involved.
 - [x] Obtain a clean reusable-worker adversarial review after current-main
   synchronization.
 - [ ] Obtain a clean terminal adversarial review of the exact landing candidate.
+- [x] Recover and validate the prior production package, runtime state, service,
+  gateway, and iMessage health after the failed promotion.
+- [x] Produce and validate installable candidate and rollback tarballs without
+  unresolved workspace dependency protocols.
+- [x] Add cumulative deployment coverage for workspace-safe packaging.
+- [x] Rerun the complete lifecycle after packaging remediation.
+- [ ] Repeat reusable-worker and terminal reviews after packaging remediation.
 - [ ] Promote the exact remotely green candidate, validate production read-only,
   then merge and verify exact `main`.
 - [ ] Return issue #28 and Todoist to Ready for review after the sandwich fix.
