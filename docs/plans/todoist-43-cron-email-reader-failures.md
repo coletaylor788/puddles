@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Integrating latest main
+**Status:** Reviewing latest-main candidate
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -61,8 +61,8 @@ currently 22.23.1. Terminal review found the contract must encode separate floor
 for Node 22, 24, and 25 rather than accepting every newer major; those boundaries
 are now regression-tested and the full lifecycle is green. The serial Vitest
 workaround remains removed and terminal review is clean. The base advanced
-again, so latest-main integration and validation are pending before remote
-checks. The cron definition remains unchanged.
+again; latest `main` is now integrated and the full lifecycle is green. Fresh
+terminal review and remote checks remain. The cron definition remains unchanged.
 
 ### Scope and acceptance criteria
 
@@ -351,7 +351,9 @@ lifecycle.
   revalidated. Terminal landing review rejected the serial-test diagnosis and
   identified Node/SQLite runtime drift. Workflow 22.23.1 and per-major floor
   contracts are green and terminal review is clean. The base advanced again;
-  latest-main integration, validation, and a fresh terminal review are pending.
+  latest-main integration and validation passed with 286 repository tests,
+  current snapshots, 447 mapped patched-source tests, candidate test, and
+  cleanup. Fresh terminal review and remote checks pending.
 - Terminal exact-commit review: result is recorded only in the issue ledger after
   the final commit so the reviewed diff remains unchanged.
 
