@@ -93,7 +93,8 @@ suites, and uncommitted checks do not count.
 - recording message and PIM write adapters;
 - recording Todoist task writes and denying unsupported Todoist operations;
 - manifest completeness and pinned-source enforcement;
-- reusable adversarial-review worker and anti-churn workflow contracts; and
+- reusable adversarial-review worker, anti-churn, and worker-owned completion
+  workflow contracts; and
 - shared utility parsing and complexity regressions.
 
 ## Adding coverage
