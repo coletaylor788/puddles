@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Integrating ACP policy remediation
+**Status:** Validating integrated ACP policy remediation
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -53,24 +53,19 @@ read-only checks, and rebuild without the patch to roll back.
 
 The native and ACP cron guards, cross-agent policy isolation, generated
 snapshots, setup guidance, and cumulative regressions are implemented on
-OpenClaw `0790d9f`. All prior review findings are remediated. Candidate
-`e3ae601` passed the complete managed pool with 288 repository tests, current
-prompt snapshots, 464 mapped patched-source tests, the candidate browser test,
-and cleanup; exact-commit review found no code, patch, test, or security defect.
-That review identified only stale tracking presentation, which the synchronized
-plan and issue ledger resolve. Current `main` at `f7a049a` is now integrated as
-candidate `93f3e3c`; the merge changed only the two repository plans relative to
-the reviewed candidate, leaving runtime and test bytes identical. The complete managed lifecycle passes with 288 repository tests, seven current
-prompt snapshots, 464 mapped patched-source tests, the candidate browser test,
-and cleanup. Terminal review then found that ACP requester command-policy guards
-still rejected explicit cross-agent targets before the non-inheritance decision,
-and that the cross-agent regression used a permissive parent that could not
-detect this. Both findings are accepted. Remote candidate `b482a80` contains the
-remediation and integrates current `main` at `6dc4e03`; those exact bytes must be
-integrated, fully validated, and independently re-reviewed. Production remains
-healthy on the prior reviewed host-combined build, and the cron definition
-remains unchanged. Exact-candidate remote checks, host-combined promotion, merge,
-and post-merge validation remain.
+OpenClaw `0790d9f`. Terminal review found that duplicate ACP compatibility
+preflights rejected restrictive requester policies before cross-agent isolation,
+while the corresponding regression used a permissive parent. Both findings are
+remediated by validating requester command policy only for same-agent ACP
+targets and by covering restricted allow, deny, group, pattern, and wildcard
+policies. The remediated candidate passed 288 repository tests, current prompt
+snapshots, 470 mapped patched-source tests, the candidate browser test, complete
+review, and remote Integration and CodeQL. Current `main` `6dc4e03` and the
+remote candidate `b482a80` are now integrated locally; the exact merge result
+must pass the full managed lifecycle and terminal review before publication.
+Production remains healthy on the prior reviewed host-combined build, and the
+cron definition remains unchanged. Exact-candidate remote checks, host-combined
+promotion, merge, and post-merge validation remain.
 
 ### Scope and acceptance criteria
 
@@ -117,6 +112,9 @@ and post-merge validation remain.
   cross-agent children continue to use the target profile's tool policy.
 - ACP inheritance compares against the already-resolved requester agent ID so
   global session scope honors `requesterAgentIdOverride`.
+- ACP command compatibility checks run after effective target resolution and
+  apply only to same-agent children; the tool wrapper no longer rejects
+  cross-agent policy before the runtime can classify it.
 - Coordinator promotion sets `requireAgentId=true` before expanding
   `allowAgents`; interruption therefore leaves delegation fail-closed.
 - The fix belongs in the existing provider-neutral
@@ -174,6 +172,9 @@ Implemented:
 22. Order coordinator policy updates so the restrictive explicit-target flag is
     committed before the self-target allowlist expansion, with a repository
     contract test.
+23. Centralize ACP inherited-policy compatibility validation in
+    `spawnAcpDirect` after target resolution, retain same-agent denial coverage,
+    and make the cross-agent regression use an actually restrictive policy.
 
 Feature implementation, review remediation, release porting, promotion, and
 read-only production validation are complete. Cole requested full landing, so
@@ -353,6 +354,18 @@ Completed:
   mapped patched-source tests, the candidate browser test, and cleanup.
 - Fresh complete-diff review of the current-base integration found no actionable
   findings; terminal review and remote validation remain.
+- Terminal exact-commit review found one medium ACP isolation defect: duplicate
+  wrapper/runtime compatibility preflights rejected restrictive requester policy
+  before cross-agent classification. The wrapper preflight is removed, runtime
+  checks are same-agent-only after target resolution, and the complete managed
+  lifecycle passes with repository build/lint, 288 repository tests, current
+  prompt snapshots, 470 mapped patched-source tests, the candidate browser test,
+  and cleanup.
+- Fresh complete-diff re-review found no actionable findings, verified all 15
+  generated source blob hashes, and passed targeted repository contracts.
+- Exact candidate `8d4a474` passed terminal review and remote Integration/CodeQL.
+  `main` then advanced to `6dc4e03` through only an unrelated plan update, now
+  integrated as `2892b93`; no managed runtime gate was affected.
 - Combined-lifecycle preflight correctly blocked production mutation because the
   host-local manifest still pins repository head `7c887496`. Production remains
   healthy on OpenClaw `2026.7.1-2` / `0790d9f`; no recovery snapshot was needed.
@@ -456,22 +469,16 @@ lifecycle.
   repository tests, current prompt snapshots, 451 mapped patched-source tests,
   the candidate browser test, and cleanup.
 - Corrected-schema complete-diff re-review found no actionable findings.
-- Candidate `e3ae601` integrated the finalized plan presentation onto the
-  validated `863666f` base. Exact-commit review found no code, patch, test, or
-  security defect and confirmed no runtime loss. Its only actionable finding was
-  the stale issue ledger, corrected with this synchronized plan milestone.
-- `main` subsequently advanced to `f7a049a` through the reviewed iMessage
-  landing. Candidate `93f3e3c` integrates that base conflict-free; only the two
-  repository plans differ from `e3ae601`, so runtime and test bytes remain
-  unchanged. The complete managed lifecycle passed with repository build/lint,
-  288 repository tests, seven current prompt snapshots, 464 mapped
-  patched-source tests, the candidate browser test, and cleanup. Refresh terminal
-  review before remote gates.
 - Terminal review of `30e8e6c` found two medium ACP defects: requester command
   policy was checked before cross-agent target resolution, and the purported
-  regression used a permissive parent. Both findings are accepted. Remote
-  candidate `b482a80` contains the remediation on current `main` `6dc4e03`;
-  integrate and validate it before re-review.
+  regression used a permissive parent. Both findings are accepted.
+- Commit `8d4a474` gates requester policy validation on same-agent ACP targets
+  and adds restrictive cross-agent and same-agent allow/deny/group/pattern
+  coverage. The full managed lifecycle passed with 288 repository tests, current
+  snapshots, 470 mapped patched-source tests, the candidate browser test, and
+  cleanup. Independent review and remote Integration and CodeQL were green.
+- Current `main` `6dc4e03` and remote candidate `b482a80` are integrated locally.
+  Validate and re-review the exact merge result before publishing it.
 
 ### Checklist
 

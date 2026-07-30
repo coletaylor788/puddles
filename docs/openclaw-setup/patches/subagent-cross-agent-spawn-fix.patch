@@ -25,10 +25,10 @@ index d3d3c26b13..dfdf182ae6 100644
  <ParamField path="agents.defaults.subagents.announceTimeoutMs" type="number" default="120000">
    Per-call timeout for gateway `agent` announce delivery attempts. Values are positive integer milliseconds and are clamped to the platform-safe timer maximum. Transient retries can make the total announce wait longer than one configured timeout.
 diff --git a/src/agents/acp-spawn.test.ts b/src/agents/acp-spawn.test.ts
-index e0a33f481e..901f450326 100644
+index e0a33f481e..81ad8004fb 100644
 --- a/src/agents/acp-spawn.test.ts
 +++ b/src/agents/acp-spawn.test.ts
-@@ -912,6 +912,264 @@ describe("spawnAcpDirect", () => {
+@@ -912,6 +912,311 @@ describe("spawnAcpDirect", () => {
      expect(transcriptCalls[1]?.threadId).toBe("child-thread");
    });
  
@@ -198,16 +198,8 @@ index e0a33f481e..901f450326 100644
 +      },
 +      {
 +        agentSessionKey: "agent:main:main",
-+        inheritedToolAllowlist: [
-+          "apply_patch",
-+          "edit",
-+          "exec",
-+          "process",
-+          "read",
-+          "write",
-+          "message",
-+        ],
-+        inheritedToolDenylist: ["message"],
++        inheritedToolAllowlist: ["sessions_spawn"],
++        inheritedToolDenylist: ["exec"],
 +      },
 +    );
 +
@@ -253,6 +245,61 @@ index e0a33f481e..901f450326 100644
 +    });
 +  });
 +
++  it.each([
++    {
++      label: "deny",
++      inheritedToolAllowlist: undefined,
++      inheritedToolDenylist: ["exec"],
++      expected: "requester denies exec",
++    },
++    {
++      label: "filesystem group deny",
++      inheritedToolAllowlist: undefined,
++      inheritedToolDenylist: ["group:fs"],
++      expected: "requester denies apply_patch",
++    },
++    {
++      label: "runtime group deny",
++      inheritedToolAllowlist: undefined,
++      inheritedToolDenylist: ["group:runtime"],
++      expected: "requester denies exec",
++    },
++    {
++      label: "pattern deny",
++      inheritedToolAllowlist: undefined,
++      inheritedToolDenylist: ["exec*"],
++      expected: "requester denies exec",
++    },
++    {
++      label: "wildcard deny",
++      inheritedToolAllowlist: undefined,
++      inheritedToolDenylist: ["*"],
++      expected: "requester denies apply_patch",
++    },
++    {
++      label: "allow",
++      inheritedToolAllowlist: ["sessions_spawn"],
++      inheritedToolDenylist: undefined,
++      expected: "requester does not allow apply_patch",
++    },
++  ])("rejects incompatible requester $label policy for same-agent ACP spawns", async (testCase) => {
++    const result = await spawnAcpDirect(
++      {
++        task: "Keep incompatible requester policy out of ACP",
++        agentId: "codex",
++      },
++      {
++        agentSessionKey: "agent:codex:main",
++        inheritedToolAllowlist: testCase.inheritedToolAllowlist,
++        inheritedToolDenylist: testCase.inheritedToolDenylist,
++      },
++    );
++
++    const failure = expectFailedSpawn(result, "forbidden");
++    expect(failure.error).toContain(testCase.expected);
++    expect(hoisted.initializeSessionMock).not.toHaveBeenCalled();
++  });
++
 +  it("preserves requester tool policy for global same-agent ACP spawns", async () => {
 +    const result = await spawnAcpDirect(
 +      {
@@ -294,7 +341,7 @@ index e0a33f481e..901f450326 100644
      const resumeSessionId = "codex-inner-resume";
      const ownedSessionKey = "agent:codex:acp:owned";
 diff --git a/src/agents/acp-spawn.ts b/src/agents/acp-spawn.ts
-index d463046cd1..e3082c7f88 100644
+index d463046cd1..4044eed3e9 100644
 --- a/src/agents/acp-spawn.ts
 +++ b/src/agents/acp-spawn.ts
 @@ -65,6 +65,7 @@ import {
@@ -350,7 +397,64 @@ index d463046cd1..e3082c7f88 100644
    const streamToParentRequested = params.streamTo === "parent";
    const parentSessionKey = normalizeOptionalString(ctx.agentSessionKey);
    if (streamToParentRequested && !parentSessionKey) {
-@@ -1480,8 +1490,14 @@ export async function spawnAcpDirect(
+@@ -1309,27 +1319,6 @@ export async function spawnAcpDirect(
+       error: runtimePolicyError,
+     });
+   }
+-  const acpUnsupportedInheritedTool = findAcpUnsupportedInheritedToolDeny(
+-    ctx.inheritedToolDenylist,
+-  );
+-  if (acpUnsupportedInheritedTool) {
+-    return createAcpSpawnFailure({
+-      status: "forbidden",
+-      errorCode: "runtime_policy",
+-      error: formatAcpInheritedToolDenyError(acpUnsupportedInheritedTool),
+-    });
+-  }
+-  const acpUnsupportedInheritedAllow = findAcpUnsupportedInheritedToolAllow(
+-    ctx.inheritedToolAllowlist,
+-  );
+-  if (acpUnsupportedInheritedAllow) {
+-    return createAcpSpawnFailure({
+-      status: "forbidden",
+-      errorCode: "runtime_policy",
+-      error: formatAcpInheritedToolAllowError(acpUnsupportedInheritedAllow),
+-    });
+-  }
+-
+   const spawnMode = resolveSpawnMode({
+     requestedMode: params.mode,
+     threadRequested: requestThreadBinding,
+@@ -1359,6 +1348,28 @@ export async function spawnAcpDirect(
+     });
+   }
+   const targetAgentId = targetAgentResult.agentId;
++  if (targetAgentId === requesterAgentId) {
++    const acpUnsupportedInheritedTool = findAcpUnsupportedInheritedToolDeny(
++      ctx.inheritedToolDenylist,
++    );
++    if (acpUnsupportedInheritedTool) {
++      return createAcpSpawnFailure({
++        status: "forbidden",
++        errorCode: "runtime_policy",
++        error: formatAcpInheritedToolDenyError(acpUnsupportedInheritedTool),
++      });
++    }
++    const acpUnsupportedInheritedAllow = findAcpUnsupportedInheritedToolAllow(
++      ctx.inheritedToolAllowlist,
++    );
++    if (acpUnsupportedInheritedAllow) {
++      return createAcpSpawnFailure({
++        status: "forbidden",
++        errorCode: "runtime_policy",
++        error: formatAcpInheritedToolAllowError(acpUnsupportedInheritedAllow),
++      });
++    }
++  }
+   const agentPolicyError = resolveAcpAgentPolicyError(cfg, targetAgentId);
+   if (agentPolicyError) {
+     return createAcpSpawnFailure({
+@@ -1480,8 +1491,14 @@ export async function spawnAcpDirect(
          key: sessionKey,
          spawnedBy: requesterInternalKey,
          ...subagentEnvelopeState.childSessionPatch,
@@ -642,7 +746,7 @@ index 2ce1c4cda0..689b97450b 100644
    };
  
 diff --git a/src/agents/tools/sessions-spawn-tool.test.ts b/src/agents/tools/sessions-spawn-tool.test.ts
-index 1cf0c030b6..6a26d5ecc6 100644
+index 1cf0c030b6..d50166b37b 100644
 --- a/src/agents/tools/sessions-spawn-tool.test.ts
 +++ b/src/agents/tools/sessions-spawn-tool.test.ts
 @@ -382,6 +382,12 @@ describe("sessions_spawn tool", () => {
@@ -658,11 +762,94 @@ index 1cf0c030b6..6a26d5ecc6 100644
  
      const result = await tool.execute("call-task-name", {
        task: "review subagent handling",
+@@ -618,69 +624,6 @@ describe("sessions_spawn tool", () => {
+     expect(spawnContext.inheritedToolDenylist).toEqual(["custom_control_tool"]);
+   });
+ 
+-  it("rejects ACP spawns when inherited denies include command tools", async () => {
+-    registerAcpBackendForTest();
+-    const tool = createSessionsSpawnTool({
+-      agentSessionKey: "agent:main:main",
+-      inheritedToolDenylist: ["exec"],
+-    });
+-
+-    const result = await tool.execute("call-acp-inherited-command-deny", {
+-      runtime: "acp",
+-      task: "investigate",
+-      agentId: "codex",
+-    });
+-
+-    expectDetailFields(result.details, { status: "forbidden", role: "codex" });
+-    expect(JSON.stringify(result.details)).toContain("requester denies exec");
+-    expect(hoisted.spawnAcpDirectMock).not.toHaveBeenCalled();
+-  });
+-
+-  it("rejects ACP spawns when inherited deny groups or patterns include command tools", async () => {
+-    registerAcpBackendForTest();
+-    const cases = [
+-      { inheritedToolDenylist: ["group:fs"], expected: "requester denies apply_patch" },
+-      { inheritedToolDenylist: ["group:runtime"], expected: "requester denies exec" },
+-      { inheritedToolDenylist: ["exec*"], expected: "requester denies exec" },
+-      { inheritedToolDenylist: ["*"], expected: "requester denies apply_patch" },
+-    ];
+-
+-    for (const testCase of cases) {
+-      const tool = createSessionsSpawnTool({
+-        agentSessionKey: "agent:main:main",
+-        inheritedToolDenylist: testCase.inheritedToolDenylist,
+-      });
+-
+-      const result = await tool.execute("call-acp-inherited-command-group-deny", {
+-        runtime: "acp",
+-        task: "investigate",
+-        agentId: "codex",
+-      });
+-
+-      expectDetailFields(result.details, { status: "forbidden", role: "codex" });
+-      expect(JSON.stringify(result.details)).toContain(testCase.expected);
+-    }
+-    expect(hoisted.spawnAcpDirectMock).not.toHaveBeenCalled();
+-  });
+-
+-  it("rejects ACP spawns when inherited allows omit command tools", async () => {
+-    registerAcpBackendForTest();
+-    const tool = createSessionsSpawnTool({
+-      agentSessionKey: "agent:main:main",
+-      inheritedToolAllowlist: ["sessions_spawn", "custom_plugin_tool"],
+-    });
+-
+-    const result = await tool.execute("call-acp-inherited-command-allow", {
+-      runtime: "acp",
+-      task: "investigate",
+-      agentId: "codex",
+-    });
+-
+-    expectDetailFields(result.details, { status: "forbidden", role: "codex" });
+-    expect(JSON.stringify(result.details)).toContain("requester does not allow apply_patch");
+-    expect(hoisted.spawnAcpDirectMock).not.toHaveBeenCalled();
+-  });
+-
+   it("accepts ACP spawns when inherited allows include OpenClaw command tools", async () => {
+     registerAcpBackendForTest();
+     const tool = createSessionsSpawnTool({
 diff --git a/src/agents/tools/sessions-spawn-tool.ts b/src/agents/tools/sessions-spawn-tool.ts
-index 22e5c6240d..9fbe61dbf7 100644
+index 22e5c6240d..380738d8ff 100644
 --- a/src/agents/tools/sessions-spawn-tool.ts
 +++ b/src/agents/tools/sessions-spawn-tool.ts
-@@ -169,14 +169,19 @@ function createSessionsSpawnToolSchema(params: {
+@@ -16,12 +16,6 @@ import { resolveSnakeCaseParamKey } from "../../param-key.js";
+ import { createLazyImportLoader } from "../../shared/lazy-promise.js";
+ import { normalizeDeliveryContext } from "../../utils/delivery-context.shared.js";
+ import type { GatewayMessageChannel } from "../../utils/message-channel.js";
+-import {
+-  findAcpUnsupportedInheritedToolAllow,
+-  findAcpUnsupportedInheritedToolDeny,
+-  formatAcpInheritedToolAllowError,
+-  formatAcpInheritedToolDenyError,
+-} from "../inherited-tool-deny.js";
+ import { optionalStringEnum } from "../schema/typebox.js";
+ import type { SpawnedToolContext } from "../spawned-context.js";
+ import { resolveAcpSessionsSpawnImageAttachments } from "../subagent-attachments.js";
+@@ -169,14 +163,19 @@ function createSessionsSpawnToolSchema(params: {
      taskName: Type.Optional(
        Type.String({
          description:
@@ -684,8 +871,37 @@ index 22e5c6240d..9fbe61dbf7 100644
      model: Type.Optional(Type.String()),
      thinking: Type.Optional(Type.String()),
      cwd: Type.Optional(Type.String()),
+@@ -332,28 +331,6 @@ export function createSessionsSpawnTool(
+           ...roleContext,
+         });
+       }
+-      const acpUnsupportedInheritedTool =
+-        runtime === "acp"
+-          ? findAcpUnsupportedInheritedToolDeny(opts?.inheritedToolDenylist)
+-          : undefined;
+-      if (acpUnsupportedInheritedTool) {
+-        return jsonResult({
+-          status: "forbidden",
+-          error: formatAcpInheritedToolDenyError(acpUnsupportedInheritedTool),
+-          ...roleContext,
+-        });
+-      }
+-      const acpUnsupportedInheritedAllow =
+-        runtime === "acp"
+-          ? findAcpUnsupportedInheritedToolAllow(opts?.inheritedToolAllowlist)
+-          : undefined;
+-      if (acpUnsupportedInheritedAllow) {
+-        return jsonResult({
+-          status: "forbidden",
+-          error: formatAcpInheritedToolAllowError(acpUnsupportedInheritedAllow),
+-          ...roleContext,
+-        });
+-      }
+       if (runtime === "acp" && lightContext) {
+         throw new Error("lightContext is only supported for runtime='subagent'.");
+       }
 diff --git a/src/config/types.agent-defaults.ts b/src/config/types.agent-defaults.ts
-index 4fe2cbd351..95cfd35445 100644
+index 4fe2cbd351..342d9e4df5 100644
 --- a/src/config/types.agent-defaults.ts
 +++ b/src/config/types.agent-defaults.ts
 @@ -491,7 +491,7 @@ export type AgentDefaultsConfig = {
@@ -698,7 +914,7 @@ index 4fe2cbd351..95cfd35445 100644
    };
    /** Optional sandbox settings for non-main sessions. */
 diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.discord-group.json b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.discord-group.json
-index 484070a9db..e2b0308a50 100644
+index 484070a9db..0d4c83e0c1 100644
 --- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.discord-group.json
 +++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.discord-group.json
 @@ -138,6 +138,7 @@
@@ -719,7 +935,7 @@ index 484070a9db..e2b0308a50 100644
          },
          "thinking": {
 diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.heartbeat-turn.json b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.heartbeat-turn.json
-index e74fdee1a0..c73acec9e1 100644
+index e74fdee1a0..ff8babcd28 100644
 --- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.heartbeat-turn.json
 +++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.heartbeat-turn.json
 @@ -138,6 +138,7 @@
@@ -740,7 +956,7 @@ index e74fdee1a0..c73acec9e1 100644
          },
          "thinking": {
 diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.telegram-direct.json b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.telegram-direct.json
-index fd531c5a6f..032b6123b5 100644
+index fd531c5a6f..17e09c2f17 100644
 --- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.telegram-direct.json
 +++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.telegram-direct.json
 @@ -138,6 +138,7 @@
@@ -761,7 +977,7 @@ index fd531c5a6f..032b6123b5 100644
          },
          "thinking": {
 diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/discord-group-codex-message-tool.md b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/discord-group-codex-message-tool.md
-index d936e33352..63e1cb0d58 100644
+index d936e33352..bad4996ede 100644
 --- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/discord-group-codex-message-tool.md
 +++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/discord-group-codex-message-tool.md
 @@ -225,8 +225,8 @@ This is the deterministic model-bound layer stack OpenClaw can snapshot for the
@@ -787,7 +1003,7 @@ index d936e33352..63e1cb0d58 100644
    "userInputText": {
      "chars": 1442,
 diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-direct-codex-message-tool.md b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-direct-codex-message-tool.md
-index 9bb7fddcbc..4851645d6e 100644
+index 9bb7fddcbc..65576f7fb8 100644
 --- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-direct-codex-message-tool.md
 +++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-direct-codex-message-tool.md
 @@ -225,8 +225,8 @@ This is the deterministic model-bound layer stack OpenClaw can snapshot for the
@@ -813,7 +1029,7 @@ index 9bb7fddcbc..4851645d6e 100644
    "userInputText": {
      "chars": 1033,
 diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-heartbeat-codex-tool.md b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-heartbeat-codex-tool.md
-index f004bd6819..3ffd6888f2 100644
+index f004bd6819..e24693f97b 100644
 --- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-heartbeat-codex-tool.md
 +++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-heartbeat-codex-tool.md
 @@ -226,8 +226,8 @@ This is the deterministic model-bound layer stack OpenClaw can snapshot for the
