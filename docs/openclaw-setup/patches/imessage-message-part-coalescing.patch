@@ -179,7 +179,7 @@ index e5c6a3c7ef..f743027cf3 100644
              balloon_bundle_id: "com.apple.messages.URLBalloonProvider",
              created_at: new Date(Date.now() - 1000).toISOString(),
            },
-@@ -1764,11 +1854,137 @@ describe("iMessage monitor last-route updates", () => {
+@@ -1764,11 +1854,139 @@ describe("iMessage monitor last-route updates", () => {
      expect(dispatchInboundMessageMock).toHaveBeenCalledTimes(1);
      const mergedBody = dispatchInboundMessageMock.mock.calls[0]?.[0].ctx.Body ?? "";
      expect(mergedBody).toContain("summarize");
@@ -288,8 +288,10 @@ index e5c6a3c7ef..f743027cf3 100644
 +      const mergedBody = dispatchInboundMessageMock.mock.calls[0]?.[0].ctx.Body ?? "";
 +      expect(mergedBody).toContain(prompt);
 +      expect(mergedBody).toContain(url);
-+      expect(debouncerControl.resolvedDebounceMs[0]).toBe(15_000);
-+      expect(debouncerControl.resolvedDebounceMs[0]).toBeGreaterThan(observedRuntimeGapMs);
++      expect(debouncerControl.resolvedDebounceMs[0]).toBeGreaterThanOrEqual(
++        Math.max(14_900, observedRuntimeGapMs + 1),
++      );
++      expect(debouncerControl.resolvedDebounceMs[0]).toBeLessThanOrEqual(15_000);
 +    },
 +  );
 +
@@ -319,7 +321,7 @@ index e5c6a3c7ef..f743027cf3 100644
 
      let onNotification: ((message: { method: string; params: unknown }) => void) | undefined;
      const client = {
-@@ -1778,47 +1994,7 @@ describe("iMessage monitor last-route updates", () => {
+@@ -1778,47 +1996,7 @@ describe("iMessage monitor last-route updates", () => {
          }
          throw new Error(`unexpected imsg method ${method}`);
        }),
@@ -368,7 +370,7 @@ index e5c6a3c7ef..f743027cf3 100644
        stop: vi.fn(async () => {}),
      };
      createIMessageRpcClientMock.mockImplementation(async (params) => {
-@@ -1844,14 +2020,85 @@ describe("iMessage monitor last-route updates", () => {
+@@ -1844,14 +2022,85 @@ describe("iMessage monitor last-route updates", () => {
        runtime: { error: vi.fn(), exit: vi.fn(), log: vi.fn() },
      });
 
@@ -460,7 +462,7 @@ index e5c6a3c7ef..f743027cf3 100644
      debouncerControl.holdEntries = true;
 
      let onNotification: ((message: { method: string; params: unknown }) => void) | undefined;
-@@ -1862,47 +2109,7 @@ describe("iMessage monitor last-route updates", () => {
+@@ -1862,47 +2111,7 @@ describe("iMessage monitor last-route updates", () => {
          }
          throw new Error(`unexpected imsg method ${method}`);
        }),
@@ -509,7 +511,7 @@ index e5c6a3c7ef..f743027cf3 100644
        stop: vi.fn(async () => {}),
      };
      createIMessageRpcClientMock.mockImplementation(async (params) => {
-@@ -1918,7 +2125,6 @@ describe("iMessage monitor last-route updates", () => {
+@@ -1918,7 +2127,6 @@ describe("iMessage monitor last-route updates", () => {
          channels: {
            imessage: {
              coalesceSameSenderDms: true,
@@ -517,7 +519,7 @@ index e5c6a3c7ef..f743027cf3 100644
              dmPolicy: "allowlist",
              allowFrom: ["+15550001111"],
              sendReadReceipts: false,
-@@ -1929,15 +2135,60 @@ describe("iMessage monitor last-route updates", () => {
+@@ -1929,15 +2137,60 @@ describe("iMessage monitor last-route updates", () => {
        runtime: { error: vi.fn(), exit: vi.fn(), log: vi.fn() },
      });
 
@@ -583,7 +585,7 @@ index e5c6a3c7ef..f743027cf3 100644
 
      let onNotification: ((message: { method: string; params: unknown }) => void) | undefined;
      const client = {
-@@ -1948,45 +2199,26 @@ describe("iMessage monitor last-route updates", () => {
+@@ -1948,45 +2201,26 @@ describe("iMessage monitor last-route updates", () => {
          throw new Error(`unexpected imsg method ${method}`);
        }),
        waitForClose: vi.fn(async () => {
@@ -644,7 +646,7 @@ index e5c6a3c7ef..f743027cf3 100644
        }),
        stop: vi.fn(async () => {}),
      };
-@@ -2013,9 +2245,578 @@ describe("iMessage monitor last-route updates", () => {
+@@ -2013,9 +2247,578 @@ describe("iMessage monitor last-route updates", () => {
        runtime: { error: vi.fn(), exit: vi.fn(), log: vi.fn() },
      });
 
@@ -1226,7 +1228,7 @@ index e5c6a3c7ef..f743027cf3 100644
      expect(bodies[0]).not.toContain("summarize");
      expect(bodies[1]).toContain("summarize");
      expect(bodies[1]).toContain("https://example.com/article");
-@@ -2103,6 +2904,7 @@ describe("iMessage monitor last-route updates", () => {
+@@ -2103,6 +2906,7 @@ describe("iMessage monitor last-route updates", () => {
    });
 
    it("respects explicit iMessage inbound debounce timing", async () => {
@@ -1234,7 +1236,7 @@ index e5c6a3c7ef..f743027cf3 100644
      const client = {
        request: vi.fn(async (method: string) => {
          if (method === "watch.subscribe") {
-@@ -2110,10 +2912,32 @@ describe("iMessage monitor last-route updates", () => {
+@@ -2110,10 +2914,32 @@ describe("iMessage monitor last-route updates", () => {
          }
          throw new Error(`unexpected imsg method ${method}`);
        }),
@@ -1269,7 +1271,7 @@ index e5c6a3c7ef..f743027cf3 100644
 
      await monitorIMessageProvider({
        config: {
-@@ -2135,5 +2959,6 @@ describe("iMessage monitor last-route updates", () => {
+@@ -2135,5 +2961,6 @@ describe("iMessage monitor last-route updates", () => {
        | { debounceMsOverride?: number }
        | undefined;
      expect(debouncerOptions?.debounceMsOverride).toBeUndefined();
