@@ -102,7 +102,7 @@ index 0f141fa1fe..2b2fffdf26 100644
      const controllerSessionKey = resolveControllerSessionKey(entry);
      if (controllerSessionKey) {
        let controllerRuns = runsByControllerSessionKey.get(controllerSessionKey);
-@@ -401,6 +401,14 @@ function forEachDescendantRun(
+@@ -401,4 +401,12 @@ function forEachDescendantRun(
        if (entry.requesterSessionKey !== requester) {
          continue;
        }
@@ -115,8 +115,6 @@ index 0f141fa1fe..2b2fffdf26 100644
 +        continue;
 +      }
        const childKey = entry.childSessionKey.trim();
-       const existing = latestByChildSessionKey.get(childKey);
-       if (!existing || entry.createdAt > existing[1].createdAt) {
 @@ -417,7 +425,7 @@ function forEachDescendantRun(
          continue;
        }

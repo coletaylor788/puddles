@@ -1,111 +1,79 @@
 # Coalesce split iMessage message parts
 
-- **Status:** Complete - ready for review
+- **Status:** In progress - implementing reply-chained sandwich coalescing
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
-- **Last updated:** 2026-07-26
+- **Last updated:** 2026-07-29
 - **Owner:** Cole Taylor
 
 ## Human design
 
 ### Problem
 
-Messages.app can emit one composition as separate text, link-preview, and
-attachment rows. Processing each row immediately starts multiple agent turns,
-so the first response lacks later payload context. Image batching works, but
-three successive production link smokes have split despite two deployed
-corrections. The prior failure omitted terminal punctuation and had a 12.4-second
-runtime gap; a 15-second absolute payload-referential deadline covered that
-measured shape in tests. The latest lead-in and URL-preview rows arrived only
-669 ms apart, but the payload question followed a comma and escaped the
-sentence-punctuation classifier, so a run started immediately. The fix must
-cover that exact clause shape without merging genuinely separate messages.
+Messages.app can emit one composition as separate text, link-preview, image, and
+trailing-text rows. Processing a row before the composition is complete starts
+an agent turn without the remaining context. The deployed correction now joins
+lead-in text with its link, but Cole's latest smoke sent text, link, then text as
+one composition and the final text became a second turn. Production rows show
+the URL and trailing text were reply-chained, adjacent, and created 114 ms apart,
+but the trailing notification reached OpenClaw only after the URL had flushed.
 
 ### Outcome
 
-Eligible same-sender direct-message text and payload rows from one composition
-become one logical inbound turn across the observed image and link-preview
+Eligible same-sender direct-message text, payload, and trailing-text rows from
+one composition become one logical inbound turn across observed Messages.app
 latencies. Unrelated complete messages, commands, reactions, groups, outgoing
 echoes, and rapid separate texts retain their prior behavior. The exact
-production timing shapes remain committed to the cumulative integration pool.
+production sandwich shape is committed to the cumulative integration pool.
 
 ### Approach
 
-Preserve the existing whole-question/final-sentence candidate for deictic
-payload questions. Evaluate a separate final comma-delimited candidate only for
-the bounded `what is/what's the <payload noun>` addition. Its preceding setup
-must contain a Unicode letter or number and end in comma-plus-whitespace;
-delimiter-only prefixes and sentence-punctuation prefixes do not qualify. Do
-not hold that question under the 15-second referential policy without that
-comma-delimited lexical setup. The existing seven-second unfinished-caption
-fallback remains unchanged. Keep the 15-second first absolute deadline and
-every existing exclusion unchanged. Add Cole's exact lead-in plus the 669 ms
-URL-preview timing to the real-debouncer regressions exposed through cumulative
-`packages/e2e`, then deploy only through the documented local wrapper.
+Keep a matched lead-in and link buffered until the lead-in's existing absolute
+deadline instead of flushing at link arrival. Admit trailing text only when its
+`reply_to_guid` continues the pending payload chain and its source timestamp is
+within one second of that payload; production history shows split composition
+parts under 425 ms while unrelated replies are much later. A non-matching row
+bypasses the held bucket and retains its existing separate-message behavior.
+Reproduce the exact delayed notification through the real inbound debouncer,
+expose it through cumulative `packages/e2e`, and deploy only through the
+documented local wrapper.
 
 ### Safety and rollout
 
 The behavior remains opt-in, sender/conversation scoped, size bounded, and
-fail-open when no safe key exists. Any longer wait must be payload-referential,
-explicitly capped, and covered by timeout and separate-message regressions.
-Automated tests use temporary worktrees and deny delivery; production
-investigation remains read-only. On the target host, `MINI_HOST` stays unset.
-Rollback disables coalescing or redeploys the prior reviewed patch stack.
+fail-open when no safe key exists. Any post-payload hold must be narrowly
+eligible, require both an explicit reply chain and a one-second source-time
+bound, preserve the first absolute deadline, and have regressions for unrelated
+text and timeout dispatch. Automated tests use temporary worktrees and deny
+delivery; production investigation remains read-only. On the target host,
+`MINI_HOST` stays unset. Rollback disables coalescing or redeploys the prior
+reviewed patch stack.
 
 ## Agent details
 
 ### State
 
-The first two corrections are merged, validated, and deployed. The second
-correction recognized the punctuationless final question, preserved a
-15-second first absolute deadline, passed 72 focused tests plus the cumulative
-lifecycle, and reached healthy production. Cole's third live question-plus-link
-smoke nevertheless failed at 2026-07-26T20:38:08.790Z. Read-only correlation
-found Messages rows 6817/6818 at 20:37:36.809Z and 20:37:37.477Z, only 669 ms
-apart. The first run started at 20:37:38.151Z and finished at 20:37:52.219Z;
-the URL run then started at 20:37:52.905Z. The classifier examined `New test,
-what's the link` as one sentence clause, so its interrogative guard missed the
-comma-delimited final question; the final question also uses the definite
-article rather than the existing deictic tokens. A clean pinned fixture now
-implements the narrow clause correction. Independent review found
-punctuation-only prefixes could incorrectly count as setup. The implementation
-now requires lexical setup, all 73 focused tests pass, and the remediated patch
-reproduces all four files byte-for-byte. The complete managed lifecycle is green
-again, and a fresh replacement reviewer found no actionable high-confidence
-defects. Terminal exact-commit review then found the definite-payload exception
-also activated after sentence punctuation. That comma-boundary finding must be
-fixed. The implementation now requires comma-plus-whitespace, all 73 focused
-tests pass, and the regenerated patch reproduces all four files byte-for-byte.
-The complete managed lifecycle is green again, and a fresh independent reviewer
-found no actionable high-confidence defects. Final exact-commit review, merge,
-and rollout remained, but terminal review found comma slicing changed the
-existing deictic matcher. Candidate handling is now separated, all 73 focused
-tests pass again, and patch reproduction is byte-for-byte. The complete
-lifecycle is green again, and fresh independent review found no actionable
-high-confidence defects. Exact commit `b99bff1f` also passed terminal review,
-and PR #38 CodeQL checks are green, but current `main` conflicts with the branch.
-Current `main` is now merged with the complete third-correction plan preserved,
-and the managed lifecycle is green. Fresh synchronized review found the 669 ms
-value was asserted only against resolved policy rather than exercised through
-the real debouncer. Both 669 ms and 12.416-second paths now run through the real
-debouncer, all 74 focused tests pass, and patch reproduction is byte-for-byte.
-The complete lifecycle is green again, and fresh independent review found no
-actionable high-confidence defects. PR #38 merged as exact `main` commit
-`e82db0e6441496f06acae4dd066804ef7d526c14`; its Integration and CodeQL runs
-passed. The reviewed stack was deployed locally from clean disposable
-worktrees pinned to that Puddles commit and OpenClaw `a1063aa`; all five
-patches applied, the package and browser image rebuilt, the gateway restarted,
-and no SSH was used. Read-only checks confirm valid configuration, a reachable
-active gateway, a healthy event loop, a running error-free iMessage account,
-enabled coalescing and attachment ingestion, and the exact reviewed classifier
-and deadline logic in the installed bundle. Both disposable deployment
-worktrees and their registrations were removed. The implementation and local
-rollout are complete; Cole's final Messages.app smoke remains the manual
-review action.
+The reviewed comma-delimited correction is merged and deployed from pinned
+OpenClaw `a1063aa`. It passes 74 focused tests and the cumulative lifecycle, and
+read-only production checks previously confirmed the installed logic and a
+healthy iMessage account. Cole's follow-up confirms text plus link now produces
+one turn, but a text-link-text composition emitted the final text separately.
+Read-only correlation found rows 7071/7072/7073 created at
+00:24:16.206Z, 00:24:21.554Z, and 00:24:21.668Z. Each later row's
+`reply_to_guid` points to the immediately preceding part. The URL triggered the
+first run at 00:24:22Z, while the trailing row did not start its run until
+00:24:30Z despite being created only 114 ms after the URL. Historical inbound
+URL continuation rows use 103-425 ms source gaps; a much later explicit reply is
+separated by tens of seconds. The premature payload flush, not source creation
+latency, is the demonstrated boundary.
 
 ### Scope and acceptance criteria
 
 - Near-simultaneous lead-in text plus a standalone URL preview from the same
   account, direct conversation, and sender dispatches as one logical turn.
+- Lead-in text, a URL-preview row, and trailing text from one Messages.app
+  composition dispatch as one logical turn in source order.
+- The exact 5.348-second lead-in-to-link gap, 114 ms link-to-trailing source gap,
+  and delayed trailing notification run through the real inbound debouncer.
 - The production event shape observed around the reported link test is covered
   by a committed regression and produces one logical inbound turn.
 - The latest post-deployment failure is correlated by row and runtime-start
@@ -117,8 +85,12 @@ review action.
   immediate.
 - Lead-in text plus a real image attachment dispatches as one logical turn.
 - Rapid but genuinely separate short text messages remain separate turns.
+- A text message sent after a completed text-plus-link composition remains a
+  separate turn when it is outside the observed composition boundary.
 - Complete URL-bearing prose, control commands, reactions, outgoing echoes, and
   group messages preserve immediate behavior.
+- Control commands remain immediate even when their source row also carries
+  media; they never join held conversational text.
 - Invalid conversation anchors fail open instead of sharing pending state.
 - Replay GUID handling and recovery, catchup, and cursor ordering remain safe.
 - Coalescing stays opt-in and requires attachment ingestion for image context.
@@ -133,10 +105,29 @@ review action.
 
 - Reuse `channels.imessage.coalesceSameSenderDms` and the existing bounded
   split-send window rather than adding configuration.
-- Hold only short unfinished lead-ins. Standalone payloads flush immediately
-  unless they can join the immediately preceding eligible lead-in.
+- Hold a payload through the existing first absolute deadline only when it joins
+  an eligible lead-in. Standalone payloads remain immediate.
+- Resolve that deadline from explicit positive inbound timing when configured;
+  explicit zero remains immediate, and only the default compatibility path
+  upgrades payload-referential lead-ins to 15 seconds.
+- Treat a following row as composition continuation only when it has the same
+  safe key, replies to the pending payload or continuation GUID, has parseable
+  source timestamps, and was created zero to 1,000 ms afterward. Update the
+  continuation anchor for another explicitly chained part without extending the
+  deadline.
+- Once a payload has joined a lead-in, another payload may retain that deadline
+  only by satisfying the same continuation chain. An unchained payload flushes
+  the pending composition and dispatches separately without inheriting its wait.
+- Record that a payload joined independently of whether its GUID and timestamp
+  can anchor a continuation. Missing or malformed metadata disables continuation
+  admission but cannot let a later lead-in or payload reuse the old deadline.
+- A new lead-in after a pending payload flushes the prior composition and starts
+  a fresh absolute deadline so back-to-back sandwich compositions retain their
+  own continuations.
 - Base link classification on the observed normalized inbound shape rather than
   assuming Messages.app always emits a standalone URL row.
+- Never promote structurally excluded non-URL balloons into continuations, even
+  when they are quickly reply-chained.
 - Also hold question-terminated prompts of at most eight words only when they
   contain an explicit deictic reference plus a payload noun, or match the narrow
   “how/what about this one?” comparison shape. Do not hold common unrelated
@@ -153,6 +144,10 @@ review action.
   Preserve the first pending deadline when later eligible rows arrive, keep the
   existing seven-second compatibility deadline for short unfinished captions,
   and do not widen ordinary text batching.
+- Treat a deadline as closed once wall time reaches it even if its timer callback
+  is delayed; flush the overdue bucket before enqueueing a later row.
+- A non-matching or control row retains its existing immediate behavior and does
+  not join the pending composition.
 - Scope pending state by account, valid conversation anchor, and sender.
 - Preserve limits of 4,000 text characters, 20 attachments, and 10 source rows.
 - Require `channels.imessage.includeAttachments: true` for image ingestion.
@@ -269,6 +264,18 @@ review action.
 - Exact-timing remediation parameterizes the real-debouncer regression for the
   669 ms comma-delimited production shape and the prior 12.416-second
   punctuationless shape, using distinct row IDs that preserve replay ordering.
+- Fourth reopened correction: correlate Cole's successful text-plus-link prefix
+  and separately delivered trailing text, reproduce the exact three-row order
+  through the real debouncer, and change only the demonstrated premature-flush
+  boundary.
+- Correlation identified rows 7071/7072/7073 as an explicit reply chain. The URL
+  and trailing text were adjacent and created 114 ms apart, but the current
+  `enqueueInboundEntry` flushes every payload immediately, before the delayed
+  trailing notification can join.
+- The implementation retains a matched payload until the existing first
+  deadline, classifies only reply-chained source-time-bounded rows as
+  continuations, merges contiguous lead-in/payload/continuation units, and
+  leaves standalone payloads and non-matching rows immediate.
 
 ### Validation
 
@@ -409,6 +416,34 @@ review action.
   pruned, and the temporary Corepack shim was deleted.
 - PR #39 publishes this plan-only rollout closeout. Its cumulative Integration
   and CodeQL pull-request checks passed.
+- The fourth production sandwich shape has not yet been correlated or reproduced;
+  focused and cumulative validation must be rerun after the evidence-driven fix.
+- Read-only production correlation confirms the first transcript turn contained
+  rows 7071/7072 and the second contained row 7073. The first agent pipeline
+  started at 00:24:22Z and the second at 00:24:30Z. The source rows provide both
+  exact timestamps and a 7071 -> 7072 -> 7073 `reply_to_guid` chain.
+- The pinned fixture now keeps only matched lead-in/payload pairs through their
+  existing first deadline and admits continuations only through an exact reply
+  chain with a zero-to-1,000 ms source-time gap. The observed delayed
+  text-link-text sequence produces one dispatch through the real debouncer.
+- All 87 focused coalescer and monitor tests pass. The regenerated patch applies
+  with the complete six-patch stack to a second clean pinned fixture, and all
+  four iMessage outputs reproduce byte-for-byte. The monitor coverage includes
+  a joined payload with no GUID and a malformed timestamp, proving that the next
+  composition gets a fresh bucket while the malformed row cannot anchor a
+  continuation.
+- The complete managed lifecycle passes repository build and lint, 270 workspace
+  tests, 332 cumulative mapped OpenClaw tests, one isolated browser-entrypoint
+  candidate test, and candidate deregistration.
+- The complete six-patch stack now applies to production OpenClaw
+  `2026.7.1-2 (0790d9f)`. The only incompatible preimage was unrelated comparison
+  context in the yield patch; narrowing that hunk without changing its code
+  makes it apply to both the pinned and production releases. All 336 mapped
+  source tests pass on the production release, including the 87 iMessage tests.
+- After the portability-only patch-hunk change, the complete pinned-release
+  managed lifecycle passes again with the same build, lint, 270 workspace-test,
+  332 mapped-source-test, candidate-test, and cleanup coverage after the
+  metadata-safe payload-state remediation.
 
 ### Rollout and rollback
 
@@ -420,9 +455,14 @@ deployed from clean disposable worktrees pinned to merged Puddles `e82db0e` and
 OpenClaw `a1063aa`; all five reviewed patches applied, the package and browser
 image rebuilt, and the gateway restarted. Automated production validation
 remained read-only and passed. Both disposable worktrees and their registrations
-were removed. The remaining manual review action is to repeat the exact
-question-plus-link Messages.app smoke; rollback remains available without data
-migration.
+were removed. The fourth sandwich correction must pass the full review and
+promotion lifecycle before another local deployment. Rollback remains available
+without data migration.
+
+Production currently reports OpenClaw `2026.7.1-2 (0790d9f)` while the managed
+patch pool remains pinned to `a1063aa`/2026.6.11. The complete stack applies and
+all mapped source tests pass on a clean `0790d9f` fixture. Promotion must use
+that installed-release source artifact and must not downgrade production.
 
 Rollback:
 
@@ -521,6 +561,45 @@ No data migration or persistent message-state conversion is involved.
 - Fresh independent review of the complete third correction plus the rollout
   closeout found no actionable high-confidence defects. The remaining manual
   boundary is Cole's final Messages.app question-plus-link smoke.
+- Cole's text-link-text smoke reopened the task because the trailing text became
+  a second turn. A fresh complete-diff review is required after correlation,
+  implementation, and cumulative validation.
+- A fresh independent complete-diff review found no actionable
+  high-confidence defects. Residual gates are patch portability to production
+  OpenClaw 2026.7.1-2, deployment, the live Messages.app smoke, and terminal
+  review of the exact handoff commit.
+- A later fresh review found explicit nonzero debounce configuration still
+  caused matched payloads to flush immediately. The accepted correction derives
+  the first absolute deadline from effective explicit timing while preserving
+  explicit zero, and runs the exact sandwich through the real debouncer in both
+  default and explicit-positive configurations.
+- The next fresh review found an unchained second payload could inherit the
+  first composition's deadline. The accepted correction makes it flush the
+  pending pair and dispatch as a separate immediate turn; a monitor regression
+  covers lead-in, chained URL, then unchained URL.
+- A subsequent fresh review found media classification could precede control
+  detection and merge an attachment-bearing `/stop` into held prose. The
+  accepted correction detects non-empty controls independently of media before
+  coalescing and proves the command dispatches ahead of a held lead-in.
+- The next fresh review found a delayed timer callback could let a payload enter
+  after the absolute deadline. The accepted correction clears expired state,
+  flushes the overdue bucket before enqueue, and proves the late payload remains
+  a separate turn.
+- A later review found back-to-back sandwich compositions shared stale state and
+  structurally instant balloons could be promoted by reply chaining. The
+  accepted corrections start a fresh bucket on a post-payload lead-in and
+  exclude all balloon metadata from continuation promotion; both paths have
+  monitor regressions.
+- The next fresh review found that payload-boundary state existed only when the
+  joined payload had valid continuation metadata. The accepted correction always
+  records that a payload joined while making its GUID/timestamp continuation
+  anchor optional, so malformed metadata cannot admit a continuation or let a
+  later composition reuse the old deadline. Focused and production-release
+  mapped suites pass 87 and 336 tests respectively after the correction.
+- A fresh independent review of the complete metadata-safe diff found no
+  actionable high-confidence defects. Residual non-blocking gaps are the final
+  live Messages.app sandwich smoke, transport reconnect/teardown races outside
+  the source-notification harness, and anchorless RPC-repair ordering.
 
 ### Checklist
 
@@ -587,3 +666,13 @@ No data migration or persistent message-state conversion is involved.
 - [x] Obtain a clean independent review of the synchronized third correction.
 - [x] Merge, verify `main`, deploy locally, and validate production read-only.
 - [x] Return issue #28 and Todoist to Ready for review after the third smoke fix.
+- [x] Correlate the text-link-text production transcript, Messages rows, and run
+  timing.
+- [x] Add a committed real-debouncer regression for the exact sandwich sequence.
+- [x] Correct the premature payload flush without merging unrelated trailing
+  messages.
+- [x] Run focused tests and the complete cumulative managed lifecycle.
+- [ ] Obtain clean reusable-worker and terminal adversarial reviews.
+- [ ] Merge, verify exact `main`, deploy locally, and validate production
+  read-only.
+- [ ] Return issue #28 and Todoist to Ready for review after the sandwich fix.
