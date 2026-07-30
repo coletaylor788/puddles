@@ -1,6 +1,6 @@
 # Coalesce split iMessage message parts
 
-- **Status:** Complete - ready for review (2026-07-30)
+- **Status:** In progress - landing replacement-marker reconciliation
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-30
 - **Owner:** Cole Taylor
@@ -19,7 +19,10 @@ public pull-request tuple changed. The stable reviewed tuple has now promoted
 the complete combined runtime with a durable patchset marker and the sandwich
 continuation state machine, and both exact candidates have landed. The reviewed
 reconciliation plan is on `main`, post-merge checks pass, and production is
-healthy.
+healthy. A later combined-lifecycle hardening follow-up replaced the first
+durable marker through the same guarded path without changing the public
+iMessage candidate. The replacement marker binds the installed patch bytes to
+the exact landed public and dependent private heads.
 
 ### Outcome
 
@@ -28,14 +31,14 @@ one composition become one logical inbound turn across observed Messages.app
 latencies. Production also exposes a durable identity accepted by combined
 promotion guards. Reconciliation first restored the prior marked package from
 recovery snapshot `20260730T042702Z-32096` without changing cron state or
-delivering messages, then promoted the exact reviewed combined tuple with
-recovery snapshot `20260730T084333Z-0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`.
-Public candidate `5b771f91...` landed as `ceff0eba...`, private candidate
-`d97c1b30...` landed as `95bfe75f...`, and production was rechecked read-only.
-The reviewed final plan landed as `1e053e71...`; the remaining handoff only
-synchronizes issue #28 and Todoist to Ready for review. Any future tuple drift or
-failed runtime check must use the retained snapshot and reviewed rollback path
-rather than bypassing lifecycle guards.
+delivering messages, then promoted and landed the exact reviewed combined tuple.
+Public candidate `5b771f91...` remains landed as `ceff0eba...`. The dependent
+follow-up candidate `1915cc1...` landed as `0b13edc...` and replaced the earlier
+private landing through recovery snapshot
+`20260730T104410Z-0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`. Production was
+rechecked read-only with the sandwich continuation state machine still
+installed. Any future tuple drift or failed runtime check must use the retained
+snapshot and reviewed rollback path rather than bypassing lifecycle guards.
 
 ### Approach
 
@@ -82,8 +85,10 @@ the gateway is safely quiesced. The combined lifecycle retains the same target
 lock and atomic rollback guards. Automated checks remain read-only and must not
 deliver messages. All retained snapshots remain available if landing or
 post-landing checks fail. Only the exact reviewed and promoted public/private
-tuple could land; both merge commits and public post-merge workflows now
-provide the durable repository identity for the installed marker.
+tuple could land. The follow-up lifecycle additionally binds each extracted
+patch to its suite-pinned SHA-256 before promotion. The landed merge commits and
+marker now provide the durable repository and byte identity for the installed
+runtime.
 
 ## Agent details
 
@@ -117,6 +122,22 @@ CodeQL run `30528271254` passed on the exact public merge.
 Final reconciliation PR #58 then merged exact reviewed commit `ad2d6c6...` as
 `1e053e71da13e33ca8e30f4c5125642d91bbf5e7`; Integration run `30530769411`
 and CodeQL run `30530768988` passed on that exact `main` merge.
+A later hardening follow-up retained public head `5b771f91...`, passed complete
+combined validation and clean terminal review at dependent private head
+`1915cc147cdb13c656270dfc5d04d718aedc256c`, and landed as
+`0b13edc0202b52eda139165bb0fdc8e85122c4e7`. Its guarded promotion replaced the
+older durable marker, recorded recovery snapshot
+`20260730T104410Z-0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`, and installed
+deployment `73b08dc8-5c4d-40ed-808a-d46ee0eaa45d`. Marker SHA-256 is
+`cf9933e69bd2d7fda0ba164a5d3a290f9a9bb454d7ad8c90f0d4334b17029983`.
+The marker records the exact public/private heads, all six public and two
+private patches, and every suite-pinned patch hash. Package, CLI, and gateway
+remain `2026.7.1-2 (0790d9f)`; the installed bundle contains
+`isIMessageSplitContinuation` and active continuation-chain state; config is
+valid; gateway connectivity is healthy; iMessage is enabled, configured,
+running, and working; and deployment/source locks are absent. The lifecycle ran
+no cron job, changed no cron definition, delivered no message, and performed no
+mailbox mutation.
 
 ### Scope and acceptance criteria
 
@@ -636,6 +657,24 @@ and CodeQL run `30530768988` passed on that exact `main` merge.
 - Final reconciliation commit `ad2d6c6...` passed terminal exact-commit review
   and all PR checks, merged through PR #58 as `1e053e71...`, and passed
   Integration run `30530769411` and CodeQL run `30530768988` on `main`.
+- The dependent hardening follow-up at `1915cc1...` passed 62 private tests,
+  633 mapped patched-source tests across 24 files, the browser candidate, root
+  and UI builds, frozen production staging, CLI bootstrap, the production
+  validator, cleanup, and a fresh clean terminal review. It landed as
+  `0b13edc...`.
+- Replacement promotion snapshot
+  `20260730T104410Z-0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c` passed its
+  recorded package, configuration, and browser-image checksum verification.
+  Installed marker `73b08dc8-5c4d-40ed-808a-d46ee0eaa45d`, SHA-256
+  `cf9933e69bd2d7fda0ba164a5d3a290f9a9bb454d7ad8c90f0d4334b17029983`,
+  binds public head `5b771f91...`, dependent private head `1915cc1...`, and all
+  suite-pinned patch hashes.
+- Post-replacement read-only checks confirm `2026.7.1-2 (0790d9f)`, valid
+  config, running/reachable gateway, working iMessage, installed sandwich
+  continuation symbols, and absent deployment/source locks. The production
+  validator passed the gateway, reader boundary, cron guard, and fixed
+  no-match Gmail read. No cron job or definition, message delivery, or mailbox
+  state was mutated.
 
 ### Rollout and rollback
 
@@ -672,6 +711,16 @@ iMessage, and an absent deployment lock. Exact private and public candidates
 then landed as `95bfe75f...` and `ceff0eba...`; public post-merge Integration and
 CodeQL passed, and repeated production checks returned the same healthy marked
 runtime.
+
+The subsequent combined hardening follow-up preserved the same public iMessage
+candidate while binding patch extraction to exact reviewed commits and
+suite-pinned hashes. After complete combined validation and terminal review, it
+landed dependent private head `1915cc1...` as `0b13edc...` and replaced the older
+marked runtime through the guarded lifecycle. Current recovery snapshot is
+`20260730T104410Z-0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`; current deployment
+is `73b08dc8-5c4d-40ed-808a-d46ee0eaa45d`. Post-landing validation confirms the
+same installed sandwich behavior and healthy service without cron, message, or
+mailbox mutation.
 
 Rollback:
 
@@ -896,6 +945,14 @@ No data migration or persistent message-state conversion is involved.
 - Terminal review of immutable PR #58 commit `ad2d6c6...` found no actionable
   high-confidence defects. The exact commit merged as `1e053e71...`; Integration
   and CodeQL passed on that merge.
+- The later exact-byte hardening follow-up passed reusable remediation review,
+  complete combined validation, and fresh terminal review at `1915cc1...` with
+  no actionable findings before promotion and landing. Read-only post-landing
+  evidence confirms the iMessage state machine remains installed.
+- A fresh independent review verified the complete replacement-marker plan
+  diff, landed tuples, installed marker and symbols, snapshot artifacts,
+  runtime health, and tracker state. It found no actionable high-confidence
+  defects.
 
 ### Checklist
 
@@ -1004,3 +1061,9 @@ No data migration or persistent message-state conversion is involved.
 - [x] Obtain a clean independent review of the corrected final reconciliation.
 - [x] Land the reconciled plan and report the exact production action and
   recovery artifact to the dependent worker.
+- [x] Verify the later exact-byte combined promotion, replacement marker,
+  recovery snapshot, and dependent follow-up landing.
+- [x] Obtain a clean independent review of the replacement-marker
+  reconciliation.
+- [ ] Land the replacement-marker plan reconciliation, then restore
+  issue #28 and Todoist to Ready for review.
