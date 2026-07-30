@@ -1,8 +1,8 @@
 # Coalesce split iMessage message parts
 
-- **Status:** Complete - ready for review
+- **Status:** In progress - landing final reviewed reconciliation
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
-- **Last updated:** 2026-07-29
+- **Last updated:** 2026-07-30
 - **Owner:** Cole Taylor
 
 ## Human design
@@ -10,19 +10,30 @@
 ### Problem
 
 Messages.app can emit one composition as separate text, link-preview, image, and
-trailing-text rows. Processing a row before the composition is complete starts
-an agent turn without the remaining context. The final production failure was a
-text-link-text composition whose reply-chained URL and trailing text were
-created 114 ms apart, but the trailing notification reached OpenClaw only after
-the URL had started a turn.
+trailing-text rows. The sandwich correction is landed and tested. Its original
+local promotion temporarily replaced the combined `2026.7.1-2` runtime with an
+unmarked source package reporting `2026.7.1`, so later promotion guards could
+not prove the installed patch stack. Recovery restored the exact predecessor,
+and a first marker-aware promotion correctly rolled back when its required
+public pull-request tuple changed. The stable reviewed tuple has now promoted
+the complete combined runtime with a durable patchset marker and the sandwich
+continuation state machine, and both exact candidates have landed. Production
+is healthy; only final plan landing and tracker reconciliation remain.
 
 ### Outcome
 
 Eligible same-sender direct-message text, payload, and trailing-text rows from
 one composition become one logical inbound turn across observed Messages.app
-latencies. Unrelated complete messages, commands, reactions, groups, outgoing
-echoes, and rapid separate texts retain their prior behavior. The exact
-production sandwich shape is committed to the cumulative integration pool.
+latencies. Production also exposes a durable identity accepted by combined
+promotion guards. Reconciliation first restored the prior marked package from
+recovery snapshot `20260730T042702Z-32096` without changing cron state or
+delivering messages, then promoted the exact reviewed combined tuple with
+recovery snapshot `20260730T084333Z-0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`.
+Public candidate `5b771f91...` landed as `ceff0eba...`, private candidate
+`d97c1b30...` landed as `95bfe75f...`, and production was rechecked read-only.
+Completion lands this reviewed final plan and synchronizes the trackers. Any future tuple
+drift or failed runtime check must use the retained snapshot and reviewed
+rollback path rather than bypassing lifecycle guards.
 
 ### Approach
 
@@ -38,7 +49,18 @@ documented local wrapper. Package the source candidate with the repository's
 native pnpm tooling so workspace dependencies become installable release
 versions, and make the rollback artifact independently installable before the
 gateway is stopped. Exercise both successful rollback normalization and the
-fail-closed path when an installed workspace dependency cannot be resolved.
+fail-closed path when an installed workspace dependency cannot be resolved. For
+this incident, the retained `2026.7.1-2` tarball and service snapshot were
+validated, recovery was serialized through the existing deployment lock and
+lifecycle boundaries, and current runtime/cron data were preserved. The
+dependent combined lifecycle installs `PUDDLES_PATCHSET.json` only while its
+exact reviewed public and private landing tuple remains stable; tuple drift
+rolls back to the predecessor and requires repeated validation/review. Its test
+lifecycle builds after patch application and validates the exact frozen staged
+package so stale artifact assertions fail before promotion. Final checks verify
+the marker, installed sandwich continuation state machine, package/service
+identity, gateway health, iMessage connectivity, unchanged cron hash, and
+absent deployment lock without delivering messages.
 
 ### Safety and rollout
 
@@ -51,11 +73,15 @@ delivery; production investigation remains read-only. On the target host,
 `MINI_HOST` stays unset. Rollback disables coalescing or redeploys the prior
 reviewed patch stack. Promotion rejects candidate or rollback tarballs that
 retain `workspace:` dependency protocols or cannot be normalized before
-stopping the gateway. The reviewed candidate is merged and deployed; its
-retained recovery snapshot supports rollback if the final manual Messages.app
-smoke exposes a regression. The repository closeout is on the default branch,
-and the final issue and Todoist Ready for review handoff links to this current
-plan.
+stopping the gateway. Recovery must not restore the old runtime-state clone
+because doing so could rewind cron or other post-snapshot state; only the
+validated prior package and matching service definition may be restored while
+the gateway is safely quiesced. The combined lifecycle retains the same target
+lock and atomic rollback guards. Automated checks remain read-only and must not
+deliver messages. All retained snapshots remain available if landing or
+post-landing checks fail. Only the exact reviewed and promoted public/private
+tuple could land; both merge commits and public post-merge workflows now
+provide the durable repository identity for the installed marker.
 
 ## Agent details
 
@@ -65,16 +91,27 @@ Read-only correlation found rows 7071/7072/7073 created at 00:24:16.206Z,
 00:24:21.554Z, and 00:24:21.668Z with an exact reply chain. The URL started a
 turn at 00:24:22Z, while the trailing row started a second turn at 00:24:30Z.
 The correction retains a matched payload through the first absolute deadline
-and admits only bounded exact-chain continuations. The complete feature passed
-focused, cumulative, production-release, packaging, rollback, reusable-review,
-terminal-review, pull-request, and post-merge gates. Exact candidate `af5bdf2`
-was promoted locally from OpenClaw `0790d9f`, merged by PR #51 as `863666f`, and
-revalidated read-only in production. The gateway is healthy and iMessage is
-configured and running. The issue ledger now reflects the landed outcome. The
-reviewed plan-only closeout merged as `c873bb0`, and its Integration and CodeQL
-checks passed on `main`. Final plan-state commit `74a92bb` merged as `f7a049a`
-and passed Integration and CodeQL on `main`. Issue #28 and the Todoist task are
-both Ready for review, so no worker-owned lifecycle step remains.
+and admits only bounded exact-chain continuations. The implementation,
+packaging, rollback, cumulative integration, and exact frozen combined graph
+passed their focused, full-lifecycle, reusable, terminal, and remote checks.
+Recovery first restored the safe `2026.7.1-2 (0790d9f)` predecessor from
+`20260730T042702Z-32096`; a transient marker-aware promotion then rolled back
+when its public tuple moved. Stable public candidate `5b771f91...` and private
+candidate `d97c1b30...` subsequently passed full combined validation and terminal
+review. Their atomic promotion created snapshot
+`20260730T084333Z-0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c` and installed marker
+deployment `8491ddf6-668b-487d-8623-7c7dff0a0e31`, SHA-256
+`c48b5745394a3bc697b3b9bc5c8d5e29bcd0746acdcd295ae8f6cda9234789c8`.
+The marker identifies all six public and both private patches. Package, CLI,
+gateway, and plist report `2026.7.1-2 (0790d9f)`; the installed bundle contains
+`isIMessageSplitContinuation` and `dmCoalescePayloadStateByKey`; configuration
+is valid; the gateway is loaded, running, reachable, and healthy; iMessage is
+configured, running, and working; the cron-tree SHA-256 remains
+`ec493dd79dc7fdcf8b4ca12087d2322934da7cd2a92eb46490c3342f5a0f1279`; and the
+deployment lock is absent. Private PR #6 landed as
+`95bfe75f342ad1c2959d956ca4f4221627ce9a10` and public PR #48 landed as
+`ceff0eba07b6f7644a7fea95eded87a4bcc2801b`; Integration run `30528271011` and
+CodeQL run `30528271254` passed on the exact public merge.
 
 ### Scope and acceptance criteria
 
@@ -110,6 +147,13 @@ both Ready for review, so no worker-owned lifecycle step remains.
   approved `MINI_HOST`.
 - Production runs a reviewed `main` artifact with valid configuration and a
   healthy iMessage provider.
+- Production package, CLI, gateway, and service identities agree on the durable
+  predecessor version marker `2026.7.1-2`; the combined preflight accepts that
+  pre-marker package without `PUDDLES_PATCHSET.json`.
+- Final production contains the bounded sandwich continuation state machine and
+  a patchset marker tied to the exact landed public/private candidates.
+- Recovery leaves current cron, runtime configuration, and message state
+  unchanged and performs no message delivery.
 
 ### Architecture and decisions
 
@@ -135,6 +179,14 @@ both Ready for review, so no worker-owned lifecycle step remains.
   to concrete installable versions. Clone and normalize any workspace
   dependencies in the installed-package rollback snapshot before npm packing,
   then validate both tarball manifests before stopping the gateway.
+- Treat package/service version disagreement as an invalid promotion even when
+  gateway health is green. A `2026.7.1-2` predecessor without
+  `PUDDLES_PATCHSET.json` remains valid because the reviewed combined preflight
+  requires the exact version, not a predecessor patchset manifest.
+- Reuse the deployment lock, gateway stop/readiness bounds, validated recovery
+  tarball, and retained plist rather than copying an ad hoc build. Do not restore
+  the runtime-state clone during this reconciliation because that would rewind
+  unrelated post-snapshot state, including cron.
 - A new lead-in after a pending payload flushes the prior composition and starts
   a fresh absolute deadline so back-to-back sandwich compositions retain their
   own continuations.
@@ -298,6 +350,14 @@ both Ready for review, so no worker-owned lifecycle step remains.
   workspace dependency manifest and requires the wrapper to fail before any
   launchd or package mutation. The variant uses the same real tarball path as
   successful normalization rather than mocking the helper result.
+- Production reconciliation validates the retained prior package and service
+  snapshot, determines the marker contract used by subsequent combined
+  promotion guards, and restores a guard-compatible identity through serialized
+  recovery without changing cron or delivering messages.
+- Final rollout updates the combined manifest to a stable current public
+  candidate, reruns the complete frozen-graph lifecycle and reviews, promotes
+  atomically, verifies sandwich symbols and health read-only, then lands only
+  the exact promoted public/private tuple.
 
 ### Validation
 
@@ -507,10 +567,71 @@ both Ready for review, so no worker-owned lifecycle step remains.
   checks, merged as `f7a049a`, and passed Integration and CodeQL on that exact
   `main` commit. Issue #28 was set to Ready for review, and Todoist received the
   signed result comment before `agent` was replaced with `ready_for_review`.
+- Reconciliation evidence: live CLI/package version is `2026.7.1` at source
+  `0790d9f`; `PUDDLES_PATCHSET.json` is absent; the loaded plist comment remains
+  `OpenClaw Gateway (v2026.7.1-2)`; gateway health passes and iMessage is
+  configured/running. Snapshot `20260730T042702Z-32096` contains normalized
+  `openclaw-2026.7.1-2.tgz` with concrete `@openclaw/ai` version `2026.7.1` and
+  the matching service plist.
+- The target recovery path acquired the deployment lock, created safety snapshot
+  `20260730T063203Z-51528`, installed the retained package, preserved the live
+  plist, and passed readiness. Before/after configuration SHA-256 remained
+  `5cbd61ceb8181d1f49a960aab01e2fed2f9a1c71f9ab8858702359c425de4ff3`;
+  cron-tree SHA-256 remained
+  `ec493dd79dc7fdcf8b4ca12087d2322934da7cd2a92eb46490c3342f5a0f1279`.
+  CLI/gateway now report `2026.7.1-2 (0790d9f)`, config is valid, the service is
+  loaded/running, connectivity is OK, and iMessage is running.
+- The first combined retry recorded snapshot
+  `20260730T063718Z-0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c` and failed its
+  pre-swap validator with `installed guard artifact is missing: Required for
+  scheduled/cron callers`. Automatic rollback restored the prior package,
+  configuration, browser entrypoint, and healthy gateway. The same configuration
+  and cron-tree hashes remain unchanged.
+- The corrected combined lifecycle passed its full frozen-graph validation,
+  retained review, and terminal review, then temporarily promoted atomically
+  with recovery snapshot
+  `20260730T071847Z-0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`.
+  Its candidate marker recorded deployment
+  `ff7bd5fc-c2b9-4878-9053-1a1f8d62ad85`, all six public patches, and both
+  combined private patches. Marker SHA-256 is
+  `afc128c50526cd0a9572cd1e3cf87c9ed5c559c50ca55d7a511d493117cd02be`.
+  The public head then changed before landing, so the lifecycle atomically
+  restored the exact predecessor. Current package, CLI, gateway, and plist report
+  `2026.7.1-2 (0790d9f)` with no `PUDDLES_PATCHSET.json`; configuration is valid,
+  the service is loaded/running, gateway connectivity is OK, iMessage is
+  configured/running, the deployment lock is absent, and cron-tree SHA-256 remains
+  `ec493dd79dc7fdcf8b4ca12087d2322934da7cd2a92eb46490c3342f5a0f1279`.
+- Current installed-bundle inspection does not find the sandwich continuation
+  symbols present in the rolled-back source candidate, proving final combined
+  promotion remains required rather than treating healthy predecessor recovery
+  as feature completion.
+- Stable public candidate `5b771f91b9c949c8752b29b2c16c004bb5e2a8ce`
+  against base `6dc4e03c5b1a79ff682e76ad7eea8a6348ef4456` passed Integration
+  and CodeQL. Private candidate `d97c1b30dadad688f036844dc2cd66ae95203e1a`
+  against base `5293f1161a75587bd38d7e1cc8a11d517499fb69` passed full combined
+  validation and terminal review.
+- Atomic promotion recorded recovery snapshot
+  `20260730T084333Z-0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c` and installed
+  deployment marker `8491ddf6-668b-487d-8623-7c7dff0a0e31`, SHA-256
+  `c48b5745394a3bc697b3b9bc5c8d5e29bcd0746acdcd295ae8f6cda9234789c8`.
+  The marker contains all six public and both private patch IDs. Read-only
+  inspection finds `isIMessageSplitContinuation` and
+  `dmCoalescePayloadStateByKey` in the installed bundle.
+- Post-promotion checks report package, CLI, gateway, and plist identity
+  `2026.7.1-2 (0790d9f)`; valid configuration; loaded/running gateway with
+  successful connectivity and health probes; configured/running/working
+  iMessage; unchanged cron-tree SHA-256
+  `ec493dd79dc7fdcf8b4ca12087d2322934da7cd2a92eb46490c3342f5a0f1279`;
+  and no deployment lock.
+- Exact private candidate `d97c1b30...` merged as `95bfe75f...`, followed by
+  exact public candidate `5b771f91...` as `ceff0eba...`. The public merge's
+  Integration run `30528271011` and CodeQL run `30528271254` passed.
+  Post-landing production checks returned the same marker, installed sandwich
+  symbols, healthy gateway/iMessage state, unchanged cron hash, and absent lock.
 
 ### Rollout and rollback
 
-Production rollout used
+The sandwich rollout used
 `docs/openclaw-setup/patches/apply-and-deploy.sh` with `MINI_HOST` unset and
 `OPENCLAW_SRC` pinned to clean OpenClaw `0790d9f`. The wrapper applied all six
 patches, produced and validated installable candidate and rollback tarballs,
@@ -520,6 +641,29 @@ readiness. Automated production validation remained read-only and did not
 deliver messages. The disposable promotion worktrees and temporary package
 manager shims were removed. No data migration or persistent message-state
 conversion is involved.
+
+That lifecycle intentionally completed, but its source tarball reported
+`2026.7.1` and omitted a durable patchset marker. Reconciliation used the exact
+serialized target path with recovery tarball
+`20260730T042702Z-32096/openclaw-2026.7.1-2.tgz`, preserved current runtime state
+and the matching plist, and created safety snapshot
+`20260730T063203Z-51528`. The prior `2026.7.1-2` runtime is healthy and satisfies
+the combined lifecycle's precondition, but it predates `PUDDLES_PATCHSET.json`.
+The first reviewed combined retry failed candidate validation before package
+swap and rolled back cleanly. The lifecycle was corrected so its test path
+builds after applying patches and validates the exact frozen staged package with
+the production validator. A first corrected promotion recorded snapshot
+`20260730T071847Z-0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`, then rolled back
+when the public head changed. The stable replacement tuple repeated full
+validation and terminal review before atomic promotion recorded snapshot
+`20260730T084333Z-0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`. Production now
+runs marked deployment `8491ddf6-668b-487d-8623-7c7dff0a0e31` with all expected
+patch IDs and the installed sandwich state machine. Read-only checks preserve
+the cron tree and confirm valid config, healthy gateway connectivity, working
+iMessage, and an absent deployment lock. Exact private and public candidates
+then landed as `95bfe75f...` and `ceff0eba...`; public post-merge Integration and
+CodeQL passed, and repeated production checks returned the same healthy marked
+runtime.
 
 Rollback:
 
@@ -705,6 +849,42 @@ No data migration or persistent message-state conversion is involved.
   gateway, and six-patch stack before the closeout merged as `c873bb0`.
 - A fresh terminal reviewer found no actionable high-confidence findings in
   final plan-state commit `74a92bb` before it merged as `f7a049a`.
+- A later combined promotion detected an identity invariant that the reviewed
+  lifecycle did not enforce: the installed source package lost the prior
+  combined-runtime suffix and has no patchset manifest. Reconciliation review
+  must verify the chosen recovery path preserves runtime/cron state and leaves a
+  durable marker accepted by subsequent promotion guards.
+- The first combined retry exposed a second fail-closed lifecycle gap: combined
+  CI did not validate the exact post-patch frozen graph used by production.
+  Retry requires full combined validation and independent review after that
+  lifecycle is corrected.
+- The corrected combined candidate passed complete frozen-graph validation,
+  clean retained review, and clean terminal exact-commit review before promotion.
+- A fresh independent review cross-checked the reconciliation evidence and found
+  no initial issue, but the terminal exact-commit review correctly caught that a
+  later tuple-drift rollback had removed the transient patchset marker. The plan
+  now records the actual restored predecessor rather than the transient state.
+  No live delivery smoke was run under the explicit no-delivery constraint.
+- Review of that correction found the restored predecessor also lacks the
+  sandwich continuation state machine. Healthy rollback is therefore an
+  intermediate safety state, not completion; final combined promotion and exact
+  tuple landing remain required.
+- Stable public head `5b771f91...` and private head `d97c1b30...` passed the
+  complete frozen-graph lifecycle and terminal private review. The exact tuple
+  promoted successfully, passed independent read-only production checks, landed
+  as public merge `ceff0eba...` and private merge `95bfe75f...`, and passed
+  repeated production and public post-merge checks. A fresh review of the final
+  plan-only reconciliation remains.
+- The first final-reconciliation review independently verified the external
+  evidence and found one inaccurate marker hash: both plan occurrences omitted
+  the digest's final `8`. The accepted correction records the full 64-character
+  SHA-256; a fresh replacement review remains required because the diff changed.
+- The fresh replacement review independently rechecked the complete
+  reconciliation, exact public/private merge commits, post-merge workflows,
+  marker contents and hash, snapshot, installed symbols, health, cron hash, and
+  lock state. It found no actionable high-confidence defects. The remaining
+  live Messages.app smoke is intentionally excluded by the no-delivery
+  constraint.
 
 ### Checklist
 
@@ -791,3 +971,25 @@ No data migration or persistent message-state conversion is involved.
 - [x] Promote the exact remotely green candidate, validate production read-only,
   then merge and verify exact `main`.
 - [x] Return issue #28 and Todoist to Ready for review after the sandwich fix.
+- [x] Confirm the unmarked package, missing patchset manifest, version-mismatched
+  plist, retained prior package, and healthy gateway read-only.
+- [x] Determine the exact combined-promotion marker contract and select the
+  reviewed recovery path.
+- [x] Restore the exact prior package identity without changing cron/runtime
+  data or delivering messages.
+- [x] Prove the combined lifecycle installed its reviewed marker transiently and
+  rolled back to the exact predecessor when its landing tuple changed.
+- [x] Confirm the first combined retry failed before package swap and restored
+  the exact healthy predecessor without changing cron.
+- [x] Verify the restored predecessor package/service identity, configuration,
+  gateway health, iMessage connectivity, and absence of sandwich symbols
+  read-only.
+- [x] Revalidate and review the combined stack against a stable current public
+  candidate.
+- [x] Promote and verify the installed patchset marker and sandwich continuation
+  state machine read-only.
+- [x] Land only the exact public/private candidates that passed promotion and
+  production validation.
+- [x] Obtain a clean independent review of the corrected final reconciliation.
+- [ ] Land the reconciled plan and report the exact production action and
+  recovery artifact to the dependent worker.
