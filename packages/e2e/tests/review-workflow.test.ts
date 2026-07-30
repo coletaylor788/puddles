@@ -49,7 +49,7 @@ describe("adversarial review workflow", () => {
     );
     expect(safeWorkflow).toMatch(/do not require a\s+new finding or code change/i);
 
-    expect(reviewWorkflow).toContain('version: "1.2.0"');
+    expect(reviewWorkflow).toContain('version: "1.3.0"');
     expect(reviewWorkflow).toMatch(/When resumed after remediation/i);
     expect(reviewWorkflow).toMatch(/Verify each\s+claimed correction/i);
     expect(reviewWorkflow).toMatch(/re-check the complete\s+current diff/i);
@@ -60,6 +60,36 @@ describe("adversarial review workflow", () => {
     expect(reviewWorkflow).toMatch(/residual validation gap,\s+not as a defect/i);
     expect(reviewWorkflow).toMatch(/Withdraw or revise a finding/i);
     expect(reviewWorkflow).toMatch(/do not defend it merely for consistency/i);
+  });
+
+  it("suppresses minor findings without hiding material defects", () => {
+    expect(reviewWorkflow).toMatch(
+      /Do not report minor or low-severity concerns as findings/i,
+    );
+    expect(reviewWorkflow).toMatch(
+      /Suppress style, wording, optional hardening,\s+low-impact proof gaps/i,
+    );
+    expect(reviewWorkflow).toMatch(
+      /do not promote minor gaps\s+into actionable remediation-loop findings/i,
+    );
+    expect(reviewWorkflow).toMatch(
+      /material requirements that are missing, only partially implemented, or\s+contradicted/i,
+    );
+    expect(reviewWorkflow).toMatch(
+      /material correctness defects[\s\S]*unsafe\s+failure behavior/i,
+    );
+    expect(reviewWorkflow).toMatch(
+      /material defects in documentation, tests, and configuration/i,
+    );
+    expect(reviewWorkflow).toMatch(
+      /correctness, safety, security, requirement, lifecycle, or regression\s+risk/i,
+    );
+    expect(reviewWorkflow).toMatch(
+      /residual validation gaps separately from findings/i,
+    );
+    expect(reviewWorkflow).toMatch(
+      /Report only concrete, actionable, high-confidence findings/i,
+    );
   });
 
   it("keeps design as the only optional checkpoint and lands agent-owned work", () => {
