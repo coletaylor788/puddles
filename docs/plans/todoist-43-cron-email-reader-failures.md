@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Re-reviewing final schema contract
+**Status:** Preparing final exact landing candidate
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -80,8 +80,10 @@ distinct-default ACP cron calls. The schema, regression assertion, and generated
 snapshots now state the exception explicitly. The complete managed pool passes
 again with 286 repository tests, current prompt snapshots, 451 mapped
 patched-source tests, the candidate browser test, and cleanup. Final re-review
-remains before sealing the exact candidate. The cron definition remains
-unchanged.
+verified the implementation, assertion, three JSON snapshots, and three Markdown
+metadata snapshots with no actionable findings. The exact candidate, terminal
+fresh review, remote checks, host-combined promotion, merge, and post-merge
+verification remain. The cron definition remains unchanged.
 
 ### Scope and acceptance criteria
 
@@ -354,6 +356,9 @@ Completed:
   the complete managed lifecycle passed again with repository build/lint, 286
   repository tests, current prompt snapshots, 451 mapped patched-source tests,
   the candidate browser test, and cleanup.
+- Fresh complete-diff re-review verified the corrected schema contract across
+  implementation, assertion, three JSON snapshots, and three Markdown metadata
+  snapshots with no actionable findings.
 - Combined-lifecycle preflight correctly blocked production mutation because the
   host-local manifest still pins repository head `7c887496`. Production remains
   healthy on OpenClaw `2026.7.1-2` / `0790d9f`; no recovery snapshot was needed.
@@ -456,6 +461,7 @@ lifecycle.
   the complete managed lifecycle passed again with repository build/lint, 286
   repository tests, current prompt snapshots, 451 mapped patched-source tests,
   the candidate browser test, and cleanup.
+- Corrected-schema complete-diff re-review found no actionable findings.
 - Terminal exact-commit review: result is recorded only in the issue ledger after
   the final commit so the reviewed diff remains unchanged.
 
