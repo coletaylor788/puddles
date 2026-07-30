@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Reviewing final exact landing candidate
+**Status:** Preparing current-base exact landing candidate
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -53,17 +53,45 @@ read-only checks, and rebuild without the patch to roll back.
 
 The native and ACP cron guards, cross-agent policy isolation, generated
 snapshots, setup guidance, and cumulative regressions are implemented on
-OpenClaw `0790d9f`. All terminal-review findings are remediated: global ACP
-same-agent restrictions use the explicit requester override, coordinator updates
-fail closed, distinct ACP defaults remain valid, the explicit false override is
-proven with a same-profile regression, and the model-facing schema states the
-distinct-default exception. The branch now includes current `main`, regenerated
-sessions-yield/iMessage patches, and all parallel landing follow-ups. The
-complete managed lifecycle passes with 288 repository tests, current prompt
+OpenClaw `0790d9f`. Terminal review found and drove remediation for global ACP
+same-agent inheritance and fail-closed coordinator update ordering. Candidate
+`0ef8ed1` then passed the full managed pool, clean replacement and terminal
+reviews, and refreshed remote Integration and CodeQL checks. Before promotion,
+`main` advanced to `3e1f3d1` with an unrelated plan-only merge; that base is now
+integrated conflict-free as candidate `9b919e0`, which passed the complete
+managed pool with 286 repository tests, current prompt snapshots, 451 mapped
+patched-source tests, the candidate browser test, and cleanup. Production remains
+unchanged and healthy on the prior host-combined build. The host-combined
+lifecycle currently pins the older repository head, so it must be updated,
+validated, and reviewed against the final candidate before promotion.
+Final-base review found that the explicit `requireAgentId=false` ACP regression
+used a distinct default and therefore did not prove the same-profile
+compatibility escape hatch. The test now uses an implicit same-profile `main`
+target with the explicit false override. The complete managed pool passes again
+with 286 repository tests, current prompt snapshots, 451 mapped patched-source
+tests, the candidate browser test, and cleanup. Review is being refreshed before
+the host-combined lifecycle update. Re-check found one remaining source JSDoc overclaim
+that treated every ACP cron default as explicit-target-only; it now states the
+implemented native and same-profile ACP distinction. The complete managed pool
+passes again with 286 repository tests, current prompt snapshots, 451 mapped
+patched-source tests, the candidate browser test, and cleanup. Final re-review
+found the model-facing `agentId` schema still overstated the requirement for
+distinct-default ACP cron calls. The schema, regression assertion, and generated
+snapshots now state the exception explicitly. The complete managed pool passes
+again with 286 repository tests, current prompt snapshots, 451 mapped
+patched-source tests, the candidate browser test, and cleanup. Final re-review
+verified the implementation, assertion, three JSON snapshots, and three Markdown
+metadata snapshots with no actionable findings. The exact candidate, terminal
+fresh review, remote checks, host-combined promotion, merge, and post-merge
+verification remained, but `main` then advanced to `863666f` with the reviewed
+iMessage and deployment lifecycle. That base conflicts only in the previously
+ported sessions-yield patch; resolution retains current `main`'s newly ported
+patch while preserving this branch's reader changes in their separate patch.
+The complete managed pool now passes with 288 repository tests, current prompt
 snapshots, 464 mapped patched-source tests, the candidate browser test, and
-cleanup. A fresh terminal review, refreshed remote checks, exact-head combined
-promotion, merge, and post-merge verification remain. Production is healthy on
-the prior combined build. The cron definition remains unchanged.
+cleanup. Fresh complete-diff review found no actionable findings. The exact
+commit, terminal review, remote gates, promotion, merge, and post-merge
+verification remain. The cron definition remains unchanged.
 
 ### Scope and acceptance criteria
 
@@ -339,6 +367,13 @@ Completed:
 - Fresh complete-diff re-review verified the corrected schema contract across
   implementation, assertion, three JSON snapshots, and three Markdown metadata
   snapshots with no actionable findings.
+- Before promotion, `main` advanced to `863666f` with the reviewed iMessage and
+  deployment lifecycle. The sessions-yield patch conflict resolves to current
+  `main`'s newly ported version. The complete managed lifecycle passed with
+  repository build/lint, 288 repository tests, current prompt snapshots, 464
+  mapped patched-source tests, the candidate browser test, and cleanup.
+- Fresh complete-diff review of the current-base integration found no actionable
+  findings; terminal review and remote validation remain.
 - Combined-lifecycle preflight correctly blocked production mutation because the
   host-local manifest still pins repository head `7c887496`. Production remains
   healthy on OpenClaw `2026.7.1-2` / `0790d9f`; no recovery snapshot was needed.
@@ -442,11 +477,10 @@ lifecycle.
   repository tests, current prompt snapshots, 451 mapped patched-source tests,
   the candidate browser test, and cleanup.
 - Corrected-schema complete-diff re-review found no actionable findings.
-- Final integration merged the newest default branch and parallel schema/plan
-  follow-ups. Current `main`'s regenerated patch representations were retained;
-  the complete managed lifecycle passes with 288 repository tests, current
-  snapshots, 464 mapped patched-source tests, candidate test, and cleanup.
-  Fresh terminal review pending.
+- Exact candidate `759bf45` received a clean terminal review, but current-base
+  movement invalidated that landing tuple before promotion. Integration of
+  `863666f` is in progress.
+- Current-base complete-diff review is clean.
 - Terminal exact-commit review: result is recorded only in the issue ledger after
   the final commit so the reviewed diff remains unchanged.
 
