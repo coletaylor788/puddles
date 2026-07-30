@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Preparing exact reproduced-path candidate
+**Status:** Preparing final-base reproduced-path candidate
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-30
 
@@ -106,8 +106,15 @@ across four files. Full managed revalidation also passes repository build/lint,
 288 repository tests, seven current prompt snapshots, 470 mapped patched-source
 tests, the candidate browser test, and cleanup. Final review remains. Production
 remains healthy on the prior deployment. Fresh complete-diff review found no
-actionable findings. Exact commit, terminal review, remote gates, promotion, and
-post-landing verification remain. The cron definition remains unchanged.
+actionable findings, and exact candidate `d208c56` passed terminal review and
+remote checks. Before promotion, `main` advanced to `1d1796e` with the review
+workflow and its cumulative regression. That base is integrated conflict-free as
+`971f34d`; the full managed lifecycle passes again with repository build/lint,
+289 repository tests, seven current prompt snapshots, 470 mapped patched-source
+tests, the candidate browser test, and cleanup. Fresh current-base review found
+no actionable findings and verified all 17 embedded patch blobs. Exact commit,
+terminal review, remote gates, promotion, and post-landing verification remain.
+The cron definition remains unchanged.
 
 ### Scope and acceptance criteria
 
@@ -628,6 +635,14 @@ lifecycle. The landed deployment marker is
   repository tests, seven current prompt snapshots, 470 mapped patched-source
   tests, the candidate browser test, and cleanup.
 - Final fresh complete-diff review found no actionable findings.
+- Exact candidate `d208c56` passed terminal review and remote Integration/CodeQL,
+  but current `main` advanced to `1d1796e` with review-workflow coverage before
+  promotion. Current-base integration `971f34d` passes the complete managed
+  lifecycle with repository build/lint, 289 repository tests, seven current
+  prompt snapshots, 470 mapped patched-source tests, the candidate browser test,
+  and cleanup.
+- Fresh current-base review found no actionable findings and verified all 17
+  embedded patch files/blobs.
 
 ### Checklist
 
