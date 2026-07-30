@@ -102,13 +102,19 @@ describe("OpenClaw cumulative patch suite", () => {
     expect(mappedTests).toBeGreaterThan(snapshotCheck);
   });
 
-  it("runs mapped source suites serially to isolate global mocks", () => {
-    const runner = readFileSync(
-      join(packageDir, "bin", "openclaw-test-env.mjs"),
+  it("uses a SQLite WAL-reset-safe Node runtime in CI", () => {
+    const workflow = readFileSync(
+      join(repoRoot, ".github", "workflows", "integration.yml"),
       "utf8",
     );
+    const match = workflow.match(/node-version:\s*"(\d+)\.(\d+)\.(\d+)"/);
+    const version = match?.slice(1).map(Number);
 
-    expect(runner).toContain('"--no-file-parallelism"');
-    expect(runner).toContain('"--maxWorkers=1"');
+    expect(version).toBeDefined();
+    expect(version).toSatisfy(
+      ([major, minor, patch]: number[]) =>
+        major > 22 ||
+        (major === 22 && (minor > 22 || (minor === 22 && patch >= 3))),
+    );
   });
 });

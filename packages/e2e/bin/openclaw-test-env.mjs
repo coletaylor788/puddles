@@ -98,22 +98,10 @@ async function runPatchSuite() {
       }
     }
     if (tests.length > 0) {
-      await run(
-        "corepack",
-        [
-          "pnpm",
-          "exec",
-          "vitest",
-          "run",
-          "--no-file-parallelism",
-          "--maxWorkers=1",
-          ...tests,
-        ],
-        {
-          cwd: candidate,
-          env: { ...process.env, CI: process.env.CI ?? "true" },
-        },
-      );
+      await run("corepack", ["pnpm", "exec", "vitest", "run", ...tests], {
+        cwd: candidate,
+        env: { ...process.env, CI: process.env.CI ?? "true" },
+      });
     }
 
     const candidateTests = [
