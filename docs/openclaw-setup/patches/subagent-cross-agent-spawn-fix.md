@@ -8,9 +8,10 @@
 > source). The old `apply-*.mjs` dist chunk-surgery is retired. Verified on 2026.6.11
 > (a reader subagent spawned from `main` receives its own full tool set).
 >
-> **2026-07-29:** scheduled native and ACP subagent calls now require an explicit
-> `agentId` by default. This prevents unattended jobs from mistaking `taskName`
-> for profile selection and silently spawning a restricted same-agent child.
+> **2026-07-29:** scheduled native subagent calls, and ACP calls whose configured
+> default resolves to the requester profile, now require an explicit `agentId` by
+> default. This prevents unattended jobs from silently spawning a restricted
+> same-agent child while preserving distinct `acp.defaultAgent` routing.
 
 **Source diff:** `subagent-cross-agent-spawn-fix.patch` (git-diff against the
 OpenClaw source; applied by `apply-and-deploy.sh`, then built from source).
@@ -124,15 +125,17 @@ Same-agent spawns still get the privilege-inheritance guarantee.
 Cross-agent spawns get a clean resolution from the target agent's own
 config.
 
-For native and ACP subagents requested from a cron run, omitted `agentId` now
-fails before child creation. The error directs the caller to `agents_list`; an
-explicit `subagents.requireAgentId=false` setting still opts into the prior
-implicit default. The model-facing schema also states that `taskName` does not
-select a profile and that scheduled callers must set `agentId`.
+For native subagents requested from a cron run, omitted `agentId` now fails
+before child creation and directs the caller to `agents_list`. ACP cron calls
+apply that default only when `acp.defaultAgent` resolves to the requester
+profile; a distinct ACP harness default remains valid. ACP denials name
+`acp.defaultAgent` as the target source. An explicit
+`subagents.requireAgentId=false` setting still opts into prior implicit behavior.
+The model-facing schema also states that `taskName` does not select a profile.
 
 ACP now enforces configured `requireAgentId=true` consistently for top-level and
-subagent requesters. ACP-disabled policy errors still take precedence over
-target-selection errors.
+subagent requesters, regardless of the default harness. ACP-disabled policy
+errors still take precedence over target-selection errors.
 
 The source patch includes regressions for both spawn implementations. They
 assert that same-agent spawns retain inherited allow/deny policy, cross-agent

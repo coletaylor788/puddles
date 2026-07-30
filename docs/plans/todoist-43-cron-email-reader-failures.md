@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Reviewing latest-main candidate
+**Status:** Reviewing ACP compatibility remediation
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -25,14 +25,15 @@ and the shared managed pool proves both paths with synthetic state.
 
 ### Approach
 
-Patch OpenClaw so cron-run `sessions_spawn` calls require an explicit `agentId`
-by default for both native and ACP runtimes while retaining the existing
-configuration override. Clarify the model-facing schema so `taskName` cannot be
-mistaken for profile selection. Cover ambiguous scheduled spawns, overrides,
-explicit scheduled `reader` delegation, and explicit scheduled coordinator
-self-spawn. Normalize the live coordinator policy before promotion so `main`
-remains an allowed explicit target. Include generated prompt snapshots and
-upstream documentation for the conditional cron default.
+Patch OpenClaw so native cron `sessions_spawn` calls require an explicit
+`agentId` by default, and ACP cron calls do so only when their configured default
+resolves to the requester profile. Retain explicit configuration overrides and
+distinct ACP harness defaults. Clarify the model-facing schema so `taskName`
+cannot be mistaken for profile selection. Cover ambiguous scheduled spawns,
+overrides, explicit scheduled `reader` delegation, and explicit scheduled
+coordinator self-spawn. Normalize the live coordinator policy before promotion
+so `main` remains an allowed explicit target. Include generated prompt snapshots
+and upstream documentation for the conditional defaults.
 
 ### Safety and rollout
 
@@ -62,14 +63,19 @@ for Node 22, 24, and 25 rather than accepting every newer major; those boundarie
 are now regression-tested and the full lifecycle is green. The serial Vitest
 workaround remains removed and terminal review is clean. The base advanced
 again; latest `main` is now integrated and the full lifecycle is green. Fresh
-terminal review and remote checks remain. The cron definition remains unchanged.
+review found the ACP cron default was broader than the reader failure mode. ACP
+now preserves distinct `acp.defaultAgent` routing while requiring explicit IDs
+for same-profile defaults or configured `requireAgentId=true`; the full lifecycle
+is green. Fresh terminal review and remote checks remain. The cron definition
+remains unchanged.
 
 ### Scope and acceptance criteria
 
 - Identify why scheduled runs fail while equivalent interactive runs succeed.
 - Make cron-run native subagent delegation fail closed when `agentId` is omitted,
   without changing cron configuration.
-- Apply the same default to cron-triggered ACP delegation.
+- Require explicit ACP targets only for cron-triggered same-profile defaults;
+  preserve distinct configured ACP harness defaults.
 - Preserve existing interactive reader behavior and explicit failure handling.
 - Preserve an explicit configuration override for installations that intentionally
   allow implicit same-agent cron children.
@@ -132,8 +138,8 @@ Implemented:
    JSON and Markdown snapshot hunk in the maintained source patch.
 8. Run `prompt:snapshots:check` inside the managed candidate lifecycle after all
    patches apply, with a repository regression that enforces command ordering.
-9. Apply the cron-safe default to ACP spawning with denial, override, and
-   explicit-target regressions.
+9. Apply the cron-safe default to same-profile ACP spawning, preserve distinct
+   `acp.defaultAgent` routing, and cover denial, override, and explicit targets.
 10. Include upstream documentation hunks for the conditional cron default.
 11. Before promotion, update the live `main.subagents` policy to require explicit
     targets and allow `main` alongside its existing worker targets; verify only
@@ -290,6 +296,11 @@ Completed:
   - workflow now uses Node 22.23.1 with a WAL-safety floor contract;
   - full CI-equivalent lifecycle passed with 276 repository tests, current
     snapshots, 447 mapped patched-source tests, candidate test, and cleanup.
+  - latest `main` integration passed with 286 repository tests and 447 mapped
+    patched-source tests;
+  - ACP compatibility remediation passed 158 focused tests and the complete
+    lifecycle with 286 repository tests, current snapshots, 449 mapped
+    patched-source tests, candidate test, and cleanup.
 
 ### Rollout and rollback
 
@@ -353,7 +364,9 @@ lifecycle.
   contracts are green and terminal review is clean. The base advanced again;
   latest-main integration and validation passed with 286 repository tests,
   current snapshots, 447 mapped patched-source tests, candidate test, and
-  cleanup. Fresh terminal review and remote checks pending.
+  cleanup. Latest review found ACP default-agent overreach; remediation preserves
+  distinct harness defaults and is green. Fresh terminal review and remote checks
+  pending.
 - Terminal exact-commit review: result is recorded only in the issue ledger after
   the final commit so the reviewed diff remains unchanged.
 

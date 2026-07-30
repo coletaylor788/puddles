@@ -1,5 +1,5 @@
 diff --git a/docs/gateway/config-agents.md b/docs/gateway/config-agents.md
-index 869d35882d..931c258d8e 100644
+index 869d35882d..aac3b43e7b 100644
 --- a/docs/gateway/config-agents.md
 +++ b/docs/gateway/config-agents.md
 @@ -1104,7 +1104,7 @@ for provider examples and precedence.
@@ -7,12 +7,12 @@ index 869d35882d..931c258d8e 100644
  - `subagents.allowAgents`: allowlist of configured agent ids for explicit `sessions_spawn.agentId` targets (`["*"]` = any configured target; default: same agent only). Include the requester id when self-targeted `agentId` calls should be allowed. Stale entries whose agent config was deleted are rejected by `sessions_spawn` and omitted from `agents_list`; run `openclaw doctor --fix` to clean them up, or add a minimal `agents.list[]` entry if that target should remain spawnable while inheriting defaults.
  - Sandbox inheritance guard: if the requester session is sandboxed, `sessions_spawn` rejects targets that would run unsandboxed.
 -- `subagents.requireAgentId`: when true, block `sessions_spawn` calls that omit `agentId` (forces explicit profile selection; default: false).
-+- `subagents.requireAgentId`: when true, block `sessions_spawn` calls that omit `agentId`. Cron-run callers default to `true` when unset; other callers default to `false`.
++- `subagents.requireAgentId`: when true, block `sessions_spawn` calls that omit `agentId`. Native cron callers default to `true` when unset. ACP cron callers default to `true` only when `acp.defaultAgent` resolves to the requester profile; a distinct ACP default remains valid. Other callers default to `false`.
  - `subagents.maxConcurrent`: max concurrent child-agent runs across subagent execution. Default: `8`.
  - `subagents.maxChildrenPerAgent`: max active children a single agent session can spawn. Default: `5`.
  - `subagents.maxSpawnDepth`: max nesting depth for sub-agent spawning (`1`-`5`). Default: `1` (no nesting).
 diff --git a/docs/tools/subagents.md b/docs/tools/subagents.md
-index d3d3c26b13..a8e1e76aec 100644
+index d3d3c26b13..dfdf182ae6 100644
 --- a/docs/tools/subagents.md
 +++ b/docs/tools/subagents.md
 @@ -345,7 +345,7 @@ See [Configuration reference](/gateway/configuration-reference) and
@@ -20,19 +20,19 @@ index d3d3c26b13..a8e1e76aec 100644
  </ParamField>
  <ParamField path="agents.defaults.subagents.requireAgentId" type="boolean" default="false">
 -  Block `sessions_spawn` calls that omit `agentId` (forces explicit profile selection). Per-agent override: `agents.list[].subagents.requireAgentId`.
-+  Block `sessions_spawn` calls that omit `agentId` (forces explicit profile selection). Per-agent override: `agents.list[].subagents.requireAgentId`. Cron-run callers default to `true` when neither setting is configured; other callers default to `false`.
++  Block `sessions_spawn` calls that omit `agentId` (forces explicit profile selection). Per-agent override: `agents.list[].subagents.requireAgentId`. Native cron callers default to `true` when neither setting is configured. ACP cron callers default to `true` only when `acp.defaultAgent` resolves to the requester profile; a distinct ACP default remains valid. Other callers default to `false`.
  </ParamField>
  <ParamField path="agents.defaults.subagents.announceTimeoutMs" type="number" default="120000">
    Per-call timeout for gateway `agent` announce delivery attempts. Values are positive integer milliseconds and are clamped to the platform-safe timer maximum. Transient retries can make the total announce wait longer than one configured timeout.
 diff --git a/src/agents/acp-spawn.test.ts b/src/agents/acp-spawn.test.ts
-index e0a33f481e..45fcc98370 100644
+index e0a33f481e..901f450326 100644
 --- a/src/agents/acp-spawn.test.ts
 +++ b/src/agents/acp-spawn.test.ts
-@@ -912,6 +912,194 @@ describe("spawnAcpDirect", () => {
+@@ -912,6 +912,225 @@ describe("spawnAcpDirect", () => {
      expect(transcriptCalls[1]?.threadId).toBe("child-thread");
    });
  
-+  it("requires explicit agentId for cron ACP runs by default", async () => {
++  it("allows cron ACP runs to use a distinct default agent", async () => {
 +    replaceSpawnConfig({
 +      ...createDefaultSpawnConfig(),
 +      acp: {
@@ -50,9 +50,40 @@ index e0a33f481e..45fcc98370 100644
 +      },
 +    );
 +
-+    expect(expectFailedSpawn(result, "forbidden").error).toContain(
-+      "requires explicit agentId",
++    expectAcceptedSpawn(result);
++  });
++
++  it("requires explicit agentId when a cron ACP default targets the requester", async () => {
++    replaceSpawnConfig({
++      ...createDefaultSpawnConfig(),
++      acp: {
++        enabled: true,
++        backend: "acpx",
++        allowedAgents: ["main"],
++        defaultAgent: "main",
++      },
++      agents: {
++        defaults: {
++          subagents: {
++            allowAgents: ["main"],
++            maxSpawnDepth: 2,
++          },
++        },
++      },
++    });
++
++    const result = await spawnAcpDirect(
++      {
++        task: "run an unattended same-profile coding task",
++      },
++      {
++        agentSessionKey: "agent:main:cron:code-maintenance:run:same-profile",
++      },
 +    );
++
++    const failure = expectFailedSpawn(result, "forbidden");
++    expect(failure.error).toContain("requires explicit agentId");
++    expect(failure.error).toContain("acp.defaultAgent");
 +    expect(hoisted.initializeSessionMock).not.toHaveBeenCalled();
 +  });
 +
@@ -224,7 +255,7 @@ index e0a33f481e..45fcc98370 100644
      const resumeSessionId = "codex-inner-resume";
      const ownedSessionKey = "agent:codex:acp:owned";
 diff --git a/src/agents/acp-spawn.ts b/src/agents/acp-spawn.ts
-index d463046cd1..c287ee636d 100644
+index d463046cd1..e3082c7f88 100644
 --- a/src/agents/acp-spawn.ts
 +++ b/src/agents/acp-spawn.ts
 @@ -65,6 +65,7 @@ import {
@@ -253,26 +284,34 @@ index d463046cd1..c287ee636d 100644
    const targetPolicy = resolveSubagentTargetPolicy({
      requesterAgentId: params.requesterAgentId,
      targetAgentId: params.targetAgentId,
-@@ -1285,6 +1275,18 @@ export async function spawnAcpDirect(
+@@ -1285,6 +1275,26 @@ export async function spawnAcpDirect(
        error: "ACP is disabled by policy (`acp.enabled=false`).",
      });
    }
-+  const requireAgentId =
++  const configuredRequireAgentId =
 +    resolveAgentConfig(cfg, requesterAgentId)?.subagents?.requireAgentId ??
-+    cfg.agents?.defaults?.subagents?.requireAgentId ??
-+    isCronSessionKey(requesterInternalKey);
++    cfg.agents?.defaults?.subagents?.requireAgentId;
++  const implicitCronTarget =
++    configuredRequireAgentId === undefined &&
++    isCronSessionKey(requesterInternalKey) &&
++    !params.agentId?.trim()
++      ? resolveTargetAcpAgentId({ requestedAgentId: undefined, cfg })
++      : undefined;
++  const requireAgentId =
++    configuredRequireAgentId ??
++    (implicitCronTarget?.ok === true && implicitCronTarget.agentId === requesterAgentId);
 +  if (requireAgentId && !params.agentId?.trim()) {
 +    return createAcpSpawnFailure({
 +      status: "forbidden",
 +      errorCode: "subagent_policy",
 +      error:
-+        "sessions_spawn requires explicit agentId for this requester. Use agents_list to see allowed agent ids.",
++        "sessions_spawn requires explicit agentId for this requester. Set agentId to the configured ACP harness id (for example acp.defaultAgent).",
 +    });
 +  }
    const streamToParentRequested = params.streamTo === "parent";
    const parentSessionKey = normalizeOptionalString(ctx.agentSessionKey);
    if (streamToParentRequested && !parentSessionKey) {
-@@ -1480,8 +1482,14 @@ export async function spawnAcpDirect(
+@@ -1480,8 +1490,14 @@ export async function spawnAcpDirect(
          key: sessionKey,
          spawnedBy: requesterInternalKey,
          ...subagentEnvelopeState.childSessionPatch,
