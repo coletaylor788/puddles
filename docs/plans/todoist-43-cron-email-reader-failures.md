@@ -167,9 +167,9 @@ Implemented:
     default.
 16. Port the complete patch stack and cumulative manifest to the live
     2026.7.1-2 commit.
-17. Investigate source-workspace packaging after a public-only install failure;
+17. Investigate source-workspace packaging after a standalone install failure;
     use the host's reviewed combined lifecycle for the materialized runtime graph.
-18. Preserve current `main`'s atomic public deployment, rollback, readiness, and
+18. Preserve current `main`'s atomic deployment, rollback, readiness, and
     sandbox recovery lifecycle during landing.
 19. Keep the integration workflow's OpenClaw checkout ref synchronized with the
     cumulative patch manifest, enforced by a repository contract test.
@@ -273,12 +273,12 @@ Completed:
     tests, current snapshots, 426 mapped patched-source tests, candidate test,
     and cleanup.
 - Deployment integration:
-  - early public-only source-install attempts failed safely and rolled back;
-  - the release port and public patch pool remained green throughout;
+  - early standalone source-install attempts failed safely and rolled back;
+  - the release port and maintained patch pool remained green throughout;
   - current `main`'s atomic package/state/browser rollback lifecycle superseded
-    the draft public-only packaging changes during conflict resolution;
+    the draft standalone packaging changes during conflict resolution;
   - the host combined lifecycle materialized the full runtime dependency graph,
-    preserved all public patches, and completed production promotion.
+    preserved all maintained patches, and completed production promotion.
 - Production promotion and validation:
   - deployed the reviewed `0790d9f` combined source build and refreshed the
     browser image;
@@ -375,7 +375,7 @@ components must use their reviewed host-combined lifecycle so the complete
 runtime dependency graph promotes atomically.
 
 Production runs a combined build at pinned source `0790d9f` containing these
-public patches. Checksummed rollback snapshots are retained by the host
+maintained patches. Checksummed rollback snapshots are retained by the host
 lifecycle.
 
 ### Review log
@@ -416,8 +416,8 @@ lifecycle.
   re-check completed with no actionable findings.
 - Deployment integration review: source-workspace packaging and rollback risks
   were investigated and independently reviewed. Current `main` superseded the
-  draft public-only wrapper with its atomic lifecycle; the host combined
-  lifecycle preserved the public patches and validated the materialized graph.
+  draft standalone wrapper with its atomic lifecycle; the host combined
+  lifecycle preserved the maintained patches and validated the materialized graph.
 - Production: reviewed source build promoted successfully; read-only gateway,
   policy, guard, reader, and cron-shaped delegation checks are green.
 - Landing: prior current-main conflicts and workflow pin drift are resolved.
@@ -440,9 +440,9 @@ lifecycle.
   overclaim about ACP cron defaults. The comment is aligned with the implemented
   same-profile condition and fully revalidated; final review remains.
 - Final complete-diff review found one low publication-boundary defect in plan
-  wording. Provider-specific repository details are removed in favor of
+  wording. Nonessential deployment-topology details are removed in favor of
   provider-neutral host-combined lifecycle terms.
-- Terminal exact-commit review found one remaining low overlay-split disclosure
+- Terminal exact-commit review found one remaining low topology disclosure
   in rollout wording. It is replaced with provider-neutral guidance for hosts
   requiring additional local components.
 - Terminal exact-commit review: result is recorded only in the issue ledger after
