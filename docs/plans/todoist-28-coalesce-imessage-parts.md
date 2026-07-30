@@ -1,6 +1,6 @@
 # Coalesce split iMessage message parts
 
-- **Status:** In progress - finalizing terminal-review candidate
+- **Status:** Complete - ready for review
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-29
 - **Owner:** Cole Taylor
@@ -11,11 +11,10 @@
 
 Messages.app can emit one composition as separate text, link-preview, image, and
 trailing-text rows. Processing a row before the composition is complete starts
-an agent turn without the remaining context. The deployed correction now joins
-lead-in text with its link, but Cole's latest smoke sent text, link, then text as
-one composition and the final text became a second turn. Production rows show
-the URL and trailing text were reply-chained, adjacent, and created 114 ms apart,
-but the trailing notification reached OpenClaw only after the URL had flushed.
+an agent turn without the remaining context. The final production failure was a
+text-link-text composition whose reply-chained URL and trailing text were
+created 114 ms apart, but the trailing notification reached OpenClaw only after
+the URL had started a turn.
 
 ### Outcome
 
@@ -50,38 +49,32 @@ bound, preserve the first absolute deadline, and have regressions for unrelated
 text and timeout dispatch. Automated tests use temporary worktrees and deny
 delivery; production investigation remains read-only. On the target host,
 `MINI_HOST` stays unset. Rollback disables coalescing or redeploys the prior
-reviewed patch stack. Promotion must reject candidate or rollback tarballs that
-retain `workspace:` dependency protocols or cannot be normalized, before
-stopping the gateway. The failed first attempt has already restored the prior
-package, config, service definition, and healthy gateway.
+reviewed patch stack. Promotion rejects candidate or rollback tarballs that
+retain `workspace:` dependency protocols or cannot be normalized before
+stopping the gateway. The reviewed candidate is merged and deployed; its
+retained recovery snapshot supports rollback if the final manual Messages.app
+smoke exposes a regression. The repository closeout is on the default branch,
+and the final issue and Todoist Ready for review handoff links to this current
+plan.
 
 ## Agent details
 
 ### State
 
-The prior comma-delimited correction is merged and deployed. Cole's follow-up
-confirmed text plus link now produces one turn, but a text-link-text composition
-emitted the final text separately. Read-only correlation found rows 7071/7072/7073 created at
-00:24:16.206Z, 00:24:21.554Z, and 00:24:21.668Z. Each later row's
-`reply_to_guid` points to the immediately preceding part. The URL triggered the
-first run at 00:24:22Z, while the trailing row did not start its run until
-00:24:30Z despite being created only 114 ms after the URL. Historical inbound
-URL continuation rows use 103-425 ms source gaps; a much later explicit reply is
-separated by tens of seconds. The premature payload flush, not source creation
-latency, is the demonstrated boundary. The corrected patch retains matched
-payloads through the first absolute deadline, admits only bounded exact-chain
-continuations, passes focused and cumulative validation on both maintained
-OpenClaw releases, and had clean reusable-worker and terminal reviews at
-`8ae2dea`. The default branch advanced after publication with a stabilization for
-an existing debounce assertion. The conflict was resolved by carrying that
-stabilization into the regenerated sandwich patch. The synchronized stack again
-passes 87 focused tests, 336 production-release mapped tests, byte reproduction,
-and the complete cumulative lifecycle. A fresh review of the packaging
-remediation found one missing regression: an unresolvable installed workspace
-dependency must prove normalization fails before gateway shutdown. That
-regression now passes with the full managed lifecycle and a clean reusable
-complete-diff review. The immutable landing candidate and terminal review
-remain. Production remains healthy on the prior package and was not changed.
+Read-only correlation found rows 7071/7072/7073 created at 00:24:16.206Z,
+00:24:21.554Z, and 00:24:21.668Z with an exact reply chain. The URL started a
+turn at 00:24:22Z, while the trailing row started a second turn at 00:24:30Z.
+The correction retains a matched payload through the first absolute deadline
+and admits only bounded exact-chain continuations. The complete feature passed
+focused, cumulative, production-release, packaging, rollback, reusable-review,
+terminal-review, pull-request, and post-merge gates. Exact candidate `af5bdf2`
+was promoted locally from OpenClaw `0790d9f`, merged by PR #51 as `863666f`, and
+revalidated read-only in production. The gateway is healthy and iMessage is
+configured and running. The issue ledger now reflects the landed outcome. The
+reviewed plan-only closeout merged as `c873bb0`, and its Integration and CodeQL
+checks passed on `main`. Final plan-state commit `74a92bb` merged as `f7a049a`
+and passed Integration and CodeQL on `main`. Issue #28 and the Todoist task are
+both Ready for review, so no worker-owned lifecycle step remains.
 
 ### Scope and acceptance criteria
 
@@ -496,30 +489,37 @@ remain. Production remains healthy on the prior package and was not changed.
   passed all 87 focused tests, passed all 35 deployment-topology tests, all 66
   isolated E2E tests, E2E type checking, and all 282 workspace tests, and found
   no actionable high-confidence defects.
+- Exact candidate `af5bdf2` passed terminal review, pull-request Integration,
+  and all CodeQL checks. PR #51 merged as `863666f`; Integration and CodeQL
+  passed again on that exact `main` commit.
+- Local promotion from clean OpenClaw `0790d9f` recorded recovery snapshot
+  `20260730T042702Z-32096`, applied all six patches, built and installed the
+  candidate, migrated state, rebuilt the browser image, restarted the gateway,
+  and passed readiness.
+- Post-landing read-only checks confirm source revision `0790d9f`, valid
+  configuration, a loaded service, healthy gateway, configured/running
+  iMessage, concrete installed package dependencies, and the bounded
+  continuation logic in the installed bundle.
+- The corrected plan-only closeout passed terminal review and pull-request
+  checks, merged as `c873bb0`, and passed Integration and CodeQL on that exact
+  `main` commit.
+- The final Ready for review plan state passed terminal review and pull-request
+  checks, merged as `f7a049a`, and passed Integration and CodeQL on that exact
+  `main` commit. Issue #28 was set to Ready for review, and Todoist received the
+  signed result comment before `agent` was replaced with `ready_for_review`.
 
 ### Rollout and rollback
 
-Production rollout uses
-`docs/openclaw-setup/patches/apply-and-deploy.sh` from a reviewed Puddles
-`main` worktree with `OPENCLAW_SRC` pinned to the approved OpenClaw checkout.
-`MINI_HOST` was unset for the current local deployment. The third correction was
-deployed from clean disposable worktrees pinned to merged Puddles `e82db0e` and
-OpenClaw `a1063aa`; all five reviewed patches applied, the package and browser
-image rebuilt, and the gateway restarted. Automated production validation
-remained read-only and passed. Both disposable worktrees and their registrations
-were removed. The fourth sandwich correction passed both review layers and remote
-checks, but its first promotion attempt failed because npm-packed source and
-rollback tarballs retained a non-installable workspace dependency protocol. The
-prior package, exact config, service definition, and healthy gateway are
-restored. Correct the wrapper to produce and validate installable candidate and
-rollback tarballs before quiescing production, cover that behavior through the
-cumulative deployment fixture, then restart review and promotion. No data
-migration is required.
-
-Production currently reports OpenClaw `2026.7.1-2 (0790d9f)` while the managed
-patch pool remains pinned to `a1063aa`/2026.6.11. The complete stack applies and
-all mapped source tests pass on a clean `0790d9f` fixture. Promotion must use
-that installed-release source artifact and must not downgrade production.
+Production rollout used
+`docs/openclaw-setup/patches/apply-and-deploy.sh` with `MINI_HOST` unset and
+`OPENCLAW_SRC` pinned to clean OpenClaw `0790d9f`. The wrapper applied all six
+patches, produced and validated installable candidate and rollback tarballs,
+recorded recovery snapshot `20260730T042702Z-32096`, installed the candidate,
+migrated state, rebuilt the browser image, restarted the gateway, and passed
+readiness. Automated production validation remained read-only and did not
+deliver messages. The disposable promotion worktrees and temporary package
+manager shims were removed. No data migration or persistent message-state
+conversion is involved.
 
 Rollback:
 
@@ -689,8 +689,22 @@ No data migration or persistent message-state conversion is involved.
 - A fresh independent replacement rechecked the complete current diff and found
   no actionable high-confidence defects. Residual non-blocking gaps are the
   final live Messages.app sandwich smoke and transport reconnect/teardown races
-  outside the source-notification harness. The exact immutable landing commit
-  still requires terminal review.
+  outside the source-notification harness.
+- A fresh terminal reviewer independently verified exact immutable candidate
+  `af5bdf2`, including 87 focused iMessage tests, 35 deployment tests, 282
+  workspace tests, 332 mapped tests, real pnpm packaging, and production-release
+  assumptions, with no actionable high-confidence findings.
+- Review of the first plan-closeout commit found its checklist prematurely
+  implied that the issue and Todoist handoff had already occurred. The issue
+  ledger was synchronized, and the checklist now records only preparation of
+  the final handoff; the Todoist result and label mutation remain the last
+  external step after this plan is visible on `main`.
+- A fresh replacement reviewer found no actionable high-confidence findings in
+  corrected closeout `d8b73e3`. It verified the plan schema, issue/Todoist state,
+  merge and workflow evidence, recovery snapshot, installed version, running
+  gateway, and six-patch stack before the closeout merged as `c873bb0`.
+- A fresh terminal reviewer found no actionable high-confidence findings in
+  final plan-state commit `74a92bb` before it merged as `f7a049a`.
 
 ### Checklist
 
@@ -765,7 +779,7 @@ No data migration or persistent message-state conversion is involved.
 - [x] Run focused tests and the complete cumulative managed lifecycle.
 - [x] Obtain a clean reusable-worker adversarial review after current-main
   synchronization.
-- [ ] Obtain a clean terminal adversarial review of the exact landing candidate.
+- [x] Obtain a clean terminal adversarial review of the exact landing candidate.
 - [x] Recover and validate the prior production package, runtime state, service,
   gateway, and iMessage health after the failed promotion.
 - [x] Produce and validate installable candidate and rollback tarballs without
@@ -773,7 +787,7 @@ No data migration or persistent message-state conversion is involved.
 - [x] Add cumulative deployment coverage for workspace-safe packaging.
 - [x] Rerun the complete lifecycle after packaging remediation.
 - [x] Cover rollback normalization failure before production mutation.
-- [ ] Repeat reusable-worker and terminal reviews after packaging remediation.
-- [ ] Promote the exact remotely green candidate, validate production read-only,
+- [x] Repeat reusable-worker and terminal reviews after packaging remediation.
+- [x] Promote the exact remotely green candidate, validate production read-only,
   then merge and verify exact `main`.
-- [ ] Return issue #28 and Todoist to Ready for review after the sandwich fix.
+- [x] Return issue #28 and Todoist to Ready for review after the sandwich fix.
