@@ -109,12 +109,36 @@ describe("OpenClaw cumulative patch suite", () => {
     );
     const match = workflow.match(/node-version:\s*"(\d+)\.(\d+)\.(\d+)"/);
     const version = match?.slice(1).map(Number);
+    const isWalResetSafe = ([major, minor, patch]: number[]) => {
+      if (major === 22) {
+        return minor > 22 || (minor === 22 && patch >= 3);
+      }
+      if (major === 24) {
+        return minor > 15 || (minor === 15 && patch >= 0);
+      }
+      if (major === 25) {
+        return minor > 9 || (minor === 9 && patch >= 0);
+      }
+      return major >= 26;
+    };
 
     expect(version).toBeDefined();
-    expect(version).toSatisfy(
-      ([major, minor, patch]: number[]) =>
-        major > 22 ||
-        (major === 22 && (minor > 22 || (minor === 22 && patch >= 3))),
-    );
+    expect(isWalResetSafe(version!)).toBe(true);
+    for (const unsafe of [
+      [22, 22, 2],
+      [23, 11, 1],
+      [24, 14, 1],
+      [25, 8, 0],
+    ]) {
+      expect(isWalResetSafe(unsafe), unsafe.join(".")).toBe(false);
+    }
+    for (const safe of [
+      [22, 22, 3],
+      [24, 15, 0],
+      [25, 9, 0],
+      [26, 0, 0],
+    ]) {
+      expect(isWalResetSafe(safe), safe.join(".")).toBe(true);
+    }
   });
 });

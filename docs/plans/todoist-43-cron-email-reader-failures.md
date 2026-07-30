@@ -56,9 +56,12 @@ landing candidate is clean. Remote Integration exposed cross-file Vitest mock
 failures after the OpenClaw pin upgrade. Terminal review traced the deterministic
 root cause to workflow Node 22.22.0, whose embedded SQLite is rejected by the
 pinned source; local validation used safe Node 22.23.1. The workflow runtime and
-drift contract now require Node 22.23.1 or newer, the serial Vitest workaround is
-removed, and the full lifecycle is green. Fresh terminal review and remote checks
-remain. The cron definition remains unchanged.
+drift contract now require an OpenClaw-compatible SQLite-safe Node release,
+currently 22.23.1. Terminal review found the contract must encode separate floors
+for Node 22, 24, and 25 rather than accepting every newer major; those boundaries
+are now regression-tested and the full lifecycle is green. The serial Vitest
+workaround remains removed. Fresh terminal review and remote checks remain. The
+cron definition remains unchanged.
 
 ### Scope and acceptance criteria
 
@@ -345,8 +348,8 @@ lifecycle.
   policy, guard, reader, and cron-shaped delegation checks are green.
 - Landing: current-main conflicts and workflow pin drift are resolved locally and
   revalidated. Terminal landing review rejected the serial-test diagnosis and
-  identified Node/SQLite runtime drift; remediation is green, with fresh terminal
-  review and remote checks pending.
+  identified Node/SQLite runtime drift. Workflow 22.23.1 and per-major floor
+  contracts are green; fresh terminal review and remote checks pending.
 - Terminal exact-commit review: result is recorded only in the issue ledger after
   the final commit so the reviewed diff remains unchanged.
 
