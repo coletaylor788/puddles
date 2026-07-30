@@ -565,6 +565,10 @@ rewinding cron/message state.
   into either the replacement provider prompt or canonical transcript. Remaining
   gaps are implementation-level validation details already represented in the
   required deterministic test matrix.
+- The first immutable-candidate review found no design defect but caught that the
+  branch predated PR #63 and would have reverted its review-policy files if
+  merged. The proposal was rebased onto current `main` with those files
+  preserved; terminal review of the new exact candidate is pending.
 
 ### Checklist
 
