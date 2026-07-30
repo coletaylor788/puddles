@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Preparing revised exact landing candidate
+**Status:** Reviewing final base-integrated candidate
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -68,8 +68,10 @@ Both findings are accepted and remediated with focused regressions. The focused
 setup contract and complete managed pool now pass with 286 repository tests,
 current prompt snapshots, 451 mapped patched-source tests, the candidate browser
 test, and cleanup. A fresh independent replacement review verified both
-remediations and found no actionable defects across all changed files. The
-revised exact landing commit, terminal fresh review, remote checks, and merge
+remediations and found no actionable defects across all changed files. The base
+then advanced through unrelated Todoist plan-only commits; that exact base is now
+integrated, and the complete managed pool remains green with the same 286/451
+coverage. Terminal fresh review, refreshed remote checks, promotion, and merge
 invariants remain before landing. The cron definition remains unchanged.
 
 ### Scope and acceptance criteria
@@ -324,6 +326,12 @@ Completed:
     managed cleanup.
   - fresh reusable full-diff review found no actionable findings; refreshed
     remote CI and post-merge validation remain the only validation gaps.
+  - default branch later advanced to `3e1f3d1` through unrelated Todoist
+    plan-only commits; integration was conflict-free and left issue-43 patch
+    bytes unchanged;
+  - the complete managed lifecycle passed again on that exact base with 286
+    repository tests, current prompt snapshots, 451 mapped patched-source tests,
+    the candidate browser test, and managed cleanup.
 - Terminal exact-commit review of `796a52a` found two actionable issues:
   global-scope same-agent ACP inheritance ignored the explicit requester
   override, and the documented coordinator update expanded the self-target
@@ -405,7 +413,8 @@ lifecycle.
   findings are accepted, remediated, and fully revalidated. The original
   completed reviewer cannot be resumed through the available worker interface,
   so a fresh independent replacement re-checked the complete current diff and
-  found no actionable defects.
+  found no actionable defects. Latest base integration changed only an unrelated
+  plan and is fully revalidated; fresh terminal review pending.
 - Terminal exact-commit review: result is recorded only in the issue ledger after
   the final commit so the reviewed diff remains unchanged.
 
