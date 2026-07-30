@@ -1,8 +1,8 @@
 # Fix cron email reader failures
 
-**Status:** Rebuilding exact host-combined candidate
+**Status:** Complete
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
-**Last updated:** 2026-07-29
+**Last updated:** 2026-07-30
 
 ## Human design
 
@@ -18,14 +18,14 @@ configuration separately, but not this scheduled omission path.
 
 ### Outcome
 
-Scheduled delegation must name its target profile instead of silently falling
-back to the scheduler's profile. A missing target fails immediately with a
-repairable error, explicit `reader` delegation retains the reader's Gmail tools,
-and the shared managed pool proves both paths with synthetic state.
+Scheduled delegation now requires the intended target instead of silently
+falling back to the scheduler's profile. A missing target fails immediately with
+a repairable error, explicit `reader` delegation retains the reader's Gmail
+tools, and the shared managed pool proves both paths with synthetic state.
 
 ### Approach
 
-Patch OpenClaw so native cron `sessions_spawn` calls require an explicit
+OpenClaw now makes native cron `sessions_spawn` calls require an explicit
 `agentId` by default, and ACP cron calls do so only when their configured default
 resolves to the requester profile. Retain explicit configuration overrides and
 distinct ACP harness defaults. Clarify the model-facing schema so `taskName`
@@ -40,50 +40,29 @@ defaults.
 
 ### Safety and rollout
 
-Keep the existing cron job and its least-privilege `toolsAllow` unchanged. Tests
-use synthetic session state and mocked gateway calls; they never access Gmail,
-send messages, or mutate accounts. Promote only through the maintained OpenClaw
-patch lifecycle. Coordinator policy updates apply the restrictive flag before
-the expanded allowlist. Validate the installed guard and reader access with
-read-only checks, and rebuild without the patch to roll back.
+The existing cron job and its least-privilege `toolsAllow` remain unchanged.
+Tests use synthetic session state and mocked gateway calls; they never access
+Gmail, send messages, or mutate accounts. The exact reviewed build was promoted
+through the host-combined lifecycle with a durable marker and rollback snapshot.
+Production validation used fixed no-match reads only, with no delivery or mailbox
+mutation. Coordinator policy updates apply the restrictive flag before the
+expanded allowlist, and rebuilding without the patch remains the rollback path.
 
 ## Agent details
 
 ### State
 
 The native and ACP cron guards, cross-agent policy isolation, generated
-snapshots, setup guidance, and cumulative regressions are implemented on
-OpenClaw `0790d9f`. ACP compatibility checks now run after target resolution but
-enforce the requester's required host command access for every ACP target,
-preventing restricted agents from escalating through a cross-agent harness.
-Compatible cross-agent ACP calls omit inherited session policy, while native
-cross-agent reader calls use the reader profile. The complete managed lifecycle
-passes with 288 repository tests, seven current prompt snapshots, 470 mapped
-patched-source tests, the candidate browser test, and cleanup. Independent
-re-review found the code remediation sound and mutation-tested the regressions;
-it identified stale plan wording and an inverse-gate coverage gap because all
-incompatible cases were cross-agent. The plan is synchronized and the table now
-covers both same- and cross-agent incompatibility. The isolated patched-source
-lifecycle passes with seven current snapshots, 470 mapped tests, the candidate
-browser test, and cleanup. The full cumulative lifecycle also passes with 288
-repository tests. Final exact-commit review found no actionable defects and
-independently verified patch integrity, ACP security enforcement, inverse-gate
-coverage, and publication safety. Exact head `83b0d08` is published over base
-`6dc4e03`; cumulative Integration and all CodeQL analyses passed. Promote those
-exact public patch bytes through the reviewed host-combined lifecycle, validate
-the read-only production path, then recheck the unchanged pull request tuple
-before landing.
-The reviewed host-combined `b482a80` promotion proved direct reader `READ_OK` and
-cron-shaped `CRON_READER_OK` without delivery, mailbox mutation, or cron
-invocation, then rolled back successfully when the public head advanced. The
-current pull-request head `4b5d84a` differs from reviewed and remote-green
-`83b0d08` only by plan status text; production is restored to the healthy
-unmarked predecessor. Publish this synchronized plan, terminal-review that exact
-plan-only head, then repin/revalidate the host-combined candidate for promotion
-and landing. Exact plan-only head `03b9b0a` subsequently passed terminal review,
-cumulative Integration, and all CodeQL analyses over base `6dc4e03`. The
-host-combined lifecycle is repinning that frozen tuple and production remains
-healthy on the predecessor. The cron definition remains unchanged.
+snapshots, setup guidance, and cumulative regressions are landed on `main`.
+ACP compatibility checks run after target resolution and enforce the requester's
+required host command access for every ACP target, preventing escalation through
+an external harness. Compatible cross-agent ACP calls omit inherited session
+policy, while native cross-agent reader calls use the reader profile. Public PR
+#48 landed exact head `5b771f9`; private PR #6 landed exact host-combined head
+`d97c1b3`. Production runs deployment `8491ddf6-668b-487d-8623-7c7dff0a0e31`
+on OpenClaw `2026.7.1-2` / `0790d9f` with all maintained patches. Gateway,
+marker, policy, reader, cron-shaped delegation, and iMessage checks are green.
+The cron definition remains unchanged.
 
 ### Scope and acceptance criteria
 
@@ -412,7 +391,9 @@ runtime dependency graph promotes atomically.
 
 Production runs a combined build at pinned source `0790d9f` containing these
 maintained patches. Checksummed rollback snapshots are retained by the host
-lifecycle.
+lifecycle. The landed deployment marker is
+`8491ddf6-668b-487d-8623-7c7dff0a0e31`; its rollback snapshot is
+`20260730T084333Z-0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`.
 
 ### Review log
 
@@ -542,6 +523,11 @@ lifecycle.
 - Exact plan-only head `03b9b0a` over base `6dc4e03` passed terminal review,
   cumulative Integration, and all CodeQL analyses. Host-combined repinning and
   revalidation are in progress against that frozen tuple.
+- Final public head `5b771f9` and host-combined head `d97c1b3` passed terminal
+  review and landed through PRs #48 and #6. Deployment `8491ddf6` passed durable
+  marker, gateway, installed guard, sandbox, iMessage, fixed no-match Gmail,
+  direct `READ_OK`, and cron-shaped `CRON_READER_OK` checks. No cron invocation,
+  definition change, delivery, or mailbox mutation occurred.
 
 ### Checklist
 
@@ -560,5 +546,5 @@ lifecycle.
   full-diff review.
 - [x] Validate and re-review terminal-review remediation.
 - [x] Complete exact-commit review of candidate `e3ae601`.
-- [ ] Complete pull request landing and post-merge validation.
-- [ ] Set issue and Todoist task to ready for review without completing the task.
+- [x] Complete pull request landing and post-merge validation.
+- [x] Set issue and Todoist task to ready for review without completing the task.
