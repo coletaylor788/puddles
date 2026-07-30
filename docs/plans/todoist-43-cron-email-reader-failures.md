@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Ready for review
+**Status:** Landing
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -176,12 +176,17 @@ Implemented:
 18. Preserve durable local/remote artifact paths, restore package manifest and
     lockfile, disable prepack dependency mutation, and test exact local/remote
     references plus failure cleanup.
+19. Keep the integration workflow's OpenClaw checkout ref synchronized with the
+    cumulative patch manifest, enforced by a repository contract test.
 
 Feature implementation, review remediation, and release porting are complete.
 Deployment packaging remediation is implemented and independently reviewed.
 The first packaging review produced accepted findings; hardening is complete.
 Promotion and read-only production validation are complete.
 The final handoff diff is validated and ready for exact-commit review.
+Cole requested full landing rather than review handoff. The open pull request is
+being updated onto current `main`; CI pin drift and merge conflicts are being
+resolved before merge.
 
 ### Validation
 
@@ -327,6 +332,10 @@ Completed:
   - prompt snapshots are current;
   - all 426 mapped patched-source tests and the candidate browser test passed;
   - managed worktree cleanup completed.
+- Landing:
+  - required CI failure traced to the integration workflow checking out the old
+    OpenClaw pin while the cumulative manifest uses `0790d9f`;
+  - workflow/manifest pin contract and current-main integration pending.
 
 ### Rollout and rollback
 
@@ -387,6 +396,8 @@ policy snapshot, and durable deployment artifacts remain available.
   complete and final re-check completed with no actionable findings.
 - Production: reviewed source build promoted successfully; read-only gateway,
   policy, guard, reader, and cron-shaped delegation checks are green.
+- Landing: pull request conflicts with current `main` and required cumulative CI
+  is failing on workflow pin drift; remediation in progress.
 - Terminal exact-commit review: result is recorded only in the issue ledger after
   the final commit so the reviewed diff remains unchanged.
 

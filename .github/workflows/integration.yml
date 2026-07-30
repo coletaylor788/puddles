@@ -20,7 +20,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: openclaw/openclaw
-          ref: a1063aa4c83fc5469a677f992a4335604c3727bc
+          ref: 0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c
           path: .openclaw-source
 
       - name: Set up Node

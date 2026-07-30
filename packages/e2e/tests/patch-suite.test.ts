@@ -72,6 +72,18 @@ describe("OpenClaw cumulative patch suite", () => {
     expect(suite.openclawRef).toMatch(/^[0-9a-f]{40}$/);
   });
 
+  it("keeps the CI checkout synchronized with the patch-suite pin", () => {
+    const workflow = readFileSync(
+      join(repoRoot, ".github", "workflows", "integration.yml"),
+      "utf8",
+    );
+    const match = workflow.match(
+      /repository:\s*openclaw\/openclaw\s*\n\s*ref:\s*([0-9a-f]{40})/,
+    );
+
+    expect(match?.[1]).toBe(suite.openclawRef);
+  });
+
   it("checks generated prompt snapshots after applying the patch stack", () => {
     const runner = readFileSync(
       join(packageDir, "bin", "openclaw-test-env.mjs"),
