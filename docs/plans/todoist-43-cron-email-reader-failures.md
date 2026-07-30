@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Preparing final plan-only landing head
+**Status:** Rebuilding exact host-combined candidate
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -80,7 +80,10 @@ current pull-request head `4b5d84a` differs from reviewed and remote-green
 `83b0d08` only by plan status text; production is restored to the healthy
 unmarked predecessor. Publish this synchronized plan, terminal-review that exact
 plan-only head, then repin/revalidate the host-combined candidate for promotion
-and landing. The cron definition remains unchanged.
+and landing. Exact plan-only head `03b9b0a` subsequently passed terminal review,
+cumulative Integration, and all CodeQL analyses over base `6dc4e03`. The
+host-combined lifecycle is repinning that frozen tuple and production remains
+healthy on the predecessor. The cron definition remains unchanged.
 
 ### Scope and acceptance criteria
 
@@ -536,6 +539,9 @@ lifecycle.
   restored byte-for-byte and no deployment lock.
 - Current head `4b5d84a` is byte-identical to `83b0d08` outside this plan. Final
   plan synchronization and exact terminal review remain before private repinning.
+- Exact plan-only head `03b9b0a` over base `6dc4e03` passed terminal review,
+  cumulative Integration, and all CodeQL analyses. Host-combined repinning and
+  revalidation are in progress against that frozen tuple.
 
 ### Checklist
 
