@@ -1,0 +1,13 @@
+{
+  "name": "puddles-openclaw-todoist-cli-image",
+  "private": true,
+  "version": "3.0.5",
+  "description": "Locked dependencies for the Puddles Todoist CLI sandbox image",
+  "dependencies": {
+    "@doist/todoist-cli": "3.0.5"
+  },
+  "engines": {
+    "node": ">=24",
+    "npm": ">=11"
+  }
+}

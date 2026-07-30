@@ -13,6 +13,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const mocks = join(here, "..", "mocks");
 const IMSG = join(mocks, "imsg-mock.mjs");
 const PIM = join(mocks, "apple-pim-mock.mjs");
+const TODOIST = join(mocks, "todoist-mock.mjs");
 
 describe("writes: mock write-sinks capture writes, no real side effects", () => {
   let state: string;
@@ -58,6 +59,24 @@ describe("writes: mock write-sinks capture writes, no real side effects", () => 
     expect(writes.map((w) => w.sub)).toEqual(["create", "add", "delete"]);
   });
 
+  it("records an actionable Todoist task instead of contacting Todoist", () => {
+    const r = run(TODOIST, [
+      "task",
+      "add",
+      "Fix the broken sync",
+      "--project",
+      "Example",
+      "--labels",
+      "agent",
+      "--description",
+      "Reproduce the sync failure and add a regression.",
+      "--json",
+    ]);
+    expect(r.mock).toBe(true);
+    expect(r.labels).toContain("agent");
+    expect(lines("todoist-writes.jsonl")).toHaveLength(1);
+  });
+
   it("does NOT record read operations", () => {
     const before = lines("apple-pim-writes.jsonl").length;
     const r = run(PIM, ["list"]);
@@ -69,6 +88,7 @@ describe("writes: mock write-sinks capture writes, no real side effects", () => 
   it.each([
     ["imsg", IMSG],
     ["apple-pim", PIM],
+    ["todoist", TODOIST],
   ])("requires isolated state for the %s mock", (_name, bin) => {
     const env = { ...process.env };
     delete env.E2E_MOCK_STATE;
@@ -81,6 +101,7 @@ describe("writes: mock write-sinks capture writes, no real side effects", () => 
   it.each([
     ["imsg", IMSG],
     ["apple-pim", PIM],
+    ["todoist", TODOIST],
   ])("rejects unknown %s operations", (_name, bin) => {
     const result = spawnSync("node", [bin, "definitely-unknown"], {
       env: { ...process.env, E2E_MOCK_STATE: state },
