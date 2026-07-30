@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Reviewing final base-integrated candidate
+**Status:** Reviewing final merged candidate
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -53,26 +53,16 @@ read-only checks, and rebuild without the patch to roll back.
 
 The native and ACP cron guards, cross-agent policy isolation, generated
 snapshots, setup guidance, and cumulative regressions are implemented on
-OpenClaw `0790d9f`. Production already runs the reviewed combined deployment
-containing these public patches, with healthy gateway and read-only Gmail
-validation. Pull request #48 was remote-green at `7c887496`, but `main` advanced
-to `a385758`; this session integrated that exact reviewed feature history onto
-the current base in candidate `9cfdd05`. The merge was conflict-free, retained
-current `main`'s atomic deployment and rollback lifecycle, and passed the complete
-managed pool with 286 repository tests, current prompt snapshots, 449 mapped
-patched-source tests, the candidate browser test, and cleanup. A fresh reusable
-full-diff review found no actionable defects. Terminal exact-commit review then
-found that global ACP same-agent requests could lose inherited restrictions and
-that the documented two-step coordinator update could fail open between writes.
-Both findings are accepted and remediated with focused regressions. The focused
-setup contract and complete managed pool now pass with 286 repository tests,
-current prompt snapshots, 451 mapped patched-source tests, the candidate browser
-test, and cleanup. A fresh independent replacement review verified both
-remediations and found no actionable defects across all changed files. The base
-then advanced through unrelated Todoist plan-only commits; that exact base is now
-integrated, and the complete managed pool remains green with the same 286/451
-coverage. Terminal fresh review, refreshed remote checks, promotion, and merge
-invariants remain before landing. The cron definition remains unchanged.
+OpenClaw `0790d9f`. All terminal-review findings are remediated: global ACP
+same-agent restrictions use the explicit requester override, coordinator updates
+fail closed, distinct ACP defaults remain valid, and the explicit false override
+is proven with a same-profile regression. The branch now includes current
+`main`, the remote follow-up commits, and provider-neutral rollout wording.
+`CI=true node packages/e2e/bin/openclaw-test-env.mjs ci` passes with 286
+repository tests, current prompt snapshots, 451 mapped patched-source tests, the
+candidate browser test, and cleanup. A fresh terminal review of the merged
+candidate remains before remote checks and promotion. Production remains healthy
+on the prior combined build. The cron definition remains unchanged.
 
 ### Scope and acceptance criteria
 
@@ -326,12 +316,6 @@ Completed:
     managed cleanup.
   - fresh reusable full-diff review found no actionable findings; refreshed
     remote CI and post-merge validation remain the only validation gaps.
-  - default branch later advanced to `3e1f3d1` through unrelated Todoist
-    plan-only commits; integration was conflict-free and left issue-43 patch
-    bytes unchanged;
-  - the complete managed lifecycle passed again on that exact base with 286
-    repository tests, current prompt snapshots, 451 mapped patched-source tests,
-    the candidate browser test, and managed cleanup.
 - Terminal exact-commit review of `796a52a` found two actionable issues:
   global-scope same-agent ACP inheritance ignored the explicit requester
   override, and the documented coordinator update expanded the self-target
@@ -344,6 +328,27 @@ Completed:
 - Fresh independent replacement review verified both remediations and all 15
   changed files with no actionable findings. Remote CI, production confirmation,
   and post-merge validation remain.
+- Revised exact commit `0ef8ed1` received a clean terminal review and passed
+  refreshed Integration and CodeQL checks.
+- Before promotion, `main` advanced to `3e1f3d1` with only the unrelated
+  Todoist-filing plan changed. That base merged conflict-free as `9b919e0`;
+  the complete managed lifecycle passed again with repository build/lint, 286
+  repository tests, current prompt snapshots, 451 mapped patched-source tests,
+  the candidate browser test, and cleanup.
+- Combined-lifecycle preflight correctly blocked production mutation because the
+  host-local manifest still pins repository head `7c887496`. Production remains
+  healthy on OpenClaw `2026.7.1-2` / `0790d9f`; no recovery snapshot was needed.
+- Final-base review found one medium test-quality gap: the explicit
+  `requireAgentId=false` ACP regression used a distinct default that would be
+  accepted even without the override. The regression now uses a same-profile
+  implicit `main` target. The full managed lifecycle passed again with repository
+  build/lint, 286 repository tests, current prompt snapshots, 451 mapped
+  patched-source tests, the candidate browser test, and cleanup.
+- Remediation re-check confirmed the override regression and found one low source
+  JSDoc mismatch. The comment now distinguishes native and same-profile ACP cron
+  defaults. The complete managed lifecycle passed again with repository
+  build/lint, 286 repository tests, current prompt snapshots, 451 mapped
+  patched-source tests, the candidate browser test, and cleanup.
 
 ### Rollout and rollback
 
@@ -351,9 +356,9 @@ Apply and deploy only through
 `docs/openclaw-setup/patches/apply-and-deploy.sh` with `MINI_HOST` unset on the
 target Mac mini for the provider-neutral stack. The wrapper serializes build and
 deployment, snapshots package/runtime/service/browser state, probes readiness,
-and rolls back automatically on failure. Hosts with an additional local overlay
-must use their reviewed combined lifecycle so the public stack and complete
-runtime dependency graph promote atomically.
+and rolls back automatically on failure. Hosts requiring additional local
+components must use their reviewed host-combined lifecycle so the complete
+runtime dependency graph promotes atomically.
 
 Production runs a combined build at pinned source `0790d9f` containing these
 public patches. Checksummed rollback snapshots are retained by the host
@@ -413,8 +418,22 @@ lifecycle.
   findings are accepted, remediated, and fully revalidated. The original
   completed reviewer cannot be resumed through the available worker interface,
   so a fresh independent replacement re-checked the complete current diff and
-  found no actionable defects. Latest base integration changed only an unrelated
-  plan and is fully revalidated; fresh terminal review pending.
+  found no actionable defects.
+- Final-base review found one medium ineffective-regression defect in ACP override
+  coverage. The finding is accepted, remediated with a same-profile implicit
+  target, and fully revalidated; review re-check is pending.
+- Re-check confirmed the functional fix and found one low source-comment
+  overclaim about ACP cron defaults. The comment is aligned with the implemented
+  same-profile condition and fully revalidated; final review remains.
+- Final complete-diff review found one low publication-boundary defect in plan
+  wording. Provider-specific repository details are removed in favor of
+  provider-neutral host-combined lifecycle terms.
+- Terminal exact-commit review found one remaining low overlay-split disclosure
+  in rollout wording. It is replaced with provider-neutral guidance for hosts
+  requiring additional local components.
+- Final integration merged the parallel landing follow-ups and latest default
+  branch without changing the issue-43 runtime intent; the complete managed
+  lifecycle remains green. Fresh terminal review pending.
 - Terminal exact-commit review: result is recorded only in the issue ledger after
   the final commit so the reviewed diff remains unchanged.
 
