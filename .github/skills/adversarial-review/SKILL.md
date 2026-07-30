@@ -3,7 +3,7 @@ name: adversarial-review
 description: Independently challenge a completed feature for hidden defects, unsafe assumptions, regressions, and incomplete requirements. Use for the mandatory post-implementation review of every feature.
 metadata:
   author: Cole Taylor
-  version: "1.2.0"
+  version: "1.3.0"
 ---
 
 # Adversarial Review
@@ -23,9 +23,14 @@ change.
 Do not manufacture findings to justify the review or fill a perceived quota. A
 clean review is a normal, useful result. Report a defect only when the current
 change directly supports it and there is a concrete failure scenario with
-material impact. Treat uncertainty or missing proof as a residual validation gap,
-not as a defect. Before reporting, verify that the concern is not speculative,
-duplicative, already resolved, or unrelated to the current change.
+material impact. Do not report minor or low-severity concerns as findings, even
+when they are technically valid. Suppress style, wording, optional hardening,
+low-impact proof gaps, and any other concern without material impact. Treat
+uncertainty or missing proof as a residual validation gap, not as a defect.
+Record residual validation gaps only when useful, and do not promote minor gaps
+into actionable remediation-loop findings. Before reporting, verify that the
+concern is not speculative, duplicative, already resolved, or unrelated to the
+current change.
 
 When the implementation agent disputes a significant finding, assess its
 evidence and rationale on the merits. Withdraw or revise a finding that is no
@@ -35,8 +40,10 @@ withdrawal, or documented residual risk or blocker.
 
 Look for:
 
-- requirements that are missing, only partially implemented, or contradicted;
-- incorrect assumptions, edge cases, regressions, and unsafe failure behavior;
+- material requirements that are missing, only partially implemented, or
+  contradicted;
+- material correctness defects, incorrect assumptions, regressions, and unsafe
+  failure behavior;
 - architecture, security, privacy, isolation, data flow, state ownership,
   failure atomicity, process lifecycle, path and symlink handling, concurrency,
   backward compatibility, lifecycle, and rollback risks;
@@ -46,12 +53,16 @@ Look for:
 - whack-a-mole fixes that address one path while moving or leaving the same
   defect in another agent, plugin, command, profile, or failure boundary.
 
+Apply this threshold to the complete change, not only implementation code.
+Report material defects in documentation, tests, and configuration when they
+create correctness, safety, security, requirement, lifecycle, or regression
+risk.
+
 Report only concrete, actionable, high-confidence findings. For each finding,
 include severity, the affected file and line, the failure scenario, the evidence
 that the current change permits it, and the smallest sound correction. Do not
-report style preferences, speculative concerns, or optional hardening as
-defects. If there are no actionable findings, say so and identify any residual
-validation gaps.
+report minor or low-severity findings. If there are no actionable findings, say
+so and identify any useful residual validation gaps separately from findings.
 
 Apply any additional checks listed below.
 
