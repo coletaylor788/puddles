@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Preparing current-base exact landing candidate
+**Status:** Integrating latest main for exact landing
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -53,45 +53,17 @@ read-only checks, and rebuild without the patch to roll back.
 
 The native and ACP cron guards, cross-agent policy isolation, generated
 snapshots, setup guidance, and cumulative regressions are implemented on
-OpenClaw `0790d9f`. Terminal review found and drove remediation for global ACP
-same-agent inheritance and fail-closed coordinator update ordering. Candidate
-`0ef8ed1` then passed the full managed pool, clean replacement and terminal
-reviews, and refreshed remote Integration and CodeQL checks. Before promotion,
-`main` advanced to `3e1f3d1` with an unrelated plan-only merge; that base is now
-integrated conflict-free as candidate `9b919e0`, which passed the complete
-managed pool with 286 repository tests, current prompt snapshots, 451 mapped
-patched-source tests, the candidate browser test, and cleanup. Production remains
-unchanged and healthy on the prior host-combined build. The host-combined
-lifecycle currently pins the older repository head, so it must be updated,
-validated, and reviewed against the final candidate before promotion.
-Final-base review found that the explicit `requireAgentId=false` ACP regression
-used a distinct default and therefore did not prove the same-profile
-compatibility escape hatch. The test now uses an implicit same-profile `main`
-target with the explicit false override. The complete managed pool passes again
-with 286 repository tests, current prompt snapshots, 451 mapped patched-source
-tests, the candidate browser test, and cleanup. Review is being refreshed before
-the host-combined lifecycle update. Re-check found one remaining source JSDoc overclaim
-that treated every ACP cron default as explicit-target-only; it now states the
-implemented native and same-profile ACP distinction. The complete managed pool
-passes again with 286 repository tests, current prompt snapshots, 451 mapped
-patched-source tests, the candidate browser test, and cleanup. Final re-review
-found the model-facing `agentId` schema still overstated the requirement for
-distinct-default ACP cron calls. The schema, regression assertion, and generated
-snapshots now state the exception explicitly. The complete managed pool passes
-again with 286 repository tests, current prompt snapshots, 451 mapped
-patched-source tests, the candidate browser test, and cleanup. Final re-review
-verified the implementation, assertion, three JSON snapshots, and three Markdown
-metadata snapshots with no actionable findings. The exact candidate, terminal
-fresh review, remote checks, host-combined promotion, merge, and post-merge
-verification remained, but `main` then advanced to `863666f` with the reviewed
-iMessage and deployment lifecycle. That base conflicts only in the previously
-ported sessions-yield patch; resolution retains current `main`'s newly ported
-patch while preserving this branch's reader changes in their separate patch.
-The complete managed pool now passes with 288 repository tests, current prompt
-snapshots, 464 mapped patched-source tests, the candidate browser test, and
-cleanup. Fresh complete-diff review found no actionable findings. The exact
-commit, terminal review, remote gates, promotion, merge, and post-merge
-verification remain. The cron definition remains unchanged.
+OpenClaw `0790d9f`. All prior review findings are remediated. Candidate
+`e3ae601` passed the complete managed pool with 288 repository tests, current
+prompt snapshots, 464 mapped patched-source tests, the candidate browser test,
+and cleanup; exact-commit review found no code, patch, test, or security defect.
+That review identified only stale tracking presentation, which this plan and
+issue ledger correction resolve. `main` has since advanced to `f7a049a` through
+the reviewed iMessage landing and overlaps the shared patch stack, so it must be
+integrated and the cumulative pool and terminal review refreshed before remote
+gates. Production remains healthy on the prior reviewed host-combined build, and
+the cron definition remains unchanged. Exact-candidate remote checks,
+host-combined promotion, merge, and post-merge validation remain.
 
 ### Scope and acceptance criteria
 
@@ -477,12 +449,13 @@ lifecycle.
   repository tests, current prompt snapshots, 451 mapped patched-source tests,
   the candidate browser test, and cleanup.
 - Corrected-schema complete-diff re-review found no actionable findings.
-- Exact candidate `759bf45` received a clean terminal review, but current-base
-  movement invalidated that landing tuple before promotion. Integration of
-  `863666f` is in progress.
-- Current-base complete-diff review is clean.
-- Terminal exact-commit review: result is recorded only in the issue ledger after
-  the final commit so the reviewed diff remains unchanged.
+- Candidate `e3ae601` integrated the finalized plan presentation onto the
+  validated `863666f` base. Exact-commit review found no code, patch, test, or
+  security defect and confirmed no runtime loss. Its only actionable finding was
+  the stale issue ledger, corrected with this synchronized plan milestone.
+- `main` subsequently advanced to `f7a049a` through the reviewed iMessage
+  landing and overlaps the shared patch stack. Integrate that base, rerun the
+  complete managed pool, and refresh terminal review before remote gates.
 
 ### Checklist
 
@@ -500,5 +473,6 @@ lifecycle.
 - [x] Revalidate the integrated current-main candidate and complete reusable
   full-diff review.
 - [x] Validate and re-review terminal-review remediation.
+- [x] Complete exact-commit review of candidate `e3ae601`.
 - [ ] Complete pull request landing and post-merge validation.
 - [ ] Set issue and Todoist task to ready for review without completing the task.
