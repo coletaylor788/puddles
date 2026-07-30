@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Publishing final landing candidate
+**Status:** Correcting final publication wording
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -370,9 +370,9 @@ Apply and deploy only through
 `docs/openclaw-setup/patches/apply-and-deploy.sh` with `MINI_HOST` unset on the
 target Mac mini for the provider-neutral stack. The wrapper serializes build and
 deployment, snapshots package/runtime/service/browser state, probes readiness,
-and rolls back automatically on failure. Hosts with an additional local overlay
-must use their reviewed combined lifecycle so the public stack and complete
-runtime dependency graph promote atomically.
+and rolls back automatically on failure. Hosts requiring additional local
+components must use their reviewed host-combined lifecycle so the complete
+runtime dependency graph promotes atomically.
 
 Production runs a combined build at pinned source `0790d9f` containing these
 public patches. Checksummed rollback snapshots are retained by the host
@@ -442,6 +442,9 @@ lifecycle.
 - Final complete-diff review found one low publication-boundary defect in plan
   wording. Provider-specific repository details are removed in favor of
   provider-neutral host-combined lifecycle terms.
+- Terminal exact-commit review found one remaining low overlay-split disclosure
+  in rollout wording. It is replaced with provider-neutral guidance for hosts
+  requiring additional local components.
 - Terminal exact-commit review: result is recorded only in the issue ledger after
   the final commit so the reviewed diff remains unchanged.
 
