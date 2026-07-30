@@ -1,6 +1,6 @@
 # Coalesce split iMessage message parts
 
-- **Status:** In progress - implementing reply-chained sandwich coalescing
+- **Status:** In progress - promoting reviewed sandwich correction
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-29
 - **Owner:** Cole Taylor
@@ -52,19 +52,19 @@ reviewed patch stack.
 
 ### State
 
-The reviewed comma-delimited correction is merged and deployed from pinned
-OpenClaw `a1063aa`. It passes 74 focused tests and the cumulative lifecycle, and
-read-only production checks previously confirmed the installed logic and a
-healthy iMessage account. Cole's follow-up confirms text plus link now produces
-one turn, but a text-link-text composition emitted the final text separately.
-Read-only correlation found rows 7071/7072/7073 created at
+The prior comma-delimited correction is merged and deployed. Cole's follow-up
+confirmed text plus link now produces one turn, but a text-link-text composition
+emitted the final text separately. Read-only correlation found rows 7071/7072/7073 created at
 00:24:16.206Z, 00:24:21.554Z, and 00:24:21.668Z. Each later row's
 `reply_to_guid` points to the immediately preceding part. The URL triggered the
 first run at 00:24:22Z, while the trailing row did not start its run until
 00:24:30Z despite being created only 114 ms after the URL. Historical inbound
 URL continuation rows use 103-425 ms source gaps; a much later explicit reply is
 separated by tens of seconds. The premature payload flush, not source creation
-latency, is the demonstrated boundary.
+latency, is the demonstrated boundary. The corrected patch retains matched
+payloads through the first absolute deadline, admits only bounded exact-chain
+continuations, passes focused and cumulative validation on both maintained
+OpenClaw releases, and has a clean reusable-worker review.
 
 ### Scope and acceptance criteria
 
@@ -432,7 +432,7 @@ latency, is the demonstrated boundary.
   a joined payload with no GUID and a malformed timestamp, proving that the next
   composition gets a fresh bucket while the malformed row cannot anchor a
   continuation.
-- The complete managed lifecycle passes repository build and lint, 270 workspace
+- The complete managed lifecycle passes repository build and lint, 280 workspace
   tests, 332 cumulative mapped OpenClaw tests, one isolated browser-entrypoint
   candidate test, and candidate deregistration.
 - The complete six-patch stack now applies to production OpenClaw
@@ -441,9 +441,10 @@ latency, is the demonstrated boundary.
   makes it apply to both the pinned and production releases. All 336 mapped
   source tests pass on the production release, including the 87 iMessage tests.
 - After the portability-only patch-hunk change, the complete pinned-release
-  managed lifecycle passes again with the same build, lint, 270 workspace-test,
+  managed lifecycle passes again with the same build, lint, 280 workspace-test,
   332 mapped-source-test, candidate-test, and cleanup coverage after the
-  metadata-safe payload-state remediation.
+  metadata-safe payload-state remediation and synchronization with current
+  `main`.
 
 ### Rollout and rollback
 
@@ -455,7 +456,8 @@ deployed from clean disposable worktrees pinned to merged Puddles `e82db0e` and
 OpenClaw `a1063aa`; all five reviewed patches applied, the package and browser
 image rebuilt, and the gateway restarted. Automated production validation
 remained read-only and passed. Both disposable worktrees and their registrations
-were removed. The fourth sandwich correction must pass the full review and
+were removed. The fourth sandwich correction has passed the reusable-worker review
+and must pass terminal exact-commit review, remote checks, and the configured
 promotion lifecycle before another local deployment. Rollback remains available
 without data migration.
 
@@ -672,7 +674,8 @@ No data migration or persistent message-state conversion is involved.
 - [x] Correct the premature payload flush without merging unrelated trailing
   messages.
 - [x] Run focused tests and the complete cumulative managed lifecycle.
-- [ ] Obtain clean reusable-worker and terminal adversarial reviews.
-- [ ] Merge, verify exact `main`, deploy locally, and validate production
-  read-only.
+- [x] Obtain a clean reusable-worker adversarial review.
+- [ ] Obtain a clean terminal adversarial review of the exact landing candidate.
+- [ ] Promote the exact remotely green candidate, validate production read-only,
+  then merge and verify exact `main`.
 - [ ] Return issue #28 and Todoist to Ready for review after the sandwich fix.
