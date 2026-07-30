@@ -12,6 +12,12 @@
 > default resolves to the requester profile, now require an explicit `agentId` by
 > default. This prevents unattended jobs from silently spawning a restricted
 > same-agent child while preserving distinct `acp.defaultAgent` routing.
+>
+> **2026-07-30:** cron requesters under explicit-target policy also reject an
+> explicit requester-profile target. Denials list allowed non-requester IDs
+> directly, so least-privilege jobs can repair the call even when `agents_list`
+> is unavailable. `requireAgentId=false` remains the intentional same-agent cron
+> opt-in.
 
 **Source diff:** `subagent-cross-agent-spawn-fix.patch` (git-diff against the
 OpenClaw source; applied by `apply-and-deploy.sh`, then built from source).
@@ -47,6 +53,13 @@ calls `sessions_spawn(taskName="email_reader", ...)` without
 least-privilege cron `toolsAllow` then propagates to that child, so it cannot use
 the reader profile's tools. Interactive runs that explicitly target `reader`
 continue to work.
+
+The initial explicit-target guard still left a repair gap. In the landed Daily
+Email Triage run, the model omitted `agentId`, received the expected denial, and
+then retried with `agentId="main"` while keeping label `email-reader`. The
+explicit same-agent target was accepted and inherited the cron's mutation-only
+policy. The denial recommended `agents_list`, but that least-privilege cron does
+not expose the tool, so the error did not provide a usable target.
 
 ## Root cause
 
@@ -131,12 +144,17 @@ profile's tool policy. Compatible cross-agent ACP calls still omit inherited
 session policy, while native cross-agent children use their target profile.
 
 For native subagents requested from a cron run, omitted `agentId` now fails
-before child creation and directs the caller to `agents_list`. ACP cron calls
-apply that default only when `acp.defaultAgent` resolves to the requester
-profile; a distinct ACP harness default remains valid. ACP denials name
-`acp.defaultAgent` as the target source. An explicit
-`subagents.requireAgentId=false` setting still opts into prior implicit behavior.
-The model-facing schema also states that `taskName` does not select a profile.
+before child creation. Explicit requester-profile retries fail under the same
+policy. Both denials include configured non-requester target IDs directly and
+state that `taskName` and `label` do not select a profile. ACP cron calls apply
+the omitted-target default only when `acp.defaultAgent` resolves to the requester
+profile; explicit requester IDs are caught before native-profile/runtime mismatch
+errors, and suggested ACP targets are filtered through ACP target resolution and
+agent policy. Config aliases whose resolved harness is the requester are also
+excluded, so every advertised repair target can cross the self-target boundary.
+A distinct ACP harness default remains valid. An explicit
+`subagents.requireAgentId=false` setting opts into both implicit and explicit
+same-agent cron children.
 
 ACP now enforces configured `requireAgentId=true` consistently for top-level and
 subagent requesters, regardless of the default harness. ACP-disabled policy
@@ -146,9 +164,11 @@ The source patch includes regressions for both spawn implementations. They
 assert that same-agent spawns retain inherited allow/deny policy, compatible
 cross-agent ACP spawns omit inherited session policy, incompatible ACP
 requester policy is rejected for every target, ambiguous cron spawns fail before
-creating a child, the explicit false override remains available, an explicit
-cron `reader` spawn keeps the reader policy, and the tool schema distinguishes
-`taskName` from `agentId`. The patch also carries
+creating a child, explicit requester-profile repair is denied with usable worker
+IDs, the explicit false override remains available, an explicit cron `reader`
+spawn keeps the reader policy, and the tool schema distinguishes `taskName` from
+`agentId`. Native and ACP regressions replay omitted target, explicit requester
+retry, and explicit worker success. The patch also carries
 the regenerated Codex dynamic-tool JSON and Markdown prompt snapshots affected
 by the schema descriptions. The shared patch lifecycle runs every changed test
 file and `prompt:snapshots:check` after applying the complete patch stack.
@@ -186,9 +206,10 @@ settings. This policy change is separate from the cron definition and does not
 alter any scheduled job.
 
 The runtime's automatic default applies to the immediate cron session key. A
-same-agent child has a normal subagent key, so cron coordinators that fan out
-must also use the promoted `requireAgentId: true` policy to keep descendant
-delegation explicit.
+same-agent child has a normal subagent key, so downstream delegation still uses
+normal subagent policy. With `requireAgentId: true`, the immediate cron requester
+cannot create that same-agent child even when its own ID remains in `allowAgents`
+for interactive coordinator use.
 
 ## How to apply / revert
 

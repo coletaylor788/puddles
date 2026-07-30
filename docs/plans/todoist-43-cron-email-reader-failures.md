@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Complete
+**Status:** Preparing exact reproduced-path candidate
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-30
 
@@ -9,23 +9,41 @@
 ### Problem
 
 Interactive main-agent runs explicitly target the `reader` profile and can read
-email. Three consecutive scheduled triage runs instead omitted
+email. Earlier scheduled triage runs omitted
 `sessions_spawn.agentId`, supplied `taskName="email_reader"`, and silently
 spawned a same-profile `main` child. The cron run's restricted tool policy then
 correctly propagated to that child, leaving it without Gmail read tools. Existing
 tests covered cross-agent policy isolation and the optional explicit-target
-configuration separately, but not this scheduled omission path.
+configuration separately, but not this scheduled omission path. The landed guard,
+managed regressions, and no-delivery production smokes passed, but Cole's real
+scheduled invocation still failed afterward. The exact run first omitted
+`agentId` and received the expected denial, then retried with
+`agentId="main"` and label `email-reader`. Explicit same-agent cron targeting was
+still allowed, so the new main child inherited the restricted mutation-only cron
+policy and could not read Gmail. The denial recommended `agents_list`, but that
+tool is absent from this cron job's unchanged `toolsAllow`.
 
 ### Outcome
 
-Scheduled delegation now requires the intended target instead of silently
-falling back to the scheduler's profile. A missing target fails immediately with
-a repairable error, explicit `reader` delegation retains the reader's Gmail
-tools, and the shared managed pool proves both paths with synthetic state.
+The actual scheduled delegation must complete the same read-only email task that
+works interactively. Both omitted target and accidental explicit requester target
+must fail with a repairable error that names available non-requester targets;
+explicit `reader` must succeed. The shared managed pool must replay that exact
+call sequence without changing cron, delivering messages, or mutating Gmail.
 
 ### Approach
 
-OpenClaw now makes native cron `sessions_spawn` calls require an explicit
+Keep the landed explicit-target and ACP security boundaries, but treat the
+post-landing failure as evidence of a second gap rather than weakening them.
+Add a cron-specific same-agent boundary: immediate cron requesters may not target
+their own profile unless `subagents.requireAgentId=false` is configured.
+Interactive self-spawn remains available, and installations with an intentional
+cron coordinator child have an explicit opt-in. Denials include allowed
+non-requester IDs directly because restricted cron tool policies may not expose
+`agents_list`. Regressions replay omitted target, explicit `main` retry, and
+explicit `reader` success for native and ACP paths.
+
+The current implementation makes native cron `sessions_spawn` calls require an explicit
 `agentId` by default, and ACP cron calls do so only when their configured default
 resolves to the requester profile. Retain explicit configuration overrides and
 distinct ACP harness defaults. Clarify the model-facing schema so `taskName`
@@ -42,11 +60,13 @@ defaults.
 
 The existing cron job and its least-privilege `toolsAllow` remain unchanged.
 Tests use synthetic session state and mocked gateway calls; they never access
-Gmail, send messages, or mutate accounts. The exact reviewed build was promoted
-through the host-combined lifecycle with a durable marker and rollback snapshot.
-Production validation used fixed no-match reads only, with no delivery or mailbox
-mutation. Coordinator policy updates apply the restrictive flag before the
-expanded allowlist, and rebuilding without the patch remains the rollback path.
+Gmail, send messages, or mutate accounts. The prior reviewed build remains
+installed through the host-combined lifecycle with a durable marker and rollback
+snapshot. Investigation and automated reproduction stay read-only and use
+synthetic or fixed no-match Gmail inputs. Do not alter or manually invoke cron,
+deliver messages, or mutate mailbox state. Coordinator policy updates apply the
+restrictive flag before the expanded allowlist, and rebuilding without the patch
+remains the rollback path.
 
 ## Agent details
 
@@ -60,20 +80,48 @@ an external harness. Compatible cross-agent ACP calls omit inherited session
 policy, while native cross-agent reader calls use the reader profile. Public PR
 #48 landed exact head `5b771f9`; private PR #6 landed exact host-combined head
 `d97c1b3`. Production runs deployment `8491ddf6-668b-487d-8623-7c7dff0a0e31`
-on OpenClaw `2026.7.1-2` / `0790d9f` with all maintained patches. Gateway,
-marker, policy, reader, cron-shaped delegation, and iMessage checks are green.
-The cron definition remains unchanged.
+on OpenClaw `2026.7.1-2` / `0790d9f` with all maintained patches. Gateway, marker, policy, reader, cron-shaped delegation, and iMessage checks were
+green, but Cole's post-landing scheduled test still failed. The prior smoke used
+a controlled cron-shaped prompt and fixed no-match read rather than the exact
+live scheduled execution, so investigation is reopened to identify and commit the
+missing end-to-end boundary. The source patch now denies immediate native and ACP
+cron self-targeting under explicit-target policy, lists configured non-requester
+IDs in both omitted and explicit-self denials, and preserves
+`requireAgentId=false` as the intentional same-agent cron override. Focused
+formatted upstream tests pass across four files with 224 tests. The complete
+managed lifecycle passes repository build/lint, 288 repository tests, seven
+current prompt snapshots, 470 mapped patched-source tests, the candidate browser
+test, and cleanup. Independent review found ACP must catch an explicit requester ID before
+target resolution and filter repair candidates through ACP routing/policy; those
+accepted remediations are implemented. Focused formatted coverage still passes
+224 tests across four files, including a native `reader` profile that is excluded
+from ACP suggestions and an ACP-routable `coder` profile that remains available.
+Full managed revalidation also passes repository build/lint, 288 repository
+tests, seven current prompt snapshots, 470 mapped patched-source tests, the
+candidate browser test, and cleanup. Re-review found ACP suggestions must exclude
+config aliases whose resolved harness equals the requester, and the native replay
+must exercise the unset cron default rather than configured `true`. Both
+remediations are implemented and focused formatted coverage passes 224 tests
+across four files. Full managed revalidation also passes repository build/lint,
+288 repository tests, seven current prompt snapshots, 470 mapped patched-source
+tests, the candidate browser test, and cleanup. Final review remains. Production
+remains healthy on the prior deployment. Fresh complete-diff review found no
+actionable findings. Exact commit, terminal review, remote gates, promotion, and
+post-landing verification remain. The cron definition remains unchanged.
 
 ### Scope and acceptance criteria
 
 - Identify why scheduled runs fail while equivalent interactive runs succeed.
 - Make cron-run native subagent delegation fail closed when `agentId` is omitted,
   without changing cron configuration.
+- Make cron-run delegation fail closed when the model repairs an omitted target
+  with the requester profile, and provide usable non-requester IDs without
+  requiring `agents_list`.
 - Require explicit ACP targets only for cron-triggered same-profile defaults;
   preserve distinct configured ACP harness defaults.
 - Preserve existing interactive reader behavior and explicit failure handling.
 - Preserve an explicit configuration override for installations that intentionally
-  allow implicit same-agent cron children.
+  allow implicit or explicit same-agent cron children.
 - Prove that an explicit cron `main -> reader` spawn does not inherit the cron
   parent's restricted tool allowlist.
 - Add focused source coverage mapped into the cumulative `packages/e2e/` suite.
@@ -112,6 +160,10 @@ The cron definition remains unchanged.
 - ACP command compatibility checks run after effective target resolution and
   apply to every resolved ACP target; the tool wrapper no longer duplicates
   them.
+- Immediate cron requesters deny same-agent targets by default even when the
+  requester appears in `allowAgents`; `requireAgentId=false` is the explicit
+  compatibility override. Native errors list configured non-requester IDs;
+  ACP errors list only targets that ACP routing and policy can actually accept.
 - Coordinator promotion sets `requireAgentId=true` before expanding
   `allowAgents`; interruption therefore leaves delegation fail-closed.
 - The fix belongs in the existing provider-neutral
@@ -173,11 +225,18 @@ Implemented:
     `spawnAcpDirect` after target resolution, enforce it for every ACP target,
     and cover both same- and cross-agent denial plus compatible cross-agent
     non-inheritance.
+24. Deny native cron self-targeting after target resolution and catch explicit
+    ACP requester IDs before target-resolution errors. Reuse
+    `requireAgentId=false` as the intentional compatibility override and include
+    repairable runtime-valid non-requester target IDs in the error.
+25. Replay the exact landed failure sequence in the cumulative source suite:
+    omitted target denied, explicit `main` denied, explicit `reader` accepted
+    with reader policy.
 
-Feature implementation, review remediation, release porting, promotion, and
-read-only production validation are complete. Cole requested full landing, so
-the reviewed feature history is integrated with current `main` and is being
-rerun through all invalidated validation and review gates.
+The prior feature cycle is landed and production remains healthy. This
+post-landing reproduction reopens implementation at the cron self-target
+boundary; validation, review, promotion, and landing must repeat for the new
+candidate.
 
 ### Validation
 
@@ -187,6 +246,11 @@ Planned:
   patches applied.
 - Run repository build, lint, and tests.
 - Run `node packages/e2e/bin/openclaw-test-env.mjs ci`.
+- Replay the actual repair sequence with a cron requester whose tool policy does
+  not include `agents_list`: omitted target denial, explicit requester denial
+  listing non-self targets, and explicit `reader` success.
+- Cover `requireAgentId=false`, interactive same-agent spawn compatibility,
+  malformed/empty candidate lists, and ACP parity.
 - Exercise omitted-target denial, explicit-target success, the explicit false
   override, cross-agent policy isolation, cleanup, and patch rollback.
 - After promotion, confirm gateway health, the installed cron guard, and direct
@@ -528,6 +592,42 @@ lifecycle. The landed deployment marker is
   marker, gateway, installed guard, sandbox, iMessage, fixed no-match Gmail,
   direct `READ_OK`, and cron-shaped `CRON_READER_OK` checks. No cron invocation,
   definition change, delivery, or mailbox mutation occurred.
+- Post-landing requester validation failed on the actual scheduled run despite
+  the green controlled smoke, demonstrating that the suite does not yet cover
+  the complete production execution path. Root-cause reproduction is reopened.
+- Exact failed run `b6264646-8044-478e-9221-d1541b6ae3fe` first received the
+  omitted-target denial, then explicitly targeted `main` while labeling the task
+  `email-reader`. The accepted main child
+  `df8cd11c-0800-4e31-8dc6-525218f5274b` inherited the cron's write-only Gmail
+  policy and reported no read tools. The cron policy does not expose
+  `agents_list`, so the denial's repair instruction was unusable.
+- Reproduced-path remediation validation passes: focused formatted upstream
+  coverage spans four files and 224 tests; the complete managed lifecycle passes
+  repository build/lint, 288 repository tests, seven current prompt snapshots,
+  470 mapped patched-source tests, the candidate browser test, and cleanup.
+- Independent review found ACP explicit requester IDs could fail target
+  resolution before reaching the repairable self-target guard, and ACP candidate
+  suggestions were not filtered through ACP routing/policy. Both findings are
+  accepted; ACP now needs pre-resolution requester detection and runtime-valid
+  candidate filtering. The stale `allowCronSelfSpawn` plan term is corrected to
+  the implemented `requireAgentId=false` override.
+- ACP remediation catches explicit requester IDs before runtime mismatch and
+  derives repair candidates only from targets accepted by ACP resolution and
+  agent policy. Focused formatted coverage passes 224 tests across four files,
+  and the complete managed lifecycle passes repository build/lint, 288
+  repository tests, seven current prompt snapshots, 470 mapped patched-source
+  tests, the candidate browser test, and cleanup.
+- Re-review found ACP candidate filtering compared aliases before resolution, so
+  an advertised alias could resolve back to the requester harness and be denied
+  again. It also found native replay configured `requireAgentId=true` instead of
+  proving the documented unset-to-true cron default. Both findings are accepted.
+- ACP candidate filtering now excludes aliases whose resolved harness is the
+  requester, and native replay leaves `requireAgentId` unset to exercise the
+  documented cron default. Focused formatted coverage passes 224 tests across
+  four files. The complete managed lifecycle passes repository build/lint, 288
+  repository tests, seven current prompt snapshots, 470 mapped patched-source
+  tests, the candidate browser test, and cleanup.
+- Final fresh complete-diff review found no actionable findings.
 
 ### Checklist
 
@@ -547,4 +647,9 @@ lifecycle. The landed deployment marker is
 - [x] Validate and re-review terminal-review remediation.
 - [x] Complete exact-commit review of candidate `e3ae601`.
 - [x] Complete pull request landing and post-merge validation.
-- [x] Set issue and Todoist task to ready for review without completing the task.
+- [x] Complete the prior landed-cycle tracker handoff without completing the task.
+- [x] Trace Cole's exact post-landing scheduled failure and successful interactive
+  comparison.
+- [x] Add a managed regression that fails for the same post-landing reason.
+- [ ] Fix, revalidate, review, promote, land, and repeat read-only production
+  verification for the real path.
