@@ -18,7 +18,7 @@ const reviewWorkflow = readFileSync(
 
 describe("adversarial review workflow", () => {
   it("reuses one reviewer throughout remediation without narrowing review", () => {
-    expect(safeWorkflow).toContain('version: "1.5.0"');
+    expect(safeWorkflow).toContain('version: "1.6.0"');
     expect(safeWorkflow).toMatch(/retain its worker handle/i);
     expect(safeWorkflow).toMatch(/resume or restart that same reviewer/i);
     expect(safeWorkflow).toMatch(
@@ -98,7 +98,9 @@ describe("adversarial review workflow", () => {
     expect(safeWorkflow).toMatch(
       /Pause before implementation only when the requester explicitly asks/i,
     );
-    expect(safeWorkflow).toMatch(/Otherwise, do not add a human approval gate/i);
+    expect(safeWorkflow).toMatch(
+      /Otherwise, do not\s+add a human approval gate/i,
+    );
     expect(safeWorkflow).toMatch(/6\. \*\*Prepare remote integration\*\*/);
     expect(safeWorkflow).toMatch(/9\. \*\*Land and close out\*\*/);
     expect(
@@ -148,5 +150,51 @@ describe("adversarial review workflow", () => {
       /Mark the repository issue complete and report the landed outcome[\s\S]*requester's final validation and\s+external task-completion decision/i,
     );
     expect(safeWorkflow).not.toMatch(/exact commit to be handed off/i);
+  });
+
+  it("requires clear and actionable requester-help escalations", () => {
+    const helpWorkflow = safeWorkflow.slice(
+      safeWorkflow.indexOf("## Requesting requester help"),
+      safeWorkflow.indexOf("## Required loop"),
+    );
+
+    expect(helpWorkflow).toMatch(
+      /only after normal autonomous resolution paths are\s+exhausted/i,
+    );
+    expect(helpWorkflow).toMatch(
+      /Before asking, update the plan and\s+issue ledger with the blocker/i,
+    );
+    expect(helpWorkflow).toMatch(/must be concise and self-contained/i);
+    expect(helpWorkflow).toMatch(
+      /name the exact blocker[\s\S]*affected feature, environment, or lifecycle\s+step/i,
+    );
+    expect(helpWorkflow).toMatch(
+      /relevant evidence[\s\S]*already tried or\s+verified/i,
+    );
+    expect(helpWorkflow).toMatch(
+      /explain why the worker cannot safely or correctly resolve it without the\s+requester/i,
+    );
+    expect(helpWorkflow).toMatch(
+      /ask for one exact decision, fact, permission, configuration change, or action/i,
+    );
+    expect(helpWorkflow).toMatch(
+      /what the worker will do after the answer[\s\S]*material consequence/i,
+    );
+    expect(helpWorkflow).toMatch(/Include the tracking issue/i);
+    expect(helpWorkflow).toMatch(
+      /Never send a vague status-shaped question[\s\S]*unexplained subsystem[\s\S]*"enabled"/i,
+    );
+    expect(helpWorkflow).toMatch(
+      /delegate routine worker-owned design execution, review, CI,[\s\S]*merge, landing, or verification/i,
+    );
+    expect(helpWorkflow).toMatch(
+      /cannot be described clearly enough[\s\S]*continue\s+investigating instead of asking/i,
+    );
+    expect(safeWorkflow).toMatch(
+      /ask the exact unresolved\s+design question using the requester-help contract above/i,
+    );
+    expect(safeWorkflow).toMatch(
+      /requester input is genuinely required[\s\S]*use the requester-help contract\s+above/i,
+    );
   });
 });

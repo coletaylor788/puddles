@@ -4,7 +4,7 @@ description: "Implement features safely from research through test-environment i
 compatibility: "Requires the target repository's existing build, test, deployment, and rollback tools. Uses repository-provided test and production lifecycles when available."
 metadata:
   author: Cole Taylor
-  version: "1.5.0"
+  version: "1.6.0"
 ---
 
 # Safe Feature Development
@@ -31,6 +31,33 @@ wait at that checkpoint. After approval, or when no design checkpoint was
 requested, continue autonomously through landing. Do not turn pull-request review
 or merge into a routine requester handoff. Return the landed result for the
 requester's final validation and task-completion decision.
+
+## Requesting requester help
+
+Ask the requester for help only after normal autonomous resolution paths are
+exhausted and a concrete permission, safety boundary, missing fact, or material
+decision genuinely requires their input. Before asking, update the plan and
+issue ledger with the blocker.
+
+Every help request must be concise and self-contained. It must:
+
+- name the exact blocker and the affected feature, environment, or lifecycle
+  step;
+- summarize the relevant evidence and what the worker already tried or
+  verified;
+- explain why the worker cannot safely or correctly resolve it without the
+  requester;
+- ask for one exact decision, fact, permission, configuration change, or action;
+  and
+- state what the worker will do after the answer and any material consequence
+  of the available choices.
+
+Include the tracking issue when the request occurs outside the repository.
+Never send a vague status-shaped question, ask whether an unexplained subsystem
+is "enabled", or delegate routine worker-owned design execution, review, CI,
+conflict resolution, merge, landing, or verification. If the needed requester
+action cannot be described clearly enough to satisfy this contract, continue
+investigating instead of asking.
 
 ## Required loop
 
@@ -78,7 +105,8 @@ requester's final validation and task-completion decision.
      approved.
    - If the requester explicitly asked to review, approve, or iterate on the
      design, pause here with the plan current and ask the exact unresolved
-     design question. Otherwise, do not add a human approval gate.
+     design question using the requester-help contract above. Otherwise, do not
+     add a human approval gate.
 
 3. **Implement locally and deploy to the test environment**
    - Implement and iterate locally using the repository's established
@@ -203,7 +231,9 @@ requester's final validation and task-completion decision.
      configured method. Do not stop at an open pull request or a
      `Ready for review` state unless a controlling instruction explicitly
      requires a stop before landing, repository policy or permissions block the
-     merge, or a material decision genuinely requires requester input.
+     merge, or a material decision genuinely requires requester input. When
+     requester input is genuinely required, use the requester-help contract
+     above rather than handing off the lifecycle step.
    - After the merge command, re-fetch the pull request and default branch. If
      the exact candidate cannot be confirmed landed, treat the landing as
      failed: roll back the promoted candidate, revalidate production health,
