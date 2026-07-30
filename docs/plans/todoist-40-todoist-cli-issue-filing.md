@@ -1,6 +1,6 @@
 # Todoist CLI issue filing
 
-**Status:** Landed; awaiting final live validation
+**Status:** Ready for terminal review
 **Issue:** [#40](https://github.com/coletaylor788/puddles/issues/40)
 **Last updated:** 2026-07-29
 
@@ -27,9 +27,11 @@ action or decision needed, and what happens after the answer.
 The landed change provides a locked Todoist CLI sandbox image, source-managed
 skill, transactional installer and rollback, setup documentation, isolated
 recording regressions, and the clear-help lifecycle contract. Repository work is
-complete. Final validation is the documented live operator install on the
-trusted main agent followed by read-only authentication and one explicit
-user-requested task-creation check.
+landed. A docs-only plan follow-up exposed a recurrent 1 ms wall-clock race in a
+maintained iMessage patch test. Fix that shared regression at the source without
+weakening its 15-second debounce contract, land the corrected plan, then proceed
+to the documented live operator validation. The bounded semantic assertion is
+implemented and the complete managed lifecycle passes.
 
 ### Safety and rollout
 
@@ -37,8 +39,9 @@ Todoist content remains untrusted data and credentials remain in
 `~/.openclaw/.env`, outside the repository and agent workspace. Automated tests
 never authenticate or write to live services. The installer records recovery
 state before mutation and rolls back config, skill, and sandbox changes on
-failure. Cole's remaining action is live environment validation, not repository
-review or merge work.
+failure. The flaky test fix must preserve both the configured upper bound and a
+tight lower bound while allowing elapsed execution time. Cole's remaining action
+is live environment validation, not repository review or merge work.
 
 ## Agent details
 
@@ -51,6 +54,16 @@ cumulative integration, and dependency checks passed. `origin/main` contains
 the Todoist skill, installer, image lock, documentation, regressions, and safe
 feature development 1.6.0. Repository work is complete; final live validation
 requires access to Cole's Todoist token and configured main-agent runtime.
+Before that handoff, docs-only PR #50 must land this normalized plan. Its
+cumulative check twice reproduced a maintained iMessage patch-test defect:
+`resolveDebounceMs` subtracts current wall-clock time from a 15-second deadline,
+so an exact `15000` assertion intermittently receives `14999`. A bounded
+assertion now requires at least the larger of 14.9 seconds or one millisecond
+beyond the observed production gap, and at most the configured 15 seconds. The
+complete managed lifecycle passes with all 319 mapped tests.
+Independent complete-diff review verified the deadline-minus-current-time root
+cause, tight bounds, patch applyability, plan accuracy, and absence of runtime
+regressions. In-diff bookkeeping is final.
 
 ### Scope and acceptance criteria
 
@@ -70,6 +83,10 @@ requires access to Cole's Todoist token and configured main-agent runtime.
   routine worker-owned handoffs.
 - The exact reviewed candidate is merged, default-branch artifacts and
   post-merge checks are verified, and only live operator validation remains.
+- The shared patch suite verifies the referential debounce is at most 15 seconds,
+  remains within 100 ms of that configured window, and still exceeds every
+  observed production gap without requiring impossible exact wall-clock
+  equality.
 
 ### Architecture and decisions
 
@@ -87,6 +104,9 @@ requires access to Cole's Todoist token and configured main-agent runtime.
 - Safe feature development 1.6.0 defines the clear-help contract in canonical
   workflow guidance, and the shared review-workflow regression asserts every
   required field and prohibition.
+- The iMessage monitor resolves a remaining debounce duration from a deadline
+  and `Date.now()`. Its integration test must assert a tight semantic range, not
+  exact equality that races elapsed execution time.
 - No automatic production deployment exists for this local capability. The
   repository is landed; live installation is an explicit operator validation.
 
@@ -105,6 +125,10 @@ requires access to Cole's Todoist token and configured main-agent runtime.
 - Expanded the shared workflow regression and coverage index.
 - Integrated current `main`, completed all local and remote gates, merged PR
   #42, and verified the default branch.
+- Normalized the landed plan in PR #50; its repeated CI failure identified the
+  clock-sensitive maintained patch assertion.
+- Replaced impossible exact remaining-time equality with tight semantic bounds
+  while preserving every observed-gap guarantee.
 
 ### Validation
 
@@ -134,6 +158,11 @@ Not automated by design:
 Those checks require the operator's local credential and explicit request, and
 must not be exercised by repository automation.
 
+Pending for the plan follow-up:
+
+- complete terminal review of the exact corrected candidate;
+- pass remote checks, land PR #50, and verify post-merge checks.
+
 ### Rollout and rollback
 
 Follow `docs/openclaw-setup/05-todoist-cli.md`: place the Todoist token in
@@ -151,10 +180,17 @@ the token separately only after confirming no other integration uses it.
 Independent review covered the full implementation repeatedly. It found and the
 implementation fixed a shell-only token success-shaped failure. A transient
 1 ms candidate-suite timing assertion passed on unchanged rerun without
-weakening CI. Reopened review of the clear-help contract was clean; its two
+weakening CI during the original feature cycle. The same assertion later failed
+twice on docs-only PR #50, including two different parameterized cases, proving
+the exact wall-clock assertion is itself defective. Reopened review of the
+clear-help contract was clean; its two
 residual unasserted lines were added to the regression, validation was repeated,
 and replacement complete-diff review returned clean. Fresh terminal review of
 the exact landing candidate returned clean. Remote and post-merge gates passed.
+The maintained patch assertion is now bounded to the actual deadline-minus-now
+contract, and the full managed lifecycle passes. Independent review confirmed
+the 100 ms tolerance preserves the configured upper bound, catches meaningful
+window reductions, retains every observed-gap guarantee, and applies cleanly.
 
 ### Checklist
 
@@ -164,6 +200,10 @@ the exact landing candidate returned clean. Remote and post-merge gates passed.
 - [x] Pass focused, full managed, review, terminal, and remote gates.
 - [x] Merge exact candidate and verify `main` plus post-merge checks.
 - [x] Normalize the landed plan and issue ledger.
+- [x] Fix the maintained clock-sensitive assertion without weakening semantics.
+- [x] Revalidate and complete-diff review the normalized plan follow-up.
+- [ ] Commit and terminal-review the corrected follow-up candidate.
+- [ ] Pass remote checks, land PR #50, and verify post-merge checks.
 - [ ] Complete the documented live install and read-only authentication check.
 - [ ] File one explicit low-risk task and confirm single-issue routing.
 - [ ] Cole validates the live result and decides whether to complete the
