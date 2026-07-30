@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Reviewing final merged candidate
+**Status:** Integrating newest main
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -62,7 +62,9 @@ is proven with a same-profile regression. The branch now includes current
 repository tests, current prompt snapshots, 451 mapped patched-source tests, the
 candidate browser test, and cleanup. A fresh terminal review of the merged
 candidate remains before remote checks and promotion. Production remains healthy
-on the prior combined build. The cron definition remains unchanged.
+on the prior combined build. Terminal review is clean, but `main` advanced again
+with equivalent patch-context regeneration; newest-base integration and full
+validation are pending. The cron definition remains unchanged.
 
 ### Scope and acceptance criteria
 
@@ -433,7 +435,8 @@ lifecycle.
   requiring additional local components.
 - Final integration merged the parallel landing follow-ups and latest default
   branch without changing the issue-43 runtime intent; the complete managed
-  lifecycle remains green. Fresh terminal review pending.
+  lifecycle remained green and terminal review was clean. `main` advanced again
+  with a benign patch-context conflict; newest-base integration pending.
 - Terminal exact-commit review: result is recorded only in the issue ledger after
   the final commit so the reviewed diff remains unchanged.
 
