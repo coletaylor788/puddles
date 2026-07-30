@@ -1,6 +1,6 @@
 # Coalesce split iMessage message parts
 
-- **Status:** Complete - ready for review
+- **Status:** In progress - landing tracker closeout
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-29
 - **Owner:** Cole Taylor
@@ -53,7 +53,9 @@ reviewed patch stack. Promotion rejects candidate or rollback tarballs that
 retain `workspace:` dependency protocols or cannot be normalized before
 stopping the gateway. The reviewed candidate is merged and deployed; its
 retained recovery snapshot supports rollback if the final manual Messages.app
-smoke exposes a regression.
+smoke exposes a regression. The repository closeout lands before the final
+external Ready for review mutation so the tracker always links to a current
+default-branch plan.
 
 ## Agent details
 
@@ -68,7 +70,8 @@ focused, cumulative, production-release, packaging, rollback, reusable-review,
 terminal-review, pull-request, and post-merge gates. Exact candidate `af5bdf2`
 was promoted locally from OpenClaw `0790d9f`, merged by PR #51 as `863666f`, and
 revalidated read-only in production. The gateway is healthy and iMessage is
-configured and running.
+configured and running. The issue ledger now reflects the landed outcome. The
+plan-only closeout must land before the final Todoist result and label change.
 
 ### Scope and acceptance criteria
 
@@ -681,6 +684,11 @@ No data migration or persistent message-state conversion is involved.
   `af5bdf2`, including 87 focused iMessage tests, 35 deployment tests, 282
   workspace tests, 332 mapped tests, real pnpm packaging, and production-release
   assumptions, with no actionable high-confidence findings.
+- Review of the first plan-closeout commit found its checklist prematurely
+  implied that the issue and Todoist handoff had already occurred. The issue
+  ledger was synchronized, and the checklist now records only preparation of
+  the final handoff; the Todoist result and label mutation remain the last
+  external step after this plan is visible on `main`.
 
 ### Checklist
 
@@ -766,5 +774,5 @@ No data migration or persistent message-state conversion is involved.
 - [x] Repeat reusable-worker and terminal reviews after packaging remediation.
 - [x] Promote the exact remotely green candidate, validate production read-only,
   then merge and verify exact `main`.
-- [x] Prepare issue #28 and Todoist Ready for review handoff after the sandwich
-  fix.
+- [x] Prepare final issue #28 and Todoist Ready for review handoff content and
+  routing after the sandwich fix.
