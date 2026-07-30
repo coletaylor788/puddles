@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Correcting final publication wording
+**Status:** Re-reviewing final schema contract
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)  
 **Last updated:** 2026-07-29
 
@@ -74,6 +74,11 @@ the host-combined lifecycle update. Re-check found one remaining source JSDoc ov
 that treated every ACP cron default as explicit-target-only; it now states the
 implemented native and same-profile ACP distinction. The complete managed pool
 passes again with 286 repository tests, current prompt snapshots, 451 mapped
+patched-source tests, the candidate browser test, and cleanup. Final re-review
+found the model-facing `agentId` schema still overstated the requirement for
+distinct-default ACP cron calls. The schema, regression assertion, and generated
+snapshots now state the exception explicitly. The complete managed pool passes
+again with 286 repository tests, current prompt snapshots, 451 mapped
 patched-source tests, the candidate browser test, and cleanup. Final re-review
 remains before sealing the exact candidate. The cron definition remains
 unchanged.
@@ -445,6 +450,12 @@ lifecycle.
 - Terminal exact-commit review found one remaining low topology disclosure
   in rollout wording. It is replaced with provider-neutral guidance for hosts
   requiring additional local components.
+- Terminal exact-commit review found one low model-facing contract mismatch:
+  schema text required `agentId` for every cron caller despite the supported
+  distinct ACP default. Schema coverage and snapshots now state that exception;
+  the complete managed lifecycle passed again with repository build/lint, 286
+  repository tests, current prompt snapshots, 451 mapped patched-source tests,
+  the candidate browser test, and cleanup.
 - Terminal exact-commit review: result is recorded only in the issue ledger after
   the final commit so the reviewed diff remains unchanged.
 

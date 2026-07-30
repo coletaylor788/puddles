@@ -653,7 +653,7 @@ index 1cf0c030b6..6a26d5ecc6 100644
 +      "does not select an agent profile",
 +    );
 +    expect(requireSchemaProperty(schema.properties, "agentId").description).toContain(
-+      "Required for scheduled/cron callers",
++      "ACP scheduled/cron callers may omit it when acp.defaultAgent selects a distinct profile",
 +    );
  
      const result = await tool.execute("call-task-name", {
@@ -678,7 +678,7 @@ index 22e5c6240d..9fbe61dbf7 100644
 +    agentId: Type.Optional(
 +      Type.String({
 +        description:
-+          "Target agent profile. Required for scheduled/cron callers; omit only for same-agent spawns when policy allows.",
++          "Target agent profile. Native scheduled/cron callers require it by default. ACP scheduled/cron callers may omit it when acp.defaultAgent selects a distinct profile; same-profile omission requires policy to allow it.",
 +      }),
 +    ),
      model: Type.Optional(Type.String()),
@@ -705,7 +705,7 @@ index 484070a9db..e2b0308a50 100644
      "inputSchema": {
        "properties": {
          "agentId": {
-+          "description": "Target agent profile. Required for scheduled/cron callers; omit only for same-agent spawns when policy allows.",
++          "description": "Target agent profile. Native scheduled/cron callers require it by default. ACP scheduled/cron callers may omit it when acp.defaultAgent selects a distinct profile; same-profile omission requires policy to allow it.",
            "type": "string"
          },
          "attachAs": {
@@ -726,7 +726,7 @@ index e74fdee1a0..c73acec9e1 100644
      "inputSchema": {
        "properties": {
          "agentId": {
-+          "description": "Target agent profile. Required for scheduled/cron callers; omit only for same-agent spawns when policy allows.",
++          "description": "Target agent profile. Native scheduled/cron callers require it by default. ACP scheduled/cron callers may omit it when acp.defaultAgent selects a distinct profile; same-profile omission requires policy to allow it.",
            "type": "string"
          },
          "attachAs": {
@@ -747,7 +747,7 @@ index fd531c5a6f..032b6123b5 100644
      "inputSchema": {
        "properties": {
          "agentId": {
-+          "description": "Target agent profile. Required for scheduled/cron callers; omit only for same-agent spawns when policy allows.",
++          "description": "Target agent profile. Native scheduled/cron callers require it by default. ACP scheduled/cron callers may omit it when acp.defaultAgent selects a distinct profile; same-profile omission requires policy to allow it.",
            "type": "string"
          },
          "attachAs": {
@@ -770,8 +770,8 @@ index d936e33352..63e1cb0d58 100644
    "dynamicToolsJson": {
 -    "chars": 53471,
 -    "roughTokens": 13368
-+    "chars": 53644,
-+    "roughTokens": 13411
++    "chars": 53748,
++    "roughTokens": 13437
    },
    "openClawDeveloperInstructions": {
      "chars": 3245,
@@ -781,8 +781,8 @@ index d936e33352..63e1cb0d58 100644
    "totalWithDynamicToolsJson": {
 -    "chars": 81243,
 -    "roughTokens": 20311
-+    "chars": 81416,
-+    "roughTokens": 20354
++    "chars": 81520,
++    "roughTokens": 20380
    },
    "userInputText": {
      "chars": 1442,
@@ -796,8 +796,8 @@ index 9bb7fddcbc..4851645d6e 100644
    "dynamicToolsJson": {
 -    "chars": 53160,
 -    "roughTokens": 13290
-+    "chars": 53333,
-+    "roughTokens": 13334
++    "chars": 53437,
++    "roughTokens": 13360
    },
    "openClawDeveloperInstructions": {
      "chars": 2136,
@@ -807,8 +807,8 @@ index 9bb7fddcbc..4851645d6e 100644
    "totalWithDynamicToolsJson": {
 -    "chars": 79414,
 -    "roughTokens": 19854
-+    "chars": 79587,
-+    "roughTokens": 19897
++    "chars": 79691,
++    "roughTokens": 19923
    },
    "userInputText": {
      "chars": 1033,
@@ -822,8 +822,8 @@ index f004bd6819..3ffd6888f2 100644
    "dynamicToolsJson": {
 -    "chars": 54450,
 -    "roughTokens": 13613
-+    "chars": 54623,
-+    "roughTokens": 13656
++    "chars": 54727,
++    "roughTokens": 13682
    },
    "openClawDeveloperInstructions": {
      "chars": 2155,
@@ -833,8 +833,8 @@ index f004bd6819..3ffd6888f2 100644
    "totalWithDynamicToolsJson": {
 -    "chars": 81647,
 -    "roughTokens": 20412
-+    "chars": 81820,
-+    "roughTokens": 20455
++    "chars": 81924,
++    "roughTokens": 20481
    },
    "userInputText": {
      "chars": 1271,
