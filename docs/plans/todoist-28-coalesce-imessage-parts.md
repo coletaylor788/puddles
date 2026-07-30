@@ -1,6 +1,6 @@
 # Coalesce split iMessage message parts
 
-- **Status:** In progress - reviewing deployment packaging remediation
+- **Status:** In progress - finalizing terminal-review candidate
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-29
 - **Owner:** Cole Taylor
@@ -38,7 +38,8 @@ expose it through cumulative `packages/e2e`, and deploy only through the
 documented local wrapper. Package the source candidate with the repository's
 native pnpm tooling so workspace dependencies become installable release
 versions, and make the rollback artifact independently installable before the
-gateway is stopped.
+gateway is stopped. Exercise both successful rollback normalization and the
+fail-closed path when an installed workspace dependency cannot be resolved.
 
 ### Safety and rollout
 
@@ -50,8 +51,9 @@ text and timeout dispatch. Automated tests use temporary worktrees and deny
 delivery; production investigation remains read-only. On the target host,
 `MINI_HOST` stays unset. Rollback disables coalescing or redeploys the prior
 reviewed patch stack. Promotion must reject candidate or rollback tarballs that
-retain `workspace:` dependency protocols. The failed first attempt has already
-restored the prior package, config, service definition, and healthy gateway.
+retain `workspace:` dependency protocols or cannot be normalized, before
+stopping the gateway. The failed first attempt has already restored the prior
+package, config, service definition, and healthy gateway.
 
 ## Agent details
 
@@ -69,13 +71,17 @@ separated by tens of seconds. The premature payload flush, not source creation
 latency, is the demonstrated boundary. The corrected patch retains matched
 payloads through the first absolute deadline, admits only bounded exact-chain
 continuations, passes focused and cumulative validation on both maintained
-OpenClaw releases, and has clean reusable-worker and terminal reviews at
+OpenClaw releases, and had clean reusable-worker and terminal reviews at
 `8ae2dea`. The default branch advanced after publication with a stabilization for
 an existing debounce assertion. The conflict was resolved by carrying that
 stabilization into the regenerated sandwich patch. The synchronized stack again
 passes 87 focused tests, 336 production-release mapped tests, byte reproduction,
-and the complete cumulative lifecycle. The prior terminal candidate remains
-invalidated, fresh reviews are required, and production was not changed.
+and the complete cumulative lifecycle. A fresh review of the packaging
+remediation found one missing regression: an unresolvable installed workspace
+dependency must prove normalization fails before gateway shutdown. That
+regression now passes with the full managed lifecycle and a clean reusable
+complete-diff review. The immutable landing candidate and terminal review
+remain. Production remains healthy on the prior package and was not changed.
 
 ### Scope and acceptance criteria
 
@@ -295,6 +301,10 @@ invalidated, fresh reviews are required, and production was not changed.
   `pnpm pack`, validates that its manifest has no workspace protocols, rewrites
   workspace dependencies in the npm-packed rollback artifact from the installed
   dependency versions, and validates that artifact before stopping the gateway.
+- Review remediation adds a deployment-harness variant with a missing installed
+  workspace dependency manifest and requires the wrapper to fail before any
+  launchd or package mutation. The variant uses the same real tarball path as
+  successful normalization rather than mocking the helper result.
 
 ### Validation
 
@@ -472,6 +482,20 @@ invalidated, fresh reviews are required, and production was not changed.
 - After packaging remediation, the complete managed lifecycle passes build,
   lint, 281 workspace tests, 332 mapped OpenClaw tests, the isolated candidate
   test, and worktree cleanup.
+- The fresh packaging-remediation review reran all 34 deployment-topology tests
+  and found one actionable coverage gap: rollback normalization failure was not
+  driven through the integration harness.
+- The accepted review regression passes with 35 deployment-topology tests, all
+  66 isolated E2E workspace tests, and E2E TypeScript checking. It proves a
+  missing installed workspace dependency manifest exits before `launchctl
+  bootout` or `npm install -g`.
+- The complete post-review managed lifecycle passes build and lint, 282
+  workspace tests, 332 mapped OpenClaw tests, the isolated candidate test, and
+  worktree cleanup.
+- The fresh replacement reviewer independently reapplied the iMessage patch,
+  passed all 87 focused tests, passed all 35 deployment-topology tests, all 66
+  isolated E2E tests, E2E type checking, and all 282 workspace tests, and found
+  no actionable high-confidence defects.
 
 ### Rollout and rollback
 
@@ -658,6 +682,15 @@ No data migration or persistent message-state conversion is involved.
   dependency resolution, and the same invalid protocol made the rollback
   tarball un-installable. A pnpm-packed candidate and a normalized pnpm-packed
   prior package both install successfully in isolated prefixes.
+- A fresh complete-diff packaging review found no implementation defect but
+  required a regression proving an unresolved dependency in the prior installed
+  package aborts rollback normalization before gateway shutdown. That accepted
+  finding is fixed and the complete cumulative lifecycle is green.
+- A fresh independent replacement rechecked the complete current diff and found
+  no actionable high-confidence defects. Residual non-blocking gaps are the
+  final live Messages.app sandwich smoke and transport reconnect/teardown races
+  outside the source-notification harness. The exact immutable landing commit
+  still requires terminal review.
 
 ### Checklist
 
@@ -739,6 +772,7 @@ No data migration or persistent message-state conversion is involved.
   unresolved workspace dependency protocols.
 - [x] Add cumulative deployment coverage for workspace-safe packaging.
 - [x] Rerun the complete lifecycle after packaging remediation.
+- [x] Cover rollback normalization failure before production mutation.
 - [ ] Repeat reusable-worker and terminal reviews after packaging remediation.
 - [ ] Promote the exact remotely green candidate, validate production read-only,
   then merge and verify exact `main`.

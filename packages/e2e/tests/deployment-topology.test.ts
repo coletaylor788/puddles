@@ -48,6 +48,7 @@ interface DeploymentOptions {
   healthAttempts?: number;
   imageInspectFailureCall?: number;
   lockHeld?: boolean;
+  missingPreviousWorkspaceDependency?: boolean;
   missingPlist?: boolean;
   noPreviousBrowserImage?: boolean;
   previousInstallFails?: boolean;
@@ -104,10 +105,12 @@ function runDeployment(options: DeploymentOptions = {}): DeploymentResult {
       dependencies: { "@openclaw/ai": "workspace:*" },
     }),
   );
-  writeFileSync(
-    join(npmRoot, "openclaw", "node_modules", "@openclaw", "ai", "package.json"),
-    JSON.stringify({ name: "@openclaw/ai", version: "2026.7.1" }),
-  );
+  if (!options.missingPreviousWorkspaceDependency) {
+    writeFileSync(
+      join(npmRoot, "openclaw", "node_modules", "@openclaw", "ai", "package.json"),
+      JSON.stringify({ name: "@openclaw/ai", version: "2026.7.1" }),
+    );
+  }
   mkdirSync(join(source, "scripts"), { recursive: true });
   mkdirSync(join(sandboxBuild, "scripts"), { recursive: true });
   mkdirSync(remoteStaging);
@@ -634,6 +637,20 @@ describe("runtime clone helper", () => {
 });
 
 describe("OpenClaw deployment topology", () => {
+  it("rejects an unresolvable rollback workspace dependency before deployment", () => {
+    const result = runDeployment({ missingPreviousWorkspaceDependency: true });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(
+      "failed to normalize the currently installed package snapshot",
+    );
+    expect(result.lines).not.toContainEqual(
+      expect.stringMatching(/^launchctl\tbootout\t/),
+    );
+    expect(result.lines).not.toContainEqual(
+      expect.stringMatching(/^npm\tinstall\t-g\t/),
+    );
+  });
+
   it("rejects unresolved candidate workspace dependencies before deployment", () => {
     const result = runDeployment({ candidateWorkspaceDependency: true });
     expect(result.status).not.toBe(0);
