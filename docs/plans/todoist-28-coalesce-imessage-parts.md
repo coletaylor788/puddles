@@ -1,6 +1,6 @@
 # Complete selective iMessage message-part coalescing
 
-- **Status:** Validated candidate ready for remote integration
+- **Status:** Validated candidate ready for rebase
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-31
 - **Owner:** Cole Taylor
@@ -39,8 +39,9 @@ protection without improving latency.
 No runtime, configuration, or deployment change is planned. Focused first-row
 standalone link and image regressions pass in the existing registered monitor
 suite, the full shared lifecycle passes, and independent complete-diff review is
-clean. The finalized candidate is ready for commit and remote integration.
-Production remains unchanged.
+clean. Cron-reader PR #56 is merged, so the publication freeze is cleared. This
+candidate now needs rebase, full lifecycle validation, and exact-commit review
+against the new `main`. Production remains unchanged.
 
 ## Agent section
 
@@ -87,8 +88,8 @@ Acceptance is satisfied when:
 - an unchained second payload does not inherit the first composition deadline;
 - group messages, reactions, control commands, outgoing echoes, and unrelated
   complete text retain their existing behavior.
-- the registered monitor suite directly covers a first eligible standalone URL,
-  URL preview, and image with no prior composition state.
+- the registered monitor suite directly covers a first eligible standalone URL
+  carrying preview metadata and an image with no prior composition state.
 
 Out of scope:
 
@@ -205,8 +206,9 @@ Managed test-environment scenarios:
 3. Send text, a link, and qualifying trailing text as one composition.
 4. Send a standalone link and a standalone image.
 5. Send two short, genuinely separate messages rapidly.
-6. Assert one recorded run and one recorded reply for the first three, immediate
-   starts for the standalone payloads, and separate runs for the final pair.
+6. Assert one recorded run and one recorded inbound turn for the first three,
+   immediate starts for the standalone payloads, and separate runs for the
+   final pair.
 
 All scenarios run through deny-by-default recording mocks. Production
 verification remains read-only and must not send inbound messages or deliver
@@ -265,6 +267,11 @@ deployment fails.
 - 2026-07-31: Independent complete-diff review is clean after the regression,
   production-safety, and validation-count remediations. All in-diff bookkeeping
   is final for the landing candidate.
+- 2026-07-31: Terminal commit review restored the existing publication freeze.
+  Landing waits for cron-reader PR #56, which remains open, clean, mergeable,
+  and green.
+- 2026-07-31: Cron-reader PR #56 merged as `937b2af`. The publication freeze is
+  cleared, and this branch can rebase onto the new public `main`.
 
 ### Checklist
 
@@ -301,3 +308,4 @@ deployment fails.
 - [x] Synchronize issue #28 with this plan.
 - [x] Remove live-message smoke instructions from the patch guide.
 - [x] Finalize the plan and checklist for the immutable landing candidate.
+- [x] Confirm cron-reader PR #56 is merged before moving public `main`.
