@@ -1,6 +1,6 @@
-# Coalesce split iMessage message parts
+# Drain active iMessage input before replying
 
-- **Status:** Proposal landed - ready for Cole's design review
+- **Status:** Steering-based design reviewed; landing waits for PR #56
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-30
 - **Owner:** Cole Taylor
@@ -9,875 +9,991 @@
 
 ### Problem
 
-Messages.app can deliver one composition as several iMessage events, and users
-also send immediate corrections or additions as separate messages. The deployed
-coalescer waits up to 7 or 15 seconds for selected text/link/image shapes before
-starting the agent. It fixes known split compositions but adds visible latency
-and cannot cover every ordinary follow-up.
-
-The desired behavior is not speculative or message-type-specific. Each iMessage
-should start normal processing immediately. If another same-conversation message
-reaches OpenClaw before the response is ready to send, the active agent should
-process it as the next normal user turn and reconsider its response. The reply
-should be sent only after that admitted queue is empty.
+The current iMessage fix waits several seconds before starting some messages.
+That helps combine split text, links, and images, but it adds delay to normal
+messages and can still miss a later correction.
 
 ### Outcome
 
-Replace shape-specific pre-run waits with a provider-neutral
-**process while open, reply when drained** rule:
-
-- every eligible iMessage starts the normal agent path immediately;
-- later text, links, images, or corrections for the same session enter the
-  active agent in source order;
-- normal prompts, transcript, hooks, tools, approvals, and side effects keep
-  their existing semantics;
-- intermediate assistant turns remain internal transcript context rather than
-  separate source-conversation replies;
-- the final assistant answer is delivered at most once, or a deliberate
-  no-delivery result is committed, when the active inbound queue is atomically
-  sealed empty together with terminal-intent commitment; and
-- an event arriving after seal starts the next normal turn.
-
-There is no quiet timer, Messages.app poll, or question/payload classifier. An
-event that has not reached OpenClaw before the atomic seal cannot be predicted
-and remains a later turn. Production remains unchanged until Cole approves this
-revised design.
+The first message starts normal processing right away. More text, links, images,
+or corrections from that conversation enter the active agent as normal user
+turns before it replies. The agent sends one final reply only after admitted
+input is empty. Input that arrives after closing starts the next normal turn.
 
 ### Approach
 
-1. Before enabling the strategy, require every eligible route to expose a
-   synchronous destination-affinity key: canonical session identity plus
-   canonical reply conversation/alias group. At raw observation, reserve a
-   process-wide ingress ordinal on both the transport conversation lane and that
-   destination-affinity gate before any await. Asynchronous anchor repair cannot
-   be overtaken by another event for the same destination, while unrelated
-   destinations remain independent.
-2. Run a minimal raw control classifier before expensive media/transcript work.
-   `/stop` and approval responses use a durable immediate-control lane that can
-   bypass unresolved data preparation while atomically aborting, disposing, or
-   transferring older reservations. Other events continue through the existing
-   pre-agent command, reaction, hook, route, prompt, and media pipeline in order.
-3. Extend the provider-neutral active-run queue contract from text-only input to
-   a structured user turn carrying text, images, the prepared prompt,
-   source/reply identity, hook and approval identity, transcript ownership, and
-   per-turn tool-routing context. Internally, `AgentSession.steer` already
-   accepts text and images.
-4. Add one admission gate shared by queue insertion, normal-cycle quiescence,
-   candidate preparation, and outbound-intent commitment. Every raw reservation
-   blocks seal. After normal pre-agent classification, non-droppable control and
-   approval reservations retain their ordered position; configured cap/drop
-   policy applies only to data turns. The agent drains only the contiguous
-   committed prefix, and an unresolved earlier reservation blocks later input.
-   One reply operation owns one session-plus-reply-conversation key. Proven aliases
-   of that destination may merge; distinct reply conversations sharing a
-   transcript session serialize on the session execution lane but never share a
-   candidate or delivery target.
-5. Hold every automatic source-conversation delivery surface until seal,
-   including final, block, commentary, tool-progress/summary, plan-update,
-   hook-handled, and TTS-only payloads. The existing
-   final-payload path already selects the last canonical assistant answer from
-   the completed attempt; queued intermediate assistant turns remain in normal
-   transcript history. Model-loop emptiness produces a versioned candidate but
-   does not seal. Raw admission blocks commitment without immediately destroying
-   that candidate. Classification as a new answer-relevant user/hook turn
-   supersedes it and discards its staged blocks; a malformed, denied,
-   reaction-only, or other no-answer terminal outcome releases its reservation
-   while retaining the prior candidate. If no prior candidate exists and the
-   no-answer outcome empties the gate, it creates a durable current-generation
-   `suppress(no_answer)` candidate so the operation can seal without delivery. A
-   normal model `NO_REPLY` or deliberate empty response similarly creates a
-   versioned terminal no-delivery candidate rather than restoring stale output.
-   Persist each candidate generation, disposition,
-   payload/resource ownership, and invalidation before it becomes sealable, so
-   restart can recover it without rerunning hooks. Candidate media uses explicit
-   leases: invalidation/suppression releases idempotently, seal atomically hands
-   ownership to pending delivery, and recovery reconciles only unreferenced
-   orphans. Only a current durable
-   delivery/no-delivery candidate and an empty gate may seal and commit a
-   terminal disposition together.
-6. Keep normal tool execution and external side effects unchanged. Explicit
-   message-tool sends execute immediately and remain irreversible tool effects.
-   Add source-route-specific committed-send evidence for automatic mode, tagged
-   with the answer generation and highest covered ingress ordinal. Consult it in
-   the atomic final-intent transaction, suppressing an automatic duplicate only
-   for current-generation evidence on the originating route. Approval and
-   command-control responses that must unblock or reconfigure processing remain
-   immediate. Hook-handled automatic replies and block-stream replies join the
-   versioned drain fence.
-7. Write a durable queue-drain operation record before finalizing replay/cursor
-   ownership. It links each source envelope to transcript adoption, pending
-   reservations, durable candidate generations, explicit-send state, terminal
-   seal, and the existing pending-delivery recovery context. Explicit same-route
-   sends use write-ahead `prepared`, `sending`, `ack`, `failed`, or `unknown`
-   state before transport invocation. Restart either resumes the unanswered
-   normal turn without replaying committed effects, leaves an unadopted row
-   replayable, recovers the current candidate, or emits one explicit recoverable
-   failure disposition. A crash with an unknown iMessage send remains
-   `delivery_unknown` and is never retried blindly.
+The design connects iMessage to the agent's existing steering support rather
+than creating another queue or changing reasoning. Source order is reserved
+only long enough to identify the conversation and decide whether to start or
+steer. Pending input counts before slow media or context preparation, and one
+close gate prevents the run from replying while accepted work is still arriving
+or being prepared.
+
+Immediate admission is available only when the source can replay from an exact
+database generation and row. Local monitoring checks stable database evidence
+before every live admission. A remote bridge stays on the current path until it
+can provide equivalent identity and replay. If local identity becomes uncertain,
+the source stores stable message references before waiting, then switches to its
+current ordered path. Those references rebuild the messages from the database
+after restart. Their bounded capacity is reserved atomically and cannot evict a
+pending reference. When full, source dispatch stops with the cursor unchanged
+until recovery frees space. The design does not copy message payloads into a
+second queue.
+
+The first fallback message waits for all earlier immediate work to finish
+delivery or deliberate no-reply, replay commit, and ownership cleanup. Later
+fallback messages stay behind it. Immediate handling cannot reopen until the
+fallback chain finishes and continuity is proven again. The mode and barrier
+survive restart. This preserves arrival order through replacement, restore,
+retry, and restart.
+
+Each accepted message becomes durable before assistant or tool processing and
+keeps replay ownership until final output recovery and replay commit finish.
+Recovery can resume unanswered input or pending delivery without adding the user
+turn or running completed tools twice. It never guesses after a crash leaves a
+non-repeatable tool call without a stored result. That case remains blocked until
+an operator explicitly records a no-reply or error disposition after checking the
+effect. The disposition never reruns the tool, but lets recovery commit replay
+and safely release the blocked source.
 
 ### Safety and rollout
 
-This cycle is proposal and investigation only. Do not change patches, runtime
-configuration, the production package, gateway, cron, Messages database,
-delivery behavior, or mailbox state. Do not send test messages.
+The immediate path is opt-in and limited to final replies on steer-capable
+backends with proven source identity and replay. Other backends and sources keep
+the current ordered path for the whole monitor generation. Reactions stay
+entirely on their existing path and enter no immediate reservation or replay
+state. Prompts, tools, approvals, transcripts, explicit message sends, and
+delivery behavior do not change.
 
-A later implementation must be opt-in, capability-checked before admission, and
-isolated by account/reply-conversation/session. It must preserve queue and attachment
-caps, source order, commands, reactions, hooks, replay/catchup, transcript
-ownership, and existing delivery recovery. A later correction can influence
-subsequent reasoning and the final reply but cannot undo a tool or external side
-effect already completed by an earlier normal cycle.
-
-Explicit message-tool sends are part of that irreversible-effect boundary. They
-remain immediate and can be visible before the queue drains; holding an awaited
-message-tool send until seal would deadlock the agent loop and returning success
-before delivery would change tool failure semantics. The one-terminal-reply
-guarantee therefore covers automatic source replies. The implementation adds
-same-origin-route committed-send evidence so a committed explicit source send
-prevents an additional automatic reply for the same answer generation without
-affecting a later correction or other-target sends.
-
-Candidate payloads and their local media/resource leases are durable before
-seal. New answer-relevant admission invalidates that durable generation
-atomically. Explicit same-route sends record write-ahead intent before calling
-transport: `prepared` is known-not-sent, `sending` after a crash becomes
-`unknown`, `ack` suppresses a same-generation automatic duplicate, and `failed`
-does not. Recovery never reruns a handled hook merely to rebuild output.
-
-The current buffered coalescer remains the configuration rollback path.
-Promotion must use the existing exact-byte lifecycle, tests must use
-deny-by-default recording transports, and automated production checks must
-remain read-only. On an ownership conflict, duplicate intent, unsupported
-structured admission, or unresolved operation, quarantine only the affected key
-and disable new queue-drain admission until recovery is explicit. Ordinary
-data-turn queue-cap exhaustion applies the configured `drop:new`, drop-old, or
-summarize policy after pre-agent classification and does not trigger quarantine.
-Control commands and approval traffic are non-droppable. The pre-classification
-reservation spool is durably bounded; capacity failure blocks seal and trips the
-keyed breaker rather than silently dropping observed input.
-
-Queue-drain enablement is rejected for an account/configuration whose possible
-routes cannot produce a synchronous destination-affinity key. This is a stable
-capability decision, not per-event fallback. It prevents unresolved source A from
-being invisible while resolved source B targets the same operation, without
-globally blocking unrelated destination C.
-
-Configuration rollback is an atomic per-lineage cutover, not a global mode
-flip. Lineages without active operations switch to buffered ownership
-immediately. An active lineage keeps queue-drain admission for newly observed
-events until all member operations seal, then atomically transfers its transport
-and destination-affinity lanes to buffered ownership. A timed-out lineage is
-quarantined with new events durably held; buffered and queue-drain dispatch never
-race.
-
-Cutover ownership follows a stable transport/destination lineage, not only the
-current operation key. `/new` and `/reset` atomically transfer that lineage,
-reservations, and cutover token to the successor operation; an old key cannot
-release shared lanes while any successor remains active. Configuration rollback
-may quarantine a lineage, but package rollback is stricter: every record must be
-either known-terminal and atomically archived outside the predecessor-visible
-active store or transferred into predecessor-readable buffered ownership.
-`delivery_unknown` is archive-ineligible and blocks package restore until
-reconciled. Otherwise the new package remains installed with queue-drain
-disabled.
+Production remains on the deployed coalescer. Implementation requires Cole's
+approval after this design lands. Public landing is waiting for the cron-reader
+change. Rollback persists recovery-only mode, pauses new source dispatch without
+advancing its cursor, and drains accepted immediate and already queued fallback
+work through the same full ownership boundary. The new package then runs
+lossless cursor catchup through the current coalescer. An older package can
+replace it only after that catchup reaches the live source. This avoids the old
+catchup age and row limits.
 
 ## Agent details
 
 ### State
 
-The bounded text/link/image/sandwich coalescer is healthy on production
-deployment `73b08dc8-5c4d-40ed-808a-d46ee0eaa45d`, marker SHA-256
-`cf9933e69bd2d7fda0ba164a5d3a290f9a9bb454d7ad8c90f0d4334b17029983`.
-Its retained recovery snapshot is
+The current coalescer is healthy in production deployment
+`73b08dc8-5c4d-40ed-808a-d46ee0eaa45d` at OpenClaw revision
+`0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`. Its retained snapshot is
 `~/.openclaw/deploy-snapshots/20260730T104410Z-0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`.
+Production remains unchanged.
 
-PR #64 landed the independently reviewed speculative-fork proposal as
-`6b23e095961ded696c23762954edee2d7d113306`. Cole rejected that processing model
-and requested normal processing with continuous same-session admission and
-reply only after the queue drains. This revision replaces that proposal. No
-implementation, configuration, deployment, cron, message, or mailbox mutation
-has occurred.
+Read-only source tracing confirms:
 
-Read-only tracing against exact production OpenClaw revision
-`0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c` established:
+- `packages/agent-core/src/agent-loop.ts` checks `getSteeringMessages` after
+  every completed assistant/tool turn, injects queued user messages, runs the
+  model again, then drains follow-ups before `agent_end`;
+- `src/agents/sessions/agent-session.ts` implements
+  `steer(text, images)` and forwards text plus `ImageContent` to
+  `agent.steer`;
+- `src/agents/embedded-agent-runner/run/attempt.ts` already exposes an active
+  queue handle, but `queueMessage` accepts only text and
+  `acceptingSteerMessages` closes after the prompt returns;
+- `src/auto-reply/reply/reply-run-registry.ts` can locate a running operation
+  and queue text, but its helper is fire-and-forget;
+- CLI reply backends attach no `queueMessage` capability, so the immediate
+  strategy must be limited to configured embedded steer-capable routes;
+- the deployed iMessage `dmCoalesceIngestChains` await debounce flush, whose
+  dispatch awaits `handleMessageNow` through full reply completion; and
+- the embedded payload path already selects the last current-attempt assistant
+  as the final answer.
 
-- the deployed iMessage classifier holds selected lead-ins for 7 seconds and
-  payload-referential prompts for 15 seconds;
-- the patched per-DM ingest chain awaits `handleMessageNow`, so it can remain
-  blocked through the complete reply lifecycle;
-- `agent-core` drains steering after each assistant/tool turn, appends it as an
-  ordinary user turn, runs another normal cycle, then checks follow-up input;
-- `AgentSession.steer(text, images, recorder)` is already multimodal, but
-  `ReplyBackendQueueMessageOptions` and `EmbeddedAgentQueueHandle.queueMessage`
-  expose only text;
-- active steering can wait for the queued user turn's `message_end` transcript
-  commit before iMessage finalizes adoption;
-- attempt payload construction chooses the last current-attempt assistant
-  message as the canonical final answer, so earlier assistant turns need not be
-  concatenated or delivered;
-- the final empty check and `acceptingSteerMessages = false` are not one
-  admission transaction: a message can observe an active outer reply operation
-  after the embedded backend has stopped accepting input;
-- the outer reply operation stays registered through payload preparation and
-  delivery, and existing follow-up admission barriers can route post-seal input
-  to a later turn;
-- live iMessage configuration has no block-streaming override and the agent
-  default is off, so ordinary production replies already use final delivery;
-  the design must still cover opt-in block streaming; and
-- iMessage cannot reconcile an unknown send after process loss, so the existing
-  at-most-once unknown-outcome boundary remains.
+The previously landed orchestration-heavy proposal is superseded by this
+revision. Independent full-diff review is clean. No executable artifact has been
+approved or changed.
+
+Public plan-only merges are temporarily frozen until cron-reader PR #56 lands so
+this documentation change does not invalidate that feature's exact promotion
+base. Local design review continues without moving `main`.
 
 ### Scope and acceptance criteria
 
-For this revised proposal:
+In scope:
 
-- Every eligible non-control iMessage starts normal processing without the
-  7/15-second classifier hold.
-- Same-session text and supported media admitted before seal become normal
-  ordered user turns, independent of question or payload type.
-- Immediate corrections affect subsequent reasoning and the final answer.
-- Prompts, assistant/tool transcript events, hooks, tools, approvals, command
-  lanes, and side effects preserve normal behavior.
-- Every observed event reserves on its transport lane and synchronous
-  destination-affinity gate before asynchronous work. Unresolved source A blocks
-  resolved source B only when both can target the same session-plus-reply
-  conversation; unrelated C remains independent.
-- No automatic source delivery surface is emitted while admitted user input
-  remains queued, processing, or awaiting atomic intent commitment.
-- Hook-handled automatic replies are versioned candidates and follow the same
-  admission/intent fence as agent replies.
-- Every sealable `deliver` or `suppress` candidate is durably recoverable with
-  its generation and resource ownership; superseding admission atomically
-  invalidates it.
-- Candidate media/resource leases transfer atomically to pending delivery at
-  seal, release idempotently on invalidation/suppression/completion, and survive
-  quarantine or unknown delivery until explicit reconciliation.
-- Approval responses and command-control replies that must unblock or
-  reconfigure processing remain immediate protocol traffic.
-- Raw `/stop` and approval traffic can bypass a slow data-preparation head or
-  saturated data spool through a durable control lane while atomically disposing
-  or transferring affected reservations.
-- `/stop` aborts the active operation and resolves or transfers its reservations;
-  `/new` and `/reset` invalidate the old candidate and atomically transfer
-  subsequent reservations to the new session; `/compact` and `/model` execute in
-  source order before later user turns. Their existing command responses remain
-  immediate.
-- Explicit message-tool sends retain immediate normal tool semantics and suppress
-  duplicate automatic source delivery only when committed to the originating
-  route for the current answer generation/covered ordinal; they are documented
-  exceptions to the drained automatic-reply boundary.
-- Same-route explicit sends use durable write-ahead lifecycle state. `ack` and a
-  crash-ambiguous `unknown` prevent a same-generation automatic send; known
-  `failed` evidence does not.
-- A drained operation commits at most one automatic terminal
-  source-conversation reply intent or one explicit no-delivery disposition,
-  outside explicit message-tool/control traffic and the documented unknown-send
-  crash boundary.
-- Queue-empty detection, candidate version, admission seal, and outbound-intent
-  commitment are one atomic ownership decision.
-- Post-seal input follows the existing next-turn/follow-up path without being
-  silently absorbed or dropped.
-- Accounts, conversations, senders, and sessions remain isolated.
-- One operation has exactly one canonical reply destination. Proven aliases may
-  merge; distinct destinations that share a transcript session run as serialized
-  operations and reply only to their own routes.
-- Commands, reactions, groups, echoes, malformed rows, queue caps, attachment
-  caps, replay/catchup, and cursor ordering preserve current behavior.
-- Configured queue-cap/drop policy applies atomically to ordered reservations;
-  ordinary data-turn overflow never becomes an ownership quarantine. Commands
-  and approvals remain non-droppable even at saturation.
-- Unsupported structured admission fails closed before ownership transfer; it
-  never degrades an adopted image into text-only steering.
-- Every admitted envelope preserves its own prepared prompt, source/reply
-  identity, media, hook results, approval identity, transcript recorder, and
-  tool-routing context for its model cycle.
-- The shared queue and drain-fence changes are provider-neutral; iMessage owns
-  only source-specific envelope construction and replay/cursor finalization.
-- The documentation-only revision is independently reviewed, landed, and
-  returned to Cole for approval without runtime or production changes.
-- Rollback performs atomic per-lineage ownership cutover: active lineages keep
-  admitting through seal, inactive lineages buffer, and timed-out lineages
-  durably hold input in quarantine. Operation keys are lineage members, not
-  independent cutover owners.
-- `/new` and `/reset` preserve cutover lineage across operation-key changes; no
-  predecessor package is restored while new-format or quarantined records remain
-  in the predecessor-visible active store.
+- provider-neutral structured active-run steering for prepared text and images;
+- capability-gated use on embedded steer-capable routes, with the current
+  coalescer retained elsewhere;
+- source capability gating on a stable Messages database-instance identifier,
+  finite row number, stable message reference, and lossless row replay;
+- iMessage admission that does not wait for the active reply to finish;
+- same-conversation source ordering through the start-or-steer decision;
+- exact source-conversation matching before active-run steering;
+- exact per-message persistence completion for duplicate text and images;
+- provisional account cursor hold floors across observed live and catchup rows;
+- a persisted source fallback/recovery mode reconstructed from existing
+  cursor-relative state, without a second message queue;
+- durable fallback source references that reconstruct payloads from Messages,
+  without copying message payloads into plugin state;
+- atomically reserved non-expiring fallback-reference capacity with source
+  backpressure rather than eviction;
+- an explicit operator disposition for blocked non-repeatable tool tails;
+- one atomic steering/follow-up empty-and-close boundary before final answer
+  commitment, including pending same-conversation admission tickets;
+- removal of the queue-drain path's 7/15-second pre-run waits;
+- focused OpenClaw tests, cumulative Puddles integration coverage, patch
+  documentation, feature-switch rollout, and rollback validation after
+  approval.
+
+Out of scope:
+
+- changing model prompts, reasoning, tools, hooks, approvals, or command
+  semantics;
+- combining messages based on content, attachment type, timing, or question
+  shape;
+- interrupting or restarting the current model call;
+- suppressing or undoing tool effects from an earlier normal cycle;
+- adding a second payload queue, candidate store, outbox, lease system, route
+  lineage, or package-state migration;
+- sending automated live iMessages; and
+- implementation or production deployment before Cole approves this design.
+
+Acceptance criteria:
+
+- a standalone message begins normal processing without an added coalescing
+  delay;
+- an eligible same-conversation event arriving before atomic close is accepted
+  by the active run in source order and processed as another normal user turn;
+- the first event does not release source-order admission until its accepting
+  steering backend and close gate are attached or the handler reaches any
+  successful or failed terminal outcome before readiness;
+- an anchorless earlier row reserves source order before repair, so a later row
+  cannot enter a potentially matching conversation lane first;
+- an unresolved anchorless row blocks close for active runs on its account until
+  repair atomically narrows it to one conversation or permanently skips it;
+- retry of the same source row resumes its existing reservation slot instead of
+  waiting behind itself;
+- source row identity includes account and Messages database-instance
+  generation proven by source continuity, so a same-path or in-place replacement
+  cannot reuse another database's hold, pin, or cursor;
+- live admission revalidates that continuity in one source snapshot before each
+  reservation and atomically rotates or fences the source on uncertainty;
+- an event without a finite row number stays on the current coalescer and never
+  enters a shared row slot;
+- a source without guaranteed exact-row replay remains current-path-only for its
+  whole monitor generation and cannot have older immediate work to overtake;
+- a local live event whose row identity becomes uncertain is resolved to and
+  durably records a stable database message reference before it waits; restart
+  reconstructs the exact row and payload from Messages before continuing;
+- fallback-reference capacity is reserved before accepting the transition,
+  pending references are never pruned by ordinary store limits, and saturation
+  stops source dispatch without advancing its cursor;
+- identity-incomplete fallback fences its source in arrival order, so later
+  valid events cannot overtake it by re-entering immediate admission;
+- the first fallback event waits behind every earlier accepted immediate
+  identity's full delivery, replay, and ownership barrier before current-path
+  processing starts, and later fallback events remain ordered behind it;
+- fallback cannot reopen on terminal handoff alone; every earlier accepted
+  identity must also complete delivery/no-reply disposition, replay commit, and
+  claim, hold, and pin release;
+- restart reconstructs fallback or recovery-only mode before live dispatch and
+  cannot bypass either source barrier;
+- authenticated `/stop` bypasses unresolved data reservations and retains its
+  existing immediate abort behavior;
+- a different iMessage conversation sharing the same session cannot steer into
+  that run or inherit its reply target;
+- text, link, image, and correction turns use the same admission rule;
+- prepared image content reaches the existing multimodal steer API without
+  text-only degradation;
+- steering and close cannot both win for one event;
+- a same-conversation ticket reserved before close prevents close while media,
+  history, or context preparation is still pending;
+- an empty run with a pending reservation awaits a signaled gate transition
+  without exiting or polling;
+- normal stop-after-turn cannot terminate ahead of a steer that already won
+  admission; exceptional termination rejects every still-queued identity;
+- accepted in-memory steering does not clear replay/cursor ownership until its
+  source-identified turn is durably adopted, that user cycle is processed, the
+  closed run's final output/no-reply disposition is durably handed off, and
+  replay commit succeeds;
+- identical text steers have independent completion and cancellation identities;
+- cancellation cannot reject a steer after draining has taken ownership of it;
+- a later completed conversation cannot advance an account cursor past an
+  earlier row that has been observed but has not yet completed claim/repair;
+- a duplicate observation of an in-flight row cannot clear that row's cursor
+  hold; only a confirmed committed duplicate may clear it;
+- a retryable conversation-repair error retains its row hold, while a confirmed
+  permanent skip releases it;
+- restart and catchup cannot omit the earliest cursor-held row because of age,
+  page-size, total-row, or retry-give-up limits;
+- pin capacity is reserved before dispatch across concurrent lanes, and a pin
+  write failure aborts before assistant/tool processing;
+- a first-session user turn is actually flushed before adoption is acknowledged;
+- reactions are routed to current handling before any immediate reservation,
+  blocker, hold, or pin;
+- eligible transcript-free effects receive durable adopted ownership before
+  execution and use an existing idempotent effect or delivery receipt before
+  terminal commit; reactions remain on their current ephemeral path;
+- same-process pin-write retry reconciles or retains the exact adopted turn
+  instead of appending it again;
+- terminal replay ownership follows durable pending-final or no-reply handoff,
+  so recovery never suppresses an undelivered final result;
+- recovery never reruns an unresolved non-idempotent tool call whose result was
+  not durably recorded;
+- a blocked non-idempotent tail can leave `blocked_unresumable` only through a
+  durable explicit operator no-reply/error disposition that confirms no replay,
+  commits source replay, and releases ownership;
+- the final source reply is the existing last current-attempt assistant answer
+  after all accepted steering and follow-ups drain;
+- an event rejected after close starts exactly one later normal turn;
+- existing commands, reactions, hooks, tools, approvals, transcripts,
+  replay/cursor handling, and delivery recovery retain their behavior;
+- no new durable queue or database schema is created; cursor-relative replay
+  pins use ordinary entries in the existing plugin-state dedupe store;
+- a CLI-backed, otherwise non-steerable, or source-identity-incomplete route
+  remains on the current coalescer and cannot strand immediate admission;
+- rollback pauses new source dispatch without cursor advancement, reconstructs
+  recovery-only mode after restart, applies the full fallback drain predicate,
+  then lets the replacement coalescer catch up; and
+- the documentation-only revision is independently reviewed and landed without
+  production changes.
 
 ### Architecture and decisions
 
-Ownership:
+The design adds no new queue. It connects iMessage to three existing OpenClaw
+owners:
 
-- **iMessage ingress** owns source identity, synchronous destination-affinity
-  resolution, canonical admission coordination,
-  replay claims, cursor order, the durable bounded transport-lane sequencer, and
-  construction of ordered structured envelopes. It assigns a process-wide
-  ingress ordinal on a stable account/conversation key and reserves the
-  destination-affinity gate before any await, then transfers an ordered prefix
-  atomically to the resolved operation key; sender remains metadata.
-- **Reply operation admission gate** owns the canonical session key,
-  canonical reply destination, `accepting`/`candidate`/`sealed` phases,
-  source-ordered reservations, candidate generation, and an awaitable state
-  change shared by enqueue and final outbound-intent commitment.
-- **Session execution lane** serializes distinct reply-destination operations
-  that share canonical transcript state without merging their candidates or
-  delivery contexts.
-- **Normal agent session** owns ordinary user, assistant, and tool transcript
-  events plus hooks, approvals, and effects.
-- **Pre-agent dispatcher** owns normal command, reaction, hook, route, prompt,
-  and media preparation for each reserved event before it becomes agent input or
-  a handled candidate.
-- **Immediate-control lane** owns raw-recognizable `/stop` and approval responses
-  and can bypass unresolved data preparation while durably resolving affected
-  reservation ownership.
-- **Source reply drain fence** owns final, block, commentary, progress/summary,
-  plan-update, handled-hook, and TTS-only automatic payloads until the gate seals,
-  discarding every superseded generation.
-- **Durable candidate store** owns generation, `deliver|suppress` disposition,
-  payload references, local media/resource leases, and invalidation before a
-  candidate may seal.
-- **Resource lease manager** atomically transfers candidate resources to pending
-  delivery, releases terminal resources idempotently, and reconciles crash
-  orphans without deleting any referenced or quarantined media.
-- **Existing replay and delivery state** owns crash recovery, transcript
-  adoption, outbound intent, and the `delivery_unknown` boundary.
-- **Source-send evidence** records committed explicit sends by originating route
-  and answer generation/covered ingress ordinal in automatic mode and
-  a write-ahead `prepared|sending|ack|failed|unknown` lifecycle. It participates
-  in final-intent deduplication without suppressing later generations or sends to
-  other targets.
-- **Durable queue-drain record** links source replay ownership to reservation,
-  transcript adoption, seal, recovery continuation, and final delivery state so
-  adopted but unanswered turns are not lost on restart.
-- **Circuit breaker/quarantine** isolates one key after an invariant failure and
-  prevents queue-drain and buffered dispatch from racing for that key.
-- **Cutover registry** owns per-lineage queue-drain/buffered/quarantined mode and
-  changes ownership atomically only after every active operation in the lineage
-  drains or transfers its durable lanes.
-- **Cutover lineage** is anchored to the stable transport/destination affinity
-  and spans `/new`/`reset` successor operation keys until every reservation and
-  ownership token reaches buffered or terminal state.
+- **Normal inbound preparation** recognizes emergency stop and reactions before
+  immediate admission, then continues to resolve route/session identity, hooks,
+  prompt text, media, and replay metadata for eligible ordinary input.
+- **Active reply-run registry** decides whether the prepared ordinary user turn
+  belongs to the current run only after its in-memory source-conversation key
+  equals the inbound key. Its queue contract becomes
+  `queueMessage({ text, images, ...existing delivery options })` and returns
+  `{ accepted, adopted, completion }`: admission is known promptly, durable
+  adoption and terminal completion remain separate, and both promises are tied
+  to one unique in-memory steering identity.
+- **AgentSession and agent-core** remain the queue and processing owners.
+  `AgentSession.steer` enqueues the user message in memory; `agent-core` drains
+  it after the current assistant/tool turn and performs the next normal model
+  cycle. `AgentSession` first reports durable adoption after transcript flush and
+  strict pin acknowledgment, then reports when that adopted user cycle is
+  processed. The reply operation resolves source completion only after final
+  payload or no-reply handoff covers every accepted identity.
 
-Capability preflight derives a synchronous destination-affinity key for every
-eligible source: canonical session admission identity plus canonical reply
-conversation or a proven alias group. Raw observation assigns a process-wide
-ingress ordinal and reserves both its account/conversation transport lane and
-that affinity gate before any await. Conversation-anchor repair may refine the
-reply address but cannot change affinity. A matching active operation sees the
-provisional reservation; unrelated affinity keys remain unblocked.
+Immediate admission requires `dbInstanceId`, not the existing path/host cursor
+scope alone. Local monitoring persists a generated source generation beside the
+cursor. On startup/reconnect and before every live reservation, one consistent
+source snapshot reads the current high-water row, stable GUID anchors around the
+persisted cursor/high-water boundary, and the observed event row/GUID. File
+identity is supporting evidence only. A lower high-water row, missing or changed
+anchor, event mismatch, or any unprovable continuity atomically closes immediate
+admission for that source and rotates the generation before it can accept
+another immediate event. Immediate capability also requires lossless
+`since_rowid` replay and a stable message reference that resolves to the exact
+database row. A remote bridge without equivalent per-event generation,
+continuity, and replay remains current-path-only for the entire monitor
+generation. A generation change starts a separate cursor/hold/pin namespace and
+never transfers old in-memory lanes into the new generation.
 
-After repair, the coordinator atomically transfers the contiguous transport
-prefix to an operation keyed by canonical session plus canonical reply
-destination. Multiple group senders and proven aliases of one conversation may
-merge. Distinct reply destinations that happen to share a transcript session do
-not merge: the session execution lane serializes their operations, and each owns
-its own candidate, drain fence, source-send evidence, and delivery context. If
-affinity cannot be derived synchronously, queue-drain is disabled stably for that
-account/configuration rather than falling back per event.
+Each source has an arrival-order mode gate shared by immediate and current-path
+handling. Missing or invalid row identity, continuity uncertainty, or unsupported
+capability atomically fences that source into fallback before the event is
+released to the current coalescer. A source that lacked capability at monitor
+startup never entered immediate mode, so it needs no mixed-mode transition.
+For an immediate-capable local source whose live event fails row continuity, the
+monitor first atomically reserves bounded fallback-reference capacity, then
+resolves the event's stable GUID and source generation to an exact database row
+and durably stores that reference plus source order in the existing plugin-state
+store. Pending references are non-expiring and excluded from ordinary oldest-
+entry pruning. It does not copy text, media, or account content. Capacity
+saturation, resolution failure, or persistence failure preserves existing
+references and the cursor, then stops source dispatch with an explicit error
+rather than releasing unordered work. The first fallback handler waits on a
+source-drained barrier covering every earlier accepted immediate identity:
+durable delivered or deliberate no-reply disposition, successful replay commit,
+and release of all claims, cursor holds, and pins. Later fallback handlers queue
+behind that first handler. The mode and barrier generation are persisted in the
+existing plugin-state store before release. Restart reconstructs the fence from
+that state plus unresolved pins and holds, resolves each pending source reference
+back through Messages, and only then starts live dispatch. The gate may reopen
+only after the earlier barrier, fallback chain, and continuity/capability proof
+all complete. A merely `terminal` pin is not sufficient. This can temporarily
+serialize unrelated conversations on an uncertain account, but no later
+fallback event can overtake earlier immediate or fallback work.
 
-Each reservation then runs through the normal pre-agent pipeline in source order.
-Before expensive preparation, the existing command/approval parser is factored
-into a raw-safe classifier with parity tests. `/stop` and approval responses use
-the immediate-control lane and remain executable behind a slow data head or full
-data spool. `/stop` atomically aborts the active operation and disposes or
-transfers older reservations; approval responses unblock their target operation
-without consuming data capacity. Classification marks all commands and approval
-traffic non-droppable before applying configured queue policy to data turns.
-Malformed, denied, reaction-only, and
-other no-answer outcomes terminally resolve that exact reservation without
-advancing the answer-relevant generation. Hook-handled output or a normal user
-turn advances that generation; the latter becomes a structured active-run
-envelope. The reservation becomes committed agent input only after the complete
-prepared turn is available. The agent may drain only the contiguous committed
-prefix from the oldest reservation, so a slow image/transcript cannot be
-overtaken by later fast text. Failure releases the source row for replay or
-records an explicit terminal disposition; it cannot degrade to a partial text
-turn.
+The iMessage monitor first recognizes an authenticated `/stop` through its
+existing control path and sends it directly to the existing abort behavior. It
+then recognizes reactions and completes their existing ephemeral handling
+without acquiring the source mode gate, row reservation, unknown-affinity
+blocker, close ticket, cursor hold, or pin. Other events enter the source mode
+gate. Eligible immediate events use a short per-account source-order reservation
+gate. Every
+notification synchronously acquires or resumes one slot keyed by
+`(accountId, dbInstanceId, rowid)`. Only finite row IDs enter this path;
+otherwise the event uses the current coalescer. Duplicate delivery or source
+retry of row N joins N's existing slot rather than appending behind it. An
+anchorless observation also registers
+an unknown-affinity account blocker with all open close gates on that account
+before repair can yield; a close gate attached later consults the same account
+blocker set. Under the reservation gate the monitor repairs or confirms the
+conversation anchor and synchronously appends its admission ticket to the
+resulting per-conversation lock. It then atomically transfers the unknown
+blocker to that conversation ticket, releasing unrelated run gates, before
+releasing the account slot. A permanent skip releases the blocker; a retryable
+repair failure retains the same row-keyed slot for source retry, process
+teardown, or restart. The ticket immediately counts as pending work in the
+conversation's close predicate, before attachment staging, history, or context
+preparation awaits. Normally anchored rows pass through without I/O. This
+prevents row N+1 from acquiring a conversation lane before potentially matching
+anchorless row N and prevents any possibly matching active run from closing
+first, while other accounts and already resolved distinct conversation lanes
+remain concurrent.
 
-When a no-answer outcome has no prior candidate and resolving it empties the
-gate, the same transaction creates a durable current-generation
-`suppress(no_answer)` candidate. A later answer-relevant reservation can
-invalidate it before seal like any other candidate. If no later input wins, it
-seals to one no-delivery disposition, releases terminal resources, and makes the
-operation and rollback lineage terminal.
+The first event holds its per-conversation admission ticket until the normal run
+has attached an accepting backend and its close gate, not merely until the reply
+operation is registered. If any successful or failed handler terminal outcome
+occurs first, that outcome resolves both admission and completion instead; a
+hook-handled or otherwise backend-free success cannot strand the lock. A later
+event holds the lock only until that ready backend accepts it or closed
+admission routes it to start the next normal run. The event's existing handler
+awaits terminal `completion` outside that lock before committing replay state.
+Successful replay commit then releases the row hold and allows cursor
+advancement. A processing failure releases the transient replay claim but
+retains the row hold for retry; rejection by a closing run instead transfers the
+still-claimed event directly to the next normal-run admission path. Reply
+generation and delivery also occur outside the lock.
 
-The agent loop keeps its current turn ordering. After each assistant and its tool
-calls complete, it drains steering and processes each queued user turn normally.
-When steering and follow-up queues appear empty, the gate returns committed
-prefix input, an awaitable pending-head result, or quiescence. Pending waits for
-a gate-state signal without invoking the model or spinning. Quiescence captures
-the input generation and allows final payload preparation while admission stays
-open. The coordinator then atomically commits the outbound intent and seals only
-if the generation is still current and no reservation is pending or committed.
-If an answer-relevant reservation wins before that transaction, the prepared
-candidate and staged blocks for its generation are discarded, the newly
-committed prefix enters the same operation, and another normal cycle runs. A
-no-answer terminal reservation only delays commitment until classification,
-then leaves an existing candidate current or creates `suppress(no_answer)` when
-candidate-less. After successful intent commitment, queue attempts reject
-deterministically to the later-turn path.
+Each steering identity has one atomic in-memory lifecycle:
+`queued -> draining -> adopted -> processed -> terminal` or
+`queued -> canceled`. Transcript failure settles `draining` as failed. A pin
+write failure keeps the claim and retries pin repair against the already flushed
+source identity; it does not release into a second append. Model error or abort
+settles an adopted identity as processed failure. Timeout or abort may remove
+and reject the exact identity only by winning the `queued -> canceled`
+transition. Once queue drain wins, cancellation cannot release replay ownership.
+Durable adoption, cycle processing, and final output handoff settle their
+separate transitions. This prevents retry from racing with a message that has
+left the queue and prevents an unanswered or undelivered adopted turn from being
+mistaken for completed work.
 
-Candidate state is `deliver(payloads)` or `suppress(reason)`. A deliberate empty
-assistant answer or `NO_REPLY` creates a versioned `suppress` candidate for that
-answer-relevant generation. Before the candidate is sealable, persist its
-generation, disposition, payload references, and resource leases in the durable
-operation record. New answer-relevant admission invalidates that generation in
-the same transaction that advances generation. Recovery reuses the durable
-candidate and never re-invokes a handled hook to reconstruct it. A current
-`suppress` atomically seals to a no-delivery disposition when the gate is empty;
-it never restores an older candidate or forces output. Invalidation and
-suppression release leases idempotently after the state transaction commits.
-Delivery seal hands leases to pending delivery atomically; acknowledgement or
-known terminal failure releases them, while `unknown` and quarantine retain them
-until explicit reconciliation. Startup orphan reconciliation deletes only
-resources absent from every operation, candidate, outbox, unknown, and
-quarantine reference.
+The only new concurrency primitive inside the run is an in-memory admission
+gate with `open` and `closed` states:
 
-The operation-owned intake endpoint remains available while the embedded model
-cycle is quiescent or payloads are being prepared. It does not depend on the
-attempt's closing text-only queue handle. The coordinator may start another
-ordinary embedded cycle in the same reply operation and canonical session after
-candidate invalidation; prior assistant/tool turns remain transcript history and
-are not restarted or replayed.
+- unknown-affinity reservations for the run's account register before repair
+  and block close until atomically transferred or permanently released;
+- steering and follow-up insertion acquire the gate, reject if closed,
+  otherwise append to their existing queues and signal the loop;
+- a same-conversation admission ticket registers with the gate before payload
+  preparation, then atomically transfers to a steering identity or releases
+  after a terminal command or skip disposition;
+- after pending admission tickets and both existing steering and follow-up
+  queues read empty, the loop acquires the same gate and closes only if all
+  remain empty;
+- if native queues are empty but a reservation or ticket remains, the loop
+  captures the gate generation and awaits its change before rechecking;
+- every reservation/ticket transfer or release, queue insertion, terminal
+  failure, abort, and teardown advances the generation and wakes waiters;
+- if insertion happened first, close fails and the loop processes the queued
+  turn;
+- if close happened first, insertion rejects and normal later-turn handling
+  owns the event;
+- a normal `shouldStopAfterTurn` decision uses that close operation, so an
+  already accepted steer defers the stop until the admitted turn drains; and
+- an exceptional error, abort, or terminal teardown closes admission and
+  atomically rejects every identity still in `queued`, while any `draining`
+  identity settles from its exact persistence success or terminal failure.
 
-Provider failure, timeout, abort, `/stop`, and early-stop hooks close admission
-and atomically transfer every committed or pending reservation to the existing
-later-turn recovery path or an explicit terminal disposition.
+This gate is not durable because it owns no message data. The inbound event
+remains claimed after in-memory acceptance, durable adoption, and cycle
+processing. After atomic close, the existing final-payload builder produces the
+canonical last assistant answer. The reply operation durably hands that payload,
+or an explicit no-reply disposition, to the existing pending-delivery recovery
+path with the covered source identities before changing their pins to
+`terminal`. Only that handoff followed by replay commit clears claims and row
+holds. A crash after adoption resumes the source-identified cycle; a crash after
+processing rebuilds the final handoff from persisted transcript state without
+rerunning model or tools; a crash after handoff resumes existing delivery.
 
-Native command transitions remain in the pre-agent lane. `/stop` immediately
-aborts and resolves/transfers the operation. `/new` and `/reset` invalidate the
-old automatic candidate, close its session ownership, and atomically transfer
-later source sequences plus the cutover lineage/token to the new session
-operation. The old key cannot transfer shared transport or affinity lanes while
-that successor is active. `/compact` and `/model` execute in sequence before
-later agent turns. Approval responses bypass the terminal reply fence to unblock
-their waiting operation. A `before_dispatch` hook that handles an ordinary turn
-produces a versioned automatic candidate rather than calling source delivery
-immediately; newer admission invalidates it like an assistant candidate.
+The monitor extends its existing pending-row hold-floor bookkeeping to every
+observed row, not only startup/catchup work. The synchronous notification
+boundary installs a unique provisional `(accountId, dbInstanceId, rowid)` hold
+before any repair, dedupe claim, or dispatch await can yield to a later row.
+Conversation repair
+returns a discriminated result: `repaired(message)`, `permanent_skip(reason)`, or
+`retryable_failure(error)`. Missing GUID or a complete successful search with no
+usable anchor may be permanent; any chat-list/history RPC error makes the result
+retryable rather than indistinguishable `null`. Successful repair and claim
+transfer that same hold to the unresolved event. Replay claim results must
+preserve the dedupe distinction: a confirmed committed duplicate or permanent
+skip clears the hold, while an `inflight` duplicate retains the idempotent
+`(accountId, dbInstanceId, rowid)` hold and observes the original owner's terminal
+outcome. Every retryable repair, claim, dispatch, or completion failure also
+retains it.
+Completion alone does not remove the hold. Only successful replay commit does,
+and cursor advancement may reach only the highest committed row below the
+earliest provisional or unresolved row. Thus conversation B finishing row N+1
+cannot make row N disappear while N is still repairing, claiming, processing,
+duplicated in flight, or awaiting retry.
 
-Before replay claims or catchup cursors are finalized, the durable queue-drain
-record must reference the adopted transcript turn and restart recovery context.
-On restart, an unadopted reservation leaves its row replayable. An adopted but
-unanswered turn resumes through existing incomplete-turn/reply recovery without
-repeating committed tool effects. If the runtime cannot prove a safe
-continuation, it records one deterministic failure for normal delivery rather
-than silently quarantining routine interruption. Quarantine is reserved for
-ownership or invariant breaches.
+Before claim or dispatch of a row that may need cursor-relative protection, the
+monitor atomically reserves one bounded pin-capacity slot. The capacity check
+counts durable pins plus all concurrent in-flight reservations, so two lanes
+cannot both consume the last slot. At capacity the monitor stops dispatching
+newer rows for that account and leaves them recoverable from the unchanged
+cursor.
 
-The embedded runner already preserves all assistant/tool turns in the transcript,
-returns the last current-attempt assistant as the canonical final answer, and
-intentionally supports empty/`NO_REPLY` output. The implementation therefore
-must not concatenate candidates or restart the model. The source drain fence
-stages every automatic dispatcher surface under the answer generation: final,
-block, commentary, tool progress/summary, plan update, handled-hook, and TTS-only
-payloads. New answer-relevant admission invalidates and discards that
-generation's automatic payloads; stale output can never survive into the next
-cycle. Typing may continue as channel-owned UI.
-Approval prompts, control commands, and explicit message-tool sends bypass the
-terminal fence because they are awaited protocol/tool effects. Existing
-message-tool accounting is extended so automatic mode records a committed send
-only when its resolved target equals the originating source route, tagged with
-the current answer generation and highest covered ingress ordinal. The atomic
-final-intent transaction suppresses a duplicate only when `ack` or `unknown`
-evidence covers the current generation. Before transport invocation, the tool
-persists `prepared`, then `sending`; success records `ack`, a known rejection
-records `failed`, and restart converts unresolved `sending` to `unknown`.
-`prepared` is known-not-sent and may resume safely; `unknown` is never retried
-blindly. A correction advances generation, so stale send evidence cannot
-suppress its updated answer. Sends to other targets never suppress the source
-reply.
+Each prepared user message carries stable account/database/row/replay identity
+in its transcript metadata. The transcript layer gains an explicit
+append-and-flush operation that writes even a new session's first user turn and
+confirms durable storage before returning. After that flush, but before
+`message_end` returns to the agent loop and before any assistant/tool cycle can
+start, the adoption callback strictly persists a non-expiring cursor-relative
+pin through the existing plugin-state dedupe store. Unlike the generic
+best-effort dedupe helper, both writes must return durable acknowledgment; either
+failure aborts processing. A crash between transcript flush and pin is
+reconciled by the stable transcript identity. In the same process, strict
+pin-write failure retains the source claim and retries the pin against that
+identity with backoff. A crash after the pin but before cycle processing leaves
+the pin in `adopted` state. Recovery writes any missing pin and resumes the
+pending assistant cycle from the already adopted user turn without appending or
+executing the user turn twice.
 
-| Option | Decision | Reason |
-|---|---|---|
-| Keep shape-specific 7/15-second buffering | Reject | It adds pre-run latency and cannot cover general corrections. |
-| Poll Messages.app or wait for quiet before send | Reject | It duplicates ingress ownership, adds latency, and still races. |
-| Restart or fork speculative model work | Reject | Cole requires ordinary processing, transcript, tools, and effects. |
-| Deliver every assistant cycle | Reject | It recreates multiple confusing source replies. |
-| Reuse normal steering with an atomic seal and source reply fence | Recommend | The runtime already has the required normal queue loop and canonical final-answer behavior. |
+Pins distinguish `adopted`, `processed`, and `terminal`. The source claim,
+cursor hold, and pin remain after adoption while the corresponding
+assistant/tool cycle runs. Cycle success or failure moves the pin to `processed`
+with enough source linkage to finalize from persisted transcript state. After
+the run closes, durable final payload/no-reply handoff moves every covered pin to
+`terminal` before replay commit.
 
-Residual behavior:
+If recovery finds an assistant tool call without its durable result, it uses the
+existing tool-recovery classification. A tool already proven idempotent may use
+its existing retry contract. An unresolved non-idempotent tool changes the pin
+to `blocked_unresumable`, preserves the cursor floor and source ownership,
+surfaces the existing recovery error, and never automatically reruns the model
+or tool. Final payload reconstruction is allowed only when the transcript has no
+unresolved unsafe tool tail.
 
-- A standalone message has no new pre-run or post-run wait.
-- An event whose admission loses the atomic outbound-intent commit is a later
-  turn even if Messages.app composition began earlier.
-- Each queued user turn may require another normal model cycle.
-- A correction cannot roll back an effect completed by an earlier cycle.
-- Immediate approval/control traffic can be visible before the final drained
-  answer.
-- An explicit message-tool send can also be visible before drain and cannot be
-  revised by later input; this preserves normal tool semantics and suppresses
-  the automatic final reply only for the same originating route and covered
-  answer generation. A later correction can still produce an updated reply.
-- A normal `NO_REPLY` or deliberate empty result drains to an explicit
-  no-delivery disposition rather than hanging or reviving stale output.
-- Process loss after an unconfirmed iMessage send remains
-  `delivery_unknown`; blind retry is unsafe.
+The existing plugin-state record also accepts one authenticated local operator
+disposition for that exact blocked identity: `resolved_no_reply` or
+`resolved_error`. The operator must explicitly confirm that the unsafe tool will
+not be replayed. The write is durable and idempotent, records the disposition
+without inventing a tool result, hands off the matching no-reply or error outcome,
+commits replay, then releases the claim, cursor hold, and pin in normal cleanup
+order. Recovery can resume those cleanup steps after a crash. No timeout,
+capacity pressure, restart, or automated path may create this disposition.
+
+Approval, pairing, and another transcript-free path may use immediate admission
+only when it already has a stable request identity plus durable state transition
+or pending-delivery record. It strictly persists an `adopted` pin before the
+effect; recovery checks that existing receipt and resumes or finalizes before
+moving the pin to `terminal`. Reactions use an ephemeral event queue and
+therefore remain entirely on the current path.
+
+Claim checks both ordinary replay identity and the pin. The pin is excluded from
+ordinary oldest-entry pruning until the cursor crosses that row. Cursor crossing
+is serialized with pin cleanup: first persist the new cursor, then durably
+refresh the ordinary four-hour replay entry, then remove the pin. A failure at
+either later step leaves the pin in place; startup cleanup repeats refresh and
+removal for pins already below the durable cursor. Pin removal releases its
+capacity reservation and wakes a monitor-owned cursor catchup pass before live
+admission resumes. Thus disk failure, a four-hour delay, or 10,000 newer rows
+cannot convert adopted work into duplicate side effects.
+
+On restart the in-memory holds are reconstructed from the persisted cursor
+rather than from a new durable record. Recovery queries rows strictly after that
+cursor in ascending order and continues bounded pagination until the contiguous
+prefix is resolved. The existing 500-row result size remains a page size, not a
+total replay ceiling. The two-hour live/catchup age fence and retry give-up do
+not discard or advance past the earliest unresolved row; a discriminated
+permanent skip or successful replay commit is required. Existing replay keys
+make already committed rows in later pages harmless.
+
+Retryable conversation repair is owned by the row-keyed reservation slot. It
+schedules one abortable exponential-backoff retry with jitter per row, reusing
+the same slot and account close blocker; there is no maximum-attempt give-up
+while the monitor remains active. Successful repair transfers the blocker and
+permanent skip releases it. Monitor teardown cancels retry timers and releases
+in-memory close blockers while leaving the persisted cursor floor and replay
+pins intact for restart.
+
+Only final source-reply mode is enabled for this strategy. iMessage production
+already uses final delivery, so intermediate assistant turns stay internal and
+the existing final-payload selection sends one answer. Block streaming is not
+reimplemented or fenced by this feature.
 
 ### Implementation
 
-Only after Cole approves the revised design:
+After approval:
 
-1. Add an opt-in queue-drain strategy beside the buffered coalescer and require
-   structured-queue, source-fence, durable transport-lane, synchronous
-   destination-affinity, and canonical-route transfer capabilities before
-   enabling it. Reject enablement stably when any eligible route lacks affinity.
-2. Add a durable bounded account/conversation transport sequencer at raw
-   observation. Assign a process-wide ingress ordinal, reserve the synchronous
-   destination-affinity gate before any await, serialize route repair, and
-   atomically transfer the ordered prefix to one
-   session-plus-reply-conversation operation and strategy.
-3. Route every reservation through the existing pre-agent command/reaction/hook
-   pipeline in order. Factor a raw-safe parity-tested control classifier and
-   durable bypass for `/stop` and approvals. Convert hook-handled automatic
-   output into a versioned candidate; define atomic transitions for `/stop`,
-   `/new`, `/reset`, `/compact`, `/model`, and approval responses.
-4. Define a provider-neutral structured active-run user-turn envelope with text,
-   images/media, source identity, prepared prompt, reply context, hook/approval
-   identity, transcript recorder, and per-turn tool-routing context.
-5. Extend `ReplyBackendHandle`, `EmbeddedAgentQueueHandle`, and queue outcome
-   helpers to accept that envelope without text-only fallback; pass images to
-   the existing multimodal `AgentSession.steer` path. Before each queued model
-   cycle, bind that envelope's turn-local context and restore the prior context
-   afterward.
-6. Add the operation admission gate and source-ordered reservation accounting.
-   Mark commands and approvals non-droppable after normal classification, then
-   apply configured cap/drop policy only to data turns; quarantine only
-   ownership/invariant or durable-spool failures. Integrate the gate's
-   ordered-prefix `queued | pending-head | quiescent` result with the normal
-   agent cycle. Pending awaits a state-change signal without model work.
-   Quiescence keeps operation intake open through versioned payload preparation;
-   candidate generation, empty gate, seal, and outbound-intent commitment form
-   one transaction. Admission before commitment invalidates the candidate and
-   runs another ordinary cycle; post-commit rejection uses the existing
-   follow-up barrier. Terminal error, timeout, abort, `/stop`, and early-stop
-   paths must resolve or transfer every reservation before closing.
-   Serialize distinct reply-destination operations that share one transcript
-   session without merging candidates or delivery contexts.
-7. Add a source reply drain fence around every automatic dispatcher surface:
-   final, block, commentary, tool progress/summary, plan update, hook-handled,
-   and TTS-only payloads, versioned by answer-relevant generation. Every raw reservation
-   blocks seal; only a classified answer-producing turn supersedes the candidate
-   and its blocks. Preserve an existing candidate across malformed, denied,
-   reaction-only, and other no-answer dispositions; when none exists and the
-   no-answer reservation empties the gate, atomically create
-   `suppress(no_answer)` for the current generation. Preserve immediate
-   approvals, control responses, typing, explicit message-tool sends, and other
-   tool effects. Add source-route-specific committed-send evidence in automatic
-   mode, tagged with answer generation and highest covered ingress ordinal, and
-   consult it atomically to suppress only a current same-route duplicate.
-8. Represent terminal candidate state as `deliver` or `suppress`; persist
-   generation, payload references, resource leases, invalidation, deliberate
-   empty/`NO_REPLY`, and candidate-less no-answer suppression before seal.
-   Recover candidates directly without rerunning handled hooks. Add atomic
-   candidate-to-outbox lease handoff, idempotent terminal release, retained
-   unknown/quarantine leases, and startup orphan reconciliation.
-9. Persist a minimal durable queue-drain record before replay/cursor
-   finalization. Reuse current user-turn transcript recorders, incomplete-turn
-   recovery, pending final delivery, and delivery disposition to resume adopted
-   unanswered turns without repeating committed effects.
-10. Add write-ahead explicit same-route send state:
-    `prepared|sending|ack|failed|unknown`, tagged by generation and covered
-    ordinal. Persist before transport, convert crash-ambiguous `sending` to
-    `unknown`, and fence automatic intent against current `ack|unknown` only.
-11. Remove the queue-drain path's shape classifier and 7/15-second waits while
-   retaining the existing implementation behind the rollback configuration.
-12. Add keyed metrics and quarantine for ownership conflict, failed structured
-    adoption, cross-session admission, duplicate terminal intent, unresolved
-    operation, and delivery unknown; record configured cap/drop outcomes
-    separately.
-13. Add a durable per-lineage cutover registry. During rollback, inactive
-    lineages transfer immediately, active lineages keep queue-drain admission
-    until every member operation seals, and timed-out lineages quarantine and
-    hold new input before buffered ownership. Anchor lineage identity to
-    transport/destination affinity and transfer its token across `/new`/`reset`
-    successor operation keys.
-14. Add a package-rollback preflight that rejects every active new-format,
-    quarantined, `delivery_unknown`, or nonterminal record. Before restore,
-    atomically archive only known-terminal records outside the
-    predecessor-visible active store and durably convert held input to
-    predecessor-readable buffered ownership; otherwise keep the new package
-    installed but disabled.
-15. Add cumulative regressions, update patch documentation and manifest, and
-    prove promotion, interruption recovery, configuration rollback, and package
-    rollback in the managed test environment.
+1. Replace the deployed queue-drain path's iMessage classifier/timers with a
+   feature-switched immediate path; retain current code as configuration
+   rollback.
+2. Capability-gate the immediate strategy to final source-reply routes whose
+   configured backend is embedded and exposes structured steering. Keep
+   CLI-backed and other non-steerable routes on the current coalescer. Treat an
+   unexpected attached backend without the capability as an unsupported
+   readiness result and disable new immediate admission on that route. Also
+   require a source-backed local or bridge-provided database-instance generation
+   a finite source row ID, a stable message reference, and lossless exact-row
+   replay. Persist local generation with high-water/GUID continuity anchors.
+   Revalidate anchors plus the event row/GUID in one source snapshot before every
+   live reservation. Keep a source without all capabilities current-path-only for
+   the monitor generation; remote bridges remain there until they expose the
+   same guarantees.
+3. Route authenticated `/stop` through its existing immediate abort path before
+   data reservation, then route reactions through their existing handling before
+   any immediate gate, reservation, blocker, hold, or pin. For other events, add
+   a source mode gate shared with the current coalescer. For a previously
+   immediate-capable local source, continuity uncertainty atomically enters
+   fallback only after resolving and durably recording the exact database
+   generation/GUID/row reference and source order in existing plugin state.
+   Atomically reserve bounded non-expiring, non-evictable reference capacity
+   before acceptance. Store no payload. Preserve existing entries and the source
+   cursor, then stop dispatch explicitly if capacity is full or the reference
+   cannot be resolved or persisted. Hold the
+   first fallback handler behind every earlier accepted immediate identity's
+   delivered/no-reply, replay-committed, fully unclaimed, unheld, and unpinned
+   barrier; queue later fallback handlers behind it. Reconstruct that barrier
+   and rebuild every pending reference from Messages before live dispatch after
+   restart. Reopen only after the complete immediate barrier and fallback chain
+   drain at a proven boundary. Eligible events then use a short
+   per-account source-order gate with one slot keyed by
+   `(accountId, dbInstanceId, rowid)`. Duplicate
+   notification or retry resumes the same slot. For unknown affinity, register
+   an account blocker against existing and subsequently attached run gates
+   before the first repair await. While holding the slot, resolve/repair
+   affinity, append the event's ticket to the resulting conversation lock and
+   close predicate, and atomically narrow the account blocker to that ticket
+   before releasing it. Permanent skip releases it; retryable failure retains it
+   for source retry or teardown. Do not await agent processing there. This
+   serializes only affinity reservation on one account and leaves different
+   accounts and resolved conversation lanes concurrent.
+4. Split same-conversation processing into an admission receipt and completion
+   promise so the keyed lock awaits backend-ready start-or-steer, while
+   replay/cursor handling still awaits terminal user-cycle completion outside
+   the lock.
+   Resolve new-run admission after the accepting backend and close gate attach
+   or on every successful or failed terminal-before-ready outcome. Hold the
+   replay claim while unresolved; commit it on success or release it on
+   processing failure. A closed-run rejection keeps ownership while starting
+   the next normal run.
+5. Extend `EmbeddedAgentQueueMessageOptions`, the active reply-run queue helper,
+   and the embedded queue handle to carry prepared image content and return
+   `{ accepted, adopted, completion }`. Store the canonical
+   source-conversation key on the in-memory reply operation and reject steering
+   on mismatch.
+6. Forward accepted structured turns directly to the existing
+   `AgentSession.steer` path with a unique in-memory identity, atomic
+   queued/draining/adopted/processed/terminal transitions, an adoption promise,
+   and a final completion promise. Add a flushed transcript append that durably
+   writes even the first user turn in a new session. Persist stable source
+   identity with that exact user message, then strictly acknowledge its
+   cursor-relative `adopted` pin before the assistant cycle starts. Reject and
+   abort on transcript failure. On pin failure, retain the claim and retry pin
+   repair against the existing transcript identity. Mark `processed` when that
+   exact user cycle finishes, but keep replay ownership until run-level output
+   handoff marks all covered identities `terminal`. Recovery of
+   append-without-pin writes the pin; recovery of an adopted pin resumes from
+   the existing source-identified transcript turn without duplicate append.
+   Cancellation may remove the identity only while queued. Do not add a second
+   queue; keep agent-core turn processing unchanged apart from making its
+   existing steering drain win before a normal stop-after-turn exit.
+7. Add the atomic empty-and-close gate around unknown-affinity account
+   reservations, pending same-conversation admission tickets, both existing
+   steering/follow-up insertion paths, and their final empty check. Register the
+   account reservation before repair and the ticket before payload preparation;
+   atomically narrow, transfer, or release them on every disposition. Defer a
+   normal `shouldStopAfterTurn` result when a reservation, ticket, or accepted
+   identity already won the gate. Add an awaitable generation-change signal:
+   empty queues with blockers sleep until any blocker/ticket transition,
+   insertion, failure, abort, or teardown wakes them, then recheck atomically.
+   On error, abort, or teardown, atomically close and reject all still-queued
+   identities; settle already-draining identities from persistence or terminal
+   failure. Keep the canonical final payload builder unchanged. After close,
+   persist its payload or no-reply disposition through existing pending-delivery
+   recovery with all covered source identities before marking pins terminal.
+8. Extend the existing recovery/catchup cursor hold-floor bookkeeping to install
+   a provisional hold synchronously for every observed live row before the first
+   await. Scope every hold and cursor by the database-instance generation as
+   well as account and row. Detect replacement as a new generation and keep old
+   state isolated. Change conversation repair from nullable output to
+   discriminated repaired/permanent-skip/retryable-failure output, retaining the
+   hold for every RPC failure and clearing it only after a complete permanent
+   result. Transfer repaired rows through replay claim into processing. Preserve
+   the persistent dedupe result so an `inflight` duplicate retains the shared
+   idempotent row hold and only a confirmed committed/permanently skipped row
+   clears it.
+   Otherwise clear only after terminal output handoff and replay commit both
+   succeed; release a failed transient claim for retry without clearing its
+   hold.
+9. Make enabled-account recovery page from the persisted cursor forward in
+   ascending source order. Treat the current 500-row limit as a page size and
+   bypass age suppression and retry give-up for the earliest unresolved row;
+   only permanent skip or successful replay commit may cross it.
+10. Reserve bounded pin capacity atomically before claim/dispatch, counting
+   durable pins plus every in-flight reservation across lanes. After exact
+   source-identified flushed transcript append, strictly persist a non-expiring
+   `adopted` pin keyed by account, database-instance generation, row, and replay
+   identity before allowing assistant/tool processing. Keep it through the user
+   cycle, mark it `processed`, and durably hand off final payload/no-reply
+   before marking `terminal` and committing replay. Reconcile
+   append-without-pin, adopted turns, processed turns, and pending final delivery
+   on restart. For transcript-free paths with an existing durable receipt,
+   persist `adopted` before the effect and require the existing idempotent state
+   or delivery receipt before `terminal`; keep reactions and any receipt-free
+   path on current handling.
+   Serialize cleanup as cursor persist, ordinary replay refresh, then pin
+   removal; retry cleanup failures. Apply account backpressure instead of
+   eviction, and run cursor catchup before live    admission resumes.
+11. Preserve existing tool-tail recovery classification. Resume only tools whose
+   existing contract proves replay safe. Mark an adopted/processed pin
+   `blocked_unresumable` when a non-idempotent tool call lacks a durable result;
+   keep source ownership and cursor floor, surface the existing recovery error,
+   and never automatically rerun that tool or reconstruct final output past it.
+   Add an authenticated local operator action keyed to the exact blocked
+   identity. It may durably choose only `resolved_no_reply` or `resolved_error`
+   after explicit no-replay confirmation, then use recoverable handoff, replay
+   commit, and normal claim/hold/pin cleanup. No automatic path may invoke it.
+12. Add monitor-owned abortable exponential-backoff repair retries keyed to the
+   existing row slot. Reuse the slot for every attempt; cancel timers and release
+   in-memory blockers on teardown while retaining the cursor floor for restart.
+13. Add focused upstream-quality OpenClaw tests, register them in
+   `packages/e2e/openclaw-patch-suite.json`, update patch documentation, and run
+   the managed lifecycle.
 
 ### Validation
 
-The implementation must add focused OpenClaw tests, register every applicable
-target in `packages/e2e/openclaw-patch-suite.json`, and pass:
+Executable implementation must pass the focused OpenClaw tests and:
 
-```text
+```bash
 node packages/e2e/bin/openclaw-test-env.mjs ci
 ```
 
-Required deterministic scenarios:
+The managed recording harness must prove:
 
-- standalone text, image, link, and ordinary question start immediately with no
-  classifier hold;
-- a second text is transcript-adopted while the first model cycle runs;
-- a second raw event observed while first-turn adoption is blocked reserves
-  before the first operation can seal;
-- unresolved source A and resolved source B with the same destination affinity
-  cannot reorder or let B seal first, while unrelated destination C proceeds;
-- two group senders in one reply conversation retain observation order;
-- proven route aliases merge, while two distinct reply conversations sharing one
-  transcript session serialize as separate operations and deliver only to their
-  own targets;
-- images and links use the same structured queue path without media loss;
-- text-link-text and correction sequences retain source order and produce one
-  terminal source reply containing the latest context;
-- intermediate assistant turns and tool calls remain in transcript history but
-  are not automatically delivered;
-- block-stream replies wait for drain, while explicit message-tool sends and
-  ordinary effects execute once at their normal point; a committed explicit
-  same-route source send suppresses duplicate automatic delivery, while an
-  other-target send does not;
-- approval prompts and responses remain immediate and do not deadlock the run;
-- raw `/stop` and approval responses bypass a slow media/transcript head and a
-  saturated data spool while resolving older reservation ownership exactly once;
-- `/stop`, `/new`, `/reset`, `/compact`, and `/model` preserve existing
-  pre-agent ordering, replies, session transitions, and exact reservation
-  disposition;
-- saturated data-turn caps cannot drop `/stop`, approval responses, or session
-  commands before classification;
-- a handled `before_dispatch` hook stages versioned output and a later correction
-  invalidates it before delivery;
-- crash after durable handled-hook `deliver` or model `suppress` candidate and
-  before seal recovers that candidate without rerunning hooks or losing resource
-  ownership;
-- supersession, suppression, seal handoff, delivery acknowledgement, known
-  failure, unknown outcome, quarantine, and restart release or retain sensitive
-  media leases exactly once; orphan cleanup never deletes a referenced resource;
-- several rapid sessions remain isolated;
-- admission races steering drain, follow-up drain, `message_end`, synchronous
-  quiescence, backend close, payload preparation, seal/outbound-intent
-  commitment, and delivery;
-- a delayed transcript-recorder/media resolution produces an awaitable pending
-  reservation, no busy loop, and no model call without its user turn;
-- a slow first reservation and fast second reservation drain only in original
-  source order;
-- an event admitted before outbound-intent commitment invalidates prepared
-  automatic payloads and causes another normal cycle; an event losing that
-  atomic commitment starts exactly one later turn;
-- block-stream payloads produced by an intermediate cycle are discarded when a
-  correction supersedes their generation;
-- a valid prior agent or handled-hook candidate survives a later malformed,
-  denied, reaction-only, or other no-answer reservation and commits only after
-  that reservation resolves;
-- first/only malformed, denied, and reaction-only reservations each create one
-  durable `suppress(no_answer)` candidate when they empty the gate, recover
-  terminally after restart, permit configuration cutover, and become
-  archive-eligible known-terminal records before package rollback;
-- a first no-answer reservation creates `suppress(no_answer)`, then valid
-  answer-relevant admission before seal atomically invalidates that suppression,
-  runs one normal model cycle, and commits exactly one delivered answer;
-- correction followed by deliberate empty/`NO_REPLY` seals to one no-delivery
-  disposition without hanging, forcing output, or restoring the stale answer;
-- an explicit same-route send in generation one does not suppress an updated
-  automatic answer after a generation-two correction;
-- explicit same-route send crashes before intent, after `prepared`, after
-  `sending`, after platform acceptance, after `ack`, and after known failure
-  produce the documented safe retry, suppression, or `delivery_unknown`
-  disposition without duplicate automatic delivery;
-- commentary, tool progress/summary, plan updates, handled hooks, and TTS-only
-  automatic payloads are version-fenced and cannot escape before drain;
-- failure during structured transcript adoption releases the exact replay claim
-  or records one explicit terminal disposition without text-only fallback;
-- restart occurs before and after first-turn adoption, queued-turn adoption,
-  assistant completion, seal, outbound intent, and send acknowledgement;
-- provider error, timeout, abort, `/stop`, and early-stop hooks resolve or
-  transfer every pending and committed reservation exactly once;
-- queued inline replies, reactions, approvals, hooks, and tools observe the
-  admitted envelope's own source/reply identity and turn-local routing context,
-  then restore prior context for later turns;
-- crash before send retries safely, acknowledged send does not retry, and an
-  unknown send becomes `delivery_unknown`;
-- queue and attachment caps, malformed envelopes, commands, reactions, groups,
-  echoes, catchup, and cursor floors preserve current behavior;
-- `drop:new`, drop-old, and summarize policies apply only to classified data
-  reservations without quarantine or source-order inversion; control and
-  approval reservations remain non-droppable;
-- no drained operation creates more than one automatic terminal visible reply
-  intent or one explicit no-delivery disposition;
-- every breaker survives restart and isolates only the implicated key;
-- rollback rejects unresolved queue-drain ownership and succeeds after drain or
-  explicit quarantine;
-- rollback during continuous same-key ingress keeps the active lineage on
-  queue-drain through seal, then transfers once to buffered ownership without
-  loss, indefinite hold, reordering, or concurrent dispatch; and
-- sustained same-key ingress past the bounded rollback deadline quarantines the
-  lineage and durably holds later input instead of forcing seal or starting
-  buffered dispatch;
-- rollback concurrent with `/new` or `/reset` transfers cutover lineage to the
-  successor and never lets the old key release shared lanes early;
-- package rollback rejects quarantined, `delivery_unknown`, or active new-format
-  records, succeeds only after predecessor-readable buffered transfer and atomic
-  archival of known-terminal records outside the predecessor-visible active
-  store, and otherwise leaves the new package installed but disabled;
-- crash injection between terminal archival, held-input conversion, final
-  preflight, and predecessor restore never loses ownership, and the restored
-  predecessor reader consumes every converted buffered record exactly once; and
-- recording mocks reject unknown writes and automated tests deliver no live
-  messages.
+- standalone text starts immediately and produces one normal final reply;
+- text followed by link before close produces two normal user turns and one
+  final reply containing both contexts;
+- text followed by image preserves actual image content in steering;
+- text-link-text and text-image-text sequences stay ordered and produce one
+  final reply;
+- an immediate correction causes another normal model cycle and the final reply
+  reflects the correction;
+- a message arriving while tools run is processed after those tool calls by the
+  existing steering loop;
+- a same-conversation ticket reserved before slow attachment staging or history
+  lookup prevents close and then transfers atomically into steering;
+- a steer accepted before `shouldStopAfterTurn` is evaluated drains before the
+  normal stop is honored;
+- two concurrent arrivals preserve source order through admission;
+- a second arrival between operation registration and backend attachment waits
+  and then steers rather than starting a second reply;
+- successful hook-handled or other backend-free completion settles admission,
+  replay, and cursor ownership without stranding a later event;
+- anchorless row N repairing while anchored row N+1 arrives on the same account
+  reserves N's conversation lane first when repair maps both rows together;
+- anchorless row N blocks an already active possibly matching run from close
+  before repair, then atomically narrows the blocker when affinity resolves;
+- retryable repair of row N re-enters N's row-keyed reservation and eventually
+  transfers it without deadlocking behind itself;
+- an unrelated anchorless row cannot prevent a later correction from eventually
+  steering into its active run; both remain close-blocking until repair proves
+  them distinct;
+- authenticated `/stop` bypasses an unresolved anchorless data reservation and
+  aborts through the existing control path;
+- rows on different accounts continue admission concurrently while one account
+  repairs an anchorless row;
+- an embedded steer-capable route uses immediate admission, while CLI and
+  capability-missing routes retain the current coalescer without a readiness
+  hang;
+- two conversations mapped to one session never cross-steer or cross-deliver;
+- two identical text steers complete and cancel independently by identity;
+- cancellation racing queue drain has exactly one winner: queued cancellation
+  prevents persistence, while draining ownership waits for append outcome;
+- transcript append failure rejects only the matching completion, releases its
+  replay claim for same-process retry, retains its cursor hold, and does not
+  advance the cursor;
+- a crash before durable adoption replays the source event; a crash after
+  adoption resumes the exact adopted turn; a crash after processing rebuilds
+  final handoff from transcript without rerunning model/tools; only durable
+  output/no-reply handoff plus replay commit clears source ownership;
+- conversation B completing row N+1 while conversation A still owns row N holds
+  both recovery and catchup cursors below N through restart;
+- conversation B completing row N+1 while row N is still repairing or acquiring
+  its replay claim also holds both cursors below N through restart;
+- a duplicate notification for row N while the original claim is `inflight`
+  retains N's hold while row N+1 completes, and a crash still replays N unless
+  the original owner committed it;
+- chat-list or any history RPC failure during row N repair retains N's hold while
+  N+1 completes, whereas an exhaustive successful no-anchor result releases N;
+- restart with more than 500 newer rows still fetches cursor-held row N first and
+  paginates forward without loss;
+- restart after row N ages beyond two hours still retries N rather than
+  suppressing it;
+- repeated retryable catchup failure for row N never advances the cursor to
+  N+1, while a confirmed permanent skip does;
+- committed row N+1 remains deduplicated after row N holds the cursor for more
+  than four hours and through restart;
+- pinned replay entries are not evicted at 10,000 ordinary entries; reaching pin
+  capacity pauses newer account dispatch, then pin removal runs cursor catchup
+  before live admission resumes without loss;
+- two concurrent lanes at capacity minus one reserve atomically, so only one
+  dispatches and the other remains recoverable without pin eviction;
+- pin disk-write failure after transcript append aborts before assistant/tool
+  processing, retains the same-process claim for repair, and never appends the
+  source turn again;
+- a new session's first user turn is flushed durably before its adopted pin is
+  acknowledged, including crash-before-first-assistant recovery;
+- a crash with an `adopted` pin before model execution resumes the unanswered
+  cycle instead of suppressing it as a duplicate;
+- terminal assistant success, model error, and abort each settle the matching
+  adopted identity as processed and preserve the correct retry outcome;
+- a crash after a non-idempotent tool call is persisted but before its result is
+  stored enters the existing unresumable failure path and never executes that
+  tool again automatically;
+- a blocked unsafe tool tail remains pinned across restart and capacity pressure;
+  only an authenticated exact-identity operator no-reply/error disposition can
+  release it, the disposition survives a crash at each handoff/commit/cleanup
+  boundary, and no test reruns the tool;
+- a replay-safe tool may resume only through its existing idempotent contract;
+- approval, pairing, and other receipt-backed transcript-free successful
+  handlers persist adopted pins before effects, reconcile through existing
+  idempotent receipts, then persist terminal pins before replay commit;
+- final payload handoff is durable before any covered source pin becomes
+  terminal; a crash at each payload/no-reply, pin, replay, and delivery boundary
+  recovers without rerunning completed model/tools or losing the reply;
+- cursor advancement past N+1 removes its pin and refreshes its ordinary replay
+  TTL in cursor/refresh/remove order, and failure after each step remains safe;
+- replacing the Messages database at the same local path with one that reuses
+  row numbers creates a new generation with distinct holds, pins, capacity
+  reservations, and cursors;
+- restoring older database contents in place while preserving path, file
+  identity, and the live subscription fails the next per-event
+  high-water/GUID/row snapshot, atomically fences immediate admission, and
+  rotates the generation;
+- a remote bridge database replacement uses its new bridge-provided generation,
+  while a bridge without that capability stays on the current coalescer;
+- an invalid-row correction followed by a valid row fences the source into the
+  current ordered path until delivery/no-reply, replay commit, and ownership
+  cleanup complete, so the valid row cannot overtake it;
+- an earlier immediate row held mid-tool, followed by the first invalid fallback
+  row and then another fallback row, processes in that order; neither fallback
+  handler starts before the immediate source-drained barrier;
+- restart during that transition reconstructs fallback mode and the barrier
+  plus every pending database source reference before live dispatch, then drains
+  in the same order without duplicate work or copied payload state;
+- a remote bridge without exact generation and lossless row replay remains
+  current-path-only from startup, so it never creates a mixed immediate/fallback
+  crash window;
+- failure to resolve or persist a local fallback source reference stops dispatch
+  explicitly and cannot release later work around it;
+- filling fallback-reference capacity never evicts the oldest pending reference;
+  the next transition stops with its cursor unchanged, restart reconstructs all
+  prior references, and admission resumes only after cleanup frees capacity;
+- a continuity failure followed concurrently by valid-looking rows atomically
+  admits no new immediate work until fallback drains, all prior claims, holds,
+  and pins clear, and continuity is proven;
+- replay commit failure after a terminal output handoff keeps fallback fenced
+  through retry and prevents a later valid row from immediate admission;
+- transient anchor repair retries in the same row slot with bounded backoff and
+  no duplicate timer, then wakes close when repair succeeds;
+- monitor teardown cancels repair timers and releases in-memory blockers while a
+  restart still begins from the held cursor;
+- insertion immediately before empty-and-close wins and causes another cycle;
+- insertion immediately after close is rejected and starts one later turn;
+- empty queues plus a pending ticket await one signaled generation change
+  without busy polling, then deterministically drain or close;
+- follow-up insertion has the same before/after-close behavior as steering;
+- model error, abort, and terminal teardown reject every still-queued steering
+  and follow-up identity so no completion, replay claim, or cursor hold hangs;
+- the start-versus-steer race cannot create two active runs or lose a message;
+- queue rejection, prompt failure, abort, timeout, restart, and transcript
+  commit failure retain existing replay/cursor behavior;
+- `/stop`, other commands, reactions, approvals, groups, echoes, catchup, and
+  attachment caps retain current behavior;
+- reactions never enter immediate admission or depend on ephemeral events for
+  durable replay reconciliation;
+- explicit message-tool sends retain normal tool semantics;
+- rollback durably pauses new source dispatch without cursor advancement, drains
+  accepted immediate and already queued fallback work through delivery, replay,
+  and ownership cleanup, switches the same package to the current coalescer,
+  runs uncapped/unaged cursor catchup to the live row, then permits older package
+  replacement at quiescence;
+- restart during rollback reconstructs recovery-only mode before live dispatch,
+  resumes the full drain and lossless current-coalescer catchup, and never asks an
+  older capped/aged implementation to consume the retained backlog;
+- recording transports fail unknown writes and no automated test delivers a
+  live message.
 
-Latency assertions:
-
-- standalone events add no queue-drain pre-run delay;
-- active-run admission starts promptly after source observation;
-- final delivery starts promptly after the latest admitted turn completes and
-  the atomic seal/outbound-intent commitment succeeds; and
-- no assertion depends on message wording, payload shape, or an arbitrary quiet
-  period.
-
-This design revision uses static, read-only investigation only. No managed
-lifecycle or production smoke is required until executable artifacts exist.
+Latency assertions compare source observation to initial run start and require
+no fixed 7/15-second delay. The test fixture controls model/tool completion and
+the close race deterministically; it does not use sleeps as proof.
 
 ### Rollout and rollback
 
-After approval and full isolated validation:
+After approval, implementation, full managed validation, clean review, and
+remote checks:
 
-1. Land the disabled strategy and cumulative regressions.
-2. Exercise it through recording transports with production-equivalent caps and
-   deterministic admission/seal/delivery races.
-3. Promote the exact remotely approved candidate through
-   `docs/openclaw-setup/patches/apply-and-deploy.sh` with `MINI_HOST` unset on the
-   target Mac mini.
-4. Verify exact-byte marker, recovery snapshot, config, gateway health,
-   iMessage capability, locks, and no-test-delivery evidence.
-5. Enable only for an explicit canary conversation.
-6. Observe content-free admission latency, queue depth, seal rejection,
-   intermediate suppression, duplicate intent, unresolved operation, and
-   terminal delivery metrics.
-7. Initiate atomic per-lineage cutover on invariant or health failure: inactive
-   lineages return to buffered mode immediately, active lineages retain
-   queue-drain admission through seal, and lineages exceeding the deadline
-   quarantine and durably hold new input.
-8. Expand only after the configured duration, sample, queue-depth, duplicate,
-   unresolved-operation, and p95 latency thresholds pass.
+1. Land the disabled steering-admission strategy and cumulative regressions.
+2. Promote the exact approved patch through
+   `docs/openclaw-setup/patches/apply-and-deploy.sh` with `MINI_HOST` unset on
+   the target Mac mini.
+3. Verify exact-byte marker, recovery snapshot, gateway health, iMessage
+   capability, and read-only no-delivery evidence.
+4. Enable for one explicit canary conversation in final source-reply mode.
+5. Observe content-free admission accepted/rejected counts, duplicate-run
+   count, queue depth, and p95 initial-start latency.
+6. Expand only after the canary shows no loss, duplicate reply, or ordering
+   regression.
 
-Configuration rollback creates an atomic per-lineage cutover record. Lineages
-without active operations move to buffered ownership immediately. Active
-lineages retain queue-drain admission—including newly observed same-key
-events—until seal, then atomically transfer transport and destination-affinity
-lanes to buffered ownership. `/new` and `/reset` transfer lineage and the cutover
-token to their successor; no predecessor ownership transfer occurs until all
-successor keys drain. A lineage that exceeds the bounded drain deadline enters
-quarantine and durably holds new input rather than racing buffered dispatch.
+Rollback first durably enters recovery-only mode, then pauses new source
+dispatch without advancing the source cursor. Restart reads that mode before
+starting live dispatch. The current package remains installed while accepted
+immediate and already queued fallback handlers complete durable delivery or
+deliberate no-reply, replay commit, and release of every claim, cursor hold, and
+pin. Pending-final and delivery recovery remain enabled. A
+`blocked_unresumable` identity requires its explicit operator disposition before
+quiescence; rollback never resolves it automatically.
 
-Package rollback does not accept quarantine as sufficient because the
-predecessor cannot interpret new-format records. It restores the retained
-package/service snapshot only after every queue-drain record is either
-known-terminal and atomically archived outside the predecessor-visible active
-store or converted into predecessor-readable buffered ownership.
-`delivery_unknown` is not archive-eligible. If any active new-format,
-quarantined, unknown, or nonterminal record remains, the new package stays
-installed with queue-drain disabled until reconciliation. Rollback must not
-rewind runtime, cron, Messages, or mailbox state. Crash-injection validation must
-cover every archival/conversion/preflight/restore boundary against the actual
-retained predecessor reader.
+At that first quiescent boundary, the same new package switches the source to
+the current coalescer and runs the new lossless cursor pager without the old
+500-row or age limits until the persisted cursor reaches a freshly sampled live
+high-water row and all catchup handlers complete replay commit. New rows that
+arrive during catchup extend the target or remain for normal live handling.
+
+Older package replacement is allowed only after this second quiescent boundary,
+when the source mode gate has no immediate or fallback handler, pending source
+reference, delivery, claim, hold, or pin and no retained cursor backlog. If
+catchup or an operator-blocked identity cannot finish, rollback remains
+configuration-only on the new package. The persisted mode, references, and pins
+use the existing plugin-state schema, so no data conversion is required.
 
 ### Review log
 
-- The deployed buffered coalescer, cumulative test pool, exact-byte lifecycle,
-  and replacement marker previously completed independent review and production
-  validation.
-- PR #64 documented an isolated speculative-fork proposal after adversarial
-  review and green remote checks.
-- Cole rejected that model on 2026-07-30 and clarified that every iMessage
-  should use normal processing, same-session messages should enter the active
-  agent, and reply should wait only until the queue is empty.
-- The complete proposal was rewritten around existing normal steering, then
-  tightened after read-only tracing of the exact production revision's queue,
-  multimodal, transcript, final-payload, operation, and delivery boundaries.
-- Independent adversarial review found four material design gaps: awaited
-  message-tool delivery deadlock, pending-reservation spin/terminal exits,
-  adopted-turn loss on restart, and missing turn-local context. The plan accepts
-  and addresses all four.
-- The replacement recheck found three further races: admission during payload
-  preparation, asynchronous reservation reordering, and stale staged blocks.
-  The plan now keeps admission open through atomic outbound-intent commitment,
-  drains only the committed source-order prefix, and invalidates every
-  superseded output generation.
-- The next recheck found four integration gaps: same-route message-tool
-  deduplication was absent in automatic mode, keyed ingress could hide observed
-  backlog, pre-agent commands/hooks lacked operation semantics, and normal cap
-  policy was incorrectly treated as quarantine. The plan adds source-route send
-  evidence, raw-observation reservation, ordered pre-agent processing with
-  explicit command transitions, and configured cap/drop behavior. A fresh
-  recheck then found control traffic could be dropped before classification,
-  sender-keyed lanes could reorder one canonical session, and no-answer terminal
-  reservations could erase a valid handled candidate. The plan now classifies
-  before data cap policy, sequences the canonical session lane with sender as
-  metadata, and separates seal-blocking admission from answer-generation
-  invalidation.
-- The fifth recheck found mixed fallback during asynchronous route repair,
-  missing model-level no-delivery state, immediate controls blocked behind data,
-  unscoped explicit-send evidence, and incomplete automatic-surface fencing. The
-  plan now uses stable transport-lane ownership and atomic canonical transfer,
-  versioned `deliver|suppress` candidates, a durable immediate-control lane,
-  generation/ordinal-scoped same-route send evidence, and exhaustive automatic
-  dispatcher fencing.
-- The sixth recheck found unresolved transport lanes could be invisible across
-  sources targeting one session, while session-only operations could merge
-  distinct reply destinations and misdeliver. The plan now requires synchronous
-  destination affinity, provisional destination-scoped reservations, operation
-  keys combining session and reply conversation, and serialization rather than
-  merging for distinct destinations.
-- The seventh recheck found pre-seal hook/no-delivery candidates were not durable
-  and explicit-send evidence lacked write-ahead crash states. The plan now
-  persists candidate generations, payload/resource ownership, and invalidation,
-  and adds generation-scoped `prepared|sending|ack|failed|unknown` send evidence
-  before transport.
-- The eighth recheck confirmed prior corrections and found resource leases lacked
-  transfer/cleanup states and rollback lacked atomic lineage cutover. The plan
-  now defines candidate-to-outbox lease handoff, idempotent release and orphan
-  reconciliation, plus lineage ownership cutover that keeps active admission
-  through seal or quarantines with durable input.
-- The ninth recheck found package rollback could strand new-format quarantine
-  records and `/new`/`reset` could let an old key release shared lanes before its
-  successor drained. The plan now requires predecessor-readable transfer or
-  archival of terminal records outside the active store before package restore
-  and carries stable cutover lineage/tokens across successor operation keys.
-- The tenth recheck found terminal new-format records were both allowed and
-  rejected by package-rollback rules. The plan now requires atomic archival of
-  terminal records outside the predecessor-visible active store, rejects every
-  remaining active new-format record, and explicitly tests sustained ingress
-  beyond the bounded cutover deadline.
-- The eleventh recheck found `delivery_unknown` was not explicitly
-  archive-ineligible and the rollout list still described a global admission
-  disable. The plan now blocks package restore on unknown delivery, tests each
-  restore crash boundary with the actual predecessor reader, and uses the same
-  per-lineage cutover contract throughout.
-- The twelfth recheck found acceptance and implementation still assigned
-  rollback ownership to individual operation keys. The plan now makes the
-  durable registry and all ownership transfer lineage-scoped; operation keys are
-  only lineage members, including `/new` and `/reset` successors.
-- The thirteenth recheck found a first/only malformed, denied, reaction-only, or
-  other no-answer reservation had no candidate to seal. The plan now atomically
-  creates `suppress(no_answer)` when such a reservation empties a candidate-less
-  gate and tests restart, configuration cutover, and package rollback for each
-  outcome.
-- The fourteenth recheck found the matrix did not prove that valid admission
-  before seal invalidates durable `suppress(no_answer)`. The plan now requires
-  that exact race to run one normal cycle and commit exactly one delivered
-  answer.
-- The fifteenth fresh full-diff review found no actionable high-confidence
-  material findings. The remaining validation gaps are intentionally deferred
-  to the unapproved implementation: prove synchronous destination affinity and
-  run the complete managed suite against the exact target OpenClaw revision.
-- PR #65 landed the exact reviewed documentation-only candidate as
-  `de118104bf7f34b793ef6adc347713f20e06640a`. CodeQL and the cumulative managed
-  integration workflow passed. No runtime, configuration, deployment, cron,
-  Messages, delivery, or mailbox mutation occurred.
+- Source tracing on the exact production revision confirms steering,
+  multimodal `AgentSession.steer`, active-run registration, and canonical final
+  payload selection already exist.
+- Cole rejected the prior orchestration-heavy proposal and directed reuse of
+  OpenClaw steering, matching other harnesses.
+- This revision removes the proposed durable operation, candidate, output
+  fencing, lease, route-lineage, quarantine, and package-migration systems.
+- The first simplified-design review found three narrow gaps: replay ownership
+  must wait for transcript completion, steering must require exact
+  source-conversation equality, and follow-up insertion must share the close
+  gate. The design now addresses each without adding another queue or durable
+  format.
+- The recheck found existing transcript waits match text before persistence and
+  existing cursor floors omit unresolved live rows. The design now completes
+  each steer by unique in-memory identity after successful append and extends
+  existing hold-floor bookkeeping across all observed rows.
+- The next recheck found replay claim lifecycle was ambiguous. The design now
+  holds the claim only while completion is unresolved, commits it after
+  persistence succeeds, releases it on failure for normal retry, and clears the
+  cursor hold only after replay commit.
+- The latest recheck found registration/backend readiness, pre-claim cursor
+  ordering, and cancel-versus-drain races. The design now resolves initial
+  admission only after the steering backend and close gate attach, installs a
+  provisional row hold before the first await, and gives each steering identity
+  an atomic queued/draining/settled lifecycle.
+- The following recheck found the current inbound dedupe wrapper collapses
+  committed and `inflight` duplicate outcomes. The design now requires the
+  persistent distinction to survive admission, retains the idempotent row hold
+  for `inflight`, and clears it only for confirmed committed duplicates.
+- The latest recheck found nullable conversation repair conflates retryable RPC
+  failure with permanent absence, and exceptional agent exits can strand queued
+  identities. The design now uses discriminated repair outcomes, defers normal
+  stop-after-turn behind accepted steering, and rejects all still-queued
+  identities on exceptional termination.
+- The next recheck found successful backend-free completion can also strand
+  readiness, and anchor repair can reorder a later same-conversation row before
+  affinity is known. The design now settles admission on every terminal-before-
+  ready outcome and reserves per-account source order only through repair and
+  conversation-lane ticketing.
+- The latest recheck found payload preparation was absent from the close
+  predicate and CLI backends have no steering queue. The design now counts
+  pending same-conversation tickets before preparation and capability-gates the
+  immediate path to embedded steer-capable routes.
+- The following recheck found an unresolved anchorless row can delay a later
+  correction's ticket while an active run closes. The design now makes unknown-
+  affinity account reservations provisional close blockers and atomically
+  narrows them to the repaired conversation.
+- The latest recheck found retry could queue behind its own reservation,
+  `/stop` could wait behind unresolved data, and blocked close lacked a sleep/
+  wake transition. The design now uses row-keyed resumable slots, preserves the
+  existing authenticated stop bypass, and adds a signaled gate generation.
+- The next recheck found existing 500-row, two-hour, and retry-give-up catchup
+  limits could skip a cursor-held row after restart. The design now pages
+  oldest-first from the persisted cursor and forbids those limits from crossing
+  the contiguous unresolved row.
+- The latest recheck found ordinary replay keys expire after four hours/capacity
+  pruning and live repair had no retry scheduler. The design now pins committed
+  rows above the cursor in the existing dedupe store with capacity backpressure,
+  prunes pins as the cursor crosses, and retries repair in the existing row slot
+  with abortable backoff.
+- The following recheck found pin writes were best-effort and capacity ignored
+  concurrent admissions. The design now reserves capacity before dispatch,
+  requires strict pin acknowledgment before assistant/tool processing, stores
+  stable source identity for crash reconciliation, and orders cursor cleanup
+  before pin removal.
+- The latest recheck found adoption was mistaken for terminal completion, first-
+  session transcript writes were not durable, and transcript-free successes
+  lacked pins. The design now flushes every adopted user turn, keeps claims and
+  pins through terminal cycle completion, resumes adopted unanswered turns, and
+  pins every successful transcript-free path.
+- The next recheck found transcript-free effects could run before pin adoption,
+  final source pins could become terminal before durable output handoff, and a
+  local pin retry could append twice. The design now adopts before effects,
+  retains claims through processed and pending-final states, reuses existing
+  idempotent effect/delivery records, and reconciles stable transcript identity
+  on every retry.
+- The latest recheck found unsafe incomplete tool calls cannot be resumed and
+  row numbers can repeat across Messages databases. The design now preserves
+  the existing unresumable-tool failure path and keys every source reservation,
+  hold, pin, capacity entry, and cursor by database identity.
+- The following recheck found path/host identity does not distinguish same-path
+  database replacement and notifications may lack row IDs. The design now
+  requires a database-instance generation plus finite row ID and falls back to
+  the current coalescer whenever either capability is unavailable.
+- The latest recheck found file metadata misses in-place restores, rollback
+  cannot discard unresolved pins, and reactions have no durable receipt. The
+  design now requires source continuity anchors, keeps recovery active through
+  rollback drain, and leaves reactions on the current path.
+- The next independent review found continuity was only checked at monitor
+  startup, reactions still appeared after reservation in operational text, and
+  per-event identity fallback could be overtaken by later immediate input. The
+  design now revalidates one consistent source snapshot before every live
+  reservation, routes reactions before all immediate state, and uses a
+  source-wide ordered fallback fence.
+- The retained reviewer then found the fallback fence could reopen at
+  `terminal`, before replay commit and ownership cleanup, and that the plan used
+  an obsolete section contract. The fence now requires delivery/no-reply,
+  successful replay commit, and release of every claim, hold, and pin. The plan
+  now uses the current `Human design` and `Agent details` structure.
+- The next full review found the first fallback handler could start before
+  earlier immediate work drained, rollback used a weaker predicate, and
+  `blocked_unresumable` had no terminating safe disposition. The design now
+  persists a reconstructible source barrier before fallback release, makes
+  rollback pause dispatch and use the same quiescent predicate, and adds an
+  explicit authenticated operator no-replay disposition.
+- The following review found mode alone could not recover a fallback event that
+  lacked replay identity, and an older rollback target could age- or row-cap the
+  paused backlog. Immediate mode now requires exact replay capability, local
+  fallback persists only stable Messages source references before waiting, and
+  unsupported remote bridges remain current-path-only. Rollback keeps the new
+  package installed for lossless current-coalescer catchup before any older
+  package replacement.
+- The latest review found ordinary plugin-state pruning could silently evict
+  pending fallback references. The design now reserves bounded non-expiring
+  capacity atomically, excludes pending references from ordinary pruning, and
+  stops source dispatch without cursor movement when full.
+- A fresh complete-diff recheck found no actionable high-confidence issues.
+  Implementation still must prove the planned crash, capacity, recovery,
+  rollback, and integration behavior against actual APIs.
+- Landing is intentionally held until cron-reader PR #56 merges; no public head
+  movement will occur before coordination clears.
 
 ### Checklist
 
-- [x] Land and validate bounded iMessage text/link/image/sandwich coalescing.
-- [x] Promote and reconcile the exact-byte production patch stack.
-- [x] Investigate the deployed 7/15-second latency paths.
-- [x] Land the first investigation-only proposal without production changes.
-- [x] Capture Cole's queue-drain correction and replace the rejected design.
-- [x] Trace exact normal queue, multimodal, transcript, payload, and delivery behavior.
-- [x] Finalize queue-drain ownership, races, tests, rollout, and rollback.
-- [x] Complete independent adversarial review of the revised proposal and remediation.
-- [x] Land the revised investigation-only plan and pass remote checks.
-- [x] Prepare issue #28 and Todoist for Cole's design approval without deployment.
+- [x] Reopen the task after Cole's design correction.
+- [x] Reconfirm existing agent-core steering and multimodal session support.
+- [x] Identify the narrow iMessage serialization, text-only wrapper, and close-race gaps.
+- [x] Replace the orchestration-heavy proposal with the minimal steering design.
+- [x] Complete independent adversarial review and resolve actionable findings.
+- [ ] Land the reviewed documentation-only revision and pass remote checks.
+- [ ] Return issue #28 and Todoist to Cole for design approval without deployment.
