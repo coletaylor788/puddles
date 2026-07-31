@@ -167,7 +167,7 @@ index e5c6a3c7ef..fad5932b7a 100644
      readChannelAllowFromStoreMock.mockReset().mockResolvedValue([]);
      recordInboundSessionMock.mockClear();
      dispatchInboundMessageMock.mockClear();
-@@ -766,6 +853,182 @@ describe("iMessage monitor last-route updates", () => {
+@@ -766,6 +853,283 @@ describe("iMessage monitor last-route updates", () => {
      },
    );
 
@@ -256,6 +256,107 @@ index e5c6a3c7ef..fad5932b7a 100644
 +    expect(dispatchInboundMessageMock.mock.calls[1]?.[0].ctx.Body).toContain(
 +      "https://example.com/separate",
 +    );
++  });
++
++  it("flushes first standalone URL-preview and image payloads immediately", async () => {
++    debouncerControl.holdEntries = true;
++    debouncerControl.respectDebouncePolicy = true;
++    const mediaDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-imessage-coalesce-"));
++    tempDirs.push(mediaDir);
++    const mediaPath = path.join(mediaDir, "standalone.jpg");
++    fs.writeFileSync(mediaPath, "image");
++
++    let onNotification: ((message: { method: string; params: unknown }) => void) | undefined;
++    const client = {
++      request: vi.fn(async (method: string) => {
++        if (method === "watch.subscribe") {
++          return { subscription: 1 };
++        }
++        throw new Error(`unexpected imsg method ${method}`);
++      }),
++      waitForClose: vi.fn(async () => {
++        onNotification?.({
++          method: "message",
++          params: {
++            message: {
++              id: 724,
++              guid: "LIVE-GUID-724",
++              text: "https://example.com/standalone",
++              balloon_bundle_id: "com.apple.messages.URLBalloonProvider",
++              created_at: new Date().toISOString(),
++              chat_id: 123,
++              sender: "+15550001111",
++              is_from_me: false,
++              is_group: false,
++            },
++          },
++        });
++        await vi.waitFor(() => {
++          expect(dispatchInboundMessageMock).toHaveBeenCalledTimes(1);
++        });
++
++        onNotification?.({
++          method: "message",
++          params: {
++            message: {
++              id: 725,
++              guid: "LIVE-GUID-725",
++              text: null,
++              attachments: [
++                {
++                  original_path: mediaPath,
++                  mime_type: "image/jpeg",
++                  transfer_name: "standalone.jpg",
++                },
++              ],
++              created_at: new Date().toISOString(),
++              chat_id: 456,
++              sender: "+15550001111",
++              is_from_me: false,
++              is_group: false,
++            },
++          },
++        });
++        await vi.waitFor(() => {
++          expect(dispatchInboundMessageMock).toHaveBeenCalledTimes(2);
++        });
++      }),
++      stop: vi.fn(async () => {}),
++    };
++    createIMessageRpcClientMock.mockImplementation(async (params) => {
++      if (!params?.onNotification) {
++        throw new Error("expected iMessage notification handler");
++      }
++      onNotification = params.onNotification;
++      return client as never;
++    });
++
++    await monitorIMessageProvider({
++      config: {
++        channels: {
++          imessage: {
++            coalesceSameSenderDms: true,
++            dmPolicy: "allowlist",
++            allowFrom: ["+15550001111"],
++            includeAttachments: true,
++            attachmentRoots: [mediaDir],
++            sendReadReceipts: false,
++          },
++        },
++        session: { mainKey: "main" },
++      } as never,
++      runtime: { error: vi.fn(), exit: vi.fn(), log: vi.fn() },
++    });
++
++    expect(dispatchInboundMessageMock.mock.calls[0]?.[0].ctx.Body).toContain(
++      "https://example.com/standalone",
++    );
++    expect(dispatchInboundMessageMock.mock.calls[1]?.[0].ctx.MediaPaths).toEqual([
++      expect.stringMatching(/standalone---.+\.jpg$/),
++    ]);
++    expect(dispatchInboundMessageMock.mock.calls[1]?.[0].ctx.MediaTypes).toEqual([
++      "image/jpeg",
++    ]);
 +  });
 +
 +  it("does not merge a payload after an overdue absolute deadline", async () => {
