@@ -20,14 +20,24 @@ final close check. Input that arrives after close starts the next normal turn.
 
 Each source event keeps its arrival order and becomes durable before the model
 can see it. Prepared input stays hidden until the correct run adopts it, then it
-appears once as a normal user turn. If the message database is replaced or the
-process restarts, the source reconciles the exact committed prefix before replay
-continues. That prefix comes directly from stable database rows and does not
-change when message parsing changes. Immediate mode also requires the bridge to
-replay every row after the saved cursor with no fixed lookback clamp. Accepted
-input, reply delivery, and source ownership recover together. An ambiguous
-database replacement or an unknown non-repeatable tool result stops for operator
-review instead of guessing and risking loss or a duplicate effect.
+appears once as a normal user turn. Source checkpoints bind each saved database
+row to its real message identity. A normal deletion of old committed messages
+shrinks that checkpoint and, when needed, rewinds the saved row boundary so a
+future reused row cannot be missed. A changed binding, reordered row, or new row
+inside the committed range still stops for review. Database replacement and
+restart reconcile the remaining exact committed prefix before replay continues.
+The prefix comes directly from stable database rows and does not change when
+message parsing changes.
+
+Immediate mode requires the bridge to replay every row after the saved cursor
+with no fixed lookback clamp. Existing stale-message time limits still decide
+whether an old ordinary message may start an agent turn. They no longer discard
+source ownership. A stale row receives a durable no-reply result, advances the
+cursor and checkpoint in order, and cannot produce a reply during a delayed
+Push recovery burst. Accepted input, reply delivery, and source ownership
+recover together. An ambiguous database change or an unknown non-repeatable
+tool result stops for operator review instead of guessing and risking loss or a
+duplicate effect.
 
 Stops and reactions use the same ordered source gate. Stops keep their current
 authorization and behavior, but record the exact older work they may cancel so
@@ -55,10 +65,12 @@ and switches configuration back to the current coalescer.
 
 ### Status
 
-The corrected design has a clean complete-diff review. Production is unchanged
-and no implementation is approved. The revised documentation candidate is
-moving through exact-commit review, and public landing waits for an unrelated
-prerequisite change.
+The corrected design has a clean complete-diff review. It distinguishes routine
+deletion of committed source rows from a changed binding, preserves the existing
+stale-message windows as durable no-reply gates, and keeps restart recovery
+behavior unchanged. Production is unchanged and no implementation is approved.
+The documentation candidate is moving through exact-commit review, and public
+landing waits for an unrelated prerequisite change.
 
 ## Agent section
 
@@ -128,8 +140,9 @@ immutable database identity; the current deployment needs an operator-reviewed
 boundary. The latest recheck found and removed one stale acceptance criterion
 that still allowed cursor-row-only proof. The next review found runtime forks
 could preserve all boundary anchors while changing an earlier committed row.
-The current source now recomputes the full committed-prefix count/hash before
-every admission; only a genuine immutable generation ID can replace that scan.
+The current source now recomputes the full committed row/GUID bindings and
+digest before every admission; only a genuine immutable generation ID can
+replace that scan.
 The latest review found stale text that could let reactions bypass this gate.
 Live reactions and new polled rows now pass FIFO continuity and prefix validation
 first; a historical polled approval instead proves its exact committed-prefix
@@ -150,8 +163,18 @@ prefix still depended on parser classification and that the existing 500-row
 constant is a replay floor clamp, not pagination. The design now uses a
 version-stable structural database prefix and requires proven unclamped ordered
 replay from the saved cursor before enrollment. The complete corrected-diff
-recheck found no actionable issues. No executable artifact has been approved or
-changed.
+recheck found no actionable issues. Fresh terminal review then found that an
+old message deletion would look like a database fork and that removing the
+existing age fences would let stale Push-recovery rows generate replies. The
+design now stores exact row bindings so a pure committed-row deletion can
+shrink the checkpoint safely, and treats the existing live and recovery age
+limits as durable no-reply dispositions rather than cursor skips. The latest
+recheck found one sentence that could preserve an old startup high-water across
+restart. It now requires a fresh startup sample, preserving the existing
+two-hour window for outage messages, and the empty-prefix fixture explicitly
+proves numeric cursor `0` is not collapsed to absent. The retained reviewer
+rechecked the complete corrected diff and found no actionable issues. No
+executable artifact has been approved or changed.
 
 Public plan-only merges are temporarily frozen until cron-reader PR #56 lands so
 this documentation change does not invalidate that feature's exact promotion
@@ -222,50 +245,69 @@ Acceptance criteria:
 - every ordinary notification enters a generation-independent per-account FIFO
   reservation with a generation-neutral hold before continuity inspection, so a
   later row cannot rotate the generation around an unstaged predecessor;
-- no later source row can leave its reservation slot until the current row's
-  complete text and immutable attachment bytes are durably staged with a
-  source-identified `prepared` pin, and that record stays model-hidden until
-  durable adoption;
+- no later source row can leave its reservation slot until the current row has
+  either committed a durable `stale_no_reply` disposition or staged its complete
+  text and immutable attachment bytes with a source-identified `prepared` pin;
+  that prepared record stays model-hidden until durable adoption;
 - source row identity includes account and Messages database-instance
   generation proven by source continuity, so a same-path or in-place replacement
   cannot reuse another database's hold, pin, or cursor;
 - live admission revalidates that continuity in one source snapshot before each
-  reservation, including a complete ordered-prefix count/hash through the
-  committed cursor when no genuine immutable database generation ID exists, and
-  atomically rotates or fences the source on uncertainty;
+  reservation, including the complete ordered row/GUID binding map and digest
+  through the committed cursor when no genuine immutable database generation ID
+  exists, and atomically repairs a proven committed-row deletion or rotates and
+  fences the source on uncertainty;
 - a source without guaranteed exact-row replay remains current-path-only for its
   whole monitor generation and cannot have older immediate work to overtake;
+- enrollment explicitly probes that the gateway can perform the structural
+  source-database read for the configured account; a remote host, unsupported
+  wrapper, permission failure, or unavailable database remains current-path-only
+  with a clear capability result rather than a generic bootstrap failure;
 - a source whose transport contract permits missing or invalid ordinary row
   identity remains current-path-only for its whole monitor generation;
 - a runtime identity-contract violation fails the source closed, disables
   immediate mode, and never dispatches that event independently around an
   active immediate turn;
-- each contiguous cursor commit atomically advances a durable cryptographic
-  checkpoint over the version-stable structural database GUID prefix before pin
+- each contiguous cursor commit atomically advances a durable checkpoint
+  containing the versioned predicate and scope, every structural database
+  row/GUID binding through the cursor, and a cryptographic digest before pin
   cleanup;
 - bootstrap, incremental commit, per-admission validation, catchup, and
   replacement matching enumerate the same set directly from the source database:
   every account-scoped row in the Messages message table at or below the cursor,
   whether or not live notification delivery or the current parser exposed it,
-  ordered by source row and hashed by real database GUID; if the schema cannot
-  distinguish the configured account, the set includes every message-table row
-  in that database; any member without a stable real GUID blocks the boundary;
+  stored as ordered source-row and real-database-GUID bindings with a digest; if
+  the schema cannot distinguish the configured account, the set includes every
+  message-table row in that database; any member without a stable real GUID
+  blocks the boundary;
 - parser, notification-classifier, and catchup behavior changes cannot alter an
   already committed prefix; any intentional structural predicate migration uses
   an explicit versioned re-bootstrap and never replacement reconciliation;
+- on the current source, removal of committed rows is accepted automatically
+  only when every retained row keeps the same row/GUID binding, no unknown row
+  appears at or below the old cursor, and every unresolved identity above the
+  cursor still matches; the monitor atomically replaces the checkpoint with the
+  retained bindings and rewinds the cursor to the highest retained row when a
+  deleted suffix lowered the source high-water;
+- a changed row/GUID binding, reordered retained row, inserted or reused row at
+  or below the old cursor, missing unresolved identity, or irreproducible
+  predicate scope remains a continuity failure and enters generation
+  reconciliation;
 - initial enablement scans oldest-first through the existing cursor and
-  atomically seeds generation, cursor, count, and hash before any immediate event
-  only after durable state proves the complete ordered prefix, an immutable
-  database identity recorded before cursor advancement proves continuity, or an
-  operator records a reviewed initial boundary; a lone stable GUID match at the
-  cursor row is explicitly rejected;
+  atomically seeds generation, cursor, predicate version, scope, row/GUID
+  bindings, count, and digest before any immediate event only after durable state
+  proves the complete ordered prefix, an immutable database identity recorded
+  before cursor advancement proves continuity, or an operator records a reviewed
+  initial boundary; a lone stable GUID match at the cursor row is explicitly
+  rejected;
 - a same-path replacement before bootstrap cannot inherit the legacy numeric
   cursor without that binding proof;
 - a cursor-crossed row without a stable cross-generation identity blocks
   checkpoint advancement and enters reviewed recovery rather than permanent
   skip;
-- generation reconciliation maps only an exact checkpoint match to the
-  replacement row after that prefix and replays every later row in order;
+- generation reconciliation maps only the checkpoint's exact ordered remaining
+  GUID sequence to the replacement row after that prefix and replays every
+  later row in order;
 - unresolved identities above the checkpoint remain non-expiring through
   reconciliation and cannot be rerun from the replacement database;
 - no automatic transition occurs when the replacement cannot prove the prefix;
@@ -346,7 +388,10 @@ Acceptance criteria:
 - a retryable conversation-repair error retains its row hold, while a confirmed
   permanent skip releases it;
 - restart and catchup cannot omit the earliest cursor-held row because of age,
-  page-size, total-row, or retry-give-up limits;
+  page-size, total-row, or retry-give-up limits; ordinary rows older than the
+  existing live or recovery threshold instead receive a durable `stale_no_reply`
+  disposition, then cross replay, cursor, and checkpoint state normally without
+  model, tool, hook, or delivery work;
 - enrolled recovery passes the persisted cursor directly to a bridge contract
   that proves complete ordered replay of every later row; the existing
   500-row lookback floor clamp is removed for enrolled accounts and is never
@@ -451,11 +496,20 @@ continuity proof through the committed cursor. A source-provided immutable
 generation ID is sufficient only when its contract guarantees it changes for
 every replacement or historical mutation. The current local source exposes no
 such ID, so each admission scans ordered stable GUIDs through the committed
-cursor and compares their exact count/hash with the stored checkpoint. Boundary
-anchors and file identity are supporting evidence only. A lower high-water row,
-prefix mismatch, missing or changed anchor, event mismatch, or any unprovable
-continuity atomically closes immediate admission for that source and rotates the
-generation before it can accept another immediate event. Immediate capability also requires the transport
+cursor and compares the exact row/GUID bindings with the stored checkpoint.
+Boundary anchors and file identity are supporting evidence only. An exact match
+proves the committed prefix unchanged. A strict subset is a benign committed-row
+deletion only when every retained row keeps the same row/GUID binding, no
+unknown row exists at or below the old cursor, and every unresolved identity
+above the cursor still matches. The monitor atomically replaces the checkpoint
+with that subset. If a deleted suffix lowered the high-water row, it also
+rewinds the cursor to the highest retained row, or the empty boundary, before
+live replay resumes. This prevents SQLite row reuse from landing below the saved
+cursor. A changed binding, reordered row, inserted or reused row inside the old
+committed range, missing unresolved identity, irreproducible predicate scope,
+event mismatch, or any other unprovable continuity atomically closes immediate
+admission for that source and rotates the generation before it can accept
+another immediate event. Immediate capability also requires the transport
 contract to guarantee finite row/GUID identity for every ordinary event and
 every authenticated stop request accepted by the existing classifier, and
 complete ordered `since_rowid` replay from any persisted cursor with no fixed
@@ -474,21 +528,27 @@ into the new generation.
 Every prefix operation uses one versioned structural database enumeration that
 does not call notification parsing or catchup classification. It selects every
 row in the Messages `message` table for the source account at or below the
-cursor, including rows never surfaced live, orders by source row ID, and hashes
-the real database GUID sequence and count. If the schema cannot distinguish the
-configured account, the predicate includes every message-table row in that
-database. Bootstrap, incremental cursor commit, per-admission validation,
+cursor, including rows never surfaced live, and orders each real database GUID
+with its source row ID. If the schema cannot distinguish the configured account,
+the predicate includes every message-table row in that database. The checkpoint
+stores which scope variant was used, the complete ordered row/GUID binding map,
+its count, and a cryptographic digest. Bootstrap, incremental cursor commit,
+per-admission validation,
 historical-reaction proof, catchup, and replacement reconciliation share that
 exact predicate. Parser and classifier upgrades therefore cannot change an
 existing checkpoint. A qualifying row without a stable real GUID blocks the
 boundary. Any future structural predicate change increments its stored version
-and requires an explicit reviewed re-bootstrap rather than being interpreted as
-a database replacement.
+and requires an explicit reviewed re-bootstrap. A scope variant that cannot be
+reproduced does the same. Neither case is interpreted as a database replacement.
+Enrollment probes this direct read capability separately from bridge replay and
+reaction-history capability. A remote source, unsupported local wrapper,
+permission failure, or unavailable database fails the probe clearly and keeps
+the whole account on the current coalescer.
 
 Before the feature switch enables immediate admission for an existing account,
 the monitor must bind the path-scoped legacy cursor to the current database. It
 may automatically trust a nonempty prefix only when durable state already
-contains its ordered count/hash commitment or an immutable source database
+contains its ordered row/GUID binding commitment or an immutable source database
 identifier that was recorded before any row in that cursor range was crossed.
 The current row-only cursor and transcript/replay evidence for a GUID at its
 boundary do not prove earlier rows, even when that exact GUID still matches.
@@ -496,12 +556,12 @@ Without full historical proof, an authenticated local operator must inspect the
 source and explicitly accept the initial committed boundary before any scan can
 seed it. An empty cursor may seed an empty prefix after recording the current
 generation. The oldest-first scan then computes and atomically persists
-`(dbInstanceId, cursor, count, hash, bindingProof)`. Bootstrap is read-only
-against Messages. Any RPC/read error, full-prefix proof mismatch, continuity gap,
-or row without stable identity fails bootstrap closed and leaves the account on
-the current coalescer. Remote sources require equivalent full-prefix or
-immutable-identity proof, or an authenticated reviewed boundary; otherwise they
-remain current-path-only.
+`(dbInstanceId, cursor, predicateVersion, scopeVariant, rowGuidBindings, count,
+digest, bindingProof)`. Bootstrap is read-only against Messages. Any RPC/read
+error, full-prefix proof mismatch, continuity gap, or row without stable
+identity fails bootstrap closed and leaves the account on the current coalescer.
+Remote sources require equivalent full-prefix or immutable-identity proof, or an
+authenticated reviewed boundary; otherwise they remain current-path-only.
 
 Each source has an arrival-order mode gate shared by immediate and current-path
 handling. Its FIFO head is the only operation allowed to inspect or change the
@@ -529,18 +589,19 @@ tombstone. Contiguous cursor/checkpoint crossing clears it. Thus only tickets ad
 the fence enter the transition backlog, which is limited to the finite callbacks
 already admitted when the gate was fenced.
 Every
-normal contiguous cursor commit already persisted a cryptographic hash-chain
-checkpoint over the ordered stable GUID prefix before ordinary replay refresh
-or pin cleanup. After
+normal contiguous cursor commit already persisted the versioned predicate and
+scope, complete ordered row/GUID binding map, and cryptographic digest before
+ordinary replay refresh or pin cleanup. After
 old-generation identities complete durable delivered or deliberate no-reply
 disposition, replay commit, and release of every claim, cursor hold, and pin, the
-monitor scans the replacement database oldest-first and computes the same chain.
-Only an exact count/hash checkpoint match establishes the replacement row that
-ends the already committed prefix. Lossless current-coalescer catchup after that
-row owns every unobserved row, including rows before the triggering
-notification. Each backlog event is matched by stable row/GUID to that catchup
-ownership or rejected as stale before its transition entry is released; no backlog
-notification dispatches independently.
+monitor scans the replacement database oldest-first and searches for the exact
+ordered remaining GUID sequence. Only that exact sequence establishes the
+replacement row that ends the already committed prefix. Same-generation deletion
+repair is not available after generation fencing. Lossless current-coalescer
+catchup after the matched row owns every unobserved row, including rows before
+the triggering notification. Each backlog event is matched by stable row/GUID
+to that catchup ownership or rejected as stale before its transition entry is
+released; no backlog notification dispatches independently.
 Before that catchup may classify or dispatch any row, reconciliation scans the
 replacement for every live stop tombstone and reaction marker whose old row
 remains above the contiguous cursor. Each stable GUID must match exactly one
@@ -559,7 +620,8 @@ transition fence. This release cannot
 admit a replacement event. Restart observes that
 the stored generation anchors do not match, reconstructs the old-generation
 barrier, and performs the same checkpoint reconciliation before live dispatch.
-It never defaults to the database minimum or triggering row. If no exact prefix exists,
+It never defaults to the database minimum or triggering row. If no exact ordered
+remaining prefix exists,
 the source remains blocked in recovery-only mode. An authenticated local operator
 may inspect both generations and durably record an explicit accepted boundary or
 abandon the new generation; no automated timeout or fallback chooses one. A
@@ -999,9 +1061,9 @@ does not satisfy feature compatibility.
 Claim checks both ordinary replay identity and the pin. The pin is excluded from
 ordinary oldest-entry pruning until the cursor crosses that row. Cursor crossing
 is serialized with pin cleanup. First atomically persist the new cursor and the
-next cryptographic hash-chain checkpoint over every ordered stable inbound GUID
-in the versioned structural database prefix crossed by that cursor, including
-rows never accepted by the current parser. A
+next versioned predicate, scope variant, ordered row/GUID binding map, count, and
+cryptographic digest for the structural database prefix crossed by that cursor,
+including rows never accepted by the current parser. A
 GUID-less row cannot be crossed or classified as a permanent skip; it blocks
 checkpoint/cursor advancement in reviewed recovery. Then durably refresh the
 ordinary four-hour replay entry and remove the pin. A failure at either later
@@ -1012,15 +1074,32 @@ reservation and wakes a monitor-owned cursor catchup pass before live admission
 resumes. Thus disk failure, a four-hour delay, or 10,000 newer rows cannot convert
 adopted work into duplicate side effects.
 
+The existing message-age rules remain reply gates for ordinary inbound rows.
+The existing startup high-water comparison keeps its current message-age
+meaning. A row at or below the sampled startup high-water uses the current
+two-hour recovery threshold. A later row uses the current 15-minute live
+threshold, including a delayed Apple Push row that receives a fresh row ID.
+Source identity, claim, FIFO order, continuity, and prefix validation still run.
+Before any prompt, tool, hook, or delivery work, a row outside its existing
+threshold receives a durable `stale_no_reply` disposition. That disposition is
+terminal for agent work but not for source work: replay commit, contiguous
+cursor movement, structural checkpoint update, and ownership cleanup still run
+in order. A crash after the disposition resumes source commit without creating a
+turn. A crash before it persists has performed no effect. The restarted process
+samples a new startup high-water, so a row that landed before restart falls at
+or below that new boundary and uses the existing two-hour recovery threshold.
+Stops and reactions keep their separate existing behavior.
+
 On restart the in-memory holds are reconstructed from the persisted cursor
 rather than from a new durable record. For an enrolled account, recovery removes
 the `IMESSAGE_RECOVERY_MAX_ROWS` floor clamp and passes the persisted cursor
 directly to the proven ordered `watch.subscribe` replay contract. The bridge
 streams every later row in ascending order until the contiguous prefix is
-resolved. No fixed lookback, result cap, age fence, or retry give-up may discard
-or advance past the earliest unresolved row. A discriminated permanent skip or
-successful replay commit is required. Existing replay keys make already
-committed rows harmless.
+resolved. No fixed lookback, result cap, age rule, or retry give-up may discard
+source ownership or advance past the earliest unresolved row. A durable
+`stale_no_reply`, discriminated permanent skip, or successful agent-path result
+must be followed by replay commit before the row is crossed. Existing replay
+keys make already committed rows harmless.
 
 Retryable conversation repair is owned by the row-keyed reservation slot. It
 schedules one abortable exponential-backoff retry with jitter per row, reusing
@@ -1059,13 +1138,23 @@ After approval:
    continuity anchors. After the event reaches the generation-independent
    account FIFO head, validate one consistent source snapshot containing the
    event row/GUID, high-water and boundary evidence, and either a genuine
-   immutable source generation ID or the complete ordered GUID count/hash through
-   the committed cursor. The current local source has no immutable ID and must
-   perform the full-prefix read-only scan before every admission. Keep a source
+   immutable source generation ID or the complete ordered row/GUID bindings and
+   digest through the committed cursor. The current local source has no
+   immutable ID and must perform the full-prefix read-only scan before every
+   admission. Treat a strict subset as committed-row deletion only when every
+   retained binding matches, no unknown row exists at or below the old cursor,
+   and all unresolved later identities remain present. Atomically replace the
+   checkpoint and rewind a deleted tail to the highest retained row before
+   resuming. Fence any changed binding, inserted or reused old-range row, missing
+   unresolved identity, or scope mismatch. Keep a source
    without all capabilities current-path-only for the monitor
    generation; remote bridges remain there until they expose the same guarantees.
+   Add an explicit structural-read capability probe for the configured database
+   and account. Distinguish remote host, unsupported wrapper, permission denial,
+   and unavailable database from a prefix mismatch, and keep every failing
+   account current-path-only.
    Before first enablement of a nonempty legacy cursor, require either a durable
-   ordered full-prefix count/hash commitment, an immutable source database
+   ordered full-prefix row/GUID commitment, an immutable source database
    identity recorded before those rows were crossed, or an authenticated
    operator-reviewed initial boundary. Reject a lone matching GUID at the cursor
    row as insufficient. An empty cursor may seed an empty prefix after recording
@@ -1135,7 +1224,7 @@ After approval:
    consistent source snapshot that proves unchanged generation anchors, the
    exact row/GUID, and placement after the committed cursor/prefix. Without a
    genuine immutable generation ID, recompute and compare the complete committed
-   prefix count/hash in that snapshot. This proof may bypass unrelated
+   row/GUID binding map and digest in that snapshot. This proof may bypass unrelated
    preparation but may not rotate generation or advance source state. On uncertainty, keep the journal fenced and defer to
    serialized continuity or replacement reconciliation. Classify a GUID inside
    the matched committed prefix as `historical_no_effect`, record no effect or
@@ -1216,16 +1305,19 @@ After approval:
    If transition persistence fails after replacement is proven, keep the
    in-memory fence and perform the same full backlog transfer before stopping
    dispatch. After the
-   old barrier drains, scan the replacement's ordered stable GUIDs and require an
-   exact count/hash match to the old durable committed-prefix checkpoint. Use
+   old barrier drains, scan the replacement's ordered stable GUIDs and require
+   the exact ordered remaining GUID sequence from the old durable
+   committed-prefix checkpoint. Use
    the matched replacement row as the only automatic replay floor. Before
    catchup classification, enumerate every live stop tombstone and reaction
    marker above the old cursor and require each stable GUID to match exactly one
    replacement row after that floor. Atomically rekey each marker to the
    replacement generation/row, preserving its capacity reservation and terminal
    suppression. A missing, duplicate, or before-prefix match blocks recovery for
-   authenticated operator reconciliation. Only after all markers migrate may uncapped/unaged
-   current-coalescer catchup become sole owner of replacement rows.
+   authenticated operator reconciliation. Only after all markers migrate may
+   unclamped current-coalescer catchup become sole owner of replacement rows.
+   The existing live and recovery message-age rules remain no-reply gates during
+   catchup and never discard source ownership.
    Match each backlog event by stable row/GUID to catchup ownership or reject it
    as stale before releasing its transition entry; never dispatch it independently.
    On transition-state write failure,
@@ -1239,7 +1331,12 @@ After approval:
    a per-account source-order gate with one slot keyed by
    `(accountId, dbInstanceId, rowid)`. At the FIFO head, atomically bind the
    neutral hold to that slot. Duplicate
-   notification or retry resumes the same slot. For unknown affinity, register
+   notification or retry resumes the same slot. After continuity and prefix
+   validation, classify ordinary input with the existing live or recovery age
+   threshold. A stale row durably records `stale_no_reply`, performs no
+   conversation repair, hook, prompt, tool, or delivery work, and retains its
+   slot through normal replay, cursor, and checkpoint commit. For non-stale
+   unknown affinity, register
    an account blocker against existing and subsequently attached run gates
    before the first repair await. While holding the slot, resolve/repair
    affinity and append the event's ticket to the resulting conversation lock and
@@ -1321,15 +1418,28 @@ After approval:
    Scope every bound hold and cursor by the database-instance generation as well
    as account and row. Detect replacement as a new generation and keep old
    state isolated. Atomically persist each contiguous cursor advance with a
-   non-expiring cryptographic hash-chain checkpoint over every crossed ordered
-   structural database GUID. Implement one versioned SQL source-row enumerator
+   non-expiring checkpoint containing every crossed ordered structural database
+   row/GUID binding plus its count and cryptographic digest. Implement one
+   versioned SQL source-row enumerator
    for bootstrap, incremental commit, per-admission proof, historical approval
    proof, catchup, and replacement matching. It selects every row in the
    Messages `message` table for the source account at or below the boundary,
    independent of parser acceptance or notification delivery, in source-row
    order. If the schema cannot distinguish the configured account, select every
-   message-table row in that database. Store the enumerator version with the
-   checkpoint and require reviewed re-bootstrap for any predicate migration. A GUID-less row is
+   message-table row in that database. Store the enumerator version and selected
+   scope variant with the checkpoint and require reviewed re-bootstrap when
+   either cannot be reproduced or for any predicate migration. On startup,
+   reconnect, and each FIFO-head continuity check, compare the current bindings
+   with the checkpoint. When the current map is a strict subset with every
+   retained binding unchanged and every unresolved later identity still present,
+   atomically persist the subset and rewind a missing suffix to its highest
+   retained row before subscription or replay continues. Encode an empty
+   retained prefix as the explicit numeric replay floor `0`, never as an absent
+   `since_rowid`, because omission means tail-only live mode. Carry it with
+   explicit null checks rather than truthiness checks all the way into the
+   subscription. Treat any unknown
+   old-range row, changed binding, retained-row reordering, missing unresolved
+   identity, or scope mismatch as generation uncertainty instead. A GUID-less row is
    retryable/blocked reviewed recovery,
    never a cursor-crossing permanent skip. Change conversation repair
    from nullable output to
@@ -1349,9 +1459,15 @@ After approval:
    directly to `watch.subscribe`. Gate enrollment on a bridge capability probe
    and fixture proving complete ordered delivery of more than 500 later rows
    from that cursor. Do not describe the clamp as pagination or borrow limits
-   from the disabled legacy catchup subsystem. Bypass age suppression and retry
-   give-up for the earliest unresolved row; only permanent skip or successful
-   replay commit may cross it.
+   from the disabled legacy catchup subsystem. Keep the existing
+   `IMESSAGE_STALE_INBOUND_THRESHOLD_MS` live threshold and
+   `IMESSAGE_RECOVERY_MAX_AGE_MS` recovery threshold. Preserve the existing
+   comparison against the sampled startup high-water to choose between them, but
+   move the result after source claim and prefix validation. Persist
+   `stale_no_reply` before any model, tool, hook, or delivery work, then commit
+   replay, cursor, and checkpoint state normally. Do not let age or retry give-up
+   discard the earliest unresolved row; only a durable disposition followed by
+   successful replay commit may cross it.
 10. Reserve bounded pin capacity atomically before claim/dispatch, counting
    durable pins plus every in-flight reservation across lanes. Before releasing
    source order, flush the exact source-identified turn and immutable media and
@@ -1625,11 +1741,37 @@ The managed recording harness must prove:
   `watch.subscribe`, receives every later row exactly once in order, and proves
   the 500-row floor clamp is absent;
 - an unchanged database containing rows rejected by one parser version yields
-  byte-identical structural prefix count/hash before and after a parser or
-  notification-classifier upgrade; changing the versioned structural predicate
-  requires reviewed re-bootstrap and never enters replacement reconciliation;
-- restart after row N ages beyond two hours still retries N rather than
-  suppressing it;
+  byte-identical structural row/GUID bindings and digest before and after a
+  parser or notification-classifier upgrade; changing the versioned structural
+  predicate or scope requires reviewed re-bootstrap and never enters replacement
+  reconciliation;
+- deleting a committed middle row in Messages.app leaves every retained
+  row/GUID binding unchanged, atomically shrinks the checkpoint, keeps the
+  cursor at the highest retained row, and admits the next valid event without
+  generation fencing or operator action;
+- deleting the committed suffix rewinds the cursor and checkpoint to the highest
+  retained row; because the real Messages table uses `AUTOINCREMENT`, a synthetic
+  source fixture explicitly inserts a reused next row ID to prove the generic
+  defense observes and processes it once rather than leaving it below the old
+  cursor;
+- deleting every committed row stores an empty binding map and numeric replay
+  floor `0`; an argument-capture assertion proves restart passes the numeric
+  value `0` to the subscription through explicit null checks, and later rows
+  replay instead of the cursor collapsing into absent tail-only mode;
+- changing a retained row/GUID binding, inserting or reusing a row inside the
+  still-committed range, deleting an unresolved above-cursor identity, or
+  changing the stored scope variant fails continuity and enters reconciliation;
+- a row claimed while inside its existing reply-age window remains retryable
+  after more than two hours of repair delay instead of being reclassified as
+  stale;
+- a Push-recovery burst with row IDs above the sampled startup high-water and
+  original send dates beyond the live 15-minute threshold durably records
+  `stale_no_reply` for every row, advances replay, cursor, and structural
+  checkpoint state through the full burst, and produces zero hooks, model turns,
+  tools, or deliveries;
+- an ordinary row at or below the sampled startup high-water uses the existing
+  two-hour recovery threshold, while rows inside that window retain current
+  recovery behavior;
 - repeated retryable catchup failure for row N never advances the cursor to
   N+1, while a confirmed permanent skip does;
 - committed row N+1 remains deduplicated after row N holds the cursor for more
@@ -1678,7 +1820,7 @@ The managed recording harness must prove:
   the account current-path-only without advancing its cursor;
 - after successful bootstrap, an in-place fork that preserves cursor/high-water
   anchors and the observed event but changes or inserts any earlier committed
-  GUID fails the per-admission full-prefix count/hash check, fences the source
+  row/GUID binding fails the per-admission full-prefix check, fences the source
   before model/tool work, and enters replacement reconciliation;
 - a source with a claimed immutable generation ID may skip full-prefix scans only
   when fixture tests prove the ID changes for every replacement and historical
@@ -1794,12 +1936,17 @@ The managed recording harness must prove:
 - bridge replay capability tests start more than 500 rows behind high-water and
   prove unclamped `watch.subscribe` delivery from the exact persisted cursor;
   failure keeps the account wholly on the current coalescer;
+- structural-read capability tests cover a supported local source, remote host,
+  unsupported wrapper, database permission denial, and unavailable path; every
+  failure reports the exact capability gap and keeps the account wholly on the
+  current coalescer without entering replacement reconciliation;
 - bridge history capability tests expose a tapback's real row and GUID; when
   either is unavailable, immediate enrollment stays disabled for the account
   rather than reporting a working poller;
 - bootstrap, incremental cursor commit, per-admission rescan, historical
-  reaction proof, catchup, and replacement matching hash the identical ordered
-  row set, including a reaction row not surfaced by live notifications;
+  reaction proof, catchup, and replacement matching enumerate the identical
+  ordered row/GUID set with the same predicate version and scope, including a
+  reaction row not surfaced by live notifications;
 - reaction enqueue succeeds before the FIFO ticket releases in normal operation,
   so later source rows do not overtake it;
 - an unresolved predecessor beyond replay TTL leaves the reaction's sparse marker
@@ -1816,7 +1963,9 @@ The managed recording harness must prove:
 - rollback durably pauses new source dispatch without cursor advancement, drains
   accepted immediate and already queued fallback work through delivery, replay,
   and ownership cleanup, switches the same package to the current coalescer, and
-  runs uncapped/unaged cursor catchup to the live row without binary downgrade;
+  runs unclamped cursor catchup to the live row without binary downgrade; stale
+  ordinary rows take their existing durable no-reply age disposition rather than
+  being dropped or creating agent turns;
 - restart during rollback reconstructs recovery-only mode before live dispatch,
   resumes the full drain and lossless current-coalescer catchup, and never asks an
   older capped/aged implementation to consume the retained backlog;
@@ -1826,10 +1975,12 @@ The managed recording harness must prove:
 Latency assertions compare source observation to initial run start and require
 no fixed 7/15-second delay. They include the current local source's complete
 read-only committed-prefix validation cost and report its p50 and p95 separately
-from model time. The canary remains on the current coalescer if that validation
-does not improve the deployed start latency. The test fixture controls
-model/tool completion and the close race deterministically; it does not use
-sleeps as proof.
+from model time. The same measurements cover a large structural-prefix fixture
+and a stale Push-recovery burst, including per-row prefix validation and full
+no-reply drain time. The canary remains on the current coalescer if that
+validation does not improve the deployed start latency. The test fixture
+controls model/tool completion and the close race deterministically; it does
+not use sleeps as proof.
 
 ### Rollout and rollback
 
@@ -1842,12 +1993,16 @@ remote checks:
    the target Mac mini.
 3. Verify exact-byte marker, recovery snapshot, gateway health, iMessage
    capability, and read-only no-delivery evidence.
-4. Bootstrap and verify the existing cursor's ordered identity count/hash before
-   enabling immediate admission.
-5. Enable for one explicit canary conversation in final source-reply mode.
-6. Observe content-free admission accepted/rejected counts, duplicate-run
+4. Bootstrap and verify the existing cursor's ordered row/GUID bindings,
+   predicate version, scope, and digest before enabling immediate admission.
+5. Run the recording canary for a committed middle-row deletion, a committed
+   suffix deletion plus row reuse, and a stale Push-recovery burst. Require
+   automatic deletion repair, complete source advancement, and zero stale
+   replies.
+6. Enable for one explicit canary conversation in final source-reply mode.
+7. Observe content-free admission accepted/rejected counts, duplicate-run
    count, queue depth, and p95 initial-start latency.
-7. Expand only after the canary shows no loss, duplicate reply, or ordering
+8. Expand only after the canary shows no loss, duplicate reply, or ordering
    regression.
 
 Rollback first durably enters recovery-only mode, then pauses new source
@@ -1863,8 +2018,9 @@ At that first quiescent boundary, the same new package switches the source to
 the current coalescer and starts proven unclamped ordered replay from the
 persisted cursor until it reaches a freshly sampled live high-water row and all
 replay handlers commit. The 500-row floor clamp remains removed for this drain.
-New rows that arrive during replay extend the target or remain for normal live
-handling.
+Existing ordinary-message age thresholds produce durable no-reply dispositions
+without dropping source ownership. New rows that arrive during replay extend the
+target or remain for normal live handling.
 
 Rollback remains configuration-only on the deployed package after this second
 quiescent boundary. Binary downgrade is prohibited because predecessor
@@ -2234,11 +2390,12 @@ migration and is outside this feature.
   rejects a lone boundary GUID. Resolved in the final complete-diff recheck.
 - Recheck found that post-bootstrap boundary anchors can also survive a database
   fork that changes an earlier committed row. Every admission on the current
-  source now recomputes the complete ordered GUID count/hash through the cursor
-  in one read-only snapshot before any model, tool, stop, or reaction effect.
-  Only a source contract with a genuine immutable generation ID may skip that
-  scan. Validation preserves all anchors while changing an earlier row and
-  requires immediate admission to fence. Resolved in the final complete-diff recheck.
+  source now recomputes the complete ordered structural prefix through the
+  cursor in one read-only snapshot before any model, tool, stop, or reaction
+  effect. Only a source contract with a genuine immutable generation ID may skip
+  that scan. Validation preserves all anchors while changing an earlier row and
+  requires immediate admission to fence. Resolved in the final complete-diff
+  recheck.
 - Recheck found stale lifecycle text that could preserve early reaction handling
   ahead of source continuity. Every reaction row now passes FIFO and complete
   prefix validation before any effect. General reactions then persist the sparse
@@ -2291,7 +2448,33 @@ migration and is outside this feature.
   cursor across more than 500 rows. The review also found and corrected two
   damaged implementation sentences. The retained reviewer rechecked the
   complete corrected diff against the source schema and runtime clamp and found
-  no actionable issues. Exact-commit review is next.
+  no actionable issues.
+- Fresh exact-commit terminal review found that whole-prefix count/hash equality
+  treated routine deletion of any committed Messages row as a database fork,
+  pausing iMessage until operator action. The checkpoint now stores exact
+  row/GUID bindings, predicate version, and scope. A pure committed-row subset
+  shrinks atomically, and a deleted suffix rewinds the cursor so later SQLite row
+  reuse cannot be missed. Changed bindings, inserted old-range rows, missing
+  unresolved identities, and scope changes still fence.
+- The same terminal review found that removing age suppression would turn stale
+  Apple Push-recovery rows with fresh row IDs into real agent replies. The
+  current 15-minute live and two-hour recovery thresholds now produce durable
+  `stale_no_reply` dispositions after source validation. These rows do no agent
+  work but still commit replay, cursor, and checkpoint state.
+- The retained reviewer found both terminal corrections sound with no actionable
+  issues. Its residual proof notes are now explicit: age selection uses the real
+  startup high-water comparison, an empty prefix uses numeric replay floor `0`,
+  the row-reuse fixture forces an ID because the real schema uses
+  `AUTOINCREMENT`, stale-burst latency runs against a large database, and
+  structural source-read access has its own enrollment probe. Complete-diff
+  recheck of these clarifications is pending.
+- Recheck found one sentence incorrectly called the startup high-water durable
+  across a crash, which would move outage messages from the existing two-hour
+  recovery window into the 15-minute live window. Restart now explicitly samples
+  a new high-water before classifying undisposed rows. The empty-prefix fixture
+  also captures the subscription argument and requires numeric `0` to survive
+  explicit null checks. The retained reviewer rechecked the complete current
+  diff and found no actionable issues. Exact-commit review is next.
 - Landing is intentionally held until cron-reader PR #56 merges; no public head
   movement will occur before coordination clears.
 
