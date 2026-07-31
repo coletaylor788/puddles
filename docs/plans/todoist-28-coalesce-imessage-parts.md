@@ -1,6 +1,6 @@
 # Drain active iMessage input before replying
 
-- **Status:** Steering-based design passed retained review; exact candidate preparation
+- **Status:** Steering-based design passed retained review; exact candidate ready
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-31
 - **Owner:** Cole Taylor
@@ -190,8 +190,8 @@ pool. Each ordinary row now holds one non-expiring lifecycle token and converts
 its marker into a prepared pin in place, with no second capacity check.
 Retained review found no actionable issues after explicit crash-atomicity
 proof for the marker's generation-neutral key becoming a generation-bound pin
-key. The exact candidate is being prepared for retained and fresh terminal
-review. No executable artifact has been approved or changed.
+key. The exact candidate is ready for retained and fresh terminal review. No
+executable artifact has been approved or changed.
 
 Public plan-only merges are temporarily frozen until cron-reader PR #56 lands so
 this documentation change does not invalidate that feature's exact promotion
