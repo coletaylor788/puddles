@@ -5,761 +5,805 @@
 **Last updated:** 2026-07-30
 **Owner:** Cole
 
-## Human design
+## Human section
 
-### Problem
+### Design
 
-High-impact tools such as email delivery need a hard approval boundary that no
-model, prompt, alternate tool, or host-local operator client can bypass. Cole
-must see the exact requested operation and every effective parameter, then
-explicitly approve or deny it. Waiting may take hours, so neither a tool RPC nor
-an agent turn can remain open. After a decision, the side effect and the
-originating task must continue reliably across retries and gateway restarts.
+Some tool calls can cause serious or irreversible effects. Sending email is the
+first example. The agent should be able to prepare such a request, but it should
+not be able to carry it out until Cole has seen the exact action and approved it.
+The approval boundary must still hold if a prompt is malicious, the model picks
+another tool, or a local operator client has broad gateway access.
 
-OpenClaw already has useful pieces, but its current plugin approval path is not
-that boundary. It waits inline, expires within ten minutes, stores pending state
-in memory, carries only plugin-authored free text instead of a raw-versus-resolved
-parameter view, permits timeout-to-allow, gives local CLI/operator clients
-approval scope by default, and runs native plugins in the gateway process. The
-current path therefore cannot safely hold credentials, render the authoritative
-review page, authorize protected decisions, or provide durable asynchronous
-resume without architectural changes.
+OpenClaw's current approval feature does not provide that boundary. It waits
+inside the active tool call, keeps pending state in memory, and expires quickly.
+It shows plugin-written text rather than both the original request and the final
+values that will execute. It can also treat a timeout as approval, and local
+clients may already have approval rights. Native plugins run inside the gateway
+process, so they cannot safely hold a credential that the gateway must never
+use.
 
-### Outcome
+The recommendation is a durable approval service that runs separately from the
+gateway. It owns the protected credential, approval records, staged attachments,
+and execution worker. The gateway can submit a request, but it cannot read or
+change the protected record, approve it, or execute it. The agent also loses
+every alternate route to the protected effect, including direct credentials,
+raw provider access, and unrestricted tools that could reach those resources.
 
-Add a reusable "deferred approval job" capability in a later implementation.
-The authoritative approval store and protected executor will run as a separate
-local service under a separate OS identity. That service alone holds protected
-credentials, immutable staged inputs, approval records, the owner-device public
-key, the review-page TLS identity, and the ability to execute side effects.
-Root-owned or separately administered private DNS and proxy configuration keeps
-the gateway account from repointing either the signing hostname or the separate
-attachment-download hostname. The sidecar directly serves both TLS origins. The
-gateway may push request data and deliver notifications, but it cannot render or
-intercept trusted review content, read approval content, approve, or execute
-requests.
+When the agent calls a protected tool, the gateway sends the request to the
+approval service. The service resolves defaults, snapshots attachments, and
+creates an immutable description of exactly what would run. It returns
+"pending approval" immediately, so the tool call and agent turn do not stay open
+while Cole decides.
 
-A protected tool call will create or reuse a durable immutable request and
-return `pending_approval` immediately. Trusted runtime code will notify Cole by
-iMessage. A link hint will identify the request, while Cole reviews it from the
-authority's bookmarked HTTPS origin on a distinct hostname. That minimal page
-reuses OpenClaw Control UI presentation patterns but is served and signed by the
-authority, not the gateway. It displays the raw model arguments and complete
-resolved execution envelope. Approve requires a signature from a pre-enrolled
-WebAuthn credential scoped to that origin, requiring user verification for every
-decision, pinned to the exact authority hostname rather than a shared parent
-domain, and absent from the gateway host. Model-controlled attachment bytes
-never render on that signing origin. Deny is also available there, with iMessage
-tapback deny as a fail-safe convenience. Approval executes only the stored
-envelope. Every terminal outcome, including cancellation, remains in the
-authority store until the owning agent durably consumes it.
+iMessage is the notification channel, not the approval authority. A fixed,
+trusted sender tells Cole that a request is waiting and provides a navigation
+hint. The model cannot choose the recipient, wording, link, or available
+actions. A tapback may offer a quick deny because a forged denial can only stop
+work. A tapback can never approve.
 
-This reuses OpenClaw's hooks, iMessage integration, UI components, and session
-delivery without building a standalone mobile or desktop app. A small
-authority-hosted web surface is necessary to keep what Cole sees in the same
-trust domain as what executes. Telegram is the preferred alternative
-notification channel if a dedicated approval channel is later wanted.
+Cole reviews the request on a small approval page served by the separate
+approval service. The page shows both the model's original arguments and every
+resolved value, including recipients, headers, options, and attachment hashes.
+Cole uses a previously enrolled device credential and must verify each decision.
+The signature covers the request, the final values, the decision, and a fresh
+challenge. Approval is always for one request. There is no permanent
+"always allow" option.
 
-### Approach
+The approval page uses its own fixed HTTPS hostname. The gateway cannot control
+that hostname, its certificate, or its web content. Attachments are never opened
+inside the approval page. They can only be downloaded from a second hostname
+that has no access to the approval credential. This separation prevents a
+malicious attachment or gateway-controlled page from asking for a valid
+approval signature.
 
-Use capability and identity isolation as the enforcement boundary:
+If Cole approves, the service executes only the stored values and rechecks every
+staged attachment first. If Cole denies, the request can never execute. Missing,
+expired, duplicated, changed, or invalid decisions all fail closed. An approval
+also has a short execution window, so a service restart days later cannot revive
+old authority.
 
-1. The agent can call only a brokered request tool and has no credentialed
-   shell, browser, raw provider API, network route, local approval scope, or
-   readable credential/staging path that can perform the protected side effect.
-   For email, the existing gateway-account Gmail credential and OAuth client
-   configuration must be reduced to exactly `{gmail.readonly}` and no other
-   scope. Any additional Gmail scope fails closed. This excludes direct send
-   scopes plus indirect outbound/exfiltration scopes such as
-   `gmail.settings.basic` and `gmail.settings.sharing`. Only sidecar-owned
-   credentials may hold mutation or send-capable scopes.
-2. The gateway adapter validates model-facing inputs and pushes serializable
-   values and attachment bytes over a narrow submit RPC. The authority never
-   reads caller-supplied filesystem paths.
-3. The authority runs under a separate OS identity, owns a dedicated
-   non-evicting database and content-addressed staging store, resolves all
-   defaults and dynamic inputs, and hashes the complete execution envelope.
-4. Once a stable trusted root-task identifier exists, duplicate submissions for
-   that task, tool, and envelope reuse one record. Until then, and for
-   trivially varied payloads, strict quotas and rate limits are the primary
-   flood control.
-5. Trusted runtime code notifies a fixed owner route that the model cannot
-   select or edit, then the current agent run yields.
-6. Cole opens the authority's bookmarked distinct HTTPS origin. Authority-served
-   code fetches and safely renders every raw and effective parameter, then asks
-   the enrolled off-host WebAuthn credential, with user verification required,
-   to sign the record ID, digest, decision, and freshness challenge. Attachment
-   bytes are available only as forced downloads from a separate origin that
-   cannot invoke that credential and has the same gateway-inaccessible
-   DNS/TLS/proxy ownership.
-7. The authority atomically accepts one `allow-once` or `deny`. Approved work
-   must be claimed and cross the provider boundary within an absolute execution
-   deadline, then executes from the stored envelope after re-verifying
-   staged-input digests. Recovery after that deadline may reconcile prior work
-   but cannot initiate a new side effect without re-approval.
-8. The authority stores the terminal result and repeatedly asks OpenClaw to
-   deliver it until the owning agent's transcript records and acknowledges
-   consumption. A periodic reconciler repairs interrupted notification,
-   execution, and resume work without model polling.
+The approval service keeps the final result until OpenClaw records it in the
+right conversation and the resumed agent turn confirms that it consumed the
+event. A repair loop retries interrupted delivery after restarts. The model does
+not poll for decisions, and OpenClaw's delivery queue is only transport, not the
+source of truth.
 
-### Safety and rollout
+This design reuses OpenClaw's tool hooks, iMessage support, interface patterns,
+and session delivery. It avoids a new mobile or desktop app. The tradeoff is one
+small protected web service and stricter local identity and network setup.
+Telegram is the best alternative notification channel if a dedicated approval
+channel becomes desirable. Other chat and push services add more setup without
+improving the approval boundary.
 
-This task is proposal-only. It does not implement, deploy, configure, notify, or
-send anything.
+Email requires one additional cutover. The gateway's Gmail access must become
+read-only because several broader scopes can send or redirect mail. Routine
+archive, read-state, star, importance, and approved user-label actions move to a
+separate narrow service that cannot express sending, drafting, deletion,
+forwarding, delegation, or arbitrary provider calls. That replacement must be
+working before the old credential is revoked. After revocation, recovery stays
+inside the protected service and never restores send-capable gateway access.
 
-A later implementation must fail closed. Protected tools remain unavailable
-until the separate OS identity, credential isolation, off-host approver key,
-authority-owned HTTPS hostname and TLS key, private phone reachability, pairing,
-root- or separately-owned DNS/proxy control, authenticated record reads, state
-durability, and bypass audit are proven. Notification links are hints; the
-bookmarked authority origin is the security cue and links never authorize
-decisions. Host-local OpenClaw admin or approvals scope is explicitly
-insufficient.
+### Status
 
-The gateway account must also be unable to access Tailscale LocalAPI or any
-equivalent network-control socket that can issue certificates or reconfigure
-routes for the signing or download hostnames.
+This is a design-only proposal. It changes no runtime, credential,
+configuration, notification, or external service. The readability revision is
+complete, and the proposal is ready for Cole to review. Implementation remains
+blocked until Cole explicitly approves it.
 
-Pending requests expire by default after 23 hours, or sooner per tool.
-Approvals not claimed for execution within five minutes become
-`approval_stale` and require a new signed approval. The same absolute deadline
-prevents already-claimed work from starting a provider call after a long outage.
-Duplicate decisions, payload mutation, stale pages, replay, unauthorized record
-reads, Unicode display spoofing, attachment replacement, active attachment
-content, and blind retry after ambiguous provider outcomes all fail closed.
-Separate content policy must hard-block secrets that approval cannot override.
-The authority uses nondecreasing trusted time so clock rollback cannot revive or
-extend approvals, challenges, execution deadlines, cooldowns, or downloads.
+## Agent section
 
-For the first email rollout, credential isolation is incomplete until the
-current gateway-account Gmail OAuth token is re-consented without
-all scopes except exactly `gmail.readonly`, the old token is revoked, and the
-gateway's code/configuration and normal consent instructions request only that
-allowlist. Because `gmail.modify` itself authorizes send, routine archive,
-read-state, star, importance, and configured user-label operations move to a
-narrow sidecar RPC that exposes only hard-coded mailbox-label actions, never
-arbitrary Gmail methods. Generic label operations accept user-created labels
-only; `STARRED` and `IMPORTANT` are available only through dedicated reversible
-fixed actions, while `TRASH`, `SPAM`, `CATEGORY_*`, and every other system label
-remain unavailable.
-The replacement RPC and its sidecar credential must be live and proven before
-revocation. The cutover first inventories current behavior, stages and verifies
-the replacement, routes triage through it, provisions the exact-read-only
-gateway credential, and disables old mutation paths. Revoking the old token is
-the final irreversible step. Before revocation, any failure aborts with the old
-setup unchanged; afterward, failures are fixed forward in the sidecar only, so
-mutation/send scope never returns to the gateway. A post-revocation sidecar
-fault may cause a bounded triage outage; it must alert the operator and use a
-tested sidecar-only recovery procedure rather than silently losing capability.
-Settings scopes are also forbidden because vacation responses, forwarding,
-send-as, and delegation can create outbound or exfiltration paths. Minting any
-new mutation/send credential still requires Cole's interactive Google consent,
-and the gateway must never prompt for those scopes.
+### Current state
 
-Roll out first with a recording-only fake tool and pre-paired test device, then
-a non-production adapter, and only then one low-volume protected tool. Rollback
-disables intake and execution, cancels unclaimed work, preserves records for
-reconciliation, and never restores an unapproved direct side-effect path.
-Approval-feature rollback leaves the already-cut-over narrow mailbox-triage
-sidecar running; that capability has its own fail-safe rollback boundary.
+The design is complete and provider-neutral. It covers the trust boundary,
+request lifecycle, review identity, durable resume, email credential split,
+validation, rollout, and rollback. All accepted independent review findings are
+incorporated.
 
-## Agent details
+Public tracking is on issue 68. External task tracking points to that issue and
+remains open for review. Superseded non-public tracking is retired. This plan
+does not implement or deploy any part of the design.
 
-### State
+### Scope
 
-Research, architecture synthesis, and all independent review rounds are
-complete. Every accepted finding recorded in the review log is incorporated in
-the current design. Final validation found no unresolved material defects and
-confirmed the trust boundaries, state lifecycle, Gmail cutover ordering,
-bounded post-revocation recovery, separate rollback boundaries, and reversible
-mailbox-triage action set against the pinned OpenClaw and Puddles source.
+The proposed implementation includes:
 
-Public tracking is complete. The Todoist tracking and ready-for-review result
-comments point to issue 68, and the task remains open with the
-`ready_for_review` label. Superseded non-public issue and pull-request tracking
-are closed, and their remote review branch is deleted.
+- a registry of serializable tools that require deferred approval;
+- a separate-identity approval authority and executor;
+- a dedicated transactional database and immutable staging store;
+- a review page served by the authority on a dedicated HTTPS hostname;
+- a separate attachment-download hostname;
+- exact display of raw arguments and resolved execution values;
+- one-time signed approve, deny, re-arm, renewal, and cancellation actions;
+- iMessage notification and best-effort quick deny;
+- request deduplication, quotas, expiry, execution freshness, reconciliation,
+  audit, retention, durable resume, and rollback; and
+- a narrow mailbox-triage service needed to remove send-capable Gmail access
+  from the gateway.
 
-The proposal remains ready for review. This publication created no approval
-runtime, notification integration, protected tool, configuration, credential,
-or external side effect.
+This proposal does not include:
 
-### Scope and acceptance criteria
+- implementation, deployment, credential changes, notifications, or test sends;
+- a new mobile or desktop application;
+- gateway-local operator, admin, or approval rights as decision authority;
+- model-written approval messages or model polling as a source of truth;
+- permanent approval for protected effects;
+- approval as an override for secret or content policy; or
+- generic replay of arbitrary tools that depend on live closures, streams,
+  browser state, or other non-serializable context.
 
-In scope for the proposed later implementation:
+### Acceptance criteria
 
-- A configurable protected-tool registry for serializable side-effecting tools.
-- A separate-identity local approval authority and executor.
-- A dedicated durable approval database and immutable staging store.
-- Exact disclosure of raw arguments and all effective execution parameters.
-- Explicit per-call approve and deny signed by an enrolled off-host owner key.
-- Existing-channel notification, beginning with iMessage.
-- An authority-served HTTPS review page on a distinct hostname, reusing existing
-  OpenClaw UI patterns without trusting gateway-served assets.
-- A separate attachment-download origin that cannot invoke the approver
-  credential and is routed and served inside the same administrative boundary.
-- Device-authenticated record reads and single-use attachment download
-  capabilities.
-- Request deduplication, quotas, expiry, execution freshness, idempotency,
-  reconciliation, observability, audit, retention, resume, rollout, and
-  rollback.
+A future implementation is acceptable only when it:
 
-Out of scope:
+1. Keeps protected credentials, records, staged data, decisions, and execution
+   under a separate OS identity.
+2. Removes every alternate protected path from the agent and gateway, including
+   direct credentials, raw APIs, unrestricted network clients, browser
+   automation, shell access, and compatibility fallbacks.
+3. Allows unapproved mailbox triage only through fixed reversible archive,
+   read-state, star, importance, and configured user-label actions.
+4. Rejects host-local OpenClaw operator, admin, or approval rights as authority
+   for a protected decision.
+5. Serves review data and immutable web assets from an authority-owned hostname
+   whose DNS, certificate, TLS key, proxy, and route cannot be changed by the
+   gateway account.
+6. Applies the same administrative separation to every attachment-download
+   hostname.
+7. Shows raw model arguments beside the complete versioned execution envelope,
+   including resolved defaults, destinations, headers, options, and attachment
+   hashes.
+8. Binds every signed decision to the record, envelope digest, decision, owner,
+   expiry, and one-time challenge.
+9. Requires WebAuthn user verification and exact origin and relying-party
+   identity checks for every signed action.
+10. Returns from the original tool call immediately with a durable pending
+    result.
+11. Permits only one signed approval or denial, with all timeout and failure
+    cases defaulting to no execution.
+12. Deduplicates repeated requests when a stable trusted root-task identity is
+    available and always enforces owner, session, tool, submitter, and global
+    quotas.
+13. Accepts attachment bytes, never privileged reads of caller-supplied paths.
+14. Executes only the stored envelope, rechecks staged bytes immediately before
+    the provider call, and respects an absolute execution deadline across
+    recovery.
+15. Uses provider idempotency or reconciliation to prevent duplicates and enters
+    an explicit unknown state rather than retrying an ambiguous effect.
+16. Keeps each lifecycle event until transcript receipt and trusted agent
+    consumption are durable.
+17. Survives restart, duplicate delivery, stale links, unavailable channels,
+    interrupted execution, contention, and exhausted delivery retries.
+18. Keeps full approval bodies and attachments on the protected local service,
+    not in third-party notification channels.
+19. Never executes model-controlled attachment content on the approval origin.
+20. Requires an authenticated owner-device session to read a record and a
+    short-lived single-use capability to download an attachment.
+21. Uses nondecreasing authority-controlled time so clock rollback cannot extend
+    an expiry, challenge, cooldown, execution window, or download capability.
+22. Keeps secret and content policy non-overridable even after approval.
 
-- Implementing or deploying the proposal in this task.
-- A new standalone mobile or desktop application.
-- Treating gateway-local CLI, operator, admin, or approvals scope as sufficient
-  authority for a protected decision.
-- Model-generated approval messages, model-mediated decisions, or model polling
-  as a source of truth.
-- Permanent `allow-always` for protected side effects.
-- Approval as an override for non-overridable content or credential policy.
-- Generic replay of arbitrary existing tools that depend on live closures,
-  streams, browser state, or non-serializable hook context.
+### Threat model and trust boundary
 
-Acceptance requires that a future implementation:
+The protected boundary assumes malicious model output, prompt injection,
+repeated and varied requests, malformed payloads, stale decisions, gateway
+restart, and access to every tool exposed in the agent profile. It does not
+claim safety after root compromise or arbitrary code execution as the approval
+service's OS user.
 
-1. confines protected credentials and execution to a separate OS identity and
-   removes every autonomous alternate credentialed path available to the agent
-   or gateway, including every Gmail scope and code/configuration path that can
-   authorize send;
-2. permits routine unapproved mailbox triage only through a sidecar
-   `mailboxMutation` RPC whose fixed action schema cannot express send, draft,
-   insert, trash, spam, settings, delegation, forwarding, or arbitrary provider
-   calls; whose configured label actions accept user labels only; and whose
-   dedicated reversible system-label actions are limited to archive, read-state,
-   star, and importance;
-3. rejects protected decisions authorized only by host-local OpenClaw
-   operator/admin/approvals scope and requires a configured off-host owner key;
-4. serves the review UI and record API from a distinct authority-owned HTTPS
-   hostname whose TLS/signing keys, DNS, certificate issuance, and terminating
-   proxy configuration are unavailable to the gateway, with equivalent
-   protections for every attachment-download hostname;
-5. displays raw model arguments and the complete versioned execution envelope,
-   including resolved defaults, destinations, headers, options, and immutable
-   attachment references and hashes;
-6. binds a signed decision to the authoritative record ID, envelope digest,
-   decision, owner identity, expiry, and one-time freshness challenge, with
-   WebAuthn user verification required per decision, exact expected origin and
-   RP ID verification, and server-side rejection when the authenticator UV flag
-   is clear;
-7. returns from the originating tool call without waiting for a human;
-8. permits only authenticated `allow-once` or `deny`, with timeout and failure
-   defaulting to no execution;
-9. deduplicates repeated requests once a stable trusted task ID exists and
-   always enforces
-   per-owner, per-session, and per-tool pending quotas;
-10. accepts uploaded attachment bytes but never reads model- or gateway-supplied
-   filesystem paths with sidecar privileges;
-11. executes approved work only from the stored envelope, re-verifies staged
-    bytes immediately before the provider call, respects an absolute execute-by
-    deadline across recovery, and never executes on denial;
-12. prevents duplicate side effects or explicitly enters `execution_unknown`
-   when provider acceptance cannot be proven;
-13. keeps the authority record until a trusted agent-consumption acknowledgement
-    is durable for each sequenced lifecycle event, re-enqueuing failed resume
-    delivery as needed without releasing re-armable stale records;
-14. survives restart, duplicate delivery, stale links, unavailable channels,
-    execution interruption, session contention, and failed queue retries; and
-15. keeps approval bodies and attachments on the local protected service rather
-    than copying them into third-party notification channels.
-16. never executes model-controlled attachment content in the WebAuthn relying
-    party origin.
-17. requires an authenticated owner-device session to read approval records and
-    narrow single-use capabilities to download staged attachments.
-18. uses a nondecreasing authority-controlled time source so backward clock
-    movement cannot extend security deadlines.
+Trusted OpenClaw run, session, and tool-call identifiers are trusted against
+model manipulation. They are not trusted after gateway-account compromise. The
+authority therefore enforces its own owner, submitter, global, and wall-clock
+caps. Even with a compromised gateway account, an approval-gated effect still
+requires an owner signature over the authority's own immutable envelope.
 
-### Architecture and decisions
+The narrow mailbox-triage service is the one bounded exception. It allows only
+reversible archive, read-state, star, importance, and configured user-label
+changes. It has independent limits, audit, and anomaly alerts. It cannot send or
+create another outbound path.
 
-#### Threat model and components
+Native OpenClaw plugins run in the gateway process and are not a security
+boundary. The approval credential, record store, owner keys, and executor must
+not live in a normal native plugin.
 
-The protected boundary assumes model-controlled tool selection and content,
-prompt injection, repeated calls, malformed payloads, stale decisions, gateway
-restart, and an agent capable of invoking whatever local tools its profile
-exposes. It does not claim safety after root compromise or arbitrary code
-execution as the approval-service OS user.
+### Components
 
-Run/session/tool-call values supplied by trusted OpenClaw hook context are
-trusted against model manipulation, not against compromise of the gateway OS
-account. Even under gateway compromise, the sidecar still guarantees no
-approval-gated side effect without an owner WebAuthn signature over its own
-rendered envelope. `mailboxMutation` is the sole bounded exception: it permits
-only reversible archive/read-state/star/importance/configured-user-label
-operations and has independent sidecar-native caps, audit, and anomaly alerts.
-Sidecar-native owner and wall-clock caps that do not depend on gateway-supplied
-identity provide the flood boundary in that stronger threat case.
-
-OpenClaw native plugins run in the gateway process and are not sandboxed
-(`docs/plugins/architecture.md` and `docs/plugins/admin-http-rpc.md` in the
-pinned checkout). Therefore the protected credential and approval authority
-cannot live in a normal OpenClaw plugin.
-
-The design has four components:
-
-| Component | Trust and responsibility |
+| Component | Responsibility |
 |---|---|
-| Gateway request adapter | Validates model-facing schema, submits requests, returns pending status, and has no decision or execution credential |
-| Approval authority/executor sidecar | Separate OS user; owns authoritative DB, staging, owner public key, provider credential, decisions, leases, execution, reconciliation, and audit |
-| Authority-served review page | Reuses OpenClaw UI patterns but is served from a distinct sidecar-owned HTTPS hostname; renders authoritative records and requests an enrolled owner-device signature |
-| Existing channel and resume adapters | iMessage sends fixed notifications; OpenClaw session delivery transports results but never owns their durability |
+| Gateway request adapter | Validates model-facing input, uploads bounded bytes, submits a candidate, and returns pending status. It has no decision or execution credential. |
+| Approval authority and executor | Runs as a separate OS user and owns records, staging, owner public keys, protected credentials, decisions, leases, execution, reconciliation, and audit. |
+| Authority review page | Serves immutable assets and authoritative records from a dedicated HTTPS hostname and requests owner-device signatures. |
+| Attachment download service | Serves forced downloads from a separate hostname after consuming a narrow single-use capability. |
+| Notification adapter | Sends a fixed iMessage hint and accepts only a rate-limited quick deny. |
+| Resume adapter | Delivers sequenced result events to OpenClaw and reports transcript and consumption receipts. |
 
-The sidecar exposes narrow authenticated local RPC:
+The authority exposes a narrow authenticated local protocol:
 
-- `submit` accepts a validated candidate envelope from the configured gateway
-  identity plus uploaded attachment byte streams and may create notifications
-  but cannot cause execution or name sidecar-readable paths;
-- `mailboxMutation` accepts only a fixed action enum such as `archive`,
-  `markRead`, `markUnread`, `star`, `unstar`, `markImportant`,
-  `markNotImportant`, `applyConfiguredLabel`, or `removeConfiguredLabel`, plus
-  bounded message/thread IDs. `archive` may only remove `INBOX`; read-state
-  actions may only add/remove `UNREAD`; star actions may only add/remove
-  `STARRED`; importance actions may only add/remove `IMPORTANT`; and configured
-  label actions may only add/remove an explicit closed allowlist of user-created
-  label IDs. Generic label actions categorically reject `INBOX`, `UNREAD`,
-  `STARRED`, `IMPORTANT`, `TRASH`, `SPAM`, `CATEGORY_*`, every other system
-  label, unknown labels, and any label whose application changes deletion or
-  delivery state. No fixed action exists for `TRASH`, `SPAM`, or `CATEGORY_*`.
-  It dispatches only to Gmail
-  `users.messages.modify`/`users.threads.modify`/approved batch-modify forms,
-  has independent rate limits and audit, and cannot name a provider method,
-  supply a raw request body, or reach `messages.send`, `drafts.*`,
-  `messages.insert`, `messages.import`, `messages.trash`, `settings.*`,
-  forwarding, send-as, delegation, or label IDs outside policy;
-- `get` returns a signed approval view only from the authority HTTPS origin;
-- `get` additionally requires a device-authenticated viewer session scoped to
-  the enrolled owner and requested record;
-- `decide` requires the enrolled owner-device signature and consumes a one-time
-  challenge;
-- `quickDeny` accepts only a rate-limited gateway-relayed iMessage denial and may
-  perform only `pending -> denied`; it cannot approve, re-arm, mutate an
-  envelope, consume a signed challenge, or trigger execution;
-- `status` is read-only and privacy-scoped; and
-- no public `execute` method exists. Only the authority's internal state-machine
-  worker can claim approved records. `mailboxMutation` is the sole explicitly
-  unapproved mutation surface and is not a generic execution escape hatch.
+- `submit` accepts a validated candidate and uploaded attachment streams. It can
+  create a pending record but cannot execute it.
+- `mailboxMutation` accepts only fixed reversible mailbox actions and bounded
+  message or thread identifiers.
+- `get` returns one record only to an authenticated owner-device session.
+- `decide` accepts an owner-signed decision and consumes a one-time challenge.
+- `quickDeny` can only move a pending record to denied. It cannot approve,
+  re-arm, change an envelope, or execute.
+- `status` is read-only and privacy-scoped.
+- There is no public execution operation. Only the authority's internal worker
+  can claim approved work.
 
-Run the sidecar under a dedicated OS account. Its database, socket, staged
-content, credential, and signing material must be unreadable and unwritable by
-the gateway/agent OS account. The provider credential should use an OS keychain
-or equivalent ACL bound to the sidecar identity. The gateway may hold only a
-submit-client credential with no decision or execution capability.
+The authority database, socket, staging store, credential, and signing material
+are unreadable and unwritable by the gateway account. The provider credential
+uses an identity-bound keychain or equivalent ACL. The gateway holds only a
+submit credential.
 
-The provider-neutral broker, protocol, tests, and documentation belong upstream
-in OpenClaw or in this repository. Provider-specific credential and
-configuration wiring remains outside this design.
+The gateway account must not control private DNS, certificate issuance, TLS
+termination, private routes, or network-control sockets for either review
+hostname. If host permissions cannot prove that separation, deployment must use
+a separate private-network node or a network daemon owned by the authority.
 
-#### Model-independent protected-tool boundary
+### Protected-tool contract and immutable inputs
 
-`before_tool_call` is the broad interception point, but the security claim also
-requires a profile-by-profile capability audit:
-
-- the model-facing agent can call only the brokered protected tool;
-- `exec`, browser automation, raw MCP/provider clients, local gateway RPC,
-  diagnostics, file/log reads, and unrestricted network tools cannot reach the
-  sidecar credential, decision key, socket methods, or provider send API;
-- subagents, native harnesses, MCP HTTP callers, and direct gateway tool
-  invocation all route through the protected adapter or lack the capability;
-  and
-- no compatibility fallback exposes the prior direct tool when the sidecar is
-  disabled or unhealthy.
-
-OpenClaw's `approvalMode: "defer"` is useful prior art but is consumed by the
-native hook relay and retains live, non-serializable hook context. It is not a
-durable replay mechanism. Do not persist or restore that context.
-
-#### Protected-tool contract and immutable inputs
-
-Only explicitly registered deferred executors are eligible. Each supplies:
+Only registered deferred executors are eligible. Each executor defines:
 
 - JSON Schema and semantic validation;
 - canonicalization and resolution of defaults, aliases, and dynamic inputs;
-- immutable snapshotting into the authority's content-addressed store;
+- immutable snapshot rules;
 - a deterministic safe review renderer;
-- `execute(envelope, idempotencyKey)`;
-- `reconcile(envelope, idempotencyKey)` for ambiguous outcomes; and
-- a result codec suitable for durable agent delivery.
+- execution with an idempotency key;
+- reconciliation for ambiguous provider outcomes; and
+- a durable result codec.
 
-The content-addressed store is owned by the sidecar account. The gateway and
-agent cannot mutate staged blobs. The gateway opens candidate files using its
-own lesser privileges, rejects traversal and symlink escapes according to the
-tool's file policy, and uploads bounded byte streams plus logical metadata. The
-sidecar never opens a caller-provided path, so it cannot be confused into
-reading its own credential, database, key, or other privileged file. The
-envelope records each staged object's digest, size, MIME type, and logical name.
-Immediately before the provider call, the executor reopens the object from the
-protected store, recomputes its digest and size, compares both to the approved
-envelope, and terminates with `input_integrity_failed` on mismatch.
+The gateway opens candidate files with its lower privileges, rejects traversal
+and symlink escapes under the tool's file policy, and uploads bounded byte
+streams with logical metadata. The authority never opens a caller-provided
+path. Each staged object records a digest, size, MIME type, and logical name.
+Immediately before an effect, the executor reads the protected copy again and
+rechecks its digest and size. A mismatch ends in `input_integrity_failed`.
 
-For email, the execution envelope includes account, provider operation,
-resolved `to`/`cc`/`bcc`, reply-to and thread identifiers, subject, body and
-format, headers, scheduling/send options, stable provider/RFC message identity,
-and each attachment reference. The approval view shows raw model arguments,
-resolved envelope, attachment metadata and digests, and separate-origin forced
-downloads so defaults, alias expansion, and staged content are inspectable
-without executing attachment bytes on the signing origin.
+For email, the immutable envelope includes the account, operation, resolved
+`to`, `cc`, and `bcc` addresses, reply and thread identifiers, subject, body,
+format, headers, scheduling and send options, stable message identity, and every
+attachment reference. The review page shows the original arguments, resolved
+envelope, attachment metadata, hashes, and forced-download links.
 
-#### Dedicated record store and privacy
+### Record store, privacy, and time
 
-Approval records use only a sidecar-owned SQLite database with transactional
-writes. The gateway/agent account cannot read or mutate it. Do not use
-`PluginStateKeyedStore` for authoritative state: it requires entry limits and
-may evict the oldest record. It remains suitable only for ephemeral channel
-hints such as iMessage reaction targets.
+Authoritative records live in a sidecar-owned transactional SQLite database.
+The bounded plugin state store is suitable only for short-lived channel hints
+because it may evict old entries.
 
-The durable record contains:
+Each record contains:
 
-- opaque ID, schema and tool versions, current trusted run ID, optional future
-  stable root-task ID, created time, pending expiry, approval freshness deadline,
-  and retention deadline;
-- owner, agent, session key, session ID, turn and tool-call IDs;
-- canonical raw arguments;
-- canonical execution envelope and SHA-256 digest;
-- protected staged-input references and digests;
-- request dedupe key and duplicate lineage;
+- opaque record, schema, tool, owner, agent, session, run, turn, and tool-call
+  identifiers;
+- creation, pending expiry, approval freshness, execution, and retention times;
+- canonical raw arguments and the versioned execution envelope;
+- envelope and staged-object hashes;
+- deduplication key and renewal lineage;
 - notification attempts and delivered message references;
-- decision challenge, signed decision, resolver public-key fingerprint, and
-  decision time;
-- execution lease, idempotency key, attempt state, result/error, and provider
-  reconciliation evidence, plus an absolute `executeByMs`; and
-- monotonic lifecycle sequence, one stable event ID per emitted state, delivery
-  attempts, transcript receipt, and agent-consumption receipt for each event;
-  and
-- terminal acknowledgement only after a truly terminal state is consumed.
+- decision challenge, signature, owner-key fingerprint, and decision time;
+- execution lease, idempotency key, absolute execute-by time, attempt state,
+  result, error, and reconciliation evidence; and
+- monotonic event sequence, stable event IDs, delivery attempts, transcript
+  receipts, consumption receipts, and final acknowledgement.
 
-Owner, session, run, agent, and tool-call identity used for quotas and
-correlation comes only from trusted OpenClaw hook context, never model
-arguments.
+Identity used for quotas and correlation comes from trusted runtime context, not
+model arguments. Payloads and staged data use owner-only permissions on an
+encrypted local volume. Audit records contain identifiers, hashes, states,
+timings, and actor fingerprints, not message bodies or attachment bytes.
 
-Payload rows and staged content use owner-only permissions on an encrypted local
-volume. Audit logs contain IDs, hashes, states, timings, and actor fingerprints,
-not message bodies or attachment bytes. When pending work expires, its envelope
-and staged bytes move into the same seven-day terminal-retention window rather
-than being deleted immediately. `approval_stale` follows pending retention and
-keeps the envelope and staged bytes throughout its re-arm window, even after its
-stale lifecycle event is consumed. After terminal retention ends, payload and
-staged content are purged while a metadata-only audit record is retained.
+Pending expiry moves payloads into a seven-day terminal retention window.
+`approval_stale` keeps its envelope and staged bytes through its re-arm window.
+After retention, payloads are purged and only metadata audit remains.
 
-All deadlines use authority-controlled nondecreasing time. The sidecar combines
-its monotonic process clock with a persisted wall-clock high-water mark and
-never accepts a lower observed wall time after restart. The gateway account
-cannot change the host clock. Backward clock movement therefore cannot extend an
-expiry, challenge, cooldown, execution deadline, or download capability.
+All deadlines use a nondecreasing authority clock made from monotonic process
+time and a persisted wall-clock high-water mark. Backward clock movement cannot
+extend authority. A large forward jump fails closed, alerts the operator, and
+requires an administrative recovery that cannot revive expired work.
 
-#### Request deduplication and flood control
+### Deduplication and pressure controls
 
-The model does not supply idempotency or intent keys. OpenClaw currently exposes
-trusted `runId`, `sessionId`, and `sessionKey`, but no stable root-task ID that
-survives a logical retry in a later run. Creating or identifying such an ID is a
-phase-one prerequisite for cross-run deduplication. When present, the authority
-computes a dedupe key over `owner + rootTaskId + tool + envelopeDigest` in one
-transaction:
+The model never supplies an idempotency or intent key. Current trusted run and
+session identities do not survive every logical retry. A stable trusted
+root-task identity is therefore a prerequisite for cross-run deduplication.
 
-- if a matching record is pending, approved, or executing, return that record;
-- if it succeeded in the same root task, return `already_executed`;
-- if it was denied, expired, cancelled, approval-stale, failed, or unknown,
-  return that status rather than silently minting a replacement; and
-- a new identical side effect requires a new trusted root task or an explicit
-  "approve duplicate send" decision that clearly references the prior result.
+With that identity, the authority computes a key from owner, root task, tool,
+and envelope digest in one transaction:
 
-An expired record remains terminal and immutable, but it does not permanently
-strand a never-executed request. From the signed authority page, Cole may approve
-a renewal action only within the seven-day terminal-retention window while the
-envelope and staged bytes remain intact. The action is bound to the expired
-record ID, envelope digest, and a one-time challenge. The authority creates a
-new linked pending record with a new ID and expiry; after payload purge renewal
-is unavailable, and model resubmission alone cannot renew or clear the dedupe
-block.
+- a matching active record returns the existing record;
+- a matching success in the same task returns `already_executed`;
+- a matching denied, expired, cancelled, stale, failed, or unknown record
+  returns that state; and
+- another identical effect requires a new trusted task or an explicit signed
+  duplicate review that shows the previous result.
 
-Renewal lineage has one active generation at a time. `approval_stale` is active:
-it retains a live re-arm window, envelope, and staged bytes. Dedupe resolution
-first returns the newest active pending, approved, approval-stale, or executing
-descendant, then the newest terminal descendant, rather than an expired
-ancestor. Database uniqueness is scoped to active generation within a lineage,
-so renewal of an expired ancestor is rejected while any active generation,
-including approval-stale, exists. A signed renewal may coexist with immutable
-terminal ancestors but never with another active copy.
+An expired record remains immutable. During the seven-day retention window,
+Cole can sign a renewal bound to that record and digest. Renewal creates one new
+linked pending record. It is unavailable after payload purge, and model
+resubmission cannot renew anything.
 
-Per-owner, per-session, and per-tool pending caps plus notification rate limits
-fail closed and return a structured `approval_capacity_exceeded` result. They
-are the primary flood control across runs and for payloads varied by even one
-byte; digest deduplication is only an optimization. No design claim relies on
-model instructions not to retry.
+Only one generation in a renewal lineage may be active. Pending, approved,
+`approval_stale`, and executing records all count as active. Lookup returns the
+newest active descendant before any terminal ancestor.
 
-A deny also starts an owner-and-tool cooldown. Near-identical or trivially
-varied requests during the cooldown are suppressed or held without repeated
-notifications, and any later review shows the denied-record lineage and elapsed
-time. This limits serial approval-pressure attacks that stay below concurrent
-pending caps. A legitimate distinct request remains visible, and Cole can inspect
-and clear a cooldown from the signed authority page. Unsigned `quickDeny` uses a
-shorter separately rate-limited cooldown, is marked distinctly in audit and
-alerts, and cannot silently impose the full signed-denial cooldown.
+Per-owner, per-session, per-tool, per-submitter, and global caps fail closed.
+Notification limits and wall-clock request limits do not depend on
+gateway-supplied identity. These controls, not hash deduplication, are the main
+defense against varied payload floods.
 
-In addition to gateway-derived quotas, the sidecar enforces absolute per-submit
-identity, per-owner, and global wall-clock request and notification caps that do
-not depend on session, run, agent, or tool-call values supplied by the gateway.
+A signed denial starts an owner-and-tool cooldown. Near-duplicate requests are
+suppressed or held without repeated notifications. Cole can inspect and clear
+the cooldown from the signed page. Quick deny uses a shorter, separately limited
+cooldown and is clearly distinguished in audit and alerts.
 
-#### State machine, freshness, and execution
+### Decision and execution lifecycle
 
-Transactional states:
+The authority uses these transactional states:
 
 ```text
-pending ---------> denied
-       \---------> expired
-       \---------> cancelled
-       \---------> approved
-approved --------> cancelled
-         \-------> approval_stale
-         \-------> executing
-approval_stale --> pending (owner-signed re-arm)
-               \-> cancelled
-               \-> expired (re-arm window elapsed)
-executing -------> executing (lease re-claim before execute-by deadline)
-          \------> approval_stale (deadline passed; provider not called)
-executing -------> succeeded
-          \------> failed
-          \------> input_integrity_failed
-          \------> execution_unknown
+pending -> denied | expired | cancelled | approved
+approved -> cancelled | approval_stale | executing
+approval_stale -> pending | cancelled | expired
+executing -> executing | approval_stale | succeeded | failed
+executing -> input_integrity_failed | execution_unknown
 ```
 
-Only the first valid decision wins. The `decide` transaction verifies the owner
-device signature, one-time challenge, pending expiry, and displayed digest.
-Approval sets a five-minute claim deadline. If no worker claims it by then,
-`approval_stale` requires a fresh review and signature; it never executes after
-a delayed multi-day recovery. The owner may sign a re-arm action that creates a
-new challenge, resets pending expiry to at most 23 hours from re-arm, creates a
-new best-effort reaction target, and returns the same immutable record to
-`pending`. An unsolicited model resubmission only returns `approval_stale` and
-cannot re-arm it.
+Only the first valid decision wins. Decision processing verifies the
+owner-device signature, one-time challenge, pending expiry, current record, and
+displayed digest.
 
-`approval_stale` is re-armable, not terminal. Entering it starts a fresh
-23-hour re-arm window and retains the full envelope and staged bytes under the
-pending retention policy. If not re-armed, it transitions to `expired`; re-arm
-resets pending expiry to at most 23 hours from that action.
+Pending requests expire after 23 hours by default, or sooner for a tool.
+Approval creates a five-minute claim window and an absolute execute-by time. If
+work is not safely claimed in time, it becomes `approval_stale`. It never
+executes after delayed recovery.
 
-The worker atomically claims an approved record with a lease and uses only the
-stored envelope. At decision time, the authority records an absolute
-`executeByMs` covering the claim window and maximum permitted pre-provider work.
-A restart may recover an expired lease only after reconciling provider state. If
-`now > executeByMs` and reconciliation proves the provider boundary was not
-crossed, transition to `approval_stale`; if provider acceptance is possible but
-unproven, transition to `execution_unknown`. Never start a provider call after
-the deadline. Denial, expiry, cancellation, and stale approval can never
-transition to execution.
+Entering `approval_stale` starts a re-arm window of at most 23 hours. Cole may
+sign a re-arm action during that window. Re-arm uses the same immutable record,
+a new challenge, a new pending window of at most 23 hours, and a new
+best-effort notification target. Model resubmission cannot re-arm it. If the
+re-arm window ends, the record expires.
 
-Cancellation is available only to an owner-signed action or sidecar
-administrative rollback. The model and gateway submit identity cannot cancel a
-record; `quickDeny` is the sole unsigned terminal action and only denies pending
-work. Cancellation from pending, approved, or approval-stale emits a terminal
-sequenced lifecycle event and cannot be re-armed.
+The executor atomically claims approved work with a lease. Restart recovery must
+first reconcile provider state. If the execute-by time has passed and no
+provider call occurred, the record becomes stale. If prior acceptance cannot be
+proved or disproved, it becomes `execution_unknown`. The executor never starts
+a provider call after the deadline.
 
-Exactly-once external effects cannot be guaranteed by local locking alone. A
-provider response can be lost after acceptance. Providers with idempotency
-retry using the same key. Other adapters reconcile before retry. For email, use
-a stable RFC Message-ID or provider draft/message identifier and search sent
-state before deciding whether retry is safe. If acceptance remains ambiguous,
-enter `execution_unknown`, do not resend automatically, notify Cole, and resume
-the agent with that uncertainty.
+Only an owner-signed action or administrative rollback can cancel pending,
+approved, or stale work. Cancellation emits a durable terminal event and cannot
+be re-armed. The gateway and model cannot cancel. Quick deny is the only
+unsigned terminal action and applies only to pending work.
 
-#### Decision identity and trusted review origin
+Local locking cannot guarantee exactly-once external effects. Providers with an
+idempotency facility reuse one key. Other adapters reconcile before retry. An
+email adapter uses stable provider or message identity and searches sent state.
+Ambiguous acceptance never causes blind resend.
 
-Current OpenClaw local CLI/operator clients receive approvals scope by default,
-and loopback Control UI clients may be auto-approved. Neither is valid for
-protected-tool decisions.
+### Trusted review and decision identity
 
-The gateway-served Control UI cannot be the trusted review surface: a
-gateway-writable UI bundle could display one envelope while requesting a
-signature over another. The sidecar therefore serves a minimal review page and
-record API from a distinct HTTPS hostname with a TLS private key unavailable to
-the gateway account. Reuse Control UI components or patterns at build time, but
-serve the reviewed immutable assets from the authority account. A distinct port
-on the gateway hostname is insufficient because WebAuthn relying-party identity
-is hostname-based.
+Gateway-local clients and loopback interfaces may already receive broad
+approval rights. They are not valid identities for protected decisions.
 
-Before enabling a protected tool:
+The review page must not be served by the gateway. A gateway-controlled page
+could display one request while asking for a signature over another. The
+authority serves minimal reviewed assets and record data from a distinct HTTPS
+hostname with a TLS key unavailable to the gateway. A different port on the
+gateway hostname is not enough because WebAuthn identity is hostname-based.
 
-- Cole's phone/browser is on the private tailnet or equivalent private path;
-- private DNS resolves a dedicated authority hostname and its TLS identity is
-  owned by the sidecar account;
-- DNS records, certificate issuance, and any TLS-terminating proxy or private
-  network route for the signing and download hostnames are managed by root or a
-  separate administrative identity and cannot be reconfigured by the
-  gateway/agent account;
-- the sidecar account directly serves both hostnames using TLS keys unavailable
-  to the gateway, with no gateway-controlled proxy termination;
-- the gateway/agent account cannot access Tailscale LocalAPI, the `tailscaled`
-  control socket, or an equivalent control plane capable of issuing hostname
-  certificates or changing private routes; prefer a separate tailnet node or a
-  sidecar-owned userspace network daemon if host permissions cannot prove this;
-- Cole opens and bookmarks that fixed origin directly rather than trusting a
-  model- or gateway-provided destination;
-- a non-exportable WebAuthn credential is created on the phone, scoped to the
-  exact authority hostname as RP ID, never a parent or registrable-domain suffix
-  shared with gateway or download hosts, configured with
-  `userVerification: "required"` for every decision, and its public key
-  fingerprint is enrolled directly in the sidecar's owner configuration;
-- the gateway host has no copy of the private key; and
-- an end-to-end readiness test proves the phone can fetch authority-served
-  assets and records, inspect, sign, and deny a fake request away from the mini.
+Before enablement:
 
-The iMessage link is a navigation hint containing only an opaque request
-identifier and optional anti-enumeration nonce. Cole verifies the bookmarked
-authority hostname before deciding. The link is not a bearer approval token.
-The sidecar issues a fresh decision challenge. The browser signs the request ID,
-envelope digest, decision, challenge, and expiry. The WebAuthn challenge is the
-cryptographic hash of those fields; the decision is not accepted as an unsigned
-sibling field. On every assertion, the sidecar verifies the exact expected
-`clientDataJSON.origin` and `authenticatorData.rpIdHash` for the full authority
-hostname and rejects the assertion if the authenticator-data user-verification
-flag is clear. Host-local gateway credentials, gateway-served UI code, sibling
-hosts, and attachment-download hosts cannot invoke that credential.
+- the owner's phone or browser reaches the authority over a private path;
+- root or another administrative identity controls DNS, certificates, proxying,
+  and routes for both review hostnames;
+- the authority serves both hostnames directly with protected TLS keys;
+- the gateway cannot access the network-control plane that could issue
+  certificates or change routes;
+- Cole opens and bookmarks the fixed authority origin directly;
+- a non-exportable WebAuthn credential is created off-host for the exact
+  authority hostname with user verification required;
+- its public key fingerprint is enrolled directly in authority configuration;
+- at least two independent owner credentials are enrolled for recovery; and
+- an end-to-end readiness test proves remote review, signing, and denial of a
+  fake request.
 
-New owner credentials may be enrolled only through sidecar-account or root
-administrative access, never through gateway approval scope. Enroll at least two
-independent credentials, such as Cole's phone and a hardware security key, so
-loss of one does not permanently block approvals.
+The iMessage link contains only an opaque record identifier and optional
+anti-enumeration value. It is not an approval token. The authority issues a
+fresh challenge. The browser signs the record ID, envelope digest, decision,
+challenge, and expiry. The server verifies the exact origin, relying-party hash,
+signature, and user-verification flag.
 
-If the phone is unpaired, off-tailnet, or the authority is unreachable, the
-notification states "approval unavailable" and the record remains pending until
-expiry. There is no insecure fallback. Telegram may later be enrolled as a
-separate off-host approver, but only if its decision callback is bound to the
-same full-payload review and owner-signature rules.
+New owner credentials require authority-account or root administration.
+Gateway approval rights can never enroll them. If the device is unpaired,
+off-network, or cannot reach the authority, the notification says approval is
+unavailable and the record remains pending until expiry. There is no weaker
+fallback.
 
-#### Safe full-parameter presentation
+### Safe presentation and attachments
 
-The authority creates a signed presentation model from the canonical record and
-serves immutable review assets from its own origin. The page reuses OpenClaw
-Control UI patterns. Fetching any record requires a short-lived,
-device-authenticated owner session and per-record authorization. The page:
+Fetching a record requires a short-lived authenticated owner session and
+per-record authorization. The authority builds the presentation from its
+canonical record. The page:
 
-- show raw arguments and resolved execution envelope side by side;
-- show canonical JSON without truncation;
-- render all model strings as inert text, never HTML or executable links;
-- expose escaped code points for bidi controls, zero-width characters,
-  newlines, and other non-printing content;
-- show internationalized domains in both Unicode and punycode;
-- normalize and prominently display actual recipient addresses and other
-  security-sensitive destinations;
-- highlight raw-versus-resolved changes and duplicate-send lineage;
-- show attachment logical name, declared MIME type, size, digest, and a forced
-  download link; and
-- display the exact digest covered by the owner signature.
+- shows original and resolved values side by side;
+- shows canonical JSON without truncation;
+- renders model strings as inert text, never HTML or active links;
+- exposes bidirectional, zero-width, newline, and other hidden code points;
+- shows internationalized domains in Unicode and punycode;
+- normalizes and highlights actual security-sensitive destinations;
+- highlights original-to-resolved changes and duplicate lineage;
+- shows attachment name, declared type, size, and digest; and
+- displays the exact digest covered by the owner signature.
 
-The approval action always fetches the latest record and signs its current
-digest. A stale browser page, mismatched digest, expired challenge, or changed
-envelope cannot approve.
+The page always fetches the current record before signing. A stale page,
+mismatched digest, expired challenge, or changed envelope cannot approve.
 
-Staged attachment bytes are never rendered inline on the authority/WebAuthn
-origin. Downloads use a separate hostname with no approver credential, cookies,
-or authority API access. After an authenticated viewer requests a download, the
-authority issues an unguessable, single-use capability bound to owner, record
-ID, attachment digest, and a short expiry. The download origin rate-limits and
-atomically consumes that capability before serving bytes, prevents concurrent
-double redemption and enumeration, suppresses token-bearing
-referrers and application logs, and sets `Content-Disposition: attachment`,
-`X-Content-Type-Options: nosniff`, a fixed non-negotiated `Content-Type`, and a
-restrictive `Content-Security-Policy: sandbox`. An implementation may instead
-use an opaque-origin sandbox only if tests prove active HTML, SVG, XHTML,
-scripts, and content-sniffing cannot reach the signing origin or request a
-credential. The signing page itself shows metadata and digest only.
+Attachment bytes never render on the WebAuthn origin. After authenticated
+request, the authority issues an unguessable short-lived capability bound to
+owner, record, attachment digest, and one download. The download service
+atomically consumes it, blocks concurrent reuse and enumeration, omits tokens
+from referrers and logs, carries no approval cookies, and has no authority API
+access. It forces download with a fixed non-negotiated content type, no sniffing,
+and a restrictive sandbox policy. Any alternative sandbox must prove that
+active HTML, SVG, XHTML, scripts, and content sniffing cannot reach the signing
+origin or request a credential.
 
-#### Presentation and notification flow
+### Notification flow
 
-1. The gateway validates model-facing syntax and submits the candidate to the
-   authority.
-2. The authority resolves and snapshots the full envelope, deduplicates, stores
-   the record, and returns:
+1. The gateway validates input and submits a candidate.
+2. The authority resolves values, snapshots inputs, deduplicates, stores the
+   record, and returns pending status.
+3. Trusted runtime code sends a fixed iMessage with tool name, a safe bounded
+   summary, expiry, opaque record ID, digest prefix, and navigation hint.
+4. Cole opens the bookmarked authority origin and reviews the authoritative
+   record.
+5. Approve, deny, re-arm, renewal, and cancellation require a signed
+   owner-device action.
+6. An iMessage tapback may call only quick deny. Tapback approval is disabled.
+7. The authority executes approved work or records a terminal no-execution
+   result.
+8. The authority delivers a sequenced event until OpenClaw records and consumes
+   it.
 
-   ```json
-   {
-     "status": "pending_approval",
-     "approvalId": "...",
-     "resumable": true,
-     "expiresAt": "..."
-   }
-   ```
+The notification excludes full bodies and attachments. The model cannot choose
+the route, wording, link, or decision actions. Any model-derived summary is
+short, inert text with control characters and URL-like content removed.
 
-3. Trusted runtime code sends a fixed iMessage containing tool, owner-safe
-   summary, expiry, request ID, digest prefix, and authority-origin link hint.
-4. Cole opens the bookmarked authority origin; authority-served code fetches and
-   renders the authority record.
-5. Approve, Deny, or Re-arm requires WebAuthn user verification and produces the
-   owner-device signature consumed by the authority. `allow-always` is
-   unavailable.
-6. iMessage tapback deny is best-effort and fail-safe. The current persistent
-   reaction target has a 24-hour TTL and 1,000-entry cap, so protected pending
-   expiry defaults to 23 hours and the authority review page remains the only guaranteed
-   decision path. Tapback approve is disabled.
+The current persistent iMessage reaction target lasts 24 hours and has a
+1,000-entry cap. The default pending window is therefore 23 hours. The signed
+review page remains the only guaranteed decision path. Quick deny accepts a
+denial-of-service risk in exchange for fail-safe behavior; anomalous rates
+alert the operator.
 
-The notification never includes full sensitive bodies or attachments. The model
-cannot select its recipient, wording, link, or decision actions.
-Any summary field derived from model content is rendered as inert,
-strictly length-bounded text with bidi, zero-width, control, and URL-like content
-removed; it is never used as the review source of truth.
-An unsigned or gateway-relayed quick deny can be abused only for denial of
-service, not execution; this fail-safe tradeoff is accepted and anomalous deny
-rates trigger an operator alert. It reaches only the dedicated `quickDeny` RPC;
-the signed `decide` RPC is never relaxed.
+### Channel alternatives
 
-#### Notification options
+| Option | Assessment |
+|---|---|
+| iMessage plus authority page | Recommended. It reuses the current channel, supports a safe quick deny, and requires no new app. |
+| Telegram plus authority page | Best dedicated-channel alternative. Native buttons help navigation, but signed review remains required. |
+| Slack or Discord plus authority page | Strong callback support, but larger workspace and application overhead. |
+| WhatsApp, Matrix, Signal, or QQ | Viable OpenClaw channels with no present advantage. |
+| SMS, LINE, or Microsoft Teams | Reasonable notification channels, but no verified protected-decision advantage. |
+| Self-hosted ntfy | Useful push transport, but still needs the signed authority page. |
+| Pushover | Acknowledgement-oriented and weaker than the recommended flow. |
+| Email | Fragile correlation and a poor primary channel for approving email. |
+| Todoist | Ambiguous approval semantics and unsuitable security UX. |
+| Local notifications or Shortcuts | Do not provide dependable remote approval from the Mac mini. |
+| New mobile or desktop app | Maximum control at the highest implementation and maintenance cost. Not justified. |
 
-| Option | Decision UX | New work | Fit |
-|---|---|---:|---|
-| iMessage plus authority page | Existing notification/tapback path; signed approve/deny on trusted page | Minimal sidecar page using existing UI patterns and owner-device signing | Recommended: Cole's current channel, no standalone native app |
-| Telegram plus authority page | Native buttons and long polling | Bot enrollment and same owner-signature binding | Best alternative dedicated channel |
-| Slack or Discord plus authority page | Native callbacks and rich messages | Workspace/app setup and signature binding | Strong but larger operational footprint |
-| WhatsApp, Matrix, Signal, or QQ | Existing OpenClaw approval-capable channels | Account setup and signature binding | Viable, no current advantage |
-| SMS, LINE, or Microsoft Teams | Existing OpenClaw channels; no verified protected-decision advantage | Account/channel setup plus authority page | Notification-only candidates |
-| Self-hosted ntfy | HTTP notification actions | New adapter/service; actions still need owner signature | Useful push transport, unnecessary now |
-| Pushover | Acknowledge only | New adapter plus web flow | Notification-only and inferior |
-| Email | Reply parsing or links | Polling and fragile correlation | Poor primary decision channel |
-| Todoist | Checkbox/comment/label overload | Webhook and semantic conventions | Ambiguous security UX; do not use |
-| Local notification/Shortcuts | Local actions only; no dependable remote Messages buttons | GUI tooling or app | Does not reach Cole reliably away from mini |
-| Standalone mobile/desktop app | Complete control | Highest | Unnecessary; use the sidecar-hosted web page |
+Apple actionable notification buttons require an app-owned notification
+category. iMessage alone cannot provide a trustworthy third-party approve
+button. This is why the web review surface remains necessary.
 
-iMessage can support notification and best-effort denial, but it does not supply
-native third-party approve/deny buttons. Apple actionable notifications require
-an app-owned notification category, and local Shortcuts/notifications do not
-solve remote Mac mini approval.
+### Durable resume and reconciliation
 
-#### Durable resume and reconciliation
+The authority record is the resume source of truth. OpenClaw session delivery is
+transport only because its retries can exhaust and its final fallback may be
+memory-only.
 
-The authority record is the resume source of truth. OpenClaw's
-`session-delivery-queue` is only a transport: it can exhaust retries and
-ultimately fall back to an in-memory system event.
+Every denial, expiry, cancellation, stale approval, success, failure, integrity
+failure, or unknown outcome creates a self-contained event with a stable ID and
+monotonic sequence. It includes record ID, state, decision, tool, result or
+error, task or run correlation, and an instruction not to regenerate the effect.
 
-After denial, expiry, cancellation, stale approval, execution success, failure,
-integrity failure, or unknown outcome, the authority creates a self-contained
-lifecycle event with its own stable ID and a monotonic sequence number within
-the approval record. The gateway adapter enqueues it for the originating
-session. The event includes approval ID, sequence, state, decision, tool,
-result/error, root-task or current run correlation, and an instruction not to
-regenerate the side effect.
+Delivery is complete only after trusted runtime code:
 
-Delivery is not complete when the queue callback succeeds. A trusted gateway
-hook must:
+1. durably appends the event ID to the target transcript;
+2. schedules the correct agent turn;
+3. sends the authority a receipt when that turn consumes the event; and
+4. records final acknowledgement after the turn completes or durably saves its
+   continuation.
 
-1. durably append the result event ID to the target session transcript;
-2. schedule the corresponding agent turn;
-3. record an authority receipt when the turn consumes that event; and
-4. record terminal acknowledgement after the turn completes or durably records
-   its own continuation.
+Until consumption is acknowledged, the authority retains and re-enqueues the
+event with backoff. Acknowledging `approval_stale` does not release its record
+or block a later event after re-arm. Stable IDs, sequence checks, and transcript
+receipts prevent duplicate or out-of-order turns.
 
-Until each event's consumption is acknowledged, the sidecar reconciler retains
-it and re-enqueues with backoff after stalled, exhausted, or failed delivery.
-Acknowledging an `approval_stale` event does not release the record, envelope, or
-staged content and does not prevent a later sequenced event after re-arm. Event
-ID, sequence, and transcript checks prevent duplicate or out-of-order agent
-turns. If the original session no longer exists, route the complete event to the
-stable owning agent session and approval inbox. Repeated agent-turn failure
-becomes an operator alert, not silent loss.
+If the original session is gone, delivery falls back to the stable owning-agent
+session and approval inbox. Repeated turn failure alerts the operator. Heartbeat
+wake may reduce latency but is not a durability mechanism. An optional
+read-only status tool may show state but cannot decide, mutate, re-arm, or
+execute.
 
-Heartbeat wake may reduce latency but is never the durability mechanism. An
-optional read-only `approval_status(id)` tool may expose state to the model but
-cannot decide, mutate, rearm, or execute.
+### Gmail credential and mailbox-triage boundary
 
-#### Research evidence
+The gateway Gmail credential and OAuth client must have exactly
+`gmail.readonly`. Any additional scope fails closed. Forbidden scopes include
+full mail access, send, compose, modify, insert, add-on compose, settings, and
+sharing scopes. Settings access is forbidden because vacation replies,
+forwarding, send-as, and delegation can create outbound or exfiltration paths.
 
-Primary pinned OpenClaw references:
+The sidecar uses a different OAuth client and refresh token. Only it may hold a
+mutation or send-capable credential. Minting that credential requires
+interactive owner consent and never occurs through the gateway.
+
+Routine triage uses `mailboxMutation` with this fixed action set:
+
+- archive by removing only `INBOX`;
+- mark read or unread by changing only `UNREAD`;
+- star or unstar by changing only `STARRED`;
+- mark important or not important by changing only `IMPORTANT`; and
+- apply or remove only configured user-created labels.
+
+Generic label actions reject `INBOX`, `UNREAD`, `STARRED`, `IMPORTANT`,
+`TRASH`, `SPAM`, every `CATEGORY_*` label, every other system label, unknown
+labels, and any label that changes deletion or delivery state. No fixed action
+exists for trash, spam, category changes, send, draft, insert, import, settings,
+forwarding, send-as, delegation, or an arbitrary provider method.
+
+The RPC accepts only its fixed enum, bounded message or thread IDs, and a closed
+user-label allowlist. It dispatches only to approved message, thread, or batch
+modify operations. It rejects raw request bodies, method names, extra fields,
+and unknown labels before contacting Gmail. It has independent limits, audit,
+and alerts.
+
+### Implementation phases
+
+No implementation is authorized. If Cole approves this design, use separate
+reviewable phases.
+
+1. **Boundary and feasibility.** Prove separate-user isolation, byte-only
+   submission, authority-owned HTTPS identities, gateway-inaccessible network
+   control, safe attachment downloads, authenticated reads, tamper-resistant
+   review assets, off-host WebAuthn, phone reachability, stable root-task
+   identity, complete tool interception, transcript consumption receipts,
+   trusted time, and provider reconciliation. Inventory the current Gmail
+   credential, OAuth client, consent flow, registered tools, triage parameter
+   space, system-label handling, and observed label use.
+2. **Authority core.** Add the non-evicting schema, state machine, quotas,
+   deduplication, immutable staging, digest binding, owner signatures,
+   freshness, leases, reconciliation, retention, and metadata-only audit behind
+   a disabled flag.
+3. **Mailbox triage and cutover rehearsal.** Build the fixed triage service with
+   a distinct credential, action enum, label allowlist, limits, and audit. Prove
+   that no input can select sending or another forbidden action. Rehearse the
+   entire credential cutover while protected approval remains disabled.
+4. **Recording tool.** Connect one fake effect whose executor records envelopes
+   and returns pending immediately.
+5. **Decision surface.** Serve the review page and record API from the authority
+   hostname. Add iMessage hints and quick deny.
+6. **Durable resume.** Add stable result events, transcript receipts,
+   consumption acknowledgement, fallback routing, and reconciliation.
+7. **First provider adapter.** Add one credential-isolated non-production
+   adapter with immutable staging and idempotency or reconciliation.
+8. **Controlled enablement.** Enable one owner and one low-volume tool only
+   after lifecycle tests, security review, bypass audit, pairing rehearsal, and
+   rollback all pass.
+
+Do not serialize live hook context to retrofit arbitrary synchronous tools. Do
+not place the authority, protected credential, or owner decision key in a native
+OpenClaw plugin.
+
+### Validation
+
+The proposal has been checked against current OpenClaw and repository source,
+related plans, and authoritative channel documentation. A future implementation
+must add committed recording-based tests to the repository-managed integration
+pool. No automated test may send a message or mutate a live account.
+
+#### Isolation and authority
+
+Tests must prove:
+
+- separate-user file, socket, keychain, process, and network isolation;
+- gateway denial for authority data, credential, key, execution, network
+  control, certificate issuance, DNS, proxy, and route changes;
+- identical protection for review and attachment hostnames;
+- gateway-local operator, admin, and approval rights cannot decide;
+- every agent profile and invocation surface either uses the broker or lacks the
+  capability, including subagents, native harnesses, MCP calls, browser, shell,
+  diagnostics, file reads, and disabled-sidecar fallback; and
+- owner enrollment, theft resistance, revocation, rotation, recovery
+  credentials, and away-from-host readiness.
+
+#### WebAuthn and review presentation
+
+Tests must cover:
+
+- exact hostname registration, exact origin and relying-party verification,
+  required user verification, signature validation, and rejection when the
+  authenticator user-verification flag is clear;
+- challenge replay, stale challenge, changed decision fields, wrong origin,
+  sibling host, stale page, CSRF, simultaneous decisions, and permanent-allow
+  rejection;
+- complete original and resolved values, canonicalization stability, schema
+  migration, digest display, and original-to-resolved highlighting;
+- bidirectional text, zero-width text, newlines, homoglyphs, punycode, HTML, and
+  link spoofing; and
+- unauthenticated, cross-owner, stale-session, and enumerated record reads.
+
+#### Attachments
+
+Tests must cover:
+
+- byte-only ingestion and refusal to open caller paths;
+- traversal, symlink, privileged-path, size, digest, replacement, and cleanup
+  failures;
+- inaccessible staged objects from the gateway account;
+- active HTML, SVG, XHTML, scripts, and sniffable content never executing on
+  the signing origin or requesting an approval credential;
+- forced-download headers, fixed content type, no approval cookies, no authority
+  API access, and separate-origin isolation; and
+- capabilities that are scoped, unguessable, short-lived, single-use, limited,
+  absent from referrers and logs, and successful for only one concurrent
+  redemption.
+
+#### Lifecycle and pressure
+
+Tests must cover:
+
+- reuse of active duplicates and behavior after every terminal state;
+- same-task success, explicit duplicate review, renewal, lineage uniqueness,
+  newest-generation lookup, and rejection of model-driven renewal;
+- owner, session, tool, submitter, and global quotas;
+- sidecar-native owner, submitter, global, notification, quota, and cooldown
+  limits remaining effective while the gateway forges and rotates run and
+  session identities;
+- varied-payload floods, notification limits, signed-denial cooldown, quick-deny
+  cooldown, legitimate distinct requests, and operator clearing;
+- approve, deny, expiry, signed cancellation, administrative cancellation,
+  stale approval, signed re-arm, unsolicited resubmission, quick deny, forged
+  links, and simultaneous decisions;
+- the stale re-arm window starting on entry, expiring within 23 hours, and
+  becoming terminal without reviving or releasing the wrong lineage;
+- one ordered event for cancellation from pending, approved, and stale states;
+- immediate tool return with no open promise or agent turn;
+- a recording provider receiving exactly the approved stored envelope and
+  protected staged bytes, byte for byte, with no transient or unapproved input;
+- crashes before claim, after claim, before provider call, after provider
+  acceptance, and before result persistence;
+- recovery on both sides of the absolute execution deadline;
+- idempotent retry, provider reconciliation, and unknown outcome without blind
+  resend;
+- restart in every state, lease recovery, concurrent approvals, queue
+  contention, exhausted retries, missing sessions, transcript receipts,
+  consumption receipts, failed turns, and reconciler repair;
+- stale event acknowledgement followed by re-arm and a later ordered event;
+- signed re-arm bound to record, digest, and a one-time challenge;
+- iMessage target retention and capacity, unavailable channel, unpaired or
+  off-network device, expired link, and no insecure fallback;
+- safe bounded notification summaries; and
+- denial, expiry, stale approval, integrity failure, and capacity failure never
+  reaching the provider.
+
+#### Gmail boundary and cutover
+
+Using a dedicated test account and non-deliverable fixtures, tests must prove:
+
+- the old gateway token is revoked;
+- the replacement gateway scope set equals exactly `gmail.readonly`;
+- source, configuration, and normal consent request no other scope;
+- direct send, draft send, vacation reply, filter, forwarding, send-as, and
+  delegation attempts fail for insufficient scope before mutation;
+- gateway and sidecar OAuth clients, refresh tokens, and identities are
+  distinct;
+- the triage service accepts only its fixed actions and configured user labels;
+- it dispatches only approved modify operations;
+- it rejects method injection, raw bodies, extra fields, send, draft, insert,
+  import, trash, settings, forwarding, send-as, delegation, unknown labels, and
+  all disallowed system labels before reaching Gmail;
+- fixed archive, read-state, star, and importance actions change only their
+  named reversible labels;
+- every inventoried routine triage behavior remains available;
+- the replacement and read-only gateway credential are proven before old-token
+  revocation;
+- pre-revocation failure leaves old credentials and routing unchanged;
+- revocation is the final irreversible cutover step;
+- post-revocation failure alerts and follows the tested protected-service
+  recovery path; and
+- approval rollback leaves narrow mailbox triage running.
+
+#### Time, retention, and rollback
+
+Tests must cover:
+
+- payload retention, metadata-only audit, purge, backup, and restore;
+- rollback with pending, approved, stale, and executing records;
+- backward clock movement, restart, skew, and large forward jumps;
+- expiration of pending records, challenges, cooldowns, execution windows, and
+  downloads without revival; and
+- the full repository-managed integration lifecycle with recording adapters and
+  no live delivery or mutation.
+
+### Rollout and rollback
+
+No rollout occurs during this design task. A later rollout follows this order:
+
+1. Keep approval intake, protected execution, and production sidecar disabled.
+2. Create an isolated test identity with fake credentials, a recording executor,
+   and a pre-enrolled test browser key.
+3. Exercise fake approvals through the authority page and recording iMessage
+   adapter.
+4. Pass restart, spoofing, flood, isolation, ambiguous-result, retention, and
+   rollback tests.
+5. Add one non-production provider adapter.
+6. Deploy the production sidecar for narrow mailbox triage only. Complete the
+   rehearsed Gmail credential cutover while approval intake and protected
+   execution remain disabled.
+7. Pair the phone and rehearse remote review, including one attachment through
+   the separate download hostname.
+8. Enable one low-volume protected tool for Cole after the old gateway token is
+   revoked, the gateway token is exactly read-only, routine triage uses only the
+   narrow service, and every alternate send path is gone.
+9. Register more tools only after observed stability.
+
+The Gmail cutover order is strict. Inventory current behavior, stage and verify
+the replacement, route triage through it, verify the distinct read-only gateway
+credential, disable old mutation paths, remove every extra scope from source and
+setup guidance, and revoke the old token last. Before revocation, any failure
+restores unchanged prior routing and credentials. After revocation, failure is a
+bounded alerted outage repaired only in the protected service. Send-capable
+gateway access never returns.
+
+Operational readiness requires durable counts for records by state, oldest
+pending age, deduplication hits, capacity rejection, notification failure,
+stale approval, expired lease, integrity failure, unknown execution, resume
+failure, quick deny, and reconciliation repair. Anomalous deny and stale rates
+must alert.
+
+Approval rollback:
+
+- disables new submissions and executor claims;
+- removes the protected tool from every agent profile;
+- rejects new decisions;
+- cancels pending, approved but unclaimed, and stale records;
+- emits and delivers cancellation events;
+- reconciles already executing work without blind retry;
+- preserves records through retention and purges staged data on schedule; and
+- restores the disabled approval configuration.
+
+Approval rollback does not disable mailbox triage. That service has a separate
+runbook. Before Gmail token revocation, its rollback restores prior routing and
+credentials. After revocation, it alerts and fixes forward inside the protected
+service unless another narrow non-send triage path has already been proven.
+Neither rollback restores the direct protected tool, returns send-capable access
+to the gateway, or transfers a protected credential to the gateway account.
+
+### Risks and tradeoffs
+
+- **Gateway compromise can cause denial of service.** It can flood submission or
+  relay quick denies, but quotas, cooldowns, alerts, and signed approval prevent
+  execution.
+- **The protected service is operationally significant.** Failure after Gmail
+  revocation can pause routine triage. The accepted response is bounded,
+  alerted, protected-service recovery, not restoration of unsafe access.
+- **Exactly-once effects depend on provider support.** Ambiguous outcomes become
+  explicit unknown states and require reconciliation.
+- **Remote review depends on private reachability and owner credentials.** There
+  is no insecure fallback when the phone, network, or authority is unavailable.
+- **A trusted review page adds deployment work.** That cost is necessary because
+  gateway-served content cannot safely describe the action being signed.
+- **Quick deny can be forged by a compromised gateway.** This can stop work but
+  cannot authorize it. The fail-safe tradeoff is intentional.
+- **A stable root-task identity may require upstream work.** Until it exists,
+  quotas are the primary defense against cross-run duplicates.
+- **The model may vary payloads to evade hash reuse.** Absolute sidecar-native
+  limits and cooldowns remain effective.
+- **Root or approval-service compromise is outside the claim.** The design
+  protects against the model and gateway account, not total host compromise.
+
+### Evidence
+
+Primary OpenClaw evidence:
 
 - `docs/plugins/plugin-permission-requests.md`
 - `docs/plugins/architecture.md`
@@ -783,13 +827,14 @@ Primary pinned OpenClaw references:
 - `ui/src/ui/views/exec-approval.ts`
 - `ui/src/ui/controllers/exec-approval.ts`
 
-Relevant Puddles plans:
+Related repository plans cover egress approval, iMessage approval, and session
+delivery wake-up:
 
 - Plan 014, egress approval;
 - Plan 027, iMessage approval channel; and
 - Plan 028, session-delivery queue for agent wake-up.
 
-External channel documentation:
+External channel evidence:
 
 - Slack: https://docs.slack.dev/interactivity/handling-user-interaction/
 - Discord: https://docs.discord.com/developers/components/reference
@@ -799,393 +844,58 @@ External channel documentation:
 - Apple actionable notifications:
   https://developer.apple.com/documentation/usernotifications/declaring-your-actionable-notification-types
 
-### Implementation
+### Review summary
 
-No implementation is authorized. If Cole later approves the proposal, use
-separate reviewable phases:
+The completed design review ended with no unresolved material findings.
+Independent reviews materially changed the design in four areas:
 
-1. **Boundary and feasibility spike:** prove separate-OS-user isolation,
-   byte-only submit RPC, distinct authority HTTPS hostname and TLS ownership,
-   gateway-inaccessible DNS/certificate/proxy control, separate active-content
-   download origin, authenticated read paths, gateway-tampered-asset resistance,
-   off-host WebAuthn enrollment and per-call user verification, phone
-   reachability, stable root-task IDs, full `before_tool_call` coverage, session
-   transcript consumption receipts, sequenced stale/re-arm delivery, trusted
-   time, Tailscale LocalAPI isolation, and provider
-   idempotency/reconciliation.
-   For Gmail, inventory the existing gateway token, OAuth client,
-   source/configuration, consent instructions, registered gateway tools,
-   `archive_email`/`add_label` parameter space, system-label resolution, and
-   observed label usage. Derive the fixed action set and closed user-label
-   allowlist from that inventory, then prove the replacement sidecar credential
-   and narrow mutation path can be staged before revocation.
-   Decide whether provider-neutral work belongs upstream or in public `puddles`.
-2. **Authority core:** add the dedicated non-evicting schema, transactional
-   state machine, dedupe/quotas, content-addressed staging, digest binding,
-   owner signatures, freshness, leases, reconciliation, retention, and
-   metadata-only audit behind a disabled flag.
-3. **Narrow mailbox mutation and credential-cutover rehearsal:** preserve archive,
-   read-state, star, importance, and configured user-label operations through
-   the hard-allowlisted `mailboxMutation` RPC.
-   Use a dedicated sidecar credential handle, action enum, label allowlist,
-   rate limits, and audit; prove no input can select any send, draft, insert,
-   trash, settings, forwarding, send-as, delegation, or arbitrary Gmail method.
-   Build and rehearse this ordered cutover while approval intake and protected
-   execution stay disabled: stage the sidecar credential and RPC; validate every
-   inventoried triage action on safe fixtures; route routine triage through the
-   sidecar and verify it; provision and verify the distinct gateway OAuth client
-   with a scope set equal exactly `{gmail.readonly}`; disable old mutation tools
-   and remove every other scope from gateway source, configuration, and setup
-   instructions, explicitly including `mail.google.com`, `gmail.send`,
-   `gmail.compose`, `gmail.modify`, `gmail.insert`,
-   `gmail.addons.current.action.compose`, `gmail.settings.basic`, and
-   `gmail.settings.sharing`; then revoke the old token as the final irreversible
-   step. Execute the real credential cutover only at rollout step 6, after the
-   later fake-approval, recovery, and test-adapter phases pass. Any failure
-   before revocation aborts and leaves the prior credential and routing
-   unchanged. No cutover step may remove or disable the old path before the
-   replacement is proven and serving. Any sidecar failure after revocation is a
-   bounded, alerted outage repaired through the tested sidecar-only recovery
-   procedure; never restore mutation/send scope to the gateway.
-4. **Recording tool:** connect a fake side-effect tool through the gateway
-   submit adapter. Its executor records envelopes only and returns
-   `pending_approval` immediately.
-5. **Decision surface:** serve the minimal review UI and record API from the
-   sidecar's distinct hostname, reusing OpenClaw UI patterns while keeping
-   immutable assets, record data, and phone signatures in the authority trust
-   domain. Add iMessage link hints and best-effort deny reactions.
-6. **Durable resume:** add result event IDs, transcript append receipts,
-   consumption acknowledgements, session fallback, and reconciler re-enqueue.
-7. **First provider adapter:** add one credential-isolated non-production
-   adapter with immutable input staging and provider-specific idempotency or
-   reconciliation.
-8. **Controlled enablement:** enable one owner and one tool only after the full
-   lifecycle, security review, bypass audit, pairing rehearsal, and rollback
-   pass.
+1. **Trust boundary.** Credentials, records, staging, review content, owner keys,
+   and execution moved out of the gateway process. Host-local approval rights
+   were rejected. DNS, TLS, proxy, route, and attachment-host control were also
+   isolated.
+2. **Decision safety.** Reviews added exact-origin WebAuthn verification,
+   required user verification, device-authenticated reads, safe canonical
+   rendering, separate attachment downloads, execution freshness, signed re-arm
+   and renewal, and durable cancellation.
+3. **Durability and abuse resistance.** Reviews added transactional state,
+   immutable staging, digest rechecks, deduplication lineage, quotas, cooldowns,
+   nondecreasing time, absolute execution deadlines, sequenced resume events,
+   and explicit unknown outcomes.
+4. **Gmail cutover.** Reviews corrected unsafe scope assumptions, limited the
+   gateway to exact read-only access, preserved routine reversible triage
+   through a fixed service, closed system-label escapes, and established safe
+   pre-revocation rollback and post-revocation recovery.
 
-Do not retrofit arbitrary synchronous tools by serializing live hook context.
-Do not place the authority, credential, or owner decision key in a native
-OpenClaw plugin.
+The public relocation and tracking closeout were independently reviewed. The
+readability rewrite removes repetitive review chronology while retaining every
+material decision, requirement, phase, test boundary, rollout rule, risk, and
+current completion state.
 
-### Validation
-
-This proposal was checked against current local OpenClaw and Puddles source,
-current repository plans, and authoritative channel documentation. Every
-recorded review round in the review log was completed and every finding was
-incorporated. Final independent validation found no unresolved material defects,
-and the repository change is documentation-only.
-
-A later implementation requires committed tests in the shared managed lifecycle
-using recording fakes. The matrix must cover:
-
-- separate-user file, socket, keychain, process, and network isolation;
-- sidecar-owned distinct HTTPS hostname, TLS key isolation, bookmarked-origin
-  behavior, gateway attempts to repoint DNS, reconfigure proxying, or reissue a
-  certificate, gateway-tampered UI assets, and wrong-origin WebAuthn attempts;
-- gateway/agent denial of access to Tailscale LocalAPI, `tailscaled` control
-  sockets, certificate issuance, Serve/proxy configuration, and equivalent
-  private-network control surfaces;
-- the same DNS, certificate, TLS-key, proxy, route, and direct-sidecar-serving
-  protections for every attachment-download hostname;
-- proof that gateway-local CLI/operator/admin/approvals scope cannot resolve a
-  protected request;
-- owner-key enrollment, theft resistance, revocation, signature verification,
-  required WebAuthn user verification, challenge replay, stale challenge,
-  decision-field tampering outside the signed challenge, wrong-origin credential
-  request, and credential rotation;
-- exact authority-host RP ID registration and exact `clientDataJSON.origin` and
-  `authenticatorData.rpIdHash` verification; sibling gateway/download origins
-  under the same parent domain cannot request or replay an assertion;
-- assertions with the WebAuthn user-verification flag clear are rejected
-  server-side even when origin, RP ID hash, and signature are otherwise valid;
-- all agent profiles and invocation surfaces, including subagents, native
-  harnesses, MCP HTTP, direct gateway calls, browser, exec, diagnostics,
-  file/log reads, and disabled-sidecar fallback;
-- raw/effective parameter completeness, canonicalization stability, digest
-  mismatch, schema migration, and raw-versus-resolved highlighting;
-- bidi, zero-width, newline, homoglyph, IDN/punycode, HTML, and link spoofing;
-- active HTML/SVG/XHTML/sniffable attachments cannot execute on the authority
-  origin or request an approval credential; forced-download headers and
-  separate-origin isolation remain effective;
-- unauthenticated, cross-owner, stale-session, and enumerated record reads fail;
-  download capabilities are scoped, unguessable, short-lived, single-use, rate
-  limited, and absent from referrer and application logs;
-- byte-only attachment ingestion, refusal to open caller paths, gateway-side
-  traversal/symlink handling, sidecar-privileged-path attempts, staged-object
-  access denial, content replacement, size mismatch, digest mismatch,
-  separate-origin forced download, and cleanup;
-- active duplicate reuse, retry after every terminal state, same-task duplicate
-  success, explicit duplicate-send review, quotas, and notification flood
-  control;
-- owner-signed renewal of an expired never-executed record creates one new
-  linked pending record only during terminal retention; dedupe returns the
-  newest active lineage generation (including approval-stale), rejects renewal
-  while any active generation exists, and unsigned/model resubmission cannot
-  renew it;
-- sidecar-native wall-clock caps survive forged gateway session/run identity;
-  signed-denial and quick-deny cooldowns are distinct, observable, clearable,
-  and do not suppress legitimately distinct requests;
-- authorized approve, unauthorized host-local decision, deny, expiry,
-  signed cancellation, administrative rollback cancellation, approval freshness
-  lapse, owner-signed re-arm, unsolicited stale resubmission, quick-deny method
-  confinement and rate limits, stale page, forged link, CSRF, simultaneous
-  decisions, and `allow-always` rejection;
-- pending, approved, and approval-stale cancellation each emit and deliver one
-  terminal sequenced event that the agent durably consumes;
-- immediate non-blocking tool return and no lingering tool promise or agent turn;
-- executor crash before claim, after claim, before provider call, after provider
-  acceptance, and before result persistence, including recovery before and after
-  the absolute execute-by deadline;
-- recovery after claim and after execute-by must not call the provider when
-  reconciliation proves no prior call, and must become `execution_unknown` when
-  prior acceptance is ambiguous;
-- provider-idempotent retry, provider reconciliation, and
-  `execution_unknown` without blind resend;
-- gateway and sidecar restart in every state, expired lease recovery, concurrent
-  approvals, queue contention, queue retry exhaustion, missing original session,
-  transcript receipt, consumption acknowledgement, repeated agent-turn failure,
-  and reconciler repair;
-- acknowledged `approval_stale`, owner-signed re-arm, and later terminal outcome
-  produce correctly ordered, separately acknowledged sequence events while
-  retaining staged content until the truly terminal state;
-- owner-signed re-arm is bound to record ID, immutable envelope digest, and a
-  one-time challenge;
-- iMessage target TTL/cap behavior, unavailable channel, unpaired phone,
-  off-tailnet phone, expired deep link, and no insecure fallback;
-- notification summaries strip or neutralize bidi, zero-width, controls, and
-  URL-like model content and remain strictly bounded;
-- proof denial, expiry, stale approval, integrity failure, and capacity failure
-  never call the provider;
-- proof execution uses the stored envelope and protected bytes exactly;
-- the prior gateway Gmail token is revoked; `tokeninfo` confirms its replacement
-  scope set equals exactly `{gmail.readonly}` and fails on any additional scope;
-  gateway source/configuration and normal consent flow request only that
-  allowlist; and only distinct sidecar OAuth clients and identity can access
-  mutation/send capability;
-- using a dedicated test account and non-deliverable fixtures, direct
-  `users.messages.send` and `users.drafts.send` attempts with the gateway
-  credential fail with `403 insufficient scope` before any external mutation;
-- using the same safe test-account method,
-  `users.settings.updateVacation`, `users.settings.filters.create`,
-  `users.settings.updateAutoForwarding`, forwarding-address creation, send-as,
-  and delegation attempts with the gateway credential fail for insufficient
-  scope;
-- `mailboxMutation` accepts only its fixed actions and configured label IDs,
-  dispatches only to approved modify endpoints, rate-limits and audits calls,
-  and rejects method-name injection, raw bodies, extra fields, send/draft/insert/
-  import/trash/settings/forwarding/send-as/delegation requests, and unknown
-  labels without reaching Gmail;
-- `mailboxMutation` rejects `applyConfiguredLabel` or
-  `removeConfiguredLabel` for `TRASH`, `SPAM`, `INBOX`, `UNREAD`, `STARRED`,
-  `IMPORTANT`, `CATEGORY_*`, every other system label, unknown labels, and
-  arbitrary labels; only dedicated fixed actions may touch
-  `INBOX`/`UNREAD`/`STARRED`/`IMPORTANT`, no fixed action touches any other
-  system label, and only explicitly configured user-created label IDs reach
-  Gmail;
-- fixed archive, read-state, star, and importance actions change only their
-  named reversible labels and preserve every inventoried routine triage
-  behavior;
-- phase-one inventory covers the registered Gmail tool surface, parameter
-  space, system-label resolution, and observed label use; replacement
-  acceptance is measured against that inventory;
-- cutover ordering proves the sidecar replacement and exact-read-only gateway
-  credential before the old token can be revoked; a pre-revocation failure
-  leaves the prior credential and routing unchanged; old-token revocation is the
-  final irreversible step; and a post-revocation fault has a tested sidecar-only
-  fix-forward path;
-- fault injection at every cutover boundary proves no cutover step disables the
-  old path before the replacement is proven and serving, a pre-revocation abort
-  restores the old path, post-revocation sidecar failure raises an alert and
-  follows the tested bounded fix-forward recovery procedure, and
-  approval-feature rollback leaves `mailboxMutation` and its credential
-  available;
-- retention expiry, metadata-only audit, payload purge, backup behavior, and
-  rollback with pending and executing records; and
-- backward wall-clock jumps, restart, and clock skew cannot extend or revive
-  pending expiry, execution deadline, WebAuthn challenge, cooldown, or download
-  capability;
-- a large forward clock jump fails closed, raises an operator alert, and has a
-  documented sidecar-admin recovery procedure that cannot revive expired work;
-- simultaneous redemption of one download capability yields exactly one
-  successful response;
-- the full repository-managed integration pool, with no live message delivery
-  or external mutation.
-
-### Rollout and rollback
-
-No rollout occurs in this task.
-
-Future rollout order:
-
-1. approval intake, protected-tool execution, and the production sidecar
-   disabled by default;
-2. separate test OS identity, fake credential, recording executor, and
-   pre-enrolled test browser key in the managed environment;
-3. fake approvals through the authority-served review page and iMessage
-   recording adapters;
-4. restart, spoofing, flood, isolation, ambiguous-result, retention, and
-   rollback exercises;
-5. one test-only provider adapter with non-production credentials;
-6. deploy the production sidecar for `mailboxMutation` only, complete the
-   ordered Gmail triage and credential cutover rehearsed in implementation
-   phase 3, after rollout steps 2-5 have passed, and keep approval intake and
-   protected execution disabled;
-7. phone pairing and away-from-mini readiness rehearsal, including one
-   attachment-bearing request reviewed through the separate download origin;
-8. one low-volume real protected tool for Cole, with the old gateway token
-   already revoked, the replacement gateway token restricted exactly to
-   `{gmail.readonly}`, routine triage operating through only the narrow sidecar
-   RPC, and all autonomous alternate send paths removed;
-9. broader registration only after observed stability.
-
-Operational readiness requires durable counters for records by state, oldest
-pending age, dedupe hits, quota rejections, notification failures, stale
-approvals, expired leases, integrity failures, ambiguous execution, resume
-delivery/consumption failures, quick-deny rates, and reconciler repairs.
-Alert on anomalous deny rates and approval-stale rates.
-
-Approval-feature rollback disables new approval submissions and executor
-claims, removes the protected tool from every agent profile, rejects new
-decisions, cancels pending and approved-but-unclaimed and approval-stale
-records, emits their cancellation events, lets already executing work reconcile
-rather than retry blindly, preserves records through the retention window,
-purges staged content on schedule, and restores the prior disabled approval
-configuration. It does not disable `mailboxMutation`, its sidecar credential, or
-routine triage.
-
-`mailboxMutation` has a separate rollback runbook. Before old-token revocation,
-cutover abort restores unchanged prior routing and credentials. After
-revocation, faults trigger an operator alert and the tested bounded
-sidecar-only fix-forward procedure unless another narrow, non-send-capable
-triage path has already been proven. Neither rollback exposes the original
-direct side-effecting tool, restores mutation/send scope to the gateway, or
-transfers a protected credential to the gateway account.
-
-### Review log
-
-- 2026-07-30: Created the required two-part design before product research.
-- 2026-07-30: Researched current OpenClaw approval, iMessage, Control UI,
-  persistence, and resume facilities plus external channel options.
-- 2026-07-30: Recommended iMessage notification plus an existing-Control-UI
-  review surface and a durable deferred-job lifecycle.
-- 2026-07-30: Independent adversarial review found three blocking issues:
-  in-process credential isolation was impossible, host-local operator scope
-  could self-approve, and request flooding could mint independent side effects.
-  It also found seven durability, staging, reachability, staleness, rendering,
-  and reaction-lifetime gaps. All findings were accepted and remediated in the
-  full design.
-- 2026-07-30: Fresh independent recheck found three remaining trust-boundary
-  issues in the gateway-served review UI, authority database ownership, and
-  staged-input ingestion, plus four channel, deduplication, evidence, and
-  rollback accuracy issues. All were accepted and remediated. Final clean
-  recheck followed.
-- 2026-07-30: Final clean-room review found an active-attachment same-origin
-  signing bypass plus WebCrypto user-presence, stale re-arm, and quick-deny RPC
-  gaps. All were accepted and remediated.
-- 2026-07-30: Terminal review found an executing-record freshness bypass,
-  gateway-reconfigurable authority routing, and unauthenticated record/download
-  reads. All were accepted and remediated with an absolute execution deadline,
-  separately administered hostname infrastructure, authenticated views, and
-  single-use download capabilities. Final clean recheck is pending.
-- 2026-07-30: Clean audit found that attachment-download routing lacked the
-  signing origin's administrative isolation and that stale events conflicted
-  with re-arm and retention. It also identified guarantee-scoping and recovery
-  hardening opportunities. All were incorporated across trust, event,
-  retention, notification, time, cooldown, and validation design. Terminal
-  verification followed.
-- 2026-07-30: Terminal verification found no blocking defects. It identified
-  exact WebAuthn RP/origin verification and cancellation resume delivery as
-  non-blocking omissions. Both were remediated, along with concrete Tailscale,
-  forward-clock, re-arm-signature, and attachment-rehearsal validation.
-- 2026-07-30: Final verification found no blocking defects. It identified
-  server-side WebAuthn UV enforcement, the concrete existing Gmail credential
-  split, review-status wording, and expired-request renewal as final
-  non-blocking gaps. All were incorporated. Final confirmation is pending.
-- 2026-07-30: Final confirmation found no blocking defects. It identified
-  expired-renewal retention/dedupe ambiguity and incomplete Gmail OAuth-client
-  separation. Both were remediated with a bounded renewal lineage and distinct
-  gateway/sidecar OAuth configuration. Closeout confirmation is pending.
-- 2026-07-30: Closeout confirmation found that `gmail.modify` still authorizes
-  send and that approval-stale was missing from active lineage rules. The Gmail
-  gateway is now limited to scopes that cannot send, all message mutation moves
-  behind the sidecar or is removed, and approval-stale is active for dedupe and
-  uniqueness. Final audit is pending.
-- 2026-07-30: Final audit found the gateway scope design still left routine
-  mailbox mutation undefined and omitted Gmail settings-based outbound paths.
-  The gateway token is now exactly `gmail.readonly`; routine triage uses a
-  hard-allowlisted, audited sidecar RPC that cannot express send; and all extra
-  Gmail scopes fail closed. Clean closeout is pending.
-- 2026-07-30: Clean closeout found a destructive system-label bypass in the
-  narrow mailbox RPC, an overbroad compromised-gateway invariant, and stale
-  review-count evidence. Label actions now accept configured user labels only,
-  the invariant explicitly excludes the bounded reversible triage RPC, and
-  validation follows the complete review log. Final confirmation is pending.
-- 2026-07-30: Closeout confirmation found no blocking defects and one
-  rollout-order ambiguity: revoking `gmail.modify` before the narrow
-  replacement existed would temporarily break routine triage. The replacement
-  is now proven and routed before old-token revocation. Final confirmation
-  followed.
-- 2026-07-30: Final confirmation found that the replacement omitted current
-  star/importance triage and that its cutover, rollout, rollback, and abort
-  semantics were incomplete. Dedicated reversible star/importance actions now
-  preserve compatibility; phase-one inventory defines the acceptance baseline;
-  the old token is revoked only after the replacement is live and proven; and
-  approval rollback leaves narrow triage running. Clean confirmation is
-  pending.
-- 2026-07-30: Clean confirmation found no blocking defects and one impossible
-  absolute availability invariant after irreversible token revocation. The
-  guarantee now covers safe cutover ordering; post-revocation sidecar failure
-  is an alerted, bounded, tested fix-forward outage. Phase 3 rehearses the
-  cutover and rollout step 6 executes it after prerequisite exercises. Final
-  validation is pending.
-- 2026-07-30: Final validation found no unresolved material defects. It confirmed
-  safe Gmail cutover ordering, bounded alerted fix-forward recovery, separate
-  approval rollback, fixed reversible triage actions, user-label-only generic
-  actions, and proposal-only scope. The proposal is ready for review.
-- 2026-07-30: Independent public-relocation review found no actionable findings.
-  It verified documentation-only scope, required plan structure, preservation
-  of the completed source design, public issue metadata, whitespace, and the
-  absence of private or stale tracking references.
-- 2026-07-30: Terminal publication review found that `State` duplicated the
-  review chronology instead of describing only the current proposal. The state
-  was condensed without removing design decisions or the complete review log.
-- 2026-07-30: Fresh complete-diff recheck confirmed the state correction and
-  found no remaining actionable issues.
-- 2026-07-30: Recorded confirmation that the tracking migration is complete.
-  Todoist now points to public issue 68 and remains open for review; superseded
-  non-public issue and pull-request tracking are closed and their remote review
-  branch is deleted.
-- 2026-07-30: Independent tracking-closeout review found that the review-log and
-  checklist wording implied this documentation worker performed the external
-  tracking mutations. The wording now records the coordinating confirmation
-  without claiming those mutations; a fresh complete-diff recheck found no
-  actionable issues.
+The readability review compared the complete old and new plans. It restored
+explicit download-origin isolation, exact evidence links, forged-identity cap
+tests, byte-for-byte execution proof, the bounded stale re-arm window, and the
+clean design-review conclusion. A fresh complete comparison found no actionable
+issues and no lost material content.
 
 ### Checklist
 
-- [x] Create public issue 68 with the required minimal ledger shape.
-- [x] Record confirmation that Todoist tracking and review-result comments point
-      to public issue 68, the task remains open with `ready_for_review`, and
-      superseded non-public tracking is retired.
-- [x] Create the plan before product research.
-- [x] Research current OpenClaw and repository-native facilities.
-- [x] Compare notification and decision channels, including iMessage.
-- [x] Finalize the recommended architecture and alternatives.
-- [x] Define implementation, validation, rollout, and rollback guidance.
-- [x] Complete initial independent design review and remediate all findings.
-- [x] Complete fresh independent recheck and remediate all findings.
-- [x] Complete final independent recheck and remediate all findings.
-- [x] Complete clean independent recheck and remediate all findings.
-- [x] Complete final clean independent recheck and remediate all findings.
-- [x] Complete terminal verification and remediate all findings.
-- [x] Complete final verification and remediate all findings.
-- [x] Confirm the latest corrections and remediate all findings.
-- [x] Complete closeout confirmation and remediate all findings.
-- [x] Complete final audit and remediate all findings.
-- [x] Complete clean closeout and remediate all findings.
-- [x] Complete final confirmation with no unresolved material findings.
-- [x] Confirm the final diff is proposal-only.
-- [x] Confirm the public diff is documentation-only and publication-safe.
-- [x] Complete independent review of the public diff.
-- [x] Complete tracking-closeout review and correct external-mutation ownership.
-- [x] Update issue 68 to Ready for review.
+- [x] Research current OpenClaw approval, iMessage, review UI, persistence, and
+      resume behavior.
+- [x] Compare notification and decision channels.
+- [x] Define the separate authority, credential, review, attachment, and network
+      trust boundaries.
+- [x] Define immutable input handling and complete review presentation.
+- [x] Define deduplication, quotas, cooldowns, trusted time, and retention.
+- [x] Define decision, execution, reconciliation, cancellation, renewal, and
+      durable resume lifecycles.
+- [x] Define the exact Gmail read-only gateway boundary and fixed mailbox-triage
+      service.
+- [x] Define implementation phases, validation, rollout, rollback, risks, and
+      operational signals.
+- [x] Complete independent design review and incorporate all material findings.
+- [x] Publish the proposal under public issue 68.
+- [x] Record confirmation of completed external tracking migration.
+- [x] Rewrite the proposal for the current Human and Agent writing contract.
+- [x] Confirm the work remains design-only.
+- [x] Complete independent readability and material-loss review.
+- [x] Confirm the final plan and issue shapes and publication checks.
