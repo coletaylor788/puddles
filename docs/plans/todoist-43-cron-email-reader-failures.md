@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Public candidate sealed; preparing the matching host deployment
+**Status:** Final plan correction ready for exact-head review
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)
 **Last updated:** 2026-07-31
 
@@ -31,23 +31,26 @@ earlier smoke, which selected reader immediately.
 
 ### Status
 
-The design reset, current-base validation, exact-head checks, and terminal
-review are complete. The reproduced-path code and new plan format pass the full
-cumulative suite. Production is healthy on the prior build after rollback. The
-matching host deployment pin, promotion, landing, and post-landing checks
-remain. The cron definition has not been changed.
+The design reset and reproduced-path code are complete. The runtime candidate
+passed the full cumulative suite and terminal review. A later plan-only status
+commit created a new candidate, so the resulting corrected head still needs its
+own remote checks and terminal review. Production is healthy on the prior build
+after rollback. The matching host deployment pin, promotion, landing, and
+post-landing checks remain. The cron definition has not been changed.
 
 ## Agent section
 
 ### State
 
 - Public PR #56 is open. Its runtime patch is the reviewed reproduced-path fix.
-- The matching host deployment candidate is paused for this final plan update.
+- The matching host deployment candidate is paused for this plan correction.
 - Production is healthy on the prior reviewed build after rollback.
 - The current worktree includes the latest public `main` and this rewritten plan.
 - The pull request now describes the runtime change and cumulative validation.
-- The published candidate passed all exact-head remote checks and terminal
-  review without actionable findings.
+- The runtime and readable-plan candidate passed all remote checks and terminal
+  review without actionable findings before the later status-only commit.
+- The resulting corrected head must pass remote checks and terminal review
+  before the host deployment pin changes.
 - The targeted writing-contract suite passes 9 tests.
 - The complete managed lifecycle passes build and lint, 298 repository tests,
   seven prompt snapshots, 470 mapped source tests, the browser candidate test,
@@ -114,11 +117,12 @@ remain. The cron definition has not been changed.
   seven
   prompt snapshots, 470 mapped source tests, the browser candidate test, and
   cleanup.
-- Exact-head integration and code analysis checks passed remotely.
+- Integration and code analysis checks passed remotely on the reviewed
+  predecessor candidate.
 - Prior independent and terminal runtime reviews found no actionable issues and
   verified all 17 embedded patch blobs.
-- Terminal review of the complete final public candidate found no actionable
-  issues.
+- Terminal review of the predecessor complete public candidate found no
+  actionable issues.
 - A prior production promotion replayed the real three-call sequence with
   no delivery: omission denied, second main denied, reader accepted, one fixed
   no-match Gmail read returned `READ_OK`, and main returned `CRON_READER_OK`.
@@ -146,8 +150,11 @@ remain. The cron definition has not been changed.
   identifiers and an outdated pull request description. Both are corrected.
 - Independent re-review of the corrected complete diff found no actionable
   issues.
-- Terminal review of the exact current-base candidate found no actionable
+- Terminal review of the predecessor current-base candidate found no actionable
   issues. Its remote integration and analysis checks also passed.
+- Review found that recording those results in a new plan commit made the claims
+  self-invalidating. This correction leaves current-head gates pending. Their
+  result will be recorded in pull request metadata instead of another commit.
 
 ### Checklist
 
@@ -162,8 +169,8 @@ remain. The cron definition has not been changed.
 - [x] Prove the real sequence in a read-only production harness.
 - [x] Validate the rewritten plan on the current public base.
 - [x] Complete fresh current-base review.
-- [x] Complete terminal review.
-- [x] Publish and check the final exact public head.
+- [ ] Complete terminal review of the final exact public head.
+- [ ] Publish and check the final exact public head.
 - [ ] Update and validate the matching host deployment pin.
 - [ ] Promote the final exact tuple.
 - [ ] Land the host deployment candidate and public PR #56.
