@@ -4,18 +4,37 @@ description: "Implement features safely from research through test-environment i
 compatibility: "Requires the target repository's existing build, test, deployment, and rollback tools. Uses repository-provided test and production lifecycles when available."
 metadata:
   author: Cole Taylor
-  version: "1.6.0"
+  version: "1.7.0"
 ---
 
 # Safe Feature Development
 
-Track feature development in a repository plan as the detailed source of truth.
-Use its issue only as a concise status ledger that links to the plan.
+Track feature development in a repository plan. The plan holds the detail. Its
+issue is a short prose summary and status that links to the plan.
 
 Use this workflow for feature implementation, behavior changes, migrations,
 runtime configuration, plugins, integrations, and deployment automation. Follow
 more specific repository instructions as additional constraints. Never weaken a
 global safety or publication boundary.
+
+## How to write
+
+These rules cover everything a person reads: plans, issues, issue comments, pull
+request descriptions, and commit messages.
+
+- Write like you are explaining it to a coworker at their desk. Normal
+  conversation.
+- Short sentences. Everyday words. If a simpler word works, use it.
+- Never use an em dash. Use a period, a comma, or parentheses instead.
+- Do not stack nouns into long technical phrases. Break the idea into separate
+  sentences.
+- Human facing parts are real paragraphs, not bullet lists. Lists are fine in
+  the plan's Agent section, where they track concrete items.
+- Skip filler words like leverage, utilize, holistic, robust, comprehensive,
+  seamless, and ensure-that padding. Just describe the thing.
+- Do not narrate the process or list everything you did. Say where things stand
+  now and what it means.
+- Do not write like a policy document or a legal contract.
 
 ## Ownership and checkpoints
 
@@ -36,8 +55,8 @@ requester's final validation and task-completion decision.
 
 Ask the requester for help only after normal autonomous resolution paths are
 exhausted and a concrete permission, safety boundary, missing fact, or material
-decision genuinely requires their input. Before asking, update the plan and
-issue ledger with the blocker.
+decision genuinely requires their input. Before asking, update the plan and the
+issue status with the blocker.
 
 Every help request must be concise and self-contained. It must:
 
@@ -71,37 +90,64 @@ investigating instead of asking.
 
 2. **Plan**
    - For significant work, create or update the repository's expected plan
-     artifact. After one H1 title, include compact metadata containing only
-     `Status`, `Issue`, `Last updated`, and optionally `Owner`.
+     artifact. After one H1 title, include a compact metadata block containing
+     only `Status`, `Issue`, `Last updated`, and optionally `Owner`.
    - After the title and metadata, the plan must contain exactly two top-level
-     content sections in this order:
-     1. `## Human design`, with exactly `### Problem`, `### Outcome`,
-        `### Approach`, and `### Safety and rollout`. Keep it concise, current,
-        and understandable without implementation context. State decisions and
-        current behavior rather than an append-only chronology.
-     2. `## Agent details`, with exactly `### State`,
+     sections in this order:
+     1. `## Human section`, with exactly `### Design` and `### Status`, in that
+        order.
+     2. `## Agent section`, with exactly `### State`,
         `### Scope and acceptance criteria`, `### Architecture and decisions`,
         `### Implementation`, `### Validation`, `### Rollout and rollback`,
-        `### Review log`, and `### Checklist`. Keep it complete, operational,
-        and consistent with `Human design`.
+        `### Review log`, and `### Checklist`, in that order.
+   - `### Design` explains the problem and how the solution works. Give enough
+     detail that someone can understand the architecture: what the pieces are,
+     how they fit together, and what the important choices were and why. It must
+     not contain file paths, function names, class names, command names, commit
+     SHAs, line numbers, or any other code pointer. Write normal paragraphs, the
+     way you would say it out loud. A few paragraphs at most.
+   - `### Status` says where the work stands, readable at a glance. What is
+     done, what is next, what is blocking. Two short paragraphs at most. Present
+     tense, no chronology.
+   - The `Agent section` is where code pointers, file paths, commands, commit
+     ids, and evidence belong. Keep it complete and consistent with the
+     `Human section`.
    - Do not add another top-level section, an append-only status log, or a
-     duplicate design narrative elsewhere in the plan.
-   - On every substantive change, re-read and rewrite the entire `Human design`
-     section as needed so it remains one coherent current design. Re-evaluate
-     and fully update `Agent details` in the same pass so requirements,
-     decisions, steps, evidence, risks, and checklist state remain current and
-     synchronized. Apply this rule after research and after implementation,
-     validation, rollout, or review changes; never append a fragment as a
-     substitute for updating the whole plan.
-   - Start the issue body with the plan link, followed only by `## Status` and
-     `## Done`. `Status` may contain only the current state, last updated, next
-     step, and blockers. `Done` is a concise current list of completed
-     milestones. Keep design, decisions, implementation steps, validation
-     evidence, rollout and rollback, risks, and review detail in the plan.
-     Issue comments, when needed, must likewise contain only concise status and
-     completed milestones.
-   - Resolve material design ambiguity before implementation. Do not stop after
-     planning when implementation has already been requested and the design is
+     second copy of the design narrative elsewhere in the plan.
+   - On every substantive change, re-read and rewrite both sections so the plan
+     reads as one coherent current design and current operational state.
+     Requirements, decisions, steps, evidence, risks, and checklist state all
+     stay current and synchronized. Do this after research, and again after
+     implementation, validation, rollout, or review changes. Never append a
+     fragment instead of updating the whole plan.
+   - The issue body is exactly a plan link, then two prose sections, and nothing
+     else:
+
+     ```markdown
+     [Plan: `docs/plans/<file>.md`](<absolute url>)
+
+     ## Summary
+
+     <Exactly one paragraph, kept current. What we are building or fixing and
+     why it matters. Plain language.>
+
+     ## Status
+
+     <One paragraph, two at the absolute most. Where the work stands right now,
+     what happens next, and anything blocking. No history, no evidence dumps, no
+     command output.>
+     ```
+
+   - There is no `## Done` section. Do not add one.
+   - No bullet lists and no numbered lists anywhere in the issue body. Prose
+     only.
+   - Rewrite both issue sections in full on every update so they describe the
+     present, not an append-only log.
+   - Detail, evidence, commands, commit ids, validation transcripts, and
+     chronology live in the plan, never in the issue.
+   - Issue comments follow the same rule: short prose status only.
+   - Settle any material design ambiguity before implementation. Do not stop
+     after planning when implementation was already requested and the design is
      approved.
    - If the requester explicitly asked to review, approve, or iterate on the
      design, pause here with the plan current and ask the exact unresolved
@@ -169,16 +215,20 @@ investigating instead of asking.
      skip or narrow review because the original worker is unavailable.
    - After all in-diff plan, checklist, and other bookkeeping is final, create
      the landing candidate commit and run one terminal fresh review against that
-     exact commit. Record the clean result and reviewed commit identifier only in
-     the issue's allowed `Status` or `Done` ledger so recording the result does
-     not change the reviewed diff. Do not change the candidate afterward; any
-     change invalidates the terminal result and restarts validation and fresh
-     review.
+     exact commit. Do not change the candidate afterward. Any change invalidates
+     the terminal result and restarts validation and fresh review.
+   - Record the clean terminal result and the reviewed commit identifier outside
+     the candidate diff, so recording it cannot change what was reviewed. Write
+     it into the pull request in the next step, when the pull request is created
+     or updated. If the repository does not use pull requests, put it in the
+     final report to the requester instead. Commit ids do not belong in the
+     issue.
 
 6. **Prepare remote integration**
    - Push the exact terminal-reviewed candidate and create or update a non-draft
      pull request. Include the committed regression and exact validation command
-     and results required by the repository.
+     and results required by the repository. Record the terminal review result
+     and the reviewed commit identifier here.
    - Wait for all required remote checks. Resolve actionable review feedback,
      unresolved review threads, merge conflicts, and integration failures
      yourself. Any candidate change invalidates the terminal review and requires

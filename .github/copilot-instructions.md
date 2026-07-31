@@ -16,12 +16,34 @@ OpenClaw plugins, host scripts, setup guidance, and shared security libraries.
 - Work only in the assigned branch, worktree, or isolated workspace. Do not edit
   a configured repository's primary checkout.
 
+## Writing style
+
+These rules cover everything a person reads: plans, issues, issue comments, pull
+request descriptions, and commit messages.
+
+- Write like you are explaining it to a coworker at their desk. Normal
+  conversation.
+- Short sentences. Everyday words. If a simpler word works, use it.
+- Never use an em dash. Use a period, a comma, or parentheses instead.
+- Do not stack nouns into long technical phrases. Break the idea into separate
+  sentences.
+- Human facing parts are real paragraphs, not bullet lists. Lists are fine in
+  the plan's Agent section, where they track concrete items.
+- Skip filler words like leverage, utilize, holistic, robust, comprehensive,
+  seamless, and ensure-that padding. Just describe the thing.
+- Do not narrate the process or list everything you did. Say where things stand
+  now and what it means.
+- Do not write like a policy document or a legal contract.
+
+`safe-feature-development` carries the full version of these rules along with
+the exact plan and issue formats.
+
 ## Development lifecycle
 
 For every feature or behavior change, invoke and follow the repository-local
-`safe-feature-development` skill. It is the canonical workflow from research and
-planning through local implementation, test-environment validation, independent
-adversarial review, configured promotion, production validation, and rollback.
+`safe-feature-development` skill. It covers the whole lifecycle: research,
+planning, local implementation, validation in the test environment, independent
+adversarial review, promotion, production validation, and rollback.
 
 Component instructions may add requirements but must not weaken that workflow,
 publication boundaries, test isolation, or secret handling.
@@ -54,11 +76,11 @@ Before editing, read the documentation nearest the affected component:
 Do not substitute repository-wide generic test commands for the component's
 documented lifecycle.
 
-Every new or substantively updated repository plan must use the strict two-part
-`Human design` and `Agent details` format defined by
-`safe-feature-development`. Keep both parts synchronized whenever the plan
-changes. The plan is the detailed source of truth; its issue is only a concise
-status ledger that links to the plan.
+Every new or substantively updated repository plan must use the two-part
+`Human section` and `Agent section` format defined by
+`safe-feature-development`. Rewrite both parts together whenever the plan
+changes so they stay in sync. The plan holds the detail. Its issue is a plan
+link plus two short prose sections, `Summary` and `Status`, and nothing else.
 
 ## Publication safety
 
