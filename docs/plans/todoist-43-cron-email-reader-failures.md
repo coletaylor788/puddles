@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Final plan correction ready for exact-head review
+**Status:** Complete and verified in production
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)
 **Last updated:** 2026-07-31
 
@@ -31,32 +31,27 @@ earlier smoke, which selected reader immediately.
 
 ### Status
 
-The design reset and reproduced-path code are complete. The runtime candidate
-passed the full cumulative suite and terminal review. A later plan-only status
-commit created a new candidate, so the resulting corrected head still needs its
-own remote checks and terminal review. Production is healthy on the prior build
-after rollback. The matching host deployment pin, promotion, landing, and
-post-landing checks remain. The cron definition has not been changed.
+The design reset, reproduced-path fix, promotion, landing, and post-landing
+checks are complete. The reviewed build is running in production. The installed
+policy rejects a missing target and an accidental second main child, then accepts
+reader. The gateway is healthy, and a fixed no-match email read succeeds.
+
+The cron definition was not changed or run. No message was sent, and no mailbox
+content was changed. Production validation called the installed policy directly
+instead of driving a live main model turn.
 
 ## Agent section
 
 ### State
 
-- Public PR #56 is open. Its runtime patch is the reviewed reproduced-path fix.
-- The matching host deployment candidate is paused for this plan correction.
-- Production is healthy on the prior reviewed build after rollback.
-- The current worktree includes the latest public `main` and this rewritten plan.
-- The pull request now describes the runtime change and cumulative validation.
-- The runtime and readable-plan candidate passed all remote checks and terminal
-  review without actionable findings before the later status-only commit.
-- The resulting corrected head must pass remote checks and terminal review
-  before the host deployment pin changes.
+- Public PR #56 and the matching host deployment candidate are merged.
+- Both main branches contain the exact reviewed candidates.
+- Production runs the reviewed combined patch set.
+- The gateway is healthy after landing.
+- The rollback snapshot remains available. No rollback was needed.
 - The targeted writing-contract suite passes 9 tests.
-- The complete managed lifecycle passes build and lint, 298 repository tests,
-  seven prompt snapshots, 470 mapped source tests, the browser candidate test,
-  and cleanup.
-- The host deployment pin must now be updated to the resulting exact public head
-  before promotion.
+- The public managed lifecycle and host combined lifecycle pass on the landed
+  tuple.
 
 ### Scope and acceptance criteria
 
@@ -117,12 +112,24 @@ post-landing checks remain. The cron definition has not been changed.
   seven
   prompt snapshots, 470 mapped source tests, the browser candidate test, and
   cleanup.
-- Integration and code analysis checks passed remotely on the reviewed
-  predecessor candidate.
+- Exact-head integration and code analysis checks passed remotely.
 - Prior independent and terminal runtime reviews found no actionable issues and
   verified all 17 embedded patch blobs.
-- Terminal review of the predecessor complete public candidate found no
-  actionable issues.
+- Terminal review of the final public candidate found no actionable issues.
+- The exact host candidate passed 15, 37, and 10 host tests with no failures or
+  skips.
+- The combined lifecycle passed 633 mapped patched-source tests across 24 files,
+  the browser candidate test, root and UI builds, staged validation, and cleanup.
+- Independent review of the complete public and host tuple found no actionable
+  issues.
+- The installed production bundle and real configuration reject an omitted
+  target, reject an explicit second-main retry, and accept explicit reader.
+- `requireAgentId=false` still allows an intentional same-agent cron child, and
+  non-cron sessions are not treated as cron.
+- Production validation performed one fixed no-match `list_emails` request with
+  a maximum of one result. It returned no matches.
+- The final deployment did not run cron or a live main model turn. It did not
+  send a message or mutate mailbox content.
 - A prior production promotion replayed the real three-call sequence with
   no delivery: omission denied, second main denied, reader accepted, one fixed
   no-match Gmail read returned `READ_OK`, and main returned `CRON_READER_OK`.
@@ -131,13 +138,15 @@ post-landing checks remain. The cron definition has not been changed.
 
 ### Rollout and rollback
 
-- Use the reviewed host-combined lifecycle only.
-- Record and verify a rollback snapshot before package replacement.
-- Production validation stays read-only and uses fixed no-match Gmail queries.
-- Do not run cron as a production test.
-- Recheck the exact public head and host deployment candidate, including bases,
-  checks, reviews, and mergeability, immediately before promotion and merge.
-- Roll back on any staged, production, tuple, merge, or post-landing failure.
+- The reviewed host-combined lifecycle staged and validated the package before
+  atomic replacement.
+- A verified rollback snapshot captured package, configuration, and browser
+  state before promotion.
+- The gateway restarted cleanly after the atomic exchange.
+- Read-only production validation passed before and after landing.
+- The host deployment candidate merged first. Public PR #56 merged second.
+- Both main branches were verified to contain the reviewed commits.
+- Rollback was not needed. The verified snapshot remains the restore point.
 
 ### Review log
 
@@ -146,15 +155,20 @@ post-landing checks remain. The cron definition has not been changed.
 - Cole's real run exposed omission followed by an explicit second-main retry.
 - Review added ACP pre-resolution handling, routable target filtering, resolved
   self-alias filtering, and coverage of the unset cron default.
-- Final runtime reviews were clean. Fresh plan review found public operational
-  identifiers and an outdated pull request description. Both are corrected.
+- Final runtime reviews were clean. Plan review found public operational
+  identifiers and an outdated pull request description. Both were corrected.
 - Independent re-review of the corrected complete diff found no actionable
   issues.
-- Terminal review of the predecessor current-base candidate found no actionable
-  issues. Its remote integration and analysis checks also passed.
+- Terminal review of the final current-base candidate found no actionable issues.
+  Its remote integration and analysis checks also passed.
 - Review found that recording those results in a new plan commit made the claims
-  self-invalidating. This correction leaves current-head gates pending. Their
-  result will be recorded in pull request metadata instead of another commit.
+  self-invalidating. The corrected plan left the gates pending until the final
+  exact-head results were recorded in pull request metadata.
+- Pull request metadata recorded the final exact-head checks and terminal result
+  without creating another runtime candidate.
+- Independent review of the final combined deployment tuple found no actionable
+  issues. The host repository intentionally has no remote check workflow, so its
+  complete local combined lifecycle is the recorded gate.
 
 ### Checklist
 
@@ -169,10 +183,12 @@ post-landing checks remain. The cron definition has not been changed.
 - [x] Prove the real sequence in a read-only production harness.
 - [x] Validate the rewritten plan on the current public base.
 - [x] Complete fresh current-base review.
-- [ ] Complete terminal review of the final exact public head.
-- [ ] Publish and check the final exact public head.
-- [ ] Update and validate the matching host deployment pin.
-- [ ] Promote the final exact tuple.
-- [ ] Land the host deployment candidate and public PR #56.
-- [ ] Run post-landing production checks.
-- [ ] Update the issue and Todoist task for Cole's review.
+- [x] Complete terminal review of the final exact public head.
+- [x] Publish and check the final exact public head.
+- [x] Update and validate the matching host deployment pin.
+- [x] Promote the final exact tuple.
+- [x] Land the host deployment candidate and public PR #56.
+- [x] Run post-landing production checks.
+- [x] Rewrite issue #43 with the landed result.
+- [ ] Merge the completion plan and close issue #43.
+- [ ] Update the Todoist task for Cole's review.
