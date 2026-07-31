@@ -9,11 +9,17 @@
 ### Design
 
 A dedicated Apple account receives shared notes from people who already have an
-authenticated direct-message binding. Sharing starts with a short confirmation
-exchange in that same conversation. The system accepts the invitation through a
-separate Notes service, records the note and the sender's grant, then exposes
-bounded list and read tools. Version one cannot edit notes because a whole-body
-write could overwrite a collaborator's newer changes.
+authenticated direct-message binding. Automatic intake starts only when the
+messaging service proves that the final complete direct-message composition has
+exactly one row, and that row contains only one supported collaboration link
+with no preview or companion content. A timer cannot prove completeness.
+Sharing then uses a short confirmation exchange in that same conversation. The
+invitation stays tied to the completion proof through acceptance and reading. A
+later companion item cancels or quarantines the action and blocks the note from
+reads. The system accepts the invitation through a separate Notes service,
+records the note and the sender's grant, then exposes bounded list and read
+tools. Version one cannot edit notes because a whole-body write could overwrite
+a collaborator's newer changes.
 
 Access follows the existing direct-message relationship. The top tier can read
 every active grant. The household tier can read household and friend grants.
@@ -25,16 +31,18 @@ The design keeps message intake, model work, Apple applications, policy, and
 note acceptance in separate security domains. It also gives each friend
 separate conversation and execution state. Durable journals, bounded attachment
 spools, replay barriers, and careful recovery keep crashes and rollback from
-repeating actions or losing control records. Apple does not provide supported
-interfaces for several required invitation and identity operations, so those
-facts must be proven with disposable accounts and recording adapters before
-implementation is approved.
+repeating actions or losing control records. After a crash, even a complete
+staged attachment copy is deleted, confirmed absent, and copied again instead of
+being promoted. Apple does not provide supported interfaces for several
+required invitation and identity operations, so those facts must be proven with
+disposable accounts and recording adapters before implementation is approved.
 
 ### Status
 
-The provider-neutral design is complete for review. It defines read-only access,
-grant rules, invitation confirmation, service isolation, durable recovery,
-attachment limits, relay controls, validation, rollout, and rollback.
+The provider-neutral design is complete for review. It defines provider-proven
+single-row proposal admission, read-only access, grant rules, invitation
+confirmation, service isolation, durable recovery, attachment limits, relay
+controls, validation, rollout, and rollback.
 
 No prototype or implementation work is approved or started. A prototype-only
 approval can authorize disposable proof work. Its results must update this
@@ -61,8 +69,11 @@ design before a separate approval can authorize implementation.
 
 - A dedicated Apple ID accepts and reads collaboration invitations received
   through already authenticated, exact direct-message bindings.
-- One authenticated source text row with exactly one allowlisted Apple
-  collaboration link can create one pending proposal.
+- One authenticated source text row can create one pending proposal only when
+  immutable messaging-provider evidence proves that the provider-final
+  composition contains exactly that one complete row and its entire content is
+  exactly one allowlisted Apple collaboration link with no preview metadata,
+  attachment, companion row, or other content.
 - The trusted transport, not a model, generates and sends an immutable challenge
   containing a cryptographically random 128-bit code. It replies to the exact
   source row.
@@ -130,12 +141,43 @@ Out of scope for V1:
 
 **Proposal and confirmation protocol**
 
-- Only one authenticated source text row containing exactly one allowlisted
-  Apple collaboration URL is eligible. Empty text, multiple links, non-Apple
-  links, mixed text, attachment-bearing input, composed multi-row input, and
-  group input are ineligible.
-- The ingress journal stores the exact source member key and normalized
-  authenticated route before proposal creation.
+- Eligibility requires immutable completion evidence received through the
+  authenticated messaging-provider ingress. The evidence binds the exact
+  account, channel, peer, direct-message thread, source member key, provider
+  event ID, provider composition key, provider finality marker and order
+  boundary, complete ordered row inventory, cardinality of exactly one, raw body
+  digest, row kind, and complete metadata inventory.
+- The evidence must prove one complete source text row whose entire body is
+  exactly one supported allowlisted Apple collaboration URL. Empty text,
+  multiple links, non-Apple links, mixed text, attachments, previews, URL text
+  accompanied by preview metadata, composed or split multi-row input, companion
+  rows, and group input are ineligible.
+- Missing, malformed, altered, duplicated, or replayed completion evidence
+  denies. A local coalescing or composition timeout is never evidence of
+  completeness and cannot create a proposal or challenge. A messaging provider
+  that cannot attest finality, the complete ordered inventory, and exact
+  one-row cardinality is ineligible for automatic proposals.
+- The ingress journal stores the immutable completion evidence, exact source
+  member key, provider composition key and generation, contradiction latch, and
+  normalized authenticated route before proposal creation.
+- Any late row or metadata linked to the same provider composition key
+  permanently invalidates the proposal evidence. Before confirmation
+  consumption and again before grant commit, the journal rechecks that no
+  companion or preview appeared. It closes an unconsumed proposal and challenge,
+  cancels an unexecuted action, or quarantines a UI-crossed intent without
+  activating a grant. A contradiction discovered after grant commit advances
+  the composition generation and sets its latch in one transaction, which makes
+  every linked grant immediately fail read authorization pending reconciliation.
+- Final confirmation authorization and transition to `ui_crossing` occur in one
+  journal transaction under the composition key. The transaction verifies the
+  provider-final evidence, exact one-row inventory, unchanged composition
+  generation, and clear contradiction latch, then records the generation fence.
+- Contradiction ingestion serializes on the same composition record. If it wins
+  before the `ui_crossing` transaction, no UI action can start. If it arrives
+  after the fence, it durably sets the contradiction latch and advances the
+  composition generation. Terminal grant commit is a compare-and-set that
+  requires the original generation and a clear latch. A failed compare-and-set
+  quarantines any UI-crossed intent and activates no grant.
 - At most one pending proposal exists per exact peer. The deployment has at most
   100 pending proposals globally. A proposal expires after ten minutes and
   cannot be extended or reset.
@@ -160,8 +202,9 @@ Out of scope for V1:
   exposes only a zero-argument invitation-acceptance action and content-free
   response generation.
 - Runtime context seals the proposal key, source member key, confirmation member
-  key, exact account, channel, peer, agent, session, route, policy generation,
-  nonce, and expiry.
+  key, immutable completion-evidence key and digest, provider composition key
+  and generation fence, exact account, channel, peer, agent, session, route,
+  policy generation, nonce, and expiry.
 - The acceptance action has no caller-controlled arguments. It obtains the URL
   and all authority from sealed trusted context.
 - After final authorization, the acceptance service acquires a lease on the
@@ -205,8 +248,9 @@ Out of scope for V1:
   sender grant to that canonical note. An unknown invitation that merely appears
   to reference a pre-existing note cannot use this path and remains fail-closed.
 - The broker atomically stores canonical note identity, invitation evidence,
-  acceptance outcome, and an independent grant from the authenticated sender.
-  Note content is not stored as invitation evidence.
+  acceptance outcome, and an independent grant from the authenticated sender
+  only through the terminal composition-generation compare-and-set. Note content
+  is not stored as invitation evidence.
 - On startup and before new acceptance, the broker reconciles every unfinished
   UI-crossing intent. It never repeats UI action until durable evidence proves
   that the prior attempt did not cross the UI boundary.
@@ -219,8 +263,16 @@ Out of scope for V1:
   No tool argument can select an account, tier, sender partition, policy
   generation, registry, or route.
 - Every listed and read note is reauthorized against current deployment policy,
-  the canonical registry, and an active grant. Authorization is checked again
-  after retrieval before release.
+  the canonical registry, and an active grant. Each grant binds its immutable
+  completion-evidence key, composition key, and accepted composition generation.
+  Authorization requires the current generation to match and the contradiction
+  latch to remain clear. A materialized grant status is not authority and may
+  not bypass this join.
+- Authorization is checked again after retrieval. That transaction acquires a
+  short composition-generation read lease held through terminal bounded response
+  release. Contradiction ingestion serializes on the same composition record, so
+  either the read lease completes first under the still-valid generation or the
+  contradiction commits first and the read denies.
 - Responses bound result counts, page size, continuation lifetime, body bytes,
   title bytes, and total response bytes. Continuations are opaque, authenticated,
   policy-generation-bound, caller-bound, and short-lived.
@@ -278,10 +330,11 @@ Out of scope for V1:
 
 **Durable journal and replay ownership**
 
-- One durable journal owns raw ingress rows, split-message composition, cursor
-  floor, proposals, challenge and acceptance outcomes, replay barriers, relay
-  tickets, producer event and ticket watermarks, spool rows, and cleanup
-  metadata.
+- One durable journal owns raw ingress rows, immutable provider completion
+  evidence, composition keys, generations, UI-crossing fences, contradiction
+  latches, split-message composition, cursor floor, proposals, challenge and
+  acceptance outcomes, replay barriers, relay tickets, producer event and
+  ticket watermarks, spool rows, and cleanup metadata.
 - Producer event IDs are monotonic. Each producer has a permanent
   `closed_event_through` watermark plus bounded gap tombstones. Once an event is
   closed, rejected, expired, compacted, or tombstoned, it can never mint a new
@@ -330,7 +383,15 @@ Out of scope for V1:
 - Each bounded frame updates the reserved attempt's durable byte count and
   digest after the write is synced. A crash-visible mismatch moves the same row
   to `deleting`; it cannot resume or bless partial bytes. Final file and parent
-  sync precede the atomic `reserved` to `ready` transition.
+  sync precede the atomic `reserved` to `ready` transition. Only the
+  uninterrupted copy owner in the current consumer epoch can make that
+  transition immediately after those syncs.
+- Every crash-recovered `reserved` row is uncertain and can never transition to
+  `ready`, even when its staging identity, length, and digest match the expected
+  complete file. If its staging object is present, the same row moves through
+  exact unlink, parent sync, and durable absence confirmation. If it is missing,
+  the same row durably confirms absence. Only then can the row return to
+  `needs_copy` and reserve another attempt.
 - Initial copy receives at most three total attempts within one non-resettable
   five-minute deadline.
 - A ready row has at most one non-resettable recovery episode. Recovery,
@@ -415,9 +476,19 @@ read, cross-peer disclosure, quota release, and cursor stall.
 
 | Scenario | Required result |
 |---|---|
-| One authenticated direct-message source row contains exactly one valid allowlisted collaboration link | One pending proposal is durably created and one immutable model-free challenge is anchored to that row |
+| Immutable provider evidence proves a final authenticated direct-message composition has a complete ordered inventory of exactly one row containing only one valid allowlisted collaboration link | One pending proposal is durably created and one immutable model-free challenge is anchored to that row |
 | Source is unauthenticated, a group, cron, command-line, subagent, delegated, wildcard, default, or synthetic route | Deny before proposal creation |
+| Completion evidence is missing, malformed, altered, duplicated, or replayed | Deny without proposal creation or challenge delivery |
+| Evidence covers one row but omits the composition key, provider finality marker, order boundary, complete inventory, or exact cardinality | Deny automatic proposal creation |
+| Messaging provider cannot attest provider-final composition and exact one-row cardinality | Automatic proposal path is unavailable |
+| A coalescing or composition timer fires without immutable provider completion evidence | It has no proposal authority and cannot cause challenge delivery |
 | Source is empty, split across rows, composed from multiple members, includes attachments, includes extra text, or has zero or multiple URLs | Deny without challenge delivery |
+| Source contains one valid URL but also carries preview metadata or a preview companion | Deny without challenge delivery |
+| A companion row or preview arrives after challenge delivery but before confirmation consumption | Permanently close the proposal and challenge; confirmation cannot create an action |
+| A companion row or preview arrives after confirmation but before grant commit | Cancel an unexecuted action or quarantine a UI-crossed intent without activating a grant |
+| Companion ingestion races final confirmation authorization and the `ui_crossing` transition | The composition-key transaction chooses one durable order: contradiction first denies UI, fence first records a cancellation latch that prevents grant activation |
+| Companion ingestion races terminal grant commit after UI action | Composition-generation compare-and-set fails, no grant activates, and the intent remains quarantined for reconciliation |
+| A provider-completeness contradiction is discovered after grant commit | One composition transaction advances generation and sets the latch; every linked grant immediately fails read authorization pending reconciliation |
 | URL has a wrong scheme, host, port, path, credentials, malformed encoding, or disallowed redirect | Deny without UI action |
 | Peer already has a pending proposal | Deny the new proposal without changing the original expiry |
 | Global pending proposal count is 100 | Deny the new proposal while text and cursor processing continue |
@@ -461,6 +532,8 @@ read, cross-peer disclosure, quota release, and cursor stall.
 | Friend caller asks for another friend, household, top, wildcard, or default partition | Deny without existence disclosure |
 | Link was forwarded by a higher-tier peer to a friend | Grant uses the authenticated friend's partition and cannot raise tier |
 | Grant is revoked between list and read, or during retrieval | Reauthorization denies release |
+| Composition contradiction commits while note retrieval or response release is in progress | Composition serialization gives one order: an existing bounded read lease releases first, or the contradiction commits first and post-retrieval authorization denies |
+| Process crashes after contradiction generation/latch commit but before materialized grant status changes | Reads still deny from the authoritative composition join |
 | Continuation is expired, altered, replayed by another caller, or from another policy generation | Deny |
 | Count, page, title, body, or total byte bound is exceeded | Truncate or reject by the documented deterministic rule without leaking adjacent resources |
 | Body contains malformed encoding, control characters, rich objects, deceptive markup, or prompt injection | Normalize, data-mark, filter, and retain untrusted classification |
@@ -520,7 +593,8 @@ read, cross-peer disclosure, quota release, and cursor stall.
 | Crash occurs after attempt reservation but before staging creation | Same row proves the protected staging locator absent before retry |
 | Crash occurs after staging creation but before exact staging identity is stored | Same row uses its durable nonce and protected locator to bind the no-follow object as a deletion target, then unlinks, syncs, and confirms absence before retry |
 | Crash or error occurs after a partial frame write but before its durable byte count and digest update | Observed identity mismatch moves the same row to deletion; partial bytes are never resumed or promoted |
-| Crash occurs after final file or parent sync but before the `ready` commit | Reserved staging is cleaned before another attempt; no uncommitted file is exposed as ready |
+| Crash occurs after final file and parent sync but before the `ready` commit, and recovered staging exactly matches identity, length, and digest | The recovered `reserved` row never promotes; it unlinks the exact object, syncs the parent, durably confirms absence, then recopies |
+| Crash-recovered `reserved` row has no staging object | Durably confirm absence before returning to `needs_copy`; never promote on restart |
 | Symlink, inode swap, size change, digest change, or parent mismatch appears before open or delete | No-follow identity check denies use |
 | Ready file is provably absent and recovery has not been used | Same row clears current identity, retains it only as historical evidence, enters `needs_copy`, and starts its only recovery episode |
 | Ready file is present but invalid, or absence is unprovable | Same row enters `deleting` with exact old identity and durable after-delete target |
@@ -551,6 +625,13 @@ read, cross-peer disclosure, quota release, and cursor stall.
 
 **Prototype gates**
 
+- For every supported messaging provider, prove with disposable fixtures that
+  authenticated immutable evidence carries provider finality, the order
+  boundary, complete ordered row inventory, exact one-row cardinality, complete
+  metadata, and stable composition identity. Exercise previews, late
+  contradictions, restart, duplication, and replay. Record any provider that
+  cannot prove the contract as ineligible for automatic proposals. A local
+  timer is never an accepted substitute.
 - Prove the accepted Apple collaboration URL and redirect shapes on each
   supported OS and Notes version.
 - Prove that the pinned helper can open the invitation under the dedicated Notes
@@ -613,7 +694,11 @@ keeps those identities separate. Rollback cancels all pending proposals,
 challenges, confirmations, and unexecuted acceptance tickets. Any Notes intent
 that may have crossed the UI boundary keeps the reconciliation-only broker and
 helper alive until the intent is terminal or quarantined. No new invitation is
-accepted during rollback reconciliation.
+accepted during rollback reconciliation. Durable completion evidence,
+composition generations, UI-crossing fences, contradiction latches, and
+proposal closures remain authoritative across rollback. A timer or older binary
+cannot reclassify a closed or preview-bearing source as complete or activate a
+grant from a stale composition generation.
 
 Automated production checks remain read-only. A failed post-cutover check closes
 admission, fences the candidate generation, rolls code and static configuration
@@ -632,7 +717,17 @@ fallback.
   terminal candidate review then found and resolved missing fail-closed runtime
   version checks and a policy-revocation race during invitation acceptance. A
   fresh exact-head review found and resolved missing crash-safe ownership for
-  partial staging copies.
+  partial staging copies. A later cross-design review required immutable
+  messaging-provider proof of one complete link-only source row and removed all
+  proposal authority from local composition timers and preview-bearing input.
+  The same update makes every crash-recovered reserved copy cleanup-only and
+  forbids promotion on restart even when recovered bytes appear complete.
+  Independent review then required provider-final one-row composition
+  attestation and a durable composition-generation fence that serializes late
+  companions with UI crossing and grant activation. The next recheck made that
+  composition state authoritative for every read, added its disposable
+  provider-evidence prototype gate, and synchronized both fail-closed recovery
+  decisions into the Human section.
 
 ### Checklist
 
