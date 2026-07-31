@@ -18,7 +18,7 @@ const reviewWorkflow = readFileSync(
 
 describe("adversarial review workflow", () => {
   it("reuses one reviewer throughout remediation without narrowing review", () => {
-    expect(safeWorkflow).toContain('version: "1.6.0"');
+    expect(safeWorkflow).toContain('version: "1.7.0"');
     expect(safeWorkflow).toMatch(/retain its worker handle/i);
     expect(safeWorkflow).toMatch(/resume or restart that same reviewer/i);
     expect(safeWorkflow).toMatch(
@@ -192,7 +192,7 @@ describe("adversarial review workflow", () => {
       /only after normal autonomous resolution paths are\s+exhausted/i,
     );
     expect(helpWorkflow).toMatch(
-      /Before asking, update the plan and\s+issue ledger with the blocker/i,
+      /Before asking, update the plan and the\s+issue status with the blocker/i,
     );
     expect(helpWorkflow).toMatch(/must be concise and self-contained/i);
     expect(helpWorkflow).toMatch(
