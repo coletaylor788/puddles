@@ -383,6 +383,43 @@ describe("Todoist CLI sandbox capability", () => {
     expect(log).toContain(
       "openclaw\tconfig\tset\tskills.entries.todoist-cli.apiKey\t--ref-source\tfile\t--ref-provider\tlocal\t--ref-id\t/providers/todoist/apiKey",
     );
+    expect(existsSync(join(f.home, ".openclaw", ".env"))).toBe(false);
+    expect(log).not.toContain("openclaw\tsandbox\trecreate");
+  });
+
+  it("refreshes an existing managed projection after token rotation", () => {
+    const f = fixture({
+      sharedToken: "old-test-token",
+      otherTodoistAgent: true,
+    });
+    writeFileSync(
+      join(f.home, ".openclaw", ".env"),
+      [
+        "UNRELATED_SETTING=preserved",
+        "# puddles-managed: todoist-cli token projection",
+        "TODOIST_API_TOKEN=old-test-token",
+        "",
+      ].join("\n"),
+      { mode: 0o600 },
+    );
+
+    const result = spawnSync("/bin/bash", [tokenStore], {
+      env: f.env,
+      encoding: "utf8",
+    });
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(readFileSync(join(f.home, ".openclaw", ".env"), "utf8")).toBe(
+      [
+        "UNRELATED_SETTING=preserved",
+        "# puddles-managed: todoist-cli token projection",
+        "TODOIST_API_TOKEN=oauth-test-token",
+        "",
+      ].join("\n"),
+    );
+    expect(readFileSync(f.log, "utf8")).not.toContain("oauth-test-token");
+    expect(readFileSync(f.log, "utf8")).toContain(
+      "openclaw\tsandbox\trecreate\t--agent\tother",
+    );
   });
 
   it("rejects an insecure store before starting OAuth login", () => {

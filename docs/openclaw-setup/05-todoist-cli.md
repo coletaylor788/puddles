@@ -48,7 +48,14 @@ sandbox contract and any other tools already present in your deployment.
 ## Log in and use the shared secret store
 
 The canonical token belongs at `providers.todoist.apiKey` in the existing
-mode-600 `~/.openclaw/secrets.json` store. Run:
+mode-600 `~/.openclaw/secrets.json` store. The host needs the official `td`
+binary for OAuth login; install the pinned version if it is absent:
+
+```bash
+command -v td >/dev/null || npm install -g @doist/todoist-cli@3.0.5
+```
+
+Then run:
 
 ```bash
 cd ~/git/puddles/scripts/mac-mini
@@ -59,6 +66,11 @@ The command opens Todoist OAuth, captures the resulting keychain token into a
 local shell variable, sends it over stdin to an atomic JSON update, configures
 `skills.entries.todoist-cli.apiKey` as a file SecretRef, reloads OpenClaw
 secrets, and prints only redacted authentication status.
+On later token rotations, rerun the same command. It atomically updates the
+canonical store and refreshes an existing installer-marked sandbox projection;
+it does not create a projection before the capability is installed. After a
+refresh, it recreates every configured Todoist consumer sandbox so persistent
+agent-scoped containers receive the rotated token.
 
 Do not run `td auth login` inside the Linux sandbox. A desktop keyring is not
 available there, so the CLI can fall back to a plaintext config file inside the

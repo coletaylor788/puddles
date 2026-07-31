@@ -66,7 +66,15 @@ landing candidate was terminal-reviewed and pushed, but the root README did not
 yet expose the shared-secret rule. That documentation gap is being corrected;
 the root guidance is implemented and 23 focused tests, E2E lint, and diff checks
 pass. The changed candidate requires complete-diff re-review and a fresh terminal
-review. Complete-diff re-review is clean; in-diff bookkeeping is final.
+review. Complete-diff re-review is clean. Terminal review identified one
+rotation gap: updating the canonical shared token must refresh an already
+managed sandbox projection. The store command now refreshes only an existing
+marked projection, leaves pre-install `.env` untouched, and preserves unrelated
+lines. Final review identified that persistent agent-scoped containers must be
+recreated after projection refresh to consume the new token. That correction is
+implemented for every configured Todoist env consumer. Focused and full managed
+validation pass; final complete-diff re-review is clean. In-diff bookkeeping is
+final.
 
 ### Scope and acceptance criteria
 
@@ -78,6 +86,10 @@ review. Complete-diff re-review is clean; in-diff bookkeeping is final.
   - maps `skills.entries.todoist-cli.apiKey` to
     `{source:"file",provider:"local",id:"/providers/todoist/apiKey"}`;
   - reloads/audits secrets without displaying credential values.
+  - refreshes an existing marked sandbox projection after token rotation without
+    creating an unmanaged projection.
+  - recreates every configured agent consuming `TODOIST_API_TOKEN` after a
+    projection refresh so persistent containers receive the rotated value.
 - Make the installer use the configured `local` file provider and
   `/providers/todoist/apiKey` as its canonical credential input.
 - Treat `.env` only as a marked, installer-owned compatibility projection for
@@ -118,11 +130,16 @@ review. Complete-diff re-review is clean; in-diff bookkeeping is final.
 - The canonical shared secret is not removed by rollback or uninstall.
 - A reusable repository command is preferable to a copy-pasted Python one-liner:
   it makes the safe operation reviewable, testable, and easy to repeat.
+- The login/store command refreshes `.env` only when the installer marker is
+  already present. First installation remains the installer's responsibility;
+  rotation updates both canonical source and its existing derived runtime copy,
+  then recreates each configured consumer sandbox.
 
 ### Implementation
 
 1. Added `scripts/mac-mini/store-openclaw-todoist-token.sh` with OAuth login,
-   atomic shared-store update, SecretRef mapping, reload, and redacted status.
+   atomic shared-store update, managed-projection refresh on rotation, SecretRef
+   mapping, reload, consumer sandbox recreation, and redacted status.
 2. Updated `install-openclaw-todoist-cli.sh` to resolve the local provider,
    validate the shared store, create/remove the marked `.env` projection, and
    preserve projection state through failure and rollback. Final remediation
@@ -137,10 +154,11 @@ review. Complete-diff re-review is clean; in-diff bookkeeping is final.
    is created mode 600 before any unrelated `.env` content is written.
 6. Add the shared-secret source-of-truth and projection rules to the root
    architecture documentation.
-7. Run focused tests and the complete managed lifecycle.
-8. Complete retained/replacement full-diff review, terminal review, remote
+7. Document the host `td` prerequisite and rotation behavior.
+8. Run focused tests and the complete managed lifecycle.
+9. Complete retained/replacement full-diff review, terminal review, remote
    integration, merge, and post-merge verification.
-9. Run the documented live login/store/install validation with Cole.
+10. Run the documented live login/store/install validation with Cole.
 
 ### Validation
 
@@ -155,12 +173,12 @@ Previously completed:
 
 Required for this cycle:
 
-- shell syntax, E2E TypeScript lint, and 23 focused login/store, installer, and
+- shell syntax, E2E TypeScript lint, and 24 focused login/store, installer, and
   write-sink tests;
 - success, missing provider, missing secret, insecure permissions, malformed
   JSON, unmanaged projection, reinstall, install failure cleanup, and rollback;
 - `node packages/e2e/bin/openclaw-test-env.mjs ci`: workspace build/lint, 112
-  mcp-hooks tests, 80 e2e tests, 61 calendar tests, 43 Gmail tests, 470 mapped
+  mcp-hooks tests, 81 e2e tests, 61 calendar tests, 43 Gmail tests, 470 mapped
   OpenClaw tests, one candidate test, and cleanup passed;
 - complete-current-diff and exact-candidate terminal review;
 - remote checks, merge, default-branch artifact verification, and post-merge
@@ -198,7 +216,13 @@ addressed by a safe migration recipe. Final recheck identified that per-agent
 recovery cannot alone own one global projection; consumer-aware cleanup is
 implemented and covered. The migration recipe now creates its temp file mode 600
 before writing preserved `.env` content. Validation passes, and final
-complete-current-diff review found no actionable defects.
+complete-current-diff review found no actionable defects. Terminal review
+identified stale managed projection after token rotation as a concrete gap; it
+is remediated with atomic refresh and an isolated regression. The host `td`
+prerequisite and rotation behavior are documented. Final re-review identified
+that persistent containers do not receive refreshed env until recreation;
+consumer sandbox recreation is implemented and covered. Validation passes, and
+final complete-current-diff review found no actionable defects.
 
 ### Checklist
 
@@ -216,6 +240,11 @@ complete-current-diff review found no actionable defects.
 - [x] Add root README secret architecture guidance.
 - [x] Revalidate the changed candidate.
 - [x] Re-review the complete changed candidate.
-- [ ] Commit and terminal-review the updated exact candidate.
+- [x] Refresh an existing managed projection during token rotation.
+- [x] Revalidate the updated candidate.
+- [x] Recreate persistent consumer sandboxes after rotation.
+- [x] Revalidate the final updated candidate.
+- [x] Re-review the final updated candidate.
+- [ ] Commit and terminal-review the exact candidate.
 - [ ] Land and verify the exact candidate.
 - [ ] Complete credentialed live validation.
