@@ -40,10 +40,14 @@ cutoff that current restart replay uses. The restart time is sampled before
 other startup work, so startup cost cannot consume that window. A restart within
 the recovery window preserves the reply. A row older than that window becomes a
 durable no-reply and can never become replyable again. Stale rows still advance
-the cursor and checkpoint in order. Accepted input, reply delivery, and source
-ownership recover together. An ambiguous database change or an unknown
-non-repeatable tool result stops for operator review instead of guessing and
-risking loss or a duplicate effect.
+the cursor and checkpoint in order. If the source timestamp is missing or
+invalid, observation time starts the recovery window so restart behavior remains
+defined without suppressing a live message. Current handling can keep such an
+undated row eligible through an unlimited outage. This proposal intentionally
+bounds it to two hours from observation, matching the normal recovery window.
+Accepted input, reply delivery, and source ownership recover together. An
+ambiguous database change or an unknown non-repeatable tool result stops for
+operator review instead of guessing and risking loss or a duplicate effect.
 
 Each ordinary row uses one durable lifecycle record with one stable identity for
 its whole lifetime. Its observation state, source generation, preparation
@@ -82,8 +86,9 @@ The design keeps live queue delay from changing reply eligibility, preserves
 the original age class across restart, and applies the existing two-hour
 recovery cutoff to eligible pre-adoption rows. One stable non-expiring lifecycle
 record carries the row and its single capacity token through observation,
-preparation, processing, and replay commit. Retained complete-diff review is
-clean after the recovery-cutoff correction. Production remains unchanged,
+preparation, processing, and replay commit. Fresh terminal review remediation is
+complete, and retained complete-diff review is clean. The exact documentation
+candidate is ready for final review. Production remains unchanged,
 implementation is not approved, and public landing waits for prerequisite PR
 #56.
 
@@ -198,13 +203,18 @@ required a second capacity reservation, the proposed cross-key marker rekey was
 not supported by the existing store, and an eligible row could reply after an
 unbounded outage. The design now uses one immutable lifecycle-record key,
 updates generation and pin state atomically inside its value, reserves capacity
-only once, and saves the original send time plus the existing two-hour recovery
-cutoff. Queue delay never downgrades an eligible row. Restart samples time before
-other startup work and performs one one-way recovery cutoff check before agent
-work, preserving current recovery behavior while bounding long-outage replies.
-Retained complete-diff review found no actionable issues. The exact candidate is
-ready for retained and fresh terminal review. No executable artifact has been
-approved or changed.
+only once, and saves a defined age basis plus the existing two-hour recovery
+cutoff. A missing or invalid send date uses observation time. Queue delay never
+downgrades an eligible row. Restart samples time before other startup work and
+performs one one-way recovery cutoff check before agent work, preserving current
+recovery behavior while bounding long-outage replies.
+Fresh terminal review found one leftover architecture sentence that still
+reserved capacity during preparation and no defined restart cutoff for a
+missing or invalid send date. The design now reuses the first-observation token
+everywhere and uses observation time as the fallback recovery basis. Retained
+complete-diff review found no actionable issues, including the explicit
+dateless-message tradeoff. The exact candidate is ready for retained and fresh
+terminal review. No executable artifact has been approved or changed.
 
 Public plan-only merges are temporarily frozen until cron-reader PR #56 lands so
 this documentation change does not invalidate that feature's exact promotion
@@ -278,10 +288,12 @@ Acceptance criteria:
 - at first observation, before FIFO waiting or conversation repair, each
   ordinary row atomically reserves one bounded, non-evicting, non-expiring
   lifecycle-capacity token and persists its source row/GUID, sampled
-  startup-high-water threshold class, observation time, original send time,
-  two-hour recovery cutoff, and initial disposition; FIFO delay never changes
-  it, while restart may only downgrade pre-adoption `reply_eligible` to final
-  `stale_no_reply` after the saved recovery cutoff;
+  startup-high-water threshold class, observation time, parsed original send
+  time when available, defined age basis, two-hour recovery cutoff, and initial
+  disposition; a missing or invalid send time uses observation time as the age
+  basis and remains initially eligible like current production; FIFO delay never
+  changes it, while restart may only downgrade pre-adoption `reply_eligible` to
+  final `stale_no_reply` after the saved recovery cutoff;
 - a `reply_eligible` row atomically updates that same stable lifecycle record
   from observation to prepared without a second reservation or capacity check;
   saturation blocks only a new first observation and can never block a row that
@@ -886,9 +898,10 @@ for retry. An ordinary event instead repairs or confirms the
 conversation anchor and synchronously appends its admission ticket to the
 resulting per-conversation lock. The ticket immediately counts as pending work
 in the conversation's close predicate. While still holding the row slot, the
-monitor reserves pin capacity, snapshots immutable attachment bytes, and flushes
-the complete source-identified user turn to the existing transcript as a hidden
-`prepared` record, then strictly persists its `prepared` pin. Every history,
+monitor reuses the row's existing first-observation lifecycle token without a
+capacity check, snapshots immutable attachment bytes, and flushes the complete
+source-identified user turn to the existing transcript as a hidden `prepared`
+record, then atomically updates that same lifecycle value to `prepared`. Every history,
 compaction, retry, and recovery loader excludes prepared records that lack a
 durable adoption marker. It then atomically
 transfers the unknown blocker to that conversation ticket, releasing unrelated
@@ -1146,24 +1159,31 @@ adopted work into duplicate side effects.
 
 The existing message-age rules remain reply gates for ordinary inbound rows.
 At the first source observation, before FIFO waiting, the monitor compares the
-row with that process's sampled startup high-water and compares the original
-send date with the current wall clock. A row at or below the startup boundary
+row with that process's sampled startup high-water and, when usable, compares
+the original send date with the current wall clock. A row at or below the startup boundary
 uses the current two-hour recovery threshold. A later row uses the current
 15-minute live threshold, including a delayed Apple Push row that receives a
 fresh row ID. Under the source gate, the monitor first reserves bounded
 non-evicting, non-expiring lifecycle capacity, then durably records the source
 row/GUID, immutable lifecycle key, startup-boundary threshold class, observation
-time, original send time, the send-time-plus-two-hour recovery cutoff, and
-initial `reply_eligible` or `stale_no_reply` disposition before the callback can
-wait in the FIFO or acknowledge the observation. The recovery cutoff matches
-what the current classifier would apply to that already-present row after a
-restart, regardless of its saved live or recovery class. The durable record
-remains generation-neutral through continuity validation, in-memory slot
-binding, and conversation repair. Generation and replay identity are fields
-added to its value, not its key. Persistence failure or capacity saturation
-performs no effect and keeps the source held for retry. Capacity saturation
-stops only new first observations. Any row that already owns a token can
-continue every lifecycle transition without another capacity check.
+time, parsed original send time when available, defined age basis, the
+age-basis-plus-two-hour recovery cutoff, and initial `reply_eligible` or
+`stale_no_reply` disposition before the callback can wait in the FIFO or
+acknowledge the observation. A missing or unparseable send date remains
+`reply_eligible`, matching the current classifier, and uses observation time as
+its age basis. The recovery cutoff therefore remains defined and matches what
+the current classifier would apply to an already-present row with a usable send
+date after restart, regardless of its saved live or recovery class. For an
+undateable row, this intentionally narrows current restart behavior from
+unbounded eligibility to two hours after observation. That conservative
+divergence prevents arbitrarily late replies and is part of the design Cole must
+approve. The durable record remains generation-neutral through continuity
+validation, in-memory slot binding, and conversation repair. Generation and
+replay identity are fields added to its value, not its key. Persistence failure
+or capacity saturation performs no effect and keeps the source held for retry.
+Capacity saturation stops only new first observations. Any row that already
+owns a token can continue every lifecycle transition without another capacity
+check.
 
 FIFO delay never compares age again. A `reply_eligible` row proceeds through
 normal repair, preparation, and agent work even when an older row delayed it
@@ -1456,8 +1476,11 @@ After approval:
    Before FIFO waiting, compare its row with the sampled startup high-water and
    its send date with the current observation time. Under one immutable
    generation-neutral lifecycle key, persist row/GUID, boundary threshold class,
-   observation time, original send time, send-time-plus-two-hour recovery
-   cutoff, and initial `reply_eligible` or final `stale_no_reply` disposition.
+   observation time, parsed original send time when available, age basis,
+   age-basis-plus-two-hour recovery cutoff, and initial `reply_eligible` or final
+   `stale_no_reply` disposition. Match existing behavior by treating a missing
+   or unparseable send date as initially eligible and using observation time as
+   its age basis.
    Do not acknowledge or release the callback into the FIFO until persistence
    succeeds. Failure retains the hold for replay and performs no effect;
    saturation backpressures the source. A duplicate notification or retry joins
@@ -1604,9 +1627,12 @@ After approval:
    `IMESSAGE_RECOVERY_MAX_AGE_MS` recovery threshold. Preserve the existing
    comparison against the sampled startup high-water to choose between them.
    Evaluate both that class and send-date age once at first observation, using
-   the captured observation time. Persist the immutable threshold class,
-   original send time, send-time-plus-`IMESSAGE_RECOVERY_MAX_AGE_MS` cutoff, and
-   initial disposition before FIFO waiting. On restart, immediately after
+   the captured observation time. If the send date is missing or unparseable,
+   preserve current non-stale behavior and choose observation time as the age
+   basis. Persist the immutable threshold class, parsed original send time when
+   available, defined age basis, and the age basis plus
+   `IMESSAGE_RECOVERY_MAX_AGE_MS` cutoff, along with the initial disposition before FIFO
+   waiting. On restart, immediately after
    opening plugin state and before structural bootstrap or any other probe,
    sample one restart time. Join existing lifecycle records before consulting
    the new startup boundary. Before source subscription or work admission,
@@ -1946,9 +1972,14 @@ The managed recording harness must prove:
   atomically downgrades the pre-adoption row to `stale_no_reply`, idempotently
   suppresses any hidden prepared transcript, advances source state, and produces
   no hook, model, tool, or delivery effect;
+- for both a missing and an unparseable send date, prove first observation stays
+  eligible and saves observation time as the age basis; restart inside the
+  resulting two-hour cutoff produces the normal turn, while restart after it
+  downgrades to no-reply with zero agent or delivery effects;
 - crash during first-observation persistence is atomic, so restart sees either
-  the complete threshold class, original send time, recovery cutoff, and
-  disposition or no accepted observation and no partial record;
+  the complete threshold class, optional original send time, defined age basis,
+  recovery cutoff, and disposition or no accepted observation and no partial
+  record;
 - first-observation capacity saturation or persistence failure performs no
   agent or source-commit effect, keeps the generation-neutral hold, applies
   source backpressure, and never evicts older saved age state;
@@ -2232,8 +2263,9 @@ Existing lifecycle records keep their threshold class, recovery cutoff, and
 current disposition. On rollback restart, eligible pre-adoption records apply
 the same one-way recovery-cutoff downgrade before catchup. Rows first observed
 by rollback catchup use that process's startup boundary and persist their class,
-original send time, recovery cutoff, and initial disposition before waiting. A
-stale disposition produces durable no-reply without dropping source ownership.
+optional original send time, defined age basis, recovery cutoff, and initial
+disposition before waiting. A stale disposition produces durable no-reply
+without dropping source ownership.
 New rows that arrive during replay extend the target or remain for normal live
 handling.
 
@@ -2746,6 +2778,26 @@ migration and is outside this feature.
   two-hour recovery cutoff after restart. It also confirmed restart-time
   sampling, store-update capability gating, interrupted hidden-transcript
   cleanup, and the 40-minute and post-cutoff fixtures.
+- Fresh terminal review of exact candidate `54724dd` found one remaining
+  preparation paragraph that still reserved pin capacity and an undefined
+  recovery cutoff when the optional source send date was missing or
+  unparseable. Preparation now explicitly reuses the first-observation token
+  without a capacity check. First observation keeps dateless input eligible,
+  uses observation time as a defined age basis, and saves the normal two-hour
+  recovery cutoff. Validation covers missing and malformed dates on both sides
+  of that cutoff. Complete-diff recheck is pending.
+- Retained round 14 complete-diff recheck found no actionable issues. It
+  confirmed every ordinary reservation point, current initial behavior for
+  missing and malformed dates, the defined observation-time fallback, and both
+  restart fixtures. The Human and Agent design now state explicitly that current
+  handling can replay undated rows without a time bound, while this proposal
+  intentionally limits restart eligibility to two hours after observation.
+  Final clarity recheck is pending because that approval-facing statement
+  changed the reviewed diff.
+- Retained round 15 complete-diff clarity recheck found no actionable issues. It
+  confirmed the explicit undated-message tradeoff against the real age fence,
+  the repaired compound terms, all prior capacity and restart corrections, and
+  the complete plan structure.
 - Landing is intentionally held until cron-reader PR #56 merges; no public head
   movement will occur before coordination clears.
 
