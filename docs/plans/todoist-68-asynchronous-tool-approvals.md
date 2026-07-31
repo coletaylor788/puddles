@@ -167,162 +167,16 @@ sidecar running; that capability has its own fail-safe rollback boundary.
 
 ### State
 
-Research and architecture synthesis are complete. An independent adversarial
-review reported three blocking and seven non-blocking material gaps. All were
-accepted and incorporated into this revision:
+Research, architecture synthesis, and all independent review rounds are
+complete. Every accepted finding recorded in the review log is incorporated in
+the current design. Final validation found no unresolved material defects and
+confirmed the trust boundaries, state lifecycle, Gmail cutover ordering,
+bounded post-revocation recovery, separate rollback boundaries, and reversible
+mailbox-triage action set against the pinned OpenClaw and Puddles source.
 
-- moved credentials, authoritative state, immutable staging, decisions, and
-  execution out of OpenClaw's in-process plugin trust boundary;
-- removed host-local operator/admin scope as an accepted approval identity;
-- added request-side deduplication, quotas, and duplicate-send controls;
-- made the authority record, not session delivery, the resume source of truth;
-- replaced bounded `PluginStateKeyedStore` records with a dedicated
-  non-evicting transactional table;
-- required isolated content-addressed staging and pre-execution digest checks;
-- made authority-origin reachability and off-host device enrollment activation
-  prerequisites;
-- added approve-to-execute freshness;
-- added spoof-resistant canonical rendering;
-- bounded the pending window and described iMessage quick deny as best-effort;
-  and
-- corrected the description of OpenClaw's existing deferred approval mode.
-
-A fresh independent recheck then found three remaining trust-boundary defects
-and four accuracy/lifecycle defects. This revision also:
-
-- moved the review page and record API from the gateway-served Control UI to the
-  sidecar's distinct authenticated HTTPS origin;
-- removed OpenClaw's gateway-writable state database as an authority-store
-  option;
-- required byte upload rather than privileged sidecar reads of caller paths;
-- added WhatsApp and notification-only OpenClaw channels to the options;
-- made the missing stable root-task ID an explicit phase-one prerequisite and
-  quotas the cross-run flood-control boundary;
-- replaced the unsupported description-truncation claim with the verified
-  free-text and timeout-to-allow limitations; and
-- added the rollback transition from approved to cancelled.
-
-The next clean-room review found one same-origin active-attachment bypass and
-three decision-lifecycle contradictions. This revision additionally:
-
-- prohibits inline attachment rendering on the authority signing origin and
-  forces downloads through a separate no-credential origin;
-- requires WebAuthn user verification for every decision and removes the silent
-  WebCrypto-key alternative;
-- defines owner-signed re-arm from `approval_stale`; and
-- adds a narrow rate-limited `quickDeny` RPC that can only deny pending work.
-
-The terminal review then found one stale-execution recovery path and two
-authority access-control gaps. This revision also:
-
-- adds an absolute execute-by deadline that applies after claim and during lease
-  recovery;
-- requires the authority hostname's DNS, certificate issuance, and terminating
-  proxy configuration to be unavailable to the gateway account;
-- requires device-authenticated record views; and
-- authorizes separate-origin downloads only through short-lived, single-use,
-  record-and-digest-bound capabilities.
-
-The clean audit found one remaining attachment-routing isolation gap and one
-stale-event lifecycle contradiction. This revision:
-
-- applies gateway-inaccessible DNS, certificate, TLS, proxy, and route ownership
-  to every review-flow hostname, including attachment download;
-- makes `approval_stale` a retained, re-armable state with sequenced lifecycle
-  events rather than a terminal cleanup signal;
-- scopes run/session dedupe guarantees to model-level threats and adds
-  sidecar-native wall-clock caps that survive a compromised gateway;
-- hardens notification summaries, credential recovery, trusted time, cooldowns,
-  and concurrent download redemption.
-
-Terminal verification found no blocking issues and two non-blocking omissions.
-This revision:
-
-- pins WebAuthn RP ID and assertion verification to the exact authority hostname
-  rather than a shared parent domain; and
-- makes owner/rollback cancellation a sequenced, delivered terminal outcome,
-  including cancellation from `approval_stale`.
-
-Final verification found no blocking issues and three non-blocking gaps. This
-revision:
-
-- requires server-side verification of the WebAuthn user-verification flag;
-- names the existing gateway Gmail send-scoped token as a concrete prerequisite
-  to split and revoke;
-- corrects the review-status evidence; and
-- adds an owner-signed renewal path for expired, never-executed requests.
-
-Final confirmation found no blocking issues and two remaining non-blocking
-contradictions. This revision:
-
-- bounds renewal to the terminal-retention window and makes dedupe follow the
-  newest active record in a renewal lineage; and
-- separates gateway and sidecar Gmail OAuth clients as well as refresh tokens
-  and validates live gateway scopes.
-
-Closeout verification then found one blocking Gmail-scope defect and one
-lineage-classification gap. This revision:
-
-- excludes every Gmail scope that authorizes send, including `gmail.modify`,
-  from the gateway and moves all message mutation behind the sidecar; and
-- defines `approval_stale` as an active lineage generation for dedupe and
-  uniqueness.
-
-Final audit found one remaining blocking Gmail integration contradiction and
-one scope-allowlist defect. This revision:
-
-- preserves routine archive/read-state/label application through a separately
-  named, hard-allowlisted sidecar `mailboxMutation` RPC with no generic provider
-  method access; and
-- requires the gateway OAuth token's scope set to equal exactly
-  `{gmail.readonly}`, excluding settings and every future extra scope by
-  default.
-
-Clean closeout found one destructive-system-label bypass and two evidence-scope
-issues. This revision:
-
-- reserves `INBOX` and `UNREAD` effects for fixed archive/read-state actions and
-  permits configured label operations only on explicit user-created labels,
-  rejecting `TRASH`, `SPAM`, and all other system labels;
-- scopes the compromised-gateway signature invariant to approval-gated side
-  effects and names the narrow reversible mailbox-mutation exception; and
-- makes review evidence follow the complete review log rather than a stale
-  numeric count.
-
-Closeout confirmation found no blocking defect and one rollout-order ambiguity.
-This revision moves Gmail token revocation and scope restriction into the same
-phase-three cutover that activates the proven `mailboxMutation` replacement, so
-the approved design does not create an unintended archive/label outage.
-
-The subsequent final confirmation found one compatibility defect and four
-material cutover/rollback ambiguities. This revision:
-
-- preserves current star and importance triage through dedicated fixed,
-  reversible actions while keeping generic label operations user-label-only;
-- inventories the registered Gmail tool surface and observed label use before
-  defining the replacement action set;
-- replaces impossible cross-system atomicity with an ordered cutover whose old
-  token revocation is the final irreversible boundary;
-- requires pre-revocation abort to leave the old setup unchanged and
-  post-revocation failure to fix forward in the sidecar; and
-- keeps `mailboxMutation` available during approval-feature rollback under a
-  separate rollback plan.
-
-Clean confirmation found no blocking defects and one internally impossible
-availability invariant. This revision scopes the guarantee to cutover ordering:
-no cutover step disables the old path before the replacement is proven and
-serving. After old-token revocation, a sidecar fault is an explicit bounded
-fix-forward outage with alerting and a tested recovery procedure, not a claim
-that both paths can never be unavailable. The production cutover is also
-explicitly executed at rollout step 6 after phase-three build and rehearsal.
-
-Final validation found no unresolved material defects. It confirmed the
-cutover-ordering guarantee, bounded post-revocation recovery, separate rollback
-boundary, complete reversible triage action set, and proposal-only scope against
-the pinned OpenClaw and Puddles source.
-
-No approval runtime, notification integration, protected tool, configuration,
-credential, or external side effect was created.
+The proposal is ready for review. This publication created no approval runtime,
+notification integration, protected tool, configuration, credential, or
+external side effect.
 
 ### Scope and acceptance criteria
 
@@ -1287,6 +1141,11 @@ transfers a protected credential to the gateway account.
   It verified documentation-only scope, required plan structure, preservation
   of the completed source design, public issue metadata, whitespace, and the
   absence of private or stale tracking references.
+- 2026-07-30: Terminal publication review found that `State` duplicated the
+  review chronology instead of describing only the current proposal. The state
+  was condensed without removing design decisions or the complete review log.
+- 2026-07-30: Fresh complete-diff recheck confirmed the state correction and
+  found no remaining actionable issues.
 
 ### Checklist
 
