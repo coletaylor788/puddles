@@ -1,6 +1,6 @@
 # Complete selective iMessage message-part coalescing
 
-- **Status:** Rebased candidate ready for terminal review
+- **Status:** Complete and landed
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-31
 - **Owner:** Cole Taylor
@@ -40,8 +40,9 @@ No runtime, configuration, or deployment change is planned. Focused first-row
 standalone link and image regressions pass in the existing registered monitor
 suite, the full shared lifecycle passes, and independent complete-diff review is
 clean. Cron-reader PR #56 is merged, the candidate is rebased onto that new
-`main`, and the full lifecycle passes again. The finalized commit now needs
-exact-commit terminal review. Production remains unchanged.
+`main`, and the full lifecycle passes again. Exact-commit terminal review and
+remote checks are clean, and PR #76 is merged. The work is ready for Cole's
+review. Production remains unchanged.
 
 ## Agent section
 
@@ -59,9 +60,9 @@ revision `0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c` with the selective iMessage
 patch enabled. The retained deployment snapshot is
 `~/.openclaw/deploy-snapshots/20260730T104410Z-0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`.
 
-The current worktree changes the plan and adds focused regressions inside the
-existing iMessage patch artifact. No runtime source, configuration, dependency,
-test registration, or production state is changing.
+PR #76 landed the focused regressions and this plan on public `main` as merge
+commit `03cda26`. No runtime source, configuration, dependency, or production
+state changed.
 
 ### Scope and acceptance criteria
 
@@ -275,6 +276,9 @@ deployment fails.
 - 2026-07-31: The branch rebased cleanly onto `937b2af`. The full managed
   lifecycle passed again with 15 files and 471 patch tests plus the candidate
   browser-entrypoint regression.
+- 2026-07-31: Exact commit `c33afcf` passed fresh terminal review with no
+  actionable findings. All remote CodeQL and cumulative integration checks
+  passed, and PR #76 landed as merge commit `03cda26`.
 
 ### Checklist
 
@@ -312,3 +316,5 @@ deployment fails.
 - [x] Remove live-message smoke instructions from the patch guide.
 - [x] Finalize the plan and checklist for the immutable landing candidate.
 - [x] Confirm cron-reader PR #56 is merged before moving public `main`.
+- [x] Pass exact-commit terminal review and required remote checks.
+- [x] Land the reviewed candidate on public `main`.
