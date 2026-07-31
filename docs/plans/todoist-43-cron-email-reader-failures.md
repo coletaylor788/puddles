@@ -31,11 +31,11 @@ earlier smoke, which selected reader immediately.
 
 ### Status
 
-The design reset and current-base validation are complete. The reproduced-path
-code and the new plan format pass the full cumulative suite. Production is
-healthy on the prior build after rollback. A fresh current-base review, exact
-public head, matching host deployment pin, promotion, and landing remain. The
-cron definition has not been changed.
+The design reset, current-base validation, and independent review are complete.
+The reproduced-path code and new plan format pass the full cumulative suite.
+Production is healthy on the prior build after rollback. Final-head checks,
+terminal review, the matching host deployment pin, promotion, and landing
+remain. The cron definition has not been changed.
 
 ## Agent section
 
@@ -46,6 +46,8 @@ cron definition has not been changed.
 - Production is healthy on the prior reviewed build after rollback.
 - The current worktree includes the latest public `main` and this rewritten plan.
 - The pull request now describes the runtime change and cumulative validation.
+- The published candidate passed all exact-head remote checks and independent
+  review without actionable findings.
 - The targeted writing-contract suite passes 9 tests.
 - The complete managed lifecycle passes build and lint, 298 repository tests,
   seven prompt snapshots, 470 mapped source tests, the browser candidate test,
@@ -112,8 +114,9 @@ cron definition has not been changed.
   seven
   prompt snapshots, 470 mapped source tests, the browser candidate test, and
   cleanup.
-- Independent and terminal reviews found no actionable issues and verified all
-  17 embedded patch blobs.
+- Exact-head integration and code analysis checks passed remotely.
+- Prior independent and terminal runtime reviews found no actionable issues and
+  verified all 17 embedded patch blobs.
 - A prior production promotion replayed the real three-call sequence with
   no delivery: omission denied, second main denied, reader accepted, one fixed
   no-match Gmail read returned `READ_OK`, and main returned `CRON_READER_OK`.
@@ -139,6 +142,8 @@ cron definition has not been changed.
   self-alias filtering, and coverage of the unset cron default.
 - Final runtime reviews were clean. Fresh plan review found public operational
   identifiers and an outdated pull request description. Both are corrected.
+- Independent re-review of the corrected complete diff found no actionable
+  issues. Terminal review remains after the final plan update.
 
 ### Checklist
 
@@ -152,8 +157,9 @@ cron definition has not been changed.
 - [x] Complete focused and full managed validation.
 - [x] Prove the real sequence in a read-only production harness.
 - [x] Validate the rewritten plan on the current public base.
-- [ ] Complete fresh current-base and terminal reviews.
-- [ ] Publish the final exact public head.
+- [x] Complete fresh current-base review.
+- [ ] Complete terminal review.
+- [ ] Publish and check the final exact public head.
 - [ ] Update and validate the matching host deployment pin.
 - [ ] Promote the final exact tuple.
 - [ ] Land the host deployment candidate and public PR #56.
