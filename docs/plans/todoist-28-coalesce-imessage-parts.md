@@ -22,10 +22,12 @@ Each source event keeps its arrival order and becomes durable before the model
 can see it. Prepared input stays hidden until the correct run adopts it, then it
 appears once as a normal user turn. If the message database is replaced or the
 process restarts, the source reconciles the exact committed prefix before replay
-continues. Accepted input, reply delivery, and source ownership recover
-together. An ambiguous database replacement or an unknown non-repeatable tool
-result stops for operator review instead of guessing and risking loss or a
-duplicate effect.
+continues. That prefix comes directly from stable database rows and does not
+change when message parsing changes. Immediate mode also requires the bridge to
+replay every row after the saved cursor with no fixed lookback clamp. Accepted
+input, reply delivery, and source ownership recover together. An ambiguous
+database replacement or an unknown non-repeatable tool result stops for operator
+review instead of guessing and risking loss or a duplicate effect.
 
 Stops and reactions use the same ordered source gate. Stops keep their current
 authorization and behavior, but record the exact older work they may cancel so
@@ -44,17 +46,18 @@ unit.
 
 Immediate admission is opt-in. The local source needs an operator-reviewed
 starting boundary because its message database has no immutable generation
-identity, then it validates the full committed prefix before each admission.
-Remote and legacy sources stay on the current path until they can provide the
-same proof. Production remains unchanged until Cole approves implementation.
-Rollback keeps the deployed version, drains accepted work, catches up the source
-without loss, and switches configuration back to the current coalescer.
+identity, then it validates the full committed prefix before each admission. It
+must also prove unbounded ordered replay and real reaction identity. Remote and
+legacy sources stay on the current path until they can provide the same proof.
+Production remains unchanged until Cole approves implementation. Rollback keeps
+the deployed version, drains accepted work, catches up the source without loss,
+and switches configuration back to the current coalescer.
 
 ### Status
 
-The complete design review is clean. Production is unchanged and no
-implementation is approved. The documentation candidate is moving through its
-exact-commit terminal review, and public landing waits for an unrelated
+The corrected design has a clean complete-diff review. Production is unchanged
+and no implementation is approved. The revised documentation candidate is
+moving through exact-commit review, and public landing waits for an unrelated
 prerequisite change.
 
 ## Agent section
@@ -142,7 +145,13 @@ durable effect-claim class and capacity pool. Receipt confirmation releases that
 claim without cursor movement, while restart reconciles rather than sweeps it.
 The complete current-diff recheck found no actionable issues. Remaining bridge
 capability, stop-latency, and restart-barrier proof belongs to implementation
-validation after approval. No executable artifact has been approved or changed.
+validation after approval. Fresh terminal review then found that the shared
+prefix still depended on parser classification and that the existing 500-row
+constant is a replay floor clamp, not pagination. The design now uses a
+version-stable structural database prefix and requires proven unclamped ordered
+replay from the saved cursor before enrollment. The complete corrected-diff
+recheck found no actionable issues. No executable artifact has been approved or
+changed.
 
 Public plan-only merges are temporarily frozen until cron-reader PR #56 lands so
 this documentation change does not invalidate that feature's exact promotion
@@ -232,12 +241,18 @@ Acceptance criteria:
   immediate mode, and never dispatches that event independently around an
   active immediate turn;
 - each contiguous cursor commit atomically advances a durable cryptographic
-  checkpoint over the ordered stable source GUID prefix before pin cleanup;
+  checkpoint over the version-stable structural database GUID prefix before pin
+  cleanup;
 - bootstrap, incremental commit, per-admission validation, catchup, and
-  replacement matching enumerate the same set: every inbound account row at or
-  below the cursor that the catchup scanner classifies as cursor-advancing,
-  whether or not live notification delivery exposed it, ordered by source row;
-  any such row without a stable real database GUID blocks the boundary;
+  replacement matching enumerate the same set directly from the source database:
+  every account-scoped row in the Messages message table at or below the cursor,
+  whether or not live notification delivery or the current parser exposed it,
+  ordered by source row and hashed by real database GUID; if the schema cannot
+  distinguish the configured account, the set includes every message-table row
+  in that database; any member without a stable real GUID blocks the boundary;
+- parser, notification-classifier, and catchup behavior changes cannot alter an
+  already committed prefix; any intentional structural predicate migration uses
+  an explicit versioned re-bootstrap and never replacement reconciliation;
 - initial enablement scans oldest-first through the existing cursor and
   atomically seeds generation, cursor, count, and hash before any immediate event
   only after durable state proves the complete ordered prefix, an immutable
@@ -332,6 +347,10 @@ Acceptance criteria:
   permanent skip releases it;
 - restart and catchup cannot omit the earliest cursor-held row because of age,
   page-size, total-row, or retry-give-up limits;
+- enrolled recovery passes the persisted cursor directly to a bridge contract
+  that proves complete ordered replay of every later row; the existing
+  500-row lookback floor clamp is removed for enrolled accounts and is never
+  treated as pagination;
 - pin capacity is reserved before dispatch across concurrent lanes, and a pin
   write failure aborts before assistant/tool processing;
 - a first-session user turn is actually flushed before adoption is acknowledged;
@@ -439,25 +458,36 @@ continuity atomically closes immediate admission for that source and rotates the
 generation before it can accept another immediate event. Immediate capability also requires the transport
 contract to guarantee finite row/GUID identity for every ordinary event and
 every authenticated stop request accepted by the existing classifier, and
-lossless `since_rowid` replay, and every cursor-crossed row in that replay stream
-must expose a cross-generation stable identity. A source whose event contract
+complete ordered `since_rowid` replay from any persisted cursor with no fixed
+lookback clamp. Every cursor-crossed row in that replay stream must expose a
+cross-generation stable identity. The current
+`IMESSAGE_RECOVERY_MAX_ROWS` calculation is a hard floor on `watchSinceRowid`,
+not pagination, so enrolled accounts remove that clamp and pass the persisted
+cursor directly. Enrollment requires a startup capability probe and a fixture
+with more than 500 later rows proving that `watch.subscribe` emits every row in
+order. A source whose event contract
 permits missing identity, including an unequipped remote bridge, remains
 current-path-only for the entire monitor generation. A generation change starts
 a separate cursor/hold/pin namespace and never transfers old in-memory lanes
 into the new generation.
 
-Every prefix operation uses one shared enumeration. It includes every inbound
-row for the configured account at or below the cursor that the catchup scanner
-classifies as cursor-advancing, even when the live notification stream never
-surfaced that row. Rows are ordered by source row ID and hashed with their real
-database GUID. Bootstrap, incremental cursor commit, per-admission validation,
-historical-reaction proof, catchup, and replacement reconciliation cannot use
-different predicates. A qualifying row without a stable real GUID blocks the
-boundary.
+Every prefix operation uses one versioned structural database enumeration that
+does not call notification parsing or catchup classification. It selects every
+row in the Messages `message` table for the source account at or below the
+cursor, including rows never surfaced live, orders by source row ID, and hashes
+the real database GUID sequence and count. If the schema cannot distinguish the
+configured account, the predicate includes every message-table row in that
+database. Bootstrap, incremental cursor commit, per-admission validation,
+historical-reaction proof, catchup, and replacement reconciliation share that
+exact predicate. Parser and classifier upgrades therefore cannot change an
+existing checkpoint. A qualifying row without a stable real GUID blocks the
+boundary. Any future structural predicate change increments its stored version
+and requires an explicit reviewed re-bootstrap rather than being interpreted as
+a database replacement.
 
 Before the feature switch enables immediate admission for an existing account,
 the monitor must bind the path-scoped legacy cursor to the current database. It
-It may automatically trust a nonempty prefix only when durable state already
+may automatically trust a nonempty prefix only when durable state already
 contains its ordered count/hash commitment or an immutable source database
 identifier that was recorded before any row in that cursor range was crossed.
 The current row-only cursor and transcript/replay evidence for a GUID at its
@@ -970,7 +1000,8 @@ Claim checks both ordinary replay identity and the pin. The pin is excluded from
 ordinary oldest-entry pruning until the cursor crosses that row. Cursor crossing
 is serialized with pin cleanup. First atomically persist the new cursor and the
 next cryptographic hash-chain checkpoint over every ordered stable inbound GUID
-crossed by that cursor, including permanent skips that have a stable GUID. A
+in the versioned structural database prefix crossed by that cursor, including
+rows never accepted by the current parser. A
 GUID-less row cannot be crossed or classified as a permanent skip; it blocks
 checkpoint/cursor advancement in reviewed recovery. Then durably refresh the
 ordinary four-hour replay entry and remove the pin. A failure at either later
@@ -982,13 +1013,14 @@ resumes. Thus disk failure, a four-hour delay, or 10,000 newer rows cannot conve
 adopted work into duplicate side effects.
 
 On restart the in-memory holds are reconstructed from the persisted cursor
-rather than from a new durable record. Recovery queries rows strictly after that
-cursor in ascending order and continues bounded pagination until the contiguous
-prefix is resolved. The existing 500-row result size remains a page size, not a
-total replay ceiling. The two-hour live/catchup age fence and retry give-up do
-not discard or advance past the earliest unresolved row; a discriminated
-permanent skip or successful replay commit is required. Existing replay keys
-make already committed rows in later pages harmless.
+rather than from a new durable record. For an enrolled account, recovery removes
+the `IMESSAGE_RECOVERY_MAX_ROWS` floor clamp and passes the persisted cursor
+directly to the proven ordered `watch.subscribe` replay contract. The bridge
+streams every later row in ascending order until the contiguous prefix is
+resolved. No fixed lookback, result cap, age fence, or retry give-up may discard
+or advance past the earliest unresolved row. A discriminated permanent skip or
+successful replay commit is required. Existing replay keys make already
+committed rows harmless.
 
 Retryable conversation repair is owned by the row-keyed reservation slot. It
 schedules one abortable exponential-backoff retry with jitter per row, reusing
@@ -1205,8 +1237,8 @@ After approval:
    A runtime identity-contract violation fails the source closed, disables
    immediate mode, and never dispatches independently. Eligible events then use
    a per-account source-order gate with one slot keyed by
-   atomically bind the neutral hold to
-   `(accountId, dbInstanceId, rowid)`. Duplicate
+   `(accountId, dbInstanceId, rowid)`. At the FIFO head, atomically bind the
+   neutral hold to that slot. Duplicate
    notification or retry resumes the same slot. For unknown affinity, register
    an account blocker against existing and subsequently attached run gates
    before the first repair await. While holding the slot, resolve/repair
@@ -1290,11 +1322,14 @@ After approval:
    as account and row. Detect replacement as a new generation and keep old
    state isolated. Atomically persist each contiguous cursor advance with a
    non-expiring cryptographic hash-chain checkpoint over every crossed ordered
-   stable inbound GUID. Implement one shared source-row enumerator for bootstrap,
-   incremental commit, per-admission proof, historical approval proof, catchup,
-   and replacement matching. It selects every account-scoped inbound row at or
-   below the boundary that catchup classifies as cursor-advancing, including rows
-   omitted by live notifications, in source-row order. A GUID-less row is
+   structural database GUID. Implement one versioned SQL source-row enumerator
+   for bootstrap, incremental commit, per-admission proof, historical approval
+   proof, catchup, and replacement matching. It selects every row in the
+   Messages `message` table for the source account at or below the boundary,
+   independent of parser acceptance or notification delivery, in source-row
+   order. If the schema cannot distinguish the configured account, select every
+   message-table row in that database. Store the enumerator version with the
+   checkpoint and require reviewed re-bootstrap for any predicate migration. A GUID-less row is
    retryable/blocked reviewed recovery,
    never a cursor-crossing permanent skip. Change conversation repair
    from nullable output to
@@ -1309,10 +1344,14 @@ After approval:
    hold. Add an authenticated local reconciliation action for unmatched
    generations that records one explicit reviewed replacement boundary or
    abandons that generation; automated recovery cannot invoke it.
-9. Make enabled-account recovery page from the persisted cursor forward in
-   ascending source order. Treat the current 500-row limit as a page size and
-   bypass age suppression and retry give-up for the earliest unresolved row;
-   only permanent skip or successful replay commit may cross it.
+9. For enabled-account recovery, remove the
+   `IMESSAGE_RECOVERY_MAX_ROWS` floor clamp and pass the persisted cursor
+   directly to `watch.subscribe`. Gate enrollment on a bridge capability probe
+   and fixture proving complete ordered delivery of more than 500 later rows
+   from that cursor. Do not describe the clamp as pagination or borrow limits
+   from the disabled legacy catchup subsystem. Bypass age suppression and retry
+   give-up for the earliest unresolved row; only permanent skip or successful
+   replay commit may cross it.
 10. Reserve bounded pin capacity atomically before claim/dispatch, counting
    durable pins plus every in-flight reservation across lanes. Before releasing
    source order, flush the exact source-identified turn and immutable media and
@@ -1582,8 +1621,13 @@ The managed recording harness must prove:
   the original owner committed it;
 - chat-list or any history RPC failure during row N repair retains N's hold while
   N+1 completes, whereas an exhaustive successful no-anchor result releases N;
-- restart with more than 500 newer rows still fetches cursor-held row N first and
-  paginates forward without loss;
+- restart with more than 500 newer rows passes the persisted cursor directly to
+  `watch.subscribe`, receives every later row exactly once in order, and proves
+  the 500-row floor clamp is absent;
+- an unchanged database containing rows rejected by one parser version yields
+  byte-identical structural prefix count/hash before and after a parser or
+  notification-classifier upgrade; changing the versioned structural predicate
+  requires reviewed re-bootstrap and never enters replacement reconciliation;
 - restart after row N ages beyond two hours still retries N rather than
   suppressing it;
 - repeated retryable catchup failure for row N never advances the cursor to
@@ -1747,6 +1791,9 @@ The managed recording harness must prove:
 - historical claim-pool saturation leaves ordinary source dispatch running,
   returns poll submission as pending, and recovers capacity when an existing
   claim reaches terminal;
+- bridge replay capability tests start more than 500 rows behind high-water and
+  prove unclamped `watch.subscribe` delivery from the exact persisted cursor;
+  failure keeps the account wholly on the current coalescer;
 - bridge history capability tests expose a tapback's real row and GUID; when
   either is unavailable, immediate enrollment stays disabled for the account
   rather than reporting a working poller;
@@ -1813,10 +1860,11 @@ pin. Pending-final and delivery recovery remain enabled. A
 quiescence; rollback never resolves it automatically.
 
 At that first quiescent boundary, the same new package switches the source to
-the current coalescer and runs the new lossless cursor pager without the old
-500-row or age limits until the persisted cursor reaches a freshly sampled live
-high-water row and all catchup handlers complete replay commit. New rows that
-arrive during catchup extend the target or remain for normal live handling.
+the current coalescer and starts proven unclamped ordered replay from the
+persisted cursor until it reaches a freshly sampled live high-water row and all
+replay handlers commit. The 500-row floor clamp remains removed for this drain.
+New rows that arrive during replay extend the target or remain for normal live
+handling.
 
 Rollback remains configuration-only on the deployed package after this second
 quiescent boundary. Binary downgrade is prohibited because predecessor
@@ -2203,8 +2251,8 @@ migration and is outside this feature.
   submits a finite-row, stable-GUID candidate through the shared source slot.
   Live and polled delivery join one owner before adopted-pin persistence or
   approval effect, and discovery alone is never success. Validation covers a
-  database fork, an older FIFO blocker, and a live/poller race. Recheck is
-  pending.
+  database fork, an older FIFO blocker, and a live/poller race. Resolved in the
+  later complete-diff recheck.
 - Recheck found that the poller candidate still used a synthetic GUID that
   differs from the live database GUID, and that awaiting FIFO ownership could
   hold the poller's in-flight guard forever. History must now expose the real
@@ -2214,8 +2262,8 @@ migration and is outside this feature.
   claim without changing the cursor. The same pass normalized the plan to the
   current Human section and Agent section contract. Validation covers identical
   live/poll identity, continued timer ticks behind an indefinite blocker,
-  historical rows below the cursor, and one shared prefix enumeration. Recheck
-  is pending.
+  historical rows below the cursor, and one shared prefix enumeration. Resolved
+  in the later complete-diff recheck.
 - Recheck found that a historical approval below the cursor still used an
   ordinary cursor-relative pin. It could never cross again, leaked bounded pin
   capacity during normal operation, and could be deleted by startup cleanup
@@ -2234,6 +2282,16 @@ migration and is outside this feature.
   the real bridge response, stop latency, and gateway-wide restart barrier stays
   in implementation validation. The documentation candidate is ready for
   exact-commit terminal review.
+- Fresh terminal review of the exact candidate found that prefix membership
+  still depended on the disabled, parser-versioned catchup classifier and that
+  the existing 500-row constant is a `since_rowid` floor clamp rather than a
+  page size. The prefix now uses one versioned structural message-table
+  predicate independent of parsing. Enrolled recovery removes the clamp and
+  requires a bridge fixture proving complete ordered replay from the persisted
+  cursor across more than 500 rows. The review also found and corrected two
+  damaged implementation sentences. The retained reviewer rechecked the
+  complete corrected diff against the source schema and runtime clamp and found
+  no actionable issues. Exact-commit review is next.
 - Landing is intentionally held until cron-reader PR #56 merges; no public head
   movement will occur before coordination clears.
 
