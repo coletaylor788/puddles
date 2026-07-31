@@ -1,209 +1,624 @@
-# Plan 030: Apple Notes integration (share-with-Puddles, contacts-gated)
+# Plan 030: Secure Apple Notes sharing
 
-**Status:** ⏸️ **PAUSED (2026-07-08)** — parked pending the `sessions_yield` regression investigation. Design + research-complete below; resume when ready. 📝 Draft — **research-complete** (2026-07-07 on-mini probe + web research resolved the open questions; one small on-mini validation remains, and it no longer gates the security model). Model: **people share notes/folders *with* `puddles@`; Puddles reads them because a human accepted the share and the sharer is in Puddles's Contacts.**
-**Author:** Cole + Puddles
-**Depends on:**
-- Plan 018 (`contacts as trust`) — `ContactsTrustResolver`, the read gate. **Central.**
-- Plan 022 (`household`/`friends` tiers) — the contact→tier mapping a shared folder inherits from its sharer.
-- Plan 021 / 017 (`secure-apple-calendar` per-agent config + wrapper/hook pattern) — the plugin scaffold + config-dir factory.
-- Plan 010 (`secure-gmail`) + Plan 027 (iMessage approval channel) — path **B**: detect invite emails to `puddles@`, then one-tap approve. Plan 023 (durable browser login) — optional path **C**.
-- `docs/openclaw-setup/apple-pim/` (disclaim wrapper) — TCC-stability for a `notes-cli`.
+**Status:** Design only, awaiting explicit prototype approval
+**Issue:** None
+**Last updated:** 2026-07-30
 
----
+## Human section
 
-## Summary
+### Design
 
-Puddles reads/writes Apple Notes **on its own `puddles@` account**, where trusted people **share a folder with `puddles@`**:
+A dedicated Apple account receives shared notes from people who already have an
+authenticated direct-message binding. Sharing starts with a short confirmation
+exchange in that same conversation. The system accepts the invitation through a
+separate Notes service, records the note and the sender's grant, then exposes
+bounded list and read tools. Version one cannot edit notes because a whole-body
+write could overwrite a collaborator's newer changes.
 
-- Apple share acceptance **can't be silently automated** — but the sharer **is** identifiable before accepting (invite email + `CKFetchShareMetadata`), so Puddles can contacts-filter without spam. The design supports "a friend shares a note with Puddles" two ways (see [that section](#supporting-a-friend-shares-a-note-with-puddles)): **(A)** known friends use a `puddles@`-owned shared folder → fully hands-off; **(B)** ad-hoc shares are auto-detected, contacts-filtered, and reduced to **one pre-vetted tap** to accept.
-- Puddles's automated job is the **read-gate**, not acceptance: a note is read only if its folder's sharer resolves to a Contact and is mapped to a tier — at **tier-trust**, same as an iMessage from that person (no worker isolation).
+Access follows the existing direct-message relationship. The top tier can read
+every active grant. The household tier can read household and friend grants.
+Each friend can read only notes granted through that friend's exact sender
+partition. A forwarded link does not carry a higher trust level because the
+authenticated conversation that receives the link defines the grant.
 
-The security does **not** depend on any fragile parsing — the human accept + config mapping carries it. A best-effort SQLite read of the CloudKit share record *auto-verifies* the sharer is a Contact and auto-suggests the tier, but is optional.
+The design keeps message intake, model work, Apple applications, policy, and
+note acceptance in separate security domains. It also gives each friend
+separate conversation and execution state. Durable journals, bounded attachment
+spools, replay barriers, and careful recovery keep crashes and rollback from
+repeating actions or losing control records. Apple does not provide supported
+interfaces for several required invitation and identity operations, so those
+facts must be proven with disposable accounts and recording adapters before
+implementation is approved.
 
----
+### Status
 
-## Key findings (what the research settled)
+The provider-neutral design is complete for review. It defines read-only access,
+grant rules, invitation confirmation, service isolation, durable recovery,
+attachment limits, relay controls, validation, rollout, and rollback.
 
-**On-mini probe (2026-07-07):**
-1. **Per-Apple-ID; the mini runs `puddles@`, which is empty** (2 default folders, 0 notes, 0 shares). Cole's own notes live on `cole@` and stay there (the `puddles@ ≠ cole@` split is load-bearing for Plan 022). ⇒ Puddles can only see notes **shared into `puddles@`** — which is exactly the model.
-2. **AppleScript exposes `shared: true/false` on a note/folder, but no owner/participant/sharer** (`Notes.sdef`). Sharer identity must come from SQLite.
-3. **`NoteStore.sqlite` carries the share plumbing** — `ZICNOTEPARTICIPANT` (opaque CloudKit IDs), `ZICINVITATION`, and `ZICCLOUDSYNCINGOBJECT.ZSERVERSHAREDATA` (the `CKShare` blob). Readable by the `puddles` user (no FDA wall over SSH).
+No prototype or implementation work is approved or started. A prototype-only
+approval can authorize disposable proof work. Its results must update this
+design before a separate approval can authorize implementation.
 
-**Web research:**
-4. **Acceptance is mandatory and manual.** Apple has no auto-accept; `CKAcceptSharesOperation` requires user interaction; no AppleScript/Shortcuts hook exists. A share to `puddles@` **does not appear until a human accepts it.** ⇒ We lean into this: the accept is the trust gate, and **folder-level sharing = accept once**.
-5. **The sharer's email/phone lives in the `ZSERVERSHAREDATA` `CKShare` blob** (`participants[].userIdentity.lookupInfo.{emailAddress,phoneNumber}`), unarchivable via NSKeyedUnarchiver (forensic parsers do this, e.g. `apple_cloud_notes_parser`). **Caveats:** blob format drifts across macOS versions, and modern iOS/macOS sometimes **obfuscates** the participant email. ⇒ usable for *auto-verify*, too fragile to be *load-bearing*.
-6. **Shortcuts/App Intents** support Find/Create/Append/Get-Details/Delete (plain-text) but **no folder create/move and no sharing metadata**. ⇒ a viable *fallback* CRUD backend, but AppleScript is richer (HTML body, folders) and neither exposes sharers — SQLite is unavoidable for identity.
-7. **Maintained Apple-Notes MCP servers exist** (e.g. `mcp-apple-notes`, `apple-notes-mcp`, `disco-trooper/apple-notes-mcp`, `sweetrb/apple-notes-mcp`, `apj72/notes_mcp`) — all AppleScript/SQLite CRUD + search; **none handle sharing/participants.** ⇒ reuse is possible for CRUD, but the contacts-gate is ours regardless → build a small `notes-cli`.
-8. **Acceptance can't be *silently* automated — but the sharer *is* knowable pre-accept, and a browser path exists.** Deep research (2026-07-07) refined finding #8's earlier "hard wall":
-   - **Silent auto-accept is blocked** (no AppleScript/Shortcuts accept; `CKAcceptSharesOperation` needs user interaction and can't touch Apple's private `com.apple.notes` container).
-   - **BUT the sharer is knowable *before* accepting:** `CKFetchShareMetadataOperation` returns `ownerIdentity` (name/email/phone) from the share URL without joining, and the invitation **email** ("*<Sharer> via iCloud* invited you to collaborate on '<title>'" + a "View Note" link) carries the sharer name + link. ⇒ Puddles can **contacts-filter before it ever bothers a human** (no stranger spam).
-   - **iCloud.com can accept + read shared notes in a browser** (Puddles has a durable-login browser-agent, plan 023) — but web automation is **fragile**: ~30-day "trust this browser" then re-2FA, ~2h inactivity timeouts, anti-bot friction, and against Apple's ToS. App-specific passwords work for IMAP/CalDAV, **not** web login.
-   ⇒ See [Supporting "a friend shares a note with Puddles"](#supporting-a-friend-shares-a-note-with-puddles) for the four paths and the chosen design (**A + B**).
+## Agent section
 
----
+### State
 
-## Access & trust model
+- Lifecycle state: design only.
+- Approval gates: first stop for explicit disposable prototype approval. After
+  prototype evidence updates this plan, stop again for explicit implementation
+  approval.
+- Production impact: none. No account, service, permission, invitation, message,
+  note, or deployment changes are authorized by this update.
+- V1 capability: accept, list, and read shared Apple Notes. V1 has no create,
+  append, update, delete, move, participant management, or account-wide
+  membership removal tool.
+- Primary safety reason for read-only scope: Notes exposes whole-body writes
+  without a supported conflict-safe compare-and-set operation. A write can
+  overwrite collaborator edits that the caller has not seen.
 
-```
-partner / friend / Cole  ── shares a FOLDER with puddles@ ──►  invitation
-                                                                   │  (manual, one-time)
-                                              Cole ACCEPTS on puddles@ (mini GUI / puddles@ device)
-                                                                   │  ← primary trust gate (human)
-                                              + adds 1 config line: folder → { tier, sharer }
-                                                                   ▼
-                                     folder's notes flow into puddles@ automatically thereafter
-                                                                   │
-                     notes-cli (only touches configured folders) ──┤
-                                                                   ├─ read at the folder's TIER, tier-trust (no worker)
-                                                                   └─ optional: verify sharer ∈ Contacts via CKShare blob
-```
+### Scope and acceptance criteria
 
-**Two-layer gate (belt = human, suspenders = automation):**
+- A dedicated Apple ID accepts and reads collaboration invitations received
+  through already authenticated, exact direct-message bindings.
+- One authenticated source text row with exactly one allowlisted Apple
+  collaboration link can create one pending proposal.
+- The trusted transport, not a model, generates and sends an immutable challenge
+  containing a cryptographically random 128-bit code. It replies to the exact
+  source row.
+- The same exact peer confirms by replying to that exact challenge in the same
+  direct-message thread. The reply body must contain only the saved code phrase.
+- Confirmation is consumed before ordinary model processing and creates one
+  short-lived isolated turn with only invitation acceptance and content-free
+  response generation available.
+- A deterministic Notes broker accepts the invitation, causally maps it to one
+  stable Apple note ID, and atomically records the canonical note identity and
+  an independent sender grant.
+- List and read operations reauthorize every returned resource from trusted
+  runtime identity and the grant registry.
+- Top-tier callers can read all active grants. Household callers can read
+  household and friend grants. Friend callers can read only grants in their
+  exact sender partition.
+- Each friend has isolated transcript, session, memory, workspace, browser,
+  process, and subagent state.
+- Friend web access and owner relay cannot cross peer or policy boundaries.
+- Raw ingress, split-message composition, action tickets, relay tickets,
+  cursors, replay barriers, attachment state, and recovery metadata are durable.
+- Attachment admission and cleanup preserve reserved space for text, cursor,
+  sentinel, and other control progress.
+- Rollback never restores live journal or spool state from an older snapshot.
+- Every automated test uses disposable state and fake or recording adapters.
+  Automated live checks are read-only and never send messages, accept
+  invitations, change notes, or alter memberships.
+- Implementation remains blocked until prototype-only work is separately
+  approved, every prototype gate has a recorded pass or approved design change,
+  this plan is updated, and implementation receives a second explicit approval.
 
-1. **Accept-time human gate (primary, robust).** A folder is only readable after a human accepts the CloudKit share *and* records it in config with its tier + expected sharer. Apple's mandatory-accept requirement means nothing enters `puddles@` un-vetted. No parsing, no fragility.
-2. **Contacts auto-verify (optional enhancement).** `notes-cli` reads the folder's `ZSERVERSHAREDATA` and confirms the owner/participants resolve to `puddles@` Contacts (`ContactsTrustResolver`), and can auto-suggest the tier from Plan 022's contact→tier map. If the blob parse fails or the email is obfuscated, it **falls back to the config attestation** — no loss of safety, just less automation.
+Out of scope for V1:
 
-### Who accepts — the share-out inversion
+- Proving the cryptographic owner of an Apple note.
+- Using Contacts groups to classify a sender.
+- Trusting a tier asserted in message text, a forwarded link, note content, a
+  model response, or an untrusted process.
+- Reading unregistered notes or browsing the dedicated Apple account outside
+  active grants.
+- Note or folder writes of any kind.
+- General browser automation for invitation acceptance.
+- Group chats, command-line callers, cron jobs, subagents, delegated callers, or
+  wildcard/default identities as invitation grantors.
 
-Acceptance can't be automated (finding #8), so the design **minimizes** it rather than automating it. Prefer having **`puddles@` own the shared folder and invite people *out***, instead of people sharing *in*:
+### Architecture and decisions
 
-- Cole (one-time, on the mini GUI / a `puddles@` device) creates a per-tier folder (`Household`, `Friends`) on `puddles@` and invites the partner/friend. **They accept on *their* device** (normal human flow). `puddles@` **owns** it, so it never accepts anything — their notes just sync in and Puddles reads them.
-- Initiating a share is also GUI-only (no AppleScript/Shortcuts command), so this is a one-time human setup per folder; after that it's hands-off forever.
-- **Share-*in* is the fallback** (someone shares a folder *into* `puddles@`) — it needs a human to accept on `puddles@` each time, so reserve it for one-offs and steer recurring sharing to the owned folders.
+**Grant model**
 
-**Puddles's automated role is the read-gate, not acceptance.** Even a folder that a human accepted is only *read* if its configured/verified sharer is a Contact — so an accidental accept of a stranger's share still can't feed the agent.
+- Deployment-owned policy maps each authenticated direct-message binding to one
+  of three classes: top, household, or friend. Policy is read-only to all runtime
+  services.
+- The authenticated sender is the policy grantor. The design does not claim
+  that the sender is the cryptographic Apple owner or sharer.
+- A top grant is visible only to the top tier. A household grant is visible to
+  the top and household tiers. A friend grant is visible to the top and
+  household tiers, and to the friend whose exact sender partition created it.
+- A viable collaboration link forwarded by another person is classified from
+  the receiving direct-message binding. Link contents and prior delivery do not
+  raise the receiving sender's tier.
+- Canonical note identity and authorization grants are separate records. One
+  canonical note can retain multiple independent grants.
+- Revoking one grant cannot remove account-wide membership while any other
+  active grant, unresolved acceptance intent, relay reference, or registered
+  resource reference still depends on that membership.
 
-**Why reads are tier-trust (not external).** The readable set is exactly "folders a human accepted from a known contact." A note there is the same trust as that contact's iMessage, which the tier already acts on directly. So `notes_read` runs **directly on the tier**, `SecretRedactor` as hygiene only. **Residual risk (stated):** trust is in the person, not the bytes — a trusted contact could paste a malicious payload; identical to the accepted risk of trusting their messages, not new exposure.
+**Proposal and confirmation protocol**
 
-**Writes.** A tier creates notes in **its own accepted shared folder** (visible to that tier's people); `LeakGuard` blocks writing Cole's secrets into a shared folder.
+- Only one authenticated source text row containing exactly one allowlisted
+  Apple collaboration URL is eligible. Empty text, multiple links, non-Apple
+  links, mixed text, attachment-bearing input, composed multi-row input, and
+  group input are ineligible.
+- The ingress journal stores the exact source member key and normalized
+  authenticated route before proposal creation.
+- At most one pending proposal exists per exact peer. The deployment has at most
+  100 pending proposals globally. A proposal expires after ten minutes and
+  cannot be extended or reset.
+- The trusted transport generates a 128-bit random code and persists the exact
+  fixed challenge phrase before delivery. The model never sees or writes the
+  challenge.
+- Challenge delivery is an immutable reply anchored to the exact source row.
+  Failure to establish the reply anchor fails closed and does not create an
+  ordinary conversational prompt.
+- A valid confirmation comes from the same account, channel, exact peer, agent,
+  session, route, and direct-message thread. It replies to the exact challenge
+  member key and contains only the exact code phrase. URLs, attachments, extra
+  text, alternate whitespace, alternate casing, quoting, edits, reactions, and
+  alternate threads deny.
+- The transport atomically consumes a valid confirmation before ordinary model
+  processing. Expired, rejected, replayed, or already consumed confirmations
+  never become model input.
 
----
+**Isolated acceptance turn**
 
-## Supporting "a friend shares a note with Puddles"
+- Confirmation creates a short-lived isolated turn. Its immutable manifest
+  exposes only a zero-argument invitation-acceptance action and content-free
+  response generation.
+- Runtime context seals the proposal key, source member key, confirmation member
+  key, exact account, channel, peer, agent, session, route, policy generation,
+  nonce, and expiry.
+- The acceptance action has no caller-controlled arguments. It obtains the URL
+  and all authority from sealed trusted context.
+- Missing or mismatched context denies. Cron, group, command-line, subagent,
+  delegated, wildcard, default, synthetic, or replayed context denies.
+- The turn cannot list notes, read content, browse, use memory, call another
+  tool, spawn a process or subagent, or emit user-controlled content.
 
-This is the key scenario. Silent auto-accept is impossible (finding #8), but the newly-confirmed **pre-accept sharer lookup** (CKFetchShareMetadata + the invite email) makes a clean, spam-free design possible. Four paths, best→most-fragile:
+**Deterministic Notes acceptance broker**
 
-| Path | How | Hands-off? | Fragility / cost | Verdict |
-|---|---|---|---|---|
-| **A. Shared folder per friend** | `puddles@` owns a folder, invites the friend; they accept once on their phone; notes they add flow in forever, contacts-trusted by construction. | ✅ after 1-time onboarding | none | **Chosen** — for the opted-in `friends`/`household` tiers |
-| **B. Detect → contacts-filter → one-tap accept** | Puddles watches `puddles@`'s Gmail for invite emails, extracts sharer + link, checks Contacts (CKFetchShareMetadata / email name); for a **contact only**, sends one tap-to-accept approval (reuse plan 027 iMessage-approval). Human taps once; Puddles reads locally after. | ⚠️ one pre-vetted tap per ad-hoc note | none (no web scraping, no ToS issue) | **Chosen** — for ad-hoc one-off shares |
-| **C. Browser-agent auto-accepts on iCloud.com** | Durable-login browser-agent (plan 023) opens contact-shared invite links, clicks "Join", reads via web. | ✅ zero taps | fragile: ~30-day 2FA re-trust, ~2h idle timeouts, anti-bot, **against Apple ToS** (account-flag risk) | **Optional** power-user upgrade; not the backbone |
-| **D. UI-scripting auto-accept-all** | System Events clicks Accept on every incoming share; read-gate filters after. | ✅ | fragile macOS UI hack + share-spam surface | **Rejected** |
+- The broker runs under a dedicated Notes GUI identity. It accepts only
+  authenticated, bounded IPC from the acceptance service.
+- Before any UI action, it validates the original URL and every redirect against
+  exact Apple HTTPS host, path, port, and redirect rules. It rejects credentials
+  in URLs, fragments used as authority, non-HTTPS schemes, unexpected hosts,
+  excessive redirects, oversized responses, and DNS or address-policy failures.
+- Before opening Notes, one transaction records an accepting intent, sealed
+  context digest, normalized invitation identity, and a bounded baseline of
+  stable shared-note IDs visible to the dedicated account.
+- A version-pinned, least-privilege helper opens the validated invitation in
+  Notes, performs the exact version-specific acceptance action, and reports
+  terminal UI completion through authenticated broker-owned observation. It
+  cannot accept a second prompt, choose another note, or treat window opening as
+  success. No general browser or caller-selected application is used.
+- After UI completion, the broker must causally map the invitation to exactly
+  one stable Apple note ID and corroborate it against the bounded shared-note
+  delta. Zero candidates, multiple candidates, unstable identity, unexplained
+  pre-existing membership, or a delta outside the baseline window fails closed
+  for reconciliation.
+- If the normalized invitation identity already maps to one canonical note and
+  current Notes membership still matches that registry record, the broker
+  records a grant-only intent and skips UI acceptance. It atomically adds the
+  sender grant to that canonical note. An unknown invitation that merely appears
+  to reference a pre-existing note cannot use this path and remains fail-closed.
+- The broker atomically stores canonical note identity, invitation evidence,
+  acceptance outcome, and an independent grant from the authenticated sender.
+  Note content is not stored as invitation evidence.
+- On startup and before new acceptance, the broker reconciles every unfinished
+  UI-crossing intent. It never repeats UI action until durable evidence proves
+  that the prior attempt did not cross the UI boundary.
+- Account-wide membership removal is a separate fenced administrative
+  operation. It is unavailable while any grant or reference remains.
 
-**Chosen design = A + B.** Known friends (the `friends` tier) get a shared folder → fully hands-off. Spontaneous shares from *any* contact are auto-detected, contacts-filtered, and reduced to a single pre-vetted tap. The pre-accept sharer lookup is what keeps B spam-free — Puddles only ever surfaces a real contact's share. C stays documented as an optional zero-tap upgrade for anyone willing to own the iCloud-web fragility.
+**Read path**
 
-**Escape hatches worth remembering:** if a note doesn't need *live collaboration*, the friend just **messaging** the content sidesteps all of this (Puddles already ingests iMessage/Gmail); and **shared Reminders lists** ride EventKit (clean, already integrated via `reminder-cli`) when the content is list-shaped rather than a rich note.
+- List and read tools derive caller identity from authenticated runtime context.
+  No tool argument can select an account, tier, sender partition, policy
+  generation, registry, or route.
+- Every listed and read note is reauthorized against current deployment policy,
+  the canonical registry, and an active grant. Authorization is checked again
+  after retrieval before release.
+- Responses bound result counts, page size, continuation lifetime, body bytes,
+  title bytes, and total response bytes. Continuations are opaque, authenticated,
+  policy-generation-bound, caller-bound, and short-lived.
+- Text is normalized to a documented Unicode form. Control characters,
+  malformed encodings, deceptive structure, and unsupported rich objects are
+  handled deterministically.
+- All note fields are data-marked at the trusted boundary and passed through
+  prompt-injection filtering before model exposure. Note content remains
+  untrusted even when the grantor is trusted.
+- Errors reveal no note title, body, participant, path, Apple account detail, or
+  cross-partition existence.
 
-## Scoping — per-tier accepted folders (Plan 021 config factory)
+**Service and policy isolation**
 
-`notes-cli` only operates on folders listed in the calling agent's `apple-pim/config.json` `notes` section; each entry carries the tier + sharer attestation:
+- The non-GUI gateway, model worker, Messages GUI service, PIM GUI service, and
+  Notes GUI broker/helper run in separate security domains with distinct
+  credentials, storage, process controls, and authenticated bounded IPC.
+- Messages and PIM GUI services use distinct macOS UIDs. Same-UID endpoints are
+  not treated as isolation because they can reach the same files and TCC grants.
+- The Notes GUI identity is distinct from both Messages and PIM identities and
+  has only the permissions needed for the dedicated Notes account and pinned
+  helper.
+- The model worker cannot reach host files, PIM, Messages, Notes, policy,
+  journals, registries, or GUI services directly.
+- Each IPC endpoint authenticates both ends, binds requests to a service role,
+  limits message and stream sizes, applies deadlines, rejects replay, and fails
+  closed on unknown fields or methods.
+- Deployment-owned policy is immutable during a generation. Runtime services
+  receive only the minimum read-only view they need.
 
-```jsonc
-// $WS/household/apple-pim/config.json
-"notes": {
-  "enabled": true,
-  "folders": {
-    "Household": { "tier": "household", "shared_by": "<partner-contact>", "write": true }
-  }
-}
-// main config lists all accepted folders (main ⊇ all); friends lists its own.
-```
+**Per-friend isolation, web proxy, and owner relay**
 
-- **CLI-level filter** (primary): only configured folders are enumerated/read/written.
-- **Config-dir injection** (integrity): the calling agent's `configDir` is injected from identity (existing `apple-pim-scope` hook, extended to `notes_*`), so a tier can't widen scope via args.
-- **Tool/sandbox layer** (Plan 022): `notes_read`/`notes_write` granted per tier.
+- Each friend gets a separate transcript, session key, memory store, workspace,
+  browser profile, process boundary, and subagent namespace. No default or
+  fallback namespace exists.
+- Friend public-web access uses an authenticated HTTP/HTTPS proxy bound to the
+  exact peer. The proxy resolves and connects itself, revalidates each redirect,
+  and denies private, loopback, link-local, multicast, local, metadata, Unix
+  socket, non-public, and policy-reserved destinations.
+- DNS answers are pinned for the connection and checked again on redirect and
+  reconnect. Host headers, TLS server names, IP literals, alternate numeric
+  forms, user information, and proxy chaining cannot bypass destination policy.
+- Owner relay creates an opaque, random, single-use ticket. The ticket is bound
+  to the exact originating friend, origin event, policy generation, and exact
+  delivered owner message.
+- A reply can return only when the messaging transport proves that it is the
+  provider-anchored owner reply to that delivered message. Free text containing
+  a ticket is not authority.
+- Return delivery revalidates current owner policy, friend policy, origin
+  status, ticket status, and route. A policy-generation lease is acquired before
+  release and held through terminal friend delivery or durable terminal failure.
+- Revocation, expiry, duplicate owner replies, wrong anchors, wrong routes,
+  stale generations, and missing origin rows deny without exposing cross-peer
+  data.
 
----
+**Durable journal and replay ownership**
 
-## Architecture
+- One durable journal owns raw ingress rows, split-message composition, cursor
+  floor, proposals, challenge and acceptance outcomes, replay barriers, relay
+  tickets, producer event and ticket watermarks, spool rows, and cleanup
+  metadata.
+- Producer event IDs are monotonic. Each producer has a permanent
+  `closed_event_through` watermark plus bounded gap tombstones. Once an event is
+  closed, rejected, expired, compacted, or tombstoned, it can never mint a new
+  action or relay ticket.
+- Immutable action tickets have their own monotonic IDs and separate
+  reject-through watermarks. Closing an ingress event does not erase action
+  ticket rejection history.
+- Only one consumer epoch owns delivery and action execution. Epoch fencing
+  prevents an old process, restored process, or delayed callback from acting.
+- Cursor advancement is transactional with durable composition and action
+  outcomes. Cursor floor never moves backward.
+- Rollback snapshots can restore code and static configuration only. They never
+  restore live journal, registry, ticket, cursor, or spool state.
 
-```
-tier/agent ── notes_read / notes_write ─► secure-apple-notes plugin (NEW; copy of secure-apple-calendar)
-                                            ├─ read → contacts-verify + SecretRedactor ; write → LeakGuard
-                                            └─ MCP bridge (reuse bridge-cache / mcp-bridge / wrap-tool)
-                                                 ▼
-                                            apple-pim MCP server (add `notes` tool)
-                                                 ▼
-                                            notes-cli (disclaim-wrapped)
-                                              ├─ AppleScript → Notes.app : list/get/search/create/append (HTML→text)
-                                              ├─ scope to configured folders only
-                                              └─ optional: read ZSERVERSHAREDATA → sharer → ContactsTrustResolver
-```
+**Attachment streams, quotas, and control reserve**
 
-**Backend decision (researched):** AppleScript is primary for I/O (richest: HTML body, folders, create/append). SQLite (read-only) supplies the *optional* sharer identity. Shortcuts is the documented fallback if Automation-TCC/AppleScript proves unworkable (plain-text CRUD only, no sharing). Build `notes-cli` small; a community Notes MCP is a drop-in CRUD fallback but adds no gate.
+- Attachment bytes cross service boundaries only through authenticated bounded
+  streams. Paths, file URLs, descriptors from untrusted callers, and caller
+  selected filesystem locations are never accepted.
+- Limits are 20 files per message, 25 MiB per file, 50 MiB per message, 100 MiB
+  of active attachment quota per peer, 512 MiB globally, and 256 KiB per frame.
+- Deadlines are 60 seconds per file and 120 seconds for the whole message.
+  Deadlines are monotonic and do not reset after retry, reconnect, or recovery.
+- Active spool plus cleanup rows are capped at 100 per peer and 2,000 globally.
+- New attachment admission stops at 448 MiB globally. The remaining 64 MiB and
+  10,000 durable control rows are reserved for text, cursors, unavailable
+  sentinels, ticket closure, and cleanup progress.
+- Cleanup changes the existing spool row in place. It never allocates a second
+  cleanup row or releases quota early.
 
-**Tools:** `notes_read` (`list`,`get`,`search` — only configured folders, tagged with tier) · `notes_write` (`create`,`append`,`update` — into the tier's folder). `delete`/`move` deferred.
+**Spool state machine and recovery**
 
----
+- Spool states are `needs_copy`, `reserved`, `ready`, `deleting`, `cleanup`, and
+  `deleted`.
+- Identity fields are state-specific. A `ready` row records the exact current
+  parent scope, inode, byte size, and digest. A `deleting` or `cleanup` row keeps
+  the exact deletion-target identity and durable after-delete target. A
+  `needs_copy` or `reserved` row has no current file identity and cannot reuse a
+  stale one. A `deleted` row retains historical deletion evidence but no live
+  identity. All opens and deletes use no-follow semantics and verify the
+  state-appropriate current or deletion-target identity immediately before
+  action.
+- Initial copy receives at most three total attempts within one non-resettable
+  five-minute deadline.
+- A ready row has at most one non-resettable recovery episode. Recovery,
+  cleanup, and at most three recovery copy attempts share one five-minute
+  deadline.
+- If durable evidence proves a ready file is absent, the same row can transition
+  directly to `needs_copy`. It clears current identity and retains the prior
+  identity only as historical recovery evidence.
+- If a ready file is present but invalid, or absence cannot be proved, the same
+  transaction moves the row to `deleting` with the exact old identity and a
+  durable after-delete target.
+- Two-phase deletion unlinks only the exact old identity, syncs the parent,
+  confirms absence, and then advances the same row. No replacement path, inode,
+  or row may exist before all four facts are durable.
+- Quota remains charged through `deleting` and `cleanup` until durable deletion
+  completion.
+- Exhausted copy or recovery creates a content-free unavailable sentinel,
+  detaches the attachment from message composition, and allows cursor and text
+  progress. The same spool row retains cleanup state and quota.
+- A successful recopy keeps the recovery-used marker. Any later loss
+  terminalizes the attachment rather than starting another recovery episode.
 
-## TCC / permissions
+### Implementation
 
-`notes-cli` joins the disclaim wrapper (stable principal across node upgrades):
-1. `install-disclaim-wrappers.sh` wraps it → `notes-cli.real`.
-2. One-time GUI grants (via `launchctl asuser`, so the prompt lands in the GUI session): **Automation** ("control Notes") and, for the optional sharer read, **read access to the Notes Group Container / Full Disk Access**.
-3. Verify `kTCCServiceAppleEvents` `auth_value=2` for `notes-cli.real`.
+Implementation is intentionally not started.
 
-Automation TCC is stricter than EventKit and denied from SSH — the grant is a deliberate GUI step (same as the calendar CLIs). Confirm it holds when spawned via `node → disclaim-wrapper → notes-cli.real` (not just a shell).
+Prototype work is a separate lifecycle stage. It requires explicit
+prototype-only approval and may use only disposable accounts, fixture
+invitations, throwaway harnesses, and fake or recording adapters. It must not add
+production code, change production accounts, or activate deployment paths. It
+records exact OS and application versions and updates this plan with every gate
+result. The updated design then stops for a separate implementation approval.
 
----
+After that second approval, implementation proceeds in these
+dependency-ordered slices:
 
-## Operational setup (one-time, per shared folder)
+1. Define deployment-owned identity and policy schemas, generation leases,
+   authenticated IPC envelopes, durable journal migrations, registry records,
+   and denial-safe error contracts.
+2. Land journal compatibility, producer watermarks, action ticket watermarks,
+   consumer epoch fencing, and the attachment state machine before any live
+   producer cutover.
+3. Establish distinct Messages and PIM GUI identities, then prove service
+   account and TCC parity without changing live delivery.
+4. Build the non-GUI gateway and isolated model worker boundaries. Add per-friend
+   state separation, the public-web proxy, and owner relay.
+5. Build proposal and challenge handling in trusted transport. Keep challenge
+   generation, delivery, and confirmation consumption outside model processing.
+6. Build the dedicated Notes GUI broker and version-pinned helper. Add intent
+   reconciliation, URL validation, stable-ID mapping, grant storage, and
+   account-wide membership fences.
+7. Add bounded read-only list and read tools with per-resource reauthorization,
+   pagination, normalization, data marking, and injection filtering.
+8. Exercise the full fake and recording-adapter pool. Then stage each cutover
+   behind pause, drain, generation fencing, and rollback checks.
 
-Acceptance can't be automated (finding #8), so setup is a short one-time human ritual — done the low-friction way (**`puddles@` owns + invites out**, so nobody has to accept *on `puddles@`*):
+Expected implementation artifacts must include:
 
-1. Cole (on the mini GUI via Screen Sharing, or a `puddles@` device) **creates the tier folder** (`Household`/`Friends`) on `puddles@` and **invites** the partner/friend.
-2. **They accept on their own device** (normal human flow). `puddles@` owns the folder — no acceptance needed on the `puddles@` side, ever.
-3. Cole **adds one config line** mapping the folder → tier + sharer.
-4. `notes-cli` picks it up; notes in that folder flow automatically forever after, gated on read.
+- Focused unit and integration tests beside each component.
+- Cross-component regressions in `packages/e2e/`.
+- Durable migration and downgrade compatibility tests.
+- Recording adapters for every message delivery, invitation acceptance, Apple
+  UI action, note read, relay delivery, and attachment stream.
+- Operator documentation for identity creation, TCC grants, policy generation,
+  cutover, reconciliation, rollback, quarantine, and read-only health checks.
+- No secret, account identifier, private peer binding, live invitation, or
+  personal note content in source, fixtures, logs, plans, or test output.
 
-**Fallback (share-*in*):** if instead someone shares a folder *into* `puddles@`, a human must accept it on `puddles@` each time (mini GUI / `puddles@` device) — reserve this for one-offs. Ad-hoc single-note shares likewise need a per-note accept, so steer recurring sharing to the owned folders above.
+### Validation
 
----
+All scenarios below are required before rollout. Tests must assert both the
+result and the absence of unintended model input, delivery, UI action, note
+read, cross-peer disclosure, quota release, and cursor stall.
 
-## Phasing
+**Proposal, challenge, and confirmation**
 
-| Phase | Scope | Gate |
-|---|---|---|
-| **Phase 0 — small validation (needs 1 accepted folder)** | Cole shares a folder with `puddles@` from a contact and accepts it. Verify on the mini: (1) `notes-cli` reads it via **Automation TCC from the gateway chain**; (2) scoping to configured folders holds; (3) *optional* — can we parse `ZSERVERSHAREDATA` to the sharer's email/phone and match Contacts on this macOS version? | (1)+(2) pass ⇒ build. (3) decides auto-verify vs. config-attestation only — **either way the plan ships**, since the human accept carries security. |
-| **Phase 1 — main** | `notes-cli` + `secure-apple-notes` + folder-config; read/write for **main** on Cole-shared folders. | main reads its configured folders at tier-trust. |
-| **Phase 2 — household** | partner shares a `Household` folder; config maps it → household; read direct, write with `LeakGuard`. | household sees only its folder; non-configured folders invisible. |
-| **Phase 3 — friends** | config-only: accept + map a `Friends` folder. | friends confined to its folder. |
-| **Phase 4 — ad-hoc intake (path B)** | Detect invite emails to `puddles@` (secure-gmail), resolve sharer (CKFetchShareMetadata / email name), contacts-filter, and for a contact send a one-tap approval (plan 027); on approval the note is accepted + read at the sharer's tier. | Stranger invites are silently dropped; a contact's ad-hoc share reaches Cole as one pre-vetted approval and, once tapped, reads correctly. |
-
----
-
-## Test plan (highlights)
-
-- **Scope:** an agent can only enumerate/read/write folders in its config; a folder present in Notes but **not** configured is invisible to every tier.
-- **Tier mapping:** a household-configured folder reads at household (+main), never friends.
-- **Tier-trust (no worker):** a configured-folder note is read directly by the tier; `SecretRedactor` still redacts an API-key-shaped string.
-- **Write leak-guard:** writing a secret-shaped string into a shared folder is blocked.
-- **Auto-verify (if enabled):** `notes-cli`'s CKShare-derived sharer matches the configured `shared_by` Contact; on mismatch/parse-fail it falls back to config without erroring.
-- **TCC durability:** after a simulated `node` upgrade, `notes-cli.real` still holds Automation (+FDA).
-
----
-
-## Open questions — resolved / residual
-
-| Question | Resolution |
+| Scenario | Required result |
 |---|---|
-| Can Puddles reach Cole's notes? | **No** — per-Apple-ID; use share-into-`puddles@` (this model). |
-| Auto-appear or manual accept? | **Manual, mandatory** (Apple). |
-| Can Puddles auto-accept (see → check contact → accept)? | **Not silently** (no programmatic accept; private container). **But it can pre-filter to contacts** (CKFetchShareMetadata + invite email give the sharer before accepting) ⇒ **path B**: auto-detect + contacts-filter + one-tap accept. Fully-hands-off requires the fragile iCloud-web path C. |
-| Does `CKFetchShareMetadataOperation` work for a `com.apple.notes` share URL from a helper? | **Spike.** If yes → strongest sharer match (email/phone) for path B; if container-blocked → fall back to the invite email's sharer *name* (weaker fuzzy match to Contacts). |
-| Get the sharer's identity for the gate? | **Not from AppleScript** (only `shared` bool). **From `ZSERVERSHAREDATA` CKShare blob** — works but fragile/obfuscation-prone ⇒ used as *optional* auto-verify; **config attestation is the robust primary.** |
-| Shortcuts/App Intents backend? | CRUD-capable (plain-text), **no sharing** ⇒ fallback only; AppleScript primary. |
-| Build vs reuse a Notes MCP? | Maintained MCPs do CRUD but **no sharing** ⇒ build small `notes-cli`; the gate is ours. |
-| **Residual (Phase-0 only):** does the CKShare blob parse to a usable sharer email on this exact macOS? | The only thing left to check on a real share — and it only decides *auto-verify vs config-attestation*, not whether the feature ships. |
+| One authenticated direct-message source row contains exactly one valid allowlisted collaboration link | One pending proposal is durably created and one immutable model-free challenge is anchored to that row |
+| Source is unauthenticated, a group, cron, command-line, subagent, delegated, wildcard, default, or synthetic route | Deny before proposal creation |
+| Source is empty, split across rows, composed from multiple members, includes attachments, includes extra text, or has zero or multiple URLs | Deny without challenge delivery |
+| URL has a wrong scheme, host, port, path, credentials, malformed encoding, or disallowed redirect | Deny without UI action |
+| Peer already has a pending proposal | Deny the new proposal without changing the original expiry |
+| Global pending proposal count is 100 | Deny the new proposal while text and cursor processing continue |
+| Proposal reaches ten minutes | Expire permanently with no extension, confirmation, or model input |
+| Challenge cannot be anchored to the exact source member | Close or quarantine the proposal without an ordinary reply |
+| Confirmation comes from a different account, channel, peer, agent, session, route, thread, or reply anchor | Deny and preserve peer isolation |
+| Confirmation includes a URL, attachment, quote, reaction, edit, extra text, altered case, altered spacing, or only part of the phrase | Deny before model processing |
+| Exact confirmation is replayed or arrives after consumption, rejection, or expiry | Deny permanently |
+| Exact valid confirmation races with duplicate consumers | One consumer epoch consumes it once and creates one isolated turn |
 
----
+**Sealed context and acceptance broker**
 
-## What this reuses vs. builds new
-
-| Reused as-is | Built new |
+| Scenario | Required result |
 |---|---|
-| `apple-pim` MCP server + disclaim wrapper + `install-disclaim-wrappers.sh` | `notes-cli` (AppleScript I/O + optional CKShare sharer read) |
-| `secure-apple-calendar` scaffolding (`bridge-cache`/`mcp-bridge`/`wrap-tool`) | `secure-apple-notes` plugin (action-map + prefilter) |
-| Plan 018 `ContactsTrustResolver` + Plan 022 contact→tier map | contacts auto-verify + folder→tier config |
-| `mcp-hooks` (`SecretRedactor`, `LeakGuard`) | notes `action-map.ts` / `prefilter.ts` |
-| Plan 021 per-agent config factory + `apple-pim-scope` hook | `notes` folder-config + hook tool-match extension |
+| Any sealed key is missing or mismatched | Deny before broker IPC |
+| Policy generation is stale, nonce is reused, or expiry has passed | Deny and close the action ticket |
+| Isolated turn requests arguments, another tool, memory, browser, process, subagent, note content, or user-controlled response content | Deny |
+| Broker IPC is unauthenticated, oversized, replayed, late, unknown, or from the wrong service role | Deny without opening Notes |
+| Valid request has a redirect chain that leaves the allowlist or resolves to a denied address | Deny before intent crosses the UI boundary |
+| Baseline cannot be bounded or durably stored | Deny before opening Notes |
+| Crash occurs before intent commit | No UI action exists and retry can create one new intent |
+| Crash occurs after intent commit but before UI open | Startup reconciliation proves no crossing before retry |
+| Crash occurs during or after UI open but before result commit | New acceptance is fenced until reconciliation reaches a terminal or quarantined result |
+| Shared-note delta has zero, two, or unstable candidates | Do not register a note; quarantine for reconciliation |
+| Delta candidate does not causally match the invitation | Do not register a note or grant |
+| Exact normalized invitation identity already maps to one canonical note and current membership matches | Record a grant-only intent, skip UI, and atomically add only the new independent grant |
+| Unknown invitation appears to reference an already present note | Do not use the grant-only path; quarantine without adding a grant |
+| One grant is revoked while another grant or reference remains | Keep account-wide membership |
+| Membership removal races with a new grant or unfinished intent | Fence removal and preserve membership |
+
+**Authorization and content handling**
+
+| Scenario | Required result |
+|---|---|
+| Top-tier caller lists active top, household, and friend grants | Authorized resources are returned within bounds |
+| Household caller lists household and friend grants | Authorized resources are returned, while top grants remain indistinguishable from absence |
+| Friend caller lists its own sender partition | Only that exact partition is returned |
+| Friend caller asks for another friend, household, top, wildcard, or default partition | Deny without existence disclosure |
+| Link was forwarded by a higher-tier peer to a friend | Grant uses the authenticated friend's partition and cannot raise tier |
+| Grant is revoked between list and read, or during retrieval | Reauthorization denies release |
+| Continuation is expired, altered, replayed by another caller, or from another policy generation | Deny |
+| Count, page, title, body, or total byte bound is exceeded | Truncate or reject by the documented deterministic rule without leaking adjacent resources |
+| Body contains malformed encoding, control characters, rich objects, deceptive markup, or prompt injection | Normalize, data-mark, filter, and retain untrusted classification |
+| Content comes from a trusted sender | It remains untrusted and receives the same filtering |
+| V1 caller attempts any note or membership write | No write-capable tool or route exists |
+
+**Service, friend, proxy, and relay isolation**
+
+| Scenario | Required result |
+|---|---|
+| Model worker attempts direct host, policy, journal, registry, Messages, PIM, or Notes access | Operating-system and service controls deny |
+| Messages, PIM, or Notes service attempts to read another service's files, credentials, or TCC-protected data | Distinct UIDs and permissions deny |
+| Friend transcript, session key, memory, workspace, browser, process, or subagent ID is reused across peers | Test fails; runtime has no fallback namespace |
+| IPC peer is wrong, certificate or key is stale, payload is oversized, method is unknown, deadline passes, or replay is detected | Deny and record a content-free terminal outcome |
+| Friend proxy targets private, loopback, link-local, multicast, metadata, local, non-public, or reserved space | Deny before connect |
+| DNS changes between validation and connect, redirect, or reconnect | Deny and close the request |
+| URL uses an IP literal, alternate numeric form, user information, Host override, TLS name mismatch, proxy chain, or Unix socket | Deny |
+| Relay ticket is guessed, copied into text, reused, expired, revoked, or presented by another peer | Deny without origin disclosure |
+| Owner response is not anchored by the messaging provider to the exact delivered owner message | Deny |
+| Policy or origin changes before return delivery | Deny after current revalidation |
+| Policy changes after authorization but before terminal friend delivery | Generation lease prevents mixed-policy delivery |
+| Delivery fails after lease acquisition | Record one durable terminal failure and do not reuse the ticket |
+
+**Journal, cursor, and replay**
+
+| Scenario | Required result |
+|---|---|
+| Process crashes while ingesting raw rows or composing split messages | Restart resumes from durable rows without duplicate composition or cursor rollback |
+| Producer skips event IDs and later fills a bounded gap | Gap tombstone rules deterministically accept or close the event once |
+| Event is at or below `closed_event_through` | It can never mint a proposal, action ticket, relay ticket, or delivery |
+| Closed event is compacted and then replayed | Permanent watermark still denies |
+| Action ticket is at or below its reject-through watermark | It can never execute even if the source event remains |
+| Old consumer resumes after a new epoch starts | Epoch fence denies all actions and deliveries |
+| Cursor update races with action outcome or unavailable sentinel | One transaction preserves outcome and monotonic cursor floor |
+| Code rollback starts against forward journal state | Forward migrations remain authoritative; no live state is restored from snapshot |
+| Restored callback or spool record carries an old generation or epoch | Deny and reconcile current durable state |
+
+**Attachment admission and streaming**
+
+| Scenario | Required result |
+|---|---|
+| Attachment crosses IPC as a path, file URL, caller-selected descriptor, or location | Deny |
+| Stream authentication fails, frame exceeds 256 KiB, order breaks, digest differs, or deadline passes | Stop the stream and retain durable cleanup state |
+| Message has more than 20 files, a file exceeds 25 MiB, or message total exceeds 50 MiB | Deny attachment admission while preserving text/control progress |
+| Peer active quota would exceed 100 MiB or global quota would exceed 512 MiB | Deny admission |
+| Active plus cleanup rows would exceed 100 per peer or 2,000 globally | Deny admission |
+| Global attachment use reaches 448 MiB | Stop new attachments and preserve 64 MiB plus 10,000 rows for controls |
+| Attachment admission is stopped | Text, cursor, ticket closure, cleanup, and unavailable sentinels still progress |
+| Per-file work exceeds 60 seconds or message work exceeds 120 seconds | Terminalize without resetting deadlines |
+
+**Spool state and recovery**
+
+| Scenario | Required result |
+|---|---|
+| Initial copy succeeds within three attempts and five minutes | Same row reaches `ready` with exact inode, size, and digest |
+| Initial copy exhausts attempts or deadline | Create content-free unavailable sentinel, detach composition, advance text/cursor, and retain same-row cleanup quota |
+| Symlink, inode swap, size change, digest change, or parent mismatch appears before open or delete | No-follow identity check denies use |
+| Ready file is provably absent and recovery has not been used | Same row clears current identity, retains it only as historical evidence, enters `needs_copy`, and starts its only recovery episode |
+| Ready file is present but invalid, or absence is unprovable | Same row enters `deleting` with exact old identity and durable after-delete target |
+| Crash occurs before exact unlink | Restart verifies old identity before retry |
+| Crash occurs after unlink but before parent sync | Quota remains held and recovery resumes at parent sync |
+| Crash occurs after parent sync but before absence confirmation | Same row confirms absence before any replacement |
+| Replacement path, inode, or row is attempted before unlink, parent sync, and absence are durable | Deny replacement |
+| Cleanup plus recovery copy attempts reach three attempts or five minutes | Unavailable sentinel and terminal cleanup path win |
+| Recovery recopy succeeds | Same row returns to `ready` and retains recovery-used marker |
+| Recovered ready file is lost again | Terminalize without a second recovery episode |
+| Cleanup is needed | Existing row transitions in place; no extra row or early quota release |
+| Parent sync or exact absence confirmation cannot complete | Keep quota and quarantine cleanup rather than claiming deletion |
+
+**Rollout, rollback, and live safety**
+
+| Scenario | Required result |
+|---|---|
+| Disposable invitation flow uses fake and recording adapters | No live message, UI action, note mutation, or membership change occurs |
+| Journal compatibility stage fails | Stop before identity or service cutover |
+| Messages/PIM identity split fails parity or TCC checks | Roll back service routing, but never merge the UIDs again after activation |
+| Gateway/worker or Notes cutover begins | Pause ingress, drain owned work, advance generation fence, then switch one boundary |
+| Cutover crashes before fence | Old generation remains sole owner |
+| Cutover crashes after fence | New generation reconciles durable state; old generation cannot resume |
+| Rollback follows journal or spool migration | Preserve forward live state and roll code/config only |
+| Rollback occurs with pending proposals or confirmations | Cancel them durably; old challenges cannot revive |
+| Rollback occurs with UI-crossed Notes intents | Keep reconciliation-only Notes services alive until every intent is terminal or quarantined |
+| Automated live health check runs | Read-only checks only; no message, invitation, note, membership, or relay mutation |
+
+**Prototype gates**
+
+- Prove the accepted Apple collaboration URL and redirect shapes on each
+  supported OS and Notes version.
+- Prove that the pinned helper can open the invitation under the dedicated Notes
+  GUI identity with least privilege, perform deterministic terminal acceptance
+  for every supported Notes version, and distinguish accepted, rejected,
+  canceled, timed out, unexpected-prompt, and unknown UI states. If unattended
+  terminal acceptance cannot be proved, replace this flow with explicit human
+  acceptance before implementation approval.
+- Prove stable Apple note ID extraction and causal mapping from a bounded
+  pre-action baseline and post-action delta.
+- Prove an exact known invitation identity can add a second sender grant without
+  UI only while its canonical mapping and current Notes membership both match.
+  Prove that unknown pre-existing membership cannot use this path.
+- Prove direct-message source and reply member anchors survive transport restart,
+  edits, reactions, split messages, and replay.
+- Prove the runtime can seal and enforce exact account, channel, peer, agent,
+  session, route, nonce, expiry, and policy-generation context.
+- Prove distinct Messages, PIM, and Notes service accounts have the required GUI
+  session behavior and TCC grants without sharing UIDs or files.
+- Prove deployment compatibility, pause/drain behavior, generation fencing,
+  reconciliation startup, and forward-state rollback in a disposable fixture.
+- Confirm the design still assumes no supported Apple API for invitation
+  acceptance, owner/participant/permission lookup, stable note identity mapping,
+  or atomic conflict-safe note writes. Any supported replacement must be
+  evaluated before changing the trust model.
+
+### Rollout and rollback
+
+Rollout is gated and ordered:
+
+1. Use a disposable Apple account, disposable transport peers, fixture content,
+   and fake or recording adapters. Complete all prototype gates without live
+   production writes.
+2. Deploy backward-compatible durable journal, registry, ticket, cursor, and
+   spool migrations first. Prove old readers fail closed and new readers retain
+   forward state through code rollback.
+3. Create distinct Messages and PIM GUI identities. Prove their service and TCC
+   parity, then activate the split as a permanent security baseline.
+4. Cut over the non-GUI gateway and isolated model worker behind pause, drain,
+   generation lease, epoch fence, and read-only health checks.
+5. Cut over the Notes broker/helper and read tools behind the same controls.
+   Invitation acceptance remains disabled until reconciliation and prototype
+   gates are green.
+6. Enable proposal and acceptance for a bounded disposable cohort before any
+   wider rollout. Increase limits only after durable evidence shows no denial,
+   replay, quota, or recovery regressions.
+
+Every boundary uses this sequence: stop new admission, drain or terminalize
+owned work, persist the next policy generation and consumer epoch, verify the
+old owner is fenced, activate the new owner, reconcile durable state, then run
+read-only checks.
+
+Rollback replaces code and static configuration only. It preserves the newest
+journal, registry, cursor, ticket, and spool state. It never restores those
+stores from snapshots. After the Messages/PIM UID split activates, rollback
+keeps those identities separate. Rollback cancels all pending proposals,
+challenges, confirmations, and unexecuted acceptance tickets. Any Notes intent
+that may have crossed the UI boundary keeps the reconciliation-only broker and
+helper alive until the intent is terminal or quarantined. No new invitation is
+accepted during rollback reconciliation.
+
+Automated production checks remain read-only. A failed post-cutover check closes
+admission, fences the candidate generation, rolls code and static configuration
+back, keeps forward durable state, and verifies read-only health. Cleanup or
+reconciliation failure is an additional visible error, never a success-shaped
+fallback.
+
+### Review log
+
+- 2026-07-30: The existing plan was rewritten to the v1.7 plan contract. The
+  design is provider-neutral, read-only, and stopped at the explicit approval
+  gates. Independent review found and resolved missing terminal invitation
+  proof, conflicting repeat-grant mapping, circular prototype approval,
+  state-invalid spool identity requirements, and an unnecessary tracker
+  reference. A final complete-diff recheck found no remaining material issues.
+
+### Checklist
+
+- [x] Read current repository instructions, workflow skill, prior plan, Apple
+  PIM guidance, messaging guidance, sandbox guidance, and related PIM plans.
+- [x] Replace contact-group and human-attestation trust with exact authenticated
+  direct-message grants and deployment-owned hierarchical policy.
+- [x] Remove write tools and document why V1 is read-only.
+- [x] Define model-free proposal, challenge, confirmation, and isolated
+  acceptance behavior.
+- [x] Define deterministic Notes acceptance, stable-ID mapping, independent
+  grants, crash reconciliation, and membership fencing.
+- [x] Define per-resource authorization, bounded reads, normalization, data
+  marking, and injection filtering.
+- [x] Define separate gateway, worker, Messages, PIM, and Notes security domains.
+- [x] Define per-friend isolation, public-web proxy controls, and owner relay.
+- [x] Define journal, replay, ticket, cursor, attachment, quota, spool, cleanup,
+  recovery, rollout, and rollback behavior.
+- [x] Add denial, crash, replay, isolation, quota, recovery, rollback, and
+  prototype validation scenarios.
+- [x] Complete final independent review of the documentation diff.
+- [ ] Receive explicit approval for disposable prototype-only work.
+- [ ] Complete prototype gates and update this design with the evidence.
+- [ ] Receive separate explicit approval to begin implementation.
+- [ ] Implement code, tests, deployment wiring, or live account changes.
