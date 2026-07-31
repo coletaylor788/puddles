@@ -60,8 +60,9 @@ approval signature.
 If Cole approves, the service executes only the stored values and rechecks every
 staged attachment first. If Cole denies, the request can never execute. Missing,
 expired, duplicated, changed, or invalid decisions all fail closed. An approval
-also has a short execution window, so a service restart days later cannot revive
-old authority.
+cannot override rules that block secrets or forbidden content. It also has a
+short execution window, so a service restart days later cannot revive old
+authority.
 
 The approval service keeps the final result until OpenClaw records it in the
 right conversation and the resumed agent turn confirms that it consumed the
@@ -93,7 +94,7 @@ blocked until Cole explicitly approves it.
 
 ## Agent section
 
-### Current state
+### State
 
 The design is complete and provider-neutral. It covers the trust boundary,
 request lifecycle, review identity, durable resume, email credential split,
@@ -104,7 +105,7 @@ Public tracking is on issue 68. External task tracking points to that issue and
 remains open for review. Superseded non-public tracking is retired. This plan
 does not implement or deploy any part of the design.
 
-### Scope
+### Scope and acceptance criteria
 
 The proposed implementation includes:
 
@@ -132,7 +133,7 @@ This proposal does not include:
 - generic replay of arbitrary tools that depend on live closures, streams,
   browser state, or other non-serializable context.
 
-### Acceptance criteria
+#### Acceptance criteria
 
 A future implementation is acceptable only when it:
 
@@ -183,7 +184,9 @@ A future implementation is acceptable only when it:
     an expiry, challenge, cooldown, execution window, or download capability.
 22. Keeps secret and content policy non-overridable even after approval.
 
-### Threat model and trust boundary
+### Architecture and decisions
+
+#### Threat model and trust boundary
 
 The protected boundary assumes malicious model output, prompt injection,
 repeated and varied requests, malformed payloads, stale decisions, gateway
@@ -206,7 +209,7 @@ Native OpenClaw plugins run in the gateway process and are not a security
 boundary. The approval credential, record store, owner keys, and executor must
 not live in a normal native plugin.
 
-### Components
+#### Components
 
 | Component | Responsibility |
 |---|---|
@@ -241,13 +244,15 @@ termination, private routes, or network-control sockets for either review
 hostname. If host permissions cannot prove that separation, deployment must use
 a separate private-network node or a network daemon owned by the authority.
 
-### Protected-tool contract and immutable inputs
+#### Protected-tool contract and immutable inputs
 
 Only registered deferred executors are eligible. Each executor defines:
 
 - JSON Schema and semantic validation;
 - canonicalization and resolution of defaults, aliases, and dynamic inputs;
 - immutable snapshot rules;
+- authority-owned secret and content policy over canonical values and staged
+  bytes;
 - a deterministic safe review renderer;
 - execution with an idempotency key;
 - reconciliation for ambiguous provider outcomes; and
@@ -260,13 +265,21 @@ path. Each staged object records a digest, size, MIME type, and logical name.
 Immediately before an effect, the executor reads the protected copy again and
 rechecks its digest and size. A mismatch ends in `input_integrity_failed`.
 
+The authority evaluates non-overridable secret and content policy after all
+values are resolved and all bytes are staged. It evaluates the same protected
+inputs again immediately before the provider call. Policy rules, configuration,
+and scanners are owned by the authority identity and cannot be changed by the
+gateway. A denial, missing rule set, scanner failure, malformed result, or
+uncertain classification fails closed and never reaches the provider. An owner
+signature cannot waive this policy.
+
 For email, the immutable envelope includes the account, operation, resolved
 `to`, `cc`, and `bcc` addresses, reply and thread identifiers, subject, body,
 format, headers, scheduling and send options, stable message identity, and every
 attachment reference. The review page shows the original arguments, resolved
 envelope, attachment metadata, hashes, and forced-download links.
 
-### Record store, privacy, and time
+#### Record store, privacy, and time
 
 Authoritative records live in a sidecar-owned transactional SQLite database.
 The bounded plugin state store is suitable only for short-lived channel hints
@@ -301,7 +314,7 @@ time and a persisted wall-clock high-water mark. Backward clock movement cannot
 extend authority. A large forward jump fails closed, alerts the operator, and
 requires an administrative recovery that cannot revive expired work.
 
-### Deduplication and pressure controls
+#### Deduplication and pressure controls
 
 The model never supplies an idempotency or intent key. Current trusted run and
 session identities do not survive every logical retry. A stable trusted
@@ -336,7 +349,7 @@ suppressed or held without repeated notifications. Cole can inspect and clear
 the cooldown from the signed page. Quick deny uses a shorter, separately limited
 cooldown and is clearly distinguished in audit and alerts.
 
-### Decision and execution lifecycle
+#### Decision and execution lifecycle
 
 The authority uses these transactional states:
 
@@ -379,7 +392,7 @@ idempotency facility reuse one key. Other adapters reconcile before retry. An
 email adapter uses stable provider or message identity and searches sent state.
 Ambiguous acceptance never causes blind resend.
 
-### Trusted review and decision identity
+#### Trusted review and decision identity
 
 Gateway-local clients and loopback interfaces may already receive broad
 approval rights. They are not valid identities for protected decisions.
@@ -418,7 +431,7 @@ off-network, or cannot reach the authority, the notification says approval is
 unavailable and the record remains pending until expiry. There is no weaker
 fallback.
 
-### Safe presentation and attachments
+#### Safe presentation and attachments
 
 Fetching a record requires a short-lived authenticated owner session and
 per-record authorization. The authority builds the presentation from its
@@ -447,7 +460,7 @@ and a restrictive sandbox policy. Any alternative sandbox must prove that
 active HTML, SVG, XHTML, scripts, and content sniffing cannot reach the signing
 origin or request a credential.
 
-### Notification flow
+#### Notification flow
 
 1. The gateway validates input and submits a candidate.
 2. The authority resolves values, snapshots inputs, deduplicates, stores the
@@ -474,7 +487,7 @@ review page remains the only guaranteed decision path. Quick deny accepts a
 denial-of-service risk in exchange for fail-safe behavior; anomalous rates
 alert the operator.
 
-### Channel alternatives
+#### Channel alternatives
 
 | Option | Assessment |
 |---|---|
@@ -494,7 +507,7 @@ Apple actionable notification buttons require an app-owned notification
 category. iMessage alone cannot provide a trustworthy third-party approve
 button. This is why the web review surface remains necessary.
 
-### Durable resume and reconciliation
+#### Durable resume and reconciliation
 
 The authority record is the resume source of truth. OpenClaw session delivery is
 transport only because its retries can exhaust and its final fallback may be
@@ -524,7 +537,7 @@ wake may reduce latency but is not a durability mechanism. An optional
 read-only status tool may show state but cannot decide, mutate, re-arm, or
 execute.
 
-### Gmail credential and mailbox-triage boundary
+#### Gmail credential and mailbox-triage boundary
 
 The gateway Gmail credential and OAuth client must have exactly
 `gmail.readonly`. Any additional scope fails closed. Forbidden scopes include
@@ -556,7 +569,79 @@ modify operations. It rejects raw request bodies, method names, extra fields,
 and unknown labels before contacting Gmail. It has independent limits, audit,
 and alerts.
 
-### Implementation phases
+#### Risks and tradeoffs
+
+- **Gateway compromise can cause denial of service.** It can flood submission or
+  relay quick denies, but quotas, cooldowns, alerts, and signed approval prevent
+  execution.
+- **The protected service is operationally significant.** Failure after Gmail
+  revocation can pause routine triage. The accepted response is bounded,
+  alerted, protected-service recovery, not restoration of unsafe access.
+- **Exactly-once effects depend on provider support.** Ambiguous outcomes become
+  explicit unknown states and require reconciliation.
+- **Remote review depends on private reachability and owner credentials.** There
+  is no insecure fallback when the phone, network, or authority is unavailable.
+- **A trusted review page adds deployment work.** That cost is necessary because
+  gateway-served content cannot safely describe the action being signed.
+- **Quick deny can be forged by a compromised gateway.** This can stop work but
+  cannot authorize it. The fail-safe tradeoff is intentional.
+- **A stable root-task identity may require upstream work.** Until it exists,
+  quotas are the primary defense against cross-run duplicates.
+- **The model may vary payloads to evade hash reuse.** Absolute sidecar-native
+  limits and cooldowns remain effective.
+- **Root or approval-service compromise is outside the claim.** The design
+  protects against the model and gateway account, not total host compromise.
+
+#### Evidence
+
+Primary OpenClaw evidence:
+
+- `docs/plugins/plugin-permission-requests.md`
+- `docs/plugins/architecture.md`
+- `docs/plugins/admin-http-rpc.md`
+- `docs/web/control-ui.md`
+- `docs/gateway/configuration-reference.md`
+- `src/agents/agent-tools.before-tool-call.ts`
+- `src/gateway/exec-approval-manager.ts`
+- `src/gateway/method-scopes.ts`
+- `src/gateway/server-methods/plugin-approval.ts`
+- `src/gateway/server-methods/approval-shared.ts`
+- `src/infra/plugin-approvals.ts`
+- `src/plugin-state/plugin-state-store.ts`
+- `src/state/openclaw-state-db.ts`
+- `src/infra/session-delivery-queue-storage.ts`
+- `src/infra/session-delivery-queue-recovery.ts`
+- `src/infra/system-events.ts`
+- `extensions/imessage/src/approval-native.ts`
+- `extensions/imessage/src/approval-reactions.ts`
+- `extensions/imessage/src/approval-reaction-poller.ts`
+- `ui/src/ui/views/exec-approval.ts`
+- `ui/src/ui/controllers/exec-approval.ts`
+
+Related repository plans cover egress approval, iMessage approval, and session
+delivery wake-up:
+
+- Plan 014, egress approval;
+- Plan 027, iMessage approval channel; and
+- Plan 028, session-delivery queue for agent wake-up.
+
+For protected effects, this plan supersedes the approval mechanics in Plans 014
+and 027. Their content-policy and iMessage transport research remains useful,
+but implementations must not use native-plugin authority, positive tapback
+approval, plain-message approval, or `allow-always`. The signed authority page
+and one-time decision rules in this plan control.
+
+External channel evidence:
+
+- Slack: https://docs.slack.dev/interactivity/handling-user-interaction/
+- Discord: https://docs.discord.com/developers/components/reference
+- Telegram: https://core.telegram.org/bots/api
+- Pushover: https://pushover.net/api
+- ntfy: https://docs.ntfy.sh/publish/
+- Apple actionable notifications:
+  https://developer.apple.com/documentation/usernotifications/declaring-your-actionable-notification-types
+
+### Implementation
 
 No implementation is authorized. If Cole approves this design, use separate
 reviewable phases.
@@ -591,7 +676,8 @@ reviewable phases.
 
 Do not serialize live hook context to retrofit arbitrary synchronous tools. Do
 not place the authority, protected credential, or owner decision key in a native
-OpenClaw plugin.
+OpenClaw plugin. Do not implement positive tapback approval, approval through a
+plain iMessage reply, or `allow-always` from earlier draft approval plans.
 
 ### Validation
 
@@ -606,7 +692,7 @@ Tests must prove:
 
 - separate-user file, socket, keychain, process, and network isolation;
 - gateway denial for authority data, credential, key, execution, network
-  control, certificate issuance, DNS, proxy, and route changes;
+  control, certificate issuance, DNS, proxy, route, and secret-policy changes;
 - identical protection for review and attachment hostnames;
 - gateway-local operator, admin, and approval rights cannot decide;
 - every agent profile and invocation surface either uses the broker or lacks the
@@ -669,6 +755,9 @@ Tests must cover:
 - immediate tool return with no open promise or agent turn;
 - a recording provider receiving exactly the approved stored envelope and
   protected staged bytes, byte for byte, with no transient or unapproved input;
+- direct, encoded, resolved, and attachment-borne secrets being denied even
+  after valid approval, with policy denial, missing rules, scanner failure,
+  malformed results, and uncertain classification making zero provider calls;
 - crashes before claim, after claim, before provider call, after provider
   acceptance, and before result persistence;
 - recovery on both sides of the absolute execution deadline;
@@ -778,73 +867,7 @@ service unless another narrow non-send triage path has already been proven.
 Neither rollback restores the direct protected tool, returns send-capable access
 to the gateway, or transfers a protected credential to the gateway account.
 
-### Risks and tradeoffs
-
-- **Gateway compromise can cause denial of service.** It can flood submission or
-  relay quick denies, but quotas, cooldowns, alerts, and signed approval prevent
-  execution.
-- **The protected service is operationally significant.** Failure after Gmail
-  revocation can pause routine triage. The accepted response is bounded,
-  alerted, protected-service recovery, not restoration of unsafe access.
-- **Exactly-once effects depend on provider support.** Ambiguous outcomes become
-  explicit unknown states and require reconciliation.
-- **Remote review depends on private reachability and owner credentials.** There
-  is no insecure fallback when the phone, network, or authority is unavailable.
-- **A trusted review page adds deployment work.** That cost is necessary because
-  gateway-served content cannot safely describe the action being signed.
-- **Quick deny can be forged by a compromised gateway.** This can stop work but
-  cannot authorize it. The fail-safe tradeoff is intentional.
-- **A stable root-task identity may require upstream work.** Until it exists,
-  quotas are the primary defense against cross-run duplicates.
-- **The model may vary payloads to evade hash reuse.** Absolute sidecar-native
-  limits and cooldowns remain effective.
-- **Root or approval-service compromise is outside the claim.** The design
-  protects against the model and gateway account, not total host compromise.
-
-### Evidence
-
-Primary OpenClaw evidence:
-
-- `docs/plugins/plugin-permission-requests.md`
-- `docs/plugins/architecture.md`
-- `docs/plugins/admin-http-rpc.md`
-- `docs/web/control-ui.md`
-- `docs/gateway/configuration-reference.md`
-- `src/agents/agent-tools.before-tool-call.ts`
-- `src/gateway/exec-approval-manager.ts`
-- `src/gateway/method-scopes.ts`
-- `src/gateway/server-methods/plugin-approval.ts`
-- `src/gateway/server-methods/approval-shared.ts`
-- `src/infra/plugin-approvals.ts`
-- `src/plugin-state/plugin-state-store.ts`
-- `src/state/openclaw-state-db.ts`
-- `src/infra/session-delivery-queue-storage.ts`
-- `src/infra/session-delivery-queue-recovery.ts`
-- `src/infra/system-events.ts`
-- `extensions/imessage/src/approval-native.ts`
-- `extensions/imessage/src/approval-reactions.ts`
-- `extensions/imessage/src/approval-reaction-poller.ts`
-- `ui/src/ui/views/exec-approval.ts`
-- `ui/src/ui/controllers/exec-approval.ts`
-
-Related repository plans cover egress approval, iMessage approval, and session
-delivery wake-up:
-
-- Plan 014, egress approval;
-- Plan 027, iMessage approval channel; and
-- Plan 028, session-delivery queue for agent wake-up.
-
-External channel evidence:
-
-- Slack: https://docs.slack.dev/interactivity/handling-user-interaction/
-- Discord: https://docs.discord.com/developers/components/reference
-- Telegram: https://core.telegram.org/bots/api
-- Pushover: https://pushover.net/api
-- ntfy: https://docs.ntfy.sh/publish/
-- Apple actionable notifications:
-  https://developer.apple.com/documentation/usernotifications/declaring-your-actionable-notification-types
-
-### Review summary
+### Review log
 
 The completed design review ended with no unresolved material findings.
 Independent reviews materially changed the design in four areas:
@@ -877,6 +900,17 @@ tests, byte-for-byte execution proof, the bounded stale re-arm window, and the
 clean design-review conclusion. A fresh complete comparison found no actionable
 issues and no lost material content.
 
+Terminal review found that non-overridable secret policy lacked an explicit
+protected enforcement point. The authority now owns and runs that policy over
+resolved values and staged bytes, fails closed when policy is unavailable or
+uncertain, repeats the check before execution, and tests that approval cannot
+bypass it.
+
+A complete recheck then found that older draft plans still described unsafe
+approval mechanics. This plan now explicitly supersedes native-plugin,
+positive-tapback, plain-message, and permanent approval paths for protected
+effects while retaining the older transport and policy research as evidence.
+
 ### Checklist
 
 - [x] Research current OpenClaw approval, iMessage, review UI, persistence, and
@@ -885,6 +919,9 @@ issues and no lost material content.
 - [x] Define the separate authority, credential, review, attachment, and network
       trust boundaries.
 - [x] Define immutable input handling and complete review presentation.
+- [x] Define authority-owned non-overridable secret and content policy.
+- [x] Supersede unsafe approval mechanics in earlier draft plans for protected
+      effects.
 - [x] Define deduplication, quotas, cooldowns, trusted time, and retention.
 - [x] Define decision, execution, reconciliation, cancellation, renewal, and
       durable resume lifecycles.
