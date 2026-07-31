@@ -1,215 +1,204 @@
 # Todoist CLI issue filing
 
-**Status:** Landed; awaiting final live validation
+**Status:** Ready for terminal review
 **Issue:** [#40](https://github.com/coletaylor788/puddles/issues/40)
-**Last updated:** 2026-07-29
+**Last updated:** 2026-07-30
 
 ## Human design
 
 ### Problem
 
-Puddles lacked a repository-managed Todoist CLI capability, so Cole had to
-retype requests before the existing task monitor could create actionable
-repository issues. The original handoff also exposed a process gap: an unclear
-request for help did not explain the blocker, why worker action was exhausted,
-or the exact decision needed.
+The Todoist CLI capability is landed, but its credential setup incorrectly
+treats `~/.openclaw/.env` as the canonical token source. Puddles already has a
+shared mode-600 SecretRef store at `~/.openclaw/secrets.json`, established by
+the Mac mini setup work, and repository guidance says long-lived credentials
+belong there. The current command and documentation bypass that architecture.
 
 ### Outcome
 
-The trusted main agent can create detailed `agent`-labeled Todoist tasks that
-the existing monitor routes into the repository workflow. Safe feature
-development 1.6.0 requires every requester-help escalation to clearly state the
-blocker, evidence and attempts, why requester input is necessary, the exact
-action or decision needed, and what happens after the answer.
+One repository command runs Todoist OAuth login, captures the token without
+printing it, atomically stores it at `providers.todoist.apiKey` in the shared
+store, and maps the Todoist skill to a file SecretRef. The shared store is the
+only operator-managed source of truth. Because OpenClaw's Docker env schema
+accepts strings rather than SecretRefs, the installer creates and owns the
+minimum marked `.env` runtime projection required by the sandbox and removes it
+during rollback.
 
 ### Approach
 
-The landed change provides a locked Todoist CLI sandbox image, source-managed
-skill, transactional installer and rollback, setup documentation, isolated
-recording regressions, and the clear-help lifecycle contract. Repository work is
-landed. A docs-only plan follow-up exposed a recurrent 1 ms wall-clock race in a
-maintained iMessage patch test. The shared regression is fixed at the source
-without weakening its 15-second debounce contract, the corrected follow-up is
-landed, and all post-merge checks pass. Only documented live operator validation
-remains.
+Add a safe host-side login/store script, change the installer to require the
+shared store and derive the sandbox projection, extend isolated tests for token
+capture, atomic store updates, projection lifecycle, rollback, and denial
+paths, and update the cross-cutting secret architecture plus Todoist setup
+guide. Run the full managed lifecycle and review loop, then land and verify the
+change before performing credentialed live validation.
 
 ### Safety and rollout
 
-Todoist content remains untrusted data and credentials remain in
-`~/.openclaw/.env`, outside the repository and agent workspace. Automated tests
-never authenticate or write to live services. The installer records recovery
-state before mutation and rolls back config, skill, and sandbox changes on
-failure. The flaky test fix must preserve both the configured upper bound and a
-tight lower bound while allowing elapsed execution time; the landed bounds do
-so. Cole's remaining action is live environment validation, not repository
-review or merge work.
+The token never appears in command arguments, stdout, repository files, test
+fixtures, recovery JSON, or logs. The login script captures `td auth token view`
+into a local shell variable and sends it over stdin to an atomic mode-600 JSON
+update. Tests use fake tokens and mock commands. The installer fails closed for
+missing, malformed, insecure, or ambiguous shared-store configuration, marks
+the derived `.env` projection, refuses to overwrite an unmanaged projection,
+and removes only its own projection on rollback.
 
 ## Agent details
 
 ### State
 
-Pull request #42 merged exact terminal-reviewed candidate
-`a4d934d2ed53fc6b8891cc5d7fd114acf69a3226` as merge commit
-`67d8b2abbda1f19708278eb17bbd3980a993f068`. All post-merge CodeQL,
-cumulative integration, and dependency checks passed. `origin/main` contains
-the Todoist skill, installer, image lock, documentation, regressions, and safe
-feature development 1.6.0. Repository work is complete; final live validation
-requires access to Cole's Todoist token and configured main-agent runtime. A
-docs-only follow-up exposed and fixed a maintained iMessage patch-test defect:
-remaining debounce time is deadline minus current wall-clock time, so the test
-now requires at least the larger of 14.9 seconds or one millisecond beyond the
-observed production gap, and at most the configured 15 seconds. Independent
-review verified the root cause, tight bounds, patch applyability, and absence of
-runtime regressions. Exact corrected candidate
-`69ea766499c6335987a9006f8adb2f661abd3213` passed remote checks and
-merged through PR #50 as
-`a385758f8cb925e46ddb9380996a93aaf0d54458`. Post-merge checks are
-all green. Repository implementation, review, landing, plan normalization, and
-post-merge verification are complete. Only credentialed live validation remains.
+The Todoist capability, safe-feature-development 1.6.0 help-request contract,
+deterministic patch-test fix, and final landed-state plan are on `main` with
+green post-merge checks. Research traced the prior shared-store work to Plan
+016 and guide 03: provider `local`, JSON file
+`~/.openclaw/secrets.json`, credentials under `providers.<service>`, atomic
+mode-600 updates, file SecretRefs, and `openclaw secrets reload`. The current
+Todoist `.env` source conflicts with that architecture; implementation of the
+shared-store alignment is complete. Focused and full managed validation pass;
+independent complete-diff review is clean. Its non-blocking legacy-upgrade
+observation is addressed with an explicit, non-printing `.env` migration recipe;
+final recheck identified a concrete dual-agent lifecycle edge. The global
+projection must remain while any configured agent consumes it and be removed
+only after the final consumer is rolled back. That correction and a mode-600
+migration temp file are implemented. Focused and full managed validation pass;
+final complete-diff review is clean. In-diff bookkeeping is final; the exact
+landing candidate and terminal review are next.
 
 ### Scope and acceptance criteria
 
-- The trusted main-agent sandbox contains pinned `td` CLI version 3.0.5.
-- The source-managed skill treats Todoist output as untrusted, performs only
-  explicit mutations, creates detailed `agent`-labeled tasks, and leaves GitHub
-  issue creation to the monitor.
-- The installer requires daemon-readable trusted token configuration, refuses
-  unacknowledged non-main agents, preserves user-authored skills, validates the
-  candidate before mutation, and provides deterministic rollback.
-- Setup documentation explains credential boundaries, install, read-only
-  verification, task filing, upgrade, and rollback.
-- Shared integration coverage records Todoist writes and denies unsupported
-  operations without contacting live Todoist or GitHub.
-- Safe feature development requires concise, self-contained, evidence-based
-  help requests that identify exactly what is needed and why, while prohibiting
-  routine worker-owned handoffs.
-- The exact reviewed candidate is merged, default-branch artifacts and
-  post-merge checks are verified, and only live operator validation remains.
-- The shared patch suite verifies the referential debounce is at most 15 seconds,
-  remains within 100 ms of that configured window, and still exceeds every
-  observed production gap without requiring impossible exact wall-clock
-  equality.
+- Add a single command that:
+  - runs `td auth login`;
+  - captures the stored token without printing or placing it in argv;
+  - atomically writes `providers.todoist.apiKey` to the configured shared JSON
+    provider with mode 600;
+  - maps `skills.entries.todoist-cli.apiKey` to
+    `{source:"file",provider:"local",id:"/providers/todoist/apiKey"}`;
+  - reloads/audits secrets without displaying credential values.
+- Make the installer use the configured `local` file provider and
+  `/providers/todoist/apiKey` as its canonical credential input.
+- Treat `.env` only as a marked, installer-owned compatibility projection for
+  `sandbox.docker.env`; never instruct operators to edit it with a token.
+- Preserve unrelated `.env` lines and shared-store keys.
+- Fail closed rather than overwrite an unmanaged `TODOIST_API_TOKEN` line.
+- Remove the marked projection during failed installation and explicit rollback
+  only when no configured agent still references it, without deleting the
+  canonical shared secret.
+- Preserve all existing image, skill, config, recovery, and no-clobber behavior.
+- Document the repository-wide rule that long-lived secrets use the shared
+  store and any unavoidable runtime projection is derived, minimal, marked,
+  lifecycle-owned, and never canonical.
+- Add focused and cumulative regressions; never authenticate or mutate live
+  Todoist in automated tests.
+- Land the exact reviewed candidate, verify `main` and post-merge checks, then
+  provide the concise live command and validation steps.
 
 ### Architecture and decisions
 
-- Node 24.18.0 is digest-pinned and `@doist/todoist-cli` 3.0.5 plus transitive
-  dependencies are npm-lockfile pinned in an overlay on the existing OpenClaw
-  sandbox base.
-- `TODOIST_API_TOKEN` must exist in OpenClaw's trusted global state `.env`; a
-  shell-only export fails before build or mutation. The selected sandbox can
-  inspect its credential, so installation defaults to the trusted main agent.
-- Recovery state stores no credential. Candidate build and `td --version` smoke
-  happen before OpenClaw mutation; failure restores prior config and skill
-  state and recreates the prior sandbox.
-- The Todoist skill creates tasks only. The existing monitor remains the
-  authority for issue deduplication, plans, routing, and lifecycle labels.
-- Safe feature development 1.6.0 defines the clear-help contract in canonical
-  workflow guidance, and the shared review-workflow regression asserts every
-  required field and prohibition.
-- The iMessage monitor resolves a remaining debounce duration from a deadline
-  and `Date.now()`. Its integration test must assert a tight semantic range, not
-  exact equality that races elapsed execution time.
-- No automatic production deployment exists for this local capability. The
-  repository is landed; live installation is an explicit operator validation.
+- The established provider is `secrets.providers.local` with `source: "file"`,
+  `mode: "json"`, and path `~/.openclaw/secrets.json`.
+- Todoist uses JSON pointer `/providers/todoist/apiKey`, matching the existing
+  `providers.<service>` convention.
+- `skills.entries.todoist-cli.apiKey` is a supported SecretRef surface and
+  records the canonical mapping for audit and host-side skill execution.
+- `agents.list[].sandbox.docker.env` accepts only strings. It cannot directly
+  hold a SecretRef, and skill `apiKey` injection does not apply inside Docker.
+  Therefore the installer derives `TODOIST_API_TOKEN` into
+  `~/.openclaw/.env` immediately before sandbox config/recreation.
+- The derived projection is adjacent to a stable marker comment. An existing
+  token without that marker is unmanaged and blocks installation. Recovery
+  state never stores its value. Rollback refreshes the configured agent list
+  after removing the selected agent's env reference; it removes the marked
+  global projection only when no agent remains a consumer.
+- The canonical shared secret is not removed by rollback or uninstall.
+- A reusable repository command is preferable to a copy-pasted Python one-liner:
+  it makes the safe operation reviewable, testable, and easy to repeat.
 
 ### Implementation
 
-- Added `openclaw-skills/todoist-cli/SKILL.md`.
-- Added the locked image under `scripts/mac-mini/todoist-cli/`.
-- Added `scripts/mac-mini/install-openclaw-todoist-cli.sh` with dry-run,
-  candidate-first mutation ordering, recovery, rollback, and no-clobber
-  behavior.
-- Added `docs/openclaw-setup/05-todoist-cli.md` and linked it from the guide
-  index.
-- Added the Todoist recording mock and installer/write integration tests.
-- Advanced `.github/skills/safe-feature-development/SKILL.md` to 1.6.0 with the
-  clear requester-help contract.
-- Expanded the shared workflow regression and coverage index.
-- Integrated current `main`, completed all local and remote gates, merged PR
-  #42, and verified the default branch.
-- Normalized the landed plan in PR #50; its repeated CI failure identified the
-  clock-sensitive maintained patch assertion.
-- Replaced impossible exact remaining-time equality with tight semantic bounds
-  while preserving every observed-gap guarantee.
+1. Added `scripts/mac-mini/store-openclaw-todoist-token.sh` with OAuth login,
+   atomic shared-store update, SecretRef mapping, reload, and redacted status.
+2. Updated `install-openclaw-todoist-cli.sh` to resolve the local provider,
+   validate the shared store, create/remove the marked `.env` projection, and
+   preserve projection state through failure and rollback. Final remediation
+   adds consumer-aware removal for explicit multi-agent installations.
+3. Extended focused E2E fixtures for the store command and installer projection
+   lifecycle, including provider, JSON, permission, unmanaged-state, reinstall,
+   failure-cleanup, preservation, and rollback paths.
+4. Updated guide 03's shared-secret architecture and guide 05's authentication,
+   install, verification, and rollback instructions.
+5. Added a migration recipe that first stores the canonical token, then removes
+   only the prior unmanaged `.env` line without printing it. Its temporary file
+   is created mode 600 before any unrelated `.env` content is written.
+6. Run focused tests and the complete managed lifecycle.
+7. Complete retained/replacement full-diff review, terminal review, remote
+   integration, merge, and post-merge verification.
+8. Run the documented live login/store/install validation with Cole.
 
 ### Validation
 
-Completed:
+Previously completed:
 
-- installer and recording-mock syntax checks;
-- 19 focused review-workflow, Todoist installer, and write-sink tests;
-- E2E TypeScript lint and diff checks;
-- locked image build and `td --version` 3.0.5 smoke;
-- repeated `node packages/e2e/bin/openclaw-test-env.mjs ci` runs, including the
-  final integrated result: workspace build/lint, 112 mcp-hooks tests, 64 e2e
-  tests, 61 calendar tests, 43 Gmail tests, 319 mapped OpenClaw tests, one
-  candidate test, and cleanup;
-- clean complete-diff review and clean terminal review of exact candidate
-  `a4d934d2ed53fc6b8891cc5d7fd114acf69a3226`;
-- all required remote checks and clean mergeability before merge;
-- merged-candidate ancestry and expected artifacts on `origin/main`;
-- successful post-merge CodeQL, cumulative integration, and dependency checks
-  on merge commit `67d8b2abbda1f19708278eb17bbd3980a993f068`.
+- landed Todoist implementation and safe-feature 1.6.0;
+- 19 focused tests, TypeScript lint, locked image smoke, repeated full managed
+  lifecycle, complete-diff review, terminal review, remote gates, merge, and
+  post-merge checks;
+- deterministic iMessage patch-test stabilization and landed-state plan
+  follow-ups.
 
-Not automated by design:
+Required for this cycle:
 
-- daemon-time token interpolation in the configured main sandbox;
-- authenticated `td auth status`;
-- creation of a real Todoist task.
-
-Those checks require the operator's local credential and explicit request, and
-must not be exercised by repository automation.
-
-The plan follow-up's post-merge CodeQL and cumulative integration checks passed
-on `a385758f8cb925e46ddb9380996a93aaf0d54458`.
+- shell syntax, E2E TypeScript lint, and 23 focused login/store, installer, and
+  write-sink tests;
+- success, missing provider, missing secret, insecure permissions, malformed
+  JSON, unmanaged projection, reinstall, install failure cleanup, and rollback;
+- `node packages/e2e/bin/openclaw-test-env.mjs ci`: workspace build/lint, 112
+  mcp-hooks tests, 80 e2e tests, 61 calendar tests, 43 Gmail tests, 470 mapped
+  OpenClaw tests, one candidate test, and cleanup passed;
+- complete-current-diff and exact-candidate terminal review;
+- remote checks, merge, default-branch artifact verification, and post-merge
+  checks;
+- credentialed live login/store/install, read-only auth status, and one explicit
+  low-risk routing check.
 
 ### Rollout and rollback
 
-Follow `docs/openclaw-setup/05-todoist-cli.md`: place the Todoist token in
-`~/.openclaw/.env`, run the installer dry-run and install commands, then verify
-the main-agent image and skill path without printing env configuration. Run
-`td auth status --json --no-spinner` as the read-only authentication check.
-After that succeeds, explicitly ask the main agent to file one low-risk test
-task in the intended project with the `agent` label and confirm the monitor
-creates exactly one issue. If installation or recreation fails, the installer
-restores prior state. Use its `rollback` action to remove the capability; remove
-the token separately only after confirming no other integration uses it.
+After landing, run the repository login/store command, then the Todoist installer
+dry-run and install commands. Verify the SecretRef shape without printing the
+store, run read-only auth status, and file one explicit low-risk task. Installer
+failure and rollback remove the marked `.env` projection and restore prior
+OpenClaw config/sandbox state while retaining `providers.todoist.apiKey` as the
+canonical credential. Remove that shared-store key only as a separate,
+intentional credential-revocation action.
 
 ### Review log
 
-Independent review covered the full implementation repeatedly. It found and the
-implementation fixed a shell-only token success-shaped failure. A transient
-1 ms candidate-suite timing assertion passed on unchanged rerun without
-weakening CI during the original feature cycle. The same assertion later failed
-twice on docs-only PR #50, including two different parameterized cases, proving
-the exact wall-clock assertion is itself defective. Reopened review of the
-clear-help contract was clean; its two
-residual unasserted lines were added to the regression, validation was repeated,
-and replacement complete-diff review returned clean. Fresh terminal review of
-the exact landing candidate returned clean. Remote and post-merge gates passed.
-The maintained patch assertion is now bounded to the actual deadline-minus-now
-contract, and the full managed lifecycle passes. Independent review confirmed
-the 100 ms tolerance preserves the configured upper bound, catches meaningful
-window reductions, retains every observed-gap guarantee, and applies cleanly.
-Fresh terminal review of exact candidate
-`69ea766499c6335987a9006f8adb2f661abd3213` returned clean. All PR #50
-remote gates passed and the candidate merged as
-`a385758f8cb925e46ddb9380996a93aaf0d54458`.
-All checks on that merge commit passed.
+Prior reviews found and remediated a shell-only token success-shaped failure,
+the unclear requester-help contract, incomplete contract assertions, and a
+clock-sensitive maintained patch test. All prior changes landed cleanly.
+Current research confirms the shared store predates this feature and that
+sandbox Docker env is outside OpenClaw's SecretRef credential surface. The
+runtime projection is therefore explicit compatibility state, not a second
+operator-managed secret source. Shared-store review returned clean. Its
+non-blocking observation that older installs have an unmanaged `.env` line is
+addressed by a safe migration recipe. Final recheck identified that per-agent
+recovery cannot alone own one global projection; consumer-aware cleanup is
+implemented and covered. The migration recipe now creates its temp file mode 600
+before writing preserved `.env` content. Validation passes, and final
+complete-current-diff review found no actionable defects.
 
 ### Checklist
 
-- [x] Implement and document the Todoist CLI capability.
-- [x] Add isolated focused and cumulative regressions.
-- [x] Add safe feature development 1.6.0 clear-help guidance and regression.
-- [x] Pass focused, full managed, review, terminal, and remote gates.
-- [x] Merge exact candidate and verify `main` plus post-merge checks.
-- [x] Normalize the landed plan and issue ledger.
-- [x] Fix the maintained clock-sensitive assertion without weakening semantics.
-- [x] Revalidate and complete-diff review the normalized plan follow-up.
-- [x] Commit and terminal-review the corrected follow-up candidate.
-- [x] Verify PR #50 post-merge checks.
-- [ ] Complete the documented live install and read-only authentication check.
-- [ ] File one explicit low-risk task and confirm single-issue routing.
-- [ ] Cole validates the live result and decides whether to complete the
-  external Todoist task.
+- [x] Locate and verify the prior shared secret-store architecture.
+- [x] Define the Todoist shared-store path and projection boundary.
+- [x] Implement the login/store command.
+- [x] Align installer projection and rollback behavior.
+- [x] Update shared architecture and Todoist documentation.
+- [x] Add focused and cumulative regressions.
+- [x] Pass focused and full managed validation.
+- [x] Complete initial independent review.
+- [x] Add consumer-aware projection cleanup and regression.
+- [x] Complete final focused and managed validation.
+- [x] Complete final replacement review.
+- [ ] Commit and terminal-review the exact candidate.
+- [ ] Land and verify the exact candidate.
+- [ ] Complete credentialed live validation.

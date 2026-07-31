@@ -38,32 +38,69 @@ the control that protects the credential.
 - `scripts/mac-mini/install-openclaw-todoist-cli.sh` builds and smoke-tests the
   candidate, installs the skill, updates only the selected agent, recreates its
   sandbox, and records rollback state.
+- `scripts/mac-mini/store-openclaw-todoist-token.sh` runs OAuth login and
+  atomically stores the token in the shared OpenClaw secret store without
+  printing it.
 
 The base image stays configurable, so the overlay preserves the OpenClaw
 sandbox contract and any other tools already present in your deployment.
 
-## Store the token outside the workspace
+## Log in and use the shared secret store
 
-Get an API token from Todoist's integration settings. Store it in OpenClaw's
-trusted global environment file, not the agent workspace and not the repository:
+The canonical token belongs at `providers.todoist.apiKey` in the existing
+mode-600 `~/.openclaw/secrets.json` store. Run:
 
 ```bash
-mkdir -p ~/.openclaw
-touch ~/.openclaw/.env
-chmod 600 ~/.openclaw/.env
-read -r -s -p "Todoist API token: " TODOIST_API_TOKEN
-printf '\n'
-if grep -q '^TODOIST_API_TOKEN=' ~/.openclaw/.env; then
-  echo "TODOIST_API_TOKEN already exists; edit ~/.openclaw/.env without printing it."
-else
-  printf 'TODOIST_API_TOKEN=%s\n' "$TODOIST_API_TOKEN" >> ~/.openclaw/.env
-fi
-unset TODOIST_API_TOKEN
+cd ~/git/puddles/scripts/mac-mini
+./store-openclaw-todoist-token.sh
 ```
+
+The command opens Todoist OAuth, captures the resulting keychain token into a
+local shell variable, sends it over stdin to an atomic JSON update, configures
+`skills.entries.todoist-cli.apiKey` as a file SecretRef, reloads OpenClaw
+secrets, and prints only redacted authentication status.
 
 Do not run `td auth login` inside the Linux sandbox. A desktop keyring is not
 available there, so the CLI can fall back to a plaintext config file inside the
-persisted workspace.
+persisted workspace. Do not manually add `TODOIST_API_TOKEN` to `.env`; the
+installer owns that compatibility projection because Docker env does not accept
+SecretRefs.
+
+### Migrating the earlier `.env` setup
+
+If you followed an earlier version of this guide, run the shared-store command
+above first. Then remove only the old unmanaged `TODOIST_API_TOKEN` line without
+printing its value:
+
+```bash
+python3 - <<'PY'
+import os
+import tempfile
+from pathlib import Path
+
+p = Path.home() / ".openclaw/.env"
+lines = p.read_text().splitlines() if p.exists() else []
+lines = [line for line in lines if not line.startswith("TODOIST_API_TOKEN=")]
+fd, tmp = tempfile.mkstemp(prefix=".env.todoist-migration.", dir=p.parent, text=True)
+try:
+    os.fchmod(fd, 0o600)
+    with os.fdopen(fd, "w") as handle:
+        handle.write(("\n".join(lines) + "\n") if lines else "")
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(tmp, p)
+except BaseException:
+    try:
+        os.unlink(tmp)
+    except FileNotFoundError:
+        pass
+    raise
+PY
+```
+
+The installer deliberately refuses an unmarked token line rather than guessing
+whether it is safe to replace. After migration, it writes its own marked
+projection from the canonical shared store.
 
 ## Install
 
@@ -79,15 +116,18 @@ The installer:
 
 1. resolves the `main` agent and its workspace;
 2. refuses an existing unmarked `todoist-cli` skill;
-3. confirms trusted token configuration exists;
+3. validates the configured `local` JSON provider, mode-600 shared store, and
+   `/providers/todoist/apiKey`;
 4. builds and runs `td --version` in the candidate image before changing
    OpenClaw;
 5. records the previous image configuration in
    `~/.openclaw/todoist-cli-install/main.json`;
-6. installs the managed skill atomically;
-7. configures the candidate image and the literal
+6. derives a marked, mode-600 `.env` projection while preserving unrelated
+   lines and refusing to overwrite an unmanaged token;
+7. installs the managed skill atomically and maps its file SecretRef;
+8. configures the candidate image and the literal
    `${TODOIST_API_TOKEN}` environment reference for `main`; and
-8. recreates the sandbox.
+9. recreates the sandbox.
 
 If configuration or recreation fails, the installer restores the previous
 image, removes or restores the managed skill, recreates the prior sandbox, and
@@ -142,7 +182,10 @@ cd scripts/mac-mini
 ```
 
 Rollback restores the previous per-agent image setting, removes the injected
-Todoist env reference, removes only the marked managed skill, recreates the
-sandbox, and deletes recovery state after success. It does not delete the
-candidate Docker image or the token in `~/.openclaw/.env`; remove those
-separately after confirming no other local integration uses them.
+Todoist env reference and installer-owned `.env` projection, removes only the
+marked managed skill, recreates the sandbox, and deletes recovery state after
+success. When another configured agent still references Todoist, rollback keeps
+the shared projection until that final consumer is removed. It does not delete
+the candidate Docker image or canonical
+`providers.todoist.apiKey` secret. Revoke that shared credential only as a
+separate intentional action.

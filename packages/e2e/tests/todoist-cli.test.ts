@@ -6,6 +6,7 @@ import {
   mkdirSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,6 +16,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const installer = join(repoRoot, "scripts", "mac-mini", "install-openclaw-todoist-cli.sh");
+const tokenStore = join(repoRoot, "scripts", "mac-mini", "store-openclaw-todoist-token.sh");
 const dockerfile = join(repoRoot, "scripts", "mac-mini", "todoist-cli", "Dockerfile");
 const imagePackage = join(repoRoot, "scripts", "mac-mini", "todoist-cli", "package.json");
 const imageLock = join(repoRoot, "scripts", "mac-mini", "todoist-cli", "package-lock.json");
@@ -29,7 +31,14 @@ interface Fixture {
   env: NodeJS.ProcessEnv;
 }
 
-function fixture(options: { previousImage?: string; failFirstRecreate?: boolean } = {}): Fixture {
+function fixture(
+  options: {
+    previousImage?: string;
+    failFirstRecreate?: boolean;
+    sharedToken?: string | null;
+    otherTodoistAgent?: boolean;
+  } = {},
+): Fixture {
   const root = mkdtempSync(join(tmpdir(), "puddles-todoist-cli-"));
   roots.push(root);
   const home = join(root, "home");
@@ -40,20 +49,52 @@ function fixture(options: { previousImage?: string; failFirstRecreate?: boolean 
   mkdirSync(join(home, ".openclaw"), { recursive: true });
   mkdirSync(join(workspace, "skills"), { recursive: true });
   mkdirSync(bin);
-  writeFileSync(join(home, ".openclaw", ".env"), "TODOIST_API_TOKEN=test-token-not-real\n", {
+  const sharedToken = options.sharedToken === undefined ? "test-token-not-real" : options.sharedToken;
+  writeFileSync(
+    join(home, ".openclaw", "openclaw.json"),
+    JSON.stringify({
+      secrets: {
+        providers: {
+          local: {
+            source: "file",
+            mode: "json",
+            path: join(home, ".openclaw", "secrets.json"),
+          },
+        },
+      },
+    }),
+  );
+  writeFileSync(
+    join(home, ".openclaw", "secrets.json"),
+    JSON.stringify({
+      providers: {
+        existing: { apiKey: "preserved-test-value" },
+        ...(sharedToken === null ? {} : { todoist: { apiKey: sharedToken } }),
+      },
+    }),
+    {
     mode: 0o600,
-  });
+    },
+  );
 
   const image = options.previousImage
     ? `"sandbox":{"docker":{"image":${JSON.stringify(options.previousImage)}}}`
     : '"sandbox":{"docker":{}}';
+  const agentsJson = `[
+    {"id":"main",${image}},
+    ${
+      options.otherTodoistAgent
+        ? '{"id":"other","sandbox":{"docker":{"env":{"TODOIST_API_TOKEN":"${TODOIST_API_TOKEN}"}}}}'
+        : ""
+    }
+  ]`.replace(/,\s*]/, "]");
   const openclaw = `#!/bin/bash
 set -e
 printf 'openclaw' >> "$COMMAND_LOG"
 for arg in "$@"; do printf '\\t%s' "$arg" >> "$COMMAND_LOG"; done
 printf '\\n' >> "$COMMAND_LOG"
 if [ "$1 $2 $3" = "config get agents.list" ]; then
-  printf '[{"id":"main",${image}}]\\n'
+  printf '%s\\n' '${agentsJson}'
 elif [ "$1 $2 $3" = "config get agents.defaults.sandbox.docker.image" ]; then
   printf '"openclaw-sandbox:bookworm-slim"\\n'
 elif [ "$1 $2" = "sandbox recreate" ]; then
@@ -75,9 +116,21 @@ if [ "$1" = run ]; then
   printf '3.0.5\\n'
 fi
 `;
+  const td = `#!/bin/bash
+set -e
+printf 'td' >> "$COMMAND_LOG"
+for arg in "$@"; do printf '\\t%s' "$arg" >> "$COMMAND_LOG"; done
+printf '\\n' >> "$COMMAND_LOG"
+if [ "$1 $2 $3" = "auth token view" ]; then
+  printf 'oauth-test-token'
+elif [ "$1 $2" = "auth status" ]; then
+  printf '{"authenticated":true,"mock":true}\\n'
+fi
+`;
   for (const [name, content] of [
     ["openclaw", openclaw],
     ["docker", docker],
+    ["td", td],
   ] as const) {
     const path = join(bin, name);
     writeFileSync(path, content);
@@ -163,9 +216,16 @@ describe("Todoist CLI sandbox capability", () => {
         "agents.list[0].sandbox.docker.env.TODOIST_API_TOKEN\t\"${TODOIST_API_TOKEN}\"",
       ),
     );
+    expect(lines).toContain(
+      "openclaw\tconfig\tset\tskills.entries.todoist-cli.apiKey\t--ref-source\tfile\t--ref-provider\tlocal\t--ref-id\t/providers/todoist/apiKey",
+    );
     expect(
       existsSync(join(f.workspace, "skills", "todoist-cli", ".puddles-managed")),
     ).toBe(true);
+    const projectedEnv = readFileSync(join(f.home, ".openclaw", ".env"), "utf8");
+    expect(projectedEnv).toContain("# puddles-managed: todoist-cli token projection");
+    expect(projectedEnv).toContain("TODOIST_API_TOKEN=test-token-not-real");
+    expect(readFileSync(f.log, "utf8")).not.toContain("test-token-not-real");
   });
 
   it("fails closed rather than overwriting an unmarked skill", () => {
@@ -181,17 +241,63 @@ describe("Todoist CLI sandbox capability", () => {
     expect(commandLines(f).some((line) => line.startsWith("docker\tbuild"))).toBe(false);
   });
 
-  it("requires daemon-readable trusted token configuration before building", () => {
-    const f = fixture();
-    rmSync(join(f.home, ".openclaw", ".env"));
+  it("requires the canonical shared Todoist secret before building", () => {
+    const f = fixture({ sharedToken: null });
     f.env.TODOIST_API_TOKEN = "shell-only-test-token";
 
     const result = run(f);
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
-      "TODOIST_API_TOKEN is not configured in",
+      "missing /providers/todoist/apiKey in shared secret store",
     );
-    expect(result.stderr).toContain("shell-only export cannot guarantee");
+    expect(commandLines(f).some((line) => line.startsWith("docker\tbuild"))).toBe(false);
+  });
+
+  it("rejects an insecure shared secret store", () => {
+    const f = fixture();
+    chmodSync(join(f.home, ".openclaw", "secrets.json"), 0o644);
+
+    const result = run(f);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("shared secret store must have mode 600");
+    expect(commandLines(f).some((line) => line.startsWith("docker\tbuild"))).toBe(false);
+  });
+
+  it("rejects a missing local JSON secret provider", () => {
+    const f = fixture();
+    writeFileSync(join(f.home, ".openclaw", "openclaw.json"), "{}\n");
+
+    const result = run(f);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "secrets.providers.local must be a JSON file provider",
+    );
+    expect(commandLines(f).some((line) => line.startsWith("docker\tbuild"))).toBe(false);
+  });
+
+  it("rejects malformed shared secret JSON", () => {
+    const f = fixture();
+    writeFileSync(join(f.home, ".openclaw", "secrets.json"), "{not-json\n", {
+      mode: 0o600,
+    });
+
+    const result = run(f);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("JSONDecodeError");
+    expect(commandLines(f).some((line) => line.startsWith("docker\tbuild"))).toBe(false);
+  });
+
+  it("refuses to overwrite an unmanaged env projection", () => {
+    const f = fixture();
+    writeFileSync(
+      join(f.home, ".openclaw", ".env"),
+      "TODOIST_API_TOKEN=unmanaged-test-token\n",
+      { mode: 0o600 },
+    );
+
+    const result = run(f);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("refusing to overwrite unmanaged TODOIST_API_TOKEN");
     expect(commandLines(f).some((line) => line.startsWith("docker\tbuild"))).toBe(false);
   });
 
@@ -212,12 +318,21 @@ describe("Todoist CLI sandbox capability", () => {
     expect(
       existsSync(join(f.home, ".openclaw", "todoist-cli-install", "main.json")),
     ).toBe(false);
+    expect(
+      readFileSync(join(f.home, ".openclaw", ".env"), "utf8"),
+    ).not.toContain("TODOIST_API_TOKEN=");
   });
 
   it("uses durable recovery state to restore a previous image", () => {
     const f = fixture({ previousImage: "custom-sandbox:before" });
+    writeFileSync(join(f.home, ".openclaw", ".env"), "UNRELATED_SETTING=preserved\n", {
+      mode: 0o600,
+    });
+
     const installed = run(f);
     expect(installed.status, `${installed.stdout}\n${installed.stderr}`).toBe(0);
+    const reinstalled = run(f);
+    expect(reinstalled.status, `${reinstalled.stdout}\n${reinstalled.stderr}`).toBe(0);
 
     const rolledBack = run(f, "rollback");
     expect(rolledBack.status, `${rolledBack.stdout}\n${rolledBack.stderr}`).toBe(0);
@@ -229,5 +344,57 @@ describe("Todoist CLI sandbox capability", () => {
     expect(
       existsSync(join(f.home, ".openclaw", "todoist-cli-install", "main.json")),
     ).toBe(false);
+    expect(readFileSync(join(f.home, ".openclaw", ".env"), "utf8")).toBe(
+      "UNRELATED_SETTING=preserved\n",
+    );
+  });
+
+  it("keeps the projection while another configured agent consumes it", () => {
+    const f = fixture({ otherTodoistAgent: true });
+    const installed = run(f);
+    expect(installed.status, `${installed.stdout}\n${installed.stderr}`).toBe(0);
+
+    const rolledBack = run(f, "rollback");
+    expect(rolledBack.status, `${rolledBack.stdout}\n${rolledBack.stderr}`).toBe(0);
+    expect(readFileSync(join(f.home, ".openclaw", ".env"), "utf8")).toContain(
+      "TODOIST_API_TOKEN=test-token-not-real",
+    );
+    expect(rolledBack.stdout).toContain(
+      "Keeping shared Todoist projection for 1 configured agent(s).",
+    );
+  });
+
+  it("logs in and updates the shared store without exposing the token", () => {
+    const f = fixture({ sharedToken: "old-test-token" });
+    const result = spawnSync("/bin/bash", [tokenStore], {
+      env: f.env,
+      encoding: "utf8",
+    });
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+
+    const store = JSON.parse(
+      readFileSync(join(f.home, ".openclaw", "secrets.json"), "utf8"),
+    );
+    expect(store.providers.todoist.apiKey).toBe("oauth-test-token");
+    expect(store.providers.existing.apiKey).toBe("preserved-test-value");
+    expect(statSync(join(f.home, ".openclaw", "secrets.json")).mode & 0o777).toBe(0o600);
+    const log = readFileSync(f.log, "utf8");
+    expect(log).not.toContain("oauth-test-token");
+    expect(log).toContain(
+      "openclaw\tconfig\tset\tskills.entries.todoist-cli.apiKey\t--ref-source\tfile\t--ref-provider\tlocal\t--ref-id\t/providers/todoist/apiKey",
+    );
+  });
+
+  it("rejects an insecure store before starting OAuth login", () => {
+    const f = fixture();
+    chmodSync(join(f.home, ".openclaw", "secrets.json"), 0o644);
+
+    const result = spawnSync("/bin/bash", [tokenStore], {
+      env: f.env,
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("shared secret store must have mode 600");
+    expect(commandLines(f).some((line) => line.startsWith("td\tauth\tlogin"))).toBe(false);
   });
 });

@@ -575,6 +575,14 @@ In `openclaw.json`:
 
 That declares one provider named `local` that reads JSON from `~/.openclaw/secrets.json`. Anywhere else in the config you need a credential, you write a `SecretRef` instead of the value.
 
+Treat this file provider as the canonical source for **every long-lived
+user-supplied credential**. Do not create an ad hoc `.env`, config value, or
+service-specific plaintext file as a second operator-managed source. When a
+runtime surface cannot consume SecretRefs, a setup script may derive the
+smallest possible marked projection from `secrets.json`, but that projection
+must be mode 600, lifecycle-owned, removed during rollback, and documented as
+non-canonical.
+
 The gateway needs the auth token in **two** places — both `gateway.auth.token` (used by the gateway itself) and `gateway.remote.token` (used by the `openclaw` CLI when it talks back to the gateway). Both should point to the same SecretRef:
 
 ```json
@@ -609,6 +617,7 @@ The `id` is a JSON pointer into `secrets.json`. The gateway resolves it at start
     "gateway":     { "token":  "<random 64-char hex>" },
     "bluebubbles": { "apiKey": "<the password you set in guide 02>" },
     "google":      { "apiKey": "<google api key>" },
+    "todoist":     { "apiKey": "<Todoist OAuth token>" },
     "<your-llm-provider-id>": { "token":  "<your llm provider token>" }
   }
 }
@@ -650,6 +659,12 @@ PY
 ```
 
 Then reference it from `openclaw.json` via SecretRef using `openclaw config set` as in §3.
+
+Service setup should provide a reviewed helper instead of asking an operator to
+paste a token into the Python example. For Todoist, run
+`scripts/mac-mini/store-openclaw-todoist-token.sh`; it performs OAuth login,
+captures the token without printing it, atomically writes
+`providers.todoist.apiKey`, and configures the skill SecretRef.
 
 ### Rotation
 
