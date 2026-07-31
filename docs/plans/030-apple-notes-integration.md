@@ -316,14 +316,21 @@ Out of scope for V1:
 
 - Spool states are `needs_copy`, `reserved`, `ready`, `deleting`, `cleanup`, and
   `deleted`.
-- Identity fields are state-specific. A `ready` row records the exact current
-  parent scope, inode, byte size, and digest. A `deleting` or `cleanup` row keeps
-  the exact deletion-target identity and durable after-delete target. A
-  `needs_copy` or `reserved` row has no current file identity and cannot reuse a
-  stale one. A `deleted` row retains historical deletion evidence but no live
-  identity. All opens and deletes use no-follow semantics and verify the
-  state-appropriate current or deletion-target identity immediately before
-  action.
+- Identity fields are state-specific. A `needs_copy` row has no current or
+  staging identity. A `reserved` row is quota-charged and durably owns one
+  attempt nonce plus one broker-generated staging locator inside a
+  broker-only spool root before file creation. After exclusive no-follow
+  creation and before the first byte, that same row records the exact staging
+  parent, inode, current byte size, and current digest. A `ready` row records the
+  exact final parent, inode, byte size, and digest. A `deleting` or `cleanup` row
+  keeps the exact deletion-target identity and durable after-delete target. A
+  `deleted` row retains historical deletion evidence but no live identity. All
+  opens and deletes use no-follow semantics and verify the state-appropriate
+  staging, current, or deletion-target identity immediately before action.
+- Each bounded frame updates the reserved attempt's durable byte count and
+  digest after the write is synced. A crash-visible mismatch moves the same row
+  to `deleting`; it cannot resume or bless partial bytes. Final file and parent
+  sync precede the atomic `reserved` to `ready` transition.
 - Initial copy receives at most three total attempts within one non-resettable
   five-minute deadline.
 - A ready row has at most one non-resettable recovery episode. Recovery,
@@ -338,6 +345,12 @@ Out of scope for V1:
 - Two-phase deletion unlinks only the exact old identity, syncs the parent,
   confirms absence, and then advances the same row. No replacement path, inode,
   or row may exist before all four facts are durable.
+- A failed or interrupted reserved attempt must pass through same-row deletion
+  and durable absence confirmation before another attempt is reserved. If a
+  crash occurs after staging creation but before its inode is stored, recovery
+  uses the durable attempt nonce and protected staging locator to bind the
+  no-follow object as the deletion target. It never treats that object as
+  content and never recopies beside it.
 - Quota remains charged through `deleting` and `cleanup` until durable deletion
   completion.
 - Exhausted copy or recovery creates a content-free unavailable sentinel,
@@ -504,6 +517,10 @@ read, cross-peer disclosure, quota release, and cursor stall.
 |---|---|
 | Initial copy succeeds within three attempts and five minutes | Same row reaches `ready` with exact inode, size, and digest |
 | Initial copy exhausts attempts or deadline | Create content-free unavailable sentinel, detach composition, advance text/cursor, and retain same-row cleanup quota |
+| Crash occurs after attempt reservation but before staging creation | Same row proves the protected staging locator absent before retry |
+| Crash occurs after staging creation but before exact staging identity is stored | Same row uses its durable nonce and protected locator to bind the no-follow object as a deletion target, then unlinks, syncs, and confirms absence before retry |
+| Crash or error occurs after a partial frame write but before its durable byte count and digest update | Observed identity mismatch moves the same row to deletion; partial bytes are never resumed or promoted |
+| Crash occurs after final file or parent sync but before the `ready` commit | Reserved staging is cleaned before another attempt; no uncommitted file is exposed as ready |
 | Symlink, inode swap, size change, digest change, or parent mismatch appears before open or delete | No-follow identity check denies use |
 | Ready file is provably absent and recovery has not been used | Same row clears current identity, retains it only as historical evidence, enters `needs_copy`, and starts its only recovery episode |
 | Ready file is present but invalid, or absence is unprovable | Same row enters `deleting` with exact old identity and durable after-delete target |
@@ -613,7 +630,9 @@ fallback.
   state-invalid spool identity requirements, and an unnecessary tracker
   reference. A complete-diff recheck found no remaining material issues. The
   terminal candidate review then found and resolved missing fail-closed runtime
-  version checks and a policy-revocation race during invitation acceptance.
+  version checks and a policy-revocation race during invitation acceptance. A
+  fresh exact-head review found and resolved missing crash-safe ownership for
+  partial staging copies.
 
 ### Checklist
 
