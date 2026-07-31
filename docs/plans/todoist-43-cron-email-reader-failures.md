@@ -190,5 +190,5 @@ instead of driving a live main model turn.
 - [x] Land the host deployment candidate and public PR #56.
 - [x] Run post-landing production checks.
 - [x] Rewrite issue #43 with the landed result.
-- [x] Merge the completion plan and close issue #43.
+- [x] Merge the completion plan and keep issue #43 open for review handoff.
 - [x] Update the Todoist task for Cole's review.
