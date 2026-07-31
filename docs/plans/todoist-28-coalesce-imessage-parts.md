@@ -68,15 +68,13 @@ and switches configuration back to the current coalescer.
 
 ### Status
 
-Fresh terminal review found that the age decision still happened after source
-queue delay and could change across restart. The design now records one durable
-reply-eligibility choice at first observation and never recalculates it for that
-row. The same row reserves one non-expiring capacity token and converts that
-token into its prepared pin without a second reservation, so a full pool cannot
-block existing work from draining. Retained complete-diff review found no
-actionable issues after explicit crash proof for the durable marker-to-pin
-identity change. Production is unchanged, no implementation is approved, and
-public landing waits for prerequisite PR #56.
+The design records one durable reply-eligibility choice when the source first
+observes a row and never recalculates it. That row holds one non-expiring
+capacity token and converts it into the prepared pin without a second
+reservation, so a full pool cannot block existing work from draining. Retained
+complete-diff review is clean, including explicit crash proof for the durable
+marker-to-pin identity change. Production remains unchanged, implementation is
+not approved, and public landing waits for prerequisite PR #56.
 
 ## Agent section
 
