@@ -1,6 +1,6 @@
 # Drain active iMessage input before replying
 
-- **Status:** Steering-based design reviewed; landing waits for PR #56
+- **Status:** Steering-based design passed retained review; exact candidate preparation
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-31
 - **Owner:** Cole Taylor
@@ -32,12 +32,15 @@ message parsing changes.
 Immediate mode requires the bridge to replay every row after the saved cursor
 with no fixed lookback clamp. Existing stale-message time limits still decide
 whether an old ordinary message may start an agent turn. They no longer discard
-source ownership. A stale row receives a durable no-reply result, advances the
-cursor and checkpoint in order, and cannot produce a reply during a delayed
-Push recovery burst. Accepted input, reply delivery, and source ownership
-recover together. An ambiguous database change or an unknown non-repeatable
-tool result stops for operator review instead of guessing and risking loss or a
-duplicate effect.
+source ownership. The source records the age window and reply eligibility once
+when it first observes the row, before that row can wait behind other work.
+Restart and queue delay must honor that saved choice. A stale row receives a
+durable no-reply result, advances the cursor and checkpoint in order, and cannot
+produce a reply during a delayed Push recovery burst. A live row that waits in
+the source queue remains replyable. Accepted input, reply delivery, and source
+ownership recover together. An ambiguous database change or an unknown
+non-repeatable tool result stops for operator review instead of guessing and
+risking loss or a duplicate effect.
 
 Stops and reactions use the same ordered source gate. Stops keep their current
 authorization and behavior, but record the exact older work they may cancel so
@@ -65,12 +68,15 @@ and switches configuration back to the current coalescer.
 
 ### Status
 
-The corrected design has a clean complete-diff review. It distinguishes routine
-deletion of committed source rows from a changed binding, preserves the existing
-stale-message windows as durable no-reply gates, and keeps restart recovery
-behavior unchanged. Production is unchanged and no implementation is approved.
-The documentation candidate is moving through exact-commit review, and public
-landing waits for an unrelated prerequisite change.
+Fresh terminal review found that the age decision still happened after source
+queue delay and could change across restart. The design now records one durable
+reply-eligibility choice at first observation and never recalculates it for that
+row. The same row reserves one non-expiring capacity token and converts that
+token into its prepared pin without a second reservation, so a full pool cannot
+block existing work from draining. Retained complete-diff review found no
+actionable issues after explicit crash proof for the durable marker-to-pin
+identity change. Production is unchanged, no implementation is approved, and
+public landing waits for prerequisite PR #56.
 
 ## Agent section
 
@@ -173,8 +179,19 @@ recheck found one sentence that could preserve an old startup high-water across
 restart. It now requires a fresh startup sample, preserving the existing
 two-hour window for outage messages, and the empty-prefix fixture explicitly
 proves numeric cursor `0` is not collapsed to absent. The retained reviewer
-rechecked the complete corrected diff and found no actionable issues. No
-executable artifact has been approved or changed.
+rechecked that corrected diff and found no actionable issues. Fresh terminal
+review then found that an observed stale live row could become replyable after
+restart and that a replyable live row could age out while waiting behind an
+older FIFO entry. The source now persists one bounded, non-evicting
+observation classification before FIFO delay and honors it through restart,
+continuity, processing, and replay commit. The latest recheck found that the
+marker-to-pin text reserved shared capacity twice and could deadlock a full
+pool. Each ordinary row now holds one non-expiring lifecycle token and converts
+its marker into a prepared pin in place, with no second capacity check.
+Retained review found no actionable issues after explicit crash-atomicity
+proof for the marker's generation-neutral key becoming a generation-bound pin
+key. The exact candidate is being prepared for retained and fresh terminal
+review. No executable artifact has been approved or changed.
 
 Public plan-only merges are temporarily frozen until cron-reader PR #56 lands so
 this documentation change does not invalidate that feature's exact promotion
@@ -245,6 +262,21 @@ Acceptance criteria:
 - every ordinary notification enters a generation-independent per-account FIFO
   reservation with a generation-neutral hold before continuity inspection, so a
   later row cannot rotate the generation around an unstaged predecessor;
+- at first observation, before FIFO waiting or conversation repair, each
+  ordinary row atomically reserves one bounded, non-evicting, non-expiring
+  lifecycle-capacity token and persists its source row/GUID, sampled
+  startup-high-water class, observation time, and final `reply_eligible` or
+  `stale_no_reply` choice; restart and queue delay never recalculate that choice;
+- a `reply_eligible` row converts that same token from observation marker to
+  prepared pin atomically, without a second reservation or capacity check;
+  saturation blocks only a new first observation and can never block a row that
+  already owns a token from progressing or releasing it;
+- observation-classification persistence failure leaves the row behind its
+  source hold with no hook, model, tool, delivery, replay, or cursor effect;
+  saturation applies source backpressure and never evicts an unresolved choice;
+- startup restores observation-marker capacity and generation-neutral holds
+  before source subscription or work admission, joins replay by exact row/GUID,
+  and never replaces a saved choice with the new startup boundary;
 - no later source row can leave its reservation slot until the current row has
   either committed a durable `stale_no_reply` disposition or staged its complete
   text and immutable attachment bytes with a source-identified `prepared` pin;
@@ -316,9 +348,10 @@ Acceptance criteria:
   the durable committed GUID prefix; persistence failure retries reconciliation
   on restart without choosing a new floor;
 - generation fencing transfers the trigger and every queued unassigned successor
-  to transition ownership, detaches all of their old-run blockers, removes their
-  row numbers from old cursor accounting, and preserves one source transition
-  fence until catchup reconciles them;
+  with its immutable observation classification to transition ownership,
+  detaches all of their old-run blockers, removes their row numbers from old
+  cursor accounting, and preserves each marker's capacity plus one source
+  transition fence until catchup reconciles them;
 - generation fencing pauses ordinary live ingestion, so an operator-blocked
   transition cannot grow an unbounded in-memory backlog;
 - an unmatched or ambiguous generation remains fail-closed until an
@@ -389,9 +422,10 @@ Acceptance criteria:
   permanent skip releases it;
 - restart and catchup cannot omit the earliest cursor-held row because of age,
   page-size, total-row, or retry-give-up limits; ordinary rows older than the
-  existing live or recovery threshold instead receive a durable `stale_no_reply`
-  disposition, then cross replay, cursor, and checkpoint state normally without
-  model, tool, hook, or delivery work;
+  existing live or recovery threshold at first observation instead receive a
+  durable `stale_no_reply` classification, then cross replay, cursor, and
+  checkpoint state normally without model, tool, hook, or delivery work; an
+  observed `reply_eligible` row remains eligible no matter how long it waits;
 - enrolled recovery passes the persisted cursor directly to a bridge contract
   that proves complete ordered replay of every later row; the existing
   500-row lookback floor clamp is removed for enrolled accounts and is never
@@ -451,7 +485,9 @@ Acceptance criteria:
 - existing commands, reactions, hooks, tools, approvals, transcripts,
   replay/cursor handling, and delivery recovery retain their behavior;
 - no new durable queue or database schema is created; cursor-relative replay
-  pins use ordinary entries in the existing plugin-state dedupe store;
+  pins and observation classifications are states of one bounded non-expiring
+  lifecycle record in the existing plugin-state dedupe store and contain no
+  message payload;
 - a CLI-backed, otherwise non-steerable, or source-identity-incomplete route
   remains on the current coalescer and cannot strand immediate admission;
 - rollback pauses new source dispatch without cursor advancement, reconstructs
@@ -573,10 +609,12 @@ old-generation ownership. It pauses live dispatch and does not release the
 triggering notification as a separate handler. Once the source mode gate
 prevents any new old-generation attachment, it atomically transfers the trigger
 and every queued unassigned successor from the admission FIFO to a fenced
-transition backlog, detaches all of their unknown-affinity blockers from every
-old-generation run, converts their generation-neutral holds into one
-transition-owned source fence outside old cursor accounting and the
-old-generation ownership barrier, and wakes those runs. It pauses the ordinary
+transition backlog with their row/GUID observation markers and immutable
+reply-eligibility choices, detaches all of their unknown-affinity blockers from
+every old-generation run, preserves marker capacity, converts their
+generation-neutral holds into one transition-owned source fence outside old
+cursor accounting and the old-generation ownership barrier, and wakes those
+runs. It pauses the ordinary
 live subscription. Any callback that reaches the gate after the fence records no data reservation
 or cursor result and returns, because lossless catchup owns its source row. A
 control-only notification path may still persist the exact-effect stop journal
@@ -1075,25 +1113,51 @@ resumes. Thus disk failure, a four-hour delay, or 10,000 newer rows cannot conve
 adopted work into duplicate side effects.
 
 The existing message-age rules remain reply gates for ordinary inbound rows.
-The existing startup high-water comparison keeps its current message-age
-meaning. A row at or below the sampled startup high-water uses the current
-two-hour recovery threshold. A later row uses the current 15-minute live
-threshold, including a delayed Apple Push row that receives a fresh row ID.
-Source identity, claim, FIFO order, continuity, and prefix validation still run.
-Before any prompt, tool, hook, or delivery work, a row outside its existing
-threshold receives a durable `stale_no_reply` disposition. That disposition is
-terminal for agent work but not for source work: replay commit, contiguous
-cursor movement, structural checkpoint update, and ownership cleanup still run
-in order. A crash after the disposition resumes source commit without creating a
-turn. A crash before it persists has performed no effect. The restarted process
-samples a new startup high-water, so a row that landed before restart falls at
-or below that new boundary and uses the existing two-hour recovery threshold.
-Stops and reactions keep their separate existing behavior.
+At the first source observation, before FIFO waiting, the monitor compares the
+row with that process's sampled startup high-water and compares the original
+send date with the current wall clock. A row at or below the startup boundary
+uses the current two-hour recovery threshold. A later row uses the current
+15-minute live threshold, including a delayed Apple Push row that receives a
+fresh row ID. Under the source gate, the monitor first reserves bounded
+non-evicting, non-expiring lifecycle capacity, then durably records the source
+row/GUID, startup-boundary class, observation time, and final `reply_eligible` or
+`stale_no_reply` choice before the callback can wait in the FIFO or acknowledge
+the observation. The durable marker remains generation-neutral through continuity validation,
+in-memory slot binding, and conversation repair. Persistence failure or capacity
+saturation performs no effect and keeps the source held for retry. Capacity
+saturation stops only new first observations. Any row that already owns a token
+can continue every lifecycle transition without another capacity check.
 
-On restart the in-memory holds are reconstructed from the persisted cursor
-rather than from a new durable record. For an enrolled account, recovery removes
-the `IMESSAGE_RECOVERY_MAX_ROWS` floor clamp and passes the persisted cursor
-directly to the proven ordered `watch.subscribe` replay contract. The bridge
+That recorded choice is immutable. Restart joins it by row/GUID before using a
+new startup high-water, and FIFO delay never compares age again. A
+`reply_eligible` row proceeds through normal repair, preparation, and agent work
+even when an older row delayed it beyond the wall-clock threshold. A
+`stale_no_reply` row still takes FIFO order, continuity, prefix validation,
+replay commit, contiguous cursor movement, structural checkpoint update, and
+ownership cleanup, but performs no conversation repair, prompt, hook, tool, or
+delivery work. The marker transfers atomically into the prepared pin or stale
+terminal disposition by changing the same durable lifecycle record. Binding to a
+generation atomically rekeys the generation-neutral marker to the prepared pin
+key in one store transaction while preserving the single capacity lease. A
+crash exposes exactly one complete old or new record, never both or neither. The
+transition never reserves a second unit, and the record is removed only after
+replay commit. Crash before the marker persists has performed no effect and may
+use the new process's recovery classification. Crash after it persists must
+honor it. The record is excluded from ordinary TTL and entry-count pruning in
+every marker and pin state. Stops and reactions keep their separate existing
+behavior.
+
+Startup scans observation markers before source subscription or work admission.
+It restores their capacity reservations and generation-neutral holds, then joins
+ordered replay by exact row/GUID. A marker missing its source row follows normal
+generation reconciliation and never silently releases capacity or changes its
+reply choice.
+
+After marker restoration, any remaining replay holds are reconstructed from the
+persisted cursor without creating another durable lifecycle record. For an
+enrolled account, recovery removes the `IMESSAGE_RECOVERY_MAX_ROWS` floor clamp
+and passes the persisted cursor directly to the proven ordered
+`watch.subscribe` replay contract. The bridge
 streams every later row in ascending order until the contiguous prefix is
 resolved. No fixed lookback, result cap, age rule, or retry give-up may discard
 source ownership or advance past the earliest unresolved row. A durable
@@ -1298,8 +1362,9 @@ After approval:
    needed to persist an authenticated stop journal without taking row ownership;
    catchup reconciliation must classify the GUID before any effect.
    Atomically transfer the trigger and all queued unassigned successors from the
-   FIFO to that backlog, detach all of their unknown-affinity blockers from old
-   runs, convert their neutral holds into one source transition fence outside
+   FIFO to that backlog with their observation markers and immutable choices,
+   detach all of their unknown-affinity blockers from old runs, preserve marker
+   capacity, convert their neutral holds into one source transition fence outside
    old cursor accounting and the old barrier, and wake those runs. The backlog
    is therefore bounded by events admitted before fencing.
    If transition persistence fails after replacement is proven, keep the
@@ -1316,8 +1381,9 @@ After approval:
    suppression. A missing, duplicate, or before-prefix match blocks recovery for
    authenticated operator reconciliation. Only after all markers migrate may
    unclamped current-coalescer catchup become sole owner of replacement rows.
-   The existing live and recovery message-age rules remain no-reply gates during
-   catchup and never discard source ownership.
+   Catchup honors any saved observation classification. A row the prior process
+   never accepted is classified once when catchup first observes it against the
+   new process's startup boundary. Age never discards source ownership.
    Match each backlog event by stable row/GUID to catchup ownership or reject it
    as stale before releasing its transition entry; never dispatch it independently.
    On transition-state write failure,
@@ -1327,23 +1393,35 @@ After approval:
    database change, keep the existing cursor and provisional holds. Reopen only
    after ownership, reconciliation, and catchup drain and capability is proven.
    A runtime identity-contract violation fails the source closed, disables
-   immediate mode, and never dispatches independently. Eligible events then use
-   a per-account source-order gate with one slot keyed by
-   `(accountId, dbInstanceId, rowid)`. At the FIFO head, atomically bind the
-   neutral hold to that slot. Duplicate
-   notification or retry resumes the same slot. After continuity and prefix
-   validation, classify ordinary input with the existing live or recovery age
-   threshold. A stale row durably records `stale_no_reply`, performs no
-   conversation repair, hook, prompt, tool, or delivery work, and retains its
-   slot through normal replay, cursor, and checkpoint commit. For non-stale
-   unknown affinity, register
+   immediate mode, and never dispatches independently. On first observation of
+   an ordinary event, synchronously reserve its generation-neutral hold and
+   one bounded non-evicting, non-expiring lifecycle token under the source gate.
+   Before FIFO waiting, compare its row with the sampled startup high-water and
+   its send date with the current observation time. Persist row/GUID, boundary
+   class, observation time, and immutable `reply_eligible` or `stale_no_reply`.
+   Do not acknowledge or release the callback into the FIFO until persistence
+   succeeds. Failure retains the hold for replay and performs no effect;
+   saturation backpressures the source. A duplicate notification or retry joins
+   the same marker and choice.
+   Ordinary events then use a per-account source-order gate with one slot keyed
+   by `(accountId, dbInstanceId, rowid)`. At the FIFO head, atomically bind the
+   neutral hold and generation-neutral marker to that slot. Continuity and
+   prefix validation never recalculate age. A `stale_no_reply` row performs no
+   conversation repair, hook, prompt, tool, or delivery work and retains its
+   slot and marker through normal replay, cursor, and checkpoint commit. For a
+   `reply_eligible` row with unknown affinity, register
    an account blocker against existing and subsequently attached run gates
    before the first repair await. While holding the slot, resolve/repair
    affinity and append the event's ticket to the resulting conversation lock and
-   close predicate. Reserve pin capacity, snapshot complete immutable media,
-   flush a model-hidden source-identified `prepared` transcript record, and
-   strictly persist its `prepared` pin before atomically narrowing the account blocker and
-   releasing the FIFO ticket. Permanent skip releases it; retryable repair,
+   close predicate. Without another capacity reservation or check, snapshot
+   complete immutable media, flush a model-hidden source-identified `prepared`
+   transcript record, and atomically rekey and convert the generation-neutral
+   observation lifecycle record into its generation-bound `prepared` pin while
+   preserving the immutable choice and single capacity lease. The store
+   transaction leaves exactly one complete old or new key across crash. This
+   transition remains available when every shared-pool unit is occupied. Only
+   after it succeeds may the account blocker narrow and the FIFO ticket release.
+   Permanent skip releases the lifecycle token; retryable repair,
    transcript, media, or pin failure retains it for source retry or teardown. Do
    not await agent processing there. Different accounts remain concurrent.
 4. Split same-conversation processing into an admission receipt and completion
@@ -1462,16 +1540,27 @@ After approval:
    from the disabled legacy catchup subsystem. Keep the existing
    `IMESSAGE_STALE_INBOUND_THRESHOLD_MS` live threshold and
    `IMESSAGE_RECOVERY_MAX_AGE_MS` recovery threshold. Preserve the existing
-   comparison against the sampled startup high-water to choose between them, but
-   move the result after source claim and prefix validation. Persist
-   `stale_no_reply` before any model, tool, hook, or delivery work, then commit
-   replay, cursor, and checkpoint state normally. Do not let age or retry give-up
-   discard the earliest unresolved row; only a durable disposition followed by
-   successful replay commit may cross it.
-10. Reserve bounded pin capacity atomically before claim/dispatch, counting
-   durable pins plus every in-flight reservation across lanes. Before releasing
-   source order, flush the exact source-identified turn and immutable media and
-   strictly persist a non-expiring `prepared` pin keyed by account,
+   comparison against the sampled startup high-water to choose between them.
+   Evaluate both that class and send-date age once at first observation, using
+   the captured observation time, and persist the immutable result before FIFO
+   waiting. Restart joins an existing observation marker before consulting its
+   new startup boundary. Before source subscription or work admission, scan all
+   observation markers, restore their capacity and neutral holds, and join exact
+   row/GUID replay or generation reconciliation. Persisted `stale_no_reply`
+   performs no model, tool,
+   hook, or delivery work, then commits replay, cursor, and checkpoint state
+   normally. Persisted `reply_eligible` never ages out while queued. Do not let
+   age or retry give-up discard the earliest unresolved row; only a durable
+   disposition followed by successful replay commit may cross it.
+10. Use one shared bounded lifecycle-capacity pool. Count each durable
+   observation-marker or pin record and each not-yet-persisted reservation
+   exactly once across lanes. An ordinary row reserves its unit at first
+   observation and converts the same non-expiring record into `prepared` without
+   another capacity check. A path without an observation marker reserves one
+   unit atomically before claim or dispatch. Saturation can reject only a new
+   reservation and cannot stop an existing record from advancing. Before
+   releasing source order, flush the exact source-identified turn and immutable
+   media and strictly persist the non-expiring `prepared` state keyed by account,
    database-instance generation, row, and replay identity. Promote it to
    `adopted` after remaining preparation and before assistant/tool processing.
    Keep it through the user cycle, mark it `processed`, and durably hand off
@@ -1761,14 +1850,40 @@ The managed recording harness must prove:
 - changing a retained row/GUID binding, inserting or reusing a row inside the
   still-committed range, deleting an unresolved above-cursor identity, or
   changing the stored scope variant fails continuity and enters reconciliation;
-- a row claimed while inside its existing reply-age window remains retryable
-  after more than two hours of repair delay instead of being reclassified as
-  stale;
+- a live row observed inside its 15-minute window persists `reply_eligible`,
+  waits behind an older row's repair backoff for more than 20 minutes, then
+  produces its normal agent turn and reply without recalculating age;
 - a Push-recovery burst with row IDs above the sampled startup high-water and
   original send dates beyond the live 15-minute threshold durably records
   `stale_no_reply` for every row, advances replay, cursor, and structural
   checkpoint state through the full burst, and produces zero hooks, model turns,
   tools, or deliveries;
+- after observation markers for that stale burst are durable, crash partway
+  through FIFO disposition and restart with a newly sampled high-water; every
+  remaining row joins its saved live `stale_no_reply` choice, advances source
+  state, and still produces zero hooks, model turns, tools, or deliveries;
+- crash after a live row's `reply_eligible` marker but before FIFO ownership
+  preserves its normal turn across restart; crash during marker persistence is
+  atomic, so restart sees either the complete immutable choice or no accepted
+  observation and no partial marker;
+- observation-marker capacity saturation or persistence failure performs no
+  agent or source-commit effect, keeps the generation-neutral hold, applies
+  source backpressure, and never evicts an older immutable choice;
+- fill the shared bound with `reply_eligible` observation records, then prove
+  the FIFO head converts its existing token into `prepared`, commits, releases
+  capacity, admits the backpressured next observation, and drains the full queue
+  without a second reservation or restart;
+- interrupt the transaction at every marker-to-pin rekey boundary and prove
+  restart observes exactly one complete generation-neutral marker or one
+  complete generation-bound prepared pin, counts one capacity unit, preserves
+  the immutable reply choice, and completes exactly once;
+- hold an observation record beyond the dedupe store's four-hour TTL and through
+  entry-count pruning, then prove its immutable choice, token, FIFO progress, and
+  exact-once disposition remain intact;
+- restart restores every observation marker's capacity and neutral hold before
+  subscription, then joins exact row/GUID replay; a marker missing from the
+  current source enters generation reconciliation and cannot release capacity,
+  change reply choice, or admit later work;
 - an ordinary row at or below the sampled startup high-water uses the existing
   two-hour recovery threshold, while rows inside that window retain current
   recovery behavior;
@@ -1842,13 +1957,15 @@ The managed recording harness must prove:
   change blocks reconciliation until the old source-drained barrier and latest
   committed-prefix checkpoint complete;
 - the notification that discovers a generation change retains its source FIFO
-  ownership and neutral hold but moves to the transition backlog and detaches its
-  unknown-affinity blockers after the source gate is fenced, so old runs close
-  and the ownership barrier can drain without admitting the replacement row;
+  ownership, neutral hold, observation-marker capacity, and immutable age choice
+  but moves to the transition backlog and detaches its unknown-affinity blockers
+  after the source gate is fenced, so old runs close and the ownership barrier
+  can drain without admitting the replacement row;
 - ordinary successors already waiting behind a generation-change trigger also
-  move to the transition backlog and detach every old-run blocker; notifications
-  racing after the fence return without data reservations under the paused live
-  subscription, and catchup matches each admitted backlog row/GUID before
+  move with their observation markers to the transition backlog and detach every
+  old-run blocker; notifications racing after the fence return without data
+  reservations under the paused live subscription, and catchup matches each
+  admitted backlog row/GUID and preserves its recorded reply choice before
   releasing its transition entry;
 - an indefinitely operator-blocked transition receives no ordinary live backlog
   growth while the paused subscription leaves every row recoverable from the
@@ -1974,13 +2091,14 @@ The managed recording harness must prove:
 
 Latency assertions compare source observation to initial run start and require
 no fixed 7/15-second delay. They include the current local source's complete
-read-only committed-prefix validation cost and report its p50 and p95 separately
-from model time. The same measurements cover a large structural-prefix fixture
-and a stale Push-recovery burst, including per-row prefix validation and full
-no-reply drain time. The canary remains on the current coalescer if that
-validation does not improve the deployed start latency. The test fixture
-controls model/tool completion and the close race deterministically; it does
-not use sleeps as proof.
+read-only committed-prefix validation cost and synchronous first-observation
+record write. They report p50 and p95 for each contribution and for total
+observation-to-start time, separately from model time. The same measurements
+cover a large structural-prefix fixture and a stale Push-recovery burst,
+including per-row marker persistence, prefix validation, and full no-reply drain
+time. The canary remains on the current coalescer if the complete path does not
+improve deployed start latency. The test fixture controls model/tool completion
+and the close race deterministically; it does not use sleeps as proof.
 
 ### Rollout and rollback
 
@@ -1996,9 +2114,10 @@ remote checks:
 4. Bootstrap and verify the existing cursor's ordered row/GUID bindings,
    predicate version, scope, and digest before enabling immediate admission.
 5. Run the recording canary for a committed middle-row deletion, a committed
-   suffix deletion plus row reuse, and a stale Push-recovery burst. Require
-   automatic deletion repair, complete source advancement, and zero stale
-   replies.
+   suffix deletion plus row reuse, a stale Push-recovery burst with restart, and
+   a live row delayed behind FIFO repair past 15 minutes. Require automatic
+   deletion repair, complete source advancement, zero stale replies, and one
+   normal reply for the delayed eligible row.
 6. Enable for one explicit canary conversation in final source-reply mode.
 7. Observe content-free admission accepted/rejected counts, duplicate-run
    count, queue depth, and p95 initial-start latency.
@@ -2018,9 +2137,11 @@ At that first quiescent boundary, the same new package switches the source to
 the current coalescer and starts proven unclamped ordered replay from the
 persisted cursor until it reaches a freshly sampled live high-water row and all
 replay handlers commit. The 500-row floor clamp remains removed for this drain.
-Existing ordinary-message age thresholds produce durable no-reply dispositions
-without dropping source ownership. New rows that arrive during replay extend the
-target or remain for normal live handling.
+Existing observation markers keep their immutable reply choice. Rows first
+observed by rollback catchup use that process's startup boundary and persist one
+choice before waiting. A stale choice produces durable no-reply without dropping
+source ownership. New rows that arrive during replay extend the target or remain
+for normal live handling.
 
 Rollback remains configuration-only on the deployed package after this second
 quiescent boundary. Binary downgrade is prohibited because predecessor
@@ -2459,22 +2580,53 @@ migration and is outside this feature.
 - The same terminal review found that removing age suppression would turn stale
   Apple Push-recovery rows with fresh row IDs into real agent replies. The
   current 15-minute live and two-hour recovery thresholds now produce durable
-  `stale_no_reply` dispositions after source validation. These rows do no agent
-  work but still commit replay, cursor, and checkpoint state.
+  `stale_no_reply` choices at first observation. These rows do no agent work but
+  still commit replay, cursor, and checkpoint state.
 - The retained reviewer found both terminal corrections sound with no actionable
   issues. Its residual proof notes are now explicit: age selection uses the real
   startup high-water comparison, an empty prefix uses numeric replay floor `0`,
   the row-reuse fixture forces an ID because the real schema uses
   `AUTOINCREMENT`, stale-burst latency runs against a large database, and
-  structural source-read access has its own enrollment probe. Complete-diff
-  recheck of these clarifications is pending.
+  structural source-read access has its own enrollment probe. The next recheck
+  found those clarifications sound.
 - Recheck found one sentence incorrectly called the startup high-water durable
   across a crash, which would move outage messages from the existing two-hour
   recovery window into the 15-minute live window. Restart now explicitly samples
   a new high-water before classifying undisposed rows. The empty-prefix fixture
   also captures the subscription argument and requires numeric `0` to survive
   explicit null checks. The retained reviewer rechecked the complete current
-  diff and found no actionable issues. Exact-commit review is next.
+  diff and found no actionable issues.
+- Fresh terminal review of commit `cae2598` found that classification still
+  waited behind FIFO and continuity. Queue delay could make a live row stale,
+  while restart could move an observed stale live row into the wider recovery
+  window. Each ordinary row now records its immutable startup-boundary class,
+  observation time, and `reply_eligible` or `stale_no_reply` choice at first
+  observation. FIFO delay, restart, and generation reconciliation must honor
+  that choice through terminal disposition.
+- Retained complete-diff recheck found that the first correction could count an
+  observation marker and its prepared pin as two units of the same capacity
+  bound. A full eligible recovery burst could therefore block its own FIFO head
+  permanently. Each ordinary row now reserves one non-expiring lifecycle token
+  at first observation and converts the same record to `prepared` in place,
+  without another reservation or capacity check. Saturation affects only new
+  first observations. Validation fills the bound with eligible records and
+  proves head progress and full drain, holds a marker beyond ordinary store TTL
+  and pruning, and measures synchronous marker-write latency. Retained round 10
+  complete-diff review found no actionable issues.
+- The retained reviewer noted a residual proof gap because the
+  generation-neutral marker becomes a generation-bound prepared-pin key. The
+  design now requires one atomic store transaction that preserves the single
+  capacity lease and exposes exactly one complete old or new record across
+  crash. Validation interrupts every rekey boundary and proves exact-once
+  recovery. One stale sentence about hold restoration now distinguishes restored
+  marker holds from cursor-derived replay holds. Final complete-diff recheck is
+  required because these clarifications changed the reviewed diff.
+- Retained round 11 complete-diff recheck found no actionable issues. It
+  confirmed the transactional rekey, single capacity lease, interruption
+  fixture, and corrected hold restoration. The final wording now states that
+  the durable marker remains generation-neutral through continuity validation,
+  in-memory slot binding, and repair, with the prepared-pin transaction as the
+  sole durable rekey point.
 - Landing is intentionally held until cron-reader PR #56 merges; no public head
   movement will occur before coordination clears.
 
