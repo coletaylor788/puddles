@@ -174,9 +174,14 @@ confirmed the trust boundaries, state lifecycle, Gmail cutover ordering,
 bounded post-revocation recovery, separate rollback boundaries, and reversible
 mailbox-triage action set against the pinned OpenClaw and Puddles source.
 
-The proposal is ready for review. This publication created no approval runtime,
-notification integration, protected tool, configuration, credential, or
-external side effect.
+Public tracking is complete. The Todoist tracking and ready-for-review result
+comments point to issue 68, and the task remains open with the
+`ready_for_review` label. Superseded non-public issue and pull-request tracking
+are closed, and their remote review branch is deleted.
+
+The proposal remains ready for review. This publication created no approval
+runtime, notification integration, protected tool, configuration, credential,
+or external side effect.
 
 ### Scope and acceptance criteria
 
@@ -1146,10 +1151,22 @@ transfers a protected credential to the gateway account.
   was condensed without removing design decisions or the complete review log.
 - 2026-07-30: Fresh complete-diff recheck confirmed the state correction and
   found no remaining actionable issues.
+- 2026-07-30: Recorded confirmation that the tracking migration is complete.
+  Todoist now points to public issue 68 and remains open for review; superseded
+  non-public issue and pull-request tracking are closed and their remote review
+  branch is deleted.
+- 2026-07-30: Independent tracking-closeout review found that the review-log and
+  checklist wording implied this documentation worker performed the external
+  tracking mutations. The wording now records the coordinating confirmation
+  without claiming those mutations; a fresh complete-diff recheck found no
+  actionable issues.
 
 ### Checklist
 
 - [x] Create public issue 68 with the required minimal ledger shape.
+- [x] Record confirmation that Todoist tracking and review-result comments point
+      to public issue 68, the task remains open with `ready_for_review`, and
+      superseded non-public tracking is retired.
 - [x] Create the plan before product research.
 - [x] Research current OpenClaw and repository-native facilities.
 - [x] Compare notification and decision channels, including iMessage.
@@ -1170,4 +1187,5 @@ transfers a protected credential to the gateway account.
 - [x] Confirm the final diff is proposal-only.
 - [x] Confirm the public diff is documentation-only and publication-safe.
 - [x] Complete independent review of the public diff.
+- [x] Complete tracking-closeout review and correct external-mutation ownership.
 - [x] Update issue 68 to Ready for review.
