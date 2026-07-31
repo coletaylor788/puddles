@@ -264,11 +264,13 @@ Out of scope for V1:
   Authorization requires the current generation to match and the contradiction
   latch to remain clear. A materialized grant status is not authority and may
   not bypass this join.
-- Authorization is checked again after retrieval. That transaction acquires a
-  short composition-generation read lease held through terminal bounded response
-  release. Contradiction ingestion serializes on the same composition record, so
-  either the read lease completes first under the still-valid generation or the
-  contradiction commits first and the read denies.
+- Authorization is checked again after retrieval. That transaction acquires
+  short leases for the current policy generation, exact grant generation, and
+  composition generation. All three leases are held through terminal bounded
+  response release. Policy updates, grant revocation, and contradiction
+  ingestion serialize against their matching records. Each change either waits
+  for an already authorized bounded release or commits first and makes the read
+  deny.
 - Responses bound result counts, page size, continuation lifetime, body bytes,
   title bytes, and total response bytes. Continuations are opaque, authenticated,
   policy-generation-bound, caller-bound, and short-lived.
@@ -528,6 +530,8 @@ read, cross-peer disclosure, quota release, and cursor stall.
 | Friend caller asks for another friend, household, top, wildcard, or default partition | Deny without existence disclosure |
 | Link was forwarded by a higher-tier peer to a friend | Grant uses the authenticated friend's partition and cannot raise tier |
 | Grant is revoked between list and read, or during retrieval | Reauthorization denies release |
+| Policy generation changes after retrieval but before response release | Policy serialization gives one order: an existing bounded read lease releases first, or the new generation commits first and the read denies |
+| Exact grant is revoked after retrieval but before response release | Grant serialization gives one order: an existing bounded read lease releases first, or revocation commits first and the read denies |
 | Composition contradiction commits while note retrieval or response release is in progress | Composition serialization gives one order: an existing bounded read lease releases first, or the contradiction commits first and post-retrieval authorization denies |
 | Process crashes after contradiction generation/latch commit but before materialized grant status changes | Reads still deny from the authoritative composition join |
 | Continuation is expired, altered, replayed by another caller, or from another policy generation | Deny |
@@ -729,7 +733,9 @@ fallback.
   The Human and Agent sections now identify that path as the only repository
   source of truth and keep the two-stage approval boundary unchanged. An
   independent complete-diff review found no material migration or design
-  issues.
+  issues. Terminal review then found that read release was fenced only against
+  composition changes. The design now holds policy, exact-grant, and composition
+  leases through terminal bounded response release.
 
 ### Checklist
 
