@@ -164,6 +164,10 @@ Out of scope for V1:
   nonce, and expiry.
 - The acceptance action has no caller-controlled arguments. It obtains the URL
   and all authority from sealed trusted context.
+- After final authorization, the acceptance service acquires a lease on the
+  sealed policy generation before broker IPC. It holds that lease through
+  terminal acceptance and grant commit, or through durable quarantine after any
+  UI crossing. A policy change cannot overtake the leased operation.
 - Missing or mismatched context denies. Cron, group, command-line, subagent,
   delegated, wildcard, default, synthetic, or replayed context denies.
 - The turn cannot list notes, read content, browse, use memory, call another
@@ -173,6 +177,11 @@ Out of scope for V1:
 
 - The broker runs under a dedicated Notes GUI identity. It accepts only
   authenticated, bounded IPC from the acceptance service.
+- Before intent creation, the broker verifies its local OS build, Notes build,
+  pinned helper version and digest, and approved UI profile against the
+  deployment-owned matrix for the leased policy generation. It rechecks them
+  immediately before UI action. Unknown, changed, or mismatched versions deny
+  without opening Notes.
 - Before any UI action, it validates the original URL and every redirect against
   exact Apple HTTPS host, path, port, and redirect rules. It rejects credentials
   in URLs, fragments used as authority, non-HTTPS schemes, unexpected hosts,
@@ -412,8 +421,11 @@ read, cross-peer disclosure, quota release, and cursor stall.
 |---|---|
 | Any sealed key is missing or mismatched | Deny before broker IPC |
 | Policy generation is stale, nonce is reused, or expiry has passed | Deny and close the action ticket |
+| Policy is revoked before the acceptance generation lease is acquired | Deny before broker IPC |
+| Policy change races after the acceptance generation lease is acquired | Hold the approved generation through terminal acceptance and grant commit or durable quarantine, then apply the new generation |
 | Isolated turn requests arguments, another tool, memory, browser, process, subagent, note content, or user-controlled response content | Deny |
 | Broker IPC is unauthenticated, oversized, replayed, late, unknown, or from the wrong service role | Deny without opening Notes |
+| Runtime OS build, Notes build, helper version or digest, or UI profile is absent, changed, or outside the approved matrix | Deny before intent creation or UI action |
 | Valid request has a redirect chain that leaves the allowlist or resolves to a denied address | Deny before intent crosses the UI boundary |
 | Baseline cannot be bounded or durably stored | Deny before opening Notes |
 | Crash occurs before intent commit | No UI action exists and retry can create one new intent |
@@ -530,6 +542,9 @@ read, cross-peer disclosure, quota release, and cursor stall.
   canceled, timed out, unexpected-prompt, and unknown UI states. If unattended
   terminal acceptance cannot be proved, replace this flow with explicit human
   acceptance before implementation approval.
+- Prove runtime OS, Notes, helper, digest, and UI-profile checks deny before
+  intent creation and UI action when any value is unknown, changed, or outside
+  the approved matrix.
 - Prove stable Apple note ID extraction and causal mapping from a bounded
   pre-action baseline and post-action delta.
 - Prove an exact known invitation identity can add a second sender grant without
@@ -596,7 +611,9 @@ fallback.
   gates. Independent review found and resolved missing terminal invitation
   proof, conflicting repeat-grant mapping, circular prototype approval,
   state-invalid spool identity requirements, and an unnecessary tracker
-  reference. A final complete-diff recheck found no remaining material issues.
+  reference. A complete-diff recheck found no remaining material issues. The
+  terminal candidate review then found and resolved missing fail-closed runtime
+  version checks and a policy-revocation race during invitation acceptance.
 
 ### Checklist
 
