@@ -1,6 +1,6 @@
 # Complete selective iMessage message-part coalescing
 
-- **Status:** Validated candidate ready for rebase
+- **Status:** Rebased candidate ready for terminal review
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-31
 - **Owner:** Cole Taylor
@@ -39,9 +39,9 @@ protection without improving latency.
 No runtime, configuration, or deployment change is planned. Focused first-row
 standalone link and image regressions pass in the existing registered monitor
 suite, the full shared lifecycle passes, and independent complete-diff review is
-clean. Cron-reader PR #56 is merged, so the publication freeze is cleared. This
-candidate now needs rebase, full lifecycle validation, and exact-commit review
-against the new `main`. Production remains unchanged.
+clean. Cron-reader PR #56 is merged, the candidate is rebased onto that new
+`main`, and the full lifecycle passes again. The finalized commit now needs
+exact-commit terminal review. Production remains unchanged.
 
 ## Agent section
 
@@ -272,6 +272,9 @@ deployment fails.
   and green.
 - 2026-07-31: Cron-reader PR #56 merged as `937b2af`. The publication freeze is
   cleared, and this branch can rebase onto the new public `main`.
+- 2026-07-31: The branch rebased cleanly onto `937b2af`. The full managed
+  lifecycle passed again with 15 files and 471 patch tests plus the candidate
+  browser-entrypoint regression.
 
 ### Checklist
 
