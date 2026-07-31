@@ -29,9 +29,9 @@ during rollback.
 Add a safe host-side login/store script, change the installer to require the
 shared store and derive the sandbox projection, extend isolated tests for token
 capture, atomic store updates, projection lifecycle, rollback, and denial
-paths, and update the cross-cutting secret architecture plus Todoist setup
-guide. Run the full managed lifecycle and review loop, then land and verify the
-change before performing credentialed live validation.
+paths, and update the root architecture, cross-cutting secret architecture, and
+Todoist setup guide. Run the full managed lifecycle and review loop, then land
+and verify the change before performing credentialed live validation.
 
 ### Safety and rollout
 
@@ -62,7 +62,11 @@ projection must remain while any configured agent consumes it and be removed
 only after the final consumer is rolled back. That correction and a mode-600
 migration temp file are implemented. Focused and full managed validation pass;
 final complete-diff review is clean. In-diff bookkeeping is final; the exact
-landing candidate and terminal review are next.
+landing candidate was terminal-reviewed and pushed, but the root README did not
+yet expose the shared-secret rule. That documentation gap is being corrected;
+the root guidance is implemented and 23 focused tests, E2E lint, and diff checks
+pass. The changed candidate requires complete-diff re-review and a fresh terminal
+review. Complete-diff re-review is clean; in-diff bookkeeping is final.
 
 ### Scope and acceptance criteria
 
@@ -87,6 +91,8 @@ landing candidate and terminal review are next.
 - Document the repository-wide rule that long-lived secrets use the shared
   store and any unavoidable runtime projection is derived, minimal, marked,
   lifecycle-owned, and never canonical.
+- Surface that rule in the root `README.md` architecture so future components
+  encounter it before choosing a credential design.
 - Add focused and cumulative regressions; never authenticate or mutate live
   Todoist in automated tests.
 - Land the exact reviewed candidate, verify `main` and post-merge checks, then
@@ -129,10 +135,12 @@ landing candidate and terminal review are next.
 5. Added a migration recipe that first stores the canonical token, then removes
    only the prior unmanaged `.env` line without printing it. Its temporary file
    is created mode 600 before any unrelated `.env` content is written.
-6. Run focused tests and the complete managed lifecycle.
-7. Complete retained/replacement full-diff review, terminal review, remote
+6. Add the shared-secret source-of-truth and projection rules to the root
+   architecture documentation.
+7. Run focused tests and the complete managed lifecycle.
+8. Complete retained/replacement full-diff review, terminal review, remote
    integration, merge, and post-merge verification.
-8. Run the documented live login/store/install validation with Cole.
+9. Run the documented live login/store/install validation with Cole.
 
 ### Validation
 
@@ -159,6 +167,12 @@ Required for this cycle:
   checks;
 - credentialed live login/store/install, read-only auth status, and one explicit
   low-risk routing check.
+
+After adding the root README architecture, repeated 23 focused tests, E2E
+TypeScript lint, and `git diff --check` successfully. The runtime diff is
+unchanged from the full managed green candidate. Independent re-review verified
+the README link, anchor, discoverability, provider-neutrality, and consistency
+with guide 03, guide 05, and the implemented consumer-aware lifecycle.
 
 ### Rollout and rollback
 
@@ -199,6 +213,9 @@ complete-current-diff review found no actionable defects.
 - [x] Add consumer-aware projection cleanup and regression.
 - [x] Complete final focused and managed validation.
 - [x] Complete final replacement review.
-- [ ] Commit and terminal-review the exact candidate.
+- [x] Add root README secret architecture guidance.
+- [x] Revalidate the changed candidate.
+- [x] Re-review the complete changed candidate.
+- [ ] Commit and terminal-review the updated exact candidate.
 - [ ] Land and verify the exact candidate.
 - [ ] Complete credentialed live validation.

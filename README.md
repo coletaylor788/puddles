@@ -99,6 +99,24 @@ puddles/
   `pnpm install` at the repo root to bootstrap; plugins reference
   `packages/mcp-hooks` via `"workspace:*"`.
 
+### Secret architecture
+
+For OpenClaw host integrations, every long-lived user-supplied credential uses
+the shared mode-600 JSON store at `~/.openclaw/secrets.json`. Organize values
+under `providers.<service>` and reference them from `openclaw.json` with a file
+`SecretRef`; do not make an ad hoc `.env`, inline config value, or
+service-specific plaintext file the operator-managed source of truth.
+
+If a runtime surface cannot consume SecretRefs, its setup script may derive the
+smallest possible compatibility projection from the shared store. That
+projection must be marked, mode 600, lifecycle-owned, removed when its final
+consumer is rolled back, and documented as non-canonical. Never commit the
+store, projections, tokens, account data, or credential-bearing logs.
+
+See [OpenClaw and agent sandboxing](./docs/openclaw-setup/03-openclaw-and-agent-sandboxing.md#9-secretref--getting-credentials-out-of-the-config)
+for the provider shape, JSON-pointer convention, rotation, and safe update
+rules.
+
 ## Adding a New Server
 
 1. Create a new directory under `servers/`
