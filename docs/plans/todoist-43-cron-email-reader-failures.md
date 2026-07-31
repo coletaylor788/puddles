@@ -34,25 +34,24 @@ earlier smoke, which selected reader immediately.
 The design reset and current-base validation are complete. The reproduced-path
 code and the new plan format pass the full cumulative suite. Production is
 healthy on the prior build after rollback. A fresh current-base review, exact
-public head, matching private pin, promotion, and landing remain. The cron
-definition has not been changed.
+public head, matching host deployment pin, promotion, and landing remain. The
+cron definition has not been changed.
 
 ## Agent section
 
 ### State
 
 - Public PR #56 is open. Its runtime patch is the reviewed reproduced-path fix.
-- Private PR #9 is open with the last reviewed host-combined candidate.
-- Production was rolled back to prior deployment
-  `73b08dc8-5c4d-40ed-808a-d46ee0eaa45d`.
-- The current worktree includes public `main` at
-  `ce78c7d3e3fa66d1f15e93f51cc53538705c2039` and this rewritten plan.
+- The matching host deployment candidate is open and paused for this plan update.
+- Production is healthy on the prior reviewed build after rollback.
+- The current worktree includes the latest public `main` and this rewritten plan.
+- The pull request now describes the runtime change and cumulative validation.
 - The targeted writing-contract suite passes 9 tests.
 - The complete managed lifecycle passes build and lint, 298 repository tests,
   seven prompt snapshots, 470 mapped source tests, the browser candidate test,
   and cleanup.
 - Before promotion, publish and validate the final public head, then update the
-  private pin to that exact head.
+  host deployment pin to that exact head.
 
 ### Scope and acceptance criteria
 
@@ -101,16 +100,13 @@ definition has not been changed.
 
 ### Validation
 
-- Last working scheduled runs:
-  `37b4fce2-0a19-42b7-9d8a-9ef7800dd752` and
-  `837b12a4-b870-47f2-bd77-80afd1158886`.
-- Failed run:
-  `agent:main:cron:836faa67-e08c-4ad5-a739-cb7645bbad14:run:b6264646-8044-478e-9221-d1541b6ae3fe`.
+- The two last working scheduled runs called reader directly.
+- The first failing scheduled run omitted the target, then retried main.
 - Working runs called `sessions_spawn(agentId="reader")` first.
 - The failed run omitted `agentId`, then retried `agentId="main"`.
 - The cron tool policy does not include `agents_list`.
 - Working and failing prompts differ only in the current-time line.
-- Both used `github-copilot/claude-opus-5`.
+- Working and failing runs used the same model family.
 - Focused formatted source coverage passed 224 tests across four files.
 - The current-base full managed run passed build and lint, 298 repository tests,
   seven
@@ -130,8 +126,8 @@ definition has not been changed.
 - Record and verify a rollback snapshot before package replacement.
 - Production validation stays read-only and uses fixed no-match Gmail queries.
 - Do not run cron as a production test.
-- Recheck exact public and private heads, bases, checks, reviews, and mergeability
-  immediately before promotion and merge.
+- Recheck the exact public head and host deployment candidate, including bases,
+  checks, reviews, and mergeability, immediately before promotion and merge.
 - Roll back on any staged, production, tuple, merge, or post-landing failure.
 
 ### Review log
@@ -141,8 +137,8 @@ definition has not been changed.
 - Cole's real run exposed omission followed by an explicit second-main retry.
 - Review added ACP pre-resolution handling, routable target filtering, resolved
   self-alias filtering, and coverage of the unset cron default.
-- Final runtime reviews were clean. The remaining change is this design-reset
-  plan and the exact repin it requires.
+- Final runtime reviews were clean. Fresh plan review found public operational
+  identifiers and an outdated pull request description. Both are corrected.
 
 ### Checklist
 
@@ -158,8 +154,8 @@ definition has not been changed.
 - [x] Validate the rewritten plan on the current public base.
 - [ ] Complete fresh current-base and terminal reviews.
 - [ ] Publish the final exact public head.
-- [ ] Update and validate the matching private pin.
+- [ ] Update and validate the matching host deployment pin.
 - [ ] Promote the final exact tuple.
-- [ ] Land private PR #9 and public PR #56.
+- [ ] Land the host deployment candidate and public PR #56.
 - [ ] Run post-landing production checks.
 - [ ] Update the issue and Todoist task for Cole's review.
