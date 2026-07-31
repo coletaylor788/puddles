@@ -1,6 +1,6 @@
 # Fix cron email reader failures
 
-**Status:** Design reset complete; reviewing final current-base candidate
+**Status:** Public candidate sealed; preparing the matching host deployment
 **Issue:** [#43](https://github.com/coletaylor788/puddles/issues/43)
 **Last updated:** 2026-07-31
 
@@ -31,10 +31,10 @@ earlier smoke, which selected reader immediately.
 
 ### Status
 
-The design reset, current-base validation, and independent review are complete.
-The reproduced-path code and new plan format pass the full cumulative suite.
-Production is healthy on the prior build after rollback. Final-head checks,
-terminal review, the matching host deployment pin, promotion, and landing
+The design reset, current-base validation, exact-head checks, and terminal
+review are complete. The reproduced-path code and new plan format pass the full
+cumulative suite. Production is healthy on the prior build after rollback. The
+matching host deployment pin, promotion, landing, and post-landing checks
 remain. The cron definition has not been changed.
 
 ## Agent section
@@ -42,18 +42,18 @@ remain. The cron definition has not been changed.
 ### State
 
 - Public PR #56 is open. Its runtime patch is the reviewed reproduced-path fix.
-- The matching host deployment candidate is open and paused for this plan update.
+- The matching host deployment candidate is paused for this final plan update.
 - Production is healthy on the prior reviewed build after rollback.
 - The current worktree includes the latest public `main` and this rewritten plan.
 - The pull request now describes the runtime change and cumulative validation.
-- The published candidate passed all exact-head remote checks and independent
+- The published candidate passed all exact-head remote checks and terminal
   review without actionable findings.
 - The targeted writing-contract suite passes 9 tests.
 - The complete managed lifecycle passes build and lint, 298 repository tests,
   seven prompt snapshots, 470 mapped source tests, the browser candidate test,
   and cleanup.
-- Before promotion, publish and validate the final public head, then update the
-  host deployment pin to that exact head.
+- The host deployment pin must now be updated to the resulting exact public head
+  before promotion.
 
 ### Scope and acceptance criteria
 
@@ -117,6 +117,8 @@ remain. The cron definition has not been changed.
 - Exact-head integration and code analysis checks passed remotely.
 - Prior independent and terminal runtime reviews found no actionable issues and
   verified all 17 embedded patch blobs.
+- Terminal review of the complete final public candidate found no actionable
+  issues.
 - A prior production promotion replayed the real three-call sequence with
   no delivery: omission denied, second main denied, reader accepted, one fixed
   no-match Gmail read returned `READ_OK`, and main returned `CRON_READER_OK`.
@@ -143,7 +145,9 @@ remain. The cron definition has not been changed.
 - Final runtime reviews were clean. Fresh plan review found public operational
   identifiers and an outdated pull request description. Both are corrected.
 - Independent re-review of the corrected complete diff found no actionable
-  issues. Terminal review remains after the final plan update.
+  issues.
+- Terminal review of the exact current-base candidate found no actionable
+  issues. Its remote integration and analysis checks also passed.
 
 ### Checklist
 
@@ -158,8 +162,8 @@ remain. The cron definition has not been changed.
 - [x] Prove the real sequence in a read-only production harness.
 - [x] Validate the rewritten plan on the current public base.
 - [x] Complete fresh current-base review.
-- [ ] Complete terminal review.
-- [ ] Publish and check the final exact public head.
+- [x] Complete terminal review.
+- [x] Publish and check the final exact public head.
 - [ ] Update and validate the matching host deployment pin.
 - [ ] Promote the final exact tuple.
 - [ ] Land the host deployment candidate and public PR #56.
