@@ -118,6 +118,8 @@ The patch adds regression coverage for:
 - the same sandwich behavior under an explicit nonzero iMessage debounce;
 - an unchained second URL flushing separately without inheriting the pending
   composition deadline;
+- first-row standalone URL-preview and image payloads dispatching immediately
+  with no prior composition state;
 - back-to-back text-link-text compositions retaining independent continuation
   buckets;
 - a joined payload without a GUID and with a malformed timestamp still closing
@@ -143,17 +145,19 @@ The patch adds regression coverage for:
 - invalid conversation anchors failing open instead of sharing a coalescing key;
 - the existing merge caps, reply context, cursor, and GUID tracking.
 
-The focused coalescer and monitor suites pass all 87 tests after a clean
+The focused coalescer and monitor suites pass all 88 tests after a clean
 reapplication of the exported patch.
 
-Manual smoke test after deployment:
+Run all message-delivery scenarios through the registered managed test
+environment with recording mocks:
 
-1. Send a caption and image as one iMessage composition.
-2. Send a payload-referential question and link as one composition.
-3. Send text, a link, and trailing text as one composition.
-4. Send two short, genuinely separate text messages rapidly.
-5. Confirm the first three cases each produce one `embedded run start` and the
-   fourth produces two turns in the gateway log.
+```bash
+node packages/e2e/bin/openclaw-test-env.mjs ci
+```
+
+Production verification is read-only. Check service health, the installed
+version and patch marker, and unchanged configuration. Do not send test
+messages or trigger live replies.
 
 ## Apply and revert
 
