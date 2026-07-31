@@ -2,79 +2,62 @@
 
 - **Status:** Steering-based design reviewed; landing waits for PR #56
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
-- **Last updated:** 2026-07-30
+- **Last updated:** 2026-07-31
 - **Owner:** Cole Taylor
 
-## Human design
+## Human section
 
-### Problem
+### Design
 
-The current iMessage fix waits several seconds before starting some messages.
-That helps combine split text, links, and images, but it adds delay to normal
-messages and can still miss a later correction.
+The current fix waits before it starts some iMessage turns. That delay helps
+join split text, links, and images, but it slows every affected message and can
+still miss a later correction. The replacement starts normal processing as soon
+as the first message arrives. More input from the same conversation enters the
+active run through the agent's existing steering path. One close gate tracks
+everything already admitted, including slow attachment preparation. The run
+sends one final reply only after that gate is empty and stays empty through the
+final close check. Input that arrives after close starts the next normal turn.
 
-### Outcome
+Each source event keeps its arrival order and becomes durable before the model
+can see it. Prepared input stays hidden until the correct run adopts it, then it
+appears once as a normal user turn. If the message database is replaced or the
+process restarts, the source reconciles the exact committed prefix before replay
+continues. Accepted input, reply delivery, and source ownership recover
+together. An ambiguous database replacement or an unknown non-repeatable tool
+result stops for operator review instead of guessing and risking loss or a
+duplicate effect.
 
-The first message starts normal processing right away. More text, links, images,
-or corrections from that conversation enter the active agent as normal user
-turns before it replies. The agent sends one final reply only after admitted
-input is empty. Input that arrives after closing starts the next normal turn.
+Stops and reactions use the same ordered source gate. Stops keep their current
+authorization and behavior, but record the exact older work they may cancel so
+recovery cannot target newer input. General reactions still create no agent
+turn. Approval reactions keep their existing receipt behavior. Live reaction
+notifications and the approval poller use the same real database row and message
+identity, while any synthetic approval key stays outside source replay state.
+They join one owner, so the same approval cannot be applied twice. A blocked
+candidate returns control to the poller at once and retries on a later interval
+instead of stopping future polls. A missed approval already behind the source
+cursor uses a separate recovery claim, not a cursor-relative turn pin. That
+claim survives restart, releases when the approval receipt confirms completion,
+and cannot consume normal message capacity. Sources that cannot prove a stable,
+replayable identity keep the current coalescer and stop path as one unchanged
+unit.
 
-### Approach
+Immediate admission is opt-in. The local source needs an operator-reviewed
+starting boundary because its message database has no immutable generation
+identity, then it validates the full committed prefix before each admission.
+Remote and legacy sources stay on the current path until they can provide the
+same proof. Production remains unchanged until Cole approves implementation.
+Rollback keeps the deployed version, drains accepted work, catches up the source
+without loss, and switches configuration back to the current coalescer.
 
-The design connects iMessage to the agent's existing steering support rather
-than creating another queue or changing reasoning. Source order is reserved
-only long enough to identify the conversation and decide whether to start or
-steer. Pending input counts before slow media or context preparation, and one
-close gate prevents the run from replying while accepted work is still arriving
-or being prepared.
+### Status
 
-Immediate admission is available only when the source can replay from an exact
-database generation and row. Local monitoring checks stable database evidence
-before every live admission. A remote bridge stays on the current path until it
-can provide equivalent identity and replay. If local identity becomes uncertain,
-the source stores stable message references before waiting, then switches to its
-current ordered path. Those references rebuild the messages from the database
-after restart. Their bounded capacity is reserved atomically and cannot evict a
-pending reference. When full, source dispatch stops with the cursor unchanged
-until recovery frees space. The design does not copy message payloads into a
-second queue.
+The complete design review is clean. Production is unchanged and no
+implementation is approved. The documentation candidate is moving through its
+exact-commit terminal review, and public landing waits for an unrelated
+prerequisite change.
 
-The first fallback message waits for all earlier immediate work to finish
-delivery or deliberate no-reply, replay commit, and ownership cleanup. Later
-fallback messages stay behind it. Immediate handling cannot reopen until the
-fallback chain finishes and continuity is proven again. The mode and barrier
-survive restart. This preserves arrival order through replacement, restore,
-retry, and restart.
-
-Each accepted message becomes durable before assistant or tool processing and
-keeps replay ownership until final output recovery and replay commit finish.
-Recovery can resume unanswered input or pending delivery without adding the user
-turn or running completed tools twice. It never guesses after a crash leaves a
-non-repeatable tool call without a stored result. That case remains blocked until
-an operator explicitly records a no-reply or error disposition after checking the
-effect. The disposition never reruns the tool, but lets recovery commit replay
-and safely release the blocked source.
-
-### Safety and rollout
-
-The immediate path is opt-in and limited to final replies on steer-capable
-backends with proven source identity and replay. Other backends and sources keep
-the current ordered path for the whole monitor generation. Reactions stay
-entirely on their existing path and enter no immediate reservation or replay
-state. Prompts, tools, approvals, transcripts, explicit message sends, and
-delivery behavior do not change.
-
-Production remains on the deployed coalescer. Implementation requires Cole's
-approval after this design lands. Public landing is waiting for the cron-reader
-change. Rollback persists recovery-only mode, pauses new source dispatch without
-advancing its cursor, and drains accepted immediate and already queued fallback
-work through the same full ownership boundary. The new package then runs
-lossless cursor catchup through the current coalescer. An older package can
-replace it only after that catchup reaches the live source. This avoids the old
-catchup age and row limits.
-
-## Agent details
+## Agent section
 
 ### State
 
@@ -105,8 +88,61 @@ Read-only source tracing confirms:
   as the final answer.
 
 The previously landed orchestration-heavy proposal is superseded by this
-revision. Independent full-diff review is clean. No executable artifact has been
-approved or changed.
+revision. Repeated complete-diff adversarial review hardened generation,
+recovery, stop, hook, reaction, and rollback boundaries. The latest recheck
+found that non-slash stop triggers could bypass the journal and that successful
+bridge receipts do not always include an external GUID. The next review found
+that a legacy current-path source may also omit stable stop identity. This
+revision uses one shared normalization and authorization decision at the source
+gate and downstream fast-abort path, routes every accepted trigger on an
+identity-proven immediate source through the same journal, treats a successful
+receipt with an optional GUID as terminal, and keeps identity-lacking sources
+wholly on their existing message and stop path. The latest review found that a
+completed stop behind an unresolved predecessor could replay after ordinary
+dedupe expiry. The full journal now compacts to a non-expiring terminal
+tombstone that remains until contiguous cursor and checkpoint crossing. The
+next review found older prepared input could resolve into a shared stopped
+session after the fence released. The stop snapshot now includes every
+pre-cutoff matching or unresolved prepared identity and keeps newer
+shared-session admission fenced until each match is durably suppressed. The
+latest review also found that predecessor transcript readers cannot preserve the
+new prepared/adoption record ordering. Rollback is now configuration-only on the
+deployed package, with binary downgrade prohibited. The next review found that a
+historical stop replay after database replacement could affect current work
+before continuity classification. Stop effects now require an unchanged-
+generation/new-row proof or replacement-prefix classification first; historical
+prefix members are durable no-effect. The latest review found live tombstones
+could be lost when replacement changed their generation and row key.
+The next review found the same gap for live reaction markers. Reconciliation now
+migrates every live stop tombstone and reaction marker by stable GUID before
+catchup, or remains blocked on an ambiguous match. A fresh review then found
+close could wait on a ticket while holding the transcript lock that ticket needs
+for preparation. Close waiting now uses the existing fenced lock
+release/reacquire and transcript merge boundary. The latest review found a
+matching cursor-row GUID still cannot prove an older legacy prefix. Automatic
+nonempty bootstrap now requires a preexisting full-prefix commitment or
+immutable database identity; the current deployment needs an operator-reviewed
+boundary. The latest recheck found and removed one stale acceptance criterion
+that still allowed cursor-row-only proof. The next review found runtime forks
+could preserve all boundary anchors while changing an earlier committed row.
+The current source now recomputes the full committed-prefix count/hash before
+every admission; only a genuine immutable generation ID can replace that scan.
+The latest review found stale text that could let reactions bypass this gate.
+Live reactions and new polled rows now pass FIFO continuity and prefix validation
+first; a historical polled approval instead proves its exact committed-prefix
+row before the receipt path. General reactions use sparse-marker enqueue and
+receipt-backed approval reactions use their adopted-pin receipt path. The latest review found the independent approval
+poller remediation mixed its synthetic approval key with the database source
+GUID and could hold the timer while waiting for FIFO ownership. The design now
+uses the real database row/GUID for all source state, keeps synthetic data out of
+that state, and gives polling a prompt completed, pending, or rejected result.
+The next recheck found a historical approval could leak a cursor-relative pin
+below the already committed cursor. Historical approvals now use a separate
+durable effect-claim class and capacity pool. Receipt confirmation releases that
+claim without cursor movement, while restart reconciles rather than sweeps it.
+The complete current-diff recheck found no actionable issues. Remaining bridge
+capability, stop-latency, and restart-barrier proof belongs to implementation
+validation after approval. No executable artifact has been approved or changed.
 
 Public plan-only merges are temporarily frozen until cron-reader PR #56 lands so
 this documentation change does not invalidate that feature's exact promotion
@@ -120,18 +156,24 @@ In scope:
 - capability-gated use on embedded steer-capable routes, with the current
   coalescer retained elsewhere;
 - source capability gating on a stable Messages database-instance identifier,
-  finite row number, stable message reference, and lossless row replay;
+  guaranteed finite row identity for every ordinary event, and lossless row
+  replay;
 - iMessage admission that does not wait for the active reply to finish;
 - same-conversation source ordering through the start-or-steer decision;
 - exact source-conversation matching before active-run steering;
 - exact per-message persistence completion for duplicate text and images;
-- provisional account cursor hold floors across observed live and catchup rows;
+- generation-neutral pre-continuity and generation-bound post-continuity cursor
+  hold floors across observed live and catchup rows;
 - a persisted source fallback/recovery mode reconstructed from existing
   cursor-relative state, without a second message queue;
-- durable fallback source references that reconstruct payloads from Messages,
-  without copying message payloads into plugin state;
-- atomically reserved non-expiring fallback-reference capacity with source
-  backpressure rather than eviction;
+- a durable ordered-GUID committed-prefix checkpoint that reconciles database
+  generations without copying payloads into plugin state;
+- pre-enable checkpoint bootstrap only from a preexisting full-prefix commitment,
+  an immutable source identity recorded before cursor movement, or an
+  authenticated reviewed boundary; a row-only legacy cursor and one matching
+  boundary GUID are insufficient;
+- generation-safe at-most-once reaction committed-GUID markers without reaction
+  transcript turns, durable payloads, or agent pins;
 - an explicit operator disposition for blocked non-repeatable tool tails;
 - one atomic steering/follow-up empty-and-close boundary before final answer
   commitment, including pending same-conversation admission tickets;
@@ -168,33 +210,99 @@ Acceptance criteria:
   repair atomically narrows it to one conversation or permanently skips it;
 - retry of the same source row resumes its existing reservation slot instead of
   waiting behind itself;
+- every ordinary notification enters a generation-independent per-account FIFO
+  reservation with a generation-neutral hold before continuity inspection, so a
+  later row cannot rotate the generation around an unstaged predecessor;
+- no later source row can leave its reservation slot until the current row's
+  complete text and immutable attachment bytes are durably staged with a
+  source-identified `prepared` pin, and that record stays model-hidden until
+  durable adoption;
 - source row identity includes account and Messages database-instance
   generation proven by source continuity, so a same-path or in-place replacement
   cannot reuse another database's hold, pin, or cursor;
 - live admission revalidates that continuity in one source snapshot before each
-  reservation and atomically rotates or fences the source on uncertainty;
-- an event without a finite row number stays on the current coalescer and never
-  enters a shared row slot;
+  reservation, including a complete ordered-prefix count/hash through the
+  committed cursor when no genuine immutable database generation ID exists, and
+  atomically rotates or fences the source on uncertainty;
 - a source without guaranteed exact-row replay remains current-path-only for its
   whole monitor generation and cannot have older immediate work to overtake;
-- a local live event whose row identity becomes uncertain is resolved to and
-  durably records a stable database message reference before it waits; restart
-  reconstructs the exact row and payload from Messages before continuing;
-- fallback-reference capacity is reserved before accepting the transition,
-  pending references are never pruned by ordinary store limits, and saturation
-  stops source dispatch without advancing its cursor;
-- identity-incomplete fallback fences its source in arrival order, so later
-  valid events cannot overtake it by re-entering immediate admission;
-- the first fallback event waits behind every earlier accepted immediate
-  identity's full delivery, replay, and ownership barrier before current-path
-  processing starts, and later fallback events remain ordered behind it;
+- a source whose transport contract permits missing or invalid ordinary row
+  identity remains current-path-only for its whole monitor generation;
+- a runtime identity-contract violation fails the source closed, disables
+  immediate mode, and never dispatches that event independently around an
+  active immediate turn;
+- each contiguous cursor commit atomically advances a durable cryptographic
+  checkpoint over the ordered stable source GUID prefix before pin cleanup;
+- bootstrap, incremental commit, per-admission validation, catchup, and
+  replacement matching enumerate the same set: every inbound account row at or
+  below the cursor that the catchup scanner classifies as cursor-advancing,
+  whether or not live notification delivery exposed it, ordered by source row;
+  any such row without a stable real database GUID blocks the boundary;
+- initial enablement scans oldest-first through the existing cursor and
+  atomically seeds generation, cursor, count, and hash before any immediate event
+  only after durable state proves the complete ordered prefix, an immutable
+  database identity recorded before cursor advancement proves continuity, or an
+  operator records a reviewed initial boundary; a lone stable GUID match at the
+  cursor row is explicitly rejected;
+- a same-path replacement before bootstrap cannot inherit the legacy numeric
+  cursor without that binding proof;
+- a cursor-crossed row without a stable cross-generation identity blocks
+  checkpoint advancement and enters reviewed recovery rather than permanent
+  skip;
+- generation reconciliation maps only an exact checkpoint match to the
+  replacement row after that prefix and replays every later row in order;
+- unresolved identities above the checkpoint remain non-expiring through
+  reconciliation and cannot be rerun from the replacement database;
+- no automatic transition occurs when the replacement cannot prove the prefix;
+  an authenticated operator must durably select a reviewed boundary;
+- a local generation change replays only after the replacement database proves
+  the durable committed GUID prefix; persistence failure retries reconciliation
+  on restart without choosing a new floor;
+- generation fencing transfers the trigger and every queued unassigned successor
+  to transition ownership, detaches all of their old-run blockers, removes their
+  row numbers from old cursor accounting, and preserves one source transition
+  fence until catchup reconciles them;
+- generation fencing pauses ordinary live ingestion, so an operator-blocked
+  transition cannot grow an unbounded in-memory backlog;
+- an unmatched or ambiguous generation remains fail-closed until an
+  authenticated operator records an explicit reviewed source boundary;
+- new-generation or capability-loss current-path catchup waits behind every
+  earlier accepted immediate identity's full delivery, replay, and ownership
+  barrier before processing starts;
 - fallback cannot reopen on terminal handoff alone; every earlier accepted
   identity must also complete delivery/no-reply disposition, replay commit, and
   claim, hold, and pin release;
 - restart reconstructs fallback or recovery-only mode before live dispatch and
   cannot bypass either source barrier;
-- authenticated `/stop` bypasses unresolved data reservations and retains its
-  existing immediate abort behavior;
+- a channel-task restart that leaves reply operations alive preserves unresolved
+  source blockers in gateway-process ownership until the replacement task
+  reattaches or the matching run terminates;
+- on an identity-proven immediate source, every authenticated request accepted by
+  the existing stop classifier is journaled immediately after one durable
+  epoch/cutoff fence and snapshot of every immutable effect and acknowledgment
+  target; effects start only after a consistent source snapshot proves unchanged
+  generation and a row after the committed prefix, including full-prefix
+  validation when no immutable generation ID exists, while uncertain continuity
+  defers effects to reconciliation and a historical row becomes durable no-effect;
+- cutoff capture atomically fences descendant creation and new scope admission,
+  so pre-cutoff work cannot create a later queue entry, ACP session, subagent, or
+  other stop target while journal persistence is pending;
+- the cutoff also snapshots every older source reservation and prepared identity
+  that may still resolve into the stopped session; newer input that could share
+  that session waits until each older identity is classified and every matching
+  identity has a durable no-reply stop disposition;
+- full-journal failure recovers targets only at or below the durable gateway
+  epoch/cutoff; minimal-fence failure admits no newer stoppable work, and process
+  restart scans every configured or previously enrolled journal-capable source
+  before gateway work admission;
+- a disabled source is scanned read-only and an unavailable source keeps the
+  global admission barrier closed; an unfenced stop older than the current
+  gateway epoch never receives a fresh cutoff and requires an authenticated
+  durable no-effect disposition;
+- an operator may retire a permanently unavailable source at its last committed
+  cursor/checkpoint only by explicitly accepting every unseen later row as
+  no-effect; the source remains disabled and cannot return without a full scan,
+  reviewed boundary, and new bootstrap;
 - a different iMessage conversation sharing the same session cannot steer into
   that run or inherit its reply target;
 - text, link, image, and correction turns use the same admission rule;
@@ -213,6 +321,9 @@ Acceptance criteria:
   replay commit succeeds;
 - identical text steers have independent completion and cancellation identities;
 - cancellation cannot reject a steer after draining has taken ownership of it;
+- cancellation that wins while queued preserves the exact prepared transcript,
+  pin, claim, and hold and returns that identity to recoverable admission rather
+  than deleting or appending it again;
 - a later completed conversation cannot advance an account cursor past an
   earlier row that has been observed but has not yet completed claim/repair;
 - a duplicate observation of an in-flight row cannot clear that row's cursor
@@ -224,11 +335,43 @@ Acceptance criteria:
 - pin capacity is reserved before dispatch across concurrent lanes, and a pin
   write failure aborts before assistant/tool processing;
 - a first-session user turn is actually flushed before adoption is acknowledged;
-- reactions are routed to current handling before any immediate reservation,
-  blocker, hold, or pin;
+- general reactions enter the source FIFO, continuity check, generation-neutral then
+  generation-bound row hold, and atomic sparse committed-GUID state before
+  ephemeral enqueue, but never an active-run close ticket,
+  steering queue, transcript turn, or pin;
+- the non-expiring marker remains until contiguous cursor/checkpoint commit
+  crosses the reaction, even when an older row stays unresolved beyond ordinary
+  replay TTL; the FIFO ticket remains held through post-marker enqueue, so later
+  rows cannot overtake it; crash after commit may drop that ephemeral event but
+  restart never enqueues the same GUID twice;
+- sparse reaction-marker capacity never evicts unresolved entries; saturation or
+  persistence failure stops before enqueue with source cursor and hold intact;
 - eligible transcript-free effects receive durable adopted ownership before
   execution and use an existing idempotent effect or delivery receipt before
-  terminal commit; reactions remain on their current ephemeral path;
+  terminal commit; reaction payload handling retains its current ephemeral
+  behavior;
+- live and polled discovery of one approval reaction use the byte-identical real
+  database row/GUID as source identity; the poller's synthetic approval key is
+  never used in a FIFO slot, pin, marker, prefix checkpoint, or generation
+  reconciliation record;
+- a polled approval reaction above the cursor joins normal row ownership, while
+  one at or below the cursor may use a receipt-backed historical effect claim
+  only after the current full-prefix proof confirms that exact row/GUID; this is
+  a separate record class and capacity pool, not a cursor-relative pin, and the
+  historical path does not change cursor or checkpoint state;
+- a historical effect claim is non-evictable until its existing approval receipt
+  proves terminal, then deletes and releases its capacity without cursor
+  movement; restart reconciles it against that receipt and neither the
+  cursor-crossing cleanup nor the below-cursor pin sweep may delete it;
+- poll submission returns promptly as `completed`, `pending`, or `rejected`;
+  pending joins one monitor-owned slot and leaves the interval free to poll
+  again, and only completed stops polling for the resolved target;
+- a poll result without a finite real database row and real database GUID
+  performs no effect, reports an identity gap, and leaves live or catchup
+  ownership available without fencing an otherwise healthy enrolled source;
+- immediate mode remains unavailable for an account unless the bridge history
+  contract proves it can expose the real row and GUID for approval reactions;
+  safe rejection alone is not accepted as working poller support;
 - same-process pin-write retry reconciles or retains the exact adopted turn
   instead of appending it again;
 - terminal replay ownership follows durable pending-final or no-reply handoff,
@@ -249,7 +392,9 @@ Acceptance criteria:
   remains on the current coalescer and cannot strand immediate admission;
 - rollback pauses new source dispatch without cursor advancement, reconstructs
   recovery-only mode after restart, applies the full fallback drain predicate,
-  then lets the replacement coalescer catch up; and
+  catches up on the deployed package, then stays on that package with the current
+  coalescer enabled because its prepared/adoption transcript format is not
+  backward compatible; and
 - the documentation-only revision is independently reviewed and landed without
   production changes.
 
@@ -258,9 +403,10 @@ Acceptance criteria:
 The design adds no new queue. It connects iMessage to three existing OpenClaw
 owners:
 
-- **Normal inbound preparation** recognizes emergency stop and reactions before
-  immediate admission, then continues to resolve route/session identity, hooks,
-  prompt text, media, and replay metadata for eligible ordinary input.
+- **Normal inbound preparation** recognizes emergency stop before source
+  admission. Reactions use normal payload handling after generation-safe source
+  bookkeeping. Eligible ordinary input continues to route/session identity,
+  hooks, prompt text, media, and replay metadata.
 - **Active reply-run registry** decides whether the prepared ordinary user turn
   belongs to the current run only after its in-memory source-conversation key
   equals the inbound key. Its queue contract becomes
@@ -278,72 +424,324 @@ owners:
 
 Immediate admission requires `dbInstanceId`, not the existing path/host cursor
 scope alone. Local monitoring persists a generated source generation beside the
-cursor. On startup/reconnect and before every live reservation, one consistent
-source snapshot reads the current high-water row, stable GUID anchors around the
-persisted cursor/high-water boundary, and the observed event row/GUID. File
-identity is supporting evidence only. A lower high-water row, missing or changed
-anchor, event mismatch, or any unprovable continuity atomically closes immediate
-admission for that source and rotates the generation before it can accept
-another immediate event. Immediate capability also requires lossless
-`since_rowid` replay and a stable message reference that resolves to the exact
-database row. A remote bridge without equivalent per-event generation,
-continuity, and replay remains current-path-only for the entire monitor
-generation. A generation change starts a separate cursor/hold/pin namespace and
-never transfers old in-memory lanes into the new generation.
+cursor. Startup/reconnect checks continuity before subscription. Every live
+ordinary notification first acquires a generation-independent per-account FIFO
+ticket. Only when that ticket reaches the head does one consistent source
+snapshot read the current high-water row, the observed event row/GUID, and
+continuity proof through the committed cursor. A source-provided immutable
+generation ID is sufficient only when its contract guarantees it changes for
+every replacement or historical mutation. The current local source exposes no
+such ID, so each admission scans ordered stable GUIDs through the committed
+cursor and compares their exact count/hash with the stored checkpoint. Boundary
+anchors and file identity are supporting evidence only. A lower high-water row,
+prefix mismatch, missing or changed anchor, event mismatch, or any unprovable
+continuity atomically closes immediate admission for that source and rotates the
+generation before it can accept another immediate event. Immediate capability also requires the transport
+contract to guarantee finite row/GUID identity for every ordinary event and
+every authenticated stop request accepted by the existing classifier, and
+lossless `since_rowid` replay, and every cursor-crossed row in that replay stream
+must expose a cross-generation stable identity. A source whose event contract
+permits missing identity, including an unequipped remote bridge, remains
+current-path-only for the entire monitor generation. A generation change starts
+a separate cursor/hold/pin namespace and never transfers old in-memory lanes
+into the new generation.
+
+Every prefix operation uses one shared enumeration. It includes every inbound
+row for the configured account at or below the cursor that the catchup scanner
+classifies as cursor-advancing, even when the live notification stream never
+surfaced that row. Rows are ordered by source row ID and hashed with their real
+database GUID. Bootstrap, incremental cursor commit, per-admission validation,
+historical-reaction proof, catchup, and replacement reconciliation cannot use
+different predicates. A qualifying row without a stable real GUID blocks the
+boundary.
+
+Before the feature switch enables immediate admission for an existing account,
+the monitor must bind the path-scoped legacy cursor to the current database. It
+It may automatically trust a nonempty prefix only when durable state already
+contains its ordered count/hash commitment or an immutable source database
+identifier that was recorded before any row in that cursor range was crossed.
+The current row-only cursor and transcript/replay evidence for a GUID at its
+boundary do not prove earlier rows, even when that exact GUID still matches.
+Without full historical proof, an authenticated local operator must inspect the
+source and explicitly accept the initial committed boundary before any scan can
+seed it. An empty cursor may seed an empty prefix after recording the current
+generation. The oldest-first scan then computes and atomically persists
+`(dbInstanceId, cursor, count, hash, bindingProof)`. Bootstrap is read-only
+against Messages. Any RPC/read error, full-prefix proof mismatch, continuity gap,
+or row without stable identity fails bootstrap closed and leaves the account on
+the current coalescer. Remote sources require equivalent full-prefix or
+immutable-identity proof, or an authenticated reviewed boundary; otherwise they
+remain current-path-only.
 
 Each source has an arrival-order mode gate shared by immediate and current-path
-handling. Missing or invalid row identity, continuity uncertainty, or unsupported
-capability atomically fences that source into fallback before the event is
-released to the current coalescer. A source that lacked capability at monitor
-startup never entered immediate mode, so it needs no mixed-mode transition.
-For an immediate-capable local source whose live event fails row continuity, the
-monitor first atomically reserves bounded fallback-reference capacity, then
-resolves the event's stable GUID and source generation to an exact database row
-and durably stores that reference plus source order in the existing plugin-state
-store. Pending references are non-expiring and excluded from ordinary oldest-
-entry pruning. It does not copy text, media, or account content. Capacity
-saturation, resolution failure, or persistence failure preserves existing
-references and the cursor, then stops source dispatch with an explicit error
-rather than releasing unordered work. The first fallback handler waits on a
-source-drained barrier covering every earlier accepted immediate identity:
-durable delivered or deliberate no-reply disposition, successful replay commit,
-and release of all claims, cursor holds, and pins. Later fallback handlers queue
-behind that first handler. The mode and barrier generation are persisted in the
-existing plugin-state store before release. Restart reconstructs the fence from
-that state plus unresolved pins and holds, resolves each pending source reference
-back through Messages, and only then starts live dispatch. The gate may reopen
-only after the earlier barrier, fallback chain, and continuity/capability proof
-all complete. A merely `terminal` pin is not sufficient. This can temporarily
-serialize unrelated conversations on an uncertain account, but no later
-fallback event can overtake earlier immediate or fallback work.
+handling. Its FIFO head is the only operation allowed to inspect or change the
+generation. A source that lacked capability at monitor startup never entered
+immediate mode, so it needs no mixed-mode transition. For an immediate-capable
+local source whose head snapshot proves a generation change, the monitor
+atomically persists recovery-only mode and the barrier to unresolved
+old-generation ownership. It pauses live dispatch and does not release the
+triggering notification as a separate handler. Once the source mode gate
+prevents any new old-generation attachment, it atomically transfers the trigger
+and every queued unassigned successor from the admission FIFO to a fenced
+transition backlog, detaches all of their unknown-affinity blockers from every
+old-generation run, converts their generation-neutral holds into one
+transition-owned source fence outside old cursor accounting and the
+old-generation ownership barrier, and wakes those runs. It pauses the ordinary
+live subscription. Any callback that reaches the gate after the fence records no data reservation
+or cursor result and returns, because lossless catchup owns its source row. A
+control-only notification path may still persist the exact-effect stop journal
+without admitting row work. It performs no stop effect or acknowledgment until
+replacement catchup classifies the GUID after the matched committed prefix; a
+GUID inside that prefix becomes terminal no-effect. After any permitted effects
+and terminal acknowledgment disposition finish and catchup commits the matching
+GUID to replay, catchup compacts the journal to the same non-expiring terminal
+tombstone. Contiguous cursor/checkpoint crossing clears it. Thus only tickets admitted before
+the fence enter the transition backlog, which is limited to the finite callbacks
+already admitted when the gate was fenced.
+Every
+normal contiguous cursor commit already persisted a cryptographic hash-chain
+checkpoint over the ordered stable GUID prefix before ordinary replay refresh
+or pin cleanup. After
+old-generation identities complete durable delivered or deliberate no-reply
+disposition, replay commit, and release of every claim, cursor hold, and pin, the
+monitor scans the replacement database oldest-first and computes the same chain.
+Only an exact count/hash checkpoint match establishes the replacement row that
+ends the already committed prefix. Lossless current-coalescer catchup after that
+row owns every unobserved row, including rows before the triggering
+notification. Each backlog event is matched by stable row/GUID to that catchup
+ownership or rejected as stale before its transition entry is released; no backlog
+notification dispatches independently.
+Before that catchup may classify or dispatch any row, reconciliation scans the
+replacement for every live stop tombstone and reaction marker whose old row
+remains above the contiguous cursor. Each stable GUID must match exactly one
+replacement row after the prefix. The monitor atomically rekeys each marker to
+the replacement generation and row while preserving its capacity reservation
+and terminal suppression meaning. Catchup suppresses that row and retains the
+migrated marker until the replacement cursor/checkpoint crosses it. A missing,
+duplicate, or before-prefix match is ambiguous and leaves the source
+recovery-only for authenticated operator reconciliation.
 
-The iMessage monitor first recognizes an authenticated `/stop` through its
-existing control path and sends it directly to the existing abort behavior. It
-then recognizes reactions and completes their existing ephemeral handling
-without acquiring the source mode gate, row reservation, unknown-affinity
-blocker, close ticket, cursor hold, or pin. Other events enter the source mode
-gate. Eligible immediate events use a short per-account source-order reservation
-gate. Every
-notification synchronously acquires or resumes one slot keyed by
-`(accountId, dbInstanceId, rowid)`. Only finite row IDs enter this path;
-otherwise the event uses the current coalescer. Duplicate delivery or source
-retry of row N joins N's existing slot rather than appending behind it. An
-anchorless observation also registers
-an unknown-affinity account blocker with all open close gates on that account
-before repair can yield; a close gate attached later consults the same account
-blocker set. Under the reservation gate the monitor repairs or confirms the
+If transition-state persistence fails after the head snapshot proves
+replacement, the in-memory source gate remains fenced, dispatch stops, and the
+trigger and every queued successor transfer to the transition backlog, detach
+their old-run blockers, and convert their neutral holds into the separate
+transition fence. This release cannot
+admit a replacement event. Restart observes that
+the stored generation anchors do not match, reconstructs the old-generation
+barrier, and performs the same checkpoint reconciliation before live dispatch.
+It never defaults to the database minimum or triggering row. If no exact prefix exists,
+the source remains blocked in recovery-only mode. An authenticated local operator
+may inspect both generations and durably record an explicit accepted boundary or
+abandon the new generation; no automated timeout or fallback chooses one. A
+runtime route capability loss without a database change uses the existing cursor
+and already bound holds under the same current generation. The gate may reopen
+immediate admission only after old ownership, reconciliation, and current-path
+catchup fully drain and continuity/capability is proven again. A merely
+`terminal` pin is not sufficient. This can temporarily serialize unrelated
+conversations on an uncertain account, but no later row can overtake earlier
+immediate or replay-owned work.
+
+For an enrolled identity-proven source, the iMessage monitor applies the existing
+abort decision at the same source gate used by ingress and catchup. One shared
+helper performs the existing structural-prefix removal, group mention removal,
+authorization check, and `isAbortRequestText` classification in the same order
+used by downstream fast-abort handling. Both callers consume that single
+decision instead of normalizing or classifying independently. Every
+authenticated request it accepts, including `/stop`, bare abort phrases,
+localized triggers, and group-mentioned stop forms, follows this journaled path
+rather than ordinary steering. A source that cannot guarantee a stable,
+crash-replayable identity for each accepted stop row remains wholly
+current-path-only, including its unchanged fast-stop path, and never enters this
+journal. Before the first persistence await on an enrolled source, a
+pre-fence stop installs its FIFO ticket, generation-neutral hold, and bounded
+journal-capacity reservation while that gate prevents successor progress. Under
+the gateway work-registry lock it snapshots a durable gateway epoch and
+monotonic creation-sequence cutoff for the affected stop scope, then first
+persists the minimal `(sourceGuid, scope, gatewayEpoch, cutoff)` fence. Every
+reply operation, ACP session, queue entry, subagent, and metadata target has an
+immutable creation epoch/sequence, so the full journal can reconstruct only
+targets at or below that fence. Capturing the cutoff under the same registry lock
+also snapshots all pre-cutoff source reservations and model-hidden prepared
+identities whose final session affinity is either matching or unresolved. It
+installs a stop-scope creation fence before releasing the lock. Pre-cutoff
+targeted work cannot create new queue entries, ACP sessions, subagents, or other
+stoppable descendants after that point. Each unresolved older identity must
+finish affinity resolution under the fence. A nonmatching identity transfers
+out without being stopped. A matching identity receives a durable no-reply stop
+disposition in its prepared record and pin, completes replay ownership without
+model or tool execution, and joins the journal outcome set. New admission that
+could map to the same session waits until all snapshotted identities are
+classified and every matching identity has that durable disposition. This keeps
+a newer shared-session message from clearing the abort cutoff before older
+prepared input is suppressed. The creation fence remains through those
+classifications and dispositions, replay commit, and terminal tombstone
+publication. A
+post-fence stop instead installs a transient GUID handoff barrier in the existing
+catchup slot while the same gate prevents catchup claim or commit for that GUID;
+it creates no second row reservation. It persists the same minimal epoch/cutoff
+fence and full journal before releasing that handoff. If catchup already committed the GUID, the
+control callback performs no effect. The gate remains exclusive until journal
+success makes the handoff durably visible or journal failure clears it without
+an effect. A process crash leaves either a durable journal or no effect, and
+startup catchup resolves the row in source order.
+
+Journal durability is not permission to mutate current work. Before any stop
+effect, hook launch, metadata change, or acknowledgment, the source gate performs
+one consistent generation snapshot. It must prove the persisted generation
+anchors still match, the event row/GUID exists in that generation, and the row
+lies after the committed cursor/prefix. That proof may run ahead of unrelated
+slow data preparation because it does not rotate generation or advance a cursor.
+If any part is uncertain, the journal remains fenced and effects wait for the
+serialized continuity or replacement reconciliation owner. Exact-prefix
+reconciliation classifies a GUID inside the already committed prefix as
+`historical_no_effect` and never runs hooks, aborts, metadata changes, or
+acknowledgment. Only a GUID proven after the matched prefix may execute the
+recorded stop effects.
+
+Failure after the minimal fence but before the full journal leaves the source
+blocked and recovery rebuilds the exact target set from that cutoff. Failure to
+persist even the minimal fence performs no effect and keeps a process-global
+admission barrier on the affected scope. A full process restart runs a
+gateway-wide pre-admission recovery phase over the durable inventory of every
+configured or previously enrolled journal-capable source before creating any
+new stoppable work. A current-path-only source has no new journal state and does
+not join this barrier. Disabled enrolled sources are still scanned read-only. An unavailable
+source keeps global stoppable admission closed rather than being omitted. An
+authenticated operator may durably dispose its pre-restart unfenced stop rows as
+`no_effect`; no automated timeout does so. If the source cannot be read, the
+operator may instead durably retire its last known source identity at the last
+committed cursor/checkpoint, explicitly abandoning every unseen later row as
+no-effect. Retirement opens the global admission barrier but leaves that source
+disabled. A later source return is treated as a new untrusted generation and
+requires full scan, operator-reviewed boundary selection, and bootstrap before
+enablement. Recovery never writes a new
+epoch/cutoff fence for an unfenced pre-restart stop and never executes it against
+newly resolved targets. It either proves the original durable fence, records the
+reviewed no-effect disposition, or remains blocked.
+
+The bounded non-expiring source-GUID journal snapshots immutable reply-operation
+IDs, ACP session IDs, queued-work generation/cutoff, subagent run IDs, session
+abort-metadata target/version, pre-cutoff source reservation/prepared identity
+IDs with current affinity state, and a stable journal acknowledgment identity
+and target before any stop effect. An unresolved affinity remains a journal
+target, not an omission. Existing stop behavior then acts only on recorded or
+subsequently classified matching targets at or below the cutoff. Each exact
+operation and prepared no-reply disposition is idempotent; the journal durably
+stores its actual outcome before marking that effect complete. After all
+affinities and outcomes are known, it derives and durably freezes the final
+acknowledgment payload and target. A token-bearing compare-and-swap changes acknowledgment state from
+`ready` to `dispatching` before the single iMessage send call. A normal success
+records the complete returned receipt and an external GUID when the bridge
+provides one; success without a GUID is still terminal. A normal failure records
+`failed`. Process crash, timeout, or disconnect after `dispatching` records
+`unknown_after_dispatch` on recovery and never retries because the bridge cannot
+reconcile that external send. These are all terminal acknowledgment
+dispositions. This explicit at-most-once policy may lose the acknowledgment in
+the unknown crash window but cannot duplicate it or block source commit.
+
+Every live, control-only, replay, and catchup stop dispatcher must acquire one
+atomic execution lease keyed by source GUID and journal identity before any
+effect. The journal moves
+`unstarted -> owned -> effects_complete -> replay_committed -> tombstone`.
+`owned` stores the gateway epoch, a unique fencing token, and whether this is an
+initial or recovery pass. A dispatcher joins any owned journal whose exact
+epoch/token is registered live in the gateway. It atomically reclaims any owned
+journal when the epoch is older or the current-epoch token is conclusively
+unregistered, replacing both epoch and token before resuming unfinished effects.
+This same rule applies after any number of recovery crashes. The journal
+coordinator keeps the winning token registered through replay commit and
+terminal tombstone publication.
+Every runner-owned mutation uses a token-bearing compare-and-swap, including
+generic hook markers, effect outcomes, frozen acknowledgment, dispatch state,
+effects-complete transition, source replay commit, terminal tombstone
+publication, cursor/checkpoint crossing, and tombstone clearing. A stale runner
+therefore cannot
+mutate or erase reclaimed state. A dispatcher that finds a matching live owned
+runner joins its completion and does not execute effects.
+Catchup may take the lease only before its handler starts. A post-fence callback
+that races an already claimed row either publishes the journal before execution
+and becomes or wakes its single runner, or joins the runner already executing
+that journal. Process crash releases only the in-memory lease; durable per-effect
+outcomes let recovery resume the one journal without applying completed effects.
+
+The journal effect set is path-specific and cannot add behavior. The existing
+iMessage fast-stop path emits plugin `message_received` and internal
+`message` plus `message:received` hooks before returning, so the journal
+preserves them as two coarse at-most-once journal effects. One effect invokes the
+existing plugin dispatcher. The other invokes the existing internal dispatcher,
+which keeps generic handlers before specific handlers and passes the same
+mutable event/context object through the complete chain. The runner durably
+marks a dispatcher effect `started` before invoking it through the existing
+fire-and-forget wrapper. `started` is the effect's terminal durable handoff and
+the runner does not await, record, or gate on handler completion. After any
+process crash, recovery changes a not-yet-started hook effect to
+`skipped_after_crash`; a started effect is already terminal and never invokes
+again.
+This matches best-effort hook behavior, prevents duplicate side effects, and
+requires no serialized hook arguments, configuration secrets, handler IDs, or
+registration migration. The fast path returns before regular
+stop-command hooks, so its journal contains no `command:stop` hook effect and
+recovery never invokes one. Any future reuse by another path requires its own
+reviewed hook contract rather than inheriting one here.
+
+The pre-fence stop row receives its generation/new-row proof before effects,
+then continues through serialized continuity, replay, cursor, and checkpoint
+disposition without a run-close blocker, transcript turn, or agent pin. If the
+fast proof is unavailable, serialized continuity owns classification before any
+effect. A post-fence journal hands the same GUID back to existing catchup
+ownership after persistence and waits for prefix reconciliation. Replay commit
+and terminal tombstone publication occur only after every permitted effect
+outcome and terminal acknowledgment disposition are durable. A
+`historical_no_effect` classification clears the journal only after durable proof
+that the matched committed prefix already crosses that GUID. Journal-capacity or persistence failure performs no effect, fails
+source bookkeeping closed, and leaves the row to ordered lossless replay. No
+journal-less path may resolve current work.
+All other
+cursor-advancing events, including reactions, append a source FIFO ticket and
+install a generation-neutral hold before continuity inspection. Unless the
+source gate is already fenced, an ordinary notification additionally registers
+an unknown-affinity blocker with all open and subsequently attached run gates on
+that account before waiting for predecessors. An event arriving at a fenced gate
+returns without row ownership because catchup owns it. A reaction registers no
+active-run close ticket or blocker. At the
+FIFO head, the monitor validates continuity. If continuity holds, it atomically
+binds the neutral hold to the proven generation and assigns or resumes one exact
+row slot keyed by
+`(accountId, dbInstanceId, rowid)`. A runtime event that violates the transport's
+finite row/GUID guarantee fails the source closed and disables immediate mode; it
+does not take an independent current-path shortcut. Duplicate delivery or source
+retry of row N joins N's existing row slot when it reaches the FIFO head rather
+than appending the source turn again. A reaction uses explicit at-most-once
+handling. While its FIFO ticket and generation-bound hold remain exclusive, it
+atomically reserves bounded non-evictable marker capacity and persists a compact non-expiring
+`(dbInstanceId, rowid, guid, committed)` sparse marker before the existing
+in-memory enqueue. The marker is excluded from replay TTL/entry caps and remains
+until contiguous cursor/checkpoint advancement crosses that GUID, even while an
+older unresolved row floors the cursor. The monitor then attempts enqueue and
+releases the FIFO ticket. Enqueue failure is surfaced but does not undo the
+at-most-once marker. Restart suppresses enqueue for a marked GUID and
+reconciliation carries the stable marker across a proven database generation.
+A crash after marking can lose the ephemeral event, as the current in-memory
+queue can, but cannot duplicate it. No reaction payload, transcript turn,
+prepared pin, or steering admission is persisted. Capacity or persistence
+failure stops source dispatch before enqueue and leaves cursor/hold ownership
+for retry. An ordinary event instead repairs or confirms the
 conversation anchor and synchronously appends its admission ticket to the
-resulting per-conversation lock. It then atomically transfers the unknown
-blocker to that conversation ticket, releasing unrelated run gates, before
-releasing the account slot. A permanent skip releases the blocker; a retryable
-repair failure retains the same row-keyed slot for source retry, process
-teardown, or restart. The ticket immediately counts as pending work in the
-conversation's close predicate, before attachment staging, history, or context
-preparation awaits. Normally anchored rows pass through without I/O. This
+resulting per-conversation lock. The ticket immediately counts as pending work
+in the conversation's close predicate. While still holding the row slot, the
+monitor reserves pin capacity, snapshots immutable attachment bytes, and flushes
+the complete source-identified user turn to the existing transcript as a hidden
+`prepared` record, then strictly persists its `prepared` pin. Every history,
+compaction, retry, and recovery loader excludes prepared records that lack a
+durable adoption marker. It then atomically
+transfers the unknown blocker to that conversation ticket, releasing unrelated
+run gates, before releasing the FIFO ticket. A permanent skip releases the
+blocker; a retryable repair or preparation failure retains the same row-keyed
+slot, FIFO head, and hold for retry, process teardown, or restart. History and
+context preparation continue from the durable record after FIFO release. This
 prevents row N+1 from acquiring a conversation lane before potentially matching
-anchorless row N and prevents any possibly matching active run from closing
-first, while other accounts and already resolved distinct conversation lanes
-remain concurrent.
+anchorless row N or before N is crash-recoverable, and prevents any possibly
+matching active run from closing first. Other accounts remain concurrent.
 
 The first event holds its per-conversation admission ticket until the normal run
 has attached an accepting backend and its close gate, not merely until the reply
@@ -359,18 +757,23 @@ retains the row hold for retry; rejection by a closing run instead transfers the
 still-claimed event directly to the next normal-run admission path. Reply
 generation and delivery also occur outside the lock.
 
-Each steering identity has one atomic in-memory lifecycle:
-`queued -> draining -> adopted -> processed -> terminal` or
-`queued -> canceled`. Transcript failure settles `draining` as failed. A pin
-write failure keeps the claim and retries pin repair against the already flushed
-source identity; it does not release into a second append. Model error or abort
-settles an adopted identity as processed failure. Timeout or abort may remove
-and reject the exact identity only by winning the `queued -> canceled`
-transition. Once queue drain wins, cancellation cannot release replay ownership.
-Durable adoption, cycle processing, and final output handoff settle their
-separate transitions. This prevents retry from racing with a message that has
-left the queue and prevents an unanswered or undelivered adopted turn from being
-mistaken for completed work.
+Each source identity has one lifecycle:
+`reserved -> prepared -> queued -> draining -> adopted -> processed -> terminal`
+back to `prepared` when ordinary queued cancellation wins. `prepared` means the
+full source turn and immutable media are flushed and its strict pin is durable,
+but it is model-hidden and history/context preparation or active-run admission
+may still be pending. Recovery resumes those steps from that exact transcript
+record. A preparation or
+pin-write failure keeps the row slot and retries against the stable source
+identity; it does not release into a second append. Model error or abort settles
+an adopted identity as processed failure. Timeout may dequeue the exact identity
+only by winning `queued -> prepared`; the source handler retains claim, hold, and
+pin and re-enters normal admission from that record. Authenticated stop keeps its
+existing explicit command disposition. Once queue drain wins, cancellation
+cannot release replay ownership. Durable adoption, cycle processing, and final
+output handoff settle their separate transitions. This prevents retry from
+racing with a message that has left the queue and prevents an unanswered or
+undelivered adopted turn from being mistaken for completed work.
 
 The only new concurrency primitive inside the run is an in-memory admission
 gate with `open` and `closed` states:
@@ -386,7 +789,10 @@ gate with `open` and `closed` states:
   queues read empty, the loop acquires the same gate and closes only if all
   remain empty;
 - if native queues are empty but a reservation or ticket remains, the loop
-  captures the gate generation and awaits its change before rechecking;
+  captures the gate generation, releases the session transcript lock through the
+  existing prompt-release fence/merge mechanism, awaits its change, reacquires
+  the lock, merges intervening transcript entries, and rechecks; a prepared
+  record remains model-hidden during that merge until adoption;
 - every reservation/ticket transfer or release, queue insertion, terminal
   failure, abort, and teardown advances the generation and wakes waiters;
 - if insertion happened first, close fails and the loop processes the queued
@@ -398,6 +804,14 @@ gate with `open` and `closed` states:
 - an exceptional error, abort, or terminal teardown closes admission and
   atomically rejects every identity still in `queued`, while any `draining`
   identity settles from its exact persistence success or terminal failure.
+
+The loop never waits on a pending reservation or ticket while retaining the
+session transcript lock. It captures gate generation before the existing
+prompt-release handoff. A change before release or while the lock is free is
+observed immediately after handoff. Reacquisition uses the existing fenced
+session-lock token and transcript merge, so a stale writer cannot overwrite the
+new prepared record. Final close is allowed only after lock reacquisition and a
+fresh atomic check of the gate, queues, reservations, and tickets.
 
 This gate is not durable because it owns no message data. The inbound event
 remains claimed after in-memory acceptance, durable adoption, and cycle
@@ -412,13 +826,23 @@ rerunning model or tools; a crash after handoff resumes existing delivery.
 
 The monitor extends its existing pending-row hold-floor bookkeeping to every
 observed row, not only startup/catchup work. The synchronous notification
-boundary installs a unique provisional `(accountId, dbInstanceId, rowid)` hold
-before any repair, dedupe claim, or dispatch await can yield to a later row.
+boundary installs a unique generation-neutral
+`(accountId, fifoTicketId, observedRowid)` hold before any repair, dedupe claim,
+or dispatch await can yield to a later row. Before continuity, it prevents any
+same-source cursor commit from passing the observed row but belongs to no
+database generation's ownership barrier. Only the
+FIFO-head continuity snapshot may atomically bind it to
+`(accountId, dbInstanceId, rowid)`. A replacement instead transfers it to the
+source-wide transition fence and removes its row number from old-generation
+cursor accounting. Lossless catchup later matches or reconciles the backlog
+row's stable identity under the new generation.
 Conversation repair
 returns a discriminated result: `repaired(message)`, `permanent_skip(reason)`, or
-`retryable_failure(error)`. Missing GUID or a complete successful search with no
-usable anchor may be permanent; any chat-list/history RPC error makes the result
-retryable rather than indistinguishable `null`. Successful repair and claim
+`retryable_failure(error)`. A complete successful search with no usable
+conversation anchor may be permanent only when the source row has a stable GUID.
+A missing message GUID enters fail-closed reviewed recovery and cannot cross the
+cursor/checkpoint. Any chat-list/history RPC error makes the result retryable
+rather than indistinguishable `null`. Successful repair and claim
 transfer that same hold to the unresolved event. Replay claim results must
 preserve the dedupe distinction: a confirmed committed duplicate or permanent
 skip clears the hold, while an `inflight` duplicate retains the idempotent
@@ -438,25 +862,34 @@ cannot both consume the last slot. At capacity the monitor stops dispatching
 newer rows for that account and leaves them recoverable from the unchanged
 cursor.
 
-Each prepared user message carries stable account/database/row/replay identity
-in its transcript metadata. The transcript layer gains an explicit
-append-and-flush operation that writes even a new session's first user turn and
-confirms durable storage before returning. After that flush, but before
-`message_end` returns to the agent loop and before any assistant/tool cycle can
-start, the adoption callback strictly persists a non-expiring cursor-relative
-pin through the existing plugin-state dedupe store. Unlike the generic
-best-effort dedupe helper, both writes must return durable acknowledgment; either
-failure aborts processing. A crash between transcript flush and pin is
-reconciled by the stable transcript identity. In the same process, strict
-pin-write failure retains the source claim and retries the pin against that
-identity with backoff. A crash after the pin but before cycle processing leaves
-the pin in `adopted` state. Recovery writes any missing pin and resumes the
-pending assistant cycle from the already adopted user turn without appending or
-executing the user turn twice.
+Each reserved user message carries stable account/database/row/replay identity
+in transcript metadata. Before its source-order slot releases, the transcript
+layer's append-and-flush operation writes the complete text and immutable media
+snapshot as a model-hidden prepared record, including a new session's first user
+turn, and strictly persists a non-expiring cursor-relative `prepared` pin
+through the existing plugin-state dedupe store. Every path that constructs model
+history, including retry, compaction, and recovery, excludes a source record
+until its durable adoption marker exists. Unlike the generic best-effort dedupe
+helper, both writes require durable acknowledgment. A crash between transcript
+flush and pin is reconciled by the stable transcript identity. In the same
+process, strict pin-write failure retains the source claim and row slot and
+retries the pin against that identity.
 
-Pins distinguish `adopted`, `processed`, and `terminal`. The source claim,
-cursor hold, and pin remain after adoption while the corresponding
-assistant/tool cycle runs. Cycle success or failure moves the pin to `processed`
+After history/context preparation and queue drain take ownership, the adoption
+callback first strictly promotes the existing pin from `prepared` to `adopted`,
+then appends and flushes one source-identity-keyed adoption marker before any
+assistant/tool cycle starts. That marker makes the existing record model-visible
+and does not append the turn again. A crash after pin promotion but before the
+marker completes the marker on recovery; a marker for the same source identity
+is idempotent. A record cannot return to `prepared` after its adoption marker
+exists. Recovery of a `prepared` pin resumes pending preparation/admission,
+while recovery of an `adopted` pin resumes or completes marker publication and
+then the pending assistant cycle from the same record.
+
+Pins distinguish `prepared`, `adopted`, `processed`, and `terminal`. The source
+claim, cursor hold, and pin remain after preparation and adoption while the
+corresponding assistant/tool cycle runs. Cycle success or failure moves the pin
+to `processed`
 with enough source linkage to finalize from persisted transcript state. After
 the run closes, durable final payload/no-reply handoff moves every covered pin to
 `terminal` before replay commit.
@@ -478,22 +911,75 @@ commits replay, then releases the claim, cursor hold, and pin in normal cleanup
 order. Recovery can resume those cleanup steps after a crash. No timeout,
 capacity pressure, restart, or automated path may create this disposition.
 
-Approval, pairing, and another transcript-free path may use immediate admission
+Every live reaction and every polled reaction above the cursor first passes the
+account FIFO, full continuity/prefix validation, generation binding, and replay
+ownership before any effect. A polled reaction already inside the committed
+prefix uses the historical proof and receipt path below instead of reopening
+cursor ownership.
+Receipt-backed approval reactions then follow the same durable transcript-free
+path as approvals. Approval, pairing, and another transcript-free path may use immediate admission
 only when it already has a stable request identity plus durable state transition
 or pending-delivery record. It strictly persists an `adopted` pin before the
 effect; recovery checks that existing receipt and resumes or finalizes before
-moving the pin to `terminal`. Reactions use an ephemeral event queue and
-therefore remain entirely on the current path.
+moving the pin to `terminal`. A general reaction that is not consumed by a
+receipt-backed path instead persists its sparse committed-GUID marker after
+continuity, then uses the existing ephemeral event queue without a transcript
+turn or agent pin.
+
+The periodic approval-reaction poller never calls the approval handler directly
+in immediate mode. It submits the canonical reaction candidate to the same
+source admission function as a live notification. The history adapter must
+return the finite reaction row ID and real database reaction GUID. The
+row/GUID pair is byte-identical across live and polled discovery and is the only
+identity used by FIFO, replay, pins, prefix checkpoints, and generation
+reconciliation. The existing synthetic poller value may remain inside approval
+payload matching, but never enters source state.
+
+Submission never waits for FIFO ownership or source recovery. It joins or
+creates one monitor-owned row/GUID slot and promptly returns `completed`,
+`pending`, or `rejected`. Only completed handling stops polling for the target.
+Pending leaves the timer free to fetch history again, and later discovery joins
+the same slot. A candidate without both real identity fields is rejected with no
+effect and does not fence a healthy source. A real row/GUID conflict found in a
+consistent database snapshot follows normal continuity fencing.
+
+A polled approval reaction above the cursor follows ordinary FIFO ownership. A
+reaction at or below the cursor is not discarded merely because the live stream
+missed it. After the current generation and full prefix prove that exact
+row/GUID, a historical receipt-backed effect claim joins any live owner and
+invokes the existing idempotent approval transition. The claim is a separate
+plugin-state record class with a separate bounded, non-evicting capacity pool.
+It is not a cursor-relative replay pin and never enters turn-pin cleanup. Receipt
+confirmation moves it to terminal, deletes it, and releases capacity without
+moving the source cursor or changing the committed-prefix checkpoint. A crash
+after claim persistence resumes or finalizes against the existing approval
+receipt. Cursor crossing and the startup sweep for ordinary pins explicitly
+ignore this claim class. Saturation returns pending and keeps polling without
+blocking ordinary account dispatch. Missing proof, a source fence, or an older
+FIFO blocker returns pending or rejected without effect and without blocking
+later poll intervals.
+
+Immediate enrollment also requires the bridge history capability to return the
+real row and GUID for a reaction. A startup capability check and fixture against
+the supported bridge response prove that contract before the poller is enabled.
+If the bridge cannot provide both fields, the account stays wholly on the
+current coalescer; repeatedly rejecting identity-poor poll results is safe but
+does not satisfy feature compatibility.
 
 Claim checks both ordinary replay identity and the pin. The pin is excluded from
 ordinary oldest-entry pruning until the cursor crosses that row. Cursor crossing
-is serialized with pin cleanup: first persist the new cursor, then durably
-refresh the ordinary four-hour replay entry, then remove the pin. A failure at
-either later step leaves the pin in place; startup cleanup repeats refresh and
-removal for pins already below the durable cursor. Pin removal releases its
-capacity reservation and wakes a monitor-owned cursor catchup pass before live
-admission resumes. Thus disk failure, a four-hour delay, or 10,000 newer rows
-cannot convert adopted work into duplicate side effects.
+is serialized with pin cleanup. First atomically persist the new cursor and the
+next cryptographic hash-chain checkpoint over every ordered stable inbound GUID
+crossed by that cursor, including permanent skips that have a stable GUID. A
+GUID-less row cannot be crossed or classified as a permanent skip; it blocks
+checkpoint/cursor advancement in reviewed recovery. Then durably refresh the
+ordinary four-hour replay entry and remove the pin. A failure at either later
+step leaves the pin in place; startup cleanup repeats refresh and removal for
+pins already below the durable cursor. The checkpoint is non-expiring and
+retained across database generations. Pin removal releases its capacity
+reservation and wakes a monitor-owned cursor catchup pass before live admission
+resumes. Thus disk failure, a four-hour delay, or 10,000 newer rows cannot convert
+adopted work into duplicate side effects.
 
 On restart the in-memory holds are reconstructed from the persisted cursor
 rather than from a new durable record. Recovery queries rows strictly after that
@@ -508,9 +994,15 @@ Retryable conversation repair is owned by the row-keyed reservation slot. It
 schedules one abortable exponential-backoff retry with jitter per row, reusing
 the same slot and account close blocker; there is no maximum-attempt give-up
 while the monitor remains active. Successful repair transfers the blocker and
-permanent skip releases it. Monitor teardown cancels retry timers and releases
-in-memory close blockers while leaving the persisted cursor floor and replay
-pins intact for restart.
+permanent skip releases it. Reservation and blocker ownership lives in a
+gateway-process registry outside the restartable channel task. A channel-task
+disconnect cancels its retry timer but leaves the blocker attached to every
+possibly matching active run; the replacement task reattaches to that exact
+reservation and resumes repair before live dispatch. Only durable transfer,
+permanent disposition, or termination of the corresponding reply operation
+releases it. Full process teardown may discard the in-memory registry because
+the same teardown terminates those runs; startup reconstructs source work from
+the persisted cursor and pins before admitting new live runs.
 
 Only final source-reply mode is enabled for this strategy. iMessage production
 already uses final delivery, so intermediate assistant turns stay internal and
@@ -529,41 +1021,202 @@ After approval:
    CLI-backed and other non-steerable routes on the current coalescer. Treat an
    unexpected attached backend without the capability as an unsupported
    readiness result and disable new immediate admission on that route. Also
-   require a source-backed local or bridge-provided database-instance generation
-   a finite source row ID, a stable message reference, and lossless exact-row
-   replay. Persist local generation with high-water/GUID continuity anchors.
-   Revalidate anchors plus the event row/GUID in one source snapshot before every
-   live reservation. Keep a source without all capabilities current-path-only for
-   the monitor generation; remote bridges remain there until they expose the
-   same guarantees.
-3. Route authenticated `/stop` through its existing immediate abort path before
-   data reservation, then route reactions through their existing handling before
-   any immediate gate, reservation, blocker, hold, or pin. For other events, add
-   a source mode gate shared with the current coalescer. For a previously
-   immediate-capable local source, continuity uncertainty atomically enters
-   fallback only after resolving and durably recording the exact database
-   generation/GUID/row reference and source order in existing plugin state.
-   Atomically reserve bounded non-expiring, non-evictable reference capacity
-   before acceptance. Store no payload. Preserve existing entries and the source
-   cursor, then stop dispatch explicitly if capacity is full or the reference
-   cannot be resolved or persisted. Hold the
-   first fallback handler behind every earlier accepted immediate identity's
-   delivered/no-reply, replay-committed, fully unclaimed, unheld, and unpinned
-   barrier; queue later fallback handlers behind it. Reconstruct that barrier
-   and rebuild every pending reference from Messages before live dispatch after
-   restart. Reopen only after the complete immediate barrier and fallback chain
-   drain at a proven boundary. Eligible events then use a short
-   per-account source-order gate with one slot keyed by
+   require a source-backed local or bridge-provided database-instance generation,
+   a transport guarantee of finite row/GUID identity on every cursor-advancing
+   event, and lossless exact-row replay. Persist local generation with high-water/GUID
+   continuity anchors. After the event reaches the generation-independent
+   account FIFO head, validate one consistent source snapshot containing the
+   event row/GUID, high-water and boundary evidence, and either a genuine
+   immutable source generation ID or the complete ordered GUID count/hash through
+   the committed cursor. The current local source has no immutable ID and must
+   perform the full-prefix read-only scan before every admission. Keep a source
+   without all capabilities current-path-only for the monitor
+   generation; remote bridges remain there until they expose the same guarantees.
+   Before first enablement of a nonempty legacy cursor, require either a durable
+   ordered full-prefix count/hash commitment, an immutable source database
+   identity recorded before those rows were crossed, or an authenticated
+   operator-reviewed initial boundary. Reject a lone matching GUID at the cursor
+   row as insufficient. An empty cursor may seed an empty prefix after recording
+   the generation. Then scan oldest-first through the accepted cursor, reject any
+   crossed row without stable cross-generation identity, and atomically seed
+   generation, cursor, identity count, prefix hash, and binding proof. Leave
+   immediate mode disabled on any bootstrap error.
+3. On each identity-proven source enrolled in immediate admission, for every
+   authenticated request accepted by one shared abort-decision helper, including
+   `/stop`, bare abort phrases, localized triggers, and group-mentioned stop
+   forms, enter one source-gate critical section before any await. Extract and
+   reuse the downstream fast-abort path's exact structural-prefix stripping,
+   group mention stripping, authorization, and `isAbortRequestText` order. Make
+   the source gate and downstream handler consume the same decision so neither
+   can independently reveal a stop the other missed.
+   Do not let an accepted stop request enter ordinary steering. Pre-fence,
+   install the FIFO ticket, generation-neutral hold, and bounded
+   journal reservation before persistence. Post-fence, install a transient GUID
+   handoff barrier that blocks catchup claim/commit without creating row
+   ownership; join an existing catchup slot or no-op if it already committed.
+   Under the gateway work-registry lock, snapshot the affected scope's durable
+   gateway epoch and monotonic creation-sequence cutoff. Persist that minimal
+   source-GUID target fence first, then keep the gate exclusive until the full
+   journal is durable or failure clears the handoff with no effect. Give every
+   stoppable target immutable epoch/sequence metadata and rebuild only targets at
+   or below the fence. In the same work-registry transaction that captures the
+   cutoff, install a scope creation fence that blocks pre-cutoff targets from
+   creating queue, ACP, subagent, or other stoppable descendants. In the same
+   snapshot, record every pre-cutoff source reservation and prepared identity
+   whose session affinity matches or remains unresolved. Keep unresolved
+   identities under the fence until normal affinity repair classifies them.
+   Transfer proven nonmatches out. Give each match a durable prepared-record/pin
+   `stopped_no_reply` disposition, commit its replay ownership without model or
+   tool execution, and record that outcome in the stop journal. Wait new
+   admission that could share the affected session through classification,
+   matching dispositions, replay commit, and terminal tombstone publication. If the minimal fence itself fails, perform no effect and
+   retain a process-global scope admission barrier. On process restart, complete
+   a gateway-wide source recovery scan across the durable inventory of configured,
+   disabled, unavailable, and previously enrolled journal-capable sources before
+   any stoppable work admission. Exclude wholly current-path-only sources because
+   they create no new journal state. Scan disabled enrolled sources read-only; keep the global
+   barrier closed for unavailable sources. Never assign a fresh cutoff to an
+   unfenced stop older than the current gateway epoch. Require an authenticated
+   durable `no_effect` disposition or remain blocked. Add authenticated
+   source-level retirement at the last committed cursor/checkpoint for a
+   permanently unavailable source, explicitly abandoning all unseen rows and
+   keeping it disabled. Require full scan, reviewed boundary, and fresh bootstrap
+   before any returned source can re-enable. In the full journal, snapshot immutable reply-operation
+   IDs, ACP session IDs, queued-work generation/cutoff, subagent IDs,
+   abort-metadata target/version, pre-cutoff source reservation/prepared identity
+   IDs plus current affinity state, and stable journal acknowledgment
+   identity/target before mutation. Make every live, control, replay, and catchup
+   stop path acquire one source-GUID/journal execution lease. Use
+   `unstarted -> owned -> effects_complete -> replay_committed -> tombstone`,
+   with owner gateway
+   epoch, unique fencing token, and initial/recovery phase. Join any owned state
+   only when that exact token is registered live. Atomically reclaim any owned
+   state whose epoch is older or whose current-epoch token is conclusively
+   unregistered; repeated recovery crashes use the same rule. Keep the winning
+   token registered through replay commit and terminal tombstone publication. Require a
+   token-bearing compare-and-swap for every hook-dispatch marker, outcome, frozen
+   acknowledgment, delivery handoff, lifecycle transition, replay commit,
+   tombstone publication, cursor/checkpoint crossing, and tombstone clear. A
+   concurrent dispatcher joins a matching live owner and never executes
+   effects. Journal persistence and lease ownership do not authorize effects.
+   Before hooks, aborts, metadata mutation, or acknowledgment, take one
+   consistent source snapshot that proves unchanged generation anchors, the
+   exact row/GUID, and placement after the committed cursor/prefix. Without a
+   genuine immutable generation ID, recompute and compare the complete committed
+   prefix count/hash in that snapshot. This proof may bypass unrelated
+   preparation but may not rotate generation or advance source state. On uncertainty, keep the journal fenced and defer to
+   serialized continuity or replacement reconciliation. Classify a GUID inside
+   the matched committed prefix as `historical_no_effect`, record no effect or
+   acknowledgment, and clear only after durable prefix proof. Execute only a GUID
+   proven after the matched prefix. Use exact-target idempotent
+   effects, durably record each actual outcome, then durably freeze the derived
+   acknowledgment payload/target. CAS acknowledgment `ready -> dispatching`
+   before one existing iMessage send call. Record the complete returned receipt
+   and optional external GUID on success, `failed` on returned failure, and
+   `unknown_after_dispatch` after crash, timeout, or disconnect; never retry
+   `dispatching` because the bridge has no reconciliation key. Treat success
+   without a GUID and every other disposition as terminal for journal/source
+   commit. Build
+   the effect list from the existing iMessage fast-stop path only. Include its
+   plugin `message_received` dispatcher as one coarse at-most-once effect and the
+   existing internal dispatcher as a second. Keep the internal dispatcher's
+   generic `message` then specific `message:received` ordering and shared mutable
+   context. Mark each dispatcher effect `started` before launch through the
+   existing fire-and-forget wrapper. Treat that durable marker as terminal
+   handoff: do not await or record handler completion and do not gate stop
+   effects, acknowledgment, replay commit, tombstone publication, or
+   creation-fence release on
+   it. On process-epoch recovery, keep `started` terminal and convert only a
+   not-yet-started hook effect to `skipped_after_crash` without invoking it.
+   Persist no hook arguments, configuration, handler IDs, or registration
+   mappings. Do not add
+   regular `command:stop` hooks that path currently bypasses. Start existing stop
+   behavior against only those targets. The pre-fence row uses its FIFO hold for
+   serialized continuity, replay, cursor, and checkpoint disposition, but no
+   close blocker, turn, or pin. Post-fence catchup resumes sole row ownership
+   after durable handoff. After every outcome and terminal acknowledgment
+   disposition, atomically commit replay and compact the full journal to a
+   bounded, non-evictable, non-expiring tombstone keyed by generation, row, and
+   stable GUID. Release the runner token and creation fence after that tombstone
+   is durable. Keep it through ordinary dedupe expiry and capacity pressure, and
+   clear it only when the contiguous cursor and committed-prefix checkpoint
+   cross the row. Its original bounded journal-capacity reservation remains
+   charged until that clear; capacity exhaustion blocks a newer stop before any
+   effect rather than evicting a tombstone. A duplicate or restart that finds
+   the tombstone performs no stop effect or acknowledgment and only rejoins
+   ordered source bookkeeping.
+   Journal failure performs no effect,
+   fails source bookkeeping closed, and resolves the row through ordered replay
+   without re-resolving live work from that journal-less attempt. Put every other
+   cursor-advancing event, including reactions, through the source mode gate and
+   account FIFO with a generation-neutral hold before continuity inspection.
+   The fenced handoff path uses no FIFO ticket or row hold; transition catchup
+   exclusively owns the GUID and first classifies it against the matched prefix.
+   Historical GUIDs become durable no-effect. A GUID after the prefix performs
+   the exact recorded effects and compacts the journal to the same tombstone
+   after outcomes, terminal acknowledgment disposition, and replay commit.
+   Contiguous cursor/checkpoint crossing clears it. On
+   journal failure, perform no effect and return ownership to ordered catchup
+   while the source remains fenced.
+   Ordinary events register the unknown-affinity close blocker; reactions do
+   not. Only the FIFO head may inspect or rotate generation. After continuity, a
+   reaction keeps its bound hold and FIFO ticket, atomically reserves bounded
+   non-evictable capacity and persists a compact non-expiring
+   generation/row/GUID committed marker, then attempts the existing
+   ephemeral enqueue before releasing the ticket. Exclude markers from replay
+   TTL/caps and retain them until contiguous cursor/checkpoint advancement
+   crosses the GUID. Surface enqueue failure without undoing the at-most-once
+   marker. Restart and generation reconciliation suppress enqueue for a marked
+   GUID. Capacity or marker failure stops before enqueue with cursor and hold
+   unchanged. Persist no reaction payload, turn, pin, or steer. On a proven local generation
+   change, persist recovery-only mode and the old-generation ownership barrier,
+   then pause live dispatch without separately releasing that event. Fence the
+   source mode gate against new old-generation attachments and pause ordinary
+   live subscription; callbacks that reach the fenced gate return without
+   reservations because catchup owns their rows. Keep only control recognition
+   needed to persist an authenticated stop journal without taking row ownership;
+   catchup reconciliation must classify the GUID before any effect.
+   Atomically transfer the trigger and all queued unassigned successors from the
+   FIFO to that backlog, detach all of their unknown-affinity blockers from old
+   runs, convert their neutral holds into one source transition fence outside
+   old cursor accounting and the old barrier, and wake those runs. The backlog
+   is therefore bounded by events admitted before fencing.
+   If transition persistence fails after replacement is proven, keep the
+   in-memory fence and perform the same full backlog transfer before stopping
+   dispatch. After the
+   old barrier drains, scan the replacement's ordered stable GUIDs and require an
+   exact count/hash match to the old durable committed-prefix checkpoint. Use
+   the matched replacement row as the only automatic replay floor. Before
+   catchup classification, enumerate every live stop tombstone and reaction
+   marker above the old cursor and require each stable GUID to match exactly one
+   replacement row after that floor. Atomically rekey each marker to the
+   replacement generation/row, preserving its capacity reservation and terminal
+   suppression. A missing, duplicate, or before-prefix match blocks recovery for
+   authenticated operator reconciliation. Only after all markers migrate may uncapped/unaged
+   current-coalescer catchup become sole owner of replacement rows.
+   Match each backlog event by stable row/GUID to catchup ownership or reject it
+   as stale before releasing its transition entry; never dispatch it independently.
+   On transition-state write failure,
+   restart detects the anchor mismatch and performs the same
+   reconciliation. If no prefix matches, remain blocked for an authenticated
+   operator-reviewed boundary. On runtime route capability loss without a
+   database change, keep the existing cursor and provisional holds. Reopen only
+   after ownership, reconciliation, and catchup drain and capability is proven.
+   A runtime identity-contract violation fails the source closed, disables
+   immediate mode, and never dispatches independently. Eligible events then use
+   a per-account source-order gate with one slot keyed by
+   atomically bind the neutral hold to
    `(accountId, dbInstanceId, rowid)`. Duplicate
    notification or retry resumes the same slot. For unknown affinity, register
    an account blocker against existing and subsequently attached run gates
    before the first repair await. While holding the slot, resolve/repair
-   affinity, append the event's ticket to the resulting conversation lock and
-   close predicate, and atomically narrow the account blocker to that ticket
-   before releasing it. Permanent skip releases it; retryable failure retains it
-   for source retry or teardown. Do not await agent processing there. This
-   serializes only affinity reservation on one account and leaves different
-   accounts and resolved conversation lanes concurrent.
+   affinity and append the event's ticket to the resulting conversation lock and
+   close predicate. Reserve pin capacity, snapshot complete immutable media,
+   flush a model-hidden source-identified `prepared` transcript record, and
+   strictly persist its `prepared` pin before atomically narrowing the account blocker and
+   releasing the FIFO ticket. Permanent skip releases it; retryable repair,
+   transcript, media, or pin failure retains it for source retry or teardown. Do
+   not await agent processing there. Different accounts remain concurrent.
 4. Split same-conversation processing into an admission receipt and completion
    promise so the keyed lock awaits backend-ready start-or-steer, while
    replay/cursor handling still awaits terminal user-cycle completion outside
@@ -577,22 +1230,28 @@ After approval:
    and the embedded queue handle to carry prepared image content and return
    `{ accepted, adopted, completion }`. Store the canonical
    source-conversation key on the in-memory reply operation and reject steering
-   on mismatch.
+   on mismatch. Make every model-history construction path exclude a prepared
+   source record until its durable adoption marker exists.
 6. Forward accepted structured turns directly to the existing
    `AgentSession.steer` path with a unique in-memory identity, atomic
-   queued/draining/adopted/processed/terminal transitions, an adoption promise,
-   and a final completion promise. Add a flushed transcript append that durably
-   writes even the first user turn in a new session. Persist stable source
-   identity with that exact user message, then strictly acknowledge its
-   cursor-relative `adopted` pin before the assistant cycle starts. Reject and
-   abort on transcript failure. On pin failure, retain the claim and retry pin
-   repair against the existing transcript identity. Mark `processed` when that
+   prepared/queued/draining/adopted/processed/terminal transitions, an adoption
+   promise, and a final completion promise. Reuse the flushed `prepared`
+   transcript record rather than appending again. After history/context
+   preparation and queue drain own the turn, strictly promote its cursor-relative
+   pin to `adopted`, then append and flush one idempotent source-identity-keyed
+   adoption marker before the assistant cycle starts. The marker exposes the
+   existing record to model history exactly once. Reject and abort on transition
+   failure. Recovery completes a missing marker after pin promotion and never
+   returns a marked record to prepared. Mark `processed` when that
    exact user cycle finishes, but keep replay ownership until run-level output
    handoff marks all covered identities `terminal`. Recovery of
-   append-without-pin writes the pin; recovery of an adopted pin resumes from
-   the existing source-identified transcript turn without duplicate append.
-   Cancellation may remove the identity only while queued. Do not add a second
-   queue; keep agent-core turn processing unchanged apart from making its
+   append-without-pin writes the `prepared` pin; recovery of a prepared pin
+   resumes preparation/admission, and recovery of an adopted pin completes or
+   verifies its adoption marker and resumes from the existing source-identified
+   transcript turn without duplicate append.
+   Ordinary cancellation may dequeue the identity only while queued, preserving
+   its prepared transcript, pin, claim, and hold for re-admission. Do not add a
+   second queue; keep agent-core turn processing unchanged apart from making its
    existing steering drain win before a normal stop-after-turn exit.
 7. Add the atomic empty-and-close gate around unknown-affinity account
    reservations, pending same-conversation admission tickets, both existing
@@ -600,19 +1259,45 @@ After approval:
    account reservation before repair and the ticket before payload preparation;
    atomically narrow, transfer, or release them on every disposition. Defer a
    normal `shouldStopAfterTurn` result when a reservation, ticket, or accepted
-   identity already won the gate. Add an awaitable generation-change signal:
-   empty queues with blockers sleep until any blocker/ticket transition,
-   insertion, failure, abort, or teardown wakes them, then recheck atomically.
+   identity already won the gate. Add an awaitable generation-change signal.
+   Before empty queues wait on blockers, capture the gate generation and use the
+   existing prompt-release fencing/merge path to release the session transcript
+   lock. Sleep until any blocker/ticket transition, insertion, failure, abort, or
+   teardown wakes the run, then reacquire the fenced lock, merge transcript
+   updates without exposing unadopted prepared records, and recheck atomically.
+   Never await a ticket while retaining the transcript lock needed by its
+   prepared-record flush.
    On error, abort, or teardown, atomically close and reject all still-queued
    identities; settle already-draining identities from persistence or terminal
    failure. Keep the canonical final payload builder unchanged. After close,
    persist its payload or no-reply disposition through existing pending-delivery
    recovery with all covered source identities before marking pins terminal.
+   Store unresolved account reservations in a gateway-process registry outside
+   the restartable channel task. On channel restart, preserve their blockers and
+   reattach the replacement monitor before live dispatch. Release only on
+   durable transfer/disposition or corresponding reply-operation termination;
+   full process teardown terminates those runs before dropping the registry.
 8. Extend the existing recovery/catchup cursor hold-floor bookkeeping to install
-   a provisional hold synchronously for every observed live row before the first
-   await. Scope every hold and cursor by the database-instance generation as
-   well as account and row. Detect replacement as a new generation and keep old
-   state isolated. Change conversation repair from nullable output to
+   a generation-neutral `(accountId, fifoTicketId, observedRowid)` hold
+   synchronously for every observed live row before the first await. Before
+   continuity it blocks same-source cursor commits from passing the observation
+   but does not join any generation ownership barrier. Only FIFO-head continuity
+   may bind it to the proven
+   `(accountId, dbInstanceId, rowid)` generation slot. A replacement transfers
+   it from row-floor accounting into the source transition fence until catchup
+   reconciles its stable identity.
+   Scope every bound hold and cursor by the database-instance generation as well
+   as account and row. Detect replacement as a new generation and keep old
+   state isolated. Atomically persist each contiguous cursor advance with a
+   non-expiring cryptographic hash-chain checkpoint over every crossed ordered
+   stable inbound GUID. Implement one shared source-row enumerator for bootstrap,
+   incremental commit, per-admission proof, historical approval proof, catchup,
+   and replacement matching. It selects every account-scoped inbound row at or
+   below the boundary that catchup classifies as cursor-advancing, including rows
+   omitted by live notifications, in source-row order. A GUID-less row is
+   retryable/blocked reviewed recovery,
+   never a cursor-crossing permanent skip. Change conversation repair
+   from nullable output to
    discriminated repaired/permanent-skip/retryable-failure output, retaining the
    hold for every RPC failure and clearing it only after a complete permanent
    result. Transfer repaired rows through replay claim into processing. Preserve
@@ -621,26 +1306,54 @@ After approval:
    clears it.
    Otherwise clear only after terminal output handoff and replay commit both
    succeed; release a failed transient claim for retry without clearing its
-   hold.
+   hold. Add an authenticated local reconciliation action for unmatched
+   generations that records one explicit reviewed replacement boundary or
+   abandons that generation; automated recovery cannot invoke it.
 9. Make enabled-account recovery page from the persisted cursor forward in
    ascending source order. Treat the current 500-row limit as a page size and
    bypass age suppression and retry give-up for the earliest unresolved row;
    only permanent skip or successful replay commit may cross it.
 10. Reserve bounded pin capacity atomically before claim/dispatch, counting
-   durable pins plus every in-flight reservation across lanes. After exact
-   source-identified flushed transcript append, strictly persist a non-expiring
-   `adopted` pin keyed by account, database-instance generation, row, and replay
-   identity before allowing assistant/tool processing. Keep it through the user
-   cycle, mark it `processed`, and durably hand off final payload/no-reply
-   before marking `terminal` and committing replay. Reconcile
-   append-without-pin, adopted turns, processed turns, and pending final delivery
-   on restart. For transcript-free paths with an existing durable receipt,
+   durable pins plus every in-flight reservation across lanes. Before releasing
+   source order, flush the exact source-identified turn and immutable media and
+   strictly persist a non-expiring `prepared` pin keyed by account,
+   database-instance generation, row, and replay identity. Promote it to
+   `adopted` after remaining preparation and before assistant/tool processing.
+   Keep it through the user cycle, mark it `processed`, and durably hand off
+   final payload/no-reply before marking `terminal` and committing replay.
+   Reconcile
+   append-without-pin, prepared turns, adopted turns, processed turns, and
+   pending final delivery on restart. For transcript-free paths with an existing
+   durable receipt,
    persist `adopted` before the effect and require the existing idempotent state
-   or delivery receipt before `terminal`; keep reactions and any receipt-free
-   path on current handling.
-   Serialize cleanup as cursor persist, ordinary replay refresh, then pin
-   removal; retry cleanup failures. Apply account backpressure instead of
-   eviction, and run cursor catchup before live    admission resumes.
+   or delivery receipt before `terminal`. Route every reaction through source
+   FIFO and prefix validation first. Receipt-backed approval reactions use this
+   adopted-pin/receipt path; general reactions use the sparse committed-GUID
+   marker before their existing ephemeral enqueue. Any other receipt-free path
+   keeps its existing effect semantics only after the same source-gate
+   classification and its reviewed replay disposition.
+   Replace the approval poller's direct handler call in immediate mode with the
+   shared reaction-candidate admission function. Extend history results to expose
+   a finite reaction source row and the real database reaction GUID. Keep any
+   synthetic approval-matching key outside every source identity record. Join
+   live and polled delivery in one real row/GUID slot before adopted-pin
+   persistence or approval effect. Make submission return promptly as completed,
+   pending, or rejected rather than awaiting FIFO ownership; only completed
+   handling stops polling. For a proved row at or below the cursor, use a
+   historical receipt-backed effect claim that does not move the cursor or
+   checkpoint. Implement it as a distinct plugin-state record and capacity pool,
+   excluded from ordinary pin crossing and below-cursor startup cleanup. On
+   receipt confirmation, atomically mark terminal, delete the claim, and release
+   capacity; on restart, reconcile adopted claims against the existing approval
+   receipt before resume or finalization. Saturation returns pending without
+   blocking ordinary source dispatch. Missing poll identity performs no effect
+   without fencing a healthy source; an actual snapshot identity conflict uses
+   normal continuity fencing. Gate account enrollment on a bridge capability
+   check that proves history exposes the real reaction row and GUID.
+   Serialize cleanup as atomic cursor plus committed-prefix checkpoint persist,
+   ordinary replay refresh, then pin removal; retry cleanup failures. Apply
+   account backpressure instead of
+   eviction, and run cursor catchup before live admission resumes.
 11. Preserve existing tool-tail recovery classification. Resume only tools whose
    existing contract proves replay safe. Mark an adopted/processed pin
    `blocked_unresumable` when a non-idempotent tool call lacks a durable result;
@@ -651,8 +1364,11 @@ After approval:
    after explicit no-replay confirmation, then use recoverable handoff, replay
    commit, and normal claim/hold/pin cleanup. No automatic path may invoke it.
 12. Add monitor-owned abortable exponential-backoff repair retries keyed to the
-   existing row slot. Reuse the slot for every attempt; cancel timers and release
-   in-memory blockers on teardown while retaining the cursor floor for restart.
+   existing row slot. Reuse the slot for every attempt. Channel-task teardown
+   cancels its timers but retains blockers in the gateway-process registry for
+   replacement-task reattachment. Release only after durable transfer/
+   disposition, matching reply-operation termination, or full-process teardown
+   after those runs terminate; retain the cursor floor for restart.
 13. Add focused upstream-quality OpenClaw tests, register them in
    `packages/e2e/openclaw-patch-suite.json`, update patch documentation, and run
    the managed lifecycle.
@@ -677,11 +1393,24 @@ The managed recording harness must prove:
   reflects the correction;
 - a message arriving while tools run is processed after those tool calls by the
   existing steering loop;
-- a same-conversation ticket reserved before slow attachment staging or history
+- a same-conversation ticket reserved before immutable media staging and history
   lookup prevents close and then transfers atomically into steering;
 - a steer accepted before `shouldStopAfterTurn` is evaluated drains before the
   normal stop is honored;
-- two concurrent arrivals preserve source order through admission;
+- two concurrent arrivals preserve source order through durable `prepared`
+  staging and admission;
+- every live event installs a generation-neutral hold before waiting for the
+  FIFO; unchanged continuity atomically binds it to the current generation,
+  while replacement removes its reused row number from old cursor accounting
+  and transfers it to the source transition fence outside the old-generation
+  barrier;
+- row N paused during attachment snapshot prevents row N+1 from completing a
+  generation transition; after N's prepared transcript and pin are durable, N+1
+  may transition and a crash recovers N from transcript plus N+1 from replay;
+- prepared attachment bytes remain readable after the normal temporary media
+  cleanup window and restart; recovery never relies on an expired staging path;
+- a runtime event that violates the guaranteed row/GUID contract fails the source
+  closed and no later valid event re-enters immediate mode around it;
 - a second arrival between operation registration and backend attachment waits
   and then steers rather than starting a second reply;
 - successful hook-handled or other backend-free completion settles admission,
@@ -695,8 +1424,130 @@ The managed recording harness must prove:
 - an unrelated anchorless row cannot prevent a later correction from eventually
   steering into its active run; both remain close-blocking until repair proves
   them distinct;
-- authenticated `/stop` bypasses an unresolved anchorless data reservation and
-  aborts through the existing control path;
+- on an identity-proven immediate source, every authenticated request accepted by
+  the shared abort decision, including `/stop`, a bare abort phrase, and a
+  localized trigger, bypasses an unresolved anchorless data reservation for
+  immediate durable journaling and never enters ordinary steering; effects begin
+  only after a fast unchanged-generation/new-row proof or later reconciliation,
+  then the row waits for its own FIFO continuity turn before committing
+  replay/cursor/checkpoint state;
+- a group message such as `@Puddles stop`, including the fixture's structural
+  prefix and mention variants, produces the same shared normalized and
+  authorized abort decision at the source gate and downstream handler, enters
+  the journal once, and cannot execute an unjournaled fast abort;
+- each pre-fence accepted stop request installs its neutral hold, FIFO ticket,
+  and journal-capacity
+  reservation inside the source gate before journal persistence can yield, so a
+  successor cannot pass it on journal success or failure;
+- each post-fence accepted stop request installs a transient GUID handoff under
+  the source gate, so
+  catchup cannot claim or commit that GUID before the journal becomes durable;
+  journal failure performs no effect and returns sole ownership to catchup;
+- an authenticated stop notification without a stable crash-replayable identity
+  cannot occur on an enrolled source; a transport contract violation fails that
+  source closed before any stop effect, while a source whose declared contract
+  permits GUID-less stops remains wholly on the current coalescer and unchanged
+  fast-stop path;
+- the stop journal snapshots exact reply-operation IDs, ACP session IDs,
+  queued-work generation/cutoff, subagent IDs, metadata target/version,
+  pre-cutoff source reservation/prepared IDs with affinity state, and journal
+  acknowledgment identity before mutation, persists each classification and
+  actual effect outcome, and freezes the derived acknowledgment payload; crash
+  after each classification or effect resumes only unfinished exact targets;
+- stop acknowledgment CASes `ready -> dispatching` before one bridge send;
+  returned success stores the complete receipt and optional external GUID,
+  including `{ok: true}` without a GUID, while returned failure records failed;
+  crash immediately after external send, timeout, or disconnect before commit
+  recovers as `unknown_after_dispatch` without retry or duplicate, accepting
+  possible loss in that window;
+- a pre-cutoff reply operation racing journal persistence cannot create a later
+  queue entry, ACP session, subagent, or other stoppable descendant after the
+  scope creation fence; new scope admission waits until replay commit and
+  terminal tombstone publication;
+- an older prepared identity with unresolved affinity is included in the stop
+  snapshot; if it later resolves to the affected session, it receives a durable
+  `stopped_no_reply` disposition and commits replay without model or tool work,
+  while a proven nonmatch transfers out unaffected;
+- two source conversations sharing the default session cannot race around the
+  cutoff: with older prepared input still resolving, a newer post-stop message
+  waits, cannot clear session abort metadata, and starts only after the older
+  matching identity is durably suppressed and the stop tombstone is published;
+- row N remaining unresolved beyond ordinary dedupe TTL and capacity while stop
+  row N+1 reaches replay commit leaves N+1's compact terminal tombstone
+  non-expiring and non-evictable; restart replays from below N, finds the
+  tombstone, performs no stop effect or acknowledgment for N+1, and removes it
+  only after contiguous cursor/checkpoint crossing;
+- database replacement while stop N+1's tombstone remains live matches that
+  stable GUID after the exact committed prefix, atomically rekeys the tombstone
+  to the replacement generation/row before catchup, suppresses the replacement
+  row after ordinary dedupe expiry, and retains the marker until the replacement
+  cursor/checkpoint crosses it;
+- database replacement while a reaction marker remains above a blocked cursor
+  matches its stable GUID after the exact prefix, atomically rekeys it before
+  catchup, and never enqueues that reaction again even after ordinary dedupe
+  expiry;
+- a live stop tombstone or reaction marker that is missing, duplicated, or mapped
+  before the replacement prefix blocks reconciliation and no replacement row
+  executes until authenticated operator disposition;
+- after a stop row has crossed the cursor and its ordinary dedupe and tombstone
+  are gone, a same-path database replacement that replays that historical stop
+  while newer work is active journals it but performs no hook, abort, queue,
+  metadata, or acknowledgment effect; exact-prefix reconciliation marks it
+  `historical_no_effect`, while a new stop after the matched prefix executes once;
+- live control and catchup racing after catchup claim or during a stop effect
+  share one GUID/journal execution lease; exactly one runner executes while the
+  other joins completion, and crash recovery resumes from durable effect
+  outcomes;
+- crash immediately after `owned` persistence or between stop effects lets the
+  next gateway epoch atomically reclaim the owned journal with a new fencing
+  token; a second recovery crash and a conclusively unregistered same-epoch
+  owner are reclaimed by the same rule, and the new runner resumes only
+  unfinished effects;
+- stale-token writes fail at every hook-dispatch marker, effect outcome,
+  acknowledgment freeze/dispatch, lifecycle, replay commit, and journal
+  compaction boundary; the winning token remains registered until terminal
+  tombstone publication;
+- iMessage fast-stop invokes the existing plugin `message_received` dispatcher
+  once and the existing internal generic `message` plus specific
+  `message:received` chain once in normal operation, preserving shared internal
+  context and order;
+- each durable hook-dispatch `started` marker is terminal before the unchanged
+  fire-and-forget launch, so a never-resolving handler does not block stop,
+  acknowledgment, replay commit, tombstone publication, or later scope admission;
+- crash after a hook-dispatch effect is marked started never invokes that
+  dispatcher again; process-epoch recovery marks only not-yet-started hook
+  effects `skipped_after_crash` without persisting configuration, message
+  context, handler IDs, or registration mappings;
+- iMessage fast-stop journal recovery invokes no `command:stop` hook, matching
+  the existing early-return path; a registered stop-hook fixture proves no new
+  stop-hook side effect occurs;
+- an accepted stop trigger as the first notification after same-path replacement
+  becomes durable but performs no effect or acknowledgment until transition
+  reconciliation classifies it; a GUID inside the matched committed prefix is
+  `historical_no_effect`, while only a GUID after that prefix can clear queues,
+  cancel ACP/subagents, change metadata, acknowledge, or abort work;
+- stop-journal persistence or capacity failure performs no effect, fails source
+  bookkeeping closed, and recovers only targets at or below the durable minimal
+  gateway epoch/cutoff; minimal-fence failure plus process crash completes stop
+  source recovery across enabled, disabled, and previously known sources before
+  any newer cross-source work may start;
+- restart with an unavailable previously enrolled journal-capable source keeps
+  global stoppable admission closed; later source recovery never gives its unfenced
+  pre-restart stop a new cutoff, and only an authenticated durable no-effect
+  disposition can unblock it;
+- authenticated retirement of a permanently unavailable source records its last
+  committed cursor/checkpoint and explicit abandonment of every unseen row,
+  opens global admission, leaves that source disabled, and rejects later
+  re-enable until scan, reviewed boundary, and fresh bootstrap complete;
+- on an enrolled source, every authenticated request accepted by the stop
+  classifier after generation fencing persists its exact-effect journal and
+  starts no effect without reconciliation; it uses no FIFO ticket, row hold, or
+  backlog entry, catchup alone owns that GUID, historical prefix members become
+  no-effect, and only a GUID after the prefix can execute and compact the journal
+  to a terminal tombstone after effect completion, terminal acknowledgment
+  disposition, and replay commit; only contiguous
+  cursor/checkpoint crossing clears the tombstone, while journal
+  failure performs no effect and leaves the row to ordered catchup;
 - rows on different accounts continue admission concurrently while one account
   repairs an anchorless row;
 - an embedded steer-capable route uses immediate admission, while CLI and
@@ -705,12 +1556,21 @@ The managed recording harness must prove:
 - two conversations mapped to one session never cross-steer or cross-deliver;
 - two identical text steers complete and cancel independently by identity;
 - cancellation racing queue drain has exactly one winner: queued cancellation
-  prevents persistence, while draining ownership waits for append outcome;
+  preserves exactly one model-hidden prepared transcript and pin for
+  re-admission, while draining ownership promotes that same record to adopted,
+  publishes one adoption marker, and processes it;
+- prepared input is absent from every normal, retry, compaction, and recovery
+  model-history load before adoption, including when two source conversations
+  share one session; canceled re-admission remains hidden and then becomes
+  visible exactly once only after the correct run adopts it;
 - transcript append failure rejects only the matching completion, releases its
   replay claim for same-process retry, retains its cursor hold, and does not
   advance the cursor;
-- a crash before durable adoption replays the source event; a crash after
-  adoption resumes the exact adopted turn; a crash after processing rebuilds
+- a crash before durable preparation replays the source event; a crash after
+  transcript flush but before the prepared pin reconciles that same record; a
+  crash with a prepared pin resumes media/context/admission; a crash after pin
+  promotion but before the adoption marker publishes that marker exactly once;
+  a crash after adoption resumes the exact adopted turn; a crash after processing rebuilds
   final handoff from transcript without rerunning model/tools; only durable
   output/no-reply handoff plus replay commit clears source ownership;
 - conversation B completing row N+1 while conversation A still owns row N holds
@@ -758,8 +1618,29 @@ The managed recording harness must prove:
 - final payload handoff is durable before any covered source pin becomes
   terminal; a crash at each payload/no-reply, pin, replay, and delivery boundary
   recovers without rerunning completed model/tools or losing the reply;
-- cursor advancement past N+1 removes its pin and refreshes its ordinary replay
-  TTL in cursor/refresh/remove order, and failure after each step remains safe;
+- cursor advancement past N+1 atomically persists cursor plus committed GUID
+  prefix checkpoint before ordinary replay refresh and pin removal, and failure
+  after each step remains safe;
+- an existing nonempty row-only cursor remains current-path-only when the only
+  evidence is a matching stable GUID at the exact cursor row; automatic bootstrap
+  requires a preexisting full-prefix commitment or immutable database identity,
+  otherwise an authenticated operator must record the reviewed boundary;
+- a same-path fork that preserves the cursor row's GUID but changes or inserts an
+  earlier GUID cannot bootstrap automatically and marks no unseen row committed;
+- a valid historical full-prefix commitment must match every ordered GUID through
+  the cursor before automatic seeding; an empty cursor may seed only the empty
+  prefix after current generation recording;
+- bootstrap read failure, cursor past source, or any crossed GUID-less row leaves
+  the account current-path-only without advancing its cursor;
+- after successful bootstrap, an in-place fork that preserves cursor/high-water
+  anchors and the observed event but changes or inserts any earlier committed
+  GUID fails the per-admission full-prefix count/hash check, fences the source
+  before model/tool work, and enters replacement reconciliation;
+- a source with a claimed immutable generation ID may skip full-prefix scans only
+  when fixture tests prove the ID changes for every replacement and historical
+  mutation; the exact current local and remote fixtures do not qualify;
+- a GUID-less live/catchup row blocks cursor and checkpoint advancement in
+  reviewed recovery and is never treated as a cursor-crossing permanent skip;
 - replacing the Messages database at the same local path with one that reuses
   row numbers creates a new generation with distinct holds, pins, capacity
   reservations, and cursors;
@@ -769,23 +1650,42 @@ The managed recording harness must prove:
   rotates the generation;
 - a remote bridge database replacement uses its new bridge-provided generation,
   while a bridge without that capability stays on the current coalescer;
-- an invalid-row correction followed by a valid row fences the source into the
-  current ordered path until delivery/no-reply, replay commit, and ownership
-  cleanup complete, so the valid row cannot overtake it;
-- an earlier immediate row held mid-tool, followed by the first invalid fallback
-  row and then another fallback row, processes in that order; neither fallback
-  handler starts before the immediate source-drained barrier;
-- restart during that transition reconstructs fallback mode and the barrier
-  plus every pending database source reference before live dispatch, then drains
-  in the same order without duplicate work or copied payload state;
+- any source contract that permits an invalid ordinary row identity remains
+  current-path-only from startup rather than mixing per-event modes;
+- an earlier immediate row held mid-tool followed by a database generation
+  change blocks reconciliation until the old source-drained barrier and latest
+  committed-prefix checkpoint complete;
+- the notification that discovers a generation change retains its source FIFO
+  ownership and neutral hold but moves to the transition backlog and detaches its
+  unknown-affinity blockers after the source gate is fenced, so old runs close
+  and the ownership barrier can drain without admitting the replacement row;
+- ordinary successors already waiting behind a generation-change trigger also
+  move to the transition backlog and detach every old-run blocker; notifications
+  racing after the fence return without data reservations under the paused live
+  subscription, and catchup matches each admitted backlog row/GUID before
+  releasing its transition entry;
+- an indefinitely operator-blocked transition receives no ordinary live backlog
+  growth while the paused subscription leaves every row recoverable from the
+  unchanged source cursor;
+- crash after generation transition persistence reconstructs recovery-only mode,
+  the old barrier, and checkpoint reconciliation before live dispatch;
+- transition persistence failure followed by crash detects the anchor mismatch
+  on restart and performs the same checkpoint reconciliation without choosing
+  the trigger or database minimum as a floor;
+- transition persistence failure after replacement is proven keeps source
+  dispatch fenced, transfers the trigger and queued successors to transition
+  ownership, detaches all old-run blockers, and lets old ownership drain without
+  processing a replacement event;
+- a replacement containing the exact committed prefix plus unobserved rows
+  before the trigger maps the checkpoint and replays every later row once;
+- historical rows below a matched checkpoint remain suppressed after ordinary
+  dedupe TTL expiry, while unresolved pinned GUIDs above it remain non-expiring;
+- a replacement with missing, reordered, or divergent prefix GUIDs stays
+  recovery-only and executes no model or tool until an authenticated operator
+  records a reviewed boundary;
 - a remote bridge without exact generation and lossless row replay remains
   current-path-only from startup, so it never creates a mixed immediate/fallback
   crash window;
-- failure to resolve or persist a local fallback source reference stops dispatch
-  explicitly and cannot release later work around it;
-- filling fallback-reference capacity never evicts the oldest pending reference;
-  the next transition stops with its cursor unchanged, restart reconstructs all
-  prior references, and admission resumes only after cleanup frees capacity;
 - a continuity failure followed concurrently by valid-looking rows atomically
   admits no new immediate work until fallback drains, all prior claims, holds,
   and pins clear, and continuity is proven;
@@ -793,28 +1693,83 @@ The managed recording harness must prove:
   through retry and prevents a later valid row from immediate admission;
 - transient anchor repair retries in the same row slot with bounded backoff and
   no duplicate timer, then wakes close when repair succeeds;
-- monitor teardown cancels repair timers and releases in-memory blockers while a
-  restart still begins from the held cursor;
+- channel-task restart cancels repair timers but preserves blockers in the
+  gateway-process registry while active runs survive; the replacement task
+  reattaches before live dispatch and the blocked run cannot close early;
+- full process teardown terminates corresponding runs before dropping in-memory
+  blockers, and restart begins from the held cursor before new live admission;
 - insertion immediately before empty-and-close wins and causes another cycle;
 - insertion immediately after close is rejected and starts one later turn;
 - empty queues plus a pending ticket await one signaled generation change
-  without busy polling, then deterministically drain or close;
+  without busy polling while the run releases its transcript lock through the
+  existing prompt-release fence; preparation flushes, the run reacquires and
+  merges without exposing an unadopted prepared record, then deterministically
+  drains or closes;
+- a ticket arriving after the final model stream but before close acquires the
+  released transcript lock, flushes its prepared record, and wakes the run; a
+  deterministic lock-contention fixture proves neither side waits on the other
+  and final close occurs only after lock reacquisition and a full gate recheck;
 - follow-up insertion has the same before/after-close behavior as steering;
 - model error, abort, and terminal teardown reject every still-queued steering
   and follow-up identity so no completion, replay claim, or cursor hold hangs;
 - the start-versus-steer race cannot create two active runs or lose a message;
 - queue rejection, prompt failure, abort, timeout, restart, and transcript
   commit failure retain existing replay/cursor behavior;
-- `/stop`, other commands, reactions, approvals, groups, echoes, catchup, and
-  attachment caps retain current behavior;
-- reactions never enter immediate admission or depend on ephemeral events for
-  durable replay reconciliation;
+- other commands, reaction payload shape, approvals, groups, echoes, catchup,
+  and attachment caps retain current behavior;
+- general reactions never enter active-run admission or pins, but do use the
+  source FIFO, full prefix validation, continuity, hold, and atomic non-expiring
+  committed-GUID marker before their existing ephemeral enqueue;
+- receipt-backed approval reactions use that same source gate first, then persist
+  the adopted pin before their existing idempotent approval transition and
+  receipt; a database fork before either reaction kind fences the source before
+  enqueue or approval effect;
+- the independent approval-reaction poller submits through the same source-gate
+  row/GUID slot as live delivery and never calls the approval handler directly in
+  immediate mode; live and history payloads expose byte-identical real source
+  identity, while the synthetic approval key never enters source state; a
+  live/poller race produces one adopted pin, one approval transition, and one
+  receipt;
+- a polled reaction without a finite real source row and real database GUID
+  performs no approval effect, returns rejected promptly, and does not fence a
+  healthy enrolled source;
+- a polled reaction behind an indefinitely blocked FIFO head or a fenced source
+  returns pending or rejected promptly, releases the poller's in-flight guard,
+  and later timer ticks continue to fetch and resubmit without duplicate slots;
+- a polled approval reaction below the committed cursor validates exact
+  row/GUID membership in the current full prefix, uses one receipt-backed
+  historical effect claim outside the cursor-relative pin pool, releases that
+  claim and its capacity on terminal receipt, and leaves cursor and checkpoint
+  bytes unchanged;
+- crash after historical claim persistence but before approval receipt
+  confirmation preserves the claim across startup pin cleanup, then resumes or
+  finalizes exactly once from the existing receipt and releases capacity;
+- historical claim-pool saturation leaves ordinary source dispatch running,
+  returns poll submission as pending, and recovers capacity when an existing
+  claim reaches terminal;
+- bridge history capability tests expose a tapback's real row and GUID; when
+  either is unavailable, immediate enrollment stays disabled for the account
+  rather than reporting a working poller;
+- bootstrap, incremental cursor commit, per-admission rescan, historical
+  reaction proof, catchup, and replacement matching hash the identical ordered
+  row set, including a reaction row not surfaced by live notifications;
+- reaction enqueue succeeds before the FIFO ticket releases in normal operation,
+  so later source rows do not overtake it;
+- an unresolved predecessor beyond replay TTL leaves the reaction's sparse marker
+  non-expiring; restart suppresses that exact GUID while later source rows remain
+  ordered, and contiguous cursor crossing eventually removes the marker;
+- crash after reaction marker commit but before or after enqueue may lose the
+  ephemeral event but restart never enqueues the marked GUID twice;
+- reaction marker capacity or persistence failure performs no enqueue and
+  retains its hold and FIFO ownership for retry;
+- a reaction as the first row after same-path replacement triggers generation
+  reconciliation before payload handling, and rollback pause leaves a reaction
+  row behind the cursor for later lossless catchup;
 - explicit message-tool sends retain normal tool semantics;
 - rollback durably pauses new source dispatch without cursor advancement, drains
   accepted immediate and already queued fallback work through delivery, replay,
-  and ownership cleanup, switches the same package to the current coalescer,
-  runs uncapped/unaged cursor catchup to the live row, then permits older package
-  replacement at quiescence;
+  and ownership cleanup, switches the same package to the current coalescer, and
+  runs uncapped/unaged cursor catchup to the live row without binary downgrade;
 - restart during rollback reconstructs recovery-only mode before live dispatch,
   resumes the full drain and lossless current-coalescer catchup, and never asks an
   older capped/aged implementation to consume the retained backlog;
@@ -822,8 +1777,12 @@ The managed recording harness must prove:
   live message.
 
 Latency assertions compare source observation to initial run start and require
-no fixed 7/15-second delay. The test fixture controls model/tool completion and
-the close race deterministically; it does not use sleeps as proof.
+no fixed 7/15-second delay. They include the current local source's complete
+read-only committed-prefix validation cost and report its p50 and p95 separately
+from model time. The canary remains on the current coalescer if that validation
+does not improve the deployed start latency. The test fixture controls
+model/tool completion and the close race deterministically; it does not use
+sleeps as proof.
 
 ### Rollout and rollback
 
@@ -836,10 +1795,12 @@ remote checks:
    the target Mac mini.
 3. Verify exact-byte marker, recovery snapshot, gateway health, iMessage
    capability, and read-only no-delivery evidence.
-4. Enable for one explicit canary conversation in final source-reply mode.
-5. Observe content-free admission accepted/rejected counts, duplicate-run
+4. Bootstrap and verify the existing cursor's ordered identity count/hash before
+   enabling immediate admission.
+5. Enable for one explicit canary conversation in final source-reply mode.
+6. Observe content-free admission accepted/rejected counts, duplicate-run
    count, queue depth, and p95 initial-start latency.
-6. Expand only after the canary shows no loss, duplicate reply, or ordering
+7. Expand only after the canary shows no loss, duplicate reply, or ordering
    regression.
 
 Rollback first durably enters recovery-only mode, then pauses new source
@@ -857,12 +1818,16 @@ the current coalescer and runs the new lossless cursor pager without the old
 high-water row and all catchup handlers complete replay commit. New rows that
 arrive during catchup extend the target or remain for normal live handling.
 
-Older package replacement is allowed only after this second quiescent boundary,
-when the source mode gate has no immediate or fallback handler, pending source
-reference, delivery, claim, hold, or pin and no retained cursor backlog. If
-catchup or an operator-blocked identity cannot finish, rollback remains
-configuration-only on the new package. The persisted mode, references, and pins
-use the existing plugin-state schema, so no data conversion is required.
+Rollback remains configuration-only on the deployed package after this second
+quiescent boundary. Binary downgrade is prohibited because predecessor
+transcript readers do not understand model-hidden prepared records and adoption
+markers, and the append-only transcript cannot migrate those pairs into one
+legacy user entry at the adoption position without changing history. The
+rollback fixture must prove restart on the same package reconstructs
+recovery-only mode, completes catchup, preserves every adopted turn in model
+order, and resumes the current coalescer without duplicate delivery. Package
+replacement would require a separately designed and reviewed transcript
+migration and is outside this feature.
 
 ### Review log
 
@@ -953,18 +1918,21 @@ use the existing plugin-state schema, so no data conversion is required.
 - The latest recheck found file metadata misses in-place restores, rollback
   cannot discard unresolved pins, and reactions have no durable receipt. The
   design now requires source continuity anchors, keeps recovery active through
-  rollback drain, and leaves reactions on the current path.
+  rollback drain, and keeps general reaction payloads ephemeral. Later review
+  required every reaction row to pass source continuity and prefix validation
+  before either sparse-marker enqueue or receipt-backed approval handling.
 - The next independent review found continuity was only checked at monitor
   startup, reactions still appeared after reservation in operational text, and
   per-event identity fallback could be overtaken by later immediate input. The
   design now revalidates one consistent source snapshot before every live
-  reservation, routes reactions before all immediate state, and uses a
-  source-wide ordered fallback fence.
+  reservation, including the full committed prefix when no immutable generation
+  ID exists, routes reaction effects after the source gate but outside active-run
+  steering state, and uses a source-wide ordered fallback fence.
 - The retained reviewer then found the fallback fence could reopen at
   `terminal`, before replay commit and ownership cleanup, and that the plan used
   an obsolete section contract. The fence now requires delivery/no-reply,
   successful replay commit, and release of every claim, hold, and pin. The plan
-  now uses the current `Human design` and `Agent details` structure.
+  now uses the current `Human section` and `Agent section` structure.
 - The next full review found the first fallback handler could start before
   earlier immediate work drained, rollback used a weaker predicate, and
   `blocked_unresumable` had no terminating safe disposition. The design now
@@ -976,8 +1944,9 @@ use the existing plugin-state schema, so no data conversion is required.
   paused backlog. Immediate mode now requires exact replay capability, local
   fallback persists only stable Messages source references before waiting, and
   unsupported remote bridges remain current-path-only. Rollback keeps the new
-  package installed for lossless current-coalescer catchup before any older
-  package replacement.
+  package installed for lossless current-coalescer catchup. A later review
+  prohibited older package replacement because transcript records are not
+  backward compatible.
 - The latest review found ordinary plugin-state pruning could silently evict
   pending fallback references. The design now reserves bounded non-expiring
   capacity atomically, excludes pending references from ordinary pruning, and
@@ -985,6 +1954,286 @@ use the existing plugin-state schema, so no data conversion is required.
 - A fresh complete-diff recheck found no actionable high-confidence issues.
   Implementation still must prove the planned crash, capacity, recovery,
   rollback, and integration behavior against actual APIs.
+- Terminal review then found a generation-changing trigger could still be lost
+  if its reference write failed. The design no longer uses fallback references.
+  Eligible transports guarantee row identity and lossless replay; generation
+  change persists a pre-trigger floor, while write failure is recovered by
+  detecting the mismatch and replaying from before the new database minimum.
+  Recheck then found a prior old-generation row could still be preparing when
+  the transition persisted, and stale per-event identity fallback remained. The
+  source slot now stays held until full text and immutable media are durably
+  staged with a `prepared` pin. Runtime identity-contract violations fail the
+  source closed and cannot take an independent path.
+- The next review found continuity inspection still occurred before the
+  preparation slot and cancellation tests still assumed pre-persistence queue
+  entries. Ordinary events now enter a generation-independent account FIFO
+  before continuity inspection, and only its head may rotate generation after
+  predecessors are prepared. Queued cancellation preserves and re-admits the
+  exact prepared record and pin.
+- The following review found trigger-based replay could omit earlier replacement
+  rows, while replay from the database minimum could duplicate expired history.
+  Cursor commits now maintain a non-expiring ordered-GUID prefix checkpoint.
+  Cross-generation replay starts only after an exact replacement prefix match;
+  ambiguous databases fail closed for authenticated operator reconciliation.
+- The next review found GUID-less permanent skips cannot join that checkpoint,
+  existing production cursors need a checkpoint bootstrap, and an older rollback
+  package cannot read generation-scoped cursors. GUID-less rows now block cursor
+  advancement and enablement requires an oldest-first seed scan. The intermediate
+  rollback design published a predecessor cursor, but later transcript review
+  prohibited binary downgrade entirely. Recheck
+  then found one stale repair sentence still allowed missing-GUID skips and
+  reactions bypassed generation-safe cursor work. Missing message GUID now always
+  blocks reviewed recovery. Reaction payload behavior remains unchanged, but its
+  row uses FIFO, continuity, hold, replay commit, and cursor/checkpoint ordering.
+- The next review found the row-only legacy cursor could bind to a same-path
+  replacement during bootstrap and an in-flight reaction could vanish before
+  commit. The intermediate correction required a durable GUID/row
+  database-binding witness or operator-reviewed boundary. Reactions persist a bounded non-evictable GUID
+  witness before payload handling and clear it only in atomic cursor commit.
+- Recheck found three remaining races. A generation-change trigger could keep an
+  old run blocked while waiting for that run to drain. An earlier bootstrap
+  witness could survive a database fork below the legacy cursor. A prepared
+  transcript turn could become model-visible before the correct run owned it.
+  The source gate now detaches transition-trigger blockers while retaining the
+  source hold, the intermediate bootstrap required exact cursor evidence, and
+  prepared records remain hidden from every model-history path until a durable
+  adoption marker makes the same record visible exactly once.
+- Recheck found queued successors could still block old runs during generation
+  transition, and a hold could not safely choose a database generation before
+  serialized continuity inspection. Every pre-continuity event now receives a
+  generation-neutral cursor hold. Fencing moves the trigger and all queued or
+  later unassigned events into transition ownership, removes all old-run
+  blockers, and leaves lossless catchup as the only replacement-row owner.
+- Recheck found four remaining lifecycle gaps. Stop commands bypassed generation
+  bookkeeping, neutral replacement holds could floor the old cursor, channel
+  restart could drop blockers while runs survived, and a blocked transition
+  could grow without bound. Stops now abort immediately with a durable exact-
+  target receipt while their rows use serialized continuity. Replacement holds
+  convert to a separate source fence outside old cursor accounting. Blockers
+  survive channel-task restart in gateway-process ownership. Generation fencing
+  pauses ordinary live ingestion and relies on lossless catchup.
+- Recheck found post-fence callbacks were described both as catchup-owned and as
+  new backlog entries. Only pre-fence tickets now transfer to the bounded
+  transition backlog. Post-fence data callbacks take no reservation. A
+  post-fence authenticated stop persists and performs its exact-target abort
+  without row ownership, and catchup clears that receipt when it commits the
+  matching GUID.
+- Recheck found a stop whose receipt write failed could abort one operation and
+  later replay against another without a durable target. The intermediate
+  correction required a durable target before abort and made persistence failure
+  perform no effect. The next review expanded that record to every stop effect.
+- Recheck found an active reply operation was only one of the existing stop
+  effects. The stop record is now a per-effect journal that snapshots immutable
+  reply, ACP, queue-cutoff, subagent, metadata, and acknowledgment targets before
+  any mutation. Recovery resumes unfinished idempotent effects only against
+  those targets. Later review replaced retryable acknowledgment handoff with an
+  explicit at-most-once terminal dispatch disposition.
+- Recheck found journaling could be overtaken before row ownership, one
+  implementation step still released blockers on channel restart, and transient
+  effect outcomes could change the recovered acknowledgment. The source gate now
+  installs a pre-fence hold or post-fence catchup handoff before journal
+  persistence. Channel restart retains blockers in gateway ownership. The
+  journal persists effect outcomes and freezes the final acknowledgment before
+  delivery.
+- Recheck found a control callback could race a catchup stop already executing,
+  stop hooks were outside the journal, and the reaction witness could replay an
+  event already consumed from memory. The intermediate correction gave every
+  stop dispatcher one GUID-keyed execution lease and proposed journaled hooks;
+  the later fast-path review removed hooks that iMessage never invokes. Reaction
+  handling moved toward at-most-once enqueue, then the next review added the
+  sparse marker needed while contiguous cursor advancement is blocked.
+- Recheck found full stop-journal failure still lacked a durable target boundary,
+  and a reaction behind a long-lived unresolved predecessor could outlive
+  ordinary dedupe without crossing the contiguous cursor. Stop handling now
+  writes a minimal gateway epoch/creation-cutoff fence first and blocks work
+  admission if even that fence fails. Reactions now write a bounded non-expiring
+  sparse committed-GUID marker before enqueue and retain it until contiguous
+  cursor/checkpoint crossing.
+- Recheck found restart could omit a disabled or unavailable source whose
+  minimal stop fence failed, then later retarget its stop. The gateway
+  pre-admission barrier now covers every configured and previously known
+  stop-capable source. Unavailable sources remain blocking, and an unfenced
+  pre-restart stop can only receive an authenticated durable no-effect
+  disposition, never a fresh target cutoff.
+- Recheck found a crashed journal runner had no reclaim transition and a
+  permanently unavailable source could not identify individual stop rows for
+  disposition. Journal runners now persist gateway-epoch fencing tokens and an
+  older epoch is atomically reclaimable. An authenticated source-level
+  retirement can abandon every unseen row after the last committed checkpoint,
+  but keeps that source disabled until full scan and explicit re-bootstrap.
+- Recheck found a second crash could strand the separate recovery state and
+  several journal mutations were not explicitly fenced. Initial and recovery
+  execution now share one reclaimable owned state. Older epochs and conclusively
+  dead same-epoch tokens are atomically reclaimable, and every runner-owned
+  journal mutation through terminal tombstone publication requires the winning
+  fencing token.
+- Recheck found the intermediate hook journal would add `command:stop` hooks that
+  the existing iMessage fast-stop early return never invokes. The effect journal
+  is now path-specific and excludes those hooks, preserving current iMessage
+  command behavior.
+- Recheck found pre-cutoff work could create descendants while the journal was
+  being written, and the fast path does emit generic message-received hooks.
+  Cutoff capture now atomically installs a scope creation/admission fence.
+  Existing plugin and internal message-received handlers use stable at-most-once
+  journal events, while `command:stop` hooks remain excluded.
+- Recheck found current hook registries do not expose stable per-handler
+  identities. The intermediate correction required explicit immutable unique
+  IDs, snapshot the exact set, and blocked recovery rather than relying on order
+  or function metadata. The next review added complete event coverage, payload
+  freezing, and migration.
+- Recheck found generic internal `message` handlers were omitted, hook arguments
+  were not frozen, and existing registrations lacked an upgrade path. The
+  intermediate proposal added a canonical payload and registration migration.
+- Recheck found that per-handler recovery would break the shared mutable internal
+  hook chain, persist unnecessary configuration secrets, and still leave
+  directory and legacy identity ambiguity. Hook recovery is now coarse
+  at-most-once best effort: the existing plugin dispatcher and ordered internal
+  chain are separate effects marked started before invocation. A started effect
+  is terminal; an unstarted one is skipped after process crash. No hook payload
+  or registration metadata is persisted.
+- Recheck found those dispatchers are currently fire-and-forget and must not
+  become stop-critical. Their durable `started` marker is now terminal handoff;
+  launch remains fire-and-forget and handler completion never gates stop,
+  acknowledgment, replay commit, tombstone publication, or creation-fence
+  release.
+- A fresh complete-diff recheck found no actionable high-confidence issue.
+  Implementation must still prove every planned lifecycle and crash boundary
+  against the exact APIs and cumulative integration suite after Cole approves.
+- Exact-candidate review then found the iMessage bridge cannot reconcile an
+  acknowledgment sent immediately before a crash. Stop acknowledgment now marks
+  `dispatching` before one send and never retries an unknown outcome. Recovery
+  records `unknown_after_dispatch`, accepting possible loss in that crash window
+  rather than duplicate delivery.
+- Recheck found that bare and localized stop triggers accepted by the existing
+  abort classifier could bypass the journal and enter ordinary steering. It also
+  found that a successful bridge receipt may omit an external GUID. The design
+  now routes every accepted stop trigger through the journal and treats the full
+  successful receipt, with an optional GUID, as terminal. Validation now covers
+  each trigger form, GUID-less success, timeout, and disconnect. Recheck is
+  pending.
+- Recheck found that a current-path-only bridge may emit a stop notification
+  without the stable GUID required by the new journal. The new journal and its
+  gateway recovery barrier are now limited to identity-proven sources enrolled
+  in immediate admission. Sources that permit GUID-less stop rows keep their
+  existing coalescer and fast-stop behavior together. A contract violation on an
+  enrolled source fails closed before any effect. Validation covers both cases.
+  Resolved in the final complete-diff recheck.
+- Recheck found that downstream group mention stripping could reveal a stop after
+  raw source-gate classification missed it. The design now requires one shared
+  normalization and authorization helper, in the existing downstream order, and
+  both source-gate and downstream handling consume its decision. Validation now
+  includes group-mentioned stop forms. Resolved in the final complete-diff recheck.
+- Recheck found that a stop row committed behind a predecessor held below the
+  cursor could replay after the ordinary dedupe entry expired. The full stop
+  journal now compacts after replay commit to a bounded, non-evictable,
+  non-expiring terminal tombstone. Duplicates perform no effects or
+  acknowledgment, and only contiguous cursor/checkpoint crossing clears the
+  tombstone. Validation covers restart after the predecessor exceeds dedupe TTL
+  and capacity. Resolved in the final complete-diff recheck.
+- Recheck found that older prepared input could resolve into the stopped shared
+  session only after the stop fence released, letting newer input clear the
+  session cutoff first. The stop snapshot now includes all pre-cutoff source
+  reservations and prepared identities with matching or unresolved affinity.
+  The fence remains until each is classified, matching identities receive a
+  durable no-reply disposition, and the terminal stop tombstone is published.
+  Validation covers two conversations sharing the default session. Recheck is
+  pending.
+- Recheck found that an older binary cannot preserve model-hidden prepared
+  records and adoption-marker ordering in its transcript reader. Rollback is now
+  configuration-only on the deployed package. It drains ownership, catches up,
+  restarts the current coalescer on the same package, and proves adopted turns
+  remain in model order. Binary downgrade requires a separate transcript
+  migration design and is prohibited here. Resolved in the final complete-diff recheck.
+- Recheck found that a crossed historical stop could replay after database
+  replacement and mutate current work before continuity classified it. Journal
+  durability no longer authorizes effects. A fast consistent snapshot must prove
+  unchanged generation and a row after the committed prefix, or effects wait for
+  reconciliation. A GUID inside the matched prefix becomes
+  `historical_no_effect` with no hook, abort, metadata, or acknowledgment.
+  Validation covers replay after both tombstone and ordinary dedupe removal.
+  Resolved in the final complete-diff recheck.
+- Recheck found that a live stop tombstone above a blocked cursor remained keyed
+  to the old generation and could be missed by replacement catchup.
+  Reconciliation now matches every live tombstone by stable GUID after the exact
+  committed prefix and atomically rekeys it before catchup classification.
+  Missing, duplicate, or before-prefix matches fail closed. Validation covers
+  replacement after ordinary dedupe expiry while the tombstone remains live.
+  Resolved in the final complete-diff recheck.
+- Recheck found that live reaction markers had the same generation/row migration
+  gap and could enqueue again after replacement. Pre-catchup reconciliation now
+  migrates both reaction markers and stop tombstones by stable GUID while
+  preserving capacity and suppression. Missing, duplicate, or before-prefix
+  matches fail closed. Validation covers replacement after ordinary dedupe
+  expiry while a reaction marker remains above a blocked cursor. Recheck is
+  pending.
+- Recheck found that close could wait for a pending admission ticket while still
+  holding the session transcript lock needed to flush that ticket's prepared
+  record. The wait now captures gate generation, releases the lock through the
+  existing prompt-release fence, reacquires and merges transcript changes, then
+  rechecks before close. Prepared records remain hidden until adoption.
+  Validation deterministically covers arrival after the final model stream and
+  proves no lock cycle. Resolved in the final complete-diff recheck.
+- Recheck found that even an exact matching GUID at a nonempty legacy cursor
+  cannot prove the ordered prefix below it. Automatic bootstrap now requires a
+  preexisting full-prefix commitment or immutable database identity recorded
+  before cursor movement. The current row-only deployment requires an
+  authenticated operator-reviewed initial boundary. Validation preserves the
+  cursor-row GUID while changing an earlier row and requires immediate mode to
+  remain disabled. Resolved in the final complete-diff recheck.
+- Recheck found one stale acceptance criterion still allowed automatic bootstrap
+  from that cursor-row GUID. It now uses the same full-prefix,
+  immutable-identity, or operator-reviewed-boundary requirement and explicitly
+  rejects a lone boundary GUID. Resolved in the final complete-diff recheck.
+- Recheck found that post-bootstrap boundary anchors can also survive a database
+  fork that changes an earlier committed row. Every admission on the current
+  source now recomputes the complete ordered GUID count/hash through the cursor
+  in one read-only snapshot before any model, tool, stop, or reaction effect.
+  Only a source contract with a genuine immutable generation ID may skip that
+  scan. Validation preserves all anchors while changing an earlier row and
+  requires immediate admission to fence. Resolved in the final complete-diff recheck.
+- Recheck found stale lifecycle text that could preserve early reaction handling
+  ahead of source continuity. Every reaction row now passes FIFO and complete
+  prefix validation before any effect. General reactions then persist the sparse
+  marker and enqueue ephemerally; receipt-backed approval reactions persist an
+  adopted pin before their existing idempotent transition. Validation forks the
+  database before each kind and requires fencing before effect. Recheck is
+  pending.
+- Recheck found the independent approval poller still discovered history and
+  called the approval handler outside ingress. In immediate mode the poller now
+  submits a finite-row, stable-GUID candidate through the shared source slot.
+  Live and polled delivery join one owner before adopted-pin persistence or
+  approval effect, and discovery alone is never success. Validation covers a
+  database fork, an older FIFO blocker, and a live/poller race. Recheck is
+  pending.
+- Recheck found that the poller candidate still used a synthetic GUID that
+  differs from the live database GUID, and that awaiting FIFO ownership could
+  hold the poller's in-flight guard forever. History must now expose the real
+  reaction row/GUID, which is the only source identity. Poll submission returns
+  completed, pending, or rejected promptly, and missing poll identity does not
+  fence a healthy source. A verified historical row uses a receipt-backed effect
+  claim without changing the cursor. The same pass normalized the plan to the
+  current Human section and Agent section contract. Validation covers identical
+  live/poll identity, continued timer ticks behind an indefinite blocker,
+  historical rows below the cursor, and one shared prefix enumeration. Recheck
+  is pending.
+- Recheck found that a historical approval below the cursor still used an
+  ordinary cursor-relative pin. It could never cross again, leaked bounded pin
+  capacity during normal operation, and could be deleted by startup cleanup
+  before receipt recovery. Historical approval now uses a separate effect-claim
+  class and capacity pool. Receipt confirmation releases it without cursor
+  movement, restart reconciles it against the existing approval receipt, and
+  ordinary pin sweeps ignore it. Enrollment also requires proof that bridge
+  history exposes the real reaction row/GUID. Validation covers crash recovery,
+  terminal capacity release, saturation isolation, and unsupported bridge
+  capability. Resolved in the final complete-diff recheck.
+- The retained reviewer rechecked the complete stable diff after every poller
+  and historical-claim correction. It found no actionable issues. It confirmed
+  the current plan contract, one real reaction source identity, non-blocking
+  poll submission, shared prefix enumeration, separate historical claim
+  lifecycle, capacity release, and bridge capability gate. Residual proof for
+  the real bridge response, stop latency, and gateway-wide restart barrier stays
+  in implementation validation. The documentation candidate is ready for
+  exact-commit terminal review.
 - Landing is intentionally held until cron-reader PR #56 merges; no public head
   movement will occur before coordination clears.
 
