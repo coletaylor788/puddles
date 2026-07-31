@@ -1,8 +1,8 @@
-# Plan 030: Secure Apple Notes sharing
+# Secure Apple Notes shared access
 
-**Status:** Design only, awaiting explicit prototype approval
-**Issue:** None
-**Last updated:** 2026-07-30
+**Status:** Design complete, ready for prototype-only approval review
+**Issue:** [#74](https://github.com/coletaylor788/puddles/issues/74)
+**Last updated:** 2026-07-31
 
 ## Human section
 
@@ -10,49 +10,45 @@
 
 A dedicated Apple account receives shared notes from people who already have an
 authenticated direct-message binding. Automatic intake starts only when the
-messaging service proves that the final complete direct-message composition has
-exactly one row, and that row contains only one supported collaboration link
-with no preview or companion content. A timer cannot prove completeness.
-Sharing then uses a short confirmation exchange in that same conversation. The
-invitation stays tied to the completion proof through acceptance and reading. A
-later companion item cancels or quarantines the action and blocks the note from
-reads. The system accepts the invitation through a separate Notes service,
-records the note and the sender's grant, then exposes bounded list and read
-tools. Version one cannot edit notes because a whole-body write could overwrite
-a collaborator's newer changes.
+messaging service proves that one final direct-message composition has exactly
+one complete row containing only one supported collaboration link. Previews,
+attachments, companion rows, mixed text, and timer-based guesses all fail
+closed. A later contradiction cancels or quarantines the action and blocks the
+note from reads.
 
-Access follows the existing direct-message relationship. The top tier can read
-every active grant. The household tier can read household and friend grants.
-Each friend can read only notes granted through that friend's exact sender
-partition. A forwarded link does not carry a higher trust level because the
-authenticated conversation that receives the link defines the grant.
+Access follows the authenticated conversation. The top tier can read every
+active grant. The household tier can read household and friend grants. Each
+friend can read only notes granted through that friend's exact sender
+partition. A forwarded link cannot raise trust because the receiving
+conversation defines the grant. Version one is read-only because Notes does not
+offer a conflict-safe whole-body write.
 
-The design keeps message intake, model work, Apple applications, policy, and
-note acceptance in separate security domains. It also gives each friend
-separate conversation and execution state. Durable journals, bounded attachment
-spools, replay barriers, and careful recovery keep crashes and rollback from
-repeating actions or losing control records. After a crash, even a complete
-staged attachment copy is deleted, confirmed absent, and copied again instead of
-being promoted. Apple does not provide supported interfaces for several
-required invitation and identity operations, so those facts must be proven with
-disposable accounts and recording adapters before implementation is approved.
+Message intake, model work, Apple applications, policy, and note acceptance stay
+in separate security domains. Each friend also gets separate conversation and
+execution state. Durable journals, replay fences, bounded attachment spools, and
+fail-closed recovery prevent repeated actions and stale state after crashes or
+rollback. Even a complete staged attachment is deleted and recopied after a
+crash. Unsupported Apple and messaging behavior must be proven with disposable
+accounts and recording adapters before implementation can be approved.
 
 ### Status
 
-The provider-neutral design is complete for review. It defines provider-proven
-single-row proposal admission, read-only access, grant rules, invitation
-confirmation, service isolation, durable recovery, attachment limits, relay
-controls, validation, rollout, and rollback.
+The provider-neutral design is complete and ready for review for prototype-only
+approval. It covers read-only grants, provider-proven invitation intake,
+isolated acceptance, bounded reads, service and friend isolation, durable
+recovery, validation, rollout, and rollback.
 
-No prototype or implementation work is approved or started. A prototype-only
-approval can authorize disposable proof work. Its results must update this
-design before a separate approval can authorize implementation.
+No prototype or implementation work has started. Initial approval may authorize
+only disposable proof work. The evidence must update this design before a
+separate approval can authorize implementation.
 
 ## Agent section
 
 ### State
 
 - Lifecycle state: design only.
+- Repository source of truth:
+  `docs/plans/todoist-74-apple-notes-shared-access.md`.
 - Approval gates: first stop for explicit disposable prototype approval. After
   prototype evidence updates this plan, stop again for explicit implementation
   approval.
@@ -728,6 +724,12 @@ fallback.
   composition state authoritative for every read, added its disposable
   provider-evidence prototype gate, and synchronized both fail-closed recovery
   decisions into the Human section.
+- 2026-07-31: The complete reviewed design moved from
+  `docs/plans/030-apple-notes-integration.md` to the reserved issue plan path.
+  The Human and Agent sections now identify that path as the only repository
+  source of truth and keep the two-stage approval boundary unchanged. An
+  independent complete-diff review found no material migration or design
+  issues.
 
 ### Checklist
 
@@ -748,7 +750,9 @@ fallback.
   recovery, rollout, and rollback behavior.
 - [x] Add denial, crash, replay, isolation, quota, recovery, rollback, and
   prototype validation scenarios.
-- [x] Complete final independent review of the documentation diff.
+- [x] Complete final independent review of the design content.
+- [x] Complete independent review of the plan path migration and synchronized
+  candidate.
 - [ ] Receive explicit approval for disposable prototype-only work.
 - [ ] Complete prototype gates and update this design with the evidence.
 - [ ] Receive separate explicit approval to begin implementation.
