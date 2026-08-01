@@ -1,6 +1,6 @@
 # Use OpenClaw's built-in iMessage input bucket
 
-- **Status:** Plain-language rewrite ready for terminal review
+- **Status:** Plain-language rewrite complete and landed
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-31
 - **Owner:** Cole Taylor
@@ -46,9 +46,10 @@ link, caption plus image, text plus link plus final text, standalone links and
 images, and separate messages that must stay separate.
 
 This update changes the plan only. It explains the built-in OpenClaw path and
-the steering limit in plain language. The plan contract and independent
-complete-diff review are clean. Runtime code, configuration, and production
-stay unchanged.
+the steering limit in plain language. The plan contract, independent review,
+terminal review, and remote checks are clean. PR #81 is merged, and the update
+is ready for Cole's review. Runtime code, configuration, and production stay
+unchanged.
 
 ## Agent section
 
@@ -86,8 +87,8 @@ Production runs OpenClaw `2026.7.1-2` at revision
 `~/.openclaw/deploy-snapshots/20260730T104410Z-0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`.
 
 PR #76 landed the final first-row link and image regressions. PR #77 landed the
-previous closeout plan. This revision only replaces that plan with clearer
-language.
+previous closeout plan. PR #81 landed this clearer explanation as merge commit
+`cd89270`.
 
 ### Scope and acceptance criteria
 
@@ -293,6 +294,8 @@ There is no message-data or persistent-state migration.
   responsibility corrections.
 - 2026-07-31: Terminal review clarified one last ownership detail. OpenClaw
   provides `flushKey`; the patch only decides when to call it.
+- 2026-07-31: Exact commit `66490ee` passed terminal review. All remote checks
+  passed, and PR #81 landed the plain-language rewrite as `cd89270`.
 
 ### Checklist
 
@@ -309,6 +312,5 @@ There is no message-data or persistent-state migration.
 
 - [x] Run the plan and issue writing contract.
 - [x] Complete independent review of the full rewrite.
-- [ ] Complete exact-commit terminal review.
-- [ ] Land the reviewed rewrite on public `main`.
-- [ ] Return the Todoist task for Cole's review without completing it.
+- [x] Complete exact-commit terminal review.
+- [x] Land the reviewed rewrite on public `main`.
