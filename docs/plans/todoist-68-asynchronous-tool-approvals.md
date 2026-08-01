@@ -9,1416 +9,1291 @@
 
 ### Design
 
-Some tool calls can cause serious or irreversible effects. Sending email is the
-first example. The agent should be able to prepare such a request, but it should
-not be able to carry it out until Cole has seen the exact action and approved it.
-The boundary must still hold against malicious prompts, alternate tools, and
-broad local gateway clients. OpenClaw's current approval feature is not enough:
-it blocks the active call, keeps short-lived state in memory, can approve on
-timeout, and shows plugin-written text rather than the exact final action.
-Plugins also share the gateway process, so they cannot safely hold a credential
-that the gateway must never use.
+Some agent tools can cause serious or irreversible effects. Sending email is the
+first example. The agent should be able to prepare an email, but the model should
+not be able to send it until Cole has reviewed the exact transaction on his
+iPhone and approved it.
 
-The recommendation is an on-demand native macOS authority and review app with no
-network listener or hosted web service. A separate protected identity owns the
-records, staged files, policy, provider credentials, execution, and recovery.
-The gateway may submit a request through authenticated local communication, but
-it cannot read or edit the record, approve it, or execute it. Every other route
-to the protected effect is removed. The gateway must also run outside Cole's
-login identity. Otherwise code in that same graphical session could interfere
-with the review experience, and the stronger isolation claim would not be true.
+The important trust boundary is between the model-controlled sandbox and the
+trusted gateway on the Mac. The sandbox is untrusted. The gateway process and
+the logged-in macOS account that runs it are trusted. Provider credentials,
+Keychain access, authenticated browser state, host tools, and the actual email
+executor stay outside the sandbox. The sandbox gets only a narrow submission
+tool. It cannot call the provider directly or select another route around
+approval.
 
-The protected tool returns "pending approval" immediately. The authority
-resolves defaults, snapshots attachment bytes, and stores an immutable version
-of exactly what would run. Notification Center alerts Cole and opens the signed
-native review app. The notification itself cannot decide. The app shows the
-original arguments beside every final recipient, option, header, value, and
-attachment hash. Text is inert, and active attachment content never enters the
-signing process. Any preview uses a separate isolated viewer.
+The submission tool returns a durable pending result immediately. It does not
+hold the agent turn open. The trusted gateway resolves every default, snapshots
+attachment bytes, applies non-overridable policy, and stores an immutable record
+of the exact operation. The record includes the original arguments, every final
+recipient and option, the complete body, attachment metadata and hashes, its
+expiry, and the originating agent, session, task, turn, and tool call.
 
-Cole approves or denies inside the app. Touch ID or another enrolled owner
-credential unlocks a protected key for one fresh signature over the exact
-record, final values, decision, and expiry. Device unlock or identity checking
-alone is not approval. There is no permanent allow option. Missing, expired,
-changed, duplicated, or invalid decisions fail closed. Approval also cannot
-override secret or content policy. If approved, the authority executes only the
-stored values within a short window and reconciles any uncertain provider
-outcome rather than blindly retrying.
+The gateway then sends a canonical approval review to Cole through iMessage.
+This reuses the Messages account already synchronized between the Mac and
+Cole's iPhone. Large reviews are split into numbered parts. Every part carries
+the same record identifier and digest. Only after all detail parts have been
+sent does the gateway send one fixed final decision bubble. Model text cannot
+choose the recipient, wording, decision symbols, approver list, or final target.
 
-The authority records the terminal result before returning it to the originating
-agent. Email results include sent or failed state plus a provider receipt,
-provider time, or reconciliation evidence. Denial, expiry, failure, and unknown
-execution are equally explicit. A stable signed tool-result event is retried
-until the correct transcript stores it and one resumed agent turn durably
-continues beyond the pending tool. Busy sessions wait. Missing sessions fall
-back to the owning agent and a protected inbox. Duplicate delivery cannot repeat
-the provider effect or resume the workflow twice. OpenClaw carries the event but
-is not its source of truth.
+Cole reads the review in Messages on his phone. A thumbs-up Tapback on the final
+decision bubble approves once. A thumbs-down Tapback denies. The Tapback is the
+primary experience because Messages attaches it to one exact message and the
+current OpenClaw iMessage support already correlates reactions with the
+outbound message identifier. The final bubble warns that the first accepted
+Tapback is final. Changing or removing it later cannot reverse the decision.
 
-iMessage remains a fixed best-effort notice and quick-deny path. It never
-approves because a reply or tapback does not prove review of the exact record.
-The deny-only path may stop work but cannot authorize it. Remote approval is not
-part of the first version. Telegram long polling and Slack Socket Mode avoid
-inbound ports, but they expose approval metadata to another provider and replace
-the local signing boundary with provider account trust. Apple push normally
-requires a mobile app and push-provider lifecycle. Any remote mode therefore
-needs a separate design decision.
+An explicit inline reply to that same final bubble is the fallback for someone
+who wants a more deliberate action. It includes a short code from the fixed
+decision bubble. A general reply, a reply to another message, or a bare yes is
+not a decision. This fallback needs a small extension because the current
+generic approval reply is tied to an approval identifier, not the exact replied
+message.
 
-Trusted local software is still unavoidable. It must preserve asynchronous
-state, protect credentials, execute approved work, reconcile uncertain results,
-and resume the agent after restart. The native design removes DNS, TLS, reverse
-proxy, firewall, and hosted-service work, not that local responsibility.
+The iPhone does not connect to a new service on the Mac. Apple carries the
+iMessage and synchronizes the Tapback or reply back to Messages on the Mac. The
+trusted gateway polls the existing local Messages transport and validates the
+configured approver identity, direct conversation, exact final message
+identifier, record and digest, decision mapping, freshness, and pending state.
+No new TCP or UDP listener, public endpoint, custom mobile app, DNS name, TLS
+certificate, reverse proxy, or firewall opening is introduced.
 
-Email also needs a careful credential cutover. The gateway becomes exactly
-read-only. Routine reversible mailbox triage moves to a separate service with a
-closed interface and its own identity and lifecycle. Its provider token may
-technically permit sending, so compromise of that service or token is outside
-the guarantee. The narrow interface, not the provider scope, prevents normal
-triage requests from sending. The replacement must work before the old gateway
-credential is revoked, and rollback never restores send-capable gateway access.
+The gateway also prevents model-facing message tools from editing, unsending,
+reacting to, or replying to any active review bubble. Before a decision is
+accepted, it verifies that every displayed part still matches the stored
+canonical text. A model can imitate the visible wording, but that message has no
+registered review identifier and cannot authorize execution.
+
+The first valid decision wins in one database transaction. Missing, late,
+ambiguous, replayed, changed, removed, wrongly addressed, or unauthorized
+responses cause no execution. There is no permanent approval. Approval also
+cannot override secret, content, attachment, or destination policy.
+
+If approved, the trusted executor claims the stored record and sends exactly
+those values. It uses provider idempotency and reconciliation. An uncertain
+provider outcome becomes an explicit unknown result instead of a blind retry.
+For email, success records the provider receipt or message identifier and
+provider timestamp.
+
+The terminal result is part of the tool workflow, not just a notice to Cole.
+The gateway records sent, denied, expired, failed, or execution unknown before
+delivery. It emits a trusted result to the originating agent and keeps
+redelivering until the correct transcript records it and one resumed agent turn
+durably acknowledges it. A busy session waits. A missing session uses a
+protected task inbox and the owning agent. Stable identifiers prevent a second
+provider effect or a second continuation.
+
+This design accepts a privacy tradeoff. The complete approved email values are
+sent through iMessage and may remain in Messages history and synchronized
+storage. Secret policy rejects credentials and tokens before any review message
+is sent. Attachment bytes are never sent or rendered for approval. The phone
+shows only immutable attachment names, types, sizes, hashes, and scan results.
+If that is not enough to make a safe decision, the request is denied or allowed
+to expire.
+
+OpenClaw's existing approval feature remains useful transport, but it is not the
+complete solution. Its current manager waits on short-lived in-memory state,
+loses pending approvals on restart, and renders a generic tool request rather
+than a durable final execution envelope. The proposal keeps its iMessage
+allowlist, exact message correlation, reaction polling, and delivery code, then
+adds durable records, canonical review, execution, reconciliation, and agent
+continuation.
 
 ### Status
 
-This is a design-only proposal. It changes no runtime, credential,
-configuration, notification, or external service. The no-listening-port native
-architecture and durable return to the originating agent are complete and ready
-for Cole to review. Implementation remains blocked until Cole explicitly
-approves it.
+This is a design-only proposal. The trusted-gateway and iPhone approval
+architecture is complete, independently reviewed, and ready for Cole to review.
+It changes no runtime, credential, configuration, message, account, or external
+tracker. Implementation remains blocked until Cole explicitly approves the
+design.
 
 ## Agent section
 
 ### State
 
-The provider-neutral design is complete and ready for review. It recommends an
-on-demand native macOS authority and review app instead of an HTTPS approval
-service. The approval subsystem opens no TCP or UDP listener. Notification
-Center alerts the owner, authenticated local IPC carries authority-signed
-records, and a per-decision protected signature authorizes one approve or deny
-action.
+The provider-neutral design is complete and ready for review. It replaces the
+prior native review application with a durable approval subsystem inside the
+trusted OpenClaw gateway. All
+model-controlled execution remains inside the untrusted sandbox. The trusted
+gateway and its logged-in macOS account own approval state, Messages transport,
+provider credentials, execution, reconciliation, audit, and continuation.
 
-Terminal provider results are first-class. The authority persists the outcome
-and evidence, redelivers a signed sequenced event until OpenClaw records it, and
-requires a resumed agent turn to acknowledge consumption. This preserves
-asynchronous continuation without trusting OpenClaw transport as authority.
+The primary phone decision is an allowlisted iMessage Tapback on one exact final
+decision message. A thumbs-up maps only to `allow-once`; a thumbs-down maps only
+to `deny`. An exact inline reply with `APPROVE <short-code>` or
+`DENY <short-code>` is the deliberate fallback. It must reply to the same final
+message GUID. Generic `/approve` commands are not accepted for protected tools.
 
-Public tracking is on issue 68. External task tracking points to that issue and
-remains open for review. Superseded non-public tracking is retired. This plan
-does not implement, deploy, notify, send, mutate an account, or change external
-tracking.
+This revision adds no approval-specific network listener or separately hosted
+service. It reuses the existing trusted gateway and local Messages transport.
+Messages and provider connections still make their normal outbound
+connections, and the existing gateway may retain listeners required by its
+unrelated runtime. The precise claim is that this feature adds no TCP or UDP
+listener, public route, DNS, TLS, reverse proxy, or firewall opening.
+
+Public tracking is on issue 68. The work is design-only. It does not implement,
+deploy, send, approve, execute, mutate an account, merge the pull request, or
+change external task tracking.
 
 ### Scope and acceptance criteria
 
 The proposed implementation includes:
 
-- a registry of serializable tools that require deferred approval;
-- gateway adapters under a non-login OS identity with separate submit,
-  deny-only, and fixed mailbox-triage capabilities;
-- an on-demand approval authority and executor under a different protected OS
-  identity;
-- a root-owned, signed native review app in the owner's login session;
-- launchd-managed activation and authenticated XPC or Mach-service IPC;
-- a dedicated transactional database and immutable staging store;
-- exact display of raw arguments and resolved execution values;
-- one-time protected signatures for approve, deny, re-arm, renewal, and
-  cancellation;
-- Notification Center alerting and iMessage best-effort notice and quick deny;
-- request deduplication, quotas, expiry, execution freshness, reconciliation,
-  audit, retention, durable agent continuation, and rollback; and
-- a narrow independently managed mailbox-triage service needed to remove
-  send-capable Gmail access
-  from the gateway.
+- a durable registry of serializable protected tools;
+- a narrow sandbox-facing submission tool that returns `pending`;
+- a trusted in-gateway broker, executor, reconciler, and continuation worker;
+- a transactional SQLite database and immutable attachment staging;
+- non-overridable secret, content, destination, and attachment policy;
+- canonical full-value iMessage review through a fixed owner route;
+- digest-linked multipart delivery and one final decision GUID;
+- allowlisted Tapback approval or denial plus an exact-reply fallback;
+- atomic first-decision handling, expiry, quotas, deduplication, leases,
+  idempotency, reconciliation, retention, audit, and recovery;
+- terminal provider evidence and exactly-once semantic agent continuation; and
+- closed read-only and reversible mailbox capabilities that never expose a raw
+  provider client or credential to the sandbox.
 
 This proposal does not include:
 
 - implementation, deployment, credential changes, notifications, or test sends;
-- an HTTPS approval page, DNS name, TLS certificate, reverse proxy, or opened
-  firewall port;
-- a TCP or UDP listener for the approval subsystem;
-- a remote approval channel in version 1;
-- gateway-local operator, admin, or approval rights as decision authority;
-- model-written approval messages or model polling as a source of truth;
-- permanent approval for protected effects;
-- approval as an override for secret or content policy; or
-- generic replay of arbitrary tools that depend on live closures, streams,
-  browser state, or other non-serializable context.
+- a native approval app, Notification Center decision UI, Touch ID decision,
+  Secure Enclave decision key, XPC authority, or separate OS identity;
+- a hosted page, public or private web service, DNS name, TLS certificate,
+  reverse proxy, or opened firewall port;
+- a new TCP or UDP listener;
+- a custom iOS app or direct APNs integration;
+- group, SMS, wildcard, model-selected, or `allow-always` approval;
+- approval from generic chat text, a model-authored message, or a reaction to
+  any message other than the final registered GUID;
+- inline waiting, live closures, or in-memory-only pending state;
+- approval as an override for policy; or
+- generic replay of tools that depend on live streams, browser state, or other
+  non-serializable context.
 
 #### Acceptance criteria
 
 A future implementation is acceptable only when it:
 
-1. Keeps the gateway, authority, mailbox-triage service, and graphical owner
-   session in separate trust roles. The gateway, authority, and triage service
-   use different OS identities, and the gateway identity is not Cole's login
-   identity.
-2. Keeps protected credentials, records, staged data, policy, decisions,
-   execution, and reconciliation under the authority identity. The triage
-   service owns only its separate triage credential and fixed reversible state.
-   That credential is protected as provider-level send-capable when no narrower
-   provider scope exists.
-3. Removes every alternate protected path from the agent and gateway, including
-   direct credentials, raw APIs, unrestricted network clients, browser
-   automation, shell access, and compatibility fallbacks.
-4. Allows unapproved mailbox triage only through an independently authenticated
-   service with fixed reversible archive, read-state, star, importance, and
-   configured user-label actions.
-5. Rejects host-local OpenClaw operator, admin, or approval rights as authority
-   for a protected decision.
-6. Starts the authority and review app on demand and adds no approval-subsystem
-   TCP or UDP listening socket, DNS, TLS, reverse proxy, or firewall rule.
-7. Uses mutually authenticated local IPC with code-signing, UID, protocol,
-   capability, size, sequence, and replay checks for submit, notify, deny-only,
-   owner, resume, and triage roles.
-8. Gives the gateway's approval path only a submit capability. A separate
-   deny-only role may move pending work to denied, and a separate triage role may
-   invoke only fixed reversible mailbox operations. Neither role can read
-   approval records, approve, enroll keys, cancel, re-arm, execute protected
-   work, or acknowledge results.
-9. Shows raw model arguments beside the complete versioned execution envelope,
-   including resolved defaults, destinations, headers, options, and attachment
-   hashes.
-10. Binds every decision signature to the authority-signed record, envelope
-    digest, decision, owner, expiry, and one-time challenge.
-11. Uses a Secure Enclave or equivalently protected non-exportable key with a
-    fresh owner-authentication prompt for every signing operation. A successful
-    LocalAuthentication check alone is not a decision.
-12. Makes Notification Center a navigation surface only. No notification button,
-    reply, dismissal, or unlock can approve or deny.
-13. Returns from the original tool call immediately with a durable pending
-    result and no live promise or blocked agent turn.
-14. Permits only one signed approval or denial, with all timeout and failure
-    cases defaulting to no execution.
-15. Deduplicates repeated requests when a stable trusted root-task identity is
-    available and always enforces owner, session, tool, submitter, and global
-    quotas.
-16. Accepts attachment bytes, never privileged reads of caller-supplied paths.
-17. Executes only the stored envelope, rechecks staged bytes immediately before
-    the provider call, and respects an absolute execution deadline across
-    recovery.
-18. Uses provider idempotency or reconciliation to prevent duplicates and enters
-    `execution_unknown` rather than retrying an ambiguous effect.
-19. Stores a terminal result before delivery. For email, `sent` includes the
-    provider message or receipt ID and provider timestamp. Failure includes a
-    content-free error class and reconciliation evidence.
-20. Delivers an authority-signed, stable, sequenced tool-result event through a
-    durable event-keyed continuation outbox. It redelivers until transcript
-    receipt and a completed or durably checkpointed resumed turn are recorded.
-21. Resumes the suspended workflow beyond the protected tool exactly once,
-    recovers every incomplete handoff after a crash, queues behind a busy
-    session, and uses a defined fallback when the original session is missing.
-22. Keeps full approval bodies and attachments on the protected host, not in
-    Notification Center, iMessage, or third-party remote channels.
-23. Never renders active attachment content in the signing process. Any preview
-    runs in a separate sandbox with no signing key, decision IPC, credential, or
-    network access.
-24. Uses continuous time within one boot and fails closed across reboot,
-    backward clock movement, or uncertain downtime so no expiry, challenge,
-    cooldown, execution window, or preview capability can be extended.
-25. Keeps secret and content policy non-overridable even after approval.
-26. States the residual boundary honestly. It does not claim protection after
-    root compromise, authority compromise, owner-login compromise, Accessibility
-    control of the review app, or arbitrary code execution in Cole's GUI session.
+1. Treats all model-controlled sandbox code and content as untrusted while
+   treating the gateway process and its logged-in macOS account as trusted.
+2. Keeps provider credentials, Keychain access, authenticated browser state,
+   provider network clients, host tools, approval records, and executors outside
+   the sandbox.
+3. Proves that every sandbox profile and invocation surface either uses the
+   protected submission tool or lacks every credential, session, executable,
+   permission, host path, and provider client needed to create the effect.
+4. Gives the sandbox only closed schema submission and read-only status. It
+   cannot choose the approval route, renderer, wording, approver, decision
+   mapping, message target, execution adapter, credential, or continuation.
+5. Returns `pending` immediately and persists the complete request before the
+   original turn can end. No approval depends on a live promise or in-memory
+   waiter.
+6. Stores raw arguments beside a versioned resolved execution envelope,
+   immutable attachment bytes, hashes, policy result, origin correlation, and
+   expiry.
+7. Sends every permitted raw and resolved parameter through one canonical
+   direct iMessage review. Values are complete, inert, unambiguous, and never
+   silently truncated or redacted.
+8. Splits an oversized review only within fixed limits. Every part has the
+   record ID, envelope digest, part number, part count, and expiry.
+9. Sends and durably records all detail-part GUIDs before sending the fixed
+   final decision bubble. It reserves every detail GUID from model-facing
+   Messages actions as each send completes. Partial, reordered, duplicated,
+   unknown, or GUID-less delivery never registers a positive decision target.
+10. Registers exactly one final GUID, direct conversation, account, configured
+    approver set, envelope digest, decision mapping, and expiry in durable state.
+11. Requires an explicit non-wildcard approver allowlist, a direct iMessage
+    route, and the expected iMessage service. Groups, SMS, and wildcard
+    approvers fail closed.
+12. Accepts only thumbs-up for `allow-once` and thumbs-down for `deny` on the
+    final GUID. Every other reaction is ignored.
+13. Optionally accepts only an exact inline reply to that final GUID with the
+    matching one-time short code and one closed decision word.
+14. Validates normalized approver handle, account, direct conversation, target
+    GUID, record, digest, current state, freshness, and allowed decision before
+    one atomic transition.
+15. Makes the first valid decision final. Reaction changes, removals, duplicate
+    events, delayed sync, replay, and a second decision cannot alter it.
+16. Serializes the complete review-bundle send and model-facing Messages
+    actions on one account lane. It durably reserves every concrete detail and
+    final GUID from model actions before releasing that lane, then verifies all
+    current message text against stored hashes and arms owner decisions only
+    after every reservation commits. Recovery completes this ordering before
+    model-facing Messages actions resume.
+17. Denies every model or sandbox request to react, reply, edit, unsend, or
+    otherwise act on any reserved review part or active decision target. It
+    re-verifies every review part immediately before accepting a decision. An
+    edit, unsend, missing part, text mismatch, or unregistered lookalike fails
+    closed.
+18. Defaults every missing, ambiguous, stale, unauthorized, malformed,
+    unavailable, or expired condition to no execution.
+19. Allows no permanent approval. Approval cannot waive secret, content,
+    destination, attachment, or provider policy.
+20. Accepts attachment bytes and logical metadata, never a caller-controlled
+    host path. It rechecks staged bytes and hashes immediately before execution.
+21. Never sends attachment bytes through Messages or renders active attachment
+    content in an approval surface. Unsupported review needs fail closed.
+22. Executes only the stored envelope within a short absolute window and under
+    a durable lease.
+23. Uses provider idempotency or reconciliation. An ambiguous provider outcome
+    becomes `execution_unknown` and never causes a blind resend.
+24. Commits one terminal result before any result event. Email `sent` includes
+    the provider message or receipt ID and provider timestamp.
+25. Emits only `sent`, `denied`, `expired`, `failed`, or `execution_unknown` as
+    the trusted terminal tool result. Errors are bounded and content-free.
+26. Persists a stable sequenced result event and continuation outbox keyed by
+    the original task, tool call, and approval lineage.
+27. Redelivers until the intended transcript stores the event and one resumed
+    turn completes or writes a durable continuation checkpoint.
+28. Queues behind a busy session, uses a protected task inbox when the session
+    is missing or replaced, and starts no more than one semantic continuation.
+29. Reconciles every crash window. If a resumed turn may have crossed another
+    side-effect boundary without a durable commit, it enters
+    `continuation_unknown` and does not replay blindly.
+30. Adds no approval-specific TCP or UDP listener, public endpoint, mobile app,
+    webhook, DNS, TLS, reverse proxy, or firewall rule.
+31. Keeps automated and live-target validation read-only or behind
+    deny-by-default recording adapters. It never sends a real message or mutates
+    a live account during tests.
+32. States the residual boundary honestly. Host, gateway-account, Messages
+    account, provider-account, Keychain, root, and device compromise are outside
+    the guarantee. This design protects against the untrusted model and sandbox,
+    not a compromised trusted host.
 
 ### Architecture and decisions
 
-#### Threat model and trust boundary
+#### Threat model and boundary
 
-The protected boundary assumes malicious model output, prompt injection,
-repeated and varied requests, malformed payloads, stale decisions, gateway
-restart, gateway-account compromise, and access to every tool exposed in the
-agent profile. It prevents those conditions from using the protected credential
-or creating a protected effect without one owner-signed decision over an
-authority-owned immutable envelope.
+The attacker controls model output, prompts, tool arguments, attachment
+contents, sandbox processes, repeated submissions, and timing. The design also
+handles stale or replayed Messages events, delayed phone synchronization,
+gateway restart, host reboot, partial delivery, process interruption, provider
+timeouts, and session replacement.
 
-The claim requires the gateway to run outside Cole's login session. A process
-with arbitrary code execution as the same logged-in user can target application
-state, present deceptive windows, invoke Accessibility, or interfere with the
-review experience. Code signing, key ACLs, and per-operation Touch ID reduce
-risk but do not turn same-user processes into a hard security boundary. Root,
-authority-account, triage-account or triage-token, and owner-login compromise
-remain outside the guarantee.
+The gateway process and logged-in macOS account are trusted. This clarification
+removes the need for a separate approval OS identity, signed native review app,
+Touch ID decision key, or XPC authority. It also narrows the security claim.
+Arbitrary code execution as the trusted account, control of Messages or the
+owner's phone, root compromise, provider-account compromise, and theft of a
+host credential are outside the guarantee.
 
-Trusted OpenClaw run, session, and tool-call identifiers are trusted against
-model manipulation. They are not trusted after gateway-account compromise. The
-authority therefore enforces owner, submitter, global, and wall-clock caps that
-do not depend on gateway-supplied identity. A compromised gateway can submit
-noise or suppress delivery, but it cannot approve or execute.
+The sandbox boundary prevents direct sending because:
 
-The agent-facing transcript cannot remain cryptographically trustworthy after
-arbitrary gateway code execution because the gateway constructs model input.
-The authority still signs every result and keeps the effect state authoritative.
-The resume adapter verifies that signature in normal operation. The design
-claims trusted provenance against model and prompt manipulation, transport
-failure, replay, and ordinary plugin compromise, not against a gateway process
-that can fabricate the agent's entire context.
+- provider refresh tokens and API credentials exist only in the host Keychain
+  or another host-only credential store;
+- the sandbox cannot read that store or inherit credential-bearing
+  environment variables;
+- authenticated provider clients and browser sessions run only in trusted host
+  code;
+- host filesystem, shell, browser, and raw network bridges exposed to the
+  sandbox cannot reach the protected account;
+- the only sandbox-visible mutation entry point is the closed approval
+  submission tool; and
+- the trusted executor consumes only a broker-owned immutable record after an
+  accepted decision.
 
-Two bounded exceptions do not create positive approval authority. The deny-only
-role can stop pending work and therefore accepts a denial-of-service risk. The
-independent mailbox-triage service allows only reversible archive, read-state,
-star, importance, and configured user-label changes. Both have separate
-capabilities, replay controls, limits, audit, and anomaly alerts. Neither can
-approve, execute a protected effect, or create another outbound path.
+This does not claim to stop all Internet communication or all possible
+exfiltration by a sandbox. It prevents protected effects through the configured
+account and provider. Broader sandbox egress policy remains a separate control.
 
-Native OpenClaw plugins run in the gateway process and are not a security
-boundary. The approval credential, record store, owner keys, policy, and
-executor must not live in a normal native plugin.
+#### Components
 
-#### Components and identities
-
-| Component | Identity and responsibility |
+| Component | Responsibility |
 |---|---|
-| Gateway request adapter | Runs with the gateway under a dedicated non-login account. It validates model-facing input, uploads bounded bytes, submits a candidate, and returns pending status. It has no read, decision, acknowledgement, or execution capability. |
-| Approval authority and executor | Runs on demand under a separate protected account. It owns records, staging, policy, owner public keys, provider credentials, decisions, leases, execution, reconciliation, events, and audit. |
-| Content scanner | Runs each untrusted scan in a fresh credential-free sandbox under a separate least-privileged identity. It receives bounded bytes, has no network or authority access, and returns only a bounded closed result. |
-| Native review app | A root-owned signed app that runs only in the owner's graphical login. It verifies authority-signed review bundles, renders inert values, requests one fresh owner authentication, signs one decision, and has no provider credential. |
-| Notification helper | App-owned code in the graphical session with a notify-only launchd Mach service. It accepts only authority-signed bounded alert data from the authenticated authority peer, displays a fixed alert, and opens the review app. |
-| Attachment viewer | A separate sandboxed process with no decision key, authority mutation capability, provider credential, or network access. It receives bounded verified bytes or a read-only descriptor, never an authority path. |
-| iMessage and quick-deny adapter | Sends a fixed bounded notice. Its separate deny-only capability can move one correlated pending record to denied. It cannot read the record, approve, re-arm, cancel, execute, or acknowledge. |
-| Mailbox-triage service | Runs as a separate protected non-login identity and launchd job. It owns a distinct provider token and exposes only fixed reversible mailbox operations. Its provider scope may technically send, so the closed RPC and protected identity are the boundary. It has no approval database, owner key, decision method, executor credential, or executor access. |
-| Resume adapter | Verifies authority-signed events, writes stable transcript receipts, schedules one trusted agent turn, and returns consumption receipts. It has no execution or decision capability. |
+| Sandbox submission tool | Validates a closed request schema, streams bounded attachment bytes, submits once, and returns durable pending status. |
+| Trusted approval broker | Resolves the request, applies policy, owns records and staging, renders review parts, sends iMessage, validates decisions, schedules execution, and reconciles recovery. |
+| Messages adapter | Uses the existing local iMessage transport to send canonical review parts, obtain GUIDs, poll reactions, and receive exact inline-reply metadata. |
+| Content scanner | Parses hostile attachment bytes in a fresh credential-free sandbox with no network, Keychain, provider client, broker database, or write access to staged content. |
+| Protected executor | Uses the host-only provider credential to execute the immutable envelope under a lease and idempotency key. |
+| Continuation worker | Inserts the trusted terminal result, schedules one resumed turn, tracks transcript and consumption receipts, and repairs interrupted handoffs. |
+| Read and triage adapters | Expose only closed read-only or reversible mailbox operations. They never expose a token, raw provider method, arbitrary request body, or send operation to the sandbox. |
 
-The authority database, IPC endpoints, staging store, policy, credential, and
-signing material are unreadable and unwritable by the gateway account. The
-provider credential uses an identity-bound keychain or equivalent ACL. The
-gateway receives the submit, deny-only, and triage capabilities through
-different endpoints whose server policies recognize the exact client identity
-and role. Possession of one capability never authorizes another.
+All components except scanner workers can live in the existing trusted gateway
+process for version 1. They remain separate modules and capabilities so a
+sandbox tool cannot acquire a raw executor handle through confused dispatch.
+The scanner stays process-isolated because parsing attacker-controlled bytes in
+the trusted gateway would weaken the sandbox boundary.
 
-The installed review app and helper are root-owned and not writable by the
-gateway or login user. The owner's private decision key is non-exportable,
-bound to that app's signing requirement, and gated by fresh per-operation owner
-authentication. Key enrollment, revocation, and recovery require a protected
-administrative path outside the gateway.
+#### Immutable record and review envelope
 
-#### On-demand activation and local IPC
+Each protected executor defines:
 
-The primary transport is a launchd-managed XPC or Mach service. Mach activation
-starts the authority when a valid client connects. The graphical helper uses the
-appropriate per-user launchd domain. An authority connection to its registered
-notify-only Mach service starts it to post a notification. A notification action
-starts or focuses the review app. No approval component binds an Internet or
-datagram socket.
-
-Each XPC listener has a closed protocol and a separate peer policy:
-
-- the submit listener accepts only the exact gateway code-signing requirement,
-  expected gateway UID, protocol version, and submit entitlement;
-- the quick-deny listener accepts only the exact fixed iMessage or deny-relay
-  requirement, expected UID, protocol version, and deny-only entitlement. It
-  accepts a bounded opaque record reference, trusted reaction correlation,
-  nonce, and sequence, and can perform only an idempotent `pending -> denied`
-  transition under independent rate limits;
-- the owner listener accepts only the exact installed review-app requirement,
-  expected logged-in owner UID, protocol version, and owner entitlement;
-- the resume listener accepts only the exact resume-adapter requirement and can
-  exchange events and receipts but cannot submit, decide, or execute;
-- every request has a bounded serialized size, closed allowed-class set, opaque
-  capability, fresh nonce, monotonic sequence, and record-scoped operation;
-- server-side authorization uses the authenticated connection, never a claimed
-  UID, bundle ID, process ID, path, or entitlement in the message body; and
-- disconnect, interruption, malformed objects, version mismatch, unexpected
-  method, replay, or uncertain peer identity fails closed.
-
-The notification helper exposes a separate notify-only Mach or XPC listener in
-the graphical user's launchd domain. It accepts only the exact authority
-code-signing requirement, authority UID, notify protocol version, and notify
-entitlement. The authority sends an authority-signed payload containing only an
-opaque record ID, fixed tool label, bounded inert summary, expiry, digest prefix,
-notification sequence, and template version. The helper verifies the peer,
-signature, sequence, sizes, and closed fields before posting or replacing one
-local notification. It cannot fetch record contents, decide, quick-deny, invoke
-triage, acknowledge results, or call the executor.
-
-Cross-domain Mach activation is a feasibility gate, not an assumption. The
-prototype must prove that the protected authority can activate the registered
-per-user helper while it is stopped. A process that can resolve the Mach service
-may cause launchd to start the helper before the listener authenticates it. The
-helper therefore performs no notification, record access, durable mutation, or
-other authority action until peer and payload checks pass.
-
-Unauthorized connections must be rejected immediately and their launch impact
-bounded with launchd throttling, one small process, strict startup resource
-limits, idle exit, bounded audit, and alert suppression. They may cause limited
-local denial of service but cannot post an alert or reach a decision method. If
-the required launchd domains cannot connect with enforceable method-level peer
-identity, or if unauthorized launch cost cannot be bounded, the implementation
-must stop and revise the design. It must not add a network listener, polling
-daemon, writable shared file, or unauthenticated notification bridge as a
-workaround.
-
-Mailbox triage is not another authority method. Its independent launchd service
-has a separate listener that accepts only the exact gateway requirement,
-expected gateway UID, triage protocol version, and triage entitlement. Requests
-contain only a closed action enum, bounded message or thread IDs, an optional
-configured user-label ID, nonce, and sequence. The service cannot route a
-request to authority decision or execution code. It remains installed and
-available when approval intake, UI, and executor jobs are rolled back.
-
-On supported macOS versions, the listener applies a code-signing requirement
-directly to each XPC connection. Implementation must also bind the expected UID
-and role. PID-only checks are insufficient because identifiers can be reused.
-Lower-level audit-token or peer-signing checks may supplement the public
-code-signing API but must not replace it with home-grown parsing.
-
-A protected Unix-domain socket is a fallback only if a cross-identity XPC
-feasibility test fails. That fallback still opens no network port, but it is a
-local socket listener and must be described that way. It requires a
-root-created non-symlink directory, strict owner and mode, peer credentials,
-message authentication, framed size limits, nonce and sequence replay defense,
-atomic endpoint replacement, and safe cleanup. XPC is preferred because launchd
-activation and peer signing requirements reduce custom protocol work.
-
-#### Notification and native review
-
-Local actionable notifications require an application, registered notification
-categories, and a notification-center delegate established during application
-launch. The system returns selected actions to that application. The
-`authenticationRequired` notification option only requires device unlock before
-callback delivery. It does not prove review of the complete transaction and
-does not sign a record digest.
-
-The only approval-notification action is `Review`. It opens or focuses the
-native app for an opaque record ID. Dismissal does nothing. Approval, denial,
-cancellation, renewal, and re-arm are unavailable from Notification Center.
-Implementation must prove that the helper is activated reliably when stopped,
-that the authority-to-helper peer and payload are authenticated, that the
-delegate is ready before callback delivery, and that unavailable notification
-permission leaves records pending and produces an operator-visible inbox signal.
-
-The app fetches one current authority-signed review bundle over its authenticated
-owner connection. Its pinned authority public key verifies the bundle before
-display. The bundle includes the record ID, schema version, original arguments,
-resolved envelope, attachment metadata and hashes, lineage, expiry, decision
-challenge, and bundle digest.
-
-The app:
-
-- shows original and resolved values side by side;
-- shows canonical data without security-relevant truncation;
-- renders model strings as inert text, never HTML, Markdown links, or a WebView;
-- exposes bidirectional, zero-width, newline, and hidden code points;
-- shows internationalized domains in Unicode and punycode;
-- normalizes and highlights actual destinations and all changed values;
-- shows attachment name, declared type, size, digest, and scan result; and
-- displays the exact digest that the decision will sign.
-
-Immediately before signing, the app refetches the record and requires a fresh
-challenge. It creates a new authentication context with no reuse window and asks
-the Security framework to use the protected private key for one signature.
-LocalAuthentication success by itself never changes authority state. The
-signature operation must cover the canonical record ID, envelope digest,
-decision, owner key, challenge, and expiry. The authority verifies all fields
-and consumes the challenge transactionally.
-
-The preferred key is Secure Enclave backed with private-key usage and current
-biometric-set or equivalent owner-presence access control. Enrollment changes,
-key invalidation, failed authentication, unavailable biometry, cancellation, or
-lockout fail closed. A separately enrolled recovery credential may be used, but
-the gateway cannot enroll it and no password-only silent fallback exists.
-
-#### Protected-tool contract and immutable inputs
-
-Only registered deferred executors are eligible. Each executor defines:
-
-- JSON Schema and semantic validation;
-- canonicalization and resolution of defaults, aliases, and dynamic inputs;
+- input schema and semantic validation;
+- canonicalization and default resolution;
 - immutable snapshot rules;
-- authority-owned secret and content policy over canonical values and staged
-  bytes;
-- a deterministic safe review renderer;
-- execution with an idempotency key;
-- reconciliation for ambiguous provider outcomes; and
-- a durable result codec.
+- non-overridable policy;
+- deterministic plain-text review rendering;
+- execution under a stable idempotency key;
+- provider reconciliation; and
+- a bounded terminal-result codec.
 
-The gateway opens candidate files with its lower privileges, rejects traversal
-and symlink escapes under the tool's file policy, and uploads bounded byte
-streams with logical metadata. The authority never opens a caller-provided path.
-Each staged object records a digest, size, MIME type, and logical name.
-Immediately before an effect, the executor reads the protected copy again and
-rechecks its digest and size. A mismatch ends in `input_integrity_failed`.
+For email, the envelope includes account, operation, final `to`, `cc`, and
+`bcc`, reply and thread identifiers, subject, complete body, format, allowed
+headers, scheduling and send options, stable message identity, and attachment
+references. It stores the original values beside the resolved values so changed
+defaults and aliases are visible.
 
-The authority evaluates non-overridable secret and content policy after all
-values are resolved and bytes are staged. It evaluates the same protected inputs
-again immediately before the provider call. Policy rules and configuration are
-authority-owned and unavailable to the gateway, but parsers never run with the
-authority's identity or credentials.
+The broker accepts attachment bytes, not privileged host paths. Each staged
+object records a logical name, declared and detected type, size, digest, scanner
+version, and closed scan verdict. A fresh scanner process receives bounded bytes
+or a read-only descriptor. It has hard memory, CPU, wall-time, process,
+recursion, decompression, and output limits. Missing, malformed, timed-out,
+uncertain, or unsupported scanning fails closed.
 
-Each untrusted content scan runs in a fresh credential-free sandbox under a
-separate least-privileged identity. The authority passes bounded verified bytes
-or a read-only descriptor, never an authority path. The scanner has no network,
-keychain, provider credential, database, staging-write, owner IPC, decision IPC,
-or unrelated filesystem access. It has hard input, memory, CPU, wall-time,
-process, recursion, decompression, and output limits. Timeout or limit breach
-kills the worker.
+Secret and content policy runs after resolution and staging and again before
+execution. Credentials, tokens, forbidden destinations, and disallowed content
+are rejected before any review message is sent. Approval never overrides this
+result.
 
-Scanner output is untrusted. The authority accepts only a bounded versioned
-schema with a closed verdict enum, validates it independently, and binds the
-scanner version and result digest into the record. Scanner text cannot select a
-policy, destination, tool, or provider input. A denial, missing rule set,
-scanner crash, timeout, malformed result, uncertain classification, unavailable
-sandbox, or version mismatch fails closed. An owner signature cannot waive this
-policy.
+The canonical renderer uses fixed labels and quotes all model-controlled text.
+It exposes control characters, newlines, bidirectional text, zero-width text,
+and Unicode domain forms. It never interprets HTML, Markdown, links, or
+attachment content. Every value line has an unambiguous fixed prefix, so
+model-controlled text cannot create a control header or approval instruction.
+The final decision bubble contains no model-controlled text.
 
-For email, the immutable envelope includes the account, operation, resolved
-`to`, `cc`, and `bcc` addresses, reply and thread identifiers, subject, body,
-format, headers, scheduling and send options, stable message identity, and every
-attachment reference. Review shows the original arguments, resolved envelope,
-attachment metadata, hashes, and scan outcomes.
+#### iMessage phone flow
 
-#### Attachment review
+Version 1 uses one configured direct iMessage route to the owner. The broker
+loads its account, target, normalized owner handle aliases, and decision mapping
+from trusted configuration. The protected approver set is explicit and may be a
+strict subset of the channel's broader inbound `allowFrom` list. It refuses
+wildcard `*`, group targets, SMS fallback, non-owner authorized senders, absent
+approvers, and model-supplied routing.
 
-Attachment bytes never render in the review app or any process that can use the
-decision key. Version 1 may show metadata and scan results only. If content
-preview is necessary, the app starts a separate sandboxed viewer after it has
-verified the authority signature and digest.
+The review renderer prefers one message. If the complete values exceed the
+single-part limit, it emits at most 16 parts of at most 3,000 UTF-8 bytes each.
+A tool may set a smaller bound. A review that cannot fit those limits fails
+before delivery. Every part begins with fixed fields:
 
-The viewer:
+```text
+Protected tool review
+Record: <opaque short id>
+Digest: <full envelope digest>
+Part: <n>/<count>
+Expires: <absolute time>
+```
 
-- receives a bounded verified byte stream or read-only descriptor, never an
-  authority filesystem path;
-- has no decision key, owner IPC, provider credential, clipboard export,
-  Accessibility permission, network access, or ability to mutate staged bytes;
-- renders each supported type in a fresh process with memory, time, output, and
-  recursion limits;
-- treats HTML, SVG, XHTML, scripts, macros, external references, and active media
-  as hostile and never loads them in the signing process;
-- provides metadata-only fallback when safe preview is unavailable; and
-- exits before the review app requests the fresh signing authentication.
+Before sending the first review part, the broker acquires the same per-account
+Messages action lane used by every model-facing reaction, reply, edit, unsend,
+and raw Messages action. It keeps the lane through the complete review bundle.
+The broker sends parts sequentially. For each send it stores the exact text
+hash, attempt, result, GUID, conversation, and time, resolves the GUID to the
+concrete direct chat, and commits a durable reservation that blocks
+model-facing actions against that part. A numeric row ID, `ok`, `unknown`,
+missing GUID, or ambiguous chat is not sufficient. After a timeout it first
+reconciles the local Messages database by exact target, text, and send window.
+An ambiguous outcome becomes `delivery_unknown`; it is not blindly resent and
+cannot arm approval.
 
-The review app always rechecks the current bundle after the viewer closes.
-Preview output is advisory. The signed authority digest and protected staged
-bytes remain the execution source of truth.
+Only after every detail part has one concrete GUID does the broker send the
+fixed final bubble:
 
-#### Record store, privacy, time, and pressure
+```text
+Decision for record <short id>
+Digest: <full envelope digest>
+Review parts: 1-<count>
+Expires: <absolute time>
+👍 Approve once
+👎 Deny
+First accepted decision is final.
+Reply fallback: APPROVE <short-code> or DENY <short-code>
+```
 
-Authoritative records live in an authority-owned transactional SQLite database.
-A bounded plugin state store is suitable only for short-lived channel hints
-because it may evict old entries.
+The final send follows the same reconciliation and reservation rule. While
+still holding the lane, the broker resolves the final GUID to the same concrete
+direct chat and commits its durable reservation. It then reads every detail and
+final message by GUID and verifies current text, chat, order, and hash against
+the canonical bundle. It releases the lane only after all reservations and the
+complete-bundle verification commit.
 
-Each record contains:
+The broker then arms one durable target row containing the final GUID, all
+normalized GUID forms, account, concrete chat row and conversation identifiers,
+allowed owner handle aliases, record, digest, short-code hash, allowed
+decisions, and expiry. A handle-only target or a GUID that cannot be tied to one
+direct chat remains reserved but unarmed. A crash after any review-part send is
+reconciled and reserved before model-facing Messages actions are enabled on
+restart. An owner reaction that arrives before arming remains in Messages
+history and is processed after the target becomes active.
 
-- opaque record, schema, tool, owner, agent, session, run, turn, and tool-call
-  identifiers;
-- creation, pending expiry, approval freshness, execution, and retention times;
-- canonical raw arguments and the versioned execution envelope;
-- envelope and staged-object hashes;
-- deduplication key and renewal lineage;
-- notification attempts and delivered message references;
-- decision challenge, signature, owner-key fingerprint, and decision time;
-- execution lease, idempotency key, absolute execute-by time, attempt state,
-  result, provider evidence, error class, and reconciliation evidence; and
-- monotonic event sequence, stable event IDs, delivery attempts, transcript
-  receipts, consumption receipts, and final acknowledgement.
+The database row is authoritative. The current bounded reaction-target store may
+remain a delivery cache, but cache eviction or restart cannot remove the broker
+record.
 
-Payloads and staged data use owner-only permissions on an encrypted local
-volume. Audit records contain identifiers, hashes, states, timings, and actor
-fingerprints, not message bodies or attachment bytes. Notification Center and
-chat notices contain only a fixed tool label, safe bounded summary, expiry,
-opaque record ID, and digest prefix.
+Apple documents that a Tapback is attached to one specific message and that a
+user may later change or remove it. Messages in iCloud can synchronize messages
+and reactions between the iPhone and Mac when both use the same Apple Account
+and the feature is enabled. The mini receives the synced reaction through its
+existing local Messages bridge and polling. No service on the mini accepts an
+inbound Internet connection.
 
-Pending expiry moves payloads into a seven-day terminal retention window.
-`approval_stale` keeps its envelope and staged bytes through its re-arm window.
-After retention, payloads are purged and only metadata audit remains.
+The decision handler verifies:
 
-While the host remains in one boot session, deadlines use an OS continuous-time
-source that includes sleep. The authority also persists the boot identity and a
-wall-clock high-water mark. Process-monotonic time alone is insufficient because
-it cannot measure downtime across reboot.
+- the configured iMessage account and direct conversation;
+- a normalized sender handle in the explicit non-wildcard approver set;
+- the exact final GUID, including accepted prefixed and normalized forms;
+- the broker target row, record, envelope digest, and pending state;
+- every detail and final GUID still exists in the expected chat with exact
+  canonical text, order, and hash and no edit or unsend state;
+- the closed reaction or reply mapping;
+- current time before expiry; and
+- a single atomic `pending_decision` transition.
 
-At startup, a changed boot identity, wall time below the high-water mark, or any
-case where elapsed downtime cannot be bounded invalidates outstanding
-authorization-bearing time. Pending records expire. Approved but unclaimed work
-becomes `approval_stale`. Claimed work reconciles provider state before becoming
-failed or `execution_unknown`. Challenges and preview capabilities expire.
-Cooldown release remains blocked until trusted time is re-established. A large
-forward jump also fails closed and alerts. Protected administrative recovery may
-restore trusted time and permit a new owner-signed re-arm, but it cannot revive
-an old approval or extend an old deadline.
+An observed `is_from_me` reaction is acceptable only when Messages reports a
+normalized handle that is explicitly configured as an approver. This supports
+the same Apple Account appearing on the phone and Mac without treating every
+local reaction as authorized.
 
-The model never supplies an idempotency or intent key. A stable trusted
-root-task identity is a prerequisite for cross-run deduplication. With that
-identity, the authority computes a key from owner, root task, tool, and envelope
-digest in one transaction:
+Tapback is primary because the current source already provides approver
+authorization, GUID-only target binding, thumbs-up and thumbs-down mapping,
+reaction polling, persistent target lookup, and suppression after successful
+resolution. The protected flow narrows that support to `allow-once` and `deny`
+and makes broker persistence authoritative.
 
-- a matching active record returns the existing record;
-- a matching success in the same task returns `already_executed`;
-- a matching denied, expired, cancelled, stale, failed, or unknown record
-  returns that state; and
-- another identical effect requires a new trusted task or an owner-signed
-  duplicate review that shows the previous result.
+The exact inline reply is a fallback. Current inbound payloads expose the
+replied-to GUID, but the generic approval command does not require it. The
+smallest extension intercepts a closed reply before model dispatch, verifies
+`reply_to_guid` against the final target row, verifies the short code and actor,
+and calls the same atomic resolver. A generic `/approve`, bare `yes`, copied
+short code, or reply to another message cannot resolve a protected request.
 
-An expired record remains immutable. During retention, Cole can sign a renewal
-bound to that record and digest. Renewal creates one new linked pending record.
-Only one generation in a lineage may be active. Model resubmission cannot renew
-or re-arm a record.
+The first successful conditional database update wins. A later Tapback change,
+Tapback removal, duplicate poll result, inline reply, or command has no effect.
+If a Tapback is removed before the poller observes it, no decision exists. If it
+is accepted before removal, the decision remains final as the fixed message
+warns.
 
-Per-owner, per-session, per-tool, per-submitter, and global caps fail closed.
-Notification limits and wall-clock request limits do not depend on
-gateway-supplied identity. These controls, not hash deduplication, defend against
-varied-payload floods. A signed denial starts an owner-and-tool cooldown. Quick
-deny uses a shorter separately limited cooldown and is visible in audit.
+The host-wide Messages action policy reserves every active detail and final
+GUID. Model-facing tools cannot react, reply, edit, unsend, or invoke a raw
+Messages action against them. The broker also rejects events known to have been
+initiated by a model-facing local action. A lookalike approval message has no
+broker review row and is ignored. This control is required because a phone
+Tapback synchronized under the same Apple Account may legitimately appear as
+`is_from_me`; secrecy of the GUID is not the boundary.
+
+Phone offline, Messages sync delay, disabled Messages in iCloud, transport
+failure, unavailable polling, or an expired target leaves the request pending
+until it expires. The model cannot switch channels or extend time. The owner can
+submit a fresh request through a new workflow after expiry, but no old approval
+is revived.
+
+#### Privacy and attachment review
+
+iMessage encrypts message content to receiving devices, but routing metadata is
+not encrypted. Messages in iCloud key handling also depends on backup and
+Advanced Data Protection settings. The design does not depend on Apple being
+unable to recover synchronized content. The privacy statement is simply that
+full review values leave the Mac through the owner's configured Messages
+account and may persist on devices, in backups, and in synchronized history.
+
+No credential or secret is allowed into that review. Audit logs contain record
+IDs, hashes, states, actor fingerprints, provider evidence identifiers, and
+timings, not message bodies or attachment bytes. Local payloads and staged bytes
+use owner-only permissions and bounded retention.
+
+Attachment bytes never enter Messages. Approval shows immutable metadata,
+digest, and scan result only. It does not send a file, thumbnail, HTML preview,
+Quick Look object, or provider link. Version 1 has no approval-time attachment
+viewer. If metadata is insufficient, the safe choices are deny, expiry, or a
+separately designed inspection flow.
+
+#### Durable state, limits, and time
+
+Authoritative state uses a transactional SQLite database, not the current
+in-memory approval manager or an evicting channel cache. Each record contains:
+
+- tool, owner, origin, task, agent, session, run, turn, and tool-call lineage;
+- raw arguments, resolved envelope, schema version, and digest;
+- staged object metadata, hashes, scanner version, and policy result;
+- deduplication and provider idempotency keys;
+- all deadlines and the host boot identity;
+- review part hashes, attempts, GUIDs, conversation, and final target;
+- decision actor, source, target GUID, time, and first-winner transition;
+- execution lease, attempts, provider evidence, and reconciliation;
+- terminal result and safe error class; and
+- event sequence, transcript receipt, continuation outbox, turn claim,
+  consumption receipt, and final acknowledgement.
+
+Defaults are:
+
+- pending approval expiry of 23 hours;
+- execution claim and provider start within 5 minutes after approval;
+- review limit of 16 parts at 3,000 UTF-8 bytes each;
+- no more than 1,000 active decision targets;
+- per-owner, per-session, per-tool, per-task, and global pending quotas;
+- separate message delivery and decision rate limits; and
+- seven days of terminal payload retention before body and staged-byte purge.
+
+A tool may choose shorter or smaller limits. It may not choose larger limits
+without a new reviewed policy.
+
+Within one boot, deadlines use continuous time that includes sleep. The broker
+also stores boot identity and a wall-clock high-water mark. Reboot, backward
+clock movement, large forward jumps, or uncertain downtime expires pending
+decisions and unclaimed approvals. Claimed execution reconciles provider state.
+No clock anomaly extends an approval, decision target, lease, or cooldown.
+
+Deduplication uses trusted task, agent, session, tool-call lineage, tool, and
+envelope digest. An identical active request returns the same pending record. A
+completed effect returns `already_executed`. A terminal denial, expiry, failure,
+or unknown state is returned rather than silently creating another generation.
+Varied-payload floods are bounded by quotas and notification cooldowns.
+
+`already_executed` is a submission-time deduplication response that points to
+the prior terminal record. It is not a terminal state, does not emit another
+terminal event, and does not start another continuation.
 
 #### Decision, execution, and result lifecycle
 
-The authority uses transactional states:
+The broker uses these states:
 
 ```text
-pending -> denied | expired | cancelled | approved
-approved -> cancelled | approval_stale | executing
-approval_stale -> pending | cancelled | expired
-executing -> executing | approval_stale | sent | failed
-executing -> input_integrity_failed | execution_unknown
+submitted -> preparing
+preparing -> pending_delivery | failed
+pending_delivery -> pending_decision | failed | expired
+pending_decision -> approved | denied | expired | failed
+approved -> executing | expired | failed
+executing -> sent | failed | execution_unknown
 ```
 
-Only the first valid decision wins. Decision processing verifies the review-app
-peer, owner signature, one-time challenge, pending expiry, current record,
-authority bundle signature, and displayed digest.
+`preparing` resolves defaults, stages bytes, scans content, applies policy, and
+creates the canonical envelope. `pending_delivery` durably sends and reconciles
+review parts. Only complete delivery and final target registration reaches
+`pending_decision`.
 
-Pending requests expire after 23 hours by default, or sooner for a tool.
-Approval creates a five-minute claim window and an absolute execute-by time. If
-work is not safely claimed in time, it becomes `approval_stale` and never runs
-after delayed recovery.
+The first valid owner decision moves `pending_decision` to `approved` or
+`denied`. Approval creates a five-minute absolute execution deadline. The
+executor claims it with a lease, rechecks record state, policy, staged hashes,
+and time, then calls the provider with the stored idempotency key.
 
-Entering `approval_stale` starts a re-arm window of at most 23 hours. Cole may
-sign a re-arm during that window. Re-arm keeps the immutable record, uses a new
-challenge, creates a new pending window of at most 23 hours, and sends a new
-best-effort notice. Model resubmission cannot re-arm it. When the re-arm window
-ends, the record expires.
+A crash before provider submission returns the lease for safe recovery. A crash
+after possible submission reconciles provider state before any retry. Proven
+acceptance becomes `sent`. Proven rejection or pre-acceptance failure becomes
+`failed`. An outcome that cannot be proved either way becomes
+`execution_unknown`.
 
-The executor atomically claims approved work with a lease. Restart recovery
-first reconciles provider state. If the execute-by time passed and no provider
-call occurred, the record becomes stale. If prior acceptance cannot be proved or
-disproved, it becomes `execution_unknown`. The executor never starts a provider
-call after the deadline.
+Administrative disable or rollback moves any non-executing record to `failed`
+with a closed cancellation class through the declared transition for its state.
+The public terminal vocabulary remains `sent`, `denied`, `expired`, `failed`,
+and `execution_unknown`.
 
-Only an owner-signed action or administrative rollback can cancel pending,
-approved, or stale work. Cancellation emits a durable terminal event and cannot
-be re-armed. The gateway and model cannot cancel. Best-effort quick deny is the
-only unsigned terminal action and applies only to pending work.
+For email:
 
-Local locking cannot guarantee exactly-once external effects. Providers with an
-idempotency facility reuse one key. Other adapters reconcile before retry. Email
-uses stable provider or message identity and searches sent state. Ambiguous
-acceptance never causes blind resend.
+- `sent` includes record ID, envelope digest, provider message or receipt ID,
+  provider acceptance timestamp, and completion time;
+- `denied` and `expired` state that no provider call occurred;
+- `failed` includes a bounded safe error class and evidence that the provider
+  did not accept the send when that evidence exists; and
+- `execution_unknown` includes the last attempt time and bounded reconciliation
+  evidence with an instruction not to regenerate or retry.
 
-Before any agent notification, the authority commits the terminal state and an
-immutable result object. For email:
+Bodies, attachment bytes, tokens, raw provider responses, and sensitive errors
+never enter the terminal event.
 
-- `sent` contains the authority record ID, provider message or receipt ID,
-  provider acceptance timestamp, envelope digest, and completion time;
-- `failed` contains the record ID, safe error class, failure time, and any proof
-  that the provider did not accept the send;
-- `execution_unknown` contains the record ID, last attempt time, reconciliation
-  evidence, and an instruction not to regenerate or retry; and
-- `denied`, `expired`, `cancelled`, `approval_stale`, and
-  `input_integrity_failed` state that no provider call is authorized.
+#### Durable agent return and continuation
 
-Provider bodies, tokens, raw errors, and sensitive response data never enter the
-transcript. The event reads as a trusted tool result rather than a user request.
+The broker record is the result source of truth. OpenClaw session delivery is
+transport. Existing session-delivery queue behavior is useful for waking a busy
+agent, but dispatch acknowledgement does not prove transcript insertion,
+result consumption, or completion of a resumed workflow.
 
-#### Durable return and agent continuation
+Every terminal result creates one internal event with:
 
-The authority record is the source of truth. OpenClaw's session-delivery queue
-is useful transport, but it has bounded retries and acknowledges dispatch rather
-than proving that the model consumed an event.
+- stable event ID, record ID, sequence, outcome, tool, and envelope digest;
+- original task, agent, session instance, run, turn, tool-call, and lineage;
+- safe provider evidence such as receipt ID and timestamp; and
+- an internal instruction to continue beyond the pending tool without
+  regenerating or replaying it.
 
-Every terminal result creates a canonical event with:
+The event uses trusted internal provenance that sandbox text cannot claim. In
+the same transaction that stores the terminal result, the broker inserts a
+continuation outbox row keyed by the original protected tool call and lineage.
+Only the first terminal result can claim that key.
 
-- authority event ID, record ID, sequence, outcome, tool, and envelope digest;
-- original agent, session, session instance, run, turn, and root-task
-  correlation;
-- safe result fields such as provider receipt ID and timestamp;
-- a clear instruction to continue from the suspended protected-tool workflow
-  without regenerating or replaying the effect; and
-- an authority signature over the complete event.
-
-The resume adapter keeps a durable continuation row and outbox keyed by the
-original protected tool call and approval lineage, not merely by one event. Its
-states are:
+The continuation worker uses:
 
 ```text
 received -> transcript_recorded -> turn_pending -> turn_claimed
 turn_claimed -> turn_pending | continuation_committed | continuation_unknown
 continuation_unknown -> turn_pending | continuation_committed
-continuation_committed -> authority_acknowledged
+continuation_committed -> broker_acknowledged
 ```
 
-The adapter verifies the signature and inserts `received` idempotently. It then
-appends the event ID and structured tool result to the intended transcript or
-trusted session inbox. Only after that append is durable does it record
-`transcript_recorded`. The same local transaction that advances to
-`turn_pending` creates an outbox item for one `agentTurn`, keyed by the event ID
-and expected session instance when available.
+It inserts `received` idempotently, appends the structured tool result to the
+intended transcript or protected task inbox, and records the exact transcript
+position. The same durable transition to `turn_pending` creates an outbox item
+for one internal agent turn with a stable idempotency key and expected session
+instance.
 
-A dispatcher leases the outbox item and enqueues the turn. A crash before
-enqueue leaves `turn_pending`. A crash after enqueue but before local
-confirmation causes the dispatcher to submit the same idempotency key again.
-OpenClaw queue deduplication and the adapter's event row make both paths safe.
-Queue acknowledgement alone never deletes or completes the continuation row.
+The normal session lane queues behind busy work. A crash before enqueue leaves
+`turn_pending`. A crash after enqueue resubmits the same idempotency key.
+Transcript presence alone never proves the continuation ran.
 
-The queued turn uses trusted internal provenance and the normal session lane. A
-busy session therefore waits instead of racing its transcript lock. Starting to
-assemble model input may advance the leased claim, but it is not consumption and
-does not acknowledge the authority.
+Consumption is durable only when the resumed turn completes or writes a
+recoverable continuation checkpoint that preserves all remaining work before a
+later side effect can be lost. The commit stores the resumed-turn ID, event ID,
+transcript position, checkpoint or completion, and idempotency scope for later
+tools and deliveries.
 
-Consumption becomes durable only after the resumed turn completes or writes a
-recoverable continuation checkpoint that proves the event was accepted and
-preserves the remaining workflow before any later side effect can be lost. That
-commit records the stable resumed-turn ID, event ID, transcript position, model
-turn or continuation checkpoint, and deduplication scope for later tool calls
-and deliveries. It advances the row to `continuation_committed`.
+If a crash may have occurred after a later effect but before that commit,
+recovery enters `continuation_unknown`, blocks replay, and alerts. A protected
+operator repair can move it only with durable evidence. No consumption receipt
+or broker acknowledgement is sent while the state is uncertain.
 
-If the process crashes or the turn fails before that commit, the lease expires
-and the outbox returns to `turn_pending`. Recovery reconciles the transcript,
-queue, session lane, and resumed-turn ledger before scheduling again. It never
-treats the existing transcript event as proof that the continuation ran. If a
-turn may have crossed an external side-effect boundary but its commit is
-unknown, recovery enters `continuation_unknown`, blocks blind replay, and alerts
-for repair. No automatic transition leaves `continuation_unknown`. A protected
-operator repair may return it to `turn_pending` only with durable proof that no
-later side effect occurred, or advance it to `continuation_committed` only with
-durable proof that the remaining workflow completed or was safely checkpointed.
-Until then, no consumption receipt or authority acknowledgement is sent.
+If the original session is busy, the event waits. If it was reset, rotated, or
+deleted, the worker writes to the owning task's protected inbox and targets the
+owning agent's current main session with the original correlation. If no session
+exists, the inbox retains the event until one is available. A status reader may
+show state but cannot decide, execute, acknowledge, or create another
+continuation.
 
-Only `continuation_committed` produces the consumption receipt and final
-acknowledgement to the authority. The authority redelivers until it has both the
-transcript receipt and that receipt. OpenClaw retry exhaustion moves its local
-queue entry aside but does not complete the adapter row or authority delivery.
-The authority and adapter repair loops retry with backoff and alert after a
-bounded failure budget.
-
+The broker redelivers until it has both transcript and consumption receipts.
 Stable event IDs prevent duplicate transcript entries. Stable resumed-turn IDs,
-leases, and the continuation ledger prevent two active turns. Duplicate events
-may refresh acknowledgement and incomplete outbox work, but they cannot change
-authority state or execute the approved effect again. They do not suppress
-recovery of an incomplete turn. Out-of-order events wait until the prior
-sequence is present unless the authority marks the gap terminal.
+leases, and continuation keys prevent two active continuations. Duplicate or
+out-of-order transport cannot change the terminal result or repeat the provider
+effect.
 
-Only one terminal outcome may arm semantic continuation for an original
-protected tool call and lineage. `approval_stale`, approval, re-arm, notification
-failure, and other nonterminal changes update the authority record and local
-approval inbox without creating an `agentTurn`. If re-arm later ends in `sent`,
-denied, expired, cancelled, failed, integrity failure, or unknown execution,
-that terminal event uses the one continuation.
+#### Existing OpenClaw reuse and required extension
 
-An owner-signed renewal after an already terminal expiry creates a linked new
-record, but the expired tool call has already consumed its continuation.
-Renewal outcomes therefore go to the owning-agent approval inbox as
-owner-initiated follow-up status and cannot start a second continuation of the
-old workflow. A new agent workflow must explicitly adopt that result before
-acting on it.
+Current iMessage support already provides:
 
-If the original session is busy, the normal lane queues the event. If its
-instance changed, the adapter does not append to the replacement transcript
-silently. It writes the signed result to the stable owning-agent approval inbox,
-targets the owning agent's current main session, and labels the original
-correlation. If no owning session exists, the inbox and operator alert retain
-the event until one is available. The model may read status but cannot decide,
-mutate, re-arm, acknowledge, or execute through a status tool.
+- native exec and plugin approval delivery;
+- approvers derived from `channels.imessage.allowFrom`;
+- direct approver messages and rejection of unconfigured group routing;
+- canonical `allow-once`, `allow-always`, and `deny` decision metadata;
+- thumbs-up, infinity, and thumbs-down reaction mappings;
+- outbound GUID recovery and refusal to bind numeric or placeholder IDs;
+- persistent reaction target lookup keyed by account, conversation, and GUID;
+- normalized prefixed and unprefixed reaction GUID handling;
+- reaction polling from local Messages history;
+- authorization of normalized sender handles, including explicitly allowlisted
+  `is_from_me` reactions; and
+- binding cleanup after successful resolution so a changed Tapback does not
+  fire again.
 
-This is semantic workflow continuation, not revival of a suspended JavaScript
-stack. The original call returned pending. The trusted result starts a new agent
-turn with enough durable correlation and checkpointing to continue beyond that
-call exactly once. Later protected tools, user delivery, and other external
-effects use the resumed-turn ID as part of their idempotency scope so crash
-recovery cannot repeat them silently.
+The protected flow reuses those mechanisms but requires:
+
+- durable non-evicting broker records instead of the in-memory approval manager;
+- complete raw and resolved protected-tool envelopes;
+- deterministic multipart rendering and delivery reconciliation;
+- a new per-account Messages action lane and reserved-GUID policy through which
+  every model-facing reaction, reply, edit, unsend, and lower-level mutation
+  entry point must pass;
+- fixed direct route and non-wildcard owner approvers;
+- only `allow-once` and `deny`;
+- durable restoration of pending poll targets from broker rows after restart;
+- atomic digest-bound decision resolution against broker state;
+- exact `reply_to_guid` and short-code validation for the reply fallback;
+- broker-owned execution and provider reconciliation; and
+- durable terminal result and semantic continuation.
+
+The current generic `/approve <id> <decision>` parser authorizes the sender but
+does not bind the reply to the final message GUID. It remains available for
+ordinary OpenClaw approvals but must not resolve these protected records.
+
+The current approval manager keeps pending entries in a process-local map,
+waits on a promise, and retains resolved entries only briefly. Current bounded
+reaction recovery scans recent chats and messages after restart. Those are
+useful best-effort facilities, not the authoritative recovery design. The
+broker must enumerate its own pending final GUID rows and drive exact scoped
+polling until expiry.
 
 #### Channel choices
 
-| Option | Network shape | Trust and privacy | Decision |
+| Option | Phone experience and network shape | Trust, privacy, and setup | Decision |
 |---|---|---|---|
-| Notification Center plus native review app | Local notification and Mach/XPC only | Full record stays local. Notification opens review but never decides. | Recommended for version 1. |
-| iMessage notice and quick deny | Existing fixed Messages transport | Best-effort and privacy-bounded. Reply or tapback lacks digest-bound owner proof. | Keep for notice and fail-safe deny only. |
-| Telegram long polling | Authority makes outbound HTTPS `getUpdates` requests; no webhook or inbound listener | Telegram stores updates for up to 24 hours. Bot token and account identity become security dependencies. Full review in chat leaks transaction data. | Optional later mode with a separately approved weaker trust model. |
-| Slack Socket Mode | Authority opens an outbound WebSocket with an app-level token; no public HTTP endpoint | Slack workspace, app, bot, and platform become dependencies and see approval metadata. | Optional later mode with the same weaker-boundary warning. |
-| Apple push notifications | Outbound APNs provider connection, but also a mobile app, entitlement, device token, and provider credential | Strong native phone UX is possible only after building and operating the app and provider lifecycle. | Not chosen because it recreates the app and service burden. |
-| Plain iMessage approve | Existing message transport | Sender and reaction correlation do not bind a complete authority record, digest, or fresh owner key operation. Gateway compromise can observe or influence transport. | Prohibited. |
-| Unix-domain-socket native UI | Local socket, no network port | Can work with strict peer credentials and message authentication, but adds protocol and filesystem attack surface. | Fallback only if XPC feasibility fails. |
-| Hosted HTTPS review page | Inbound HTTPS, DNS, TLS, proxy, and firewall or private-network setup | Can support remote WebAuthn but creates the hosting burden Cole rejected. | Superseded by this native design. |
+| iMessage Tapback | Review appears in Messages on iPhone. The phone reaction synchronizes to the Mac. No new listener or app. | Reuses current allowlist, GUID correlation, polling, and Messages account. Full review data enters Messages history. | Primary version 1 choice. |
+| Exact iMessage inline reply | Reply to the final bubble with a closed decision and short code. No new listener or app. | More deliberate than a Tapback, but needs a small exact-GUID parser extension. | Version 1 fallback. |
+| Generic iMessage reply | A bare yes or generic approval command. | Easier to mis-correlate and not bound to the final message GUID. | Prohibited for protected tools. |
+| Notification Center and native Mac app | Approval stays on the Mac, not the phone. No network listener. | Does not meet the phone requirement and adds app signing, UI, and recovery work. | Not selected. |
+| Custom iOS app with APNs | Native phone UI through outbound APNs provider requests. | Requires an iOS app, entitlements, device token, provider credential, app lifecycle, and additional service logic. | Not selected for version 1. |
+| Telegram long polling | Gateway holds an outbound HTTPS poll. No webhook or inbound listener. | Good phone UX, but Telegram sees approval content and the bot token, account, update offset, and sender identity become security dependencies. | Viable later alternative only after a separate privacy decision. |
+| Slack Socket Mode | Gateway opens an outbound WebSocket. No public HTTP endpoint. | Requires a Slack app, workspace installation, app-level token, bot credential, event acknowledgements, and trust in workspace administration. | Viable later alternative only after a separate privacy decision. |
+| Hosted review page | Browser connects to an HTTPS service on or near the Mac. | Adds the listener, DNS, TLS, proxy, firewall, and web security burden Cole rejected. | Rejected. |
 
-Telegram's Bot API offers long polling and webhooks as mutually exclusive update
-methods. Long polling avoids an inbound listener, but the authority must own and
-protect the bot token, update offset, sender and chat allowlist, one-time
-callback state, and outbound stream. Telegram identity is not equivalent to the
-local Secure Enclave decision key.
+Telegram and Slack credentials would belong only to the trusted broker, never
+the sandbox. They avoid inbound ports but do not remove trusted local state,
+execution, recovery, or continuation. They also disclose review data to another
+provider and require separate phone-account recovery. They are not enabled as
+automatic fallback when iMessage is unavailable.
 
-Slack Socket Mode replaces a public HTTP endpoint with an outbound WebSocket and
-an app-level token. It still requires a Slack app, workspace installation, event
-acknowledgement, bot credentials for replies, and trust in Slack account and
-workspace administration.
+Apple provides the iMessage transport used by Messages, but not a public general
+bot callback API. The design relies on the existing local Messages integration
+and synchronized device state. A disabled or delayed synchronization path fails
+closed.
 
-Neither remote channel is enabled merely because it has buttons. A future
-proposal must decide whether to disclose complete canonical values to that
-provider or add a different trusted remote review surface. It must also define
-credential recovery, account compromise, replay, phone loss, provider outage,
-and local fallback. Until then, remote callbacks may quick-deny only.
+#### Gmail capability boundary
 
-#### Gmail credential and mailbox-triage boundary
+The sandbox receives no Gmail token, OAuth client secret, authenticated browser
+session, raw API method, generic HTTP client with host credentials, or
+send-capable host tool.
 
-The gateway Gmail credential and OAuth client must have exactly
-`gmail.readonly`. Any additional scope fails closed. Forbidden scopes include
-full mail access, send, compose, modify, insert, add-on compose, settings, and
-sharing scopes. Settings access is forbidden because vacation replies,
-forwarding, send-as, and delegation can create outbound or exfiltration paths.
+The trusted gateway may host three closed capabilities:
 
-The protected executor uses a different OAuth client and refresh token for
-approved sending. The mailbox-triage service uses a third OAuth client and token
-under its separate OS identity. It receives the narrowest provider scope that
-supports the fixed reversible operations and never receives the executor's
-credential. Gmail's label-mutation scope is provider-level send-capable, even
-though the triage RPC cannot express send. Process isolation, token ACLs, the
-closed RPC, and the absence of model-controlled content in triage requests are
-therefore mandatory parts of the boundary. Compromise of the triage identity or
-token is outside the approval guarantee. Minting either protected credential
-requires interactive owner consent and never occurs through the gateway.
+- read-only mail access using a read-only credential;
+- fixed reversible triage for archive, read state, star, importance, and
+  configured user labels; and
+- approved send execution through the broker.
 
-Routine triage accepts only:
+The triage provider scope may technically permit sending even though the
+sandbox-facing adapter cannot express send. The token therefore remains
+host-only and protected. The adapter accepts only a closed action enum, bounded
+message or thread IDs, and configured user-label IDs. It rejects raw methods,
+request bodies, extra fields, arbitrary labels, drafts, send, insert, import,
+trash, spam, forwarding, vacation replies, filters, send-as, delegation, and
+settings before any provider call.
 
-- archive by removing `INBOX`;
-- mark read or unread by changing `UNREAD`;
-- star or unstar by changing `STARRED`;
-- mark important or not important by changing `IMPORTANT`; and
-- apply or remove configured user-created labels.
-
-Generic label actions reject `INBOX`, `UNREAD`, `STARRED`, `IMPORTANT`,
-`TRASH`, `SPAM`, every `CATEGORY_*` label, every other system label, unknown
-labels, and labels that change deletion or delivery state. No fixed action
-exists for trash, spam, category changes, send, draft, insert, import, settings,
-forwarding, send-as, delegation, or an arbitrary provider method.
-
-The triage RPC accepts only its fixed enum, bounded message or thread IDs, and
-closed user-label allowlist. It dispatches only approved message, thread, or
-batch modify operations. It rejects raw request bodies, method names, extra
-fields, and unknown labels before contacting Gmail. It has independent peer
-authentication, replay defense, limits, audit, alerts, launchd lifecycle, and
-recovery. It cannot call or load protected send-executor code.
+The broker send credential may be separate from read and triage credentials.
+All credentials remain outside the sandbox and are loaded only by the trusted
+host capability that needs them. Any old generic route that exposed a
+send-capable provider client to sandbox tools must be removed before enablement.
+Rollback never restores such a route.
 
 #### Risks and tradeoffs
 
-- **The native app is still trusted software.** Removing network hosting removes
-  DNS, TLS, and exposed-service work. It does not remove the local authority,
-  graphical app, code-signing, enrollment, update, and recovery lifecycle.
-- **Same-user compromise is a residual risk.** The gateway must not run as
-  Cole's login user. Arbitrary code or Accessibility control in the owner
-  session remains outside the guarantee.
-- **Notification delivery is best effort.** Disabled permissions or launch
-  failures leave records pending and visible in the local inbox. They never
-  cause approval.
-- **Remote approval is not in version 1.** Outbound-only chat modes avoid
-  inbound ports but add provider trust, privacy exposure, account recovery, and
-  weaker transaction binding.
-- **Gateway compromise can cause denial of service.** It can flood submissions
-  or relay quick denies, but quotas, cooldowns, alerts, and signed approval
-  prevent execution.
-- **Protected local services are operationally significant.** Authority failure
-  can pause approvals and sending. Independent triage-service failure can pause
-  routine mailbox changes. Its provider token is send-capable even though its
-  RPC is not, so triage identity or token compromise is outside the guarantee.
-  Each service recovers inside its own protected identity and never restores
-  unsafe gateway access.
-- **Exactly-once effects depend on provider support.** Ambiguous outcomes become
-  explicit unknown states and require reconciliation.
-- **Agent continuation is at-least-once transport with idempotent consumption.**
-  The design produces one transcript event and one semantic continuation, not
-  exactly-once packet delivery.
-- **A stable root-task identity may require upstream work.** Until it exists,
-  quotas are the primary defense against cross-run duplicates.
-- **The model may vary payloads to evade hash reuse.** Authority-native absolute
-  limits and cooldowns remain effective.
+- **The gateway account is trusted.** This is simpler and matches the actual
+  deployment, but gateway-account or host compromise is outside the guarantee.
+- **Tapback is easy to use and easier to do accidentally.** The fixed final
+  bubble, exact GUID, clear finality warning, and `allow-once` mapping reduce
+  ambiguity. The exact inline reply is available for a more deliberate action.
+- **Phone synchronization is best effort.** Offline devices, disabled Messages
+  in iCloud, bridge failure, or delayed sync can cause expiry. They cannot cause
+  execution.
+- **Multipart review cannot prove what the owner read.** Numbering, a common
+  digest, complete GUID registration, and one final bubble make omissions
+  visible. Approval still represents the owner's judgment after review, not
+  cryptographic proof of attention.
+- **Full review values leave the Mac.** They may persist in Messages history,
+  synchronized storage, and backups. Secret policy blocks credentials, but
+  ordinary email content is disclosed to that channel.
+- **Attachment review is metadata-only.** This avoids active content on the
+  signing path, but some requests will be impractical to approve from the phone.
+- **Messages is not a public bot API.** The design depends on the existing local
+  bridge and Apple's synchronized Messages behavior. Upgrades require
+  compatibility tests.
+- **Exactly-once provider effects depend on provider evidence.** Ambiguous
+  acceptance becomes `execution_unknown`.
+- **Agent continuation uses at-least-once transport with idempotent
+  consumption.** It guarantees one semantic continuation, not one network
+  packet.
+- **A stable trusted task identity is required for cross-run deduplication.**
+  Until every source provides it, quotas and tool-call lineage are the primary
+  controls.
+- **The model can vary payloads to evade hash reuse.** Absolute quotas,
+  notification cooldowns, and owner denial limits still apply.
 
 #### Evidence
 
-Current OpenClaw evidence:
+Current OpenClaw source:
 
-- `docs/plugins/plugin-permission-requests.md`
-- `docs/plugins/architecture.md`
-- `docs/plugins/admin-http-rpc.md`
-- `docs/web/control-ui.md`
-- `docs/gateway/configuration-reference.md`
-- `src/agents/agent-tools.before-tool-call.ts`
-- `src/gateway/exec-approval-manager.ts`
-- `src/gateway/method-scopes.ts`
-- `src/gateway/server-methods/plugin-approval.ts`
-- `src/gateway/server-methods/approval-shared.ts`
-- `src/infra/plugin-approvals.ts`
-- `src/plugin-state/plugin-state-store.ts`
-- `src/state/openclaw-state-db.ts`
-- `src/infra/session-delivery-queue-storage.ts`
-- `src/infra/session-delivery-queue-recovery.ts`
-- `src/infra/system-events.ts`
 - `extensions/imessage/src/approval-native.ts`
+- `extensions/imessage/src/approval-handler.runtime.ts`
+- `extensions/imessage/src/approval-auth.ts`
 - `extensions/imessage/src/approval-reactions.ts`
 - `extensions/imessage/src/approval-reaction-poller.ts`
-- `ui/src/ui/views/exec-approval.ts`
-- `ui/src/ui/controllers/exec-approval.ts`
+- `extensions/imessage/src/monitor/types.ts`
+- `extensions/imessage/src/send.ts`
+- `src/auto-reply/reply/commands-approve.ts`
+- `src/gateway/exec-approval-manager.ts`
+- `src/gateway/server-methods/approval-shared.ts`
+- `src/infra/session-delivery-queue-storage.ts`
+- `src/infra/session-delivery-queue-recovery.ts`
 
-The current session-delivery queue persists `agentTurn` and `systemEvent`
-payloads, hashes stable idempotency keys, retries with backoff, and moves
-exhausted entries to a failed queue. Plan 028 documents using that queue to wake
-an agent after asynchronous work. This proposal reuses that transport but adds
-authority-owned redelivery, signed result events, transcript uniqueness, and
-consumption receipts because queue acknowledgement alone is not end-to-end
-proof.
+Source and tests establish that current iMessage approval:
+
+- uses explicit approvers from `allowFrom`, while wildcard `*` must be
+  specifically prohibited by this design;
+- maps thumbs-up to `allow-once`, infinity to `allow-always`, and thumbs-down to
+  `deny`;
+- binds a reaction only when outbound delivery returns a real GUID;
+- probes normalized and prefixed target GUID forms;
+- validates the reaction actor through the approval allowlist;
+- accepts an `is_from_me` reaction only through that same explicit actor check;
+- clears target bindings after successful resolution so a later changed
+  reaction does not resolve again;
+- stores reaction targets with a default 24-hour TTL and 1,000-entry cap;
+- can scan 50 recent chats and 30 messages per chat with a 10-second request
+  timeout during bounded restart discovery; and
+- exposes `reply_to_guid` in inbound iMessage payloads, although the generic
+  approval command does not currently require it.
+
+Current gateway approval state is process-local. Its own error guidance says
+pending approvals are cleared after restart. This is the principal durability
+gap.
 
 Related repository plans:
 
-- Plan 014, egress approval;
-- Plan 027, iMessage approval channel; and
-- Plan 028, session-delivery queue for agent wake-up.
+- Plan 014 for protected egress policy;
+- Plan 027 for the earlier iMessage approval channel; and
+- Plan 028 for durable session-delivery wake-ups.
 
-For protected effects, this plan supersedes the approval mechanics in Plans 014
-and 027. Their content-policy and iMessage transport research remains useful,
-but implementations must not use native-plugin authority, positive tapback
-approval, plain-message approval, or `allow-always`.
+Plan 027's broad plain-reply design is superseded for protected effects.
+Current source now supports exact Tapback GUID correlation, which is safer and
+more reusable. Plan 028 remains useful transport prior art but does not provide
+end-to-end transcript and consumption acknowledgement.
 
-Authoritative platform evidence:
+Authoritative Apple documentation:
 
-- Apple local notification handling and callbacks:
-  https://developer.apple.com/documentation/usernotifications/handling-notifications-and-notification-related-actions
-- Apple notification action authentication:
-  https://developer.apple.com/documentation/usernotifications/unnotificationactionoptions/authenticationrequired
-- Apple LocalAuthentication policy evaluation:
-  https://developer.apple.com/documentation/localauthentication/lacontext/evaluatepolicy(_:localizedreason:reply:)
-- Apple Secure Enclave key protection:
-  https://developer.apple.com/documentation/security/protecting-keys-with-the-secure-enclave
-- Apple Secure Enclave token identity:
-  https://developer.apple.com/documentation/security/ksecattrtokenidsecureenclave
-- Apple key access-control flags:
-  https://developer.apple.com/documentation/security/secaccesscontrolcreateflags
-- Apple XPC services:
-  https://developer.apple.com/documentation/xpc/creating-xpc-services
-- Apple XPC peer code-signing requirements:
-  https://developer.apple.com/documentation/foundation/nsxpcconnection/setcodesigningrequirement(_:)
-- Apple push registration and provider requests:
+- Tapbacks attach to a specific message and can be changed or removed:
+  https://support.apple.com/guide/iphone/react-with-tapbacks-iph018d3c336/ios
+- inline replies target a specific message:
+  https://support.apple.com/en-us/104974
+- Messages in iCloud synchronizes Messages between configured devices:
+  https://support.apple.com/guide/icloud/set-up-messages-mm0de0d4528d/icloud
+- iMessage encrypts content per receiving device, uses APNs for delivery, and
+  does not encrypt routing metadata:
+  https://support.apple.com/guide/security/how-imessage-sends-and-receives-messages-sec70e68c949/web
+- Messages in iCloud key protection depends on backup and Advanced Data
+  Protection configuration:
+  https://support.apple.com/en-us/102651
+
+Alternative-channel documentation:
+
+- Apple push app and provider requirements:
   https://developer.apple.com/documentation/usernotifications/registering-your-app-with-apns
   and
   https://developer.apple.com/documentation/usernotifications/sending-notification-requests-to-apns
-- Telegram Bot API update methods:
+- Telegram long polling:
   https://core.telegram.org/bots/api#getting-updates
 - Slack Socket Mode:
   https://docs.slack.dev/apis/events-api/using-socket-mode
 
 ### Implementation
 
-No implementation is authorized. If Cole approves this design, use separate
-reviewable phases.
+No implementation is authorized. If Cole approves the design, use these phases.
 
-1. **Boundary and feasibility.** Prototype cross-identity launchd activation,
-   XPC peer signing and UID enforcement, Notification Center delivery when the
-   app is stopped, root-owned app updates, Secure Enclave signing with a fresh
-   prompt, key recovery, isolated attachment scanning and viewing, and zero
-   approval-subsystem network listeners. Prove the current gateway can run under
-   a dedicated non-login identity. Define the exact residual same-user boundary.
-2. **Resume feasibility.** Use a recording authority event to prove stable
-   transcript insertion, one `agentTurn`, busy-lane behavior, missing-session
-   fallback, consumption receipt, repair after queue exhaustion, and one
-   semantic continuation after restart.
-3. **Recovery snapshot.** Extend the deployment snapshot before changing any
-   identity or credential. Capture packages, configuration, launchd jobs, UIDs,
-   app signatures, IPC endpoints and ACLs, trusted policy, database and staging
-   locations, notification state, Gmail routing, OAuth-client identities, and
-   the preexisting keychain and permission posture. Restore it in an isolated
-   fixture.
-4. **Authority core.** Add the non-evicting schema, state machine, quotas,
-   deduplication, immutable staging, sandboxed scanner protocol, policy,
-   signatures, freshness, leases, reconciliation, retention, events, and
-   metadata-only audit behind a disabled flag.
-5. **Native decision surface.** Add the signed app, launchd registration,
-   notification helper, inert renderer, per-decision protected signing, key
-   enrollment and revocation, and isolated viewer.
-6. **Mailbox triage.** Build the independent fixed triage service with a distinct
-   OS identity, launchd job, OAuth client and credential, authenticated endpoint,
-   action enum, label allowlist, replay defense, limits, audit, and recovery.
-   Prove that no input can select sending or another forbidden action and that
-   approval rollback leaves this service intact.
-7. **Recording tool.** Connect one fake effect whose executor records envelopes,
-   terminal provider evidence, and result events while every delivery adapter is
-   deny-by-default.
-8. **Durable continuation.** Add signed result verification, session inbox,
-   transcript and consumption receipts, queue repair, fallback routing, and
-   reconciliation.
-9. **First provider adapter.** Add one credential-isolated non-production
-   adapter with immutable staging and idempotency or reconciliation.
-10. **Controlled enablement.** Enable one owner and one low-volume tool only
-    after lifecycle tests, security review, bypass audit, identity migration,
-    key recovery rehearsal, and rollback all pass.
+1. **Recovery snapshot first.** Extend the complete recovery snapshot before
+   changing state schema, tools, credentials, Messages routing, approver
+   configuration, provider adapters, or continuation. Capture packages,
+   configuration, gateway jobs, state databases, Messages account and route,
+   provider credential references, Keychain ACL posture, tool inventories,
+   queues, and feature flags. Restore the snapshot in an isolated fixture.
+2. **Boundary inventory.** Build a committed inventory of every primary agent,
+   subagent, sandbox profile, MCP tool, browser tool, shell tool, native plugin,
+   host bridge, provider client, credential source, and compatibility fallback.
+   Enumerate every Messages reaction, reply, edit, unsend, message action,
+   lower-level bridge call, and raw mutation entry point. Route each through the
+   shared per-account action lane and reserved-GUID policy. Prove the sandbox
+   cannot reach a protected effect or bypass a review reservation.
+3. **Broker core.** Add the non-evicting schema, immutable records and staging,
+   canonicalization, scanner protocol, policy, quotas, deduplication, time,
+   leases, idempotency, reconciliation, retention, audit, and recovery behind a
+   disabled flag.
+4. **Recording approval tool.** Connect one fake protected effect. Return pending
+   immediately. Render complete canonical review bundles and record all delivery
+   attempts through deny-by-default Messages adapters.
+5. **iMessage phone path.** Reuse native delivery, approver normalization, GUID
+   recovery, reaction mapping, and polling. Add multipart records, final-target
+   persistence, broker-backed restart polling, `allow-once` and `deny` narrowing,
+   atomic resolution, and exact inline-reply fallback.
+6. **Durable continuation.** Add terminal result events, transcript receipts,
+   continuation rows and outbox, stable resumed-turn IDs, busy-lane queueing,
+   missing-session inbox, consumption acknowledgement, and ambiguous-turn
+   repair.
+7. **Provider adapter.** Add one non-production recording email adapter, then a
+   credential-isolated provider adapter with provider idempotency or
+   reconciliation. Keep all delivery and mutation adapters recording-only.
+8. **Capability cutover.** Stage host-only read, triage, and protected-send
+   capabilities. Remove raw provider methods, tokens, authenticated sessions,
+   and send-capable compatibility routes from every sandbox surface.
+9. **Controlled enablement.** After full lifecycle, adversarial, recovery, and
+   rollback review, enable one owner and one low-volume protected tool. Keep
+   `allow-always`, groups, SMS, alternate channels, and arbitrary tools disabled.
 
-Do not serialize live hook context to retrofit arbitrary synchronous tools. Do
-not place authority state, protected credentials, or owner decision keys in a
-native OpenClaw plugin. Do not implement positive tapback approval, approval
-through plain iMessage, notification-button approval, or `allow-always`.
+Do not retrofit arbitrary synchronous tools by serializing closures or live
+runtime objects. Do not let model output construct review messages or decision
+targets. Do not use the existing in-memory approval manager as durable state.
 
 ### Validation
 
-The proposal has been checked against current OpenClaw and repository source,
-Plans 027 and 028, and authoritative Apple, Telegram, and Slack documentation. A
-future implementation must add committed recording-based tests to the
-repository-managed integration pool. No automated or live-target test may send
-a message, approve a real effect, or mutate a live account.
+The current design research covers present OpenClaw source, Plans 027 and 028,
+and authoritative Apple documentation. A future implementation must add
+committed recording-based regressions to the repository-managed integration
+pool. Automated tests must not send real iMessages, call live mutation
+endpoints, or change live accounts.
 
-#### Identity, IPC, and no-listener boundary
+#### Sandbox and credential boundary
 
 Tests must prove:
 
-- separate gateway, authority, and owner-login identities and file, database,
-  keychain, process, policy, and staging isolation;
-- a committed integration inventory of every agent profile and invocation
-  surface, including primary agents, subagents, native harnesses, MCP tools,
-  browser tools, shell tools, diagnostics, direct provider clients, raw network
-  clients, and compatibility or disabled-authority fallbacks;
-- each inventoried surface either routes the protected effect through the
-  authority or provably lacks the credential, executable, API, permission,
-  network route, and tool capability needed to create that effect;
-- startup and configuration validation failing closed when a new or unclassified
-  profile, tool, plugin, client, fallback, credential, route, or invocation
-  surface could reach the protected effect;
-- the complete invocation-surface inventory and bypass assertions running in
-  the committed repository-managed integration pool for every protected tool;
-- the gateway account cannot modify the root-owned app, launchd definitions,
-  peer requirements, authority public key pin, decision key ACL, or viewer
-  sandbox;
-- exact code-signing, UID, entitlement, role, and protocol checks for every XPC
-  peer;
-- separate submit, notify, quick-deny, owner, resume, and triage capabilities,
-  with a complete method-to-role matrix and no capability confusion;
-- the authenticated authority cold-starting the stopped per-user notification
-  helper through its registered notify-only Mach service;
-- an unauthorized connection being rejected before any notification, record
-  access, durable mutation, or authority action, even though launchd may already
-  have started the helper;
-- launch storms, repeated invalid peers, idle exit, startup resource limits,
-  launchd throttling, bounded audit, and alert suppression containing the
-  unauthorized-activation denial-of-service risk;
-- rejection of forged authority peers, signatures, sequences, record IDs,
-  template versions, summaries, fields, and oversized notification payloads;
-- notify-only peers being unable to fetch records, decide, quick-deny, invoke
-  triage, acknowledge, or execute;
-- unavailable authenticated method access or unbounded unauthorized launch cost
-  failing the feasibility gate rather than falling back to a network listener,
-  polling daemon, shared writable file, or unauthenticated bridge;
-- quick deny accepting only a correlated opaque pending record, applying an
-  idempotent pending-to-denied transition, enforcing independent quotas and
-  replay checks, and returning no record contents;
-- quick-deny peers being unable to read, approve, cancel, re-arm, execute,
-  acknowledge, enumerate, or invoke triage;
-- triage peers being unable to submit approval records, quick-deny, read
-  authority state, decide, execute protected work, or acknowledge results;
-- rejection of PID reuse, self-claimed identity, unsigned clients, ad hoc
-  signatures, sibling apps, wrong UIDs, stale app versions, injected classes,
-  oversized frames, unexpected methods, replayed nonces, sequence rollback, and
-  confused-deputy role changes;
-- interruption, invalidation, malformed reply, partial request, timeout, and
-  launch failure all fail closed;
-- any Unix-socket fallback resists symlink replacement, path takeover, unsafe
-  permissions, peer spoofing, framing ambiguity, replay, and concurrent cleanup;
-- process and host inspection finds no new approval-subsystem AF_INET or
-  AF_INET6 listening socket, DNS record, TLS key, proxy route, firewall rule, or
-  inbound network dependency; and
-- outbound provider, Telegram, or Slack connections cannot create an inbound
-  route to an approval operation.
+- every primary agent, subagent, sandbox profile, MCP tool, browser tool, shell
+  tool, native plugin, diagnostic surface, host bridge, direct provider client,
+  and fallback is in a committed inventory;
+- each surface either submits through the broker or lacks the credential,
+  Keychain access, environment secret, authenticated browser session, host
+  filesystem path, executable, network client, permission, and tool capability
+  required for the protected effect;
+- new or unclassified surfaces fail startup or feature enablement closed;
+- sandbox attempts to read Keychain, process environment, provider state,
+  broker database, staged bytes, host browser profiles, and credential files
+  fail;
+- direct provider calls, browser automation, raw HTTP, SMTP, shell, alternate
+  tools, compatibility fallbacks, encoded arguments, and prompt-injected routes
+  cannot send through the configured account;
+- tool names, routes, messages, approvers, reaction mapping, provider adapter,
+  credential selector, and execution method are not model inputs;
+- model-facing Messages actions cannot react, reply, edit, unsend, or target any
+  active detail or final review GUID, even when the model can send ordinary
+  conversation messages through the same gateway;
+- every public, plugin, host-tool, lower-level bridge, compatibility, and raw
+  Messages mutation entry point appears in a committed inventory and is forced
+  through the same per-account lane and reserved-GUID check;
+- forged fixed-template messages and copied approval text remain unregistered
+  and cannot resolve a broker record;
+- read and triage adapters reject raw methods, bodies, extra fields, forbidden
+  labels, and every send-like operation before provider contact; and
+- secrets in direct, encoded, resolved, or attachment-borne form fail before
+  Messages delivery and provider execution.
 
-#### Notification, review, and owner signing
+#### Canonical record and attachments
 
-Tests must cover:
+Tests must prove:
 
-- notification permission granted, denied, and revoked; helper stopped at
-  delivery; callback during cold launch; delegate registration order; duplicate
-  alerts; stale record IDs; and no-notification fallback;
-- every notification action, unlock callback, dismissal, forged local
-  notification, deep link, Apple Event, URL open, and direct app launch being
-  unable to decide;
-- authority bundle signature validation, wrong authority key, stale bundle,
-  changed fields, changed digest, wrong owner, wrong record, and expired
-  challenge;
-- exact original and resolved values, canonicalization stability, schema
-  migration, digest display, and changed-value highlighting;
-- bidirectional text, zero-width text, newlines, homoglyphs, punycode, HTML,
-  Markdown, link spoofing, and renderer truncation;
-- one fresh authentication context per decision, zero reuse, owner cancellation,
-  lockout, unavailable biometry, changed enrollment, invalidated key, wrong key,
-  signature replay, changed decision, simultaneous decisions, and permanent
-  approval rejection;
-- proof that LocalAuthentication success without the protected digest signature
-  changes no state; and
-- recovery-key enrollment, theft resistance, revocation, rotation, and gateway
-  denial.
-
-#### Attachments
-
-Tests must cover:
-
-- byte-only ingestion and refusal to open caller paths;
+- stable canonicalization and digest across restart, Unicode, object ordering,
+  defaults, aliases, schema versions, and equivalent inputs;
+- exact original and resolved values with no security-relevant truncation,
+  redaction, hidden field, or renderer mismatch;
+- control characters, bidirectional text, zero-width text, newlines, homoglyphs,
+  punycode, HTML, Markdown, links, and prompt-like instructions remain inert and
+  visible;
+- the final decision bubble contains no model-controlled text;
+- byte-only attachment ingestion and refusal to open caller-supplied host paths;
 - traversal, symlink, privileged-path, size, digest, replacement, and cleanup
   failures;
-- inaccessible staged objects from the gateway and owner-login accounts;
-- scanner isolation from the authority UID, database, keychain, credentials,
-  staging writes, owner and decision IPC, unrelated files, and network;
-- byte-only or read-only-descriptor scanner input with no authority path;
-- scanner input, memory, CPU, wall-time, process, recursion, decompression, and
-  output limits, including parser exploits, zip bombs, nested archives, hangs,
-  crashes, and forced worker restart;
-- rejection of malformed, oversized, injected, stale-version, cross-record, and
-  uncertain scanner output, with scanner text unable to select policy or
-  execution fields;
-- missing scanner, unavailable sandbox, timeout, limit breach, version mismatch,
-  or uncertain verdict making zero provider calls;
-- active HTML, SVG, XHTML, scripts, macros, external resources, malformed media,
-  and sniffable content never rendering in the signing process;
-- viewer absence of decision key, owner IPC, provider credential, network,
-  clipboard export, Accessibility permission, and staged-write access;
-- byte, descriptor, memory, process, recursion, time, and output limits;
-- viewer crash, hang, compromise simulation, stale preview, changed staged bytes,
-  and signing only after viewer exit and bundle refetch; and
-- metadata-only fallback when safe preview is unsupported.
+- scanner isolation from network, Keychain, provider credentials, broker state,
+  staging writes, unrelated files, and decision handling;
+- hard byte, memory, CPU, wall-time, process, recursion, decompression, and
+  output limits against malformed media, parser exploits, hangs, crashes,
+  nested archives, and zip bombs;
+- malformed, oversized, injected, stale-version, cross-record, or uncertain
+  scanner output fails closed; and
+- no attachment bytes, thumbnails, previews, links, or active content enter the
+  Messages approval flow.
 
-#### Lifecycle, execution, and pressure
+#### iMessage identity, delivery, and decision
 
 Tests must cover:
 
-- reuse of active duplicates and behavior after every terminal state;
-- same-task success, explicit duplicate review, renewal, lineage uniqueness,
-  newest-generation lookup, and rejection of model-driven renewal;
-- owner, session, tool, submitter, and global quotas;
-- authority-native limits remaining effective while the gateway forges and
-  rotates run, session, process, and claimed-user identities;
-- varied-payload floods, notification limits, signed-denial cooldown, quick-deny
-  cooldown, legitimate distinct requests, and operator clearing;
-- approve, deny, expiry, signed cancellation, administrative cancellation,
-  stale approval, signed re-arm, unsolicited resubmission, quick deny, and
-  simultaneous decisions;
-- the stale re-arm window starting on entry, ending within 23 hours, and becoming
-  terminal without reviving or releasing the wrong lineage;
-- immediate tool return with no open promise or agent turn;
-- a recording provider receiving exactly the approved stored envelope and
-  protected staged bytes, byte for byte;
-- direct, encoded, resolved, and attachment-borne secrets being denied even
-  after valid approval, with missing or uncertain policy making zero provider
-  calls;
-- crashes before claim, after claim, before provider call, after provider
-  acceptance, and before terminal-result persistence;
-- recovery on both sides of the absolute execution deadline;
-- idempotent retry, provider reconciliation, and unknown outcome without blind
-  resend; and
-- denial, expiry, stale approval, integrity failure, and capacity failure never
-  reaching the provider.
+- one configured direct iMessage route and explicit normalized approver handles;
+- rejection of wildcard `*`, group, SMS, wrong service, wrong account, wrong
+  conversation, wrong sender, and absent approvers;
+- phone and Mac handles that normalize from phone, email, service-prefixed, and
+  explicitly allowlisted `is_from_me` forms;
+- complete single-part review and bounded multipart review;
+- part byte limits, count limits, stable numbering, common digest, exact expiry,
+  text hashes, and deterministic rendering;
+- send success, timeout, recovered GUID, numeric row ID, `ok`, `unknown`,
+  missing GUID, duplicate result, wrong target, partial delivery, reordering,
+  and ambiguous delivery;
+- final message sent only after all detail GUIDs are durable;
+- per-account Messages action serialization across the complete review-bundle
+  send, every GUID reconciliation and reservation, full-bundle verification, and
+  decision arming;
+- no model-facing reaction, reply, edit, unsend, or raw Messages action running
+  between any review GUID creation and its durable reservation;
+- crash after any detail or final send but before reservation or arming, with
+  startup reconciliation and reservation completing before model-facing
+  actions resume;
+- readback of every detail and final message before arming and before accepting
+  a decision, with exact GUID, chat, order, canonical text, hash, and
+  edit-or-unsend state;
+- edit, unsend, deletion, substitution, reordering, or hash mismatch on any
+  review part failing closed with zero provider calls;
+- owner reaction before arming remaining observable and resolving only after
+  the target is active;
+- target registration only after the final GUID is concrete and all part records
+  are complete;
+- resolution of the final GUID to one concrete direct chat row and conversation,
+  with handle-only or ambiguous chat identity remaining unarmed;
+- one authoritative target row containing account, concrete chat identity, GUID
+  forms, owner aliases, record, digest, code hash, decisions, and expiry;
+- target cap, TTL, expiry cleanup, broker restart, Messages bridge restart,
+  gateway restart, and restoration of exact scoped polling from broker rows;
+- phone offline, delayed synchronization, Messages in iCloud disabled, poll
+  delay, target outside recent history, and later recovery before expiry;
+- exact prefixed and normalized GUID matching;
+- thumbs-up to `allow-once`, thumbs-down to `deny`, and rejection of infinity,
+  arbitrary emoji, text reactions, numeric choices, and unsupported variants;
+- exact inline `APPROVE <short-code>` and `DENY <short-code>` only when
+  `reply_to_guid` matches the final message;
+- rejection of generic `/approve`, bare yes or no, copied code, non-reply text,
+  reply to a detail part, and reply to an unrelated message;
+- denial of model-requested local reactions, replies, edits, unsends, and raw
+  Messages actions against every reserved detail or final GUID;
+- rejection of locally initiated model actions that reappear through Messages
+  synchronization as allowlisted `is_from_me` events;
+- lookalike approval prompts, model-authored decision instructions, and
+  unregistered GUIDs making zero state changes;
+- stale, early, replayed, duplicate, changed, removed, and delayed reactions;
+- removal before observation producing no decision;
+- change or removal after accepted resolution leaving the first decision final;
+- simultaneous approve and deny producing one atomic winner;
+- target cleanup after resolution without losing audit; and
+- every unavailable, malformed, unauthorized, stale, or ambiguous case making
+  zero provider calls.
+
+#### State, execution, and pressure
+
+Tests must cover:
+
+- every state transition and rejection of every undeclared transition;
+- immediate pending return with no live promise or blocked turn;
+- crash before and after record insert, staging, policy, each review part, final
+  target registration, decision transition, lease claim, provider request,
+  provider acceptance, terminal write, and outbox insert;
+- continuous time through sleep and fail-closed reboot, wall rollback, uncertain
+  downtime, and large forward jump;
+- active duplicate reuse, completed-effect detection, terminal-state reuse, and
+  no model-driven revival;
+- `already_executed` returning the prior terminal record without creating a
+  sixth terminal state, result event, provider call, or continuation;
+- owner, task, session, tool, and global quotas;
+- varied-payload floods, target cap, delivery limits, denial cooldown, alert
+  suppression, and legitimate distinct work;
+- recording executor receiving exactly the stored envelope and staged hashes;
+- policy and integrity recheck immediately before provider execution;
+- approval expiry, execution deadline, lease expiry, and no late provider call;
+- provider idempotency, reconciliation, proven no-accept retry, and ambiguous
+  acceptance without blind resend; and
+- denial, expiry, policy failure, integrity failure, capacity failure,
+  delivery failure, and rollback making zero provider calls.
 
 #### Trusted result and continuation
 
 Tests must cover:
 
-- state and provider evidence committed before any terminal or status event is
-  emitted;
-- `sent`, `denied`, `expired`, `failed`, `cancelled`,
-  `input_integrity_failed`, `approval_stale`, and `execution_unknown` result
-  shapes;
-- correct provider receipt ID and timestamp for a recording email adapter;
-- content-free errors with no body, token, attachment, or raw provider response
-  entering events or transcripts;
-- authority-signature validation and rejection of forged, modified, stale,
-  cross-owner, cross-tool, and out-of-sequence events;
-- one continuation key per original tool call and lineage, with the first
-  terminal outcome claiming it transactionally;
-- `approval_stale`, approval, re-arm, and notification failure updating the
-  inbox without scheduling an `agentTurn`;
-- stale then re-arm then `sent`, and stale then re-arm then denied, producing
-  only one semantic continuation at the terminal outcome;
-- owner-signed renewal after terminal expiry delivering follow-up status without
-  resuming the expired tool call a second time;
-- original session idle, busy, locked, restarted, reset, deleted, rotated, and
+- terminal result and provider evidence committed before event delivery;
+- exact `sent`, `denied`, `expired`, `failed`, and `execution_unknown` shapes;
+- provider receipt ID and timestamp for the recording email adapter;
+- content-free errors with no body, attachment, token, or raw response;
+- rejection of sandbox text that pretends to have trusted internal provenance;
+- one continuation key per original tool call and approval lineage;
+- stable event ID, sequence, transcript position, continuation row, outbox row,
+  turn ID, and consumption receipt;
+- original session idle, busy, locked, restarted, reset, rotated, deleted, and
   unavailable;
-- exact transcript insertion, stable event-ID uniqueness, durable
-  continuation-row and outbox transitions, outbox leases, `agentTurn`
-  idempotency, expected-session checks, owning-agent inbox fallback, and later
-  delivery when no session exists;
-- queue retry, queue exhaustion, authority redelivery, repair-loop restart,
+- protected task inbox fallback and later owning-agent delivery;
+- queue retry, queue exhaustion, broker redelivery, repair-loop restart,
   transcript receipt loss, consumption receipt loss, and acknowledgement loss;
-- crashes before and after transcript append, state advance, outbox creation,
-  enqueue, queue acknowledgement, turn claim, prompt assembly, continuation
-  checkpoint, completion, consumption receipt, and authority acknowledgement;
-- an existing transcript event with missing or incomplete continuation state
-  rescheduling safely instead of suppressing the only resumed turn;
-- consumption remaining unacknowledged until the turn completes or durably
-  checkpoints all remaining work;
-- lease expiry, transcript and queue reconciliation, stable resumed-turn IDs,
-  later-tool and delivery idempotency, and explicit `continuation_unknown`
-  rather than blind replay after an ambiguous side effect;
-- one model-visible trusted tool result and one semantic continuation despite
-  duplicate packets, duplicate queue entries, crash at every handoff, and
-  out-of-order sequences;
-- resumed processing beyond the protected tool with no regenerated effect,
-  duplicate provider call, duplicate user delivery, or second continuation; and
-- an explicit alert and retained inbox item when the resumed turn repeatedly
-  fails.
+- crashes before and after transcript insert, outbox insert, enqueue, queue
+  acknowledgement, turn claim, prompt assembly, checkpoint, completion,
+  consumption receipt, and broker acknowledgement;
+- an existing transcript event with incomplete continuation state rescheduling
+  safely instead of suppressing the only resumed turn;
+- stable resumed-turn IDs and later tool, message, media, and provider
+  idempotency;
+- explicit `continuation_unknown` after an ambiguous later side effect;
+- one model-visible tool result and one semantic continuation despite duplicate
+  packets, duplicate queue entries, reordering, and every crash window; and
+- resumed processing beyond the protected tool without regenerating the
+  provider effect or repeating a later delivery.
 
-#### Gmail boundary and cutover
+#### Gmail capability cutover
 
-Using hermetic recording OAuth and Gmail fixtures that never contact an external
-account, tests must prove:
+Using hermetic recording OAuth and Gmail fixtures, tests must prove:
 
-- simulated old-token revocation is requested only after replacement readiness;
-- the replacement gateway scope set equals exactly `gmail.readonly`;
-- source, configuration, and normal consent request no other scope;
-- direct send, draft send, vacation reply, filter, forwarding, send-as, and
-  delegation attempts fail before mutation;
-- gateway, protected executor, and mailbox-triage OAuth clients, refresh tokens,
-  and OS identities are distinct;
-- the triage identity cannot read the protected send credential, approval
-  database, owner keys, executor IPC, or staged approval data;
-- triage accepts only fixed actions and configured user labels;
-- triage dispatches only approved modify operations;
-- method injection, raw bodies, extra fields, send, draft, insert, import,
-  trash, settings, forwarding, send-as, delegation, unknown labels, and
-  disallowed system labels are rejected before Gmail;
-- fixed archive, read-state, star, and importance actions produce only their
-  named reversible label changes in the recording fixture;
-- every inventoried routine triage behavior remains available;
-- triage launchd, endpoint, audit, credential, recovery, and health checks remain
-  available while approval intake, decision UI, and executor jobs are disabled
-  or rolled back;
-- pre-revocation failure leaves old credentials and routing unchanged;
-- revocation is the final irreversible cutover step;
-- post-revocation failure alerts and follows isolated triage-service recovery;
-  and
-- approval rollback leaves narrow mailbox triage running.
+- read credentials are exactly read-only;
+- read, triage, and protected-send credentials and client roles are distinct or
+  otherwise closed to only their declared host capability;
+- the sandbox cannot read any credential or select a raw provider client;
+- triage accepts only archive, read state, star, importance, and configured user
+  labels;
+- triage dispatches only the named reversible provider mutations;
+- raw methods, bodies, extra fields, send, draft, insert, import, trash, spam,
+  forwarding, vacation reply, filter, send-as, delegation, settings, unknown
+  labels, and disallowed system labels fail before provider contact;
+- replacement capabilities are ready before any old generic send route or token
+  is revoked;
+- revocation is the final irreversible cutover step; and
+- rollback never restores direct send-capable sandbox access.
 
-No automated test revokes a real token, changes a real label, or calls a live
-Gmail mutation endpoint. Live-target validation is limited to read-only
-configuration, scope, identity, endpoint health, and access-denial checks.
+No automated test revokes a real token, changes a real label, sends a real
+message, or calls a live mutation endpoint. Live-target checks are limited to
+read-only configuration, scope, identity, route, queue, and access-denial
+inspection.
 
-#### Retention, channels, and rollback
+#### No-listener, retention, and rollback
 
 Tests must cover:
 
-- payload retention, metadata-only audit, purge, backup, and restore;
-- rollback with pending, approved, stale, executing, unknown, and undelivered
-  result records;
-- drain-only rollback retaining authority result emission, continuation outbox,
-  and resume IPC until every terminal event has transcript and consumption
-  receipts;
-- a failed drain migrating continuation state to a tested recovery daemon before
-  any original result-delivery job or endpoint unloads;
-- continuous time across sleep; process restart in one boot; changed boot
-  identity; wall-clock rollback while stopped; uncertain downtime; clock skew;
-  and large forward jumps;
-- reboot or uncertain time expiring pending records and challenges, making
-  approved work stale, reconciling claimed work, and blocking cooldown release
-  until trusted-time recovery;
-- expiry without revival for pending records, challenges, cooldowns, execution
-  windows, and viewer capabilities;
-- iMessage notice, quick deny, unavailable transport, stale reaction, target
-  retention, and no positive decision;
-- disabled Telegram, Slack, and APNs decision paths in version 1;
-- optional outbound-only channel prototypes creating no inbound listener and
-  giving the gateway no channel credential; and
-- the full repository-managed integration lifecycle with recording adapters and
-  no live delivery or mutation.
+- process and host inspection showing no new approval-specific AF_INET or
+  AF_INET6 listener, DNS record, TLS key, proxy route, firewall rule, webhook,
+  or inbound dependency;
+- existing local Messages and gateway runtime behavior without claiming the
+  whole host has no unrelated listener;
+- disabled APNs, Telegram, Slack, generic iMessage, group, SMS, and alternate
+  decision paths;
+- payload retention, Messages delivery metadata, staged-byte purge,
+  metadata-only audit, backup, and restore;
+- rollback with preparing, partial delivery, pending, approved, executing,
+  unknown, terminal, and undelivered-continuation records;
+- drain-only terminal result and continuation repair before unloading candidate
+  workers;
+- snapshot restoration of packages, configuration, schema, tools, credential
+  references, queues, routes, and preexisting host permissions; and
+- the full repository-managed integration lifecycle using recording adapters
+  with zero live delivery or mutation.
 
 ### Rollout and rollback
 
 No rollout occurs during this design task. A later rollout follows this order:
 
-1. Keep approval intake, protected execution, notifications, and production
+1. Keep approval intake, provider execution, iMessage delivery, and production
    credentials disabled.
-2. Extend and fixture-test the complete recovery snapshot before changing
-   identities, jobs, app installation, keys, IPC, Gmail routing, or permissions.
-3. Create isolated test identities with fake credentials, a recording executor,
-   signed test app, test decision key, and deny-by-default delivery adapters.
-4. Prove launchd activation, peer authentication, no new network listener,
-   protected signing, attachment isolation, terminal results, continuation,
-   restart, spoofing, flood handling, retention, and rollback.
-5. Stage the production gateway identity, authority identity, root-owned app,
-   approval launchd jobs, role-specific IPC policies, stores, audit, and alerts
-   while every protected effect remains disabled.
-6. Build and validate the separate mailbox-triage identity, launchd job,
-   endpoint, OAuth client, credential, audit, and recovery while the old gateway
-   credential and routing remain unchanged.
-7. Route routine triage through the independent service. Verify the replacement
-   gateway credential is exactly read-only, remove every alternate send path,
-   and revoke the old token last.
-8. Enroll at least two owner recovery credentials through the protected
-   administrative path. Rehearse notification denial, app loss, key
-   invalidation, and recovery with recording effects only.
-9. Enable one owner and one low-volume protected tool after all local,
-   integration, security, and rollback gates pass.
-10. Register more tools only after observed stability. Remote approval remains
-    disabled until a separate trust and privacy decision approves it.
+2. Extend and fixture-test the complete recovery snapshot before any schema,
+   tool, credential, Messages route, allowlist, provider, or continuation change.
+3. Stage the broker with fake credentials, recording executor, recording
+   Messages adapter, recording session delivery, and deny-by-default unknown
+   operations.
+4. Prove the full sandbox invocation inventory, durable state, multipart
+   delivery, exact decisions, phone-sync simulations, execution reconciliation,
+   continuation, restart, flood handling, retention, and rollback.
+5. Stage the trusted host capabilities, state schema, Messages route, approver
+   configuration, audit, metrics, and alerts while every protected effect stays
+   disabled.
+6. Validate replacement read and triage capabilities and remove every raw
+   provider route from sandbox profiles.
+7. Provision the protected send credential in host-only storage. Verify the
+   broker alone can invoke the executor. Revoke or retire any old generic
+   send-capable route last.
+8. Pause intake, drain in-flight sandbox work, take a final snapshot, attest the
+   exact tool and credential inventory, and perform one atomic feature cutover.
+9. Enable one owner and one low-volume email tool. The first real phone approval
+   is an explicit owner-initiated rollout action, never an automated test.
+10. Expand only after observed stability. Keep alternate channels, groups, SMS,
+    `allow-always`, and arbitrary protected tools disabled.
 
-Operational readiness requires durable counts for records by state, oldest
-pending age, deduplication hits, capacity rejection, notification failure,
-invalid peer, signing failure, stale approval, expired lease, integrity failure,
-unknown execution, undelivered result, resume failure, quick deny, and
-reconciliation repair. Anomalous deny, submission, and stale rates alert.
+Operational readiness requires durable metrics for records by state, oldest
+pending age, part delivery failure, unknown GUID, target count, invalid actor,
+wrong GUID, stale decision, duplicate decision, approval latency, expired lease,
+policy or integrity failure, provider unknown, undelivered result, continuation
+failure, and repair age. Submission floods and repeated invalid decisions alert
+without exposing bodies.
 
 Approval rollback:
 
 - disables new submissions and executor claims;
-- removes the protected tool from every agent profile;
-- rejects new decisions;
-- cancels pending, approved but unclaimed, and stale records;
-- persists and delivers cancellation results;
-- puts the authority reconciler, result emitter, continuation outbox, and resume
-  adapter into drain-only mode;
-- reconciles executing work without blind retry and persists every terminal
-  result;
-- keeps authority event IPC and resume IPC available until every cancellation,
-  execution, and unknown-outcome event has transcript and consumption receipts;
-- retains and retries undelivered terminal events with the normal repair and
-  alert policy;
-- durably migrates any continuation that cannot drain to a tested recovery
-  daemon before the original resume adapter can unload;
-- unloads approval intake, decision, scanner, viewer, and executor jobs first,
-  then unloads result-delivery jobs and removes their IPC only after the drain or
-  migration is proven complete;
-- disables the review app and revokes candidate-added decision keys only after
-  no pending decision or continuation depends on them;
-- restores snapshotted packages, configuration, identities, ACLs, policy,
-  routing, stores, jobs, and preexisting permission posture;
-- preserves records through retention and purges staged data on schedule; and
-- verifies no approval-subsystem listener or orphaned credential remains.
+- removes the protected tool from every sandbox profile;
+- prevents new decision target registration;
+- moves preparing, partial-delivery, pending, and approved but unclaimed work to
+  terminal `failed` or `expired` with no provider call;
+- reconciles executing work before any retry;
+- persists every terminal result and continuation row;
+- keeps the broker result emitter and continuation worker in drain-only mode
+  until transcript and consumption receipts are complete;
+- migrates any undrainable continuation to the tested recovery path before
+  unloading the candidate worker;
+- restores snapshotted packages, configuration, schema compatibility, tools,
+  credential references, Messages routes, allowlists, queues, and preexisting
+  host permissions;
+- preserves terminal records through retention and purges staged bytes on
+  schedule; and
+- verifies no new listener, webhook, alternate route, orphaned target, or
+  sandbox-visible credential remains.
 
-Approval rollback does not unload, disable, restore over, or remove the
-mailbox-triage identity, job, endpoint, audit, or credential after Gmail
-revocation. That service has a separate runbook and snapshot. Before revocation,
-triage cutover failure restores prior routing and credentials. After revocation,
-it alerts and fixes forward inside the isolated triage service unless another
-narrow non-send path is already proven. No rollback restores direct protected
-tools, send-capable gateway access, or a protected credential to the gateway
-account.
+If rollback occurs after an old generic send route was revoked, it does not
+restore that unsafe route. Read and narrow triage remain available through their
+tested host capabilities. Provider send stays disabled until the broker is
+repaired or another approved protected path is deployed.
 
-All live-target validation and rollback checks are read-only. Every message,
-notification action, provider effect, and mailbox mutation uses deny-by-default
-recording adapters until controlled enablement. No test may deliver a real
-message or mutate a live account.
+All automated rollout and rollback validation uses recording adapters. Live
+checks are read-only. Real iMessage delivery and provider effects occur only as
+explicit owner actions after controlled enablement.
 
 ### Review log
 
-Earlier independent review established the separate credential and execution
-boundary, immutable input handling, one-time decision binding, safe rendering,
-attachment isolation, execution freshness, reconciliation, nondecreasing time,
-quotas, cancellation, renewal, durable result delivery, and the exact Gmail
-read-only cutover. The readability review then removed repeated chronology
-without dropping those decisions.
+Earlier review established the durable protected-tool record, immutable
+attachments, non-overridable policy, execution freshness, provider
+reconciliation, quotas, retention, Gmail capability cutover, terminal evidence,
+and exactly-once semantic continuation. Those decisions remain where they still
+protect the untrusted sandbox and asynchronous workflow.
 
-This revision replaces the hosted HTTPS and WebAuthn surface with an on-demand
-native macOS design. Research confirmed that local notification actions call
-back into an app and that device-unlock gating is not a transaction signature.
-The design therefore uses notifications only to open the app. Research also
-confirmed that LocalAuthentication alone is not a digest-bound decision, so the
-app must perform a protected signature over the current authority record after
-fresh owner authentication.
+This revision corrects the trust model. The gateway process and its logged-in
+macOS account are trusted. The model sandbox is not. Separate gateway and
+authority users, a native approval app, Touch ID decision signatures, XPC
+authority, Notification Center approval, and a hosted web surface no longer
+solve the stated problem and are removed.
 
-XPC and launchd provide the preferred no-network-listener activation path.
-Peer code-signing requirements, role-specific endpoints, UID checks, and replay
-defense protect the local protocol. The design explicitly requires gateway,
-authority, and GUI identity separation and records that arbitrary owner-session
-compromise remains outside the claim.
+Current source review confirms that OpenClaw already has most of the iMessage
+phone mechanism: explicit approver allowlists, direct approver delivery,
+GUID-only reaction binding, normalized GUID lookup, reaction polling, thumbs-up
+and thumbs-down mapping, and cleanup after resolution. It also confirms the
+remaining gaps: pending gateway approval state is in memory, bounded restart
+discovery is best effort, generic approval replies are not bound to
+`reply_to_guid`, and current rendering does not store the complete immutable
+provider envelope.
 
-OpenClaw source and Plan 028 show that the session-delivery queue is suitable for
-waking a busy agent but does not prove transcript insertion or model
-consumption. The revised design adds authority-owned redelivery, event
-signatures, stable transcript IDs, consumption receipts, missing-session
-fallback, and one semantic continuation.
+Apple documentation confirms that Tapbacks attach to one message, can be changed
+or removed, inline replies target one message, and Messages in iCloud can
+synchronize phone and Mac state. Apple also documents the iMessage encryption
+and metadata boundary. The design therefore recommends a Tapback on one final
+GUID, makes the first accepted decision final, provides an exact inline-reply
+fallback, and states the Messages privacy tradeoff.
 
-Independent continuation review found that transcript insertion and queueing
-were not one recoverable handoff. The design now uses a durable continuation row
-and outbox, leased dispatch, stable resumed-turn IDs, and acknowledgement only
-after completion or a durable continuation checkpoint. Follow-up review added
-an explicit `continuation_unknown` state with evidence-gated repair, keyed
-continuation to the original tool call and lineage so nonterminal stale events
-cannot wake it twice, and made reboot or uncertain downtime invalidate
-authorization-bearing time.
+Independent high-threshold review found no actionable material defects. It
+verified the trusted gateway boundary, current iMessage source claims,
+allowlist and GUID correlation, reaction semantics, restart gaps, multipart
+delivery, attachment isolation, no-listener scope, provider reconciliation, and
+agent continuation. Its highest-value residual question was the instant between
+final message creation and the model-action reservation. The design now
+serializes both operations on one Messages action lane, commits the reservation
+before releasing that lane, and completes crash recovery before model-facing
+Messages actions resume. It also clarifies that `already_executed` points to a
+prior result and is not a sixth terminal outcome.
 
-Final attachment-boundary review found that preview isolation did not also
-protect the authority from hostile content parsers. Scanning now runs in fresh
-credential-free, network-denied, resource-bounded sandboxes under a separate
-identity. The authority treats every scanner result as untrusted and fails
-closed on parser, sandbox, schema, version, or resource failure.
+The first complete-current-diff re-review found one material gap: the
+model-action reservation protected
+the final decision bubble but not the detail bubbles that carry the exact
+transaction. A model-facing edit or unsend could therefore make the phone show
+different values from the immutable envelope. The design now holds the shared
+Messages lane across the whole bundle, reserves every detail and final GUID,
+verifies every current message and hash before arming, and repeats that
+verification before accepting a decision. Validation now requires every edit,
+unsend, missing part, reordering, or mismatch to fail closed.
 
-Terminal IPC review found that quick deny and routine mailbox triage had required
-mutations but no declared peer roles. The design now has separate submit,
-deny-only, owner, resume, and triage capabilities. Quick deny is an explicit
-fail-safe denial-of-service exception. Mailbox triage has its own OS identity,
-launchd job, OAuth client, credential, endpoint, audit, recovery, and rollback
-lifecycle and no approval authority access.
-
-Clean-room review corrected three final operational claims. Gmail's mutation
-scope is itself provider-level send-capable, so the triage token is protected
-accordingly and triage identity or token compromise is outside the guarantee.
-Approval rollback now keeps result emission and resume delivery in drain-only
-mode until every terminal event is acknowledged or durably migrated. Gmail
-revocation and label-change validation now uses hermetic recording fixtures;
-live-target checks remain strictly read-only.
-
-Final activation review found that the notification helper had no declared
-authority-to-helper trigger. It now exposes a notify-only launchd Mach service
-that authenticates the authority and verifies a signed bounded alert payload.
-Cold launch across the authority and graphical launchd domains is an explicit
-feasibility gate with no insecure fallback. Follow-up corrected the launch
-lifecycle claim: launchd may start the helper before peer checks, so the design
-guarantees no pre-authentication side effect and bounds unauthorized launch
-cost instead of claiming authority-only process activation.
-
-Final completeness review restored a committed integration inventory for every
-agent profile and invocation surface, including subagents, MCP, browser, shell,
-diagnostics, direct clients, and fallbacks. Each surface must use the authority
-or provably lack every capability needed for the protected effect. The Human
-Design was also tightened to decision-level architecture so operational detail
-remains in the Agent section.
-
-Telegram long polling and Slack Socket Mode avoid inbound ports through
-outbound-only connections, but they add provider-held metadata, credentials, and
-account trust. Apple push notifications require a mobile app, entitlement,
-device token, and provider lifecycle. All three remain outside version 1.
-
-The complete native revision passed independent high-threshold review focused on
-IPC spoofing, same-user compromise, notification bypass, decision-key binding,
-continuation durability, attachment isolation, no-listener accuracy, remote
-channel tradeoffs, credential scope, rollback drainage, invocation-surface
-bypasses, and launchd activation. The release-candidate review found no remaining
-actionable issues.
+The final complete-current-diff re-review verified the corrected whole-bundle
+reservation, readback, crash ordering, source claims, trust boundary,
+provider lifecycle, continuation, structure, and publication safety. It found
+no actionable material defects. Two non-blocking clarity gaps were also closed:
+the design now names the new shared Messages lane as required implementation
+work across every mutation entry point, and the state diagram declares the
+administrative `failed` transitions already used by rollback.
 
 ### Checklist
 
 - [x] Re-read current repository instructions and the safe design workflow.
 - [x] Re-read the full proposal, issue 68, current OpenClaw source, and Plans 027
       and 028.
-- [x] Research local actionable notifications, LocalAuthentication, Secure
-      Enclave key use, launchd, XPC, APNs, Telegram long polling, and Slack Socket
-      Mode.
-- [x] Replace hosted web, DNS, TLS, proxy, firewall, and download-origin
-      assumptions with a no-network-listener native design.
-- [x] Define separate gateway, authority, triage, GUI, scanner, viewer,
-      notification, and resume identities and capabilities.
-- [x] Define authenticated submit, notify, deny-only, owner, resume, and triage
-      IPC roles with closed methods, replay controls, and independent lifecycles.
-- [x] Define authenticated on-demand notification-helper activation with signed
-      bounded payloads and no insecure fallback.
-- [x] Require committed integration coverage for every agent profile, invocation
-      surface, direct client, and fallback that could bypass approval.
-- [x] State the provider-level capability and residual risk of the protected
-      mailbox-triage token.
-- [x] Define Notification Center as alert-only and native inert review as the
-      sole version 1 decision surface.
-- [x] Bind every decision to a protected per-operation signature over the exact
-      authority record.
-- [x] Define immutable input, attachment, policy, deduplication, quota, time,
-      execution, reconciliation, renewal, cancellation, and retention rules.
-- [x] Isolate hostile attachment scanning from authority credentials, state, IPC,
-      network, and filesystem access with bounded fail-closed workers.
-- [x] Define terminal provider evidence, authority-signed result events,
-      transcript receipt, consumption receipt, busy-session handling,
-      missing-session fallback, and one semantic continuation.
-- [x] Compare iMessage, APNs, Telegram long polling, Slack Socket Mode, XPC, Unix
-      sockets, and hosted HTTPS review.
-- [x] Preserve the exact Gmail read-only gateway boundary and fixed reversible
-      mailbox-triage service.
-- [x] Define implementation phases, validation, rollout, recovery snapshot,
-      rollback, risks, and operational signals.
-- [x] Keep result delivery in drain-only mode through rollback and make every
-      Gmail mutation or revocation test hermetic.
-- [x] Keep the work design-only and provider-neutral.
-- [x] Keep the Human Design concise while preserving the present recommendation,
-      tradeoffs, iMessage role, review flow, isolation, and durable continuation.
+- [x] Correct the trust model to trusted gateway and account versus untrusted
+      model sandbox.
+- [x] Trace current iMessage native approval, approver authorization, outbound
+      GUID recovery, reaction persistence, polling, removal handling, and tests.
+- [x] Verify Apple Tapback, inline reply, Messages synchronization, encryption,
+      and cloud key-handling constraints.
+- [x] Replace the native Mac review app with concrete iPhone approval through
+      the existing Messages transport.
+- [x] Define Tapback as primary and exact inline reply as fallback.
+- [x] Define full raw and resolved multipart review, final GUID registration,
+      attachment metadata, and delivery reconciliation.
+- [x] Define the sandbox credential, Keychain, provider client, host tool, and
+      executor boundary.
+- [x] Reserve every active detail and final GUID from model-facing Messages
+      actions and reject unregistered lookalike approval messages.
+- [x] Make full-bundle GUID creation, durable model-action reservation, current
+      text verification, and decision arming an ordered crash-safe sequence.
+- [x] Keep `already_executed` as a deduplication pointer rather than a terminal
+      result or second continuation.
+- [x] Preserve immutable records, policy, scanning, quotas, deduplication, time,
+      execution, reconciliation, retention, and Gmail capability safety.
+- [x] Preserve terminal provider evidence, trusted result delivery, busy and
+      missing-session handling, and one semantic continuation.
+- [x] Rework implementation phases, validation, rollout, rollback, risks,
+      alternatives, and evidence for the phone design.
+- [x] Update issue 68 after the plan to mark the phone-approval revision in
+      progress.
 - [x] Complete independent high-threshold review and fix every actionable
       finding.
-- [x] Confirm exact document and issue shapes, no em dash, public-safety checks,
-      documentation-only diff, and existing PR checks.
+- [x] Rewrite the full Human and Agent sections to the final present state and
+      mark Ready for review.
+- [x] Confirm exact headings, no em dash, public-safety checks, and a
+      documentation-only diff before publication.
