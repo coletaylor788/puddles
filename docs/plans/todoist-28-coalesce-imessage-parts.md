@@ -72,7 +72,8 @@ ordering:
 - `enqueueInboundEntry` feeds the decision into OpenClaw's existing debouncer;
 - `dmCoalesceIngestChains` keeps enqueue and send operations ordered per direct
   message;
-- `flushKey` sends a standalone or unlinked link or image immediately.
+- the patch calls the debouncer's existing `flushKey` to send a standalone or
+  unlinked link or image immediately.
 
 The implementation lives in:
 
@@ -290,6 +291,8 @@ There is no message-data or persistent-state migration.
   matching parts, and the existing merge helper combines each selected group.
 - 2026-07-31: Independent complete-diff review is clean after the timing and
   responsibility corrections.
+- 2026-07-31: Terminal review clarified one last ownership detail. OpenClaw
+  provides `flushKey`; the patch only decides when to call it.
 
 ### Checklist
 
