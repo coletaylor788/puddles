@@ -1,7 +1,7 @@
 # Gemma 4 E2B agent hosting
 
-**Status:** Design complete, awaiting approval  
-**Issue:** [#80](https://github.com/coletaylor788/puddles/issues/80)  
+**Status:** Design complete and reviewed, awaiting approval
+**Issue:** [#80](https://github.com/coletaylor788/puddles/issues/80)
 **Last updated:** 2026-07-31
 
 ## Human section
@@ -16,7 +16,7 @@ This is a deliberate exception to OpenClaw's general local-model advice. That gu
 
 ### Status
 
-The research and design are complete. Independent review found two gaps, and the current design now treats both as hard gates. A tier container must not bypass the gateway to reach the model, and the target mini must prove that this unusually small local model is safe and useful for the narrow canary. No software, model weights, configuration, service, or live agent route has changed.
+The research and design are complete. Independent review found two gaps, and the current design now treats both as hard gates. A tier container must not bypass the gateway to reach the model, and the target mini must prove that this unusually small local model is safe and useful for the narrow canary. Re-review found no remaining issues. No software, model weights, configuration, service, or live agent route has changed.
 
 Cole's approval is required before implementation. The recommendation remains a measured Gemma 4 E2B canary, not an all-at-once cutover. The future worker stops if containment, safety, quality, latency, or memory gates fail.
 
@@ -33,7 +33,7 @@ Cole's approval is required before implementation. The recommendation remains a 
 - Permanent safety path: retain the existing larger model route
 - Production impact in this task: none
 - Blocking condition: implementation requires Cole's approval in a later task
-- Review state: two findings accepted and remediated; reviewer re-check pending
+- Review state: two findings accepted and remediated; re-review clean
 
 ### Scope and acceptance criteria
 
@@ -332,6 +332,17 @@ performance numbers are Google's LiteRT-LM measurements, and the plan labels
 them as feasibility evidence rather than a forecast for Ollama on the target
 mini.
 
+Documentation validation:
+
+- `git diff --check` passes.
+- The plan has the exact required top-level and subsection order.
+- The metadata block contains only `Status`, `Issue`, and `Last updated`.
+- The Human section contains no code pointers.
+- The issue contains only the plan link, `Summary`, and `Status`, with no lists.
+- The plan contains no em dash characters.
+- The focused writing-contract suite passes all nine tests:
+  `corepack pnpm --filter e2e exec vitest run tests/plan-and-issue-writing-contract.test.ts --reporter=dot`
+
 #### Offline quality suite
 
 Use synthetic fixtures and deny-by-default recording adapters. The suite should
@@ -463,6 +474,10 @@ gateway or sandbox regression.
   local-model warning. The design now records its two-Mac-Studio guidance and
   treats the small-model canary as a narrow, measured exception rather than a
   generally recommended agent host.
+- 2026-07-31: The same independent reviewer re-checked the complete remediated
+  design. It confirmed both findings are resolved, verified the Ollama and
+  llama.cpp authentication claims, and reported no remaining actionable
+  findings.
 
 ### Checklist
 
@@ -481,8 +496,8 @@ gateway or sandbox regression.
 - [x] Keep implementation and deployment unstarted.
 - [x] Complete independent adversarial review of the full design.
 - [x] Address the two accepted review findings.
-- [ ] Re-review the remediated design.
-- [ ] Validate plan and issue structure.
+- [x] Re-review the remediated design.
+- [x] Validate plan and issue structure.
 - [ ] Commit, push, and land the design artifact.
 - [ ] Rewrite issue #80 for Cole's review.
 - [ ] Add the Todoist result and move the task from `agent` to
