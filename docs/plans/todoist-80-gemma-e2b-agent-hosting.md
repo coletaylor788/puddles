@@ -1,6 +1,6 @@
 # Gemma 4 E2B agent hosting
 
-**Status:** Design complete and reviewed, awaiting approval
+**Status:** Design revised after terminal review
 **Issue:** [#80](https://github.com/coletaylor788/puddles/issues/80)
 **Last updated:** 2026-07-31
 
@@ -10,15 +10,15 @@
 
 Gemma 4 E2B is small enough to be a realistic always-on model for the Mac mini. It is the current model named E2B, where the E means effective parameters. It is much newer and more capable than the older Gemma 3n E2B. It supports long conversations, system instructions, thinking, images, audio, and native tool calls. Running it locally would keep household and friends conversations on the mini, remove per-message model cost, and keep those tiers available when an outside model service is down.
 
-The model should run once as a host service. Household and friends agents continue to own separate sessions, workspaces, memories, tools, and message bindings. They share model weights, not agent state. Existing sandboxes and tool guards stay in charge of what each agent can read, change, or send. A loopback address is not enough to prove this boundary on Docker Desktop for macOS, because containers may reach host services through its host bridge. Before any canary, a real tier container must be unable to get a model response without the gateway. If that test fails, the design requires a proven firewall boundary or an authenticated server path before rollout.
+The model should run once as a host service. Household and friends agents continue to own separate sessions, workspaces, memories, tools, and message bindings. They share model weights, not agent state. Existing sandboxes and tool guards stay in charge of what each agent can read, change, or send. A loopback address is not enough to prove this boundary on Docker Desktop for macOS, because containers may reach host services through its host bridge. Before any canary, both chat containers and all four reader and browser worker containers must be unable to get a model response without the gateway. The workers matter most because they handle untrusted outside content and already have network egress. If any container gets a response, the design requires a proven firewall boundary or an authenticated server path before rollout.
 
 This is a deliberate exception to OpenClaw's general local-model advice. That guidance recommends far more hardware for a comfortable agent loop and says to use the largest model the host can carry because small, heavily quantized models raise injection risk. Published E2B results also show only about one quarter success on a broad multi-step tool benchmark and uneven long-context behavior. The exception is acceptable only as a narrow, measured canary with write tools withheld, one request at a time, and the existing larger model retained. Friends chat goes first. Household follows only after its safety tests. Read workers come after prompt-injection tests. Multi-step browser workers stay on the larger model unless Gemma proves it can handle them safely. No fallback may retry a turn after a tool has already changed state.
 
 ### Status
 
-The research and design are complete. Independent review found two gaps, and the current design now treats both as hard gates. A tier container must not bypass the gateway to reach the model, and the target mini must prove that this unusually small local model is safe and useful for the narrow canary. Re-review found no remaining issues. No software, model weights, configuration, service, or live agent route has changed.
+The research and design are complete. Terminal review found that the direct-access gate covered the two chat containers but omitted their four worker containers. The design now requires denial from every sandboxed multiplayer container. It also records the recovery snapshot before configuration changes and labels the long-context measurements that ran without thinking. No software, model weights, configuration, service, or live agent route has changed.
 
-Cole's approval is required before implementation. The recommendation remains a measured Gemma 4 E2B canary, not an all-at-once cutover. The future worker stops if containment, safety, quality, latency, or memory gates fail.
+Fresh review of the revised candidate is next. Cole's approval is required before implementation. The recommendation remains a measured Gemma 4 E2B canary, not an all-at-once cutover.
 
 ## Agent section
 
@@ -33,7 +33,7 @@ Cole's approval is required before implementation. The recommendation remains a 
 - Permanent safety path: retain the existing larger model route
 - Production impact in this task: none
 - Blocking condition: implementation requires Cole's approval in a later task
-- Review state: two findings accepted and remediated; re-review clean
+- Review state: terminal finding accepted and remediated; fresh review pending
 
 ### Scope and acceptance criteria
 
@@ -62,8 +62,9 @@ The later implementation is acceptable only when:
 
 - the exact quantized model and server version are pinned and recorded;
 - the service binds to loopback and local cloud features are disabled;
-- a real household or friends container cannot receive a model response by
-  connecting through Docker Desktop's host bridge;
+- both chat containers and all four per-tier reader and browser worker containers
+  cannot receive a model response by connecting through Docker Desktop's host
+  bridge;
 - any request that bypasses the gateway is refused by network policy or real
   server authentication;
 - one model process serves all approved agents without sharing session state;
@@ -113,8 +114,8 @@ Google's published instruction-tuned E2B results include:
 | LiveCodeBench v6 | 44.0% | Better than older Gemma at this size, not a coding authority. |
 | Tau2 average | 24.5% | Broad multi-step tool autonomy is not reliable enough for a blind cutover. |
 | MRCR, eight needles at 128K | 19.1% | Advertising 128K does not mean dependable long-context recall. |
-| RULER at 128K | 70.4% | Some long-context tasks work, so local evaluation must match real prompts. |
-| GraphWalks below 128K | 4.1% | Long, stateful planning is a serious weakness. |
+| RULER at 128K, without thinking | 70.4% | Some long-context tasks work, so local evaluation must match real prompts. |
+| GraphWalks below 128K, without thinking | 4.1% | Long, stateful planning is a serious weakness. |
 
 The Tau2 domain results in the technical report are 31.0% for airline, 34.6%
 for retail, and 19.7% for telecom. The exact aggregate varies by report table,
@@ -162,17 +163,20 @@ Apple Silicon GPU and unified memory
   provider.
 - Loopback is necessary but not sufficient on Docker Desktop for macOS.
   Containers may reach host services through `host.docker.internal`. The later
-  implementation must attempt an unauthenticated completion from a real friends
-  and household container before Stage 1.
+  implementation must attempt an unauthenticated completion from all six
+  sandboxed multiplayer containers before Stage 1: `household`, `friends`,
+  `household-reader`, `friends-reader`, `household-browser-agent`, and
+  `friends-browser-agent`.
 - A refused TCP connection is the preferred result. An authenticated refusal is
   also acceptable if the server uses a real credential that the container
   cannot read. The `ollama-local` marker is not authentication and does not
   satisfy this gate.
-- If the container gets a completion, rollout stops. The implementation must
-  add and prove a host firewall rule that denies the Docker bridge, or select an
-  authenticated server such as a verified llama.cpp configuration. An
-  authentication proxy is acceptable only when the unprotected backend is also
-  unreachable from containers.
+- If any container gets a completion, rollout stops. Docker Desktop may forward
+  container traffic through a host process that a packet filter cannot
+  distinguish from gateway traffic, so the authenticated backend is the
+  expected remedy. A host firewall is acceptable only if the real six-container
+  test proves it works. An authentication proxy is acceptable only when the
+  unprotected backend is also unreachable from containers.
 - Agent containers call tools through the gateway, and the gateway calls the
   model. The network and authentication test proves this control point instead
   of relying on intended call paths.
@@ -256,7 +260,7 @@ Apple Silicon GPU and unified memory
 
 | Server | Decision |
 |---|---|
-| Ollama | Preferred first implementation only if a real tier container cannot bypass the gateway for a completion. It has a native OpenClaw provider, model discovery, tool metadata, local-only mode, Apple Silicon support, queue controls, and parallel request controls. Its local marker is not real authentication. |
+| Ollama | Preferred first implementation only if none of the six sandboxed multiplayer containers can bypass the gateway for a completion. It has a native OpenClaw provider, model discovery, tool metadata, local-only mode, Apple Silicon support, queue controls, and parallel request controls. Its local marker is not real authentication. |
 | llama.cpp server | The second choice if Ollama cannot meet containment, latency, or memory gates. It supports Metal, API keys, continuous batching, parallel slots, metrics, schemas, and tool use, but OpenClaw would use a custom compatible route that needs extra parser testing. |
 | MLX-LM server | Not recommended for this always-on service. Its own documentation says the HTTP server is not recommended for production and has only basic security checks. |
 | LM Studio | Useful for manual experiments, but a GUI-managed loader is a weaker fit for an unattended Mac mini service than Ollama or llama.cpp. |
@@ -271,19 +275,24 @@ No implementation is authorized by this task. A later approved task should:
 3. Pin the Ollama release and exact `gemma4:e2b` model digest.
 4. Disable Ollama cloud behavior, bind loopback, keep one model loaded, set one
    parallel slot, and set a small queue.
-5. From real friends and household containers, attempt a completion through
-   `host.docker.internal` and any other host alias Docker provides. Require a
-   refused connection or authenticated refusal. If the request succeeds, stop
-   and add a proven firewall boundary or switch to an authenticated backend.
-6. Test 32K and 64K contexts with the real provider adapter but synthetic
+5. From all six sandboxed multiplayer containers, attempt a completion through
+   `host.docker.internal` and any other host alias Docker provides. Include both
+   chat containers, both reader containers, and both browser containers. Require
+   a refused connection or authenticated refusal. If any request succeeds, stop
+   and use an authenticated backend unless a real repeat test proves a firewall
+   boundary works.
+6. Capture an atomic configuration snapshot that contains every model route,
+   provider entry, agent override, and relevant service setting needed to
+   restore the pre-canary state.
+7. Test 32K and 64K contexts with the real provider adapter but synthetic
    transcripts and recording tools.
-7. Add an explicit local model provider while keeping the current provider
+8. Add an explicit local model provider while keeping the current provider
    available.
-8. Build a separate test copy of the friends tier with the same prompt and tool
+9. Build a separate test copy of the friends tier with the same prompt and tool
    policy but no live channel binding.
-9. Run the focused evaluation and full shared test pool.
-10. Start an opt-in friends canary only after every pre-canary gate passes.
-11. Consider household, reader, and browser stages in order. Each stage requires
+10. Run the focused evaluation and full shared test pool.
+11. Start an opt-in friends canary only after every pre-canary gate passes.
+12. Consider household, reader, and browser stages in order. Each stage requires
     its own review and rollback point.
 
 Likely repository surfaces for the later task:
@@ -380,8 +389,10 @@ output tokens, time to first token, total latency, and peak host memory.
 - Exercise simultaneous friends chat, household chat, reader, and browser-shaped
   prompts even if later stages are not approved.
 - Confirm `ollama ps` reports full Apple GPU placement rather than CPU spill.
-- From each real tier container, confirm every host alias and the model port
-  refuses a completion without the gateway.
+- From all six real multiplayer containers, confirm every host alias and the
+  model port refuses a completion without the gateway. The browser and reader
+  workers are required cases because the current sandboxing guide says their
+  containers have network egress.
 - If authentication protects the server, confirm no credential is present in
   the tier workspace, environment, process arguments, tool results, or logs.
 - Confirm normal gateway and Docker operations remain responsive.
@@ -393,7 +404,8 @@ output tokens, time to first token, total latency, and peak host memory.
 
 - Zero unauthorized external mutation or delivery attempts.
 - Zero cross-tier data disclosures.
-- Zero model completions obtained directly from a tier container.
+- Zero model completions obtained directly from any sandboxed multiplayer
+  container.
 - Zero successful prompt-injection attempts that widen capability or reveal
   protected context.
 - At least 90% success on approved low-risk tasks.
@@ -415,17 +427,19 @@ existing larger model for that role.
 
 Rollout remains blocked until approval. The proposed later rollout is:
 
-1. Prove a real tier container cannot obtain a direct model completion.
-2. Run all tests against an isolated service and recording tools.
-3. Add the local provider without selecting it for any live agent.
-4. Create a test-only friends agent with no live channel binding.
-5. Canary one explicitly opted-in friends conversation.
-6. Hold for seven days with daily metric and transcript-quality review.
-7. Expand friends only if the gate stays green.
-8. Canary household with write tools withheld.
-9. Restore individual household write tools only after their focused gate.
-10. Move reader workers after injection and summary gates.
-11. Leave browser workers on the larger model unless a separate browser gate
+1. Prove all six sandboxed multiplayer containers cannot obtain a direct model
+   completion.
+2. Capture and verify the pre-canary configuration snapshot.
+3. Run all tests against an isolated service and recording tools.
+4. Add the local provider without selecting it for any live agent.
+5. Create a test-only friends agent with no live channel binding.
+6. Canary one explicitly opted-in friends conversation.
+7. Hold for seven days with daily metric and transcript-quality review.
+8. Expand friends only if the gate stays green.
+9. Canary household with write tools withheld.
+10. Restore individual household write tools only after their focused gate.
+11. Move reader workers after injection and summary gates.
+12. Leave browser workers on the larger model unless a separate browser gate
     passes.
 
 Each stage changes one explicit agent route. There is no automatic tier-wide
@@ -478,10 +492,16 @@ gateway or sandbox regression.
   design. It confirmed both findings are resolved, verified the Ollama and
   llama.cpp authentication claims, and reported no remaining actionable
   findings.
+- 2026-07-31: Fresh terminal review found that the direct-access denial gate
+  named only the two chat containers and omitted the four reader and browser
+  workers that also have network egress. The gate, implementation steps,
+  capacity suite, promotion criteria, and rollout now cover all six sandboxed
+  multiplayer containers. The same revision adds the missing pre-change
+  snapshot step and labels the no-thinking long-context results.
 
 ### Checklist
 
-- [x] Verify the first Copilot-authored Todoist comment is the issue #80
+- [x] Verify the first agent-authored Todoist comment is the issue #80
   tracking comment.
 - [x] Verify issue #80 has only the plan link, `Summary`, and `Status`.
 - [x] Create the plan before substantive research.
@@ -498,6 +518,8 @@ gateway or sandbox regression.
 - [x] Address the two accepted review findings.
 - [x] Re-review the remediated design.
 - [x] Validate plan and issue structure.
+- [x] Address the terminal finding across every containment gate.
+- [ ] Complete fresh review of the revised exact candidate.
 - [ ] Commit, push, and land the design artifact.
 - [ ] Rewrite issue #80 for Cole's review.
 - [ ] Add the Todoist result and move the task from `agent` to
