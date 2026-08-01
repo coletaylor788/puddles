@@ -1,6 +1,6 @@
-# Complete selective iMessage message-part coalescing
+# Use OpenClaw's built-in iMessage input bucket
 
-- **Status:** Complete and landed
+- **Status:** Plain-language rewrite ready for terminal review
 - **Issue:** https://github.com/coletaylor788/puddles/issues/28
 - **Last updated:** 2026-07-31
 - **Owner:** Cole Taylor
@@ -9,312 +9,303 @@
 
 ### Design
 
-iMessage can publish one composition as several nearby rows: a short caption,
-a link or image, and sometimes trailing text. The deployed fix waits only for
-text that narrowly looks like the start of such a composition. A matching
-payload or continuation joins that wait, while ordinary prose and unrelated
-messages start separate turns.
+Messages can split one iMessage composition into several rows. A short question
+may arrive first. The link, preview, or image may arrive next. A final line of
+text may arrive after that.
 
-Standalone links, previews, and images do not wait for the compatibility
-window. They enter the same per-conversation ordering gate as composed
-messages, then force their bucket to dispatch immediately. The same force-flush
-dispatches a completed lead-in plus payload composition. This keeps the
-ordering protection without adding latency.
+OpenClaw already has a built-in input bucket and an iMessage merge helper. The
+bucket holds nearby direct-message rows from the same person and hands them back
+to the iMessage adapter. Our patch picks only the rows that belong to one
+composition. The adapter then uses OpenClaw's merge helper and starts one normal
+agent turn. We do not add a second queue or change the agent loop.
 
-The reported missing-context behavior is therefore covered by the current
-implementation. Direct regressions now cover a first standalone link and image
-so this immediate path cannot regress unnoticed. Folding arbitrary input into a
-reply after agent processing has started would require changing shared reply
-ownership and media handling. That larger change is not justified by this task.
-A future recurrence should be investigated from a timestamped message and
-gateway trace before changing the runtime again.
+Our small patch only decides when the built-in bucket should wait. Normal
+complete messages go through at once. A short line that looks like the start of
+a link or image question waits for a limited time. If the matching link, image,
+or final text arrives, it joins the same bucket. The first link or image does
+not extend the original wait. The bucket stays open until that fixed deadline
+so final text can still join, then it goes to the agent as one user message. A
+link or image sent by itself does not wait.
+
+After the bucket is sent, everything works normally. The agent sees one regular
+inbound turn, uses the same model and tools, and returns its usual final reply.
+We do not make the agent call a special reply tool.
+
+OpenClaw also has steering, but that is a different path. Steering can add text
+to some agent runs that are already active. A new visible iMessage currently
+waits for the active reply lane before OpenClaw checks whether it can steer.
+Changing that would mean changing shared reply ownership and image handling.
+We are not doing that. This fix uses OpenClaw's built-in input bucket before the
+agent turn starts. If a new message arrives after that turn has started, it
+remains a separate turn.
 
 ### Status
 
-The selective coalescer is merged and running in production. Final source review
-confirmed that standalone payloads already dispatch immediately and that the
-proposed follow-up classifier change would have removed required ordering
-protection without improving latency.
+The input-bucket fix is already merged and running. Tests cover question plus
+link, caption plus image, text plus link plus final text, standalone links and
+images, and separate messages that must stay separate.
 
-No runtime, configuration, or deployment change is planned. Focused first-row
-standalone link and image regressions pass in the existing registered monitor
-suite, the full shared lifecycle passes, and independent complete-diff review is
-clean. Cron-reader PR #56 is merged, the candidate is rebased onto that new
-`main`, and the full lifecycle passes again. Exact-commit terminal review and
-remote checks are clean, and PR #76 is merged. The work is ready for Cole's
-review. Production remains unchanged.
+This update changes the plan only. It explains the built-in OpenClaw path and
+the steering limit in plain language. The plan contract and independent
+complete-diff review are clean. Runtime code, configuration, and production
+stay unchanged.
 
 ## Agent section
 
 ### State
 
-The provider-neutral implementation is already present on `main` in:
+OpenClaw already owns the main pieces:
+
+- `channels.imessage.coalesceSameSenderDms` enables direct-message coalescing;
+- `createChannelInboundDebouncer` holds rows in a keyed input bucket and returns
+  the buffered rows to the iMessage flush callback;
+- `combineIMessagePayloads` combines one selected group of text and attachments
+  before dispatch;
+- the normal dispatch path starts one ordinary agent turn;
+- automatic final delivery sends the answer back to iMessage.
+
+The provider-neutral Puddles patch adds only iMessage-specific selection and
+ordering:
+
+- `classifyIMessageDmCoalesce` decides whether a row is instant, a lead-in, a
+  link or image, or final text;
+- `enqueueInboundEntry` feeds the decision into OpenClaw's existing debouncer;
+- `dmCoalesceIngestChains` keeps enqueue and send operations ordered per direct
+  message;
+- `flushKey` sends a standalone or unlinked link or image immediately.
+
+The implementation lives in:
 
 - `docs/openclaw-setup/patches/imessage-message-part-coalescing.patch`;
 - `docs/openclaw-setup/patches/imessage-message-part-coalescing.md`;
 - `packages/e2e/openclaw-patch-suite.json`.
 
-The implementation was merged through the earlier task pull requests, including
-PRs #16, #34, #36, #38, and #51. Production runs OpenClaw `2026.7.1-2` at
-revision `0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c` with the selective iMessage
-patch enabled. The retained deployment snapshot is
+Production runs OpenClaw `2026.7.1-2` at revision
+`0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`. The retained snapshot is
 `~/.openclaw/deploy-snapshots/20260730T104410Z-0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`.
 
-PR #76 landed the focused regressions and this plan on public `main` as merge
-commit `03cda26`. No runtime source, configuration, dependency, or production
-state changed.
+PR #76 landed the final first-row link and image regressions. PR #77 landed the
+previous closeout plan. This revision only replaces that plan with clearer
+language.
 
 ### Scope and acceptance criteria
 
-The completed scope is:
+In scope:
 
-- coalesce a narrow short lead-in with its nearby URL, URL preview, or image;
-- preserve a qualifying trailing text row in the same logical turn;
-- dispatch standalone links, previews, and images immediately;
-- keep genuinely separate messages as separate turns;
-- retain source GUIDs, replay deduplication, merge caps, reply context, and
-  per-conversation arrival ordering;
-- keep the behavior opt-in through
-  `channels.imessage.coalesceSameSenderDms`.
-
-Acceptance is satisfied when:
-
-- a caption followed by an image produces one inbound turn and one reply;
-- a payload-referential question followed by a link produces one inbound turn
-  and one reply;
-- text, link, and qualifying trailing text produce one inbound turn and one
-  reply;
-- a standalone link or image starts without a seven-second hold;
-- two rapid but genuinely separate short messages remain separate;
-- an unchained second payload does not inherit the first composition deadline;
-- group messages, reactions, control commands, outgoing echoes, and unrelated
-  complete text retain their existing behavior.
-- the registered monitor suite directly covers a first eligible standalone URL
-  carrying preview metadata and an image with no prior composition state.
+- use OpenClaw's existing iMessage input bucket;
+- wait only for a narrow short line that likely introduces a link or image;
+- join a nearby link, preview, image, or linked final text from the same direct
+  message;
+- send a completed bucket as one normal inbound turn;
+- send standalone links and images immediately;
+- keep unrelated messages as separate turns;
+- keep source IDs, attachment limits, text limits, replay checks, and direct
+  message ordering.
 
 Out of scope:
 
-- changing shared reply-operation admission or visible-reply ownership;
-- steering fresh channel input into an active visible reply;
-- changing image forwarding, sanitization, or model capability handling;
-- durable queues, replay generations, ingress ordinals, or new orchestration;
-- broad time-window batching of every message from the same sender.
+- changing the agent loop;
+- adding another durable queue;
+- bypassing visible reply ownership;
+- steering fresh iMessage rows into an active reply;
+- changing image loading or model support;
+- changing automatic final reply delivery;
+- combining every rapid message by time alone.
+
+Acceptance is met when:
+
+- a short question followed by a link creates one inbound turn;
+- a short caption followed by an image creates one inbound turn;
+- text, link, and linked final text create one inbound turn;
+- a standalone link or image starts immediately;
+- two separate short messages remain separate;
+- a second unlinked link does not join the first composition;
+- normal text, group messages, reactions, commands, and outgoing echoes keep
+  their current behavior.
 
 ### Architecture and decisions
 
-OpenClaw provides the opt-in same-sender direct-message coalescing surface. The
-Puddles patch adds selective classification and per-DM ingest ordering on top of
-that surface.
+#### Use the built-in inbound bucket
 
-`classifyIMessageDmCoalesce` assigns eligible rows one of four modes:
+The iMessage monitor calls OpenClaw's channel inbound debouncer. The bucket key
+uses the iMessage account, conversation, and sender. Rows with different keys
+cannot mix.
 
-- `instant` for ordinary text and unrelated events;
-- `lead-in` for a narrow short fragment or payload-referential question;
-- `payload` for a standalone URL, standalone preview balloon, or attachment;
-- `continuation` for eligible trailing text explicitly chained to the payload.
+The debouncer already provides the needed operations:
 
-A lead-in creates one absolute deadline. A matching payload and continuation
-reuse it rather than extending it. Expired state flushes before later input is
-enqueued.
+- enqueue a row;
+- wait until a deadline;
+- flush one key now;
+- hand the buffered rows to the iMessage flush callback.
 
-`enqueueInboundEntry` serializes classified rows through
-`dmCoalesceIngestChains`. After enqueue, a payload decision with no remaining
-deadline immediately calls the debouncer's key flush. For a standalone payload,
-this dispatches the payload without waiting for the generic compatibility
-timer. For a matching payload, it dispatches the completed lead-in plus payload
-bucket. Keeping the payload classified preserves the ingest chain and
-`flushPendingBeforeEnqueue`; returning no classifier decision would bypass both
-protections.
+The patched flush callback divides those rows into separate composition units.
+It combines only a classified lead-in, matching link or image, and linked final
+text with OpenClaw's existing `combineIMessagePayloads` helper. Unrelated or
+unlinked units dispatch separately.
 
-Fresh visible channel input cannot use built-in queue steering while another
-visible reply owns the same session. Dispatch-phase admission waits for that
-reply operation before queue policy runs. Changing that gate would affect shared
-reply serialization and is rejected for this task.
+#### Wait only for likely split compositions
 
-Normal direct iMessage replies use automatic final delivery. Explicit message
-tool sends are possible but are not the normal source-reply path and do not
-explain the reported behavior.
+The patch uses four simple modes:
+
+- `instant`: complete text and unrelated events go now;
+- `lead-in`: a short unfinished line or narrow link or image question waits;
+- `payload`: a URL, URL preview, or attachment can join the waiting lead-in;
+- `continuation`: linked final text can join the same composition.
+
+A lead-in creates one deadline. Later parts reuse that deadline. They do not
+restart it.
+
+#### Keep one fixed wait, but send standalone input promptly
+
+After enqueue, a `payload` with no remaining deadline calls `flushKey`.
+
+That covers:
+
+- a standalone link or image is sent immediately;
+- an unlinked second link or image is sent separately instead of joining an
+  earlier composition.
+
+A first link or image that matches a waiting lead-in keeps the lead-in's
+original deadline. The bucket stays open until that deadline so linked final
+text can still join. The link or image does not extend the deadline.
+
+The row stays classified as `payload` so it keeps the same direct-message
+ordering chain. Returning no decision would skip that protection.
+
+#### Keep normal agent processing and final replies
+
+The combined bucket goes through the same `dispatchInboundMessage` path as any
+other iMessage. It starts one normal agent run. No model, tool, prompt, or reply
+mode changes.
+
+Direct iMessage replies use automatic final delivery. The agent can call a
+message tool when it chooses, but that is not the normal reply path and is not
+part of this fix.
+
+#### Do not use steering for fresh iMessage rows
+
+For a fresh visible channel message, `dispatch-from-config.ts` enters the shared
+reply lane. `reply-turn-admission.ts` waits for the active visible reply
+operation to finish. Queue policy runs after that wait, so the later iMessage
+cannot reach the built-in steer choice while the first visible reply owns the
+lane.
+
+Changing that order would touch shared reply ownership. The steer path also
+does not carry images through the same initial-turn image checks. Both changes
+are outside this task.
+
+The simple boundary is:
+
+- parts that arrive before the input bucket sends become one turn;
+- input that arrives after the turn starts remains a later turn.
 
 ### Implementation
 
-No runtime implementation remains. The patch adds one focused monitor
-regression where the first eligible inbound rows on separate DM keys are:
+Runtime work is complete. No new runtime change is proposed.
 
-1. a standalone URL or URL-preview payload;
-2. a standalone image attachment.
+The landed patch:
 
-Each case enables same-sender DM coalescing, starts with empty composition
-state, exercises the existing payload decision and force-flush, and asserts one
-dispatch without an explicit test flush. The image case uses an isolated
-temporary attachment root. The existing cumulative suite registration is
-unchanged because the test file is already registered.
+1. enables the upstream same-sender direct-message bucket;
+2. adds narrow iMessage rules for which rows wait;
+3. keeps one fixed deadline per composition;
+4. uses the existing key flush to send standalone or unlinked input;
+5. keeps per-direct-message enqueue and send ordering;
+6. combines text and attachments through OpenClaw's existing helper;
+7. dispatches the result through the normal agent and automatic reply path.
 
-The deployed patch already contains:
+The rejected queue-drain and steering designs must not be restored. They would
+change shared OpenClaw behavior without evidence that this adapter-level fix
+needs it.
 
-1. selective lead-in, payload, continuation, and instant classification;
-2. absolute bounded composition deadlines;
-3. immediate force-flush for standalone payloads;
-4. per-DM atomic enqueue and flush ordering;
-5. source GUID and replay bookkeeping across merged rows;
-6. merge limits for text, attachments, and source rows;
-7. cumulative focused and integration regressions.
-
-The withdrawn follow-up designs must not be implemented:
-
-- the durable queue-drain design added source replay and lifecycle machinery
-  disproportionate to the problem;
-- the steer-admission design changed core visible-reply ownership;
-- direct image steering would have bypassed the initial-turn sanitization and
-  model capability path;
-- the standalone-payload classifier change duplicated an existing immediate
-  force-flush and would have removed ingest ordering.
-
-If Cole reproduces a remaining failure, capture the source row timestamps,
-GUIDs, reply-chain fields, payload metadata, notification arrival times, and
-gateway run boundaries. Update this plan from that evidence before editing
-source.
+If the problem returns, collect the iMessage row IDs, source times, arrival
+times, reply links, and agent run boundaries. Update this plan from that trace
+before changing runtime code.
 
 ### Validation
 
-The patch documentation records 88 focused coalescer and monitor tests passing
-after clean patch application. The registered cumulative targets are:
+The focused iMessage suites contain 88 tests. They cover:
 
-- `extensions/imessage/src/monitor.last-route.test.ts`;
-- `extensions/imessage/src/monitor/coalesce.test.ts`.
+- short question plus link;
+- caption plus image;
+- text, link, and final text;
+- first-row standalone link and image;
+- a second unlinked link staying separate;
+- two short messages staying separate;
+- expired deadlines;
+- malformed source data;
+- reactions, commands, and group messages;
+- text, attachment, and source-row limits.
 
-The existing monitor regression named
-`flushes an unchained second payload as a separate immediate turn` exercises a
-payload with no pending lead-in through the policy-aware mock debouncer. It
-proves that the immediate force-flush branch is invoked and required for
-dispatch. Source inspection confirms that the real debouncer's `flushKey`
-directly flushes the buffer instead of waiting for its pending timer.
+The cumulative OpenClaw patch pool passes:
 
-The new regression closes the remaining coverage gap by starting from empty
-composition state. It covers a first standalone URL or preview and a first
-standalone image, proving both reach the immediate force-flush without depending
-on prior payload state.
+- 15 test files;
+- 471 patch tests;
+- the browser candidate test.
 
-Required cumulative command:
+Required command:
 
 ```bash
 node packages/e2e/bin/openclaw-test-env.mjs ci
 ```
 
-Managed test-environment scenarios:
+The tests use recording mocks. Production checks are read-only. They must not
+send test messages or trigger replies.
 
-1. Send a short caption and image as one composition.
-2. Send a payload-referential question and link as one composition.
-3. Send text, a link, and qualifying trailing text as one composition.
-4. Send a standalone link and a standalone image.
-5. Send two short, genuinely separate messages rapidly.
-6. Assert one recorded run and one recorded inbound turn for the first three,
-   immediate starts for the standalone payloads, and separate runs for the
-   final pair.
-
-All scenarios run through deny-by-default recording mocks. Production
-verification remains read-only and must not send inbound messages or deliver
-replies.
+This plan-only rewrite also runs the repository plan and issue writing contract.
 
 ### Rollout and rollback
 
-No rollout is needed for this documentation correction. Production stays on the
-current deployed patch and configuration.
+This rewrite needs no runtime rollout. It changes documentation only.
 
-The existing implementation rollback is unchanged:
+The existing runtime rollback remains:
 
-1. remove `imessage-message-part-coalescing` from the deployment patch list;
-2. rebuild and deploy the prior approved stack;
+1. remove `imessage-message-part-coalescing` from the patch list;
+2. rebuild and deploy the prior approved OpenClaw stack;
 3. unset `channels.imessage.coalesceSameSenderDms`.
 
-There is no persistent state or message-data migration. The retained deployment
-snapshot remains available for automatic wrapper rollback if a future
-deployment fails.
+There is no message-data or persistent-state migration.
 
 ### Review log
 
-- 2026-07-24 through 2026-07-30: The selective coalescer, link and preview
-  corrections, text-link-text continuation support, cumulative tests, and
-  deployment records were merged and deployed.
-- 2026-07-30: A larger immediate queue-drain replacement passed several design
-  reviews but Cole rejected it as excessive runtime surgery.
-- 2026-07-31: Source tracing confirmed that fresh visible channel input cannot
-  reach built-in steering before dispatch admission releases the active reply.
-- 2026-07-31: A proposed standalone-payload classifier change entered retained
-  review.
-- 2026-07-31: Retained review found the existing post-enqueue force-flush and
-  its committed regression. The classifier proposal was withdrawn because it
-  added no latency benefit and bypassed the per-DM ordering chain.
-- 2026-07-31: The plan now records the completed implementation and recommends
-  no further source change without a timestamped reproduction.
-- 2026-07-31: The shared integration lifecycle passed all 15 patch-suite files
-  and 470 tests, plus the candidate browser-entrypoint regression.
-- 2026-07-31: Fresh review removed the remaining live message smoke step.
-  Behavioral review now runs only in the managed recording-mock environment;
-  production verification stays read-only.
-- 2026-07-31: Fresh review identified that the existing immediate-payload test
-  starts after a completed composition. Focused first-row standalone URL and
-  image regressions are now the only remaining implementation work.
-- 2026-07-31: The first-row URL-preview and image regression passed in the
-  cumulative patch environment. The pool now passes 15 files and 471 tests,
-  plus the candidate browser-entrypoint regression.
-- 2026-07-31: The full managed lifecycle passed with the same 15 files and 471
-  patch tests plus the candidate browser-entrypoint regression.
-- 2026-07-31: Terminal review found a stale live-send smoke checklist in the
-  patch guide. The guide now routes behavior checks through the managed
-  recording-mock suite and limits production checks to read-only evidence.
-- 2026-07-31: Exact-candidate review found one stale focused-test count in this
-  plan. The plan now matches the patch guide's 88 focused tests and the managed
-  lifecycle's 471 cumulative tests.
-- 2026-07-31: Independent complete-diff review is clean after the regression,
-  production-safety, and validation-count remediations. All in-diff bookkeeping
-  is final for the landing candidate.
-- 2026-07-31: Terminal commit review restored the existing publication freeze.
-  Landing waits for cron-reader PR #56, which remains open, clean, mergeable,
-  and green.
-- 2026-07-31: Cron-reader PR #56 merged as `937b2af`. The publication freeze is
-  cleared, and this branch can rebase onto the new public `main`.
-- 2026-07-31: The branch rebased cleanly onto `937b2af`. The full managed
-  lifecycle passed again with 15 files and 471 patch tests plus the candidate
-  browser-entrypoint regression.
-- 2026-07-31: Exact commit `c33afcf` passed fresh terminal review with no
-  actionable findings. All remote CodeQL and cumulative integration checks
-  passed, and PR #76 landed as merge commit `03cda26`.
+- 2026-07-24 through 2026-07-30: The selective iMessage bucket rules, link and
+  preview fixes, final-text support, tests, and production deployment landed.
+- 2026-07-31: The proposed queue-drain replacement was rejected as too complex.
+- 2026-07-31: Source review proved that fresh visible iMessage rows cannot reach
+  steering before shared reply admission finishes.
+- 2026-07-31: Source review found that standalone links and images already use
+  the built-in key flush and do not wait for the full deadline.
+- 2026-07-31: First-row standalone link and image regressions raised the
+  cumulative pool to 471 tests.
+- 2026-07-31: PR #76 landed the regression and safety guide changes. PR #77
+  landed the closeout plan.
+- 2026-07-31: Cole asked for plain language and a clearer explanation of the
+  built-in OpenClaw bucket, normal reply path, and steering boundary.
+- 2026-07-31: The plain-language rewrite passes all 9 plan and issue contract
+  tests.
+- 2026-07-31: Independent review corrected the timing explanation. A first link
+  or image matched to a lead-in stays until the original deadline so final text
+  can join. Standalone and unlinked payloads flush immediately.
+- 2026-07-31: Independent review clarified the built-in split. The debouncer
+  holds rows and returns them to the iMessage callback. The patch groups only
+  matching parts, and the existing merge helper combines each selected group.
+- 2026-07-31: Independent complete-diff review is clean after the timing and
+  responsibility corrections.
 
 ### Checklist
 
-#### Research
+#### Plan rewrite
 
-- [x] Trace the selective classifier and effective debounce resolution.
-- [x] Trace standalone payload enqueue, force-flush, and ingest ordering.
-- [x] Trace fresh visible reply admission and built-in steering.
-- [x] Trace automatic final delivery and explicit message-tool behavior.
-- [x] Trace image reference, sanitization, and model capability handling.
-- [x] Confirm current production revision and retained snapshot.
+- [x] Explain the built-in iMessage input bucket in plain language.
+- [x] Explain which messages wait and which go immediately.
+- [x] Explain that combined input starts one normal agent turn.
+- [x] Explain automatic final reply delivery.
+- [x] Explain why fresh iMessage rows do not use steering.
+- [x] Keep the rejected core queue and steering changes out of scope.
 
-#### Implementation
+#### Validation and publication
 
-- [x] Coalesce narrow lead-in plus payload compositions.
-- [x] Coalesce eligible text-link-text continuations.
-- [x] Dispatch standalone payloads immediately.
-- [x] Preserve per-DM atomic enqueue and flush ordering.
-- [x] Keep genuinely separate messages separate.
-- [x] Reject unsupported follow-up runtime changes.
-
-#### Validation
-
-- [x] Keep focused monitor and coalescer regressions cumulative.
-- [x] Register the iMessage targets in the shared patch suite.
-- [x] Add first-row standalone URL or preview coverage.
-- [x] Add first-row standalone image coverage.
-- [x] Run the focused patched monitor suite.
-- [x] Run the current shared cumulative integration pool after the test change.
-- [x] Complete fresh independent review of the complete current diff.
-
-#### Publication
-
-- [x] Synchronize issue #28 with this plan.
-- [x] Remove live-message smoke instructions from the patch guide.
-- [x] Finalize the plan and checklist for the immutable landing candidate.
-- [x] Confirm cron-reader PR #56 is merged before moving public `main`.
-- [x] Pass exact-commit terminal review and required remote checks.
-- [x] Land the reviewed candidate on public `main`.
+- [x] Run the plan and issue writing contract.
+- [x] Complete independent review of the full rewrite.
+- [ ] Complete exact-commit terminal review.
+- [ ] Land the reviewed rewrite on public `main`.
+- [ ] Return the Todoist task for Cole's review without completing it.
