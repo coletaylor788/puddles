@@ -1,6 +1,6 @@
 # Secure Apple Notes shared access
 
-**Status:** Design under revision
+**Status:** Design complete, awaiting prototype-only approval
 **Issue:** [#74](https://github.com/coletaylor788/puddles/issues/74)
 **Last updated:** 2026-07-31
 
@@ -35,14 +35,16 @@ operation or a later design explicitly accepts narrower semantics.
 
 ### Status
 
-The design is being simplified around the existing message ACL and exact
-receiving-agent grants. The concrete acceptance, mapping, and tool enforcement
-flow is ready for independent review.
+The design is complete around the existing message ACL and exact
+receiving-agent grants. Independent review found no remaining actionable issue.
+It is ready for prototype-only approval.
 
 No prototype or implementation work is approved or started. Initial approval
-may authorize only disposable proof of invitation acceptance, stable note
-identity, and write behavior. The evidence must update this plan before a
-separate implementation approval.
+may authorize only disposable proof of message intake, durable queue and crash
+behavior, invitation acceptance, stable note identity, exact-scope tool
+enforcement, and write behavior. That proof may use live invitations only
+between throwaway accounts. The evidence must update this plan before a separate
+implementation approval.
 
 ## Agent section
 
@@ -59,7 +61,8 @@ separate implementation approval.
   A small provider-neutral runtime patch is required to add those fields and let
   the Notes registration fail closed without changing other handlers.
 - Approval gate 1: explicit approval may authorize only disposable prototype
-  work with a throwaway Apple account and recording adapters.
+  work with throwaway Apple accounts and recording adapters. Live invitations
+  are allowed only between those disposable accounts.
 - Approval gate 2: prototype evidence must update this plan before separate
   implementation approval.
 - Production impact: none. This design authorizes no account, permission,
@@ -106,6 +109,13 @@ separate implementation approval.
 - One URL-wide acceptance intent owns UI work for every scope request for that
   normalized URL. Scope jobs wait behind it. An unresolved or potentially
   UI-crossed intent blocks every later scope from reopening the URL.
+- The worker's intent claim is a broker-owned lease with an owner and epoch. A
+  stale pre-marker claim can return to pending only after startup proves there
+  is no live worker claim and no UI-action lease.
+- Each new claim increments a monotonic intent claim generation. The worker must
+  present the current owner and generation to mark `ui_may_cross` or acquire an
+  action lease. Reclamation increments the generation before returning pending,
+  so an old worker can never resume.
 - The worker may cross into Notes UI only when the current macOS build, Notes
   build, helper digest, scripting-dictionary hash, and UI profile exactly match
   the approved prototype matrix. It checks at startup, before claiming UI work,
@@ -128,6 +138,9 @@ separate implementation approval.
 - A broker acceptance epoch fences queue claims and UI actions. A worker must
   acquire a single-use epoch-bound broker lease for each URL-open or Accept
   action. The helper cannot act without that lease.
+- The write-ahead UI marker and URL-open lease are one broker transaction. It
+  validates enabled state, expected intent state, epoch, claim owner and
+  generation, helper identity, and the complete approved runtime tuple together.
 - Automated tests use fake Notes and recording message adapters. They never open
   a live invitation or mutate a live Notes account.
 
@@ -303,21 +316,25 @@ Out of scope:
    Before changing state, it verifies the actual macOS build, Notes build,
    helper digest, scripting-dictionary hash, and UI profile against the approved
    matrix. One transaction then stores that exact baseline and current
-   acceptance epoch on the intent and changes its state to `accepting`.
-10. Immediately before opening the URL, one broker transaction rechecks the
-   acceptance epoch and marks the intent `ui_may_cross`. This write-ahead marker
-   is durable before any external action. Once marked, the intent can only map,
-   close through explicit terminal evidence, or enter reconciliation. It never
-   returns to pending.
-11. After the marker, the worker requests a single-use broker lease for URL
-   open. Lease acquisition atomically rechecks the full runtime tuple, enabled
-   state, epoch, intent, and helper identity. The helper presents that lease and
-   the broker keeps it active until the helper reports terminal action status.
-12. The helper must identify the invitation as one shared note. Before clicking
-   Accept, it obtains a separate single-use action lease with the same checks. A
-   mismatch performs no next UI action and moves the intent to
-   `needs_reconcile`, even if no UI action actually occurred. A folder or
-   unknown resource type is canceled and closes the intent without a grant.
+   acceptance epoch, worker claim owner, and newly incremented claim generation
+   on the intent and changes its state to `accepting`.
+10. Immediately before opening the URL, one broker transaction validates
+   acceptance enabled, exact `accepting` state, current epoch, unexpired claim
+   owner and generation, helper identity, and the complete approved runtime
+   tuple. It then atomically marks the intent `ui_may_cross` and issues the
+   single-use URL-open lease. The marker is durable before any external action.
+   Once marked, the intent can only map, close through explicit terminal
+   evidence, or enter reconciliation. It never returns to pending.
+11. The helper presents the URL-open lease, and the broker keeps it active until
+   the helper reports terminal action status. The helper must identify the
+   invitation as one shared note.
+12. Before clicking Accept, the helper obtains a separate single-use action
+   lease. Its broker transaction requires exact `ui_may_cross` state and
+   revalidates enabled state, epoch, claim owner and generation, helper identity,
+   the complete approved runtime tuple, terminal success of the URL-open lease,
+   and the single-note invitation result. A mismatch performs no next UI action
+   and moves the intent to `needs_reconcile`. A folder or unknown resource type
+   is canceled and closes the intent without a grant.
 13. The version-pinned UI helper returns content-free causal evidence for the
    exact note opened by that acceptance action. At minimum this is the stable ID
    of the note selected by the helper in the accepted Notes window. The worker
@@ -333,9 +350,11 @@ Out of scope:
    joins a mapped intent verifies the note still exists, then inserts its grant
    and completes in one idempotent transaction.
 16. Missing causal evidence, a candidate not corroborated by the exact delta,
-   zero or several new IDs, UI uncertainty, timeout, missing resource, or
-   storage failure marks the URL intent `needs_reconcile`. It creates no active
-   grant, and all scope jobs for that URL remain blocked behind the intent.
+   zero or several new IDs, UI uncertainty, missing resource, or storage failure
+   marks the URL intent `needs_reconcile`. A helper timeout first quiesces or
+   stops the exact helper and retires its action lease, then marks the intent for
+   reconciliation. It creates no active grant, and all scope jobs for that URL
+   remain blocked behind the intent.
 
 **Minimal durable state**
 
@@ -355,10 +374,12 @@ The design needs five small tables:
   duplicate scope work.
 - `note_urls`: normalized URL, one intent ID and owner, intent state
   (`pending | accepting | ui_may_cross | needs_reconcile | mapped | closed`),
-  acceptance epoch, write-ahead UI marker, bounded exact pre-acceptance note-ID
-  baseline, content-free UI candidate note ID when proven, canonical mapped note
-  ID, and timestamps. This row is both the URL-wide acceptance fence and the
-  durable URL-to-note mapping. V1 stores no folder resource.
+  acceptance epoch, worker claim owner, expiry, and monotonic generation,
+  write-ahead UI marker,
+  bounded exact pre-acceptance note-ID baseline, content-free UI candidate note
+  ID when proven, canonical mapped note ID, and timestamps. This row is both the
+  URL-wide acceptance fence and the durable URL-to-note mapping. V1 stores no
+  folder resource.
 - `scope_grants`: canonical resource ID, exact agent scope, active flag, and
   monotonic generation, revocation state, and timestamps. The unique key is
   resource ID plus scope.
@@ -366,14 +387,22 @@ The design needs five small tables:
   acceptance epoch, plus the single worker's active single-use UI-action lease.
   Fencing increments the epoch and disables new claims and leases atomically.
 
-There is one queue consumer. On restart, it reconciles every `ui_may_cross` or
-`needs_reconcile` URL intent before claiming a new intent. It never repeats UI
-acceptance when the URL may already have crossed into Notes. It first checks the
-URL mapping, then compares the intent's durable pre-acceptance baseline with the
-current bounded Notes ID set. Exactly one new ID may complete the intent only
-when it equals the durable candidate ID returned by the original UI action. An
-intent without that causal evidence, or with zero, several, or a different new
-ID, remains `needs_reconcile`. The worker never reopens the URL or guesses.
+There is one queue consumer. On startup, the broker first retires stale worker
+claims and active helper leases. It waits for a live helper to quiesce or stops
+that exact helper before retiring its lease. An `accepting` intent without
+`ui_may_cross` returns to pending only when no live worker claim or helper lease
+remains. Reclamation increments the intent claim generation before releasing it,
+which invalidates every old worker token. This is safe because the helper cannot
+act before the marker and action lease.
+
+The worker then reconciles every `ui_may_cross` or `needs_reconcile` URL intent
+before claiming a new intent. It never repeats UI acceptance when the URL may
+already have crossed into Notes. It first checks the URL mapping, then compares
+the intent's durable pre-acceptance baseline with the current bounded Notes ID
+set. Exactly one new ID may complete the intent only when it equals the durable
+candidate ID returned by the original UI action. An intent without that causal
+evidence, or with zero, several, or a different new ID, remains
+`needs_reconcile`. The worker never reopens the URL or guesses.
 
 Every later scope job for an unresolved URL remains `waiting_intent`. It can
 proceed only after reconciliation maps the URL or an explicit operator decision
@@ -570,6 +599,8 @@ Only after the second approval:
 | Acceptance returns canceled, rejected, timed out, or unknown | No active grant |
 | Before-and-after scan yields zero or several new IDs | Mark `needs_reconcile`; no active grant |
 | Worker crashes before the write-ahead UI marker | Retry the URL intent |
+| Startup finds stale `accepting` before the marker | Prove no live worker claim or helper lease, then return the intent to pending |
+| Paused old worker resumes after its claim is reclaimed | Owner/generation check rejects its marker transition and every action-lease request |
 | Worker crashes after the marker but before URL open | Reconcile the URL intent; never reopen automatically |
 | Worker crashes after UI may have opened | Reconcile Notes and mappings before any retry; never blindly reopen |
 | Worker crashes after acceptance and durable UI evidence but before mapping commit | Compare current IDs with the intent's durable baseline; complete only when one exact new ID equals the stored candidate |
@@ -583,8 +614,11 @@ Only after the second approval:
 | A new scope job joins an already mapped intent | Verify the note, then atomically add that exact grant and complete the job |
 | Acceptance worker receives scope metadata, free-form content, or model parameters | Reject IPC request |
 | Worker starts on an unapproved macOS, Notes, helper, dictionary, or UI profile | Do not claim UI work; mark it blocked without opening Notes |
-| Version tuple changes after baseline but before URL open | Epoch/version recheck fails; perform no UI action |
+| Version tuple changes after baseline but before URL open | Atomic marker-and-lease transaction fails; write no marker and perform no UI action |
 | Version tuple changes after URL open but before Accept | Recheck fails; do not click Accept or create a grant |
+| Stale worker requests a lease after intent enters reconciliation or closes | Expected-state and owner/generation checks reject it |
+| Helper times out with an active action lease | Quiesce or stop that exact helper and retire the lease before reconciliation |
+| Startup finds a surviving helper or action lease | Drain or stop it first; reconciliation cannot run concurrently with possible UI action |
 
 **Tool authorization**
 
@@ -629,6 +663,15 @@ Only after the second approval:
   action.
 - Prove each URL-open and Accept operation requires a single-use lease bound to
   the current broker epoch, intent, helper identity, and approved runtime.
+- Prove the marker and URL-open lease commit in one full-tuple transaction from
+  exact `accepting`, and the Accept lease repeats the full tuple from exact
+  `ui_may_cross` after successful single-note identification.
+- Prove helper timeout and startup recovery quiesce or stop the exact helper and
+  retire its lease before reconciliation.
+- Prove stale `accepting` can return to pending only before the UI marker and
+  only after no live worker claim or helper lease remains.
+- Prove reclamation increments the claim generation and rejects a paused old
+  worker at both marker and action-lease acquisition.
 - Prove exactly one accepted resource can be mapped to a Notes ID with one
   serialized worker and invitation-correlated UI evidence.
 - Prove the chosen Notes ID remains stable across app restart and sync in the
@@ -653,8 +696,9 @@ Only after the second approval:
 ### Rollout and rollback
 
 This revision stops before prototype work. Prototype approval authorizes only
-throwaway accounts, fixture messages, and recording adapters. It does not
-authorize production code or live invitation acceptance.
+throwaway accounts, fixture messages, recording adapters, and live invitation
+acceptance between disposable Apple accounts. It does not authorize production
+code, production-account invitations, or live production writes.
 
 After later implementation approval, rollout uses three small stages:
 
@@ -726,7 +770,15 @@ send a message.
   rollback reconciliation. Each external UI action now requires an epoch-bound
   broker lease that rollback drains, and the acceptance worker never receives
   scope metadata. URL mapping atomically completes all current scope grants.
-  Complete-diff recheck is pending.
+  Startup and timeout recovery now quiesce the helper before reconciliation,
+  stale pre-marker claims can be reclaimed safely, and the Human approval scope
+  matches the complete disposable prototype. Reclaimed claims now advance a
+  fencing generation, and gate one explicitly permits live acceptance only
+  between disposable accounts. The marker and URL-open lease now validate the
+  complete authority and runtime tuple atomically, and Accept repeats that tuple
+  from the exact expected state. The final complete-current-diff review found no
+  actionable findings. Remaining questions are explicit disposable prototype
+  gates.
 
 ### Checklist
 
@@ -764,12 +816,20 @@ send a message.
   intent without reopening.
 - [x] Serialize all scope jobs for one URL behind one acceptance intent.
 - [x] Bind every UI action to a broker lease that rollback disables and drains.
+- [x] Validate the complete authority, state, helper, and runtime tuple in the
+  marker/open transition and again before Accept.
 - [x] Keep the UI worker scope-free and complete waiting grants atomically after
   mapping.
+- [x] Quiesce or stop helper work before timeout or startup reconciliation.
+- [x] Reclaim stale pre-marker intent claims only after proving no worker or
+  action lease remains.
+- [x] Fence every reclaimed worker with a monotonic claim generation.
+- [x] Align the Human approval gate with the complete disposable prototype.
+- [x] Permit live invitation proof only between disposable prototype accounts.
 - [x] Specify pre-host-call list, get, and search authorization.
 - [x] State the unresolved write requirement and phased decision.
 - [x] Remove unrelated challenge, relay, spool, and broad replay machinery.
-- [ ] Complete independent review of the concrete minimal design.
+- [x] Complete independent review of the concrete minimal design.
 - [ ] Receive explicit approval for disposable prototype work.
 - [ ] Complete prototype gates and rewrite this plan with evidence.
 - [ ] Receive separate implementation approval.
