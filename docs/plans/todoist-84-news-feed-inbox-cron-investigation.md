@@ -1,6 +1,6 @@
 # News feed and inbox cron investigation
 
-Status: Investigating follow-up
+Status: Awaiting redesigned approval
 Issue: https://github.com/coletaylor788/puddles/issues/84
 Last updated: 2026-08-04
 
@@ -8,23 +8,25 @@ Last updated: 2026-08-04
 
 ### Design
 
-The scheduler is running. The news brief did not miss its first scheduled run because the earlier red entries were manual setup attempts. Inbox triage has fired on schedule every day since May except for one host outage in June. Recent red inbox runs still gathered email evidence, handed off reports, and ended normally.
+The scheduler is healthy. The first scheduled news brief finished and handed off a report, but it still hit the same hidden orchestration problems as the manual attempts. Inbox triage also runs on time and can finish useful work while its internal reader handoff is marked red.
 
-A late-July runtime safety change rejects worker spawns that do not name the worker. That stops a scheduled main agent from accidentally creating another main agent with the wrong tools and trust role. Both cron prompts still describe a reader in plain language without requiring the reader identifier, so variable model calls can hit the guard and then recover. The result-gathering path also allows some already gathered child completions to enter retry handling and produce false failures.
+The named-worker check is a safety boundary, not the cause to remove. A task name or label does not choose an agent. Without the check, an unattended job that forgets the reader identifier silently creates another main worker. That worker has the wrong instructions and inherits the cron job's restricted tools. The exact inbox failure that led to this check first omitted the target, then retried by explicitly choosing main. Reverting the check would allow both broken paths again and would weaken every scheduled job owned by main.
 
-Cole asked for a deeper design review before approval. The current work is tracing why the named-worker guard cannot simply be removed, where suppression must happen, and what each proposed change could break. The final proposal will minimize runtime scope, preserve normal completion delivery, and include timing, restart, cleanup, nesting, and failure-path tests.
+The first suppression proposal is too broad. The current gather code infers after spawn that a child result should not be delivered. That decision races with completion, uses process memory, can lose state on restart, walks nested descendants, marks results before proving they were read, and can suppress more results than it returns. Moving that check earlier in the same route would not fix those design problems.
+
+The revised fix makes gathering explicit when the child is created. A spawn can opt into a gather-only result mode. Gather-only children never enter normal completion delivery, so there is nothing to suppress or retry. Their results stay in the durable run record until the same parent run collects them. Existing spawns keep their current delivery behavior. The news and inbox prompts will name the reader and choose gather-only mode, then collect their direct reader results once.
 
 ### Status
 
-The initial diagnosis remains valid, but the fix is not approved. A deeper side-effect and safety analysis is in progress.
+The deeper safety and side-effect review is complete. The recommendation now keeps the named-worker check, does not extend the existing suppression hack, and adds a narrow opt-in gather path for these jobs.
 
-Nothing has changed in code, configuration, schedules, services, or deployments.
+Nothing has changed in code, configuration, schedules, services, or deployments. Cole's approval is required before implementation.
 
 ## Agent section
 
 ### State
 
-- Phase: Read-only design follow-up
+- Phase: Redesigned approval checkpoint
 - Approval gate: Required before code, configuration, schedule, deployment, service, or external-state changes
 - Todoist task: `6hCQCRgQPm8Fq8X3`
 - Tracking issue: `https://github.com/coletaylor788/puddles/issues/84`
@@ -35,103 +37,188 @@ Nothing has changed in code, configuration, schedules, services, or deployments.
 
 ### Scope and acceptance criteria
 
-- Explain what the explicit worker-target guard protects.
-- Explain the concrete failure that caused the guard to be added.
-- Compare keeping, narrowing, and reverting the guard.
-- Trace all completion routes that interact with active and completed yield gathers.
-- Identify side effects for interactive sessions, scheduled sessions, nested workers, direct delivery, steer delivery, cleanup, retries, restarts, and result retention.
-- Reduce the proposed runtime change to the smallest safe seam.
-- Define regressions that fail on the live behavior and prove normal delivery still works.
-- Keep the current news and inbox schedules unchanged.
+- Keep the explicit worker-target guard.
+- Preserve the opt-out for a deliberately configured same-agent scheduled child.
+- Make both cron prompts name `reader` explicitly.
+- Add an opt-in gather-only result mode to `sessions_spawn`.
+- Keep default spawn completion delivery unchanged.
+- Limit gather-only collection to direct children of the exact parent run.
+- Return every gather-only direct child up to the existing child concurrency limit.
+- Include child identity, label, outcome, and result in the gather response.
+- Never send gather-only raw child output to a channel.
+- Retain a gather-only result durably through parent exit, crash, or restart within the configured archive window.
+- Do not mark a result consumed before it is available to the parent.
+- Keep the current 5:30 AM news schedule and 6:00 PM inbox schedule.
 - Preserve main as the decision and mutation owner.
 - Preserve reader as the read-only untrusted-content worker.
-- Do not trigger either production job or send a production message during research or automated validation.
+- Do not trigger production jobs, read live content, mutate mail, or send production messages during automated validation.
 
 ### Architecture and decisions
 
-- The live scheduler is enabled, uses its SQLite store, has a future wake time, and the gateway service is running.
-- Daily news brief:
-  - The job was created on August 3 at 3:45 PM Pacific.
-  - Its earlier six entries were manual setup runs: three green and three red.
-  - The two latest red runs completed reader work and downstream handoff.
-  - Its prompt changed during the first investigation. It still did not require `agentId: "reader"` and moved back toward per-child `sessions_send` polling.
-- Daily Email Triage:
-  - The schedule remains 6:00 PM Pacific and is enabled.
-  - From May 8 through August 3, 87 scheduled entries existed. June 25 was the only missing scheduled entry.
-  - The June 25 miss occurred while the gateway had no running log activity. A manual run succeeded after restart.
-  - Five scheduled runs from July 29 through August 2 were red even though reader children completed, the parent gathered results, the handoff started, and the downstream run ended normally.
-  - The August 3 run was green.
-- Initial change timeline:
-  - Scheduled inbox runs changed model family on July 25. Runs stayed green through July 28.
-  - The explicit cron worker-target guard was introduced on July 29 and refined through July 31.
-  - Before the guard, an omitted target could silently create another main child.
-  - After the guard, an omitted target is rejected and must be repaired.
-  - Both live prompts omitted the explicit worker identifier.
-- Initial suppression finding:
-  - `docs/openclaw-setup/patches/sessions-yield-block-and-gather.patch` keeps the parent turn active, gathers descendant results, and marks gathered child keys.
-  - The announce path checks active and completed gather state inside direct completion delivery.
-  - Live cron records still show pending completion retries and failed announce delivery for children returned by `sessions_yield`.
-  - The first proposal moved suppression ahead of completion routing. That proposal now requires a full side-effect analysis before approval.
-- Follow-up questions to resolve:
-  - Which exact target omission and self-target paths the guard blocks.
-  - Whether reverting the guard would recreate the wrong-agent Gmail failure or weaken other scheduled trust boundaries.
-  - Whether suppression should happen in dispatch, cleanup, or gather bookkeeping.
-  - How suppression can distinguish an intentionally gathered result from a completion that still needs external delivery.
-  - What state must survive restart so a late completion is neither leaked nor lost.
-  - Whether the live failure is key mismatch, timing, cleanup state, route selection, or more than one issue.
+- Current scheduler state:
+  - The gateway and scheduler are healthy.
+  - Inbox triage has one historical missed trigger during a host outage. Recent concerns are not missed schedules.
+  - The first scheduled news run at 5:30 AM completed green and handed off a report.
+- First scheduled news evidence:
+  - The model made three unnamed reader spawns. All three were rejected by the target guard.
+  - The model repaired all three with `agentId: "reader"`.
+  - `sessions_yield` returned reader results.
+  - A later child poll hit a live session write lock and waited for its timeout.
+  - All three reader completion deliveries exhausted retries.
+  - Their required completion records stayed suspended for two hours, then expired into compact tombstones.
+  - The job still finished green because the parent already had enough reader output and completed its separate report handoff.
+- Named-worker guard:
+  - Native scheduled requests require an explicit `agentId` by default unless configuration sets `requireAgentId: false`.
+  - Scheduled requests also reject an explicit requester target unless that same opt-out is set.
+  - Alternate runtime requests apply the default only when their implicit target resolves back to the requester. A distinct configured worker default remains valid.
+  - Current main configuration sets `requireAgentId: true` and allows main plus its worker profiles. The explicit setting applies to all main spawns. The scheduled self-target check is an additional boundary.
+  - Interactive explicit main-to-main spawning remains available because the self-target denial is limited to scheduled requester keys.
+  - A same-agent scheduled workflow can opt in deliberately with `requireAgentId: false`.
+  - `taskName` and `label` are handles only. They do not select an agent profile.
+- Why reverting is unsafe:
+  - An omitted target defaults to the requester profile.
+  - A same-agent child inherits the parent run's effective allow and deny policy so it cannot elevate beyond the parent.
+  - The inbox cron parent had decision and mutation tools but delegated read work. The accidental main child inherited that restricted policy and could not use the reader profile's email tools.
+  - The first repair guard rejected omission, but the model retried with explicit main while keeping a reader-looking label. The second guard was added because labels do not change identity.
+  - Removing omission checks recreates the original failure.
+  - Removing only self-target rejection recreates the failed repair.
+  - Setting `requireAgentId: false` on main is agent-wide, not job-specific. It would weaken every scheduled main job and allow omitted interactive targets too.
+- Existing gather and suppression path:
+  - `sessions_yield` looks for active descendants, blocks the parent turn, waits for the descendant tree, reads stored replies, and returns combined text.
+  - Active suppression is stored in a process-local set keyed by requester.
+  - Completed suppression is stored in a process-local set keyed by child session.
+  - Direct completion delivery checks those sets, but announce flow may retarget an internal scheduled requester before reaching the check.
+  - Live children completed while the parent was gathering, were retargeted, bypassed the active key, retried delivery, and suspended.
+- Side effects in the current suppression design:
+  - Process-local state is not durable across gateway restart.
+  - The active check uses the post-retarget completion key, while gather marks the original parent run key.
+  - Completed children are marked gathered before reply reading succeeds.
+  - A read error can therefore suppress content that was never returned.
+  - Reply collection returns only the latest four children while gather marks every matching descendant.
+  - More than four children can lose results.
+  - Descendant traversal is recursive. A top-level gather can mark grandchildren that belong to an intermediate coordinator.
+  - Completion delivery and cleanup are durable, but gather suppression is not.
+  - Required completions that miss suppression retry, suspend, consume backlog capacity, and expire later.
+- Alternatives rejected:
+  - Revert the named-worker guard: recreates silent wrong-agent execution.
+  - Move the current suppression check to dispatch: still depends on volatile inferred state and can suppress legitimate delivery.
+  - Mark all current descendants delivered from `sessions_yield`: can acknowledge unread, truncated, nested, or unrelated results.
+  - Keep prompt-only child polling: the first scheduled news run hit a session lock and used most of its job timeout.
+  - Disable `sessions_yield` globally: changes interactive and scheduled semantics for unrelated callers and revives an older workaround against a newer delivery state machine.
+- Revised result contract:
+  - Add `resultDelivery: "announce" | "gather"` to `sessions_spawn`.
+  - Preserve `"announce"` as the default.
+  - A `"gather"` child registers with completion delivery not required. It never enters direct, steer, retry, suspend, or channel delivery.
+  - Keep its frozen result in durable run state with cleanup mode `keep`.
+  - `sessions_yield` first finds direct gather-mode children for its exact controller run.
+  - It waits for active gather-mode direct children and also includes ones that finished before the call.
+  - It returns structured entries for all matching direct children, bounded by the existing maximum concurrent children rather than a separate limit of four.
+  - It does not recursively consume grandchildren. A direct coordinator child owns its own descendants and returns its synthesized result.
+  - Child errors and timeouts are returned as outcomes rather than hidden.
+  - If result reading fails, the stored result remains available and no normal delivery is attempted.
+  - If the parent crashes or never gathers, the result remains internal through the configured archive window, then normal cleanup removes it. It does not fall back to raw channel delivery.
+  - Repeated gather calls may return the same retained result. The tool instruction continues to say to synthesize once and not gather again. This favors no data loss over a fragile consume-before-delivery acknowledgment.
+- Prompt changes after runtime support:
+  - News calls `sessions_spawn` with `agentId: "reader"` and `resultDelivery: "gather"` for each reader.
+  - Inbox uses the same explicit fields for each read-only reader.
+  - Both call `sessions_yield` once and use its structured result.
+  - News removes per-child `sessions_send` polling.
+  - Final report handoff, mail rules, delivery target, and cron expressions remain unchanged.
 
 ### Implementation
 
 - [x] Verify the reopened Todoist task still points to issue 84 in its first Copilot-authored comment.
 - [x] Verify issue 84 still follows the plan link, Summary, and Status contract.
-- [x] Reopen the plan before follow-up research.
-- [ ] Trace the explicit target guard from original failure through current native and alternate runtime paths.
-- [ ] Compare guard retention, narrowing, and reversion.
-- [ ] Trace completion dispatch, gather suppression, cleanup, retry, and restart state.
-- [ ] Build a side-effect matrix for every affected route.
-- [ ] Revise the proposed fix to the narrowest supported design.
-- [ ] Update the plan and issue with the final recommendation.
-- [ ] Ask Cole one exact approval question or mark the investigation ready for review.
+- [x] Trace the original omitted-target and explicit-main repair failures.
+- [x] Trace native and alternate runtime guard scope and opt-outs.
+- [x] Trace completion retargeting, suppression, retry, suspension, expiry, and cleanup.
+- [x] Inspect the first scheduled news run.
+- [x] Identify current test gaps and unsafe suppression assumptions.
+- [x] Replace the broad suppression proposal with an opt-in gather result contract.
+- [ ] After approval, add the gather result mode to spawn schema and runtime registration.
+- [ ] After approval, make yield collect exact direct gather-mode children from durable state.
+- [ ] After approval, add focused tests and register them in the cumulative patch suite.
+- [ ] After approval, update both prompts only after the runtime supports the new field.
+- [ ] After approval, complete managed validation, independent review, promotion, production checks, landing, and post-landing checks.
 
 ### Validation
 
-- Prior read-only evidence:
-  - Live scheduler status, job definitions, and complete run history
-  - Read-only cron, subagent, audit, delivery, and gateway boot metadata
-  - Sanitized gateway log correlation
-  - Repository history and installed-bundle marker checks
-- Required follow-up evidence:
-  - Original wrong-agent scheduled run sequence
-  - Current explicit-target policy for native and alternate worker paths
-  - Call graph from completion to steer, direct delivery, cleanup, retry, and diagnostics
-  - Gather state lifetime and key normalization
-  - Persistence behavior across gateway restart
-  - Existing tests and missing timing cases
-- Required post-approval regressions remain pending. No implementation validation runs before approval.
+- Read-only evidence:
+  - Live scheduler status and full job history
+  - Sanitized parent tool-call sequences
+  - Child execution, completion, delivery, suspension, and expiry state
+  - Gateway completion retry warnings
+  - Current runtime configuration
+  - Maintained patch source and installed bundle markers
+  - Native and alternate spawn policy tests
+  - Gather, announce dispatch, delivery state, cleanup, persistence, and restart source
+- Test gaps in the current patch:
+  - The cumulative gather patch runs only the yield tool and process-local state tests.
+  - No maintained patch test joins yield gathering to real completion delivery.
+  - The state test does not exercise completed-child marking.
+  - No test covers requester retargeting during active gather.
+  - No test covers more than four children, nested children, read failure, or restart.
+- Required post-approval regressions:
+  - Spawn schema preserves default announce behavior and accepts explicit gather mode.
+  - Gather mode registers completion delivery as not required and never calls direct or steer delivery.
+  - An explicit reader gather spawn keeps the reader's own tools.
+  - Omitted and explicit self-target scheduled spawns remain denied.
+  - The intentional `requireAgentId: false` same-agent scheduled path remains allowed.
+  - Native and alternate runtime target behavior stays aligned.
+  - A child that finishes before `sessions_yield` is included.
+  - Multiple active direct children are all included after drain.
+  - Eight direct children are returned without a hidden four-child loss.
+  - Grandchildren are not returned to or consumed by the top-level parent.
+  - A direct coordinator's synthesized result is returned after its descendants settle.
+  - Error, timeout, silent, missing-result, and malformed stored-result cases are explicit.
+  - Parent interruption and gateway restart retain gather-mode results without external delivery.
+  - Repeated gather is safe and does not delete the only durable result.
+  - Default announce-mode direct, steer, fallback, cleanup, retry, suspension, and restart tests remain unchanged.
+  - Synthetic news and inbox prompts produce one final recording-adapter handoff and no raw reader delivery.
+- Required repository gate after implementation:
+  - `node packages/e2e/bin/openclaw-test-env.mjs ci`
+- Production validation after approval:
+  - Confirm installed spawn schema and target policy with fixed synthetic calls.
+  - Confirm gather mode with fake stored results and recording delivery.
+  - Do not trigger live jobs, read live content, mutate mail, or send a message.
 
 ### Rollout and rollback
 
-- No rollout occurs during the follow-up.
-- Any approved runtime change must use the managed test environment and the repository patch lifecycle.
+- No rollout occurs before approval.
+- Deploy runtime support before editing either prompt.
 - Preserve a verified runtime and configuration snapshot before promotion.
+- Validate default announce behavior and new gather behavior in the managed test environment.
+- Promote the exact reviewed runtime candidate through the documented patch lifecycle.
+- Run synthetic read-only production checks.
+- Update the prompts only after the installed runtime accepts `resultDelivery: "gather"`.
 - Keep both cron expressions unchanged.
-- Validate production only with synthetic data and read-only policy calls.
-- Restore the runtime snapshot and prior prompt definitions if promotion or production checks fail.
+- Rollback order matters:
+  - Restore the prior prompts first so they no longer use the new field.
+  - Restore the prior runtime package and configuration second.
+  - Reload through the documented lifecycle and recheck gateway and scheduler health.
+- If prompt restoration fails, do not restore the old runtime because the new prompt would be incompatible.
 
 ### Review log
 
-- 2026-08-03: Read-only investigation found a healthy scheduler, one historical host outage, missing explicit worker targets, recovered inbox runs recorded as red, and gathered child completion retries.
-- 2026-08-04: Cole asked for deeper analysis of the suppression design, its side effects, and the reason the named-worker guard should not simply be reverted.
+- 2026-08-03: Initial read-only investigation found a healthy scheduler, one historical host outage, missing explicit worker targets, recovered inbox runs recorded as red, and gathered child completion retries.
+- 2026-08-04: Cole requested deeper analysis of suppression side effects and the named-worker guard.
+- 2026-08-04: Review confirmed the guard prevents both the original omitted-target failure and the later explicit-main repair.
+- 2026-08-04: Review found that the first suppression proposal was incomplete. Current suppression is inferred, volatile, recursive, and able to acknowledge unread or omitted results.
+- 2026-08-04: The recommendation changed to an explicit gather-only spawn contract that leaves existing completion delivery untouched.
 - 2026-08-04: No implementation review has started because approval is still pending.
 
 ### Checklist
 
 - [x] Tracker contract is current.
 - [x] Initial runtime topology and timelines are mapped.
-- [x] Initial root causes are supported by live metadata and repository history.
+- [x] First scheduled news run is analyzed.
+- [x] Named-worker guard purpose, scope, opt-out, and alternatives are documented.
+- [x] Suppression routing, retargeting, limits, nesting, persistence, and cleanup are documented.
+- [x] The broad suppression move is withdrawn.
+- [x] Revised gather-only contract and side-effect boundaries are documented.
+- [x] Validation, rollout, and rollback matrices are documented.
 - [x] No behavior or external state was changed.
-- [ ] Named-worker guard purpose and alternatives are fully analyzed.
-- [ ] Suppression side effects and route coverage are fully analyzed.
-- [ ] Restart, cleanup, nesting, and failure semantics are resolved.
-- [ ] Final proposal and regression matrix are documented.
-- [ ] Cole approves implementation, or the investigation is returned for another design pass.
+- [ ] Cole approves the redesigned runtime and prompt changes.
+- [ ] Implementation and committed regressions are complete.
+- [ ] Managed validation and independent review are complete.
+- [ ] Promotion, production validation, landing, and post-landing checks are complete.
