@@ -73,6 +73,8 @@ The guide is complete and landed on the default branch. The connection path work
 - Completed: Fresh terminal adversarial review found no actionable issues in exact candidate `ffd05b4`.
 - Completed: Pull request `#86` passed CodeQL and the cumulative integration workflow, then merged as `c780a605c85f388966eae56bc56daef7e96c4015`.
 - Completed: The default branch merge commit has `ffd05b4` as a parent. Post-merge CodeQL and cumulative integration passed on the merge commit.
+- Completed: The final plan record merged through pull request `#87`, and its post-merge CodeQL and cumulative integration passed.
+- Completed: Todoist received the result and moved from `agent` to `ready_for_review`. Issue `#85` retained the ready-for-review status text and closed as completed.
 - Not run locally: The change only adds operating instructions and does not change executable behavior, patches, configuration, or test code. The required remote cumulative integration workflow still ran before and after merge and passed.
 
 ### Rollout and rollback
@@ -103,4 +105,4 @@ The guide is complete and landed on the default branch. The connection path work
 - [x] Applicable validation passes.
 - [x] Independent adversarial review is clean.
 - [x] Pull request is merged and the default branch is verified.
-- [ ] Issue and Todoist task are moved to review state.
+- [x] Issue and Todoist task are moved to review state.
