@@ -1,6 +1,6 @@
 # Explain OpenClaw context in the safe feature workflow
 
-Status: In review
+Status: Ready for terminal review
 Issue: https://github.com/coletaylor788/puddles/issues/89
 Last updated: 2026-08-05
 
@@ -16,19 +16,20 @@ The depth follows the decision being discussed. The reader should get enough con
 
 ### Status
 
-The shared guidance and its regression are implemented. Focused checks and the full isolated test lifecycle pass.
+The shared guidance and its regression are implemented. Focused checks and the full isolated test lifecycle pass, and independent review found no actionable issues.
 
-Nothing is blocked. Independent review is next, followed by the exact-candidate review and normal pull request landing.
+Nothing is blocked. The in-repository bookkeeping is final. An exact-candidate review and the normal pull request landing remain.
 
 ## Agent section
 
 ### State
 
-- Phase: Independent review.
+- Phase: Terminal review preparation.
 - Todoist task `6hCmhqjP4WH57fWV` remains labeled `agent`.
 - Issue `#89` uses the required plan link, `Summary`, and `Status` shape.
-- The complete local diff changes two instruction surfaces, one existing shared-pool test, the coverage index, and this plan.
+- The complete diff changes two instruction surfaces, one existing shared-pool test, the coverage index, and this plan.
 - Focused and full managed validation pass.
+- Independent complete-diff review is clean.
 - There is no runtime artifact or production state to promote.
 
 ### Scope and acceptance criteria
@@ -43,7 +44,8 @@ Nothing is blocked. Independent review is next, followed by the exact-candidate 
 - [x] Add a committed regression for both instruction surfaces and the plan contract.
 - [x] Update the cumulative coverage index.
 - [x] Pass focused validation and the full managed lifecycle.
-- [ ] Complete reusable independent review and terminal review.
+- [x] Complete reusable independent review with no actionable findings.
+- [ ] Pass terminal review on the exact landing candidate.
 - [ ] Land through a non-draft pull request and verify the default branch.
 
 ### Architecture and decisions
@@ -64,7 +66,7 @@ Nothing is blocked. Independent review is next, followed by the exact-candidate 
 - [x] Extend the plan design contract for OpenClaw architecture descriptions.
 - [x] Add the shared-pool regression.
 - [x] Update the shared coverage index.
-- [x] Rewrite the plan and issue for the validated state.
+- [x] Rewrite the plan and issue for the independently reviewed state.
 
 ### Validation
 
@@ -80,6 +82,7 @@ Nothing is blocked. Independent review is next, followed by the exact-candidate 
   - 1 candidate test passed; and
   - the temporary OpenClaw worktree was removed and pruned.
 - The managed lifecycle is isolated from configured agents and personal accounts. This feature adds no external write path.
+- The final post-review plan-only change requires `git diff --check` before the retained review re-check. It does not change executable behavior or the validated instruction contract.
 
 ### Rollout and rollback
 
@@ -89,7 +92,8 @@ Nothing is blocked. Independent review is next, followed by the exact-candidate 
 
 ### Review log
 
-- Independent adversarial review is pending.
+- 2026-08-05: Independent adversarial review of commit `8166ae9` against `origin/main` found no actionable findings and no useful residual validation gap.
+- The retained reviewer will re-check the complete diff after this final plan-only synchronization.
 - Terminal landing-candidate review is pending.
 
 ### Checklist
@@ -101,7 +105,8 @@ Nothing is blocked. Independent review is next, followed by the exact-candidate 
 - [x] Implement the instruction change and regression.
 - [x] Pass focused validation.
 - [x] Pass the full managed test lifecycle.
-- [ ] Resolve all actionable independent review findings.
+- [x] Resolve all actionable independent review findings.
+- [ ] Pass retained-review re-check after final bookkeeping.
 - [ ] Pass terminal review on the exact landing candidate.
 - [ ] Push, open a non-draft pull request, and pass remote checks.
 - [ ] Merge and verify the default branch.
