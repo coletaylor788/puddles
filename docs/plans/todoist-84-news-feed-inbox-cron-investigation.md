@@ -1,6 +1,6 @@
 # News feed and inbox cron investigation
 
-Status: Reviewing tool and policy side effects
+Status: Awaiting tool-contract approval
 Issue: https://github.com/coletaylor788/puddles/issues/84
 Last updated: 2026-08-05
 
@@ -8,23 +8,25 @@ Last updated: 2026-08-05
 
 ### Design
 
-The inbox regression began before the named-worker check existed. The last correct run used reader to gather mail evidence, then main made decisions, confirmed archive actions, and handed off the report. The first incorrect run had the same cron text, model identity, tools, and system instructions. It supplied a task handle but omitted the optional worker. The runtime silently created main instead of reader, read no mail, made no archive action, and still marked the run green.
+The email job has a clear intended chain. The scheduler starts main. Main reads its rules, delegates untrusted mail reading to reader, waits for reader evidence, makes the triage decisions, confirms mail changes, hands the report to the live main conversation, and that conversation sends the message. The scheduler does not start reader directly.
 
-The root cause is an ambiguous tool contract, but Cole wants the full call surface and side effects before approving a fix. The current review is tracing each scheduler, main, reader, mutation, wait, and handoff call. It is also measuring how worker selection behaves in interactive, scheduled, child-agent, and alternate-runtime sessions.
+The July break happened at the delegation step. The model-facing contract required a task but made the worker optional. One run chose the reader correctly. The next run used a task handle and omitted the worker, so the runtime silently started another main worker. That child had no mail-reading tools. The job still looked green even though the intended work never happened.
 
-The goal remains a plain-language cron. Cron text should not contain runtime plumbing. Any worker requirement belongs in the system-owned tool contract and must not accidentally break legitimate non-scheduled same-agent work, alternate runtime defaults, nested coordinators, or existing scripts.
+Making the worker required does not add anything to the cron text. It changes the structured tool form the system gives the model. It should happen only when the requester’s effective policy already requires a worker. Current main already enforces that rule in scheduled and interactive sessions, so exposing it in the schema moves the same failure earlier and makes valid generation more likely. Other coordinators that allow implicit same-agent children keep an optional worker field.
+
+The result-wait problem is separate. Main already gets reader results through the wait tool, but completion delivery also retries in parallel. The runtime fix should make the wait tool durably own the direct children it is collecting. That removes duplicate delivery work without adding gather flags, polling instructions, or delivery plumbing to the cron.
 
 ### Status
 
-The behavior transition is proven. The proposed required-worker schema and durable yield design are still unapproved while their exact parameter and non-scheduled effects are reviewed.
+The exact tool chain, parameter surface, retained usage history, and scheduled versus non-scheduled side effects are complete. The recommendation no longer removes main’s explicit worker policy because retained non-scheduled main traffic already complies with it.
 
-Nothing has changed in code, configuration, prompts, schedules, services, or deployments.
+Nothing has changed in code, configuration, prompts, schedules, services, or deployments. Cole's approval is required before implementation.
 
 ## Agent section
 
 ### State
 
-- Phase: Read-only tool-surface and side-effect review
+- Phase: Tool-contract approval checkpoint
 - Approval gate: Required before code, configuration, prompt, schedule, deployment, service, or external-state changes
 - Todoist task: `6hCQCRgQPm8Fq8X3`
 - Tracking issue: `https://github.com/coletaylor788/puddles/issues/84`
@@ -35,104 +37,354 @@ Nothing has changed in code, configuration, prompts, schedules, services, or dep
 
 ### Scope and acceptance criteria
 
-- Name every tool used by the scheduler, main, reader, mutation path, result wait, and final handoff.
-- List the relevant parameters and which component supplies each one.
-- Distinguish `agentId`, `taskName`, `label`, runtime, mode, cleanup, context, result delivery, and timeout semantics.
-- Explain exactly what changes when `agentId` moves from optional to required.
-- Analyze scheduled native, scheduled alternate runtime, interactive main, interactive worker, nested child, explicit same-agent, omitted same-agent, and invalid-target cases.
-- Measure historical non-scheduled spawn calls before deciding whether main's explicit `requireAgentId: true` setting is overbroad.
-- Preserve plain-language cron prompts and current schedules.
-- Keep the runtime guard fail-closed until a replacement proves equal safety.
-- Keep main as decision and mutation owner and reader as untrusted-content reader.
-- Do not trigger production jobs, read live content, mutate mail, or send messages during research.
+- Keep both cron prompts and cron expressions unchanged.
+- Document every tool call and relevant parameter in the correct and incorrect inbox paths.
+- Make the provider-facing schema match effective runtime target policy.
+- Do not make `agentId` globally required.
+- Require `agentId` when the requester configuration or scheduled default already requires it.
+- Keep `agentId` optional when `requireAgentId: false` or an allowed non-scheduled requester keeps optional self-spawn semantics.
+- Keep execution-time target, allowlist, registry, and scheduled self-target checks.
+- Keep plain-language worker intent in the cron.
+- Keep main as decision and mutation owner and reader as read-only evidence owner.
+- Make result waiting durable and automatic without prompt flags.
+- Preserve default completion delivery when a parent does not wait.
+- Do not trigger production jobs, read live content, mutate mail, or send messages during automated validation.
 
 ### Architecture and decisions
 
-- Proven root-cause facts:
-  - July 27 is the last behaviorally correct scheduled inbox run.
-  - July 28 is the first behaviorally incorrect scheduled inbox run.
-  - Correct reader children used mail listing, message reading, and attachment reading tools.
-  - Correct main runs confirmed archive tool results and handed off reports.
-  - The incorrect run called `sessions_spawn` with `taskName: "email_reader"` and no `agentId`.
-  - The runtime accepted that call as a main child.
-  - The main child had no mail tools, and the parent performed no archive action.
-  - Prompt, system context, tool schema, model identity, transport, and hidden message count did not materially change.
-- Current target behavior:
-  - The provider-facing schema requires only `task`.
-  - `agentId`, `taskName`, and `label` are optional.
-  - Pre-fix `agentId` had no description while `taskName` had a stable-alias description.
-  - Omitted native `agentId` defaults to requester identity.
-  - Same-agent children inherit requester tool restrictions.
-  - Current execution guards reject omitted scheduled targets and scheduled self-targets unless `requireAgentId: false`.
-  - Current main configuration sets `requireAgentId: true`, so omission is rejected outside cron too.
-- Current completion behavior:
-  - Main uses `sessions_yield` to wait for reader evidence.
-  - Correct runs already logged child completion retry exhaustion while yield still returned results.
-  - Process-local gather suppression and durable completion delivery disagree about ownership.
-  - Completion transport is a separate defect from the July 28 wrong-agent run.
-- Pending decisions:
-  - Whether provider-facing `agentId` should be required only for scheduled sessions or whenever effective policy requires it.
-  - Whether current main `requireAgentId: true` has legitimate non-scheduled callers that rely on optional self-spawn.
-  - How one flat provider-compatible schema handles both native and alternate runtime targets.
-  - Whether legal target IDs belong in an enum, description, or both.
-  - How durable yield claims interact with non-yield auto-announce, nested children, restart, and cleanup.
+- Scheduler invocation:
+  - The scheduled execution does not call the model-facing `cron` tool.
+  - The scheduler reads the stored job and starts an isolated `agentTurn`.
+  - Current inbox job fields:
+    - `agentId: "main"`
+    - `sessionTarget: "isolated"`
+    - `wakeMode: "now"`
+    - schedule `0 18 * * *` in the configured Pacific time zone
+    - payload kind `agentTurn`
+    - payload timeout `900` seconds
+    - light context enabled
+    - delivery mode `none`
+  - The `cron` tool is used only to add, edit, enable, disable, list, inspect, manually run, or remove job definitions.
+- Correct July 27 parent sequence:
+  - `read`
+    - Parameter: `path` required, with optional `offset` and `limit`.
+    - Purpose: load main's triage skill and learning files.
+  - First `sessions_spawn`
+    - `task`: required reader objective, 388 characters in the captured run.
+    - `agentId: "reader"`.
+    - `mode: "run"`.
+    - All other spawn parameters omitted.
+  - First `sessions_yield`
+    - Optional `message` supplied, 30 characters.
+    - Returned `status: "subagent_results"` with the reader result.
+  - Two more `sessions_spawn` calls
+    - `task`: required follow-up reader objectives, 394 and 444 characters.
+    - `agentId: "reader"`.
+    - `mode: "run"`.
+  - Second `sessions_yield`
+    - Optional `message` supplied, 41 characters.
+    - Returned both follow-up reader results.
+  - Two `archive_email` calls
+    - Required `email_ids` array.
+    - Captured batches contained 21 and 4 IDs.
+    - Both tool results succeeded.
+  - `sessions_send`
+    - `sessionKey`: live main conversation.
+    - `message`: consolidated triage handoff, 1,961 characters.
+    - `timeoutSeconds: 60`.
+    - Returned `status: "ok"` with pending downstream delivery.
+  - Final parent response was `OK`.
+- Incorrect July 28 parent sequence:
+  - The same two initial `read` calls.
+  - One `sessions_spawn`
+    - `task`: required reader objective, 652 characters.
+    - `taskName: "email_reader"`.
+    - `agentId` omitted.
+    - `mode: "run"`.
+  - Runtime accepted the call and created a main child.
+  - One `sessions_yield` returned the main child's short result.
+  - No `archive_email` call occurred.
+  - `sessions_send`
+    - Same live main target class.
+    - `message`: 687-character degraded report.
+    - `timeoutSeconds: 60`.
+  - Scheduler recorded the parent `ok`.
+- Correct reader tool sequence:
+  - `list_emails`
+    - No required parameters.
+    - Available filters: `max_results`, `label`, `category`, `unread_only`, and raw Gmail `query`.
+    - Captured reader used `query` and `max_results: 20` in two calls.
+  - `get_attachments`
+    - Required `email_id`.
+    - Optional `filename`.
+    - Downloads into the reader workspace under `attachments/`.
+  - `read`
+    - Required `path`.
+    - Optional `offset` and `limit`.
+    - Reader used it only on downloaded attachment paths.
+  - `get_email`
+    - Required `email_id`.
+    - Optional `format`, defaulting to full.
+    - Captured follow-up reader made six successful calls.
+  - Reader never received `archive_email`, `add_label`, `message`, or `sessions_spawn`.
+- Incorrect main child:
+  - Child identity was main, not reader.
+  - It received the same-agent inherited restrictions from the cron parent.
+  - It called no mail tool.
+  - In a later reproduced failure, a same-agent child tried `exec`, which was not a substitute for reader mail tools and failed.
+- Final channel delivery:
+  - `sessions_send` does not itself send to the external channel.
+  - It starts or wakes the live main session with:
+    - one of `sessionKey`, `label`, or `agentId` as target
+    - required `message`
+    - optional non-negative `timeoutSeconds`
+  - The live main session is instructed to use `message`.
+  - Relevant `message` fields are:
+    - `action`, normally `send`
+    - `channel`
+    - `target` or `targets`
+    - `accountId`
+    - message body
+  - Runtime records show the downstream live-main runs completed.
+- Complete `sessions_spawn` provider-facing parameters:
+  - `task`: required string. The child objective.
+  - `taskName`: optional stable handle for later targeting. It does not select identity.
+  - `label`: optional display label. It does not select identity.
+  - `runtime`: optional `subagent` or `acp`; defaults to native subagent.
+  - `agentId`: optional today. Native profile ID or alternate runtime harness ID depending on runtime.
+  - `model`: optional model override.
+  - `thinking`: optional thinking override.
+  - `cwd`: optional working directory.
+  - `thread`: optional thread binding where supported.
+  - `mode`: optional `run` or `session`; non-thread default is run.
+  - `cleanup`: optional `delete` or `keep`; tool default is keep and session mode forces keep.
+  - `sandbox`: optional `inherit` or `require`; default is inherit.
+  - `context`: optional `isolated` or `fork`; default is isolated and cross-agent fork is rejected.
+  - `lightContext`: optional boolean for native subagents.
+  - `attachments`: optional array of up to 50 snapshot attachments with name, content, optional encoding, and optional MIME type.
+  - `attachAs.mountPath`: optional child attachment path hint.
+  - `resumeSessionId`: optional alternate-runtime resume target when that runtime is available.
+  - `streamTo`: optional alternate-runtime stream target when available.
+- Defaults and identity implications:
+  - Omitted native `agentId` becomes requester agent ID.
+  - Explicit cross-agent target uses the target profile's tools and workspace.
+  - Same-agent target inherits the requester's effective allow and deny restrictions.
+  - `taskName` and `label` never alter those rules.
+  - `agentId` does not change scheduler ownership. The scheduler still starts main.
+  - Requiring `agentId` does not change task, model, mode, cleanup, sandbox, context, timeout, result delivery, mail permissions, or final handoff.
+- Effective worker policy:
+  - Current main:
+    - `allowAgents` includes main and its allowed worker profiles.
+    - `requireAgentId: true`.
+    - Omission is already rejected in scheduled and non-scheduled main sessions at execution time.
+    - Scheduled self-target is additionally denied unless the setting is explicitly false.
+  - Scheduled default:
+    - Native scheduled requesters default to requiring a target when no explicit setting exists.
+    - Explicit `requireAgentId: false` opts into omitted and explicit same-agent scheduled children.
+  - Household coordinator:
+    - Has multiple allowed profiles but no explicit worker requirement.
+    - Retained history includes six household self children, including omitted calls.
+    - Its schema must stay optional unless its policy is separately changed.
+  - Reader and browser profiles:
+    - Reader has no spawn tool.
+    - Browser's allowlist is empty and its configured tools do not include spawn.
+- Retained usage history since May:
+  - Main scheduled sessions:
+    - 319 spawn calls.
+    - 289 explicit cross-agent calls.
+    - 27 omitted calls.
+    - 3 explicit main calls.
+    - No alternate-runtime calls.
+  - Main persistent session:
+    - 198 calls, all explicit reader.
+  - Main iMessage sessions:
+    - 33 calls, all explicit reader or browser worker.
+  - Other retained main contexts:
+    - 119 calls.
+    - 116 explicit cross-agent calls.
+    - 3 omitted calls, including investigation or explicit sessions that repaired to reader.
+  - User-facing non-scheduled main plus iMessage:
+    - 231 calls.
+    - Zero omitted calls.
+    - Zero explicit self calls.
+  - Household:
+    - 36 retained model calls.
+    - 32 explicit cross-agent and 4 omitted.
+    - Registry contains 6 household self children.
+  - No retained `runtime: "acp"` model calls were found in these coordinator transcripts.
+- Required-field design:
+  - Generate the schema from requester context and effective policy.
+  - If effective `requireAgentId` is true, make `agentId` required in the flat schema.
+  - If a native scheduled requester has no explicit setting, apply the existing scheduled default and make it required.
+  - If effective policy is false, keep it optional.
+  - Keep main's current explicit `requireAgentId: true`; do not remove it in this change.
+  - Generate an `agentId` description that separates allowed native profile IDs from allowed alternate runtime harness IDs.
+  - Exclude main from the scheduled native suggestions when scheduled self-target is denied.
+  - Keep `agentId` as a string rather than a fixed enum because native and alternate runtimes use different ID registries and runtime availability can change.
+  - Keep the object schema flat. Some model services reject or rewrite top-level conditional unions.
+  - Keep runtime execution checks because programmatic callers can bypass provider schema validation and configuration can reload during a turn.
+- What required changes for current main:
+  - Before:
+    - Model sees `required: ["task"]`.
+    - Omission reaches tool execution, then current policy rejects it.
+  - After:
+    - Model sees `required: ["task", "agentId"]`.
+    - Valid structured generation includes a worker before execution.
+    - If invalid generation still omits it, execution rejects it exactly as today.
+  - Accepted explicit reader and browser calls do not change.
+  - Explicit interactive `agentId: "main"` remains allowed by normal allowlist policy.
+  - Scheduled explicit main remains denied by the scheduled self-target rule.
+  - Current user-facing non-scheduled traffic already supplies a worker, so no retained compatibility break is expected.
+- Non-scheduled side effects:
+  - Main interactive sessions:
+    - Schema becomes required because current main policy is already true.
+    - This aligns schema with existing runtime behavior rather than creating a new restriction.
+    - Any external automation that relies on omitted main self-spawn already fails current execution policy.
+    - Explicit same-agent automation remains possible where allowlist policy permits it.
+  - Household and other optional-policy coordinators:
+    - Schema stays optional.
+    - Existing omitted self-spawns keep working.
+  - Child agents:
+    - Policy resolves from child identity, not inherited main policy.
+    - Profiles without `sessions_spawn` are unaffected.
+    - A child coordinator with explicit requirement gets a required schema; one without it remains optional.
+  - Alternate runtime:
+    - When effective policy requires a worker, scheduled and non-scheduled model calls must supply a harness ID.
+    - This can make a configured implicit default explicit in model-generated calls.
+    - Direct programmatic runtime calls still face execution policy, not only schema.
+    - No retained current usage depends on omitted alternate-runtime target.
+  - Tool schema and cache:
+    - Required list and description change the tool schema hash.
+    - The first run after deployment may miss an existing prompt cache entry.
+    - The added description slightly increases prompt tokens.
+    - Flat shape avoids provider union compatibility regressions.
+  - Configuration reload:
+    - Tools are built from the run's configuration snapshot.
+    - A mid-run config change can make displayed schema stale.
+    - Execution-time policy remains the authoritative final check.
+  - Security:
+    - Allowed agent IDs are configuration metadata already available through `agents_list` in contexts that expose it.
+    - Scheduled sessions currently lack `agents_list`, so the schema description provides only their legal choices.
+    - No credentials or private content are added.
+- `sessions_yield` parameters and effect:
+  - Provider-facing input has one optional string: `message`.
+  - If active descendants exist, current code blocks in-turn, waits, returns `subagent_results`, and does not end the turn.
+  - If none are active, it calls the runtime yield callback and ends the turn.
+  - The default gather timeout is runtime-owned, not a model parameter.
+  - The durable design changes internal ownership only. It adds no provider-facing parameter.
+- Durable yield side effects:
+  - Claims only exact direct child run IDs visible when yield begins, plus same-parent direct children that finish before claim resolution.
+  - Grandchildren stay owned by their direct coordinator.
+  - Claimed result state is durable across gateway restart.
+  - Successfully returned results get a durable gathered marker.
+  - Unread or malformed results are not marked gathered.
+  - Parent restart can repeat collection from retained result state.
+  - Expired abandoned claims return to normal completion routing.
+  - Parents that never call yield keep current auto-announce behavior.
+  - Process-local suppression is removed only after migration tests prove durable ownership.
+  - The result structure grows from combined text to labeled per-child entries. System prompt synthesis guidance must accept that shape, but cron text does not change.
+- Status and error implications:
+  - Missing required worker becomes model/schema validation or the existing tool denial, never silent main execution.
+  - A correct parent that durably gathered results is not made red by duplicate completion retries.
+  - A child without required evidence, failed archive call, failed final handoff, parent interruption, or expired uncollected required result remains an error.
 
 ### Implementation
 
-- [x] Verify the tracker after Cole's parameter follow-up.
-- [x] Reopen the plan before further research.
-- [ ] Extract exact working and failing parent tool calls and arguments.
-- [ ] Extract exact reader tool calls and argument shapes.
-- [ ] Map scheduler startup and final handoff calls.
-- [ ] Document the full `sessions_spawn` parameter schema and defaults.
-- [ ] Survey historical scheduled and non-scheduled target omission.
-- [ ] Analyze effective `requireAgentId` policy in every requester context.
-- [ ] Analyze schema compatibility for native and alternate runtimes.
-- [ ] Recheck durable yield side effects against the full tool chain.
-- [ ] Rewrite the plan with final parameter and side-effect conclusions.
-- [ ] Update the issue and ask one concrete approval question.
+- [x] Verify the tracker after Cole's tool-parameter follow-up.
+- [x] Extract exact correct and incorrect parent call sequences.
+- [x] Extract exact reader tool and parameter shapes.
+- [x] Map scheduler startup and final handoff surfaces.
+- [x] Document the complete `sessions_spawn` parameter schema and defaults.
+- [x] Survey retained scheduled, interactive, explicit, child, and household targeting behavior.
+- [x] Build the required versus optional policy matrix.
+- [x] Reconcile durable yield with the exact tool chain.
+- [ ] After approval, generate policy-aware provider-facing spawn schema.
+- [ ] After approval, add durable direct-child yield claims and gathered markers.
+- [ ] After approval, keep main policy unchanged and preserve optional household behavior.
+- [ ] After approval, complete focused tests, cumulative integration, independent review, promotion, production checks, landing, and post-landing checks.
 
 ### Validation
 
-- Read-only evidence:
-  - Captured parent and child transcripts
-  - Captured provider-facing schemas
-  - Runtime configuration and policy resolution
-  - Subagent registry and completion state
-  - Historical session index and tool-call metadata
-  - Cron run, gateway, and secure integration audit metadata
-  - Source, tests, patch, and deployment history
-- Required output:
-  - Exact tool sequence for one correct and one incorrect inbox run
-  - Parameter table for each tool
-  - Context matrix for required versus optional worker selection
-  - Compatibility and migration risks
-  - Revised no-prompt implementation boundary
-- No implementation validation runs before approval.
+- Required schema regressions:
+  - Current main scheduled and interactive schemas require `task` and `agentId`.
+  - Household schema keeps only `task` required.
+  - Scheduled requester with unset policy requires `agentId`.
+  - Scheduled requester with explicit false keeps it optional and allows self.
+  - Interactive requester with unset policy keeps it optional.
+  - Interactive explicit main and explicit cross-agent calls remain accepted by allowlist policy.
+  - Scheduled explicit main remains denied.
+  - Legal native and alternate IDs appear in generated descriptions without secrets.
+  - Schema remains a flat object after provider projection.
+  - Programmatic omission still reaches execution guard and fails closed.
+  - Configuration reload cannot bypass execution validation.
+- Required exact-path regressions:
+  - Replay July 27 explicit reader call and preserve reader tools.
+  - Replay July 28 omitted target and reject before child creation.
+  - Replay omitted, explicit main, explicit reader scheduled sequence as denied, denied, accepted.
+  - Preserve `taskName` as a handle only.
+  - Preserve mode, cleanup, sandbox, context, model, thinking, cwd, attachment, and alternate runtime defaults.
+- Required non-scheduled regressions:
+  - Main interactive schema and runtime agree that target is required.
+  - Explicit main interactive self-spawn retains inherited restrictions.
+  - Explicit reader interactive spawn gets reader tools.
+  - Household omitted self-spawn remains accepted.
+  - Household explicit reader and browser spawns remain accepted.
+  - Reader and browser profiles do not gain a spawn tool.
+  - Nested coordinator policy resolves from the child profile.
+- Required durable-yield regressions:
+  - One, multiple, and eight direct children are claimed and returned.
+  - Child completion during active wait does not retarget or retry.
+  - Child completed before wait is returned when it belongs to the same parent run.
+  - Grandchildren are not claimed by the top-level parent.
+  - Only readable results receive gathered markers.
+  - Error, timeout, silent, malformed, missing, and partial results are explicit.
+  - Gateway restart preserves claims and gathered deduplication.
+  - Parent resume can repeat collection.
+  - Abandoned claims expire into normal completion routing.
+  - Non-yield auto-announce remains unchanged.
+  - Correct gather produces no duplicate direct, steer, retry, suspension, expiry, or raw channel delivery.
+- Required synthetic job coverage:
+  - Unchanged inbox prompt routes mail reads to reader, decisions and writes to main, and one report to recording delivery.
+  - Unchanged news prompt routes reader evidence to main without raw child delivery.
+  - Recording mail and message adapters deny unsupported writes.
+- Required repository gate after implementation:
+  - `node packages/e2e/bin/openclaw-test-env.mjs ci`
+- Production validation after approval:
+  - Inspect installed schemas for main, household, scheduled, and interactive contexts.
+  - Exercise fixed synthetic spawn and gather records with recording delivery.
+  - Do not trigger live jobs, read live content, mutate mail, or send a message.
 
 ### Rollout and rollback
 
-- No rollout occurs during this review.
-- Do not edit either prompt or schedule.
-- Do not change main's `requireAgentId` configuration until non-scheduled behavior is measured and approved.
-- Any eventual runtime change must use the managed test and patch lifecycle with synthetic production checks and a verified recovery snapshot.
+- No rollout occurs before approval.
+- Keep prompts, schedules, and current main `requireAgentId: true` unchanged.
+- Preserve a verified runtime and configuration snapshot before promotion.
+- Validate schema generation, execution guards, optional-policy coordinators, durable yield, restart, default completion, and rollback in the managed environment.
+- Promote the exact reviewed runtime candidate through the documented patch lifecycle.
+- Run synthetic read-only production checks.
+- Roll back the runtime package and configuration snapshot if any policy context receives the wrong schema, an optional coordinator breaks, a result is lost or duplicated, or normal completion delivery regresses.
 
 ### Review log
 
-- 2026-08-04: Root-cause analysis proved optional worker plus silent self default caused the first wrong inbox run.
-- 2026-08-04: Named-worker execution checks were classified as later fail-closed mitigation.
-- 2026-08-04: Completion retries were separated as an older independent defect.
-- 2026-08-05: Cole requested exact tools, parameters, required-field effects, and non-scheduled side effects before approval.
+- 2026-08-04: Root-cause review proved optional worker plus silent self default caused the first wrong inbox run.
+- 2026-08-04: Named-worker checks were retained as fail-closed execution validation.
+- 2026-08-04: Completion retry exhaustion was separated as an older independent defect.
+- 2026-08-05: Exact tool-chain review documented scheduler, main, reader, mutation, wait, and handoff calls.
+- 2026-08-05: Retained history found no user-facing non-scheduled main omission or self-target dependency.
+- 2026-08-05: Cross-agent history found optional household self-spawn behavior, so global required worker was rejected.
+- 2026-08-05: Recommendation changed from removing main's explicit requirement to keeping it and making schema match effective policy.
 
 ### Checklist
 
 - [x] Tracker contract is current.
-- [x] Last correct and first incorrect runs are proven.
+- [x] Exact tool and parameter chain is documented.
+- [x] Scheduled and non-scheduled policy matrix is complete.
+- [x] Historical interactive compatibility is measured.
+- [x] Alternate runtime, nested-child, schema-cache, and reload effects are documented.
+- [x] Durable yield side effects are synchronized with the tool chain.
+- [x] Validation, rollout, and rollback are complete in the plan.
 - [x] No behavior or external state was changed.
-- [ ] Exact tool and parameter chain is documented.
-- [ ] Scheduled and non-scheduled policy matrix is complete.
-- [ ] Historical interactive compatibility is measured.
-- [ ] Alternate runtime and nested-child effects are resolved.
-- [ ] Durable yield side effects are synchronized with the tool chain.
-- [ ] Final fix, validation, rollout, and rollback are documented.
 - [ ] Cole approves implementation.
+- [ ] Implementation and committed regressions are complete.
+- [ ] Managed validation and independent review are complete.
+- [ ] Promotion, production validation, landing, and post-landing checks are complete.
