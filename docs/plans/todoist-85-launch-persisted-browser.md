@@ -1,6 +1,6 @@
 # Launch the persisted browser
 
-Status: Preparing landing candidate
+Status: Complete
 Issue: https://github.com/coletaylor788/puddles/issues/85
 Last updated: 2026-08-04
 
@@ -16,13 +16,13 @@ The guide will explain how to confirm the container and persistent profile wirin
 
 ### Status
 
-The guide is complete and the independent review is clean. The connection path works against the live local viewer, does not print private values, and selects only the intended browser profile. The exact landing candidate and remote checks are next. Nothing is blocked.
+The guide is complete and landed on the default branch. The connection path works against the live local viewer, does not print private values, and selects only the intended browser profile. Remote and post-merge checks passed. This is ready for Cole to review and use on the Mac mini.
 
 ## Agent section
 
 ### State
 
-- Phase: Landing candidate
+- Phase: Complete
 - Repository: `coletaylor788/puddles`
 - Tracking task: `6hCggCRc8j5Q7CjV`
 - Tracking issue: `#85`
@@ -70,13 +70,16 @@ The guide is complete and the independent review is clean. The connection path w
 - Completed: Ran the replacement connection path against the current browser container without invoking `open`. Redacted boolean output confirmed container selection, noVNC port selection, an eight-character alphanumeric password, viewer reachability, and the local `open` command. No password, URL, port, or container name was printed.
 - Completed: Confirmed the installed bridge builds the direct noVNC target with `autoconnect`, remote resize, and the password in the URL fragment.
 - Completed: The live registry contained more than one session key matching the broad `browser-agent` substring. The exact `agent:browser-agent` selector matched one running noVNC container, retrieved a valid rotating password without printing it, and reached the viewer.
-- Not applicable: The managed OpenClaw test environment did not run because this change only adds operating instructions and does not change executable behavior, patches, configuration, or test code.
+- Completed: Fresh terminal adversarial review found no actionable issues in exact candidate `ffd05b4`.
+- Completed: Pull request `#86` passed CodeQL and the cumulative integration workflow, then merged as `c780a605c85f388966eae56bc56daef7e96c4015`.
+- Completed: The default branch merge commit has `ffd05b4` as a parent. Post-merge CodeQL and cumulative integration passed on the merge commit.
+- Not run locally: The change only adds operating instructions and does not change executable behavior, patches, configuration, or test code. The required remote cumulative integration workflow still ran before and after merge and passed.
 
 ### Rollout and rollback
 
-- Rollout is the documentation merge. No production deployment, browser restart, or external account mutation is in scope.
+- Rollout completed through pull request `#86`. No production deployment, browser restart, or external account mutation was needed.
 - Rollback is reverting the documentation commit if the instructions are inaccurate or unsafe.
-- Cole performs the website sign-in directly on the Mac mini after the documentation lands.
+- Cole can now follow the landed guide and perform the website sign-in directly on the Mac mini.
 
 ### Review log
 
@@ -88,6 +91,7 @@ The guide is complete and the independent review is clean. The connection path w
 - Finding 2, medium, accepted: `contains("browser-agent")` also matches sibling agent names such as `household-browser-agent`. A future headed sibling could be selected silently.
 - Remediation completed: The guide and snippet now require the exact live registry session key, `agent:browser-agent`. Focused validation confirmed the broad match was ambiguous, the exact match selected one viewer, the password shape remained valid, and the viewer was reachable.
 - Final retained-review recheck: Clean through `b9367c2`. The reviewer verified the exact selector against the live registry and found no remaining actionable issues in the complete diff.
+- Terminal fresh review: Clean for exact candidate `ffd05b4`. No actionable high-confidence findings remained.
 
 ### Checklist
 
@@ -98,5 +102,5 @@ The guide is complete and the independent review is clean. The connection path w
 - [x] Documentation is implemented.
 - [x] Applicable validation passes.
 - [x] Independent adversarial review is clean.
-- [ ] Pull request is merged and the default branch is verified.
+- [x] Pull request is merged and the default branch is verified.
 - [ ] Issue and Todoist task are moved to review state.
