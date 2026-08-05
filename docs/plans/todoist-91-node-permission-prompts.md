@@ -1,6 +1,6 @@
 # Diagnose Node permission prompts
 
-Status: Proposal under review
+Status: Ready for review
 Issue: https://github.com/coletaylor788/puddles/issues/91
 Last updated: 2026-08-05
 
@@ -16,15 +16,15 @@ Automatic updates should stay enabled. Permission-bearing work should move behin
 
 ### Status
 
-The incident is diagnosed. Independent review corrected the evidence, rollback model, update boundary, and implementation sequence. Keychain consumer migration and irreversible ACL cleanup are now separate gated steps. A reviewer is checking the corrected proposal. Automatic updates remain enabled. No privacy grants, keychain rules, credentials, runtime configuration, or production services were changed.
+The incident diagnosis and design proposal are complete. Independent review is clean after correcting the evidence, rollback model, update boundary, and implementation sequence. Keychain consumer migration and irreversible ACL cleanup are separate gated steps. Automatic updates remain enabled. No privacy grants, keychain rules, credentials, runtime configuration, or production services were changed.
 
-The next implementation should finish the stable-identity migrations, add update-aware health checks, and add explicit recovery for context overflow. The current agent is live, but the long-running conversation and the residual Contacts and direct keychain paths remain risks until that work lands.
+The plan is ready for Cole to review. Follow-on implementation should finish the stable-identity migrations, add update-aware health checks, and add explicit recovery for context overflow. The current agent is live, but the long-running conversation and the residual Contacts and direct keychain paths remain risks until that work lands.
 
 ## Agent section
 
 ### State
 
-- Phase: Independent proposal review
+- Phase: Proposal complete
 - Repository: `coletaylor788/puddles`
 - Tracking issue: `#91`
 - Todoist task: `6hCmp4C6fqx95423`
@@ -89,7 +89,7 @@ The next implementation should finish the stable-identity migrations, add update
 - [x] No Contacts resolver degradation warning or post-update egress audit exists. The unresolved path is a latent fail-closed security-control degradation, not evidence for the Node-attributed Contacts prompt.
 - [x] Web search denied requests at `2026-08-05 08:06` because its classifier model was unsupported. This fail-closed behavior was tool-specific.
 - [x] Current gateway health endpoint is live and listening on loopback.
-- [ ] Independent adversarial review confirms the diagnosis and proposal.
+- [x] Independent adversarial review confirms the diagnosis and proposal.
 - [ ] Follow-on implementation adds focused tests and runs `node packages/e2e/bin/openclaw-test-env.mjs ci`.
 
 ### Rollout and rollback
@@ -110,8 +110,8 @@ The next implementation should finish the stable-identity migrations, add update
 - 2026-08-05: Terminal review found that pull request `#29` cannot restore keychain ACLs. The rollout now keeps direct trust through the rollback window and treats its later removal as interactive, one-way hardening.
 - 2026-08-05: Final review found that retained interpreter trust expires on update and is already stale for one service. The rollback window is now bounded by the next update or explicit interactive reapproval.
 - 2026-08-05: Terminal recheck found that the implementation list still bundled migration and ACL cleanup. They are now separate gated work items.
-- Independent adversarial review: Final remediation recheck in progress.
-- Terminal review: Pending.
+- Independent adversarial review: Clean after remediation.
+- Terminal review: Run against the final bookkeeping candidate. Record the exact result and commit in the pull request so the reviewed candidate does not change.
 
 ### Checklist
 
@@ -123,11 +123,12 @@ The next implementation should finish the stable-identity migrations, add update
 - [x] Design and acceptance criteria synchronized.
 - [x] Automatic updates remain enabled.
 - [x] No production mutation performed.
-- [ ] Independent proposal review is clear.
+- [x] Independent proposal review is clear.
+- [x] Final bookkeeping candidate prepared for terminal review.
 - [ ] Plan-only commit is published and landed.
-- [ ] Follow-on implementation is approved or split into owned work.
+- [x] Follow-on implementation is split into gated work items.
 - [ ] Relevant implementation and regressions are committed.
 - [ ] Managed integration pool passes for follow-on behavior changes.
 - [ ] Pull request is remotely green and merged.
 - [ ] Default branch and applicable production state are verified.
-- [ ] Issue and Todoist task are ready for Cole to review.
+- [ ] Issue and Todoist task closeout follows plan landing.
