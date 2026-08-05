@@ -16,20 +16,20 @@ The depth follows the decision being discussed. The reader should get enough con
 
 ### Status
 
-The shared guidance and its regression are implemented. Focused checks and the full isolated test lifecycle pass, and independent review found no actionable issues.
+The shared guidance and its regression are implemented. Focused checks and the full isolated test lifecycle pass, and both independent complete-diff reviews found no actionable issues.
 
-Nothing is blocked. The in-repository bookkeeping is final. An exact-candidate review and the normal pull request landing remain.
+Nothing is blocked. The in-repository candidate is final. An exact-candidate review and the normal pull request landing remain.
 
 ## Agent section
 
 ### State
 
-- Phase: Terminal review preparation.
+- Phase: Terminal review.
 - Todoist task `6hCmhqjP4WH57fWV` remains labeled `agent`.
 - Issue `#89` uses the required plan link, `Summary`, and `Status` shape.
 - The complete diff changes two instruction surfaces, one existing shared-pool test, the coverage index, and this plan.
 - Focused and full managed validation pass.
-- Independent complete-diff review is clean.
+- Initial and retained independent complete-diff reviews are clean.
 - There is no runtime artifact or production state to promote.
 
 ### Scope and acceptance criteria
@@ -66,7 +66,7 @@ Nothing is blocked. The in-repository bookkeeping is final. An exact-candidate r
 - [x] Extend the plan design contract for OpenClaw architecture descriptions.
 - [x] Add the shared-pool regression.
 - [x] Update the shared coverage index.
-- [x] Rewrite the plan and issue for the independently reviewed state.
+- [x] Finalize the plan before terminal review.
 
 ### Validation
 
@@ -82,7 +82,7 @@ Nothing is blocked. The in-repository bookkeeping is final. An exact-candidate r
   - 1 candidate test passed; and
   - the temporary OpenClaw worktree was removed and pruned.
 - The managed lifecycle is isolated from configured agents and personal accounts. This feature adds no external write path.
-- The final post-review plan-only change requires `git diff --check` before the retained review re-check. It does not change executable behavior or the validated instruction contract.
+- Plan-only review bookkeeping passed `git diff --check`. It does not change executable behavior or the validated instruction contract.
 
 ### Rollout and rollback
 
@@ -93,7 +93,8 @@ Nothing is blocked. The in-repository bookkeeping is final. An exact-candidate r
 ### Review log
 
 - 2026-08-05: Independent adversarial review of commit `8166ae9` against `origin/main` found no actionable findings and no useful residual validation gap.
-- The retained reviewer will re-check the complete diff after this final plan-only synchronization.
+- 2026-08-05: The same reviewer re-checked the complete diff through commit `b211d9a` after plan synchronization and confirmed it remained clean.
+- A final same-reviewer check will cover this last review-record update before the fresh terminal review.
 - Terminal landing-candidate review is pending.
 
 ### Checklist
@@ -106,7 +107,7 @@ Nothing is blocked. The in-repository bookkeeping is final. An exact-candidate r
 - [x] Pass focused validation.
 - [x] Pass the full managed test lifecycle.
 - [x] Resolve all actionable independent review findings.
-- [ ] Pass retained-review re-check after final bookkeeping.
+- [x] Pass retained-review re-check after final bookkeeping.
 - [ ] Pass terminal review on the exact landing candidate.
 - [ ] Push, open a non-draft pull request, and pass remote checks.
 - [ ] Merge and verify the default branch.
