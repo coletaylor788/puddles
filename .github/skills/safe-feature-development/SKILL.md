@@ -35,6 +35,15 @@ request descriptions, and commit messages.
 - Do not narrate the process or list everything you did. Say where things stand
   now and what it means.
 - Do not write like a policy document or a legal contract.
+- Assume the reader is an experienced software engineer who understands agent
+  systems but does not know OpenClaw's internals or vocabulary.
+- When OpenClaw is relevant, explain an unfamiliar part the first time it
+  matters. Say what it does, where it sits in the request or runtime flow, and
+  why that detail affects the current decision. Use familiar agent-system ideas
+  as a bridge, but do not treat an internal name as an explanation.
+- Match the depth to the current decision. Give enough context to reason about
+  the change without reading the source first, then stop. Do not add unrelated
+  internals or a general tutorial.
 
 ## Ownership and checkpoints
 
@@ -105,7 +114,10 @@ investigating instead of asking.
      how they fit together, and what the important choices were and why. It must
      not contain file paths, function names, class names, command names, commit
      SHAs, line numbers, or any other code pointer. Write normal paragraphs, the
-     way you would say it out loud. A few paragraphs at most.
+     way you would say it out loud. A few paragraphs at most. When OpenClaw is
+     involved, do not rely on its internal names as shorthand. Explain the
+     relevant part's job, its place in the request or runtime flow, and why it
+     matters to this design.
    - `### Status` says where the work stands, readable at a glance. What is
      done, what is next, what is blocking. Two short paragraphs at most. Present
      tense, no chronology.
