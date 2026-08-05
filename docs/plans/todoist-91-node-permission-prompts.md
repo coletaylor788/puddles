@@ -10,13 +10,13 @@ Last updated: 2026-08-05
 
 This was not one failure. The main agent stopped handling one recurring conversation because that conversation had grown beyond the model's context limit. Each retry failed before the model or any tool ran. The macOS prompts were a separate result of an automatic Node update. The update changed Node's ad-hoc code signature, so privacy and keychain rules tied directly to the old binary no longer matched after the gateway restarted.
 
-The durable keychain helper worked for the one client already migrated to it, but other gateway code still read the keychain directly from Node. The existing path-based keychain setup was not durable because macOS saved Node's code hash, not just the stable package-manager path. The native privacy wrappers remained authorized and post-update Reminders and Calendar work completed, but macOS still recorded one new Contacts grant against Node. That leaves a residual path or responsibility handoff that the current design does not detect. A separate classifier configuration error also made web search fail closed, but it did not cause the agent-wide outage.
+The durable keychain helper worked for the one client already migrated to it, but other gateway code still read the keychain directly from Node. The existing path-based keychain setup was not durable because macOS saved Node's code hash, not just the stable package-manager path. The native privacy wrappers remained authorized and post-update Reminders and Calendar work completed, but macOS still recorded one new Contacts grant against Node. The gateway also cannot resolve the Contacts helper by name in its current environment, so the contacts-backed egress check would fail closed if invoked. No such egress check ran after the update, so this path problem did not cause the observed Contacts prompt. The caller behind that prompt remains unidentified.
 
-Automatic updates should stay enabled. Permission-bearing work should move behind stable signed native identities, and every caller should use one explicit path to those identities. The update job should restart affected services promptly, run bounded read-only permission checks, and report a clear unhealthy state without trying to grant access. Long-running conversations should recover from context overflow by rotating or compacting the session and telling the user. Tool classifiers should be checked at startup so a bad setting is visible before the first tool call.
+Automatic updates should stay enabled. Permission-bearing work should move behind stable signed native identities, and every caller should use one explicit path to those identities. The update job should restart affected services promptly, run bounded read-only permission checks, and report a clear unhealthy state without trying to grant access. The oversized conversation already had safeguard compaction enabled and had compacted three times. The guard stopped helping once requests were rejected at the hard model limit. The soft budget should be set below the real model window, and session rotation should be a backstop only when compaction cannot run. Tool classifiers should be checked at startup so a bad setting is visible before the first tool call.
 
 ### Status
 
-The incident is diagnosed and the design proposal is ready for independent review. Automatic updates remain enabled. No privacy grants, keychain rules, credentials, runtime configuration, or production services were changed.
+The incident is diagnosed. Independent review found two evidence gaps, and the plan now includes the deployed compaction behavior and the failed Contacts helper resolution. A reviewer is checking the corrected proposal. Automatic updates remain enabled. No privacy grants, keychain rules, credentials, runtime configuration, or production services were changed.
 
 The next implementation should finish the stable-identity migrations, add update-aware health checks, and add explicit recovery for context overflow. The current agent is live, but the long-running conversation and the residual Contacts and direct keychain paths remain risks until that work lands.
 
@@ -46,12 +46,12 @@ The next implementation should finish the stable-identity migrations, add update
 
 - Treat context management, TCC privacy grants, keychain ACLs, and classifier configuration as four separate failure domains.
 - Keep weekly Homebrew updates. Do not pin Node or disable the update daemon.
-- Make a stable signed native helper the only keychain principal. The helper keeps a fixed alias allowlist and returns values only to the requesting child process. Mutable Node or Python binaries must not remain in keychain ACLs.
+- Make a stable signed native helper the only keychain principal. The helper keeps a fixed alias allowlist and returns values only to the requesting child process. Mutable interpreter binaries must not remain in keychain ACLs.
 - Merge and use the existing helper work from pull request `#29` before adding consumers. The installed helper proved that interpreter upgrades can be independent of keychain approval, but the repository change is not on `main` yet.
 - Route every PIM caller through one explicit stable native path. Prefer signed real CLIs or a small signed broker over relying only on private responsibility-disclaim SPI.
-- Configure the Contacts trust resolver with an absolute wrapper or broker path. Its current unset path is not resolvable from the gateway's effective `PATH`.
-- Add a post-update lifecycle that records version changes, restarts affected services once, and runs bounded read-only checks. It must report failures without opening prompts, changing ACLs, or editing TCC.
-- Detect repeated context-overflow precheck failures. Rotate or compact the affected conversation and send an explicit recovery message instead of retrying forever.
+- Configure the Contacts trust resolver with an absolute wrapper or broker path. The live setting is unset, and the gateway's effective `PATH` cannot resolve `contacts-cli`, `reminder-cli`, or `calendar-cli`. This contradicts the setup guide's assumption that the egress guard resolves the shared wrapper.
+- Add a post-update lifecycle that records version changes, restarts affected services once, and runs bounded read-only checks. Use non-prompting PIM authorization status APIs and stable-helper reads whose values are discarded. Report failures without opening prompts, changing ACLs, or editing TCC.
+- Keep safeguard compaction as the first recovery layer. Set its effective soft budget safely below the selected model's hard context window, then detect repeated precheck overflow and rotate the affected conversation only when compaction can no longer run. Send an explicit recovery message instead of retrying forever.
 - Validate classifier model support at startup and report a degraded tool before first use. Deny-by-default behavior remains correct.
 - Keep credentials, personal content, account identifiers, and provider-specific details out of public artifacts.
 
@@ -64,9 +64,9 @@ The next implementation should finish the stable-identity migrations, add update
 - [x] Write the root-cause finding and future design.
 - [ ] Follow-on: merge or supersede pull request `#29` so the stable keychain helper is durable in the repository.
 - [ ] Follow-on: migrate every remaining direct keychain consumer to the stable helper and remove mutable interpreter ACL entries.
-- [ ] Follow-on: replace or harden the PIM responsibility boundary, set absolute caller paths, and add attribution checks.
+- [ ] Follow-on: replace or harden the PIM responsibility boundary, set absolute caller paths, repair the Contacts egress resolver, and add attribution checks.
 - [ ] Follow-on: add restart and permission postflight checks to `scripts/mac-mini/brew-autoupdate.sh`.
-- [ ] Follow-on: add context-overflow recovery and consecutive-failure health reporting.
+- [ ] Follow-on: align the compaction budget with the real model window, then add overflow rotation and consecutive-failure health reporting as a backstop.
 - [ ] Follow-on: add classifier startup validation and a clear degraded-tool health signal.
 - [ ] Follow-on: update setup, recovery, and rollback documentation with the implemented behavior.
 
@@ -81,6 +81,10 @@ The next implementation should finish the stable-identity migrations, add update
 - [x] Post-update `apple_pim_reminder`, `calendar_read`, and `calendar_write` runs completed successfully. No post-update PIM runtime error matched the documented denial or timeout signatures.
 - [x] The gateway process loads two `keytar` native modules, confirming direct Node keychain access remains.
 - [x] The affected main session is about 1.9 MB with 1,634 records. It repeatedly failed with `Context overflow: prompt too large for the model (precheck)` from `2026-08-04 11:35` local time through the incident, before any model or tool execution.
+- [x] Safeguard compaction is enabled. The affected session compacted three times at about 114,000 to 119,000 tokens, most recently on `2026-08-02`, while the configured model catalog contains a 128,000-token window. Every recorded overflow retry reported zero compactions, so the guard could not recover after precheck rejection.
+- [x] The main agent has no explicit `contextTokens` override. Follow-on work must verify the runtime-derived soft budget against the selected model's reported hard window before changing recovery behavior.
+- [x] The Contacts trust resolver path is unset. The gateway's effective `PATH` does not include `~/.local/bin` and cannot resolve any of the three PIM CLI names.
+- [x] No Contacts resolver degradation warning or post-update egress audit exists. The unresolved path is a latent fail-closed security-control degradation, not evidence for the Node-attributed Contacts prompt.
 - [x] Web search denied requests at `2026-08-05 08:06` because its classifier model was unsupported. This fail-closed behavior was tool-specific.
 - [x] Current gateway health endpoint is live and listening on loopback.
 - [ ] Independent adversarial review confirms the diagnosis and proposal.
@@ -89,10 +93,10 @@ The next implementation should finish the stable-identity migrations, add update
 ### Rollout and rollback
 
 - This diagnosis is read-only. No rollout occurs in this task.
-- Keychain migration must snapshot each item's metadata and ACL before removing direct interpreter trust. Rollback restores the snapshot and previous launcher, then verifies a read without exposing the value.
+- Keychain migration must reuse the signed recovery snapshot and rollback mechanism from pull request `#29`. Any consumer not covered by that mechanism must prove restore before direct interpreter trust is removed. Rollback restores the previous launcher and snapshot, then verifies a read without exposing the value.
 - PIM migration must preserve current wrapper binaries and TCC rows until the signed replacement passes no-prompt authorization and read-only tool checks. Rollback restores the wrappers and configured paths.
 - Update postflight must never roll back package updates automatically. If a service fails after an update, it records the old and new versions, reports the failure, and uses the component's normal recovery path.
-- Context recovery must preserve the prior conversation artifact before rotating the active session. Rollback reselects the prior session if the new session cannot accept a test message.
+- Context recovery first lowers or verifies the compaction budget against the selected model window. Any fallback rotation must preserve the prior conversation artifact. Rollback restores the prior budget and reselects the prior session if the replacement cannot accept a test message.
 - Classifier validation changes only health and routing behavior. Rollback restores the prior validated model setting, not fail-open behavior.
 - Production checks remain read-only. Any write or delivery test uses deny-by-default recording fixtures.
 
@@ -100,7 +104,8 @@ The next implementation should finish the stable-identity migrations, add update
 
 - 2026-08-05: Tracking comment and issue body verified. Initial plan created before incident research.
 - 2026-08-05: Read-only incident correlation completed. Diagnosis separates context overflow, mutable Node identity, residual Contacts attribution, and classifier configuration.
-- Independent adversarial review: In progress.
+- 2026-08-05: Replacement adversarial review found two material evidence gaps. The plan now records why deployed compaction failed to recover and proves the Contacts resolver path is unavailable.
+- Independent adversarial review: Remediation recheck in progress.
 - Terminal review: Pending.
 
 ### Checklist
