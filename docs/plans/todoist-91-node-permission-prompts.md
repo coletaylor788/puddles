@@ -16,7 +16,7 @@ Automatic updates should stay enabled. Permission-bearing work should move behin
 
 ### Status
 
-The incident is diagnosed. Independent review found two evidence gaps and one rollback flaw. The plan now includes the deployed compaction behavior, the failed Contacts helper resolution, and the true interactive boundary for keychain ACL removal. A reviewer is checking the corrected proposal. Automatic updates remain enabled. No privacy grants, keychain rules, credentials, runtime configuration, or production services were changed.
+The incident is diagnosed. Independent review corrected the evidence, rollback model, update boundary, and implementation sequence. Keychain consumer migration and irreversible ACL cleanup are now separate gated steps. A reviewer is checking the corrected proposal. Automatic updates remain enabled. No privacy grants, keychain rules, credentials, runtime configuration, or production services were changed.
 
 The next implementation should finish the stable-identity migrations, add update-aware health checks, and add explicit recovery for context overflow. The current agent is live, but the long-running conversation and the residual Contacts and direct keychain paths remain risks until that work lands.
 
@@ -64,7 +64,8 @@ The next implementation should finish the stable-identity migrations, add update
 - [x] Separate the context-overflow outage from the permission and classifier failures.
 - [x] Write the root-cause finding and future design.
 - [ ] Follow-on: merge or supersede pull request `#29` so the stable keychain helper is durable in the repository.
-- [ ] Follow-on: migrate every remaining direct keychain consumer to the stable helper and remove mutable interpreter ACL entries.
+- [ ] Follow-on: migrate every remaining direct keychain consumer to the stable helper, pass helper-backed health checks, and complete the soak inside one update window. Keep usable direct trust during this step.
+- [ ] Follow-on hardening: after the soak passes, remove mutable interpreter ACL entries as a separate one-way step. Record that restoring direct access requires interactive GUI approval.
 - [ ] Follow-on: replace or harden the PIM responsibility boundary, set absolute caller paths, repair the Contacts egress resolver, and add attribution checks.
 - [ ] Follow-on: add restart and permission postflight checks to `scripts/mac-mini/brew-autoupdate.sh`.
 - [ ] Follow-on: align the compaction budget with the real model window, then add overflow rotation and consecutive-failure health reporting as a backstop.
@@ -108,6 +109,7 @@ The next implementation should finish the stable-identity migrations, add update
 - 2026-08-05: Replacement adversarial review found two material evidence gaps. The plan now records why deployed compaction failed to recover and proves the Contacts resolver path is unavailable.
 - 2026-08-05: Terminal review found that pull request `#29` cannot restore keychain ACLs. The rollout now keeps direct trust through the rollback window and treats its later removal as interactive, one-way hardening.
 - 2026-08-05: Final review found that retained interpreter trust expires on update and is already stale for one service. The rollback window is now bounded by the next update or explicit interactive reapproval.
+- 2026-08-05: Terminal recheck found that the implementation list still bundled migration and ACL cleanup. They are now separate gated work items.
 - Independent adversarial review: Final remediation recheck in progress.
 - Terminal review: Pending.
 
