@@ -17,9 +17,9 @@ remote shell transcript.
    openclaw sandbox list --browser
    ```
 
-   Look for a running entry whose session contains `browser-agent` and which
-   shows a noVNC port. If there is no such entry, start it with a harmless local
-   turn, then check again:
+   Look for a running entry whose session is exactly `agent:browser-agent` and
+   which shows a noVNC port. If there is no such entry, start it with a harmless
+   local turn, then check again:
 
    ```bash
    openclaw agent --agent browser-agent --message \
@@ -35,7 +35,7 @@ remote shell transcript.
 
    openclaw sandbox list --browser --json > "$STATE"
    C=$(jq -r \
-     '[.browsers[] | select(.running == true and (.sessionKey | contains("browser-agent")) and (.noVncPort != null))][0].containerName // empty' \
+     '[.browsers[] | select(.running == true and .sessionKey == "agent:browser-agent" and (.noVncPort != null))][0].containerName // empty' \
      "$STATE")
    PORT=$(jq -r --arg container "$C" \
      '[.browsers[] | select(.containerName == $container)][0].noVncPort // empty' \
