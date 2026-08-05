@@ -1,6 +1,6 @@
 # Launch the persisted browser
 
-Status: Awaiting review recheck
+Status: Preparing landing candidate
 Issue: https://github.com/coletaylor788/puddles/issues/85
 Last updated: 2026-08-04
 
@@ -16,13 +16,13 @@ The guide will explain how to confirm the container and persistent profile wirin
 
 ### Status
 
-Independent review confirmed the replacement connection path works, then found that its broad name match could select a sibling browser agent if that agent later enables the viewer. The selector now uses the exact browser-agent runtime identity. Focused validation proved the old match was ambiguous and the new match selects exactly one live viewer. The same reviewer is checking the complete diff again. Nothing is blocked.
+The guide is complete and the independent review is clean. The connection path works against the live local viewer, does not print private values, and selects only the intended browser profile. The exact landing candidate and remote checks are next. Nothing is blocked.
 
 ## Agent section
 
 ### State
 
-- Phase: Review recheck
+- Phase: Landing candidate
 - Repository: `coletaylor788/puddles`
 - Tracking task: `6hCggCRc8j5Q7CjV`
 - Tracking issue: `#85`
@@ -87,6 +87,7 @@ Independent review confirmed the replacement connection path works, then found t
 - Recheck: Finding 1 is closed. The reviewer independently confirmed the JSON fields, rotating password shape, noVNC fragment parameters, links, tracker state, and diff.
 - Finding 2, medium, accepted: `contains("browser-agent")` also matches sibling agent names such as `household-browser-agent`. A future headed sibling could be selected silently.
 - Remediation completed: The guide and snippet now require the exact live registry session key, `agent:browser-agent`. Focused validation confirmed the broad match was ambiguous, the exact match selected one viewer, the password shape remained valid, and the viewer was reachable.
+- Final retained-review recheck: Clean through `b9367c2`. The reviewer verified the exact selector against the live registry and found no remaining actionable issues in the complete diff.
 
 ### Checklist
 
@@ -96,6 +97,6 @@ Independent review confirmed the replacement connection path works, then found t
 - [x] Existing behavior and safety boundaries are researched.
 - [x] Documentation is implemented.
 - [x] Applicable validation passes.
-- [ ] Independent adversarial review is clean.
+- [x] Independent adversarial review is clean.
 - [ ] Pull request is merged and the default branch is verified.
 - [ ] Issue and Todoist task are moved to review state.
