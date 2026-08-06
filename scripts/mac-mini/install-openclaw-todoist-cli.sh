@@ -10,6 +10,8 @@ TODOIST_CLI_VERSION="3.0.5"
 TARGET_IMAGE_DEFAULT="openclaw-sandbox-todoist:${TODOIST_CLI_VERSION}"
 TOKEN_REFERENCE='${TODOIST_API_TOKEN}'
 MARKER_NAME=".puddles-managed"
+SECRET_POINTER="/providers/todoist/apiKey"
+ENV_MARKER="# puddles-managed: todoist-cli token projection"
 
 ACTION="install"
 AGENT_ID="main"
@@ -79,7 +81,7 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-for command in docker jq openclaw; do
+for command in docker jq openclaw python3; do
   command -v "$command" >/dev/null 2>&1 || {
     echo "ERROR: required command not found: $command" >&2
     exit 1
@@ -101,6 +103,8 @@ fi
 STATE_DIR="${OPENCLAW_STATE_DIR:-$HOME/.openclaw}"
 RECOVERY_DIR="$STATE_DIR/todoist-cli-install"
 RECOVERY_FILE="$RECOVERY_DIR/$AGENT_ID.json"
+CONFIG_FILE="$STATE_DIR/openclaw.json"
+ENV_FILE="$STATE_DIR/.env"
 
 AGENTS_JSON="$(openclaw config get agents.list --json)"
 AGENT_INDEX="$(
@@ -133,6 +137,7 @@ SKILL_DEST="$WORKSPACE_DIR/skills/todoist-cli"
 SKILL_MARKER="$SKILL_DEST/$MARKER_NAME"
 CONFIG_IMAGE_PATH="agents.list[$AGENT_INDEX].sandbox.docker.image"
 CONFIG_TOKEN_PATH="agents.list[$AGENT_INDEX].sandbox.docker.env.TODOIST_API_TOKEN"
+CONFIG_SKILL_API_KEY_PATH="skills.entries.todoist-cli.apiKey"
 
 run_mutation() {
   if [ "$DRY_RUN" -eq 1 ]; then
@@ -142,6 +147,142 @@ run_mutation() {
     return 0
   fi
   "$@"
+}
+
+projection_is_managed() {
+  [ -f "$ENV_FILE" ] && grep -Fxq "$ENV_MARKER" "$ENV_FILE"
+}
+
+write_managed_projection() {
+  local token="$1"
+  if [ "$DRY_RUN" -eq 1 ]; then
+    echo "[dry-run] project shared Todoist secret into $ENV_FILE"
+    return 0
+  fi
+  printf '%s' "$token" | ENV_MARKER="$ENV_MARKER" python3 -c '
+import os
+import pathlib
+import stat
+import sys
+import tempfile
+
+path = pathlib.Path(sys.argv[1])
+marker = os.environ["ENV_MARKER"]
+token = sys.stdin.read()
+if not token or "\n" in token or "\r" in token:
+    raise SystemExit("ERROR: shared Todoist secret is invalid")
+
+lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+if path.exists():
+    info = path.stat()
+    if info.st_uid != os.getuid():
+        raise SystemExit(f"ERROR: {path} is not owned by uid {os.getuid()}")
+    if stat.S_IMODE(info.st_mode) != 0o600:
+        raise SystemExit(f"ERROR: {path} must have mode 600")
+
+has_marker = marker in lines
+has_token = any(line.startswith("TODOIST_API_TOKEN=") for line in lines)
+if has_token and not has_marker:
+    raise SystemExit(f"ERROR: refusing to overwrite unmanaged TODOIST_API_TOKEN in {path}")
+
+lines = [
+    line
+    for line in lines
+    if line != marker and not line.startswith("TODOIST_API_TOKEN=")
+]
+lines.extend([marker, f"TODOIST_API_TOKEN={token}"])
+
+path.parent.mkdir(parents=True, exist_ok=True)
+fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent, text=True)
+try:
+    os.fchmod(fd, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write("\n".join(lines) + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temp_name, path)
+except BaseException:
+    try:
+        os.unlink(temp_name)
+    except FileNotFoundError:
+        pass
+    raise
+' "$ENV_FILE"
+}
+
+remove_managed_projection() {
+  if ! projection_is_managed; then
+    return 0
+  fi
+  if [ "$DRY_RUN" -eq 1 ]; then
+    echo "[dry-run] remove managed Todoist projection from $ENV_FILE"
+    return 0
+  fi
+  ENV_MARKER="$ENV_MARKER" python3 -c '
+import os
+import pathlib
+import stat
+import sys
+import tempfile
+
+path = pathlib.Path(sys.argv[1])
+marker = os.environ["ENV_MARKER"]
+lines = path.read_text(encoding="utf-8").splitlines()
+lines = [
+    line
+    for line in lines
+    if line != marker and not line.startswith("TODOIST_API_TOKEN=")
+]
+
+info = path.stat()
+if info.st_uid != os.getuid():
+    raise SystemExit(f"ERROR: {path} is not owned by uid {os.getuid()}")
+if stat.S_IMODE(info.st_mode) != 0o600:
+    raise SystemExit(f"ERROR: {path} must have mode 600")
+
+fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent, text=True)
+try:
+    os.fchmod(fd, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        if lines:
+            handle.write("\n".join(lines) + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temp_name, path)
+except BaseException:
+    try:
+        os.unlink(temp_name)
+    except FileNotFoundError:
+        pass
+    raise
+' "$ENV_FILE"
+}
+
+remove_managed_projection_if_unused() {
+  if ! projection_is_managed; then
+    return 0
+  fi
+  local consumers
+  consumers="$(
+    openclaw config get agents.list --json |
+      jq -er '
+        [
+          .[]
+          | select(
+              ((.sandbox.docker.env // {}) | has("TODOIST_API_TOKEN"))
+            )
+        ]
+        | length
+      '
+  )" || {
+    echo "ERROR: cannot determine Todoist projection consumers; preserving projection." >&2
+    return 1
+  }
+  if [ "$consumers" -gt 0 ]; then
+    echo "Keeping shared Todoist projection for $consumers configured agent(s)."
+    return 0
+  fi
+  remove_managed_projection
 }
 
 restore_config_from_recovery() {
@@ -187,6 +328,7 @@ rollback_action() {
 
   restore_config_from_recovery
   remove_managed_skill
+  remove_managed_projection_if_unused
   run_mutation openclaw sandbox recreate --agent "$AGENT_ID"
   run_mutation rm -f "$RECOVERY_FILE"
   echo "Todoist CLI capability rolled back for agent '$AGENT_ID'."
@@ -213,10 +355,64 @@ if [ ! -f "$RECOVERY_FILE" ]; then
   fi
 fi
 
-if [ ! -f "$STATE_DIR/.env" ] ||
-   ! grep -Eq '^[[:space:]]*TODOIST_API_TOKEN=.+$' "$STATE_DIR/.env"; then
-  echo "ERROR: TODOIST_API_TOKEN is not configured in $STATE_DIR/.env." >&2
-  echo "A shell-only export cannot guarantee that the OpenClaw daemon can resolve it." >&2
+[ -f "$CONFIG_FILE" ] || {
+  echo "ERROR: OpenClaw config not found at $CONFIG_FILE" >&2
+  exit 1
+}
+SECRET_STORE="$(
+  jq -er '
+    .secrets.providers.local
+    | select(.source == "file")
+    | select((.mode // "json") == "json")
+    | .path
+    | strings
+    | select(length > 0)
+  ' "$CONFIG_FILE"
+)" || {
+  echo "ERROR: secrets.providers.local must be a JSON file provider." >&2
+  exit 1
+}
+case "$SECRET_STORE" in
+  "~/"*) SECRET_STORE="$HOME/${SECRET_STORE#\~/}" ;;
+esac
+case "$SECRET_STORE" in
+  /*) ;;
+  *)
+    echo "ERROR: shared secret store path must be absolute or home-relative." >&2
+    exit 1
+    ;;
+esac
+TODOIST_TOKEN="$(
+  python3 -c '
+import json
+import os
+import pathlib
+import stat
+import sys
+
+path = pathlib.Path(sys.argv[1])
+if not path.is_file():
+    raise SystemExit(f"ERROR: shared secret store not found at {path}")
+info = path.stat()
+if info.st_uid != os.getuid():
+    raise SystemExit(f"ERROR: shared secret store is not owned by uid {os.getuid()}")
+if stat.S_IMODE(info.st_mode) != 0o600:
+    raise SystemExit("ERROR: shared secret store must have mode 600")
+with path.open(encoding="utf-8") as handle:
+    data = json.load(handle)
+token = data.get("providers", {}).get("todoist", {}).get("apiKey")
+if not isinstance(token, str) or not token:
+    raise SystemExit("ERROR: missing /providers/todoist/apiKey in shared secret store")
+if "\n" in token or "\r" in token:
+    raise SystemExit("ERROR: shared Todoist secret is invalid")
+sys.stdout.write(token)
+' "$SECRET_STORE"
+)"
+PROJECTION_EXISTED=false
+if projection_is_managed; then
+  PROJECTION_EXISTED=true
+elif [ -f "$ENV_FILE" ] && grep -Eq '^[[:space:]]*TODOIST_API_TOKEN=' "$ENV_FILE"; then
+  echo "ERROR: refusing to overwrite unmanaged TODOIST_API_TOKEN in $ENV_FILE" >&2
   exit 1
 fi
 
@@ -276,13 +472,15 @@ if [ ! -f "$RECOVERY_FILE" ]; then
       --arg workspace "$WORKSPACE_DIR" \
       --argjson previousImage "$PREVIOUS_IMAGE" \
       --arg installedImage "$TARGET_IMAGE" \
+      --argjson projectionExisted "$PROJECTION_EXISTED" \
       '{
-        version: 1,
+        version: 2,
         agentId: $agentId,
         agentIndex: $agentIndex,
         workspace: $workspace,
         previousImage: $previousImage,
-        installedImage: $installedImage
+        installedImage: $installedImage,
+        projectionExisted: $projectionExisted
       }' > "$RECOVERY_TMP"
     chmod 600 "$RECOVERY_TMP"
     mv "$RECOVERY_TMP" "$RECOVERY_FILE"
@@ -304,6 +502,9 @@ rollback_failed_install() {
     restore_config_from_recovery || rollback_failed=1
     run_mutation openclaw sandbox recreate --agent "$AGENT_ID" || rollback_failed=1
   fi
+  if [ -f "$RECOVERY_FILE" ]; then
+    remove_managed_projection_if_unused || rollback_failed=1
+  fi
 
   if [ -n "$SKILL_BACKUP" ] && [ -d "$SKILL_BACKUP" ]; then
     run_mutation rm -rf "$SKILL_DEST" || rollback_failed=1
@@ -321,6 +522,8 @@ rollback_failed_install() {
 }
 trap rollback_failed_install ERR
 
+write_managed_projection "$TODOIST_TOKEN"
+unset TODOIST_TOKEN
 run_mutation mkdir -p "$WORKSPACE_DIR/skills"
 
 if [ -d "$SKILL_DEST" ]; then
@@ -339,6 +542,8 @@ else
   mv "$SKILL_TMP" "$SKILL_DEST"
 fi
 
+run_mutation openclaw config set "$CONFIG_SKILL_API_KEY_PATH" \
+  --ref-source file --ref-provider local --ref-id "$SECRET_POINTER"
 run_mutation openclaw config set "$CONFIG_IMAGE_PATH" \
   "$(jq -Rn --arg value "$TARGET_IMAGE" '$value')" --strict-json
 CONFIG_MUTATED=1
