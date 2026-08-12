@@ -1,6 +1,6 @@
 # Secure Apple Notes shared access
 
-**Status:** Design under revision
+**Status:** Ready for prototype-only review
 **Issue:** [#74](https://github.com/coletaylor788/puddles/issues/74)
 **Last updated:** 2026-08-12
 
@@ -32,9 +32,8 @@ account stays invisible to the model.
 
 ### Status
 
-The design is being revised to answer the live-collaboration and hook questions
-with the smallest workable flow. Repository and platform evidence now supports
-the simplified read-only design, which is awaiting independent review.
+The simplified read-only design is complete and its independent review is
+clean. It is ready for review of the prototype-only approval gate.
 
 No prototype or implementation is approved or started. A later approval may
 authorize disposable proof only. Real implementation still needs separate
@@ -70,8 +69,9 @@ approval after that evidence updates this plan.
 - Automatic intake accepts only an authenticated direct message whose trusted
   source facts prove one complete row containing one supported single-note
   collaboration URL and no extra text, preview, or attachment.
-- The hook claims a recognized invitation before model dispatch. Ordinary text
-  continues normally.
+- The hook claims a recognized invitation before model dispatch, commits its
+  pending row, wakes the helper, and returns immediately. It never waits for
+  Apple UI work. Ordinary text continues normally.
 - One durable row is written before any external acceptance action.
 - One serialized helper processes pending rows. It receives only row ID and URL.
 - Successful acceptance resolves exactly one stable Notes note ID and changes
@@ -176,20 +176,27 @@ approval after that evidence updates this plan.
    the model.
 4. For a valid invitation, the hook upserts one registry row keyed by stable
    source identity. The row stores normalized URL, receiving agent ID, and
-   `pending` state.
-5. The hook invokes the serialized non-model helper with only row ID and URL.
-   The helper opens the link under the dedicated Apple account.
+   `pending` state. A conflict on normalized URL plus receiving agent reuses the
+   existing row without changing its source key.
+5. The hook wakes the serialized non-model helper, returns `handled` with a
+   fixed "acceptance started" reply, and stops. It never awaits external work.
+   If the database or queue signal fails, it still returns a fixed handled
+   error, so the invitation cannot fall through to the model.
 6. If the URL is already present in another accepted row, the helper first
    verifies that mapped note still exists. It can then reuse that note ID
    without accepting the invitation again.
-7. Otherwise the helper accepts the invitation, observes the note opened by
-   that action, and resolves its Notes ID. The disposable prototype must prove
-   this mapping and prove that retrying an already accepted link opens the same
-   note without another mutation.
+7. Otherwise the helper receives only row ID and URL, captures the current
+   stable note IDs, opens the link under the dedicated Apple account, and reads
+   the note selected by that action. It accepts only one selected stable note
+   whose appearance is causally consistent with the action. The disposable
+   prototype must prove this mapping and prove that retrying an already accepted
+   link opens the same note without another mutation.
 8. One transaction stores the note ID and changes the row to `accepted`. The
    row itself is now `(receiving agent ID, note ID)` authorization.
-9. The hook returns fixed status text such as accepted, already available,
-   pending review, or failed. No model generates this response.
+9. The user first sees the fixed "acceptance started" reply. Sending the link to
+   the same agent again returns a fixed current state such as already available,
+   needs review, or failed. V1 sends no separate completion message. No model
+   generates these replies.
 
 **Minimal durable state**
 
@@ -205,8 +212,10 @@ One SQLite table is sufficient:
 | Content-free error and timestamps | Supports retry and operator diagnosis without note data |
 
 The table has unique constraints on stable source key and normalized URL plus
-receiving agent ID. A single helper serializes pending rows, so two scopes
-receiving the same new URL cannot race two acceptance actions.
+receiving agent ID. The hook first looks up either key and requires stored URL
+and scope to match before it reuses a row. A single helper scans pending rows at
+startup and after a best-effort wake signal. This serializes acceptance, so two
+scopes receiving the same new URL cannot race two acceptance actions.
 
 This pending state is the only crash control. If the process stops before
 acceptance, the row retries. If it stops after Apple may have accepted but before
@@ -282,10 +291,13 @@ Only after the second approval:
 | Sender is rejected by existing channel policy | Hook never runs |
 | Runtime agent ID is missing | Reject the invitation and write no row |
 | Message text names another agent | Ignore it; use only routed runtime agent ID |
-| Same source message is replayed | Reuse the same row |
+| Same source message is replayed | Reuse the same row only when stored URL and agent match |
+| Same URL reaches the same agent in another source row | Reuse the existing URL-and-agent row without accepting again |
 | Same URL reaches another agent | Create another row for that agent |
 | Message has extra text, preview, attachment, several links, or several source rows | Reject it and invoke neither helper nor model |
 | Ordinary text contains no supported invitation | Continue normal model dispatch |
+| Registry write or queue signal fails for a recognized invitation | Return a fixed handled error and never invoke the model |
+| Acceptance takes longer than the hook budget | Hook has already returned handled; helper continues from the durable row |
 
 **Acceptance and retry**
 
@@ -345,7 +357,9 @@ an invitation, or edit a note.
 - 2026-08-12: Rewrote the design around one pre-model hook, one registry table,
   one serialized non-model helper, and exact-ID read tools. Removed speculative
   broker, lease, epoch, URL-intent, and multi-table recovery machinery.
-  Independent review is pending.
+  Independent complete-current-diff review found no actionable material
+  findings. It identified hook return timing and same-scope URL collision
+  behavior as useful clarifications, which are now explicit.
 
 ### Checklist
 
@@ -361,7 +375,7 @@ an invitation, or edit a note.
 - [x] Explain the hook from admitted message through exact agent grant.
 - [x] Make unrelated Notes account contents invisible by exact-ID authorization.
 - [x] Keep V1 read-only and state the smallest write prototype question.
-- [ ] Complete independent review of simplicity, factual accuracy, and hook
+- [x] Complete independent review of simplicity, factual accuracy, and hook
   feasibility.
 - [ ] Receive prototype-only approval.
 - [ ] Complete disposable prototype and update this plan.
