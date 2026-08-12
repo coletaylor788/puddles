@@ -1,6 +1,6 @@
 # Restore Puddles responsiveness
 
-Status: Preparing candidate
+Status: Landed
 Issue: https://github.com/coletaylor788/puddles/issues/95
 Last updated: 2026-08-12
 
@@ -8,23 +8,23 @@ Last updated: 2026-08-12
 
 ### Design
 
-Puddles receives each message and finishes the agent turn, but the reply never leaves the Mac. The local gateway and its event loop are healthy. The failure is in the long-lived command-line bridge that talks to Messages.app. Its shallow status check still says it is connected, while account queries and every recent send wait until they time out.
+Puddles was receiving each message and finishing the agent turn, but replies were not leaving the Mac. The local gateway and its event loop stayed healthy. The failure was in the long-lived command-line bridge that talks to Messages.app. Its shallow status still said it was connected while account queries and every recent send waited until they timed out.
 
-The live bridge is responsive again after Messages.app was relaunched through its supported injection path and the gateway received a fresh child process. The durable repair makes channel health test the deeper read-only account request instead of trusting process state or the shallow connection probe. A per-user recovery timer runs in the same GUI session as Messages.app. It relaunches the bridge and restarts the managed gateway only when needed, then enters a cooldown if recovery does not work.
+The bridge is responsive again after Messages.app was relaunched through its supported injection path and the gateway received a fresh child process. The landed repair makes channel health test the deeper read-only account request instead of trusting process state or the shallow connection probe. A per-user recovery timer runs in the same GUI session as Messages.app. It relaunches the bridge and restarts the managed gateway only when needed, then enters a cooldown if recovery does not work.
 
 ### Status
 
-Live responsiveness is restored at the failed boundary. The direct bridge completes the read-only account request, and the gateway remains healthy.
+The repair is landed and active. The direct bridge completes the read-only account request, the gateway is healthy, and the recovery timer is loaded with a clean last exit.
 
-The durable health and recovery scripts, user timer, migration installer, rollback path, documentation, and shared-pool regression are implemented locally. Independent review found one cooldown defect, which is fixed with a regression. The retained reviewer confirms the complete current change has no remaining material defect. Focused tests and the full managed integration lifecycle pass with automatic rollback coverage. The exact landing candidate and terminal review are next, and nothing is blocked.
+Focused tests, the full managed integration lifecycle, independent review, terminal review, remote checks, production validation, and post-merge checks all pass. Recovery state is preserved for rollback. The work is ready for Cole to review, and nothing is blocked.
 
 ## Agent section
 
 ### State
 
-- Phase: Reusable review clear, preparing the exact landing candidate.
-- Current result: The live bridge and gateway are healthy. The durable candidate detects the exact failed RPC and recovers it from the GUI launchd domain.
-- Production mutation: Messages.app was relaunched through `imsg launch`, and the managed gateway was restarted. No message was sent and no personal account was mutated.
+- Phase: Landed and production-validated.
+- Current result: Pull request `#97` landed in merge commit `7362d13ae3d59d310807cfad25788cc2114c0485`. The live bridge, gateway, and direct recovery timer are healthy.
+- Production mutation: Messages.app was relaunched through `imsg launch`, the managed gateway was restarted, and the repository-managed direct iMessage recovery timer was installed. No automated message was sent and no personal account was mutated.
 - Blockers: None.
 
 ### Scope and acceptance criteria
@@ -73,6 +73,7 @@ The durable health and recovery scripts, user timer, migration installer, rollba
 - Managed result before review remediation: Passed. Workspace build, lint, isolated tests, detached patch application, prompt snapshots, mapped OpenClaw regressions, and candidate tests all completed successfully.
 - Managed rerun after review remediation: Passed.
 - Managed rerun after automatic rollback coverage: Passed. The complete managed lifecycle completed successfully with the expanded seven-test regression suite.
+- Pull request `#97` checks: cumulative integration and all CodeQL jobs passed against candidate `a986171cbb6c9dbe43e7753ce8461fad289cf63e`.
 - Exact responsiveness check: `imsg account --json` succeeds after the supported Messages.app relaunch and managed gateway restart.
 - Gateway evidence: `openclaw gateway health --port 18789` is OK, launchd reports the service active, port `18789` is listening, and payload-free stability reports no event-loop degradation.
 - Request evidence: six iMessage messages were received and processed in about 7 to 9 seconds each.
@@ -81,15 +82,19 @@ The durable health and recovery scripts, user timer, migration installer, rollba
 - Existing health evidence: `~/.openclaw/bin/bb-healthcheck.sh` reports BlueBubbles absent and the stuck-run watchdog reports no stuck agent work. Neither check covers direct `imsg` RPC readiness.
 - Post-recovery evidence: Messages.app has a new process, the gateway has a new process and bridge child, the payload-free gateway probe is OK, and the account probe reports an active iMessage service.
 - Live schema evidence: the installed `imsg account --json` response has non-empty string `service` and `login` fields, matching the production health predicate without recording either value.
+- Production evidence: the installed health check reports both boundaries healthy, deployed script checksums match the reviewed candidate, the compatibility entrypoint makes the legacy timer harmless, and the new user timer reports exit code 0.
+- Post-merge evidence: `a986171cbb6c9dbe43e7753ce8461fad289cf63e` is an ancestor of `main`; integration and CodeQL passed on merge commit `7362d13ae3d59d310807cfad25788cc2114c0485`; the read-only production probes remain healthy.
 
 ### Rollout and rollback
 
 - Test deployment will use the managed environment documented in `packages/e2e/README.md`.
 - Immediate live recovery used `imsg launch --json`, then `openclaw gateway restart`, the payload-free gateway probe, and the read-only bridge account probe.
 - The durable scripts first run separate gateway and direct bridge probes. They relaunch Messages.app only for a bridge failure, restart through the managed gateway command when required, and verify both probes afterward.
-- Deployment will use `scripts/mac-mini/install-imessage-selfheal.sh` after the full managed test pool and review are clean.
+- Production deployment used `scripts/mac-mini/install-imessage-selfheal.sh` after the full managed test pool, remote checks, and review were clean.
 - The installer keeps `~/.openclaw/imessage-selfheal/install-recovery.json` plus copies of every replaced file. Its `rollback` action unloads the new user timer, restores the captured files, and reloads any prior user timer.
 - A failed post-recovery probe remains a hard failure and retains the cooldown marker. A failed installation automatically invokes rollback.
+- Installed script checksums match the reviewed candidate. The user LaunchAgent completed its first run with exit code 0.
+- Rollback remains available with `bash scripts/mac-mini/install-imessage-selfheal.sh rollback`.
 - No OpenClaw source patch is expected.
 
 ### Review log
@@ -100,7 +105,7 @@ The durable health and recovery scripts, user timer, migration installer, rollba
 - The retained reviewer confirmed the material finding is resolved and found no new actionable material findings in the complete diff.
 - The remaining automatic rollback proof gap is now covered by forcing the first LaunchAgent bootstrap to fail and verifying the install trap restores all four prior files and removes recovery state.
 - Final retained reviewer recheck after the test-only expansion: Clean. No actionable material findings remain.
-- Terminal candidate review: Pending.
+- Terminal candidate review: Clean against `a986171cbb6c9dbe43e7753ce8461fad289cf63e`.
 
 ### Checklist
 
@@ -116,8 +121,9 @@ The durable health and recovery scripts, user timer, migration installer, rollba
 - [x] Rerun full managed validation after review remediation.
 - [x] Add and validate automatic failed-install rollback coverage.
 - [x] Complete the final retained-review recheck.
-- [ ] Create and terminal-review the landing candidate.
-- [ ] Pass remote checks and required review.
-- [ ] Promote and validate production, or record why no safe promotion exists.
-- [ ] Merge and verify the landed result.
-- [ ] Update the issue and Todoist task for Cole's review.
+- [x] Create and terminal-review the landing candidate.
+- [x] Pass remote checks and required review.
+- [x] Promote and validate production.
+- [x] Merge and verify the landed result.
+- [x] Pass post-merge integration and CodeQL on `main`.
+- [x] Prepare the final issue and Todoist review handoff.
