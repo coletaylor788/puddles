@@ -1,8 +1,8 @@
 # Diagnose Node permission prompts
 
-Status: Ready for review
+Status: Design clarification in progress
 Issue: https://github.com/coletaylor788/puddles/issues/91
-Last updated: 2026-08-05
+Last updated: 2026-08-12
 
 ## Human section
 
@@ -10,21 +10,21 @@ Last updated: 2026-08-05
 
 This was not one failure. The main agent stopped handling one recurring conversation because that conversation had grown beyond the model's context limit. Each retry failed before the model or any tool ran. The macOS prompts were a separate result of an automatic Node update. The update changed Node's ad-hoc code signature, so privacy and keychain rules tied directly to the old binary no longer matched after the gateway restarted.
 
-The durable keychain helper worked for the one client already migrated to it, but other gateway code still read the keychain directly from Node. The existing path-based keychain setup was not durable because macOS saved Node's code hash, not just the stable package-manager path. The native privacy wrappers remained authorized and post-update Reminders and Calendar work completed, but macOS still recorded one new Contacts grant against Node. The gateway also cannot resolve the Contacts helper by name in its current environment, so the contacts-backed egress check would fail closed if invoked. No such egress check ran after the update, so this path problem did not cause the observed Contacts prompt. The caller behind that prompt remains unidentified.
+The earlier proposal correctly chose stable signed programs as the permission boundary, but it did not say which callers still bypass that boundary or how each one moves. This revision will name every direct keychain and private-data caller, the stable program it should call instead, the configuration and code changes needed, and the order of the migration. It will also separate work the agent can do unattended from the few macOS approvals that require Cole in the logged-in desktop session.
 
-Automatic updates should stay enabled. Permission-bearing work should move behind stable signed native identities, and every caller should use one explicit path to those identities. Direct interpreter trust can cover a rollback window only until the next interpreter update, and one current service already has a stale entry that cannot act as a fallback. Migration and soak must finish inside one update window or schedule interactive reapproval. Removing a keychain trusted application is a one-way hardening step because restoring it requires interactive approval. The update job should restart affected services promptly, run bounded read-only permission checks, and report a clear unhealthy state without trying to grant access. The oversized conversation already had safeguard compaction enabled and had compacted three times. The guard stopped helping once requests were rejected at the hard model limit. The soft budget should be set below the real model window, and session rotation should be a backstop only when compaction cannot run. Tool classifiers should be checked at startup so a bad setting is visible before the first tool call.
+Automatic updates will stay enabled. The design will keep reversible migration and one-way permission cleanup as separate steps. Existing access remains available during a short soak where it is still valid. Only after the stable path passes end-to-end checks will old interpreter access be removed. If macOS requires a password or an Allow decision, the plan will say exactly when Cole is needed, what prompt to expect, and what the agent verifies afterward.
 
 ### Status
 
-The incident diagnosis and design proposal are complete. Independent review is clean after correcting the evidence, rollback model, update boundary, and implementation sequence. Keychain consumer migration and irreversible ACL cleanup are separate gated steps. Automatic updates remain enabled. No privacy grants, keychain rules, credentials, runtime configuration, or production services were changed.
+Cole reopened the design because the first version stayed too abstract. The incident diagnosis remains valid, but the proposed migration is being rewritten around a concrete inventory of callers, destinations, steps, and human approvals.
 
-The plan is ready for Cole to review. Follow-on implementation should finish the stable-identity migrations, add update-aware health checks, and add explicit recovery for context overflow. The current agent is live, but the long-running conversation and the residual Contacts and direct keychain paths remain risks until that work lands.
+No live permissions, credentials, configuration, or services are changing during this design pass. The next step is to verify the current runtime and repository paths, then return a design that Cole can approve without having to infer what moves where.
 
 ## Agent section
 
 ### State
 
-- Phase: Proposal complete
+- Phase: Design clarification
 - Repository: `coletaylor788/puddles`
 - Tracking issue: `#91`
 - Todoist task: `6hCmp4C6fqx95423`
@@ -37,6 +37,9 @@ The plan is ready for Cole to review. Follow-on implementation should finish the
 - Identify the Node update, restart, changed code identity, and affected access rules.
 - Verify which privacy-backed tools continued working after the update and which new grants appeared.
 - Explain why the existing stable keychain helper did not cover all keychain consumers.
+- Name every permission-bearing caller that is not using a stable signed boundary today.
+- State what each caller moves behind, how the call path changes, and how it is tested.
+- State exactly where Cole must participate in an interactive macOS approval.
 - Propose a provider-neutral design that keeps automatic software updates enabled.
 - Include detection, migration, validation, rollout, and rollback guidance for each failure class.
 - Keep this task at design scope. Do not change live grants, ACLs, credentials, configuration, services, or message delivery.
@@ -63,6 +66,8 @@ The plan is ready for Cole to review. Follow-on implementation should finish the
 - [x] Inspect TCC grants, keychain ACL requirements, PIM wrapper state, update automation, and agent run outcomes.
 - [x] Separate the context-overflow outage from the permission and classifier failures.
 - [x] Write the root-cause finding and future design.
+- [ ] Inventory every direct keychain and PIM permission path in the current runtime and repository.
+- [ ] Rewrite the design with a caller-by-caller migration map and explicit Cole checkpoints.
 - [ ] Follow-on: merge or supersede pull request `#29` so the stable keychain helper is durable in the repository.
 - [ ] Follow-on: migrate every remaining direct keychain consumer to the stable helper, pass helper-backed health checks, and complete the soak inside one update window. Keep usable direct trust during this step.
 - [ ] Follow-on hardening: after the soak passes, remove mutable interpreter ACL entries as a separate one-way step. Record that restoring direct access requires interactive GUI approval.
@@ -110,8 +115,9 @@ The plan is ready for Cole to review. Follow-on implementation should finish the
 - 2026-08-05: Terminal review found that pull request `#29` cannot restore keychain ACLs. The rollout now keeps direct trust through the rollback window and treats its later removal as interactive, one-way hardening.
 - 2026-08-05: Final review found that retained interpreter trust expires on update and is already stale for one service. The rollback window is now bounded by the next update or explicit interactive reapproval.
 - 2026-08-05: Terminal recheck found that the implementation list still bundled migration and ACL cleanup. They are now separate gated work items.
-- Independent adversarial review: Clean after remediation.
-- Terminal review: Run against the final bookkeeping candidate. Record the exact result and commit in the pull request so the reviewed candidate does not change.
+- 2026-08-12: Cole reopened the design because it did not identify the exact callers, moves, or interactive approval points.
+- Independent adversarial review: Prior proposal was clean. Revised design review is pending.
+- Terminal review: Pending revised final candidate.
 
 ### Checklist
 
@@ -125,10 +131,14 @@ The plan is ready for Cole to review. Follow-on implementation should finish the
 - [x] No production mutation performed.
 - [x] Independent proposal review is clear.
 - [x] Final bookkeeping candidate prepared for terminal review.
-- [ ] Plan-only commit is published and landed.
+- [x] Original plan-only commit was published and landed.
 - [x] Follow-on implementation is split into gated work items.
+- [ ] Concrete caller and destination inventory is complete.
+- [ ] Cole's interactive approval steps are explicit.
+- [ ] Revised design review is clear.
+- [ ] Revised plan-only commit is published and landed.
 - [ ] Relevant implementation and regressions are committed.
 - [ ] Managed integration pool passes for follow-on behavior changes.
 - [ ] Pull request is remotely green and merged.
 - [ ] Default branch and applicable production state are verified.
-- [ ] Issue and Todoist task closeout follows plan landing.
+- [ ] Issue and Todoist task closeout follows revised plan landing.
