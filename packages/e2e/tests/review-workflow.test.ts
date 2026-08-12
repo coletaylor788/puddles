@@ -16,6 +16,42 @@ const reviewWorkflow = readFileSync(
   "utf8",
 );
 
+describe("shared explanation workflow", () => {
+  it("explains relevant OpenClaw context for an experienced software engineer", () => {
+    const repoWriting = repoInstructions.slice(
+      repoInstructions.indexOf("## Writing style"),
+      repoInstructions.indexOf("## Development lifecycle"),
+    );
+    const skillWriting = safeWorkflow.slice(
+      safeWorkflow.indexOf("## How to write"),
+      safeWorkflow.indexOf("## Ownership and checkpoints"),
+    );
+    const planWorkflow = safeWorkflow.slice(
+      safeWorkflow.indexOf("2. **Plan**"),
+      safeWorkflow.indexOf("3. **Implement locally"),
+    );
+
+    for (const writing of [repoWriting, skillWriting]) {
+      expect(writing).toMatch(
+        /experienced software engineer[\s\S]*understands agent\s+systems[\s\S]*does not know OpenClaw's internals or vocabulary/i,
+      );
+      expect(writing).toMatch(
+        /When OpenClaw is relevant[\s\S]*what it does[\s\S]*request or runtime flow[\s\S]*current decision/i,
+      );
+      expect(writing).toMatch(
+        /enough context to reason about\s+the change without reading the source\s+first[\s\S]*Do not add unrelated\s+internals or a general tutorial/i,
+      );
+    }
+
+    expect(skillWriting).toMatch(
+      /Use familiar agent-system ideas\s+as a bridge[\s\S]*do not treat an internal name as an explanation/i,
+    );
+    expect(planWorkflow).toMatch(
+      /When OpenClaw is\s+involved[\s\S]*do not rely on its internal names as shorthand[\s\S]*relevant part's job[\s\S]*request or runtime flow[\s\S]*why it\s+matters to this design/i,
+    );
+  });
+});
+
 describe("adversarial review workflow", () => {
   it("reuses one reviewer throughout remediation without narrowing review", () => {
     expect(safeWorkflow).toContain('version: "1.7.0"');

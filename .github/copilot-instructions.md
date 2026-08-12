@@ -34,6 +34,14 @@ request descriptions, and commit messages.
 - Do not narrate the process or list everything you did. Say where things stand
   now and what it means.
 - Do not write like a policy document or a legal contract.
+- Assume the reader is an experienced software engineer who understands agent
+  systems but does not know OpenClaw's internals or vocabulary.
+- When OpenClaw is relevant, explain an unfamiliar part the first time it
+  matters. Say what it does, where it sits in the request or runtime flow, and
+  why that detail affects the current decision. An internal name is not an
+  explanation.
+- Give enough context to reason about the change without reading the source
+  first, then stop. Do not add unrelated internals or a general tutorial.
 
 `safe-feature-development` carries the full version of these rules along with
 the exact plan and issue formats.
