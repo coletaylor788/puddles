@@ -16,13 +16,13 @@ The live bridge is responsive again after Messages.app was relaunched through it
 
 Live responsiveness is restored at the failed boundary. The direct bridge completes the read-only account request, and the gateway remains healthy.
 
-The durable health and recovery scripts, user timer, migration installer, rollback path, documentation, and shared-pool regression are implemented locally. Independent review found one cooldown defect, which is fixed with a regression. Focused tests and the full managed integration lifecycle pass after remediation. The retained reviewer recheck is next, and nothing is blocked.
+The durable health and recovery scripts, user timer, migration installer, rollback path, documentation, and shared-pool regression are implemented locally. Independent review found one cooldown defect, which is fixed with a regression. The retained reviewer confirmed that fix and found no remaining material defect. Focused tests and the full managed integration lifecycle pass with added automatic rollback coverage. One final retained-review recheck is next because the regression changed, and nothing is blocked.
 
 ## Agent section
 
 ### State
 
-- Phase: Review remediation validated, retained reviewer recheck next.
+- Phase: Review clear, final recheck pending after expanded rollback coverage.
 - Current result: The live bridge and gateway are healthy. The durable candidate detects the exact failed RPC and recovers it from the GUI launchd domain.
 - Production mutation: Messages.app was relaunched through `imsg launch`, and the managed gateway was restarted. No message was sent and no personal account was mutated.
 - Blockers: None.
@@ -60,18 +60,19 @@ The durable health and recovery scripts, user timer, migration installer, rollba
 - `scripts/mac-mini/install-imessage-selfheal.sh` installs or rolls back scripts, the generated user-specific plist, and the legacy compatibility entrypoint using recorded recovery state.
 - `scripts/mac-mini/ai.openclaw.imessage-selfheal.plist` runs the recovery every 15 minutes in the GUI launchd domain.
 - `scripts/mac-mini/bluebubbles-selfheal-retired.sh` makes the still-loaded legacy system timer harmless until an administrator removes its plist.
-- `packages/e2e/tests/imessage-selfheal.test.ts` covers shallow-health disagreement, healthy no-op behavior, stale cooldown cleanup, one-shot recovery, cooldown after persistent failure, and full installer rollback.
+- `packages/e2e/tests/imessage-selfheal.test.ts` covers shallow-health disagreement, healthy no-op behavior, stale cooldown cleanup, one-shot recovery, cooldown after persistent failure, explicit installer rollback, and automatic rollback after a failed install.
 - `docs/openclaw-setup/02-talking-to-puddles-on-imessage.md` now distinguishes the current direct channel recovery from the legacy BlueBubbles setup.
 
 ### Validation
 
 - Required managed lifecycle: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
 - Focused command: `corepack pnpm --filter e2e exec vitest run tests/imessage-selfheal.test.ts`.
-- Focused result after review remediation: 6 tests passed.
+- Focused result after final review follow-up: 7 tests passed.
 - Script checks: all four shell scripts pass `bash -n`; the LaunchAgent plist passes `plutil -lint`; the installer dry run completes.
 - Managed command: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
 - Managed result before review remediation: Passed. Workspace build, lint, isolated tests, detached patch application, prompt snapshots, mapped OpenClaw regressions, and candidate tests all completed successfully.
-- Managed rerun after review remediation: Passed. The complete managed lifecycle completed successfully with the expanded six-test regression suite.
+- Managed rerun after review remediation: Passed.
+- Managed rerun after automatic rollback coverage: Passed. The complete managed lifecycle completed successfully with the expanded seven-test regression suite.
 - Exact responsiveness check: `imsg account --json` succeeds after the supported Messages.app relaunch and managed gateway restart.
 - Gateway evidence: `openclaw gateway health --port 18789` is OK, launchd reports the service active, port `18789` is listening, and payload-free stability reports no event-loop degradation.
 - Request evidence: six iMessage messages were received and processed in about 7 to 9 seconds each.
@@ -96,7 +97,9 @@ The durable health and recovery scripts, user timer, migration installer, rollba
 - Independent implementation review found one material cooldown defect. A failed recovery marker survived a later healthy observation and could suppress repair of a new outage for up to one hour.
 - The healthy path now removes that marker. A focused regression starts with stale cooldown state, observes full health, and confirms the marker is removed.
 - The reviewer also identified useful proof gaps for the live account schema and installer rollback. The real schema was checked read-only, and the shared integration test now performs install plus rollback against isolated files and a recording launchctl stub.
-- Reusable reviewer recheck: Pending.
+- The retained reviewer confirmed the material finding is resolved and found no new actionable material findings in the complete diff.
+- The remaining automatic rollback proof gap is now covered by forcing the first LaunchAgent bootstrap to fail and verifying the install trap restores all four prior files and removes recovery state.
+- Final retained reviewer recheck after the test-only expansion: Pending.
 - Terminal candidate review: Pending.
 
 ### Checklist
@@ -111,7 +114,8 @@ The durable health and recovery scripts, user timer, migration installer, rollba
 - [x] Implement the repair and shared-pool regression.
 - [x] Pass focused validation after review remediation.
 - [x] Rerun full managed validation after review remediation.
-- [ ] Complete the reusable adversarial review loop.
+- [x] Add and validate automatic failed-install rollback coverage.
+- [ ] Complete the final retained-review recheck.
 - [ ] Create and terminal-review the landing candidate.
 - [ ] Pass remote checks and required review.
 - [ ] Promote and validate production, or record why no safe promotion exists.
