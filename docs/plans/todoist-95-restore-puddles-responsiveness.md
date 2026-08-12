@@ -14,15 +14,15 @@ The live bridge is responsive again after Messages.app was relaunched through it
 
 ### Status
 
-Live responsiveness is restored at the failed boundary. The direct bridge now completes the read-only account request, and the gateway is healthy.
+Live responsiveness is restored at the failed boundary. The direct bridge completes the read-only account request, and the gateway remains healthy.
 
-The durable health and recovery scripts, user timer, migration installer, rollback path, documentation, and shared-pool regression are implemented locally. Independent review found one cooldown defect, which is fixed with a regression. Focused tests pass after remediation. The full managed integration lifecycle and reviewer recheck are next, and nothing is blocked.
+The durable health and recovery scripts, user timer, migration installer, rollback path, documentation, and shared-pool regression are implemented locally. Independent review found one cooldown defect, which is fixed with a regression. Focused tests and the full managed integration lifecycle pass after remediation. The retained reviewer recheck is next, and nothing is blocked.
 
 ## Agent section
 
 ### State
 
-- Phase: Review remediation, full revalidation next.
+- Phase: Review remediation validated, retained reviewer recheck next.
 - Current result: The live bridge and gateway are healthy. The durable candidate detects the exact failed RPC and recovers it from the GUI launchd domain.
 - Production mutation: Messages.app was relaunched through `imsg launch`, and the managed gateway was restarted. No message was sent and no personal account was mutated.
 - Blockers: None.
@@ -71,7 +71,7 @@ The durable health and recovery scripts, user timer, migration installer, rollba
 - Script checks: all four shell scripts pass `bash -n`; the LaunchAgent plist passes `plutil -lint`; the installer dry run completes.
 - Managed command: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
 - Managed result before review remediation: Passed. Workspace build, lint, isolated tests, detached patch application, prompt snapshots, mapped OpenClaw regressions, and candidate tests all completed successfully.
-- Managed rerun after review remediation: Pending.
+- Managed rerun after review remediation: Passed. The complete managed lifecycle completed successfully with the expanded six-test regression suite.
 - Exact responsiveness check: `imsg account --json` succeeds after the supported Messages.app relaunch and managed gateway restart.
 - Gateway evidence: `openclaw gateway health --port 18789` is OK, launchd reports the service active, port `18789` is listening, and payload-free stability reports no event-loop degradation.
 - Request evidence: six iMessage messages were received and processed in about 7 to 9 seconds each.
@@ -110,7 +110,7 @@ The durable health and recovery scripts, user timer, migration installer, rollba
 - [x] Verify the exact read-only bridge probe after recovery.
 - [x] Implement the repair and shared-pool regression.
 - [x] Pass focused validation after review remediation.
-- [ ] Rerun full managed validation after review remediation.
+- [x] Rerun full managed validation after review remediation.
 - [ ] Complete the reusable adversarial review loop.
 - [ ] Create and terminal-review the landing candidate.
 - [ ] Pass remote checks and required review.
