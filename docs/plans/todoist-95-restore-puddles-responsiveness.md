@@ -16,13 +16,13 @@ The live bridge is responsive again after Messages.app was relaunched through it
 
 Live responsiveness is restored at the failed boundary. The direct bridge now completes the read-only account request, and the gateway is healthy.
 
-The durable health and recovery scripts, user timer, migration installer, rollback path, documentation, and shared-pool regression are implemented locally. Focused tests and the full managed integration lifecycle pass. Independent review is next, and nothing is blocked.
+The durable health and recovery scripts, user timer, migration installer, rollback path, documentation, and shared-pool regression are implemented locally. Independent review found one cooldown defect, which is fixed with a regression. Focused tests pass after remediation. The full managed integration lifecycle and reviewer recheck are next, and nothing is blocked.
 
 ## Agent section
 
 ### State
 
-- Phase: Full validation complete, independent review next.
+- Phase: Review remediation, full revalidation next.
 - Current result: The live bridge and gateway are healthy. The durable candidate detects the exact failed RPC and recovers it from the GUI launchd domain.
 - Production mutation: Messages.app was relaunched through `imsg launch`, and the managed gateway was restarted. No message was sent and no personal account was mutated.
 - Blockers: None.
@@ -47,6 +47,7 @@ The durable health and recovery scripts, user timer, migration installer, rollba
 - Reuse the managed gateway service restart to recreate a wedged bridge child. Do not restart Messages.app unless the fresh child still cannot serve the read-only probe.
 - Run bridge recovery from a per-user LaunchAgent in the logged-in GUI domain. The retired system BlueBubbles timer cannot reliably relaunch a GUI app.
 - Keep one-hour failure state after an unsuccessful recovery so the 15-minute timer cannot thrash Messages.app.
+- Clear failure state whenever both probes observe full health. A later independent outage must not inherit cooldown from a fault that already ended.
 - Install a harmless compatibility entrypoint at the path used by the root-owned legacy timer. This stops obsolete BlueBubbles mutations without requiring unattended administrator access.
 - Record the pre-install files before replacement. The installer rollback restores those exact files and reloads the prior user LaunchAgent when one existed.
 
@@ -59,17 +60,18 @@ The durable health and recovery scripts, user timer, migration installer, rollba
 - `scripts/mac-mini/install-imessage-selfheal.sh` installs or rolls back scripts, the generated user-specific plist, and the legacy compatibility entrypoint using recorded recovery state.
 - `scripts/mac-mini/ai.openclaw.imessage-selfheal.plist` runs the recovery every 15 minutes in the GUI launchd domain.
 - `scripts/mac-mini/bluebubbles-selfheal-retired.sh` makes the still-loaded legacy system timer harmless until an administrator removes its plist.
-- `packages/e2e/tests/imessage-selfheal.test.ts` covers shallow-health disagreement, healthy no-op behavior, one-shot recovery, and cooldown after persistent failure.
+- `packages/e2e/tests/imessage-selfheal.test.ts` covers shallow-health disagreement, healthy no-op behavior, stale cooldown cleanup, one-shot recovery, cooldown after persistent failure, and full installer rollback.
 - `docs/openclaw-setup/02-talking-to-puddles-on-imessage.md` now distinguishes the current direct channel recovery from the legacy BlueBubbles setup.
 
 ### Validation
 
 - Required managed lifecycle: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
 - Focused command: `corepack pnpm --filter e2e exec vitest run tests/imessage-selfheal.test.ts`.
-- Focused result: 4 tests passed.
+- Focused result after review remediation: 6 tests passed.
 - Script checks: all four shell scripts pass `bash -n`; the LaunchAgent plist passes `plutil -lint`; the installer dry run completes.
 - Managed command: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
-- Managed result: Passed. Workspace build, lint, isolated tests, detached patch application, prompt snapshots, mapped OpenClaw regressions, and candidate tests all completed successfully.
+- Managed result before review remediation: Passed. Workspace build, lint, isolated tests, detached patch application, prompt snapshots, mapped OpenClaw regressions, and candidate tests all completed successfully.
+- Managed rerun after review remediation: Pending.
 - Exact responsiveness check: `imsg account --json` succeeds after the supported Messages.app relaunch and managed gateway restart.
 - Gateway evidence: `openclaw gateway health --port 18789` is OK, launchd reports the service active, port `18789` is listening, and payload-free stability reports no event-loop degradation.
 - Request evidence: six iMessage messages were received and processed in about 7 to 9 seconds each.
@@ -77,6 +79,7 @@ The durable health and recovery scripts, user timer, migration installer, rollba
 - Bridge evidence: `imsg status --json` reports connected, but `imsg account --json` returns `Timed out waiting for response to 'get-account-info'`.
 - Existing health evidence: `~/.openclaw/bin/bb-healthcheck.sh` reports BlueBubbles absent and the stuck-run watchdog reports no stuck agent work. Neither check covers direct `imsg` RPC readiness.
 - Post-recovery evidence: Messages.app has a new process, the gateway has a new process and bridge child, the payload-free gateway probe is OK, and the account probe reports an active iMessage service.
+- Live schema evidence: the installed `imsg account --json` response has non-empty string `service` and `login` fields, matching the production health predicate without recording either value.
 
 ### Rollout and rollback
 
@@ -90,7 +93,10 @@ The durable health and recovery scripts, user timer, migration installer, rollba
 
 ### Review log
 
-- Independent implementation review: Pending.
+- Independent implementation review found one material cooldown defect. A failed recovery marker survived a later healthy observation and could suppress repair of a new outage for up to one hour.
+- The healthy path now removes that marker. A focused regression starts with stale cooldown state, observes full health, and confirms the marker is removed.
+- The reviewer also identified useful proof gaps for the live account schema and installer rollback. The real schema was checked read-only, and the shared integration test now performs install plus rollback against isolated files and a recording launchctl stub.
+- Reusable reviewer recheck: Pending.
 - Terminal candidate review: Pending.
 
 ### Checklist
@@ -103,7 +109,8 @@ The durable health and recovery scripts, user timer, migration installer, rollba
 - [x] Restore the live bridge through the supported Messages.app and managed gateway paths.
 - [x] Verify the exact read-only bridge probe after recovery.
 - [x] Implement the repair and shared-pool regression.
-- [x] Pass focused and full managed validation.
+- [x] Pass focused validation after review remediation.
+- [ ] Rerun full managed validation after review remediation.
 - [ ] Complete the reusable adversarial review loop.
 - [ ] Create and terminal-review the landing candidate.
 - [ ] Pass remote checks and required review.
