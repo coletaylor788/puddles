@@ -1022,9 +1022,10 @@ Terminal event and continuation:
 #### Publication checks
 
 - The diff changes documentation only.
-- The plan has exactly `## Human section` and `## Agent section`.
-- The Human section has exactly `### Design` and `### Status`.
-- The Agent section has the eight required subsections in order.
+- The plan has exactly `## Human design` and `## Agent details`.
+- The Human design section has exactly `### Problem`, `### Outcome`,
+  `### Approach`, and `### Safety and rollout`.
+- The Agent details section has the eight required subsections in order.
 - The Human section contains no file path, symbol, command, or commit ID.
 - The document contains no em dash.
 - Public content contains no private repository, private deployment identity,
