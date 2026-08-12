@@ -1,6 +1,6 @@
 # Diagnose Node permission prompts
 
-Status: Design review recheck
+Status: Ready for Cole review
 Issue: https://github.com/coletaylor788/puddles/issues/91
 Last updated: 2026-08-12
 
@@ -16,20 +16,20 @@ The migration first lands the existing reviewed helper and Gmail work. The model
 
 ### Status
 
-The revised design now names what is stable, what still bypasses a stable boundary, what moves, how each move is checked, and which workstream owns each regression. The Contacts cleanup is gated on observed attribution during the soak rather than assumptions about known paths. Independent review also exposed the privileged update installation and a session-group flaw in its first marker design. The installation is explicit, the marker is owner-writable but readable without new group membership, and the real user-side reconciler must already be staged before the administrator session. No live permissions, credentials, configuration, or services changed during this design pass.
+The revised design names what is stable, what still bypasses a stable boundary, what moves, how each move is checked, and which workstream owns each regression. Contacts cleanup is gated on observed attribution during the soak. The privileged update installation is explicit, the marker is owner-writable but readable without new group membership, and the real user-side reconciler is staged before the administrator session. Independent review is clean. No live permissions, credentials, configuration, or services changed during this design pass.
 
-The retained review is clean. One final recheck covers the explicit marker creation modes and installation order before the design returns to Cole. Cole's expected participation is one logged-in desktop session for the two credential approvals, one administrator session for the update writer and package-manager-owned marker channel, and a later cleanup session only after the attribution soak is clean.
+The concrete design is ready for Cole to review before implementation. Cole's expected participation is one logged-in desktop session for the two credential approvals, one administrator session for the update writer and package-manager-owned marker channel, and a later cleanup session only after the attribution soak is clean.
 
 ## Agent section
 
 ### State
 
-- Phase: Retained design review recheck
+- Phase: Awaiting Cole design review
 - Repository: `coletaylor788/puddles`
 - Tracking issue: `#91`
 - Todoist task: `6hCmp4C6fqx95423`
 - Production mutation: Not performed
-- Blockers: Revised review must clear before Cole's design checkpoint.
+- Blockers: Implementation waits for Cole's design approval.
 
 ### Scope and acceptance criteria
 
@@ -181,8 +181,9 @@ Required implementation validation:
 - 2026-08-12: Retained recheck found the system-side update writer needed an unlisted administrator checkpoint. The checkpoint is explicit, one-time, and rollback-backed. Its first dedicated-group design was superseded by the readable owner-write-only channel below.
 - 2026-08-12: Retained recheck found a newly created group would not apply to the existing user session. The marker is now owner-writable and non-secret/readable, and validation runs through the actual reconciler process.
 - 2026-08-12: Retained review cleared the revised design and left two non-blocking wording gaps. Marker creation now pins umask `022`, and the user-side reconciler is installed before Cole begins the privileged handoff.
-- Independent adversarial review: Final wording recheck in progress.
-- Terminal review: Pending revised final candidate.
+- 2026-08-12: Retained full-diff recheck of the corrected design reported no actionable findings.
+- Independent adversarial review: Clean.
+- Terminal review: Run against the final design-checkpoint candidate and record the result outside the candidate diff.
 
 ### Checklist
 
@@ -197,7 +198,8 @@ Required implementation validation:
 - [x] No production mutation occurred during design.
 - [x] External credential-reader ownership and validation are explicit without crossing publication boundaries.
 - [x] Contacts cleanup is gated on attribution evidence.
+- [x] Revised design adversarial review is clear.
+- [x] Final design-checkpoint candidate prepared.
 - [ ] Cole approves the revised design.
-- [ ] Revised design adversarial review is clear.
 - [ ] Revised plan-only pull request is remotely green and merged.
 - [ ] Issue and Todoist task return to `ready_for_review`.
