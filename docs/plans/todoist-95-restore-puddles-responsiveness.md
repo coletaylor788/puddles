@@ -1,6 +1,6 @@
 # Restore Puddles responsiveness
 
-Status: Reviewing
+Status: Preparing candidate
 Issue: https://github.com/coletaylor788/puddles/issues/95
 Last updated: 2026-08-12
 
@@ -16,13 +16,13 @@ The live bridge is responsive again after Messages.app was relaunched through it
 
 Live responsiveness is restored at the failed boundary. The direct bridge completes the read-only account request, and the gateway remains healthy.
 
-The durable health and recovery scripts, user timer, migration installer, rollback path, documentation, and shared-pool regression are implemented locally. Independent review found one cooldown defect, which is fixed with a regression. The retained reviewer confirmed that fix and found no remaining material defect. Focused tests and the full managed integration lifecycle pass with added automatic rollback coverage. One final retained-review recheck is next because the regression changed, and nothing is blocked.
+The durable health and recovery scripts, user timer, migration installer, rollback path, documentation, and shared-pool regression are implemented locally. Independent review found one cooldown defect, which is fixed with a regression. The retained reviewer confirms the complete current change has no remaining material defect. Focused tests and the full managed integration lifecycle pass with automatic rollback coverage. The exact landing candidate and terminal review are next, and nothing is blocked.
 
 ## Agent section
 
 ### State
 
-- Phase: Review clear, final recheck pending after expanded rollback coverage.
+- Phase: Reusable review clear, preparing the exact landing candidate.
 - Current result: The live bridge and gateway are healthy. The durable candidate detects the exact failed RPC and recovers it from the GUI launchd domain.
 - Production mutation: Messages.app was relaunched through `imsg launch`, and the managed gateway was restarted. No message was sent and no personal account was mutated.
 - Blockers: None.
@@ -99,7 +99,7 @@ The durable health and recovery scripts, user timer, migration installer, rollba
 - The reviewer also identified useful proof gaps for the live account schema and installer rollback. The real schema was checked read-only, and the shared integration test now performs install plus rollback against isolated files and a recording launchctl stub.
 - The retained reviewer confirmed the material finding is resolved and found no new actionable material findings in the complete diff.
 - The remaining automatic rollback proof gap is now covered by forcing the first LaunchAgent bootstrap to fail and verifying the install trap restores all four prior files and removes recovery state.
-- Final retained reviewer recheck after the test-only expansion: Pending.
+- Final retained reviewer recheck after the test-only expansion: Clean. No actionable material findings remain.
 - Terminal candidate review: Pending.
 
 ### Checklist
@@ -115,7 +115,7 @@ The durable health and recovery scripts, user timer, migration installer, rollba
 - [x] Pass focused validation after review remediation.
 - [x] Rerun full managed validation after review remediation.
 - [x] Add and validate automatic failed-install rollback coverage.
-- [ ] Complete the final retained-review recheck.
+- [x] Complete the final retained-review recheck.
 - [ ] Create and terminal-review the landing candidate.
 - [ ] Pass remote checks and required review.
 - [ ] Promote and validate production, or record why no safe promotion exists.

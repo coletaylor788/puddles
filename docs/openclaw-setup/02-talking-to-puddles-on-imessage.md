@@ -13,6 +13,11 @@ By the end of it you'll have:
 Heads-up: this guide assumes you've finished guide 01. If you haven't, none of the LaunchDaemon stuff makes sense and the `puddles` user won't exist.
 
 > **Time:** about an hour, most of it the BlueBubbles permission dance.
+
+> **Current deployment note:** OpenClaw can now use `imsg` directly instead of
+> BlueBubbles. Sections 3 through 6 remain the legacy BlueBubbles setup. Use the
+> direct-channel health and recovery flow in section 7 when the configured
+> channel starts an `imsg rpc` child process.
 > **Skill:** comfortable with launchd, sqlite, and bash.
 
 ---
@@ -283,7 +288,53 @@ rm -f ~/Library/LaunchAgents/ai.openclaw.gateway.plist
 
 ---
 
-## 7. Self-healing scripts
+## 7. Direct iMessage self-healing
+
+The direct channel has a failure mode that process checks miss. Its long-lived
+`imsg` child can stay alive and report that it is connected while real bridge
+requests wait until they time out. The gateway also stays healthy because agent
+work is still running. In that state, inbound messages finish normally and only
+reply delivery fails.
+
+The repository has two scripts for this path:
+
+- `scripts/mac-mini/imessage-healthcheck.sh` is read-only. It runs the payload-free
+  gateway health probe and a bounded `imsg account --json` request. The account
+  request crosses the same injected Messages.app bridge used by sends, but it
+  does not read conversation content or send anything.
+- `scripts/mac-mini/imessage-selfheal.sh` relaunches Messages.app through
+  `imsg launch` only when that bridge request fails. It then restarts the managed
+  gateway so the channel receives a fresh RPC child. A failed recovery enters a
+  one-hour cooldown, which keeps a persistent fault from restarting the GUI
+  every 15 minutes.
+
+Install both scripts and the per-user LaunchAgent from the repository checkout:
+
+```bash
+bash scripts/mac-mini/install-imessage-selfheal.sh
+```
+
+The installer writes recovery state before replacing files. It also retires the
+old `~/.openclaw/bin/bb-selfheal.sh` entrypoint in place. This makes an existing
+system BlueBubbles timer harmless even when removing its root-owned plist needs
+an administrator later. Recovery itself runs as a LaunchAgent in the logged-in
+user's GUI domain because Messages.app cannot be repaired reliably from a system
+daemon.
+
+Check the installed state without sending a message:
+
+```bash
+~/.local/bin/imessage-healthcheck.sh
+launchctl print gui/$(id -u)/ai.openclaw.imessage-selfheal | head
+```
+
+Roll back to the exact files captured before the first managed install:
+
+```bash
+bash scripts/mac-mini/install-imessage-selfheal.sh rollback
+```
+
+### Legacy BlueBubbles self-healing
 
 The LaunchDaemon handles "process crashed." The actual failure modes I see in practice are subtler:
 
@@ -608,7 +659,7 @@ Smoke-test by hand before letting launchd touch them:
 
 ---
 
-## 8. Wiring the self-heal into launchd
+## 8. Wiring the legacy BlueBubbles self-heal into launchd
 
 Same pattern as the gateway: a system LaunchDaemon running as `puddles`, with `StartInterval=900` for "every 15 minutes" and `RunAtLoad=true` so the first run happens at boot.
 
@@ -685,6 +736,23 @@ tail ~/.openclaw/logs/bb-health/selfheal.log
 ---
 
 ## 9. Verifying everything works
+
+For a direct `imsg` channel, these checks cover the live path without sending a
+message:
+
+```bash
+openclaw gateway health --port 18789
+imsg account --json >/dev/null
+~/.local/bin/imessage-healthcheck.sh
+launchctl print gui/$(id -u)/ai.openclaw.imessage-selfheal | head
+```
+
+The first three commands must exit zero. The LaunchAgent should be loaded and
+its last exit status should be zero. Keep live message delivery out of automated
+checks. If a person wants to confirm the full channel after the read-only checks
+pass, they can send a normal message themselves.
+
+The checklist below applies only to the legacy BlueBubbles deployment.
 
 Run through this checklist. Every line should pass.
 
