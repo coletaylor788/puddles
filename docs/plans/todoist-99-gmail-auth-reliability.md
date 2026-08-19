@@ -1,6 +1,6 @@
 # Fix recurring Gmail authentication failures
 
-Status: Landing deployment candidate
+Status: Final deployment review
 Issue: https://github.com/coletaylor788/puddles/issues/99
 Last updated: 2026-08-18
 
@@ -16,15 +16,15 @@ The helper restarts the gateway, confirms health, and makes one read-only Gmail 
 
 ### Status
 
-The deployment-lock finding is fixed, focused and managed validation are green, and retained full-diff review is clean. Production remains untouched.
+The package-manager preflight finding is fixed, focused and managed validation are green, and production remains unchanged.
 
-The exact landing candidate is being sealed for a new terminal review and remote integration. Nothing needs Cole's input.
+The retained reviewer is rechecking the complete final diff before a new terminal review and updated remote checks. Nothing needs Cole's input.
 
 ## Agent section
 
 ### State
 
-- Phase: Seal exact landing candidate
+- Phase: Retained reviewer recheck
 - Repository: `coletaylor788/puddles`
 - Todoist task: `6hHwPPrxrg2FQP9V`
 - Todoist label: `agent`
@@ -76,6 +76,7 @@ The exact landing candidate is being sealed for a new terminal review and remote
 - On macOS, stale sidecar removal must hold a kernel `O_EXLOCK` guard so only one reclaimer can inspect and remove a lock at a time.
 - Production must deploy the patched OpenClaw package through its rollback-capable lifecycle before deploying the Gmail runtime that relies on the exported lock.
 - OpenClaw dependencies must be installed with the frozen lockfile after the source patch stack changes dependency patches and lock hashes.
+- Production package-manager invocation must work with either a direct pnpm binary or Corepack-provided pnpm.
 - Published releases must contain no bytecode and must run with bytecode writes disabled so all executable Python content remains inside the manifest.
 
 ### Implementation
@@ -126,6 +127,8 @@ The exact landing candidate is being sealed for a new terminal review and remote
 - [x] Replace custom Gmail deployment lock with the shared lock holder.
 - [x] Remove custom deployment stale-lock reclamation code.
 - [x] Add two-process deployment-lock serialization regression.
+- [x] Add one package-manager resolver used by install, build, and pack.
+- [x] Cover both direct pnpm and Corepack fallback in deployment fixtures.
 
 ### Validation
 
@@ -181,7 +184,14 @@ The exact landing candidate is being sealed for a new terminal review and remote
 - Passed after deployment-lock remediation: Ruff, Python compilation, Node and shell syntax, TypeScript lint, and diff check.
 - Passed after deployment-lock remediation: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
 - Managed lifecycle result: `340` workspace tests, `171` safe Gmail tests, `472` mapped OpenClaw tests, and `2` candidate tests.
-- Pending: retained reviewer recheck and a new terminal exact-commit review.
+- Remote PR 102 was green on `21f7cd6887a5808dfad3b76080a4de3ba86e720e`.
+- The promotion attempt applied patches in an isolated source worktree, then stopped at dependency materialization because `pnpm` was not in PATH.
+- No gateway, package, runtime state, service config, browser image, or Gmail config mutation occurred.
+- Passed after remediation: `36` deployment-topology tests cover direct pnpm and Corepack fallback.
+- Passed after remediation: shell syntax, TypeScript lint, patch manifest checks, and diff check.
+- Passed after remediation: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
+- Managed lifecycle result: `341` workspace tests, `171` safe Gmail tests, `472` mapped OpenClaw tests, and `2` candidate tests.
+- Pending: retained review, terminal review, and updated remote checks.
 - Pending: exact-candidate production promotion and read-only validation.
 
 ### Rollout and rollback
@@ -240,6 +250,8 @@ The exact landing candidate is being sealed for a new terminal review and remote
 - The accepted fix uses the patched shared holder for the entire deployment, removes custom deployment stale takeover, and proves two deployment processes serialize.
 - Expanded focused and managed validation pass.
 - The retained reviewer rechecked the complete final diff at `0c8879c36ea1226a41aefd305c1a17932d93c9a5` and found no significant issue.
+- Production preflight then found direct `pnpm` unavailable even though `corepack pnpm` is available. The package-manager resolver fix invalidates the prior terminal candidate.
+- The accepted fix selects direct pnpm when present and otherwise uses Corepack for install, build, and pack. Both fixture paths and the complete managed lifecycle pass.
 
 ### Checklist
 
@@ -264,8 +276,8 @@ The exact landing candidate is being sealed for a new terminal review and remote
 - [x] Patched dependency is materialized before tests and production build.
 - [x] Retained recheck is clean.
 - [x] Whole-deployment locking uses the patched shared implementation.
-- [x] Retained recheck is clean.
-- [ ] A new terminal exact-commit review is clean.
+- [x] Production package-manager resolution is fixed.
+- [ ] Retained recheck and a new terminal exact-commit review are clean.
 - [ ] Deployment pull request is green and merged.
 - [ ] Exact landed candidate is promoted.
 - [ ] Read-only production validation passes.

@@ -39,6 +39,7 @@ const tempRoots: string[] = [];
 interface DeploymentOptions {
   backupRootInsideState?: boolean;
   candidateWorkspaceDependency?: boolean;
+  corepackOnly?: boolean;
   miniHost?: string;
   doctorFails?: boolean;
   doctorInterrupts?: boolean;
@@ -157,7 +158,11 @@ name="$(basename "$0")"
 printf '%s' "$name" >> "$COMMAND_LOG"
 for arg in "$@"; do printf '\\t%s' "$arg" >> "$COMMAND_LOG"; done
 printf '\\n' >> "$COMMAND_LOG"
-if [ "$name" = pnpm ]; then
+  if [ "$name" = corepack ] && [ "\${1:-}" = pnpm ]; then
+    shift
+    name=pnpm
+  fi
+  if [ "$name" = pnpm ]; then
   if [ "\${1:-}" = pack ]; then
     destination=
     shift
@@ -387,7 +392,7 @@ fi
 `;
   for (const command of [
     "git",
-    "pnpm",
+    options.corepackOnly ? "corepack" : "pnpm",
     "python3",
     "npm",
     "openclaw",
@@ -707,6 +712,19 @@ describe("OpenClaw deployment topology", () => {
     expect(
       existsSync(join(result.root, "openclaw", "openclaw-stale.tgz")),
     ).toBe(true);
+  });
+
+  it("uses Corepack when pnpm is not directly available", () => {
+    const result = runDeployment({ corepackOnly: true });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.lines).toContain("corepack\tpnpm\tinstall\t--frozen-lockfile");
+    expect(result.lines).toContain("corepack\tpnpm\tbuild");
+    expect(result.lines).toContainEqual(
+      expect.stringMatching(
+        /^corepack\tpnpm\tpack\t--config\.ignore-scripts=true\t--pack-destination\t/,
+      ),
+    );
   });
 
   it("uses SSH and SCP only when a remote target is explicit", () => {
