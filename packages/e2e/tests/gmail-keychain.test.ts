@@ -123,7 +123,7 @@ assert keychain.read_token() == second
     expect(writes[1]).not.toContain("-T");
   });
 
-  it("treats binary Keychain corruption as unauthenticated", async () => {
+  it("surfaces binary Keychain corruption as an explicit error", async () => {
     const fixture = createFixture();
     writeFileSync(fixture.state, Buffer.from([0xff, 0xfe]));
     const probe = `
@@ -131,7 +131,12 @@ import sys
 sys.path.insert(0, ${JSON.stringify(fixture.source)})
 import gmail_mcp.keychain as keychain
 keychain.SECURITY_COMMAND = ${JSON.stringify(fixture.fakeSecurity)}
-assert keychain.read_token() is None
+try:
+    keychain.read_token()
+except keychain.CredentialFormatError as exc:
+    assert "malformed" in str(exc)
+else:
+    raise AssertionError("expected malformed credential error")
 `;
 
     await execFileAsync("python3", ["-c", probe], {

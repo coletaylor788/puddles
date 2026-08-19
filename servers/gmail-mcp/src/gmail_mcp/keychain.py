@@ -23,6 +23,10 @@ class KeychainAccessError(RuntimeError):
     """Raised when macOS Keychain access fails or times out."""
 
 
+class CredentialFormatError(KeychainAccessError):
+    """Raised when the stored Gmail credential cannot be decoded or parsed."""
+
+
 def _run_security(
     args: list[str],
     *,
@@ -96,8 +100,16 @@ def read_token() -> str | None:
         try:
             token_data = stdout.decode("utf-8").rstrip("\n")
         except UnicodeDecodeError:
-            return None
-    return token_data or None
+            raise CredentialFormatError(
+                "Stored Gmail credential is malformed. "
+                "Delete the gmail-mcp Keychain item and authenticate again."
+            ) from None
+    if not token_data:
+        raise CredentialFormatError(
+            "Stored Gmail credential is empty. "
+            "Delete the gmail-mcp Keychain item and authenticate again."
+        )
+    return token_data
 
 
 def _item_exists(*, deadline: float | None = None) -> bool:

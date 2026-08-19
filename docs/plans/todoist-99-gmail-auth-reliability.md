@@ -1,6 +1,6 @@
 # Fix recurring Gmail authentication failures
 
-Status: Reviewing
+Status: Reviewing remediated candidate
 Issue: https://github.com/coletaylor788/puddles/issues/99
 Last updated: 2026-08-18
 
@@ -10,21 +10,21 @@ Last updated: 2026-08-18
 
 Gmail keeps failing because the earlier repair never reached the default branch or the running service. Production still asks a Homebrew Python process to read the OAuth credential through macOS Keychain. An interpreter upgrade can remove that process from the saved access list, which leaves a background tool waiting on an approval prompt nobody can see. A past manual recovery path also truncated the OAuth record, so repeating that recovery is unsafe.
 
-The repair uses a stable operating-system process to read and update one exact Keychain item. Each operation has a short deadline and returns a clear error instead of hanging. Long OAuth records are preserved, refresh writes keep the existing access rules, concurrent refreshes cannot replace newer credentials, and invalid or scope-reduced records are rejected. Blocking authentication work stays outside the shared request loop.
+The repair uses a stable operating-system process to read and update one exact Keychain item. Each operation has a short deadline and returns a clear error instead of hanging. Long OAuth records are preserved, refresh writes keep the existing access rules, concurrent refreshes cannot replace newer credentials, and invalid or scope-reduced records are rejected. A missing item means the account is signed out. A present but unreadable or malformed item returns a specific recovery error instead of looking missing. Blocking authentication work stays outside the shared request loop.
 
-The earlier candidate already implemented and reviewed this design, but its pull request became stale and conflicted before merge. The focused repair is now ported onto current code without its stale tracker. Automated coverage uses temporary Keychain items and read-only boundaries. It never changes a live mailbox.
+The earlier candidate already implemented and reviewed most of this design, but its pull request became stale and conflicted before merge. The focused repair is now ported onto current code without its stale tracker. Automated coverage uses temporary Keychain items and read-only boundaries. It never changes a live mailbox.
 
 ### Status
 
-Implementation and the complete managed test lifecycle are green. The branch passes the full workspace, Gmail, patched-runtime, and candidate test pools.
+The independent-review finding is fixed. Focused checks and the complete managed test lifecycle pass on the remediated candidate.
 
-Independent review is in progress. Nothing needs Cole's input.
+A resumable replacement reviewer is checking the complete current diff because the first reviewer was started in one-shot mode. Nothing needs Cole's input.
 
 ## Agent section
 
 ### State
 
-- Phase: Independent review
+- Phase: Independent review recheck
 - Repository: `coletaylor788/puddles`
 - Todoist task: `6hHwPPrxrg2FQP9V`
 - Tracking issue: `https://github.com/coletaylor788/puddles/issues/99`
@@ -48,7 +48,9 @@ Independent review is in progress. Nothing needs Cole's input.
 - Root cause: PR 31 contains the earlier repair but was never merged. Current `origin/main` and production still use Python `keyring`.
 - Runtime evidence: an exact `/usr/bin/security` lookup succeeds in about 11 ms. The configured Gmail process runs from the primary checkout under Homebrew Python 3.11.16.
 - Use `/usr/bin/security` against the canonical login Keychain and exact `gmail-mcp` / `token` selectors.
-- Treat item-not-found as unauthenticated. Treat permission, timeout, decoding, command, and malformed-data failures as explicit errors.
+- Treat item-not-found as unauthenticated.
+- Raise `CredentialFormatError` for empty, non-UTF-8, invalid JSON, invalid schema, and invalid scope records. It subclasses `KeychainAccessError` so the existing MCP boundary returns a sanitized authentication-unavailable result.
+- Treat permission, timeout, and command failures as explicit `KeychainAccessError` results.
 - Create items with stable command trust. Update data without replacing existing access rules. Use hexadecimal input so long JSON cannot be truncated.
 - Cache valid parsed credentials briefly and serialize replacement and refresh persistence across processes.
 - Use cumulative deadlines, compare-before-write, cancellation, and bounded drain behavior for OAuth and refresh work.
@@ -66,22 +68,23 @@ Independent review is in progress. Nothing needs Cole's input.
 - [x] Resolve the shared-pool documentation conflict while preserving current coverage.
 - [x] Remove the duplicate stale component plan and keep issue 99 as the active tracker.
 - [x] Preserve Gmail documentation, CI wiring, focused tests, and cumulative regression coverage from the reviewed repair.
+- [x] Distinguish malformed credentials from a missing Keychain item at the parser and MCP tool boundary.
 - [ ] Close stale issue 15 and PR 31 as superseded after the replacement lands.
 
 ### Validation
 
-- Passed: `166` safe Gmail tests with live integration tests explicitly excluded.
-- Passed: Gmail Ruff checks and Python compilation.
-- Passed: `4` focused tests in `packages/e2e/tests/gmail-keychain.test.ts`.
-- Passed: TypeScript lint for `packages/e2e`.
-- Passed: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
-- Managed lifecycle result: `310` workspace tests, `166` safe Gmail tests, `471` mapped OpenClaw tests, and `1` candidate test passed. Build, lint, compilation, patch application, prompt snapshot checks, and cleanup also passed.
-- Pending: independent full-diff review and terminal exact-commit review.
+- Passed after review fix: `169` safe Gmail tests with live integration tests explicitly excluded.
+- Passed after review fix: Gmail Ruff checks and Python compilation.
+- Passed after review fix: `4` focused tests in `packages/e2e/tests/gmail-keychain.test.ts`.
+- Passed after review fix: TypeScript lint for `packages/e2e`.
+- Passed after review fix: `node packages/e2e/bin/openclaw-test-env.mjs ci` with `PYTHONPATH` fixed to this worktree's Gmail source.
+- Managed lifecycle result after review fix: `310` workspace tests, `169` safe Gmail tests, `471` mapped OpenClaw tests, and `1` candidate test passed. Build, lint, compilation, patch application, prompt snapshot checks, and cleanup also passed.
+- Pending: replacement retained-reviewer recheck and terminal exact-commit review.
 - Safety constraint: tests must not send mail, change mailbox state, print credential values, or edit the configured primary checkout.
 
 ### Rollout and rollback
 
-- The managed test lifecycle is green for the candidate.
+- The remediated candidate passes the complete managed test lifecycle.
 - The repository currently has no snapshotting, atomic, rollback-capable Gmail production promotion path. The running service loads the package from the configured primary checkout, which this worker must not edit.
 - Do not replace that boundary with a manual copy or primary-checkout edit.
 - Land the repository fix after all review and remote gates. Report the production rollout limitation unless a documented safe lifecycle is found before landing.
@@ -90,8 +93,11 @@ Independent review is in progress. Nothing needs Cole's input.
 ### Review log
 
 - The prior candidate received an extended retained-review loop and a clean terminal review at `264cf75`, but later base changes made PR 31 conflicting.
-- That prior review does not replace review of the new current-main diff.
-- Independent retained-worker review is starting against the complete current diff.
+- The current independent reviewer found one medium-severity issue: malformed Keychain data was collapsed into the same `None` result as a missing item.
+- Accepted fix: only status 44 returns no credential. Invalid encoding, empty content, invalid JSON, invalid required fields, and invalid scopes now raise a sanitized format error through the existing authentication-unavailable tool result.
+- Unit, server-boundary, shared-pool, and documentation coverage assert the corrected distinction.
+- Focused and complete managed validation pass after the fix.
+- The first reviewer cannot be resumed because it was launched in one-shot mode. A fresh replacement must review the complete current diff and remain available for any follow-up.
 - Terminal review of the exact landing candidate is pending.
 
 ### Checklist
@@ -102,9 +108,10 @@ Independent review is in progress. Nothing needs Cole's input.
 - [x] Human and Agent sections describe the same current design.
 - [x] Focused repair is ported without stale tracker artifacts.
 - [x] Committed regression covers the recurring failure.
-- [x] Focused tests, lint, compilation, and shared Gmail regression pass.
-- [x] Complete managed integration lifecycle passes.
-- [ ] Independent retained-worker review is clean.
+- [x] Initial focused and complete managed validation passed.
+- [x] Accepted independent-review finding is fixed with regression coverage.
+- [x] Complete managed lifecycle passes after review remediation.
+- [ ] Replacement retained-worker review is clean.
 - [ ] Exact candidate receives a clean terminal review.
 - [ ] Pull request is remotely green, mergeable, and merged.
 - [ ] Default branch contains the repair.

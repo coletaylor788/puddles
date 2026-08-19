@@ -128,7 +128,8 @@ cancellation arrives during the non-cancellable Keychain subprocess, the async
 boundary briefly drains that bounded write inside an AnyIO-shielded cancellation
 scope before returning cancellation.
 Stored scopes accept the legacy space-separated form or a list of nonblank
-strings; malformed scope shapes are unauthenticated.
+strings. A present item with invalid encoding, JSON, required fields, or scope
+shape returns an explicit credential error instead of looking like sign-out.
 
 ### Viewing in Keychain Access
 

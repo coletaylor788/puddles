@@ -20,7 +20,7 @@ from gmail_mcp.auth import (
     store_token,
 )
 from gmail_mcp.config import GOOGLE_TOKEN_ENV
-from gmail_mcp.keychain import KeychainAccessError
+from gmail_mcp.keychain import CredentialFormatError, KeychainAccessError
 
 
 # Ensure env backend is not active during Keychain tests
@@ -214,19 +214,22 @@ class TestKeychainGetToken:
         with patch("gmail_mcp.auth.read_token", return_value=None):
             assert get_token() is None
 
-    def test_returns_none_on_invalid_json(self):
-        """Returns None when token data is not valid JSON."""
-        with patch("gmail_mcp.auth.read_token", return_value="not json"):
-            assert get_token() is None
+    @pytest.mark.parametrize("token_data", ["", "not json"])
+    def test_raises_on_invalid_json(self, token_data):
+        """Invalid JSON is distinct from a missing Keychain item."""
+        with patch("gmail_mcp.auth.read_token", return_value=token_data):
+            with pytest.raises(CredentialFormatError, match="malformed"):
+                get_token()
 
     @pytest.mark.parametrize("token_data", ["null", "[]", '"text"', "42"])
-    def test_returns_none_on_non_object_json(self, token_data):
-        """Valid JSON with the wrong shape is unauthenticated."""
+    def test_raises_on_non_object_json(self, token_data):
+        """Valid JSON with the wrong shape is reported as malformed."""
         with patch("gmail_mcp.auth.read_token", return_value=token_data):
-            assert get_token() is None
+            with pytest.raises(CredentialFormatError, match="malformed"):
+                get_token()
 
-    def test_returns_none_on_invalid_object_fields(self):
-        """SDK type errors in credential fields are treated as malformed data."""
+    def test_raises_on_invalid_object_fields(self):
+        """SDK type errors in credential fields are reported as malformed."""
         with patch(
             "gmail_mcp.auth.read_token",
             return_value=json.dumps({
@@ -238,7 +241,8 @@ class TestKeychainGetToken:
                 "expiry": 1,
             }),
         ):
-            assert get_token() is None
+            with pytest.raises(CredentialFormatError, match="malformed"):
+                get_token()
 
     @pytest.mark.parametrize(
         ("field", "value"),
@@ -251,7 +255,7 @@ class TestKeychainGetToken:
             ("client_secret", " \t "),
         ],
     )
-    def test_returns_none_on_invalid_required_fields(self, field, value):
+    def test_raises_on_invalid_required_fields(self, field, value):
         """Required authorized-user fields must be non-empty strings."""
         token_info = {
             "token": "access-token",
@@ -261,10 +265,11 @@ class TestKeychainGetToken:
         }
         token_info[field] = value
         with patch("gmail_mcp.auth.read_token", return_value=json.dumps(token_info)):
-            assert get_token() is None
+            with pytest.raises(CredentialFormatError, match="required fields"):
+                get_token()
 
     @pytest.mark.parametrize("value", [None, [], {}, True, 1, "", " \t "])
-    def test_returns_none_on_invalid_access_token(self, value):
+    def test_raises_on_invalid_access_token(self, value):
         """A present OAuth access token must be a non-empty string."""
         token_info = {
             "token": value,
@@ -274,13 +279,14 @@ class TestKeychainGetToken:
             "expiry": "2099-01-01T00:00:00Z",
         }
         with patch("gmail_mcp.auth.read_token", return_value=json.dumps(token_info)):
-            assert get_token() is None
+            with pytest.raises(CredentialFormatError, match="access token"):
+                get_token()
 
     @pytest.mark.parametrize(
         "scopes",
         [1, {}, [1], ["https://www.googleapis.com/auth/gmail.modify", " "]],
     )
-    def test_returns_none_on_invalid_persisted_scopes(self, scopes):
+    def test_raises_on_invalid_persisted_scopes(self, scopes):
         """Persisted scopes must be a string or list of nonblank strings."""
         token_info = {
             "token": "access-token",
@@ -290,7 +296,8 @@ class TestKeychainGetToken:
             "scopes": scopes,
         }
         with patch("gmail_mcp.auth.read_token", return_value=json.dumps(token_info)):
-            assert get_token() is None
+            with pytest.raises(CredentialFormatError, match="invalid scopes"):
+                get_token()
 
     def test_normalizes_legacy_space_separated_scopes(self):
         """Legacy serialized scope strings remain compatible."""
@@ -585,8 +592,8 @@ class TestKeychainCommand:
             with pytest.raises(KeychainAccessError, match="timed out"):
                 is_authenticated()
 
-    def test_binary_keychain_value_is_unauthenticated(self):
-        """Non-UTF-8 Keychain corruption does not escape token parsing."""
+    def test_binary_keychain_value_is_explicit_error(self):
+        """Non-UTF-8 Keychain corruption is distinct from a missing item."""
         with patch("gmail_mcp.keychain.subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
                 [],
@@ -594,7 +601,15 @@ class TestKeychainCommand:
                 b"\xff\xfe",
                 b"",
             )
-            assert is_authenticated() is False
+            with pytest.raises(CredentialFormatError, match="malformed"):
+                is_authenticated()
+
+    def test_empty_keychain_value_is_explicit_error(self):
+        """A present empty Keychain item is distinct from a missing item."""
+        with patch("gmail_mcp.keychain.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess([], 0, b"", b"")
+            with pytest.raises(CredentialFormatError, match="empty"):
+                is_authenticated()
 
     def test_missing_security_command_surfaces_actionable_error(self):
         with patch(

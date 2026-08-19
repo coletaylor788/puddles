@@ -85,6 +85,27 @@ class TestAuthenticate:
         }
 
     @pytest.mark.asyncio
+    async def test_malformed_credential_returns_tool_error(self):
+        """Credential corruption is not reported as ordinary sign-out."""
+        from gmail_mcp.keychain import CredentialFormatError
+
+        with patch(
+            "gmail_mcp.server._list_emails",
+            side_effect=CredentialFormatError(
+                "Stored Gmail credential is malformed. Authenticate again."
+            ),
+        ):
+            result = await call_tool("list_emails", {})
+
+        payload = json.loads(result[0].text)
+        assert payload == {
+            "error": (
+                "Authentication unavailable: "
+                "Stored Gmail credential is malformed. Authenticate again."
+            ),
+        }
+
+    @pytest.mark.asyncio
     async def test_oauth_timeout_returns_structured_tool_error(self):
         """OAuth worker timeouts are explicit failed tool calls."""
         with patch(
