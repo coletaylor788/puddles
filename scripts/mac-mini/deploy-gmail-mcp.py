@@ -78,6 +78,28 @@ def fsync_directory(path: Path) -> None:
         os.close(descriptor)
 
 
+def durable_mkdir(path: Path, mode: int = 0o700) -> None:
+    missing: list[Path] = []
+    cursor = path
+    while not cursor.exists():
+        if cursor.is_symlink():
+            raise DeploymentError(f"directory ancestor is a broken symlink: {cursor}")
+        missing.append(cursor)
+        if cursor.parent == cursor:
+            raise DeploymentError(f"could not find existing parent for {path}")
+        cursor = cursor.parent
+    if cursor.is_symlink() or not cursor.is_dir():
+        raise DeploymentError(f"directory ancestor is invalid: {cursor}")
+    for directory in reversed(missing):
+        directory.mkdir(mode=mode)
+        os.chmod(directory, mode)
+        fsync_directory(directory)
+        fsync_directory(directory.parent)
+    if not missing:
+        os.chmod(path, mode)
+        fsync_directory(path)
+
+
 def atomic_write(
     path: Path,
     content: bytes,
@@ -391,13 +413,12 @@ class GmailDeployment:
         for path in (self.release_root, self.backup_root):
             if path.exists() and path.is_symlink():
                 raise DeploymentError(f"deployment root must not be a symlink: {path}")
-            path.mkdir(parents=True, mode=0o700, exist_ok=True)
-            os.chmod(path, 0o700)
+            durable_mkdir(path)
         if self.releases.exists() and self.releases.is_symlink():
             raise DeploymentError(
                 f"release directory must not be a symlink: {self.releases}"
             )
-        self.releases.mkdir(mode=0o700, exist_ok=True)
+        durable_mkdir(self.releases)
 
     def candidate_python(self) -> Path:
         return self.release / ".venv" / "bin" / "python"
@@ -595,7 +616,7 @@ class GmailDeployment:
     def snapshot_config(self, original: bytes, gmail: dict[str, Any]) -> None:
         timestamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
         self.recovery = self.backup_root / f"{timestamp}-{os.getpid()}"
-        self.recovery.mkdir(mode=0o700)
+        durable_mkdir(self.recovery)
         self.config_snapshot = self.recovery / "openclaw.json"
         atomic_write(self.config_snapshot, original, 0o600)
         self.original_config = original

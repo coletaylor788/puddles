@@ -389,10 +389,10 @@ and checks gateway health before returning the original failure. The helper
 keeps the failed release and recovery directory for diagnosis.
 
 Recovery also covers an uncatchable process death or power loss. The helper
-fsyncs both original and promoted config snapshots plus a deployment phase
-before replacement. The next invocation reclaims only a dead owner's deployment
-lock, restores an incomplete promotion, restarts and checks the prior gateway,
-then begins a new deployment.
+fsyncs every newly created recovery directory entry, both original and promoted
+config snapshots, and a deployment phase before replacement. The next
+invocation reclaims only a dead owner's deployment lock, restores an incomplete
+promotion, restarts and checks the prior gateway, then begins a new deployment.
 
 ## 7. Wiring an LLM provider for the hooks
 

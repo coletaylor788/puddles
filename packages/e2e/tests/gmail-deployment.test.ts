@@ -415,6 +415,31 @@ assert path.read_bytes() == b"new"
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
   });
 
+  it("fsyncs each new recovery directory entry and parent", () => {
+    const target = join(fixture, "durable", "nested", "recovery");
+    const probe = `
+import importlib.util
+import json
+from pathlib import Path
+
+spec = importlib.util.spec_from_file_location("gmail_deploy", ${JSON.stringify(deployScript)})
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+calls = []
+module.fsync_directory = lambda path: calls.append(str(path))
+module.durable_mkdir(Path(${JSON.stringify(target)}))
+print(json.dumps(calls))
+`;
+    const result = spawnSync("python3", ["-c", probe], { encoding: "utf8" });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    const calls = JSON.parse(result.stdout) as string[];
+    expect(calls).toContain(fixture);
+    expect(calls).toContain(join(fixture, "durable"));
+    expect(calls).toContain(join(fixture, "durable", "nested"));
+    expect(calls).toContain(target);
+  });
+
   it("rejects a retained release whose runtime content changed", () => {
     const deployed = runDeploy();
     expect(deployed.status, `${deployed.stdout}\n${deployed.stderr}`).toBe(0);

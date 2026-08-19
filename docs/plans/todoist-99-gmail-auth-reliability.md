@@ -12,13 +12,13 @@ Gmail kept failing because the running service still used an old package from th
 
 The deployment path builds a separate Gmail runtime from tracked source in the exact reviewed revision. A cryptographic manifest proves that a prepared release has not changed before reuse. Immediately before promotion, the helper joins the gateway's configuration lock, saves the current and candidate configs with owner-only permissions, and records a durable deployment phase before replacing anything.
 
-The helper restarts the gateway, confirms health, and makes one read-only Gmail profile request without printing account or mailbox content. Normal failure restores the prior Gmail fields while preserving unrelated changes. After power loss or process death, the next invocation reclaims only dead-owner locks, recovers the incomplete promotion, restarts and checks the prior gateway, then starts a new deployment.
+The helper restarts the gateway, confirms health, and makes one read-only Gmail profile request without printing account or mailbox content. Normal failure restores the prior Gmail fields while preserving unrelated changes. Recovery files and every new parent directory entry are synced before replacement. After power loss or process death, the next invocation reclaims only dead-owner locks, recovers the incomplete promotion, restarts and checks the prior gateway, then starts a new deployment.
 
 ### Status
 
-All three independent-review findings are fixed. Focused checks and the complete managed test lifecycle pass again, and production remains untouched.
+All retained-review findings are fixed, and production remains untouched.
 
-The retained reviewer is performing the final complete-diff recheck. Nothing needs Cole's input.
+Focused and complete managed validation pass. The retained reviewer is performing the final complete-diff recheck. Nothing needs Cole's input.
 
 ## Agent section
 
@@ -52,6 +52,7 @@ The retained reviewer is performing the final complete-diff recheck. Nothing nee
 - Candidate releases remain under `~/.local/share/puddles/gmail-mcp/releases/<revision>`.
 - OpenClaw's `<openclaw.json>.lock` sidecar protocol serializes config read, snapshot, and conditional write.
 - Recovery stores `openclaw.json`, `promoted-openclaw.json`, `recovery.json`, and `deployment-state.json` with owner-only permissions.
+- Every newly created recovery directory and ancestor is followed by an fsync of its parent directory.
 - Durable states cover snapshot, prepared, promoted, complete, aborted, restoring, rolled-back, and recovered outcomes.
 - Original and promoted snapshots are fsynced before live replacement.
 - The deployment lock is a fully written temporary file atomically hard-linked into place. A dead owner can be reclaimed after PID and file-identity checks; a live or malformed owner blocks.
@@ -70,23 +71,24 @@ The retained reviewer is performing the final complete-diff recheck. Nothing nee
 - [x] Replace the deployment lock with an atomically published owner record.
 - [x] Reclaim only dead deployment and config-lock owners.
 - [x] Add SIGKILL recovery, durable state, dead-lock, tampering, ignored-file, and config conflict regressions.
-- [x] Update deployment documentation for restart recovery.
+- [x] Durably create and fsync recovery directory entries.
+- [x] Add focused parent-directory fsync regression.
+- [x] Update deployment documentation for directory durability.
 
 ### Validation
 
-- Passed: all `171` safe Gmail tests.
-- Passed: `14` deployment lifecycle tests, including SIGTERM rollback, SIGKILL next-run recovery, dead lock reclamation, durable phases, release tampering, ignored files, config concurrency, install failure, restart failure, and smoke failure.
-- Passed: `28` focused deployment, Keychain, and plan contract tests.
-- Passed: Ruff, Python compilation, E2E TypeScript lint, and diff check.
-- Passed: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
-- Managed lifecycle result: `325` workspace tests, `171` safe Gmail tests, `471` mapped OpenClaw tests, and `1` candidate test. Build, lint, compilation, patch application, prompt snapshots, and cleanup also passed.
-- Pending: retained reviewer final recheck and terminal exact-commit review.
+- Passed after final remediation: all `171` safe Gmail tests.
+- Passed after final remediation: `15` deployment lifecycle tests and `29` focused deployment, Keychain, and plan contract tests.
+- Passed after final remediation: Ruff, Python compilation, TypeScript lint, and diff check.
+- Passed after final remediation: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
+- Managed lifecycle result: `326` workspace tests, `171` safe Gmail tests, `471` mapped OpenClaw tests, and `1` candidate test.
+- Pending: retained reviewer recheck and terminal exact-commit review.
 - Pending: exact-candidate production promotion and read-only validation.
 
 ### Rollout and rollback
 
 - Production remains unchanged until the final diff is reviewed, merged, and remotely green.
-- Every replacement has durable original and promoted snapshots plus a phase marker.
+- Every replacement must have durable original and promoted snapshots, a phase marker, and durable recovery directory entries.
 - Normal rollback and next-run crash recovery preserve unrelated changes and refuse Gmail conflicts.
 - Gateway health is required after rollback or crash recovery.
 - Failed candidate releases and recovery snapshots remain for diagnosis.
@@ -96,7 +98,8 @@ The retained reviewer is performing the final complete-diff recheck. Nothing nee
 - Initial retained review found high-severity stale-config and release-identity gaps. Both were fixed and validated.
 - Retained recheck found a medium-severity process-death gap because promoted bytes existed only in memory.
 - Process-death remediation persists promoted bytes and phases, publishes a recoverable lock atomically, and restores incomplete promotion on the next run.
-- Expanded focused and managed validation are green.
+- Retained recheck found a medium-severity gap because new recovery directory entries were not followed by parent-directory fsync.
+- The accepted fix durably creates every missing ancestor and fsyncs each new directory plus its parent. Focused and managed regressions pass.
 - The same retained reviewer is rechecking the complete final diff.
 
 ### Checklist
@@ -104,6 +107,7 @@ The retained reviewer is performing the final complete-diff recheck. Nothing nee
 - [x] Tracking comment, issue, and reopened plan follow the required contract.
 - [x] Release identity and config concurrency findings are fixed.
 - [x] Process-death recovery finding is fixed with regression coverage.
+- [x] Recovery directory entries are durable across power loss.
 - [x] Focused and full managed validation pass after final remediation.
 - [ ] Retained and terminal reviews are clean.
 - [ ] Deployment pull request is green and merged.
