@@ -370,7 +370,8 @@ The helper builds an immutable release under
 `~/.local/share/puddles/gmail-mcp/` from tracked files in the exact Git revision.
 Ignored credentials, tokens, caches, and other worktree files are never copied.
 Each prepared release has a SHA-256 content manifest that is checked before
-reuse.
+reuse. Before publication, every regular file is fsynced and every directory is
+fsynced from the leaves back to the release root.
 
 Immediately before promotion, the helper snapshots the complete OpenClaw config
 with owner-only permissions under `~/.openclaw-deploy-backups/gmail-mcp/`. It
@@ -393,6 +394,9 @@ fsyncs every newly created recovery directory entry, both original and promoted
 config snapshots, and a deployment phase before replacement. The next
 invocation reclaims only a dead owner's deployment lock, restores an incomplete
 promotion, restarts and checks the prior gateway, then begins a new deployment.
+If a completed active release later fails its content manifest, the same
+recovery path restores the prior runtime, quarantines the damaged release, and
+rebuilds from the reviewed Git revision.
 
 ## 7. Wiring an LLM provider for the hooks
 

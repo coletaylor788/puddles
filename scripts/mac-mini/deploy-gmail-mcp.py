@@ -201,6 +201,33 @@ def runtime_manifest(root: Path) -> dict[str, str]:
     return entries
 
 
+def fsync_file(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def fsync_tree(root: Path) -> None:
+    directories = [root]
+    for path in sorted(root.rglob("*")):
+        if path.is_symlink():
+            continue
+        if path.is_file():
+            fsync_file(path)
+        elif path.is_dir():
+            directories.append(path)
+        else:
+            raise DeploymentError(f"release contains unsupported file type: {path}")
+    for directory in sorted(
+        directories,
+        key=lambda path: len(path.relative_to(root).parts),
+        reverse=True,
+    ):
+        fsync_directory(directory)
+
+
 class GmailDeployment:
     def __init__(self, args: argparse.Namespace) -> None:
         self.source = args.source.resolve()
@@ -423,30 +450,35 @@ class GmailDeployment:
     def candidate_python(self) -> Path:
         return self.release / ".venv" / "bin" / "python"
 
-    def release_is_ready(self) -> bool:
-        metadata_path = self.release / ".puddles-release.json"
-        manifest_path = self.release / MANIFEST_NAME
-        if not self.release.exists():
-            return False
+    @staticmethod
+    def verify_release(release: Path, revision: str) -> None:
+        metadata_path = release / ".puddles-release.json"
+        manifest_path = release / MANIFEST_NAME
         if (
-            self.release.is_symlink()
+            release.is_symlink()
             or not metadata_path.is_file()
             or not manifest_path.is_file()
         ):
-            raise DeploymentError(f"existing release is invalid: {self.release}")
+            raise DeploymentError(f"existing release is invalid: {release}")
         try:
             metadata = json.loads(metadata_path.read_text())
             recorded_manifest = json.loads(manifest_path.read_text())
         except json.JSONDecodeError as exc:
-            raise DeploymentError(f"release metadata is invalid: {self.release}") from exc
-        if metadata.get("revision") != self.revision or not self.candidate_python().is_file():
-            raise DeploymentError(f"existing release does not match {self.revision}")
+            raise DeploymentError(f"release metadata is invalid: {release}") from exc
+        candidate_python = release / ".venv" / "bin" / "python"
+        if metadata.get("revision") != revision or not candidate_python.is_file():
+            raise DeploymentError(f"existing release does not match {revision}")
         if (
             not isinstance(recorded_manifest, dict)
-            or recorded_manifest.get("revision") != self.revision
-            or recorded_manifest.get("entries") != runtime_manifest(self.release)
+            or recorded_manifest.get("revision") != revision
+            or recorded_manifest.get("entries") != runtime_manifest(release)
         ):
-            raise DeploymentError(f"existing release content changed: {self.release}")
+            raise DeploymentError(f"existing release content changed: {release}")
+
+    def release_is_ready(self) -> bool:
+        if not self.release.exists():
+            return False
+        self.verify_release(self.release, self.revision)
         return True
 
     def extract_reviewed_source(self, destination: Path) -> None:
@@ -559,6 +591,7 @@ class GmailDeployment:
             f"{json.dumps(metadata, indent=2)}\n".encode(),
             0o600,
         )
+        fsync_tree(self.staging)
         manifest = {
             "revision": self.revision,
             "entries": runtime_manifest(self.staging),
@@ -725,9 +758,12 @@ class GmailDeployment:
             else:
                 gmail.pop(key, None)
 
-    def find_incomplete_recovery(self) -> tuple[Path, dict[str, Any]] | None:
+    def find_recovery_needing_action(
+        self,
+    ) -> tuple[Path, dict[str, Any], Path | None] | None:
         incomplete: list[tuple[Path, dict[str, Any]]] = []
-        for recovery in sorted(self.backup_root.iterdir()):
+        recoveries = sorted(self.backup_root.iterdir())
+        for recovery in recoveries:
             if not recovery.is_dir() or recovery.is_symlink():
                 continue
             state_path = recovery / STATE_NAME
@@ -739,11 +775,75 @@ class GmailDeployment:
                 raise DeploymentError(
                     f"deployment recovery state is invalid: {state_path}"
                 ) from exc
-            if state.get("phase") in {"prepared", "promoted", "restoring"}:
+            if state.get("phase") in {
+                "prepared",
+                "promoted",
+                "restoring",
+                "restoring-damaged",
+            }:
                 incomplete.append((recovery, state))
         if len(incomplete) > 1:
             raise DeploymentError("multiple incomplete Gmail deployments need recovery")
-        return incomplete[0] if incomplete else None
+        if incomplete:
+            recovery, state = incomplete[0]
+            damaged_release = None
+            if state.get("phase") == "restoring-damaged":
+                try:
+                    record = json.loads((recovery / "recovery.json").read_text())
+                    candidate_release_value = record.get("candidateRelease")
+                except (OSError, json.JSONDecodeError) as exc:
+                    raise DeploymentError(
+                        f"incomplete recovery record is unreadable: {recovery}"
+                    ) from exc
+                if not isinstance(candidate_release_value, str):
+                    raise DeploymentError(
+                        f"incomplete recovery metadata is invalid: {recovery}"
+                    )
+                damaged_release = Path(candidate_release_value)
+            return recovery, state, damaged_release
+
+        current_config = parse_config(self.config_path.read_bytes())
+        current_gmail = gmail_config(current_config)
+        for recovery in reversed(recoveries):
+            state_path = recovery / STATE_NAME
+            if not recovery.is_dir() or recovery.is_symlink() or not state_path.is_file():
+                continue
+            try:
+                state = json.loads(state_path.read_text())
+                record = json.loads((recovery / "recovery.json").read_text())
+            except (OSError, json.JSONDecodeError):
+                continue
+            if state.get("phase") != "complete":
+                continue
+            candidate_release_value = record.get("candidateRelease")
+            record_config = record.get("config")
+            revision = state.get("revision")
+            if (
+                not isinstance(candidate_release_value, str)
+                or not isinstance(record_config, str)
+                or not isinstance(revision, str)
+                or absolute_path(Path(record_config)) != self.config_path
+            ):
+                continue
+            candidate_release = Path(candidate_release_value)
+            candidate_values = {
+                "gmailMcpCommand": str(
+                    candidate_release / ".venv" / "bin" / "python"
+                ),
+                "gmailMcpArgs": EXPECTED_ARGS,
+                "gmailMcpCwd": str(candidate_release),
+            }
+            if not all(
+                current_gmail.get(key) == value
+                for key, value in candidate_values.items()
+            ):
+                continue
+            try:
+                self.verify_release(candidate_release, revision)
+            except DeploymentError:
+                return recovery, state, candidate_release
+            return None
+        return None
 
     def mark_existing_recovery(
         self,
@@ -763,10 +863,10 @@ class GmailDeployment:
         )
 
     def recover_incomplete_deployment(self) -> None:
-        incomplete = self.find_incomplete_recovery()
-        if incomplete is None:
+        recovery_action = self.find_recovery_needing_action()
+        if recovery_action is None:
             return
-        recovery, state = incomplete
+        recovery, state, damaged_release = recovery_action
         try:
             record = json.loads((recovery / "recovery.json").read_text())
         except (OSError, json.JSONDecodeError) as exc:
@@ -824,7 +924,11 @@ class GmailDeployment:
                         "refusing recovery overwrite"
                     )
             if replacement is not None:
-                self.mark_existing_recovery(recovery, state, "restoring")
+                self.mark_existing_recovery(
+                    recovery,
+                    state,
+                    "restoring-damaged" if damaged_release is not None else "restoring",
+                )
                 conditional_atomic_write(
                     self.config_path,
                     expected=current,
@@ -833,6 +937,14 @@ class GmailDeployment:
                 )
         if restart_needed:
             self.restart_gateway()
+        if damaged_release is not None and damaged_release.exists():
+            quarantine = damaged_release.with_name(
+                f"{damaged_release.name}.damaged-"
+                f"{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-{os.getpid()}"
+            )
+            os.replace(damaged_release, quarantine)
+            fsync_directory(damaged_release.parent)
+            print(f"Quarantined damaged Gmail release at {quarantine}")
         self.mark_existing_recovery(recovery, state, "recovered")
         print(f"Recovered incomplete Gmail deployment from {recovery}")
 

@@ -440,7 +440,41 @@ print(json.dumps(calls))
     expect(calls).toContain(target);
   });
 
-  it("rejects a retained release whose runtime content changed", () => {
+  it("fsyncs release files and directories before publication", () => {
+    const target = join(fixture, "release-tree");
+    mkdirSync(join(target, "nested"), { recursive: true });
+    writeFileSync(join(target, "root.txt"), "root\n");
+    writeFileSync(join(target, "nested", "child.txt"), "child\n");
+    const probe = `
+import importlib.util
+import json
+from pathlib import Path
+
+spec = importlib.util.spec_from_file_location("gmail_deploy", ${JSON.stringify(deployScript)})
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+files = []
+directories = []
+module.fsync_file = lambda path: files.append(str(path))
+module.fsync_directory = lambda path: directories.append(str(path))
+module.fsync_tree(Path(${JSON.stringify(target)}))
+print(json.dumps({"files": files, "directories": directories}))
+`;
+    const result = spawnSync("python3", ["-c", probe], { encoding: "utf8" });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    const calls = JSON.parse(result.stdout) as {
+      files: string[];
+      directories: string[];
+    };
+    expect(calls.files.sort()).toEqual(
+      [join(target, "nested", "child.txt"), join(target, "root.txt")].sort(),
+    );
+    expect(calls.directories).toContain(join(target, "nested"));
+    expect(calls.directories).toContain(target);
+  });
+
+  it("recovers and rebuilds a damaged active completed release", () => {
     const deployed = runDeploy();
     expect(deployed.status, `${deployed.stdout}\n${deployed.stderr}`).toBe(0);
     writeFileSync(
@@ -450,8 +484,26 @@ print(json.dumps(calls))
 
     const repeated = runDeploy();
 
-    expect(repeated.status).not.toBe(0);
-    expect(repeated.stderr).toContain("existing release content changed");
+    expect(repeated.status, `${repeated.stdout}\n${repeated.stderr}`).toBe(0);
+    expect(
+      readFileSync(join(releaseRoot, "releases", revision, "pyproject.toml"), "utf8"),
+    ).not.toBe("tampered\n");
+    expect(
+      readCalls().filter((line) => line === "openclaw\tgateway restart"),
+    ).toHaveLength(3);
+    expect(
+      readdirSync(join(releaseRoot, "releases")).some((entry) =>
+        entry.startsWith(`${revision}.damaged-`),
+      ),
+    ).toBe(true);
+    const phases = readdirSync(backupRoot)
+      .map((entry) =>
+        JSON.parse(
+          readFileSync(join(backupRoot, entry, "deployment-state.json"), "utf8"),
+        ).phase,
+      )
+      .sort();
+    expect(phases).toEqual(["complete", "recovered"]);
   });
 
   function runDeploy(extraEnv: Record<string, string> = {}) {
