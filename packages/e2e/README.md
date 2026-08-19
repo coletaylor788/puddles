@@ -95,6 +95,7 @@ suites, and uncommitted checks do not count.
 - recording message and PIM write adapters;
 - recording Todoist task writes and denying unsupported Todoist operations;
 - Gmail Keychain, refresh concurrency, timeout, and MCP error translation;
+- Gmail immutable release promotion, config recovery, and read-only smoke rollback;
 - manifest completeness and pinned-source enforcement;
 - OpenClaw explanation audience, context, and bounded-depth contracts;
 - reusable adversarial-review worker, material-finding threshold, anti-churn,

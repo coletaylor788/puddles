@@ -353,6 +353,31 @@ Notes:
 - `llmProvider` is a Node module specifier whose default export implements `mcp-hooks`' `LLMClient` interface. You bring (or write) the adapter — see `packages/mcp-hooks/README.md` for the contract and a sample. Wire whatever LLM you want.
 - `model` is forwarded verbatim to the provider's constructor. The provider decides what counts as a valid id.
 
+### 6.2 Deploy a reviewed gmail-mcp release
+
+Do not keep production tied to the repository checkout. After a Gmail server
+change is merged and remotely green, run the deploy helper from a clean isolated
+worktree at that exact `main` revision:
+
+```bash
+python3 scripts/mac-mini/deploy-gmail-mcp.py \
+  --source "$PWD" \
+  --revision "$(git rev-parse HEAD)" \
+  --python /opt/homebrew/bin/python3.11
+```
+
+The helper builds an immutable release under
+`~/.local/share/puddles/gmail-mcp/`, snapshots the complete OpenClaw config with
+owner-only permissions under `~/.openclaw-deploy-backups/gmail-mcp/`, and
+atomically changes only the secure Gmail command and working directory. It then
+restarts the gateway and makes one read-only Gmail profile request. The smoke
+check does not print the account address or mailbox content.
+
+If candidate installation, restart, gateway health, or Gmail validation fails,
+the helper restores the exact prior config, restarts the old gateway, and checks
+gateway health before returning the original failure. It keeps the failed
+release and recovery directory for diagnosis.
+
 ## 7. Wiring an LLM provider for the hooks
 
 `InjectionGuard` and `SecretRedactor` make LLM calls through the adapter you
