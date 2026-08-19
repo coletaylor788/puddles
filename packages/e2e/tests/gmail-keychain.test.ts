@@ -88,6 +88,15 @@ describe("Gmail Keychain backend", () => {
     expect(runner).toContain('env: { ...process.env, CI: "true" }');
   });
 
+  it("keeps clean installs on the supported MCP SDK major version", () => {
+    const manifest = readFileSync(
+      join(repoRoot, "servers", "gmail-mcp", "pyproject.toml"),
+      "utf8",
+    );
+
+    expect(manifest).toContain('"mcp>=1.0.0,<2.0.0"');
+  });
+
   it("preserves long values and never reapplies ACLs during refresh", async () => {
     const fixture = createFixture();
     const probe = `
