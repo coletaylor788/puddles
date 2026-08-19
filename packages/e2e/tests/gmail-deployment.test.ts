@@ -89,6 +89,9 @@ if [ "$1" = "-m" ] && [ "$2" = "venv" ]; then
   exit 0
 fi
 if [ "$1" = "-m" ] && [ "$2" = "pip" ] && [ "$3" = "install" ]; then
+  candidate="\${@: -1}"
+  mkdir -p "$candidate/fixture/__pycache__"
+  printf 'generated-bytecode\\n' > "$candidate/fixture/__pycache__/fixture.pyc"
   [ "\${MOCK_INSTALL_FAIL:-0}" != "1" ]
   exit
 fi
@@ -161,7 +164,7 @@ exit 2
     const deployed = JSON.parse(readFileSync(config, "utf8"));
     const gmail = deployed.plugins.entries["secure-gmail"].config;
     expect(gmail.gmailMcpCommand).toBe(
-      join(releaseRoot, "releases", revision, ".venv/bin/python"),
+      join(releaseRoot, "releases", revision, "bin/gmail-mcp-python"),
     );
     expect(gmail.gmailMcpCwd).toBe(join(releaseRoot, "releases", revision));
     expect(gmail.gmailMcpArgs).toEqual(["-m", "gmail_mcp"]);
@@ -173,6 +176,22 @@ exit 2
     expect(
       existsSync(join(releaseRoot, "releases", revision, "credentials.json")),
     ).toBe(false);
+    expect(
+      existsSync(
+        join(
+          releaseRoot,
+          "releases",
+          revision,
+          "fixture/__pycache__/fixture.pyc",
+        ),
+      ),
+    ).toBe(false);
+    expect(
+      readFileSync(
+        join(releaseRoot, "releases", revision, "bin/gmail-mcp-python"),
+        "utf8",
+      ),
+    ).toContain("PYTHONDONTWRITEBYTECODE=1");
     const backup = onlyChild(backupRoot);
     expect(readFileSync(join(backupRoot, backup, "openclaw.json"), "utf8")).toBe(
       originalConfig,
@@ -240,6 +259,29 @@ exit 2
     expect(
       current.plugins.entries["secure-gmail"].config.gmailMcpCommand,
     ).toBe("/operator/python");
+  });
+
+  it("reconciles and fails when Gmail config changes during successful smoke", () => {
+    const result = runDeploy({
+      MOCK_CONCURRENT_CONFIG: config,
+      MOCK_CONCURRENT_MODE: "gmail",
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("config changed during validation");
+    const current = JSON.parse(readFileSync(config, "utf8"));
+    expect(
+      current.plugins.entries["secure-gmail"].config.gmailMcpCommand,
+    ).toBe("/operator/python");
+    expect(
+      readCalls().filter((line) => line === "openclaw\tgateway restart"),
+    ).toHaveLength(2);
+    const backup = onlyChild(backupRoot);
+    expect(
+      JSON.parse(
+        readFileSync(join(backupRoot, backup, "deployment-state.json"), "utf8"),
+      ).phase,
+    ).toBe("superseded");
   });
 
   it("does not mutate config when candidate installation fails", () => {
@@ -387,6 +429,43 @@ exit 2
     expect(existsSync(`${config}.lock`)).toBe(false);
   });
 
+  it("publishes a complete config lock owner record atomically", () => {
+    const probe = `
+import argparse
+import importlib.util
+import json
+from pathlib import Path
+
+spec = importlib.util.spec_from_file_location("gmail_deploy", ${JSON.stringify(deployScript)})
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+args = argparse.Namespace(
+    source=Path(${JSON.stringify(source)}),
+    revision=${JSON.stringify(revision)},
+    config=Path(${JSON.stringify(config)}),
+    release_root=Path(${JSON.stringify(releaseRoot)}),
+    backup_root=Path(${JSON.stringify(backupRoot)}),
+    lock_dir=Path(${JSON.stringify(lockDir)}),
+    python=${JSON.stringify(fakePython)},
+    openclaw=${JSON.stringify(fakeOpenClaw)},
+    gateway_port=18789,
+    health_attempts=2,
+    health_interval=0.01,
+    smoke_timeout=2.0,
+    config_lock_timeout=0.1,
+)
+deployment = module.GmailDeployment(args)
+with deployment.config_lock():
+    payload = json.loads(Path(${JSON.stringify(`${config}.lock`)}).read_text())
+    assert payload["pid"] > 0
+    assert len(payload["nonce"]) == 32
+assert not Path(${JSON.stringify(`${config}.lock`)}).exists()
+`;
+    const result = spawnSync("python3", ["-c", probe], { encoding: "utf8" });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+  });
+
   it("rejects a changed config in the conditional promotion guard", () => {
     const probe = `
 import importlib.util
@@ -504,6 +583,29 @@ print(json.dumps({"files": files, "directories": directories}))
       )
       .sort();
     expect(phases).toEqual(["complete", "recovered"]);
+  });
+
+  it("recovers when untracked executable bytecode appears after completion", () => {
+    const deployed = runDeploy();
+    expect(deployed.status, `${deployed.stdout}\n${deployed.stderr}`).toBe(0);
+    const bytecode = join(
+      releaseRoot,
+      "releases",
+      revision,
+      "gmail_mcp/__pycache__/injected.pyc",
+    );
+    mkdirSync(resolve(bytecode, ".."), { recursive: true });
+    writeFileSync(bytecode, "injected\n");
+
+    const repeated = runDeploy();
+
+    expect(repeated.status, `${repeated.stdout}\n${repeated.stderr}`).toBe(0);
+    expect(existsSync(bytecode)).toBe(false);
+    expect(
+      readdirSync(join(releaseRoot, "releases")).some((entry) =>
+        entry.startsWith(`${revision}.damaged-`),
+      ),
+    ).toBe(true);
   });
 
   function runDeploy(extraEnv: Record<string, string> = {}) {

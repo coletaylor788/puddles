@@ -48,6 +48,7 @@ def run(
     cwd: Path | None = None,
     capture: bool = False,
     timeout: float | None = None,
+    env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     try:
         return subprocess.run(
@@ -57,6 +58,7 @@ def run(
             text=True,
             capture_output=capture,
             timeout=timeout,
+            env=env,
         )
     except subprocess.TimeoutExpired as exc:
         raise DeploymentError(f"command timed out: {command[0]}") from exc
@@ -189,8 +191,6 @@ def runtime_manifest(root: Path) -> dict[str, str]:
         relative = path.relative_to(root)
         if relative.name == MANIFEST_NAME:
             continue
-        if "__pycache__" in relative.parts or relative.suffix == ".pyc":
-            continue
         key = relative.as_posix()
         if path.is_symlink():
             entries[key] = f"symlink:{os.readlink(path)}"
@@ -226,6 +226,18 @@ def fsync_tree(root: Path) -> None:
         reverse=True,
     ):
         fsync_directory(directory)
+
+
+def remove_bytecode(root: Path) -> None:
+    cache_directories = sorted(
+        (path for path in root.rglob("__pycache__") if path.is_dir()),
+        key=lambda path: len(path.parts),
+        reverse=True,
+    )
+    for directory in cache_directories:
+        shutil.rmtree(directory)
+    for bytecode in root.rglob("*.pyc"):
+        bytecode.unlink()
 
 
 class GmailDeployment:
@@ -324,43 +336,49 @@ class GmailDeployment:
             "createdAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "nonce": nonce,
         }
-        while True:
-            try:
-                descriptor = os.open(
-                    lock_path,
-                    os.O_WRONLY | os.O_CREAT | os.O_EXCL,
-                    0o600,
-                )
-                break
-            except FileExistsError as exc:
-                if self.reclaim_dead_config_lock(lock_path):
-                    continue
-                if time.monotonic() >= deadline:
-                    raise DeploymentError(
-                        f"OpenClaw config lock is busy: {lock_path}"
-                    ) from exc
-                time.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
+        descriptor, temporary = tempfile.mkstemp(
+            prefix=f".{lock_path.name}.",
+            dir=lock_path.parent,
+        )
+        temporary_path = Path(temporary)
+        acquired = False
         try:
             with os.fdopen(descriptor, "w") as handle:
                 json.dump(payload, handle)
                 handle.write("\n")
                 handle.flush()
                 os.fsync(handle.fileno())
+            os.chmod(temporary_path, 0o600)
+            while True:
+                try:
+                    os.link(temporary_path, lock_path)
+                    acquired = True
+                    break
+                except FileExistsError as exc:
+                    if self.reclaim_dead_config_lock(lock_path):
+                        continue
+                    if time.monotonic() >= deadline:
+                        raise DeploymentError(
+                            f"OpenClaw config lock is busy: {lock_path}"
+                        ) from exc
+                    time.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
             fsync_directory(lock_path.parent)
             yield
         finally:
-            try:
-                current = json.loads(lock_path.read_text())
-            except (OSError, json.JSONDecodeError) as exc:
-                raise DeploymentError(
-                    f"OpenClaw config lock ownership became unreadable: {lock_path}"
-                ) from exc
-            if current.get("pid") != os.getpid() or current.get("nonce") != nonce:
-                raise DeploymentError(
-                    f"OpenClaw config lock ownership changed: {lock_path}"
-                )
-            lock_path.unlink()
-            fsync_directory(lock_path.parent)
+            temporary_path.unlink(missing_ok=True)
+            if acquired:
+                try:
+                    current = json.loads(lock_path.read_text())
+                except (OSError, json.JSONDecodeError) as exc:
+                    raise DeploymentError(
+                        f"OpenClaw config lock ownership became unreadable: {lock_path}"
+                    ) from exc
+                if current.get("pid") != os.getpid() or current.get("nonce") != nonce:
+                    raise DeploymentError(
+                        f"OpenClaw config lock ownership changed: {lock_path}"
+                    )
+                lock_path.unlink()
+                fsync_directory(lock_path.parent)
 
     def acquire_lock(self) -> None:
         self.lock_dir.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
@@ -450,6 +468,9 @@ class GmailDeployment:
     def candidate_python(self) -> Path:
         return self.release / ".venv" / "bin" / "python"
 
+    def candidate_command(self) -> Path:
+        return self.release / "bin" / "gmail-mcp-python"
+
     @staticmethod
     def verify_release(release: Path, revision: str) -> None:
         metadata_path = release / ".puddles-release.json"
@@ -466,7 +487,12 @@ class GmailDeployment:
         except json.JSONDecodeError as exc:
             raise DeploymentError(f"release metadata is invalid: {release}") from exc
         candidate_python = release / ".venv" / "bin" / "python"
-        if metadata.get("revision") != revision or not candidate_python.is_file():
+        candidate_command = release / "bin" / "gmail-mcp-python"
+        if (
+            metadata.get("revision") != revision
+            or not candidate_python.is_file()
+            or not candidate_command.is_file()
+        ):
             raise DeploymentError(f"existing release does not match {revision}")
         if (
             not isinstance(recorded_manifest, dict)
@@ -581,6 +607,19 @@ class GmailDeployment:
             [str(staging_python), "-m", "pip", "freeze"],
             capture=True,
         ).stdout.splitlines()
+        remove_bytecode(self.staging)
+        wrapper = self.staging / "bin" / "gmail-mcp-python"
+        wrapper.parent.mkdir(mode=0o700, exist_ok=True)
+        atomic_write(
+            wrapper,
+            (
+                b"#!/bin/sh\n"
+                b'RELEASE_DIR="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"\n'
+                b"export PYTHONDONTWRITEBYTECODE=1\n"
+                b'exec "$RELEASE_DIR/.venv/bin/python" "$@"\n'
+            ),
+            0o755,
+        )
         metadata = {
             "revision": self.revision,
             "createdAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -632,6 +671,17 @@ class GmailDeployment:
         run([self.openclaw, "gateway", "restart"])
         self.wait_for_gateway()
 
+    def fail_after_concurrent_gmail_change(self) -> None:
+        conflict = DeploymentError("secure-gmail config changed during validation")
+        try:
+            self.restart_gateway()
+        except DeploymentError as reconciliation_error:
+            raise DeploymentError(
+                f"{conflict}; gateway reconciliation also failed: "
+                f"{reconciliation_error}"
+            ) from conflict
+        raise conflict
+
     def write_recovery_state(self, phase: str) -> None:
         if self.recovery is None:
             raise DeploymentError("recovery directory is unavailable")
@@ -680,7 +730,7 @@ class GmailDeployment:
         expected: bytes,
     ) -> None:
         gmail = gmail_config(config)
-        gmail["gmailMcpCommand"] = str(self.candidate_python())
+        gmail["gmailMcpCommand"] = str(self.candidate_command())
         gmail["gmailMcpArgs"] = EXPECTED_ARGS
         gmail["gmailMcpCwd"] = str(self.release)
         candidate = serialize_config(config)
@@ -728,6 +778,7 @@ class GmailDeployment:
                 str(self.smoke_timeout),
             ],
             timeout=self.smoke_timeout,
+            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
         )
 
     @staticmethod
@@ -827,9 +878,7 @@ class GmailDeployment:
                 continue
             candidate_release = Path(candidate_release_value)
             candidate_values = {
-                "gmailMcpCommand": str(
-                    candidate_release / ".venv" / "bin" / "python"
-                ),
+                "gmailMcpCommand": str(candidate_release / "bin" / "gmail-mcp-python"),
                 "gmailMcpArgs": EXPECTED_ARGS,
                 "gmailMcpCwd": str(candidate_release),
             }
@@ -897,7 +946,7 @@ class GmailDeployment:
             raise DeploymentError(f"incomplete recovery metadata is invalid: {recovery}")
         candidate_release = Path(candidate_release_value)
         candidate_values = {
-            "gmailMcpCommand": str(candidate_release / ".venv" / "bin" / "python"),
+            "gmailMcpCommand": str(candidate_release / "bin" / "gmail-mcp-python"),
             "gmailMcpArgs": EXPECTED_ARGS,
             "gmailMcpCwd": str(candidate_release),
         }
@@ -963,7 +1012,7 @@ class GmailDeployment:
                 current_config = parse_config(current)
                 current_gmail = gmail_config(current_config)
                 expected_candidate = {
-                    "gmailMcpCommand": str(self.candidate_python()),
+                    "gmailMcpCommand": str(self.candidate_command()),
                     "gmailMcpArgs": EXPECTED_ARGS,
                     "gmailMcpCwd": str(self.release),
                 }
@@ -1038,7 +1087,7 @@ class GmailDeployment:
                 with self.config_lock():
                     config, original, self.config_mode = load_config(self.config_path)
                     gmail = gmail_config(config)
-                    candidate_command = str(self.candidate_python())
+                    candidate_command = str(self.candidate_command())
                     already_active = (
                         gmail.get("gmailMcpCommand") == candidate_command
                         and gmail.get("gmailMcpArgs") == EXPECTED_ARGS
@@ -1049,14 +1098,40 @@ class GmailDeployment:
                         self.write_candidate_config(config, expected=original)
                 if already_active:
                     self.smoke_candidate()
+                    with self.config_lock():
+                        current_config, _, _ = load_config(self.config_path)
+                        current_gmail = gmail_config(current_config)
+                        still_active = (
+                            current_gmail.get("gmailMcpCommand")
+                            == str(self.candidate_command())
+                            and current_gmail.get("gmailMcpArgs") == EXPECTED_ARGS
+                            and current_gmail.get("gmailMcpCwd") == str(self.release)
+                        )
+                    if not still_active:
+                        self.fail_after_concurrent_gmail_change()
                     print(
                         f"Gmail release {self.revision} is already active and healthy"
                     )
                     return
                 self.restart_gateway()
                 self.smoke_candidate()
-                self.write_recovery_state("complete")
-                self.config_mutated = False
+                with self.config_lock():
+                    current_config, _, _ = load_config(self.config_path)
+                    current_gmail = gmail_config(current_config)
+                    still_active = (
+                        current_gmail.get("gmailMcpCommand")
+                        == str(self.candidate_command())
+                        and current_gmail.get("gmailMcpArgs") == EXPECTED_ARGS
+                        and current_gmail.get("gmailMcpCwd") == str(self.release)
+                    )
+                    if still_active:
+                        self.write_recovery_state("complete")
+                        self.config_mutated = False
+                    else:
+                        self.write_recovery_state("superseded")
+                        self.config_mutated = False
+                if not still_active:
+                    self.fail_after_concurrent_gmail_change()
             print(f"Deployed Gmail release {self.revision}; read-only smoke passed")
         finally:
             for signum, handler in previous_handlers.items():

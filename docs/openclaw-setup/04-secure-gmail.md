@@ -371,15 +371,23 @@ The helper builds an immutable release under
 Ignored credentials, tokens, caches, and other worktree files are never copied.
 Each prepared release has a SHA-256 content manifest that is checked before
 reuse. Before publication, every regular file is fsynced and every directory is
-fsynced from the leaves back to the release root.
+fsynced from the leaves back to the release root. Generated Python bytecode is
+removed before hashing, and the configured wrapper disables bytecode writes so
+all executable Python content remains covered by the manifest.
 
 Immediately before promotion, the helper snapshots the complete OpenClaw config
 with owner-only permissions under `~/.openclaw-deploy-backups/gmail-mcp/`. It
-joins OpenClaw's config lock and conditionally changes only the secure Gmail
-command and working directory. If the config changed after it was read,
-promotion stops instead of overwriting another operator. The helper then
-restarts the gateway and makes one read-only Gmail profile request. The smoke
-check does not print the account address or mailbox content.
+atomically publishes a complete owner record for OpenClaw's config lock, then
+conditionally changes only the secure Gmail command and working directory. If
+the config changed after it was read, promotion stops instead of overwriting
+another operator. The helper then restarts the gateway and makes one read-only
+Gmail profile request. The smoke check does not print the account address or
+mailbox content.
+
+After the smoke check, the helper reacquires the config lock and confirms Gmail
+still points at the candidate before recording success. If another operator
+changed Gmail during validation, the helper preserves that edit, restarts the
+gateway to load it, and reports the deployment as failed.
 
 If candidate installation, restart, gateway health, or Gmail validation fails,
 the helper restores the exact prior config when nothing else changed. If an
