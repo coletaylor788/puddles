@@ -1,6 +1,6 @@
 # Fix recurring Gmail authentication failures
 
-Status: Final deployment review
+Status: Landing deployment candidate
 Issue: https://github.com/coletaylor788/puddles/issues/99
 Last updated: 2026-08-18
 
@@ -16,15 +16,15 @@ The helper restarts the gateway, confirms health, and makes one read-only Gmail 
 
 ### Status
 
-All retained-review findings are fixed, and production remains untouched.
+All retained-review findings are fixed, focused and managed validation are green, and the complete current diff is clean. Production remains untouched.
 
-Focused and complete managed validation pass. The retained reviewer is performing the final complete-diff recheck. Nothing needs Cole's input.
+The exact landing candidate is being sealed for terminal review and remote integration. Nothing needs Cole's input.
 
 ## Agent section
 
 ### State
 
-- Phase: Retained reviewer final recheck
+- Phase: Seal exact landing candidate
 - Repository: `coletaylor788/puddles`
 - Todoist task: `6hHwPPrxrg2FQP9V`
 - Todoist label: `agent`
@@ -82,7 +82,7 @@ Focused and complete managed validation pass. The retained reviewer is performin
 - Passed after final remediation: Ruff, Python compilation, TypeScript lint, and diff check.
 - Passed after final remediation: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
 - Managed lifecycle result: `326` workspace tests, `171` safe Gmail tests, `471` mapped OpenClaw tests, and `1` candidate test.
-- Pending: retained reviewer recheck and terminal exact-commit review.
+- Pending: terminal exact-commit review and remote checks.
 - Pending: exact-candidate production promotion and read-only validation.
 
 ### Rollout and rollback
@@ -100,7 +100,8 @@ Focused and complete managed validation pass. The retained reviewer is performin
 - Process-death remediation persists promoted bytes and phases, publishes a recoverable lock atomically, and restores incomplete promotion on the next run.
 - Retained recheck found a medium-severity gap because new recovery directory entries were not followed by parent-directory fsync.
 - The accepted fix durably creates every missing ancestor and fsyncs each new directory plus its parent. Focused and managed regressions pass.
-- The same retained reviewer is rechecking the complete final diff.
+- The retained reviewer rechecked the complete final diff at `44a61508f5f3139717eaed5ea84ef90ffc203c7f` and found no significant issue.
+- Terminal review of the exact landing candidate is pending.
 
 ### Checklist
 
@@ -109,7 +110,8 @@ Focused and complete managed validation pass. The retained reviewer is performin
 - [x] Process-death recovery finding is fixed with regression coverage.
 - [x] Recovery directory entries are durable across power loss.
 - [x] Focused and full managed validation pass after final remediation.
-- [ ] Retained and terminal reviews are clean.
+- [x] Retained review is clean after all remediation.
+- [ ] Terminal exact-commit review is clean.
 - [ ] Deployment pull request is green and merged.
 - [ ] Exact landed candidate is promoted.
 - [ ] Read-only production validation passes.
