@@ -4,8 +4,11 @@ import asyncio
 import io
 import json
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
+import anyio
 import pytest
 
 from gmail_mcp import _async
@@ -47,6 +50,139 @@ async def test_run_blocking_times_out(monkeypatch):
     assert len(timeout_events) == 1
     assert timeout_events[0]["op"] == "unit.slow"
     assert timeout_events[0]["timeout_s"] == 0.05
+
+
+@pytest.mark.asyncio
+async def test_run_blocking_cancels_work_still_queued_at_timeout(monkeypatch):
+    """Executor saturation cannot start a side effect after timeout."""
+    loop = asyncio.get_running_loop()
+    executor = ThreadPoolExecutor(max_workers=1)
+    release_worker = threading.Event()
+    late_call_started = threading.Event()
+    occupied = loop.run_in_executor(executor, release_worker.wait)
+
+    async def saturated_to_thread(call):
+        return await loop.run_in_executor(executor, call)
+
+    monkeypatch.setattr(_async.asyncio, "to_thread", saturated_to_thread)
+    try:
+        with pytest.raises(asyncio.TimeoutError):
+            await _async.run_blocking(
+                late_call_started.set,
+                op="unit.queued",
+                timeout=0.05,
+            )
+    finally:
+        release_worker.set()
+        await occupied
+        await asyncio.sleep(0.05)
+        executor.shutdown(wait=True)
+
+    assert not late_call_started.is_set()
+
+
+@pytest.mark.asyncio
+async def test_run_blocking_cancels_work_still_queued_by_caller(monkeypatch):
+    """Caller cancellation cannot leave queued side effects behind."""
+    loop = asyncio.get_running_loop()
+    executor = ThreadPoolExecutor(max_workers=1)
+    release_worker = threading.Event()
+    late_call_started = threading.Event()
+    cancellation = threading.Event()
+    occupied = loop.run_in_executor(executor, release_worker.wait)
+
+    async def saturated_to_thread(call):
+        return await loop.run_in_executor(executor, call)
+
+    monkeypatch.setattr(_async.asyncio, "to_thread", saturated_to_thread)
+    task = asyncio.create_task(
+        _async.run_blocking(
+            late_call_started.set,
+            op="unit.cancelled",
+            timeout=1,
+            cancellation=cancellation,
+        )
+    )
+    await asyncio.sleep(0)
+    task.cancel()
+    try:
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    finally:
+        release_worker.set()
+        await occupied
+        await asyncio.sleep(0.05)
+        executor.shutdown(wait=True)
+
+    assert cancellation.is_set()
+    assert not late_call_started.is_set()
+
+
+@pytest.mark.asyncio
+async def test_cancellation_drains_started_authentication_write():
+    """Cancellation is not returned before a bounded credential write finishes."""
+    write_started = threading.Event()
+    release_write = threading.Event()
+    write_finished = threading.Event()
+    cancellation = threading.Event()
+
+    def credential_write():
+        write_started.set()
+        release_write.wait(timeout=1)
+        write_finished.set()
+
+    task = asyncio.create_task(
+        _async.run_blocking(
+            credential_write,
+            op="unit.credential_write",
+            timeout=1,
+            cancellation=cancellation,
+        )
+    )
+    await asyncio.wait_for(asyncio.to_thread(write_started.wait), timeout=0.5)
+    task.cancel()
+    await asyncio.sleep(0.05)
+    assert not task.done()
+
+    release_write.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert cancellation.is_set()
+    assert write_finished.is_set()
+
+
+@pytest.mark.asyncio
+async def test_anyio_cancellation_drains_started_authentication_write():
+    """AnyIO level cancellation cannot interrupt the bounded write drain."""
+    write_started = threading.Event()
+    release_write = threading.Event()
+    write_finished = threading.Event()
+    cancellation = threading.Event()
+
+    def credential_write():
+        write_started.set()
+        release_write.wait(timeout=1)
+        write_finished.set()
+
+    async def run_write():
+        await _async.run_blocking(
+            credential_write,
+            op="unit.anyio_credential_write",
+            timeout=1,
+            cancellation=cancellation,
+        )
+
+    release_timer = threading.Timer(0.1, release_write.set)
+    async with anyio.create_task_group() as task_group:
+        task_group.start_soon(run_write)
+        await asyncio.wait_for(asyncio.to_thread(write_started.wait), timeout=0.5)
+        release_timer.start()
+        task_group.cancel_scope.cancel()
+
+    release_timer.join(timeout=1)
+    assert cancellation.is_set()
+    assert write_finished.is_set()
 
 
 @pytest.mark.asyncio

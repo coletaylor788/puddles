@@ -1,6 +1,8 @@
 """Unit tests for server module."""
 
+import asyncio
 import json
+import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -15,6 +17,7 @@ from gmail_mcp.server import (
     _get_label_id,
     _list_emails,
     _sanitize_filename,
+    call_tool,
 )
 
 
@@ -51,6 +54,108 @@ class TestAuthenticate:
             assert len(result) == 1
             assert "Error during authentication" in result[0].text
 
+    @pytest.mark.asyncio
+    async def test_keychain_failure_reaches_tool_boundary(self):
+        """Keychain failures are translated by call_tool and logged as failures."""
+        from gmail_mcp.keychain import KeychainAccessError
+
+        with (
+            patch(
+                "gmail_mcp.server.run_oauth_flow",
+                side_effect=KeychainAccessError("access timed out"),
+            ),
+            pytest.raises(KeychainAccessError, match="access timed out"),
+        ):
+            await _authenticate()
+
+    @pytest.mark.asyncio
+    async def test_keychain_failure_returns_tool_error(self):
+        """Keychain failures become explicit tool results instead of MCP exceptions."""
+        from gmail_mcp.keychain import KeychainAccessError
+
+        with patch(
+            "gmail_mcp.server._list_emails",
+            side_effect=KeychainAccessError("access timed out"),
+        ):
+            result = await call_tool("list_emails", {})
+
+        payload = json.loads(result[0].text)
+        assert payload == {
+            "error": "Authentication unavailable: access timed out",
+        }
+
+    @pytest.mark.asyncio
+    async def test_malformed_credential_returns_tool_error(self):
+        """Credential corruption is not reported as ordinary sign-out."""
+        from gmail_mcp.keychain import CredentialFormatError
+
+        with patch(
+            "gmail_mcp.server._list_emails",
+            side_effect=CredentialFormatError(
+                "Stored Gmail credential is malformed. Authenticate again."
+            ),
+        ):
+            result = await call_tool("list_emails", {})
+
+        payload = json.loads(result[0].text)
+        assert payload == {
+            "error": (
+                "Authentication unavailable: "
+                "Stored Gmail credential is malformed. Authenticate again."
+            ),
+        }
+
+    @pytest.mark.asyncio
+    async def test_oauth_timeout_returns_structured_tool_error(self):
+        """OAuth worker timeouts are explicit failed tool calls."""
+        with patch(
+            "gmail_mcp.server.run_oauth_flow",
+            side_effect=asyncio.TimeoutError,
+        ):
+            result = await call_tool("authenticate", {})
+
+        payload = json.loads(result[0].text)
+        assert payload == {
+            "error": "Authentication unavailable: Gmail OAuth flow timed out",
+        }
+
+    @pytest.mark.asyncio
+    async def test_oauth_library_timeout_returns_structured_tool_error(self):
+        """Browser and token-exchange timeouts are explicit failed tool calls."""
+        from gmail_mcp.auth import OAuthFlowTimeoutError
+
+        with patch(
+            "gmail_mcp.server.run_oauth_flow",
+            side_effect=OAuthFlowTimeoutError("timed out"),
+        ):
+            result = await call_tool("authenticate", {})
+
+        payload = json.loads(result[0].text)
+        assert payload == {
+            "error": "Authentication unavailable: Gmail OAuth flow timed out",
+        }
+
+    @pytest.mark.asyncio
+    async def test_oauth_flow_does_not_block_event_loop(self):
+        """Interactive OAuth runs in a worker thread."""
+        entered = threading.Event()
+        release = threading.Event()
+
+        def slow_oauth(**_kwargs):
+            entered.set()
+            release.wait(timeout=1)
+            return "test@gmail.com"
+
+        with patch("gmail_mcp.server.run_oauth_flow", side_effect=slow_oauth):
+            task = asyncio.create_task(_authenticate())
+            await asyncio.wait_for(asyncio.to_thread(entered.wait), timeout=0.5)
+            await asyncio.sleep(0)
+            assert not task.done()
+            release.set()
+            result = await task
+
+        assert "Successfully authenticated" in result[0].text
+
 
 class TestListEmails:
     """Tests for list_emails tool."""
@@ -66,6 +171,27 @@ class TestListEmails:
             assert "authenticate" in result[0].text
 
     @pytest.mark.asyncio
+    async def test_auth_check_does_not_block_event_loop(self):
+        """Slow Keychain access runs in a worker thread."""
+        entered = threading.Event()
+        release = threading.Event()
+
+        def slow_auth_check():
+            entered.set()
+            release.wait(timeout=1)
+            return False
+
+        with patch("gmail_mcp.server.is_authenticated", side_effect=slow_auth_check):
+            task = asyncio.create_task(_list_emails({}))
+            await asyncio.wait_for(asyncio.to_thread(entered.wait), timeout=0.5)
+            await asyncio.sleep(0)
+            assert not task.done()
+            release.set()
+            result = await task
+
+        assert "Not authenticated" in result[0].text
+
+    @pytest.mark.asyncio
     async def test_returns_error_when_service_unavailable(self):
         """Returns error when Gmail service can't be obtained."""
         with (
@@ -76,6 +202,41 @@ class TestListEmails:
 
             assert len(result) == 1
             assert "Failed to connect" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_service_timeout_returns_structured_tool_error(self):
+        """A bounded service timeout is translated at the tool boundary."""
+        with (
+            patch("gmail_mcp.server.is_authenticated", return_value=True),
+            patch(
+                "gmail_mcp.server.get_gmail_service",
+                side_effect=asyncio.TimeoutError,
+            ),
+            patch("gmail_mcp.server.AUTH_SERVICE_TIMEOUT_S", 0.05),
+        ):
+            result = await call_tool("list_emails", {})
+
+        payload = json.loads(result[0].text)
+        assert payload == {
+            "error": "Authentication unavailable: Gmail authentication timed out",
+        }
+
+    @pytest.mark.asyncio
+    async def test_auth_check_timeout_returns_structured_tool_error(self):
+        """A concurrent auth-check timeout is translated at the tool boundary."""
+        with (
+            patch(
+                "gmail_mcp.server.is_authenticated",
+                side_effect=asyncio.TimeoutError,
+            ),
+            patch("gmail_mcp.server.AUTH_CHECK_TIMEOUT_S", 0.05),
+        ):
+            result = await call_tool("list_emails", {})
+
+        payload = json.loads(result[0].text)
+        assert payload == {
+            "error": "Authentication unavailable: Gmail authentication check timed out",
+        }
 
     @pytest.mark.asyncio
     async def test_returns_no_emails_message(self):
