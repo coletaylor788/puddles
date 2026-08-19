@@ -1,6 +1,6 @@
 # Fix recurring Gmail authentication failures
 
-Status: Final deployment review
+Status: Landing deployment candidate
 Issue: https://github.com/coletaylor788/puddles/issues/99
 Last updated: 2026-08-18
 
@@ -16,15 +16,15 @@ The helper restarts the gateway, confirms health, and makes one read-only Gmail 
 
 ### Status
 
-The package-manager preflight finding is fixed, focused and managed validation are green, and production remains unchanged.
+The package-manager preflight finding is fixed, focused and managed validation are green, and retained full-diff review is clean. Production remains unchanged.
 
-The retained reviewer is rechecking the complete final diff before a new terminal review and updated remote checks. Nothing needs Cole's input.
+The exact candidate is being sealed for a new terminal review and updated remote checks. Nothing needs Cole's input.
 
 ## Agent section
 
 ### State
 
-- Phase: Retained reviewer recheck
+- Phase: Seal exact landing candidate
 - Repository: `coletaylor788/puddles`
 - Todoist task: `6hHwPPrxrg2FQP9V`
 - Todoist label: `agent`
@@ -252,6 +252,7 @@ The retained reviewer is rechecking the complete final diff before a new termina
 - The retained reviewer rechecked the complete final diff at `0c8879c36ea1226a41aefd305c1a17932d93c9a5` and found no significant issue.
 - Production preflight then found direct `pnpm` unavailable even though `corepack pnpm` is available. The package-manager resolver fix invalidates the prior terminal candidate.
 - The accepted fix selects direct pnpm when present and otherwise uses Corepack for install, build, and pack. Both fixture paths and the complete managed lifecycle pass.
+- The retained reviewer rechecked the complete diff at `62b04375a427a5da3c6ffc7651d0277ca4f1ce23` and found no significant issue.
 
 ### Checklist
 
@@ -277,7 +278,8 @@ The retained reviewer is rechecking the complete final diff before a new termina
 - [x] Retained recheck is clean.
 - [x] Whole-deployment locking uses the patched shared implementation.
 - [x] Production package-manager resolution is fixed.
-- [ ] Retained recheck and a new terminal exact-commit review are clean.
+- [x] Retained recheck is clean.
+- [ ] A new terminal exact-commit review is clean.
 - [ ] Deployment pull request is green and merged.
 - [ ] Exact landed candidate is promoted.
 - [ ] Read-only production validation passes.
