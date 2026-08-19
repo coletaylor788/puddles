@@ -140,6 +140,9 @@ if [ "$1" = "gateway" ] && [ "$2" = "restart" ]; then
     restart_count="$(grep -c '^restart$' "$MOCK_RESTARTS" || true)"
   fi
   printf 'restart\\n' >> "$MOCK_RESTARTS"
+  if [ -n "\${MOCK_RECONCILE_SLEEP:-}" ] && [ "$restart_count" -eq 1 ]; then
+    exec sleep "$MOCK_RECONCILE_SLEEP"
+  fi
   if [ "\${MOCK_RESTART_FAIL_ONCE:-0}" = "1" ] && [ "$restart_count" -eq 0 ]; then
     exit 1
   fi
@@ -283,6 +286,58 @@ exit 2
       ).phase,
     ).toBe("superseded");
   });
+
+  it("recovers reconciliation interrupted by uncatchable process death", async () => {
+      const child = spawn("python3", deployArgs(), {
+        env: {
+          ...process.env,
+          MOCK_CALLS: calls,
+          MOCK_RESTARTS: join(fixture, "restarts"),
+          MOCK_CONCURRENT_CONFIG: config,
+          MOCK_CONCURRENT_MODE: "gmail",
+          MOCK_RECONCILE_SLEEP: "3",
+        },
+        stdio: "ignore",
+      });
+      const closed = new Promise<number | null>((resolve) => {
+        child.on("close", resolve);
+      });
+
+      await waitFor(
+        () =>
+          readCalls().filter((line) => line === "openclaw\tgateway restart").length === 2,
+      );
+      child.kill("SIGKILL");
+      await closed;
+
+      const backup = onlyChild(backupRoot);
+      expect(
+        JSON.parse(
+          readFileSync(join(backupRoot, backup, "deployment-state.json"), "utf8"),
+        ).phase,
+      ).toBe("reconciling");
+      expect(existsSync(lockDir)).toBe(true);
+
+      const resumed = runDeploy();
+
+      expect(resumed.status).not.toBe(0);
+      expect(resumed.stderr).toContain(
+        "recovered interrupted Gmail config reconciliation",
+      );
+      expect(
+        readCalls().filter((line) => line === "openclaw\tgateway restart"),
+      ).toHaveLength(3);
+      expect(
+        JSON.parse(
+          readFileSync(join(backupRoot, backup, "deployment-state.json"), "utf8"),
+        ).phase,
+      ).toBe("superseded");
+      expect(existsSync(lockDir)).toBe(false);
+      expect(
+        JSON.parse(readFileSync(config, "utf8")).plugins.entries["secure-gmail"].config
+          .gmailMcpCommand,
+      ).toBe("/operator/python");
+  }, 10_000);
 
   it("does not mutate config when candidate installation fails", () => {
     const result = runDeploy({ MOCK_INSTALL_FAIL: "1" });

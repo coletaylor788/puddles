@@ -16,7 +16,7 @@ The helper restarts the gateway, confirms health, and makes one read-only Gmail 
 
 ### Status
 
-All latest terminal-review findings are fixed, focused and managed validation are green, and production remains untouched.
+The reconciliation crash finding is fixed, focused and managed validation are green, and production remains untouched.
 
 The retained reviewer is rechecking the complete final diff before a new terminal review. Nothing needs Cole's input.
 
@@ -64,6 +64,8 @@ The retained reviewer is rechecking the complete final diff before a new termina
 - Normal rollback, signal deferral, gateway health, read-only profile smoke, and retained diagnosis state remain required.
 - Completion must reacquire the config lock, verify Gmail still points at the candidate, and record completion under that lock.
 - A concurrent Gmail edit during smoke must be preserved, loaded through a gateway restart, and reported as deployment failure.
+- Reconciliation must remain nonterminal until the gateway restart and health check succeed.
+- A later invocation must finish an interrupted reconciliation before considering another deployment.
 - The shared config lock owner record must be fully written and fsynced before atomic publication.
 - Published releases must contain no bytecode and must run with bytecode writes disabled so all executable Python content remains inside the manifest.
 
@@ -88,6 +90,9 @@ The retained reviewer is rechecking the complete final diff before a new termina
 - [x] Atomically publish the shared config lock owner record.
 - [x] Remove bytecode before publication and disable runtime bytecode writes.
 - [x] Add successful-smoke config conflict, lock publication, and bytecode injection regressions.
+- [x] Add durable reconciling and superseded phase ordering.
+- [x] Recover interrupted reconciliation on the next invocation.
+- [x] Add SIGKILL reconciliation recovery regression.
 
 ### Validation
 
@@ -96,6 +101,11 @@ The retained reviewer is rechecking the complete final diff before a new termina
 - Passed after final terminal remediation: Ruff, Python compilation, TypeScript lint, and diff check.
 - Passed after final terminal remediation: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
 - Managed lifecycle result: `330` workspace tests, `171` safe Gmail tests, `471` mapped OpenClaw tests, and `1` candidate test.
+- Passed after reconciliation remediation: all `171` safe Gmail tests.
+- Passed after reconciliation remediation: `20` deployment lifecycle tests and `34` focused deployment, Keychain, and plan contract tests.
+- Passed after reconciliation remediation: Ruff, Python compilation, TypeScript lint, and diff check.
+- Passed after reconciliation remediation: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
+- Managed lifecycle result: `331` workspace tests, `171` safe Gmail tests, `471` mapped OpenClaw tests, and `1` candidate test.
 - Pending: retained reviewer recheck and a new terminal exact-commit review.
 - Pending: exact-candidate production promotion and read-only validation.
 
@@ -121,6 +131,8 @@ The retained reviewer is rechecking the complete final diff before a new termina
 - The retained reviewer rechecked the complete final diff at `1e10012bdab12261bfeb93f815cba6b43e4905d2` and found no significant issue.
 - The latest terminal review found medium-severity gaps: successful smoke did not recheck Gmail config, config lock publication could leave a partial lock, and executable bytecode was excluded from integrity checks.
 - The accepted fixes verify Gmail under lock after smoke, reconcile and fail on conflicts, publish config lock records atomically, remove bytecode, disable bytecode writes, and treat later bytecode as release corruption.
+- Retained recheck found a medium-severity crash window because `superseded` was written before gateway reconciliation completed.
+- The accepted fix records `reconciling` before restart, writes `superseded` only after restart and health, and finishes interrupted reconciliation on the next invocation before stopping.
 - Expanded focused and managed validation pass. The retained reviewer is rechecking the complete final diff.
 
 ### Checklist
@@ -134,6 +146,7 @@ The retained reviewer is rechecking the complete final diff before a new termina
 - [x] Release-tree durability and active-release recovery are fixed.
 - [x] Retained recheck is clean.
 - [x] Final config, lock, and bytecode findings are fixed.
+- [x] Reconciliation crash recovery is fixed.
 - [ ] Retained recheck and a new terminal exact-commit review are clean.
 - [ ] Deployment pull request is green and merged.
 - [ ] Exact landed candidate is promoted.

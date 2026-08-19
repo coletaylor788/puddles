@@ -386,8 +386,11 @@ mailbox content.
 
 After the smoke check, the helper reacquires the config lock and confirms Gmail
 still points at the candidate before recording success. If another operator
-changed Gmail during validation, the helper preserves that edit, restarts the
-gateway to load it, and reports the deployment as failed.
+changed Gmail during validation, the helper preserves that edit and records a
+durable reconciliation phase before restarting the gateway to load it. Only
+after restart and health pass does the state become superseded and the
+deployment report failure. If the process dies during that restart, the next
+invocation finishes reconciliation and stops before another promotion.
 
 If candidate installation, restart, gateway health, or Gmail validation fails,
 the helper restores the exact prior config when nothing else changed. If an

@@ -680,7 +680,18 @@ class GmailDeployment:
                 f"{conflict}; gateway reconciliation also failed: "
                 f"{reconciliation_error}"
             ) from conflict
+        if self.recovery is not None:
+            self.write_recovery_state("superseded")
         raise conflict
+
+    def begin_gmail_reconciliation(self) -> None:
+        if self.recovery is None:
+            timestamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+            self.recovery = (
+                self.backup_root / f"{timestamp}-{os.getpid()}-reconciliation"
+            )
+            durable_mkdir(self.recovery)
+        self.write_recovery_state("reconciling")
 
     def write_recovery_state(self, phase: str) -> None:
         if self.recovery is None:
@@ -831,6 +842,7 @@ class GmailDeployment:
                 "promoted",
                 "restoring",
                 "restoring-damaged",
+                "reconciling",
             }:
                 incomplete.append((recovery, state))
         if len(incomplete) > 1:
@@ -916,6 +928,13 @@ class GmailDeployment:
         if recovery_action is None:
             return
         recovery, state, damaged_release = recovery_action
+        if state.get("phase") == "reconciling":
+            self.restart_gateway()
+            self.mark_existing_recovery(recovery, state, "superseded")
+            raise DeploymentError(
+                "recovered interrupted Gmail config reconciliation; "
+                "deployment remains superseded"
+            )
         try:
             record = json.loads((recovery / "recovery.json").read_text())
         except (OSError, json.JSONDecodeError) as exc:
@@ -1108,6 +1127,7 @@ class GmailDeployment:
                             and current_gmail.get("gmailMcpCwd") == str(self.release)
                         )
                     if not still_active:
+                        self.begin_gmail_reconciliation()
                         self.fail_after_concurrent_gmail_change()
                     print(
                         f"Gmail release {self.revision} is already active and healthy"
@@ -1128,7 +1148,7 @@ class GmailDeployment:
                         self.write_recovery_state("complete")
                         self.config_mutated = False
                     else:
-                        self.write_recovery_state("superseded")
+                        self.begin_gmail_reconciliation()
                         self.config_mutated = False
                 if not still_active:
                     self.fail_after_concurrent_gmail_change()
