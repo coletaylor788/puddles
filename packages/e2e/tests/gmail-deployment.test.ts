@@ -111,7 +111,11 @@ import sys
 path = Path(sys.argv[1])
 mode = sys.argv[2]
 data = json.loads(path.read_text())
-if mode == "gmail":
+if mode == "remove":
+    del data["plugins"]["entries"]["secure-gmail"]
+elif mode == "nonobject":
+    data["plugins"]["entries"]["secure-gmail"]["config"] = []
+elif mode == "gmail":
     data["plugins"]["entries"]["secure-gmail"]["config"]["gmailMcpCommand"] = "/operator/python"
 else:
     data["unrelated"]["duringDeployment"] = "preserved"
@@ -295,6 +299,39 @@ exit 2
         readFileSync(join(backupRoot, backup, "deployment-state.json"), "utf8"),
       ).phase,
     ).toBe("superseded");
+  });
+
+  it("reconciles when secure Gmail is removed during successful smoke", () => {
+      const result = runDeploy({
+        MOCK_CONCURRENT_CONFIG: config,
+        MOCK_CONCURRENT_MODE: "remove",
+      });
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("config changed during validation");
+      expect(
+        JSON.parse(readFileSync(config, "utf8")).plugins.entries["secure-gmail"],
+      ).toBeUndefined();
+      expect(
+        readCalls().filter((line) => line === "openclaw\tgateway restart"),
+      ).toHaveLength(2);
+  });
+
+  it("reconciles a non-object Gmail config during rollback", () => {
+      const result = runDeploy({
+        MOCK_CONCURRENT_CONFIG: config,
+        MOCK_CONCURRENT_MODE: "nonobject",
+        MOCK_SMOKE_FAIL: "1",
+      });
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("rollback also failed");
+      expect(
+        JSON.parse(readFileSync(config, "utf8")).plugins.entries["secure-gmail"].config,
+      ).toEqual([]);
+      expect(
+        readCalls().filter((line) => line === "openclaw\tgateway restart"),
+      ).toHaveLength(2);
   });
 
   it("recovers reconciliation interrupted by uncatchable process death", async () => {
@@ -507,6 +544,46 @@ exit 2
       JSON.parse(readFileSync(config, "utf8")).plugins.entries["secure-gmail"].config
         .gmailMcpCommand,
     ).toBe("/operator/python");
+  }, 10_000);
+
+  it("reconciles structural Gmail removal during process-death recovery", async () => {
+    const child = spawn("python3", deployArgs(), {
+      env: {
+        ...process.env,
+        MOCK_CALLS: calls,
+        MOCK_RESTARTS: join(fixture, "restarts"),
+        MOCK_SMOKE_SLEEP: "3",
+      },
+      stdio: "ignore",
+    });
+    const closed = new Promise<number | null>((resolve) => {
+      child.on("close", resolve);
+    });
+
+    await waitFor(() =>
+      readCalls().some((line) =>
+        line.includes("gmail_mcp.scripts.production_smoke"),
+      ),
+    );
+    child.kill("SIGKILL");
+    await closed;
+
+    const changed = JSON.parse(readFileSync(config, "utf8"));
+    delete changed.plugins.entries["secure-gmail"];
+    writeFileSync(config, `${JSON.stringify(changed, null, 2)}\n`);
+
+    const resumed = runDeploy();
+
+    expect(resumed.status).not.toBe(0);
+    expect(resumed.stderr).toContain(
+      "recovered concurrent Gmail config after process death",
+    );
+    expect(
+      readCalls().filter((line) => line === "openclaw\tgateway restart"),
+    ).toHaveLength(2);
+    expect(
+      JSON.parse(readFileSync(config, "utf8")).plugins.entries["secure-gmail"],
+    ).toBeUndefined();
   }, 10_000);
 
   it("rejects a concurrent deployment before mutation", () => {

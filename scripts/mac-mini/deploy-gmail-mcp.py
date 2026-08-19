@@ -177,6 +177,13 @@ def gmail_config(config: dict[str, Any]) -> dict[str, Any]:
     return gmail
 
 
+def optional_gmail_config(config: dict[str, Any]) -> dict[str, Any] | None:
+    try:
+        return gmail_config(config)
+    except DeploymentError:
+        return None
+
+
 def file_digest(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -878,7 +885,9 @@ class GmailDeployment:
             return recovery, state, damaged_release
 
         current_config = parse_config(self.config_path.read_bytes())
-        current_gmail = gmail_config(current_config)
+        current_gmail = optional_gmail_config(current_config)
+        if current_gmail is None:
+            return None
         for recovery in reversed(recoveries):
             state_path = recovery / STATE_NAME
             if not recovery.is_dir() or recovery.is_symlink() or not state_path.is_file():
@@ -991,15 +1000,18 @@ class GmailDeployment:
                 restart_needed = True
             elif current != original:
                 current_config = parse_config(current)
-                current_gmail = gmail_config(current_config)
-                if all(
+                current_gmail = optional_gmail_config(current_config)
+                if current_gmail is not None and all(
                     current_gmail.get(key) == value
                     for key, value in candidate_values.items()
                 ):
                     self.restore_gmail_values(current_gmail, previous_gmail)
                     replacement = serialize_config(current_config)
                     restart_needed = True
-                elif not self.gmail_values_match(current_gmail, previous_gmail):
+                elif current_gmail is None or not self.gmail_values_match(
+                    current_gmail,
+                    previous_gmail,
+                ):
                     self.mark_existing_recovery(
                         recovery,
                         state,
@@ -1052,13 +1064,13 @@ class GmailDeployment:
                 replacement = self.original_config
             else:
                 current_config = parse_config(current)
-                current_gmail = gmail_config(current_config)
+                current_gmail = optional_gmail_config(current_config)
                 expected_candidate = {
                     "gmailMcpCommand": str(self.candidate_command()),
                     "gmailMcpArgs": EXPECTED_ARGS,
                     "gmailMcpCwd": str(self.release),
                 }
-                if any(
+                if current_gmail is None or any(
                     current_gmail.get(key) != value
                     for key, value in expected_candidate.items()
                 ):
@@ -1145,9 +1157,10 @@ class GmailDeployment:
                     self.smoke_candidate()
                     with self.config_lock():
                         current_config, _, _ = load_config(self.config_path)
-                        current_gmail = gmail_config(current_config)
+                        current_gmail = optional_gmail_config(current_config)
                         still_active = (
-                            current_gmail.get("gmailMcpCommand")
+                            current_gmail is not None
+                            and current_gmail.get("gmailMcpCommand")
                             == str(self.candidate_command())
                             and current_gmail.get("gmailMcpArgs") == EXPECTED_ARGS
                             and current_gmail.get("gmailMcpCwd") == str(self.release)
@@ -1163,9 +1176,10 @@ class GmailDeployment:
                 self.smoke_candidate()
                 with self.config_lock():
                     current_config, _, _ = load_config(self.config_path)
-                    current_gmail = gmail_config(current_config)
+                    current_gmail = optional_gmail_config(current_config)
                     still_active = (
-                        current_gmail.get("gmailMcpCommand")
+                        current_gmail is not None
+                        and current_gmail.get("gmailMcpCommand")
                         == str(self.candidate_command())
                         and current_gmail.get("gmailMcpArgs") == EXPECTED_ARGS
                         and current_gmail.get("gmailMcpCwd") == str(self.release)

@@ -16,7 +16,7 @@ The helper restarts the gateway, confirms health, and makes one read-only Gmail 
 
 ### Status
 
-The rollback runtime-reconciliation finding is fixed, focused and managed validation are green, and production remains untouched.
+The structural Gmail conflict finding is fixed, focused and managed validation are green, and production remains untouched.
 
 The retained reviewer is rechecking the complete final diff before a new terminal review. Nothing needs Cole's input.
 
@@ -69,6 +69,7 @@ The retained reviewer is rechecking the complete final diff before a new termina
 - Reconciliation must remain nonterminal until the gateway restart and health check succeed.
 - A later invocation must finish an interrupted reconciliation before considering another deployment.
 - Normal rollback and crash recovery must also reconcile the gateway when a concurrent Gmail edit prevents config restoration.
+- Missing secure Gmail entries and non-object Gmail config values are concurrent Gmail edits, not parser failures, after promotion.
 - The shared config lock owner record must be fully written and fsynced before atomic publication.
 - Published releases must contain no bytecode and must run with bytecode writes disabled so all executable Python content remains inside the manifest.
 
@@ -104,6 +105,9 @@ The retained reviewer is rechecking the complete final diff before a new termina
 - [x] Reconcile normal rollback conflicts before reporting failure.
 - [x] Reconcile process-death recovery conflicts before reporting failure.
 - [x] Add runtime reconciliation regressions for both conflict paths.
+- [x] Classify structural Gmail changes as conflicts during completion.
+- [x] Classify structural Gmail changes as conflicts during rollback and process-death recovery.
+- [x] Add missing-entry and non-object reconciliation regressions.
 
 ### Validation
 
@@ -132,6 +136,11 @@ The retained reviewer is rechecking the complete final diff before a new termina
 - Passed after rollback reconciliation remediation: Ruff, Python compilation, TypeScript lint, and diff check.
 - Passed after rollback reconciliation remediation: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
 - Managed lifecycle result: `335` workspace tests, `171` safe Gmail tests, `471` mapped OpenClaw tests, and `1` candidate test.
+- Passed after structural remediation: all `171` safe Gmail tests.
+- Passed after structural remediation: `27` deployment lifecycle tests and `41` focused deployment, Keychain, and plan contract tests.
+- Passed after structural remediation: Ruff, Python compilation, TypeScript lint, and diff check.
+- Passed after structural remediation: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
+- Managed lifecycle result: `338` workspace tests, `171` safe Gmail tests, `471` mapped OpenClaw tests, and `1` candidate test.
 - Pending: retained reviewer recheck and a new terminal exact-commit review.
 - Pending: exact-candidate production promotion and read-only validation.
 
@@ -171,6 +180,9 @@ The retained reviewer is rechecking the complete final diff before a new termina
 - The latest terminal review found a medium-severity gap because rollback conflicts preserved disk config but could leave the failed candidate running in the gateway.
 - The accepted fix routes both normal and process-death rollback conflicts through durable reconciliation, restarts and health-checks the operator config, marks superseded, and reports failure without retrying promotion.
 - Expanded focused and managed validation pass. The retained reviewer is rechecking the complete final diff.
+- Retained recheck found a medium-severity gap because missing or non-object Gmail config raised before reconciliation.
+- The accepted fix treats missing and non-object Gmail config as concurrent conflict during completion, normal rollback, and process-death recovery, with durable reconciliation and gateway health.
+- Expanded focused and managed validation pass. The retained reviewer is rechecking the complete final diff.
 
 ### Checklist
 
@@ -189,6 +201,7 @@ The retained reviewer is rechecking the complete final diff before a new termina
 - [x] Release metadata failures consistently trigger recovery.
 - [x] Retained recheck is clean.
 - [x] Rollback conflict runtime reconciliation is fixed.
+- [x] Structural Gmail conflicts use the same reconciliation path.
 - [ ] Retained recheck and a new terminal exact-commit review are clean.
 - [ ] Deployment pull request is green and merged.
 - [ ] Exact landed candidate is promoted.
