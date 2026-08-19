@@ -1,6 +1,6 @@
 # Fix recurring Gmail authentication failures
 
-Status: Reviewing final correction
+Status: Landing candidate
 Issue: https://github.com/coletaylor788/puddles/issues/99
 Last updated: 2026-08-18
 
@@ -16,15 +16,15 @@ Fresh remote installation exposed a separate compatibility boundary. The server 
 
 ### Status
 
-The dependency correction is complete. A fresh environment selects the supported SDK line, and focused checks plus the complete managed test lifecycle pass without source overrides.
+The Keychain repair and dependency correction pass focused checks, a fresh environment, the complete managed test lifecycle, and retained independent review. No actionable review finding remains.
 
-The retained reviewer is rechecking the complete updated diff. A new exact candidate and terminal review follow. Nothing needs Cole's input.
+The exact landing candidate is being sealed for terminal review and updated remote checks. Production rollout remains unavailable because the repository has no safe Gmail promotion and rollback path. Nothing needs Cole's input.
 
 ## Agent section
 
 ### State
 
-- Phase: Retained full-diff review
+- Phase: Seal exact landing candidate
 - Repository: `coletaylor788/puddles`
 - Todoist task: `6hHwPPrxrg2FQP9V`
 - Tracking issue: `https://github.com/coletaylor788/puddles/issues/99`
@@ -58,7 +58,7 @@ The retained reviewer is rechecking the complete updated diff. A new exact candi
 - Use cumulative deadlines, compare-before-write, cancellation, and bounded drain behavior for OAuth and refresh work.
 - Treat actual granted scopes as authoritative and reject invalid or narrowed refreshed credentials.
 - Preserve the environment-token backend.
-- Constrain `mcp` to `>=1.0.0,<2.0.0`. A clean installation now resolves `1.29.0`; remote CI selected incompatible `2.0.0` from the prior open-ended range.
+- Constrain `mcp` to `>=1.0.0,<2.0.0`. A clean installation resolves `1.29.0`; remote CI selected incompatible `2.0.0` from the former open-ended range.
 - Keep a cumulative manifest regression that asserts the supported upper bound remains present.
 - Port commits `26557b0` through `c9dbabe` from `origin/pr-31` and resolve the current test-pool documentation additively.
 - Keep issue 99 and this plan as the active source of truth. Remove the stale component plan carried by the old commit series.
@@ -82,18 +82,19 @@ The retained reviewer is rechecking the complete updated diff. A new exact candi
 - Fresh isolated install: `mcp 1.29.0` selected from `>=1.0.0,<2.0.0`.
 - Passed with the fresh environment: `169` safe Gmail tests, Gmail Ruff, and Python compilation.
 - Passed: `5` focused tests in `packages/e2e/tests/gmail-keychain.test.ts` and E2E TypeScript lint.
+- Passed: `9` plan and issue writing contract tests.
 - Passed: `node packages/e2e/bin/openclaw-test-env.mjs ci` using the fresh environment without a source-path override.
 - Managed lifecycle result: `311` workspace tests, `169` safe Gmail tests, `471` mapped OpenClaw tests, and `1` candidate test passed. Build, lint, compilation, patch application, prompt snapshot checks, and cleanup also passed.
 - Remote PR 100 on superseded commit `043dc6a`: all CodeQL checks passed; cumulative failed because the former range selected `mcp 2.0.0`.
-- Pending: retained-reviewer recheck and a new terminal exact-commit review.
+- Pending: terminal exact-commit review and updated remote checks.
 - Safety constraint: tests must not send mail, change mailbox state, print credential values, or edit the configured primary checkout.
 
 ### Rollout and rollback
 
-- The corrected candidate passes fresh-install and complete managed validation.
+- The corrected landing candidate passes fresh-install and complete managed validation.
 - Repository research found no snapshotting, atomic, rollback-capable Gmail production promotion path. The running service loads the package from the configured primary checkout, which this worker must not edit.
 - Production deployment is not run. Do not replace the missing lifecycle with a manual copy or primary-checkout edit.
-- Land the repository fix after new review and remote gates, then report the production rollout limitation.
+- Land the repository fix after terminal review and updated remote gates, then report the production rollout limitation.
 - The existing recovered OAuth credential remains independent of code rollout and must not be replaced unless validation proves it unusable.
 
 ### Review log
@@ -103,8 +104,9 @@ The retained reviewer is rechecking the complete updated diff. A new exact candi
 - The accepted format-error fix has focused, server-boundary, shared-pool, and documentation coverage.
 - The replacement retained reviewer found no significant issue after that fix.
 - Fresh terminal review found no actionable issue on `043dc6a2fd39106cc1135418785f836cfb676c14`.
-- Remote fresh-install CI then exposed the incompatible open-ended SDK range. The upper bound and cumulative regression now pass locally in a clean environment.
-- The retained reviewer is rechecking the complete updated diff. The terminal exact-commit review must repeat afterward.
+- Remote fresh-install CI then exposed the incompatible open-ended SDK range. The upper bound and cumulative regression pass locally in a clean environment.
+- The retained reviewer rechecked the complete corrected diff at `6d5207f7476e39f2e3901dd5c48255e4b7e01011` and found no significant issue. Remote checks on that updated candidate and safe production rollout remain residual gaps.
+- Terminal review of the exact landing candidate is pending.
 
 ### Checklist
 
@@ -117,7 +119,7 @@ The retained reviewer is rechecking the complete updated diff. A new exact candi
 - [x] Malformed credentials are distinct from missing credentials.
 - [x] Fresh installs stay on the compatible MCP SDK major line.
 - [x] Focused and complete managed validation pass after remote remediation.
-- [ ] Replacement retained-worker review is clean on the new candidate.
+- [x] Replacement retained-worker review is clean on the corrected candidate.
 - [ ] Exact candidate receives a new clean terminal review.
 - [ ] Pull request is remotely green, mergeable, and merged.
 - [ ] Default branch contains the repair.
