@@ -594,6 +594,9 @@ for p in "${PATCHES[@]}"; do
   fi
 done
 
+echo "==> Materializing patched dependencies"
+pnpm install --frozen-lockfile
+
 echo "==> Building from source (pnpm build)"
 NODE_OPTIONS=--max-old-space-size=8192 pnpm build
 

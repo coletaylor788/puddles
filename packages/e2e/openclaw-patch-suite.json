@@ -5,6 +5,9 @@
       "name": "file-lock-stale-reclaim-guard",
       "tests": [
         "src/plugin-sdk/file-lock.stale-contention.test.ts"
+      ],
+      "candidateTests": [
+        "tests/candidate.file-lock-reclaim-guard.test.ts"
       ]
     },
     {

@@ -16,7 +16,7 @@ The helper restarts the gateway, confirms health, and makes one read-only Gmail 
 
 ### Status
 
-The shared stale-lock race is fixed, focused and complete managed validation are green, and production remains untouched.
+The dependency patch materialization finding is fixed, the complete managed lifecycle is green, and production remains untouched.
 
 The retained reviewer is rechecking the complete final diff before a new terminal review. Nothing needs Cole's input.
 
@@ -74,6 +74,7 @@ The retained reviewer is rechecking the complete final diff before a new termina
 - Config lock acquisition and stale-owner recovery must come from OpenClaw's own exported file-lock implementation rather than custom pathname reclamation.
 - On macOS, stale sidecar removal must hold a kernel `O_EXLOCK` guard so only one reclaimer can inspect and remove a lock at a time.
 - Production must deploy the patched OpenClaw package through its rollback-capable lifecycle before deploying the Gmail runtime that relies on the exported lock.
+- OpenClaw dependencies must be installed with the frozen lockfile after the source patch stack changes dependency patches and lock hashes.
 - Published releases must contain no bytecode and must run with bytecode writes disabled so all executable Python content remains inside the manifest.
 
 ### Implementation
@@ -118,6 +119,9 @@ The retained reviewer is rechecking the complete final diff before a new termina
 - [x] Add a multi-process stale-reclaimer contention regression.
 - [x] Register the patch and test in the cumulative OpenClaw patch suite.
 - [x] Document the shared lock patch and deployment order.
+- [x] Move managed OpenClaw dependency install after patch application.
+- [x] Materialize patched dependencies before production OpenClaw build.
+- [x] Add candidate verification of installed fs-safe guard code.
 
 ### Validation
 
@@ -162,6 +166,12 @@ The retained reviewer is rechecking the complete final diff before a new termina
 - Passed: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
 - Managed lifecycle result: `339` workspace tests, `171` safe Gmail tests, `472` mapped OpenClaw tests, and `1` candidate test.
 - The deterministic multi-process stale-reclaimer regression passes on macOS.
+- Passed after materialization remediation: all `171` safe Gmail tests.
+- Passed after materialization remediation: `28` deployment tests and the patch manifest and deployment topology suites.
+- Passed after materialization remediation: shell and Node syntax, TypeScript lint, and diff check.
+- Passed after materialization remediation: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
+- Managed lifecycle result: `339` workspace tests, `171` safe Gmail tests, `472` mapped OpenClaw tests, and `2` candidate tests.
+- The installed-code candidate test confirms materialized fs-safe contains the Darwin reclaim guard.
 - Pending: retained reviewer recheck and a new terminal exact-commit review.
 - Pending: exact-candidate production promotion and read-only validation.
 
@@ -213,6 +223,9 @@ The retained reviewer is rechecking the complete final diff before a new termina
 - Retained recheck found a medium-severity race inside the installed shared lock manager because stale identity checks and pathname removal are separate operations.
 - The accepted source patch holds a kernel-exclusive reclaim guard around stale inspection and removal on macOS. A deterministic two-process test and the complete managed lifecycle pass.
 - The retained reviewer is rechecking the complete final diff.
+- Retained recheck found a high-severity deployment gap because dependency installation ran before the patch changed pnpm patch content and lock hashes.
+- The accepted fix applies the full patch stack before frozen dependency installation in both managed tests and production deployment. The candidate test verifies installed code.
+- Expanded focused and managed validation pass. The retained reviewer is rechecking the complete final diff.
 
 ### Checklist
 
@@ -234,6 +247,7 @@ The retained reviewer is rechecking the complete final diff before a new termina
 - [x] Structural Gmail conflicts use the same reconciliation path.
 - [x] Retained recheck is clean.
 - [x] Shared config locking uses a patched race-safe OpenClaw implementation.
+- [x] Patched dependency is materialized before tests and production build.
 - [ ] Retained recheck and a new terminal exact-commit review are clean.
 - [ ] Deployment pull request is green and merged.
 - [ ] Exact landed candidate is promoted.

@@ -94,16 +94,17 @@ async function runPatchSuite() {
   try {
     await run("git", ["-C", source, "worktree", "add", "--detach", candidate, suite.openclawRef]);
     worktreeCreated = true;
-    await run("corepack", ["pnpm", "install", "--frozen-lockfile"], {
-      cwd: candidate,
-      env: { ...process.env, CI: process.env.CI ?? "true" },
-    });
 
     for (const patch of suite.patches) {
       const patchFile = join(patchDir, `${patch.name}.patch`);
       await run("git", ["apply", "--check", patchFile], { cwd: candidate });
       await run("git", ["apply", patchFile], { cwd: candidate });
     }
+
+    await run("corepack", ["pnpm", "install", "--frozen-lockfile"], {
+      cwd: candidate,
+      env: { ...process.env, CI: process.env.CI ?? "true" },
+    });
 
     await run("corepack", ["pnpm", "prompt:snapshots:check"], {
       cwd: candidate,
