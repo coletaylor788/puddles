@@ -9,6 +9,7 @@ import json
 import os
 import re
 import secrets
+import selectors
 import shutil
 import signal
 import stat
@@ -267,6 +268,13 @@ class GmailDeployment:
         self.health_interval = args.health_interval
         self.smoke_timeout = args.smoke_timeout
         self.config_lock_timeout = args.config_lock_timeout
+        self.node = args.node
+        self.config_lock_helper = absolute_path(args.config_lock_helper)
+        self.openclaw_lock_module = (
+            absolute_path(args.openclaw_lock_module)
+            if args.openclaw_lock_module is not None
+            else None
+        )
         self.releases = self.release_root / "releases"
         self.release = self.releases / self.revision
         self.staging: Path | None = None
@@ -314,83 +322,103 @@ class GmailDeployment:
             return False
         return True
 
-    def reclaim_dead_config_lock(self, lock_path: Path) -> bool:
-        try:
-            original = lock_path.read_bytes()
-            original_stat = lock_path.stat()
-            payload = json.loads(original)
-            pid = int(payload.get("pid"))
-        except (OSError, TypeError, ValueError, json.JSONDecodeError):
-            return False
-        if pid <= 0 or self.process_is_running(pid):
-            return False
-        try:
-            current_stat = lock_path.stat()
-            if (
-                current_stat.st_dev != original_stat.st_dev
-                or current_stat.st_ino != original_stat.st_ino
-                or lock_path.read_bytes() != original
-            ):
-                return False
-            lock_path.unlink()
-            fsync_directory(lock_path.parent)
-        except OSError:
-            return False
-        return True
+    def resolve_openclaw_lock_module(self) -> Path:
+        if self.openclaw_lock_module is not None:
+            module_path = self.openclaw_lock_module
+        else:
+            global_root = run(["npm", "root", "-g"], capture=True).stdout.strip()
+            module_path = (
+                Path(global_root)
+                / "openclaw"
+                / "dist"
+                / "plugin-sdk"
+                / "file-lock.js"
+            )
+        if not module_path.is_file():
+            raise DeploymentError(f"OpenClaw file-lock module is missing: {module_path}")
+        return module_path
 
     @contextmanager
-    def config_lock(self) -> Iterator[None]:
-        lock_path = Path(f"{self.config_path}.lock")
-        deadline = time.monotonic() + self.config_lock_timeout
-        nonce = secrets.token_hex(16)
-        payload = {
-            "pid": os.getpid(),
-            "createdAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "nonce": nonce,
-        }
-        descriptor, temporary = tempfile.mkstemp(
-            prefix=f".{lock_path.name}.",
-            dir=lock_path.parent,
-        )
-        temporary_path = Path(temporary)
-        acquired = False
+    def config_lock(self) -> Iterator[Callable[[], None]]:
+        if not self.config_lock_helper.is_file():
+            raise DeploymentError(
+                f"OpenClaw config lock helper is missing: {self.config_lock_helper}"
+            )
+        command = [
+            self.node,
+            str(self.config_lock_helper),
+            str(self.resolve_openclaw_lock_module()),
+            str(self.config_path),
+        ]
         try:
-            with os.fdopen(descriptor, "w") as handle:
-                json.dump(payload, handle)
-                handle.write("\n")
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.chmod(temporary_path, 0o600)
-            while True:
-                try:
-                    os.link(temporary_path, lock_path)
-                    acquired = True
-                    break
-                except FileExistsError as exc:
-                    if self.reclaim_dead_config_lock(lock_path):
-                        continue
-                    if time.monotonic() >= deadline:
-                        raise DeploymentError(
-                            f"OpenClaw config lock is busy: {lock_path}"
-                        ) from exc
-                    time.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
-            fsync_directory(lock_path.parent)
-            yield
+            process = subprocess.Popen(
+                command,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        except OSError as exc:
+            raise DeploymentError(
+                f"OpenClaw config lock helper could not start: {exc}"
+            ) from exc
+        selector = selectors.DefaultSelector()
+        if process.stdout is None:
+            process.kill()
+            raise DeploymentError("OpenClaw config lock helper has no stdout")
+        selector.register(process.stdout, selectors.EVENT_READ)
+        acquired = False
+
+        def assert_held() -> None:
+            if process.poll() is not None:
+                raise DeploymentError("OpenClaw config lock helper exited unexpectedly")
+
+        try:
+            ready = selector.select(self.config_lock_timeout)
+            if not ready:
+                process.kill()
+                process.wait()
+                detail = process.stderr.read().strip() if process.stderr else ""
+                raise DeploymentError(
+                    f"OpenClaw config lock acquisition timed out"
+                    f"{f': {detail}' if detail else ''}"
+                )
+            line = process.stdout.readline()
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError as exc:
+                detail = process.stderr.read().strip() if process.stderr else ""
+                raise DeploymentError(
+                    f"OpenClaw config lock helper failed"
+                    f"{f': {detail}' if detail else ''}"
+                ) from exc
+            if payload.get("ready") is not True:
+                raise DeploymentError("OpenClaw config lock helper was not ready")
+            acquired = True
+            assert_held()
+            yield assert_held
         finally:
-            temporary_path.unlink(missing_ok=True)
             if acquired:
                 try:
-                    current = json.loads(lock_path.read_text())
-                except (OSError, json.JSONDecodeError) as exc:
+                    if process.stdin is not None:
+                        process.stdin.close()
+                    return_code = process.wait(timeout=5)
+                except (OSError, subprocess.TimeoutExpired) as exc:
+                    process.kill()
+                    process.wait()
                     raise DeploymentError(
-                        f"OpenClaw config lock ownership became unreadable: {lock_path}"
+                        f"OpenClaw config lock release failed: {exc}"
                     ) from exc
-                if current.get("pid") != os.getpid() or current.get("nonce") != nonce:
+                if return_code != 0:
+                    detail = process.stderr.read().strip() if process.stderr else ""
                     raise DeploymentError(
-                        f"OpenClaw config lock ownership changed: {lock_path}"
+                        f"OpenClaw config lock helper exited with status {return_code}"
+                        f"{f': {detail}' if detail else ''}"
                     )
-                lock_path.unlink()
-                fsync_directory(lock_path.parent)
+            elif process.poll() is None:
+                process.kill()
+                process.wait()
+            selector.close()
 
     def acquire_lock(self) -> None:
         self.lock_dir.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
@@ -758,6 +786,7 @@ class GmailDeployment:
         config: dict[str, Any],
         *,
         expected: bytes,
+        assert_lock: Callable[[], None],
     ) -> None:
         gmail = gmail_config(config)
         gmail["gmailMcpCommand"] = str(self.candidate_command())
@@ -783,6 +812,7 @@ class GmailDeployment:
 
         try:
             try:
+                assert_lock()
                 conditional_atomic_write(
                     self.config_path,
                     expected=expected,
@@ -992,7 +1022,8 @@ class GmailDeployment:
         }
         restart_needed = True
         reconcile_conflict = False
-        with self.config_lock():
+        with self.config_lock() as assert_lock:
+            assert_lock()
             current = self.config_path.read_bytes()
             replacement: bytes | None = None
             if current == promoted:
@@ -1024,6 +1055,7 @@ class GmailDeployment:
                     state,
                     "restoring-damaged" if damaged_release is not None else "restoring",
                 )
+                assert_lock()
                 conditional_atomic_write(
                     self.config_path,
                     expected=current,
@@ -1057,7 +1089,8 @@ class GmailDeployment:
             or self.promoted_config is None
         ):
             raise DeploymentError("rollback config snapshot is missing")
-        with self.config_lock():
+        with self.config_lock() as assert_lock:
+            assert_lock()
             current = self.config_path.read_bytes()
             reconcile_conflict = False
             if current == self.promoted_config:
@@ -1085,6 +1118,7 @@ class GmailDeployment:
                             current_gmail.pop(key, None)
                     replacement = serialize_config(current_config)
             if not reconcile_conflict:
+                assert_lock()
                 conditional_atomic_write(
                     self.config_path,
                     expected=current,
@@ -1141,7 +1175,8 @@ class GmailDeployment:
             self.wait_for_gateway()
             with self.rollback_on_failure(previous_handlers):
                 already_active = False
-                with self.config_lock():
+                with self.config_lock() as assert_lock:
+                    assert_lock()
                     config, original, self.config_mode = load_config(self.config_path)
                     gmail = gmail_config(config)
                     candidate_command = str(self.candidate_command())
@@ -1152,10 +1187,15 @@ class GmailDeployment:
                     )
                     if not already_active:
                         self.snapshot_config(original, gmail)
-                        self.write_candidate_config(config, expected=original)
+                        self.write_candidate_config(
+                            config,
+                            expected=original,
+                            assert_lock=assert_lock,
+                        )
                 if already_active:
                     self.smoke_candidate()
-                    with self.config_lock():
+                    with self.config_lock() as assert_lock:
+                        assert_lock()
                         current_config, _, _ = load_config(self.config_path)
                         current_gmail = optional_gmail_config(current_config)
                         still_active = (
@@ -1174,7 +1214,8 @@ class GmailDeployment:
                     return
                 self.restart_gateway()
                 self.smoke_candidate()
-                with self.config_lock():
+                with self.config_lock() as assert_lock:
+                    assert_lock()
                     current_config, _, _ = load_config(self.config_path)
                     current_gmail = optional_gmail_config(current_config)
                     still_active = (
@@ -1242,7 +1283,14 @@ def parse_args() -> argparse.Namespace:
         default=Path.home() / ".gmail-mcp-deploy.lock",
     )
     parser.add_argument("--python", default=sys.executable)
+    parser.add_argument("--node", default=shutil.which("node") or "node")
     parser.add_argument("--openclaw", default=shutil.which("openclaw") or "openclaw")
+    parser.add_argument(
+        "--config-lock-helper",
+        type=Path,
+        default=Path(__file__).with_name("openclaw-config-lock.mjs"),
+    )
+    parser.add_argument("--openclaw-lock-module", type=Path)
     parser.add_argument("--gateway-port", type=positive_int, default=18789)
     parser.add_argument("--health-attempts", type=positive_int, default=30)
     parser.add_argument("--health-interval", type=positive_float, default=1.0)

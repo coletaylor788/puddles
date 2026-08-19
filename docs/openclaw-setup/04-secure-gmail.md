@@ -379,12 +379,14 @@ triggers the same damaged-release recovery.
 
 Immediately before promotion, the helper snapshots the complete OpenClaw config
 with owner-only permissions under `~/.openclaw-deploy-backups/gmail-mcp/`. It
-atomically publishes a complete owner record for OpenClaw's config lock, then
-conditionally changes only the secure Gmail command and working directory. If
-the config changed after it was read, promotion stops instead of overwriting
-another operator. The helper then restarts the gateway and makes one read-only
-Gmail profile request. The smoke check does not print the account address or
-mailbox content.
+starts a small Node holder that calls the installed OpenClaw plugin SDK's
+exported file-lock API, so config writes and deployment share the same
+contention and stale-owner recovery rules. While that holder owns the lock, the
+deployer conditionally changes only the secure Gmail command and working
+directory. If the config changed after it was read, promotion stops instead of
+overwriting another operator. The helper then restarts the gateway and makes one
+read-only Gmail profile request. The smoke check does not print the account
+address or mailbox content.
 
 After the smoke check, the helper reacquires the config lock and confirms Gmail
 still points at the candidate before recording success. If another operator

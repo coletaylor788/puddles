@@ -1,6 +1,6 @@
 # Fix recurring Gmail authentication failures
 
-Status: Landing deployment candidate
+Status: Final deployment review
 Issue: https://github.com/coletaylor788/puddles/issues/99
 Last updated: 2026-08-18
 
@@ -16,15 +16,15 @@ The helper restarts the gateway, confirms health, and makes one read-only Gmail 
 
 ### Status
 
-The structural Gmail conflict finding is fixed, focused and managed validation are green, and retained full-diff review is clean. Production remains untouched.
+The shared-lock finding is fixed, focused and managed validation are green, and production remains untouched.
 
-The exact landing candidate is being sealed for a new terminal review and remote integration. Nothing needs Cole's input.
+The retained reviewer is rechecking the complete final diff before a new terminal review. Nothing needs Cole's input.
 
 ## Agent section
 
 ### State
 
-- Phase: Seal exact landing candidate
+- Phase: Retained reviewer recheck
 - Repository: `coletaylor788/puddles`
 - Todoist task: `6hHwPPrxrg2FQP9V`
 - Todoist label: `agent`
@@ -71,6 +71,7 @@ The exact landing candidate is being sealed for a new terminal review and remote
 - Normal rollback and crash recovery must also reconcile the gateway when a concurrent Gmail edit prevents config restoration.
 - Missing secure Gmail entries and non-object Gmail config values are concurrent Gmail edits, not parser failures, after promotion.
 - The shared config lock owner record must be fully written and fsynced before atomic publication.
+- Config lock acquisition and stale-owner recovery must come from OpenClaw's own exported file-lock implementation rather than custom pathname reclamation.
 - Published releases must contain no bytecode and must run with bytecode writes disabled so all executable Python content remains inside the manifest.
 
 ### Implementation
@@ -108,6 +109,9 @@ The exact landing candidate is being sealed for a new terminal review and remote
 - [x] Classify structural Gmail changes as conflicts during completion.
 - [x] Classify structural Gmail changes as conflicts during rollback and process-death recovery.
 - [x] Add missing-entry and non-object reconciliation regressions.
+- [x] Replace custom config-lock publication and reclamation with OpenClaw's lock API.
+- [x] Add a two-process shared-lock contention regression.
+- [x] Remove custom config-lock stale takeover code.
 
 ### Validation
 
@@ -141,6 +145,11 @@ The exact landing candidate is being sealed for a new terminal review and remote
 - Passed after structural remediation: Ruff, Python compilation, TypeScript lint, and diff check.
 - Passed after structural remediation: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
 - Managed lifecycle result: `338` workspace tests, `171` safe Gmail tests, `471` mapped OpenClaw tests, and `1` candidate test.
+- Passed after lock API remediation: all `171` safe Gmail tests.
+- Passed after lock API remediation: `28` deployment lifecycle tests and `42` focused deployment, Keychain, and plan contract tests.
+- Passed after lock API remediation: Ruff, Python compilation, Node syntax, TypeScript lint, and diff check.
+- Passed after lock API remediation: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
+- Managed lifecycle result: `339` workspace tests, `171` safe Gmail tests, `471` mapped OpenClaw tests, and `1` candidate test.
 - Pending: retained reviewer recheck and a new terminal exact-commit review.
 - Pending: exact-candidate production promotion and read-only validation.
 
@@ -184,6 +193,9 @@ The exact landing candidate is being sealed for a new terminal review and remote
 - The accepted fix treats missing and non-object Gmail config as concurrent conflict during completion, normal rollback, and process-death recovery, with durable reconciliation and gateway health.
 - Expanded focused and managed validation pass.
 - The retained reviewer rechecked the complete final diff at `18b0a28ca51fbb3e0185a3e1d9e151a05a121a3e` and found no significant issue.
+- The latest terminal review found a medium-severity TOCTOU race because custom stale-lock identity checks and pathname deletion were separate operations.
+- The accepted fix uses `openclaw/plugin-sdk/file-lock` through a holder process, removes custom config-lock reclamation, and proves two processes serialize through the shared lock.
+- Expanded focused and managed validation pass. The retained reviewer is rechecking the complete final diff.
 
 ### Checklist
 
@@ -204,7 +216,8 @@ The exact landing candidate is being sealed for a new terminal review and remote
 - [x] Rollback conflict runtime reconciliation is fixed.
 - [x] Structural Gmail conflicts use the same reconciliation path.
 - [x] Retained recheck is clean.
-- [ ] A new terminal exact-commit review is clean.
+- [x] Shared config locking uses OpenClaw's race-safe implementation.
+- [ ] Retained recheck and a new terminal exact-commit review are clean.
 - [ ] Deployment pull request is green and merged.
 - [ ] Exact landed candidate is promoted.
 - [ ] Read-only production validation passes.

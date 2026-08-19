@@ -16,6 +16,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const deployScript = join(repoRoot, "scripts/mac-mini/deploy-gmail-mcp.py");
+const configLockHelper = join(
+  repoRoot,
+  "scripts/mac-mini/openclaw-config-lock.mjs",
+);
 
 describe("Gmail deployment lifecycle", () => {
   let fixture: string;
@@ -27,6 +31,7 @@ describe("Gmail deployment lifecycle", () => {
   let calls: string;
   let fakePython: string;
   let fakeOpenClaw: string;
+  let lockModule: string;
   let revision: string;
   let originalConfig: string;
 
@@ -157,6 +162,58 @@ if [ "$1" = "gateway" ] && [ "$2" = "health" ]; then
   exit 0
 fi
 exit 2
+`,
+    );
+
+    lockModule = join(fixture, "fake-openclaw-lock.mjs");
+    writeFileSync(
+      lockModule,
+      `import fs from "node:fs/promises";
+import process from "node:process";
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const isRunning = (pid) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export async function acquireFileLock(filePath) {
+  const lockPath = filePath + ".lock";
+  const nonce = Math.random().toString(16).slice(2);
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    try {
+      const handle = await fs.open(lockPath, "wx", 0o600);
+      await handle.writeFile(JSON.stringify({ pid: process.pid, nonce }) + "\\n");
+      await handle.sync();
+      await handle.close();
+      return {
+        lockPath,
+        release: async () => {
+          const current = JSON.parse(await fs.readFile(lockPath, "utf8"));
+          if (current.pid !== process.pid || current.nonce !== nonce) {
+            throw new Error("lock ownership changed");
+          }
+          await fs.unlink(lockPath);
+        },
+      };
+    } catch (error) {
+      if (error?.code !== "EEXIST") throw error;
+      try {
+        const current = JSON.parse(await fs.readFile(lockPath, "utf8"));
+        if (!isRunning(Number(current.pid))) {
+          await fs.unlink(lockPath);
+          continue;
+        }
+      } catch {}
+      await sleep(10);
+    }
+  }
+  throw new Error("lock timeout");
+}
 `,
     );
   });
@@ -604,7 +661,7 @@ exit 2
     const result = runDeploy();
 
     expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain("OpenClaw config lock is busy");
+    expect(result.stderr).toContain("config lock acquisition timed out");
     expect(readFileSync(config, "utf8")).toBe(originalConfig);
   });
 
@@ -620,7 +677,7 @@ exit 2
     expect(existsSync(`${config}.lock`)).toBe(false);
   });
 
-  it("publishes a complete config lock owner record atomically", () => {
+  it("holds config locks through the shared OpenClaw helper", () => {
     const probe = `
 import argparse
 import importlib.util
@@ -644,17 +701,60 @@ args = argparse.Namespace(
     health_interval=0.01,
     smoke_timeout=2.0,
     config_lock_timeout=0.1,
+    node=${JSON.stringify(process.execPath)},
+    config_lock_helper=Path(${JSON.stringify(configLockHelper)}),
+    openclaw_lock_module=Path(${JSON.stringify(lockModule)}),
 )
 deployment = module.GmailDeployment(args)
 with deployment.config_lock():
     payload = json.loads(Path(${JSON.stringify(`${config}.lock`)}).read_text())
     assert payload["pid"] > 0
-    assert len(payload["nonce"]) == 32
+    assert len(payload["nonce"]) > 0
 assert not Path(${JSON.stringify(`${config}.lock`)}).exists()
 `;
     const result = spawnSync("python3", ["-c", probe], { encoding: "utf8" });
 
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+  });
+
+  it("serializes two processes through the shared config lock", async () => {
+    const first = spawn(
+      process.execPath,
+      [configLockHelper, lockModule, config],
+      { stdio: ["pipe", "pipe", "pipe"] },
+    );
+    const firstClosed = new Promise<number | null>((resolve) =>
+      first.on("close", resolve),
+    );
+    let firstReady = false;
+    first.stdout.setEncoding("utf8");
+    first.stdout.on("data", () => {
+      firstReady = true;
+    });
+    await waitFor(() => firstReady);
+
+    const second = spawn(
+      process.execPath,
+      [configLockHelper, lockModule, config],
+      { stdio: ["pipe", "pipe", "pipe"] },
+    );
+    const secondClosed = new Promise<number | null>((resolve) =>
+      second.on("close", resolve),
+    );
+    let secondReady = false;
+    second.stdout.setEncoding("utf8");
+    second.stdout.on("data", () => {
+      secondReady = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(secondReady).toBe(false);
+
+    first.stdin.end();
+    await waitFor(() => secondReady);
+    second.stdin.end();
+    const statuses = await Promise.all([firstClosed, secondClosed]);
+    expect(statuses).toEqual([0, 0]);
+    expect(existsSync(`${config}.lock`)).toBe(false);
   });
 
   it("rejects a changed config in the conditional promotion guard", () => {
@@ -892,6 +992,12 @@ print(json.dumps({"files": files, "directories": directories}))
       fakePython,
       "--openclaw",
       fakeOpenClaw,
+      "--node",
+      process.execPath,
+      "--config-lock-helper",
+      configLockHelper,
+      "--openclaw-lock-module",
+      lockModule,
       "--health-attempts",
       "2",
       "--health-interval",
@@ -899,7 +1005,7 @@ print(json.dumps({"files": files, "directories": directories}))
       "--smoke-timeout",
       "2",
       "--config-lock-timeout",
-      "0.1",
+      "1",
     ];
   }
 
