@@ -1,6 +1,6 @@
 # Fix recurring Gmail authentication failures
 
-Status: Landing deployment candidate
+Status: Final deployment review
 Issue: https://github.com/coletaylor788/puddles/issues/99
 Last updated: 2026-08-18
 
@@ -16,15 +16,15 @@ The helper restarts the gateway, confirms health, and makes one read-only Gmail 
 
 ### Status
 
-The reconciliation crash finding is fixed, focused and managed validation are green, and retained full-diff review is clean. Production remains untouched.
+The permission-integrity finding is fixed, focused and managed validation are green, and production remains untouched.
 
-The exact landing candidate is being sealed for a new terminal review and remote integration. Nothing needs Cole's input.
+The retained reviewer is rechecking the complete final diff before a new terminal review. Nothing needs Cole's input.
 
 ## Agent section
 
 ### State
 
-- Phase: Seal exact landing candidate
+- Phase: Retained reviewer recheck
 - Repository: `coletaylor788/puddles`
 - Todoist task: `6hHwPPrxrg2FQP9V`
 - Todoist label: `agent`
@@ -49,6 +49,7 @@ The exact landing candidate is being sealed for a new terminal review and remote
 
 - Source extraction uses `git archive`; ignored and untracked files cannot enter releases.
 - Published releases contain no Python bytecode. SHA-256 manifests cover every remaining regular file and symlink target, so later bytecode injection invalidates the release.
+- Release manifests must also cover file and directory modes so executable and traversal permission damage triggers recovery.
 - Every release regular file is fsynced, then every release directory is fsynced bottom-up before the manifest is published and the staging tree is renamed.
 - Candidate releases remain under `~/.local/share/puddles/gmail-mcp/releases/<revision>`.
 - OpenClaw's `<openclaw.json>.lock` sidecar protocol serializes config read, snapshot, and conditional write.
@@ -93,6 +94,9 @@ The exact landing candidate is being sealed for a new terminal review and remote
 - [x] Add durable reconciling and superseded phase ordering.
 - [x] Recover interrupted reconciliation on the next invocation.
 - [x] Add SIGKILL reconciliation recovery regression.
+- [x] Include file and directory modes in release manifests.
+- [x] Treat unreadable release verification as corruption.
+- [x] Add active executable-permission damage recovery regression.
 
 ### Validation
 
@@ -106,6 +110,11 @@ The exact landing candidate is being sealed for a new terminal review and remote
 - Passed after reconciliation remediation: Ruff, Python compilation, TypeScript lint, and diff check.
 - Passed after reconciliation remediation: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
 - Managed lifecycle result: `331` workspace tests, `171` safe Gmail tests, `471` mapped OpenClaw tests, and `1` candidate test.
+- Passed after permission remediation: all `171` safe Gmail tests.
+- Passed after permission remediation: `21` deployment lifecycle tests and `35` focused deployment, Keychain, and plan contract tests.
+- Passed after permission remediation: Ruff, Python compilation, TypeScript lint, and diff check.
+- Passed after permission remediation: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
+- Managed lifecycle result: `332` workspace tests, `171` safe Gmail tests, `471` mapped OpenClaw tests, and `1` candidate test.
 - Pending: retained reviewer recheck and a new terminal exact-commit review.
 - Pending: exact-candidate production promotion and read-only validation.
 
@@ -135,6 +144,9 @@ The exact landing candidate is being sealed for a new terminal review and remote
 - The accepted fix records `reconciling` before restart, writes `superseded` only after restart and health, and finishes interrupted reconciliation on the next invocation before stopping.
 - Expanded focused and managed validation pass.
 - The retained reviewer rechecked the complete final diff at `cb8eb887663973e63c65c10542dae5f28a10fe76` and found no significant issue.
+- The latest terminal review found a medium-severity gap because manifest verification omitted executable file modes.
+- The accepted fix records root, directory, regular-file, and symlink modes, treats unreadable trees as corruption, and proves active execute-bit damage triggers restore, quarantine, rebuild, and healthy reactivation.
+- Expanded focused and managed validation pass. The retained reviewer is rechecking the complete final diff.
 
 ### Checklist
 
@@ -149,7 +161,8 @@ The exact landing candidate is being sealed for a new terminal review and remote
 - [x] Final config, lock, and bytecode findings are fixed.
 - [x] Reconciliation crash recovery is fixed.
 - [x] Retained recheck is clean.
-- [ ] A new terminal exact-commit review is clean.
+- [x] Release permission integrity is fixed.
+- [ ] Retained recheck and a new terminal exact-commit review are clean.
 - [ ] Deployment pull request is green and merged.
 - [ ] Exact landed candidate is promoted.
 - [ ] Read-only production validation passes.

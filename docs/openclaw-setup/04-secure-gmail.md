@@ -373,7 +373,9 @@ Each prepared release has a SHA-256 content manifest that is checked before
 reuse. Before publication, every regular file is fsynced and every directory is
 fsynced from the leaves back to the release root. Generated Python bytecode is
 removed before hashing, and the configured wrapper disables bytecode writes so
-all executable Python content remains covered by the manifest.
+all executable Python content remains covered by the manifest. The manifest
+also records file and directory modes, so a lost execute or traversal bit
+triggers the same damaged-release recovery.
 
 Immediately before promotion, the helper snapshots the complete OpenClaw config
 with owner-only permissions under `~/.openclaw-deploy-backups/gmail-mcp/`. It

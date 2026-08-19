@@ -7,6 +7,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -656,6 +657,28 @@ print(json.dumps({"files": files, "directories": directories}))
 
     expect(repeated.status, `${repeated.stdout}\n${repeated.stderr}`).toBe(0);
     expect(existsSync(bytecode)).toBe(false);
+    expect(
+      readdirSync(join(releaseRoot, "releases")).some((entry) =>
+        entry.startsWith(`${revision}.damaged-`),
+      ),
+    ).toBe(true);
+  });
+
+  it("recovers when the active wrapper loses executable permission", () => {
+    const deployed = runDeploy();
+    expect(deployed.status, `${deployed.stdout}\n${deployed.stderr}`).toBe(0);
+    const wrapper = join(
+      releaseRoot,
+      "releases",
+      revision,
+      "bin/gmail-mcp-python",
+    );
+    chmodSync(wrapper, 0o644);
+
+    const repeated = runDeploy();
+
+    expect(repeated.status, `${repeated.stdout}\n${repeated.stderr}`).toBe(0);
+    expect(statSync(wrapper).mode & 0o777).toBe(0o755);
     expect(
       readdirSync(join(releaseRoot, "releases")).some((entry) =>
         entry.startsWith(`${revision}.damaged-`),

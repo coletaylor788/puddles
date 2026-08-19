@@ -186,17 +186,22 @@ def file_digest(path: Path) -> str:
 
 
 def runtime_manifest(root: Path) -> dict[str, str]:
-    entries: dict[str, str] = {}
+    entries: dict[str, str] = {
+        ".": f"dir:{stat.S_IMODE(root.stat().st_mode):04o}",
+    }
     for path in sorted(root.rglob("*")):
         relative = path.relative_to(root)
         if relative.name == MANIFEST_NAME:
             continue
         key = relative.as_posix()
+        mode = stat.S_IMODE(path.lstat().st_mode)
         if path.is_symlink():
-            entries[key] = f"symlink:{os.readlink(path)}"
+            entries[key] = f"symlink:{mode:04o}:{os.readlink(path)}"
         elif path.is_file():
-            entries[key] = f"sha256:{file_digest(path)}"
-        elif not path.is_dir():
+            entries[key] = f"file:{mode:04o}:sha256:{file_digest(path)}"
+        elif path.is_dir():
+            entries[key] = f"dir:{mode:04o}"
+        else:
             raise DeploymentError(f"release contains unsupported file type: {path}")
     return entries
 
@@ -494,10 +499,16 @@ class GmailDeployment:
             or not candidate_command.is_file()
         ):
             raise DeploymentError(f"existing release does not match {revision}")
+        try:
+            actual_manifest = runtime_manifest(release)
+        except OSError as exc:
+            raise DeploymentError(
+                f"existing release content is unreadable: {release}"
+            ) from exc
         if (
             not isinstance(recorded_manifest, dict)
             or recorded_manifest.get("revision") != revision
-            or recorded_manifest.get("entries") != runtime_manifest(release)
+            or recorded_manifest.get("entries") != actual_manifest
         ):
             raise DeploymentError(f"existing release content changed: {release}")
 
