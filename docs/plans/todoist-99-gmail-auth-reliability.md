@@ -1,6 +1,6 @@
 # Fix recurring Gmail authentication failures
 
-Status: Final deployment review
+Status: Landing deployment candidate
 Issue: https://github.com/coletaylor788/puddles/issues/99
 Last updated: 2026-08-18
 
@@ -16,15 +16,15 @@ The helper restarts the gateway, confirms health, and makes one read-only Gmail 
 
 ### Status
 
-The reconciliation crash finding is fixed, focused and managed validation are green, and production remains untouched.
+The reconciliation crash finding is fixed, focused and managed validation are green, and retained full-diff review is clean. Production remains untouched.
 
-The retained reviewer is rechecking the complete final diff before a new terminal review. Nothing needs Cole's input.
+The exact landing candidate is being sealed for a new terminal review and remote integration. Nothing needs Cole's input.
 
 ## Agent section
 
 ### State
 
-- Phase: Retained reviewer recheck
+- Phase: Seal exact landing candidate
 - Repository: `coletaylor788/puddles`
 - Todoist task: `6hHwPPrxrg2FQP9V`
 - Todoist label: `agent`
@@ -133,7 +133,8 @@ The retained reviewer is rechecking the complete final diff before a new termina
 - The accepted fixes verify Gmail under lock after smoke, reconcile and fail on conflicts, publish config lock records atomically, remove bytecode, disable bytecode writes, and treat later bytecode as release corruption.
 - Retained recheck found a medium-severity crash window because `superseded` was written before gateway reconciliation completed.
 - The accepted fix records `reconciling` before restart, writes `superseded` only after restart and health, and finishes interrupted reconciliation on the next invocation before stopping.
-- Expanded focused and managed validation pass. The retained reviewer is rechecking the complete final diff.
+- Expanded focused and managed validation pass.
+- The retained reviewer rechecked the complete final diff at `cb8eb887663973e63c65c10542dae5f28a10fe76` and found no significant issue.
 
 ### Checklist
 
@@ -147,7 +148,8 @@ The retained reviewer is rechecking the complete final diff before a new termina
 - [x] Retained recheck is clean.
 - [x] Final config, lock, and bytecode findings are fixed.
 - [x] Reconciliation crash recovery is fixed.
-- [ ] Retained recheck and a new terminal exact-commit review are clean.
+- [x] Retained recheck is clean.
+- [ ] A new terminal exact-commit review is clean.
 - [ ] Deployment pull request is green and merged.
 - [ ] Exact landed candidate is promoted.
 - [ ] Read-only production validation passes.
