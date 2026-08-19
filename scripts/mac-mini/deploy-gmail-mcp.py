@@ -4,22 +4,27 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
+import secrets
 import shutil
 import signal
 import stat
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 EXPECTED_ARGS = ["-m", "gmail_mcp"]
+GMAIL_CONFIG_KEYS = ("gmailMcpCommand", "gmailMcpArgs", "gmailMcpCwd")
+MANIFEST_NAME = ".puddles-runtime-manifest.json"
 REVISION_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 
 
@@ -71,7 +76,13 @@ def fsync_directory(path: Path) -> None:
         os.close(descriptor)
 
 
-def atomic_write(path: Path, content: bytes, mode: int) -> None:
+def atomic_write(
+    path: Path,
+    content: bytes,
+    mode: int,
+    *,
+    on_replaced: Callable[[], None] | None = None,
+) -> None:
     descriptor, temporary = tempfile.mkstemp(
         prefix=f".{path.name}.",
         dir=path.parent,
@@ -84,23 +95,49 @@ def atomic_write(path: Path, content: bytes, mode: int) -> None:
             os.fsync(handle.fileno())
         os.chmod(temporary_path, mode)
         os.replace(temporary_path, path)
+        if on_replaced is not None:
+            on_replaced()
         fsync_directory(path.parent)
     finally:
         temporary_path.unlink(missing_ok=True)
+
+
+def parse_config(content: bytes) -> dict[str, Any]:
+    try:
+        config = json.loads(content)
+    except json.JSONDecodeError as exc:
+        raise DeploymentError("OpenClaw config is not valid JSON") from exc
+    if not isinstance(config, dict):
+        raise DeploymentError("OpenClaw config must contain a JSON object")
+    return config
 
 
 def load_config(path: Path) -> tuple[dict[str, Any], bytes, int]:
     if path.is_symlink() or not path.is_file():
         raise DeploymentError(f"config must be a regular file: {path}")
     original = path.read_bytes()
-    try:
-        config = json.loads(original)
-    except json.JSONDecodeError as exc:
-        raise DeploymentError(f"config is not valid JSON: {path}") from exc
-    if not isinstance(config, dict):
-        raise DeploymentError("OpenClaw config must contain a JSON object")
+    config = parse_config(original)
     mode = stat.S_IMODE(path.stat().st_mode)
     return config, original, mode
+
+
+def serialize_config(config: dict[str, Any]) -> bytes:
+    return f"{json.dumps(config, indent=2)}\n".encode()
+
+
+def conditional_atomic_write(
+    path: Path,
+    *,
+    expected: bytes,
+    replacement: bytes,
+    mode: int,
+    on_replaced: Callable[[], None] | None = None,
+) -> None:
+    if path.read_bytes() != expected:
+        raise DeploymentError(
+            "OpenClaw config changed concurrently; refusing to overwrite it"
+        )
+    atomic_write(path, replacement, mode, on_replaced=on_replaced)
 
 
 def gmail_config(config: dict[str, Any]) -> dict[str, Any]:
@@ -112,6 +149,32 @@ def gmail_config(config: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(gmail, dict):
         raise DeploymentError("secure-gmail plugin config must be an object")
     return gmail
+
+
+def file_digest(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def runtime_manifest(root: Path) -> dict[str, str]:
+    entries: dict[str, str] = {}
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root)
+        if relative.name == MANIFEST_NAME:
+            continue
+        if "__pycache__" in relative.parts or relative.suffix == ".pyc":
+            continue
+        key = relative.as_posix()
+        if path.is_symlink():
+            entries[key] = f"symlink:{os.readlink(path)}"
+        elif path.is_file():
+            entries[key] = f"sha256:{file_digest(path)}"
+        elif not path.is_dir():
+            raise DeploymentError(f"release contains unsupported file type: {path}")
+    return entries
 
 
 class GmailDeployment:
@@ -128,6 +191,7 @@ class GmailDeployment:
         self.health_attempts = args.health_attempts
         self.health_interval = args.health_interval
         self.smoke_timeout = args.smoke_timeout
+        self.config_lock_timeout = args.config_lock_timeout
         self.releases = self.release_root / "releases"
         self.release = self.releases / self.revision
         self.staging: Path | None = None
@@ -136,6 +200,55 @@ class GmailDeployment:
         self.config_mode = 0o600
         self.config_mutated = False
         self.lock_acquired = False
+        self.original_config: bytes | None = None
+        self.promoted_config: bytes | None = None
+        self.previous_gmail: dict[str, tuple[bool, Any]] = {}
+
+    @contextmanager
+    def config_lock(self) -> Iterator[None]:
+        lock_path = Path(f"{self.config_path}.lock")
+        deadline = time.monotonic() + self.config_lock_timeout
+        nonce = secrets.token_hex(16)
+        payload = {
+            "pid": os.getpid(),
+            "createdAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "nonce": nonce,
+        }
+        while True:
+            try:
+                descriptor = os.open(
+                    lock_path,
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                    0o600,
+                )
+                break
+            except FileExistsError as exc:
+                if time.monotonic() >= deadline:
+                    raise DeploymentError(
+                        f"OpenClaw config lock is busy: {lock_path}"
+                    ) from exc
+                time.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
+        try:
+            with os.fdopen(descriptor, "w") as handle:
+                json.dump(payload, handle)
+                handle.write("\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            fsync_directory(lock_path.parent)
+            yield
+        finally:
+            try:
+                current = json.loads(lock_path.read_text())
+            except (OSError, json.JSONDecodeError) as exc:
+                raise DeploymentError(
+                    f"OpenClaw config lock ownership became unreadable: {lock_path}"
+                ) from exc
+            if current.get("pid") != os.getpid() or current.get("nonce") != nonce:
+                raise DeploymentError(
+                    f"OpenClaw config lock ownership changed: {lock_path}"
+                )
+            lock_path.unlink()
+            fsync_directory(lock_path.parent)
 
     def acquire_lock(self) -> None:
         self.lock_dir.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
@@ -193,17 +306,87 @@ class GmailDeployment:
 
     def release_is_ready(self) -> bool:
         metadata_path = self.release / ".puddles-release.json"
+        manifest_path = self.release / MANIFEST_NAME
         if not self.release.exists():
             return False
-        if self.release.is_symlink() or not metadata_path.is_file():
+        if (
+            self.release.is_symlink()
+            or not metadata_path.is_file()
+            or not manifest_path.is_file()
+        ):
             raise DeploymentError(f"existing release is invalid: {self.release}")
         try:
             metadata = json.loads(metadata_path.read_text())
+            recorded_manifest = json.loads(manifest_path.read_text())
         except json.JSONDecodeError as exc:
-            raise DeploymentError(f"release metadata is invalid: {metadata_path}") from exc
+            raise DeploymentError(f"release metadata is invalid: {self.release}") from exc
         if metadata.get("revision") != self.revision or not self.candidate_python().is_file():
             raise DeploymentError(f"existing release does not match {self.revision}")
+        if (
+            not isinstance(recorded_manifest, dict)
+            or recorded_manifest.get("revision") != self.revision
+            or recorded_manifest.get("entries") != runtime_manifest(self.release)
+        ):
+            raise DeploymentError(f"existing release content changed: {self.release}")
         return True
+
+    def extract_reviewed_source(self, destination: Path) -> None:
+        archive_descriptor, archive_name = tempfile.mkstemp(
+            prefix=f".gmail-source-{self.revision}-",
+            suffix=".tar",
+            dir=self.releases,
+        )
+        os.close(archive_descriptor)
+        archive_path = Path(archive_name)
+        try:
+            run(
+                [
+                    "git",
+                    "-C",
+                    str(self.source),
+                    "archive",
+                    "--format=tar",
+                    f"--output={archive_path}",
+                    self.revision,
+                    "servers/gmail-mcp",
+                ]
+            )
+            with tarfile.open(archive_path, "r") as archive:
+                for member in archive.getmembers():
+                    parts = PurePosixPath(member.name).parts
+                    if parts in (("servers",), ("servers", "gmail-mcp")):
+                        continue
+                    if parts[:2] != ("servers", "gmail-mcp"):
+                        raise DeploymentError(
+                            f"reviewed archive contains an unexpected path: {member.name}"
+                        )
+                    relative_parts = parts[2:]
+                    if not relative_parts:
+                        continue
+                    if any(part in ("", ".", "..") for part in relative_parts):
+                        raise DeploymentError(
+                            f"reviewed archive contains an unsafe path: {member.name}"
+                        )
+                    target = destination.joinpath(*relative_parts)
+                    if member.isdir():
+                        target.mkdir(parents=True, exist_ok=True)
+                        os.chmod(target, member.mode & 0o777)
+                    elif member.isfile():
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        source_file = archive.extractfile(member)
+                        if source_file is None:
+                            raise DeploymentError(
+                                f"could not read reviewed file: {member.name}"
+                            )
+                        with source_file, target.open("xb") as destination_file:
+                            shutil.copyfileobj(source_file, destination_file)
+                        os.chmod(target, member.mode & 0o777)
+                    else:
+                        raise DeploymentError(
+                            f"reviewed archive contains unsupported entry: {member.name}"
+                        )
+        finally:
+            archive_path.unlink(missing_ok=True)
 
     def prepare_release(self) -> None:
         if self.release_is_ready():
@@ -215,18 +398,7 @@ class GmailDeployment:
                 dir=self.releases,
             )
         )
-        source_server = self.source / "servers" / "gmail-mcp"
-        shutil.copytree(
-            source_server,
-            self.staging,
-            dirs_exist_ok=True,
-            ignore=shutil.ignore_patterns(
-                ".venv",
-                "__pycache__",
-                ".pytest_cache",
-                "*.pyc",
-            ),
-        )
+        self.extract_reviewed_source(self.staging)
         run([self.python, "-m", "venv", str(self.staging / ".venv")])
         staging_python = self.staging / ".venv" / "bin" / "python"
         if not staging_python.is_file():
@@ -268,6 +440,15 @@ class GmailDeployment:
             f"{json.dumps(metadata, indent=2)}\n".encode(),
             0o600,
         )
+        manifest = {
+            "revision": self.revision,
+            "entries": runtime_manifest(self.staging),
+        }
+        atomic_write(
+            self.staging / MANIFEST_NAME,
+            f"{json.dumps(manifest, indent=2, sort_keys=True)}\n".encode(),
+            0o600,
+        )
         os.replace(self.staging, self.release)
         fsync_directory(self.releases)
         self.staging = None
@@ -305,12 +486,17 @@ class GmailDeployment:
         self.recovery.mkdir(mode=0o700)
         self.config_snapshot = self.recovery / "openclaw.json"
         atomic_write(self.config_snapshot, original, 0o600)
+        self.original_config = original
+        self.previous_gmail = {
+            key: (key in gmail, gmail.get(key)) for key in GMAIL_CONFIG_KEYS
+        }
         recovery_record = {
             "revision": self.revision,
             "config": str(self.config_path),
-            "previousCommand": gmail.get("gmailMcpCommand"),
-            "previousArgs": gmail.get("gmailMcpArgs"),
-            "previousCwd": gmail.get("gmailMcpCwd"),
+            "previousGmail": {
+                key: {"present": present, "value": value}
+                for key, (present, value) in self.previous_gmail.items()
+            },
             "candidateRelease": str(self.release),
         }
         atomic_write(
@@ -320,16 +506,36 @@ class GmailDeployment:
         )
         print(f"Recovery state: {self.recovery}")
 
-    def write_candidate_config(self, config: dict[str, Any]) -> None:
+    def write_candidate_config(
+        self,
+        config: dict[str, Any],
+        *,
+        expected: bytes,
+    ) -> None:
         gmail = gmail_config(config)
         gmail["gmailMcpCommand"] = str(self.candidate_python())
         gmail["gmailMcpArgs"] = EXPECTED_ARGS
         gmail["gmailMcpCwd"] = str(self.release)
-        atomic_write(
-            self.config_path,
-            f"{json.dumps(config, indent=2)}\n".encode(),
-            self.config_mode,
+        candidate = serialize_config(config)
+        previous_mask = signal.pthread_sigmask(
+            signal.SIG_BLOCK,
+            {signal.SIGINT, signal.SIGTERM, signal.SIGHUP},
         )
+
+        def record_replacement() -> None:
+            self.promoted_config = candidate
+            self.config_mutated = True
+
+        try:
+            conditional_atomic_write(
+                self.config_path,
+                expected=expected,
+                replacement=candidate,
+                mode=self.config_mode,
+                on_replaced=record_replacement,
+            )
+        finally:
+            signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
 
     def smoke_candidate(self) -> None:
         run(
@@ -344,10 +550,44 @@ class GmailDeployment:
         )
 
     def rollback(self) -> None:
-        if self.config_snapshot is None:
+        if (
+            self.config_snapshot is None
+            or self.original_config is None
+            or self.promoted_config is None
+        ):
             raise DeploymentError("rollback config snapshot is missing")
-        original = self.config_snapshot.read_bytes()
-        atomic_write(self.config_path, original, self.config_mode)
+        with self.config_lock():
+            current = self.config_path.read_bytes()
+            if current == self.promoted_config:
+                replacement = self.original_config
+            else:
+                current_config = parse_config(current)
+                current_gmail = gmail_config(current_config)
+                expected_candidate = {
+                    "gmailMcpCommand": str(self.candidate_python()),
+                    "gmailMcpArgs": EXPECTED_ARGS,
+                    "gmailMcpCwd": str(self.release),
+                }
+                if any(
+                    current_gmail.get(key) != value
+                    for key, value in expected_candidate.items()
+                ):
+                    raise DeploymentError(
+                        "secure-gmail config changed concurrently; "
+                        "refusing rollback overwrite"
+                    )
+                for key, (present, value) in self.previous_gmail.items():
+                    if present:
+                        current_gmail[key] = value
+                    else:
+                        current_gmail.pop(key, None)
+                replacement = serialize_config(current_config)
+            conditional_atomic_write(
+                self.config_path,
+                expected=current,
+                replacement=replacement,
+                mode=self.config_mode,
+            )
         self.restart_gateway()
         self.config_mutated = False
 
@@ -390,24 +630,28 @@ class GmailDeployment:
                 previous_handlers[signum] = signal.signal(signum, interrupt)
             self.validate_source()
             self.ensure_roots()
-            config, original, self.config_mode = load_config(self.config_path)
-            gmail = gmail_config(config)
             self.prepare_release()
-            candidate_command = str(self.candidate_python())
-            if (
-                gmail.get("gmailMcpCommand") == candidate_command
-                and gmail.get("gmailMcpArgs") == EXPECTED_ARGS
-                and gmail.get("gmailMcpCwd") == str(self.release)
-            ):
-                self.wait_for_gateway()
-                self.smoke_candidate()
-                print(f"Gmail release {self.revision} is already active and healthy")
-                return
             self.wait_for_gateway()
-            self.snapshot_config(original, gmail)
             with self.rollback_on_failure(previous_handlers):
-                self.config_mutated = True
-                self.write_candidate_config(config)
+                already_active = False
+                with self.config_lock():
+                    config, original, self.config_mode = load_config(self.config_path)
+                    gmail = gmail_config(config)
+                    candidate_command = str(self.candidate_python())
+                    already_active = (
+                        gmail.get("gmailMcpCommand") == candidate_command
+                        and gmail.get("gmailMcpArgs") == EXPECTED_ARGS
+                        and gmail.get("gmailMcpCwd") == str(self.release)
+                    )
+                    if not already_active:
+                        self.snapshot_config(original, gmail)
+                        self.write_candidate_config(config, expected=original)
+                if already_active:
+                    self.smoke_candidate()
+                    print(
+                        f"Gmail release {self.revision} is already active and healthy"
+                    )
+                    return
                 self.restart_gateway()
                 self.smoke_candidate()
                 self.config_mutated = False
@@ -466,6 +710,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--health-attempts", type=positive_int, default=30)
     parser.add_argument("--health-interval", type=positive_float, default=1.0)
     parser.add_argument("--smoke-timeout", type=positive_float, default=60.0)
+    parser.add_argument("--config-lock-timeout", type=positive_float, default=30.0)
     return parser.parse_args()
 
 

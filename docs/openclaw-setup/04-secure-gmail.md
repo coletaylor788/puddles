@@ -367,16 +367,26 @@ python3 scripts/mac-mini/deploy-gmail-mcp.py \
 ```
 
 The helper builds an immutable release under
-`~/.local/share/puddles/gmail-mcp/`, snapshots the complete OpenClaw config with
-owner-only permissions under `~/.openclaw-deploy-backups/gmail-mcp/`, and
-atomically changes only the secure Gmail command and working directory. It then
+`~/.local/share/puddles/gmail-mcp/` from tracked files in the exact Git revision.
+Ignored credentials, tokens, caches, and other worktree files are never copied.
+Each prepared release has a SHA-256 content manifest that is checked before
+reuse.
+
+Immediately before promotion, the helper snapshots the complete OpenClaw config
+with owner-only permissions under `~/.openclaw-deploy-backups/gmail-mcp/`. It
+joins OpenClaw's config lock and conditionally changes only the secure Gmail
+command and working directory. If the config changed after it was read,
+promotion stops instead of overwriting another operator. The helper then
 restarts the gateway and makes one read-only Gmail profile request. The smoke
 check does not print the account address or mailbox content.
 
 If candidate installation, restart, gateway health, or Gmail validation fails,
-the helper restores the exact prior config, restarts the old gateway, and checks
-gateway health before returning the original failure. It keeps the failed
-release and recovery directory for diagnosis.
+the helper restores the exact prior config when nothing else changed. If an
+unrelated setting changed after promotion, rollback preserves that setting and
+restores only the Gmail runtime fields. A concurrent change to those Gmail
+fields is reported instead of overwritten. Rollback restarts the old gateway
+and checks gateway health before returning the original failure. The helper
+keeps the failed release and recovery directory for diagnosis.
 
 ## 7. Wiring an LLM provider for the hooks
 
