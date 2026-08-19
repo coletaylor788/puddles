@@ -263,6 +263,15 @@ exit 2
     expect(
       current.plugins.entries["secure-gmail"].config.gmailMcpCommand,
     ).toBe("/operator/python");
+    expect(
+      readCalls().filter((line) => line === "openclaw\tgateway restart"),
+    ).toHaveLength(2);
+    const backup = onlyChild(backupRoot);
+    expect(
+      JSON.parse(
+        readFileSync(join(backupRoot, backup, "deployment-state.json"), "utf8"),
+      ).phase,
+    ).toBe("superseded");
   });
 
   it("reconciles and fails when Gmail config changes during successful smoke", () => {
@@ -449,6 +458,55 @@ exit 2
       .sort();
     expect(phases).toEqual(["complete", "recovered"]);
     expect(existsSync(lockDir)).toBe(false);
+  }, 10_000);
+
+  it("reconciles a Gmail conflict discovered during process-death recovery", async () => {
+    const child = spawn("python3", deployArgs(), {
+      env: {
+        ...process.env,
+        MOCK_CALLS: calls,
+        MOCK_RESTARTS: join(fixture, "restarts"),
+        MOCK_SMOKE_SLEEP: "3",
+      },
+      stdio: "ignore",
+    });
+    const closed = new Promise<number | null>((resolve) => {
+      child.on("close", resolve);
+    });
+
+    await waitFor(() =>
+      readCalls().some((line) =>
+        line.includes("gmail_mcp.scripts.production_smoke"),
+      ),
+    );
+    child.kill("SIGKILL");
+    await closed;
+
+    const changed = JSON.parse(readFileSync(config, "utf8"));
+    changed.plugins.entries["secure-gmail"].config.gmailMcpCommand =
+      "/operator/python";
+    writeFileSync(config, `${JSON.stringify(changed, null, 2)}\n`);
+
+    const resumed = runDeploy();
+
+    expect(resumed.status).not.toBe(0);
+    expect(resumed.stderr).toContain(
+      "recovered concurrent Gmail config after process death",
+    );
+    expect(
+      readCalls().filter((line) => line === "openclaw\tgateway restart"),
+    ).toHaveLength(2);
+    const backup = onlyChild(backupRoot);
+    expect(
+      JSON.parse(
+        readFileSync(join(backupRoot, backup, "deployment-state.json"), "utf8"),
+      ).phase,
+    ).toBe("superseded");
+    expect(existsSync(lockDir)).toBe(false);
+    expect(
+      JSON.parse(readFileSync(config, "utf8")).plugins.entries["secure-gmail"].config
+        .gmailMcpCommand,
+    ).toBe("/operator/python");
   }, 10_000);
 
   it("rejects a concurrent deployment before mutation", () => {

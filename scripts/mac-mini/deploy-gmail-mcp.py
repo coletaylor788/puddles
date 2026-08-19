@@ -982,6 +982,7 @@ class GmailDeployment:
             "gmailMcpCwd": str(candidate_release),
         }
         restart_needed = True
+        reconcile_conflict = False
         with self.config_lock():
             current = self.config_path.read_bytes()
             replacement: bytes | None = None
@@ -999,10 +1000,12 @@ class GmailDeployment:
                     replacement = serialize_config(current_config)
                     restart_needed = True
                 elif not self.gmail_values_match(current_gmail, previous_gmail):
-                    raise DeploymentError(
-                        "secure-gmail config changed after process death; "
-                        "refusing recovery overwrite"
+                    self.mark_existing_recovery(
+                        recovery,
+                        state,
+                        "reconciling",
                     )
+                    reconcile_conflict = True
             if replacement is not None:
                 self.mark_existing_recovery(
                     recovery,
@@ -1015,6 +1018,13 @@ class GmailDeployment:
                     replacement=replacement,
                     mode=stat.S_IMODE(self.config_path.stat().st_mode),
                 )
+        if reconcile_conflict:
+            self.restart_gateway()
+            self.mark_existing_recovery(recovery, state, "superseded")
+            raise DeploymentError(
+                "recovered concurrent Gmail config after process death; "
+                "deployment remains superseded"
+            )
         if restart_needed:
             self.restart_gateway()
         if damaged_release is not None and damaged_release.exists():
@@ -1037,6 +1047,7 @@ class GmailDeployment:
             raise DeploymentError("rollback config snapshot is missing")
         with self.config_lock():
             current = self.config_path.read_bytes()
+            reconcile_conflict = False
             if current == self.promoted_config:
                 replacement = self.original_config
             else:
@@ -1051,22 +1062,25 @@ class GmailDeployment:
                     current_gmail.get(key) != value
                     for key, value in expected_candidate.items()
                 ):
-                    raise DeploymentError(
-                        "secure-gmail config changed concurrently; "
-                        "refusing rollback overwrite"
-                    )
-                for key, (present, value) in self.previous_gmail.items():
-                    if present:
-                        current_gmail[key] = value
-                    else:
-                        current_gmail.pop(key, None)
-                replacement = serialize_config(current_config)
-            conditional_atomic_write(
-                self.config_path,
-                expected=current,
-                replacement=replacement,
-                mode=self.config_mode,
-            )
+                    self.begin_gmail_reconciliation()
+                    self.config_mutated = False
+                    reconcile_conflict = True
+                else:
+                    for key, (present, value) in self.previous_gmail.items():
+                        if present:
+                            current_gmail[key] = value
+                        else:
+                            current_gmail.pop(key, None)
+                    replacement = serialize_config(current_config)
+            if not reconcile_conflict:
+                conditional_atomic_write(
+                    self.config_path,
+                    expected=current,
+                    replacement=replacement,
+                    mode=self.config_mode,
+                )
+        if reconcile_conflict:
+            self.fail_after_concurrent_gmail_change()
         self.restart_gateway()
         self.write_recovery_state("rolled-back")
         self.config_mutated = False

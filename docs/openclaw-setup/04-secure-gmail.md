@@ -398,9 +398,11 @@ If candidate installation, restart, gateway health, or Gmail validation fails,
 the helper restores the exact prior config when nothing else changed. If an
 unrelated setting changed after promotion, rollback preserves that setting and
 restores only the Gmail runtime fields. A concurrent change to those Gmail
-fields is reported instead of overwritten. Rollback restarts the old gateway
-and checks gateway health before returning the original failure. The helper
-keeps the failed release and recovery directory for diagnosis.
+fields is reported instead of overwritten. In that conflict path, rollback
+records reconciliation, restarts and health-checks the gateway so it loads the
+operator's config, then marks the deployment superseded. The same restart
+recovery runs after process death. Rollback keeps the failed release and
+recovery directory for diagnosis.
 
 Recovery also covers an uncatchable process death or power loss. The helper
 fsyncs every newly created recovery directory entry, both original and promoted
