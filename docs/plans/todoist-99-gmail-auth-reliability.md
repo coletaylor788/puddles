@@ -1,6 +1,6 @@
 # Fix recurring Gmail authentication failures
 
-Status: Landing candidate
+Status: Complete, ready for review
 Issue: https://github.com/coletaylor788/puddles/issues/99
 Last updated: 2026-08-18
 
@@ -8,29 +8,30 @@ Last updated: 2026-08-18
 
 ### Design
 
-Gmail keeps failing because the earlier repair never reached the default branch or the running service. Production still asks a Homebrew Python process to read the OAuth credential through macOS Keychain. An interpreter upgrade can remove that process from the saved access list, which leaves a background tool waiting on an approval prompt nobody can see. A past manual recovery path also truncated the OAuth record, so repeating that recovery is unsafe.
+Gmail kept failing because an earlier repair never reached the default branch or the running service. Production still asked a Homebrew Python process to read the OAuth credential through macOS Keychain. An interpreter upgrade could remove that process from the saved access list, leaving a background tool waiting on an approval prompt nobody could see. A past manual recovery path also truncated the OAuth record, so repeating that recovery was unsafe.
 
-The repair uses a stable operating-system process to read and update one exact Keychain item. Each operation has a short deadline and returns a clear error instead of hanging. Long OAuth records are preserved, refresh writes keep the existing access rules, concurrent refreshes cannot replace newer credentials, and invalid or scope-reduced records are rejected. A missing item means the account is signed out. A present but unreadable or malformed item returns a specific recovery error instead of looking missing. Blocking authentication work stays outside the shared request loop.
+The landed repair uses a stable operating-system process to read and update one exact Keychain item. Each operation has a short deadline and returns a clear error instead of hanging. Long OAuth records are preserved, refresh writes keep the existing access rules, concurrent refreshes cannot replace newer credentials, and invalid or scope-reduced records are rejected. A missing item means the account is signed out. A present but unreadable or malformed item returns a specific recovery error instead of looking missing. Blocking authentication work stays outside the shared request loop.
 
-Fresh remote installation exposed a separate compatibility boundary. The server still uses the stable first-generation Python SDK API, but its dependency range admitted the new second-generation SDK, which removed that API. The package now stays on the supported major line until a separate migration changes the server and protocol together. The shared test pool enforces that boundary so clean environments cannot silently select an incompatible SDK.
+A clean remote install also exposed an SDK compatibility boundary. The server uses the stable first-generation Python SDK API, so the package now stays on that supported major line until a separate migration changes the server and protocol together. The shared test pool enforces the boundary.
 
 ### Status
 
-The Keychain repair and dependency correction pass focused checks, a fresh environment, the complete managed test lifecycle, and retained independent review. No actionable review finding remains.
+The repair is merged into the default branch. Pull request checks and post-merge integration and security runs are green. The stale repair pull request and issue are closed.
 
-The exact landing candidate is being sealed for terminal review and updated remote checks. Production rollout remains unavailable because the repository has no safe Gmail promotion and rollback path. Nothing needs Cole's input.
+The repository work is done and ready for Cole to review. Todoist has the result and is labeled for review. Production deployment was not run because the repository has no safe Gmail promotion and rollback path.
 
 ## Agent section
 
 ### State
 
-- Phase: Seal exact landing candidate
+- Phase: Complete
 - Repository: `coletaylor788/puddles`
 - Todoist task: `6hHwPPrxrg2FQP9V`
+- Todoist label: `ready_for_review`
 - Tracking issue: `https://github.com/coletaylor788/puddles/issues/99`
 - Pull request: `https://github.com/coletaylor788/puddles/pull/100`
-- Current branch: `coletaylor788-fix-gmail-authentication`
-- Superseded tracker: issue 15 and PR 31 remain open, stale, and conflicting.
+- Landed merge: `7bcfab89225a5291d2f405af530ce0015d2e5a90`
+- Superseded issue 15 and PR 31: closed.
 
 ### Scope and acceptance criteria
 
@@ -41,87 +42,81 @@ The exact landing candidate is being sealed for terminal review and updated remo
 - Surface missing, denied, malformed, timed-out, invalid, and narrowed credential states explicitly.
 - Keep fresh installs on an MCP SDK major version compatible with the server API.
 - Add focused tests and committed regressions to the shared integration pool.
-- Pass focused component checks and the complete managed integration lifecycle.
-- Complete independent adversarial review, remote checks, landing, and default-branch verification.
+- Pass focused, managed, remote, and post-merge validation.
+- Land the reviewed candidate and verify the default branch contains it.
 - Do not expose credentials, mutate a live mailbox in automation, or edit the configured primary checkout.
 
 ### Architecture and decisions
 
-- Root cause: PR 31 contains the earlier Keychain repair but was never merged. Current `origin/main` and production still use Python `keyring`.
-- Runtime evidence: an exact `/usr/bin/security` lookup succeeds in about 11 ms. The configured Gmail process runs from the primary checkout under Homebrew Python 3.11.16.
-- Use `/usr/bin/security` against the canonical login Keychain and exact `gmail-mcp` / `token` selectors.
-- Treat item-not-found as unauthenticated.
-- Raise `CredentialFormatError` for empty, non-UTF-8, invalid JSON, invalid schema, and invalid scope records. It subclasses `KeychainAccessError` so the existing MCP boundary returns a sanitized authentication-unavailable result.
-- Treat permission, timeout, and command failures as explicit `KeychainAccessError` results.
-- Create items with stable command trust. Update data without replacing existing access rules. Use hexadecimal input so long JSON cannot be truncated.
-- Cache valid parsed credentials briefly and serialize replacement and refresh persistence across processes.
-- Use cumulative deadlines, compare-before-write, cancellation, and bounded drain behavior for OAuth and refresh work.
-- Treat actual granted scopes as authoritative and reject invalid or narrowed refreshed credentials.
-- Preserve the environment-token backend.
-- Constrain `mcp` to `>=1.0.0,<2.0.0`. A clean installation resolves `1.29.0`; remote CI selected incompatible `2.0.0` from the former open-ended range.
-- Keep a cumulative manifest regression that asserts the supported upper bound remains present.
-- Port commits `26557b0` through `c9dbabe` from `origin/pr-31` and resolve the current test-pool documentation additively.
-- Keep issue 99 and this plan as the active source of truth. Remove the stale component plan carried by the old commit series.
+- Root cause: PR 31 held the earlier Keychain repair but never merged, so production retained Python `keyring`.
+- Runtime evidence: an exact `/usr/bin/security` lookup completed in about 11 ms. The configured Gmail process used the primary checkout under Homebrew Python 3.11.16.
+- `/usr/bin/security` now targets the canonical login Keychain and exact `gmail-mcp` / `token` selectors.
+- Item-not-found is unauthenticated. Empty, non-UTF-8, invalid JSON, invalid schema, and invalid scopes raise a sanitized `CredentialFormatError`.
+- Permission, timeout, and command failures raise explicit `KeychainAccessError` results.
+- New items trust the stable system command. Updates preserve existing access rules. Hexadecimal input prevents long JSON truncation.
+- Valid credentials are cached briefly. Replacement and refresh persistence are serialized across processes.
+- OAuth and refresh work use cumulative deadlines, compare-before-write, cancellation, and bounded draining.
+- Actual granted scopes are authoritative. Invalid or narrowed refreshed credentials are rejected.
+- The environment-token backend remains compatible.
+- `mcp` is constrained to `>=1.0.0,<2.0.0`; a clean install resolves `1.29.0`.
+- The shared integration pool covers Keychain behavior, malformed credentials, and the SDK upper bound.
+- Production rollout is unavailable because no snapshotting, atomic, rollback-capable Gmail deployment path exists.
 
 ### Implementation
 
-- [x] Read Gmail server documentation, prior auth plans, issue 15, and PR 31.
-- [x] Trace token persistence, refresh behavior, request-loop boundaries, runtime wiring, and the current Keychain access path.
-- [x] Confirm the earlier repair is absent from `origin/main` and production.
-- [x] Port the focused Gmail repair onto current `origin/main`.
-- [x] Resolve the shared-pool documentation conflict while preserving current coverage.
-- [x] Remove the duplicate stale component plan and keep issue 99 as the active tracker.
-- [x] Preserve Gmail documentation, CI wiring, focused tests, and cumulative regression coverage from the reviewed repair.
-- [x] Distinguish malformed credentials from a missing Keychain item at the parser and MCP tool boundary.
-- [x] Constrain the Python MCP SDK to the compatible major line and document the boundary.
-- [x] Add a cumulative regression for fresh-install compatibility.
-- [ ] Close stale issue 15 and PR 31 as superseded after the replacement lands.
+- [x] Trace the prior repair, token path, runtime wiring, and current failure.
+- [x] Port the focused Keychain repair onto current `main`.
+- [x] Preserve long credentials and access rules.
+- [x] Serialize refresh and replacement writes across processes.
+- [x] Bound Keychain, refresh, OAuth, and request-loop work.
+- [x] Distinguish malformed credentials from a missing item.
+- [x] Constrain fresh installs to the supported SDK major line.
+- [x] Add focused and cumulative regression coverage.
+- [x] Update Gmail and integration documentation.
+- [x] Close stale issue 15 and PR 31 as superseded.
 
 ### Validation
 
-- Fresh isolated install: `mcp 1.29.0` selected from `>=1.0.0,<2.0.0`.
-- Passed with the fresh environment: `169` safe Gmail tests, Gmail Ruff, and Python compilation.
-- Passed: `5` focused tests in `packages/e2e/tests/gmail-keychain.test.ts` and E2E TypeScript lint.
-- Passed: `9` plan and issue writing contract tests.
-- Passed: `node packages/e2e/bin/openclaw-test-env.mjs ci` using the fresh environment without a source-path override.
-- Managed lifecycle result: `311` workspace tests, `169` safe Gmail tests, `471` mapped OpenClaw tests, and `1` candidate test passed. Build, lint, compilation, patch application, prompt snapshot checks, and cleanup also passed.
-- Remote PR 100 on superseded commit `043dc6a`: all CodeQL checks passed; cumulative failed because the former range selected `mcp 2.0.0`.
-- Pending: terminal exact-commit review and updated remote checks.
-- Safety constraint: tests must not send mail, change mailbox state, print credential values, or edit the configured primary checkout.
+- Fresh isolated install selected `mcp 1.29.0`.
+- `169` safe Gmail tests passed with live integration tests excluded.
+- Gmail Ruff and Python compilation passed.
+- `5` focused shared Gmail tests and E2E TypeScript lint passed.
+- `9` plan and issue writing contract tests passed.
+- The local managed lifecycle passed `311` workspace tests, `169` safe Gmail tests, `471` mapped OpenClaw tests, and `1` candidate test.
+- Retained full-diff review and terminal exact-commit review found no actionable issue on the landed candidate.
+- PR 100 cumulative integration and all CodeQL checks passed.
+- Post-merge Integration run `32208780771` and CodeQL run `32208780421` passed on `7bcfab8`.
+- `origin/main` contains exact candidate `b691f4de39eb073b2bfd9c61e62814d06fdda101`.
 
 ### Rollout and rollback
 
-- The corrected landing candidate passes fresh-install and complete managed validation.
-- Repository research found no snapshotting, atomic, rollback-capable Gmail production promotion path. The running service loads the package from the configured primary checkout, which this worker must not edit.
-- Production deployment is not run. Do not replace the missing lifecycle with a manual copy or primary-checkout edit.
-- Land the repository fix after terminal review and updated remote gates, then report the production rollout limitation.
-- The existing recovered OAuth credential remains independent of code rollout and must not be replaced unless validation proves it unusable.
+- Repository code and tests are landed.
+- Production deployment was not run. The configured service loads from the primary checkout, and this worker did not edit it.
+- The repository has no safe Gmail promotion and rollback lifecycle. Manual copying or primary-checkout edits are not acceptable substitutes.
+- The existing recovered OAuth credential remains independent of code rollout and was not replaced.
+- A future production rollout needs recorded recovery state, atomic installation, service restart, read-only Gmail health checks, and automatic rollback on failure.
 
 ### Review log
 
-- The prior candidate received an extended retained-review loop and a clean terminal review at `264cf75`, but later base changes made PR 31 conflicting.
-- The first current-branch reviewer found one medium-severity issue: malformed Keychain data was collapsed into the same `None` result as a missing item.
-- The accepted format-error fix has focused, server-boundary, shared-pool, and documentation coverage.
-- The replacement retained reviewer found no significant issue after that fix.
-- Fresh terminal review found no actionable issue on `043dc6a2fd39106cc1135418785f836cfb676c14`.
-- Remote fresh-install CI then exposed the incompatible open-ended SDK range. The upper bound and cumulative regression pass locally in a clean environment.
-- The retained reviewer rechecked the complete corrected diff at `6d5207f7476e39f2e3901dd5c48255e4b7e01011` and found no significant issue. Remote checks on that updated candidate and safe production rollout remain residual gaps.
-- Terminal review of the exact landing candidate is pending.
+- The first current-branch reviewer found one medium issue: malformed Keychain data looked the same as a missing item.
+- The accepted fix added an explicit format error with unit, tool-boundary, shared-pool, and documentation coverage.
+- The retained reviewer found no significant issue after remediation.
+- The first terminal candidate was clean, but remote CI exposed an incompatible open-ended SDK range.
+- The supported SDK upper bound and cumulative regression passed in a fresh environment.
+- The retained reviewer and a fresh terminal reviewer found no actionable issue on the corrected candidate.
+- Remote and post-merge checks are green.
 
 ### Checklist
 
-- [x] Todoist tracking comment points to issue 99.
-- [x] Issue 99 uses the required plan link, Summary, and Status format.
-- [x] Research identifies the root cause and current runtime boundary.
-- [x] Human and Agent sections describe the same current design.
-- [x] Focused Keychain repair is ported without stale tracker artifacts.
-- [x] Committed regression covers the recurring Keychain failure.
-- [x] Malformed credentials are distinct from missing credentials.
-- [x] Fresh installs stay on the compatible MCP SDK major line.
-- [x] Focused and complete managed validation pass after remote remediation.
-- [x] Replacement retained-worker review is clean on the corrected candidate.
-- [ ] Exact candidate receives a new clean terminal review.
-- [ ] Pull request is remotely green, mergeable, and merged.
-- [ ] Default branch contains the repair.
+- [x] Tracking comment, issue, and plan follow the required contract.
+- [x] Root cause and runtime boundary are documented.
+- [x] Keychain repair and regressions are landed.
+- [x] Malformed and missing credentials are distinct.
+- [x] Fresh installs stay on the compatible SDK major line.
+- [x] Focused, managed, remote, and post-merge checks pass.
+- [x] Retained and terminal reviews are clean.
+- [x] Pull request 100 is merged and the default branch is verified.
 - [x] Missing safe production rollout lifecycle is recorded.
-- [ ] Issue and Todoist task are ready for Cole's review.
+- [x] Superseded Gmail trackers are closed.
+- [x] Final plan and issue say the work is ready for Cole to review.
+- [x] Todoist result is posted and `agent` is replaced with `ready_for_review`.
