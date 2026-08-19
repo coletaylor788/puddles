@@ -686,6 +686,42 @@ print(json.dumps({"files": files, "directories": directories}))
     ).toBe(true);
   });
 
+  it("recovers when active release metadata has a non-object shape", () => {
+    const deployed = runDeploy();
+    expect(deployed.status, `${deployed.stdout}\n${deployed.stderr}`).toBe(0);
+    const metadata = join(
+      releaseRoot,
+      "releases",
+      revision,
+      ".puddles-release.json",
+    );
+    writeFileSync(metadata, "[]\n");
+
+    const repeated = runDeploy();
+
+    expect(repeated.status, `${repeated.stdout}\n${repeated.stderr}`).toBe(0);
+    expect(
+      JSON.parse(readFileSync(metadata, "utf8")).revision,
+    ).toBe(revision);
+  });
+
+  it("recovers when the active release manifest is unreadable", () => {
+    const deployed = runDeploy();
+    expect(deployed.status, `${deployed.stdout}\n${deployed.stderr}`).toBe(0);
+    const manifest = join(
+      releaseRoot,
+      "releases",
+      revision,
+      ".puddles-runtime-manifest.json",
+    );
+    chmodSync(manifest, 0o000);
+
+    const repeated = runDeploy();
+
+    expect(repeated.status, `${repeated.stdout}\n${repeated.stderr}`).toBe(0);
+    expect(statSync(manifest).mode & 0o777).toBe(0o600);
+  });
+
   function runDeploy(extraEnv: Record<string, string> = {}) {
     return spawnSync(
       "python3",

@@ -489,8 +489,10 @@ class GmailDeployment:
         try:
             metadata = json.loads(metadata_path.read_text())
             recorded_manifest = json.loads(manifest_path.read_text())
-        except json.JSONDecodeError as exc:
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise DeploymentError(f"release metadata is invalid: {release}") from exc
+        if not isinstance(metadata, dict) or not isinstance(recorded_manifest, dict):
+            raise DeploymentError(f"release metadata is invalid: {release}")
         candidate_python = release / ".venv" / "bin" / "python"
         candidate_command = release / "bin" / "gmail-mcp-python"
         if (
@@ -506,8 +508,7 @@ class GmailDeployment:
                 f"existing release content is unreadable: {release}"
             ) from exc
         if (
-            not isinstance(recorded_manifest, dict)
-            or recorded_manifest.get("revision") != revision
+            recorded_manifest.get("revision") != revision
             or recorded_manifest.get("entries") != actual_manifest
         ):
             raise DeploymentError(f"existing release content changed: {release}")

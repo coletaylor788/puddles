@@ -16,7 +16,7 @@ The helper restarts the gateway, confirms health, and makes one read-only Gmail 
 
 ### Status
 
-The permission-integrity finding is fixed, focused and managed validation are green, and production remains untouched.
+The release metadata recovery finding is fixed, focused and managed validation are green, and production remains untouched.
 
 The retained reviewer is rechecking the complete final diff before a new terminal review. Nothing needs Cole's input.
 
@@ -50,6 +50,7 @@ The retained reviewer is rechecking the complete final diff before a new termina
 - Source extraction uses `git archive`; ignored and untracked files cannot enter releases.
 - Published releases contain no Python bytecode. SHA-256 manifests cover every remaining regular file and symlink target, so later bytecode injection invalidates the release.
 - Release manifests must also cover file and directory modes so executable and traversal permission damage triggers recovery.
+- Metadata read, decode, and shape failures must all enter the same damaged-active-release recovery path.
 - Every release regular file is fsynced, then every release directory is fsynced bottom-up before the manifest is published and the staging tree is renamed.
 - Candidate releases remain under `~/.local/share/puddles/gmail-mcp/releases/<revision>`.
 - OpenClaw's `<openclaw.json>.lock` sidecar protocol serializes config read, snapshot, and conditional write.
@@ -97,6 +98,8 @@ The retained reviewer is rechecking the complete final diff before a new termina
 - [x] Include file and directory modes in release manifests.
 - [x] Treat unreadable release verification as corruption.
 - [x] Add active executable-permission damage recovery regression.
+- [x] Normalize metadata read, decode, and type failures as release corruption.
+- [x] Add unreadable and non-object metadata recovery regressions.
 
 ### Validation
 
@@ -115,6 +118,11 @@ The retained reviewer is rechecking the complete final diff before a new termina
 - Passed after permission remediation: Ruff, Python compilation, TypeScript lint, and diff check.
 - Passed after permission remediation: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
 - Managed lifecycle result: `332` workspace tests, `171` safe Gmail tests, `471` mapped OpenClaw tests, and `1` candidate test.
+- Passed after metadata remediation: all `171` safe Gmail tests.
+- Passed after metadata remediation: `23` deployment lifecycle tests and `37` focused deployment, Keychain, and plan contract tests.
+- Passed after metadata remediation: Ruff, Python compilation, TypeScript lint, and diff check.
+- Passed after metadata remediation: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
+- Managed lifecycle result: `334` workspace tests, `171` safe Gmail tests, `471` mapped OpenClaw tests, and `1` candidate test.
 - Pending: retained reviewer recheck and a new terminal exact-commit review.
 - Pending: exact-candidate production promotion and read-only validation.
 
@@ -147,6 +155,9 @@ The retained reviewer is rechecking the complete final diff before a new termina
 - The latest terminal review found a medium-severity gap because manifest verification omitted executable file modes.
 - The accepted fix records root, directory, regular-file, and symlink modes, treats unreadable trees as corruption, and proves active execute-bit damage triggers restore, quarantine, rebuild, and healthy reactivation.
 - Expanded focused and managed validation pass. The retained reviewer is rechecking the complete final diff.
+- Retained recheck found a medium-severity gap because unreadable or non-object release metadata could escape the damaged-release recovery path.
+- The accepted fix normalizes read, decode, and object-shape failures as `DeploymentError` and proves non-object metadata and unreadable manifests trigger restore, quarantine, rebuild, and healthy activation.
+- Expanded focused and managed validation pass. The retained reviewer is rechecking the complete final diff.
 
 ### Checklist
 
@@ -162,6 +173,7 @@ The retained reviewer is rechecking the complete final diff before a new termina
 - [x] Reconciliation crash recovery is fixed.
 - [x] Retained recheck is clean.
 - [x] Release permission integrity is fixed.
+- [x] Release metadata failures consistently trigger recovery.
 - [ ] Retained recheck and a new terminal exact-commit review are clean.
 - [ ] Deployment pull request is green and merged.
 - [ ] Exact landed candidate is promoted.
