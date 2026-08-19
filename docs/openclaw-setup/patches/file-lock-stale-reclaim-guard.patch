@@ -1,0 +1,303 @@
+diff --git a/patches/@openclaw__fs-safe@0.4.1.patch b/patches/@openclaw__fs-safe@0.4.1.patch
+index 18ef0e9afd..d7ce80a917 100644
+--- a/patches/@openclaw__fs-safe@0.4.1.patch
++++ b/patches/@openclaw__fs-safe@0.4.1.patch
+@@ -70,3 +70,96 @@ index 77d0ddfa5a1df2de0449c806d19781daaed4910b..09dd77aef95659865b93ce29e15f26e8
+          await handle.close().catch(() => undefined);
+          handle = undefined;
+          await withAsyncDirectoryGuards([parentGuard], async () => {
++diff --git a/dist/sidecar-lock.js b/dist/sidecar-lock.js
++index eecf60d00793ddfeb54415811c18cb2f40ab2568..fecf98b86c1bdc22755ae53d9c9c784a73dfd829 100644
++--- a/dist/sidecar-lock.js
+++++ b/dist/sidecar-lock.js
++@@ -3,6 +3,13 @@ import fs from "node:fs/promises";
++ import path from "node:path";
++ import { sameFileIdentity } from "./file-identity.js";
++ const GLOBAL_STATE_KEY = Symbol.for("fsSafe.sidecarLockManagers");
+++const DARWIN_O_EXLOCK = 32;
+++async function acquireStaleReclaimGuard(lockPath) {
+++    if (process.platform !== "darwin") {
+++        return null;
+++    }
+++    return await fs.open(`${lockPath}.reclaim`, fsSync.constants.O_CREAT | fsSync.constants.O_RDWR | DARWIN_O_EXLOCK, 0o600);
+++}
++ function getGlobalManagers() {
++     const globalWithState = globalThis;
++     if (!globalWithState[GLOBAL_STATE_KEY]) {
++@@ -264,40 +271,46 @@ export function createSidecarLockManager(key) {
++                 if (err.code !== "EEXIST") {
++                     throw err;
++                 }
++-                const nowMs = Date.now();
++-                const snapshot = await readLockSnapshot(lockPath);
++-                if (!snapshot) {
++-                    continue;
++-                }
++-                const shouldReclaim = options.shouldReclaim ?? defaultShouldReclaim;
++-                if (await shouldReclaim({
++-                    lockPath,
++-                    normalizedTargetPath,
++-                    payload: snapshot?.payload ?? null,
++-                    staleMs: options.staleMs,
++-                    nowMs,
++-                    heldByThisProcess: state.held.has(normalizedTargetPath),
++-                })) {
++-                    if (!(await lockSnapshotStillPresent(lockPath, snapshot))) {
+++                const reclaimGuard = await acquireStaleReclaimGuard(lockPath);
+++                try {
+++                    const nowMs = Date.now();
+++                    const snapshot = await readLockSnapshot(lockPath);
+++                    if (!snapshot) {
++                         continue;
++                     }
++-                    const staleRecovery = options.staleRecovery ?? "fail-closed";
++-                    if (staleRecovery === "remove-if-unchanged") {
++-                        const removal = await removeStaleLockIfAllowed({
+++                    const shouldReclaim = options.shouldReclaim ?? defaultShouldReclaim;
+++                    if (await shouldReclaim({
+++                        lockPath,
+++                        normalizedTargetPath,
+++                        payload: snapshot?.payload ?? null,
+++                        staleMs: options.staleMs,
+++                        nowMs,
+++                        heldByThisProcess: state.held.has(normalizedTargetPath),
+++                    })) {
+++                        if (!(await lockSnapshotStillPresent(lockPath, snapshot))) {
+++                            continue;
+++                        }
+++                        const staleRecovery = options.staleRecovery ?? "fail-closed";
+++                        if (staleRecovery === "remove-if-unchanged") {
+++                            const removal = await removeStaleLockIfAllowed({
+++                                lockPath,
+++                                normalizedTargetPath,
+++                                snapshot,
+++                                shouldRemoveStaleLock: options.shouldRemoveStaleLock,
+++                            });
+++                            if (removal === "removed" || removal === "changed") {
+++                                continue;
+++                            }
+++                        }
+++                        throw Object.assign(new Error(`file lock stale for ${normalizedTargetPath}`), {
+++                            code: "file_lock_stale",
++                             lockPath,
++                             normalizedTargetPath,
++-                            snapshot,
++-                            shouldRemoveStaleLock: options.shouldRemoveStaleLock,
++                         });
++-                        if (removal === "removed" || removal === "changed") {
++-                            continue;
++-                        }
++                     }
++-                    throw Object.assign(new Error(`file lock stale for ${normalizedTargetPath}`), {
++-                        code: "file_lock_stale",
++-                        lockPath,
++-                        normalizedTargetPath,
++-                    });
+++                }
+++                finally {
+++                    await reclaimGuard?.close().catch(() => undefined);
++                 }
++                 const elapsed = Date.now() - startedAt;
++                 if ((options.timeoutMs !== undefined &&
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index 7a352da863..aedc71e632 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -37,7 +37,7 @@ overrides:
+ packageExtensionsChecksum: sha256-zZ8fyodhMTumshonC7kktCqTPsiHL3UAyS9vltFAlMo=
+ 
+ patchedDependencies:
+-  '@openclaw/fs-safe@0.4.1': e49004277fcb3e714125baf15a996682c7310e8e9269c865cc5bcb9fef46a57c
++  '@openclaw/fs-safe@0.4.1': 2e63f67851cf32eb18a4a4ab913747796ef102d67fd01778eb7b446da23884de
+ 
+ importers:
+ 
+@@ -87,7 +87,7 @@ importers:
+         version: link:packages/ai
+       '@openclaw/fs-safe':
+         specifier: 0.4.1
+-        version: 0.4.1(patch_hash=e49004277fcb3e714125baf15a996682c7310e8e9269c865cc5bcb9fef46a57c)
++        version: 0.4.1(patch_hash=2e63f67851cf32eb18a4a4ab913747796ef102d67fd01778eb7b446da23884de)
+       '@openclaw/proxyline':
+         specifier: 0.3.3
+         version: 0.3.3(undici@8.5.0)
+@@ -8987,7 +8987,7 @@ snapshots:
+       - bufferutil
+       - utf-8-validate
+ 
+-  '@openclaw/fs-safe@0.4.1(patch_hash=e49004277fcb3e714125baf15a996682c7310e8e9269c865cc5bcb9fef46a57c)':
++  '@openclaw/fs-safe@0.4.1(patch_hash=2e63f67851cf32eb18a4a4ab913747796ef102d67fd01778eb7b446da23884de)':
+     optionalDependencies:
+       jszip: 3.10.1
+       tar: 7.5.19
+diff --git a/src/plugin-sdk/file-lock.stale-contention.test.ts b/src/plugin-sdk/file-lock.stale-contention.test.ts
+new file mode 100644
+index 0000000000..20addbf6c3
+--- /dev/null
++++ b/src/plugin-sdk/file-lock.stale-contention.test.ts
+@@ -0,0 +1,165 @@
++import { spawn } from "node:child_process";
++import fs from "node:fs/promises";
++import os from "node:os";
++import path from "node:path";
++import { afterEach, describe, expect, it } from "vitest";
++
++const workerSource = `
++import fs from "node:fs/promises";
++import process from "node:process";
++import { pathToFileURL } from "node:url";
++
++const [modulePath, target, controlDir, eventsPath, id] = process.argv.slice(2);
++const { acquireFileLock } = await import(pathToFileURL(modulePath).href);
++const waitFor = async (file) => {
++  for (let attempt = 0; attempt < 500; attempt += 1) {
++    try {
++      await fs.access(file);
++      return;
++    } catch {}
++    await new Promise((resolve) => setTimeout(resolve, 10));
++  }
++  throw new Error("worker barrier timed out");
++};
++const lock = await acquireFileLock(target, {
++  managerKey: "stale-contention-" + id,
++  staleMs: 1,
++  retry: { retries: 500, factor: 1, minTimeout: 5, maxTimeout: 5 },
++  staleRecovery: "remove-if-unchanged",
++  allowReentrant: false,
++  payload: async () => ({
++    pid: process.pid,
++    createdAt: new Date().toISOString(),
++  }),
++  shouldReclaim: async ({ payload }) => payload?.pid === -1,
++  shouldRemoveStaleLock: async () => {
++    await fs.writeFile(controlDir + "/" + id + ".ready", "");
++    if (id === "a") {
++      await waitFor(controlDir + "/a.allow");
++    }
++    return true;
++  },
++});
++try {
++  await fs.appendFile(eventsPath, "enter " + id + "\\n");
++  await new Promise((resolve) => setTimeout(resolve, 100));
++  await fs.appendFile(eventsPath, "exit " + id + "\\n");
++} finally {
++  await lock.release();
++}
++`;
++
++describe("shared file-lock stale contention", () => {
++  const tempDirs: string[] = [];
++
++  afterEach(async () => {
++    await Promise.all(
++      tempDirs.splice(0).map((directory) =>
++        fs.rm(directory, { recursive: true, force: true }),
++      ),
++    );
++  });
++
++  it.skipIf(process.platform !== "darwin")(
++    "serializes two stale reclaimers behind the kernel guard",
++    async () => {
++      const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-stale-lock-"));
++      tempDirs.push(tempDir);
++      const target = path.join(tempDir, "openclaw.json");
++      const lockPath = `${target}.lock`;
++      const controlDir = path.join(tempDir, "control");
++      const eventsPath = path.join(tempDir, "events.log");
++      const workerPath = path.join(tempDir, "worker.mjs");
++      const modulePath = path.join(
++        process.cwd(),
++        "node_modules",
++        "@openclaw",
++        "fs-safe",
++        "dist",
++        "file-lock.js",
++      );
++      await fs.mkdir(controlDir);
++      await fs.writeFile(workerPath, workerSource);
++      await fs.writeFile(
++        lockPath,
++        JSON.stringify({
++          pid: -1,
++          createdAt: new Date(Date.now() - 60_000).toISOString(),
++        }),
++      );
++
++      const first = spawnWorker({
++        workerPath,
++        modulePath,
++        target,
++        controlDir,
++        eventsPath,
++        id: "a",
++      });
++      await waitFor(() => fs.access(path.join(controlDir, "a.ready")));
++
++      const second = spawnWorker({
++        workerPath,
++        modulePath,
++        target,
++        controlDir,
++        eventsPath,
++        id: "b",
++      });
++      await new Promise((resolve) => setTimeout(resolve, 150));
++      await expect(fs.access(path.join(controlDir, "b.ready"))).rejects.toThrow();
++
++      await fs.writeFile(path.join(controlDir, "a.allow"), "");
++      const [firstResult, secondResult] = await Promise.all([first, second]);
++      expect(firstResult).toEqual({ code: 0, stderr: "" });
++      expect(secondResult).toEqual({ code: 0, stderr: "" });
++
++      const events = (await fs.readFile(eventsPath, "utf8")).trim().split("\n");
++      let active = 0;
++      for (const event of events) {
++        active += event.startsWith("enter ") ? 1 : -1;
++        expect(active).toBeGreaterThanOrEqual(0);
++        expect(active).toBeLessThanOrEqual(1);
++      }
++      expect(active).toBe(0);
++    },
++    15_000,
++  );
++});
++
++function spawnWorker(params: {
++  workerPath: string;
++  modulePath: string;
++  target: string;
++  controlDir: string;
++  eventsPath: string;
++  id: string;
++}): Promise<{ code: number | null; stderr: string }> {
++  const child = spawn(process.execPath, [
++    params.workerPath,
++    params.modulePath,
++    params.target,
++    params.controlDir,
++    params.eventsPath,
++    params.id,
++  ]);
++  let stderr = "";
++  child.stderr.setEncoding("utf8");
++  child.stderr.on("data", (chunk) => {
++    stderr += chunk;
++  });
++  return new Promise((resolve) => {
++    child.on("close", (code) => resolve({ code, stderr }));
++  });
++}
++
++async function waitFor(check: () => Promise<void>): Promise<void> {
++  for (let attempt = 0; attempt < 500; attempt += 1) {
++    try {
++      await check();
++      return;
++    } catch {}
++    await new Promise((resolve) => setTimeout(resolve, 10));
++  }
++  throw new Error("test barrier timed out");
++}

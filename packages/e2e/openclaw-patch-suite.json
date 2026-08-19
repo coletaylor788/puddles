@@ -2,6 +2,12 @@
   "openclawRef": "0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c",
   "patches": [
     {
+      "name": "file-lock-stale-reclaim-guard",
+      "tests": [
+        "src/plugin-sdk/file-lock.stale-contention.test.ts"
+      ]
+    },
+    {
       "name": "sessions-yield-block-and-gather",
       "tests": [
         "src/agents/tools/sessions-yield-tool.test.ts",

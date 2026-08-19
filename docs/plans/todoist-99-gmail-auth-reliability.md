@@ -16,7 +16,7 @@ The helper restarts the gateway, confirms health, and makes one read-only Gmail 
 
 ### Status
 
-The shared-lock finding is fixed, focused and managed validation are green, and production remains untouched.
+The shared stale-lock race is fixed, focused and complete managed validation are green, and production remains untouched.
 
 The retained reviewer is rechecking the complete final diff before a new terminal review. Nothing needs Cole's input.
 
@@ -72,6 +72,8 @@ The retained reviewer is rechecking the complete final diff before a new termina
 - Missing secure Gmail entries and non-object Gmail config values are concurrent Gmail edits, not parser failures, after promotion.
 - The shared config lock owner record must be fully written and fsynced before atomic publication.
 - Config lock acquisition and stale-owner recovery must come from OpenClaw's own exported file-lock implementation rather than custom pathname reclamation.
+- On macOS, stale sidecar removal must hold a kernel `O_EXLOCK` guard so only one reclaimer can inspect and remove a lock at a time.
+- Production must deploy the patched OpenClaw package through its rollback-capable lifecycle before deploying the Gmail runtime that relies on the exported lock.
 - Published releases must contain no bytecode and must run with bytecode writes disabled so all executable Python content remains inside the manifest.
 
 ### Implementation
@@ -112,6 +114,10 @@ The retained reviewer is rechecking the complete final diff before a new termina
 - [x] Replace custom config-lock publication and reclamation with OpenClaw's lock API.
 - [x] Add a two-process shared-lock contention regression.
 - [x] Remove custom config-lock stale takeover code.
+- [x] Patch OpenClaw's shared sidecar lock with a macOS kernel reclaim guard.
+- [x] Add a multi-process stale-reclaimer contention regression.
+- [x] Register the patch and test in the cumulative OpenClaw patch suite.
+- [x] Document the shared lock patch and deployment order.
 
 ### Validation
 
@@ -150,12 +156,20 @@ The retained reviewer is rechecking the complete final diff before a new termina
 - Passed after lock API remediation: Ruff, Python compilation, Node syntax, TypeScript lint, and diff check.
 - Passed after lock API remediation: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
 - Managed lifecycle result: `339` workspace tests, `171` safe Gmail tests, `471` mapped OpenClaw tests, and `1` candidate test.
+- Passed: all `171` safe Gmail tests.
+- Passed: `28` Gmail deployment tests and `49` focused deployment, Keychain, patch manifest, and plan contract tests.
+- Passed: Ruff, Python compilation, Node syntax, TypeScript lint, and diff check.
+- Passed: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
+- Managed lifecycle result: `339` workspace tests, `171` safe Gmail tests, `472` mapped OpenClaw tests, and `1` candidate test.
+- The deterministic multi-process stale-reclaimer regression passes on macOS.
 - Pending: retained reviewer recheck and a new terminal exact-commit review.
 - Pending: exact-candidate production promotion and read-only validation.
 
 ### Rollout and rollback
 
 - Production remains unchanged until the final diff is reviewed, merged, and remotely green.
+- Promotion first runs `docs/openclaw-setup/patches/apply-and-deploy.sh` on the exact landed source. That lifecycle snapshots OpenClaw package, runtime state, service config, and browser state, then rolls back on failure.
+- Only after patched OpenClaw health passes does `scripts/mac-mini/deploy-gmail-mcp.py` promote the Gmail runtime.
 - Every replacement must have durable original and promoted snapshots, a phase marker, and durable recovery directory entries.
 - Normal rollback and next-run crash recovery preserve unrelated changes and refuse Gmail conflicts.
 - Gateway health is required after rollback or crash recovery.
@@ -196,6 +210,9 @@ The retained reviewer is rechecking the complete final diff before a new termina
 - The latest terminal review found a medium-severity TOCTOU race because custom stale-lock identity checks and pathname deletion were separate operations.
 - The accepted fix uses `openclaw/plugin-sdk/file-lock` through a holder process, removes custom config-lock reclamation, and proves two processes serialize through the shared lock.
 - Expanded focused and managed validation pass. The retained reviewer is rechecking the complete final diff.
+- Retained recheck found a medium-severity race inside the installed shared lock manager because stale identity checks and pathname removal are separate operations.
+- The accepted source patch holds a kernel-exclusive reclaim guard around stale inspection and removal on macOS. A deterministic two-process test and the complete managed lifecycle pass.
+- The retained reviewer is rechecking the complete final diff.
 
 ### Checklist
 
@@ -216,7 +233,7 @@ The retained reviewer is rechecking the complete final diff before a new termina
 - [x] Rollback conflict runtime reconciliation is fixed.
 - [x] Structural Gmail conflicts use the same reconciliation path.
 - [x] Retained recheck is clean.
-- [x] Shared config locking uses OpenClaw's race-safe implementation.
+- [x] Shared config locking uses a patched race-safe OpenClaw implementation.
 - [ ] Retained recheck and a new terminal exact-commit review are clean.
 - [ ] Deployment pull request is green and merged.
 - [ ] Exact landed candidate is promoted.

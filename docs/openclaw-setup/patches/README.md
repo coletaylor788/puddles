@@ -36,6 +36,7 @@ diff.
 
 | Patch | Doc | Source diff | Status |
 |---|---|---|---|
+| macOS kernel guard for stale sidecar-lock reclaim | [`file-lock-stale-reclaim-guard.md`](./file-lock-stale-reclaim-guard.md) | [`file-lock-stale-reclaim-guard.patch`](./file-lock-stale-reclaim-guard.patch) | Verified in the managed patch pool |
 | `sessions_yield` block-at-yield + gather (cron + interactive) | [`sessions-yield-subagent-leak-fix.md`](./sessions-yield-subagent-leak-fix.md) | [`sessions-yield-block-and-gather.patch`](./sessions-yield-block-and-gather.patch) | Verified on 2026.7.1 (`0790d9f`) |
 | Explicit cron subagent targeting + cross-agent tool inheritance | [`subagent-cross-agent-spawn-fix.md`](./subagent-cross-agent-spawn-fix.md) | [`subagent-cross-agent-spawn-fix.patch`](./subagent-cross-agent-spawn-fix.patch) | Verified on 2026.7.1 (`0790d9f`). Pending upstream PR (see plan 025). |
 | `skill_workshop` for sandboxed agents | [`skill-workshop-sandbox-fix.md`](./skill-workshop-sandbox-fix.md) | [`skill-workshop-sandbox-fix.patch`](./skill-workshop-sandbox-fix.patch) | Verified on 2026.7.1 (`0790d9f`) |

@@ -555,6 +555,7 @@ TARGET_DEPLOY
 
 # Public source patches, applied in order to a clean checkout of the target release.
 PATCHES=(
+  file-lock-stale-reclaim-guard
   sessions-yield-block-and-gather
   subagent-cross-agent-spawn-fix
   skill-workshop-sandbox-fix
