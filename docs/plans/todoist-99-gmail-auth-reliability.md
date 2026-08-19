@@ -1,6 +1,6 @@
 # Fix recurring Gmail authentication failures
 
-Status: Implementing
+Status: Validating
 Issue: https://github.com/coletaylor788/puddles/issues/99
 Last updated: 2026-08-18
 
@@ -10,21 +10,21 @@ Last updated: 2026-08-18
 
 Gmail keeps failing because the earlier repair never reached the default branch or the running service. Production still asks a Homebrew Python process to read the OAuth credential through macOS Keychain. An interpreter upgrade can remove that process from the saved access list, which leaves a background tool waiting on an approval prompt nobody can see. A past manual recovery path also truncated the OAuth record, so repeating that recovery is unsafe.
 
-The repair uses the stable macOS security command to read and update one exact Keychain item. Each operation has a short deadline and returns a clear error instead of hanging. Long OAuth records are preserved, refresh writes keep the existing access rules, concurrent refreshes cannot replace newer credentials, and invalid or scope-reduced records are rejected. Blocking authentication work stays outside the shared request loop.
+The repair uses a stable operating-system process to read and update one exact Keychain item. Each operation has a short deadline and returns a clear error instead of hanging. Long OAuth records are preserved, refresh writes keep the existing access rules, concurrent refreshes cannot replace newer credentials, and invalid or scope-reduced records are rejected. Blocking authentication work stays outside the shared request loop.
 
-The earlier candidate already implemented and reviewed this design, but its pull request became stale and conflicted before merge. This branch will port only that focused Gmail repair onto current code, keep the shared test pool current, and close the stale handoff once the replacement lands. Automated validation uses temporary Keychain items and read-only boundaries. It never changes a live mailbox.
+The earlier candidate already implemented and reviewed this design, but its pull request became stale and conflicted before merge. The focused repair is now ported onto current code without its stale tracker. Automated coverage uses temporary Keychain items and read-only boundaries. It never changes a live mailbox.
 
 ### Status
 
-The root cause is confirmed. The stable Keychain command can read the current item quickly, while production still runs the old interpreter-sensitive code from the default branch. The reviewed repair remains unmerged in the stale pull request.
+The implementation is complete on the current branch. All safe Gmail tests, lint, compilation, and the shared Gmail regression pass.
 
-Implementation is starting by porting the focused repair onto current code. Nothing needs Cole's input.
+The complete managed test lifecycle and independent review are next. Nothing needs Cole's input.
 
 ## Agent section
 
 ### State
 
-- Phase: Implementation
+- Phase: Validation
 - Repository: `coletaylor788/puddles`
 - Todoist task: `6hHwPPrxrg2FQP9V`
 - Tracking issue: `https://github.com/coletaylor788/puddles/issues/99`
@@ -45,8 +45,8 @@ Implementation is starting by porting the focused repair onto current code. Noth
 
 ### Architecture and decisions
 
-- Root cause: PR 31 contains the earlier repair but was never merged. Current `main` and production still use Python `keyring`.
-- Runtime evidence: the stable `/usr/bin/security` exact-item lookup succeeds in about 11 ms. The configured Gmail process runs from the primary checkout under Homebrew Python 3.11.16.
+- Root cause: PR 31 contains the earlier repair but was never merged. Current `origin/main` and production still use Python `keyring`.
+- Runtime evidence: an exact `/usr/bin/security` lookup succeeds in about 11 ms. The configured Gmail process runs from the primary checkout under Homebrew Python 3.11.16.
 - Use `/usr/bin/security` against the canonical login Keychain and exact `gmail-mcp` / `token` selectors.
 - Treat item-not-found as unauthenticated. Treat permission, timeout, decoding, command, and malformed-data failures as explicit errors.
 - Create items with stable command trust. Update data without replacing existing access rules. Use hexadecimal input so long JSON cannot be truncated.
@@ -54,26 +54,28 @@ Implementation is starting by porting the focused repair onto current code. Noth
 - Use cumulative deadlines, compare-before-write, cancellation, and bounded drain behavior for OAuth and refresh work.
 - Treat actual granted scopes as authoritative and reject invalid or narrowed refreshed credentials.
 - Preserve the environment-token backend.
-- Port the focused Gmail commit series from `origin/pr-31` instead of recreating a reviewed design.
-- Keep issue 99 and this plan as the active source of truth. Do not copy the stale issue 15 plan into the new diff.
+- Port commits `26557b0` through `c9dbabe` from `origin/pr-31` and resolve the current test-pool documentation additively.
+- Keep issue 99 and this plan as the active source of truth. Remove the stale component plan carried by the old commit series.
 
 ### Implementation
 
 - [x] Read Gmail server documentation, prior auth plans, issue 15, and PR 31.
 - [x] Trace token persistence, refresh behavior, request-loop boundaries, runtime wiring, and the current Keychain access path.
-- [x] Confirm the earlier repair is absent from `main` and production.
-- [ ] Port Gmail commits `26557b0` through `c9dbabe` onto current `main`.
-- [ ] Resolve current-branch integration without carrying stale tracker text.
-- [ ] Update current Gmail documentation and shared-pool wiring where needed.
+- [x] Confirm the earlier repair is absent from `origin/main` and production.
+- [x] Port the focused Gmail repair onto current `origin/main`.
+- [x] Resolve the shared-pool documentation conflict while preserving current coverage.
+- [x] Remove the duplicate stale component plan and keep issue 99 as the active tracker.
+- [x] Preserve Gmail documentation, CI wiring, focused tests, and cumulative regression coverage from the reviewed repair.
 - [ ] Close stale issue 15 and PR 31 as superseded after the replacement lands.
 
 ### Validation
 
-- Prior candidate evidence is informative but not sufficient for this branch: 166 safe Gmail tests, Ruff, compilation, shared Gmail E2E, the full managed lifecycle, remote checks, and adversarial review passed in July.
-- Current branch pending: focused Gmail tests, Ruff, compilation, shared Gmail E2E, and TypeScript lint.
-- Current branch pending: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
-- Current branch pending: temporary exact-item create, update, long-value, timeout, concurrency, cancellation, malformed-data, scope-narrowing, and cleanup coverage.
-- Current branch pending: independent full-diff review and terminal exact-commit review.
+- Passed: `166` safe Gmail tests with live integration tests explicitly excluded.
+- Passed: Gmail Ruff checks and Python compilation.
+- Passed: `4` tests in `packages/e2e/tests/gmail-keychain.test.ts`.
+- Passed: TypeScript lint for `packages/e2e`.
+- Pending: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
+- Pending: independent full-diff review and terminal exact-commit review.
 - Safety constraint: tests must not send mail, change mailbox state, print credential values, or edit the configured primary checkout.
 
 ### Rollout and rollback
@@ -81,7 +83,7 @@ Implementation is starting by porting the focused repair onto current code. Noth
 - Use the managed test lifecycle for the candidate.
 - The repository currently has no snapshotting, atomic, rollback-capable Gmail production promotion path. The running service loads the package from the configured primary checkout, which this worker must not edit.
 - Do not replace that boundary with a manual copy or primary-checkout edit.
-- Land the repository fix after all gates. Report the production rollout limitation unless a documented safe lifecycle is found during implementation.
+- Land the repository fix after all gates. Report the production rollout limitation unless a documented safe lifecycle is found during validation.
 - The existing recovered OAuth credential remains independent of code rollout and must not be replaced unless validation proves it unusable.
 
 ### Review log
@@ -97,9 +99,10 @@ Implementation is starting by porting the focused repair onto current code. Noth
 - [x] Issue 99 uses the required plan link, Summary, and Status format.
 - [x] Research identifies the root cause and current runtime boundary.
 - [x] Human and Agent sections describe the same current design.
-- [ ] Focused repair is ported without stale tracker artifacts.
-- [ ] Committed regression covers the recurring failure.
-- [ ] Focused and full managed validation pass.
+- [x] Focused repair is ported without stale tracker artifacts.
+- [x] Committed regression covers the recurring failure.
+- [x] Focused tests, lint, compilation, and shared Gmail regression pass.
+- [ ] Complete managed integration lifecycle passes.
 - [ ] Independent retained-worker review is clean.
 - [ ] Exact candidate receives a clean terminal review.
 - [ ] Pull request is remotely green, mergeable, and merged.
