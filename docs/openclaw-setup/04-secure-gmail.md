@@ -388,6 +388,11 @@ overwriting another operator. The helper then restarts the gateway and makes one
 read-only Gmail profile request. The smoke check does not print the account
 address or mailbox content.
 
+The same patched lock API holds a separate whole-deployment lock from startup
+through cleanup. Concurrent deployers serialize through the shared manager, and
+parent death closes the holder pipe so the kernel-backed lock is released
+without pathname reclamation in the Python deployer.
+
 After the smoke check, the helper reacquires the config lock and confirms Gmail
 still points at the candidate before recording success. If another operator
 changed Gmail during validation, the helper preserves that edit and records a

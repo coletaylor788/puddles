@@ -285,7 +285,7 @@ export async function acquireFileLock(filePath) {
       readCalls().filter((line) => line === "openclaw\tgateway restart"),
     ).toHaveLength(2);
     expect(existsSync(join(releaseRoot, "releases", revision))).toBe(true);
-    expect(existsSync(lockDir)).toBe(false);
+    expect(existsSync(`${lockDir}.lock`)).toBe(false);
     const backup = onlyChild(backupRoot);
     expect(
       JSON.parse(
@@ -420,7 +420,7 @@ export async function acquireFileLock(filePath) {
           readFileSync(join(backupRoot, backup, "deployment-state.json"), "utf8"),
         ).phase,
       ).toBe("reconciling");
-      expect(existsSync(lockDir)).toBe(true);
+      expect(existsSync(`${lockDir}.lock`)).toBe(false);
 
       const resumed = runDeploy();
 
@@ -436,7 +436,7 @@ export async function acquireFileLock(filePath) {
           readFileSync(join(backupRoot, backup, "deployment-state.json"), "utf8"),
         ).phase,
       ).toBe("superseded");
-      expect(existsSync(lockDir)).toBe(false);
+      expect(existsSync(`${lockDir}.lock`)).toBe(false);
       expect(
         JSON.parse(readFileSync(config, "utf8")).plugins.entries["secure-gmail"].config
           .gmailMcpCommand,
@@ -449,7 +449,7 @@ export async function acquireFileLock(filePath) {
     expect(result.status).not.toBe(0);
     expect(readFileSync(config, "utf8")).toBe(originalConfig);
     expect(readCalls()).not.toContain("openclaw\tgateway restart");
-    expect(existsSync(lockDir)).toBe(false);
+    expect(existsSync(`${lockDir}.lock`)).toBe(false);
   });
 
   it("restores config when the candidate gateway restart fails", () => {
@@ -506,7 +506,7 @@ export async function acquireFileLock(filePath) {
     expect(
       readCalls().filter((line) => line === "openclaw\tgateway restart"),
     ).toHaveLength(2);
-    expect(existsSync(lockDir)).toBe(false);
+    expect(existsSync(`${lockDir}.lock`)).toBe(false);
   }, 10_000);
 
   it("recovers a promoted config after uncatchable process death", async () => {
@@ -531,7 +531,7 @@ export async function acquireFileLock(filePath) {
     child.kill("SIGKILL");
     await closed;
 
-    expect(existsSync(lockDir)).toBe(true);
+    await waitFor(() => !existsSync(`${lockDir}.lock`));
     expect(
       JSON.parse(readFileSync(config, "utf8")).plugins.entries["secure-gmail"].config
         .gmailMcpCwd,
@@ -551,7 +551,7 @@ export async function acquireFileLock(filePath) {
       )
       .sort();
     expect(phases).toEqual(["complete", "recovered"]);
-    expect(existsSync(lockDir)).toBe(false);
+    expect(existsSync(`${lockDir}.lock`)).toBe(false);
   }, 10_000);
 
   it("reconciles a Gmail conflict discovered during process-death recovery", async () => {
@@ -596,7 +596,7 @@ export async function acquireFileLock(filePath) {
         readFileSync(join(backupRoot, backup, "deployment-state.json"), "utf8"),
       ).phase,
     ).toBe("superseded");
-    expect(existsSync(lockDir)).toBe(false);
+    expect(existsSync(`${lockDir}.lock`)).toBe(false);
     expect(
       JSON.parse(readFileSync(config, "utf8")).plugins.entries["secure-gmail"].config
         .gmailMcpCommand,
@@ -644,11 +644,14 @@ export async function acquireFileLock(filePath) {
   }, 10_000);
 
   it("rejects a concurrent deployment before mutation", () => {
-    mkdirSync(lockDir);
+    writeFileSync(
+      `${lockDir}.lock`,
+      `${JSON.stringify({ pid: process.pid, createdAt: "2099-01-01T00:00:00Z" })}\n`,
+    );
     const result = runDeploy();
 
     expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain("another Gmail deployment");
+    expect(result.stderr).toContain("Gmail deployment lock acquisition timed out");
     expect(readFileSync(config, "utf8")).toBe(originalConfig);
   });
 
@@ -718,43 +721,11 @@ assert not Path(${JSON.stringify(`${config}.lock`)}).exists()
   });
 
   it("serializes two processes through the shared config lock", async () => {
-    const first = spawn(
-      process.execPath,
-      [configLockHelper, lockModule, config],
-      { stdio: ["pipe", "pipe", "pipe"] },
-    );
-    const firstClosed = new Promise<number | null>((resolve) =>
-      first.on("close", resolve),
-    );
-    let firstReady = false;
-    first.stdout.setEncoding("utf8");
-    first.stdout.on("data", () => {
-      firstReady = true;
-    });
-    await waitFor(() => firstReady);
+    await expectSharedLockSerialization(configLockHelper, lockModule, config);
+  });
 
-    const second = spawn(
-      process.execPath,
-      [configLockHelper, lockModule, config],
-      { stdio: ["pipe", "pipe", "pipe"] },
-    );
-    const secondClosed = new Promise<number | null>((resolve) =>
-      second.on("close", resolve),
-    );
-    let secondReady = false;
-    second.stdout.setEncoding("utf8");
-    second.stdout.on("data", () => {
-      secondReady = true;
-    });
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(secondReady).toBe(false);
-
-    first.stdin.end();
-    await waitFor(() => secondReady);
-    second.stdin.end();
-    const statuses = await Promise.all([firstClosed, secondClosed]);
-    expect(statuses).toEqual([0, 0]);
-    expect(existsSync(`${config}.lock`)).toBe(false);
+  it("serializes two processes through the shared deployment lock", async () => {
+    await expectSharedLockSerialization(configLockHelper, lockModule, lockDir);
   });
 
   it("rejects a changed config in the conditional promotion guard", () => {
@@ -1040,4 +1011,48 @@ async function waitFor(predicate: () => boolean): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
   throw new Error("timed out waiting for deployment fixture");
+}
+
+async function expectSharedLockSerialization(
+  helper: string,
+  module: string,
+  target: string,
+): Promise<void> {
+  const first = spawn(
+    process.execPath,
+    [helper, module, target],
+    { stdio: ["pipe", "pipe", "pipe"] },
+  );
+  const firstClosed = new Promise<number | null>((resolve) =>
+    first.on("close", resolve),
+  );
+  let firstReady = false;
+  first.stdout.setEncoding("utf8");
+  first.stdout.on("data", () => {
+    firstReady = true;
+  });
+  await waitFor(() => firstReady);
+
+  const second = spawn(
+    process.execPath,
+    [helper, module, target],
+    { stdio: ["pipe", "pipe", "pipe"] },
+  );
+  const secondClosed = new Promise<number | null>((resolve) =>
+    second.on("close", resolve),
+  );
+  let secondReady = false;
+  second.stdout.setEncoding("utf8");
+  second.stdout.on("data", () => {
+    secondReady = true;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(secondReady).toBe(false);
+
+  first.stdin.end();
+  await waitFor(() => secondReady);
+  second.stdin.end();
+  const statuses = await Promise.all([firstClosed, secondClosed]);
+  expect(statuses).toEqual([0, 0]);
+  expect(existsSync(`${target}.lock`)).toBe(false);
 }

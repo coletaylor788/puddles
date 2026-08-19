@@ -1,6 +1,6 @@
 # Fix recurring Gmail authentication failures
 
-Status: Landing deployment candidate
+Status: Final deployment review
 Issue: https://github.com/coletaylor788/puddles/issues/99
 Last updated: 2026-08-18
 
@@ -16,15 +16,15 @@ The helper restarts the gateway, confirms health, and makes one read-only Gmail 
 
 ### Status
 
-The dependency patch materialization finding is fixed, the complete managed lifecycle is green, and retained full-diff review is clean. Production remains untouched.
+The deployment-lock finding is fixed, focused and managed validation are green, and production remains untouched.
 
-The exact landing candidate is being sealed for a new terminal review and remote integration. Nothing needs Cole's input.
+The retained reviewer is rechecking the complete final diff before a new terminal review. Nothing needs Cole's input.
 
 ## Agent section
 
 ### State
 
-- Phase: Seal exact landing candidate
+- Phase: Retained reviewer recheck
 - Repository: `coletaylor788/puddles`
 - Todoist task: `6hHwPPrxrg2FQP9V`
 - Todoist label: `agent`
@@ -72,6 +72,7 @@ The exact landing candidate is being sealed for a new terminal review and remote
 - Missing secure Gmail entries and non-object Gmail config values are concurrent Gmail edits, not parser failures, after promotion.
 - The shared config lock owner record must be fully written and fsynced before atomic publication.
 - Config lock acquisition and stale-owner recovery must come from OpenClaw's own exported file-lock implementation rather than custom pathname reclamation.
+- Whole-deployment serialization must use the same patched shared lock implementation.
 - On macOS, stale sidecar removal must hold a kernel `O_EXLOCK` guard so only one reclaimer can inspect and remove a lock at a time.
 - Production must deploy the patched OpenClaw package through its rollback-capable lifecycle before deploying the Gmail runtime that relies on the exported lock.
 - OpenClaw dependencies must be installed with the frozen lockfile after the source patch stack changes dependency patches and lock hashes.
@@ -122,6 +123,9 @@ The exact landing candidate is being sealed for a new terminal review and remote
 - [x] Move managed OpenClaw dependency install after patch application.
 - [x] Materialize patched dependencies before production OpenClaw build.
 - [x] Add candidate verification of installed fs-safe guard code.
+- [x] Replace custom Gmail deployment lock with the shared lock holder.
+- [x] Remove custom deployment stale-lock reclamation code.
+- [x] Add two-process deployment-lock serialization regression.
 
 ### Validation
 
@@ -172,6 +176,11 @@ The exact landing candidate is being sealed for a new terminal review and remote
 - Passed after materialization remediation: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
 - Managed lifecycle result: `339` workspace tests, `171` safe Gmail tests, `472` mapped OpenClaw tests, and `2` candidate tests.
 - The installed-code candidate test confirms materialized fs-safe contains the Darwin reclaim guard.
+- Passed after deployment-lock remediation: all `171` safe Gmail tests.
+- Passed after deployment-lock remediation: `29` deployment lifecycle tests and `50` focused deployment, Keychain, patch manifest, and plan contract tests.
+- Passed after deployment-lock remediation: Ruff, Python compilation, Node and shell syntax, TypeScript lint, and diff check.
+- Passed after deployment-lock remediation: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
+- Managed lifecycle result: `340` workspace tests, `171` safe Gmail tests, `472` mapped OpenClaw tests, and `2` candidate tests.
 - Pending: retained reviewer recheck and a new terminal exact-commit review.
 - Pending: exact-candidate production promotion and read-only validation.
 
@@ -227,6 +236,9 @@ The exact landing candidate is being sealed for a new terminal review and remote
 - The accepted fix applies the full patch stack before frozen dependency installation in both managed tests and production deployment. The candidate test verifies installed code.
 - Expanded focused and managed validation pass.
 - The retained reviewer rechecked the complete final diff at `b58ac72a915b7cd4874409ed98cc5b35c0890ad2` and found no significant issue.
+- The latest terminal review found a medium-severity TOCTOU race in the remaining custom deployment-lock stale reclaimer.
+- The accepted fix uses the patched shared holder for the entire deployment, removes custom deployment stale takeover, and proves two deployment processes serialize.
+- Expanded focused and managed validation pass. The retained reviewer is rechecking the complete final diff.
 
 ### Checklist
 
@@ -250,7 +262,8 @@ The exact landing candidate is being sealed for a new terminal review and remote
 - [x] Shared config locking uses a patched race-safe OpenClaw implementation.
 - [x] Patched dependency is materialized before tests and production build.
 - [x] Retained recheck is clean.
-- [ ] A new terminal exact-commit review is clean.
+- [x] Whole-deployment locking uses the patched shared implementation.
+- [ ] Retained recheck and a new terminal exact-commit review are clean.
 - [ ] Deployment pull request is green and merged.
 - [ ] Exact landed candidate is promoted.
 - [ ] Read-only production validation passes.

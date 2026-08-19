@@ -8,7 +8,6 @@ import hashlib
 import json
 import os
 import re
-import secrets
 import selectors
 import shutil
 import signal
@@ -282,45 +281,9 @@ class GmailDeployment:
         self.config_snapshot: Path | None = None
         self.config_mode = 0o600
         self.config_mutated = False
-        self.lock_acquired = False
-        self.deployment_lock_nonce: str | None = None
         self.original_config: bytes | None = None
         self.promoted_config: bytes | None = None
         self.previous_gmail: dict[str, tuple[bool, Any]] = {}
-
-    @staticmethod
-    def process_is_running(pid: int) -> bool:
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            return False
-        except PermissionError:
-            return True
-        return True
-
-    def reclaim_dead_deployment_lock(self) -> bool:
-        try:
-            original = self.lock_dir.read_bytes()
-            original_stat = self.lock_dir.stat()
-            payload = json.loads(original)
-            pid = int(payload.get("pid"))
-        except (OSError, TypeError, ValueError, json.JSONDecodeError):
-            return False
-        if pid <= 0 or self.process_is_running(pid):
-            return False
-        try:
-            current_stat = self.lock_dir.stat()
-            if (
-                current_stat.st_dev != original_stat.st_dev
-                or current_stat.st_ino != original_stat.st_ino
-                or self.lock_dir.read_bytes() != original
-            ):
-                return False
-            self.lock_dir.unlink()
-            fsync_directory(self.lock_dir.parent)
-        except OSError:
-            return False
-        return True
 
     def resolve_openclaw_lock_module(self) -> Path:
         if self.openclaw_lock_module is not None:
@@ -339,16 +302,20 @@ class GmailDeployment:
         return module_path
 
     @contextmanager
-    def config_lock(self) -> Iterator[Callable[[], None]]:
+    def shared_openclaw_lock(
+        self,
+        target: Path,
+        label: str,
+    ) -> Iterator[Callable[[], None]]:
         if not self.config_lock_helper.is_file():
             raise DeploymentError(
-                f"OpenClaw config lock helper is missing: {self.config_lock_helper}"
+                f"OpenClaw shared lock helper is missing: {self.config_lock_helper}"
             )
         command = [
             self.node,
             str(self.config_lock_helper),
             str(self.resolve_openclaw_lock_module()),
-            str(self.config_path),
+            str(target),
         ]
         try:
             process = subprocess.Popen(
@@ -360,18 +327,18 @@ class GmailDeployment:
             )
         except OSError as exc:
             raise DeploymentError(
-                f"OpenClaw config lock helper could not start: {exc}"
+                f"{label} helper could not start: {exc}"
             ) from exc
         selector = selectors.DefaultSelector()
         if process.stdout is None:
             process.kill()
-            raise DeploymentError("OpenClaw config lock helper has no stdout")
+            raise DeploymentError(f"{label} helper has no stdout")
         selector.register(process.stdout, selectors.EVENT_READ)
         acquired = False
 
         def assert_held() -> None:
             if process.poll() is not None:
-                raise DeploymentError("OpenClaw config lock helper exited unexpectedly")
+                raise DeploymentError(f"{label} helper exited unexpectedly")
 
         try:
             ready = selector.select(self.config_lock_timeout)
@@ -380,7 +347,7 @@ class GmailDeployment:
                 process.wait()
                 detail = process.stderr.read().strip() if process.stderr else ""
                 raise DeploymentError(
-                    f"OpenClaw config lock acquisition timed out"
+                    f"{label} acquisition timed out"
                     f"{f': {detail}' if detail else ''}"
                 )
             line = process.stdout.readline()
@@ -389,11 +356,11 @@ class GmailDeployment:
             except json.JSONDecodeError as exc:
                 detail = process.stderr.read().strip() if process.stderr else ""
                 raise DeploymentError(
-                    f"OpenClaw config lock helper failed"
+                    f"{label} helper failed"
                     f"{f': {detail}' if detail else ''}"
                 ) from exc
             if payload.get("ready") is not True:
-                raise DeploymentError("OpenClaw config lock helper was not ready")
+                raise DeploymentError(f"{label} helper was not ready")
             acquired = True
             assert_held()
             yield assert_held
@@ -407,12 +374,12 @@ class GmailDeployment:
                     process.kill()
                     process.wait()
                     raise DeploymentError(
-                        f"OpenClaw config lock release failed: {exc}"
+                        f"{label} release failed: {exc}"
                     ) from exc
                 if return_code != 0:
                     detail = process.stderr.read().strip() if process.stderr else ""
                     raise DeploymentError(
-                        f"OpenClaw config lock helper exited with status {return_code}"
+                        f"{label} helper exited with status {return_code}"
                         f"{f': {detail}' if detail else ''}"
                     )
             elif process.poll() is None:
@@ -420,58 +387,21 @@ class GmailDeployment:
                 process.wait()
             selector.close()
 
-    def acquire_lock(self) -> None:
-        self.lock_dir.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
-        nonce = secrets.token_hex(16)
-        payload = {
-            "pid": os.getpid(),
-            "createdAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "nonce": nonce,
-        }
-        descriptor, temporary = tempfile.mkstemp(
-            prefix=f".{self.lock_dir.name}.",
-            dir=self.lock_dir.parent,
-        )
-        temporary_path = Path(temporary)
-        try:
-            with os.fdopen(descriptor, "w") as handle:
-                json.dump(payload, handle)
-                handle.write("\n")
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.chmod(temporary_path, 0o600)
-            for attempt in range(2):
-                try:
-                    os.link(temporary_path, self.lock_dir)
-                    break
-                except FileExistsError as exc:
-                    if attempt == 0 and self.reclaim_dead_deployment_lock():
-                        continue
-                    raise DeploymentError(
-                        f"another Gmail deployment holds {self.lock_dir}"
-                    ) from exc
-        finally:
-            temporary_path.unlink(missing_ok=True)
-        self.deployment_lock_nonce = nonce
-        self.lock_acquired = True
-        fsync_directory(self.lock_dir.parent)
+    @contextmanager
+    def config_lock(self) -> Iterator[Callable[[], None]]:
+        with self.shared_openclaw_lock(
+            self.config_path,
+            "OpenClaw config lock",
+        ) as assert_held:
+            yield assert_held
 
-    def release_lock(self) -> None:
-        if not self.lock_acquired:
-            return
-        try:
-            payload = json.loads(self.lock_dir.read_text())
-        except (OSError, json.JSONDecodeError) as exc:
-            raise DeploymentError("Gmail deployment lock became unreadable") from exc
-        if (
-            payload.get("pid") != os.getpid()
-            or payload.get("nonce") != self.deployment_lock_nonce
-        ):
-            raise DeploymentError("Gmail deployment lock ownership changed")
-        self.lock_dir.unlink()
-        fsync_directory(self.lock_dir.parent)
-        self.deployment_lock_nonce = None
-        self.lock_acquired = False
+    @contextmanager
+    def deployment_lock(self) -> Iterator[Callable[[], None]]:
+        with self.shared_openclaw_lock(
+            self.lock_dir,
+            "Gmail deployment lock",
+        ) as assert_held:
+            yield assert_held
 
     def validate_source(self) -> None:
         if not REVISION_PATTERN.fullmatch(self.revision):
@@ -1159,7 +1089,14 @@ class GmailDeployment:
                     )
 
     def deploy(self) -> None:
-        self.acquire_lock()
+        with self.deployment_lock() as assert_deployment_lock:
+            assert_deployment_lock()
+            self.deploy_under_lock(assert_deployment_lock)
+
+    def deploy_under_lock(
+        self,
+        assert_deployment_lock: Callable[[], None],
+    ) -> None:
         previous_handlers: dict[int, Any] = {}
 
         def interrupt(signum: int, _frame: Any) -> None:
@@ -1169,10 +1106,12 @@ class GmailDeployment:
             for signum in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
                 previous_handlers[signum] = signal.signal(signum, interrupt)
             self.ensure_roots()
+            assert_deployment_lock()
             self.recover_incomplete_deployment()
             self.validate_source()
             self.prepare_release()
             self.wait_for_gateway()
+            assert_deployment_lock()
             with self.rollback_on_failure(previous_handlers):
                 already_active = False
                 with self.config_lock() as assert_lock:
@@ -1233,13 +1172,13 @@ class GmailDeployment:
                         self.config_mutated = False
                 if not still_active:
                     self.fail_after_concurrent_gmail_change()
+            assert_deployment_lock()
             print(f"Deployed Gmail release {self.revision}; read-only smoke passed")
         finally:
             for signum, handler in previous_handlers.items():
                 signal.signal(signum, handler)
             if self.staging is not None:
                 shutil.rmtree(self.staging, ignore_errors=True)
-            self.release_lock()
 
 
 def positive_int(value: str) -> int:
