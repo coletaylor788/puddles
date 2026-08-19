@@ -1,6 +1,6 @@
 # Fix recurring Gmail authentication failures
 
-Status: Validating
+Status: Reviewing
 Issue: https://github.com/coletaylor788/puddles/issues/99
 Last updated: 2026-08-18
 
@@ -16,15 +16,15 @@ The earlier candidate already implemented and reviewed this design, but its pull
 
 ### Status
 
-The implementation is complete on the current branch. All safe Gmail tests, lint, compilation, and the shared Gmail regression pass.
+Implementation and the complete managed test lifecycle are green. The branch passes the full workspace, Gmail, patched-runtime, and candidate test pools.
 
-The complete managed test lifecycle and independent review are next. Nothing needs Cole's input.
+Independent review is in progress. Nothing needs Cole's input.
 
 ## Agent section
 
 ### State
 
-- Phase: Validation
+- Phase: Independent review
 - Repository: `coletaylor788/puddles`
 - Todoist task: `6hHwPPrxrg2FQP9V`
 - Tracking issue: `https://github.com/coletaylor788/puddles/issues/99`
@@ -72,25 +72,26 @@ The complete managed test lifecycle and independent review are next. Nothing nee
 
 - Passed: `166` safe Gmail tests with live integration tests explicitly excluded.
 - Passed: Gmail Ruff checks and Python compilation.
-- Passed: `4` tests in `packages/e2e/tests/gmail-keychain.test.ts`.
+- Passed: `4` focused tests in `packages/e2e/tests/gmail-keychain.test.ts`.
 - Passed: TypeScript lint for `packages/e2e`.
-- Pending: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
+- Passed: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
+- Managed lifecycle result: `310` workspace tests, `166` safe Gmail tests, `471` mapped OpenClaw tests, and `1` candidate test passed. Build, lint, compilation, patch application, prompt snapshot checks, and cleanup also passed.
 - Pending: independent full-diff review and terminal exact-commit review.
 - Safety constraint: tests must not send mail, change mailbox state, print credential values, or edit the configured primary checkout.
 
 ### Rollout and rollback
 
-- Use the managed test lifecycle for the candidate.
+- The managed test lifecycle is green for the candidate.
 - The repository currently has no snapshotting, atomic, rollback-capable Gmail production promotion path. The running service loads the package from the configured primary checkout, which this worker must not edit.
 - Do not replace that boundary with a manual copy or primary-checkout edit.
-- Land the repository fix after all gates. Report the production rollout limitation unless a documented safe lifecycle is found during validation.
+- Land the repository fix after all review and remote gates. Report the production rollout limitation unless a documented safe lifecycle is found before landing.
 - The existing recovered OAuth credential remains independent of code rollout and must not be replaced unless validation proves it unusable.
 
 ### Review log
 
 - The prior candidate received an extended retained-review loop and a clean terminal review at `264cf75`, but later base changes made PR 31 conflicting.
 - That prior review does not replace review of the new current-main diff.
-- Independent retained-worker review is pending.
+- Independent retained-worker review is starting against the complete current diff.
 - Terminal review of the exact landing candidate is pending.
 
 ### Checklist
@@ -102,7 +103,7 @@ The complete managed test lifecycle and independent review are next. Nothing nee
 - [x] Focused repair is ported without stale tracker artifacts.
 - [x] Committed regression covers the recurring failure.
 - [x] Focused tests, lint, compilation, and shared Gmail regression pass.
-- [ ] Complete managed integration lifecycle passes.
+- [x] Complete managed integration lifecycle passes.
 - [ ] Independent retained-worker review is clean.
 - [ ] Exact candidate receives a clean terminal review.
 - [ ] Pull request is remotely green, mergeable, and merged.
