@@ -1,6 +1,6 @@
 # Fix recurring Gmail authentication failures
 
-Status: Rechecking remediated deployment
+Status: Final deployment review
 Issue: https://github.com/coletaylor788/puddles/issues/99
 Last updated: 2026-08-18
 
@@ -10,101 +10,101 @@ Last updated: 2026-08-18
 
 Gmail kept failing because the running service still used an old package from the configured repository checkout. The code repair is merged, and Cole has asked to deploy it because Gmail is currently unavailable.
 
-The deployment path builds a separate Gmail runtime from tracked source in the exact reviewed revision. A cryptographic manifest proves that a prepared release has not changed before reuse. Immediately before promotion, the helper joins the gateway's configuration lock, saves the complete current config with owner-only permissions, and changes only the secure Gmail runtime fields.
+The deployment path builds a separate Gmail runtime from tracked source in the exact reviewed revision. A cryptographic manifest proves that a prepared release has not changed before reuse. Immediately before promotion, the helper joins the gateway's configuration lock, saves the current and candidate configs with owner-only permissions, and records a durable deployment phase before replacing anything.
 
-The helper restarts the gateway, confirms health, and makes one read-only Gmail profile request without printing account or mailbox content. A failed deployment restores the prior Gmail fields while preserving unrelated config changes. It refuses to overwrite a concurrent Gmail edit. The old Gmail runtime is broken, but it still protects the rest of the gateway from a worse deployment.
+The helper restarts the gateway, confirms health, and makes one read-only Gmail profile request without printing account or mailbox content. Normal failure restores the prior Gmail fields while preserving unrelated changes. After power loss or process death, the next invocation reclaims only dead-owner locks, recovers the incomplete promotion, restarts and checks the prior gateway, then starts a new deployment.
 
 ### Status
 
-Both independent-review findings are fixed. Focused checks and the complete managed test lifecycle pass again, and production remains untouched.
+All three independent-review findings are fixed. Focused checks and the complete managed test lifecycle pass again, and production remains untouched.
 
-The retained reviewer is rechecking the complete remediated diff. Nothing needs Cole's input.
+The retained reviewer is performing the final complete-diff recheck. Nothing needs Cole's input.
 
 ## Agent section
 
 ### State
 
-- Phase: Retained reviewer recheck
+- Phase: Retained reviewer final recheck
 - Repository: `coletaylor788/puddles`
 - Todoist task: `6hHwPPrxrg2FQP9V`
 - Todoist label: `agent`
 - Tracking issue: `https://github.com/coletaylor788/puddles/issues/99`
-- Initial implementation commit: `849a2d6a52e8cec176a10547514e14ae5cdca7cb`
+- Pre-crash-recovery commit: `0c6b57faebdaaae72ce1e99e827862b0d6dbcf6a`
 - Production state: unchanged.
 
 ### Scope and acceptance criteria
 
-- Deploy the landed Gmail authentication repair from an exact reviewed `main` revision.
-- Do not edit the configured repository's primary checkout.
-- Build only tracked Gmail source from the exact revision.
-- Verify prepared runtime content before reuse.
-- Join OpenClaw's config lock at the promotion boundary.
-- Abort promotion rather than overwrite a concurrent config change.
-- Restore prior Gmail fields while preserving unrelated changes after a failed deployment.
-- Refuse rollback overwrite when Gmail fields changed concurrently.
+- Build only tracked Gmail source from the exact reviewed revision.
+- Verify prepared release content before reuse.
+- Join OpenClaw's config lock at the promotion and rollback boundaries.
+- Persist current and promoted config before replacement.
+- Record durable deployment phases around promotion and validation.
+- Recover incomplete promotion on the next invocation.
+- Reclaim locks only when their recorded owner process is dead.
+- Preserve unrelated config changes and refuse conflicting Gmail edits.
 - Keep production validation read-only and bounded.
-- Add committed release-identity and config-concurrency regressions to the shared integration pool.
 - Complete review, remote checks, merge, promotion, and post-promotion verification.
 
 ### Architecture and decisions
 
-- Source extraction uses `git archive <revision> -- servers/gmail-mcp`. Ignored credentials, tokens, caches, and untracked worktree files cannot enter a release.
-- Each release records a SHA-256 manifest of regular files and symlink targets. Reuse recomputes and compares the complete runtime manifest.
-- Releases remain under `~/.local/share/puddles/gmail-mcp/releases/<revision>`.
-- Candidate preparation installs runtime dependencies, checks the MCP tool surface, records resolved packages, writes the content manifest, and atomically renames staging into place.
-- The helper uses the same `<openclaw.json>.lock` sidecar protocol as OpenClaw config mutations during the final read, snapshot, and conditional write.
-- Promotion compares live bytes immediately before atomic replacement.
-- Recovery stores original bytes, prior Gmail field presence and values, and the exact promoted bytes.
-- Rollback restores byte-for-byte config when nothing changed. If unrelated config changed, it restores only the Gmail runtime fields. A concurrent Gmail edit blocks rollback overwrite.
-- Gateway restart, health, read-only profile smoke, deployment locking, signal deferral, and retained recovery state remain unchanged.
+- Source extraction uses `git archive`; ignored and untracked files cannot enter releases.
+- SHA-256 manifests cover release regular files and symlink targets, excluding generated bytecode.
+- Candidate releases remain under `~/.local/share/puddles/gmail-mcp/releases/<revision>`.
+- OpenClaw's `<openclaw.json>.lock` sidecar protocol serializes config read, snapshot, and conditional write.
+- Recovery stores `openclaw.json`, `promoted-openclaw.json`, `recovery.json`, and `deployment-state.json` with owner-only permissions.
+- Durable states cover snapshot, prepared, promoted, complete, aborted, restoring, rolled-back, and recovered outcomes.
+- Original and promoted snapshots are fsynced before live replacement.
+- The deployment lock is a fully written temporary file atomically hard-linked into place. A dead owner can be reclaimed after PID and file-identity checks; a live or malformed owner blocks.
+- Startup recovers exactly one incomplete deployment before source validation or candidate preparation.
+- Crash recovery restores exact bytes when possible, otherwise restores only Gmail fields while preserving unrelated changes. Conflicting Gmail edits block overwrite.
+- Any crash recovery conservatively restarts and health-checks the prior gateway.
+- Normal rollback, signal deferral, gateway health, read-only profile smoke, and retained diagnosis state remain required.
 
 ### Implementation
 
-- [x] Implement the initial rollback-capable deployment helper, smoke check, tests, and docs.
-- [x] Replace working-tree copying with tracked-object extraction.
-- [x] Add and verify a cryptographic release manifest.
-- [x] Move config loading and snapshotting to the promotion boundary.
-- [x] Join OpenClaw's config lock and add conditional promotion replacement.
-- [x] Preserve unrelated concurrent config changes during rollback.
-- [x] Refuse rollback when Gmail runtime fields changed concurrently.
-- [x] Add ignored-file, release tampering, config lock, conditional write, unrelated change, and Gmail conflict regressions.
-- [x] Update documentation for release identity and config concurrency guarantees.
+- [x] Build from tracked Git objects and verify release manifests.
+- [x] Join the shared config lock and handle concurrent config changes safely.
+- [x] Persist promoted bytes before replacement.
+- [x] Add durable deployment phase transitions.
+- [x] Recover incomplete promotion before normal deployment.
+- [x] Replace the deployment lock with an atomically published owner record.
+- [x] Reclaim only dead deployment and config-lock owners.
+- [x] Add SIGKILL recovery, durable state, dead-lock, tampering, ignored-file, and config conflict regressions.
+- [x] Update deployment documentation for restart recovery.
 
 ### Validation
 
-- Passed after remediation: all `171` safe Gmail tests.
-- Passed after remediation: `12` deployment tests covering success, ignored files, manifest tampering, install failure, restart failure, smoke failure, malformed config, interruption, deployment lock, config lock, conditional write conflict, unrelated config preservation, and Gmail rollback conflict.
-- Passed after remediation: `26` focused shared deployment, Keychain, and plan contract tests.
-- Passed after remediation: Ruff, Python compilation, E2E TypeScript lint, and diff check.
-- Passed after remediation: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
-- Managed lifecycle result: `323` workspace tests, `171` safe Gmail tests, `471` mapped OpenClaw tests, and `1` candidate test. Build, lint, compilation, patch application, prompt snapshots, and cleanup also passed.
-- Pending: retained reviewer recheck and terminal exact-commit review.
+- Passed: all `171` safe Gmail tests.
+- Passed: `14` deployment lifecycle tests, including SIGTERM rollback, SIGKILL next-run recovery, dead lock reclamation, durable phases, release tampering, ignored files, config concurrency, install failure, restart failure, and smoke failure.
+- Passed: `28` focused deployment, Keychain, and plan contract tests.
+- Passed: Ruff, Python compilation, E2E TypeScript lint, and diff check.
+- Passed: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
+- Managed lifecycle result: `325` workspace tests, `171` safe Gmail tests, `471` mapped OpenClaw tests, and `1` candidate test. Build, lint, compilation, patch application, prompt snapshots, and cleanup also passed.
+- Pending: retained reviewer final recheck and terminal exact-commit review.
 - Pending: exact-candidate production promotion and read-only validation.
 
 ### Rollout and rollback
 
-- Production remains unchanged until remediation is reviewed, merged, and remotely green.
-- Release preparation occurs before config mutation and only consumes tracked source.
-- Promotion holds the shared config lock and uses conditional atomic replacement.
-- Rollback preserves unrelated concurrent config changes and refuses concurrent Gmail edits.
-- Gateway and Gmail validation requirements remain the same.
+- Production remains unchanged until the final diff is reviewed, merged, and remotely green.
+- Every replacement has durable original and promoted snapshots plus a phase marker.
+- Normal rollback and next-run crash recovery preserve unrelated changes and refuse Gmail conflicts.
+- Gateway health is required after rollback or crash recovery.
 - Failed candidate releases and recovery snapshots remain for diagnosis.
 
 ### Review log
 
-- The code repair received retained and terminal review before merging.
-- Cole reopened the task and authorized deployment without waiving recovery requirements.
-- Retained deployment review found a high-severity stale-config race because config was read before environment preparation.
-- Retained deployment review found a high-severity release-identity gap because ignored files could be copied and retained releases lacked content verification.
-- Both findings were accepted and fixed. Expanded regressions and the complete managed lifecycle are green.
-- The same retained reviewer is rechecking the complete current diff.
+- Initial retained review found high-severity stale-config and release-identity gaps. Both were fixed and validated.
+- Retained recheck found a medium-severity process-death gap because promoted bytes existed only in memory.
+- Process-death remediation persists promoted bytes and phases, publishes a recoverable lock atomically, and restores incomplete promotion on the next run.
+- Expanded focused and managed validation are green.
+- The same retained reviewer is rechecking the complete final diff.
 
 ### Checklist
 
 - [x] Tracking comment, issue, and reopened plan follow the required contract.
-- [x] Deployment tooling and cumulative regression are implemented.
-- [x] Both retained-review findings are fixed with regression coverage.
-- [x] Focused and full managed validation pass after remediation.
+- [x] Release identity and config concurrency findings are fixed.
+- [x] Process-death recovery finding is fixed with regression coverage.
+- [x] Focused and full managed validation pass after final remediation.
 - [ ] Retained and terminal reviews are clean.
 - [ ] Deployment pull request is green and merged.
 - [ ] Exact landed candidate is promoted.

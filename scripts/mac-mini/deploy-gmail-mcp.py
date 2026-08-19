@@ -25,6 +25,8 @@ from typing import Any
 EXPECTED_ARGS = ["-m", "gmail_mcp"]
 GMAIL_CONFIG_KEYS = ("gmailMcpCommand", "gmailMcpArgs", "gmailMcpCwd")
 MANIFEST_NAME = ".puddles-runtime-manifest.json"
+PROMOTED_CONFIG_NAME = "promoted-openclaw.json"
+STATE_NAME = "deployment-state.json"
 REVISION_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 
 
@@ -200,9 +202,68 @@ class GmailDeployment:
         self.config_mode = 0o600
         self.config_mutated = False
         self.lock_acquired = False
+        self.deployment_lock_nonce: str | None = None
         self.original_config: bytes | None = None
         self.promoted_config: bytes | None = None
         self.previous_gmail: dict[str, tuple[bool, Any]] = {}
+
+    @staticmethod
+    def process_is_running(pid: int) -> bool:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
+
+    def reclaim_dead_deployment_lock(self) -> bool:
+        try:
+            original = self.lock_dir.read_bytes()
+            original_stat = self.lock_dir.stat()
+            payload = json.loads(original)
+            pid = int(payload.get("pid"))
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            return False
+        if pid <= 0 or self.process_is_running(pid):
+            return False
+        try:
+            current_stat = self.lock_dir.stat()
+            if (
+                current_stat.st_dev != original_stat.st_dev
+                or current_stat.st_ino != original_stat.st_ino
+                or self.lock_dir.read_bytes() != original
+            ):
+                return False
+            self.lock_dir.unlink()
+            fsync_directory(self.lock_dir.parent)
+        except OSError:
+            return False
+        return True
+
+    def reclaim_dead_config_lock(self, lock_path: Path) -> bool:
+        try:
+            original = lock_path.read_bytes()
+            original_stat = lock_path.stat()
+            payload = json.loads(original)
+            pid = int(payload.get("pid"))
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            return False
+        if pid <= 0 or self.process_is_running(pid):
+            return False
+        try:
+            current_stat = lock_path.stat()
+            if (
+                current_stat.st_dev != original_stat.st_dev
+                or current_stat.st_ino != original_stat.st_ino
+                or lock_path.read_bytes() != original
+            ):
+                return False
+            lock_path.unlink()
+            fsync_directory(lock_path.parent)
+        except OSError:
+            return False
+        return True
 
     @contextmanager
     def config_lock(self) -> Iterator[None]:
@@ -223,6 +284,8 @@ class GmailDeployment:
                 )
                 break
             except FileExistsError as exc:
+                if self.reclaim_dead_config_lock(lock_path):
+                    continue
                 if time.monotonic() >= deadline:
                     raise DeploymentError(
                         f"OpenClaw config lock is busy: {lock_path}"
@@ -252,20 +315,55 @@ class GmailDeployment:
 
     def acquire_lock(self) -> None:
         self.lock_dir.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
+        nonce = secrets.token_hex(16)
+        payload = {
+            "pid": os.getpid(),
+            "createdAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "nonce": nonce,
+        }
+        descriptor, temporary = tempfile.mkstemp(
+            prefix=f".{self.lock_dir.name}.",
+            dir=self.lock_dir.parent,
+        )
+        temporary_path = Path(temporary)
         try:
-            self.lock_dir.mkdir(mode=0o700)
-        except FileExistsError as exc:
-            raise DeploymentError(
-                f"another Gmail deployment holds {self.lock_dir}"
-            ) from exc
+            with os.fdopen(descriptor, "w") as handle:
+                json.dump(payload, handle)
+                handle.write("\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.chmod(temporary_path, 0o600)
+            for attempt in range(2):
+                try:
+                    os.link(temporary_path, self.lock_dir)
+                    break
+                except FileExistsError as exc:
+                    if attempt == 0 and self.reclaim_dead_deployment_lock():
+                        continue
+                    raise DeploymentError(
+                        f"another Gmail deployment holds {self.lock_dir}"
+                    ) from exc
+        finally:
+            temporary_path.unlink(missing_ok=True)
+        self.deployment_lock_nonce = nonce
         self.lock_acquired = True
-        (self.lock_dir / "pid").write_text(f"{os.getpid()}\n")
+        fsync_directory(self.lock_dir.parent)
 
     def release_lock(self) -> None:
         if not self.lock_acquired:
             return
-        (self.lock_dir / "pid").unlink(missing_ok=True)
-        self.lock_dir.rmdir()
+        try:
+            payload = json.loads(self.lock_dir.read_text())
+        except (OSError, json.JSONDecodeError) as exc:
+            raise DeploymentError("Gmail deployment lock became unreadable") from exc
+        if (
+            payload.get("pid") != os.getpid()
+            or payload.get("nonce") != self.deployment_lock_nonce
+        ):
+            raise DeploymentError("Gmail deployment lock ownership changed")
+        self.lock_dir.unlink()
+        fsync_directory(self.lock_dir.parent)
+        self.deployment_lock_nonce = None
         self.lock_acquired = False
 
     def validate_source(self) -> None:
@@ -480,6 +578,20 @@ class GmailDeployment:
         run([self.openclaw, "gateway", "restart"])
         self.wait_for_gateway()
 
+    def write_recovery_state(self, phase: str) -> None:
+        if self.recovery is None:
+            raise DeploymentError("recovery directory is unavailable")
+        state = {
+            "revision": self.revision,
+            "phase": phase,
+            "updatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
+        atomic_write(
+            self.recovery / STATE_NAME,
+            f"{json.dumps(state, indent=2)}\n".encode(),
+            0o600,
+        )
+
     def snapshot_config(self, original: bytes, gmail: dict[str, Any]) -> None:
         timestamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
         self.recovery = self.backup_root / f"{timestamp}-{os.getpid()}"
@@ -504,6 +616,7 @@ class GmailDeployment:
             f"{json.dumps(recovery_record, indent=2)}\n".encode(),
             0o600,
         )
+        self.write_recovery_state("snapshot")
         print(f"Recovery state: {self.recovery}")
 
     def write_candidate_config(
@@ -517,23 +630,37 @@ class GmailDeployment:
         gmail["gmailMcpArgs"] = EXPECTED_ARGS
         gmail["gmailMcpCwd"] = str(self.release)
         candidate = serialize_config(config)
+        if self.recovery is None:
+            raise DeploymentError("recovery directory is unavailable")
+        self.promoted_config = candidate
+        atomic_write(
+            self.recovery / PROMOTED_CONFIG_NAME,
+            candidate,
+            0o600,
+        )
+        self.write_recovery_state("prepared")
         previous_mask = signal.pthread_sigmask(
             signal.SIG_BLOCK,
             {signal.SIGINT, signal.SIGTERM, signal.SIGHUP},
         )
 
         def record_replacement() -> None:
-            self.promoted_config = candidate
             self.config_mutated = True
 
         try:
-            conditional_atomic_write(
-                self.config_path,
-                expected=expected,
-                replacement=candidate,
-                mode=self.config_mode,
-                on_replaced=record_replacement,
-            )
+            try:
+                conditional_atomic_write(
+                    self.config_path,
+                    expected=expected,
+                    replacement=candidate,
+                    mode=self.config_mode,
+                    on_replaced=record_replacement,
+                )
+            except DeploymentError:
+                if not self.config_mutated:
+                    self.write_recovery_state("aborted")
+                raise
+            self.write_recovery_state("promoted")
         finally:
             signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
 
@@ -548,6 +675,145 @@ class GmailDeployment:
             ],
             timeout=self.smoke_timeout,
         )
+
+    @staticmethod
+    def gmail_values_match(
+        gmail: dict[str, Any],
+        recorded: dict[str, Any],
+    ) -> bool:
+        for key in GMAIL_CONFIG_KEYS:
+            entry = recorded.get(key)
+            if not isinstance(entry, dict) or not isinstance(entry.get("present"), bool):
+                raise DeploymentError("recovery Gmail config record is invalid")
+            if entry["present"]:
+                if gmail.get(key) != entry.get("value"):
+                    return False
+            elif key in gmail:
+                return False
+        return True
+
+    @staticmethod
+    def restore_gmail_values(
+        gmail: dict[str, Any],
+        recorded: dict[str, Any],
+    ) -> None:
+        for key in GMAIL_CONFIG_KEYS:
+            entry = recorded[key]
+            if entry["present"]:
+                gmail[key] = entry.get("value")
+            else:
+                gmail.pop(key, None)
+
+    def find_incomplete_recovery(self) -> tuple[Path, dict[str, Any]] | None:
+        incomplete: list[tuple[Path, dict[str, Any]]] = []
+        for recovery in sorted(self.backup_root.iterdir()):
+            if not recovery.is_dir() or recovery.is_symlink():
+                continue
+            state_path = recovery / STATE_NAME
+            if not state_path.is_file():
+                continue
+            try:
+                state = json.loads(state_path.read_text())
+            except json.JSONDecodeError as exc:
+                raise DeploymentError(
+                    f"deployment recovery state is invalid: {state_path}"
+                ) from exc
+            if state.get("phase") in {"prepared", "promoted", "restoring"}:
+                incomplete.append((recovery, state))
+        if len(incomplete) > 1:
+            raise DeploymentError("multiple incomplete Gmail deployments need recovery")
+        return incomplete[0] if incomplete else None
+
+    def mark_existing_recovery(
+        self,
+        recovery: Path,
+        state: dict[str, Any],
+        phase: str,
+    ) -> None:
+        updated = {
+            "revision": state.get("revision"),
+            "phase": phase,
+            "updatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
+        atomic_write(
+            recovery / STATE_NAME,
+            f"{json.dumps(updated, indent=2)}\n".encode(),
+            0o600,
+        )
+
+    def recover_incomplete_deployment(self) -> None:
+        incomplete = self.find_incomplete_recovery()
+        if incomplete is None:
+            return
+        recovery, state = incomplete
+        try:
+            record = json.loads((recovery / "recovery.json").read_text())
+        except (OSError, json.JSONDecodeError) as exc:
+            raise DeploymentError(
+                f"incomplete recovery record is unreadable: {recovery}"
+            ) from exc
+        record_config = record.get("config")
+        candidate_release_value = record.get("candidateRelease")
+        if not isinstance(record_config, str) or not isinstance(
+            candidate_release_value,
+            str,
+        ):
+            raise DeploymentError(f"incomplete recovery metadata is invalid: {recovery}")
+        if absolute_path(Path(record_config)) != self.config_path:
+            raise DeploymentError(
+                f"incomplete recovery targets another config: {recovery}"
+            )
+        original_path = recovery / "openclaw.json"
+        promoted_path = recovery / PROMOTED_CONFIG_NAME
+        if not original_path.is_file() or not promoted_path.is_file():
+            raise DeploymentError(
+                f"incomplete recovery snapshots are missing: {recovery}"
+            )
+        original = original_path.read_bytes()
+        promoted = promoted_path.read_bytes()
+        previous_gmail = record.get("previousGmail")
+        if not isinstance(previous_gmail, dict):
+            raise DeploymentError(f"incomplete recovery metadata is invalid: {recovery}")
+        candidate_release = Path(candidate_release_value)
+        candidate_values = {
+            "gmailMcpCommand": str(candidate_release / ".venv" / "bin" / "python"),
+            "gmailMcpArgs": EXPECTED_ARGS,
+            "gmailMcpCwd": str(candidate_release),
+        }
+        restart_needed = True
+        with self.config_lock():
+            current = self.config_path.read_bytes()
+            replacement: bytes | None = None
+            if current == promoted:
+                replacement = original
+                restart_needed = True
+            elif current != original:
+                current_config = parse_config(current)
+                current_gmail = gmail_config(current_config)
+                if all(
+                    current_gmail.get(key) == value
+                    for key, value in candidate_values.items()
+                ):
+                    self.restore_gmail_values(current_gmail, previous_gmail)
+                    replacement = serialize_config(current_config)
+                    restart_needed = True
+                elif not self.gmail_values_match(current_gmail, previous_gmail):
+                    raise DeploymentError(
+                        "secure-gmail config changed after process death; "
+                        "refusing recovery overwrite"
+                    )
+            if replacement is not None:
+                self.mark_existing_recovery(recovery, state, "restoring")
+                conditional_atomic_write(
+                    self.config_path,
+                    expected=current,
+                    replacement=replacement,
+                    mode=stat.S_IMODE(self.config_path.stat().st_mode),
+                )
+        if restart_needed:
+            self.restart_gateway()
+        self.mark_existing_recovery(recovery, state, "recovered")
+        print(f"Recovered incomplete Gmail deployment from {recovery}")
 
     def rollback(self) -> None:
         if (
@@ -589,6 +855,7 @@ class GmailDeployment:
                 mode=self.config_mode,
             )
         self.restart_gateway()
+        self.write_recovery_state("rolled-back")
         self.config_mutated = False
 
     @contextmanager
@@ -628,8 +895,9 @@ class GmailDeployment:
         try:
             for signum in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
                 previous_handlers[signum] = signal.signal(signum, interrupt)
-            self.validate_source()
             self.ensure_roots()
+            self.recover_incomplete_deployment()
+            self.validate_source()
             self.prepare_release()
             self.wait_for_gateway()
             with self.rollback_on_failure(previous_handlers):
@@ -654,6 +922,7 @@ class GmailDeployment:
                     return
                 self.restart_gateway()
                 self.smoke_candidate()
+                self.write_recovery_state("complete")
                 self.config_mutated = False
             print(f"Deployed Gmail release {self.revision}; read-only smoke passed")
         finally:

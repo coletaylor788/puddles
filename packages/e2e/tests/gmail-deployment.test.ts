@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -176,6 +177,14 @@ exit 2
     expect(readFileSync(join(backupRoot, backup, "openclaw.json"), "utf8")).toBe(
       originalConfig,
     );
+    expect(
+      existsSync(join(backupRoot, backup, "promoted-openclaw.json")),
+    ).toBe(true);
+    expect(
+      JSON.parse(
+        readFileSync(join(backupRoot, backup, "deployment-state.json"), "utf8"),
+      ).phase,
+    ).toBe("complete");
     expect(readCalls()).toContain(
       "python\t-m gmail_mcp.scripts.production_smoke --deadline-seconds 2.0",
     );
@@ -193,6 +202,12 @@ exit 2
     ).toHaveLength(2);
     expect(existsSync(join(releaseRoot, "releases", revision))).toBe(true);
     expect(existsSync(lockDir)).toBe(false);
+    const backup = onlyChild(backupRoot);
+    expect(
+      JSON.parse(
+        readFileSync(join(backupRoot, backup, "deployment-state.json"), "utf8"),
+      ).phase,
+    ).toBe("rolled-back");
   });
 
   it("preserves unrelated config changes made before rollback", () => {
@@ -293,6 +308,51 @@ exit 2
     expect(existsSync(lockDir)).toBe(false);
   }, 10_000);
 
+  it("recovers a promoted config after uncatchable process death", async () => {
+    const child = spawn("python3", deployArgs(), {
+      env: {
+        ...process.env,
+        MOCK_CALLS: calls,
+        MOCK_RESTARTS: join(fixture, "restarts"),
+        MOCK_SMOKE_SLEEP: "3",
+      },
+      stdio: "ignore",
+    });
+    const closed = new Promise<number | null>((resolve) => {
+      child.on("close", resolve);
+    });
+
+    await waitFor(() =>
+      readCalls().some((line) =>
+        line.includes("gmail_mcp.scripts.production_smoke"),
+      ),
+    );
+    child.kill("SIGKILL");
+    await closed;
+
+    expect(existsSync(lockDir)).toBe(true);
+    expect(
+      JSON.parse(readFileSync(config, "utf8")).plugins.entries["secure-gmail"].config
+        .gmailMcpCwd,
+    ).toBe(join(releaseRoot, "releases", revision));
+
+    const resumed = runDeploy();
+
+    expect(resumed.status, `${resumed.stdout}\n${resumed.stderr}`).toBe(0);
+    expect(
+      readCalls().filter((line) => line === "openclaw\tgateway restart"),
+    ).toHaveLength(3);
+    const phases = readdirSync(backupRoot)
+      .map((entry) =>
+        JSON.parse(
+          readFileSync(join(backupRoot, entry, "deployment-state.json"), "utf8"),
+        ).phase,
+      )
+      .sort();
+    expect(phases).toEqual(["complete", "recovered"]);
+    expect(existsSync(lockDir)).toBe(false);
+  }, 10_000);
+
   it("rejects a concurrent deployment before mutation", () => {
     mkdirSync(lockDir);
     const result = runDeploy();
@@ -305,7 +365,7 @@ exit 2
   it("joins the OpenClaw config lock before promotion", () => {
     writeFileSync(
       `${config}.lock`,
-      '{"pid":999999,"createdAt":"2099-01-01T00:00:00Z"}\n',
+      `${JSON.stringify({ pid: process.pid, createdAt: "2099-01-01T00:00:00Z" })}\n`,
     );
 
     const result = runDeploy();
@@ -313,6 +373,18 @@ exit 2
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("OpenClaw config lock is busy");
     expect(readFileSync(config, "utf8")).toBe(originalConfig);
+  });
+
+  it("reclaims a dead OpenClaw config lock", () => {
+    writeFileSync(
+      `${config}.lock`,
+      '{"pid":999999,"createdAt":"2020-01-01T00:00:00Z"}\n',
+    );
+
+    const result = runDeploy();
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(existsSync(`${config}.lock`)).toBe(false);
   });
 
   it("rejects a changed config in the conditional promotion guard", () => {
