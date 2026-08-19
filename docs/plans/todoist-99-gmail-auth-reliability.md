@@ -1,6 +1,6 @@
 # Fix recurring Gmail authentication failures
 
-Status: Final deployment review
+Status: Landing deployment candidate
 Issue: https://github.com/coletaylor788/puddles/issues/99
 Last updated: 2026-08-18
 
@@ -16,15 +16,15 @@ The helper restarts the gateway, confirms health, and makes one read-only Gmail 
 
 ### Status
 
-The structural Gmail conflict finding is fixed, focused and managed validation are green, and production remains untouched.
+The structural Gmail conflict finding is fixed, focused and managed validation are green, and retained full-diff review is clean. Production remains untouched.
 
-The retained reviewer is rechecking the complete final diff before a new terminal review. Nothing needs Cole's input.
+The exact landing candidate is being sealed for a new terminal review and remote integration. Nothing needs Cole's input.
 
 ## Agent section
 
 ### State
 
-- Phase: Retained reviewer recheck
+- Phase: Seal exact landing candidate
 - Repository: `coletaylor788/puddles`
 - Todoist task: `6hHwPPrxrg2FQP9V`
 - Todoist label: `agent`
@@ -182,7 +182,8 @@ The retained reviewer is rechecking the complete final diff before a new termina
 - Expanded focused and managed validation pass. The retained reviewer is rechecking the complete final diff.
 - Retained recheck found a medium-severity gap because missing or non-object Gmail config raised before reconciliation.
 - The accepted fix treats missing and non-object Gmail config as concurrent conflict during completion, normal rollback, and process-death recovery, with durable reconciliation and gateway health.
-- Expanded focused and managed validation pass. The retained reviewer is rechecking the complete final diff.
+- Expanded focused and managed validation pass.
+- The retained reviewer rechecked the complete final diff at `18b0a28ca51fbb3e0185a3e1d9e151a05a121a3e` and found no significant issue.
 
 ### Checklist
 
@@ -202,7 +203,8 @@ The retained reviewer is rechecking the complete final diff before a new termina
 - [x] Retained recheck is clean.
 - [x] Rollback conflict runtime reconciliation is fixed.
 - [x] Structural Gmail conflicts use the same reconciliation path.
-- [ ] Retained recheck and a new terminal exact-commit review are clean.
+- [x] Retained recheck is clean.
+- [ ] A new terminal exact-commit review is clean.
 - [ ] Deployment pull request is green and merged.
 - [ ] Exact landed candidate is promoted.
 - [ ] Read-only production validation passes.
