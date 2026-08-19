@@ -1,6 +1,6 @@
 # Fix recurring Gmail authentication failures
 
-Status: Reviewing remediated candidate
+Status: Landing candidate
 Issue: https://github.com/coletaylor788/puddles/issues/99
 Last updated: 2026-08-18
 
@@ -16,15 +16,15 @@ The earlier candidate already implemented and reviewed most of this design, but 
 
 ### Status
 
-The independent-review finding is fixed. Focused checks and the complete managed test lifecycle pass on the remediated candidate.
+Implementation, focused checks, the complete managed test lifecycle, and independent review are green. No actionable review finding remains.
 
-A resumable replacement reviewer is checking the complete current diff because the first reviewer was started in one-shot mode. Nothing needs Cole's input.
+The exact landing candidate is being sealed for terminal review and remote integration. Production rollout remains unavailable because the repository has no safe Gmail promotion and rollback path. Nothing needs Cole's input.
 
 ## Agent section
 
 ### State
 
-- Phase: Independent review recheck
+- Phase: Seal exact landing candidate
 - Repository: `coletaylor788/puddles`
 - Todoist task: `6hHwPPrxrg2FQP9V`
 - Tracking issue: `https://github.com/coletaylor788/puddles/issues/99`
@@ -79,25 +79,25 @@ A resumable replacement reviewer is checking the complete current diff because t
 - Passed after review fix: TypeScript lint for `packages/e2e`.
 - Passed after review fix: `node packages/e2e/bin/openclaw-test-env.mjs ci` with `PYTHONPATH` fixed to this worktree's Gmail source.
 - Managed lifecycle result after review fix: `310` workspace tests, `169` safe Gmail tests, `471` mapped OpenClaw tests, and `1` candidate test passed. Build, lint, compilation, patch application, prompt snapshot checks, and cleanup also passed.
-- Pending: replacement retained-reviewer recheck and terminal exact-commit review.
+- Pending: terminal exact-commit review and remote checks.
 - Safety constraint: tests must not send mail, change mailbox state, print credential values, or edit the configured primary checkout.
 
 ### Rollout and rollback
 
-- The remediated candidate passes the complete managed test lifecycle.
-- The repository currently has no snapshotting, atomic, rollback-capable Gmail production promotion path. The running service loads the package from the configured primary checkout, which this worker must not edit.
-- Do not replace that boundary with a manual copy or primary-checkout edit.
-- Land the repository fix after all review and remote gates. Report the production rollout limitation unless a documented safe lifecycle is found before landing.
+- The landing candidate passes the complete managed test lifecycle.
+- Repository research found no snapshotting, atomic, rollback-capable Gmail production promotion path. The running service loads the package from the configured primary checkout, which this worker must not edit.
+- Production deployment is not run. Do not replace the missing lifecycle with a manual copy or primary-checkout edit.
+- Land the repository fix after terminal review and remote gates, then report the production rollout limitation.
 - The existing recovered OAuth credential remains independent of code rollout and must not be replaced unless validation proves it unusable.
 
 ### Review log
 
 - The prior candidate received an extended retained-review loop and a clean terminal review at `264cf75`, but later base changes made PR 31 conflicting.
-- The current independent reviewer found one medium-severity issue: malformed Keychain data was collapsed into the same `None` result as a missing item.
+- The first current-branch reviewer found one medium-severity issue: malformed Keychain data was collapsed into the same `None` result as a missing item.
 - Accepted fix: only status 44 returns no credential. Invalid encoding, empty content, invalid JSON, invalid required fields, and invalid scopes now raise a sanitized format error through the existing authentication-unavailable tool result.
 - Unit, server-boundary, shared-pool, and documentation coverage assert the corrected distinction.
 - Focused and complete managed validation pass after the fix.
-- The first reviewer cannot be resumed because it was launched in one-shot mode. A fresh replacement must review the complete current diff and remain available for any follow-up.
+- The replacement retained reviewer checked the complete remediated diff and found no significant issue. The only residual gap is live ACL migration, refresh, and production rollout, which remain outside automated credential and deployment safety boundaries.
 - Terminal review of the exact landing candidate is pending.
 
 ### Checklist
@@ -111,9 +111,9 @@ A resumable replacement reviewer is checking the complete current diff because t
 - [x] Initial focused and complete managed validation passed.
 - [x] Accepted independent-review finding is fixed with regression coverage.
 - [x] Complete managed lifecycle passes after review remediation.
-- [ ] Replacement retained-worker review is clean.
+- [x] Replacement retained-worker review is clean.
 - [ ] Exact candidate receives a clean terminal review.
 - [ ] Pull request is remotely green, mergeable, and merged.
 - [ ] Default branch contains the repair.
-- [ ] Production rollout is completed safely or its missing lifecycle is reported.
+- [x] Missing safe production rollout lifecycle is recorded.
 - [ ] Issue and Todoist task are ready for Cole's review.
