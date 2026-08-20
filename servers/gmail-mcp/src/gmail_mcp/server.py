@@ -5,6 +5,7 @@ import base64
 import json
 import os
 import re
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -14,11 +15,35 @@ from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
 from ._async import run_blocking
-from .auth import get_gmail_service, is_authenticated, run_oauth_flow
+from .auth import (
+    CREDENTIAL_LOCK_TIMEOUT_S,
+    HTTP_SOCKET_TIMEOUT_S,
+    OAUTH_OPERATION_TIMEOUT_S,
+    REFRESH_DEADLINE_S,
+    OAuthFlowError,
+    OAuthFlowTimeoutError,
+    get_gmail_service,
+    is_authenticated,
+    run_oauth_flow,
+)
+from .keychain import KeychainAccessError
 from .logging_setup import log
 
 # Initialize MCP server
 server = Server("gmail-mcp")
+
+AUTH_CHECK_TIMEOUT_S = CREDENTIAL_LOCK_TIMEOUT_S + HTTP_SOCKET_TIMEOUT_S
+AUTH_SERVICE_TIMEOUT_S = (
+    CREDENTIAL_LOCK_TIMEOUT_S
+    + REFRESH_DEADLINE_S
+    + HTTP_SOCKET_TIMEOUT_S
+    + 45
+)
+OAUTH_WORKER_TIMEOUT_S = OAUTH_OPERATION_TIMEOUT_S + 30
+
+
+class AuthenticationUnavailableError(RuntimeError):
+    """Authentication work could not complete within its safety bound."""
 
 
 @server.list_tools()
@@ -184,6 +209,13 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             raise ValueError(f"Unknown tool: {name}")
         ok = True
         return result
+    except (AuthenticationUnavailableError, KeychainAccessError) as e:
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps({"error": f"Authentication unavailable: {e}"}),
+            )
+        ]
     finally:
         log(
             "info",
@@ -197,7 +229,17 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 async def _authenticate() -> list[TextContent]:
     """Handle authenticate tool call."""
     try:
-        email = run_oauth_flow()
+        deadline = time.monotonic() + OAUTH_OPERATION_TIMEOUT_S
+        cancellation = threading.Event()
+        email = await run_blocking(
+            lambda: run_oauth_flow(
+                deadline=deadline,
+                cancellation=cancellation,
+            ),
+            op="auth.oauth_flow",
+            timeout=OAUTH_WORKER_TIMEOUT_S,
+            cancellation=cancellation,
+        )
         return [
             TextContent(
                 type="text",
@@ -206,13 +248,53 @@ async def _authenticate() -> list[TextContent]:
         ]
     except FileNotFoundError as e:
         return [TextContent(type="text", text=f"Error: {e}")]
+    except KeychainAccessError:
+        raise
+    except (asyncio.TimeoutError, OAuthFlowTimeoutError) as exc:
+        raise AuthenticationUnavailableError(
+            "Gmail OAuth flow timed out"
+        ) from exc
+    except OAuthFlowError as exc:
+        raise AuthenticationUnavailableError(str(exc)) from exc
     except Exception as e:
         return [TextContent(type="text", text=f"Error during authentication: {e}")]
 
 
+async def _is_authenticated_async() -> bool:
+    try:
+        return await run_blocking(
+            is_authenticated,
+            op="auth.is_authenticated",
+            timeout=AUTH_CHECK_TIMEOUT_S,
+        )
+    except asyncio.TimeoutError as exc:
+        raise AuthenticationUnavailableError(
+            "Gmail authentication check timed out"
+        ) from exc
+
+
+async def _get_gmail_service_async():
+    deadline = time.monotonic() + AUTH_SERVICE_TIMEOUT_S - 10
+    cancellation = threading.Event()
+    try:
+        return await run_blocking(
+            lambda: get_gmail_service(
+                deadline=deadline,
+                cancellation=cancellation,
+            ),
+            op="auth.get_service",
+            timeout=AUTH_SERVICE_TIMEOUT_S,
+            cancellation=cancellation,
+        )
+    except asyncio.TimeoutError as exc:
+        raise AuthenticationUnavailableError(
+            "Gmail authentication timed out"
+        ) from exc
+
+
 async def _list_emails(arguments: dict[str, Any]) -> list[TextContent]:
     """Handle list_emails tool call."""
-    if not is_authenticated():
+    if not await _is_authenticated_async():
         return [
             TextContent(
                 type="text",
@@ -220,7 +302,7 @@ async def _list_emails(arguments: dict[str, Any]) -> list[TextContent]:
             )
         ]
 
-    service = get_gmail_service()
+    service = await _get_gmail_service_async()
     if not service:
         return [
             TextContent(
@@ -364,7 +446,7 @@ def _extract_body_parts(payload: dict) -> tuple[str | None, str | None, list[dic
 
 async def _get_email(arguments: dict[str, Any]) -> list[TextContent]:
     """Handle get_email tool call."""
-    if not is_authenticated():
+    if not await _is_authenticated_async():
         return [
             TextContent(
                 type="text",
@@ -372,7 +454,7 @@ async def _get_email(arguments: dict[str, Any]) -> list[TextContent]:
             )
         ]
 
-    service = get_gmail_service()
+    service = await _get_gmail_service_async()
     if not service:
         return [
             TextContent(
@@ -462,7 +544,7 @@ def _sanitize_filename(filename: str) -> str:
 
 async def _get_attachments(arguments: dict[str, Any]) -> list[TextContent]:
     """Handle get_attachments tool call."""
-    if not is_authenticated():
+    if not await _is_authenticated_async():
         return [
             TextContent(
                 type="text",
@@ -470,7 +552,7 @@ async def _get_attachments(arguments: dict[str, Any]) -> list[TextContent]:
             )
         ]
 
-    service = get_gmail_service()
+    service = await _get_gmail_service_async()
     if not service:
         return [
             TextContent(
@@ -559,7 +641,7 @@ async def _get_attachments(arguments: dict[str, Any]) -> list[TextContent]:
 
 async def _archive_email(arguments: dict[str, Any]) -> list[TextContent]:
     """Handle archive_email tool call."""
-    if not is_authenticated():
+    if not await _is_authenticated_async():
         return [
             TextContent(
                 type="text",
@@ -567,7 +649,7 @@ async def _archive_email(arguments: dict[str, Any]) -> list[TextContent]:
             )
         ]
 
-    service = get_gmail_service()
+    service = await _get_gmail_service_async()
     if not service:
         return [
             TextContent(
@@ -655,7 +737,7 @@ async def _get_label_id(service, label_name: str) -> str | None:
 
 async def _add_label(arguments: dict[str, Any]) -> list[TextContent]:
     """Handle add_label tool call."""
-    if not is_authenticated():
+    if not await _is_authenticated_async():
         return [
             TextContent(
                 type="text",
@@ -663,7 +745,7 @@ async def _add_label(arguments: dict[str, Any]) -> list[TextContent]:
             )
         ]
 
-    service = get_gmail_service()
+    service = await _get_gmail_service_async()
     if not service:
         return [
             TextContent(

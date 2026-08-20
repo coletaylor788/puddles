@@ -2,7 +2,8 @@
 
 Gmail MCP uses OAuth 2.0 with two storage backends:
 
-- **macOS Keychain** (default) — for local development with Claude Desktop/Code
+- **macOS Keychain** (default) — accessed through the stable
+  `/usr/bin/security` executable
 - **Environment variable** (`GOOGLE_MCP_TOKEN`) — for Azure/Linux deployments where Key Vault injects secrets
 
 The backend is selected automatically: if `GOOGLE_MCP_TOKEN` is set, the env var backend is used. Otherwise, Keychain.
@@ -85,11 +86,50 @@ SCOPES = [
 
 ## Keychain Storage
 
-Tokens are stored in macOS Keychain using the `keyring` library.
+Tokens are stored in macOS Keychain using `/usr/bin/security`.
 
-**Service name:** `gmail-mcp`  
-**Account name:** User's Gmail address (e.g., `user@gmail.com`)  
+**Service name:** `gmail-mcp`
+**Account name:** `token`
 **Password:** JSON containing refresh token
+
+Reads and writes explicitly target the operating-system account's
+`~/Library/Keychains/login.keychain-db`; they do not search across keychains.
+
+Keychain calls have a five-second timeout. This matters for background
+LaunchAgents: macOS approval prompts are not visible there, so an untrusted
+executable would otherwise block forever. New token entries explicitly trust
+`/usr/bin/security`, whose path is stable across Homebrew Python upgrades.
+Parsed credentials are cached for at most 60 seconds to avoid duplicate
+Keychain reads while still observing sign-out or token replacement promptly.
+Refresh-and-write transactions use an owner-only lock file at
+`~/.config/gmail-mcp/credential.lock`, then compare the Keychain value again
+before persistence. This prevents concurrent server processes and a stale
+refresh from overwriting a newer browser authorization. The lock path is tied
+to the fixed Keychain service/account identity and does not move when
+`GMAIL_MCP_CONFIG_DIR` or the process `HOME` environment changes; it derives
+from the canonical operating-system account home.
+
+OAuth browser waiting, token exchange, refresh retries, Keychain commands, and
+Gmail HTTP calls each have an inner deadline below the MCP worker deadline.
+Browser launch uses the non-blocking system `/usr/bin/open` path, so a stalled
+AppleScript browser controller cannot freeze the server.
+Recovery OAuth explicitly requests offline consent and refuses to persist a
+result without a refresh token. One cumulative inner deadline is propagated
+through callback waiting, token exchange, lock acquisition, and Keychain write,
+so a timed-out worker cannot later replace credentials. The deadline starts
+before executor submission; queued work is cancelled and also rejects an
+already-expired deadline before any read, browser launch, refresh, or write.
+Persisted scopes are preserved and checked rather than replaced with the
+requested scope list. When Google reports a narrower `granted_scopes` set, that
+effective grant is validated and stored. Caller cancellation sets a cooperative
+signal checked before browser launch, refresh, cache replacement, and
+persistence, while queued executor work is cancelled before it starts. If
+cancellation arrives during the non-cancellable Keychain subprocess, the async
+boundary briefly drains that bounded write inside an AnyIO-shielded cancellation
+scope before returning cancellation.
+Stored scopes accept the legacy space-separated form or a list of nonblank
+strings. A present item with invalid encoding, JSON, required fields, or scope
+shape returns an explicit credential error instead of looking like sign-out.
 
 ### Viewing in Keychain Access
 
@@ -108,8 +148,51 @@ To sign out or switch accounts:
 
 Or via command line:
 ```bash
-security delete-generic-password -s "gmail-mcp"
+security delete-generic-password -s "gmail-mcp" \
+  "$HOME/Library/Keychains/login.keychain-db"
 ```
+
+### Migrating an existing token
+
+Tokens created by older releases may trust a specific Homebrew Python binary.
+After Python upgrades, macOS can request approval from the background server
+and leave the request waiting behind an invisible prompt.
+
+Run these once from an interactive Terminal, enter the login-keychain password,
+and click **Always Allow** on the access prompt:
+
+```bash
+security set-generic-password-partition-list \
+  -S apple-tool: -s gmail-mcp -a token \
+  "$HOME/Library/Keychains/login.keychain-db"
+security find-generic-password \
+  -s gmail-mcp -a token -w \
+  "$HOME/Library/Keychains/login.keychain-db" >/dev/null
+```
+
+The first command updates the item's access-control partition list. Older items
+can also retain an explicit trusted-application list containing only the Python
+executable, so the second command records **Always Allow** for
+`/usr/bin/security`. Redirecting stdout prevents the token from being printed;
+neither command replaces it. New tokens are written with `/usr/bin/security`
+trusted from the start.
+
+### Local security boundary
+
+Trusting `/usr/bin/security` avoids authorization breakage when Homebrew Python
+is replaced, but it broadens the local trust boundary: any process already
+running as the same macOS user can invoke that system executable with the known
+service and account names. The Keychain still encrypts the token at rest and
+protects it from other users, but this setup does not protect against untrusted
+code executing as your logged-in account. Do not run untrusted scripts,
+installers, or package hooks as that user.
+
+OAuth credential JSON is longer than the 128-byte limit of `security`'s
+interactive password prompt. Writes therefore use its hexadecimal data option,
+which briefly makes the encoded value visible to same-user process inspection.
+That does not extend the boundary above because same-user code can already ask
+the trusted executable to read the item. Token values are never logged or
+written to files.
 
 ---
 
@@ -213,9 +296,8 @@ if service:
 
 ```python
 # Keychain backend (macOS) - internal
-import keyring
-keyring.set_password("gmail-mcp", "token", token_json)
-token_json = keyring.get_password("gmail-mcp", "token")
+# Uses bounded /usr/bin/security subprocesses. Reads use stdout; writes use
+# a hexadecimal argv value under the documented same-user trust boundary.
 
 # Env var backend (Azure/Linux) - read-only, set externally
 # GOOGLE_MCP_TOKEN env var contains the same JSON

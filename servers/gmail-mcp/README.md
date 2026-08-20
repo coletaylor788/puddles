@@ -81,6 +81,25 @@ You only need to do this once. The token persists across sessions.
 
 **Note:** If you see a "scope" error, just run authenticate again - the server will automatically request the updated permissions.
 
+Existing installations that used the Python `keyring` backend need one
+Keychain ACL migration. Run these in an interactive Terminal, enter the
+login-keychain password, and click **Always Allow** on the access prompt:
+
+```bash
+security set-generic-password-partition-list \
+  -S apple-tool: -s gmail-mcp -a token \
+  "$HOME/Library/Keychains/login.keychain-db"
+security find-generic-password \
+  -s gmail-mcp -a token -w \
+  "$HOME/Library/Keychains/login.keychain-db" >/dev/null
+```
+
+The first command adds the Apple command-line-tool partition. The second adds
+`/usr/bin/security` to an older item's explicit trusted-application list without
+printing or replacing the token. New OAuth tokens use both access rules
+immediately. Every command targets the login keychain explicitly so another
+keychain in the user's search list cannot shadow the credential.
+
 ## Available Tools
 
 ### authenticate
@@ -177,6 +196,7 @@ Add a label to one or more emails.
 - **Client credentials** (`credentials.json`) stay local in `~/.config/gmail-mcp/` (macOS) or bundled in the Key Vault secret (Azure)
 - The server requests **modify** Gmail access (`gmail.modify` scope) to support archiving
 - Attachment filenames are sanitized to prevent path traversal attacks
+- Keychain operations use `/usr/bin/security` with a five-second timeout, so an invisible macOS approval prompt cannot wedge the MCP bridge
 
 On macOS, you can inspect or delete stored credentials in Keychain Access.app (search for "gmail-mcp").
 
