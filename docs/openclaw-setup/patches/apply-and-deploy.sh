@@ -37,6 +37,19 @@ if [ -n "$MINI_HOST" ]; then
   REMOTE_DEPLOY=true
 fi
 
+if command -v pnpm >/dev/null 2>&1; then
+  PNPM_COMMAND=(pnpm)
+elif command -v corepack >/dev/null 2>&1; then
+  PNPM_COMMAND=(corepack pnpm)
+else
+  echo "ERROR: pnpm is required directly or through corepack" >&2
+  exit 1
+fi
+
+run_pnpm() {
+  "${PNPM_COMMAND[@]}" "$@"
+}
+
 cleanup_outer() {
   if [ -n "$STAGING_DIR" ]; then
     rm -rf "$STAGING_DIR"
@@ -555,6 +568,7 @@ TARGET_DEPLOY
 
 # Public source patches, applied in order to a clean checkout of the target release.
 PATCHES=(
+  file-lock-stale-reclaim-guard
   sessions-yield-block-and-gather
   subagent-cross-agent-spawn-fix
   skill-workshop-sandbox-fix
@@ -593,12 +607,15 @@ for p in "${PATCHES[@]}"; do
   fi
 done
 
+echo "==> Materializing patched dependencies"
+run_pnpm install --frozen-lockfile
+
 echo "==> Building from source (pnpm build)"
-NODE_OPTIONS=--max-old-space-size=8192 pnpm build
+NODE_OPTIONS=--max-old-space-size=8192 run_pnpm build
 
 echo "==> Packing"
 STAGING_DIR="$(mktemp -d "${TMPDIR:-/tmp}/puddles-openclaw-deploy.XXXXXX")"
-TARBALL="$(pnpm pack --config.ignore-scripts=true --pack-destination "$STAGING_DIR" | tail -1)"
+TARBALL="$(run_pnpm pack --config.ignore-scripts=true --pack-destination "$STAGING_DIR" | tail -1)"
 case "$TARBALL" in
   /*) ;;
   *) TARBALL="$STAGING_DIR/$TARBALL" ;;

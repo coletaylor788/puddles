@@ -36,6 +36,7 @@ diff.
 
 | Patch | Doc | Source diff | Status |
 |---|---|---|---|
+| macOS kernel guard for stale sidecar-lock reclaim | [`file-lock-stale-reclaim-guard.md`](./file-lock-stale-reclaim-guard.md) | [`file-lock-stale-reclaim-guard.patch`](./file-lock-stale-reclaim-guard.patch) | Verified in the managed patch pool |
 | `sessions_yield` block-at-yield + gather (cron + interactive) | [`sessions-yield-subagent-leak-fix.md`](./sessions-yield-subagent-leak-fix.md) | [`sessions-yield-block-and-gather.patch`](./sessions-yield-block-and-gather.patch) | Verified on 2026.7.1 (`0790d9f`) |
 | Explicit cron subagent targeting + cross-agent tool inheritance | [`subagent-cross-agent-spawn-fix.md`](./subagent-cross-agent-spawn-fix.md) | [`subagent-cross-agent-spawn-fix.patch`](./subagent-cross-agent-spawn-fix.patch) | Verified on 2026.7.1 (`0790d9f`). Pending upstream PR (see plan 025). |
 | `skill_workshop` for sandboxed agents | [`skill-workshop-sandbox-fix.md`](./skill-workshop-sandbox-fix.md) | [`skill-workshop-sandbox-fix.patch`](./skill-workshop-sandbox-fix.patch) | Verified on 2026.7.1 (`0790d9f`) |
@@ -72,18 +73,21 @@ wrapper:
    `git apply`. Already-applied patches are detected (reverse-check) and
    skipped; a patch that no longer applies fails loudly (upstream refactor →
    re-port it).
-2. **Builds** from source (`pnpm build`).
-3. **Serializes and packs the source build** — acquires a lock in the source
+2. **Materializes patched dependencies** with
+   `pnpm install --frozen-lockfile`. This runs after source patches so changes
+   to pnpm dependency patches and lock hashes are present in `node_modules`.
+3. **Builds** from source (`pnpm build`).
+4. **Serializes and packs the source build** — acquires a lock in the source
    checkout's Git administrative directory before patch application, build, or
    pack, and holds it through deployment. `pnpm pack` writes to a per-invocation
    temporary directory and rewrites workspace dependency protocols to concrete
    release versions. The wrapper rejects unresolved `workspace:` dependencies
    before deployment, so concurrent invocations neither mutate shared build
    output nor delete or consume one another's candidate.
-4. **Serializes deployment** — acquires a target-host lock so global package,
+5. **Serializes deployment** — acquires a target-host lock so global package,
    state migration, restart, and rollback operations cannot overlap. Remote
    deployments use a unique staging filename.
-5. **Quiesces and snapshots recovery state** — first packs the currently
+6. **Quiesces and snapshots recovery state** — first packs the currently
    installed OpenClaw package with lifecycle scripts disabled, replaces any
    workspace dependency protocols with the installed dependency versions, and
    verifies that rollback tarball is reinstallable. It then stops the gateway,
@@ -93,14 +97,14 @@ wrapper:
    service definition under `~/.openclaw-deploy-backups/`. Failure to make the
    complete clone aborts before package replacement and restarts the prior
    gateway.
-6. **Installs** the tarball on the current host (`npm install -g <tarball>`).
-7. **Migrates state** — runs `openclaw doctor --fix --yes` with
+7. **Installs** the tarball on the current host (`npm install -g <tarball>`).
+8. **Migrates state** — runs `openclaw doctor --fix --yes` with
    `OPENCLAW_SERVICE_REPAIR_POLICY=external` while the gateway is stopped, then
    verifies the service remains unloaded. Migration failure or unexpected
    activation
    is fatal; the deploy no longer restarts the gateway and reports success after
    a failed repair.
-8. **Refreshes the sandbox-browser image while the gateway remains stopped and
+9. **Refreshes the sandbox-browser image while the gateway remains stopped and
    the target lock remains held** — the browser patch edits
    `scripts/sandbox-browser-entrypoint.sh`, which the npm package does **not**
    ship, so the wrapper copies the patched entrypoint to the mini's
@@ -110,11 +114,11 @@ wrapper:
    interruption, gateway restart, or readiness fails. The gateway starts only
    after this rollback-capable work finishes. (Skipped if the entrypoint carries
    no `FIX-BROWSER-*` marker.)
-9. **Restarts and probes** the gateway LaunchAgent. The deploy waits for the
+10. **Restarts and probes** the gateway LaunchAgent. The deploy waits for the
    payload-free `openclaw gateway health --port <local-port>` probe and fails if
    readiness does not arrive within the configured bound. An environment-
    selected remote gateway cannot satisfy this probe.
-10. **Rolls back automatically** on package, migration, interruption, browser,
+11. **Rolls back automatically** on package, migration, interruption, browser,
     restart, or readiness failure. After confirmed shutdown it restores runtime,
     plist, entrypoint, and image state, then recreates sandboxes with the patched
     candidate CLI so discovery errors remain visible. Only after recreation does

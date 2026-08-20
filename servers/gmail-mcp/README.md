@@ -82,23 +82,21 @@ You only need to do this once. The token persists across sessions.
 **Note:** If you see a "scope" error, just run authenticate again - the server will automatically request the updated permissions.
 
 Existing installations that used the Python `keyring` backend need one
-Keychain ACL migration. Run these in an interactive Terminal, enter the
-login-keychain password, and click **Always Allow** on the access prompt:
+non-destructive credential migration. Run the migration module with the
+currently trusted legacy virtual environment while loading this release's
+source:
 
 ```bash
-security set-generic-password-partition-list \
-  -S apple-tool: -s gmail-mcp -a token \
-  "$HOME/Library/Keychains/login.keychain-db"
-security find-generic-password \
-  -s gmail-mcp -a token -w \
-  "$HOME/Library/Keychains/login.keychain-db" >/dev/null
+cd servers/gmail-mcp
+PYTHONPATH="$PWD/src" /path/to/legacy/.venv/bin/python \
+  -m gmail_mcp.scripts.migrate_legacy_keychain
 ```
 
-The first command adds the Apple command-line-tool partition. The second adds
-`/usr/bin/security` to an older item's explicit trusted-application list without
-printing or replacing the token. New OAuth tokens use both access rules
-immediately. Every command targets the login keychain explicitly so another
-keychain in the user's search list cannot shadow the credential.
+The legacy interpreter reads service `gmail-mcp` in memory. The migration
+creates service `gmail-mcp-stable`, trusts `/usr/bin/security`, and verifies an
+exact round trip without printing or writing the credential outside Keychain.
+It refuses to overwrite a different stable item and leaves the legacy item
+untouched for rollback.
 
 ## Available Tools
 

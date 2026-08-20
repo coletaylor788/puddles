@@ -353,6 +353,73 @@ Notes:
 - `llmProvider` is a Node module specifier whose default export implements `mcp-hooks`' `LLMClient` interface. You bring (or write) the adapter — see `packages/mcp-hooks/README.md` for the contract and a sample. Wire whatever LLM you want.
 - `model` is forwarded verbatim to the provider's constructor. The provider decides what counts as a valid id.
 
+### 6.2 Deploy a reviewed gmail-mcp release
+
+Do not keep production tied to the repository checkout. After a Gmail server
+change is merged and remotely green, run the deploy helper from a clean isolated
+worktree at that exact `main` revision:
+
+```bash
+python3 scripts/mac-mini/deploy-gmail-mcp.py \
+  --source "$PWD" \
+  --revision "$(git rev-parse HEAD)" \
+  --python /opt/homebrew/bin/python3.11
+```
+
+The helper builds an immutable release under
+`~/.local/share/puddles/gmail-mcp/` from tracked files in the exact Git revision.
+Ignored credentials, tokens, caches, and other worktree files are never copied.
+Each prepared release has a SHA-256 content manifest that is checked before
+reuse. Before publication, every regular file is fsynced and every directory is
+fsynced from the leaves back to the release root. Generated Python bytecode is
+removed before hashing, and the configured wrapper disables bytecode writes so
+all executable Python content remains covered by the manifest. The manifest
+also records file and directory modes, so a lost execute or traversal bit
+triggers the same damaged-release recovery.
+
+Immediately before promotion, the helper snapshots the complete OpenClaw config
+with owner-only permissions under `~/.openclaw-deploy-backups/gmail-mcp/`. It
+starts a small Node holder that calls the installed OpenClaw plugin SDK's
+exported file-lock API, so config writes and deployment share the same
+contention and stale-owner recovery rules. While that holder owns the lock, the
+deployer conditionally changes only the secure Gmail command and working
+directory. If the config changed after it was read, promotion stops instead of
+overwriting another operator. The helper then restarts the gateway and makes one
+read-only Gmail profile request. The smoke check does not print the account
+address or mailbox content.
+
+The same patched lock API holds a separate whole-deployment lock from startup
+through cleanup. Concurrent deployers serialize through the shared manager, and
+parent death closes the holder pipe so the kernel-backed lock is released
+without pathname reclamation in the Python deployer.
+
+After the smoke check, the helper reacquires the config lock and confirms Gmail
+still points at the candidate before recording success. If another operator
+changed Gmail during validation, the helper preserves that edit and records a
+durable reconciliation phase before restarting the gateway to load it. Only
+after restart and health pass does the state become superseded and the
+deployment report failure. If the process dies during that restart, the next
+invocation finishes reconciliation and stops before another promotion.
+
+If candidate installation, restart, gateway health, or Gmail validation fails,
+the helper restores the exact prior config when nothing else changed. If an
+unrelated setting changed after promotion, rollback preserves that setting and
+restores only the Gmail runtime fields. A concurrent change to those Gmail
+fields is reported instead of overwritten. In that conflict path, rollback
+records reconciliation, restarts and health-checks the gateway so it loads the
+operator's config, then marks the deployment superseded. The same restart
+recovery runs after process death. Rollback keeps the failed release and
+recovery directory for diagnosis.
+
+Recovery also covers an uncatchable process death or power loss. The helper
+fsyncs every newly created recovery directory entry, both original and promoted
+config snapshots, and a deployment phase before replacement. The next
+invocation reclaims only a dead owner's deployment lock, restores an incomplete
+promotion, restarts and checks the prior gateway, then begins a new deployment.
+If a completed active release later fails its content manifest, the same
+recovery path restores the prior runtime, quarantines the damaged release, and
+rebuilds from the reviewed Git revision.
+
 ## 7. Wiring an LLM provider for the hooks
 
 `InjectionGuard` and `SecretRedactor` make LLM calls through the adapter you

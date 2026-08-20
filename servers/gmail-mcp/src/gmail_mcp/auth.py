@@ -25,7 +25,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from requests.exceptions import Timeout as RequestsTimeout
 
-from .config import GOOGLE_TOKEN_ENV, get_credentials_path
+from .config import GOOGLE_TOKEN_ENV, KEYCHAIN_SERVICE, get_credentials_path
 from .keychain import CredentialFormatError, KeychainAccessError, read_token, write_token
 from .logging_setup import log
 
@@ -255,12 +255,12 @@ def _credentials_from_token_data(token_data: str | None) -> Credentials | None:
     except (json.JSONDecodeError, TypeError):
         raise CredentialFormatError(
             "Stored Gmail credential is malformed. "
-            "Delete the gmail-mcp Keychain item and authenticate again."
+            f"Delete the {KEYCHAIN_SERVICE} Keychain item and authenticate again."
         ) from None
     if not isinstance(token_info, dict):
         raise CredentialFormatError(
             "Stored Gmail credential is malformed. "
-            "Delete the gmail-mcp Keychain item and authenticate again."
+            f"Delete the {KEYCHAIN_SERVICE} Keychain item and authenticate again."
         )
     required_fields = ("refresh_token", "client_id", "client_secret")
     if any(
@@ -270,14 +270,14 @@ def _credentials_from_token_data(token_data: str | None) -> Credentials | None:
     ):
         raise CredentialFormatError(
             "Stored Gmail credential is missing required fields. "
-            "Delete the gmail-mcp Keychain item and authenticate again."
+            f"Delete the {KEYCHAIN_SERVICE} Keychain item and authenticate again."
         )
     if "token" in token_info and (
         not isinstance(token_info["token"], str) or not token_info["token"].strip()
     ):
         raise CredentialFormatError(
             "Stored Gmail credential has an invalid access token. "
-            "Delete the gmail-mcp Keychain item and authenticate again."
+            f"Delete the {KEYCHAIN_SERVICE} Keychain item and authenticate again."
         )
     stored_scopes = token_info.get("scopes")
     if isinstance(stored_scopes, str):
@@ -289,7 +289,7 @@ def _credentials_from_token_data(token_data: str | None) -> Credentials | None:
         ):
             raise CredentialFormatError(
                 "Stored Gmail credential has invalid scopes. "
-                "Delete the gmail-mcp Keychain item and authenticate again."
+                f"Delete the {KEYCHAIN_SERVICE} Keychain item and authenticate again."
             )
         token_info["scopes"] = [scope.strip() for scope in stored_scopes]
     try:
@@ -297,7 +297,7 @@ def _credentials_from_token_data(token_data: str | None) -> Credentials | None:
     except (AttributeError, TypeError, ValueError):
         raise CredentialFormatError(
             "Stored Gmail credential is malformed. "
-            "Delete the gmail-mcp Keychain item and authenticate again."
+            f"Delete the {KEYCHAIN_SERVICE} Keychain item and authenticate again."
         ) from None
 
 

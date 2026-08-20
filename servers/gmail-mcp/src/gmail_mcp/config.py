@@ -3,8 +3,9 @@
 import os
 from pathlib import Path
 
-# Keychain service name
-KEYCHAIN_SERVICE = "gmail-mcp"
+# Keychain service names
+LEGACY_KEYCHAIN_SERVICE = "gmail-mcp"
+KEYCHAIN_SERVICE = "gmail-mcp-stable"
 
 # Environment variable for Google OAuth token injection (e.g. from Azure Key Vault)
 GOOGLE_TOKEN_ENV = "GOOGLE_MCP_TOKEN"

@@ -92,7 +92,8 @@ class TestAuthenticate:
         with patch(
             "gmail_mcp.server._list_emails",
             side_effect=CredentialFormatError(
-                "Stored Gmail credential is malformed. Authenticate again."
+                "Stored Gmail credential is malformed. "
+                "Delete the gmail-mcp-stable Keychain item and authenticate again."
             ),
         ):
             result = await call_tool("list_emails", {})
@@ -101,7 +102,8 @@ class TestAuthenticate:
         assert payload == {
             "error": (
                 "Authentication unavailable: "
-                "Stored Gmail credential is malformed. Authenticate again."
+                "Stored Gmail credential is malformed. "
+                "Delete the gmail-mcp-stable Keychain item and authenticate again."
             ),
         }
 
