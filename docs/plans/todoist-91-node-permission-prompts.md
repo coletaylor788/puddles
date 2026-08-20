@@ -1,6 +1,6 @@
 # Diagnose Node permission prompts
 
-Status: Refreshed design review remediation
+Status: Refreshed design final recheck
 Issue: https://github.com/coletaylor788/puddles/issues/91
 Last updated: 2026-08-19
 
@@ -16,20 +16,20 @@ The refreshed plan moves the model readers to bounded exact-item calls through t
 
 ### Status
 
-The current repository, active gateway, Keychain metadata, TCC principals, update daemon, session store, recent tool runs, and related landed repairs have been rechecked. Independent review found that the first refresh used a global context cap for one stale session, then found that the corrected source patch was not wired into the repository's required patch lifecycle. The cap is model-specific, and the stale-cache repair now has named patch artifacts, cumulative test registration, managed deployment, installed validation, and rollback requirements.
+The current repository, active gateway, Keychain metadata, TCC principals, update daemon, session store, recent tool runs, and related landed repairs have been rechecked. Independent review found that the first refresh used a global context cap for one stale session, then found that the corrected source patch was not wired into the repository's required patch lifecycle. The cap is model-specific, and the stale-cache repair now has named patch artifacts, pinned-revision application proof, cumulative test registration, managed deployment, installed validation, and rollback requirements.
 
-No live permissions, credentials, configuration, sessions, or services changed during this refresh. The corrected design is in retained review recheck before it returns to Cole.
+No live permissions, credentials, configuration, sessions, or services changed during this refresh. Retained review is clean; the exact final wording candidate is in recheck before terminal review.
 
 ## Agent section
 
 ### State
 
-- Phase: Refreshed design review remediation
+- Phase: Refreshed design final recheck
 - Repository: `coletaylor788/puddles`
 - Tracking issue: `#91`
 - Todoist task: `6hCmp4C6fqx95423`
 - Production mutation: Not performed
-- Blockers: Retained review recheck must clear before Cole's design checkpoint.
+- Blockers: Final retained and terminal review must clear before Cole's design checkpoint.
 
 ### Scope and acceptance criteria
 
@@ -150,8 +150,9 @@ Required implementation validation:
 
 - [ ] Focused helper, Contacts resolver, runtime reconciler, heartbeat, update writer, and documentation tests pass in this repository.
 - [ ] The OpenClaw patch proves an oversized cached session value is replaced by the freshly resolved cap before precheck and leaves equal or smaller cached values unchanged.
-- [ ] `heartbeat-session-context-refresh.patch`, its companion guide, the patch README row, the `PATCHES=()` entry, and cumulative patch-suite registration are all committed and checked by `packages/e2e/tests/patch-suite.test.ts`.
+- [ ] `heartbeat-session-context-refresh.patch`, its companion guide, and the patch README row are committed and reviewed. `packages/e2e/tests/patch-suite.test.ts` checks the patch file, `PATCHES=()` order, manifest equality, and test registration.
 - [ ] The patch's upstream-style test target runs through `packages/e2e/openclaw-patch-suite.json`; a test embedded only in the patch is not accepted.
+- [ ] The complete patch stack applies cleanly to the manifest's pinned `openclawRef`, and the CI workflow uses the same ref. Any pin change reruns patch application and every registered target before promotion.
 - [ ] Before-and-after validation records the resolved effective window for every configured model and proves only the targeted model is capped.
 - [ ] Model-reader success, denial, timeout, malformed-output, cancellation, cache, and multiple-adapter regressions pass in its separate owning workstream.
 - [ ] Denial, missing approval, repeated overflow, failed compaction, cooldown, concurrent run, duplicate marker, insecure marker, restart failure, interrupted install, rollback, and cleanup paths pass.
@@ -188,7 +189,8 @@ Required implementation validation:
 - 2026-08-19: The heartbeat failure is now tied to a 1,000,000 versus 128,000 token-window mismatch on the active heartbeat session.
 - 2026-08-19: Retained review found the proposed 100,000-token global cap would shrink every configured model. The cap is now model-specific, cache correction occurs before precheck, and validation covers all configured model windows.
 - 2026-08-19: Retained recheck found the source patch was not attached to the mandatory patch artifacts, deployment list, or shared suite. The full patch lifecycle and installed guard checks are now explicit.
-- Independent adversarial review: Remediation recheck in progress.
+- 2026-08-19: Retained review cleared the patch lifecycle. Final wording now distinguishes automated patch-contract checks from prose review and makes pinned-revision application proof explicit.
+- Independent adversarial review: Clean before final wording; exact wording recheck in progress.
 - Terminal review: Pending refreshed final candidate.
 
 ### Checklist
