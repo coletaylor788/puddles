@@ -1,8 +1,8 @@
 # Diagnose Node permission prompts
 
-Status: Ready for Cole review
+Status: Refreshing against current system
 Issue: https://github.com/coletaylor788/puddles/issues/91
-Last updated: 2026-08-12
+Last updated: 2026-08-19
 
 ## Human section
 
@@ -16,20 +16,20 @@ The migration first lands the existing reviewed helper and Gmail work. The model
 
 ### Status
 
-The revised design names what is stable, what still bypasses a stable boundary, what moves, how each move is checked, and which workstream owns each regression. Contacts cleanup is gated on observed attribution during the soak. The privileged update installation is explicit, the marker is owner-writable but readable without new group membership, and the real user-side reconciler is staged before the administrator session. Independent review is clean. No live permissions, credentials, configuration, or services changed during this design pass.
+Cole changed the system after this design landed, so its caller inventory, migration steps, and human checkpoints are being checked against current repository and runtime state. The earlier architecture remains the baseline, but any path that has already moved, disappeared, or gained a safer lifecycle will be removed or rewritten.
 
-The concrete design is ready for Cole to review before implementation. Cole's expected participation is one logged-in desktop session for the two credential approvals, one administrator session for the update writer and package-manager-owned marker channel, and a later cleanup session only after the attribution soak is clean.
+No live permissions, credentials, configuration, or services are changing during this refresh. The next step is to compare every prior assumption with current `main`, current pull-request state, active processes, Keychain metadata, TCC principals, update automation, and recent landed recovery work before returning the updated design to Cole.
 
 ## Agent section
 
 ### State
 
-- Phase: Awaiting Cole design review
+- Phase: Design refresh research
 - Repository: `coletaylor788/puddles`
 - Tracking issue: `#91`
 - Todoist task: `6hCmp4C6fqx95423`
 - Production mutation: Not performed
-- Blockers: Implementation waits for Cole's design approval.
+- Blockers: None.
 
 ### Scope and acceptance criteria
 
@@ -182,8 +182,9 @@ Required implementation validation:
 - 2026-08-12: Retained recheck found a newly created group would not apply to the existing user session. The marker is now owner-writable and non-secret/readable, and validation runs through the actual reconciler process.
 - 2026-08-12: Retained review cleared the revised design and left two non-blocking wording gaps. Marker creation now pins umask `022`, and the user-side reconciler is installed before Cole begins the privileged handoff.
 - 2026-08-12: Retained full-diff recheck of the corrected design reported no actionable findings.
-- Independent adversarial review: Clean.
-- Terminal review: Run against the final design-checkpoint candidate and record the result outside the candidate diff.
+- 2026-08-19: Cole requested a fresh design check after changing the system. Current-state research is in progress.
+- Independent adversarial review: Prior design was clean. Refreshed design review is pending.
+- Terminal review: Pending refreshed final candidate.
 
 ### Checklist
 
@@ -198,8 +199,9 @@ Required implementation validation:
 - [x] No production mutation occurred during design.
 - [x] External credential-reader ownership and validation are explicit without crossing publication boundaries.
 - [x] Contacts cleanup is gated on attribution evidence.
-- [x] Revised design adversarial review is clear.
-- [x] Final design-checkpoint candidate prepared.
-- [ ] Cole approves the revised design.
-- [ ] Revised plan-only pull request is remotely green and merged.
+- [ ] Recheck every prior design assumption against current repository and live state.
+- [ ] Remove completed or obsolete migration steps.
+- [ ] Update Cole's participation to current needs.
+- [ ] Refreshed design adversarial review is clear.
+- [ ] Refreshed plan-only pull request is remotely green and merged.
 - [ ] Issue and Todoist task return to `ready_for_review`.
