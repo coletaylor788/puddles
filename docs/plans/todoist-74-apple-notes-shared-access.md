@@ -1,43 +1,50 @@
 # Secure Apple Notes shared access
 
-**Status:** Ready for prototype-only review
+**Status:** Editable access under review
 **Issue:** [#74](https://github.com/coletaylor788/puddles/issues/74)
-**Last updated:** 2026-08-12
+**Last updated:** 2026-08-20
 
 ## Human section
 
 ### Design
 
-Apple Notes live collaboration belongs to Apple, not to the agent. After the
-dedicated Apple account accepts an invitation, Notes keeps that shared note in
-sync. People with edit permission can work in the Notes app and see each
-other's changes in near real time. The agent reads the same synced note through
-automation, but that automation can only replace the whole body. It cannot say
-"write this only if nobody changed the note since I read it." An agent replace
-could therefore erase a person's newer edit, so the first version is read-only.
+The accepted invitation design stays simple. An admitted direct message can
+carry one Notes invitation to its receiving agent. A hook records that exact
+agent and link before the model runs. A non-model helper accepts the invitation
+under the dedicated Apple account, resolves the shared note to one stable
+identifier, and turns the same row into that agent's grant.
 
-The access design is one hook and one table. The existing message rules admit
-the sender and route the message to an agent. Before the model runs, the hook
-recognizes one supported Notes invitation, records the receiving agent and link,
-and asks a non-model helper to open it under the dedicated Apple account. When
-the helper resolves the opened note to one stable identifier, the same row
-becomes the grant. Sending the same note to another agent creates another row
-for that agent.
+The agent edits a granted note by appending a new update through the native Notes
+editor. The helper opens the exact mapped note, confirms the editor is on that
+note, moves to the end, and inserts one bounded plain-text block with a unique
+receipt. It never reads and replaces the whole body. Notes therefore handles the
+append as a normal participant edit and merges it with human collaboration.
+Concurrent edits can change where two additions appear, but they cannot be
+silently overwritten by an agent body replacement.
 
-The dedicated account may also contain local notes, synced notes, folders, or
-shares accepted by a person. That does not grant agent access. Notes tools use
-the calling agent from trusted runtime context and expose only stable note
-identifiers in accepted rows for that exact agent. Everything else in the Notes
-account stays invisible to the model.
+Memo is not the write engine. Its edit command converts the whole note through
+Markdown and assigns the whole body again. That can erase concurrent edits and
+damage rich content or attachments. OpenClaw only includes instructions and an
+optional installer for Memo. It does not bundle Memo or provide a scoped Notes
+tool.
+
+If the helper cannot prove that it opened the mapped note, placed the complete
+receipt exactly once, or observed the completed append, it reports a conflict
+and does not retry blindly. The user can read the note and decide whether to try
+again. Arbitrary replacement, deletion, range editing, and rewriting an earlier
+agent block remain out of scope because the available interfaces provide no
+atomic precondition.
 
 ### Status
 
-The simplified read-only design is complete and its independent review is
-clean. It is ready for review of the prototype-only approval gate.
+The invitation hook and exact agent-to-note grant remain accepted. Research now
+supports a concrete append-only edit design, and independent review is checking
+its factual accuracy and failure behavior.
 
-No prototype or implementation is approved or started. A later approval may
-authorize disposable proof only. Real implementation still needs separate
-approval after that evidence updates this plan.
+No prototype or implementation is approved or started. The next approval can
+authorize only disposable proof with throwaway accounts and shared notes. Real
+implementation still needs separate approval after that evidence updates this
+plan.
 
 ## Agent section
 
@@ -47,16 +54,20 @@ approval after that evidence updates this plan.
 - Source of truth:
   `docs/plans/todoist-74-apple-notes-shared-access.md`.
 - Current implementation: none. This repository has no Apple Notes plugin,
-  invitation helper, registry, or Notes tool.
+  invitation helper, grant registry, Memo installation, or Notes tool.
+- Accepted design boundary: preserve the pre-model invitation hook, one durable
+  invitation/grant table, serialized acceptance, and exact `(agentId, noteId)`
+  authorization.
+- New write requirement: V1 must support a bounded edit without replacing the
+  existing note body.
+- Selected V1 edit: append one bounded plain-text update through the native
+  Notes editor after exact stable-ID selection.
 - Approval gate 1: explicit approval may authorize only a disposable prototype
   with throwaway accounts and notes.
 - Approval gate 2: prototype evidence must update this plan before separate
   implementation approval.
-- Production impact: none. This design authorizes no live invitation, account,
-  note, service, deployment, or tool change.
-- V1 tool scope: list, search, and read only.
-- Write decision: blocked until a disposable prototype proves a conflict-safe
-  operation. Whole-body replace is not accepted as conflict safe.
+- Production impact: none. This design authorizes no installation, live
+  invitation, account, note, service, deployment, or tool change.
 
 ### Scope and acceptance criteria
 
@@ -66,192 +77,248 @@ approval after that evidence updates this plan.
   note ID.
 - The same note sent separately to another agent creates another accepted row.
 - No Contacts lookup, owner inference, hierarchy, or grant propagation exists.
-- Automatic intake accepts only an authenticated direct message whose trusted
-  source facts prove one complete row containing one supported single-note
-  collaboration URL and no extra text, preview, or attachment.
-- The hook claims a recognized invitation before model dispatch, commits its
-  pending row, wakes the helper, and returns immediately. It never waits for
-  Apple UI work. Ordinary text continues normally.
-- One durable row is written before any external acceptance action.
-- One serialized helper processes pending rows. It receives only row ID and URL.
-- Successful acceptance resolves exactly one stable Notes note ID and changes
-  the row to `accepted` in one transaction.
-- Tools query only accepted rows for the caller's runtime agent ID before asking
-  the host for note data.
-- Notes already visible to the Apple account but absent from an accepted row are
-  never returned by list, search, or read.
-- Shared-folder invitations are rejected in V1 because a folder grant needs
-  separate child-note rules.
-- Failed, ambiguous, disappeared, or revoked notes are unavailable.
-- Automated tests use fake message and Notes adapters. They never accept a live
-  invitation or mutate a live account.
+- The accepted invitation hook behavior, single-row intake proof, immediate
+  handled reply, durable pending state, and serialized acceptance remain
+  unchanged.
+- List, search, read, and append derive caller scope from runtime context. The
+  model cannot provide or widen `agentId`.
+- Every host operation is limited to stable note IDs joined to active grants for
+  that exact caller before note content reaches the model or GUI helper.
+- V1 append accepts one granted note ID, plain text, and a bounded client request
+  ID. It does not accept HTML, Markdown interpretation, file paths, attachments,
+  a target scope, a cursor position, or a replacement body.
+- The write helper opens the exact stable ID, verifies the expected selected
+  note, inserts one receipt-marked block at the end through the native editor,
+  and verifies the receipt afterward.
+- The helper serializes writes per stable note ID across every agent grant.
+- A repeated request ID with the same agent, note, and payload returns its saved
+  result. Any mismatch fails.
+- An uncertain or partial result never retries automatically.
+- Human edits may interleave with the append. The helper must not replace an
+  existing range or claim atomic ordering with remote collaborators.
+- View-only shares, disappeared notes, revoked grants, ambiguous UI state,
+  unsupported Notes versions, and missing permissions fail closed.
+- Notes already visible to the Apple account but absent from an accepted grant
+  remain unavailable.
+- Automated tests use fake message, Notes, accessibility, and read-back
+  adapters. They never accept a live invitation or mutate a live account.
 
 ### Architecture and decisions
 
-**How human live collaboration works**
+**Accepted invitation and grant flow**
 
-- Apple's
-  [collaboration guide](https://support.apple.com/guide/notes/collaborate-with-shared-notes-and-folders-apd4e6e2c9a6/4.13/mac/26)
-  says an invited person opens the received link, then opens the item in Notes.
-  After that, the note remains in their Notes list.
-- The same guide says all participants with the note open can see changes in
-  near real time. It also documents immediate change indicators, highlights,
-  mentions, and an activity history.
-- Apple's
-  [sharing guide](https://support.apple.com/guide/notes/share-your-notes-and-folders-apda5307056b/4.13/mac/26)
-  lets an owner choose whether participants can make changes or only view.
-- Apple's
-  [shared-note management guide](https://support.apple.com/guide/notes/manage-shared-notes-folders-apd881ec5518/4.13/mac/26)
-  says a participant with edit permission can edit the note. A view-only
-  participant cannot.
-- This means the dedicated Apple account becomes a normal Notes participant
-  after acceptance. Apple owns membership, synchronization, conflict handling,
-  activity, and permissions. The agent registry does not reimplement those
-  features.
+1. Existing channel policy admits a direct message and routing chooses the
+   receiving agent.
+2. The pre-model hook receives trusted route and final source-row facts. It
+   accepts only one supported single-note invitation URL in one complete source
+   row with no preview, attachment, group context, or extra text.
+3. The hook upserts one pending row for the stable source identity, normalized
+   URL, and exact runtime `agentId`. It wakes the helper and returns a fixed
+   handled response without waiting for Apple UI work.
+4. The serialized helper accepts or reopens the invitation under the dedicated
+   Apple account and resolves exactly one stable Notes note ID.
+5. One transaction stores the stable note ID and changes the same row to
+   `accepted`. That row is the grant.
+6. Repeating a known URL for another receiving agent verifies the mapped note
+   and adds that exact agent's row without accepting the invitation twice.
 
-**Why the agent is read-only**
+The current OpenClaw seam remains the pre-model `before_dispatch` hook. The
+previous research commit is superseded by current upstream commit
+[`916eef4`](https://github.com/openclaw/openclaw/tree/916eef4e996008d387207c53044afd8cf02dcc30).
+The current
+[`src/auto-reply/reply/dispatch-from-config.choose-route.ts`](https://github.com/openclaw/openclaw/blob/916eef4e996008d387207c53044afd8cf02dcc30/src/auto-reply/reply/dispatch-from-config.choose-route.ts)
+still runs the hook after routing and before model dispatch. Implementation
+still needs the small context addition for resolved `agentId` and canonical
+source-row, attachment, and preview facts.
 
-- The Notes scripting surface exposes note IDs, names, bodies, and modification
-  dates. Community adapter
-  [`mcp-apple-notes`](https://github.com/henilcalagiya/mcp-apple-notes/blob/ca9df02bbb83757b58880f5f2d82afa4c8777656/mcp_apple_notes/applescript/update_note.py)
-  writes by assigning a complete HTML body to the note. It verifies the note ID
-  and name, but it does not compare a revision or modification token.
-- Community adapter
-  [`apple-notes-mcp`](https://github.com/ailenshen/apple-notes-mcp/blob/84243277f9e9b6454bc4c2dc2193196204fdc220/src/applescript.ts)
-  updates by deleting the old note and creating a new one. Its documentation
-  states that partial editing is unsupported and update replaces all content.
-- Both approaches can make content that Notes then syncs to human
-  collaborators. Neither proves that the content is based on the latest human
-  edit, and delete-plus-create also changes note identity.
-- Human collaboration is safe because people edit through the native
-  collaboration surface. Automated whole-body replacement is unsafe because
-  the available interfaces expose no compare-and-set operation.
-- The smallest write prototype question is: does the supported Notes build
-  expose either a stable revision token with conditional update or a bounded
-  append operation that preserves note identity without overwriting concurrent
-  edits? If not, shared-note tools remain read-only.
+**What OpenClaw actually provides**
 
-**What can make a note visible to the account**
+- Current OpenClaw bundles
+  [`skills/apple-notes/SKILL.md`](https://github.com/openclaw/openclaw/blob/916eef4e996008d387207c53044afd8cf02dcc30/skills/apple-notes/SKILL.md).
+  It tells an agent how to invoke Memo interactively and declares `memo` as a
+  required host binary.
+- The skill metadata offers the Homebrew formula
+  `antoniorodr/memo/memo`. It does not contain Memo or install it silently.
+- Current
+  [`src/skills/discovery/status.ts`](https://github.com/openclaw/openclaw/blob/916eef4e996008d387207c53044afd8cf02dcc30/src/skills/discovery/status.ts)
+  marks a skill ineligible when a required binary is missing and surfaces an
+  install option.
+- Current
+  [`src/commands/onboard-skills.ts`](https://github.com/openclaw/openclaw/blob/916eef4e996008d387207c53044afd8cf02dcc30/src/commands/onboard-skills.ts)
+  offers bundled dependency recipes only through an explicit onboarding
+  selection before running the installer.
+- Current
+  [`docs/help/faq.md`](https://github.com/openclaw/openclaw/blob/916eef4e996008d387207c53044afd8cf02dcc30/docs/help/faq.md)
+  describes Memo as a macOS binary that the agent runs directly or through a
+  remote node or user-created SSH wrapper.
+- No current OpenClaw plugin, MCP server, built-in tool, or runtime wrapper
+  enforces this plan's exact agent-to-note grants around Memo.
+- This repository only mentions the upstream Apple Notes skill in its
+  sandboxing documentation. It does not install or invoke Memo.
 
-- Invitation acceptance is not the only possible source of Notes visibility.
-  A person can accept a share outside the hook. The Apple account can also sync
-  its own notes, local notes, previously accepted shares, and shared folders.
-- The design does not try to prove that every visible note came through the
-  hook. It treats the registry as the authorization boundary.
-- A manually accepted or otherwise synced note is harmless to agent
-  authorization. Without an accepted registry row for the exact agent and note
-  ID, the tools cannot expose it.
-- If a link was already accepted outside the hook, the helper may use that link
-  to open and resolve the existing note, then record the grant. This must be
-  proven in the disposable prototype.
+**Memo source findings**
 
-**Current message hook seam**
+Research used Memo main commit
+[`1b84963`](https://github.com/antoniorodr/memo/tree/1b84963ade3ff14e6f8d21e6beceb4d0cb19d404)
+and latest release `v0.6.1` at
+[`bb0b53d`](https://github.com/antoniorodr/memo/tree/bb0b53d1404fe5eb18bc413ef6653a6f115cc3ae).
+The Apache-2.0 project is active, with its latest main commit on 2026-08-11.
 
-- The current OpenClaw main commit reviewed for this plan is
-  [`5bcbbcf`](https://github.com/openclaw/openclaw/tree/5bcbbcf6fdd90ff1cc9c84f4cac325e0a12292c0).
-- `src/auto-reply/reply/dispatch-from-config.choose-route.ts` calls
-  `runBeforeDispatch()` after route and session preparation, under dispatch
-  lifecycle admission, before the model. A handled result skips model dispatch
-  and can return fixed text to the user.
-- `src/plugins/hook-types.ts` shows that `before_dispatch` already receives
-  canonical content, message ID, channel, account, conversation, session,
-  sender, group flag, and timestamp.
-- The hook does not currently receive the resolved `agentId` or canonical
-  attachment and final source-row facts. Those are the only missing trusted
-  inputs for this design.
-- The smallest runtime change is to add resolved `agentId` plus the canonical
-  source-row, attachment, and preview facts already known by inbound dispatch to
-  the `before_dispatch` event. No new global hook, policy service, broker,
-  generation lease, or challenge flow is needed.
+- Memo is a Python 3.13 Click CLI. Runtime dependencies in
+  [`pyproject.toml`](https://github.com/antoniorodr/memo/blob/1b84963ade3ff14e6f8d21e6beceb4d0cb19d404/pyproject.toml)
+  include `html2text` and `mistune`. Interactive search also shells out to
+  `fzf`, `bat`, `file`, and `git`.
+- Memo uses `osascript` for Notes operations. It does not ship direct database
+  writes, ScriptingBridge, an App Intent client, or Notes accessibility
+  automation.
+- [`get_memo.py`](https://github.com/antoniorodr/memo/blob/1b84963ade3ff14e6f8d21e6beceb4d0cb19d404/src/memo_helpers/get_memo.py)
+  enumerates notes and builds a positional display map. Notes themselves expose
+  Core Data IDs, but interactive commands ask the user to select a list number.
+- [`cache_memo.py`](https://github.com/antoniorodr/memo/blob/1b84963ade3ff14e6f8d21e6beceb4d0cb19d404/src/memo_helpers/cache_memo.py)
+  caches that list for five minutes.
+- [`search_memo.py`](https://github.com/antoniorodr/memo/blob/1b84963ade3ff14e6f8d21e6beceb4d0cb19d404/src/memo_helpers/search_memo.py)
+  converts every note to temporary Markdown files and starts interactive fuzzy
+  search. It has no structured scoped output contract for an agent tool.
+- [`edit_memo.py`](https://github.com/antoniorodr/memo/blob/1b84963ade3ff14e6f8d21e6beceb4d0cb19d404/src/memo_helpers/edit_memo.py#L61-L140)
+  reads the full HTML body, converts it to Markdown, opens a terminal editor,
+  converts the result back to HTML, then uses AppleScript `set body` on the
+  selected note. There is no append command, range operation, revision token,
+  hash precondition, lock, or conflict detection.
+- The same edit path deletes every attachment and recreates only surviving
+  images at the end. Non-image attachments, native tables, checklists, drawings,
+  tags, mentions, style details, and original image positions cannot be
+  preserved by the conversion pipeline.
+- [`move_memo.py`](https://github.com/antoniorodr/memo/blob/1b84963ade3ff14e6f8d21e6beceb4d0cb19d404/src/memo_helpers/move_memo.py)
+  creates a body-only copy and deletes the original, so a move changes the note
+  ID and loses unsupported content.
+- Memo returns human-oriented text and interactive prompts, not stable
+  machine-readable mutation receipts. Errors are inconsistent, and body,
+  title, folder, and ID values are interpolated into AppleScript strings without
+  one shared safe quoting boundary.
 
-**Hook flow**
+Memo is useful evidence that AppleScript can discover IDs and read HTML. Its
+write, move, selection, conversion, and output behavior are not suitable for
+shared-note authorization or editing. The design does not install or wrap it.
 
-1. Existing channel policy admits the direct message and existing routing
-   chooses the receiving agent.
-2. The pre-model hook receives trusted `agentId`, source message identity,
-   canonical body, source rows, preview facts, and attachment facts.
-3. If the message is not exactly one supported single-note collaboration URL,
-   the hook returns without handling it. If it contains a Notes invitation but
-   fails the exact shape, the hook returns a fixed rejection and does not invoke
-   the model.
-4. For a valid invitation, the hook upserts one registry row keyed by stable
-   source identity. The row stores normalized URL, receiving agent ID, and
-   `pending` state. A conflict on normalized URL plus receiving agent reuses the
-   existing row without changing its source key.
-5. The hook wakes the serialized non-model helper, returns `handled` with a
-   fixed "acceptance started" reply, and stops. It never awaits external work.
-   If the database or queue signal fails, it still returns a fixed handled
-   error, so the invitation cannot fall through to the model.
-6. If the URL is already present in another accepted row, the helper first
-   verifies that mapped note still exists. It can then reuse that note ID
-   without accepting the invitation again.
-7. Otherwise the helper receives only row ID and URL, captures the current
-   stable note IDs, opens the link under the dedicated Apple account, and reads
-   the note selected by that action. It accepts only one selected stable note
-   whose appearance is causally consistent with the action. The disposable
-   prototype must prove this mapping and prove that retrying an already accepted
-   link opens the same note without another mutation.
-8. One transaction stores the note ID and changes the row to `accepted`. The
-   row itself is now `(receiving agent ID, note ID)` authorization.
-9. The user first sees the fixed "acceptance started" reply. Sending the link to
-   the same agent again returns a fixed current state such as already available,
-   needs review, or failed. V1 sends no separate completion message. No model
-   generates these replies.
+**Write-surface comparison**
 
-**Minimal durable state**
+| Surface | Exact stable ID | Mutation | Human-collaboration behavior | Decision |
+|---|---:|---|---|---|
+| AppleScript or JXA | Yes | Whole `body` HTML assignment | Read-modify-write can erase concurrent edits and alter rich content | Use only for exact-ID metadata and read-back |
+| ScriptingBridge | Yes | Same Notes scripting dictionary | Same whole-body limit with more native packaging | Reject for content writes |
+| Shortcuts `Append to Note` | Not for arbitrary dynamic existing IDs | Native end append | Does not rewrite existing ranges; ordering and sync still need proof | Strong semantic reference, but unsafe target resolution |
+| Accessibility-driven Notes editor | Yes, by exact `show note id` before UI work | Native insertion at the selected note's end | Participates in Notes editing instead of replacing the body | Selected for disposable prototype |
+| Share extension | No unattended exact target | User-driven create or append | Requires user interaction and cannot enforce runtime agent grant | Reject |
+| Direct `NoteStore.sqlite` or protobuf write | Internal IDs only | Private database mutation | Bypasses supported Notes and CloudKit write paths | Prohibit |
+| CloudKit or private iCloud API | No public Notes container API | Private service calls | Unsupported and unstable | Prohibit |
 
-One SQLite table is sufficient:
+Apple documents UI scripting as simulated user interaction through macOS
+accessibility, with per-application permission, in
+[`Automating the User Interface`](https://developer.apple.com/library/archive/documentation/LanguagesUtilities/Conceptual/MacAutomationScriptingGuide/AutomatetheUserInterface.html).
+Apple's
+[`Notes keyboard guide`](https://support.apple.com/guide/notes/keyboard-shortcuts-and-gestures-apd46c25187e/mac)
+states that pressing Return on a selected note starts editing with the insertion
+point at the end. Notes AppleScript supports exact `show note id` addressing,
+as documented and exercised by maintained adapter
+[`sweetrb/apple-notes-mcp`](https://github.com/sweetrb/apple-notes-mcp/blob/3049367b96db6b41a0b913a89c32f321e497d86a/docs/APPLESCRIPT-LIMITATIONS.md).
 
-| Column | Purpose |
-|---|---|
-| Stable source key | Makes provider retries idempotent |
-| Normalized URL | Finds a prior accepted mapping for repeat or multi-scope delivery |
-| Receiving agent ID | Defines the exact authorization scope |
-| State | `pending`, `accepted`, `needs_review`, `failed`, or `revoked` |
-| Stable note ID | Becomes the tool allowlist value after acceptance |
-| Content-free error and timestamps | Supports retry and operator diagnosis without note data |
+**Why Shortcuts is not the selected target adapter**
 
-The table has unique constraints on stable source key and normalized URL plus
-receiving agent ID. The hook first looks up either key and requires stored URL
-and scope to match before it reuses a row. A single helper scans pending rows at
-startup and after a best-effort wake signal. This serializes acceptance, so two
-scopes receiving the same new URL cannot race two acceptance actions.
+- Apple documents that the `shortcuts` CLI runs an already installed named
+  workflow and can pass files or text as input in
+  [`Run shortcuts from the command line`](https://support.apple.com/guide/shortcuts-mac/run-shortcuts-from-the-command-line-apd455c82f02/mac).
+- Maintained reference
+  [`iangray001/applenotes-mcp`](https://github.com/iangray001/applenotes-mcp/tree/3e93d80ef7906f3beb3bf8d51e2d8991c3b0b603)
+  proves that a generated Shortcut can create a note and append native rich text,
+  checklists, tables, and files while it still holds the returned Note entity.
+- Its
+  [`NOTES.md`](https://github.com/iangray001/applenotes-mcp/blob/3e93d80ef7906f3beb3bf8d51e2d8991c3b0b603/NOTES.md)
+  also explains that Shortcuts `Find Notes` is a fuzzy name query and cannot
+  safely address an arbitrary existing note. The project's existing edit works
+  by creating a replacement and deleting the original, which changes the ID and
+  breaks shared notes.
+- A third-party process cannot directly invoke another app's App Intent. It can
+  only run a user-installed Shortcut wrapper. Current public inputs do not turn
+  this plan's Core Data note ID into the exact Notes App Entity required by
+  `Append to Note`.
+- The prototype should retest this limitation on the target Notes and Shortcuts
+  versions. If a supported exact-ID entity input exists, the Shortcuts append
+  becomes preferable to accessibility. Title search, fuzzy selection, per-note
+  generated shortcuts, and manual selection are not acceptable substitutes.
 
-This pending state is the only crash control. If the process stops before
-acceptance, the row retries. If it stops after Apple may have accepted but before
-the final transaction, retry is allowed only if the disposable prototype proves
-that reopening the same accepted link deterministically selects the same stable
-note without another mutation. Otherwise the row moves to `needs_review` and no
-grant is active.
+**Selected append flow**
 
-**Tool enforcement**
+1. The Notes tool is created with trusted runtime `agentId`. The model supplies
+   one note ID returned by scoped list or search, bounded plain text, and an
+   idempotency key. It cannot supply caller scope.
+2. The tool joins the note ID to an active accepted row for that exact agent
+   before it sends anything to the host.
+3. One protected SQLite write-action row stores action ID, agent ID, note ID,
+   payload digest, bounded pending payload, state, content-free error, and
+   timestamps. Payload is removed when the action reaches a terminal state.
+   This second table is necessary because a durable grant row cannot also
+   represent an interruptible content mutation.
+4. A single non-model GUI helper serializes actions by note ID. It rechecks the
+   active grant and note existence, confirms the share is editable, and records
+   the current modification date.
+5. The helper marks the action `executing`, asks Notes to show the exact stable
+   ID, and waits for one version-pinned accessibility hierarchy. It must prove
+   that the selected editor corresponds to the expected note ID. A title or
+   window label is not sufficient.
+6. The helper uses the native editor's end-of-note action and performs one paste
+   containing a leading paragraph break and a complete bounded block. The block
+   includes a visible opaque action receipt, timestamp, text, and closing
+   receipt. It does not interpret markup.
+7. The helper reads the same exact note through the read adapter. Success
+   requires one complete matching receipt at the end, the exact normalized
+   payload between its markers, and a changed modification date. Existing body
+   content and attachment metadata sampled before the append must remain
+   unchanged.
+8. The helper stores `applied`, removes the pending payload, and returns a fixed
+   receipt. If verification proves no receipt was inserted, it stores `failed`.
+   A partial, duplicate, wrong-note, timeout, lost-focus, or unreadable result
+   stores `needs_review`.
+9. Recovery rechecks `prepared` and `executing` rows by exact note ID and receipt.
+   A complete single receipt becomes `applied`. A partial or duplicate receipt
+   becomes `needs_review`. An executing row with no receipt remains
+   `needs_review`; it never pastes again automatically.
 
-- Follow the checked-in Calendar plugin pattern in
-  `openclaw-plugins/secure-apple-calendar/src/plugin.ts`: build the tool from
-  runtime context and reject disallowed actions before host dispatch.
-- The Notes tool captures `ctx.agentId`. Its public schema has no scope or agent
-  argument.
-- List selects note IDs from accepted rows for that exact agent, then asks the
-  host only for metadata for those IDs.
-- Read verifies one accepted row before asking the host for that note ID.
-- Search operates only over the caller's accepted IDs. It never returns an
-  account-wide search result and filters later.
-- The tool rechecks the accepted row before returning content to the model.
-  Revocation applies to subsequent calls. An already-running read may complete.
-- Note content remains untrusted and passes through the existing ingress checks
-  before model use.
+The UI helper runs under the same dedicated Notes GUI identity already required
+for invitation acceptance. It receives only action ID, exact note ID, and
+bounded text over authenticated IPC. The model worker cannot access Notes,
+accessibility, the registry database, or the helper directly.
 
-**Why the removed machinery is unnecessary**
+**Conflict model**
 
-- Apple owns shared-note membership and live synchronization.
-- The existing message ACL and route own sender admission and agent scope.
-- The one registry row owns idempotency, retry state, URL mapping, and the grant.
-- The serialized helper prevents concurrent acceptance.
-- Exact-ID tool queries make unrelated Notes account contents irrelevant.
-- No Contacts checks, ownership proof, hierarchy, confirmation challenge,
-  separate grants table, URL-intent table, broker, epochs, action leases,
-  rollback state machine, attachment spool, relay, or web proxy is part of this
-  feature.
+- The native editor changes only a new block at the current end. It does not
+  fetch and replace the existing body, so concurrent human changes elsewhere
+  are left to Notes' normal collaboration merge.
+- There is no claim of transactional append across devices. A human adding text
+  to the same final paragraph may cause relative ordering changes or a sync
+  conflict. The prototype must measure this.
+- The helper serializes local writes to the same note. It cannot serialize human
+  collaborators.
+- Every write has one visible receipt. This lets read-back and restart recovery
+  distinguish success, absence, partial insertion, and duplication without
+  relying only on modification time.
+- On `needs_review`, the tool returns a fixed conflict with the action receipt.
+  The caller must read the note before submitting a new action. The helper does
+  not roll back native collaboration by replacing the old body.
+- Rollback of a completed append is another append that marks the prior receipt
+  superseded. V1 never deletes or rewrites the original block automatically.
+
+**Operations considered**
+
+| Operation | Feasibility | Decision |
+|---|---|---|
+| Append a new update block | Native end insertion, no existing range replacement | V1 write |
+| Append a new agent-owned section | Same operation with a section heading | V1 write |
+| Change an earlier agent block | Requires range addressing or whole-body rewrite | Reject |
+| Insert at a marker in the middle | No supported exact-range API | Reject |
+| Exact-range patch with hash | No atomic precondition or conditional range mutation | Reject |
+| Whole-body replace after optimistic re-read | Human can edit after the last read and before the write | Reject |
+| Memo interactive edit | Whole-body lossy conversion and assignment | Reject |
+| Delete or recreate the note | Changes identity or membership and can destroy content | Reject |
 
 ### Implementation
 
@@ -259,125 +326,158 @@ Implementation is intentionally not started.
 
 After explicit prototype-only approval:
 
-1. Use only disposable Apple accounts and disposable single-note shares.
-2. Confirm supported collaboration URL shapes and whether link reuse after
-   acceptance opens the same stable note.
-3. Confirm the accepted note exposes one stable ID across app restart and sync.
-4. Confirm the current message runtime can supply final source-row facts and the
-   exact routed `agentId` at `before_dispatch`.
-5. Exercise the one-table pending, accepted, retry, multi-scope, failed, revoked,
-   and `needs_review` states with recording adapters.
-6. Test whether a conditional update or safe bounded append exists. Record the
-   exact behavior under a concurrent human edit.
-7. Rewrite this plan with the evidence and stop for separate implementation
-   approval.
+1. Use only disposable Apple accounts and disposable single-note shares with
+   read-write participant permission.
+2. Reconfirm the accepted invitation flow, stable note ID, link reuse, and exact
+   agent grant on the target OpenClaw and macOS versions.
+3. Inventory target Notes App Intents at runtime. Test whether one installed
+   Shortcut can resolve an arbitrary existing note by the stored stable ID. Use
+   Shortcuts only if this exact, non-title path is proven.
+4. Otherwise build a throwaway accessibility probe for exact `show note id`,
+   selected-note proof, end-of-note focus, one-shot plain-text paste, and
+   read-back. Do not generalize it into production code.
+5. Exercise remote human edits before, during, and after each append. Cover the
+   same final paragraph, another paragraph, offline sync, two local actions,
+   interruption before paste, interruption after paste, and restart recovery.
+6. Use notes containing rich text, tables, native checklists, files, drawings,
+   links, tags, mentions, highlights, and images. Prove every pre-existing
+   element survives unchanged.
+7. Measure receipt fidelity, partial paste behavior, modification-date
+   granularity, stable-ID persistence, focus loss, wrong-window detection,
+   language and keyboard-layout dependence, sync delay, and conflict copies.
+8. Revoke edit permission and remove the share while an action is queued and
+   while the editor is open. Both must fail without cross-note mutation.
+9. Record exact supported Notes, Shortcuts, and macOS versions plus the observed
+   accessibility hierarchy and TCC permissions.
+10. Rewrite this plan with the evidence and stop for separate implementation
+    approval.
 
 Only after the second approval:
 
 1. Add the small `before_dispatch` context patch and its OpenClaw regression.
-2. Add the hook, one SQLite table, and serialized acceptance helper.
-3. Add exact-ID list, search, and read tools using the Calendar wrapper pattern.
-4. Add focused tests and cumulative integration coverage with fake adapters.
-5. Deploy through the managed test lifecycle only. Do not touch production
-   invitations or notes.
+2. Add the invitation hook, grant registry, and serialized acceptance helper.
+3. Add exact-ID list, search, read, and append tools using runtime `agentId`.
+4. Add the protected write-action table and the version-gated GUI append helper.
+5. Add focused tests and cumulative integration coverage with recording
+   adapters. No automated test may reach live Notes or accessibility.
+6. Deploy through the managed test lifecycle only. Production remains outside
+   this design approval.
 
 ### Validation
 
-**Hook and scope**
+**Invitation and scope**
 
 | Scenario | Required result |
 |---|---|
-| Allowed direct message routes to one agent with one valid invitation | Insert one pending row for that exact agent and claim the message before model dispatch |
-| Sender is rejected by existing channel policy | Hook never runs |
-| Runtime agent ID is missing | Reject the invitation and write no row |
-| Message text names another agent | Ignore it; use only routed runtime agent ID |
-| Same source message is replayed | Reuse the same row only when stored URL and agent match |
-| Same URL reaches the same agent in another source row | Reuse the existing URL-and-agent row without accepting again |
-| Same URL reaches another agent | Create another row for that agent |
-| Message has extra text, preview, attachment, several links, or several source rows | Reject it and invoke neither helper nor model |
-| Ordinary text contains no supported invitation | Continue normal model dispatch |
-| Registry write or queue signal fails for a recognized invitation | Return a fixed handled error and never invoke the model |
-| Acceptance takes longer than the hook budget | Hook has already returned handled; helper continues from the durable row |
+| Allowed direct message has one valid invitation | Insert one pending row for the exact routed agent and claim before model dispatch |
+| Sender is rejected by channel policy | Hook never runs |
+| Runtime agent ID or final source proof is missing | Reject and write no row |
+| Same URL reaches another agent | Add that agent's grant after verifying the mapped note |
+| Preview, attachment, extra text, several rows, group, or several links | Reject before helper or model |
+| Account contains an unmapped note | No agent can list, search, read, or append it |
 
-**Acceptance and retry**
+**Write authorization**
 
 | Scenario | Required result |
 |---|---|
-| New invitation resolves one stable note ID | Atomically set note ID and accepted state |
-| Same accepted URL reaches another agent | Verify existing note and reuse its ID without accepting again |
-| Link was accepted manually before hook delivery | Resolve the existing note and record the exact agent grant |
-| Crash before helper action | Pending row retries once |
-| Crash after Apple may have accepted | Retry only when prototype-proven link reuse is safe; otherwise move to needs review |
-| Zero or several candidate notes appear | No grant; move to needs review |
-| Shared-folder invitation | Reject before acceptance |
-| Note later disappears | Reads fail and row becomes failed or revoked |
+| Exact caller has an active grant | Prepare one action for that note |
+| Model supplies another agent ID | Tool schema has no such argument |
+| Model supplies an ungranted stable ID | Reject before host access |
+| Same note is granted to several agents | Each caller needs its own active row; helper still serializes by note ID |
+| Grant or share is revoked before paste | Fail without mutation |
+| Share becomes view-only | Fail without mutation |
 
-**Account visibility and tools**
+**Append and collaboration**
 
 | Scenario | Required result |
 |---|---|
-| Account contains a local or manually synced note with no registry row | No agent can list, search, or read it |
-| Main has an accepted row | Only main can use that note ID |
-| Household receives the same note separately | Household gains its own row; other scopes do not |
-| Model supplies another agent ID | Tool schema rejects it |
-| List or search attempts account-wide enumeration | Reject before host content is returned |
-| Row is revoked before a call | Tool refuses the note |
-| Note contains prompt injection | Ingress checks run before model use |
+| Exact mapped note is selected and editable | Append one complete receipt block at end |
+| Human edits another paragraph concurrently | Preserve the human edit and append block |
+| Human edits the final paragraph concurrently | Preserve both changes or return conflict; never replace the body |
+| Two local appends target one note | Serialize and produce two complete receipts |
+| Notes focus or selected-note proof is missing | Fail before paste |
+| Focus changes during action | Verification cannot prove success, so mark needs review |
+| Rich note has tables, checklists, files, drawings, tags, mentions, links, highlights, or images | Every existing element remains unchanged |
+| Payload contains Unicode, line breaks, markup characters, or receipt-like text | Insert literal bounded text without breaking receipt framing |
 
-**Live collaboration and writes**
+**Interruption and idempotency**
 
 | Scenario | Required result |
 |---|---|
-| Human edits a shared note in Notes | Other open Notes clients see the change in near real time |
-| Agent reads after sync | It reads the current body through its exact accepted note ID |
-| Adapter replaces the whole body | Treat as unsafe for V1 |
-| Human edits between agent read and whole-body replace | Prototype demonstrates the overwrite risk; no production write tool is approved |
-| Stable revision or safe append is unavailable | Keep all shared-note tools read-only |
+| Same action ID, agent, note, and payload repeats | Return saved state without another paste |
+| Same action ID has different scope, note, or digest | Reject |
+| Crash before executing | Recovery may process prepared row once |
+| Crash after paste with one complete receipt | Recovery records applied without another paste |
+| Crash during paste with a partial receipt | Mark needs review and do not retry |
+| Executing row has no provable receipt | Mark needs review and do not retry |
+| Read-back sees a duplicate or wrong-note receipt | Mark needs review and disable automatic retry |
+
+**Rejected adapters**
+
+| Candidate | Required proof |
+|---|---|
+| Memo edit | Test demonstrates whole-body assignment and rich-content loss; never use for V1 write |
+| AppleScript append by read-concat-set | Concurrent edit test demonstrates body-replacement race; never use |
+| Shortcuts append by title or fuzzy search | Duplicate-title test demonstrates ambiguity; never use |
+| Direct Notes database write | Static validation rejects any writable database open |
+| Whole-body optimistic replace | Concurrent edit after final check demonstrates remaining race; never use |
 
 ### Rollout and rollback
 
 This revision stops before prototype work. Prototype approval permits live
-invitation acceptance only between disposable accounts and notes. It does not
-authorize production code, production invitations, or production writes.
+invitation and append tests only between disposable accounts and disposable
+notes. It does not authorize Memo installation, production code, production
+invitations, production notes, or production writes.
 
-After separate implementation approval, rollout starts with the hook and fake
-helper, then a disposable account, then exact-ID read tools for one test scope.
-Each step must show that unrelated account notes remain invisible.
+After separate implementation approval, rollout starts with fake adapters, then
+the exact-version disposable GUI identity, then one test agent and one disposable
+shared note. Each step must prove that unrelated and ungranted notes remain
+invisible and untouched.
 
-Rollback disables the hook and Notes tools. It preserves the one registry table
-so accepted mappings are not lost or accidentally recreated. Pending rows remain
-pending or move to `needs_review`; rollback never opens a link or accepts an
-invitation.
+Runtime version or accessibility hierarchy mismatch disables write tools.
+Read-only operations may remain available when their own exact-ID adapter is
+healthy. A missing Shortcut, permission, active GUI session, focus proof, or
+read-back capability cannot degrade into whole-body AppleScript.
+
+Rollback disables invitation intake and Notes tools. It preserves accepted
+grants and write receipts for diagnosis. It deletes any pending write payload
+only after recording the action as cancelled. It never removes a completed
+append, rewrites a shared note, opens an invitation, or restores live registry
+state from an older snapshot.
 
 Automated production checks remain read-only. They never send a message, accept
-an invitation, or edit a note.
+an invitation, open the Notes editor, or append content.
 
 ### Review log
 
-- 2026-08-12: Rewrote the design around one pre-model hook, one registry table,
-  one serialized non-model helper, and exact-ID read tools. Removed speculative
-  broker, lease, epoch, URL-intent, and multi-table recovery machinery.
-  Independent complete-current-diff review found no actionable material
-  findings. It identified hook return timing and same-scope URL collision
-  behavior as useful clarifications, which are now explicit.
+- 2026-08-20: Preserved the accepted hook and grant model. Replaced the
+  read-only decision with a native exact-ID append design. Current Memo source
+  proved its edit is a lossy whole-body assignment with no append or conflict
+  control. Current OpenClaw source proved its Memo integration is an
+  instructional skill plus optional installer, not a scoped tool. Independent
+  review is pending.
 
 ### Checklist
 
-- [x] Read current repository instructions and the current source-of-truth plan.
-- [x] Recheck current message authorization and route bindings.
-- [x] Recheck the current OpenClaw pre-model hook and its missing fields.
-- [x] Verify Apple documentation for invitation acceptance, permissions,
-  near-real-time collaboration, highlights, and activity.
-- [x] Verify current adapter evidence for whole-body replace and
-  delete-plus-create writes.
-- [x] Separate Apple membership and sync from registry authorization.
-- [x] Reduce durable state to one table.
-- [x] Explain the hook from admitted message through exact agent grant.
-- [x] Make unrelated Notes account contents invisible by exact-ID authorization.
-- [x] Keep V1 read-only and state the smallest write prototype question.
-- [x] Complete independent review of simplicity, factual accuracy, and hook
-  feasibility.
+- [x] Read current main repository instructions and safe feature workflow.
+- [x] Re-read the complete source-of-truth plan and current tracking state.
+- [x] Preserve the accepted invitation hook and exact agent-to-note grant.
+- [x] Inspect Memo main source, latest release, dependencies, commands,
+  selection, IDs, output, errors, conversion, attachments, and concurrency.
+- [x] Trace every current OpenClaw Memo and Apple Notes reference.
+- [x] Distinguish bundled skill instructions from Memo installation and runtime
+  tool enforcement.
+- [x] Compare AppleScript, JXA, ScriptingBridge, Shortcuts, accessibility, share
+  extensions, direct database writes, and private service APIs.
+- [x] Compare append, marker insertion, range patch, optimistic whole-body
+  replace, and native UI editing.
+- [x] Select exact-ID native append and define its conflict behavior.
+- [x] Define write authorization, durable receipts, interruption handling,
+  read-back, and fail-closed outcomes.
+- [x] Define the disposable collaboration and rich-content prototype.
+- [ ] Complete independent review of factual accuracy, edit safety, Memo and
+  OpenClaw evidence, simplicity, and read-write coverage.
 - [ ] Receive prototype-only approval.
-- [ ] Complete disposable prototype and update this plan.
+- [ ] Run disposable prototype and update this plan.
 - [ ] Receive separate implementation approval.
 - [ ] Implement or deploy production behavior.
