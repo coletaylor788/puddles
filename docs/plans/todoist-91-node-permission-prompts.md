@@ -16,7 +16,7 @@ The refreshed plan moves the model readers to bounded exact-item calls through t
 
 ### Status
 
-The current repository, active gateway, Keychain metadata, TCC principals, update daemon, session store, recent tool runs, and related landed repairs have been rechecked. Independent review found that the first refresh used a global context cap for one stale session. The cap is now model-specific, stale cache correction is explicit, and validation proves every other configured model keeps its resolved window.
+The current repository, active gateway, Keychain metadata, TCC principals, update daemon, session store, recent tool runs, and related landed repairs have been rechecked. Independent review found that the first refresh used a global context cap for one stale session, then found that the corrected source patch was not wired into the repository's required patch lifecycle. The cap is model-specific, and the stale-cache repair now has named patch artifacts, cumulative test registration, managed deployment, installed validation, and rollback requirements.
 
 No live permissions, credentials, configuration, sessions, or services changed during this refresh. The corrected design is in retained review recheck before it returns to Cole.
 
@@ -77,11 +77,11 @@ Permission and ownership decisions:
 - The separate model-adapter workstream owns direct credential-reader replacement and its focused test pool.
 - The runtime reconciler polls every five minutes. Polling avoids unreliable filesystem watches before the shared marker directory exists.
 - The 100,000-token cap belongs only to the currently selected 128,000-token model entry. It must not change the resolved window for any other configured model or agent.
-- Stale session cache repair is provider-neutral OpenClaw behavior and belongs in the public patch stack with cumulative patch coverage.
+- Stale session cache repair is provider-neutral OpenClaw behavior. It ships as `docs/openclaw-setup/patches/heartbeat-session-context-refresh.patch` plus `heartbeat-session-context-refresh.md`, appears in the patch README table and `apply-and-deploy.sh` `PATCHES=()` list, and registers its upstream-style test targets in the cumulative `packages/e2e/openclaw-patch-suite.json`.
 
 Implementation sequence:
 
-1. **Repair the active heartbeat loop.** Preserve `sessions.json`, the current transcript, and model configuration. Record the resolved effective window for every configured model. Set `contextTokens: 100000` only on the affected selected-model entry. Add an OpenClaw patch that replaces a cached session value only when it exceeds the freshly resolved cap for that same model, before precheck runs. Use supported max-lines compaction on `agent:main:main`, restart through the managed gateway command, and verify the session now stores `100000`, the next heartbeat succeeds, and every other configured model resolves to its original window. Roll back the patch, model entry, and session state if any check fails.
+1. **Repair the active heartbeat loop.** Preserve `sessions.json`, the current transcript, model configuration, installed package, and patch manifest state. Record the resolved effective window for every configured model. Set `contextTokens: 100000` only on the affected selected-model entry. Add `heartbeat-session-context-refresh.patch` with an upstream-style regression and companion guide, register both in the patch README, register the patch in `apply-and-deploy.sh`, and add its test targets to the cumulative patch-suite manifest without replacing existing entries. The patch replaces a cached session value only when it exceeds the freshly resolved cap for that same model, before precheck runs. Deploy it only through `docs/openclaw-setup/patches/apply-and-deploy.sh`. Use supported max-lines compaction on `agent:main:main`, restart through the managed gateway command, and verify the installed guard is present, the session stores `100000` after the first run, the next heartbeat succeeds, and every other configured model resolves to its original window. Roll back the package, patch manifest state, model entry, and session state if any check fails.
 2. **Land the helper source.** Refresh pull request `#29` against current `main`, rerun its focused and managed tests, and merge it. Do not deploy or replace the already-approved helper.
 3. **Move the model readers.** In the separate owning workstream, replace all direct Node `keytar` reads of the model credential with bounded exact `/usr/bin/security` reads. Cover success, missing item, denial, timeout, malformed output, cancellation, caching, and multiple adapters. This repository verifies only the provider-neutral stable-reader contract.
 4. **Repair the attendee Contacts path.** Set `contactsCliPath` to the fully expanded installed wrapper. Add register-time authorization validation and a focused regression proving the gateway environment does not need PATH lookup.
@@ -90,8 +90,8 @@ Implementation sequence:
 7. **Run pre-cleanup validation and attribution soak.** Prove Todoist and model reads without prompts, current Gmail read-only health through issue `#99`'s selected path, Contacts resolver health, PIM reads, gateway and iMessage health, heartbeat recovery, classifier readiness, update handoff, interruption recovery, and rollback fixtures. Keep old Node access during a 24-hour soak. Record TCC principal changes and content-free call-path metadata.
 8. **Gate cleanup on evidence.** Continue only if the model adapters no longer load direct `keytar`, the heartbeat remains healthy, and no Node Contacts access remains unattributed. Otherwise keep the grants and investigate.
 9. **Remove old Node grants.** In one logged-in desktop session, remove Node entries from the model and Todoist Keychain items and disable Node under Contacts privacy. Do not touch Gmail's item or native PIM grants from this task. Restart and repeat all read-only checks.
-10. **Exercise the real update boundary.** Use isolated fixtures for generation, duplicate polling, restart, interruption, insecure-marker rejection, and rollback. After merge, the next normal Homebrew update is the production proof. A failed postflight marks health failed and preserves evidence; it never downgrades Homebrew automatically.
-11. **Update documentation.** Replace the obsolete path-based Node ACL advice and document the stable reader, native PIM, heartbeat, update, recovery, and Cole checkpoint model.
+10. **Exercise the real update boundary.** Use isolated fixtures for generation, duplicate polling, restart, interruption, insecure-marker rejection, and rollback. After merge, the next normal Homebrew update is the production proof. Postflight verifies the installed heartbeat guard and behavior as well as gateway health. A missing patch, stale session cap, or failed postflight marks health failed and preserves evidence; it never downgrades Homebrew automatically.
+11. **Update documentation.** Replace the obsolete path-based Node ACL advice, add the heartbeat patch companion guide and patch-table row, and document the stable reader, native PIM, heartbeat, update, recovery, and Cole checkpoint model.
 
 Cole checkpoints:
 
@@ -150,11 +150,14 @@ Required implementation validation:
 
 - [ ] Focused helper, Contacts resolver, runtime reconciler, heartbeat, update writer, and documentation tests pass in this repository.
 - [ ] The OpenClaw patch proves an oversized cached session value is replaced by the freshly resolved cap before precheck and leaves equal or smaller cached values unchanged.
+- [ ] `heartbeat-session-context-refresh.patch`, its companion guide, the patch README row, the `PATCHES=()` entry, and cumulative patch-suite registration are all committed and checked by `packages/e2e/tests/patch-suite.test.ts`.
+- [ ] The patch's upstream-style test target runs through `packages/e2e/openclaw-patch-suite.json`; a test embedded only in the patch is not accepted.
 - [ ] Before-and-after validation records the resolved effective window for every configured model and proves only the targeted model is capped.
 - [ ] Model-reader success, denial, timeout, malformed-output, cancellation, cache, and multiple-adapter regressions pass in its separate owning workstream.
 - [ ] Denial, missing approval, repeated overflow, failed compaction, cooldown, concurrent run, duplicate marker, insecure marker, restart failure, interrupted install, rollback, and cleanup paths pass.
 - [ ] Tests use synthetic Keychain, TCC, session, and update fixtures and deny-by-default write or delivery adapters.
 - [ ] `node packages/e2e/bin/openclaw-test-env.mjs ci` passes with every regression for changes committed in this repository.
+- [ ] Deployment uses `docs/openclaw-setup/patches/apply-and-deploy.sh`; the installed-runtime validator proves the heartbeat guard is present and the first real post-update check repeats that proof.
 - [ ] Live postflight stays read-only and sends no message.
 - [ ] Retained full-diff review and fresh terminal exact-commit review are clean.
 - [ ] Remote checks pass on the exact candidate.
@@ -162,7 +165,7 @@ Required implementation validation:
 ### Rollout and rollback
 
 - This refresh is design-only. No live rollout occurs before Cole reviews it.
-- Heartbeat repair preserves `sessions.json`, the current transcript, the selected-model entry, and the patch stack before changing the cap or compacting. Failure restores all four and restarts the previous gateway state. The old transcript is never deleted.
+- Heartbeat repair preserves `sessions.json`, the current transcript, the selected-model entry, installed package, patch manifest, and prior patch stack before changing the cap or compacting. Failure uses the documented patch deployment rollback to restore the prior package and manifest, restores session and model state, and restarts the previous gateway state. The old transcript is never deleted.
 - Model-specific cap rollout fails if any non-target model or agent resolves to a different effective window after the change.
 - Pull request `#29` lands source only. Do not replace the approved helper binary or change its live allowlist during that step.
 - Model-reader migration preserves the private adapter configuration and keeps Node trust through the soak. Rollback restores direct `keytar` reads while Node remains approved. After cleanup, restoring Node needs Cole.
@@ -184,6 +187,7 @@ Required implementation validation:
 - 2026-08-19: Model credential stable-system trust is now present, eliminating the planned model approval.
 - 2026-08-19: The heartbeat failure is now tied to a 1,000,000 versus 128,000 token-window mismatch on the active heartbeat session.
 - 2026-08-19: Retained review found the proposed 100,000-token global cap would shrink every configured model. The cap is now model-specific, cache correction occurs before precheck, and validation covers all configured model windows.
+- 2026-08-19: Retained recheck found the source patch was not attached to the mandatory patch artifacts, deployment list, or shared suite. The full patch lifecycle and installed guard checks are now explicit.
 - Independent adversarial review: Remediation recheck in progress.
 - Terminal review: Pending refreshed final candidate.
 
