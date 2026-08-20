@@ -19,7 +19,7 @@ from gmail_mcp.auth import (
     run_oauth_flow,
     store_token,
 )
-from gmail_mcp.config import GOOGLE_TOKEN_ENV
+from gmail_mcp.config import GOOGLE_TOKEN_ENV, KEYCHAIN_SERVICE
 from gmail_mcp.keychain import CredentialFormatError, KeychainAccessError
 
 
@@ -218,8 +218,9 @@ class TestKeychainGetToken:
     def test_raises_on_invalid_json(self, token_data):
         """Invalid JSON is distinct from a missing Keychain item."""
         with patch("gmail_mcp.auth.read_token", return_value=token_data):
-            with pytest.raises(CredentialFormatError, match="malformed"):
+            with pytest.raises(CredentialFormatError, match="malformed") as exc_info:
                 get_token()
+        assert f"Delete the {KEYCHAIN_SERVICE} Keychain item" in str(exc_info.value)
 
     @pytest.mark.parametrize("token_data", ["null", "[]", '"text"', "42"])
     def test_raises_on_non_object_json(self, token_data):

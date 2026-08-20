@@ -102,12 +102,12 @@ def read_token() -> str | None:
         except UnicodeDecodeError:
             raise CredentialFormatError(
                 "Stored Gmail credential is malformed. "
-                "Delete the gmail-mcp Keychain item and authenticate again."
+                f"Delete the {KEYCHAIN_SERVICE} Keychain item and authenticate again."
             ) from None
     if not token_data:
         raise CredentialFormatError(
             "Stored Gmail credential is empty. "
-            "Delete the gmail-mcp Keychain item and authenticate again."
+            f"Delete the {KEYCHAIN_SERVICE} Keychain item and authenticate again."
         )
     return token_data
 

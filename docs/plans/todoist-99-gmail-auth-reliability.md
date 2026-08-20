@@ -18,13 +18,13 @@ The helper restarts the gateway, confirms health, and makes one read-only Gmail 
 
 Patched OpenClaw is deployed and healthy. Gmail works because production rolled back to the legacy keyring backend, and the current Homebrew Python binary is trusted by the old Keychain item. Fresh legacy profile calls pass before and after a gateway restart. A fresh stable system-command read still times out.
 
-This is not durable. Replacing or upgrading that Python binary can revoke access again. The implemented migration reads the token only inside the currently trusted legacy process, creates a separate stable Keychain item that trusts the system command, verifies an exact round trip, and leaves the old item untouched for rollback. The reviewed runtime uses only the stable service.
+This is not durable. Replacing or upgrading that Python binary can revoke access again. The implemented migration creates a separate stable Keychain item and leaves the old item untouched for rollback. Recovery messages now derive from the active stable service, and complete validation is green.
 
 ## Agent section
 
 ### State
 
-- Phase: Independent review
+- Phase: Retained reviewer recheck
 - Repository: `coletaylor788/puddles`
 - Todoist task: `6hHwPPrxrg2FQP9V`
 - Todoist label: `agent`
@@ -80,6 +80,7 @@ This is not durable. Replacing or upgrading that Python binary can revoke access
 - A successful production smoke requires the existing `gmail-mcp` Keychain item to trust `/usr/bin/security`; changing that ACL requires Cole's login-keychain password and interactive approval.
 - A working Gmail tool is not durable evidence until the active bridge identity, credential backend, restart behavior, and fresh read-only request are confirmed.
 - The durable migration must never print or write token data outside Keychain, must not overwrite an existing stable item, and must verify an exact in-memory round trip.
+- Runtime credential errors must name `gmail-mcp-stable` and must not direct users to delete legacy rollback service `gmail-mcp`.
 - Published releases must contain no bytecode and must run with bytecode writes disabled so all executable Python content remains inside the manifest.
 
 ### Implementation
@@ -143,6 +144,8 @@ This is not durable. Replacing or upgrading that Python binary can revoke access
 - [x] Move the reviewed Gmail runtime to a new stable Keychain service.
 - [x] Add migration, collision, secret-redaction, and rollback regression coverage.
 - [x] Update setup and authentication documentation.
+- [x] Derive malformed-credential guidance from the active service constant.
+- [x] Add parser and tool-boundary regressions naming `gmail-mcp-stable`.
 - [ ] Run migration under the currently trusted legacy interpreter.
 - [ ] Promote the reviewed release and prove read-only access across restart.
 
@@ -224,7 +227,8 @@ This is not durable. Replacing or upgrading that Python binary can revoke access
 - Passed: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
 - Managed lifecycle result: `343` workspace tests, `175` safe Gmail tests, `472` mapped OpenClaw tests, and `2` candidate tests.
 - An isolated temporary macOS Keychain round trip proved a new item trusted for `/usr/bin/security` can be created and read by a fresh process without exposing its value.
-- Pending: retained full-diff review and terminal exact-commit review of the migration change.
+- Guidance remediation is included in the `175` safe Gmail tests and complete managed lifecycle above.
+- Pending: retained reviewer recheck and terminal exact-commit review.
 - Pending: exact-candidate production promotion and read-only validation.
 
 ### Rollout and rollback
@@ -297,6 +301,8 @@ This is not durable. Replacing or upgrading that Python binary can revoke access
 - Cole later observed working Gmail without performing the requested ACL commands. This follow-up reopens production diagnosis rather than assuming the blocker disappeared durably.
 - Production evidence proves the observation comes from renewed legacy interpreter trust. A stable-item migration is required for upgrade durability.
 - The migration implementation uses service `gmail-mcp` only as source and service `gmail-mcp-stable` as target. It validates authorized-user JSON, refuses a different existing target, and never prints token data.
+- Retained review found a medium-severity guidance gap because malformed-credential errors told users to delete legacy service `gmail-mcp`.
+- The accepted fix derives messages from `KEYCHAIN_SERVICE` and verifies parser and tool results name `gmail-mcp-stable`. Full validation passes.
 
 ### Checklist
 
@@ -329,6 +335,7 @@ This is not durable. Replacing or upgrading that Python binary can revoke access
 - [x] The currently working Gmail path is identified.
 - [x] Fresh-process and gateway-restart behavior are proven read-only.
 - [x] Stable Keychain migration is implemented and validated in tests.
+- [x] Stable-item guidance remediation passes full validation.
 - [ ] Retained and terminal reviews are clean for the migration change.
 - [ ] Stable production item is created and verified.
 - [ ] Required durable fix or promotion is completed.
