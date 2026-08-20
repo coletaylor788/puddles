@@ -1,6 +1,6 @@
 # Fix recurring Gmail authentication failures
 
-Status: Landing deployment candidate
+Status: Reviewing stable Keychain migration
 Issue: https://github.com/coletaylor788/puddles/issues/99
 Last updated: 2026-08-18
 
@@ -16,15 +16,15 @@ The helper restarts the gateway, confirms health, and makes one read-only Gmail 
 
 ### Status
 
-The package-manager preflight finding is fixed, focused and managed validation are green, and retained full-diff review is clean. Production remains unchanged.
+Patched OpenClaw is deployed and healthy. Gmail works because production rolled back to the legacy keyring backend, and the current Homebrew Python binary is trusted by the old Keychain item. Fresh legacy profile calls pass before and after a gateway restart. A fresh stable system-command read still times out.
 
-The exact candidate is being sealed for a new terminal review and updated remote checks. Nothing needs Cole's input.
+This is not durable. Replacing or upgrading that Python binary can revoke access again. The implemented migration reads the token only inside the currently trusted legacy process, creates a separate stable Keychain item that trusts the system command, verifies an exact round trip, and leaves the old item untouched for rollback. The reviewed runtime uses only the stable service.
 
 ## Agent section
 
 ### State
 
-- Phase: Seal exact landing candidate
+- Phase: Independent review
 - Repository: `coletaylor788/puddles`
 - Todoist task: `6hHwPPrxrg2FQP9V`
 - Todoist label: `agent`
@@ -77,6 +77,9 @@ The exact candidate is being sealed for a new terminal review and updated remote
 - Production must deploy the patched OpenClaw package through its rollback-capable lifecycle before deploying the Gmail runtime that relies on the exported lock.
 - OpenClaw dependencies must be installed with the frozen lockfile after the source patch stack changes dependency patches and lock hashes.
 - Production package-manager invocation must work with either a direct pnpm binary or Corepack-provided pnpm.
+- A successful production smoke requires the existing `gmail-mcp` Keychain item to trust `/usr/bin/security`; changing that ACL requires Cole's login-keychain password and interactive approval.
+- A working Gmail tool is not durable evidence until the active bridge identity, credential backend, restart behavior, and fresh read-only request are confirmed.
+- The durable migration must never print or write token data outside Keychain, must not overwrite an existing stable item, and must verify an exact in-memory round trip.
 - Published releases must contain no bytecode and must run with bytecode writes disabled so all executable Python content remains inside the manifest.
 
 ### Implementation
@@ -129,6 +132,19 @@ The exact candidate is being sealed for a new terminal review and updated remote
 - [x] Add two-process deployment-lock serialization regression.
 - [x] Add one package-manager resolver used by install, build, and pack.
 - [x] Cover both direct pnpm and Corepack fallback in deployment fixtures.
+- [x] Promote patched OpenClaw through snapshot, migration, browser refresh, restart, and health.
+- [x] Attempt Gmail promotion through release build, config snapshot, restart, read-only smoke, and automatic rollback.
+- [x] Identify the active Gmail command, cwd, process start time, and source release.
+- [x] Identify credential backend selection from environment names without reading values.
+- [x] Test a bounded fresh legacy profile before and after gateway restart.
+- [x] Confirm the exact stable system-command read still times out.
+- [x] Determine the current path is legacy interpreter trust, not durable promotion.
+- [x] Add a non-destructive legacy-to-stable Keychain migration tool.
+- [x] Move the reviewed Gmail runtime to a new stable Keychain service.
+- [x] Add migration, collision, secret-redaction, and rollback regression coverage.
+- [x] Update setup and authentication documentation.
+- [ ] Run migration under the currently trusted legacy interpreter.
+- [ ] Promote the reviewed release and prove read-only access across restart.
 
 ### Validation
 
@@ -191,7 +207,24 @@ The exact candidate is being sealed for a new terminal review and updated remote
 - Passed after remediation: shell syntax, TypeScript lint, patch manifest checks, and diff check.
 - Passed after remediation: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
 - Managed lifecycle result: `341` workspace tests, `171` safe Gmail tests, `472` mapped OpenClaw tests, and `2` candidate tests.
-- Pending: retained review, terminal review, and updated remote checks.
+- Retained review, terminal review, and updated PR 102 checks are green on `5d44fa46a5ae25e32014ae5fe900d211563bb69b`.
+- Patched OpenClaw production deployment succeeded with recovery snapshot `~/.openclaw-deploy-backups/20260819T093708Z-33553`; installed guard, package migration, browser refresh, restart, and gateway health passed.
+- Gmail release `5d44fa46a5ae25e32014ae5fe900d211563bb69b` was prepared and promoted, then the profile smoke failed because `/usr/bin/security` timed out reading the token after five seconds.
+- Gmail automatic rollback restored the prior config, restarted the gateway, passed gateway health, and recorded recovery phase `rolled-back` under `~/.openclaw-deploy-backups/gmail-mcp/20260819T093911Z-36448`.
+- The login keychain was unlocked at the time of failure.
+- Cole now reports Gmail works without running the requested partition-list commands. The cause and restart durability are unverified.
+- Three Gmail bridge processes use the primary-checkout cwd and Homebrew Python 3.11.16. Their environment has `HOME` and `PATH`, but no `GOOGLE_MCP_TOKEN` or `GMAIL_MCP_CONFIG_DIR`.
+- The configured runtime is legacy code with no new Keychain module or parsed-credential cache.
+- Fresh legacy profile checks passed in `172 ms` and, after gateway restart, `152 ms`.
+- Fresh `/usr/bin/security` access to service `gmail-mcp`, account `token`, still timed out after five seconds.
+- The current path survives a gateway restart but remains coupled to the current Homebrew Python identity.
+- Passed: all `175` safe Gmail tests.
+- Passed: `2` shared stable-migration tests covering secret-free output, exact copy, idempotency, and collision refusal.
+- Passed: Ruff, Python compilation, TypeScript lint, syntax, and diff checks.
+- Passed: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
+- Managed lifecycle result: `343` workspace tests, `175` safe Gmail tests, `472` mapped OpenClaw tests, and `2` candidate tests.
+- An isolated temporary macOS Keychain round trip proved a new item trusted for `/usr/bin/security` can be created and read by a fresh process without exposing its value.
+- Pending: retained full-diff review and terminal exact-commit review of the migration change.
 - Pending: exact-candidate production promotion and read-only validation.
 
 ### Rollout and rollback
@@ -199,6 +232,12 @@ The exact candidate is being sealed for a new terminal review and updated remote
 - Production remains unchanged until the final diff is reviewed, merged, and remotely green.
 - Promotion first runs `docs/openclaw-setup/patches/apply-and-deploy.sh` on the exact landed source. That lifecycle snapshots OpenClaw package, runtime state, service config, and browser state, then rolls back on failure.
 - Only after patched OpenClaw health passes does `scripts/mac-mini/deploy-gmail-mcp.py` promote the Gmail runtime.
+- Patched OpenClaw promotion succeeded and its recovery snapshot remains.
+- Gmail promotion failed safely and rolled back. The prepared immutable release and recovery state remain for retry and diagnosis.
+- No further production mutation occurs until the working path is identified. Any durability check remains read-only.
+- The stable migration creates a separate item and preserves the old item, so rollback never depends on deleting or rewriting the only usable credential.
+- After merge and remote approval, run `gmail_mcp.scripts.migrate_legacy_keychain` through the trusted legacy interpreter with this release on `PYTHONPATH`.
+- Verify `gmail-mcp-stable` through a fresh `/usr/bin/security` read, then rerun immutable Gmail promotion and read-only profile smoke.
 - Every replacement must have durable original and promoted snapshots, a phase marker, and durable recovery directory entries.
 - Normal rollback and next-run crash recovery preserve unrelated changes and refuse Gmail conflicts.
 - Gateway health is required after rollback or crash recovery.
@@ -253,6 +292,11 @@ The exact candidate is being sealed for a new terminal review and updated remote
 - Production preflight then found direct `pnpm` unavailable even though `corepack pnpm` is available. The package-manager resolver fix invalidates the prior terminal candidate.
 - The accepted fix selects direct pnpm when present and otherwise uses Corepack for install, build, and pack. Both fixture paths and the complete managed lifecycle pass.
 - The retained reviewer rechecked the complete diff at `62b04375a427a5da3c6ffc7651d0277ca4f1ce23` and found no significant issue.
+- Fresh terminal review found no actionable issue on exact candidate `5d44fa46a5ae25e32014ae5fe900d211563bb69b`; updated remote checks passed.
+- Production OpenClaw promotion passed. Gmail promotion exercised and passed automatic rollback after the Keychain ACL blocked read-only validation.
+- Cole later observed working Gmail without performing the requested ACL commands. This follow-up reopens production diagnosis rather than assuming the blocker disappeared durably.
+- Production evidence proves the observation comes from renewed legacy interpreter trust. A stable-item migration is required for upgrade durability.
+- The migration implementation uses service `gmail-mcp` only as source and service `gmail-mcp-stable` as target. It validates authorized-user JSON, refuses a different existing target, and never prints token data.
 
 ### Checklist
 
@@ -278,8 +322,17 @@ The exact candidate is being sealed for a new terminal review and updated remote
 - [x] Retained recheck is clean.
 - [x] Whole-deployment locking uses the patched shared implementation.
 - [x] Production package-manager resolution is fixed.
-- [x] Retained recheck is clean.
-- [ ] A new terminal exact-commit review is clean.
+- [x] Retained and terminal reviews are clean.
+- [x] Updated deployment PR checks are green.
+- [x] Patched OpenClaw is promoted and healthy.
+- [x] Failed Gmail smoke rolled back and gateway health is restored.
+- [x] The currently working Gmail path is identified.
+- [x] Fresh-process and gateway-restart behavior are proven read-only.
+- [x] Stable Keychain migration is implemented and validated in tests.
+- [ ] Retained and terminal reviews are clean for the migration change.
+- [ ] Stable production item is created and verified.
+- [ ] Required durable fix or promotion is completed.
+- [ ] Final plan, issue, and Todoist handoff are current.
 - [ ] Deployment pull request is green and merged.
 - [ ] Exact landed candidate is promoted.
 - [ ] Read-only production validation passes.

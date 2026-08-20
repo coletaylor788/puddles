@@ -88,7 +88,7 @@ SCOPES = [
 
 Tokens are stored in macOS Keychain using `/usr/bin/security`.
 
-**Service name:** `gmail-mcp`
+**Service name:** `gmail-mcp-stable`
 **Account name:** `token`
 **Password:** JSON containing refresh token
 
@@ -134,7 +134,7 @@ shape returns an explicit credential error instead of looking like sign-out.
 ### Viewing in Keychain Access
 
 1. Open **Keychain Access.app**
-2. Search for `gmail-mcp`
+2. Search for `gmail-mcp-stable`
 3. Double-click to view details
 4. Click "Show password" to see token (requires macOS password)
 
@@ -142,40 +142,36 @@ shape returns an explicit credential error instead of looking like sign-out.
 
 To sign out or switch accounts:
 1. Open **Keychain Access.app**
-2. Search for `gmail-mcp`
+2. Search for `gmail-mcp-stable`
 3. Delete the entry
 4. Re-authenticate via Claude
 
 Or via command line:
 ```bash
-security delete-generic-password -s "gmail-mcp" \
+security delete-generic-password -s "gmail-mcp-stable" \
   "$HOME/Library/Keychains/login.keychain-db"
 ```
 
 ### Migrating an existing token
 
-Tokens created by older releases may trust a specific Homebrew Python binary.
-After Python upgrades, macOS can request approval from the background server
-and leave the request waiting behind an invisible prompt.
+Tokens created by older releases use service `gmail-mcp` and may trust a
+specific Homebrew Python binary. After Python upgrades, macOS can request
+approval from the background server and leave the request waiting behind an
+invisible prompt.
 
-Run these once from an interactive Terminal, enter the login-keychain password,
-and click **Always Allow** on the access prompt:
+Run the migration once through the legacy virtual environment that can still
+read the old item:
 
 ```bash
-security set-generic-password-partition-list \
-  -S apple-tool: -s gmail-mcp -a token \
-  "$HOME/Library/Keychains/login.keychain-db"
-security find-generic-password \
-  -s gmail-mcp -a token -w \
-  "$HOME/Library/Keychains/login.keychain-db" >/dev/null
+cd servers/gmail-mcp
+PYTHONPATH="$PWD/src" /path/to/legacy/.venv/bin/python \
+  -m gmail_mcp.scripts.migrate_legacy_keychain
 ```
 
-The first command updates the item's access-control partition list. Older items
-can also retain an explicit trusted-application list containing only the Python
-executable, so the second command records **Always Allow** for
-`/usr/bin/security`. Redirecting stdout prevents the token from being printed;
-neither command replaces it. New tokens are written with `/usr/bin/security`
-trusted from the start.
+The tool reads the legacy value in memory, validates its authorized-user JSON,
+creates `gmail-mcp-stable` with `/usr/bin/security` trusted, and verifies an
+exact read-back. It refuses collisions and never prints the value. The old
+`gmail-mcp` item remains unchanged as rollback state.
 
 ### Local security boundary
 
