@@ -1,6 +1,6 @@
 # Diagnose Node permission prompts
 
-Status: Refreshed design final recheck
+Status: Ready for Cole review
 Issue: https://github.com/coletaylor788/puddles/issues/91
 Last updated: 2026-08-19
 
@@ -16,20 +16,20 @@ The refreshed plan moves the model readers to bounded exact-item calls through t
 
 ### Status
 
-The current repository, active gateway, Keychain metadata, TCC principals, update daemon, session store, recent tool runs, and related landed repairs have been rechecked. Independent review found that the first refresh used a global context cap for one stale session, then found that the corrected source patch was not wired into the repository's required patch lifecycle. The cap is model-specific, and the stale-cache repair now has named patch artifacts, pinned-revision application proof, cumulative test registration, managed deployment, installed validation, and rollback requirements.
+The current repository, active gateway, Keychain metadata, TCC principals, update daemon, session store, recent tool runs, and related landed repairs have been rechecked. Independent review corrected a global context-cap mistake and an incomplete source-patch lifecycle. The final design uses a model-specific cap and includes named patch artifacts, pinned-revision application proof, cumulative test registration, managed deployment, installed validation, and rollback.
 
-No live permissions, credentials, configuration, sessions, or services changed during this refresh. Retained review is clean; the exact final wording candidate is in recheck before terminal review.
+No live permissions, credentials, configuration, sessions, or services changed during this refresh. The refreshed design is ready for Cole to review before implementation.
 
 ## Agent section
 
 ### State
 
-- Phase: Refreshed design final recheck
+- Phase: Awaiting Cole design review
 - Repository: `coletaylor788/puddles`
 - Tracking issue: `#91`
 - Todoist task: `6hCmp4C6fqx95423`
 - Production mutation: Not performed
-- Blockers: Final retained and terminal review must clear before Cole's design checkpoint.
+- Blockers: Implementation waits for Cole's refreshed design approval.
 
 ### Scope and acceptance criteria
 
@@ -190,8 +190,9 @@ Required implementation validation:
 - 2026-08-19: Retained review found the proposed 100,000-token global cap would shrink every configured model. The cap is now model-specific, cache correction occurs before precheck, and validation covers all configured model windows.
 - 2026-08-19: Retained recheck found the source patch was not attached to the mandatory patch artifacts, deployment list, or shared suite. The full patch lifecycle and installed guard checks are now explicit.
 - 2026-08-19: Retained review cleared the patch lifecycle. Final wording now distinguishes automated patch-contract checks from prose review and makes pinned-revision application proof explicit.
-- Independent adversarial review: Clean before final wording; exact wording recheck in progress.
-- Terminal review: Pending refreshed final candidate.
+- 2026-08-19: Retained final full-diff recheck reported no actionable findings.
+- Independent adversarial review: Clean.
+- Terminal review: Run against the final design-checkpoint candidate and record the result outside the candidate diff.
 
 ### Checklist
 
@@ -206,6 +207,7 @@ Required implementation validation:
 - [x] Automatic updates remain enabled.
 - [x] Cole's current participation is explicit and reduced.
 - [x] No production mutation occurred during refresh.
-- [ ] Refreshed design adversarial review is clear.
+- [x] Refreshed design adversarial review is clear.
+- [x] Final refreshed design candidate prepared.
 - [ ] Refreshed plan-only pull request is remotely green and merged.
 - [ ] Issue and Todoist task return to `ready_for_review`.
