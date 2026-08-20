@@ -1,6 +1,6 @@
 # Fix recurring Gmail authentication failures
 
-Status: Sealing the durable migration candidate
+Status: Done and ready for review
 Issue: https://github.com/coletaylor788/puddles/issues/99
 Last updated: 2026-08-20
 
@@ -8,47 +8,47 @@ Last updated: 2026-08-20
 
 ### Design
 
-Gmail authentication failed repeatedly because its Keychain item trusted a Homebrew Python executable whose identity changes when Homebrew replaces it. Gmail works now because the current Python happens to be trusted by the old item. That survives a gateway restart, but it can fail again after the next Python update.
+Gmail authentication failed repeatedly because its Keychain item trusted a Homebrew Python executable whose identity changes when Homebrew replaces it. Gmail later started working because the current Python happened to regain access to the old item. A gateway restart proved that state was usable, but a direct system read still failed, so another Python update could break it again.
 
-The durable path copies the authorized-user credential into a separate Keychain item that trusts the stable macOS security executable. The copy runs once through the currently trusted legacy Python, validates the credential before writing it, verifies the exact result through a fresh stable read, refuses to overwrite different data, never prints the token, and leaves the old item untouched for rollback. The Gmail runtime reads only the new item after promotion.
+The durable path keeps the old credential for rollback and copies it into a separate Keychain item that trusts the stable macOS security executable. The copy validates the credential before writing it, verifies the exact result through a fresh stable read, refuses to overwrite different data, and never prints the token. The promoted Gmail runtime reads only the new item.
 
-Promotion builds an immutable Gmail runtime from the exact reviewed revision. It proves the release contents before activation, updates only Gmail configuration while holding the gateway's shared lock, restarts the gateway, and makes a read-only profile request without printing account or mailbox content. Durable snapshots and phase records let normal failure or the next invocation restore the prior Gmail configuration. The shared OpenClaw lock has a kernel-backed stale-recovery guard so concurrent deployers cannot remove one another's live locks.
+Production now runs an immutable Gmail release built from the reviewed revision. Promotion updates only Gmail configuration while holding the gateway's shared lock, records durable rollback state, restarts the gateway, and makes a read-only profile request without printing account or mailbox content. The shared lock has kernel-backed stale recovery so concurrent deployers cannot remove one another's live locks.
 
 ### Status
 
-Patched OpenClaw is deployed and healthy. Gmail currently works before and after a gateway restart through the legacy item and the current Homebrew Python. Direct stable access to that old item still times out, so the current recovery is not durable.
+The durable credential and immutable Gmail release are active. Fresh system access, gateway health, and the read-only Gmail profile pass before and after an independent gateway restart. The old credential and prior configuration remain available for rollback.
 
-The separate stable-item migration, runtime guidance, immutable deployment, rollback, and shared integration coverage are green. Retained review is clean. The exact migration candidate still needs terminal review, updated remote checks, production migration, immutable promotion, restart validation, merge, and post-merge verification.
+The change is merged. Pull request checks, post-merge security checks, and the full cumulative integration workflow are green. The work is done and ready for Cole to review.
 
 ## Agent section
 
 ### State
 
-- Phase: Seal terminal-review candidate
+- Phase: Complete
 - Repository: `coletaylor788/puddles`
-- Branch: `coletaylor788-fix-gmail-authentication`
 - Pull request: `https://github.com/coletaylor788/puddles/pull/102`
+- Merge commit: `7b4f3cee5a1b3b89c143bc6ede67c858eb1fa2a2`
 - Tracking issue: `https://github.com/coletaylor788/puddles/issues/99`
 - Todoist task: `6hHwPPrxrg2FQP9V`
-- Todoist label: `agent`
-- Production OpenClaw: patched candidate deployed and healthy.
-- Production Gmail: legacy configuration active and read-only profile checks pass.
-- Durable Keychain item: not created.
-- Immutable Gmail release: prepared predecessor rolled back; durable candidate not promoted.
+- Todoist target label: `ready_for_review`
+- Production OpenClaw: patched package deployed and healthy.
+- Production Gmail: immutable release `8b135c0f5f98f468dc8c0b461864a608d6b9ad7b` active.
+- Active credential service: `gmail-mcp-stable`.
+- Rollback credential service: `gmail-mcp`, unchanged.
 
 ### Scope and acceptance criteria
 
-- Identify why Gmail works again without the requested interactive Keychain change.
-- Remove dependence on a versioned Homebrew Python identity.
-- Preserve the old credential and current configuration as rollback state.
-- Refuse malformed source credentials and conflicting target credentials.
-- Keep credential bytes out of output, logs, process environment, files, and repository artifacts.
-- Build and activate the Gmail runtime from the exact reviewed revision.
-- Serialize deployment and configuration writes with the gateway's shared lock.
-- Recover normal failure, process death, damaged release state, and interrupted reconciliation.
-- Prove gateway health and a fresh read-only Gmail profile before and after a gateway restart.
-- Add focused tests and committed regressions to the cumulative integration pool.
-- Complete clean retained and terminal reviews, remote checks, production validation, merge, and post-merge checks.
+- [x] Explain why Gmail worked again without the requested interactive Keychain change.
+- [x] Remove dependence on a versioned Homebrew Python identity.
+- [x] Preserve the old credential and prior configuration as rollback state.
+- [x] Refuse malformed source credentials and conflicting target credentials.
+- [x] Keep credential bytes out of output, logs, process environment, files, and repository artifacts.
+- [x] Build and activate Gmail from the exact reviewed revision.
+- [x] Serialize deployment and configuration writes with the gateway's shared lock.
+- [x] Recover normal failure, process death, damaged release state, and interrupted reconciliation.
+- [x] Prove gateway health and a fresh read-only Gmail profile before and after restart.
+- [x] Add focused tests and committed regressions to the cumulative integration pool.
+- [x] Complete clean retained and terminal reviews, remote checks, production validation, merge, and post-merge checks.
 
 ### Architecture and decisions
 
@@ -64,19 +64,16 @@ The separate stable-item migration, runtime guidance, immutable deployment, roll
 
 ### Implementation
 
-- [x] Landed the bounded Keychain backend, refresh isolation, malformed credential handling, and Python MCP SDK compatibility fix in PR 100.
+- [x] Landed bounded Keychain access, refresh isolation, malformed credential handling, and Python MCP SDK compatibility in PR 100.
 - [x] Added immutable Gmail release preparation, manifest verification, atomic activation, durable phase state, rollback, crash recovery, and config conflict reconciliation.
 - [x] Replaced custom config and deployment stale-lock handling with the patched shared OpenClaw lock.
 - [x] Added the kernel stale-reclaim guard patch, deterministic contention regression, patch documentation, and materialized-code candidate check.
 - [x] Added direct pnpm and Corepack package-manager resolution to OpenClaw deployment.
-- [x] Diagnosed the current production success as renewed legacy Python trust.
-- [x] Added the non-destructive migration from `gmail-mcp` to `gmail-mcp-stable`.
+- [x] Diagnosed production recovery as renewed legacy Python trust.
+- [x] Added and ran the non-destructive migration from `gmail-mcp` to `gmail-mcp-stable`.
 - [x] Updated runtime, documentation, tests, and recovery messages for the stable service.
-- [ ] Seal and terminal-review the final candidate.
-- [ ] Push the exact reviewed candidate and obtain green remote checks.
-- [ ] Create and verify the real stable Keychain item.
-- [ ] Promote the immutable Gmail runtime and prove restart durability.
-- [ ] Merge PR 102 and verify the landed result.
+- [x] Promoted and restart-validated the exact reviewed immutable release.
+- [x] Merged PR 102 and verified the landed result.
 
 ### Validation
 
@@ -89,31 +86,32 @@ The separate stable-item migration, runtime guidance, immutable deployment, roll
 - Managed lifecycle result: `343` workspace tests, `175` Gmail tests, `472` mapped OpenClaw tests, and `2` candidate tests passed.
 - The candidate checks prove the installed shared lock contains the kernel stale-reclaim guard.
 - An isolated temporary macOS Keychain proved a fresh item trusted for `/usr/bin/security` can be created and read by a new process without exposing its value.
-- Production legacy profile passed in `172 ms`, then passed in `152 ms` after a gateway restart.
-- A fresh `/usr/bin/security` read of legacy service `gmail-mcp` still timed out after five seconds.
-- Pending: terminal review, updated PR checks, live stable-item verification, immutable promotion, post-restart profile smoke, and post-merge checks.
+- Production diagnosis proved legacy profile access before and after restart while direct `/usr/bin/security` access to `gmail-mcp` timed out.
+- Production migration created `gmail-mcp-stable`; a fresh system read passed and a repeat migration returned `already-present`.
+- Promotion smoke passed credentials and profile checks.
+- After an independent gateway restart, gateway health and a second fresh credentials and profile smoke passed.
+- PR 102 CodeQL and cumulative checks passed on exact candidate `8b135c0f5f98f468dc8c0b461864a608d6b9ad7b`.
+- `main` CodeQL run `32332993798` and cumulative integration run `32332994301` passed on merge commit `7b4f3cee5a1b3b89c143bc6ede67c858eb1fa2a2`.
 
 ### Rollout and rollback
 
-- Preserve the deployed patched OpenClaw package and its recovery snapshot at `~/.openclaw-deploy-backups/20260819T093708Z-33553`.
-- Preserve the failed Gmail promotion recovery state at `~/.openclaw-deploy-backups/gmail-mcp/20260819T093911Z-36448`.
-- Do not mutate production until terminal review and updated remote checks approve the exact candidate.
-- Run `gmail_mcp.scripts.migrate_legacy_keychain` under the trusted legacy interpreter with the reviewed source on `PYTHONPATH`.
-- Verify `gmail-mcp-stable` through a fresh `/usr/bin/security` read with output redirected away.
-- Promote the same candidate with `scripts/mac-mini/deploy-gmail-mcp.py`.
-- Require gateway health and the read-only profile smoke. Restart the gateway and repeat a fresh profile smoke.
-- The old `gmail-mcp` item remains unchanged. Deployment snapshots preserve the old Gmail configuration. Failed promotion automatically restores or reconciles that configuration and requires gateway health.
-- Recheck the PR head, base, and required checks before merge. Merge only the exact production-validated candidate, then verify `main` and post-merge checks.
+- Patched OpenClaw remains healthy. Its recovery snapshot is `~/.openclaw-deploy-backups/20260819T093708Z-33553`.
+- The earlier failed Gmail promotion remains recorded at `~/.openclaw-deploy-backups/gmail-mcp/20260819T093911Z-36448`.
+- Successful durable promotion recovery state is `~/.openclaw-deploy-backups/gmail-mcp/20260820T044327Z-39006`.
+- Active config points to immutable release `~/.local/share/puddles/gmail-mcp/releases/8b135c0f5f98f468dc8c0b461864a608d6b9ad7b`.
+- The old `gmail-mcp` Keychain item remains unchanged.
+- Rollback can restore the previous Gmail configuration and use the old credential through its trusted legacy interpreter.
+- Failed or interrupted deployment restores or reconciles Gmail configuration and requires gateway health before returning.
 
 ### Review log
 
 - Retained full-diff review resolved material findings in release identity, crash durability, directory sync, manifest integrity, config reconciliation, stale-lock takeover, patched dependency materialization, whole-deployment locking, and package-manager selection.
 - Fresh terminal review found no actionable issue on deployment candidate `5d44fa46a5ae25e32014ae5fe900d211563bb69b`.
-- Production promotion proved the OpenClaw deployment and Gmail rollback paths. It also exposed that the old Keychain item still blocks the stable reader.
+- Production promotion proved the OpenClaw deployment and Gmail rollback paths. It also exposed that the old Keychain item still blocked the stable reader.
 - Durability follow-up added the separate stable item. Retained review found recovery guidance still named the rollback item.
 - Recovery guidance now derives from `KEYCHAIN_SERVICE`; parser and tool-boundary regressions name `gmail-mcp-stable`.
 - Retained review found no significant issue through remediation commit `2f5feacd670436da70add64a9ba11c65b1fceb42`.
-- Pending: fresh terminal review of the exact final candidate.
+- Fresh terminal review found no significant issue on exact final candidate `8b135c0f5f98f468dc8c0b461864a608d6b9ad7b`.
 
 ### Checklist
 
@@ -123,10 +121,9 @@ The separate stable-item migration, runtime guidance, immutable deployment, roll
 - [x] Immutable promotion and automatic rollback are implemented.
 - [x] Shared lock stale recovery is race-safe and covered by integration tests.
 - [x] Focused and cumulative validation pass.
-- [x] Retained full-diff review is clean after remediation.
-- [ ] Fresh terminal review is clean on the exact candidate.
-- [ ] The exact candidate is pushed and remote checks are green.
-- [ ] `gmail-mcp-stable` is created and verified in production.
-- [ ] Immutable Gmail promotion and post-restart profile smoke pass.
-- [ ] PR 102 is merged and post-merge checks pass.
-- [ ] Final plan, issue, and Todoist handoff are current.
+- [x] Retained and terminal reviews are clean.
+- [x] Exact candidate remote checks are green.
+- [x] `gmail-mcp-stable` is created and verified in production.
+- [x] Immutable Gmail promotion and post-restart profile smoke pass.
+- [x] PR 102 is merged and post-merge checks pass.
+- [x] Final plan, issue, and Todoist handoff are current.
