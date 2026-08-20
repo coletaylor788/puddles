@@ -1,6 +1,6 @@
 # Secure Apple Notes shared access
 
-**Status:** Editable access under review
+**Status:** Ready for prototype-only review
 **Issue:** [#74](https://github.com/coletaylor788/puddles/issues/74)
 **Last updated:** 2026-08-20
 
@@ -37,9 +37,9 @@ atomic precondition.
 
 ### Status
 
-The invitation hook and exact agent-to-note grant remain accepted. Research now
-supports a concrete append-only edit design, and independent review is checking
-its factual accuracy and failure behavior.
+The invitation hook and exact agent-to-note grant remain accepted. Research and
+independent review support the concrete append-only edit design. It is ready for
+review of the prototype-only approval gate.
 
 No prototype or implementation is approved or started. The next approval can
 authorize only disposable proof with throwaway accounts and shared notes. Real
@@ -84,15 +84,17 @@ plan.
   model cannot provide or widen `agentId`.
 - Every host operation is limited to stable note IDs joined to active grants for
   that exact caller before note content reaches the model or GUI helper.
-- V1 append accepts one granted note ID, plain text, and a bounded client request
-  ID. It does not accept HTML, Markdown interpretation, file paths, attachments,
-  a target scope, a cursor position, or a replacement body.
+- V1 append accepts one granted note ID, plain text, and a bounded client
+  idempotency key. The service generates a separate opaque action receipt. It
+  does not accept HTML, Markdown interpretation, file paths, attachments, a
+  target scope, a cursor position, or a replacement body.
 - The write helper opens the exact stable ID, verifies the expected selected
   note, inserts one receipt-marked block at the end through the native editor,
   and verifies the receipt afterward.
-- The helper serializes writes per stable note ID across every agent grant.
-- A repeated request ID with the same agent, note, and payload returns its saved
-  result. Any mismatch fails.
+- One global GUI lock covers the complete select, prove, paste, and read-back
+  sequence. No two note actions can share the Notes editor at once.
+- A repeated client idempotency key with the same agent, note, and payload
+  returns its saved result. Any mismatch fails.
 - An uncertain or partial result never retries automatically.
 - Human edits may interleave with the append. The helper must not replace an
   existing range or claim atomic ordering with remote collaborators.
@@ -249,39 +251,47 @@ as documented and exercised by maintained adapter
 **Selected append flow**
 
 1. The Notes tool is created with trusted runtime `agentId`. The model supplies
-   one note ID returned by scoped list or search, bounded plain text, and an
-   idempotency key. It cannot supply caller scope.
+   one note ID returned by scoped list or search, bounded plain text, and a
+   client idempotency key. It cannot supply caller scope or the receipt embedded
+   in the note.
 2. The tool joins the note ID to an active accepted row for that exact agent
    before it sends anything to the host.
-3. One protected SQLite write-action row stores action ID, agent ID, note ID,
-   payload digest, bounded pending payload, state, content-free error, and
-   timestamps. Payload is removed when the action reaches a terminal state.
-   This second table is necessary because a durable grant row cannot also
-   represent an interruptible content mutation.
-4. A single non-model GUI helper serializes actions by note ID. It rechecks the
-   active grant and note existence, confirms the share is editable, and records
-   the current modification date.
+3. The service generates a random action ID. One protected SQLite write-action
+   row stores that ID, the client key, agent ID, note ID, payload digest, bounded
+   pending payload, state, content-free error, and timestamps. Payload is
+   removed when the action reaches any terminal state. This second table is
+   necessary because a durable grant row cannot also represent an interruptible
+   content mutation.
+4. A single non-model GUI helper holds one global lock for the complete action.
+   It rechecks the active grant and note existence, confirms the share is
+   editable, and records the current modification date.
 5. The helper marks the action `executing`, asks Notes to show the exact stable
-   ID, and waits for one version-pinned accessibility hierarchy. It must prove
-   that the selected editor corresponds to the expected note ID. A title or
-   window label is not sufficient.
+   ID, and waits for one version-pinned accessibility hierarchy. It must obtain
+   an exact-ID selection proof from Notes after the show action and before
+   focusing the editor. A title, window label, timing delay, or assumed result
+   from `show` is not sufficient. If the target Notes version exposes no such
+   proof, the write design is infeasible on that version and remains disabled.
 6. The helper uses the native editor's end-of-note action and performs one paste
    containing a leading paragraph break and a complete bounded block. The block
-   includes a visible opaque action receipt, timestamp, text, and closing
-   receipt. It does not interpret markup.
+   includes the service-generated opaque action receipt, timestamp, text, and
+   closing receipt. The generated marker is rejected if it occurs in the
+   payload. The helper does not interpret markup.
 7. The helper reads the same exact note through the read adapter. Success
    requires one complete matching receipt at the end, the exact normalized
-   payload between its markers, and a changed modification date. Existing body
-   content and attachment metadata sampled before the append must remain
-   unchanged.
+   payload between its markers, and a changed modification date. Absence on the
+   expected note is an uncertain result, not proof that no other note was
+   touched.
 8. The helper stores `applied`, removes the pending payload, and returns a fixed
    receipt. If verification proves no receipt was inserted, it stores `failed`.
    A partial, duplicate, wrong-note, timeout, lost-focus, or unreadable result
    stores `needs_review`.
 9. Recovery rechecks `prepared` and `executing` rows by exact note ID and receipt.
    A complete single receipt becomes `applied`. A partial or duplicate receipt
-   becomes `needs_review`. An executing row with no receipt remains
-   `needs_review`; it never pastes again automatically.
+   becomes `needs_review`. An executing row with no receipt also becomes
+   `needs_review`; it never pastes again automatically. Production recovery
+   does not scan unrelated notes. The disposable prototype uses an isolated
+   account-wide receipt scan only to detect whether a failed preselection test
+   touched the wrong note.
 
 The UI helper runs under the same dedicated Notes GUI identity already required
 for invitation acceptance. It receives only action ID, exact note ID, and
@@ -296,8 +306,8 @@ accessibility, the registry database, or the helper directly.
 - There is no claim of transactional append across devices. A human adding text
   to the same final paragraph may cause relative ordering changes or a sync
   conflict. The prototype must measure this.
-- The helper serializes local writes to the same note. It cannot serialize human
-  collaborators.
+- The helper serializes every local Notes GUI write globally. It cannot
+  serialize human collaborators.
 - Every write has one visible receipt. This lets read-back and restart recovery
   distinguish success, absence, partial insertion, and duplication without
   relying only on modification time.
@@ -341,10 +351,14 @@ After explicit prototype-only approval:
    interruption before paste, interruption after paste, and restart recovery.
 6. Use notes containing rich text, tables, native checklists, files, drawings,
    links, tags, mentions, highlights, and images. Prove every pre-existing
-   element survives unchanged.
-7. Measure receipt fidelity, partial paste behavior, modification-date
-   granularity, stable-ID persistence, focus loss, wrong-window detection,
-   language and keyboard-layout dependence, sync delay, and conflict copies.
+   element survives unchanged with a read-only copy of the Notes store,
+   decoded body data, and attachment metadata as the test oracle. Never write
+   to the Notes database.
+7. Measure exact selected-note proof, receipt fidelity, partial paste behavior,
+   modification-date granularity, stable-ID persistence, focus loss,
+   wrong-window detection, language and keyboard-layout dependence, sync delay,
+   and conflict copies. If exact-ID proof is unavailable, stop and reject the
+   accessibility design.
 8. Revoke edit permission and remove the share while an action is queued and
    while the editor is open. Both must fail without cross-note mutation.
 9. Record exact supported Notes, Shortcuts, and macOS versions plus the observed
@@ -383,7 +397,7 @@ Only after the second approval:
 | Exact caller has an active grant | Prepare one action for that note |
 | Model supplies another agent ID | Tool schema has no such argument |
 | Model supplies an ungranted stable ID | Reject before host access |
-| Same note is granted to several agents | Each caller needs its own active row; helper still serializes by note ID |
+| Same note is granted to several agents | Each caller needs its own active row; the global GUI lock still serializes their writes |
 | Grant or share is revoked before paste | Fail without mutation |
 | Share becomes view-only | Fail without mutation |
 
@@ -394,7 +408,7 @@ Only after the second approval:
 | Exact mapped note is selected and editable | Append one complete receipt block at end |
 | Human edits another paragraph concurrently | Preserve the human edit and append block |
 | Human edits the final paragraph concurrently | Preserve both changes or return conflict; never replace the body |
-| Two local appends target one note | Serialize and produce two complete receipts |
+| Two local appends target the same or different notes | Global GUI lock produces complete receipts without selection theft |
 | Notes focus or selected-note proof is missing | Fail before paste |
 | Focus changes during action | Verification cannot prove success, so mark needs review |
 | Rich note has tables, checklists, files, drawings, tags, mentions, links, highlights, or images | Every existing element remains unchanged |
@@ -404,13 +418,13 @@ Only after the second approval:
 
 | Scenario | Required result |
 |---|---|
-| Same action ID, agent, note, and payload repeats | Return saved state without another paste |
-| Same action ID has different scope, note, or digest | Reject |
+| Same client idempotency key, agent, note, and payload repeats | Return saved state without another paste |
+| Same client idempotency key has different scope, note, or digest | Reject |
 | Crash before executing | Recovery may process prepared row once |
 | Crash after paste with one complete receipt | Recovery records applied without another paste |
 | Crash during paste with a partial receipt | Mark needs review and do not retry |
 | Executing row has no provable receipt | Mark needs review and do not retry |
-| Read-back sees a duplicate or wrong-note receipt | Mark needs review and disable automatic retry |
+| Expected note lacks the receipt after an executing action | Mark needs review, disable automatic retry, and do not claim that no other note changed |
 
 **Rejected adapters**
 
@@ -455,7 +469,11 @@ an invitation, open the Notes editor, or append content.
   proved its edit is a lossy whole-body assignment with no append or conflict
   control. Current OpenClaw source proved its Memo integration is an
   instructional skill plus optional installer, not a scoped tool. Independent
-  review is pending.
+  complete-current-diff review found no actionable material findings. Its
+  residual prototype questions led to explicit global GUI locking, mandatory
+  exact-ID preselection proof, honest wrong-note recovery, and a read-only rich
+  content test oracle. A remediation recheck corrected stale idempotency
+  terminology and found no actionable material findings.
 
 ### Checklist
 
@@ -475,7 +493,7 @@ an invitation, open the Notes editor, or append content.
 - [x] Define write authorization, durable receipts, interruption handling,
   read-back, and fail-closed outcomes.
 - [x] Define the disposable collaboration and rich-content prototype.
-- [ ] Complete independent review of factual accuracy, edit safety, Memo and
+- [x] Complete independent review of factual accuracy, edit safety, Memo and
   OpenClaw evidence, simplicity, and read-write coverage.
 - [ ] Receive prototype-only approval.
 - [ ] Run disposable prototype and update this plan.
