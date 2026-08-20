@@ -1,6 +1,6 @@
 # Diagnose Node permission prompts
 
-Status: Refreshed design in review
+Status: Refreshed design review remediation
 Issue: https://github.com/coletaylor788/puddles/issues/91
 Last updated: 2026-08-19
 
@@ -12,24 +12,24 @@ The long-running Node gateway receives messages, runs the main agent loop, loads
 
 The system has changed since the August design. Gmail's durable code is merged, but the configured live checkout still runs the older Python Keychain path. A separate Gmail reliability task now owns its non-destructive migration and any Gmail approval. The model credential item now already trusts Apple's stable credential command, so the model adapters can stop using Node without a new prompt. The attendee safety check still cannot find the approved Contacts wrapper. Automatic updates still run without restarting the gateway. The unsupported classifier setting has stopped failing. The iMessage recovery work fixed reply delivery, but it did not fix the original context failure: every heartbeat still reuses one session carrying a one-million-token budget against a 128,000-token model window.
 
-The refreshed plan moves the model readers to bounded exact-item calls through the already-approved system command, repairs the Contacts wrapper path, and adds one per-user runtime reconciler. That reconciler polls for package-update generations, restarts and checks the gateway after an update, and repairs a heartbeat session after its first precheck overflow using the supported session-compaction interface. Cole no longer needs to approve the model credential helper or take any Gmail action through this task. Cole is needed once to install the privileged update writer and later to remove old Node access after a clean soak. Gmail may ask separately through its own task if its active durability investigation proves that an approval is still needed.
+The refreshed plan moves the model readers to bounded exact-item calls through the already-approved system command, repairs the Contacts wrapper path, and adds one per-user runtime reconciler. The failing model gets its own 100,000-token cap, while larger-window models keep their current budgets. A provider-neutral cache correction replaces stale per-session values before precheck, and supported max-lines compaction repairs the current heartbeat transcript. Cole no longer needs to approve the model credential helper or take any Gmail action through this task. Cole is needed once to install the privileged update writer and later to remove old Node access after a clean soak. Gmail may ask separately through its own task if its active durability investigation proves that an approval is still needed.
 
 ### Status
 
-The current repository, active gateway, Keychain metadata, TCC principals, update daemon, session store, recent tool runs, and related landed repairs have been rechecked. Completed or separately owned work is removed from this plan, and the remaining migration sequence reflects the live system.
+The current repository, active gateway, Keychain metadata, TCC principals, update daemon, session store, recent tool runs, and related landed repairs have been rechecked. Independent review found that the first refresh used a global context cap for one stale session. The cap is now model-specific, stale cache correction is explicit, and validation proves every other configured model keeps its resolved window.
 
-No live permissions, credentials, configuration, sessions, or services changed during this refresh. The updated design is in independent review before it returns to Cole.
+No live permissions, credentials, configuration, sessions, or services changed during this refresh. The corrected design is in retained review recheck before it returns to Cole.
 
 ## Agent section
 
 ### State
 
-- Phase: Refreshed design review
+- Phase: Refreshed design review remediation
 - Repository: `coletaylor788/puddles`
 - Tracking issue: `#91`
 - Todoist task: `6hCmp4C6fqx95423`
 - Production mutation: Not performed
-- Blockers: Refreshed design review must clear before Cole's design checkpoint.
+- Blockers: Retained review recheck must clear before Cole's design checkpoint.
 
 ### Scope and acceptance criteria
 
@@ -63,23 +63,25 @@ Current caller inventory:
 | Calendar attendee Contacts check | `ContactsTrustResolver` defaults to bare `contacts-cli`; gateway PATH omits the wrapper directory | Broken fail-closed path. No post-August attendee egress call or degradation warning was observed. | Set `contactsCliPath` to the fully expanded installed wrapper path. Add register-time `auth-status` checking and a regression that does not rely on PATH. |
 | Unidentified direct Contacts caller | Current Node retains an allowed AddressBook TCC row created during the incident | Unstable and broader than intended. No later TCC change identifies the caller. | Record TCC principals plus content-free PIM call-path metadata during the soak. Remove Node's grant only when no unattributed Node access occurs, or the caller is identified and moved through a native wrapper. |
 | Homebrew update daemon | Weekly system LaunchDaemon updates packages and exits | Active. Launchd reports successful runs, but the script does not restart or postflight the gateway, and no shared reconcile channel exists. | Publish a package-identity generation to a package-manager-owned readable directory. A per-user reconciler polls the generation, uses the managed gateway restart, and runs noninteractive postflight. |
-| Main heartbeat session | Every 30-minute heartbeat reuses `agent:main:main` | Actively broken. The session stores a 1,000,000-token budget while the configured model catalog is 128,000. Every current heartbeat fails precheck with zero compactions. | Set an explicit 100,000-token default, preserve the transcript and session index, compact the current session through `openclaw sessions compact agent:main:main --max-lines 200`, restart, and verify the session budget and next heartbeat. The reconciler repairs one future precheck overflow and then enters cooldown on failure. |
+| Main heartbeat session | Every 30-minute heartbeat reuses `agent:main:main` | Actively broken. The session caches a 1,000,000-token budget while its selected model catalog is 128,000. Every current heartbeat fails precheck with zero compactions. | Set `contextTokens: 100000` only on the selected model entry, not on `agents.defaults`. Add a provider-neutral OpenClaw patch that refreshes a cached session budget when it exceeds the currently resolved model cap before precheck. Preserve the transcript and index, compact the current session through `openclaw sessions compact agent:main:main --max-lines 200`, restart, and verify the cached budget and next heartbeat. The reconciler repairs one future precheck overflow and enters cooldown on failure. |
 | Tool classifiers | Protected tools call a configured classifier model | Healthy since August 12. Recent Calendar and Gmail audits complete without the unsupported-model error. | Remove the separate classifier implementation item. Keep a bounded synthetic readiness check after restart and remain fail closed. |
 | Direct iMessage bridge | Per-user recovery timer probes a deep read-only account RPC and can restart the managed gateway | Repaired and production-validated in issue `#95`. | No move. Reuse its lock, cooldown, installer, rollback, and managed-restart patterns for the new runtime reconciler. Do not merge the responsibilities into the iMessage script. |
 
 Permission and ownership decisions:
 
 - The signed helper remains Todoist's narrow read-only boundary. Merging its source must not replace the approved installed binary.
-- Model adapters use `/usr/bin/security` because the exact item already trusts it. This removes interpreter-version coupling without another Cole prompt. The same-user trust boundary already exists and is not widened by this migration.
+- Model adapters use `/usr/bin/security` because a read-only ACL dump shows the exact item already trusts it. The provenance of that grant is unknown, so rollout rechecks it and stops without prompting if it changed. When present, the migration removes interpreter-version coupling without widening the current same-user boundary.
 - Gmail is not a prerequisite owned here. Issue `#99` determines its active durable path and asks Cole separately only if needed.
 - PIM privacy remains attached to the `.real` native tools. The gateway receives no blanket Contacts, Reminders, or Calendar grant.
 - The public repository owns the helper contract, Contacts path, runtime reconciler, heartbeat repair, update automation, and shared integration coverage.
 - The separate model-adapter workstream owns direct credential-reader replacement and its focused test pool.
 - The runtime reconciler polls every five minutes. Polling avoids unreliable filesystem watches before the shared marker directory exists.
+- The 100,000-token cap belongs only to the currently selected 128,000-token model entry. It must not change the resolved window for any other configured model or agent.
+- Stale session cache repair is provider-neutral OpenClaw behavior and belongs in the public patch stack with cumulative patch coverage.
 
 Implementation sequence:
 
-1. **Repair the active heartbeat loop.** Preserve `sessions.json` and the current transcript. Set `agents.defaults.contextTokens` to `100000`. Use the supported max-lines compaction on `agent:main:main`, restart through the managed gateway command, and verify the stored budget, gateway health, and next heartbeat. Roll back config and session state if any check fails.
+1. **Repair the active heartbeat loop.** Preserve `sessions.json`, the current transcript, and model configuration. Record the resolved effective window for every configured model. Set `contextTokens: 100000` only on the affected selected-model entry. Add an OpenClaw patch that replaces a cached session value only when it exceeds the freshly resolved cap for that same model, before precheck runs. Use supported max-lines compaction on `agent:main:main`, restart through the managed gateway command, and verify the session now stores `100000`, the next heartbeat succeeds, and every other configured model resolves to its original window. Roll back the patch, model entry, and session state if any check fails.
 2. **Land the helper source.** Refresh pull request `#29` against current `main`, rerun its focused and managed tests, and merge it. Do not deploy or replace the already-approved helper.
 3. **Move the model readers.** In the separate owning workstream, replace all direct Node `keytar` reads of the model credential with bounded exact `/usr/bin/security` reads. Cover success, missing item, denial, timeout, malformed output, cancellation, caching, and multiple adapters. This repository verifies only the provider-neutral stable-reader contract.
 4. **Repair the attendee Contacts path.** Set `contactsCliPath` to the fully expanded installed wrapper. Add register-time authorization validation and a focused regression proving the gateway environment does not need PATH lookup.
@@ -126,8 +128,9 @@ Current design evidence on 2026-08-19:
 
 - [x] The Todoist item still trusts the installed signed helper, whose allowlist contains only the Todoist alias. Pull request `#29` remains open and mergeable.
 - [x] The model credential item trusts current Node, stale prior Node hashes, and `/usr/bin/security`. Direct Node `keytar` readers remain loaded when their adapters are active.
+- [x] The trusted-application claim comes from `security dump-keychain -a` metadata; no credential value was read. The origin of the `/usr/bin/security` grant is unknown.
 - [x] Model calls succeed after the current gateway restart.
-- [x] Gmail stable code landed through pull request `#101`, and stale pull request `#31` is closed.
+- [x] Gmail stable code landed through pull request `#100`; pull request `#101` recorded the landed result, and stale pull request `#31` is closed.
 - [x] The configured Gmail service still loads the dirty primary checkout, which is 273 commits behind and still uses Python `keyring`.
 - [x] Gmail currently succeeds through a legacy item trusted by current Python. Issue `#99` owns the active durability investigation and non-destructive migration.
 - [x] Native Contacts, Reminders, and Calendar tools remain authorized. Recent Calendar reads, Calendar writes, and Reminders calls succeed.
@@ -138,6 +141,7 @@ Current design evidence on 2026-08-19:
 - [x] The iMessage deep-health recovery timer is installed, has clean exits, and uses the managed gateway restart.
 - [x] No unsupported-classifier error appears after August 12; recent protected Calendar and Gmail calls complete.
 - [x] The active heartbeat session stores `contextTokens: 1000000`; the configured model catalog is `128000`; and the global context override is unset.
+- [x] Other configured models retain larger native windows, so a global `agents.defaults.contextTokens` cap would create unrelated regressions.
 - [x] Every current 30-minute heartbeat for that session fails precheck with zero compactions.
 - [x] `openclaw sessions compact <key> --max-lines <count>` is a supported bounded recovery interface.
 - [x] No live secret value, permission, configuration, session, process, or service was changed during this refresh.
@@ -145,6 +149,8 @@ Current design evidence on 2026-08-19:
 Required implementation validation:
 
 - [ ] Focused helper, Contacts resolver, runtime reconciler, heartbeat, update writer, and documentation tests pass in this repository.
+- [ ] The OpenClaw patch proves an oversized cached session value is replaced by the freshly resolved cap before precheck and leaves equal or smaller cached values unchanged.
+- [ ] Before-and-after validation records the resolved effective window for every configured model and proves only the targeted model is capped.
 - [ ] Model-reader success, denial, timeout, malformed-output, cancellation, cache, and multiple-adapter regressions pass in its separate owning workstream.
 - [ ] Denial, missing approval, repeated overflow, failed compaction, cooldown, concurrent run, duplicate marker, insecure marker, restart failure, interrupted install, rollback, and cleanup paths pass.
 - [ ] Tests use synthetic Keychain, TCC, session, and update fixtures and deny-by-default write or delivery adapters.
@@ -156,9 +162,11 @@ Required implementation validation:
 ### Rollout and rollback
 
 - This refresh is design-only. No live rollout occurs before Cole reviews it.
-- Heartbeat repair preserves `sessions.json`, the current transcript, and the old config before setting the budget or compacting. Failure restores all three and restarts the previous gateway state. The old transcript is never deleted.
+- Heartbeat repair preserves `sessions.json`, the current transcript, the selected-model entry, and the patch stack before changing the cap or compacting. Failure restores all four and restarts the previous gateway state. The old transcript is never deleted.
+- Model-specific cap rollout fails if any non-target model or agent resolves to a different effective window after the change.
 - Pull request `#29` lands source only. Do not replace the approved helper binary or change its live allowlist during that step.
 - Model-reader migration preserves the private adapter configuration and keeps Node trust through the soak. Rollback restores direct `keytar` reads while Node remains approved. After cleanup, restoring Node needs Cole.
+- Model-reader rollout rechecks `/usr/bin/security` trusted-application metadata immediately before deployment. If the grant is absent or invalid, stop and return the design to Cole rather than triggering an unexpected prompt.
 - Gmail state, code deployment, Keychain item, and rollback are owned only by issue `#99`.
 - Contacts path rollback restores the prior unset configuration, which returns to fail-closed denial rather than a working attendee check.
 - Node's Contacts grant stays during the attribution soak. Insufficient telemetry or unattributed access blocks cleanup.
@@ -175,7 +183,8 @@ Required implementation validation:
 - 2026-08-19: The classifier failure is no longer observed and is reduced to postflight validation.
 - 2026-08-19: Model credential stable-system trust is now present, eliminating the planned model approval.
 - 2026-08-19: The heartbeat failure is now tied to a 1,000,000 versus 128,000 token-window mismatch on the active heartbeat session.
-- Independent adversarial review: Pending refreshed design.
+- 2026-08-19: Retained review found the proposed 100,000-token global cap would shrink every configured model. The cap is now model-specific, cache correction occurs before precheck, and validation covers all configured model windows.
+- Independent adversarial review: Remediation recheck in progress.
 - Terminal review: Pending refreshed final candidate.
 
 ### Checklist
@@ -187,6 +196,7 @@ Required implementation validation:
 - [x] Completed or separately owned migration work is removed.
 - [x] Current caller and destination inventory is complete.
 - [x] Heartbeat recovery uses a supported command and an explicit safe budget.
+- [x] The heartbeat cap is model-specific and cannot clamp unrelated models.
 - [x] Automatic updates remain enabled.
 - [x] Cole's current participation is explicit and reduced.
 - [x] No production mutation occurred during refresh.
