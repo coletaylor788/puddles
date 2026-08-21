@@ -8,9 +8,13 @@ Last updated: 2026-08-20
 
 ### Design
 
+#### The problem
+
 Feature work today starts with a task in the tracker. An agent picks it up, does research, decides on a design, and writes it into a plan and an issue. Cole reads the result and comments back through the tracker. Each clarification costs a full pickup, work, write, and review cycle, so a design conversation that would take ten minutes in person takes hours or days. Worse, the agent cannot pause to ask, so it commits to an interpretation and keeps going. The design that comes back is often not the one Cole wanted, and the gap only shows up after the work is written down.
 
 The second problem follows from the first. Because no approved design exists when implementation starts, the independent review at the end has to judge the design as well as the code. Review findings become architectural arguments, each round can surface a fresh objection, and the loop has no natural end. The review skill already carries several rules that try to talk the reviewer out of over-reporting, which is a sign that the scope itself is too broad rather than that the reviewer is behaving badly.
+
+#### The shape of the fix
 
 This plan separates the two things that are currently tangled. Design becomes a live conversation between Cole and an agent, held in a real-time session rather than through the tracker. The conversation is the point. The agent asks questions, proposes options, and pushes back, and Cole steers, until both agree on what to build and why. That conversation produces one artifact, written in plain prose for a human reader, and it is not finished until Cole approves it. Approval is explicit, and it is the gate that separates thinking from building.
 
@@ -18,7 +22,17 @@ Once the design is approved it becomes an input to the rest of the workflow rath
 
 The independent review at the end narrows to code. It checks correctness, error handling, concurrency, resource lifecycle, test quality, security and privacy in the implementation, and whether the code matches the approved design. It no longer asks whether the design is the right one. A reviewer who believes the design itself is wrong raises that separately to Cole instead of blocking the loop. With design out of scope the findings become checkable facts rather than judgment calls, so the loop should converge in a round or two.
 
-The mechanism is a skill. A skill is a document an agent loads when a task matches it, and it tells the agent how to run that kind of work. This one covers how to hold a design conversation, what the artifact looks like, how the human and agent sections differ, how to write prose a person actually wants to read, and the rule that the human approves before the design is done. The debug agent carries it, since that agent already runs in a live chat and is the natural place for this kind of back and forth. Repository instructions explain when to reach for it.
+#### The design skill
+
+The mechanism is a skill. A skill is a document an agent loads when a task matches it, and it tells the agent how to run that kind of work. This one is called `brainstorm-enhancement`, and it turns the loose idea of talking through a design into a repeatable procedure.
+
+The skill covers how to hold the conversation. The agent researches before it proposes, brings back options with real tradeoffs rather than a single recommendation, states plainly what it verified against what it is guessing, and asks when something is genuinely ambiguous instead of picking an interpretation and moving on. It is expected to disagree. A design conversation where the agent only agrees is not doing its job.
+
+The skill also covers what gets written. It defines the design artifact, the split between the part written for a person and the part written for an agent, and the prose rules that keep the human-facing part readable. The rules already used for plans and issues apply here without change, so this is a matter of pointing at them rather than inventing a second style.
+
+The last thing the skill covers is the gate. The design is not done when the agent thinks it is done. It is done when Cole says so, in words, recorded in the artifact. Until then the work stays in design and nothing gets built.
+
+The debug agent carries the skill, since it already runs in a live chat and is the natural place for this kind of back and forth. Repository instructions explain when an agent should reach for it, so a task that needs design lands in a conversation rather than in an agent's private judgment.
 
 ### Status
 
