@@ -16,11 +16,25 @@ The second problem follows from the first. Because no approved design exists whe
 
 #### The shape of the fix
 
-This plan separates the two things that are currently tangled. Design becomes a live conversation between Cole and an agent, held in a real-time session rather than through the tracker. The conversation is the point. The agent asks questions, proposes options, and pushes back, and Cole steers, until both agree on what to build and why. That conversation produces one artifact, written in plain prose for a human reader, and it is not finished until Cole approves it. Approval is explicit, and it is the gate that separates thinking from building.
+This plan separates the two things that are currently tangled. Design becomes a live conversation between Cole and an agent running on the machine that holds the system. The conversation is the point. The agent asks questions, proposes options, checks the real state of things as the questions come up, and pushes back, and Cole steers, until both agree on what to build and why. That conversation produces one artifact, written in plain prose for a human reader, and it is not finished until Cole approves it. Approval is explicit, and it is the gate that separates thinking from building.
 
 Once the design is approved it becomes an input to the rest of the workflow rather than something the implementing agent invents. The plan file keeps its agent-facing detail, but the design section points at the approved artifact instead of restating it. Implementation, validation, review, and delivery then run to completion without further design decisions. If implementation shows the design is wrong, that is not a review finding to argue about. It sends the work back to a new design conversation, which is cheap now that those conversations are quick.
 
 The independent review at the end narrows to code. It checks correctness, error handling, concurrency, resource lifecycle, test quality, security and privacy in the implementation, and whether the code matches the approved design. It no longer asks whether the design is the right one. A reviewer who believes the design itself is wrong raises that separately to Cole instead of blocking the loop. With design out of scope the findings become checkable facts rather than judgment calls, so the loop should converge in a round or two.
+
+#### Why this runs in OpenClaw
+
+The conversation has to happen somewhere, and the choice of venue is not a detail. It is most of why this works.
+
+OpenClaw runs an agent on the Mac mini, the same machine that holds the repositories, the worktrees, the running gateway, the logs, the deployed patches, and the live configuration. Cole talks to that agent in real time from wherever he is. So one participant in the design conversation is sitting inside the system being designed, and can look at any part of it while the conversation is happening.
+
+That collapses the two failure modes described above into one fix. Latency goes away because there is no pickup, write, and review cycle between question and answer. Guessing goes away because the agent does not have to reason about what the system probably does. It can go read the file, run the command, check the log, and come back with what is actually true, in the middle of a sentence.
+
+This matters more than it sounds. Most bad designs are not bad reasoning. They are correct reasoning from a wrong belief about current state. An agent working from a task description has to assume, and its assumptions are invisible until the work comes back wrong. An agent with a shell on the machine can replace an assumption with a fact before it becomes a design decision. When Cole says something feels off, the agent checks instead of speculating, and the answer arrives while the question is still live.
+
+It also changes what Cole has to supply. He does not need to describe the current state accurately, or remember which parts are stale, or explain the environment before asking the question. He can ask a vague question about a system he has not touched in weeks and get a grounded answer, because the agent can see it. That is the difference between a design conversation and a briefing.
+
+The rest of the workflow does not need this. Implementation, validation, and review are well specified once the design is settled, and they run fine as background work. Design is the one phase where being able to look at the real thing, right now, while a person is asking about it, is the whole point.
 
 #### The design skill
 
