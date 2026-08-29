@@ -14,10 +14,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out Puddles
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Check out pinned OpenClaw source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: openclaw/openclaw
           ref: 0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c
