@@ -1,0 +1,222 @@
+diff --git a/packages/memory-host-sdk/src/host/backend-config.test.ts b/packages/memory-host-sdk/src/host/backend-config.test.ts
+index 351e7eb2ed..d00f8548bd 100644
+--- a/packages/memory-host-sdk/src/host/backend-config.test.ts
++++ b/packages/memory-host-sdk/src/host/backend-config.test.ts
+@@ -344,6 +344,57 @@ describe("resolveMemoryBackendConfig", () => {
+     expect(names).toStrictEqual(["notes-main", "team-notes"]);
+   });
+ 
++  it("merges per-agent mcporter override over the global config", () => {
++    const cfg = {
++      agents: {
++        defaults: { workspace: "/workspace/root" },
++        list: [
++          { id: "main", default: true, workspace: "/workspace/root" },
++          {
++            id: "household",
++            workspace: "/workspace/root/household",
++            memorySearch: {
++              qmd: { mcporter: { serverName: "qmd-household" } },
++            },
++          },
++          {
++            id: "wiki",
++            workspace: "/workspace/root",
++            memorySearch: {
++              qmd: { mcporter: { enabled: false } },
++            },
++          },
++        ],
++      },
++      memory: {
++        backend: "qmd",
++        qmd: {
++          mcporter: { enabled: true, serverName: "qmd", startDaemon: true },
++        },
++      },
++    } as OpenClawConfig;
++
++    // No override: inherits the global server.
++    const main = resolveMemoryBackendConfig({ cfg, agentId: "main" });
++    expect(main.qmd?.mcporter).toMatchObject({
++      enabled: true,
++      serverName: "qmd",
++      startDaemon: true,
++    });
++
++    // Partial override: serverName wins, other fields still inherit.
++    const household = resolveMemoryBackendConfig({ cfg, agentId: "household" });
++    expect(household.qmd?.mcporter).toMatchObject({
++      enabled: true,
++      serverName: "qmd-household",
++      startDaemon: true,
++    });
++
++    // Opt-out override: this agent falls back to direct qmd spawns.
++    const wiki = resolveMemoryBackendConfig({ cfg, agentId: "wiki" });
++    expect(wiki.qmd?.mcporter.enabled).toBe(false);
++  });
++
+   it("preserves explicit custom collection names for paths outside the workspace", () => {
+     const cfg = {
+       agents: {
+diff --git a/packages/memory-host-sdk/src/host/backend-config.ts b/packages/memory-host-sdk/src/host/backend-config.ts
+index 88a63b0a96..1b795f6b0f 100644
+--- a/packages/memory-host-sdk/src/host/backend-config.ts
++++ b/packages/memory-host-sdk/src/host/backend-config.ts
+@@ -376,22 +376,32 @@ function resolveCustomPaths(
+   return collections;
+ }
+ 
+-function resolveMcporterConfig(raw?: MemoryQmdMcporterConfig): ResolvedQmdMcporterConfig {
++function resolveMcporterConfig(
++  raw?: MemoryQmdMcporterConfig,
++  agentOverride?: MemoryQmdMcporterConfig,
++): ResolvedQmdMcporterConfig {
+   const parsed: ResolvedQmdMcporterConfig = { ...DEFAULT_QMD_MCPORTER };
+-  if (!raw) {
+-    return parsed;
+-  }
+-  if (raw.enabled !== undefined) {
+-    parsed.enabled = raw.enabled;
+-  }
+-  if (typeof raw.serverName === "string" && raw.serverName.trim()) {
+-    parsed.serverName = raw.serverName.trim();
+-  }
+-  if (raw.startDaemon !== undefined) {
+-    parsed.startDaemon = raw.startDaemon;
++  // Global config first, then the per-agent override wins field-by-field.
++  // Agents index into agent-scoped QMD collections, so a single shared mcporter
++  // daemon pinned to one agent's cache returns empty results for every other
++  // agent. Per-agent overrides let each agent name its own keep-alive server
++  // (or opt out entirely) instead of failing silently.
++  for (const layer of [raw, agentOverride]) {
++    if (!layer) {
++      continue;
++    }
++    if (layer.enabled !== undefined) {
++      parsed.enabled = layer.enabled;
++    }
++    if (typeof layer.serverName === "string" && layer.serverName.trim()) {
++      parsed.serverName = layer.serverName.trim();
++    }
++    if (layer.startDaemon !== undefined) {
++      parsed.startDaemon = layer.startDaemon;
++    }
+   }
+   // When enabled, default startDaemon to true.
+-  if (parsed.enabled && raw.startDaemon === undefined) {
++  if (parsed.enabled && raw?.startDaemon === undefined && agentOverride?.startDaemon === undefined) {
+     parsed.startDaemon = true;
+   }
+   return parsed;
+@@ -470,7 +480,11 @@ export function resolveMemoryBackendConfig(params: {
+   const command = resolveQmdCommand(rawCommand);
+   const resolved: ResolvedQmdConfig = {
+     command,
+-    mcporter: resolveMcporterConfig(qmdCfg?.mcporter),
++    mcporter: resolveMcporterConfig(
++      qmdCfg?.mcporter,
++      agentEntry?.memorySearch?.qmd?.mcporter ??
++        params.cfg.agents?.defaults?.memorySearch?.qmd?.mcporter,
++    ),
+     searchMode: resolveSearchMode(qmdCfg?.searchMode),
+     rerank: qmdCfg?.rerank,
+     searchTool: resolveSearchTool(qmdCfg?.searchTool),
+diff --git a/packages/memory-host-sdk/src/host/config-utils.ts b/packages/memory-host-sdk/src/host/config-utils.ts
+index 7753ea8071..2eb6468d94 100644
+--- a/packages/memory-host-sdk/src/host/config-utils.ts
++++ b/packages/memory-host-sdk/src/host/config-utils.ts
+@@ -113,6 +113,12 @@ export type MemorySearchConfig = {
+   enabled?: boolean;
+   extraPaths?: string[];
+   qmd?: {
++    /**
++     * Per-agent mcporter override, merged field-by-field over `memory.qmd.mcporter`.
++     * QMD collections are agent-scoped, so a shared daemon pinned to one agent's
++     * cache cannot resolve another agent's collections.
++     */
++    mcporter?: MemoryQmdMcporterConfig;
+     extraCollections?: MemoryQmdIndexPath[];
+   };
+ };
+diff --git a/src/config/schema.help.ts b/src/config/schema.help.ts
+index 4ac5a21299..cb751aca94 100644
+--- a/src/config/schema.help.ts
++++ b/src/config/schema.help.ts
+@@ -1194,6 +1194,14 @@ export const FIELD_HELP: Record<string, string> = {
+     "Adds extra directories or .md files to the memory index beyond default memory files. Use this when key reference docs live elsewhere in your repo; when multimodal memory is enabled, matching image/audio files under these paths are also eligible for indexing.",
+   "agents.defaults.memorySearch.qmd":
+     "Use this when one agent should query another agent's transcript collections; QMD-specific extra collections let you opt into cross-agent memory search without flattening everything into one shared namespace.",
++  "agents.defaults.memorySearch.qmd.mcporter":
++    "Overrides `memory.qmd.mcporter` for this agent, merged field-by-field. QMD collections are agent-scoped, so a single keep-alive daemon pinned to one agent's cache returns empty results for every other agent; use this to give each agent its own mcporter server or to opt a single agent out.",
++  "agents.defaults.memorySearch.qmd.mcporter.enabled":
++    "Set false to keep this agent on direct `qmd` spawns while other agents use mcporter. Useful when the shared daemon is pinned to a different agent's collections and would otherwise return no matches.",
++  "agents.defaults.memorySearch.qmd.mcporter.serverName":
++    "Names the mcporter server this agent calls. Point each agent at a server whose `qmd mcp` process runs with that agent's XDG_CACHE_HOME and XDG_CONFIG_HOME so it resolves that agent's own collections.",
++  "agents.defaults.memorySearch.qmd.mcporter.startDaemon":
++    "Automatically start this agent's mcporter daemon when its mcporter-backed QMD mode is enabled. Disable when process lifecycle is managed externally.",
+   "agents.defaults.memorySearch.qmd.extraCollections":
+     "Use this when you need directional transcript search across agents; add collections here to scope QMD recalls without creating a shared global transcript namespace.",
+   "agents.defaults.memorySearch.qmd.extraCollections.path":
+diff --git a/src/config/schema.labels.ts b/src/config/schema.labels.ts
+index 3f1fda5e0e..5552f1ea7b 100644
+--- a/src/config/schema.labels.ts
++++ b/src/config/schema.labels.ts
+@@ -460,6 +460,10 @@ export const FIELD_LABELS: Record<string, string> = {
+   "agents.defaults.memorySearch.sources": "Memory Search Sources",
+   "agents.defaults.memorySearch.extraPaths": "Extra Memory Paths",
+   "agents.defaults.memorySearch.qmd": "Memory Search QMD Collections",
++  "agents.defaults.memorySearch.qmd.mcporter": "QMD MCPorter (Per-Agent)",
++  "agents.defaults.memorySearch.qmd.mcporter.enabled": "QMD MCPorter Enabled (Per-Agent)",
++  "agents.defaults.memorySearch.qmd.mcporter.serverName": "QMD MCPorter Server Name (Per-Agent)",
++  "agents.defaults.memorySearch.qmd.mcporter.startDaemon": "QMD MCPorter Start Daemon (Per-Agent)",
+   "agents.defaults.memorySearch.qmd.extraCollections": "QMD Extra Collections",
+   "agents.defaults.memorySearch.qmd.extraCollections.path": "QMD Extra Collection Path",
+   "agents.defaults.memorySearch.qmd.extraCollections.name": "QMD Extra Collection Name",
+diff --git a/src/config/types.tools.ts b/src/config/types.tools.ts
+index 0df237cf92..582a63e3ba 100644
+--- a/src/config/types.tools.ts
++++ b/src/config/types.tools.ts
+@@ -4,7 +4,7 @@ import type { ChatType } from "../channels/chat-type.js";
+ import type { SafeBinProfileFixture } from "../infra/exec-safe-bin-policy.js";
+ import type { AgentModelConfig } from "./types.agents-shared.js";
+ import type { AgentElevatedAllowFromConfig, SessionSendPolicyAction } from "./types.base.js";
+-import type { MemoryQmdIndexPath } from "./types.memory.js";
++import type { MemoryQmdIndexPath, MemoryQmdMcporterConfig } from "./types.memory.js";
+ import type { ConfiguredProviderRequest } from "./types.provider-request.js";
+ import type { SecretInput } from "./types.secrets.js";
+ 
+@@ -442,6 +442,13 @@ export type MemorySearchConfig = {
+   extraPaths?: string[];
+   /** Optional QMD-specific extra collections for cross-agent search. */
+   qmd?: {
++    /**
++     * Per-agent mcporter override. Merges over `memory.qmd.mcporter` field-by-field.
++     * QMD collections are agent-scoped, so a shared daemon pinned to one agent's
++     * cache cannot serve another agent; give each agent its own server name, or
++     * set `enabled: false` to fall back to direct `qmd` spawns for this agent.
++     */
++    mcporter?: MemoryQmdMcporterConfig;
+     /** Additional QMD collections appended for this agent's search scope. */
+     extraCollections?: MemoryQmdIndexPath[];
+   };
+diff --git a/src/config/zod-schema.agent-runtime.ts b/src/config/zod-schema.agent-runtime.ts
+index b794950e13..8be64a2260 100644
+--- a/src/config/zod-schema.agent-runtime.ts
++++ b/src/config/zod-schema.agent-runtime.ts
+@@ -837,6 +837,14 @@ export const MemorySearchSchema = z
+     extraPaths: z.array(z.string()).optional(),
+     qmd: z
+       .object({
++        mcporter: z
++          .object({
++            enabled: z.boolean().optional(),
++            serverName: z.string().optional(),
++            startDaemon: z.boolean().optional(),
++          })
++          .strict()
++          .optional(),
+         extraCollections: z
+           .array(
+             z

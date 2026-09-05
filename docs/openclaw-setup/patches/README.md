@@ -43,6 +43,7 @@ diff.
 | Selective iMessage text/link/image part coalescing | [`imessage-message-part-coalescing.md`](./imessage-message-part-coalescing.md) | [`imessage-message-part-coalescing.patch`](./imessage-message-part-coalescing.patch) | Verified on 2026.7.1 (`0790d9f`) |
 | Sandbox recreate discovery failure propagation | [`sandbox-discovery-failure-fix.md`](./sandbox-discovery-failure-fix.md) | [`sandbox-discovery-failure-fix.patch`](./sandbox-discovery-failure-fix.patch) | Verified in the managed patch pool on 2026.7.29 |
 | Browser sandbox user-data-dir env override + singleton cleanup | [`browser-userdata-dir-fix.md`](./browser-userdata-dir-fix.md) | [`browser-userdata-dir-fix.patch`](./browser-userdata-dir-fix.patch) | Verified on 2026.7.1 (`0790d9f`). Pending upstream PR (see plan 023). |
+| Per-agent QMD mcporter config | [`qmd-mcporter-per-agent.md`](./qmd-mcporter-per-agent.md) | [`qmd-mcporter-per-agent.patch`](./qmd-mcporter-per-agent.patch) | Verified on 2026.7.1 source; deployed on 2026.7.1. |
 
 > **Retired:** a former cron+subagent announce-delivery fix (`cron-announce`) was
 > retired on 2026.6.11 — superseded by block-at-yield, and its external
