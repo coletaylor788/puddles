@@ -1,6 +1,6 @@
 # Per-agent QMD mcporter configuration
 
-**Status:** Verified on 2026.6.11 source; deployed to the mini running 2026.7.1.
+**Status:** Verified on 2026.7.1 (`0790d9f`) in the managed patch pool.
 
 ## The bug
 
@@ -60,8 +60,8 @@ Adds `agents.*.memorySearch.qmd.mcporter`, merged **field-by-field** over the
 global block — per-agent wins, then `agents.defaults`, then `memory.qmd`.
 
 - `packages/memory-host-sdk/src/host/backend-config.ts` — `resolveMcporterConfig`
-  takes a second `agentOverride` layer and applies both in order. The
-  `startDaemon` default only auto-enables when *neither* layer set it.
+  applies the global, agent-default, and matching-agent layers in order. The
+  `startDaemon` default only auto-enables when no layer set it.
 - `packages/memory-host-sdk/src/host/config-utils.ts` — `MemorySearchConfig.qmd`
   gains `mcporter?: MemoryQmdMcporterConfig`.
 - `src/config/zod-schema.agent-runtime.ts` — strict schema accepts the block.
