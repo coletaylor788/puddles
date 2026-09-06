@@ -669,9 +669,9 @@ if [ -n "$POST_DEPLOY_CHECK" ]; then
   "$POST_DEPLOY_CHECK" ||
     rollback_and_exit "$?" "post-deploy validation or landing check failed"
 fi
-write_target_result "passed" "installed, validated, and landed"
 GATEWAY_QUIESCED=0
 trap - ERR INT TERM HUP
+write_target_result "passed" "installed, validated, and landed"
 echo "    installed + gateway healthy"
 TARGET_DEPLOY
 }

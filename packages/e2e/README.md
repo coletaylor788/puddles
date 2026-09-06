@@ -105,9 +105,11 @@ package, deployment evidence, read-only production evidence, and landing
 evidence. Raw private receipts stay in a sibling private receipt directory so
 the public run contains only opaque digests and repository or head identifiers.
 Resume revalidates each stage's arguments, input hashes, and output hashes. It
-does not trust marker files. Landing is a separate durable stage after rollback
-ownership ends. If the merge command loses its response, the stage queries the
-pull request and default branch before deciding whether to retry.
+does not trust marker files. The post-deploy check merges the exact private head
+and then the exact public head while deployment rollback is still active. It
+reconciles each pull request and default branch after an ambiguous merge
+response. The durable landing stage records those already verified results
+without issuing another merge.
 
 Combined validation must retain a production-ready tree beside its raw receipt
 at `<validation-receipt>.stage` and declare that absolute path plus its
@@ -118,8 +120,11 @@ from the retained tree that passed combined validation.
 
 The private executable receives only the documented `apply` and `validate`
 commands. Private code and credentials never enter the public candidate or
-repository. The public run directory may record only opaque private hashes and
-repository or head identifiers.
+repository. It must come from a clean Git checkout whose origin, head, and tree
+match the pinned private repository and reviewed commit. The runner records the
+tree and rechecks the checkout before each private command. The public run
+directory may record only opaque private hashes and repository or head
+identifiers.
 
 Omitting a delivery flag or using a benign prompt is not a safety boundary:
 agent tools can still execute. Do not add tests that drive configured agent

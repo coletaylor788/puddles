@@ -155,12 +155,14 @@ In immutable release mode, set `OPENCLAW_ARTIFACT` and
 `OPENCLAW_ARTIFACT_SHA256` instead of `OPENCLAW_SRC`. The wrapper skips patch
 application, dependency installation, build, and pack. It verifies the digest
 before transfer and again on the target. `OPENCLAW_POST_DEPLOY_CHECK` may point
-to the orchestrator's executable read-only production and exact pull-request
-state check. That check runs while rollback still owns the package, runtime
-tree, service definition, browser image, and gateway restart. Its failure
-restores the prior deployment. The orchestrator merges only after deployment
-has released rollback ownership. Merge is a separate durable stage that
-reconciles the pull request and default branch after a lost command response.
+to the orchestrator's executable read-only production, pull-request state, and
+dependency-ordered landing check. That check runs while rollback still owns the
+package, runtime tree, service definition, browser image, and gateway restart.
+It merges and verifies the exact private head before the exact public head. A
+failure restores the prior deployment. After the check passes, the wrapper
+releases rollback ownership before publishing the terminal success receipt.
+The orchestrator then records a durable landing stage from the already verified
+pull requests.
 
 Remote mode uses batch authentication, one explicit identity, and a persistent
 SSH control connection. The target uses an explicit non-interactive path. A

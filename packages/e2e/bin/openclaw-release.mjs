@@ -256,6 +256,51 @@ async function assertPublicCheckout(expectedHead) {
   }
 }
 
+function repositoryFromRemote(remote) {
+  const match = remote
+    .trim()
+    .match(/(?:github\.com[/:])([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:\.git)?$/);
+  return match?.[1];
+}
+
+async function assertPrivatePipelineCheckout(
+  executable,
+  expectedRepository,
+  expectedHead,
+  expectedTree,
+) {
+  const root = realpathSync(
+    (
+      await git(dirname(executable), ["rev-parse", "--show-toplevel"])
+    ).trim(),
+  );
+  if (!isInside(root, executable)) {
+    throw new Error("private pipeline executable is outside its Git checkout");
+  }
+  const remote = await git(root, ["remote", "get-url", "origin"]);
+  if (repositoryFromRemote(remote) !== expectedRepository) {
+    throw new Error("private pipeline checkout does not match the pinned repository");
+  }
+  const head = (await git(root, ["rev-parse", "HEAD"])).trim();
+  if (head !== expectedHead) {
+    throw new Error(`private pipeline head ${head} does not match ${expectedHead}`);
+  }
+  const tree = (await git(root, ["rev-parse", "HEAD^{tree}"])).trim();
+  assertGitSha(tree, "private tree");
+  if (expectedTree && tree !== expectedTree) {
+    throw new Error("private pipeline tree changed after release initialization");
+  }
+  const status = await git(root, [
+    "status",
+    "--porcelain",
+    "--untracked-files=all",
+  ]);
+  if (status !== "") {
+    throw new Error("private pipeline checkout must be clean before release");
+  }
+  return { root, tree };
+}
+
 function validateOverlayReceipt(receipt, expectedHead, expectedTree, stage) {
   if (
     receipt?.status !== "passed" ||
@@ -341,7 +386,7 @@ async function pullRequestState(repository, number) {
       "--repo",
       repository,
       "--json",
-      "headRefOid,baseRefOid,baseRefName,mergeable,reviewDecision,statusCheckRollup,isDraft,state",
+      "number,headRefOid,baseRefOid,baseRefName,mergeable,reviewDecision,statusCheckRollup,isDraft,state",
     ],
     { capture: true },
   );
@@ -357,11 +402,11 @@ async function privatePullRequestState(repository, expectedHead) {
       "--repo",
       repository,
       "--state",
-      "open",
+      "all",
       "--limit",
       "100",
       "--json",
-      "headRefOid,baseRefOid,baseRefName,mergeable,reviewDecision,statusCheckRollup,isDraft,state",
+      "number,headRefOid,baseRefOid,baseRefName,mergeable,reviewDecision,statusCheckRollup,isDraft,state",
     ],
     { capture: true },
   );
@@ -369,9 +414,28 @@ async function privatePullRequestState(repository, expectedHead) {
     (pullRequest) => pullRequest.headRefOid === expectedHead,
   );
   if (matches.length !== 1) {
-    throw new Error("expected exactly one open private pull request at the pinned head");
+    throw new Error("expected exactly one private pull request at the pinned head");
   }
   return matches[0];
+}
+
+async function assertPrivatePullRequestReady(
+  repository,
+  state,
+  expectedHead,
+  expectedBase,
+) {
+  if (state.state === "MERGED") {
+    if (
+      state.headRefOid !== expectedHead ||
+      state.baseRefOid !== expectedBase ||
+      !(await verifyLanded(repository, state.number, expectedHead))
+    ) {
+      throw new Error("merged private pull request does not match the pinned candidate");
+    }
+    return;
+  }
+  assertPullRequestReady(state, expectedHead, expectedBase);
 }
 
 export function assertPullRequestReady(
@@ -403,7 +467,6 @@ export function assertPullRequestReady(
 }
 
 function postDeployScript(params) {
-  const receipt = JSON.stringify(params.productionReceipt);
   return `#!/bin/bash
 set -euo pipefail
 export PATH="\${OPENCLAW_DEPLOY_PATH:-/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin}"
@@ -425,35 +488,49 @@ if (state.headRefOid !== head || state.baseRefOid !== base || state.isDraft ||
   throw new Error("pull request changed after promotion");
 }
 NODE
-private_state="$(gh pr list --repo ${JSON.stringify(params.privateRepository)} --state open --limit 100 --json headRefOid,baseRefOid,baseRefName,mergeable,reviewDecision,statusCheckRollup,isDraft,state)"
+private_state="$(gh pr view ${params.privatePrNumber} --repo ${JSON.stringify(params.privateRepository)} --json number,headRefOid,baseRefOid,baseRefName,mergeable,reviewDecision,statusCheckRollup,isDraft,state)"
 node - "$private_state" ${JSON.stringify(params.privateHead)} ${JSON.stringify(params.privateBase)} <<'NODE'
 const [statesText, head, base] = process.argv.slice(2);
-const matches = JSON.parse(statesText).filter((state) => state.headRefOid === head);
-if (matches.length !== 1) throw new Error("private pull request is not at the pinned head");
-const state = matches[0];
+const state = JSON.parse(statesText);
 const checks = state.statusCheckRollup ?? [];
 const failed = checks.filter(
   (check) => !["SUCCESS", "SKIPPED", "NEUTRAL"].includes(check.conclusion ?? check.state),
 );
-if (state.baseRefOid !== base || state.isDraft || state.state !== "OPEN" ||
-    state.mergeable !== "MERGEABLE" || state.reviewDecision === "CHANGES_REQUESTED" ||
-    checks.length === 0 || failed.length > 0) {
+const openAndReady =
+  state.state === "OPEN" && !state.isDraft && state.mergeable === "MERGEABLE" &&
+  state.reviewDecision !== "CHANGES_REQUESTED" && checks.length > 0 && failed.length === 0;
+if (state.headRefOid !== head || state.baseRefOid !== base ||
+    (state.state !== "MERGED" && !openAndReady)) {
   throw new Error("private pull request changed after promotion");
 }
 NODE
-node - ${JSON.stringify(params.receiptPath)} ${JSON.stringify(receipt)} <<'NODE'
-const fs = require("node:fs");
-const pathModule = require("node:path");
-const [path, value] = process.argv.slice(2);
-const temporary = path + ".tmp." + process.pid;
-const descriptor = fs.openSync(temporary, "wx", 0o600);
-fs.writeFileSync(descriptor, JSON.stringify({...JSON.parse(value), completedAt: new Date().toISOString()}, null, 2) + "\\n");
-fs.fsyncSync(descriptor);
-fs.closeSync(descriptor);
-fs.renameSync(temporary, path);
-const directory = fs.openSync(pathModule.dirname(path), "r");
-fs.fsyncSync(directory);
-fs.closeSync(directory);
+if ! gh pr merge ${params.privatePrNumber} --repo ${JSON.stringify(params.privateRepository)} --merge --match-head-commit ${JSON.stringify(params.privateHead)}; then
+  echo "    private merge command failed; reconciling exact landing" >&2
+fi
+private_landed="$(gh pr view ${params.privatePrNumber} --repo ${JSON.stringify(params.privateRepository)} --json state,headRefOid,baseRefName)"
+private_base_name="$(node -p 'JSON.parse(process.argv[1]).baseRefName' "$private_landed")"
+private_comparison="$(gh api "repos/${params.privateRepository}/compare/${params.privateHead}...\${private_base_name}" --jq .status)"
+node - "$private_landed" "$private_comparison" ${JSON.stringify(params.privateHead)} <<'NODE'
+const [stateText, comparison, head] = process.argv.slice(2);
+const state = JSON.parse(stateText);
+if (state.state !== "MERGED" || state.headRefOid !== head ||
+    !["ahead", "identical"].includes(comparison)) {
+  throw new Error("exact private candidate was not confirmed landed");
+}
+NODE
+if ! gh pr merge ${params.prNumber} --repo ${JSON.stringify(params.repository)} --merge --match-head-commit ${JSON.stringify(params.expectedHead)}; then
+  echo "    public merge command failed; reconciling exact landing" >&2
+fi
+public_landed="$(gh pr view ${params.prNumber} --repo ${JSON.stringify(params.repository)} --json state,headRefOid,baseRefName)"
+public_base_name="$(node -p 'JSON.parse(process.argv[1]).baseRefName' "$public_landed")"
+public_comparison="$(gh api "repos/${params.repository}/compare/${params.expectedHead}...\${public_base_name}" --jq .status)"
+node - "$public_landed" "$public_comparison" ${JSON.stringify(params.expectedHead)} <<'NODE'
+const [stateText, comparison, head] = process.argv.slice(2);
+const state = JSON.parse(stateText);
+if (state.state !== "MERGED" || state.headRefOid !== head ||
+    !["ahead", "identical"].includes(comparison)) {
+  throw new Error("exact public candidate was not confirmed landed");
+}
 NODE
 `;
 }
@@ -544,8 +621,10 @@ function validatedDeploymentChain(runDir, pins) {
     publicStage.inputs.openclawRef !== patchManifest.openclawRef ||
     applyStage.inputs.publicTreeSha256 !== publicStage.result.treeSha256 ||
     applyStage.inputs.privateHead !== pins.privateHead ||
+    applyStage.inputs.privateTree !== pins.privateTree ||
     validationStage.inputs.combinedTreeSha256 !== applyStage.result.treeSha256 ||
     validationStage.inputs.privateHead !== pins.privateHead ||
+    validationStage.inputs.privateTree !== pins.privateTree ||
     packageStage.inputs.combinedTreeSha256 !== validationStage.result.treeSha256 ||
     packageStage.inputs.productionStagePath !== productionStage.path ||
     packageStage.inputs.productionStageSha256 !== productionStage.sha256 ||
@@ -592,6 +671,11 @@ async function main() {
   const repository = options["public-repository"];
   const privateRepository = options["private-repository"];
   const prNumber = options["pr-number"];
+  const privateCheckout = await assertPrivatePipelineCheckout(
+    resolvedPrivatePipeline,
+    privateRepository,
+    privateHead,
+  );
   mkdirSync(join(runDir, "stages"), { recursive: true, mode: 0o700 });
   mkdirSync(join(runDir, "artifacts"), { recursive: true, mode: 0o700 });
   const privateReceiptDir = resolveExternalRunDirectory(`${runDir}.private`, [
@@ -610,7 +694,8 @@ async function main() {
       privateRepository,
       privateHead,
     );
-    assertPullRequestReady(
+    await assertPrivatePullRequestReady(
+      privateRepository,
       privatePreflight,
       privateHead,
       privatePreflight.baseRefOid,
@@ -629,6 +714,8 @@ async function main() {
         repository: privateRepository,
         head: privateHead,
         base: privatePreflight.baseRefOid,
+        prNumber: privatePreflight.number,
+        tree: privateCheckout.tree,
       },
       openclaw: { ref: patchManifest.openclawRef },
     };
@@ -643,14 +730,24 @@ async function main() {
     existingRun.public?.prNumber !== Number(prNumber) ||
     existingRun.private?.repository !== privateRepository ||
     existingRun.private?.head !== privateHead ||
+    existingRun.private?.tree !== privateCheckout.tree ||
     existingRun.openclaw?.ref !== patchManifest.openclawRef
   ) {
     throw new Error("release run metadata does not match the requested pins");
   }
   const privateBase = existingRun.private.base;
+  const privatePrNumber = existingRun.private.prNumber;
   assertGitSha(privateBase, "private base head");
+  if (!Number.isInteger(privatePrNumber) || privatePrNumber < 1) {
+    throw new Error("private pull request number is invalid");
+  }
 
-  const pins = { publicHead, expectedBase, privateHead };
+  const pins = {
+    publicHead,
+    expectedBase,
+    privateHead,
+    privateTree: privateCheckout.tree,
+  };
   const completedDeployment = validatedDeploymentChain(runDir, pins);
   if (completedDeployment) {
     const landingInputs = {
@@ -658,16 +755,13 @@ async function main() {
       expectedBase,
       artifactSha256: completedDeployment.packageStage.result.artifactSha256,
     };
-    const landingArgv = [
-      "gh",
-      "pr",
-      "merge",
-      prNumber,
-      "--match-head-commit",
-      publicHead,
-    ];
+    const landingArgv = ["verify-landed", repository, prNumber, publicHead];
     let landingStage = validatedStage(runDir, "land", true);
-    if (!landingStage && (await verifyLanded(repository, prNumber, publicHead))) {
+    if (
+      !landingStage &&
+      (await verifyLanded(privateRepository, privatePrNumber, privateHead)) &&
+      (await verifyLanded(repository, prNumber, publicHead))
+    ) {
       const landingReceipt = join(runDir, "landing.json");
       await runStage(runDir, "land", landingInputs, landingArgv, async () => {
         atomicWriteJson(landingReceipt, {
@@ -699,12 +793,27 @@ async function main() {
 
   await assertPublicCheckout(publicHead);
   const preflight = await pullRequestState(repository, prNumber);
-  assertPullRequestReady(preflight, publicHead, expectedBase);
+  if (preflight.state === "MERGED") {
+    if (
+      !existsSync(join(runDir, "deployment.json")) ||
+      !existsSync(join(runDir, "production.json")) ||
+      !(await verifyLanded(repository, prNumber, publicHead))
+    ) {
+      throw new Error("merged public pull request has no matching deployment evidence");
+    }
+  } else {
+    assertPullRequestReady(preflight, publicHead, expectedBase);
+  }
   const privatePreflight = await privatePullRequestState(
     privateRepository,
     privateHead,
   );
-  assertPullRequestReady(privatePreflight, privateHead, privateBase);
+  await assertPrivatePullRequestReady(
+    privateRepository,
+    privatePreflight,
+    privateHead,
+    privateBase,
+  );
 
   const candidate = join(runDir, "candidate");
   const publicReceipt = join(runDir, "public.json");
@@ -770,7 +879,11 @@ async function main() {
   const overlayResult = await runStage(
     runDir,
     "private-apply",
-    { publicTreeSha256: publicResult.treeSha256, privateHead },
+    {
+      publicTreeSha256: publicResult.treeSha256,
+      privateHead,
+      privateTree: privateCheckout.tree,
+    },
     [
       resolvedPrivatePipeline,
       "apply",
@@ -784,6 +897,12 @@ async function main() {
       privateHead,
     ],
     async () => {
+      await assertPrivatePipelineCheckout(
+        resolvedPrivatePipeline,
+        privateRepository,
+        privateHead,
+        privateCheckout.tree,
+      );
       await run("git", ["reset", "--hard", "HEAD"], { cwd: candidate });
       await run("git", ["clean", "-fdx"], { cwd: candidate });
       for (const patch of patchManifest.patches) {
@@ -824,7 +943,11 @@ async function main() {
   const validationResult = await runStage(
     runDir,
     "combined-validation",
-    { combinedTreeSha256: overlayResult.treeSha256, privateHead },
+    {
+      combinedTreeSha256: overlayResult.treeSha256,
+      privateHead,
+      privateTree: privateCheckout.tree,
+    },
     [
       resolvedPrivatePipeline,
       "validate",
@@ -840,6 +963,12 @@ async function main() {
       privateHead,
     ],
     async () => {
+      await assertPrivatePipelineCheckout(
+        resolvedPrivatePipeline,
+        privateRepository,
+        privateHead,
+        privateCheckout.tree,
+      );
       await run(resolvedPrivatePipeline, [
         "validate",
         "--source",
@@ -1031,8 +1160,7 @@ async function main() {
       privateRepository,
       privateHead,
       privateBase,
-      receiptPath: productionReceipt,
-      productionReceipt: releaseMetadata,
+      privatePrNumber,
     }),
     { mode: 0o700 },
   );
@@ -1119,7 +1247,10 @@ async function main() {
         throw new Error("deployment receipt does not match the immutable artifact");
       }
       if (!existsSync(productionReceipt)) {
-        throw new Error("production and landing receipt is missing");
+        atomicWriteJson(productionReceipt, {
+          ...releaseMetadata,
+          completedAt: new Date().toISOString(),
+        });
       }
       return {
         result: { summary: "production validated" },
@@ -1134,27 +1265,10 @@ async function main() {
     runDir,
     "land",
     { publicHead, expectedBase, artifactSha256: packageResult.artifactSha256 },
-    ["gh", "pr", "merge", prNumber, "--match-head-commit", publicHead],
+    ["verify-landed", repository, prNumber, publicHead],
     async () => {
-      if (!(await verifyLanded(repository, prNumber, publicHead))) {
-        const current = await pullRequestState(repository, prNumber);
-        assertPullRequestReady(current, publicHead, expectedBase);
-        try {
-          await run("gh", [
-            "pr",
-            "merge",
-            prNumber,
-            "--repo",
-            repository,
-            "--merge",
-            "--match-head-commit",
-            publicHead,
-          ]);
-        } catch (error) {
-          if (!(await verifyLanded(repository, prNumber, publicHead))) {
-            throw error;
-          }
-        }
+      if (!(await verifyLanded(privateRepository, privatePrNumber, privateHead))) {
+        throw new Error("exact private candidate was not confirmed landed");
       }
       if (!(await verifyLanded(repository, prNumber, publicHead))) {
         throw new Error("exact candidate was not confirmed landed");

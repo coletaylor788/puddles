@@ -1,9 +1,11 @@
 import { spawnSync } from "node:child_process";
 import {
   chmodSync,
+  existsSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   unlinkSync,
@@ -29,6 +31,9 @@ function executable(path: string, body: string) {
 
 function fixture(
   options: {
+    dirtyPrivateCheckout?: boolean;
+    mutatePrivateAfterApply?: boolean;
+    publicMergeFailure?: boolean;
     productionStageMode?: "missing" | "outside" | "symlink";
     stalePublicHead?: boolean;
   } = {},
@@ -49,8 +54,22 @@ function fixture(
 printf 'git\\t%s\\n' "$*" >> "$COMMAND_LOG"
 while [ "\${1:-}" = -C ]; do cwd="$2"; shift 2; done
 case "\${1:-} \${2:-}" in
-  "rev-parse HEAD") printf '%s\\n' "$PUBLIC_HEAD" ;;
-  "status --porcelain") ;;
+  "rev-parse --show-toplevel") printf '%s\\n' "$PRIVATE_REPO_ROOT" ;;
+  "rev-parse HEAD")
+    if [ "$cwd" = "$PRIVATE_REPO_ROOT" ]; then
+      printf '%s\\n' "$PRIVATE_HEAD"
+    else
+      printf '%s\\n' "$PUBLIC_HEAD"
+    fi
+    ;;
+  "rev-parse HEAD^{tree}") printf '%s\\n' "$PRIVATE_TREE" ;;
+  "remote get-url") printf '%s\\n' 'https://github.com/coletaylor788/puddles-private.git' ;;
+  "status --porcelain")
+    if [ "$cwd" = "$PRIVATE_REPO_ROOT" ] &&
+       { [ "$PRIVATE_DIRTY" = 1 ] || [ -f "$PRIVATE_DIRTY_MARKER" ]; }; then
+      printf ' M private-overlay\\n'
+    fi
+    ;;
   "worktree add")
     candidate="$4"
     mkdir -p "$candidate"
@@ -67,16 +86,34 @@ esac
     `
 printf 'gh\\t%s\\n' "$*" >> "$COMMAND_LOG"
 if [ "$1 $2" = "pr list" ]; then
-  printf '[{"headRefOid":"%s","baseRefOid":"%s","baseRefName":"main","mergeable":"MERGEABLE","reviewDecision":"APPROVED","statusCheckRollup":[{"conclusion":"SUCCESS"}],"isDraft":false,"state":"OPEN"}]\\n' "$PRIVATE_HEAD" "$PRIVATE_BASE"
+  if [ -f "$PRIVATE_MERGE_STATE" ]; then state=MERGED; else state=OPEN; fi
+  printf '[{"number":30,"headRefOid":"%s","baseRefOid":"%s","baseRefName":"main","mergeable":"MERGEABLE","reviewDecision":"APPROVED","statusCheckRollup":[{"conclusion":"SUCCESS"}],"isDraft":false,"state":"%s"}]\\n' "$PRIVATE_HEAD" "$PRIVATE_BASE" "$state"
 elif [ "$1 $2" = "pr merge" ]; then
-  : > "$MERGE_STATE"
+  repo=
+  previous=
+  for arg in "$@"; do
+    if [ "$previous" = --repo ]; then repo="$arg"; break; fi
+    previous="$arg"
+  done
+  if [ "$repo" = "coletaylor788/puddles-private" ]; then
+    : > "$PRIVATE_MERGE_STATE"
+  elif [ "$PUBLIC_MERGE_FAILURE" != 1 ]; then
+    : > "$PUBLIC_MERGE_STATE"
+  fi
   exit 73
 elif [ "$1 $2" = "pr view" ]; then
-  if printf '%s' "$*" | grep -q 'state,headRefOid,baseRefName'; then
-    if [ -f "$MERGE_STATE" ]; then state=MERGED; else state=OPEN; fi
-    printf '{"state":"%s","headRefOid":"%s","baseRefName":"main"}\\n' "$state" "$PUBLIC_HEAD"
+  repo=
+  previous=
+  for arg in "$@"; do
+    if [ "$previous" = --repo ]; then repo="$arg"; break; fi
+    previous="$arg"
+  done
+  if [ "$repo" = "coletaylor788/puddles-private" ]; then
+    if [ -f "$PRIVATE_MERGE_STATE" ]; then state=MERGED; else state=OPEN; fi
+    printf '{"number":30,"state":"%s","headRefOid":"%s","baseRefOid":"%s","baseRefName":"main","mergeable":"MERGEABLE","reviewDecision":"APPROVED","statusCheckRollup":[{"conclusion":"SUCCESS"}],"isDraft":false}\\n' "$state" "$PRIVATE_HEAD" "$PRIVATE_BASE"
   else
-    printf '{"headRefOid":"%s","baseRefOid":"%s","baseRefName":"main","mergeable":"MERGEABLE","reviewDecision":"APPROVED","statusCheckRollup":[{"conclusion":"SUCCESS"}],"isDraft":false,"state":"OPEN"}\\n' "$PUBLIC_HEAD" "$PUBLIC_BASE"
+    if [ -f "$PUBLIC_MERGE_STATE" ]; then state=MERGED; else state=OPEN; fi
+    printf '{"state":"%s","headRefOid":"%s","baseRefOid":"%s","baseRefName":"main","mergeable":"MERGEABLE","reviewDecision":"APPROVED","statusCheckRollup":[{"conclusion":"SUCCESS"}],"isDraft":false}\\n' "$state" "$PUBLIC_HEAD" "$PUBLIC_BASE"
   fi
 elif [ "$1" = api ]; then
   printf 'ahead\\n'
@@ -195,6 +232,9 @@ fs.writeFileSync(output, JSON.stringify({
   },
   secretPath: "/private/account",
 }) + "\\n");
+if (command === "apply" && process.env.MUTATE_PRIVATE_AFTER_APPLY === "1") {
+  fs.writeFileSync(process.env.PRIVATE_DIRTY_MARKER, "dirty");
+}
 NODE
 `,
   );
@@ -203,11 +243,18 @@ NODE
     PATH: `${bin}:/usr/bin:/bin`,
     REAL_NODE: process.execPath,
     COMMAND_LOG: log,
-    MERGE_STATE: mergeState,
+    PUBLIC_MERGE_STATE: mergeState,
+    PRIVATE_MERGE_STATE: join(root, "private-merged"),
+    PUBLIC_MERGE_FAILURE: options.publicMergeFailure ? "1" : "0",
     PUBLIC_HEAD: options.stalePublicHead ? "e".repeat(40) : publicHead,
     PUBLIC_BASE: publicBase,
     PRIVATE_HEAD: privateHead,
     PRIVATE_BASE: privateBase,
+    PRIVATE_TREE: "f".repeat(40),
+    PRIVATE_REPO_ROOT: realpathSync(root),
+    PRIVATE_DIRTY: options.dirtyPrivateCheckout ? "1" : "0",
+    PRIVATE_DIRTY_MARKER: join(root, "private-dirty"),
+    MUTATE_PRIVATE_AFTER_APPLY: options.mutatePrivateAfterApply ? "1" : "0",
     PUDDLES_PRIVATE_PIPELINE: privatePipeline,
     OPENCLAW_DEPLOY_PATH: `${bin}:/usr/bin:/bin`,
     RELEASE_STATE_URL: pathToFileURL(
@@ -295,7 +342,12 @@ describe("OpenClaw release CLI", () => {
       completedResume.status,
       `${completedResume.stdout}\n${completedResume.stderr}`,
     ).toBe(0);
-    expect(readFileSync(test.log, "utf8")).toBe(afterReconcile);
+    const completedDelta = readFileSync(test.log, "utf8").slice(
+      afterReconcile.length,
+    );
+    expect(completedDelta).not.toMatch(
+      /public-validation|private\t|corepack\t|bash\t|pr merge/,
+    );
   });
 
   it("rejects a stale public head before validation", () => {
@@ -304,6 +356,45 @@ describe("OpenClaw release CLI", () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("public checkout head");
     expect(readFileSync(test.log, "utf8")).not.toContain("public-validation");
+  });
+
+  it("rejects a dirty private pipeline checkout before validation", () => {
+    const test = fixture({ dirtyPrivateCheckout: true });
+    const result = runFixture(test);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(
+      "private pipeline checkout must be clean before release",
+    );
+    expect(readFileSync(test.log, "utf8")).not.toContain("public-validation");
+  });
+
+  it("rejects private pipeline mutation between apply and validation", () => {
+    const test = fixture({ mutatePrivateAfterApply: true });
+    const result = runFixture(test);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(
+      "private pipeline checkout must be clean before release",
+    );
+    expect(readFileSync(test.log, "utf8")).not.toContain("private\tvalidate");
+  });
+
+  it("rolls back an unlanded public candidate and permits a new run", () => {
+    const test = fixture({ publicMergeFailure: true });
+    const result = runFixture(test);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(
+      "exact public candidate was not confirmed landed",
+    );
+    expect(existsSync(join(test.runDir, "production.json"))).toBe(false);
+    expect(existsSync(join(test.runDir, "landing.json"))).toBe(false);
+
+    test.env.PUBLIC_MERGE_FAILURE = "0";
+    const retryDir = join(test.root, "retry");
+    test.args[test.args.indexOf("--run-dir") + 1] = retryDir;
+    const retry = runFixture(test);
+    expect(retry.status, `${retry.stdout}\n${retry.stderr}`).toBe(0);
+    expect(existsSync(join(retryDir, "production.json"))).toBe(true);
+    expect(existsSync(join(retryDir, "landing.json"))).toBe(true);
   });
 
   it("revalidates the immutable artifact before completed-run resume", () => {
@@ -390,7 +481,6 @@ describe("OpenClaw release CLI", () => {
     const test = fixture();
     const first = runFixture(test);
     expect(first.status, `${first.stdout}\n${first.stderr}`).toBe(0);
-    rmSync(join(test.root, "merged"));
     rmSync(join(test.runDir, "stages", "land.json"), { force: true });
     rmSync(join(test.runDir, "landing.json"), { force: true });
     markStageRunning(test.runDir, "deploy-validate");

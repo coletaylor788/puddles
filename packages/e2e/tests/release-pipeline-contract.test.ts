@@ -35,22 +35,36 @@ describe("OpenClaw release pipeline contract", () => {
     );
   });
 
-  it("keeps production validation inside rollback ownership and lands durably after it", () => {
+  it("keeps validation and both dependency-ordered merges inside rollback ownership", () => {
     const health = deploy.indexOf("wait_for_gateway || rollback_and_exit");
     const postCheck = deploy.indexOf('"$POST_DEPLOY_CHECK" ||');
     const releaseRollback = deploy.indexOf(
       '"post-deploy validation or landing check failed"',
     );
     const releaseOwnership = deploy.lastIndexOf("GATEWAY_QUIESCED=0");
+    const successReceipt = deploy.lastIndexOf(
+      'write_target_result "passed" "installed, validated, and landed"',
+    );
     expect(postCheck).toBeGreaterThan(health);
     expect(releaseRollback).toBeGreaterThan(postCheck);
     expect(releaseOwnership).toBeGreaterThan(releaseRollback);
-    const productionReceipt = release.indexOf("productionReceipt");
-    const landStage = release.indexOf('"land"');
-    expect(productionReceipt).toBeGreaterThan(0);
-    expect(landStage).toBeGreaterThan(productionReceipt);
+    expect(successReceipt).toBeGreaterThan(releaseOwnership);
+    expect(release).toMatch(
+      /gh pr merge \$\{params\.privatePrNumber\}[\s\S]*gh pr merge \$\{params\.prNumber\}/,
+    );
+    expect(release).toContain(
+      "exact private candidate was not confirmed landed",
+    );
     expect(release).toContain("--match-head-commit");
     expect(release).toContain("exact candidate was not confirmed landed");
+  });
+
+  it("binds private execution to a clean checkout at the reviewed tree", () => {
+    expect(release).toContain("assertPrivatePipelineCheckout");
+    expect(release).toContain('"rev-parse", "HEAD^{tree}"');
+    expect(release).toContain('"remote", "get-url", "origin"');
+    expect(release).toContain('"--untracked-files=all"');
+    expect(release).toContain("privateTree: privateCheckout.tree");
   });
 
   it("sets non-interactive SSH identity and control connection defaults", () => {
@@ -79,7 +93,7 @@ describe("OpenClaw release pipeline contract", () => {
       'throw new Error("pull request checks are not all complete and successful")',
     );
     expect(release).toMatch(
-      /private_state=[\s\S]*checks\.length === 0[\s\S]*private pull request changed after promotion/,
+      /private_state=[\s\S]*checks\.length > 0[\s\S]*private pull request changed after promotion/,
     );
   });
 });
