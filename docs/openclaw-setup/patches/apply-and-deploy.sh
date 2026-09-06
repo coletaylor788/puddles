@@ -575,6 +575,7 @@ PATCHES=(
   imessage-message-part-coalescing
   sandbox-discovery-failure-fix
   browser-userdata-dir-fix
+  qmd-mcporter-per-agent
 )
 # NOTE: apply-cron-announce-fix is intentionally NOT listed — it is under
 # validate-then-decide review against this release (see cron-announce-fix.md).
