@@ -15,16 +15,22 @@ node packages/e2e/bin/openclaw-test-env.mjs ci
 
 The pull-request workflow runs this exact command on macOS. The lifecycle:
 
-1. builds and lints all workspace packages;
-2. runs all isolated workspace tests, including deployment and recording-mock
+1. restores frozen workspace dependencies when a fresh worktree has none;
+2. builds and lints all workspace packages;
+3. runs all isolated workspace tests, including deployment and recording-mock
    behavior;
-3. runs the Gmail server's safe Python tests, lint, and compilation;
-4. creates a detached worktree at the pinned OpenClaw revision;
-5. restores that worktree's frozen dependencies;
-6. applies every maintained source patch in deployment order;
-7. verifies generated OpenClaw prompt snapshots are current;
-8. executes every mapped OpenClaw regression; and
-9. executes candidate tests that need both the Puddles harness and patched
+4. creates a disposable Gmail development environment and runs its safe Python
+   tests, lint, and compilation without changing the production environment;
+5. validates the patch manifest before expensive setup;
+6. creates a detached worktree at the pinned OpenClaw revision under the
+   canonical macOS temporary path;
+7. restores that worktree's frozen dependencies;
+8. applies every maintained source patch in deployment order;
+9. verifies generated OpenClaw prompt snapshots are current;
+10. builds the patched OpenClaw source;
+11. executes every mapped OpenClaw regression with explicit Vitest
+    configuration and bounded workers; and
+12. executes candidate tests that need both the Puddles harness and patched
    OpenClaw source.
 
 The temporary worktree is removed on success, failure, and termination.
@@ -56,6 +62,39 @@ node packages/e2e/bin/openclaw-test-env.mjs patches
   - `mocks/apple-pim-mock.mjs` records PIM writes and returns empty reads.
 - Production validation remains separate, read-only, and cannot substitute for
   the committed integration pool.
+
+## Resumable release
+
+After local review and remote checks are green, the release orchestrator owns
+composition, packaging, deployment, production validation, and landing:
+
+```bash
+PUDDLES_PRIVATE_PIPELINE=/absolute/path/to/private-pipeline \
+  node packages/e2e/bin/openclaw-release.mjs run \
+    --run-dir /absolute/path/to/external-run-directory \
+    --source /absolute/path/to/clean-openclaw-checkout \
+    --public-repository owner/repository \
+    --private-repository owner/private-repository \
+    --public-head <40-character-public-head> \
+    --expected-private-head <40-character-private-head> \
+    --pr-number <number> \
+    --expected-base-head <40-character-base-head>
+```
+
+The run directory must be outside the candidate. It contains atomic stage
+records, the public receipt, sanitized private receipt evidence, the immutable
+package, deployment evidence, read-only production evidence, and landing
+evidence. Raw private receipts stay in a sibling private receipt directory so
+the public run contains only opaque digests and repository or head identifiers.
+Resume revalidates each stage's arguments, input hashes, and output hashes. It
+does not trust marker files. Landing is a separate durable stage after rollback
+ownership ends. If the merge command loses its response, the stage queries the
+pull request and default branch before deciding whether to retry.
+
+The private executable receives only the documented `apply` and `validate`
+commands. Private code and credentials never enter the public candidate or
+repository. The public run directory may record only opaque private hashes and
+repository or head identifiers.
 
 Omitting a delivery flag or using a benign prompt is not a safety boundary:
 agent tools can still execute. Do not add tests that drive configured agent

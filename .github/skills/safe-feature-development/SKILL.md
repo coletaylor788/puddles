@@ -4,7 +4,7 @@ description: "Implement features safely from research through test-environment i
 compatibility: "Requires the target repository's existing build, test, deployment, and rollback tools. Uses repository-provided test and production lifecycles when available."
 metadata:
   author: Cole Taylor
-  version: "1.7.0"
+  version: "1.8.0"
 ---
 
 # Safe Feature Development
@@ -226,28 +226,25 @@ investigating instead of asking.
      the replacement's worker handle for the rest of the remediation loop. Never
      skip or narrow review because the original worker is unavailable.
    - After all in-diff plan, checklist, and other bookkeeping is final, create
-     the landing candidate commit and run one terminal fresh review against that
-     exact commit. Do not change the candidate afterward. Any change invalidates
-     the terminal result and restarts validation and fresh review.
-   - Record the clean terminal result and the reviewed commit identifier outside
-     the candidate diff, so recording it cannot change what was reviewed. Write
-     it into the pull request in the next step, when the pull request is created
-     or updated. If the repository does not use pull requests, put it in the
-     final report to the requester instead. Commit ids do not belong in the
+     the landing candidate commit and resume the retained reviewer for one final
+     complete-current-diff check. Do not launch a second terminal reviewer.
+     Record the clean result and reviewed commit outside the candidate diff.
+     Write it into the pull request in the next step, or in the final report when
+     the repository does not use pull requests. Commit ids do not belong in the
      issue.
 
 6. **Prepare remote integration**
-   - Push the exact terminal-reviewed candidate and create or update a non-draft
+   - Push the exact retained-review candidate and create or update a non-draft
      pull request. Include the committed regression and exact validation command
-     and results required by the repository. Record the terminal review result
+     and results required by the repository. Record the retained review result
      and the reviewed commit identifier here.
    - Wait for all required remote checks. Resolve actionable review feedback,
      unresolved review threads, merge conflicts, and integration failures
-     yourself. Any candidate change invalidates the terminal review and requires
-     the applicable validation, full integration pool, retained-review recheck,
-     and fresh terminal review before pushing the new candidate and repeating
-     all remote integration gates.
-   - When the terminal-reviewed candidate is remotely green, mergeable, and has
+     yourself. Any candidate change invalidates the retained review result. Run
+     the applicable validation, full integration pool, and retained-review
+     recheck before pushing the new candidate and repeating all remote
+     integration gates.
+   - When the retained-review candidate is remotely green, mergeable, and has
      no unresolved required review, record its exact head commit and the current
      base-branch commit, then proceed to promotion. Do not merge a candidate
      before its applicable promotion and production validation complete.
@@ -316,14 +313,13 @@ Feature work is complete only when:
 
 - the requested behavior is implemented and documented;
 - all applicable local and test-environment gates are green;
-- the reusable-worker full-diff audit loop and terminal fresh adversarial review
-  are clean;
+- the reusable-worker full-diff audit loop is clean for the landing candidate;
 - managed processes and temporary state are cleaned up;
 - configured promotion and read-only production validation succeeded, or
   production was explicitly out of scope and promotion and rollback were proven
   in fixtures, or no configured promotion lifecycle exists and that limitation
   was reported;
-- when the repository uses pull requests, the same terminal-reviewed candidate
+- when the repository uses pull requests, the same retained-review candidate
   that completed applicable promotion and production validation is remotely
   green, required review is resolved, the pull request is merged, and the
   expected default-branch result is verified, unless a controlling instruction

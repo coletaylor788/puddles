@@ -8,13 +8,21 @@ function signalChildGroup(child, signal) {
     return;
   }
   if (process.platform !== "win32" && child.pid) {
-    process.kill(-child.pid, signal);
+    try {
+      process.kill(-child.pid, signal);
+    } catch (error) {
+      if (error?.code !== "ESRCH") {
+        throw error;
+      }
+    }
+    child.kill(signal);
     return;
   }
   child.kill(signal);
 }
 
 export async function runCommand(command, args, options = {}) {
+  const startedAt = Date.now();
   console.log(`+ ${command} ${args.join(" ")}`);
   const capture = options.capture === true;
   const child = spawn(command, args, {
@@ -25,6 +33,9 @@ export async function runCommand(command, args, options = {}) {
   });
   let stdout = "";
   let stderr = "";
+  let timeout;
+  let killTimeout;
+  let timedOut = false;
   child.stdout?.setEncoding("utf8");
   child.stdout?.on("data", (chunk) => {
     stdout += chunk;
@@ -42,8 +53,30 @@ export async function runCommand(command, args, options = {}) {
 
   try {
     return await new Promise((resolve, reject) => {
+      if (options.timeoutMs) {
+        timeout = setTimeout(() => {
+          timedOut = true;
+          signalChildGroup(child, "SIGTERM");
+          killTimeout = setTimeout(
+            () => {
+              signalChildGroup(child, "SIGKILL");
+              child.stdout?.destroy();
+              child.stderr?.destroy();
+            },
+            options.killGraceMs ?? 10_000,
+          );
+        }, options.timeoutMs);
+      }
       child.once("error", reject);
       child.once("close", (code, signal) => {
+        if (timedOut) {
+          reject(
+            new Error(
+              `${command} exceeded ${options.timeoutMs}ms and was terminated`,
+            ),
+          );
+          return;
+        }
         if (code === 0) {
           resolve(stdout);
           return;
@@ -54,6 +87,11 @@ export async function runCommand(command, args, options = {}) {
       });
     });
   } finally {
+    clearTimeout(timeout);
+    clearTimeout(killTimeout);
+    console.log(
+      `  completed in ${Math.round((Date.now() - startedAt) / 1000)}s`,
+    );
     if (activeCommand?.child === child) {
       activeCommand = undefined;
     }

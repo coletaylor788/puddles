@@ -1,5 +1,18 @@
 {
   "openclawRef": "0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c",
+  "testProjects": {
+    "src/plugin-sdk/file-lock.stale-contention.test.ts": "plugin-sdk",
+    "src/agents/tools/sessions-yield-tool.test.ts": "agents-tools",
+    "src/agents/tools/yield-gather-state.test.ts": "unit-fast",
+    "src/agents/acp-spawn.test.ts": "agents-core",
+    "src/agents/subagent-spawn.test.ts": "agents-core",
+    "src/agents/tools/sessions-spawn-tool.test.ts": "agents-tools",
+    "src/agents/tools/skill-workshop-tool.test.ts": "agents-tools",
+    "extensions/imessage/src/monitor.last-route.test.ts": "extension-imessage",
+    "extensions/imessage/src/monitor/coalesce.test.ts": "extension-imessage",
+    "src/commands/sandbox.test.ts": "commands",
+    "packages/memory-host-sdk/src/host/backend-config.test.ts": "unit-fast"
+  },
   "patches": [
     {
       "name": "file-lock-stale-reclaim-guard",
