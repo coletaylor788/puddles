@@ -39,9 +39,6 @@ jobs:
       - name: Install Puddles dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install Gmail test dependencies
-        run: python -m pip install -e './servers/gmail-mcp[dev]'
-
       - name: Run cumulative integration lifecycle
         env:
           OPENCLAW_SRC: ${{ github.workspace }}/.openclaw-source

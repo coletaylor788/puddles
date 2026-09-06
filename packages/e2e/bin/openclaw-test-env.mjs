@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+} from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,7 +31,51 @@ function run(command, args, options = {}) {
     cwd: options.cwd ?? repoRoot,
     env: options.env ?? process.env,
     capture: options.capture,
+    timeoutMs: options.timeoutMs,
   });
+}
+
+function canonicalTempRoot() {
+  return realpathSync(tmpdir());
+}
+
+function validatePatchManifest() {
+  const deployScript = readFileSync(
+    join(patchDir, "apply-and-deploy.sh"),
+    "utf8",
+  );
+  const match = deployScript.match(/PATCHES=\(\n([\s\S]*?)\n\)/);
+  if (!match) {
+    throw new Error("apply-and-deploy.sh has no readable PATCHES array");
+  }
+  const deployed = match[1]
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const declared = suite.patches.map((patch) => patch.name);
+  if (JSON.stringify(deployed) !== JSON.stringify(declared)) {
+    throw new Error(
+      `Patch manifest does not match deployment order: ${declared.join(", ")}`,
+    );
+  }
+  for (const patch of suite.patches) {
+    const patchFile = join(patchDir, `${patch.name}.patch`);
+    if (!existsSync(patchFile)) {
+      throw new Error(`Declared patch does not exist: ${patchFile}`);
+    }
+    const changedTests = [
+      ...readFileSync(patchFile, "utf8").matchAll(
+        /^diff --git a\/(.+\.test\.ts) b\/\1$/gm,
+      ),
+    ].map((item) => item[1]);
+    for (const test of changedTests) {
+      if (!patch.tests.includes(test)) {
+        throw new Error(
+          `Patch test is missing from the manifest: ${patch.name}: ${test}`,
+        );
+      }
+    }
+  }
 }
 
 function sourcePath() {
@@ -34,28 +84,49 @@ function sourcePath() {
 }
 
 async function runRepositoryGates() {
+  if (!existsSync(join(repoRoot, "node_modules"))) {
+    await run("corepack", ["pnpm", "install", "--frozen-lockfile"], {
+      timeoutMs: 15 * 60_000,
+    });
+  }
   await run("corepack", ["pnpm", "build"]);
   await run("corepack", ["pnpm", "lint"]);
   await run("corepack", ["pnpm", "test"]);
 
   const gmailDir = join(repoRoot, "servers", "gmail-mcp");
-  const managedPython = join(gmailDir, ".venv", "bin", "python");
-  const python = process.env.GMAIL_MCP_PYTHON
-    ?? (existsSync(managedPython) ? managedPython : "python3");
-  await run(
-    python,
-    ["-m", "pytest", "tests/", "--ignore=tests/integration", "-q"],
-    {
+  const gmailEnvironment = process.env.GMAIL_MCP_PYTHON
+    ? undefined
+    : mkdtempSync(join(canonicalTempRoot(), "puddles-gmail-dev-"));
+  const python =
+    process.env.GMAIL_MCP_PYTHON ?? join(gmailEnvironment, "bin", "python");
+  try {
+    if (gmailEnvironment) {
+      await run("python3", ["-m", "venv", gmailEnvironment]);
+      await run(
+        python,
+        ["-m", "pip", "install", "--disable-pip-version-check", "-e", ".[dev]"],
+        { cwd: gmailDir, timeoutMs: 10 * 60_000 },
+      );
+    }
+    await run(
+      python,
+      ["-m", "pytest", "tests/", "--ignore=tests/integration", "-q"],
+      {
+        cwd: gmailDir,
+        env: { ...process.env, CI: "true" },
+      },
+    );
+    await run(python, ["-m", "ruff", "check", "src/", "tests/"], {
       cwd: gmailDir,
-      env: { ...process.env, CI: "true" },
-    },
-  );
-  await run(python, ["-m", "ruff", "check", "src/", "tests/"], {
-    cwd: gmailDir,
-  });
-  await run(python, ["-m", "compileall", "-q", "src", "tests"], {
-    cwd: gmailDir,
-  });
+    });
+    await run(python, ["-m", "compileall", "-q", "src", "tests"], {
+      cwd: gmailDir,
+    });
+  } finally {
+    if (gmailEnvironment) {
+      rmSync(gmailEnvironment, { recursive: true, force: true });
+    }
+  }
 }
 
 async function runPatchSuite() {
@@ -67,7 +138,9 @@ async function runPatchSuite() {
   }
   await run("git", ["-C", source, "cat-file", "-e", `${suite.openclawRef}^{commit}`]);
 
-  const stateRoot = mkdtempSync(join(tmpdir(), "puddles-openclaw-test-"));
+  const stateRoot = mkdtempSync(
+    join(canonicalTempRoot(), "puddles-openclaw-test-"),
+  );
   const candidate = join(stateRoot, "candidate");
   let worktreeCreated = false;
   let primaryError;
@@ -104,11 +177,21 @@ async function runPatchSuite() {
     await run("corepack", ["pnpm", "install", "--frozen-lockfile"], {
       cwd: candidate,
       env: { ...process.env, CI: process.env.CI ?? "true" },
+      timeoutMs: 15 * 60_000,
     });
 
     await run("corepack", ["pnpm", "prompt:snapshots:check"], {
       cwd: candidate,
       env: { ...process.env, CI: process.env.CI ?? "true" },
+    });
+    await run("corepack", ["pnpm", "build"], {
+      cwd: candidate,
+      env: {
+        ...process.env,
+        CI: process.env.CI ?? "true",
+        NODE_OPTIONS: "--max-old-space-size=8192",
+      },
+      timeoutMs: 30 * 60_000,
     });
 
     const tests = [...new Set(suite.patches.flatMap((patch) => patch.tests))];
@@ -118,10 +201,34 @@ async function runPatchSuite() {
       }
     }
     if (tests.length > 0) {
-      await run("corepack", ["pnpm", "exec", "vitest", "run", ...tests], {
-        cwd: candidate,
-        env: { ...process.env, CI: process.env.CI ?? "true" },
-      });
+      const testsByProject = Map.groupBy(
+        tests,
+        (test) => suite.testProjects[test],
+      );
+      for (const [project, projectTests] of testsByProject) {
+        if (!project) {
+          throw new Error(
+            `Mapped OpenClaw test has no Vitest project: ${projectTests[0]}`,
+          );
+        }
+        await run(
+          "corepack",
+          [
+            "pnpm",
+            "exec",
+            "vitest",
+            "run",
+            "--config",
+            `test/vitest/vitest.${project}.config.ts`,
+            ...projectTests,
+          ],
+          {
+            cwd: candidate,
+            env: { ...process.env, CI: process.env.CI ?? "true" },
+            timeoutMs: 10 * 60_000,
+          },
+        );
+      }
     }
 
     const candidateTests = [
@@ -152,6 +259,7 @@ async function runPatchSuite() {
             CI: process.env.CI ?? "true",
             OPENCLAW_CANDIDATE: candidate,
           },
+          timeoutMs: 5 * 60_000,
         },
       );
     }
@@ -180,6 +288,7 @@ installSignalHandlers({
 const command = process.argv[2];
 
 try {
+  validatePatchManifest();
   if (command === "ci") {
     await runRepositoryGates();
     await runPatchSuite();

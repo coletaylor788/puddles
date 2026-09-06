@@ -19,7 +19,12 @@
 
 set -euo pipefail
 
-OPENCLAW_SRC="${OPENCLAW_SRC:?set OPENCLAW_SRC to your OpenClaw source checkout at the target release}"
+OPENCLAW_SRC="${OPENCLAW_SRC:-}"
+OPENCLAW_ARTIFACT="${OPENCLAW_ARTIFACT:-}"
+OPENCLAW_ARTIFACT_SHA256="${OPENCLAW_ARTIFACT_SHA256:-}"
+OPENCLAW_BROWSER_ENTRYPOINT="${OPENCLAW_BROWSER_ENTRYPOINT:-}"
+OPENCLAW_POST_DEPLOY_CHECK="${OPENCLAW_POST_DEPLOY_CHECK:-}"
+OPENCLAW_TARGET_RESULT="${OPENCLAW_TARGET_RESULT:-}"
 MINI_HOST="${MINI_HOST:-}"
 MINI_SANDBOX_BUILD="${MINI_SANDBOX_BUILD:-/Users/puddles/.openclaw/sandbox-build}"
 REMOTE_STAGING_DIR="${REMOTE_STAGING_DIR:-/tmp}"
@@ -27,6 +32,8 @@ GATEWAY_LABEL="${GATEWAY_LABEL:-ai.openclaw.gateway}"
 GATEWAY_PORT="${GATEWAY_PORT:-18789}"
 GATEWAY_HEALTH_ATTEMPTS="${GATEWAY_HEALTH_ATTEMPTS:-30}"
 GATEWAY_HEALTH_INTERVAL_SECONDS="${GATEWAY_HEALTH_INTERVAL_SECONDS:-1}"
+REMOTE_RESULT_ATTEMPTS="${REMOTE_RESULT_ATTEMPTS:-120}"
+REMOTE_RESULT_INTERVAL_SECONDS="${REMOTE_RESULT_INTERVAL_SECONDS:-5}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 CLONE_HELPER="$HERE/clone-runtime-tree.py"
 STAGING_DIR=""
@@ -36,12 +43,20 @@ REMOTE_DEPLOY=false
 if [ -n "$MINI_HOST" ]; then
   REMOTE_DEPLOY=true
 fi
+SSH_CONTROL_PATH="${PUDDLES_SSH_CONTROL_PATH:-${TMPDIR:-/tmp}/puddles-openclaw-ssh-%C}"
+SSH_OPTIONS=(
+  -o BatchMode=yes
+  -o IdentitiesOnly=yes
+  -o ControlMaster=auto
+  -o ControlPersist=600
+  -o "ControlPath=$SSH_CONTROL_PATH"
+)
 
-if command -v pnpm >/dev/null 2>&1; then
+if [ -z "$OPENCLAW_ARTIFACT" ] && command -v pnpm >/dev/null 2>&1; then
   PNPM_COMMAND=(pnpm)
-elif command -v corepack >/dev/null 2>&1; then
+elif [ -z "$OPENCLAW_ARTIFACT" ] && command -v corepack >/dev/null 2>&1; then
   PNPM_COMMAND=(corepack pnpm)
-else
+elif [ -z "$OPENCLAW_ARTIFACT" ]; then
   echo "ERROR: pnpm is required directly or through corepack" >&2
   exit 1
 fi
@@ -88,6 +103,32 @@ validate_tarball_dependencies() {
   '
 }
 
+sha256_file() {
+  shasum -a 256 "$1" | awk '{print $1}'
+}
+
+if [ -n "$OPENCLAW_ARTIFACT" ]; then
+  [ -f "$OPENCLAW_ARTIFACT" ] || {
+    echo "ERROR: immutable artifact is missing: $OPENCLAW_ARTIFACT" >&2
+    exit 1
+  }
+  if [ "${#OPENCLAW_ARTIFACT_SHA256}" -ne 64 ]; then
+    echo "ERROR: OPENCLAW_ARTIFACT_SHA256 must be a lowercase SHA-256 digest" >&2
+    exit 1
+  fi
+  case "$OPENCLAW_ARTIFACT_SHA256" in
+    *[!0-9a-f]*) echo "ERROR: OPENCLAW_ARTIFACT_SHA256 must be a lowercase SHA-256 digest" >&2; exit 1 ;;
+  esac
+  ACTUAL_ARTIFACT_SHA256="$(sha256_file "$OPENCLAW_ARTIFACT")"
+  [ "$ACTUAL_ARTIFACT_SHA256" = "$OPENCLAW_ARTIFACT_SHA256" ] || {
+    echo "ERROR: immutable artifact digest changed" >&2
+    exit 1
+  }
+elif [ -z "$OPENCLAW_SRC" ]; then
+  echo "ERROR: set OPENCLAW_ARTIFACT or OPENCLAW_SRC" >&2
+  exit 1
+fi
+
 case "$GATEWAY_HEALTH_ATTEMPTS" in
   ""|*[!0-9]*|0) echo "GATEWAY_HEALTH_ATTEMPTS must be a positive integer" >&2; exit 1 ;;
 esac
@@ -96,6 +137,12 @@ case "$GATEWAY_HEALTH_INTERVAL_SECONDS" in
 esac
 case "$GATEWAY_PORT" in
   ""|*[!0-9]*|0) echo "GATEWAY_PORT must be a positive integer" >&2; exit 1 ;;
+esac
+case "$REMOTE_RESULT_ATTEMPTS" in
+  ""|*[!0-9]*|0) echo "REMOTE_RESULT_ATTEMPTS must be a positive integer" >&2; exit 1 ;;
+esac
+case "$REMOTE_RESULT_INTERVAL_SECONDS" in
+  ""|*[!0-9]*|0) echo "REMOTE_RESULT_INTERVAL_SECONDS must be a positive integer" >&2; exit 1 ;;
 esac
 [ -f "$CLONE_HELPER" ] || {
   echo "missing runtime clone helper: $CLONE_HELPER" >&2
@@ -115,6 +162,11 @@ CLEANUP_CANDIDATE="$6"
 ENTRY_SOURCE="$7"
 SANDBOX_BUILD="$8"
 CLONE_HELPER="$9"
+POST_DEPLOY_CHECK="${10}"
+TARGET_RESULT="${11}"
+EXPECTED_ARTIFACT_SHA256="${12}"
+export PATH="${13}"
+SELF_PATH="${14:-}"
 STATE_DIR="${OPENCLAW_STATE_DIR:-$HOME/.openclaw}"
 BACKUP_ROOT="${OPENCLAW_DEPLOY_BACKUP_ROOT:-$HOME/.openclaw-deploy-backups}"
 LOCK_DIR="${OPENCLAW_DEPLOY_LOCK_DIR:-$HOME/.openclaw-deploy.lock}"
@@ -140,11 +192,54 @@ BROWSER_IMAGE_OWNED=0
 BROWSER_IMAGE_PROMOTION_OWNED=0
 CANDIDATE_BROWSER_IMAGE_ID=""
 
+write_target_result() {
+  status="$1"
+  detail="$2"
+  [ -n "$TARGET_RESULT" ] || return 0
+  mkdir -p "$(dirname "$TARGET_RESULT")"
+  temporary="$TARGET_RESULT.tmp.$$"
+  node - "$temporary" "$status" "$detail" "$RECOVERY_DIR" "$EXPECTED_ARTIFACT_SHA256" <<'NODE'
+const fs = require("node:fs");
+const [path, status, detail, recoveryDir, artifactSha256] = process.argv.slice(2);
+const descriptor = fs.openSync(path, "wx", 0o600);
+fs.writeFileSync(descriptor, `${JSON.stringify({
+  schemaVersion: 1,
+  stage: "deployment",
+  status,
+  detail,
+  recoveryDir,
+  artifactSha256,
+  completedAt: new Date().toISOString(),
+}, null, 2)}\n`);
+fs.fsyncSync(descriptor);
+fs.closeSync(descriptor);
+NODE
+  mv "$temporary" "$TARGET_RESULT"
+  python3 - "$(dirname "$TARGET_RESULT")" <<'PY'
+import os
+import sys
+
+descriptor = os.open(sys.argv[1], os.O_RDONLY)
+try:
+    os.fsync(descriptor)
+finally:
+    os.close(descriptor)
+PY
+}
+
+actual_artifact_sha256="$(shasum -a 256 "$CANDIDATE_TARBALL" | awk '{print $1}')"
+if [ "$actual_artifact_sha256" != "$EXPECTED_ARTIFACT_SHA256" ]; then
+  write_target_result "failed" "transferred artifact digest does not match"
+  echo "    ERROR: transferred artifact digest does not match" >&2
+  exit 1
+fi
+
 cleanup() {
   if [ "$CLEANUP_CANDIDATE" = "true" ]; then
     rm -f "$CANDIDATE_TARBALL"
     [ -n "$ENTRY_SOURCE" ] && rm -f "$ENTRY_SOURCE"
     rm -f "$CLONE_HELPER"
+    [ -n "$SELF_PATH" ] && rm -f "$SELF_PATH"
   fi
   if [ "$BROWSER_IMAGE_OWNED" -eq 1 ] && command -v docker >/dev/null 2>&1; then
     docker image rm "$CANDIDATE_BROWSER_IMAGE" >/dev/null 2>&1 || true
@@ -438,6 +533,7 @@ rollback_and_exit() {
   if [ -n "$rollback_signal" ]; then
     echo "    rollback completed to a safe terminal state after deferred signal(s): $rollback_signal" >&2
   fi
+  write_target_result "failed" "$reason; rollback_failed=$rollback_failed"
   exit "$original_status"
 }
 
@@ -447,6 +543,7 @@ on_signal() {
   if [ "$ROLLBACK_ACTIVE" -eq 0 ] && [ "$GATEWAY_QUIESCED" -eq 1 ]; then
     rollback_and_exit "$status" "deployment interrupted by $signal"
   fi
+  write_target_result "failed" "deployment interrupted by $signal before gateway quiesce"
   exit "$status"
 }
 
@@ -456,6 +553,7 @@ on_unexpected_error() {
   if [ "$ROLLBACK_ACTIVE" -eq 0 ] && [ "$GATEWAY_QUIESCED" -eq 1 ]; then
     rollback_and_exit "$status" "unexpected deployment failure at target-script line $line"
   fi
+  write_target_result "failed" "unexpected deployment failure at target-script line $line before gateway quiesce"
   exit "$status"
 }
 trap 'on_unexpected_error "$LINENO"' ERR
@@ -506,14 +604,17 @@ refresh_browser_sandbox() {
 
 [ -d "$STATE_DIR" ] || {
   echo "    ERROR: runtime state directory is missing: $STATE_DIR" >&2
+  write_target_result "failed" "runtime state directory is missing: $STATE_DIR"
   exit 1
 }
 [ ! -L "$STATE_DIR" ] || {
   echo "    ERROR: runtime state directory must not be a symlink: $STATE_DIR" >&2
+  write_target_result "failed" "runtime state directory must not be a symlink: $STATE_DIR"
   exit 1
 }
 [ -r "$GATEWAY_PLIST" ] || {
   echo "    ERROR: readable gateway service definition is missing: $GATEWAY_PLIST" >&2
+  write_target_result "failed" "readable gateway service definition is missing: $GATEWAY_PLIST"
   exit 1
 }
 python3 "$CLONE_HELPER" --validate-destination "$STATE_DIR" "$STATE_SNAPSHOT"
@@ -525,18 +626,22 @@ if [ -d "$GLOBAL_ROOT/openclaw" ]; then
   PREVIOUS_TARBALL="$RECOVERY_DIR/$previous_name"
   [ -f "$PREVIOUS_TARBALL" ] || {
     echo "    ERROR: failed to preserve the currently installed package" >&2
+    write_target_result "failed" "failed to preserve the currently installed package"
     exit 1
   }
   normalize_tarball_workspace_dependencies "$PREVIOUS_TARBALL" "$GLOBAL_ROOT/openclaw" || {
     echo "    ERROR: failed to normalize the currently installed package snapshot" >&2
+    write_target_result "failed" "failed to normalize the currently installed package snapshot"
     exit 1
   }
   validate_tarball_dependencies "$PREVIOUS_TARBALL" || {
     echo "    ERROR: currently installed package snapshot is not reinstallable" >&2
+    write_target_result "failed" "currently installed package snapshot is not reinstallable"
     exit 1
   }
 else
   echo "    ERROR: no existing OpenClaw package is available to snapshot" >&2
+  write_target_result "failed" "no existing OpenClaw package is available to snapshot"
   exit 1
 fi
 
@@ -560,6 +665,11 @@ fi
 refresh_browser_sandbox
 restart_gateway || rollback_and_exit "$?" "gateway restart failed"
 wait_for_gateway || rollback_and_exit "$?" "gateway did not become healthy on local port $GATEWAY_PORT after $HEALTH_ATTEMPTS attempts"
+if [ -n "$POST_DEPLOY_CHECK" ]; then
+  "$POST_DEPLOY_CHECK" ||
+    rollback_and_exit "$?" "post-deploy validation or landing check failed"
+fi
+write_target_result "passed" "installed, validated, and landed"
 GATEWAY_QUIESCED=0
 trap - ERR INT TERM HUP
 echo "    installed + gateway healthy"
@@ -580,48 +690,58 @@ PATCHES=(
 # NOTE: apply-cron-announce-fix is intentionally NOT listed — it is under
 # validate-then-decide review against this release (see cron-announce-fix.md).
 
-SOURCE_LOCK_DIR="$(git -C "$OPENCLAW_SRC" rev-parse --path-format=absolute --git-path puddles-deploy.lock)"
-if ! mkdir "$SOURCE_LOCK_DIR" 2>/dev/null; then
-  echo "    ERROR: another deployment is building from $OPENCLAW_SRC" >&2
-  exit 1
-fi
-SOURCE_LOCK_ACQUIRED=true
-printf '%s\n' "$$" > "$SOURCE_LOCK_DIR/pid"
-
-echo "==> Applying ${#PATCHES[@]} source patches to $OPENCLAW_SRC"
-cd "$OPENCLAW_SRC"
-if ! git diff --quiet || ! git diff --cached --quiet; then
-  echo "    ERROR: $OPENCLAW_SRC has uncommitted changes. Check out a clean target release first." >&2
-  exit 1
-fi
-for p in "${PATCHES[@]}"; do
-  f="$HERE/$p.patch"
-  [ -f "$f" ] || { echo "    missing patch: $f" >&2; exit 1; }
-  if git apply --check "$f" 2>/dev/null; then
-    git apply "$f"
-    echo "    applied $p"
-  elif git apply --reverse --check "$f" 2>/dev/null; then
-    echo "    already applied: $p (skipping)"
-  else
-    echo "    ERROR: $p does not apply to this checkout (upstream refactor?)." >&2
+if [ -n "$OPENCLAW_ARTIFACT" ]; then
+  echo "==> Using immutable validated artifact"
+  TARBALL="$OPENCLAW_ARTIFACT"
+else
+  SOURCE_LOCK_DIR="$(git -C "$OPENCLAW_SRC" rev-parse --path-format=absolute --git-path puddles-deploy.lock)"
+  if ! mkdir "$SOURCE_LOCK_DIR" 2>/dev/null; then
+    echo "    ERROR: another deployment is building from $OPENCLAW_SRC" >&2
     exit 1
   fi
-done
+  SOURCE_LOCK_ACQUIRED=true
+  printf '%s\n' "$$" > "$SOURCE_LOCK_DIR/pid"
 
-echo "==> Materializing patched dependencies"
-run_pnpm install --frozen-lockfile
+  echo "==> Applying ${#PATCHES[@]} source patches to $OPENCLAW_SRC"
+  cd "$OPENCLAW_SRC"
+  if ! git diff --quiet || ! git diff --cached --quiet; then
+    echo "    ERROR: $OPENCLAW_SRC has uncommitted changes. Check out a clean target release first." >&2
+    exit 1
+  fi
+  for p in "${PATCHES[@]}"; do
+    f="$HERE/$p.patch"
+    [ -f "$f" ] || { echo "    missing patch: $f" >&2; exit 1; }
+    if git apply --check "$f" 2>/dev/null; then
+      git apply "$f"
+      echo "    applied $p"
+    elif git apply --reverse --check "$f" 2>/dev/null; then
+      echo "    already applied: $p (skipping)"
+    else
+      echo "    ERROR: $p does not apply to this checkout (upstream refactor?)." >&2
+      exit 1
+    fi
+  done
 
-echo "==> Building from source (pnpm build)"
-NODE_OPTIONS=--max-old-space-size=8192 run_pnpm build
+  echo "==> Materializing patched dependencies"
+  time run_pnpm install --frozen-lockfile
 
-echo "==> Packing"
-STAGING_DIR="$(mktemp -d "${TMPDIR:-/tmp}/puddles-openclaw-deploy.XXXXXX")"
-TARBALL="$(run_pnpm pack --config.ignore-scripts=true --pack-destination "$STAGING_DIR" | tail -1)"
-case "$TARBALL" in
-  /*) ;;
-  *) TARBALL="$STAGING_DIR/$TARBALL" ;;
-esac
+  echo "==> Building from source (pnpm build)"
+  time NODE_OPTIONS=--max-old-space-size=8192 run_pnpm build
+
+  echo "==> Packing"
+  STAGING_DIR="$(mktemp -d "${TMPDIR:-/tmp}/puddles-openclaw-deploy.XXXXXX")"
+  TARBALL="$(run_pnpm pack --config.ignore-scripts=true --pack-destination "$STAGING_DIR" | tail -1)"
+  case "$TARBALL" in
+    /*) ;;
+    *) TARBALL="$STAGING_DIR/$TARBALL" ;;
+  esac
+fi
 [ -f "$TARBALL" ] || { echo "    pack produced no tarball" >&2; exit 1; }
+if [ -n "$OPENCLAW_ARTIFACT_SHA256" ] &&
+   [ "$(sha256_file "$TARBALL")" != "$OPENCLAW_ARTIFACT_SHA256" ]; then
+  echo "    ERROR: immutable artifact digest changed before deployment" >&2
+  exit 1
+fi
 validate_tarball_dependencies "$TARBALL" || {
   echo "    ERROR: candidate package contains unresolved workspace dependencies" >&2
   exit 1
@@ -629,7 +749,7 @@ validate_tarball_dependencies "$TARBALL" || {
 TARBALL_NAME="$(basename "$TARBALL")"
 echo "    $TARBALL_NAME"
 
-ENTRY_SRC="$OPENCLAW_SRC/scripts/sandbox-browser-entrypoint.sh"
+ENTRY_SRC="${OPENCLAW_BROWSER_ENTRYPOINT:-${OPENCLAW_SRC:+$OPENCLAW_SRC/scripts/sandbox-browser-entrypoint.sh}}"
 ENTRY_CANDIDATE=""
 if [ -f "$ENTRY_SRC" ] && grep -qE "FIX-BROWSER-(USERDATA-DIR|SINGLETON-CLEAN)" "$ENTRY_SRC"; then
   ENTRY_CANDIDATE="$ENTRY_SRC"
@@ -637,16 +757,63 @@ fi
 
 if $REMOTE_DEPLOY; then
   echo "==> Installing on $MINI_HOST + migrating state + verifying gateway"
-  REMOTE_TARBALL="$REMOTE_STAGING_DIR/puddles-openclaw-$(date -u +%Y%m%dT%H%M%SZ)-$$-$RANDOM.tgz"
+  ARTIFACT_DIGEST="${OPENCLAW_ARTIFACT_SHA256:-$(sha256_file "$TARBALL")}"
+  if [ -n "$OPENCLAW_TARGET_RESULT" ]; then
+    RUN_TOKEN="$(printf '%s' "$OPENCLAW_TARGET_RESULT" | shasum -a 256 | awk '{print substr($1, 1, 20)}')"
+  else
+    RUN_TOKEN="$(date -u +%Y%m%dT%H%M%SZ)-$$-$RANDOM"
+  fi
+  REMOTE_TARBALL="$REMOTE_STAGING_DIR/puddles-openclaw-$RUN_TOKEN.tgz"
   REMOTE_ENTRYPOINT=""
   REMOTE_CLONE_HELPER="${REMOTE_TARBALL%.tgz}-clone-runtime-tree.py"
-  scp "$TARBALL" "$MINI_HOST:$REMOTE_TARBALL"
-  scp "$CLONE_HELPER" "$MINI_HOST:$REMOTE_CLONE_HELPER"
+  REMOTE_POST_CHECK=""
+  REMOTE_TARGET_RESULT="${REMOTE_TARBALL%.tgz}-result.json"
+  REMOTE_DEPLOY_SCRIPT="${REMOTE_TARBALL%.tgz}-deploy.sh"
+  REMOTE_DEPLOY_LOG="${REMOTE_TARBALL%.tgz}-deploy.log"
+  if [ -z "$STAGING_DIR" ]; then
+    STAGING_DIR="$(mktemp -d "${TMPDIR:-/tmp}/puddles-openclaw-deploy.XXXXXX")"
+  fi
+  LOCAL_DEPLOY_SCRIPT="$STAGING_DIR/target-deploy.sh"
+  LOCAL_TARGET_RESULT="${OPENCLAW_TARGET_RESULT:-$STAGING_DIR/target-result.json}"
+  rm -f "$LOCAL_TARGET_RESULT"
+  if scp "${SSH_OPTIONS[@]}" \
+    "$MINI_HOST:$REMOTE_TARGET_RESULT" \
+    "$LOCAL_TARGET_RESULT" >/dev/null 2>&1; then
+    node - "$LOCAL_TARGET_RESULT" "$ARTIFACT_DIGEST" <<'NODE'
+const value = JSON.parse(require("node:fs").readFileSync(process.argv[2]));
+const expectedDigest = process.argv[3];
+if (value.artifactSha256 !== expectedDigest) {
+  throw new Error("existing remote receipt does not match the immutable artifact");
+}
+if (value.status === "failed") {
+  throw new Error(`previous remote deployment failed: ${value.detail}`);
+}
+if (value.status !== "passed") {
+  throw new Error(`existing remote receipt has invalid status: ${value.status}`);
+}
+NODE
+    echo "==> Reconciled completed remote deployment"
+    echo
+    echo "==> Deployed. Validate:"
+    echo "    openclaw --version"
+    echo "    openclaw gateway status"
+    exit 0
+  fi
+  target_deploy_script > "$LOCAL_DEPLOY_SCRIPT"
+  chmod 700 "$LOCAL_DEPLOY_SCRIPT"
+  scp "${SSH_OPTIONS[@]}" "$TARBALL" "$MINI_HOST:$REMOTE_TARBALL"
+  scp "${SSH_OPTIONS[@]}" "$CLONE_HELPER" "$MINI_HOST:$REMOTE_CLONE_HELPER"
+  scp "${SSH_OPTIONS[@]}" "$LOCAL_DEPLOY_SCRIPT" "$MINI_HOST:$REMOTE_DEPLOY_SCRIPT"
   if [ -n "$ENTRY_CANDIDATE" ]; then
     REMOTE_ENTRYPOINT="${REMOTE_TARBALL%.tgz}-sandbox-browser-entrypoint.sh"
-    scp "$ENTRY_CANDIDATE" "$MINI_HOST:$REMOTE_ENTRYPOINT"
+    scp "${SSH_OPTIONS[@]}" "$ENTRY_CANDIDATE" "$MINI_HOST:$REMOTE_ENTRYPOINT"
   fi
-  REMOTE_COMMAND="/bin/bash -s --"
+  if [ -n "$OPENCLAW_POST_DEPLOY_CHECK" ]; then
+    REMOTE_POST_CHECK="${REMOTE_TARBALL%.tgz}-post-check"
+    scp "${SSH_OPTIONS[@]}" "$OPENCLAW_POST_DEPLOY_CHECK" "$MINI_HOST:$REMOTE_POST_CHECK"
+    ssh "${SSH_OPTIONS[@]}" "$MINI_HOST" "chmod 700 $(shell_quote "$REMOTE_POST_CHECK")"
+  fi
+  REMOTE_COMMAND="nohup /bin/bash $(shell_quote "$REMOTE_DEPLOY_SCRIPT")"
   for arg in \
     "$REMOTE_TARBALL" \
     "$GATEWAY_LABEL" \
@@ -656,11 +823,54 @@ if $REMOTE_DEPLOY; then
     true \
     "$REMOTE_ENTRYPOINT" \
     "$MINI_SANDBOX_BUILD" \
-    "$REMOTE_CLONE_HELPER"; do
+    "$REMOTE_CLONE_HELPER" \
+    "$REMOTE_POST_CHECK" \
+    "$REMOTE_TARGET_RESULT" \
+    "$ARTIFACT_DIGEST" \
+    "${OPENCLAW_DEPLOY_PATH:-/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin}" \
+    "$REMOTE_DEPLOY_SCRIPT"; do
     REMOTE_COMMAND="$REMOTE_COMMAND $(shell_quote "$arg")"
   done
-  target_deploy_script |
-    ssh "$MINI_HOST" "$REMOTE_COMMAND"
+  REMOTE_COMMAND="$REMOTE_COMMAND >$(shell_quote "$REMOTE_DEPLOY_LOG") 2>&1 </dev/null &"
+  set +e
+  ssh "${SSH_OPTIONS[@]}" "$MINI_HOST" "$REMOTE_COMMAND"
+  REMOTE_LAUNCH_STATUS="$?"
+  set -e
+  if [ "$REMOTE_LAUNCH_STATUS" -ne 0 ]; then
+    echo "    SSH launch acknowledgement failed; reconciling the target receipt" >&2
+  fi
+  attempt=1
+  while [ "$attempt" -le "$REMOTE_RESULT_ATTEMPTS" ]; do
+    if scp "${SSH_OPTIONS[@]}" \
+      "$MINI_HOST:$REMOTE_TARGET_RESULT" \
+      "$LOCAL_TARGET_RESULT" >/dev/null 2>&1; then
+      break
+    fi
+    if [ "$attempt" -lt "$REMOTE_RESULT_ATTEMPTS" ]; then
+      /bin/sleep "$REMOTE_RESULT_INTERVAL_SECONDS"
+    fi
+    attempt=$((attempt + 1))
+  done
+  [ -f "$LOCAL_TARGET_RESULT" ] || {
+    REMOTE_LOG_LOCAL="$STAGING_DIR/remote-deploy.log"
+    if scp "${SSH_OPTIONS[@]}" \
+      "$MINI_HOST:$REMOTE_DEPLOY_LOG" \
+      "$REMOTE_LOG_LOCAL" >/dev/null 2>&1; then
+      cat "$REMOTE_LOG_LOCAL" >&2
+    fi
+    echo "ERROR: remote deployment completion remains ambiguous after bounded receipt polling" >&2
+    exit 1
+  }
+  node - "$LOCAL_TARGET_RESULT" "$ARTIFACT_DIGEST" <<'NODE'
+const value = JSON.parse(require("node:fs").readFileSync(process.argv[2]));
+const expectedDigest = process.argv[3];
+if (value.artifactSha256 !== expectedDigest) {
+  throw new Error("remote deployment receipt does not match the immutable artifact");
+}
+if (value.status !== "passed") {
+  throw new Error(`remote deployment failed: ${value.detail}`);
+}
+NODE
 else
   echo "==> Installing locally + migrating state + verifying gateway"
   target_deploy_script |
@@ -673,7 +883,12 @@ else
       false \
       "$ENTRY_CANDIDATE" \
       "$MINI_SANDBOX_BUILD" \
-      "$CLONE_HELPER"
+      "$CLONE_HELPER" \
+      "$OPENCLAW_POST_DEPLOY_CHECK" \
+      "$OPENCLAW_TARGET_RESULT" \
+      "${OPENCLAW_ARTIFACT_SHA256:-$(sha256_file "$TARBALL")}" \
+      "${OPENCLAW_DEPLOY_PATH:-/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin}" \
+      ""
 fi
 
 echo

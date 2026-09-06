@@ -54,7 +54,7 @@ describe("shared explanation workflow", () => {
 
 describe("adversarial review workflow", () => {
   it("reuses one reviewer throughout remediation without narrowing review", () => {
-    expect(safeWorkflow).toContain('version: "1.7.0"');
+    expect(safeWorkflow).toContain('version: "1.8.0"');
     expect(safeWorkflow).toMatch(/retain its worker handle/i);
     expect(safeWorkflow).toMatch(/resume or restart that same reviewer/i);
     expect(safeWorkflow).toMatch(
@@ -67,9 +67,7 @@ describe("adversarial review workflow", () => {
     expect(safeWorkflow).not.toContain(
       "Then launch another fresh adversarial reviewer",
     );
-    expect(safeWorkflow).toMatch(
-      /terminal fresh review against that\s+exact commit/i,
-    );
+    expect(safeWorkflow).toMatch(/Do not launch a second terminal reviewer/i);
     expect(safeWorkflow).toMatch(
       /Triage every finding using engineering judgment/i,
     );
@@ -85,7 +83,10 @@ describe("adversarial review workflow", () => {
     );
     expect(safeWorkflow).toMatch(/do not require a\s+new finding or code change/i);
 
-    expect(reviewWorkflow).toContain('version: "1.3.0"');
+    expect(reviewWorkflow).toContain('version: "1.4.0"');
+    expect(reviewWorkflow).toMatch(
+      /single independent pull-request review\s+process/i,
+    );
     expect(reviewWorkflow).toMatch(/When resumed after remediation/i);
     expect(reviewWorkflow).toMatch(/Verify each\s+claimed correction/i);
     expect(reviewWorkflow).toMatch(/re-check the complete\s+current diff/i);
@@ -189,10 +190,10 @@ describe("adversarial review workflow", () => {
       /Do not stop at an open pull request or a\s+`Ready for review` state/i,
     );
     expect(remoteIntegrationWorkflow).toMatch(
-      /terminal-reviewed candidate is remotely green, mergeable, and has\s+no unresolved required review[\s\S]*exact head commit and the current\s+base-branch commit[\s\S]*Do not merge a candidate[\s\S]*promotion and production validation complete/i,
+      /retained-review candidate is remotely green, mergeable, and has\s+no unresolved required review[\s\S]*exact head commit and the current\s+base-branch commit[\s\S]*Do not merge a candidate[\s\S]*promotion and production validation complete/i,
     );
     expect(remoteIntegrationWorkflow).toMatch(
-      /Any candidate change invalidates the terminal review[\s\S]*applicable validation, full integration pool, retained-review recheck,[\s\S]*fresh terminal review[\s\S]*repeating\s+all remote integration gates/i,
+      /Any candidate change invalidates the retained review result[\s\S]*applicable validation, full integration pool, and retained-review[\s\S]*recheck before pushing the new candidate and repeating all remote[\s\S]*integration gates/i,
     );
     expect(closeoutWorkflow).toMatch(
       /Immediately before merge[\s\S]*head and base are the exact remotely approved commits recorded before\s+promotion[\s\S]*head completed applicable promotion and production\s+validation/i,

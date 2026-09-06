@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -48,6 +49,7 @@ interface DeploymentOptions {
   healthFailures?: number;
   healthAttempts?: number;
   imageInspectFailureCall?: number;
+  immutableArtifact?: boolean;
   lockHeld?: boolean;
   missingPreviousWorkspaceDependency?: boolean;
   missingPlist?: boolean;
@@ -56,6 +58,7 @@ interface DeploymentOptions {
   previousCliSwallowsDiscovery?: boolean;
   remotePathsWithSpaces?: boolean;
   remoteGatewayHealthy?: boolean;
+  remoteReceiptMisses?: number;
   reverseCloneFails?: boolean;
   rollbackShutdownNeverCompletes?: boolean;
   rollbackHealthInterrupts?: boolean;
@@ -65,8 +68,11 @@ interface DeploymentOptions {
   sandboxRecreateFailsPersistently?: boolean;
   shutdownDelayChecks?: number;
   sourceLockHeld?: boolean;
+  sshDisconnectsAfterCompletion?: boolean;
   symlinkStateRoot?: boolean;
   stopInterrupts?: boolean;
+  postCheckFails?: boolean;
+  preexistingRemoteReceipt?: boolean;
 }
 
 interface DeploymentResult {
@@ -152,6 +158,32 @@ function runDeployment(options: DeploymentOptions = {}): DeploymentResult {
     mkdirSync(sourceLock);
     writeFileSync(join(sourceLock, "pid"), "other-build");
   }
+  const immutableArtifact = join(root, "immutable-openclaw.tgz");
+  if (options.immutableArtifact) {
+    const packageRoot = join(root, "immutable-package", "package");
+    mkdirSync(packageRoot, { recursive: true });
+    writeFileSync(
+      join(packageRoot, "package.json"),
+      JSON.stringify({
+        name: "openclaw",
+        version: "2026.7.1",
+        dependencies: { "@openclaw/ai": "2026.7.1" },
+      }),
+    );
+    spawnSync("/usr/bin/tar", [
+      "-czf",
+      immutableArtifact,
+      "-C",
+      dirname(packageRoot),
+      "package",
+    ]);
+  }
+  const postCheck = join(root, "post-check");
+  writeFileSync(
+    postCheck,
+    `#!/bin/sh\nprintf passed > "$HOME/post-check-ran"\nexit ${options.postCheckFails ? 1 : 0}\n`,
+  );
+  chmodSync(postCheck, 0o755);
 
   const mock = `#!/bin/sh
 name="$(basename "$0")"
@@ -350,8 +382,24 @@ elif [ "$name" = docker ]; then
     exit 49
   fi
 elif [ "$name" = scp ]; then
+  while [ "\${1:-}" = -o ]; do shift 2; done
   source_path="$1"
-  target_path="\${2#*:}"
+  target_path="$2"
+  case "$source_path" in
+    *:*) source_path="\${source_path#*:}" ;;
+    *) target_path="\${target_path#*:}" ;;
+  esac
+  if printf '%s' "$source_path" | grep -q -- '-result\\.json$'; then
+    receipt_fetches=0
+    [ -f "$MOCK_RECEIPT_FETCH_COUNT" ] &&
+      receipt_fetches="$(cat "$MOCK_RECEIPT_FETCH_COUNT")"
+    receipt_fetches=$((receipt_fetches + 1))
+    printf '%s\\n' "$receipt_fetches" > "$MOCK_RECEIPT_FETCH_COUNT"
+    if [ "$receipt_fetches" -le "\${MOCK_REMOTE_RECEIPT_MISSES:-0}" ]; then
+      exit 1
+    fi
+    [ -f "$source_path" ] || /bin/sleep 0.2
+  fi
   mkdir -p "$(dirname "$target_path")"
   cp "$source_path" "$target_path"
 elif [ "$name" = launchctl ]; then
@@ -386,8 +434,16 @@ elif [ "$name" = launchctl ]; then
     : > "$MOCK_LAUNCH_STATE"
   fi
 elif [ "$name" = ssh ]; then
+  while [ "\${1:-}" = -o ]; do shift 2; done
   shift
-  exec /bin/bash -c "$1"
+  command="$1"
+  /bin/bash -c "$command"
+  status="$?"
+  if [ "\${MOCK_SSH_DISCONNECTS_AFTER_COMPLETION:-0}" = 1 ] &&
+     printf '%s' "$command" | grep -q 'nohup /bin/bash'; then
+    exit 255
+  fi
+  exit "$status"
 fi
 `;
   for (const command of [
@@ -443,6 +499,8 @@ fi
     MOCK_PREVIOUS_CLI_SWALLOWS_DISCOVERY:
       options.previousCliSwallowsDiscovery ? "1" : "0",
     MOCK_REMOTE_GATEWAY_HEALTHY: options.remoteGatewayHealthy ? "1" : "0",
+    MOCK_REMOTE_RECEIPT_MISSES: String(options.remoteReceiptMisses ?? 0),
+    MOCK_RECEIPT_FETCH_COUNT: join(root, "receipt-fetch-count"),
     MOCK_ROLLBACK_SHUTDOWN_NEVER_COMPLETES:
       options.rollbackShutdownNeverCompletes ? "1" : "0",
     MOCK_ROLLBACK_HEALTH_INTERRUPTS: options.rollbackHealthInterrupts ? "1" : "0",
@@ -456,11 +514,16 @@ fi
     MOCK_SHUTDOWN_DELAY: join(root, "shutdown-delay"),
     MOCK_SHUTDOWN_DELAY_CHECKS: String(options.shutdownDelayChecks ?? 0),
     MOCK_SOURCE_LOCK: sourceLock,
+    MOCK_SSH_DISCONNECTS_AFTER_COMPLETION:
+      options.sshDisconnectsAfterCompletion ? "1" : "0",
     MOCK_STOP_INTERRUPTS: options.stopInterrupts ? "1" : "0",
     OPENCLAW_SRC: source,
+    OPENCLAW_DEPLOY_PATH: `${bin}:/usr/bin:/bin`,
     MINI_SANDBOX_BUILD: sandboxBuild,
     PATH: `${bin}:/usr/bin:/bin`,
     REMOTE_STAGING_DIR: remoteStaging,
+    REMOTE_RESULT_ATTEMPTS: "3",
+    REMOTE_RESULT_INTERVAL_SECONDS: "1",
     TMPDIR: tempDir,
   };
   if (options.backupRootInsideState) {
@@ -476,6 +539,37 @@ fi
     env.MINI_HOST = options.miniHost;
   } else {
     delete env.MINI_HOST;
+  }
+  if (options.immutableArtifact) {
+    env.OPENCLAW_ARTIFACT = immutableArtifact;
+    env.OPENCLAW_ARTIFACT_SHA256 = createHash("sha256")
+      .update(readFileSync(immutableArtifact))
+      .digest("hex");
+    env.OPENCLAW_BROWSER_ENTRYPOINT = join(
+      source,
+      "scripts",
+      "sandbox-browser-entrypoint.sh",
+    );
+    env.OPENCLAW_POST_DEPLOY_CHECK = postCheck;
+    env.OPENCLAW_TARGET_RESULT = join(root, "deployment-result.json");
+    if (options.preexistingRemoteReceipt && options.miniHost) {
+      const runToken = createHash("sha256")
+        .update(env.OPENCLAW_TARGET_RESULT)
+        .digest("hex")
+        .slice(0, 20);
+      writeFileSync(
+        join(remoteStaging, `puddles-openclaw-${runToken}-result.json`),
+        JSON.stringify({
+          schemaVersion: 1,
+          stage: "deployment",
+          status: "passed",
+          detail: "deployment completed",
+          recoveryDir: join(root, "prior-recovery"),
+          artifactSha256: env.OPENCLAW_ARTIFACT_SHA256,
+          completedAt: new Date().toISOString(),
+        }),
+      );
+    }
   }
 
   const result = spawnSync("/bin/bash", [deployScript], {
@@ -714,6 +808,107 @@ describe("OpenClaw deployment topology", () => {
     ).toBe(true);
   });
 
+  it("deploys an immutable artifact without rebuilding it", () => {
+    const result = runDeployment({ immutableArtifact: true });
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.lines).not.toContain("pnpm\tinstall\t--frozen-lockfile");
+    expect(result.lines).not.toContain("pnpm\tbuild");
+    expect(result.lines).not.toContainEqual(
+      expect.stringMatching(/^pnpm\tpack\t/),
+    );
+    expect(result.lines).toContainEqual(
+      expect.stringMatching(/^npm\tinstall\t-g\t.*immutable-openclaw\.tgz$/),
+    );
+    expect(readFileSync(join(result.root, "post-check-ran"), "utf8")).toBe(
+      "passed",
+    );
+    expect(
+      JSON.parse(
+        readFileSync(join(result.root, "deployment-result.json"), "utf8"),
+      ).status,
+    ).toBe("passed");
+  });
+
+  it("rolls back when post-deploy validation fails", () => {
+    const result = runDeployment({
+      immutableArtifact: true,
+      postCheckFails: true,
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(
+      "post-deploy validation or landing check failed",
+    );
+    expect(result.lines).toContainEqual(
+      expect.stringMatching(/^npm\tinstall\t-g\t.*openclaw-previous\.tgz$/),
+    );
+    expect(
+      JSON.parse(
+        readFileSync(join(result.root, "deployment-result.json"), "utf8"),
+      ).status,
+    ).toBe("failed");
+  });
+
+  it("uses the durable target receipt after an SSH disconnect", () => {
+    const result = runDeployment({
+      immutableArtifact: true,
+      miniHost: "approved-mini",
+      sshDisconnectsAfterCompletion: true,
+      remoteReceiptMisses: 2,
+    });
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    const receipt = JSON.parse(
+      readFileSync(join(result.root, "deployment-result.json"), "utf8"),
+    );
+    expect(receipt.status).toBe("passed");
+    expect(receipt.artifactSha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(
+      Number(readFileSync(join(result.root, "receipt-fetch-count"), "utf8")),
+    ).toBeGreaterThanOrEqual(3);
+  });
+
+  it("reconciles a completed remote receipt without redeploying", () => {
+    const result = runDeployment({
+      immutableArtifact: true,
+      miniHost: "approved-mini",
+      preexistingRemoteReceipt: true,
+    });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.stdout).toContain("Reconciled completed remote deployment");
+    expect(result.lines).not.toContainEqual(
+      expect.stringMatching(/^npm\tinstall\t-g\t/),
+    );
+  });
+
+  it("fails clearly when remote receipt polling expires", () => {
+    const result = runDeployment({
+      immutableArtifact: true,
+      miniHost: "approved-mini",
+      remoteReceiptMisses: 10,
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(
+      "remote deployment completion remains ambiguous after bounded receipt polling",
+    );
+  });
+
+  it("records a durable remote failure before gateway quiesce", () => {
+    const result = runDeployment({
+      immutableArtifact: true,
+      miniHost: "approved-mini",
+      missingPlist: true,
+    });
+
+    expect(result.status).not.toBe(0);
+    const receipt = JSON.parse(
+      readFileSync(join(result.root, "deployment-result.json"), "utf8"),
+    );
+    expect(receipt.status).toBe("failed");
+    expect(receipt.detail).toContain("gateway service definition is missing");
+  });
+
   it("uses Corepack when pnpm is not directly available", () => {
     const result = runDeployment({ corepackOnly: true });
 
@@ -754,7 +949,7 @@ describe("OpenClaw deployment topology", () => {
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
     expect(result.lines).toContainEqual(
       expect.stringMatching(
-        /^ssh\tapproved-mini\t\/bin\/bash -s -- '.*remote staging\/puddles-openclaw-.*\.tgz'.*'.*sandbox build'.*$/,
+        /^ssh\t(?:-o\t[^\t]+\t)+approved-mini\tnohup \/bin\/bash '.*remote staging\/puddles-openclaw-.*-deploy\.sh' '.*\.tgz'.*'.*sandbox build'.*$/,
       ),
     );
     expect(result.lines).toContainEqual(
