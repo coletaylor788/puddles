@@ -1,10 +1,10 @@
 ---
 name: safe-feature-development
-description: "Implement features safely from research through test-environment integration, full-diff architecture audit, configured promotion, production integration validation, and automatic rollback. Use whenever an agent is asked to implement a feature or behavior change."
+description: "Implement features safely through local validation, retained full-diff review, immutable validation-worker handoff, configured promotion, production validation, and rollback. Use whenever an agent is asked to implement a feature or behavior change."
 compatibility: "Requires the target repository's existing build, test, deployment, and rollback tools. Uses repository-provided test and production lifecycles when available."
 metadata:
   author: Cole Taylor
-  version: "1.8.0"
+  version: "1.9.0"
 ---
 
 # Safe Feature Development
@@ -47,11 +47,34 @@ request descriptions, and commit messages.
 
 ## Ownership and checkpoints
 
-Treat an approved implementation request as authorization to complete the normal
-repository lifecycle, including commit, push, non-draft pull request creation or
-update, remote-check and review remediation, merge, and post-landing
-verification. A controlling instruction may explicitly stop or limit those
-actions, and repository permissions and protections always apply.
+The parent orchestrator owns worker creation and failure routing. It assigns one
+implementation worker and, only after an immutable candidate handoff, exactly
+one distinct sibling validation and deployment worker. Neither child creates,
+spawns, or directly delegates to the other.
+
+Treat an approved implementation request as authorization for the implementation
+worker to own all code, configuration, and documentation changes, local and test
+validation, the single retained independent review, commit, push, pull-request
+updates, review remediation, conflicts, and remote checks. A controlling
+instruction may explicitly stop or limit those actions, and repository
+permissions and protections always apply.
+
+After one exact candidate is reviewed, remotely green, and mergeable, the
+implementation worker reports its immutable handoff to the parent orchestrator,
+then stops and waits. The handoff contains the repository and pull request,
+exact head and base pins, required check results, reviewed private and manifest
+inputs when applicable, release command and input paths, and rollback
+prerequisites. The implementation worker does not promote and does not create
+the validation and deployment worker.
+
+The sibling validation and deployment worker runs only the repository's
+scripted release lifecycle. It must not edit files, change pins, commit, push,
+resolve conflicts, make design decisions, invoke review, or create workers. On
+failure it reports the failed stage and durable evidence to the parent
+orchestrator, then stops. It must not fix the failure or retry with changed
+inputs. The parent routes the failure to the same implementation worker. That
+worker owns every correction and reruns affected local validation and the
+retained review before returning a new immutable handoff with a new run.
 
 Pause before implementation only when the requester explicitly asks to review,
 approve, or iterate on the design. Record the current design in the plan and
@@ -246,15 +269,27 @@ investigating instead of asking.
      integration gates.
    - When the retained-review candidate is remotely green, mergeable, and has
      no unresolved required review, record its exact head commit and the current
-     base-branch commit, then proceed to promotion. Do not merge a candidate
-     before its applicable promotion and production validation complete.
+     base-branch commit. Report the immutable handoff to the parent orchestrator,
+     then stop and wait. Include the repository and pull request, exact public
+     head and base head, required check results, private head and manifest inputs
+     when applicable, release command and input paths, and rollback
+     prerequisites.
+   - The implementation worker must not start promotion or create the validation
+     and deployment worker. The parent orchestrator alone creates exactly one
+     distinct sibling validation and deployment worker for the handoff.
 
 7. **Promote through the configured lifecycle**
-   - If the repository provides an approved automatic test-to-production
-     lifecycle and deployment is in scope, use that lifecycle on the exact
-     remotely approved candidate after all pre-promotion gates pass. Do not
-     manually copy artifacts or add an additional approval gate unless a
-     controlling instruction explicitly requires one.
+   - The parent-created validation and deployment worker first validates that
+     the supplied head, base, checks, and private inputs still match. It then
+     uses the approved automatic test-to-production lifecycle on that exact
+     candidate. It does not rebuild outside that lifecycle, manually copy
+     artifacts, or add another approval gate unless a controlling instruction
+     explicitly requires one.
+   - The validation and deployment worker must not edit code, configuration,
+     documentation, or pins, resolve conflicts, make design decisions, invoke
+     review, or create workers. It may only invoke staged scripts, verify hashes,
+     receipts, and checks, promote exact artifacts, run read-only production
+     validation and merge gates, and land when every gate passes.
    - Promotion must durably record recovery state before destructive work and
      use atomic replacement where supported.
    - If the task explicitly forbids production impact, do not promote. Validate
@@ -269,8 +304,15 @@ investigating instead of asking.
      explicit production state and configuration paths.
    - On any post-promotion failure, revert production to the recorded snapshot,
      reload production, revalidate production health, return a nonzero result,
-     and restart the workflow from local implementation and test-environment
-     deployment.
+     report the structured failure to the parent orchestrator, and stop.
+   - The parent orchestrator routes any release failure to the same
+     implementation worker. If a candidate change is required, that worker makes
+     it, reruns affected local validation and the full configured integration
+     pool, resumes the retained reviewer for the complete current diff, pushes
+     the new exact candidate, and returns a new immutable handoff with a new run.
+     The validation and deployment worker never makes the fix itself or retries
+     with changed inputs. A passed stage may be reused only when the scripted
+     lifecycle verifies matching input and output hashes.
    - Preserve the original failure. Surface rollback or cleanup failures as
      additional errors rather than hiding them.
 
@@ -282,10 +324,11 @@ investigating instead of asking.
      request remains mergeable.
    - If the head, approved base, required checks or review, or mergeability
      changed after promotion, roll back the promoted candidate using the
-     recorded recovery state, revalidate production health, update and
-     revalidate the candidate against the current base, and restart at the
-     applicable review and remote-integration step. Preserve the remote-state
-     failure and surface rollback failures as additional errors.
+     recorded recovery state, revalidate production health, preserve the
+     remote-state failure, surface rollback failures as additional errors,
+     report to the parent orchestrator, and stop. The parent routes the evidence
+     to the same implementation worker, which updates and revalidates the
+     candidate before another handoff.
    - If the candidate and gates still match, merge it using the repository's
      configured method. Do not stop at an open pull request or a
      `Ready for review` state unless a controlling instruction explicitly
@@ -297,7 +340,7 @@ investigating instead of asking.
      the exact candidate cannot be confirmed landed, treat the landing as
      failed: roll back the promoted candidate, revalidate production health,
      preserve the landing failure, surface rollback failures as additional
-     errors, and restart remote integration.
+     errors, report to the parent orchestrator, and stop.
    - Once landing is confirmed, verify the default branch contains the expected
      change and required post-merge checks pass. Run any configured post-landing
      production validation and use the documented rollback on failure.
@@ -314,6 +357,9 @@ Feature work is complete only when:
 - the requested behavior is implemented and documented;
 - all applicable local and test-environment gates are green;
 - the reusable-worker full-diff audit loop is clean for the landing candidate;
+- the implementation worker returned one immutable, reviewed, remotely green
+  candidate handoff to the parent orchestrator, which created one distinct
+  sibling validation and deployment worker;
 - managed processes and temporary state are cleaned up;
 - configured promotion and read-only production validation succeeded, or
   production was explicitly out of scope and promotion and rollback were proven

@@ -3,7 +3,7 @@ name: adversarial-review
 description: Independently challenge a completed feature for hidden defects, unsafe assumptions, regressions, and incomplete requirements. Use for the mandatory post-implementation review of every feature.
 metadata:
   author: Cole Taylor
-  version: "1.4.0"
+  version: "1.5.0"
 ---
 
 # Adversarial Review
@@ -13,9 +13,11 @@ did not implement the change. Do not limit review to the latest fix. Read the
 relevant requirements, repository instructions, tests, and nearby code before
 judging the change.
 
-This retained review is the feature's single independent pull-request review
-process. Recheck later candidate changes in this same review context. Do not
-require a separate terminal reviewer.
+This retained review is the implementation worker's single independent
+pull-request review process. Recheck later candidate changes in this same review
+context. Do not require a separate terminal reviewer. Do not invoke this skill
+from the validation and deployment worker or repeat review during release
+pipeline execution.
 
 When resumed after remediation, use the prior review and the implementation
 agent's change and validation summary as leads, not as a scope limit. Verify each

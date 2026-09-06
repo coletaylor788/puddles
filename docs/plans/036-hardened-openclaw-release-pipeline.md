@@ -2,7 +2,7 @@
 
 Status: In progress
 Issue: https://github.com/coletaylor788/puddles/issues/110
-Last updated: 2026-09-05
+Last updated: 2026-09-06
 
 ## Human section
 
@@ -14,23 +14,28 @@ This change makes the release a sequence of durable stages. The public repositor
 
 Each stage records its inputs, outputs, command, timing, and concise result outside the candidate tree. Resume re-hashes every declared input and output instead of trusting completion markers. Deployment keeps the existing recovery ownership for the installed package, runtime state, service definition, browser image, migration, and gateway restart. A failed or stale promotion restores the recorded production state before the workflow can continue.
 
+Candidate changes and production release are owned by separate workers under a parent orchestrator. The implementation worker is the only worker that changes files or pins and owns the retained review. Once its exact candidate is reviewed and remotely green, it reports an immutable handoff to the parent and stops. The parent alone starts one sibling validation and deployment worker, which runs the scripted release without editing or reviewing. A failed release returns through the parent to the same implementation worker instead of being repaired inside the production-capable session.
+
 ### Status
 
 The public orchestrator now validates one pinned source tree, calls the private overlay through its narrow command contract, packages the combined candidate once, and deploys only the recorded artifact digest. Each stage records inputs, outputs, commands, timing, and resume data outside the candidate. The existing deployment rollback owns production checks and the final pre-merge pull-request state check. Merge and landed verification use a separate durable stage after rollback ownership ends.
 
-The full managed lifecycle passes on the supported Node runtime. The private side is reviewed at its pinned head and its receipt shape matches the public contract. The retained independent and cross-repository reviews found nine material issues across their passes. All are fixed, covered, and clean on recheck.
+The public candidate pins the reviewed private overlay head that passed its contract check. Focused validation and the full cumulative pool are green for the permanent three-role ownership contract. The implementation worker is freezing the candidate for its single retained full-diff review, then fresh public checks. It will report the immutable exact-head handoff to the parent orchestrator and stop. Production is unchanged from the stopped earlier attempt.
 
 ## Agent section
 
 ### State
 
-- Phase: Pull request and remote checks.
+- Phase: Retained full-diff review before fresh public checks.
 - Public repository: `coletaylor788/puddles`.
 - Private coordination: creator session `ef5fc892-f0fb-4ba0-b024-cf08ca61adb8`.
 - Private implementation owner: session `66dd0a6d-f143-45c1-8011-15c95b616fb9`.
+- Public implementation owner: session `d56235cd-e6be-4c39-b691-f856cb76548e`.
+- Parent orchestrator: session `ef5fc892-f0fb-4ba0-b024-cf08ca61adb8`.
+- Validation and deployment worker: Assigned only by the parent after the exact candidate handoff.
 - Production topology: user LaunchAgent `gui/502/ai.openclaw.gateway`, plist `~/Library/LaunchAgents/ai.openclaw.gateway.plist`, local port `18789`.
-- Private contract: Repository `coletaylor788/puddles-private`, executable `docs/openclaw-setup/patches/private-overlay.mjs`, head `7aa2b9327f3f4bcfc4807cedcbcf043e3247db40`.
-- Blocker: The private executable's absolute path on the target Mac mini is needed only for promotion.
+- Private contract: Repository `coletaylor788/puddles-private`, executable `docs/openclaw-setup/patches/private-overlay.mjs`, head `4378cdcea1fbfb39fca5d994d7712705d35403b2`.
+- Blocker: None.
 
 ### Scope and acceptance criteria
 
@@ -55,6 +60,8 @@ The full managed lifecycle passes on the supported Node runtime. The private sid
 - Prove public-only validation, combined validation, immutable installation, interruption recovery, rollback, and stale-head handling in committed tests.
 - Run `node packages/e2e/bin/openclaw-test-env.mjs ci`.
 - Complete one independent adversarial review loop and reuse the same reviewer for remediation.
+- Keep all edits, pin changes, validation, and retained review with the implementation worker.
+- Return the remotely green exact head to the parent orchestrator. The parent creates exactly one sibling validation and deployment worker and routes any failure back to the same implementation worker.
 - Pass remote checks, promote only after both repositories are reviewed and green, validate production read-only, recheck exact pull-request state, merge, and verify the landed result.
 
 ### Architecture and decisions
@@ -71,6 +78,7 @@ The full managed lifecycle passes on the supported Node runtime. The private sid
 - Extend `apply-and-deploy.sh` with an immutable-artifact mode while retaining its current compatibility path.
 - Keep target-side recovery and rollback in the deployment wrapper. Add durable target evidence for pre-quiesce failures, rollback outcomes, successful completion, and disconnected-client reconciliation.
 - Query GitHub immediately before promotion and again before merge. A changed head, base, check state, review state, or mergeability invalidates promotion.
+- Separate orchestration, implementation, and release execution. The implementation worker returns immutable public, base, and private pins to the parent. The parent alone creates the release worker and routes failures. The release worker never edits, resolves conflicts, makes design decisions, reviews, or creates workers, and stops with durable evidence on failure.
 - Revise the repository skills to use one retained independent reviewer loop. Remove the separate terminal fresh review requirement.
 
 ### Implementation
@@ -84,6 +92,7 @@ The full managed lifecycle passes on the supported Node runtime. The private sid
 - [x] Add public and private pull-request pin and merge recheck stages.
 - [x] Revise release and integration documentation.
 - [x] Revise safe feature and adversarial review wording for one review loop.
+- [x] Define the immutable handoff between the implementation worker and the validation and deployment worker.
 - [x] Add focused unit and integration regressions.
 
 ### Validation
@@ -93,7 +102,7 @@ The full managed lifecycle passes on the supported Node runtime. The private sid
 - The cumulative managed command is `node packages/e2e/bin/openclaw-test-env.mjs ci`.
 - Public validation must pass without the private overlay. Combined validation must pass after the private overlay and must prove interactions across both patch sets.
 - Production validation is read-only and checks package version and digest evidence, LaunchAgent state, port 18789, and the payload-free gateway health probe.
-- Focused result: `packages/e2e` type-check passes. Release state, release contract, process timeout, review workflow, immutable deployment, post-deploy rollback, and remote path regressions pass.
+- Focused result: `packages/e2e` type-check passes. The 89 release state, release contract, process timeout, review workflow, immutable deployment, post-deploy rollback, and remote path regressions pass.
 - Full managed result: Passed with Node 22.23.1. Puddles package suites passed 158 E2E tests, 112 MCP hook tests, 61 calendar tests, 43 Gmail plugin tests, and 175 Gmail Python tests. The patched OpenClaw project groups passed 319 tests across 12 files, and the candidate suite passed 2 tests.
 - Failed iterations found two lifecycle defects that are now covered: broad Vitest selection loaded tests into the wrong projects, and this host's Node 24.2.0 did not satisfy the pinned OpenClaw engine. The runner now uses one declared project per mapped test. Validation used the same supported Node 22.23.1 configured in CI.
 
@@ -101,11 +110,14 @@ The full managed lifecycle passes on the supported Node runtime. The private sid
 
 - Push a non-draft pull request after local validation and retained review are clean.
 - Record the exact pull-request head and base only after required remote checks and review are green.
+- After local and remote gates pass, return the exact public head, base head, private head, check evidence, release paths, and rollback prerequisites to the parent orchestrator, then stop.
+- The parent orchestrator starts one sibling validation and deployment worker with those immutable inputs and a new external run directory.
 - Run the public pipeline on the target Mac mini with local deployment topology and `MINI_HOST` unset.
 - Supply `PUDDLES_PRIVATE_PIPELINE` and the reviewed 40-character private head from the coordinating session.
 - Preserve public, private, combined-validation, package, deployment, production, and pull-request evidence in the external run directory.
 - On package replacement, migration, browser image, runtime state, plist, restart, readiness, production validation, or stale pull-request failure, invoke the recorded rollback and verify restored gateway health.
-- Resume only after all prior inputs and outputs revalidate.
+- The validation and deployment worker stops after any failure and reports its stage evidence to the parent. It never fixes or retries with changed inputs. The parent routes evidence to the same implementation worker, which owns any correction, affected validation, retained-review recheck, and a new immutable handoff with a new run.
+- Resume only when all pins are unchanged and all prior inputs and outputs revalidate. Never resume the stopped run after changing a public or private pin.
 
 ### Review log
 
@@ -125,11 +137,12 @@ The full managed lifecycle passes on the supported Node runtime. The private sid
 - [x] Implement focused behavior and regression coverage.
 - [x] Pass focused local validation.
 - [x] Pass the full cumulative integration pool.
-- [x] Complete the retained independent adversarial review loop.
-- [ ] Push and open a non-draft pull request.
+- [ ] Complete the retained independent adversarial review loop for the current candidate.
+- [x] Push and open a non-draft pull request.
 - [ ] Pass required remote checks and review.
-- [ ] Confirm the private pipeline is reviewed and remotely green.
+- [x] Confirm the private pipeline is reviewed and remotely green.
 - [ ] Promote the exact immutable artifact.
 - [ ] Pass read-only production validation.
 - [ ] Recheck exact pull-request head, base, checks, review, and mergeability.
+- [ ] Return the exact reviewed and remotely green candidate handoff to the parent orchestrator.
 - [ ] Merge and verify the default branch.

@@ -54,7 +54,7 @@ describe("shared explanation workflow", () => {
 
 describe("adversarial review workflow", () => {
   it("reuses one reviewer throughout remediation without narrowing review", () => {
-    expect(safeWorkflow).toContain('version: "1.8.0"');
+    expect(safeWorkflow).toContain('version: "1.9.0"');
     expect(safeWorkflow).toMatch(/retain its worker handle/i);
     expect(safeWorkflow).toMatch(/resume or restart that same reviewer/i);
     expect(safeWorkflow).toMatch(
@@ -83,9 +83,15 @@ describe("adversarial review workflow", () => {
     );
     expect(safeWorkflow).toMatch(/do not require a\s+new finding or code change/i);
 
-    expect(reviewWorkflow).toContain('version: "1.4.0"');
+    expect(reviewWorkflow).toContain('version: "1.5.0"');
     expect(reviewWorkflow).toMatch(
-      /single independent pull-request review\s+process/i,
+      /single independent[\s\S]*pull-request review\s+process/i,
+    );
+    expect(reviewWorkflow).toMatch(
+      /implementation worker's single independent[\s\S]*Do not invoke this skill\s+from the validation and deployment worker/i,
+    );
+    expect(reviewWorkflow).toMatch(
+      /Do not require a separate terminal reviewer/i,
     );
     expect(reviewWorkflow).toMatch(/When resumed after remediation/i);
     expect(reviewWorkflow).toMatch(/Verify each\s+claimed correction/i);
@@ -129,7 +135,7 @@ describe("adversarial review workflow", () => {
     );
   });
 
-  it("keeps design as the only optional checkpoint and lands agent-owned work", () => {
+  it("keeps design as the only optional checkpoint and separates implementation from release execution", () => {
     const ownershipWorkflow = safeWorkflow.slice(
       safeWorkflow.indexOf("## Ownership and checkpoints"),
       safeWorkflow.indexOf("## Required loop"),
@@ -144,7 +150,22 @@ describe("adversarial review workflow", () => {
     );
 
     expect(repoInstructions).toMatch(
-      /approved implementation request authorizes the worker[\s\S]*commit, push[\s\S]*merge,[\s\S]*verify the landed result/i,
+      /implementation worker[\s\S]*code, configuration, documentation[\s\S]*retained independent review[\s\S]*commit, push[\s\S]*remote checks/i,
+    );
+    expect(repoInstructions).toMatch(
+      /parent orchestrator owns worker creation and failure routing[\s\S]*Neither child creates or directly delegates\s+to the other/i,
+    );
+    expect(repoInstructions).toMatch(
+      /implementation worker[\s\S]*reports the immutable repository,[\s\S]*parent\s+orchestrator, then stops and waits[\s\S]*does not promote or create the validation\s+and deployment worker/i,
+    );
+    expect(repoInstructions).toMatch(
+      /validation and deployment worker[\s\S]*must not edit files[\s\S]*invoke review, or create workers/i,
+    );
+    expect(repoInstructions).toMatch(
+      /reports the failed stage to the parent orchestrator[\s\S]*parent routes the\s+evidence to the same implementation worker/i,
+    );
+    expect(repoInstructions).toMatch(
+      /stage reuse is allowed only when recorded input and\s+output hashes still match/i,
     );
     expect(repoInstructions).toMatch(
       /Pause at design only when the requester explicitly asks/i,
@@ -157,10 +178,10 @@ describe("adversarial review workflow", () => {
     );
 
     expect(safeWorkflow).toMatch(
-      /approved implementation request as authorization[\s\S]*commit, push[\s\S]*merge,[\s\S]*post-landing\s+verification/i,
+      /approved implementation request as authorization for the implementation\s+worker[\s\S]*commit, push[\s\S]*remote checks/i,
     );
     expect(ownershipWorkflow).toMatch(
-      /controlling instruction may explicitly stop or limit[\s\S]*permissions and protections always apply/i,
+      /controlling\s+instruction may explicitly stop or limit[\s\S]*permissions and protections always apply/i,
     );
     expect(safeWorkflow).toMatch(
       /Pause before implementation only when the requester explicitly asks/i,
@@ -186,11 +207,23 @@ describe("adversarial review workflow", () => {
     expect(remoteIntegrationWorkflow).toMatch(
       /required remote checks[\s\S]*unresolved review threads[\s\S]*merge conflicts/i,
     );
+    expect(remoteIntegrationWorkflow).toMatch(
+      /Report the immutable handoff to the parent orchestrator,[\s\S]*then stop and wait/i,
+    );
+    expect(remoteIntegrationWorkflow).toMatch(
+      /repository and pull request[\s\S]*exact public\s+head and base head[\s\S]*required check results[\s\S]*private head and manifest inputs[\s\S]*release command and input paths[\s\S]*rollback\s+prerequisites/i,
+    );
+    expect(remoteIntegrationWorkflow).toMatch(
+      /implementation worker must not start promotion or create the validation\s+and deployment worker/i,
+    );
+    expect(remoteIntegrationWorkflow).toMatch(
+      /parent orchestrator alone creates exactly one\s+distinct sibling validation and deployment worker/i,
+    );
     expect(closeoutWorkflow).toMatch(
       /Do not stop at an open pull request or a\s+`Ready for review` state/i,
     );
     expect(remoteIntegrationWorkflow).toMatch(
-      /retained-review candidate is remotely green, mergeable, and has\s+no unresolved required review[\s\S]*exact head commit and the current\s+base-branch commit[\s\S]*Do not merge a candidate[\s\S]*promotion and production validation complete/i,
+      /retained-review candidate is remotely green, mergeable, and has\s+no unresolved required review[\s\S]*exact head commit and the current\s+base-branch commit/i,
     );
     expect(remoteIntegrationWorkflow).toMatch(
       /Any candidate change invalidates the retained review result[\s\S]*applicable validation, full integration pool, and retained-review[\s\S]*recheck before pushing the new candidate and repeating all remote[\s\S]*integration gates/i,
@@ -199,13 +232,13 @@ describe("adversarial review workflow", () => {
       /Immediately before merge[\s\S]*head and base are the exact remotely approved commits recorded before\s+promotion[\s\S]*head completed applicable promotion and production\s+validation/i,
     );
     expect(closeoutWorkflow).toMatch(
-      /head, approved base, required checks or review, or mergeability\s+changed after promotion[\s\S]*roll back the promoted candidate[\s\S]*revalidate production health[\s\S]*update and\s+revalidate the candidate against the current base[\s\S]*restart at the\s+applicable review and remote-integration step/i,
+      /head, approved base, required checks or review, or mergeability\s+changed after promotion[\s\S]*roll back the promoted candidate[\s\S]*revalidate production health[\s\S]*report to the parent orchestrator[\s\S]*same implementation worker[\s\S]*updates and revalidates/i,
     );
     expect(closeoutWorkflow).toMatch(
       /merge it using the repository's\s+configured method[\s\S]*After the merge command, re-fetch the pull request and default branch[\s\S]*exact candidate cannot be confirmed landed/i,
     );
     expect(safeWorkflow).toMatch(
-      /exact candidate cannot be confirmed landed[\s\S]*roll back the promoted candidate[\s\S]*revalidate production health[\s\S]*preserve the landing failure[\s\S]*rollback failures as additional\s+errors[\s\S]*restart remote integration/i,
+      /exact candidate cannot be confirmed landed[\s\S]*roll back the promoted candidate[\s\S]*revalidate production health[\s\S]*preserve the landing failure[\s\S]*rollback failures as additional\s+errors[\s\S]*report to the parent orchestrator, and stop/i,
     );
     expect(safeWorkflow).toMatch(
       /Once landing is confirmed[\s\S]*default branch contains the expected\s+change[\s\S]*post-merge checks pass/i,
@@ -216,7 +249,25 @@ describe("adversarial review workflow", () => {
     expect(closeoutWorkflow).toMatch(
       /Mark the repository issue complete and report the landed outcome[\s\S]*requester's final validation and\s+external task-completion decision/i,
     );
-    expect(safeWorkflow).not.toMatch(/exact commit to be handed off/i);
+    expect(safeWorkflow).toMatch(
+      /validation and deployment worker never makes the fix itself or retries\s+with changed inputs/i,
+    );
+    expect(safeWorkflow).toMatch(
+      /parent orchestrator routes any release failure to the same\s+implementation worker/i,
+    );
+    expect(safeWorkflow).toMatch(
+      /same\s+implementation worker[\s\S]*new exact candidate[\s\S]*new run/i,
+    );
+    expect(safeWorkflow).toMatch(
+      /passed stage[\s\S]*reused only when[\s\S]*matching input and\s+output hashes/i,
+    );
+    expect(safeWorkflow).toMatch(
+      /report to the parent orchestrator, and stop/i,
+    );
+    expect(safeWorkflow).not.toMatch(/launch another fresh adversarial reviewer/i);
+    expect(safeWorkflow).not.toMatch(
+      /implementation worker (?:starts|spawns|creates) (?:a|the|one) validation and deployment worker/i,
+    );
   });
 
   it("requires clear and actionable requester-help escalations", () => {

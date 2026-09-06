@@ -59,6 +59,16 @@ separately reviewed private overlay, builds one package, and passes that exact
 package to this wrapper. The wrapper verifies the package digest before it
 changes production.
 
+The implementation worker prepares and reviews the exact candidate, then
+returns its immutable handoff to the parent orchestrator and stops. The parent
+alone creates one separate sibling validation and deployment worker. That worker
+runs this scripted lifecycle without editing files, changing pins, committing,
+pushing, resolving conflicts, making design decisions, invoking review, or
+creating workers. On failure it stops after rollback and reports durable stage
+evidence to the parent. The parent routes the evidence to the same implementation
+worker. Only that worker changes the next candidate, reruns affected validation
+and retained review, and returns a new exact head to the parent.
+
 Combined validation produces the build-ready tree. The release orchestrator
 checks its complete `puddles-directory-v1` digest, packages it without another
 install or build, then checks the directory digest again. This binds the

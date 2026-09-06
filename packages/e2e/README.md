@@ -65,7 +65,10 @@ node packages/e2e/bin/openclaw-test-env.mjs patches
 
 ## Resumable release
 
-After local review and remote checks are green, the release orchestrator owns
+After local validation, the retained review, and remote checks are green, the
+implementation worker returns one exact immutable candidate to the parent
+orchestrator, then stops and waits. The parent alone creates one distinct
+sibling validation and deployment worker. That worker owns only the scripted
 composition, packaging, deployment, production validation, and landing:
 
 ```bash
@@ -80,6 +83,21 @@ PUDDLES_PRIVATE_PIPELINE=/absolute/path/to/private-pipeline \
     --pr-number <number> \
     --expected-base-head <40-character-base-head>
 ```
+
+The implementation handoff includes the repository and pull request, exact head
+and base, required checks, private head and manifest inputs, release command and
+input paths, and rollback prerequisites. The implementation worker does not
+promote or create the release worker.
+
+The validation and deployment worker must not edit files, update pins, commit,
+push, resolve conflicts, make design decisions, invoke review, or create
+workers. A failed stage ends its run after durable rollback and a structured
+report to the parent orchestrator. It must not fix the failure or retry with
+changed inputs. The parent routes the evidence to the same implementation
+worker. That worker owns the fix, reruns affected local gates and the retained
+review, and returns a new exact head and new run to the parent. Never resume an
+older run with a changed public or private pin. A completed stage is reusable
+only when its recorded input and output hashes still match.
 
 The run directory must be outside the candidate. It contains atomic stage
 records, the public receipt, sanitized private receipt evidence, the immutable
