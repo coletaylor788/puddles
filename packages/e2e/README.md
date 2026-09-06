@@ -72,8 +72,10 @@ sibling validation and deployment worker. That worker owns only the scripted
 composition, packaging, deployment, production validation, and landing:
 
 ```bash
-PUDDLES_PRIVATE_PIPELINE=/absolute/path/to/private-pipeline \
-  node packages/e2e/bin/openclaw-release.mjs run \
+packages/e2e/bin/openclaw-release.sh \
+    --node /absolute/path/to/supported-node \
+    --private-pipeline /absolute/path/to/private-pipeline \
+    -- run \
     --run-dir /absolute/path/to/external-run-directory \
     --source /absolute/path/to/clean-openclaw-checkout \
     --public-repository owner/repository \
@@ -84,10 +86,17 @@ PUDDLES_PRIVATE_PIPELINE=/absolute/path/to/private-pipeline \
     --expected-base-head <40-character-base-head>
 ```
 
+Pass this as an argument array, with environment values supplied separately.
+Do not copy a shell string that prepends `PATH` or embeds environment
+assignments. The launcher validates both executable paths, safely prepends the
+selected Node directory to the inherited path, and invokes the release runner
+without evaluating shell text.
+
 The implementation handoff includes the repository and pull request, exact head
 and base, required checks, private head and manifest inputs, release command and
-input paths, and rollback prerequisites. The implementation worker does not
-promote or create the release worker.
+input paths, an argv array and separate environment map, and rollback
+prerequisites. The implementation worker does not promote or create the release
+worker.
 
 The validation and deployment worker must not edit files, update pins, commit,
 push, resolve conflicts, make design decisions, invoke review, or create

@@ -14,25 +14,26 @@ This change makes the release a sequence of durable stages. The public repositor
 
 Each stage records its inputs, outputs, command, timing, and concise result outside the candidate tree. Resume re-hashes every declared input and output instead of trusting completion markers. Deployment keeps the existing recovery ownership for the installed package, runtime state, service definition, browser image, migration, gateway restart, production checks, and dependency-ordered landing. A failed or stale promotion restores the recorded production state before the workflow can continue. The target publishes terminal success only after rollback ownership is disabled.
 
-Candidate changes and production release are owned by separate workers under a parent orchestrator. The implementation worker is the only worker that changes files or pins and owns the retained review. Once its exact candidate is reviewed and remotely green, it reports an immutable handoff to the parent and stops. The parent alone starts one sibling validation and deployment worker, which runs the scripted release without editing or reviewing. A failed release returns through the parent to the same implementation worker instead of being repaired inside the production-capable session.
+Candidate changes and production release are owned by separate workers under a parent orchestrator. The implementation worker is the only worker that changes files or pins and owns the retained review. Once its exact candidate is reviewed and remotely green, it reports an immutable handoff to the parent and stops. That handoff keeps executable arguments separate from environment values so paths are never reparsed as shell text. The parent alone starts one sibling validation and deployment worker, which runs the scripted release without editing or reviewing. A failed release returns through the parent to the same implementation worker instead of being repaired inside the production-capable session.
 
 ### Status
 
 The public orchestrator now validates one pinned source tree, binds private execution to the reviewed clean Git tree, packages the combined candidate once, and deploys only the recorded artifact digest. Each stage records inputs, outputs, commands, timing, and resume data outside the candidate. Deployment rollback owns production checks and the dependency-ordered private and public merges. The target disables rollback before publishing success, and the final durable stage records the already verified landing.
 
-The public candidate pins the reviewed private overlay head that passed its contract check. The permanent three-role ownership, retained-review identity, and targeted-first validation cadence contracts are implemented. The retained replacement cleared the private binding and receipt-order findings, then found two landing interruption gaps. Their corrections, 77 focused release and lifecycle regressions, and the final cumulative pool are green. The same reviewer completed the final recheck with no actionable findings. Production is unchanged from the stopped earlier attempt.
+The first validation worker stopped before the release runner started because a pasted PATH assignment split an inherited application path at a space. Production remains unchanged. The release now has a committed launcher that accepts the supported Node executable and private pipeline as explicit arguments, constructs PATH internally, and invokes the runner without evaluating shell text. Focused validation and the cumulative pool are green. Retained review, push, exact-head checks, and a new immutable handoff remain.
 
 ## Agent section
 
 ### State
 
-- Phase: Push the reviewed candidate and wait for exact-head remote checks.
+- Phase: Resume the retained reviewer on the argv-safe launcher candidate.
 - Public repository: `coletaylor788/puddles`.
 - Private coordination: creator session `ef5fc892-f0fb-4ba0-b024-cf08ca61adb8`.
 - Private implementation owner: session `66dd0a6d-f143-45c1-8011-15c95b616fb9`.
 - Public implementation owner: session `d56235cd-e6be-4c39-b691-f856cb76548e`.
 - Parent orchestrator: session `ef5fc892-f0fb-4ba0-b024-cf08ca61adb8`.
 - Validation and deployment worker: Assigned only by the parent after the exact candidate handoff.
+- Failed validation worker: session `7f09538a-bb2d-494c-8bfc-63c24f239d3e`; exit 127 before Node or orchestrator startup because an inherited PATH entry containing a space was shell-split. Production was untouched.
 - Production topology: user LaunchAgent `gui/502/ai.openclaw.gateway`, plist `~/Library/LaunchAgents/ai.openclaw.gateway.plist`, local port `18789`.
 - Private contract: Repository `coletaylor788/puddles-private`, executable `docs/openclaw-setup/patches/private-overlay.mjs`, head `4378cdcea1fbfb39fca5d994d7712705d35403b2`.
 - Blocker: None.
@@ -107,10 +108,10 @@ The public candidate pins the reviewed private overlay head that passed its cont
 - The cumulative managed command is `node packages/e2e/bin/openclaw-test-env.mjs ci`.
 - Public validation must pass without the private overlay. Combined validation must pass after the private overlay and must prove interactions across both patch sets.
 - Production validation is read-only and checks package version and digest evidence, LaunchAgent state, port 18789, and the payload-free gateway health probe.
-- Focused result: `packages/e2e` type-check passes. The current 77 release CLI, release contract, immutable deployment, post-deploy rollback, remote path, retained-review, and plan contract regressions pass. Earlier focused lifecycle and release groups also passed before the retained-review remediation.
-- Final full managed result after the second retained-review remediation: Passed with Node 22.23.1. Puddles package suites passed 163 E2E tests, 112 MCP hook tests, 61 calendar tests, 43 Gmail plugin tests, and 175 Gmail Python tests. The patched OpenClaw project groups and candidate suite passed 319 tests across 12 files.
+- Focused result for the launcher correction: `packages/e2e` type-check and shell syntax checks pass. The 27 release CLI, retained-review workflow, and plan contract regressions pass with both the selected Node path and an inherited PATH entry containing spaces.
+- Final full managed result for the launcher correction: Passed with Node 22.23.1. Puddles package suites passed 163 E2E tests, 112 MCP hook tests, 61 calendar tests, 43 Gmail plugin tests, and 175 Gmail Python tests. The patched OpenClaw project groups and candidate suite passed 319 tests across 12 files.
 - Failed iterations found two lifecycle defects that are now covered: broad Vitest selection loaded tests into the wrong projects, and this host's Node 24.2.0 did not satisfy the pinned OpenClaw engine. The runner now uses one declared project per mapped test. Validation used the same supported Node 22.23.1 configured in CI.
-- Recoverable full-run history for this PR: one earlier implementation run passed before this ownership correction; one run in this session was stopped because the ownership contract changed while it was running; one run passed for the three-role contract; one pre-review run passed after the reviewer identity contract; one run passed after the first retained-review remediation; and the final run passed after the second remediation.
+- Recoverable full-run history for this PR: one earlier implementation run passed before this ownership correction; one run in this session was stopped because the ownership contract changed while it was running; one run passed for the three-role contract; one pre-review run passed after the reviewer identity contract; one run passed after the first retained-review remediation; one run passed after the second remediation; and the final launcher-correction run passed.
 
 ### Rollout and rollback
 
@@ -118,6 +119,7 @@ The public candidate pins the reviewed private overlay head that passed its cont
 - Record the exact pull-request head and base only after required remote checks and review are green.
 - After local and remote gates pass, return the exact public head, base head, private head, check evidence, release paths, and rollback prerequisites to the parent orchestrator, then stop.
 - The parent orchestrator starts one sibling validation and deployment worker with those immutable inputs and a new external run directory.
+- Encode the release invocation as an argv array plus a separate environment map. Use `packages/e2e/bin/openclaw-release.sh` with explicit `--node` and `--private-pipeline` arguments. Do not hand off inline environment assignments or PATH construction.
 - Run the public pipeline on the target Mac mini with local deployment topology and `MINI_HOST` unset.
 - Supply `PUDDLES_PRIVATE_PIPELINE` and the reviewed 40-character private head from the coordinating session.
 - Preserve public, private, combined-validation, package, deployment, production, and pull-request evidence in the external run directory.
@@ -137,6 +139,7 @@ The public candidate pins the reviewed private overlay head that passed its cont
 - Replacement recheck at candidate `f2489d4282a5f4b5d715a07923fa2f420c8da60c`: The private binding and receipt ordering findings were resolved. Two High findings remained. A signal after the server accepted the public merge could still roll production back, and a crash after target success but before the local production receipt could leave a completed release that no run could reconcile.
 - Second remediation: Signals are deferred during landing and cause the exact landed heads to be reconciled before commit or rollback. The target receipt now binds the public and private pins, candidate and production-stage digests, artifact, and landing result. A missing local production receipt is reconstructed only after target evidence, exact landing, and read-only production health all revalidate.
 - Final recheck at candidate `7c739f380f5b3af54458f3e0c149b68ab2988b0b`: The reviewer initially reported that merged public state was not accepted during reconciliation. Current source and regressions showed that both exact merged states are accepted and verified on their default branches. The reviewer withdrew the finding and reported no actionable findings in the complete diff. The remaining production and GitHub landing validation belongs to the designated validation and deployment worker.
+- Validation handoff failure after candidate `2e2661ea3bdf02483e8b1fb567b948b41dc6d464`: The worker never started Node because the pasted command prepended an unquoted inherited PATH containing `Copilot.app/Contents/MacOS`. The correction moves executable selection and PATH construction into a committed argv-safe launcher. The same retained reviewer will recheck the complete updated diff after local validation.
 
 ### Checklist
 
@@ -146,13 +149,13 @@ The public candidate pins the reviewed private overlay head that passed its cont
 - [x] Create and link the tracking issue.
 - [x] Implement focused behavior and regression coverage.
 - [x] Pass focused local validation.
-- [x] Pass the full cumulative integration pool.
-- [x] Complete the retained independent adversarial review loop for the current candidate.
+- [ ] Pass the full cumulative integration pool.
+- [ ] Complete the retained independent adversarial review loop for the current candidate.
 - [x] Push and open a non-draft pull request.
 - [ ] Pass required remote checks and review.
 - [x] Confirm the private pipeline is reviewed and remotely green.
 - [ ] Promote the exact immutable artifact.
 - [ ] Pass read-only production validation.
 - [ ] Recheck exact pull-request head, base, checks, review, and mergeability.
-- [ ] Return the exact reviewed and remotely green candidate handoff to the parent orchestrator.
+- [ ] Return a new exact reviewed and remotely green argv-safe handoff to the parent orchestrator.
 - [ ] Merge and verify the default branch.

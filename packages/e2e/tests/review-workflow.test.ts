@@ -54,7 +54,7 @@ describe("shared explanation workflow", () => {
 
 describe("adversarial review workflow", () => {
   it("reuses one reviewer throughout remediation without narrowing review", () => {
-    expect(safeWorkflow).toContain('version: "1.11.0"');
+    expect(safeWorkflow).toContain('version: "1.12.0"');
     expect(safeWorkflow).toMatch(/retain its worker handle/i);
     expect(safeWorkflow).toMatch(
       /only independent reviewer[\s\S]*Record its agent or session identity[\s\S]*durable run state/i,
@@ -172,7 +172,7 @@ describe("adversarial review workflow", () => {
       /parent orchestrator owns worker creation and failure routing[\s\S]*Neither child creates or directly delegates\s+to the other/i,
     );
     expect(repoInstructions).toMatch(
-      /implementation worker[\s\S]*reports the immutable repository,[\s\S]*parent\s+orchestrator, then stops and waits[\s\S]*does not promote or create the validation\s+and deployment worker/i,
+      /implementation worker[\s\S]*reports the immutable repository,[\s\S]*argv array with a separate environment map[\s\S]*parent orchestrator, then stops and waits[\s\S]*does not promote or create the validation[\s\S]*deployment worker/i,
     );
     expect(repoInstructions).toMatch(
       /validation and deployment worker[\s\S]*must not edit files[\s\S]*invoke review, or create workers/i,
@@ -227,7 +227,10 @@ describe("adversarial review workflow", () => {
       /Report the immutable handoff to the parent orchestrator,[\s\S]*then stop and wait/i,
     );
     expect(remoteIntegrationWorkflow).toMatch(
-      /repository and pull request[\s\S]*exact public\s+head and base head[\s\S]*required check results[\s\S]*private head and manifest inputs[\s\S]*release command and input paths[\s\S]*rollback\s+prerequisites/i,
+      /repository and pull request[\s\S]*exact public\s+head and base head[\s\S]*required check results[\s\S]*private head and manifest inputs[\s\S]*release argv and input paths[\s\S]*separate environment map[\s\S]*rollback prerequisites/i,
+    );
+    expect(remoteIntegrationWorkflow).toMatch(
+      /Never hand off a pasted shell command with\s+inline environment assignments or PATH construction/i,
     );
     expect(remoteIntegrationWorkflow).toMatch(
       /implementation worker must not start promotion or create the validation\s+and deployment worker/i,

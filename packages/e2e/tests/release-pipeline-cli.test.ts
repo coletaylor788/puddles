@@ -18,6 +18,13 @@ import { afterEach, describe, expect, it } from "vitest";
 
 const repoRoot = resolve(import.meta.dirname, "..", "..", "..");
 const release = join(repoRoot, "packages", "e2e", "bin", "openclaw-release.mjs");
+const releaseLauncher = join(
+  repoRoot,
+  "packages",
+  "e2e",
+  "bin",
+  "openclaw-release.sh",
+);
 const roots: string[] = [];
 const publicHead = "a".repeat(40);
 const publicBase = "b".repeat(40);
@@ -45,8 +52,12 @@ function fixture(
   const runDir = join(root, "run");
   const log = join(root, "commands.log");
   const mergeState = join(root, "merged");
+  const releaseNodeDir = join(root, "Node Runtime");
+  const inheritedPathEntry = join(root, "Copilot.app", "Contents", "MacOS");
   mkdirSync(bin);
   mkdirSync(source);
+  mkdirSync(releaseNodeDir);
+  mkdirSync(inheritedPathEntry, { recursive: true });
 
   executable(
     join(bin, "git"),
@@ -120,9 +131,11 @@ elif [ "$1" = api ]; then
 fi
 `,
   );
+  const releaseNode = join(releaseNodeDir, "node");
   executable(
-    join(bin, "node"),
+    releaseNode,
     `
+printf 'release-node\\t%s\\n' "$*" >> "$COMMAND_LOG"
 if printf '%s' "\${1:-}" | grep -q 'openclaw-test-env.mjs$'; then
   printf 'public-validation\\n' >> "$COMMAND_LOG"
   exit 0
@@ -242,7 +255,7 @@ NODE
   );
   const env = {
     ...process.env,
-    PATH: `${bin}:/usr/bin:/bin`,
+    PATH: `${bin}:${inheritedPathEntry}:/usr/bin:/bin`,
     REAL_NODE: process.execPath,
     COMMAND_LOG: log,
     PUBLIC_MERGE_STATE: mergeState,
@@ -257,8 +270,7 @@ NODE
     PRIVATE_DIRTY: options.dirtyPrivateCheckout ? "1" : "0",
     PRIVATE_DIRTY_MARKER: join(root, "private-dirty"),
     MUTATE_PRIVATE_AFTER_APPLY: options.mutatePrivateAfterApply ? "1" : "0",
-    PUDDLES_PRIVATE_PIPELINE: privatePipeline,
-    OPENCLAW_DEPLOY_PATH: `${bin}:/usr/bin:/bin`,
+    OPENCLAW_DEPLOY_PATH: `${releaseNodeDir}:${bin}:/usr/bin:/bin`,
     RELEASE_STATE_URL: pathToFileURL(
       join(repoRoot, "packages", "e2e", "src", "release-state.mjs"),
     ).href,
@@ -266,7 +278,12 @@ NODE
     PRIVATE_OUTSIDE_STAGE: join(root, "outside-production-stage"),
   };
   const args = [
-    release,
+    releaseLauncher,
+    "--node",
+    releaseNode,
+    "--private-pipeline",
+    privatePipeline,
+    "--",
     "run",
     "--run-dir",
     runDir,
@@ -289,7 +306,7 @@ NODE
 }
 
 function runFixture(test: ReturnType<typeof fixture>) {
-  return spawnSync(process.execPath, test.args, {
+  return spawnSync("/bin/bash", test.args, {
     env: test.env,
     encoding: "utf8",
   });
@@ -314,6 +331,9 @@ describe("OpenClaw release CLI", () => {
     expect(first.status, `${first.stdout}\n${first.stderr}`).toBe(0);
     expect(readFileSync(test.log, "utf8")).toContain("private\tapply");
     expect(readFileSync(test.log, "utf8")).toContain("private\tvalidate");
+    expect(readFileSync(test.log, "utf8")).toContain(
+      `release-node\t${release} run`,
+    );
     expect(readFileSync(test.log, "utf8")).toContain("gh\tpr merge");
     expect(readFileSync(test.log, "utf8")).not.toMatch(
       /corepack\tpnpm (install|build)/,

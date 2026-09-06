@@ -68,9 +68,11 @@ The implementation worker owns code, configuration, documentation, local
 validation, the single retained independent review, commit, push, pull-request
 updates, review remediation, conflicts, and remote checks. Once one exact head
 is reviewed and green, it reports the immutable repository, head, base, checks,
-private inputs, release inputs, and rollback prerequisites to the parent
-orchestrator, then stops and waits. It does not promote or create the validation
-and deployment worker.
+private inputs, release inputs, an argv array with a separate environment map,
+and rollback prerequisites to the parent orchestrator, then stops and waits.
+Never hand off a pasted shell command with inline environment assignments or
+PATH construction. It does not promote or create the validation and deployment
+worker.
 
 After initial local validation, the implementation worker creates exactly one
 independent reviewer and records its agent or session identity in the plan or

@@ -4,7 +4,7 @@ description: "Implement features safely through local validation, retained full-
 compatibility: "Requires the target repository's existing build, test, deployment, and rollback tools. Uses repository-provided test and production lifecycles when available."
 metadata:
   author: Cole Taylor
-  version: "1.11.0"
+  version: "1.12.0"
 ---
 
 # Safe Feature Development
@@ -63,9 +63,11 @@ After one exact candidate is reviewed, remotely green, and mergeable, the
 implementation worker reports its immutable handoff to the parent orchestrator,
 then stops and waits. The handoff contains the repository and pull request,
 exact head and base pins, required check results, reviewed private and manifest
-inputs when applicable, release command and input paths, and rollback
-prerequisites. The implementation worker does not promote and does not create
-the validation and deployment worker.
+inputs when applicable, release argv and input paths, a separate environment
+map, and rollback prerequisites. Do not encode environment assignments, PATH
+construction, quoting, or executable selection in a pasted shell string. The
+implementation worker does not promote and does not create the validation and
+deployment worker.
 
 The sibling validation and deployment worker runs only the repository's
 scripted release lifecycle. It must not edit files, change pins, commit, push,
@@ -296,8 +298,9 @@ investigating instead of asking.
      base-branch commit. Report the immutable handoff to the parent orchestrator,
      then stop and wait. Include the repository and pull request, exact public
      head and base head, required check results, private head and manifest inputs
-     when applicable, release command and input paths, and rollback
-     prerequisites.
+     when applicable, release argv and input paths, a separate environment map,
+     and rollback prerequisites. Never hand off a pasted shell command with
+     inline environment assignments or PATH construction.
    - The implementation worker must not start promotion or create the validation
      and deployment worker. The parent orchestrator alone creates exactly one
      distinct sibling validation and deployment worker for the handoff.
