@@ -91,6 +91,13 @@ does not trust marker files. Landing is a separate durable stage after rollback
 ownership ends. If the merge command loses its response, the stage queries the
 pull request and default branch before deciding whether to retry.
 
+Combined validation must retain a production-ready tree beside its raw receipt
+at `<validation-receipt>.stage` and declare that absolute path plus its
+`puddles-directory-v1` SHA-256 as `candidate.productionStage`. The orchestrator
+independently hashes the complete directory before and after `pnpm pack`.
+Packaging does not install dependencies or rebuild, so the archive comes only
+from the retained tree that passed combined validation.
+
 The private executable receives only the documented `apply` and `validate`
 commands. Private code and credentials never enter the public candidate or
 repository. The public run directory may record only opaque private hashes and

@@ -3,6 +3,7 @@
 import {
   chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   readFileSync,
   realpathSync,
@@ -24,6 +25,7 @@ import {
   atomicWriteJson,
   candidateTreeSha256,
   createRunId,
+  directoryTreeSha256,
   sha256File,
   stageCanResume,
 } from "../src/release-state.mjs";
@@ -264,7 +266,12 @@ function validateOverlayReceipt(receipt, expectedHead, expectedTree, stage) {
   }
 }
 
-function sanitizedOverlayReceipt(receipt, stage, privateRepository) {
+function sanitizedOverlayReceipt(
+  receipt,
+  stage,
+  privateRepository,
+  productionStage,
+) {
   const candidate = {};
   for (const key of ["treeSha256", "preTreeSha256", "postTreeSha256"]) {
     if (receipt.candidate?.[key] !== undefined) {
@@ -284,10 +291,44 @@ function sanitizedOverlayReceipt(receipt, stage, privateRepository) {
     },
     candidate,
   };
+  if (productionStage) {
+    sanitized.candidate.productionStage = productionStage;
+  }
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(privateRepository)) {
     throw new Error("private receipt repository identifier is invalid");
   }
   return sanitized;
+}
+
+function validatedProductionStage(
+  receipt,
+  rawValidationReceipt,
+  privateReceiptDir,
+  candidate,
+) {
+  const expectedPath = `${rawValidationReceipt}.stage`;
+  const declared = receipt.candidate?.productionStage;
+  if (
+    declared?.path !== expectedPath ||
+    !/^[0-9a-f]{64}$/.test(declared?.sha256 ?? "") ||
+    !existsSync(expectedPath) ||
+    lstatSync(expectedPath).isSymbolicLink() ||
+    !lstatSync(expectedPath).isDirectory()
+  ) {
+    throw new Error("combined validation receipt has no valid production stage");
+  }
+  const canonical = realpathSync(expectedPath);
+  if (
+    dirname(canonical) !== privateReceiptDir ||
+    isInside(candidate, canonical)
+  ) {
+    throw new Error("production stage is outside its retained release location");
+  }
+  const actual = directoryTreeSha256(canonical);
+  if (actual !== declared.sha256) {
+    throw new Error("production stage digest does not match combined validation");
+  }
+  return { path: canonical, sha256: actual };
 }
 
 async function pullRequestState(repository, number) {
@@ -489,6 +530,14 @@ function validatedDeploymentChain(runDir, pins) {
   ) {
     return undefined;
   }
+  const productionStage = validationStage.result.productionStage;
+  if (
+    typeof productionStage?.path !== "string" ||
+    !/^[0-9a-f]{64}$/.test(productionStage?.sha256 ?? "") ||
+    directoryTreeSha256(productionStage.path) !== productionStage.sha256
+  ) {
+    throw new Error("retained production stage changed after validation");
+  }
   if (
     publicStage.inputs.publicHead !== pins.publicHead ||
     publicStage.inputs.manifestSha256 !== sha256File(patchManifestPath) ||
@@ -498,6 +547,8 @@ function validatedDeploymentChain(runDir, pins) {
     validationStage.inputs.combinedTreeSha256 !== applyStage.result.treeSha256 ||
     validationStage.inputs.privateHead !== pins.privateHead ||
     packageStage.inputs.combinedTreeSha256 !== validationStage.result.treeSha256 ||
+    packageStage.inputs.productionStagePath !== productionStage.path ||
+    packageStage.inputs.productionStageSha256 !== productionStage.sha256 ||
     deploymentStage.inputs.artifactSha256 !== packageStage.result.artifactSha256 ||
     deploymentStage.inputs.publicHead !== pins.publicHead ||
     deploymentStage.inputs.expectedBase !== pins.expectedBase ||
@@ -512,6 +563,8 @@ function validatedDeploymentChain(runDir, pins) {
     production.public?.head !== pins.publicHead ||
     production.public?.base !== pins.expectedBase ||
     production.private?.head !== pins.privateHead ||
+    production.candidate?.productionStageSha256 !==
+      packageStage.inputs.productionStageSha256 ||
     production.artifact?.sha256 !== packageStage.result.artifactSha256 ||
     deployment.status !== "passed" ||
     deployment.artifactSha256 !== packageStage.result.artifactSha256
@@ -810,16 +863,28 @@ async function main() {
         treeSha256,
         "combined validation",
       );
+      const rawReceipt = readJson(rawValidationReceipt);
+      const productionStage = validatedProductionStage(
+        rawReceipt,
+        rawValidationReceipt,
+        privateReceiptDir,
+        candidate,
+      );
       atomicWriteJson(
         validationReceipt,
         sanitizedOverlayReceipt(
-          readJson(rawValidationReceipt),
+          rawReceipt,
           "combined-validation",
           privateRepository,
+          productionStage,
         ),
       );
       return {
-        result: { summary: "combined validation passed", treeSha256 },
+        result: {
+          summary: "combined validation passed",
+          treeSha256,
+          productionStage,
+        },
         outputPaths: [validationReceipt],
       };
     },
@@ -829,15 +894,25 @@ async function main() {
   }
 
   const artifactReceipt = join(runDir, "package.json");
-  const packageInputs = { combinedTreeSha256: overlayResult.treeSha256 };
+  const productionStage = validationResult.productionStage;
+  if (
+    !productionStage ||
+    directoryTreeSha256(productionStage.path) !== productionStage.sha256
+  ) {
+    throw new Error("retained production stage changed before packaging");
+  }
+  const packageInputs = {
+    combinedTreeSha256: overlayResult.treeSha256,
+    productionStagePath: productionStage.path,
+    productionStageSha256: productionStage.sha256,
+  };
   const packageArgv = [
     "corepack",
     "pnpm",
-    "build",
-    "&&",
-    "corepack",
-    "pnpm",
     "pack",
+    "--config.ignore-scripts=true",
+    "--pack-destination",
+    join(runDir, "artifacts"),
   ];
   const currentPackageStage = validatedStage(runDir, "package", true);
   if (!currentPackageStage && existsSync(artifactReceipt)) {
@@ -847,6 +922,9 @@ async function main() {
       receipt.stage !== "package" ||
       receipt.status !== "passed" ||
       receipt.candidate?.treeSha256 !== overlayResult.treeSha256 ||
+      receipt.candidate?.productionStage?.path !== productionStage.path ||
+      receipt.candidate?.productionStage?.sha256 !== productionStage.sha256 ||
+      directoryTreeSha256(productionStage.path) !== productionStage.sha256 ||
       typeof receipt.artifact?.path !== "string" ||
       !/^[0-9a-f]{64}$/.test(receipt.artifact?.sha256 ?? "") ||
       !existsSync(receipt.artifact.path) ||
@@ -873,15 +951,9 @@ async function main() {
     packageInputs,
     packageArgv,
     async () => {
-      await run("corepack", ["pnpm", "install", "--frozen-lockfile"], {
-        cwd: candidate,
-        timeoutMs: 15 * 60_000,
-      });
-      await run("corepack", ["pnpm", "build"], {
-        cwd: candidate,
-        env: { ...process.env, NODE_OPTIONS: "--max-old-space-size=8192" },
-        timeoutMs: 30 * 60_000,
-      });
+      if (directoryTreeSha256(productionStage.path) !== productionStage.sha256) {
+        throw new Error("retained production stage changed before packaging");
+      }
       const packed = (
         await run(
           "corepack",
@@ -892,7 +964,11 @@ async function main() {
             "--pack-destination",
             join(runDir, "artifacts"),
           ],
-          { cwd: candidate, capture: true, timeoutMs: 10 * 60_000 },
+          {
+            cwd: productionStage.path,
+            capture: true,
+            timeoutMs: 10 * 60_000,
+          },
         )
       )
         .trim()
@@ -902,11 +978,17 @@ async function main() {
         packed.startsWith("/") ? packed : join(runDir, "artifacts", packed),
       );
       const artifactSha256 = sha256File(artifact);
+      if (directoryTreeSha256(productionStage.path) !== productionStage.sha256) {
+        throw new Error("retained production stage changed during packaging");
+      }
       atomicWriteJson(artifactReceipt, {
         schemaVersion: 1,
         stage: "package",
         status: "passed",
-        candidate: { treeSha256: overlayResult.treeSha256 },
+        candidate: {
+          treeSha256: overlayResult.treeSha256,
+          productionStage,
+        },
         artifact: { path: artifact, sha256: artifactSha256 },
       });
       return {
@@ -932,7 +1014,10 @@ async function main() {
     status: "passed",
     public: { repository, head: publicHead, base: expectedBase },
     private: { head: privateHead },
-    candidate: { treeSha256: overlayResult.treeSha256 },
+    candidate: {
+      treeSha256: overlayResult.treeSha256,
+      productionStageSha256: productionStage.sha256,
+    },
     artifact: { sha256: packageResult.artifactSha256 },
   };
   writeFileSync(
@@ -986,6 +1071,7 @@ async function main() {
       production.public?.base !== expectedBase ||
       production.private?.head !== privateHead ||
       production.candidate?.treeSha256 !== overlayResult.treeSha256 ||
+      production.candidate?.productionStageSha256 !== productionStage.sha256 ||
       production.artifact?.sha256 !== packageResult.artifactSha256
     ) {
       throw new Error(
@@ -1008,7 +1094,7 @@ async function main() {
     deploymentArgv,
     async () => {
       const browserEntrypoint = join(
-        candidate,
+        productionStage.path,
         "scripts",
         "sandbox-browser-entrypoint.sh",
       );

@@ -2,12 +2,16 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   closeSync,
   fsyncSync,
+  lstatSync,
   openSync,
+  readlinkSync,
+  readdirSync,
   readFileSync,
+  realpathSync,
   renameSync,
   writeFileSync,
 } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 
 function addHashRecord(hash, value) {
@@ -52,6 +56,56 @@ export function candidateTreeSha256(path) {
     addHashRecord(hash, file);
     addHashRecord(hash, readFileSync(join(path, file)));
   }
+  return hash.digest("hex");
+}
+
+function addPair(hash, label, value) {
+  addHashRecord(hash, label);
+  addHashRecord(hash, value);
+}
+
+export function directoryTreeSha256(path) {
+  const root = realpathSync(path);
+  const hash = createHash("sha256");
+  addPair(hash, "format", "puddles-directory-v1");
+
+  function walk(directory, parent = "") {
+    for (const name of readdirSync(directory).sort()) {
+      const absolute = join(directory, name);
+      const relativePath = parent ? `${parent}/${name}` : name;
+      const metadata = lstatSync(absolute);
+      addPair(hash, "path", relativePath);
+      addPair(hash, "mode", metadata.mode.toString(8));
+      if (metadata.isFile()) {
+        addPair(hash, "file", readFileSync(absolute));
+      } else if (metadata.isDirectory()) {
+        addPair(hash, "directory", Buffer.alloc(0));
+        walk(absolute, relativePath);
+      } else if (metadata.isSymbolicLink()) {
+        if (relativePath === "node_modules/@openclaw/ai") {
+          throw new Error("production stage must materialize node_modules/@openclaw/ai");
+        }
+        const target = readlinkSync(absolute);
+        if (isAbsolute(target)) {
+          throw new Error(`production stage symlink is absolute: ${relativePath}`);
+        }
+        const resolved = realpathSync(absolute);
+        const fromRoot = relative(root, resolved);
+        if (
+          fromRoot === ".." ||
+          fromRoot.startsWith(`..${sep}`) ||
+          isAbsolute(fromRoot)
+        ) {
+          throw new Error(`production stage symlink escapes root: ${relativePath}`);
+        }
+        addPair(hash, "symlink", target);
+      } else {
+        throw new Error(`production stage contains unsupported entry: ${relativePath}`);
+      }
+    }
+  }
+
+  walk(root);
   return hash.digest("hex");
 }
 

@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 const repoRoot = resolve(import.meta.dirname, "..", "..", "..");
@@ -26,7 +27,12 @@ function executable(path: string, body: string) {
   chmodSync(path, 0o755);
 }
 
-function fixture(options: { stalePublicHead?: boolean } = {}) {
+function fixture(
+  options: {
+    productionStageMode?: "missing" | "outside" | "symlink";
+    stalePublicHead?: boolean;
+  } = {},
+) {
   const root = mkdtempSync(join(tmpdir(), "puddles-release-cli-"));
   roots.push(root);
   const bin = join(root, "bin");
@@ -140,17 +146,42 @@ command="$1"
 shift
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --source) source="$2"; shift 2 ;;
     --public-result) public_result="$2"; shift 2 ;;
     --output) output="$2"; shift 2 ;;
     --expected-private-head) private_head="$2"; shift 2 ;;
     *) shift 2 ;;
   esac
 done
-"$REAL_NODE" - "$command" "$public_result" "$output" "$private_head" <<'NODE'
-const fs = require("node:fs");
-const [command, publicPath, output, head] = process.argv.slice(2);
+"$REAL_NODE" --input-type=module - "$command" "$source" "$public_result" "$output" "$private_head" <<'NODE'
+import fs from "node:fs";
+import path from "node:path";
+const [command, source, publicPath, output, head] = process.argv.slice(2);
 const publicReceipt = JSON.parse(fs.readFileSync(publicPath));
-fs.mkdirSync(require("node:path").dirname(output), { recursive: true });
+fs.mkdirSync(path.dirname(output), { recursive: true });
+let productionStage;
+if (command === "validate") {
+  const expectedStage = output + ".stage";
+  let stage = expectedStage;
+  if (process.env.PRIVATE_STAGE_MODE === "outside") {
+    stage = process.env.PRIVATE_OUTSIDE_STAGE;
+  }
+  if (!["missing", "symlink"].includes(process.env.PRIVATE_STAGE_MODE)) {
+    fs.cpSync(source, stage, { recursive: true });
+  }
+  const { directoryTreeSha256 } = await import(process.env.RELEASE_STATE_URL);
+  if (process.env.PRIVATE_STAGE_MODE === "symlink") {
+    const outside = process.env.PRIVATE_OUTSIDE_STAGE;
+    fs.cpSync(source, outside, { recursive: true });
+    fs.symlinkSync(outside, expectedStage);
+  }
+  productionStage = {
+    path: stage,
+    sha256: process.env.PRIVATE_STAGE_MODE === "missing"
+      ? "0".repeat(64)
+      : directoryTreeSha256(stage),
+  };
+}
 fs.writeFileSync(output, JSON.stringify({
   schemaVersion: 1,
   stage: command,
@@ -160,6 +191,7 @@ fs.writeFileSync(output, JSON.stringify({
     treeSha256: publicReceipt.candidate.treeSha256,
     preTreeSha256: publicReceipt.candidate.treeSha256,
     postTreeSha256: publicReceipt.candidate.treeSha256,
+    ...(productionStage ? { productionStage } : {}),
   },
   secretPath: "/private/account",
 }) + "\\n");
@@ -178,6 +210,11 @@ NODE
     PRIVATE_BASE: privateBase,
     PUDDLES_PRIVATE_PIPELINE: privatePipeline,
     OPENCLAW_DEPLOY_PATH: `${bin}:/usr/bin:/bin`,
+    RELEASE_STATE_URL: pathToFileURL(
+      join(repoRoot, "packages", "e2e", "src", "release-state.mjs"),
+    ).href,
+    PRIVATE_STAGE_MODE: options.productionStageMode ?? "normal",
+    PRIVATE_OUTSIDE_STAGE: join(root, "outside-production-stage"),
   };
   const args = [
     release,
@@ -229,6 +266,9 @@ describe("OpenClaw release CLI", () => {
     expect(readFileSync(test.log, "utf8")).toContain("private\tapply");
     expect(readFileSync(test.log, "utf8")).toContain("private\tvalidate");
     expect(readFileSync(test.log, "utf8")).toContain("gh\tpr merge");
+    expect(readFileSync(test.log, "utf8")).not.toMatch(
+      /corepack\tpnpm (install|build)/,
+    );
     expect(readFileSync(join(test.runDir, "landing.json"), "utf8")).toContain(
       '"status": "passed"',
     );
@@ -279,6 +319,35 @@ describe("OpenClaw release CLI", () => {
     expect(resumed.status).not.toBe(0);
     expect(resumed.stderr).toContain("package stage evidence no longer validates");
   });
+
+  it("rejects production-stage tampering before package reuse", () => {
+    const test = fixture();
+    const first = runFixture(test);
+    expect(first.status, `${first.stdout}\n${first.stderr}`).toBe(0);
+    const validation = JSON.parse(
+      readFileSync(join(test.runDir, "validation.json"), "utf8"),
+    );
+    writeFileSync(
+      join(validation.candidate.productionStage.path, "tampered"),
+      "changed",
+    );
+
+    const resumed = runFixture(test);
+    expect(resumed.status).not.toBe(0);
+    expect(resumed.stderr).toContain(
+      "retained production stage changed after validation",
+    );
+  });
+
+  for (const mode of ["missing", "outside", "symlink"] as const) {
+    it(`rejects a ${mode} production stage`, () => {
+      const test = fixture({ productionStageMode: mode });
+      const result = runFixture(test);
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toMatch(/production stage/);
+      expect(readFileSync(test.log, "utf8")).not.toMatch(/corepack\tpnpm pack/);
+    });
+  }
 
   it("rejects a symlinked private receipt directory into a protected tree", () => {
     const test = fixture();

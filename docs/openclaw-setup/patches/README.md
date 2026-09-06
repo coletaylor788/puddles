@@ -59,6 +59,11 @@ separately reviewed private overlay, builds one package, and passes that exact
 package to this wrapper. The wrapper verifies the package digest before it
 changes production.
 
+Combined validation produces the build-ready tree. The release orchestrator
+checks its complete `puddles-directory-v1` digest, packages it without another
+install or build, then checks the directory digest again. This binds the
+deployed package to the exact build outputs that passed the combined gate.
+
 The wrapper still supports its compatibility build mode for focused development
 and recovery. Run it on the target Mac mini to build and install locally,
 without requiring SSH:

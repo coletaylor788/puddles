@@ -18,7 +18,7 @@ Each stage records its inputs, outputs, command, timing, and concise result outs
 
 The public orchestrator now validates one pinned source tree, calls the private overlay through its narrow command contract, packages the combined candidate once, and deploys only the recorded artifact digest. Each stage records inputs, outputs, commands, timing, and resume data outside the candidate. The existing deployment rollback owns production checks and the final pre-merge pull-request state check. Merge and landed verification use a separate durable stage after rollback ownership ends.
 
-The full managed lifecycle passes on the supported Node runtime. The private side is reviewed at its pinned head and its receipt shape matches the public contract. The retained independent review found eight material issues across its passes. All are fixed, covered, and clean on recheck.
+The full managed lifecycle passes on the supported Node runtime. The private side is reviewed at its pinned head and its receipt shape matches the public contract. The retained independent and cross-repository reviews found nine material issues across their passes. All are fixed, covered, and clean on recheck.
 
 ## Agent section
 
@@ -29,7 +29,7 @@ The full managed lifecycle passes on the supported Node runtime. The private sid
 - Private coordination: creator session `ef5fc892-f0fb-4ba0-b024-cf08ca61adb8`.
 - Private implementation owner: session `66dd0a6d-f143-45c1-8011-15c95b616fb9`.
 - Production topology: user LaunchAgent `gui/502/ai.openclaw.gateway`, plist `~/Library/LaunchAgents/ai.openclaw.gateway.plist`, local port `18789`.
-- Private contract: Repository `coletaylor788/puddles-private`, executable `docs/openclaw-setup/patches/private-overlay.mjs`, head `524a04bcf24247ad49ee3d2c46df65280c4cfbd1`.
+- Private contract: Repository `coletaylor788/puddles-private`, executable `docs/openclaw-setup/patches/private-overlay.mjs`, head `7aa2b9327f3f4bcfc4807cedcbcf043e3247db40`.
 - Blocker: The private executable's absolute path on the target Mac mini is needed only for promotion.
 
 ### Scope and acceptance criteria
@@ -67,6 +67,7 @@ The full managed lifecycle passes on the supported Node runtime. The private sid
 - Have public validation prepare the detached candidate, apply the manifest stack, run the public gates, and write `public.json`.
 - Call `$PUDDLES_PRIVATE_PIPELINE apply` and `validate` exactly as specified. Treat returned metadata as untrusted and verify its schema, pins, and digests.
 - Build and pack once after combined validation. Pass the resulting tarball and expected digest into the deployment wrapper.
+- Require combined validation to retain an external build-ready production stage with a complete `puddles-directory-v1` digest. Package that exact stage without another install or build, and verify its digest before and after packing.
 - Extend `apply-and-deploy.sh` with an immutable-artifact mode while retaining its current compatibility path.
 - Keep target-side recovery and rollback in the deployment wrapper. Add durable target evidence for pre-quiesce failures, rollback outcomes, successful completion, and disconnected-client reconciliation.
 - Query GitHub immediately before promotion and again before merge. A changed head, base, check state, review state, or mergeability invalidates promotion.
@@ -93,7 +94,7 @@ The full managed lifecycle passes on the supported Node runtime. The private sid
 - Public validation must pass without the private overlay. Combined validation must pass after the private overlay and must prove interactions across both patch sets.
 - Production validation is read-only and checks package version and digest evidence, LaunchAgent state, port 18789, and the payload-free gateway health probe.
 - Focused result: `packages/e2e` type-check passes. Release state, release contract, process timeout, review workflow, immutable deployment, post-deploy rollback, and remote path regressions pass.
-- Full managed result: Passed with Node 22.23.1. Puddles package suites passed 152 E2E tests, 112 MCP hook tests, 61 calendar tests, 43 Gmail plugin tests, and 175 Gmail Python tests. The patched OpenClaw project groups passed 319 tests across 12 files, and the candidate suite passed 2 tests.
+- Full managed result: Passed with Node 22.23.1. Puddles package suites passed 158 E2E tests, 112 MCP hook tests, 61 calendar tests, 43 Gmail plugin tests, and 175 Gmail Python tests. The patched OpenClaw project groups passed 319 tests across 12 files, and the candidate suite passed 2 tests.
 - Failed iterations found two lifecycle defects that are now covered: broad Vitest selection loaded tests into the wrong projects, and this host's Node 24.2.0 did not satisfy the pinned OpenClaw engine. The runner now uses one declared project per mapped test. Validation used the same supported Node 22.23.1 configured in CI.
 
 ### Rollout and rollback
@@ -111,7 +112,8 @@ The full managed lifecycle passes on the supported Node runtime. The private sid
 - Independent retained reviewer: `71118f9e-0458-486c-8308-b51e88663719`.
 - First pass: Three High findings. Run-directory symlink escape, single-shot remote receipt retrieval, and acceptance of private pull requests with no remote checks.
 - Second pass: The first three findings were resolved. Four material findings remained. Merge ambiguity could trigger rollback after merge, private receipts were not sanitized, pre-quiesce failures lacked receipts, and the orchestrator had only source-contract tests.
-- Corrections: Canonical containment blocks symlink escapes while accepting canonical macOS temporary roots. Remote deployment is detached, boundedly polled, and reconciled by immutable artifact digest. Both pull requests require successful checks. Production validation and merge are separate durable stages. Public run evidence contains sanitized private metadata. Every target terminal path writes or coordinates a receipt. A mocked executable CLI regression covers composition, sanitization, stale heads, ambiguous merge reconciliation, completed-run resume, and receipt-to-stage interruption recovery without rebuilding or redeploying.
+- Cross-repository pass: Combined validation produced build outputs that the public candidate digest did not cover, while public packaging rebuilt the tree. The private receipt now declares a retained production stage with a complete directory digest. Public verifies and packages that exact stage without rebuilding.
+- Corrections: Canonical containment blocks symlink escapes while accepting canonical macOS temporary roots. Remote deployment is detached, boundedly polled, and reconciled by immutable artifact digest. Both pull requests require successful checks. Production validation and merge are separate durable stages. Public run evidence contains sanitized private metadata. Every target terminal path writes or coordinates a receipt. A mocked executable CLI regression covers composition, sanitization, stale heads, ambiguous merge reconciliation, completed-run resume, receipt-to-stage interruption recovery, and exact packaging of the retained combined-validation output without rebuilding.
 - Recheck: Clean. No concrete material findings remain.
 
 ### Checklist

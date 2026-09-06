@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import {
+  chmodSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
@@ -14,6 +15,7 @@ import {
   argvSha256,
   atomicWriteJson,
   candidateTreeSha256,
+  directoryTreeSha256,
   sha256File,
   stageCanResume,
 } from "../src/release-state.mjs";
@@ -124,5 +126,37 @@ describe("release state", () => {
         base,
       ),
     ).not.toThrow();
+  });
+
+  it("matches the canonical complete-directory digest vector", () => {
+    const root = mkdtempSync(join(tmpdir(), "puddles-directory-digest-"));
+    roots.push(root);
+    mkdirSync(join(root, "empty"), { mode: 0o755 });
+    chmodSync(join(root, "empty"), 0o755);
+    writeFileSync(join(root, "hello.txt"), "hello\n", { mode: 0o644 });
+    chmodSync(join(root, "hello.txt"), 0o644);
+
+    expect(directoryTreeSha256(root)).toBe(
+      "abfb0654c427d77fee8837818614d115a5a6ba6011ce67c1fd87c095982d4ac0",
+    );
+    writeFileSync(join(root, "hello.txt"), "changed\n");
+    expect(directoryTreeSha256(root)).not.toBe(
+      "abfb0654c427d77fee8837818614d115a5a6ba6011ce67c1fd87c095982d4ac0",
+    );
+  });
+
+  it("rejects escaping and unresolved production-stage symlinks", () => {
+    const root = mkdtempSync(join(tmpdir(), "puddles-directory-links-"));
+    roots.push(root);
+    writeFileSync(join(root, "outside"), "secret");
+    mkdirSync(join(root, "stage"));
+    symlinkSync("../outside", join(root, "stage", "escape"));
+    expect(() => directoryTreeSha256(join(root, "stage"))).toThrow(
+      /symlink escapes root/,
+    );
+
+    rmSync(join(root, "stage", "escape"));
+    symlinkSync("missing", join(root, "stage", "broken"));
+    expect(() => directoryTreeSha256(join(root, "stage"))).toThrow();
   });
 });
