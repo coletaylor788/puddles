@@ -20,13 +20,13 @@ Candidate changes and production release are owned by separate workers under a p
 
 The public orchestrator now validates one pinned source tree, calls the private overlay through its narrow command contract, packages the combined candidate once, and deploys only the recorded artifact digest. Each stage records inputs, outputs, commands, timing, and resume data outside the candidate. The existing deployment rollback owns production checks and the final pre-merge pull-request state check. Merge and landed verification use a separate durable stage after rollback ownership ends.
 
-The public candidate pins the reviewed private overlay head that passed its contract check. Focused validation and the full cumulative pool are green for the permanent three-role ownership contract. The implementation worker is freezing the candidate for its single retained full-diff review, then fresh public checks. It will report the immutable exact-head handoff to the parent orchestrator and stop. Production is unchanged from the stopped earlier attempt.
+The public candidate pins the reviewed private overlay head that passed its contract check. The permanent three-role ownership, retained-review identity, and targeted-first validation cadence contracts are implemented. The parent has designated the stopped duplicate as the explicit replacement for the unavailable original reviewer. The single pre-review cumulative run is green, so focused contract checks are the only remaining local validation before that same replacement reviews the final exact head. Production is unchanged from the stopped earlier attempt.
 
 ## Agent section
 
 ### State
 
-- Phase: Retained full-diff review before fresh public checks.
+- Phase: Finish focused cadence checks and resume the designated replacement.
 - Public repository: `coletaylor788/puddles`.
 - Private coordination: creator session `ef5fc892-f0fb-4ba0-b024-cf08ca61adb8`.
 - Private implementation owner: session `66dd0a6d-f143-45c1-8011-15c95b616fb9`.
@@ -60,6 +60,8 @@ The public candidate pins the reviewed private overlay head that passed its cont
 - Prove public-only validation, combined validation, immutable installation, interruption recovery, rollback, and stale-head handling in committed tests.
 - Run `node packages/e2e/bin/openclaw-test-env.mjs ci`.
 - Complete one independent adversarial review loop and reuse the same reviewer for remediation.
+- Record the retained reviewer identity in durable plan state. Use a replacement only after recording an actual failure or irrecoverable unavailability and the replacement identity.
+- Use targeted checks during implementation and remediation. Run the full cumulative pool once on the final pre-review candidate, and once more only if batched reviewer fixes change candidate files.
 - Keep all edits, pin changes, validation, and retained review with the implementation worker.
 - Return the remotely green exact head to the parent orchestrator. The parent creates exactly one sibling validation and deployment worker and routes any failure back to the same implementation worker.
 - Pass remote checks, promote only after both repositories are reviewed and green, validate production read-only, recheck exact pull-request state, merge, and verify the landed result.
@@ -79,6 +81,8 @@ The public candidate pins the reviewed private overlay head that passed its cont
 - Keep target-side recovery and rollback in the deployment wrapper. Add durable target evidence for pre-quiesce failures, rollback outcomes, successful completion, and disconnected-client reconciliation.
 - Query GitHub immediately before promotion and again before merge. A changed head, base, check state, review state, or mergeability invalidates promotion.
 - Separate orchestration, implementation, and release execution. The implementation worker returns immutable public, base, and private pins to the parent. The parent alone creates the release worker and routes failures. The release worker never edits, resolves conflicts, makes design decisions, reviews, or creates workers, and stops with durable evidence on failure.
+- Keep one reviewer identity across the implementation remediation loop. Neither the parent orchestrator nor the release worker creates review agents.
+- Bind every successful implementation-worker full run to its candidate head or input hash. Reuse it only while those inputs stay unchanged. Remote CI and release-worker gates do not cause another local full run.
 - Revise the repository skills to use one retained independent reviewer loop. Remove the separate terminal fresh review requirement.
 
 ### Implementation
@@ -93,6 +97,7 @@ The public candidate pins the reviewed private overlay head that passed its cont
 - [x] Revise release and integration documentation.
 - [x] Revise safe feature and adversarial review wording for one review loop.
 - [x] Define the immutable handoff between the implementation worker and the validation and deployment worker.
+- [x] Define targeted-first validation cadence and exact-candidate full-run reuse.
 - [x] Add focused unit and integration regressions.
 
 ### Validation
@@ -105,6 +110,7 @@ The public candidate pins the reviewed private overlay head that passed its cont
 - Focused result: `packages/e2e` type-check passes. The 89 release state, release contract, process timeout, review workflow, immutable deployment, post-deploy rollback, and remote path regressions pass.
 - Full managed result: Passed with Node 22.23.1. Puddles package suites passed 158 E2E tests, 112 MCP hook tests, 61 calendar tests, 43 Gmail plugin tests, and 175 Gmail Python tests. The patched OpenClaw project groups passed 319 tests across 12 files, and the candidate suite passed 2 tests.
 - Failed iterations found two lifecycle defects that are now covered: broad Vitest selection loaded tests into the wrong projects, and this host's Node 24.2.0 did not satisfy the pinned OpenClaw engine. The runner now uses one declared project per mapped test. Validation used the same supported Node 22.23.1 configured in CI.
+- Recoverable full-run history for this PR: one earlier implementation run passed before this ownership correction; one run in this session was stopped because the ownership contract changed while it was running; one run passed for the three-role contract; and the current single pre-review run passed after the reviewer identity contract. The current candidate record in the pull request binds the retained result to the final head.
 
 ### Rollout and rollback
 
@@ -127,6 +133,7 @@ The public candidate pins the reviewed private overlay head that passed its cont
 - Cross-repository pass: Combined validation produced build outputs that the public candidate digest did not cover, while public packaging rebuilt the tree. The private receipt now declares a retained production stage with a complete directory digest. Public verifies and packages that exact stage without rebuilding.
 - Corrections: Canonical containment blocks symlink escapes while accepting canonical macOS temporary roots. Remote deployment is detached, boundedly polled, and reconciled by immutable artifact digest. Both pull requests require successful checks. Production validation and merge are separate durable stages. Public run evidence contains sanitized private metadata. Every target terminal path writes or coordinates a receipt. A mocked executable CLI regression covers composition, sanitization, stale heads, ambiguous merge reconciliation, completed-run resume, receipt-to-stage interruption recovery, and exact packaging of the retained combined-validation output without rebuilding.
 - Recheck: Clean. No concrete material findings remain.
+- Current reviewer state: The original retained identity `71118f9e-0458-486c-8308-b51e88663719` is no longer addressable. Replacement `a33300f3-b349-4418-9723-0a9db370c05b` was created prematurely at candidate `be76af68ec573ae736931767ef1d8a08a29503ab`, immediately stopped, and produced no accepted findings. The parent orchestrator then designated that same identity as the explicit retained replacement. It remains stopped until the final implementation candidate passes local and cumulative validation.
 
 ### Checklist
 

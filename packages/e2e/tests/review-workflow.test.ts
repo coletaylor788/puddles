@@ -54,15 +54,21 @@ describe("shared explanation workflow", () => {
 
 describe("adversarial review workflow", () => {
   it("reuses one reviewer throughout remediation without narrowing review", () => {
-    expect(safeWorkflow).toContain('version: "1.9.0"');
+    expect(safeWorkflow).toContain('version: "1.11.0"');
     expect(safeWorkflow).toMatch(/retain its worker handle/i);
-    expect(safeWorkflow).toMatch(/resume or restart that same reviewer/i);
     expect(safeWorkflow).toMatch(
-      /which findings were addressed[\s\S]*what files or behavior\s+changed[\s\S]*which validation\s+reran/i,
+      /only independent reviewer[\s\S]*Record its agent or session identity[\s\S]*durable run state/i,
     );
-    expect(safeWorkflow).toMatch(/re-check the complete\s+current diff/i);
+    expect(safeWorkflow).toMatch(/resume\s+that same reviewer/i);
     expect(safeWorkflow).toMatch(
-      /fails or cannot be resumed[\s\S]*fresh\s+independent replacement/i,
+      /which\s+findings were addressed[\s\S]*what files or\s+behavior changed[\s\S]*which validation reran/i,
+    );
+    expect(safeWorkflow).toMatch(/re-check\s+the complete\s+current diff/i);
+    expect(safeWorkflow).toMatch(
+      /fails or cannot be resumed[\s\S]*fresh\s+independent replacement only after recording the prior identity and\s+failure reason/i,
+    );
+    expect(safeWorkflow).toMatch(
+      /Record the\s+replacement identity[\s\S]*complete-current-diff review/i,
     );
     expect(safeWorkflow).not.toContain(
       "Then launch another fresh adversarial reviewer",
@@ -81,14 +87,20 @@ describe("adversarial review workflow", () => {
     expect(safeWorkflow).toMatch(
       /escalate it for a decision instead of\s+repeating review cycles/i,
     );
-    expect(safeWorkflow).toMatch(/do not require a\s+new finding or code change/i);
+    expect(safeWorkflow).toMatch(/or require a new\s+finding or code change/i);
 
-    expect(reviewWorkflow).toContain('version: "1.5.0"');
+    expect(reviewWorkflow).toContain('version: "1.6.0"');
     expect(reviewWorkflow).toMatch(
       /single independent[\s\S]*pull-request review\s+process/i,
     );
     expect(reviewWorkflow).toMatch(
       /implementation worker's single independent[\s\S]*Do not invoke this skill\s+from the validation and deployment worker/i,
+    );
+    expect(reviewWorkflow).toMatch(
+      /records this reviewer's identity[\s\S]*resumes the same identity after remediation/i,
+    );
+    expect(reviewWorkflow).toMatch(
+      /replacement only when this reviewer failed or is irrecoverably\s+unavailable[\s\S]*record both identities and the failure[\s\S]*complete current diff/i,
     );
     expect(reviewWorkflow).toMatch(
       /Do not require a separate terminal reviewer/i,
@@ -147,6 +159,10 @@ describe("adversarial review workflow", () => {
     const closeoutWorkflow = safeWorkflow.slice(
       safeWorkflow.indexOf("9. **Land and close out**"),
       safeWorkflow.indexOf("## Completion gate"),
+    );
+    const validationWorkflow = safeWorkflow.slice(
+      safeWorkflow.indexOf("4. **Validate and iterate**"),
+      safeWorkflow.indexOf("5. **Audit the full change**"),
     );
 
     expect(repoInstructions).toMatch(
@@ -219,6 +235,9 @@ describe("adversarial review workflow", () => {
     expect(remoteIntegrationWorkflow).toMatch(
       /parent orchestrator alone creates exactly one\s+distinct sibling validation and deployment worker/i,
     );
+    expect(remoteIntegrationWorkflow).toMatch(
+      /parent orchestrator and validation and deployment worker must not\s+create review agents/i,
+    );
     expect(closeoutWorkflow).toMatch(
       /Do not stop at an open pull request or a\s+`Ready for review` state/i,
     );
@@ -226,7 +245,7 @@ describe("adversarial review workflow", () => {
       /retained-review candidate is remotely green, mergeable, and has\s+no unresolved required review[\s\S]*exact head commit and the current\s+base-branch commit/i,
     );
     expect(remoteIntegrationWorkflow).toMatch(
-      /Any candidate change invalidates the retained review result[\s\S]*applicable validation, full integration pool, and retained-review[\s\S]*recheck before pushing the new candidate and repeating all remote[\s\S]*integration gates/i,
+      /Any candidate change invalidates the retained review result[\s\S]*targeted checks while batching all fixes[\s\S]*full integration\s+pool once on the final candidate[\s\S]*resume the retained reviewer before\s+pushing and repeating remote integration gates/i,
     );
     expect(closeoutWorkflow).toMatch(
       /Immediately before merge[\s\S]*head and base are the exact remotely approved commits recorded before\s+promotion[\s\S]*head completed applicable promotion and production\s+validation/i,
@@ -250,7 +269,7 @@ describe("adversarial review workflow", () => {
       /Mark the repository issue complete and report the landed outcome[\s\S]*requester's final validation and\s+external task-completion decision/i,
     );
     expect(safeWorkflow).toMatch(
-      /validation and deployment worker never makes the fix itself or retries\s+with changed inputs/i,
+      /validation and deployment worker never makes the fix\s+itself or retries\s+with changed inputs/i,
     );
     expect(safeWorkflow).toMatch(
       /parent orchestrator routes any release failure to the same\s+implementation worker/i,
@@ -259,7 +278,7 @@ describe("adversarial review workflow", () => {
       /same\s+implementation worker[\s\S]*new exact candidate[\s\S]*new run/i,
     );
     expect(safeWorkflow).toMatch(
-      /passed stage[\s\S]*reused only when[\s\S]*matching input and\s+output hashes/i,
+      /passed stage[\s\S]*reused only\s+when[\s\S]*matching input and output hashes/i,
     );
     expect(safeWorkflow).toMatch(
       /report to the parent orchestrator, and stop/i,
@@ -267,6 +286,33 @@ describe("adversarial review workflow", () => {
     expect(safeWorkflow).not.toMatch(/launch another fresh adversarial reviewer/i);
     expect(safeWorkflow).not.toMatch(
       /implementation worker (?:starts|spawns|creates) (?:a|the|one) validation and deployment worker/i,
+    );
+    expect(validationWorkflow).toMatch(
+      /smallest targeted checks[\s\S]*Batch related targets and all planned fixes/i,
+    );
+    expect(validationWorkflow).toMatch(
+      /Do not run\s+the full configured integration pool after each edit, pin update, focused\s+failure, or review exchange/i,
+    );
+    expect(validationWorkflow).toMatch(
+      /full configured integration pool once immediately before sending\s+the candidate to the retained reviewer/i,
+    );
+    expect(validationWorkflow).toMatch(
+      /Persist the candidate head or input\s+hash/i,
+    );
+    expect(validationWorkflow).toMatch(
+      /Reuse that full result only while the recorded candidate inputs are\s+unchanged/i,
+    );
+    expect(safeWorkflow).toMatch(
+      /reviewer requests no candidate-file changes[\s\S]*do not rerun the local\s+full pool/i,
+    );
+    expect(safeWorkflow).toMatch(
+      /batch the complete\s+remediation[\s\S]*full configured integration pool once on\s+the final remediated candidate/i,
+    );
+    expect(safeWorkflow).toMatch(
+      /remote full run does not\s+require another unchanged local full run/i,
+    );
+    expect(safeWorkflow).not.toMatch(
+      /after (?:each|every) (?:fix|finding)[\s\S]{0,120}full configured integration pool/i,
     );
   });
 

@@ -72,6 +72,15 @@ private inputs, release inputs, and rollback prerequisites to the parent
 orchestrator, then stops and waits. It does not promote or create the validation
 and deployment worker.
 
+After initial local validation, the implementation worker creates exactly one
+independent reviewer and records its agent or session identity in the plan or
+other durable run state. Every remediation recheck resumes that same reviewer
+against the complete current diff. A replacement is allowed only when the
+retained reviewer failed or is irrecoverably unavailable. Record the old
+identity, the failure, and the replacement identity before using the
+replacement, and require a complete-diff review. The parent orchestrator and
+the validation and deployment worker never create review agents.
+
 The validation and deployment worker runs only the repository's scripted
 release lifecycle. It must not edit files, update pins, commit, push, resolve
 conflicts, make design decisions, invoke review, or create workers. On failure
@@ -145,6 +154,28 @@ merge:
 - Live production checks must remain read-only and must never deliver messages.
   Route all write and delivery behavior through deny-by-default recording
   mocks.
+
+## Validation cadence
+
+During implementation and review remediation, run only the smallest targeted
+tests, type checks, and linters that cover the current edits. Batch related
+targets and fixes. Do not run the full cumulative suite after each edit, pin
+change, focused failure, review comment, or remote CI exchange.
+
+After all planned candidate changes are complete and targeted checks pass, run
+the full cumulative suite once immediately before sending the exact candidate
+to the retained reviewer. Persist the candidate head or input hash with that
+successful result. If review causes no candidate-file changes, reuse the result.
+If remediation changes candidate files, batch every accepted fix, use targeted
+checks while iterating, then run the full cumulative suite once on the final
+remediated candidate before resuming the same reviewer.
+
+A remote CI run does not trigger another local full run. Diagnose a failure with
+targeted checks, batch all fixes, and rerun the full suite once after those
+checks pass. The validation and deployment worker's public and combined gates
+are separate release proofs and do not justify extra implementation-worker full
+runs. Reuse any successful full result only while its recorded head or input
+hash remains unchanged.
 
 ## OpenClaw deployment topology
 

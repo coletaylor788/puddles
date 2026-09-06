@@ -4,7 +4,7 @@ description: "Implement features safely through local validation, retained full-
 compatibility: "Requires the target repository's existing build, test, deployment, and rollback tools. Uses repository-provided test and production lifecycles when available."
 metadata:
   author: Cole Taylor
-  version: "1.9.0"
+  version: "1.11.0"
 ---
 
 # Safe Feature Development
@@ -75,6 +75,15 @@ orchestrator, then stops. It must not fix the failure or retry with changed
 inputs. The parent routes the failure to the same implementation worker. That
 worker owns every correction and reruns affected local validation and the
 retained review before returning a new immutable handoff with a new run.
+
+The implementation worker creates exactly one independent reviewer after
+initial local validation and records that reviewer's agent or session identity
+in the plan or other durable run state. Every remediation recheck resumes that
+same identity. A fresh replacement is allowed only when the retained reviewer
+failed or is irrecoverably unavailable. Record the prior identity, failure
+reason, and replacement identity before using it, and require the replacement
+to review the complete current diff. The parent orchestrator and validation and
+deployment worker never create review agents.
 
 Pause before implementation only when the requester explicitly asks to review,
 approve, or iterate on the design. Record the current design in the plan and
@@ -212,13 +221,24 @@ investigating instead of asking.
    - Add integration coverage for the feature to the repository's main
      integration test pool. Do not rely on ad hoc tests that are absent from the
      full configured run.
-   - Fix failures locally, redeploy to the test environment, and repeat until
-     all required pre-promotion gates are green.
+   - During implementation, run only the smallest targeted checks that cover
+     the current edits. Batch related targets and all planned fixes. Do not run
+     the full configured integration pool after each edit, pin update, focused
+     failure, or review exchange.
+   - After all planned candidate changes are complete and targeted checks pass,
+     run the full configured integration pool once immediately before sending
+     the candidate to the retained reviewer. Persist the candidate head or input
+     hash with the successful result.
+   - Reuse that full result only while the recorded candidate inputs are
+     unchanged. Remote CI and the validation and deployment worker's later
+     public and combined gates do not trigger another local full run.
 
 5. **Audit the full change**
    - Launch a fresh independent subagent that did not implement the change.
      Require it to invoke and follow the repository-local `adversarial-review`
-     skill against the complete feature diff. Retain its worker handle for the
+     skill against the complete feature diff. This is the implementation
+     worker's only independent reviewer. Record its agent or session identity in
+     the plan or other durable run state and retain its worker handle for the
      entire remediation loop.
    - Triage every finding using engineering judgment before changing the
      implementation. Accept and resolve concrete, well-supported defects that
@@ -231,23 +251,26 @@ investigating instead of asking.
      residual risk or blocker. If focused evidence-based discussion cannot
      resolve a material disagreement, escalate it for a decision instead of
      repeating review cycles.
-   - After accepted fixes, return to local implementation, redeploy to the test
-     environment, and rerun applicable local gates plus the full configured
-     integration test pool. Then resume or restart that same reviewer through
-     the retained worker handle. Tell it which findings were addressed, disputed,
-     revised, or withdrawn, what files or behavior changed, and which validation
-     reran, and require it to re-check the complete current diff. Do not launch a
-     new review worker for a routine remediation re-check, and do not require a
-     new finding or code change in each round. Repeat with the same reviewer until
-     no actionable, high-confidence findings remain unresolved.
-   - If the diff changes after a clear review for any reason, run the relevant
-     validation again, redeploy and rerun the full configured integration pool
-     when the change can affect it, then resume the same reviewer with the change
-     and validation summary for another complete-current-diff review.
+   - After accepted fixes, return to local implementation and batch the complete
+     remediation. Run targeted checks while iterating. After all fixes are final
+     and targeted checks pass, run the full configured integration pool once on
+     the final remediated candidate, persist its head or input hash, then resume
+     that same reviewer through the retained worker handle. Tell it which
+     findings were addressed, disputed, revised, or withdrawn, what files or
+     behavior changed, and which validation reran, and require it to re-check
+     the complete current diff. Do not run the full pool once per finding, launch
+     a new review worker for a routine remediation re-check, or require a new
+     finding or code change in each round. Repeat with the same reviewer until no
+     actionable, high-confidence findings remain unresolved.
+   - If the reviewer requests no candidate-file changes, do not rerun the local
+     full pool. Reuse the successful result bound to the unchanged candidate
+     head or input hash.
    - If the retained reviewer fails or cannot be resumed, launch a fresh
-     independent replacement, require a complete-current-diff review, and retain
-     the replacement's worker handle for the rest of the remediation loop. Never
-     skip or narrow review because the original worker is unavailable.
+     independent replacement only after recording the prior identity and
+     failure reason in the plan or other durable run state. Record the
+     replacement identity, require a complete-current-diff review, and retain
+     its worker handle for the rest of the remediation loop. Never skip or
+     narrow review because the original worker is unavailable.
    - After all in-diff plan, checklist, and other bookkeeping is final, create
      the landing candidate commit and resume the retained reviewer for one final
      complete-current-diff check. Do not launch a second terminal reviewer.
@@ -263,10 +286,11 @@ investigating instead of asking.
      and the reviewed commit identifier here.
    - Wait for all required remote checks. Resolve actionable review feedback,
      unresolved review threads, merge conflicts, and integration failures
-     yourself. Any candidate change invalidates the retained review result. Run
-     the applicable validation, full integration pool, and retained-review
-     recheck before pushing the new candidate and repeating all remote
-     integration gates.
+     yourself. Any candidate change invalidates the retained review result. Use
+     targeted checks while batching all fixes, then run the full integration
+     pool once on the final candidate and resume the retained reviewer before
+     pushing and repeating remote integration gates. A remote full run does not
+     require another unchanged local full run.
    - When the retained-review candidate is remotely green, mergeable, and has
      no unresolved required review, record its exact head commit and the current
      base-branch commit. Report the immutable handoff to the parent orchestrator,
@@ -277,6 +301,9 @@ investigating instead of asking.
    - The implementation worker must not start promotion or create the validation
      and deployment worker. The parent orchestrator alone creates exactly one
      distinct sibling validation and deployment worker for the handoff.
+   - The parent orchestrator and validation and deployment worker must not
+     create review agents. Review identity and remediation remain owned by the
+     implementation worker.
 
 7. **Promote through the configured lifecycle**
    - The parent-created validation and deployment worker first validates that
@@ -307,12 +334,13 @@ investigating instead of asking.
      report the structured failure to the parent orchestrator, and stop.
    - The parent orchestrator routes any release failure to the same
      implementation worker. If a candidate change is required, that worker makes
-     it, reruns affected local validation and the full configured integration
-     pool, resumes the retained reviewer for the complete current diff, pushes
-     the new exact candidate, and returns a new immutable handoff with a new run.
-     The validation and deployment worker never makes the fix itself or retries
-     with changed inputs. A passed stage may be reused only when the scripted
-     lifecycle verifies matching input and output hashes.
+     it, batches all corrections, and uses targeted checks while iterating. Once
+     those checks pass, it runs the full configured integration pool once on the
+     final candidate, resumes the retained reviewer for the complete current
+     diff, pushes the new exact candidate, and returns a new immutable handoff
+     with a new run. The validation and deployment worker never makes the fix
+     itself or retries with changed inputs. A passed stage may be reused only
+     when the scripted lifecycle verifies matching input and output hashes.
    - Preserve the original failure. Surface rollback or cleanup failures as
      additional errors rather than hiding them.
 
