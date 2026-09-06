@@ -50,6 +50,12 @@
       "candidateTests": [
         "tests/candidate.browser-entrypoint.test.ts"
       ]
+    },
+    {
+      "name": "qmd-mcporter-per-agent",
+      "tests": [
+        "packages/memory-host-sdk/src/host/backend-config.test.ts"
+      ]
     }
   ]
 }
