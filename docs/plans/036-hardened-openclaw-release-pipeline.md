@@ -20,13 +20,13 @@ Candidate changes and production release are owned by separate workers under a p
 
 The public orchestrator now validates one pinned source tree, binds private execution to the reviewed clean Git tree, packages the combined candidate once, and deploys only the recorded artifact digest. Each stage records inputs, outputs, commands, timing, and resume data outside the candidate. Deployment rollback owns production checks and the dependency-ordered private and public merges. The target disables rollback before publishing success, and the final durable stage records the already verified landing.
 
-The public candidate pins the reviewed private overlay head that passed its contract check. The permanent three-role ownership, retained-review identity, and targeted-first validation cadence contracts are implemented. The retained replacement cleared the private binding and receipt-order findings, then found two landing interruption gaps. Their corrections, 77 focused release and lifecycle regressions, and the final cumulative pool are green. The recheck by that same reviewer remains before push. Production is unchanged from the stopped earlier attempt.
+The public candidate pins the reviewed private overlay head that passed its contract check. The permanent three-role ownership, retained-review identity, and targeted-first validation cadence contracts are implemented. The retained replacement cleared the private binding and receipt-order findings, then found two landing interruption gaps. Their corrections, 77 focused release and lifecycle regressions, and the final cumulative pool are green. The same reviewer completed the final recheck with no actionable findings. Production is unchanged from the stopped earlier attempt.
 
 ## Agent section
 
 ### State
 
-- Phase: Resume the designated replacement on the final candidate.
+- Phase: Push the reviewed candidate and wait for exact-head remote checks.
 - Public repository: `coletaylor788/puddles`.
 - Private coordination: creator session `ef5fc892-f0fb-4ba0-b024-cf08ca61adb8`.
 - Private implementation owner: session `66dd0a6d-f143-45c1-8011-15c95b616fb9`.
@@ -136,7 +136,7 @@ The public candidate pins the reviewed private overlay head that passed its cont
 - First remediation: The runner binds the private executable to a clean exact repository head and Git tree before each private stage. Private then public merge and exact landing verification run inside the rollback-owned post-deploy check. The target disables rollback before publishing its passed receipt. Focused regressions cover dirty or changed private checkouts, public merge failure rollback, a new run after a private-only merge, and interrupted receipt reconciliation.
 - Replacement recheck at candidate `f2489d4282a5f4b5d715a07923fa2f420c8da60c`: The private binding and receipt ordering findings were resolved. Two High findings remained. A signal after the server accepted the public merge could still roll production back, and a crash after target success but before the local production receipt could leave a completed release that no run could reconcile.
 - Second remediation: Signals are deferred during landing and cause the exact landed heads to be reconciled before commit or rollback. The target receipt now binds the public and private pins, candidate and production-stage digests, artifact, and landing result. A missing local production receipt is reconstructed only after target evidence, exact landing, and read-only production health all revalidate.
-- Current reviewer state: The original retained identity `71118f9e-0458-486c-8308-b51e88663719` is no longer addressable. Replacement `a33300f3-b349-4418-9723-0a9db370c05b` is the parent-designated retained replacement. The final cumulative pool passed, so it is ready to recheck the complete final diff.
+- Final recheck at candidate `7c739f380f5b3af54458f3e0c149b68ab2988b0b`: The reviewer initially reported that merged public state was not accepted during reconciliation. Current source and regressions showed that both exact merged states are accepted and verified on their default branches. The reviewer withdrew the finding and reported no actionable findings in the complete diff. The remaining production and GitHub landing validation belongs to the designated validation and deployment worker.
 
 ### Checklist
 
@@ -147,7 +147,7 @@ The public candidate pins the reviewed private overlay head that passed its cont
 - [x] Implement focused behavior and regression coverage.
 - [x] Pass focused local validation.
 - [x] Pass the full cumulative integration pool.
-- [ ] Complete the retained independent adversarial review loop for the current candidate.
+- [x] Complete the retained independent adversarial review loop for the current candidate.
 - [x] Push and open a non-draft pull request.
 - [ ] Pass required remote checks and review.
 - [x] Confirm the private pipeline is reviewed and remotely green.
