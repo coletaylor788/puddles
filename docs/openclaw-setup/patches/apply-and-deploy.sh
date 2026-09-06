@@ -25,6 +25,7 @@ OPENCLAW_ARTIFACT_SHA256="${OPENCLAW_ARTIFACT_SHA256:-}"
 OPENCLAW_BROWSER_ENTRYPOINT="${OPENCLAW_BROWSER_ENTRYPOINT:-}"
 OPENCLAW_POST_DEPLOY_CHECK="${OPENCLAW_POST_DEPLOY_CHECK:-}"
 OPENCLAW_TARGET_RESULT="${OPENCLAW_TARGET_RESULT:-}"
+OPENCLAW_RELEASE_METADATA="${OPENCLAW_RELEASE_METADATA:-}"
 MINI_HOST="${MINI_HOST:-}"
 MINI_SANDBOX_BUILD="${MINI_SANDBOX_BUILD:-/Users/puddles/.openclaw/sandbox-build}"
 REMOTE_STAGING_DIR="${REMOTE_STAGING_DIR:-/tmp}"
@@ -167,6 +168,7 @@ TARGET_RESULT="${11}"
 EXPECTED_ARTIFACT_SHA256="${12}"
 export PATH="${13}"
 SELF_PATH="${14:-}"
+RELEASE_METADATA="${15:-}"
 STATE_DIR="${OPENCLAW_STATE_DIR:-$HOME/.openclaw}"
 BACKUP_ROOT="${OPENCLAW_DEPLOY_BACKUP_ROOT:-$HOME/.openclaw-deploy-backups}"
 LOCK_DIR="${OPENCLAW_DEPLOY_LOCK_DIR:-$HOME/.openclaw-deploy.lock}"
@@ -182,6 +184,8 @@ BROWSER_IMAGE="openclaw-sandbox-browser:bookworm-slim"
 CANDIDATE_BROWSER_IMAGE="openclaw-sandbox-browser:puddles-deploy-$$"
 PREVIOUS_BROWSER_IMAGE_ID=""
 GATEWAY_QUIESCED=0
+LANDING_ACTIVE=0
+LANDING_SIGNAL=""
 SNAPSHOT_READY=0
 PACKAGE_CHANGED=0
 ROLLBACK_ACTIVE=0
@@ -198,13 +202,15 @@ write_target_result() {
   [ -n "$TARGET_RESULT" ] || return 0
   mkdir -p "$(dirname "$TARGET_RESULT")"
   temporary="$TARGET_RESULT.tmp.$$"
-  node - "$temporary" "$status" "$detail" "$RECOVERY_DIR" "$EXPECTED_ARTIFACT_SHA256" <<'NODE'
+  node - "$temporary" "$status" "$detail" "$RECOVERY_DIR" "$EXPECTED_ARTIFACT_SHA256" "$RELEASE_METADATA" <<'NODE'
 const fs = require("node:fs");
-const [path, status, detail, recoveryDir, artifactSha256] = process.argv.slice(2);
-const descriptor = fs.openSync(path, "wx", 0o600);
-fs.writeFileSync(descriptor, `${JSON.stringify({
-  schemaVersion: 1,
-  stage: "deployment",
+  const [path, status, detail, recoveryDir, artifactSha256, releaseMetadata] = process.argv.slice(2);
+  const metadata = releaseMetadata ? JSON.parse(releaseMetadata) : {};
+  const descriptor = fs.openSync(path, "wx", 0o600);
+  fs.writeFileSync(descriptor, `${JSON.stringify({
+    ...metadata,
+    schemaVersion: 1,
+    stage: "deployment",
   status,
   detail,
   recoveryDir,
@@ -540,6 +546,10 @@ rollback_and_exit() {
 on_signal() {
   signal="$1"
   status="$2"
+  if [ "$LANDING_ACTIVE" -eq 1 ]; then
+    LANDING_SIGNAL="${LANDING_SIGNAL:+$LANDING_SIGNAL,}$signal"
+    return 0
+  fi
   if [ "$ROLLBACK_ACTIVE" -eq 0 ] && [ "$GATEWAY_QUIESCED" -eq 1 ]; then
     rollback_and_exit "$status" "deployment interrupted by $signal"
   fi
@@ -666,8 +676,14 @@ refresh_browser_sandbox
 restart_gateway || rollback_and_exit "$?" "gateway restart failed"
 wait_for_gateway || rollback_and_exit "$?" "gateway did not become healthy on local port $GATEWAY_PORT after $HEALTH_ATTEMPTS attempts"
 if [ -n "$POST_DEPLOY_CHECK" ]; then
-  "$POST_DEPLOY_CHECK" ||
-    rollback_and_exit "$?" "post-deploy validation or landing check failed"
+  LANDING_ACTIVE=1
+  while ! "$POST_DEPLOY_CHECK"; do
+    [ -n "$LANDING_SIGNAL" ] ||
+      rollback_and_exit 1 "post-deploy validation or landing check failed"
+    echo "    landing interrupted by deferred signal(s): $LANDING_SIGNAL; reconciling" >&2
+    LANDING_SIGNAL=""
+  done
+  LANDING_ACTIVE=0
 fi
 GATEWAY_QUIESCED=0
 trap - ERR INT TERM HUP
@@ -828,7 +844,8 @@ NODE
     "$REMOTE_TARGET_RESULT" \
     "$ARTIFACT_DIGEST" \
     "${OPENCLAW_DEPLOY_PATH:-/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin}" \
-    "$REMOTE_DEPLOY_SCRIPT"; do
+    "$REMOTE_DEPLOY_SCRIPT" \
+    "$OPENCLAW_RELEASE_METADATA"; do
     REMOTE_COMMAND="$REMOTE_COMMAND $(shell_quote "$arg")"
   done
   REMOTE_COMMAND="$REMOTE_COMMAND >$(shell_quote "$REMOTE_DEPLOY_LOG") 2>&1 </dev/null &"
@@ -888,7 +905,8 @@ else
       "$OPENCLAW_TARGET_RESULT" \
       "${OPENCLAW_ARTIFACT_SHA256:-$(sha256_file "$TARBALL")}" \
       "${OPENCLAW_DEPLOY_PATH:-/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin}" \
-      ""
+      "" \
+      "$OPENCLAW_RELEASE_METADATA"
 fi
 
 echo

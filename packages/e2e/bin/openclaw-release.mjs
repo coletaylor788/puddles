@@ -482,9 +482,11 @@ const checks = state.statusCheckRollup ?? [];
 const failed = checks.filter(
   (check) => !["SUCCESS", "SKIPPED", "NEUTRAL"].includes(check.conclusion ?? check.state),
 );
-if (state.headRefOid !== head || state.baseRefOid !== base || state.isDraft ||
-    state.state !== "OPEN" || state.mergeable !== "MERGEABLE" ||
-    state.reviewDecision === "CHANGES_REQUESTED" || checks.length === 0 || failed.length > 0) {
+const openAndReady =
+  state.state === "OPEN" && !state.isDraft && state.mergeable === "MERGEABLE" &&
+  state.reviewDecision !== "CHANGES_REQUESTED" && checks.length > 0 && failed.length === 0;
+if (state.headRefOid !== head || state.baseRefOid !== base ||
+    (state.state !== "MERGED" && !openAndReady)) {
   throw new Error("pull request changed after promotion");
 }
 NODE
@@ -631,7 +633,8 @@ function validatedDeploymentChain(runDir, pins) {
     deploymentStage.inputs.artifactSha256 !== packageStage.result.artifactSha256 ||
     deploymentStage.inputs.publicHead !== pins.publicHead ||
     deploymentStage.inputs.expectedBase !== pins.expectedBase ||
-    deploymentStage.inputs.privateHead !== pins.privateHead
+    deploymentStage.inputs.privateHead !== pins.privateHead ||
+    deploymentStage.inputs.privateTree !== pins.privateTree
   ) {
     throw new Error("completed release stage inputs no longer form the pinned chain");
   }
@@ -639,14 +642,25 @@ function validatedDeploymentChain(runDir, pins) {
   const deployment = readJson(join(runDir, "deployment.json"));
   if (
     production.status !== "passed" ||
+    production.public?.repository !== pins.publicRepository ||
     production.public?.head !== pins.publicHead ||
     production.public?.base !== pins.expectedBase ||
+    production.public?.prNumber !== pins.publicPrNumber ||
+    production.private?.repository !== pins.privateRepository ||
     production.private?.head !== pins.privateHead ||
+    production.private?.base !== pins.privateBase ||
+    production.private?.prNumber !== pins.privatePrNumber ||
+    production.private?.tree !== pins.privateTree ||
     production.candidate?.productionStageSha256 !==
       packageStage.inputs.productionStageSha256 ||
     production.artifact?.sha256 !== packageStage.result.artifactSha256 ||
     deployment.status !== "passed" ||
-    deployment.artifactSha256 !== packageStage.result.artifactSha256
+    deployment.artifactSha256 !== packageStage.result.artifactSha256 ||
+    JSON.stringify(deployment.public) !== JSON.stringify(production.public) ||
+    JSON.stringify(deployment.private) !== JSON.stringify(production.private) ||
+    JSON.stringify(deployment.candidate) !== JSON.stringify(production.candidate) ||
+    JSON.stringify(deployment.artifact) !== JSON.stringify(production.artifact) ||
+    JSON.stringify(deployment.landing) !== JSON.stringify(production.landing)
   ) {
     throw new Error("completed production receipts no longer match the pinned release");
   }
@@ -743,9 +757,14 @@ async function main() {
   }
 
   const pins = {
+    publicRepository: repository,
+    publicPrNumber: Number(prNumber),
     publicHead,
     expectedBase,
+    privateRepository,
+    privatePrNumber,
     privateHead,
+    privateBase,
     privateTree: privateCheckout.tree,
   };
   const completedDeployment = validatedDeploymentChain(runDir, pins);
@@ -796,7 +815,6 @@ async function main() {
   if (preflight.state === "MERGED") {
     if (
       !existsSync(join(runDir, "deployment.json")) ||
-      !existsSync(join(runDir, "production.json")) ||
       !(await verifyLanded(repository, prNumber, publicHead))
     ) {
       throw new Error("merged public pull request has no matching deployment evidence");
@@ -1141,13 +1159,29 @@ async function main() {
     schemaVersion: 1,
     stage: "production",
     status: "passed",
-    public: { repository, head: publicHead, base: expectedBase },
-    private: { head: privateHead },
+    public: {
+      repository,
+      head: publicHead,
+      base: expectedBase,
+      prNumber: Number(prNumber),
+    },
+    private: {
+      repository: privateRepository,
+      head: privateHead,
+      base: privateBase,
+      prNumber: privatePrNumber,
+      tree: privateCheckout.tree,
+    },
     candidate: {
       treeSha256: overlayResult.treeSha256,
       productionStageSha256: productionStage.sha256,
     },
     artifact: { sha256: packageResult.artifactSha256 },
+    landing: {
+      order: ["private", "public"],
+      privateConfirmed: true,
+      publicConfirmed: true,
+    },
   };
   writeFileSync(
     postCheck,
@@ -1172,6 +1206,7 @@ async function main() {
     publicHead,
     expectedBase,
     privateHead,
+    privateTree: privateCheckout.tree,
   };
   const deploymentArgv = ["bash", join(patchDir, "apply-and-deploy.sh")];
   const currentDeploymentStage = validatedStage(
@@ -1183,16 +1218,51 @@ async function main() {
     !currentDeploymentStage &&
     (existsSync(deploymentReceipt) || existsSync(productionReceipt))
   ) {
-    if (!existsSync(deploymentReceipt) || !existsSync(productionReceipt)) {
+    if (!existsSync(deploymentReceipt)) {
       throw new Error(
         "partial production receipts cannot reconcile immutable deployment",
       );
     }
     const deployment = readJson(deploymentReceipt);
-    const production = readJson(productionReceipt);
     if (
       deployment.status !== "passed" ||
       deployment.artifactSha256 !== packageResult.artifactSha256 ||
+      deployment.public?.repository !== repository ||
+      deployment.public?.head !== publicHead ||
+      deployment.public?.base !== expectedBase ||
+      deployment.public?.prNumber !== Number(prNumber) ||
+      deployment.private?.repository !== privateRepository ||
+      deployment.private?.head !== privateHead ||
+      deployment.private?.base !== privateBase ||
+      deployment.private?.prNumber !== privatePrNumber ||
+      deployment.private?.tree !== privateCheckout.tree ||
+      deployment.candidate?.treeSha256 !== overlayResult.treeSha256 ||
+      deployment.candidate?.productionStageSha256 !== productionStage.sha256 ||
+      deployment.artifact?.sha256 !== packageResult.artifactSha256 ||
+      JSON.stringify(deployment.landing?.order) !==
+        JSON.stringify(["private", "public"]) ||
+      deployment.landing?.privateConfirmed !== true ||
+      deployment.landing?.publicConfirmed !== true
+    ) {
+      throw new Error(
+        "deployment receipt cannot reconcile immutable production",
+      );
+    }
+    if (!existsSync(productionReceipt)) {
+      if (
+        !(await verifyLanded(privateRepository, privatePrNumber, privateHead)) ||
+        !(await verifyLanded(repository, prNumber, publicHead))
+      ) {
+        throw new Error("deployment receipt has no matching exact landing");
+      }
+      await run("bash", [postCheck]);
+      atomicWriteJson(productionReceipt, {
+        ...releaseMetadata,
+        completedAt: new Date().toISOString(),
+      });
+    }
+    const production = readJson(productionReceipt);
+    if (
       production.status !== "passed" ||
       production.public?.repository !== repository ||
       production.public?.head !== publicHead ||
@@ -1236,6 +1306,7 @@ async function main() {
             : "",
           OPENCLAW_POST_DEPLOY_CHECK: postCheck,
           OPENCLAW_TARGET_RESULT: deploymentReceipt,
+          OPENCLAW_RELEASE_METADATA: JSON.stringify(releaseMetadata),
         },
         timeoutMs: 45 * 60_000,
       });

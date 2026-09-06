@@ -109,7 +109,11 @@ does not trust marker files. The post-deploy check merges the exact private head
 and then the exact public head while deployment rollback is still active. It
 reconciles each pull request and default branch after an ambiguous merge
 response. The durable landing stage records those already verified results
-without issuing another merge.
+without issuing another merge. The target receipt carries the public and
+private pins, candidate and production-stage digests, artifact digest, and
+landing result. A resume can reconstruct a missing local production receipt
+from that target evidence only after rechecking production health and both
+landed heads.
 
 Combined validation must retain a production-ready tree beside its raw receipt
 at `<validation-receipt>.stage` and declare that absolute path plus its

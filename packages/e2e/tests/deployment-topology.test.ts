@@ -72,6 +72,7 @@ interface DeploymentOptions {
   symlinkStateRoot?: boolean;
   stopInterrupts?: boolean;
   postCheckFails?: boolean;
+  postCheckInterruptsAfterLanding?: boolean;
   preexistingRemoteReceipt?: boolean;
 }
 
@@ -181,7 +182,16 @@ function runDeployment(options: DeploymentOptions = {}): DeploymentResult {
   const postCheck = join(root, "post-check");
   writeFileSync(
     postCheck,
-    `#!/bin/sh\nprintf passed > "$HOME/post-check-ran"\nexit ${options.postCheckFails ? 1 : 0}\n`,
+    `#!/bin/sh
+if [ ${options.postCheckInterruptsAfterLanding ? 1 : 0} -eq 1 ] &&
+   [ ! -f "$HOME/post-check-interrupted" ]; then
+  : > "$HOME/post-check-interrupted"
+  kill -TERM "$PPID"
+  exit 143
+fi
+printf passed > "$HOME/post-check-ran"
+exit ${options.postCheckFails ? 1 : 0}
+`,
   );
   chmodSync(postCheck, 0o755);
 
@@ -545,6 +555,17 @@ fi
     env.OPENCLAW_ARTIFACT_SHA256 = createHash("sha256")
       .update(readFileSync(immutableArtifact))
       .digest("hex");
+    env.OPENCLAW_RELEASE_METADATA = JSON.stringify({
+      public: { repository: "owner/public", head: "a".repeat(40) },
+      private: { repository: "owner/private", head: "b".repeat(40) },
+      candidate: { productionStageSha256: "c".repeat(64) },
+      artifact: { sha256: env.OPENCLAW_ARTIFACT_SHA256 },
+      landing: {
+        order: ["private", "public"],
+        privateConfirmed: true,
+        publicConfirmed: true,
+      },
+    });
     env.OPENCLAW_BROWSER_ENTRYPOINT = join(
       source,
       "scripts",
@@ -827,6 +848,15 @@ describe("OpenClaw deployment topology", () => {
         readFileSync(join(result.root, "deployment-result.json"), "utf8"),
       ).status,
     ).toBe("passed");
+    expect(
+      JSON.parse(
+        readFileSync(join(result.root, "deployment-result.json"), "utf8"),
+      ).landing,
+    ).toEqual({
+      order: ["private", "public"],
+      privateConfirmed: true,
+      publicConfirmed: true,
+    });
   });
 
   it("rolls back when post-deploy validation fails", () => {
@@ -847,6 +877,30 @@ describe("OpenClaw deployment topology", () => {
         readFileSync(join(result.root, "deployment-result.json"), "utf8"),
       ).status,
     ).toBe("failed");
+  });
+
+  it("reconciles landing after a deferred target signal", () => {
+    const result = runDeployment({
+      immutableArtifact: true,
+      postCheckInterruptsAfterLanding: true,
+    });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.stderr).toContain(
+      "landing interrupted by deferred signal(s): TERM; reconciling",
+    );
+    expect(readFileSync(join(result.root, "post-check-ran"), "utf8")).toBe(
+      "passed",
+    );
+    expect(
+      result.lines.filter(
+        (line) => line === "npm\tinstall\t-g\tprevious.tgz",
+      ),
+    ).toHaveLength(0);
+    const receipt = JSON.parse(
+      readFileSync(join(result.root, "deployment-result.json"), "utf8"),
+    );
+    expect(receipt.status).toBe("passed");
   });
 
   it("uses the durable target receipt after an SSH disconnect", () => {

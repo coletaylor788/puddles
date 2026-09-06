@@ -154,7 +154,9 @@ if printf '%s' "\${1:-}" | grep -q 'apply-and-deploy.sh$'; then
   /bin/bash "$OPENCLAW_POST_DEPLOY_CHECK"
   "$REAL_NODE" - "$OPENCLAW_TARGET_RESULT" "$OPENCLAW_ARTIFACT_SHA256" <<'NODE'
 const fs = require("node:fs");
+const metadata = JSON.parse(process.env.OPENCLAW_RELEASE_METADATA);
 fs.writeFileSync(process.argv[2], JSON.stringify({
+  ...metadata,
   schemaVersion: 1,
   stage: "deployment",
   status: "passed",
@@ -483,6 +485,7 @@ describe("OpenClaw release CLI", () => {
     expect(first.status, `${first.stdout}\n${first.stderr}`).toBe(0);
     rmSync(join(test.runDir, "stages", "land.json"), { force: true });
     rmSync(join(test.runDir, "landing.json"), { force: true });
+    rmSync(join(test.runDir, "production.json"), { force: true });
     markStageRunning(test.runDir, "deploy-validate");
     const deploysBefore = readFileSync(test.log, "utf8").match(
       /bash\t.*apply-and-deploy\.sh/g,

@@ -159,9 +159,11 @@ to the orchestrator's executable read-only production, pull-request state, and
 dependency-ordered landing check. That check runs while rollback still owns the
 package, runtime tree, service definition, browser image, and gateway restart.
 It merges and verifies the exact private head before the exact public head. A
-failure restores the prior deployment. After the check passes, the wrapper
-releases rollback ownership before publishing the terminal success receipt.
-The orchestrator then records a durable landing stage from the already verified
+failure restores the prior deployment. Signals received during landing are
+deferred while the check reconciles whether the exact public head landed. After
+the check passes, the wrapper releases rollback ownership before publishing a
+terminal receipt that includes the immutable release and landing metadata. The
+orchestrator then records a durable landing stage from the already verified
 pull requests.
 
 Remote mode uses batch authentication, one explicit identity, and a persistent

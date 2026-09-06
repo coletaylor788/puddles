@@ -37,7 +37,7 @@ describe("OpenClaw release pipeline contract", () => {
 
   it("keeps validation and both dependency-ordered merges inside rollback ownership", () => {
     const health = deploy.indexOf("wait_for_gateway || rollback_and_exit");
-    const postCheck = deploy.indexOf('"$POST_DEPLOY_CHECK" ||');
+    const postCheck = deploy.indexOf('while ! "$POST_DEPLOY_CHECK"');
     const releaseRollback = deploy.indexOf(
       '"post-deploy validation or landing check failed"',
     );
@@ -49,6 +49,7 @@ describe("OpenClaw release pipeline contract", () => {
     expect(releaseRollback).toBeGreaterThan(postCheck);
     expect(releaseOwnership).toBeGreaterThan(releaseRollback);
     expect(successReceipt).toBeGreaterThan(releaseOwnership);
+    expect(deploy).toContain('if [ "$LANDING_ACTIVE" -eq 1 ]; then');
     expect(release).toMatch(
       /gh pr merge \$\{params\.privatePrNumber\}[\s\S]*gh pr merge \$\{params\.prNumber\}/,
     );
