@@ -16,17 +16,17 @@ This change lets each agent select its own long-lived memory search process or o
 
 The source patch and focused OpenClaw regression are registered in the shared cumulative test manifest. Independent review found one precedence bug in the first candidate: a partial matching-agent override discarded agent defaults. The patch now composes all three documented layers and the focused regression covers that case.
 
-The live gateway is offline because the earlier deployment stopped after unloading it. The installed package and runtime state remain present, and the managed deploy has a preserved copy of the prior package. Managed validation and retained-review recheck are next.
+The live gateway is offline because the earlier deployment stopped after unloading it. The installed package and runtime state remain present, and the managed deploy has a preserved copy of the prior package. The corrected candidate passes the full managed lifecycle, and retained review is clean. Terminal review and remote checks are next.
 
 ## Agent section
 
 ### State
 
-- Phase: Review remediation and validation before production recovery.
+- Phase: Terminal review and remote integration before production recovery.
 - Current result: The Mac mini is reachable through a persistent SSH control connection. The gateway LaunchAgent is unloaded and port 18789 is not listening.
 - Candidate: Mini repository commit `aea6255` imported as `64f1fbe`; OpenClaw source commit `98ffe2a0c46` is clean and already contains the patch.
 - Recovery evidence: `~/.openclaw-deploy-backups/20260905T233626Z-21891/openclaw-2026.7.1.tgz` preserves the previous package. The interrupted run did not create a runtime snapshot or leave deployment locks.
-- Blockers: The corrected patch must pass the managed lifecycle and retained-review recheck.
+- Blockers: None.
 
 ### Scope and acceptance criteria
 
@@ -69,7 +69,7 @@ The live gateway is offline because the earlier deployment stopped after unloadi
 - The next isolated run passed all 127 workspace tests, then showed that a fresh checkout does not bootstrap the Gmail Python development dependencies.
 - Final managed command: `node packages/e2e/bin/openclaw-test-env.mjs ci`, run in a clean home-directory worktree with a disposable Gmail development virtual environment.
 - Pre-review managed result: Passed. The workspace suite passed 127 tests, the patched OpenClaw suite passed 502 tests across 17 files, and the candidate suite passed 2 tests.
-- Post-review managed rerun: Pending.
+- Post-review managed rerun: Passed. The workspace suite passed 127 tests, the corrected patched OpenClaw suite passed 502 tests across 17 files, and the candidate suite passed 2 tests.
 - Production checks: `openclaw --version`, `launchctl print gui/502/ai.openclaw.gateway`, listener inspection on port 18789, and `openclaw gateway health --port 18789`.
 
 ### Rollout and rollback
@@ -85,7 +85,7 @@ The live gateway is offline because the earlier deployment stopped after unloadi
 
 - Independent review found one material defect. The documented three-layer precedence used `??` between agent defaults and the matching agent entry, so a partial matching-agent override silently discarded defaults.
 - Accepted remediation composes all three layers and exercises a defaults-level `startDaemon` value beneath a partial matching-agent server override.
-- Retained-review recheck: Pending.
+- Retained-review recheck: Clean. The reviewer confirmed the three-layer merge and focused regression resolve the original finding, with no new actionable material defects.
 - Terminal candidate review: Pending.
 
 ### Checklist
@@ -96,7 +96,7 @@ The live gateway is offline because the earlier deployment stopped after unloadi
 - [x] Register the focused regression in the cumulative patch manifest.
 - [x] Create and link the tracking issue.
 - [x] Pass the full managed integration lifecycle.
-- [ ] Complete retained-worker adversarial review.
+- [x] Complete retained-worker adversarial review.
 - [ ] Create and terminal-review the landing candidate.
 - [ ] Pass remote checks and required review.
 - [ ] Promote through the managed deployment wrapper.
