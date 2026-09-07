@@ -1,0 +1,21 @@
+#!/bin/sh
+set -eu
+
+home=${HOME:?HOME must be set}
+secret_wrapper="$home/.local/bin/puddles-with-keychain-secret"
+td_entrypoint="$home/.npm-global/lib/node_modules/@doist/todoist-cli/dist/index.js"
+
+[ -x "$secret_wrapper" ] || {
+  echo "Todoist credential wrapper is not installed" >&2
+  exit 69
+}
+[ -f "$td_entrypoint" ] && [ ! -L "$td_entrypoint" ] || {
+  echo "Todoist CLI entrypoint is not installed" >&2
+  exit 69
+}
+
+exec "$secret_wrapper" \
+  TODOIST_API_TOKEN \
+  todoist-api-token \
+  -- \
+  /usr/bin/env node "$td_entrypoint" "$@"

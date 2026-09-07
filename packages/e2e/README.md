@@ -91,6 +91,8 @@ suites, and uncommitted checks do not count.
 - skill-workshop sandbox behavior;
 - session yield/block/gather behavior;
 - local-default versus explicit-remote deployment routing;
+- stable Keychain helper noninteractive reads, explicit approval verification,
+  crash recovery, child injection, promotion, and rollback;
 - patched browser entrypoint profile and singleton cleanup;
 - recording message and PIM write adapters;
 - recording Todoist task writes and denying unsupported Todoist operations;
