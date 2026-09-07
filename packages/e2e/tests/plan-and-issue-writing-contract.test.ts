@@ -154,19 +154,19 @@ describe("issue format contract", () => {
     );
   });
 
-  it("keeps the terminal review record out of the issue and out of the candidate diff", () => {
+  it("keeps the retained review record out of the issue and candidate diff", () => {
     expect(safeWorkflow).toMatch(
-      /Record the clean terminal result and the reviewed commit identifier outside\s+the candidate diff/i,
+      /Record the clean result and reviewed commit outside the candidate diff/i,
     );
     expect(safeWorkflow).toMatch(
       /Write\s+it into the pull request in the next step/i,
     );
     expect(safeWorkflow).toMatch(
-      /does not use pull requests, put it in the\s+final report to the requester instead/i,
+      /repository does not use pull requests/i,
     );
     expect(safeWorkflow).toMatch(/Commit ids do not belong in the\s+issue\./i);
     expect(safeWorkflow).toMatch(
-      /Record the terminal review result\s+and the reviewed commit identifier here/i,
+      /Record the retained review result\s+and the reviewed commit identifier here/i,
     );
   });
 });

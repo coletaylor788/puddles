@@ -3,8 +3,19 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { runCommand } from "../src/process-runner.mjs";
 
 describe("managed runner signals", () => {
+  it("bounds stalled commands and waits for termination", async () => {
+    await expect(
+      runCommand(
+        process.execPath,
+        ["-e", "setInterval(() => {}, 1000)"],
+        { timeoutMs: 50, killGraceMs: 50 },
+      ),
+    ).rejects.toThrow(/exceeded 50ms and was terminated/);
+  });
+
   it("forwards SIGTERM to the active child before cleanup and exit", async () => {
     const state = mkdtempSync(join(tmpdir(), "e2e-signal-"));
     const marker = join(state, "cleaned");

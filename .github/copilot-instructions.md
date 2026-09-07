@@ -51,18 +51,50 @@ the exact plan and issue formats.
 For every feature or behavior change, invoke and follow the repository-local
 `safe-feature-development` skill. It covers the whole lifecycle: research,
 planning, local implementation, validation in the test environment, independent
-adversarial review, promotion, production validation, and rollback.
+adversarial review, an immutable handoff, promotion, production validation, and
+rollback.
 
 Component instructions may add requirements but must not weaken that workflow,
 publication boundaries, test isolation, or secret handling.
 
 ## Worker ownership and checkpoints
 
-An approved implementation request authorizes the worker to complete the normal
-repository lifecycle: commit, push, open or update a non-draft pull request,
-resolve review feedback and conflicts, wait for required remote checks, merge,
-and verify the landed result. A controlling instruction may explicitly limit any
-of those actions, and repository permissions and protections always apply.
+The parent orchestrator owns worker creation and failure routing. It assigns one
+implementation worker and, only after an immutable handoff, one distinct sibling
+validation and deployment worker. Neither child creates or directly delegates
+to the other.
+
+The implementation worker owns code, configuration, documentation, local
+validation, the single retained independent review, commit, push, pull-request
+updates, review remediation, conflicts, and remote checks. Once one exact head
+is reviewed and green, it reports the immutable repository, head, base, checks,
+private inputs, release inputs, an argv array with a separate environment map,
+and rollback prerequisites to the parent orchestrator, then stops and waits.
+Never hand off a pasted shell command with inline environment assignments or
+PATH construction. It does not promote or create the validation and deployment
+worker.
+
+After initial local validation, the implementation worker creates exactly one
+independent reviewer and records its agent or session identity in the plan or
+other durable run state. Every remediation recheck resumes that same reviewer
+against the complete current diff. A replacement is allowed only when the
+retained reviewer failed or is irrecoverably unavailable. Record the old
+identity, the failure, and the replacement identity before using the
+replacement, and require a complete-diff review. The parent orchestrator and
+the validation and deployment worker never create review agents.
+
+The validation and deployment worker runs only the repository's scripted
+release lifecycle. It must not edit files, update pins, commit, push, resolve
+conflicts, make design decisions, invoke review, or create workers. On failure
+it records and reports the failed stage to the parent orchestrator, then stops.
+It must not fix the failure or retry with changed inputs. The parent routes the
+evidence to the same implementation worker, which owns every fix and reruns
+affected local validation and the retained review before returning a new
+immutable handoff. Scripted stage reuse is allowed only when recorded input and
+output hashes still match.
+
+A controlling instruction may explicitly limit these actions. Repository
+permissions and protections always apply.
 
 Pause at design only when the requester explicitly asks to review, approve, or
 iterate on the design. After that approval, or when no design checkpoint was
@@ -124,6 +156,28 @@ merge:
 - Live production checks must remain read-only and must never deliver messages.
   Route all write and delivery behavior through deny-by-default recording
   mocks.
+
+## Validation cadence
+
+During implementation and review remediation, run only the smallest targeted
+tests, type checks, and linters that cover the current edits. Batch related
+targets and fixes. Do not run the full cumulative suite after each edit, pin
+change, focused failure, review comment, or remote CI exchange.
+
+After all planned candidate changes are complete and targeted checks pass, run
+the full cumulative suite once immediately before sending the exact candidate
+to the retained reviewer. Persist the candidate head or input hash with that
+successful result. If review causes no candidate-file changes, reuse the result.
+If remediation changes candidate files, batch every accepted fix, use targeted
+checks while iterating, then run the full cumulative suite once on the final
+remediated candidate before resuming the same reviewer.
+
+A remote CI run does not trigger another local full run. Diagnose a failure with
+targeted checks, batch all fixes, and rerun the full suite once after those
+checks pass. The validation and deployment worker's public and combined gates
+are separate release proofs and do not justify extra implementation-worker full
+runs. Reuse any successful full result only while its recorded head or input
+hash remains unchanged.
 
 ## OpenClaw deployment topology
 

@@ -2,6 +2,8 @@ export type RunCommandOptions = {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   capture?: boolean;
+  timeoutMs?: number;
+  killGraceMs?: number;
 };
 
 export declare function runCommand(

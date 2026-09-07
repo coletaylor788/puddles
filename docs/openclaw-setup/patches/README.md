@@ -53,7 +53,29 @@ diff.
 
 ## How to deploy after an OpenClaw upgrade
 
-Run the pipeline wrapper on the target Mac mini. It builds and installs locally,
+Normal releases use the resumable orchestrator described in
+`packages/e2e/README.md`. It validates the public candidate, composes the
+separately reviewed private overlay, builds one package, and passes that exact
+package to this wrapper. The wrapper verifies the package digest before it
+changes production.
+
+The implementation worker prepares and reviews the exact candidate, then
+returns its immutable handoff to the parent orchestrator and stops. The parent
+alone creates one separate sibling validation and deployment worker. That worker
+runs this scripted lifecycle without editing files, changing pins, committing,
+pushing, resolving conflicts, making design decisions, invoking review, or
+creating workers. On failure it stops after rollback and reports durable stage
+evidence to the parent. The parent routes the evidence to the same implementation
+worker. Only that worker changes the next candidate, reruns affected validation
+and retained review, and returns a new exact head to the parent.
+
+Combined validation produces the build-ready tree. The release orchestrator
+checks its complete `puddles-directory-v1` digest, packages it without another
+install or build, then checks the directory digest again. This binds the
+deployed package to the exact build outputs that passed the combined gate.
+
+The wrapper still supports its compatibility build mode for focused development
+and recovery. Run it on the target Mac mini to build and install locally,
 without requiring SSH:
 
 ```bash
@@ -129,6 +151,29 @@ wrapper:
     previous-package, or plist failure is restart-blocking. Signals are deferred
     until rollback reaches a safe terminal state.
 
+In immutable release mode, set `OPENCLAW_ARTIFACT` and
+`OPENCLAW_ARTIFACT_SHA256` instead of `OPENCLAW_SRC`. The wrapper skips patch
+application, dependency installation, build, and pack. It verifies the digest
+before transfer and again on the target. `OPENCLAW_POST_DEPLOY_CHECK` may point
+to the orchestrator's executable read-only production, pull-request state, and
+dependency-ordered landing check. That check runs while rollback still owns the
+package, runtime tree, service definition, browser image, and gateway restart.
+It merges and verifies the exact private head before the exact public head. A
+failure restores the prior deployment. Signals received during landing are
+deferred while the check reconciles whether the exact public head landed. After
+the check passes, the wrapper releases rollback ownership before publishing a
+terminal receipt that includes the immutable release and landing metadata. The
+orchestrator then records a durable landing stage from the already verified
+pull requests.
+
+Remote mode uses batch authentication, one explicit identity, and a persistent
+SSH control connection. The target uses an explicit non-interactive path. A
+durable target receipt records the artifact digest, recovery directory, result,
+and completion time so a disconnected client can distinguish completion from
+rollback. The client starts target work independently, polls the receipt over
+bounded reconnect attempts, and reuses a matching terminal receipt rather than
+starting the same deployment again.
+
 Do not use `openclaw update` for this patched production install. The built-in
 updater bypasses this patch stack, recovery snapshot, migration gate, readiness
 probe, and rollback. Move the source checkout to the intended release only when
@@ -138,6 +183,14 @@ The readiness bound defaults to 30 one-second attempts on local port `18789`.
 Tests and controlled deployments can override it with `GATEWAY_PORT`,
 `GATEWAY_HEALTH_ATTEMPTS`, and `GATEWAY_HEALTH_INTERVAL_SECONDS`; all must be
 positive integers.
+
+Production runs the user LaunchAgent
+`gui/502/ai.openclaw.gateway` from
+`~/Library/LaunchAgents/ai.openclaw.gateway.plist` and probes local port
+`18789`. The wrapper derives the current user id at runtime rather than assuming
+that development and production hosts use the same id. Gateway stderr is not a
+reliable evidence channel because the service discards it. Use the durable
+release receipts and the payload-free health probe instead.
 
 Recovery traverses the runtime tree in userspace and calls macOS `clonefile(2)`
 only for regular files. It recreates directories, symlinks, and hard links and

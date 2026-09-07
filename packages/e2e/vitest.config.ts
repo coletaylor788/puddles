@@ -7,5 +7,8 @@ export default defineConfig({
     include: ["tests/**/*.test.ts"],
     exclude: ["tests/candidate.*.test.ts", "node_modules/**"],
     environment: "node",
+    pool: "vmThreads",
+    maxWorkers: 1,
+    fileParallelism: false,
   },
 });

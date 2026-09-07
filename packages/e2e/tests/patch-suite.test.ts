@@ -11,6 +11,7 @@ type PatchEntry = {
 
 type PatchSuite = {
   openclawRef: string;
+  testProjects: Record<string, string>;
   patches: PatchEntry[];
 };
 
@@ -68,6 +69,25 @@ describe("OpenClaw cumulative patch suite", () => {
     }
   });
 
+  it("maps every OpenClaw regression to one explicit Vitest project", () => {
+    const tests = [...new Set(suite.patches.flatMap((patch) => patch.tests))];
+    expect(Object.keys(suite.testProjects).sort()).toEqual(tests.sort());
+    for (const project of Object.values(suite.testProjects)) {
+      expect(project).toMatch(/^[a-z0-9-]+$/);
+    }
+  });
+
+  it("runs each mapped project through its direct config", () => {
+    const runner = readFileSync(
+      join(packageDir, "bin", "openclaw-test-env.mjs"),
+      "utf8",
+    );
+    expect(runner).toContain(
+      "`test/vitest/vitest.${project}.config.ts`",
+    );
+    expect(runner).not.toContain('"--project",');
+  });
+
   it("pins the upstream source revision used by the patch pool", () => {
     expect(suite.openclawRef).toMatch(/^[0-9a-f]{40}$/);
   });
@@ -96,10 +116,15 @@ describe("OpenClaw cumulative patch suite", () => {
     const mappedTests = runner.indexOf(
       "const tests = [...new Set(suite.patches.flatMap((patch) => patch.tests))]",
     );
+    const build = runner.indexOf(
+      'await run("corepack", ["pnpm", "build"]',
+      snapshotCheck,
+    );
 
     expect(finalApply).toBeGreaterThan(-1);
     expect(snapshotCheck).toBeGreaterThan(finalApply);
-    expect(mappedTests).toBeGreaterThan(snapshotCheck);
+    expect(build).toBeGreaterThan(snapshotCheck);
+    expect(mappedTests).toBeGreaterThan(build);
   });
 
   it("uses a SQLite WAL-reset-safe Node runtime in CI", () => {
