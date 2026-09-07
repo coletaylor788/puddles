@@ -128,8 +128,8 @@ landed heads.
 Local deployment is allowed only when the current process can identify its host
 and user, read the gateway service definition, and confirm that launchd has the
 service loaded. Workstation releases must pass `--target-host` explicitly.
-Remote connections use bounded attempts and keepalives plus a per-run control
-socket so a stale socket from an older release cannot be reused. Target
+Remote connections use bounded fresh attempts and keepalives with multiplexing
+disabled, so a stale socket from an older release cannot be reused. Target
 commands use an explicit path that includes the supported Node installation and
 the user-scoped npm executable directory.
 

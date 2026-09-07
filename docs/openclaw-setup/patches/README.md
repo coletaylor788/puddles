@@ -167,10 +167,10 @@ terminal receipt that includes the immutable release and landing metadata. The
 orchestrator then records a durable landing stage from the already verified
 pull requests.
 
-Remote mode uses batch authentication, one explicit identity, bounded
-connection attempts and keepalives, and a per-run persistent SSH control
-connection. The per-run socket name prevents a stale socket from an older
-release from poisoning the new connection. The target uses an explicit
+Remote mode uses batch authentication, one explicit identity, bounded fresh
+connection attempts, and keepalives. It disables SSH multiplexing so a stale
+control socket from an older release cannot poison the new connection. The
+target uses an explicit
 non-interactive path that includes the supported Node installation and the
 user-scoped npm executable directory. A
 durable target receipt records the artifact digest, recovery directory, result,

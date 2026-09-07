@@ -71,14 +71,13 @@ describe("OpenClaw release pipeline contract", () => {
   it("sets non-interactive SSH identity and control connection defaults", () => {
     expect(deploy).toContain("-o BatchMode=yes");
     expect(deploy).toContain("-o IdentitiesOnly=yes");
-    expect(deploy).toContain("-o ConnectionAttempts=3");
     expect(deploy).toContain("-o ConnectTimeout=10");
     expect(deploy).toContain("-o ServerAliveInterval=15");
     expect(deploy).toContain("-o ServerAliveCountMax=3");
-    expect(deploy).toContain("-o ControlMaster=auto");
-    expect(deploy).toContain("-o ControlPersist=600");
-    expect(deploy).toContain("ControlPath=$SSH_CONTROL_PATH");
-    expect(deploy).toContain("/tmp/puddles-oc-ssh-$$-%C");
+    expect(deploy).toContain("-o ControlMaster=no");
+    expect(deploy).toContain("-o ControlPath=none");
+    expect(deploy).toContain("REMOTE_SSH_ATTEMPTS");
+    expect(deploy).toContain("run_remote_transport");
     expect(deploy).toContain(
       '${13}:/opt/homebrew/opt/node@22/bin:$HOME/.npm-global/bin',
     );

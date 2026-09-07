@@ -69,6 +69,7 @@ interface DeploymentOptions {
   shutdownDelayChecks?: number;
   sourceLockHeld?: boolean;
   sshDisconnectsAfterCompletion?: boolean;
+  sshTransportFailures?: number;
   symlinkStateRoot?: boolean;
   stopInterrupts?: boolean;
   postCheckFails?: boolean;
@@ -445,6 +446,13 @@ elif [ "$name" = launchctl ]; then
   fi
 elif [ "$name" = ssh ]; then
   while [ "\${1:-}" = -o ]; do shift 2; done
+  ssh_count=0
+  [ -f "$MOCK_SSH_COUNT" ] && ssh_count="$(cat "$MOCK_SSH_COUNT")"
+  ssh_count=$((ssh_count + 1))
+  printf '%s\\n' "$ssh_count" > "$MOCK_SSH_COUNT"
+  if [ "$ssh_count" -le "\${MOCK_SSH_TRANSPORT_FAILURES:-0}" ]; then
+    exit 255
+  fi
   shift
   command="$1"
   /bin/bash -c "$command"
@@ -526,6 +534,8 @@ fi
     MOCK_SOURCE_LOCK: sourceLock,
     MOCK_SSH_DISCONNECTS_AFTER_COMPLETION:
       options.sshDisconnectsAfterCompletion ? "1" : "0",
+    MOCK_SSH_COUNT: join(root, "ssh-count"),
+    MOCK_SSH_TRANSPORT_FAILURES: String(options.sshTransportFailures ?? 0),
     MOCK_STOP_INTERRUPTS: options.stopInterrupts ? "1" : "0",
     OPENCLAW_SRC: source,
     OPENCLAW_DEPLOY_PATH: `${bin}:/usr/bin:/bin`,
@@ -534,6 +544,7 @@ fi
     REMOTE_STAGING_DIR: remoteStaging,
     REMOTE_RESULT_ATTEMPTS: "3",
     REMOTE_RESULT_INTERVAL_SECONDS: "1",
+    REMOTE_SSH_INTERVAL_SECONDS: "0",
     TMPDIR: tempDir,
   };
   if (options.backupRootInsideState) {
@@ -1008,8 +1019,22 @@ describe("OpenClaw deployment topology", () => {
     expect(lines).toContain("openclaw\tgateway\thealth\t--port\t18789");
     expect(lines).toContainEqual(
       expect.stringMatching(
-        /^ssh\t(?:-o\t[^\t]+\t)*-o\tControlPath=\/tmp\/puddles-oc-ssh-[0-9]+-%C\t/,
+        /^ssh\t(?:-o\t[^\t]+\t)*-o\tControlMaster=no\t-o\tControlPath=none\t/,
       ),
+    );
+  });
+
+  it("retries a failed fresh SSH transport without reusing a control socket", () => {
+    const result = runDeployment({
+      immutableArtifact: true,
+      miniHost: "approved-mini",
+      sshTransportFailures: 1,
+    });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(Number(readFileSync(join(result.root, "ssh-count"), "utf8"))).toBeGreaterThan(1);
+    expect(result.lines).toContainEqual(
+      expect.stringMatching(/ControlMaster=no\t-o\tControlPath=none/),
     );
   });
 

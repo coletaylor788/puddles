@@ -36,6 +36,8 @@ GATEWAY_HEALTH_ATTEMPTS="${GATEWAY_HEALTH_ATTEMPTS:-30}"
 GATEWAY_HEALTH_INTERVAL_SECONDS="${GATEWAY_HEALTH_INTERVAL_SECONDS:-1}"
 REMOTE_RESULT_ATTEMPTS="${REMOTE_RESULT_ATTEMPTS:-120}"
 REMOTE_RESULT_INTERVAL_SECONDS="${REMOTE_RESULT_INTERVAL_SECONDS:-5}"
+REMOTE_SSH_ATTEMPTS="${REMOTE_SSH_ATTEMPTS:-3}"
+REMOTE_SSH_INTERVAL_SECONDS="${REMOTE_SSH_INTERVAL_SECONDS:-2}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 CLONE_HELPER="$HERE/clone-runtime-tree.py"
 STAGING_DIR=""
@@ -45,18 +47,41 @@ REMOTE_DEPLOY=false
 if [ -n "$MINI_HOST" ]; then
   REMOTE_DEPLOY=true
 fi
-SSH_CONTROL_PATH="${PUDDLES_SSH_CONTROL_PATH:-/tmp/puddles-oc-ssh-$$-%C}"
 SSH_OPTIONS=(
   -o BatchMode=yes
   -o IdentitiesOnly=yes
-  -o ConnectionAttempts=3
   -o ConnectTimeout=10
   -o ServerAliveInterval=15
   -o ServerAliveCountMax=3
-  -o ControlMaster=auto
-  -o ControlPersist=600
-  -o "ControlPath=$SSH_CONTROL_PATH"
+  -o ControlMaster=no
+  -o ControlPath=none
 )
+
+run_remote_transport() {
+  transport="$1"
+  shift
+  attempt=1
+  while [ "$attempt" -le "$REMOTE_SSH_ATTEMPTS" ]; do
+    set +e
+    "$transport" "${SSH_OPTIONS[@]}" "$@"
+    status="$?"
+    set -e
+    [ "$status" -eq 0 ] && return 0
+    if [ "$attempt" -lt "$REMOTE_SSH_ATTEMPTS" ]; then
+      /bin/sleep "$REMOTE_SSH_INTERVAL_SECONDS"
+    fi
+    attempt=$((attempt + 1))
+  done
+  return "$status"
+}
+
+ssh_remote() {
+  run_remote_transport ssh "$@"
+}
+
+scp_remote() {
+  run_remote_transport scp "$@"
+}
 
 if ! $REMOTE_DEPLOY; then
   LOCAL_HOSTNAME="$(hostname)"
@@ -844,17 +869,17 @@ NODE
   fi
   target_deploy_script > "$LOCAL_DEPLOY_SCRIPT"
   chmod 700 "$LOCAL_DEPLOY_SCRIPT"
-  scp "${SSH_OPTIONS[@]}" "$TARBALL" "$MINI_HOST:$REMOTE_TARBALL"
-  scp "${SSH_OPTIONS[@]}" "$CLONE_HELPER" "$MINI_HOST:$REMOTE_CLONE_HELPER"
-  scp "${SSH_OPTIONS[@]}" "$LOCAL_DEPLOY_SCRIPT" "$MINI_HOST:$REMOTE_DEPLOY_SCRIPT"
+  scp_remote "$TARBALL" "$MINI_HOST:$REMOTE_TARBALL"
+  scp_remote "$CLONE_HELPER" "$MINI_HOST:$REMOTE_CLONE_HELPER"
+  scp_remote "$LOCAL_DEPLOY_SCRIPT" "$MINI_HOST:$REMOTE_DEPLOY_SCRIPT"
   if [ -n "$ENTRY_CANDIDATE" ]; then
     REMOTE_ENTRYPOINT="${REMOTE_TARBALL%.tgz}-sandbox-browser-entrypoint.sh"
-    scp "${SSH_OPTIONS[@]}" "$ENTRY_CANDIDATE" "$MINI_HOST:$REMOTE_ENTRYPOINT"
+    scp_remote "$ENTRY_CANDIDATE" "$MINI_HOST:$REMOTE_ENTRYPOINT"
   fi
   if [ -n "$OPENCLAW_POST_DEPLOY_CHECK" ]; then
     REMOTE_POST_CHECK="${REMOTE_TARBALL%.tgz}-post-check"
-    scp "${SSH_OPTIONS[@]}" "$OPENCLAW_POST_DEPLOY_CHECK" "$MINI_HOST:$REMOTE_POST_CHECK"
-    ssh "${SSH_OPTIONS[@]}" "$MINI_HOST" "chmod 700 $(shell_quote "$REMOTE_POST_CHECK")"
+    scp_remote "$OPENCLAW_POST_DEPLOY_CHECK" "$MINI_HOST:$REMOTE_POST_CHECK"
+    ssh_remote "$MINI_HOST" "chmod 700 $(shell_quote "$REMOTE_POST_CHECK")"
   fi
   REMOTE_COMMAND="nohup /bin/bash $(shell_quote "$REMOTE_DEPLOY_SCRIPT")"
   for arg in \
