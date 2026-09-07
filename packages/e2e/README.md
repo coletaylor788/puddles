@@ -137,7 +137,8 @@ commit must descend from the pinned public head and may change only the release
 scripts, focused release tests, and their direct documentation. The runner
 revalidates every preserved receipt and output, then records the repair head and
 script digests in the deployment stage without recomputing the candidate or
-artifact.
+artifact. The repair attempt uses commit-suffixed deployment receipt and stage
+paths, so evidence from the original failed attempt remains unchanged.
 
 Combined validation must retain a production-ready tree beside its raw receipt
 at `<validation-receipt>.stage` and declare that absolute path plus its

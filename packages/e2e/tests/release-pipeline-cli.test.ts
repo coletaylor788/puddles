@@ -168,6 +168,15 @@ printf 'bash\\t%s\\n' "$*" >> "$COMMAND_LOG"
 if printf '%s' "\${1:-}" | grep -q 'apply-and-deploy.sh$'; then
   printf 'target-host\\t%s\\n' "\${MINI_HOST:-}" >> "$COMMAND_LOG"
   if [ "\${DEPLOY_FAIL:-0}" = 1 ]; then
+    "$REAL_NODE" - "$OPENCLAW_TARGET_RESULT" <<'NODE'
+const fs = require("node:fs");
+fs.writeFileSync(process.argv[2], JSON.stringify({
+  schemaVersion: 1,
+  stage: "deployment",
+  status: "failed",
+  detail: "fixture pre-mutation failure",
+}) + "\\n");
+NODE
     exit 91
   fi
   /bin/bash "$OPENCLAW_POST_DEPLOY_CHECK"
@@ -512,6 +521,10 @@ describe("OpenClaw release CLI", () => {
     expect(first.status).not.toBe(0);
 
     const logBeforeResume = readFileSync(test.log, "utf8");
+    const originalFailure = readFileSync(
+      join(test.runDir, "deployment.json"),
+      "utf8",
+    );
     const toolingHead = "e".repeat(40);
     test.env.DEPLOY_FAIL = "0";
     test.env.PUBLIC_CHECKOUT_HEAD = toolingHead;
@@ -530,12 +543,23 @@ describe("OpenClaw release CLI", () => {
     expect(resumedLog).not.toMatch(/public-validation|private\t|corepack\t/);
     expect(resumedLog).toContain("target-host\tpuddles@coles-mac-mini");
     const deploymentStage = JSON.parse(
-      readFileSync(join(test.runDir, "stages", "deploy-validate.json"), "utf8"),
+      readFileSync(
+        join(test.runDir, "stages", `deploy-validate-${toolingHead.slice(0, 12)}.json`),
+        "utf8",
+      ),
     );
     expect(deploymentStage.inputs.targetHost).toBe(
       "puddles@coles-mac-mini",
     );
     expect(deploymentStage.inputs.releaseTooling.head).toBe(toolingHead);
+    expect(readFileSync(join(test.runDir, "deployment.json"), "utf8")).toBe(
+      originalFailure,
+    );
+    expect(
+      existsSync(
+        join(test.runDir, `deployment-${toolingHead.slice(0, 12)}.json`),
+      ),
+    ).toBe(true);
   });
 
   it("reconciles production receipts after interruption without redeploying", () => {

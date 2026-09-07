@@ -642,12 +642,16 @@ function validatedStage(runDir, name, allowIncomplete = false) {
   return state;
 }
 
-function validatedDeploymentChain(runDir, pins) {
+function validatedDeploymentChain(
+  runDir,
+  pins,
+  deploymentStageName = "deploy-validate",
+) {
   const publicStage = validatedStage(runDir, "public-validation", true);
   const applyStage = validatedStage(runDir, "private-apply", true);
   const validationStage = validatedStage(runDir, "combined-validation", true);
   const packageStage = validatedStage(runDir, "package", true);
-  const deploymentStage = validatedStage(runDir, "deploy-validate", true);
+  const deploymentStage = validatedStage(runDir, deploymentStageName, true);
   if (
     !publicStage ||
     !applyStage ||
@@ -735,6 +739,10 @@ async function main() {
   const prNumber = options["pr-number"];
   const targetHost = options["target-host"] ?? "";
   const releaseToolingHead = options["release-tooling-head"] ?? "";
+  const deploymentAttemptSuffix = releaseToolingHead
+    ? `-${releaseToolingHead.slice(0, 12)}`
+    : "";
+  const deploymentStageName = `deploy-validate${deploymentAttemptSuffix}`;
   const privateCheckout = await assertPrivatePipelineCheckout(
     resolvedPrivatePipeline,
     privateRepository,
@@ -817,7 +825,11 @@ async function main() {
     privateBase,
     privateTree: privateCheckout.tree,
   };
-  const completedDeployment = validatedDeploymentChain(runDir, pins);
+  const completedDeployment = validatedDeploymentChain(
+    runDir,
+    pins,
+    deploymentStageName,
+  );
   if (completedDeployment) {
     const landingInputs = {
       publicHead,
@@ -1250,7 +1262,10 @@ async function main() {
   );
   chmodSync(postCheck, 0o700);
 
-  const deploymentReceipt = join(runDir, "deployment.json");
+  const deploymentReceipt = join(
+    runDir,
+    `deployment${deploymentAttemptSuffix}.json`,
+  );
   const deploymentInputs = {
     artifactSha256: packageResult.artifactSha256,
     publicHead,
@@ -1273,7 +1288,7 @@ async function main() {
   const deploymentArgv = ["bash", join(patchDir, "apply-and-deploy.sh")];
   const currentDeploymentStage = validatedStage(
     runDir,
-    "deploy-validate",
+    deploymentStageName,
     true,
   );
   if (
@@ -1340,7 +1355,7 @@ async function main() {
     }
     reconcilePassedStage(
       runDir,
-      "deploy-validate",
+      deploymentStageName,
       deploymentInputs,
       deploymentArgv,
       { summary: "production validation reconciled" },
@@ -1349,7 +1364,7 @@ async function main() {
   }
   await runStage(
     runDir,
-    "deploy-validate",
+    deploymentStageName,
     deploymentInputs,
     deploymentArgv,
     async () => {

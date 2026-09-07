@@ -228,6 +228,8 @@ An infrastructure-only repair may resume an existing run with
 public head and changes only the release scripts, their focused tests, and
 direct documentation. The deployment receipt records that repair head and the
 release script digests. All previously passed stage hashes must still validate.
+The resumed attempt writes commit-suffixed deployment evidence and leaves the
+original failure receipt and failed stage record unchanged.
 
 Validate afterward (`openclaw --version`, run a cron with a subagent).
 

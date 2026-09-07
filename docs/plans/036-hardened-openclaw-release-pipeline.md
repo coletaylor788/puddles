@@ -93,7 +93,7 @@ Next, the repair will be committed and pushed. The same preserved run will then 
 - Extend `apply-and-deploy.sh` with an immutable-artifact mode while retaining its current compatibility path.
 - Treat local deployment as an asserted topology, not the absence of a remote setting. Verify host and user identity plus the readable, loaded gateway service before packaging or mutation.
 - Pass `--target-host` from the release runner to `MINI_HOST` only for the deployment stage.
-- Bind `--release-tooling-head`, the deployment script digest, and the runner digest to deployment inputs. Require that repair head to descend from the immutable public head and change only allowlisted release infrastructure paths.
+- Bind `--release-tooling-head`, the deployment script digest, and the runner digest to deployment inputs. Require that repair head to descend from the immutable public head and change only allowlisted release infrastructure paths. Write the resumed deployment attempt to commit-suffixed stage and receipt paths so the original failure evidence remains immutable.
 - Use a process-unique SSH control path with connect timeout and keepalives. Preserve batch mode, explicit identities, target-side detached execution, and durable receipts.
 - Keep target-side recovery and rollback in the deployment wrapper. Add durable target evidence for pre-quiesce failures, rollback outcomes, successful completion, and disconnected-client reconciliation.
 - Query GitHub immediately before promotion and again inside the rollback-owned post-deploy check. Merge and verify the private dependency before the public pull request. A changed head, base, check state, review state, or mergeability invalidates promotion.
