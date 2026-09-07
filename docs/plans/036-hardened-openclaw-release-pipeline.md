@@ -22,15 +22,15 @@ Deployment target selection now fails closed. Local mode is valid only when the 
 
 The immutable release candidate passed public validation, private application, combined validation, and packaging. Deployment stopped before mutation because the workstation had no local gateway service definition. The release framework now requires either verified local gateway ownership or an explicit remote target, and it can bind a tooling-only repair commit to the deployment stage without invalidating earlier candidate proofs.
 
-The focused infrastructure repair is complete. Release target selection now fails closed, remote SSH uses bounded fresh connections, and resume binds the repair commit and tool digests without changing candidate-stage inputs. It reuses each passed feature stage against its original producer arguments and output hashes. All 67 focused release tests, the package type check, and script syntax checks pass.
+The focused infrastructure repair is complete and pushed. Release target selection now fails closed, remote SSH uses bounded fresh connections, and resume binds the repair commit and tool digests without changing candidate-stage inputs. It reuses each passed feature stage against its original producer arguments and output hashes. All 67 focused release tests, the package type check, and script syntax checks pass.
 
-Next, the repair will be committed and pushed. The same preserved run will then resume at deployment against the declared Mac mini target. No candidate build, validation, or package stage will repeat.
+The preserved run reused all four feature proof stages byte-for-byte and reached remote deployment. Package installation failed after the recovery snapshot was created. The scripted rollback completed, and the original gateway version, LaunchAgent, listener, and health are restored. Neither pull request was merged. Further release attempts are blocked pending diagnosis of the package installation failure.
 
 ## Agent section
 
 ### State
 
-- Phase: Commit the validated infrastructure repair, then resume the preserved immutable run at deployment.
+- Phase: Blocked after safe rollback from remote package installation failure.
 - Public repository: `coletaylor788/puddles`.
 - Private coordination: creator session `ef5fc892-f0fb-4ba0-b024-cf08ca61adb8`.
 - Private implementation owner: session `66dd0a6d-f143-45c1-8011-15c95b616fb9`.
@@ -44,7 +44,11 @@ Next, the repair will be committed and pushed. The same preserved run will then 
 - Preserved artifact SHA-256: `1e92c0a53e9e2fa355c70d8d90bddb9cd4f44805d82943cdea5b5e6bc2431385`.
 - Preserved production stage SHA-256: `fd304c7fa00583564f0feac20922c01275f234bccccb94d88c4e70e9a432b299`.
 - Approved remote target: `puddles@coles-mac-mini`.
-- Blocker: None.
+- Infrastructure repair head: `1b1a66132ce701b2f4afc31cce37b62f9456539b`.
+- Failed deployment receipt: `deployment-1b1a66132ce7.json`, SHA-256 `f0f3e293cdccb017209a9acdfcc5e1c957bfe0314469199b16f9f40414f1d533`.
+- Failed deployment stage: `stages/deploy-validate-1b1a66132ce7.json`, SHA-256 `a4a2338c577b0bf3b0bf49c9178703350616cecbf83d6a156b47f3f9305c6e34`.
+- Recovery snapshot: `/Users/puddles/.openclaw-deploy-backups/20260907T224425Z-66693`.
+- Blocker: Remote `npm install -g` rejected the immutable package. The target receipt reports `package installation failed; rollback_failed=0`.
 
 ### Scope and acceptance criteria
 
@@ -131,6 +135,8 @@ Next, the repair will be committed and pushed. The same preserved run will then 
 - This repair intentionally does not rerun the cumulative feature suite or combined validation. The preserved receipts and artifact are rehashed before deployment resumes.
 - Focused repair result: `corepack pnpm --filter e2e exec vitest run tests/deployment-topology.test.ts tests/release-pipeline-cli.test.ts tests/release-pipeline-contract.test.ts` passed 67 tests across 3 files. `corepack pnpm --filter e2e lint`, `bash -n docs/openclaw-setup/patches/apply-and-deploy.sh`, and `node --check packages/e2e/bin/openclaw-release.mjs` passed.
 - The interrupted resume overwrote `stages/public-validation.json`. Its original complete content was recovered from durable captured evidence, restored, and verified byte-for-byte against the recorded SHA-256 `45cbec6e3334fa633480a55f0ef526f223c0646075220b517950fac47c659eaf`. The other three passed stage records still match their original digests.
+- Preserved resume evidence: public, private apply, combined validation, and package stage records remained at SHA-256 values `45cbec6e3334fa633480a55f0ef526f223c0646075220b517950fac47c659eaf`, `90e159bc0ba43e53e9d06e0abe064ae9e61ccf441d99c0764665bd0127fe466d`, `22cdb30f6ec334c3ff0dfbbe246a326a619598c5dbd62438d0802a901197b92e`, and `8dca34ac10e84b2bd5d0e31812e12d4fa3b3303f456788b5372576a97aad5b63`. The artifact remained `1e92c0a53e9e2fa355c70d8d90bddb9cd4f44805d82943cdea5b5e6bc2431385`.
+- Remote deployment evidence: recovery snapshot `/Users/puddles/.openclaw-deploy-backups/20260907T224425Z-66693` exists. After rollback, OpenClaw reports `2026.7.1 (03fe4d6)`, the LaunchAgent is loaded, PID `67994` listens on IPv4 and IPv6 loopback port `18789`, and the payload-free gateway health check reports OK.
 - Focused result for the launcher correction: `packages/e2e` type-check and shell syntax checks pass. The 27 release CLI, retained-review workflow, and plan contract regressions pass with both the selected Node path and an inherited PATH entry containing spaces.
 - Final full managed result for the launcher correction: Passed with Node 22.23.1. Puddles package suites passed 163 E2E tests, 112 MCP hook tests, 61 calendar tests, 43 Gmail plugin tests, and 175 Gmail Python tests. The patched OpenClaw project groups and candidate suite passed 319 tests across 12 files.
 - Failed iterations found two lifecycle defects that are now covered: broad Vitest selection loaded tests into the wrong projects, and this host's Node 24.2.0 did not satisfy the pinned OpenClaw engine. The runner now uses one declared project per mapped test. Validation used the same supported Node 22.23.1 configured in CI.
@@ -186,7 +192,7 @@ Next, the repair will be committed and pushed. The same preserved run will then 
 - [x] Push and open a non-draft pull request.
 - [ ] Pass required remote checks and review.
 - [x] Confirm the private pipeline is reviewed and remotely green.
-- [ ] Commit and push the focused release infrastructure repair.
+- [x] Commit and push the focused release infrastructure repair.
 - [ ] Promote the exact immutable artifact.
 - [ ] Pass read-only production validation.
 - [ ] Recheck exact pull-request head, base, checks, review, and mergeability.
