@@ -517,7 +517,7 @@ export function assertPullRequestReady(
 function postDeployScript(params) {
   return `#!/bin/bash
 set -euo pipefail
-export PATH="\${OPENCLAW_DEPLOY_PATH:-/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin}"
+export PATH="\${OPENCLAW_DEPLOY_PATH:-/opt/homebrew/opt/node@22/bin:$HOME/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin}"
 test "$(openclaw --version)" = ${JSON.stringify(params.version)}
 launchctl print "gui/$(id -u)/ai.openclaw.gateway" >/dev/null
 lsof -nP -iTCP:18789 -sTCP:LISTEN >/dev/null

@@ -168,9 +168,11 @@ orchestrator then records a durable landing stage from the already verified
 pull requests.
 
 Remote mode uses batch authentication, one explicit identity, bounded
-keepalives, and a per-run persistent SSH control connection. The per-run socket
-name prevents a stale socket from an older release from poisoning the new
-connection. The target uses an explicit non-interactive path. A
+connection attempts and keepalives, and a per-run persistent SSH control
+connection. The per-run socket name prevents a stale socket from an older
+release from poisoning the new connection. The target uses an explicit
+non-interactive path that includes the supported Node installation and the
+user-scoped npm executable directory. A
 durable target receipt records the artifact digest, recovery directory, result,
 and completion time so a disconnected client can distinguish completion from
 rollback. The client starts target work independently, polls the receipt over
