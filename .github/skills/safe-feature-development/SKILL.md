@@ -4,7 +4,7 @@ description: "Implement features safely from research through test-environment i
 compatibility: "Requires the target repository's existing build, test, deployment, and rollback tools. Uses repository-provided test and production lifecycles when available."
 metadata:
   author: Cole Taylor
-  version: "1.7.0"
+  version: "1.8.0"
 ---
 
 # Safe Feature Development
@@ -47,11 +47,38 @@ request descriptions, and commit messages.
 
 ## Ownership and checkpoints
 
-Treat an approved implementation request as authorization to complete the normal
-repository lifecycle, including commit, push, non-draft pull request creation or
-update, remote-check and review remediation, merge, and post-landing
-verification. A controlling instruction may explicitly stop or limit those
-actions, and repository permissions and protections always apply.
+The parent orchestrator creates and routes separate workers when a feature will
+be promoted. Do not let an implementer create its own validator.
+
+The feature implementer owns research, design, the requested code, focused
+tests, the committed regression, related documentation, and retained
+adversarial review. It produces an exact frozen candidate. It does not own the
+full release proof, packaging, production deployment, or failures in release
+infrastructure.
+
+The validation and deployment worker owns full cumulative validation, artifact
+sealing, deployment, read-only production checks, rollback, and landing. It
+owns failures in validation, packaging, receipts, environment setup, transport,
+deployment, and rollback tooling. It fixes those failures on its own branch,
+adds focused regression coverage, lands the repair through the smallest
+repository-approved integration path, records the landed tooling identity
+separately, and resumes the same release without asking the implementer or
+requester to restart it.
+
+The frozen feature is a hard boundary. The validation and deployment worker
+must not change feature source, feature patches, feature lockfiles, or sealed
+artifact contents. If evidence identifies a feature or artifact defect, route
+the exact failure to the same implementer. The implementer fixes it, runs
+focused tests, resumes its retained reviewer, and returns a new frozen
+candidate. The validation and deployment worker then reruns only the proofs
+invalidated by that candidate change.
+
+Treat an approved implementation request as authorization for the orchestrator
+and both workers to complete their assigned parts of the lifecycle. This
+includes commit, push, non-draft pull request creation or update, remote-check
+and review remediation, validation, deployment, rollback, merge, and
+post-landing verification. A controlling instruction may explicitly stop or
+limit those actions, and repository permissions and protections always apply.
 
 Pause before implementation only when the requester explicitly asks to review,
 approve, or iterate on the design. Record the current design in the plan and
@@ -166,10 +193,10 @@ investigating instead of asking.
      design question using the requester-help contract above. Otherwise, do not
      add a human approval gate.
 
-3. **Implement locally and deploy to the test environment**
-   - Implement and iterate locally using the repository's established
-     development workflow, then deploy the candidate through the configured test
-     environment lifecycle.
+3. **Implement and freeze the feature candidate**
+   - The implementer iterates locally using the repository's established
+     development workflow and runs focused tests that cover the changed
+     behavior.
    - Use mocks or fakes for local testing and iteration when exercising a live
      dependency is unnecessary.
    - Route external writes and delivery in tests through deny-by-default mocks
@@ -177,23 +204,9 @@ investigating instead of asking.
      automated tests must not deliver real messages.
    - Add or update tests and directly relevant documentation with the code.
 
-4. **Validate and iterate**
-   - Run applicable formatter, lint, type check, unit test, and build gates, then
-     run the configured integration test suite against the deployed test
-     environment.
-   - Exercise success, denial, malformed input, interruption, cleanup,
-     concurrency, promotion, and rollback paths that the change affects.
-   - Verify the exact requested outcome, not a proxy. A skipped suite, missing
-     model or dependency, leaked process, occupied port, or success-shaped
-     fallback is not green.
-   - Add integration coverage for the feature to the repository's main
-     integration test pool. Do not rely on ad hoc tests that are absent from the
-     full configured run.
-   - Fix failures locally, redeploy to the test environment, and repeat until
-     all required pre-promotion gates are green.
-
-5. **Audit the full change**
-   - Launch a fresh independent subagent that did not implement the change.
+4. **Audit and freeze the feature candidate**
+   - Before freezing the candidate, the implementer launches a fresh independent
+     subagent that did not implement the change.
      Require it to invoke and follow the repository-local `adversarial-review`
      skill against the complete feature diff. Retain its worker handle for the
      entire remediation loop.
@@ -208,19 +221,20 @@ investigating instead of asking.
      residual risk or blocker. If focused evidence-based discussion cannot
      resolve a material disagreement, escalate it for a decision instead of
      repeating review cycles.
-   - After accepted fixes, return to local implementation, redeploy to the test
-     environment, and rerun applicable local gates plus the full configured
-     integration test pool. Then resume or restart that same reviewer through
-     the retained worker handle. Tell it which findings were addressed, disputed,
-     revised, or withdrawn, what files or behavior changed, and which validation
-     reran, and require it to re-check the complete current diff. Do not launch a
-     new review worker for a routine remediation re-check, and do not require a
-     new finding or code change in each round. Repeat with the same reviewer until
-     no actionable, high-confidence findings remain unresolved.
+   - After accepted fixes, return to local implementation and rerun applicable
+     focused gates. Then resume that same reviewer through the retained worker
+     handle. Tell it which findings were addressed, disputed, revised, or
+     withdrawn, what files or behavior changed, and which focused validation
+     reran. Require it to re-check the complete current diff. Do not launch a new
+     review worker for a routine remediation re-check. Repeat with the same
+     reviewer until no actionable, high-confidence findings remain unresolved.
    - If the diff changes after a clear review for any reason, run the relevant
-     validation again, redeploy and rerun the full configured integration pool
-     when the change can affect it, then resume the same reviewer with the change
-     and validation summary for another complete-current-diff review.
+     focused validation and resume the same reviewer with the change and
+     validation summary for another complete-current-diff review. The full
+     cumulative pool remains the validation and deployment worker's
+     responsibility after the candidate is frozen.
+   - A remediation re-check may be clean. Do not require a new finding or code
+     change in each review round.
    - If the retained reviewer fails or cannot be resumed, launch a fresh
      independent replacement, require a complete-current-diff review, and retain
      the replacement's worker handle for the rest of the remediation loop. Never
@@ -236,28 +250,51 @@ investigating instead of asking.
      final report to the requester instead. Commit ids do not belong in the
      issue.
 
-6. **Prepare remote integration**
-   - Push the exact terminal-reviewed candidate and create or update a non-draft
-     pull request. Include the committed regression and exact validation command
-     and results required by the repository. Record the terminal review result
-     and the reviewed commit identifier here.
-   - Wait for all required remote checks. Resolve actionable review feedback,
-     unresolved review threads, merge conflicts, and integration failures
-     yourself. Any candidate change invalidates the terminal review and requires
-     the applicable validation, full integration pool, retained-review recheck,
-     and fresh terminal review before pushing the new candidate and repeating
-     all remote integration gates.
+5. **Publish and hand off the frozen candidate**
+   - The implementer pushes the exact terminal-reviewed candidate and creates or
+     updates a non-draft pull request. Include the committed regression and
+     focused validation results. Record the terminal review result and reviewed
+     commit identifier here.
+   - The implementer resolves actionable feature review feedback and conflicts.
+     The validation and deployment worker resolves release-framework and
+     integration-infrastructure failures. Any feature candidate change requires
+     focused validation and retained-review recheck before a new frozen
+     candidate is handed off.
    - When the terminal-reviewed candidate is remotely green, mergeable, and has
-     no unresolved required review, record its exact head commit and the current
-     base-branch commit, then proceed to promotion. Do not merge a candidate
-     before its applicable promotion and production validation complete.
+     no unresolved required review, record its exact head and base commits. The
+     parent orchestrator hands those identities to the validation and deployment
+     worker once. Do not merge the candidate before its applicable promotion and
+     production validation complete.
+
+6. **Validate and seal the frozen candidate**
+   - The validation and deployment worker runs applicable formatter, lint, type
+     check, unit test, build, and the configured full integration suite against
+     the exact handed-off candidate in the test environment.
+   - Exercise success, denial, malformed input, interruption, cleanup,
+     concurrency, promotion, and rollback paths that the change affects.
+   - Verify the exact requested outcome, not a proxy. A skipped suite, missing
+     model or dependency, leaked process, occupied port, or success-shaped
+     fallback is not green.
+   - Confirm the committed feature regression is present in the repository's
+     main integration pool. Do not accept ad hoc tests that are absent from the
+     full configured run.
+   - Seal the validated deployment artifacts and durably record their content
+     digests with the candidate and tooling identities. Promotion must consume
+     those exact artifacts and must not rebuild or repackage them.
+   - The validation and deployment worker fixes failures in the validation or
+     release framework, adds focused regressions, lands those repairs
+     independently, and resumes the same candidate with the landed tooling
+     identity.
+   - Route a proven feature or artifact defect to the same implementer with the
+     smallest error and durable evidence. Do not change the candidate in the
+     validation worker.
 
 7. **Promote through the configured lifecycle**
-   - If the repository provides an approved automatic test-to-production
-     lifecycle and deployment is in scope, use that lifecycle on the exact
-     remotely approved candidate after all pre-promotion gates pass. Do not
-     manually copy artifacts or add an additional approval gate unless a
-     controlling instruction explicitly requires one.
+   - The validation and deployment worker uses the approved automatic
+     test-to-production lifecycle on the exact remotely approved candidate after
+     all pre-promotion gates pass. Do not manually copy artifacts or add an
+     additional approval gate unless a controlling instruction explicitly
+     requires one.
    - Promotion must durably record recovery state before destructive work and
      use atomic replacement where supported.
    - If the task explicitly forbids production impact, do not promote. Validate
@@ -267,28 +304,36 @@ investigating instead of asking.
      not run.
 
 8. **Validate production and roll back on failure**
-   - After promotion, run the configured production integration, health, and
-     smoke checks. Automated production tests must be read-only and must use
-     explicit production state and configuration paths.
+   - The validation and deployment worker runs the configured production
+     integration, health, and smoke checks after promotion. Automated production
+     tests must be read-only and must use explicit production state and
+     configuration paths.
    - On any post-promotion failure, revert production to the recorded snapshot,
      reload production, revalidate production health, return a nonzero result,
-     and restart the workflow from local implementation and test-environment
-     deployment.
+     and then diagnose the failure.
    - Preserve the original failure. Surface rollback or cleanup failures as
      additional errors rather than hiding them.
+   - After rollback, repair release infrastructure in the same worker and resume
+     the unchanged candidate. Return to the implementer only when evidence shows
+     a feature or artifact defect.
 
 9. **Land and close out**
-   - Immediately before merge, fetch the pull-request state again and confirm its
-     head and base are the exact remotely approved commits recorded before
-     promotion, and that the head completed applicable promotion and production
-     validation. Confirm required checks and review remain green and the pull
-     request remains mergeable.
+   - The validation and deployment worker fetches the pull-request state
+     immediately before merge and confirms its head and base are the exact
+     remotely approved commits recorded before promotion. Confirm that the head
+     completed applicable promotion and production validation, required checks
+     and review remain green, and the pull request remains mergeable.
+   - If the base advanced only because a fast-lane release-infrastructure repair
+     landed, confirm the feature head and diff are unchanged, the repair does not
+     change artifact contents or proof meaning, and the pull request remains
+     mergeable. Record the new base and landed tooling identity without
+     invalidating unaffected proofs or redeploying the unchanged candidate.
    - If the head, approved base, required checks or review, or mergeability
-     changed after promotion, roll back the promoted candidate using the
-     recorded recovery state, revalidate production health, update and
-     revalidate the candidate against the current base, and restart at the
-     applicable review and remote-integration step. Preserve the remote-state
-     failure and surface rollback failures as additional errors.
+     changed after promotion for any other reason, roll back the promoted
+     candidate using the recorded recovery state, revalidate production health,
+     update and revalidate the candidate against the current base, and restart
+     at the applicable review and remote-integration step. Preserve the
+     remote-state failure and surface rollback failures as additional errors.
    - If the candidate and gates still match, merge it using the repository's
      configured method. Do not stop at an open pull request or a
      `Ready for review` state unless a controlling instruction explicitly
@@ -335,8 +380,16 @@ Feature work is complete only when:
 ## Puddles lifecycle
 
 When `packages/e2e/bin/openclaw-test-env.mjs` exists on the active branch, use
-its `ci` command as the configured managed lifecycle. Follow the safety model and
-commands in `packages/e2e/README.md`.
+its `ci` command as the validation and deployment worker's configured managed
+lifecycle. The implementer runs focused tests while iterating. Follow the safety
+model and commands in `packages/e2e/README.md`.
+
+Pure release-infrastructure repairs use a fast lane. They require focused safety
+and regression tests, an independently landed repair, and a separately recorded
+landed tooling identity. They reuse completed feature proofs and sealed
+artifacts when their inputs are unchanged. A repair that changes feature code,
+artifact contents, artifact construction, or the meaning of a completed proof
+leaves the fast lane and returns to the applicable implementer.
 
 For OpenClaw source patch deployment, follow
 `docs/openclaw-setup/patches/README.md` and use

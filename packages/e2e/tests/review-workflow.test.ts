@@ -28,7 +28,7 @@ describe("shared explanation workflow", () => {
     );
     const planWorkflow = safeWorkflow.slice(
       safeWorkflow.indexOf("2. **Plan**"),
-      safeWorkflow.indexOf("3. **Implement locally"),
+      safeWorkflow.indexOf("3. **Implement and freeze"),
     );
 
     for (const writing of [repoWriting, skillWriting]) {
@@ -54,11 +54,11 @@ describe("shared explanation workflow", () => {
 
 describe("adversarial review workflow", () => {
   it("reuses one reviewer throughout remediation without narrowing review", () => {
-    expect(safeWorkflow).toContain('version: "1.7.0"');
+    expect(safeWorkflow).toContain('version: "1.8.0"');
     expect(safeWorkflow).toMatch(/retain its worker handle/i);
-    expect(safeWorkflow).toMatch(/resume or restart that same reviewer/i);
+    expect(safeWorkflow).toMatch(/resume that same reviewer/i);
     expect(safeWorkflow).toMatch(
-      /which findings were addressed[\s\S]*what files or behavior\s+changed[\s\S]*which validation\s+reran/i,
+      /which findings were addressed[\s\S]*what files or behavior\s+changed[\s\S]*which focused validation\s+reran/i,
     );
     expect(safeWorkflow).toMatch(/re-check the complete\s+current diff/i);
     expect(safeWorkflow).toMatch(
@@ -83,7 +83,9 @@ describe("adversarial review workflow", () => {
     expect(safeWorkflow).toMatch(
       /escalate it for a decision instead of\s+repeating review cycles/i,
     );
-    expect(safeWorkflow).toMatch(/do not require a\s+new finding or code change/i);
+    expect(safeWorkflow).toMatch(
+      /do not require a\s+new finding or code\s+change/i,
+    );
 
     expect(reviewWorkflow).toContain('version: "1.3.0"');
     expect(reviewWorkflow).toMatch(/When resumed after remediation/i);
@@ -134,7 +136,7 @@ describe("adversarial review workflow", () => {
       safeWorkflow.indexOf("## Required loop"),
     );
     const remoteIntegrationWorkflow = safeWorkflow.slice(
-      safeWorkflow.indexOf("6. **Prepare remote integration**"),
+      safeWorkflow.indexOf("5. **Publish and hand off"),
       safeWorkflow.indexOf("7. **Promote through the configured lifecycle**"),
     );
     const closeoutWorkflow = safeWorkflow.slice(
@@ -143,7 +145,7 @@ describe("adversarial review workflow", () => {
     );
 
     expect(repoInstructions).toMatch(
-      /approved implementation request authorizes the worker[\s\S]*commit, push[\s\S]*merge,[\s\S]*verify the landed result/i,
+      /approved implementation request authorizes both workers[\s\S]*commits, pushes[\s\S]*merge,[\s\S]*verification/i,
     );
     expect(repoInstructions).toMatch(
       /Pause at design only when the requester explicitly asks/i,
@@ -152,14 +154,14 @@ describe("adversarial review workflow", () => {
       /Do not hand routine\s+agent-owned pull-request review or merge work to the requester/i,
     );
     expect(repoInstructions).toMatch(
-      /controlling instruction may explicitly limit[\s\S]*permissions and protections always apply/i,
+      /controlling instruction may explicitly\s+limit[\s\S]*permissions and protections always apply/i,
     );
 
     expect(safeWorkflow).toMatch(
       /approved implementation request as authorization[\s\S]*commit, push[\s\S]*merge,[\s\S]*post-landing\s+verification/i,
     );
     expect(ownershipWorkflow).toMatch(
-      /controlling instruction may explicitly stop or limit[\s\S]*permissions and protections always apply/i,
+      /controlling instruction may explicitly stop or\s+limit[\s\S]*permissions and protections always apply/i,
     );
     expect(safeWorkflow).toMatch(
       /Pause before implementation only when the requester explicitly asks/i,
@@ -167,10 +169,20 @@ describe("adversarial review workflow", () => {
     expect(safeWorkflow).toMatch(
       /Otherwise, do not\s+add a human approval gate/i,
     );
-    expect(safeWorkflow).toMatch(/6\. \*\*Prepare remote integration\*\*/);
+    expect(safeWorkflow).toMatch(
+      /5\. \*\*Publish and hand off the frozen candidate\*\*/,
+    );
+    expect(safeWorkflow).toMatch(
+      /6\. \*\*Validate and seal the frozen candidate\*\*/,
+    );
     expect(safeWorkflow).toMatch(/9\. \*\*Land and close out\*\*/);
     expect(
-      safeWorkflow.indexOf("6. **Prepare remote integration**"),
+      safeWorkflow.indexOf("5. **Publish and hand off"),
+    ).toBeLessThan(
+      safeWorkflow.indexOf("6. **Validate and seal"),
+    );
+    expect(
+      safeWorkflow.indexOf("6. **Validate and seal"),
     ).toBeLessThan(
       safeWorkflow.indexOf("7. **Promote through the configured lifecycle**"),
     );
@@ -182,23 +194,26 @@ describe("adversarial review workflow", () => {
     expect(
       safeWorkflow.indexOf("8. **Validate production and roll back on failure**"),
     ).toBeLessThan(safeWorkflow.indexOf("9. **Land and close out**"));
-    expect(remoteIntegrationWorkflow).toMatch(
-      /required remote checks[\s\S]*unresolved review threads[\s\S]*merge conflicts/i,
-    );
     expect(closeoutWorkflow).toMatch(
       /Do not stop at an open pull request or a\s+`Ready for review` state/i,
     );
     expect(remoteIntegrationWorkflow).toMatch(
-      /terminal-reviewed candidate is remotely green, mergeable, and has\s+no unresolved required review[\s\S]*exact head commit and the current\s+base-branch commit[\s\S]*Do not merge a candidate[\s\S]*promotion and production validation complete/i,
+      /terminal-reviewed candidate is remotely green, mergeable, and has\s+no unresolved required review[\s\S]*exact head and base commits[\s\S]*Do not merge the candidate[\s\S]*promotion and\s+production validation complete/i,
     );
     expect(remoteIntegrationWorkflow).toMatch(
-      /Any candidate change invalidates the terminal review[\s\S]*applicable validation, full integration pool, retained-review recheck,[\s\S]*fresh terminal review[\s\S]*repeating\s+all remote integration gates/i,
+      /Any feature candidate change requires\s+focused validation and retained-review recheck[\s\S]*new frozen\s+candidate is handed off/i,
+    );
+    expect(remoteIntegrationWorkflow).toMatch(
+      /Seal the validated deployment artifacts[\s\S]*content\s+digests[\s\S]*Promotion must consume\s+those exact artifacts[\s\S]*must not rebuild or repackage/i,
     );
     expect(closeoutWorkflow).toMatch(
-      /Immediately before merge[\s\S]*head and base are the exact remotely approved commits recorded before\s+promotion[\s\S]*head completed applicable promotion and production\s+validation/i,
+      /immediately before merge[\s\S]*head and base are the exact\s+remotely approved commits recorded before promotion[\s\S]*head\s+completed applicable promotion and production validation/i,
     );
     expect(closeoutWorkflow).toMatch(
-      /head, approved base, required checks or review, or mergeability\s+changed after promotion[\s\S]*roll back the promoted candidate[\s\S]*revalidate production health[\s\S]*update and\s+revalidate the candidate against the current base[\s\S]*restart at the\s+applicable review and remote-integration step/i,
+      /base advanced only because a fast-lane release-infrastructure repair\s+landed[\s\S]*feature head and diff are unchanged[\s\S]*Record the new base and landed tooling identity without\s+invalidating unaffected proofs/i,
+    );
+    expect(closeoutWorkflow).toMatch(
+      /changed after promotion for any other reason[\s\S]*roll back the promoted\s+candidate[\s\S]*revalidate production health[\s\S]*update and revalidate the candidate against the current base[\s\S]*restart\s+at the applicable review and remote-integration step/i,
     );
     expect(closeoutWorkflow).toMatch(
       /merge it using the repository's\s+configured method[\s\S]*After the merge command, re-fetch the pull request and default branch[\s\S]*exact candidate cannot be confirmed landed/i,
@@ -216,6 +231,27 @@ describe("adversarial review workflow", () => {
       /Mark the repository issue complete and report the landed outcome[\s\S]*requester's final validation and\s+external task-completion decision/i,
     );
     expect(safeWorkflow).not.toMatch(/exact commit to be handed off/i);
+  });
+
+  it("separates feature implementation from durable release ownership", () => {
+    expect(repoInstructions).toMatch(
+      /parent orchestrator owns worker creation and routing/i,
+    );
+    expect(safeWorkflow).toMatch(
+      /feature implementer owns[\s\S]*requested code[\s\S]*focused\s+tests[\s\S]*committed regression[\s\S]*retained\s+adversarial review/i,
+    );
+    expect(safeWorkflow).toMatch(
+      /validation and deployment worker owns full cumulative validation, artifact\s+sealing, deployment[\s\S]*rollback, and landing/i,
+    );
+    expect(safeWorkflow).toMatch(
+      /must not change feature source, feature patches, feature lockfiles, or sealed\s+artifact contents/i,
+    );
+    expect(safeWorkflow).toMatch(
+      /lands the repair through the smallest\s+repository-approved integration path[\s\S]*landed tooling identity/i,
+    );
+    expect(safeWorkflow).toMatch(
+      /reuse completed feature proofs and sealed\s+artifacts when their inputs are unchanged/i,
+    );
   });
 
   it("requires clear and actionable requester-help escalations", () => {

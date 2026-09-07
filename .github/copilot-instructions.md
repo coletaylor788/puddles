@@ -58,11 +58,34 @@ publication boundaries, test isolation, or secret handling.
 
 ## Worker ownership and checkpoints
 
-An approved implementation request authorizes the worker to complete the normal
-repository lifecycle: commit, push, open or update a non-draft pull request,
-resolve review feedback and conflicts, wait for required remote checks, merge,
-and verify the landed result. A controlling instruction may explicitly limit any
-of those actions, and repository permissions and protections always apply.
+The parent orchestrator owns worker creation and routing. Use separate workers
+for feature implementation and release validation when a change will be
+promoted:
+
+- The implementer owns the requested code, focused tests, the committed
+  regression, related documentation, and retained adversarial review. It
+  produces an exact frozen candidate and does not troubleshoot release
+  infrastructure or deploy production.
+- The validation and deployment worker owns the full cumulative validation,
+  artifact sealing, deployment, production checks, rollback, and landing. It
+  also owns failures in validation, packaging, receipts, environment setup,
+  transport, deployment, and rollback tooling.
+- The validation and deployment worker fixes release-infrastructure defects on
+  its own branch, adds focused regression coverage, commits and pushes the fix,
+  lands that repair through the smallest repository-approved integration path,
+  and resumes the same release. It must preserve completed proofs and sealed
+  artifacts when their inputs did not change. The landed tooling identity is
+  recorded separately from the feature candidate.
+- The validation and deployment worker never changes the frozen feature. If
+  evidence identifies a feature or artifact defect, it routes the exact failure
+  back to the same implementer. The implementer returns a new reviewed
+  candidate, and only affected proofs rerun.
+
+An approved implementation request authorizes both workers, through the parent
+orchestrator, to complete their assigned parts of the lifecycle. This includes
+commits, pushes, pull requests, review remediation, remote checks, deployment,
+rollback, merge, and verification. A controlling instruction may explicitly
+limit those actions, and repository permissions and protections always apply.
 
 Pause at design only when the requester explicitly asks to review, approve, or
 iterate on the design. After that approval, or when no design checkpoint was
@@ -103,14 +126,16 @@ link plus two short prose sections, `Summary` and `Status`, and nothing else.
 ## Shared cumulative integration pool
 
 Every feature, behavior change, and bug fix must contribute a committed
-regression to the shared test pool and run the entire accumulated pool before
-merge:
+regression to the shared test pool. The implementer runs focused tests while
+iterating. The validation and deployment worker runs the entire accumulated pool
+against the exact frozen candidate before promotion:
 
 - Use `packages/e2e/` for cross-component, deployment, and OpenClaw patch
   integration coverage. Keep focused package tests beside their implementation
   as well.
-- Run `node packages/e2e/bin/openclaw-test-env.mjs ci`. This is the required
-  managed lifecycle whenever that runner exists on the active branch.
+- The validation and deployment worker runs
+  `node packages/e2e/bin/openclaw-test-env.mjs ci`. This is the required managed
+  lifecycle whenever that runner exists on the active branch.
 - OpenClaw source patches must add or update tests in the patch and register
   every applicable test target in
   `packages/e2e/openclaw-patch-suite.json`. The manifest is cumulative: do not
@@ -124,6 +149,13 @@ merge:
 - Live production checks must remain read-only and must never deliver messages.
   Route all write and delivery behavior through deny-by-default recording
   mocks.
+
+Pure release-infrastructure repairs use a fast lane. They run focused safety and
+regression tests, land the repair independently for reuse, record the landed
+tooling identity separately, and resume the unchanged candidate. They do not
+repeat feature review or full cumulative validation. A repair that changes
+feature code, artifact contents, artifact construction, or the meaning of a
+completed proof leaves the fast lane and returns to the applicable implementer.
 
 ## OpenClaw deployment topology
 
