@@ -3,8 +3,9 @@
 #
 # This replaces the old in-place dist chunk-surgery flow. The patches are now
 # version-controlled git-diff `.patch` files applied to an OpenClaw source
-# checkout; we build from source, pack, and install the package locally by
-# default, or on a remote target when MINI_HOST is explicitly set.
+# checkout; we build from source, pack, and install the package locally only
+# when the current host already owns the configured gateway, or on a remote
+# target when MINI_HOST is explicitly set.
 #
 # Prereqs:
 #   - An OpenClaw checkout at the TARGET RELEASE, clean tree, in $OPENCLAW_SRC
@@ -44,14 +45,39 @@ REMOTE_DEPLOY=false
 if [ -n "$MINI_HOST" ]; then
   REMOTE_DEPLOY=true
 fi
-SSH_CONTROL_PATH="${PUDDLES_SSH_CONTROL_PATH:-${TMPDIR:-/tmp}/puddles-openclaw-ssh-%C}"
+SSH_CONTROL_PATH="${PUDDLES_SSH_CONTROL_PATH:-/tmp/puddles-oc-ssh-$$-%C}"
 SSH_OPTIONS=(
   -o BatchMode=yes
   -o IdentitiesOnly=yes
+  -o ConnectTimeout=10
+  -o ServerAliveInterval=15
+  -o ServerAliveCountMax=3
   -o ControlMaster=auto
   -o ControlPersist=600
   -o "ControlPath=$SSH_CONTROL_PATH"
 )
+
+if ! $REMOTE_DEPLOY; then
+  LOCAL_HOSTNAME="$(hostname)"
+  LOCAL_USER="$(id -un)"
+  LOCAL_GATEWAY_PLIST="${HOME:?HOME is required}/Library/LaunchAgents/$GATEWAY_LABEL.plist"
+  if [ -z "$LOCAL_HOSTNAME" ] ||
+     [ -z "$LOCAL_USER" ] ||
+     [ ! -r "$LOCAL_GATEWAY_PLIST" ] ||
+     ! launchctl print "gui/$(id -u)/$GATEWAY_LABEL" >/dev/null 2>&1; then
+    echo "ERROR: readable gateway service definition is missing or not loaded for the current user and host; set MINI_HOST explicitly for a remote target" >&2
+    exit 1
+  fi
+  echo "==> Deployment target: local $LOCAL_USER@$LOCAL_HOSTNAME"
+else
+  case "$MINI_HOST" in
+    -*|*[!A-Za-z0-9_.@-]*)
+      echo "ERROR: MINI_HOST must use host or user@host form" >&2
+      exit 1
+      ;;
+  esac
+  echo "==> Deployment target: remote $MINI_HOST"
+fi
 
 if [ -z "$OPENCLAW_ARTIFACT" ] && command -v pnpm >/dev/null 2>&1; then
   PNPM_COMMAND=(pnpm)

@@ -2,7 +2,7 @@
 
 Status: In progress
 Issue: https://github.com/coletaylor788/puddles/issues/110
-Last updated: 2026-09-06
+Last updated: 2026-09-07
 
 ## Human section
 
@@ -14,28 +14,36 @@ This change makes the release a sequence of durable stages. The public repositor
 
 Each stage records its inputs, outputs, command, timing, and concise result outside the candidate tree. Resume re-hashes every declared input and output instead of trusting completion markers. Deployment keeps the existing recovery ownership for the installed package, runtime state, service definition, browser image, migration, gateway restart, production checks, and dependency-ordered landing. A failed or stale promotion restores the recorded production state before the workflow can continue. The target publishes terminal success only after rollback ownership is disabled.
 
-Candidate changes and production release are owned by separate workers under a parent orchestrator. The implementation worker is the only worker that changes files or pins and owns the retained review. Once its exact candidate is reviewed and remotely green, it reports an immutable handoff to the parent and stops. That handoff keeps executable arguments separate from environment values so paths are never reparsed as shell text. The parent alone starts one sibling validation and deployment worker, which runs the scripted release without editing or reviewing. A failed release returns through the parent to the same implementation worker instead of being repaired inside the production-capable session.
+Candidate changes and production release are owned by separate workers under a parent orchestrator. The implementation worker is the only worker that changes files or pins and owns the retained review. Once its exact candidate is reviewed and remotely green, it reports an immutable handoff to the parent and stops. That handoff keeps executable arguments separate from environment values so paths are never reparsed as shell text. The parent alone starts one sibling validation and deployment worker, which runs the scripted release without editing or reviewing. A failed release normally returns through the parent to the same implementation worker. A narrowly authorized infrastructure repair may instead pin a separate tooling commit, while every candidate receipt and artifact hash remains unchanged.
+
+Deployment target selection now fails closed. Local mode is valid only when the current host, user, readable service definition, and loaded gateway service agree that the process is already on the production machine. Workstation runs must name the remote target. Remote connections use bounded keepalives and a unique control socket for each run so an abandoned socket cannot redirect or block a later release.
 
 ### Status
 
-The public orchestrator now validates one pinned source tree, binds private execution to the reviewed clean Git tree, packages the combined candidate once, and deploys only the recorded artifact digest. Each stage records inputs, outputs, commands, timing, and resume data outside the candidate. Deployment rollback owns production checks and the dependency-ordered private and public merges. The target disables rollback before publishing success, and the final durable stage records the already verified landing.
+The immutable release candidate passed public validation, private application, combined validation, and packaging. Deployment stopped before mutation because the workstation had no local gateway service definition. The release framework now requires either verified local gateway ownership or an explicit remote target, and it can bind a tooling-only repair commit to the deployment stage without invalidating earlier candidate proofs.
 
-Production remains unchanged. The latest release run passed public validation, private application, dependency materialization, snapshots, patch tests, and both builds. It stopped before packaging because the private production-layout step depended on ambient package-manager metadata. The private pipeline now uses the frozen lockfile and prepared package content with an isolated empty metadata cache, and it fails closed when actual package content is absent. That fix is reviewed, validated, and remotely green. The public pin and evidence now target the corrected private head. Public validation, retained review, push, exact-head checks, and a new immutable handoff remain.
+The focused infrastructure repair is complete. Release target selection now fails closed, remote SSH uses a bounded per-run control connection, and resume binds the repair commit and tool digests without changing candidate-stage inputs. All 66 focused release tests, the package type check, and script syntax checks pass.
+
+Next, the repair will be committed and pushed. The same preserved run will then resume at deployment against the declared Mac mini target. No candidate build, validation, or package stage will repeat.
 
 ## Agent section
 
 ### State
 
-- Phase: Revalidate and review the public candidate pinned to the corrected private pipeline.
+- Phase: Commit the validated infrastructure repair, then resume the preserved immutable run at deployment.
 - Public repository: `coletaylor788/puddles`.
 - Private coordination: creator session `ef5fc892-f0fb-4ba0-b024-cf08ca61adb8`.
 - Private implementation owner: session `66dd0a6d-f143-45c1-8011-15c95b616fb9`.
 - Public implementation owner: session `1ed1953f-36a3-4094-b860-8cdd40e5137c`.
 - Parent orchestrator: session `ef5fc892-f0fb-4ba0-b024-cf08ca61adb8`.
-- Validation and deployment worker: Assigned only by the parent after the exact candidate handoff.
+- Release infrastructure and validation owner: session `18d7bf92-c915-49dc-88f3-7446992a72e5`, authorized only for this topology failure and preserved run.
 - Failed validation workers: session `7f09538a-bb2d-494c-8bfc-63c24f239d3e` stopped before Node startup because an inherited PATH entry containing a space was shell-split; session `5998fac5-b7ba-42c9-a376-6ae4c8399b8c` stopped before invocation after imposing an incorrect source HEAD gate; session `23aeba05-46a7-4fa1-8fa0-1585b917522d` stopped during combined validation because legacy offline deploy required ambient package metadata. Production was untouched in every run.
 - Production topology: user LaunchAgent `gui/502/ai.openclaw.gateway`, plist `~/Library/LaunchAgents/ai.openclaw.gateway.plist`, local port `18789`.
 - Private contract: Repository `coletaylor788/puddles-private`, executable `docs/openclaw-setup/patches/private-overlay.mjs`, head `6d37e6e99acd687b1541a93e39cc8c4c6d75417d`, tree `6f6fc0549adca68614ae2d9548dba8fd47c8da2c`, manifest SHA-256 `a72c237b3fdc96234360bf29c57f60da50df4f51cb5d4aa1531f5cb03bb33436`.
+- Preserved run: `20260907T161134386Z-1641b3af-b26c-4429-a869-78e3fcf0fff1`.
+- Preserved artifact SHA-256: `1e92c0a53e9e2fa355c70d8d90bddb9cd4f44805d82943cdea5b5e6bc2431385`.
+- Preserved production stage SHA-256: `fd304c7fa00583564f0feac20922c01275f234bccccb94d88c4e70e9a432b299`.
+- Approved remote target: `puddles@coles-mac-mini`.
 - Blocker: None.
 
 ### Scope and acceptance criteria
@@ -55,6 +63,10 @@ Production remains unchanged. The latest release run passed public validation, p
 - Package the exact combined candidate once, record its SHA-256, and reject any later artifact change.
 - Deploy the immutable package without rebuilding and preserve existing rollback ownership.
 - Make remote execution use an explicit non-interactive path, `IdentitiesOnly`, and SSH control connection defaults.
+- Refuse implicit local deployment unless the current host and user own the readable, loaded gateway service.
+- Accept an explicit remote target through the release CLI and bind it to deployment evidence.
+- Permit an allowlisted, separately pinned infrastructure repair to resume unchanged passed stages without rebuilding the candidate or package.
+- Isolate each remote run's SSH control socket and bound connection liveness.
 - Make target completion durable so a disconnected SSH client cannot make deployment status ambiguous.
 - Record run id, hashes, timestamps, timings, exact argv, concise result, and resume metadata for every stage.
 - Revalidate stage inputs and outputs on resume.
@@ -79,6 +91,10 @@ Production remains unchanged. The latest release run passed public validation, p
 - Build and pack once after combined validation. Pass the resulting tarball and expected digest into the deployment wrapper.
 - Require combined validation to retain an external build-ready production stage with a complete `puddles-directory-v1` digest. Package that exact stage without another install or build, and verify its digest before and after packing.
 - Extend `apply-and-deploy.sh` with an immutable-artifact mode while retaining its current compatibility path.
+- Treat local deployment as an asserted topology, not the absence of a remote setting. Verify host and user identity plus the readable, loaded gateway service before packaging or mutation.
+- Pass `--target-host` from the release runner to `MINI_HOST` only for the deployment stage.
+- Bind `--release-tooling-head`, the deployment script digest, and the runner digest to deployment inputs. Require that repair head to descend from the immutable public head and change only allowlisted release infrastructure paths.
+- Use a process-unique SSH control path with connect timeout and keepalives. Preserve batch mode, explicit identities, target-side detached execution, and durable receipts.
 - Keep target-side recovery and rollback in the deployment wrapper. Add durable target evidence for pre-quiesce failures, rollback outcomes, successful completion, and disconnected-client reconciliation.
 - Query GitHub immediately before promotion and again inside the rollback-owned post-deploy check. Merge and verify the private dependency before the public pull request. A changed head, base, check state, review state, or mergeability invalidates promotion.
 - Separate orchestration, implementation, and release execution. The implementation worker returns immutable public, base, and private pins to the parent. The parent alone creates the release worker and routes failures. The release worker never edits, resolves conflicts, makes design decisions, reviews, or creates workers, and stops with durable evidence on failure.
@@ -100,6 +116,9 @@ Production remains unchanged. The latest release run passed public validation, p
 - [x] Define the immutable handoff between the implementation worker and the validation and deployment worker.
 - [x] Define targeted-first validation cadence and exact-candidate full-run reuse.
 - [x] Add focused unit and integration regressions.
+- [x] Add explicit target selection and local topology preflight.
+- [x] Add tooling-only resume metadata without changing candidate-stage inputs.
+- [x] Add per-run SSH control sockets and bounded connection liveness.
 
 ### Validation
 
@@ -108,6 +127,9 @@ Production remains unchanged. The latest release run passed public validation, p
 - The cumulative managed command is `node packages/e2e/bin/openclaw-test-env.mjs ci`.
 - Public validation must pass without the private overlay. Combined validation must pass after the private overlay and must prove interactions across both patch sets.
 - Production validation is read-only and checks package version and digest evidence, LaunchAgent state, port 18789, and the payload-free gateway health probe.
+- Focused infrastructure validation covers workstation local-mode refusal, explicit remote routing, per-run SSH control sockets, and preserved-stage resume with a pinned tooling repair.
+- This repair intentionally does not rerun the cumulative feature suite or combined validation. The preserved receipts and artifact are rehashed before deployment resumes.
+- Focused repair result: `corepack pnpm --filter e2e exec vitest run tests/deployment-topology.test.ts tests/release-pipeline-cli.test.ts tests/release-pipeline-contract.test.ts` passed 66 tests across 3 files. `corepack pnpm --filter e2e lint`, `bash -n docs/openclaw-setup/patches/apply-and-deploy.sh`, and `node --check packages/e2e/bin/openclaw-release.mjs` passed.
 - Focused result for the launcher correction: `packages/e2e` type-check and shell syntax checks pass. The 27 release CLI, retained-review workflow, and plan contract regressions pass with both the selected Node path and an inherited PATH entry containing spaces.
 - Final full managed result for the launcher correction: Passed with Node 22.23.1. Puddles package suites passed 163 E2E tests, 112 MCP hook tests, 61 calendar tests, 43 Gmail plugin tests, and 175 Gmail Python tests. The patched OpenClaw project groups and candidate suite passed 319 tests across 12 files.
 - Failed iterations found two lifecycle defects that are now covered: broad Vitest selection loaded tests into the wrong projects, and this host's Node 24.2.0 did not satisfy the pinned OpenClaw engine. The runner now uses one declared project per mapped test. Validation used the same supported Node 22.23.1 configured in CI.
@@ -122,12 +144,14 @@ Production remains unchanged. The latest release run passed public validation, p
 - After local and remote gates pass, return the exact public head, base head, private head, check evidence, release paths, and rollback prerequisites to the parent orchestrator, then stop.
 - The parent orchestrator starts one sibling validation and deployment worker with those immutable inputs and a new external run directory.
 - Encode the release invocation as an argv array plus a separate environment map. Use `packages/e2e/bin/openclaw-release.sh` with explicit `--node` and `--private-pipeline` arguments. Do not hand off inline environment assignments or PATH construction.
-- Run the public pipeline on the target Mac mini with local deployment topology and `MINI_HOST` unset.
+- Resume the preserved run from this workstation with `--target-host puddles@coles-mac-mini`.
+- Pin the infrastructure repair with `--release-tooling-head` and record the release script digests in the deployment stage.
 - Supply `PUDDLES_PRIVATE_PIPELINE` and the reviewed 40-character private head from the coordinating session.
 - Preserve public, private, combined-validation, package, deployment, production, and pull-request evidence in the external run directory.
 - On package replacement, migration, browser image, runtime state, plist, restart, readiness, production validation, or stale pull-request failure, invoke the recorded rollback and verify restored gateway health.
 - The validation and deployment worker stops after any failure and reports its stage evidence to the parent. It never fixes or retries with changed inputs. The parent routes evidence to the same implementation worker, which owns any correction, affected validation, retained-review recheck, and a new immutable handoff with a new run.
 - Resume only when all pins are unchanged and all prior inputs and outputs revalidate. Never resume the stopped run after changing a public or private pin.
+- If remote promotion starts and any later gate fails, use the existing rollback-owned lifecycle and verify the restored target health before stopping.
 
 ### Review log
 
@@ -144,6 +168,8 @@ Production remains unchanged. The latest release run passed public validation, p
 - Validation handoff failure after candidate `2e2661ea3bdf02483e8b1fb567b948b41dc6d464`: The worker never started Node because the pasted command prepended an unquoted inherited PATH containing `Copilot.app/Contents/MacOS`. The correction moves executable selection and PATH construction into a committed argv-safe launcher. The same retained reviewer will recheck the complete updated diff after local validation.
 - Launcher recheck at candidate `429685307fdd691ba4df2c7f8f69e6a9f95e1685`: The retained reviewer reported no actionable findings. It confirmed that the launcher preserves spaced paths and arguments without evaluation, validates absolute executables, safely constructs PATH, exports the private pipeline separately, and prevents the observed inline assignment failure.
 - Combined-validation failure at candidate `2b83b22d9389c79e73d5c8b6e092b93c52221fa7`: Public validation, private apply, dependency materialization, snapshots, tests, and builds passed. Private production layout failed before packaging because legacy offline deploy consulted undeclared ambient registry metadata. The private implementation now consumes the frozen lockfile and prepared content with an isolated empty metadata cache, and its reviewed exact head, tree, manifest, and CI result are pinned above.
+- Deployment topology failure in preserved run `20260907T161134386Z-1641b3af-b26c-4429-a869-78e3fcf0fff1`: The runner interpreted an absent `MINI_HOST` as local deployment on a workstation. It failed before mutation when the local gateway plist was absent. The parent explicitly reassigned this narrow release-framework repair to the release infrastructure owner and prohibited a new worker or feature review.
+- Infrastructure repair review: The release infrastructure owner reviewed the complete focused diff. The parent explicitly prohibited creating a worker, so no additional independent reviewer was started for this repair.
 
 ### Checklist
 
@@ -153,11 +179,13 @@ Production remains unchanged. The latest release run passed public validation, p
 - [x] Create and link the tracking issue.
 - [x] Implement focused behavior and regression coverage.
 - [x] Pass focused local validation.
+- [x] Pass focused release infrastructure tests and static checks.
 - [ ] Pass the full cumulative integration pool.
 - [x] Complete the retained independent adversarial review loop for the current candidate.
 - [x] Push and open a non-draft pull request.
 - [ ] Pass required remote checks and review.
 - [x] Confirm the private pipeline is reviewed and remotely green.
+- [ ] Commit and push the focused release infrastructure repair.
 - [ ] Promote the exact immutable artifact.
 - [ ] Pass read-only production validation.
 - [ ] Recheck exact pull-request head, base, checks, review, and mergeability.

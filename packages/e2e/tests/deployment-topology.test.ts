@@ -935,6 +935,19 @@ describe("OpenClaw deployment topology", () => {
     );
   });
 
+  it("fails before packaging when the current host does not own the gateway", () => {
+    const result = runDeployment({
+      immutableArtifact: true,
+      missingPlist: true,
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("set MINI_HOST explicitly for a remote target");
+    expect(commands(result.lines)).not.toContain("npm");
+    expect(commands(result.lines)).not.toContain("ssh");
+    expect(commands(result.lines)).not.toContain("scp");
+  });
+
   it("fails clearly when remote receipt polling expires", () => {
     const result = runDeployment({
       immutableArtifact: true,
@@ -993,6 +1006,11 @@ describe("OpenClaw deployment topology", () => {
     );
     expect(lines).toContain("openclaw\tdoctor\t--fix\t--yes");
     expect(lines).toContain("openclaw\tgateway\thealth\t--port\t18789");
+    expect(lines).toContainEqual(
+      expect.stringMatching(
+        /^ssh\t(?:-o\t[^\t]+\t)*-o\tControlPath=\/tmp\/puddles-oc-ssh-[0-9]+-%C\t/,
+      ),
+    );
   });
 
   it("preserves remote argument boundaries when paths contain spaces", () => {

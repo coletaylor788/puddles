@@ -83,7 +83,8 @@ packages/e2e/bin/openclaw-release.sh \
     --public-head <40-character-public-head> \
     --expected-private-head <40-character-private-head> \
     --pr-number <number> \
-    --expected-base-head <40-character-base-head>
+    --expected-base-head <40-character-base-head> \
+    --target-host <user@host>
 ```
 
 Pass this as an argument array, with environment values supplied separately.
@@ -123,6 +124,20 @@ private pins, candidate and production-stage digests, artifact digest, and
 landing result. A resume can reconstruct a missing local production receipt
 from that target evidence only after rechecking production health and both
 landed heads.
+
+Local deployment is allowed only when the current process can identify its host
+and user, read the gateway service definition, and confirm that launchd has the
+service loaded. Workstation releases must pass `--target-host` explicitly.
+Remote connections use bounded keepalives and a per-run control socket so a
+stale socket from an older release cannot be reused.
+
+If the release framework itself needs a repair after immutable candidate stages
+have passed, resume the same run with `--release-tooling-head <sha>`. The repair
+commit must descend from the pinned public head and may change only the release
+scripts, focused release tests, and their direct documentation. The runner
+revalidates every preserved receipt and output, then records the repair head and
+script digests in the deployment stage without recomputing the candidate or
+artifact.
 
 Combined validation must retain a production-ready tree beside its raw receipt
 at `<validation-receipt>.stage` and declare that absolute path plus its

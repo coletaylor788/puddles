@@ -70,12 +70,12 @@ case "\${1:-} \${2:-}" in
     if [ "$cwd" = "$PRIVATE_REPO_ROOT" ]; then
       printf '%s\\n' "$PRIVATE_HEAD"
     else
-      printf '%s\\n' "$PUBLIC_HEAD"
+      printf '%s\\n' "\${PUBLIC_CHECKOUT_HEAD:-$PUBLIC_HEAD}"
     fi
     ;;
   "rev-parse HEAD^{tree}") printf '%s\\n' "$PRIVATE_TREE" ;;
   "remote get-url") printf '%s\\n' 'https://github.com/coletaylor788/puddles-private.git' ;;
-  "status --porcelain")
+  "status --porcelain"*)
     if [ "$cwd" = "$PRIVATE_REPO_ROOT" ] &&
        { [ "$PRIVATE_DIRTY" = 1 ] || [ -f "$PRIVATE_DIRTY_MARKER" ]; }; then
       printf ' M private-overlay\\n'
@@ -86,6 +86,8 @@ case "\${1:-} \${2:-}" in
     mkdir -p "$candidate"
     printf '%s\\n' '{"name":"openclaw","version":"1.2.3"}' > "$candidate/package.json"
     ;;
+  "merge-base --is-ancestor") ;;
+  "diff --name-only") printf '%s\\n' 'docs/openclaw-setup/patches/apply-and-deploy.sh' 'packages/e2e/bin/openclaw-release.mjs' ;;
   "diff --binary") ;;
   "ls-files --others") ;;
   *) ;;
@@ -164,6 +166,10 @@ fi
     `
 printf 'bash\\t%s\\n' "$*" >> "$COMMAND_LOG"
 if printf '%s' "\${1:-}" | grep -q 'apply-and-deploy.sh$'; then
+  printf 'target-host\\t%s\\n' "\${MINI_HOST:-}" >> "$COMMAND_LOG"
+  if [ "\${DEPLOY_FAIL:-0}" = 1 ]; then
+    exit 91
+  fi
   /bin/bash "$OPENCLAW_POST_DEPLOY_CHECK"
   "$REAL_NODE" - "$OPENCLAW_TARGET_RESULT" "$OPENCLAW_ARTIFACT_SHA256" <<'NODE'
 const fs = require("node:fs");
@@ -253,7 +259,7 @@ if (command === "apply" && process.env.MUTATE_PRIVATE_AFTER_APPLY === "1") {
 NODE
 `,
   );
-  const env = {
+  const env: NodeJS.ProcessEnv = {
     ...process.env,
     PATH: `${bin}:${inheritedPathEntry}:/usr/bin:/bin`,
     REAL_NODE: process.execPath,
@@ -497,6 +503,39 @@ describe("OpenClaw release CLI", () => {
     expect(
       readFileSync(test.log, "utf8").match(/corepack\tpnpm pack/g)?.length,
     ).toBe(packsBefore);
+  });
+
+  it("resumes unchanged stages with a pinned tooling repair and remote target", () => {
+    const test = fixture();
+    test.env.DEPLOY_FAIL = "1";
+    const first = runFixture(test);
+    expect(first.status).not.toBe(0);
+
+    const logBeforeResume = readFileSync(test.log, "utf8");
+    const toolingHead = "e".repeat(40);
+    test.env.DEPLOY_FAIL = "0";
+    test.env.PUBLIC_CHECKOUT_HEAD = toolingHead;
+    test.args.push(
+      "--target-host",
+      "puddles@coles-mac-mini",
+      "--release-tooling-head",
+      toolingHead,
+    );
+
+    const resumed = runFixture(test);
+    expect(resumed.status, `${resumed.stdout}\n${resumed.stderr}`).toBe(0);
+    const resumedLog = readFileSync(test.log, "utf8").slice(
+      logBeforeResume.length,
+    );
+    expect(resumedLog).not.toMatch(/public-validation|private\t|corepack\t/);
+    expect(resumedLog).toContain("target-host\tpuddles@coles-mac-mini");
+    const deploymentStage = JSON.parse(
+      readFileSync(join(test.runDir, "stages", "deploy-validate.json"), "utf8"),
+    );
+    expect(deploymentStage.inputs.targetHost).toBe(
+      "puddles@coles-mac-mini",
+    );
+    expect(deploymentStage.inputs.releaseTooling.head).toBe(toolingHead);
   });
 
   it("reconciles production receipts after interruption without redeploying", () => {

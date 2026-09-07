@@ -45,7 +45,8 @@ function parseArguments(argv) {
         "--public-repository <owner/repo> --public-head <sha> " +
         "--private-repository <owner/repo> " +
         "--expected-private-head <sha> --pr-number <number> " +
-        "--expected-base-head <sha>",
+        "--expected-base-head <sha> [--target-host <user@host>] " +
+        "[--release-tooling-head <sha>]",
     );
   }
   const values = {};
@@ -74,6 +75,15 @@ function parseArguments(argv) {
   assertGitSha(values["public-head"], "public head");
   assertGitSha(values["expected-private-head"], "private head");
   assertGitSha(values["expected-base-head"], "base head");
+  if (values["release-tooling-head"]) {
+    assertGitSha(values["release-tooling-head"], "release tooling head");
+  }
+  if (
+    values["target-host"] &&
+    !/^(?:[A-Za-z0-9_.-]+@)?[A-Za-z0-9_.-]+$/.test(values["target-host"])
+  ) {
+    throw new Error("target-host must use host or user@host form");
+  }
   if (!/^[1-9][0-9]*$/.test(values["pr-number"])) {
     throw new Error("PR number must be a positive integer");
   }
@@ -245,12 +255,50 @@ async function git(path, args, options = {}) {
   });
 }
 
-async function assertPublicCheckout(expectedHead) {
+const releaseToolingPaths = new Set([
+  "docs/openclaw-setup/patches/README.md",
+  "docs/openclaw-setup/patches/apply-and-deploy.sh",
+  "docs/plans/036-hardened-openclaw-release-pipeline.md",
+  "packages/e2e/README.md",
+  "packages/e2e/bin/openclaw-release.mjs",
+  "packages/e2e/tests/deployment-topology.test.ts",
+  "packages/e2e/tests/release-pipeline-cli.test.ts",
+  "packages/e2e/tests/release-pipeline-contract.test.ts",
+]);
+
+async function assertPublicCheckout(expectedHead, releaseToolingHead) {
   const head = (await git(repoRoot, ["rev-parse", "HEAD"])).trim();
-  if (head !== expectedHead) {
+  if (!releaseToolingHead && head !== expectedHead) {
     throw new Error(`public checkout head ${head} does not match ${expectedHead}`);
   }
-  const status = await git(repoRoot, ["status", "--porcelain"]);
+  if (releaseToolingHead) {
+    if (head !== releaseToolingHead) {
+      throw new Error(
+        `release tooling checkout head ${head} does not match ${releaseToolingHead}`,
+      );
+    }
+    try {
+      await git(repoRoot, ["merge-base", "--is-ancestor", expectedHead, head]);
+    } catch {
+      throw new Error("release tooling head does not descend from the public head");
+    }
+    const changedPaths = (
+      await git(repoRoot, ["diff", "--name-only", `${expectedHead}..${head}`])
+    )
+      .split("\n")
+      .filter(Boolean);
+    const disallowed = changedPaths.filter((path) => !releaseToolingPaths.has(path));
+    if (disallowed.length > 0) {
+      throw new Error(
+        `release tooling repair changes non-infrastructure paths: ${disallowed.join(", ")}`,
+      );
+    }
+  }
+  const status = await git(repoRoot, [
+    "status",
+    "--porcelain",
+    "--untracked-files=all",
+  ]);
   if (status !== "") {
     throw new Error("public checkout must be clean before release");
   }
@@ -685,6 +733,8 @@ async function main() {
   const repository = options["public-repository"];
   const privateRepository = options["private-repository"];
   const prNumber = options["pr-number"];
+  const targetHost = options["target-host"] ?? "";
+  const releaseToolingHead = options["release-tooling-head"] ?? "";
   const privateCheckout = await assertPrivatePipelineCheckout(
     resolvedPrivatePipeline,
     privateRepository,
@@ -703,7 +753,7 @@ async function main() {
     existingRun = readJson(runMetadataPath);
   }
   if (!existingRun) {
-    await assertPublicCheckout(publicHead);
+    await assertPublicCheckout(publicHead, releaseToolingHead);
     const privatePreflight = await privatePullRequestState(
       privateRepository,
       privateHead,
@@ -810,7 +860,7 @@ async function main() {
     }
   }
 
-  await assertPublicCheckout(publicHead);
+  await assertPublicCheckout(publicHead, releaseToolingHead);
   const preflight = await pullRequestState(repository, prNumber);
   if (preflight.state === "MERGED") {
     if (
@@ -1207,6 +1257,18 @@ async function main() {
     expectedBase,
     privateHead,
     privateTree: privateCheckout.tree,
+    targetHost,
+    releaseTooling: releaseToolingHead
+      ? {
+          head: releaseToolingHead,
+          deployScriptSha256: sha256File(
+            join(patchDir, "apply-and-deploy.sh"),
+          ),
+          releaseRunnerSha256: sha256File(
+            join(packageDir, "bin", "openclaw-release.mjs"),
+          ),
+        }
+      : undefined,
   };
   const deploymentArgv = ["bash", join(patchDir, "apply-and-deploy.sh")];
   const currentDeploymentStage = validatedStage(
@@ -1307,6 +1369,7 @@ async function main() {
           OPENCLAW_POST_DEPLOY_CHECK: postCheck,
           OPENCLAW_TARGET_RESULT: deploymentReceipt,
           OPENCLAW_RELEASE_METADATA: JSON.stringify(releaseMetadata),
+          MINI_HOST: targetHost,
         },
         timeoutMs: 45 * 60_000,
       });

@@ -83,10 +83,11 @@ OPENCLAW_SRC=~/git/openclaw \
   bash /path/to/puddles/docs/openclaw-setup/patches/apply-and-deploy.sh
 ```
 
-**Decision rule:** first identify the current host with `hostname` or
-`scutil --get LocalHostName`. If it is the target Mac mini, leave `MINI_HOST`
-unset. Do not SSH back into the same machine and do not wait for a separate build
-host.
+**Decision rule:** leave `MINI_HOST` unset only on the target Mac mini. Local
+mode now fails before packaging unless the current user has the readable
+gateway service definition and launchd reports that service loaded. From any
+other workstation, set `MINI_HOST` explicitly. Do not SSH back into the target
+machine.
 
 `$OPENCLAW_SRC` must be a **clean** OpenClaw checkout at the **target release**
 (`git -C <src> fetch && git -C <src> checkout <release-tag-or-sha>`). The
@@ -166,8 +167,10 @@ terminal receipt that includes the immutable release and landing metadata. The
 orchestrator then records a durable landing stage from the already verified
 pull requests.
 
-Remote mode uses batch authentication, one explicit identity, and a persistent
-SSH control connection. The target uses an explicit non-interactive path. A
+Remote mode uses batch authentication, one explicit identity, bounded
+keepalives, and a per-run persistent SSH control connection. The per-run socket
+name prevents a stale socket from an older release from poisoning the new
+connection. The target uses an explicit non-interactive path. A
 durable target receipt records the artifact digest, recovery directory, result,
 and completion time so a disconnected client can distinguish completion from
 rollback. The client starts target work independently, polls the receipt over
@@ -218,7 +221,13 @@ MINI_HOST=<target-host> OPENCLAW_SRC=~/git/openclaw \
 ```
 
 Only explicit remote deploys use `scp` and `ssh`; the script has no remote-host
-default.
+default. The release orchestrator accepts `--target-host <user@host>` and passes
+that target to the deployment wrapper without changing earlier stage inputs.
+An infrastructure-only repair may resume an existing run with
+`--release-tooling-head <sha>` when that commit descends from the immutable
+public head and changes only the release scripts, their focused tests, and
+direct documentation. The deployment receipt records that repair head and the
+release script digests. All previously passed stage hashes must still validate.
 
 Validate afterward (`openclaw --version`, run a cron with a subagent).
 

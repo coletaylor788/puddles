@@ -71,9 +71,26 @@ describe("OpenClaw release pipeline contract", () => {
   it("sets non-interactive SSH identity and control connection defaults", () => {
     expect(deploy).toContain("-o BatchMode=yes");
     expect(deploy).toContain("-o IdentitiesOnly=yes");
+    expect(deploy).toContain("-o ConnectTimeout=10");
+    expect(deploy).toContain("-o ServerAliveInterval=15");
+    expect(deploy).toContain("-o ServerAliveCountMax=3");
     expect(deploy).toContain("-o ControlMaster=auto");
     expect(deploy).toContain("-o ControlPersist=600");
     expect(deploy).toContain("ControlPath=$SSH_CONTROL_PATH");
+    expect(deploy).toContain("/tmp/puddles-oc-ssh-$$-%C");
+  });
+
+  it("fails closed for local deployment unless this host owns the gateway", () => {
+    expect(deploy).toContain('LOCAL_HOSTNAME="$(hostname)"');
+    expect(deploy).toContain('LOCAL_USER="$(id -un)"');
+    expect(deploy).toContain(
+      '! launchctl print "gui/$(id -u)/$GATEWAY_LABEL"',
+    );
+    expect(deploy).toContain(
+      "set MINI_HOST explicitly for a remote target",
+    );
+    expect(release).toContain('"target-host"');
+    expect(release).toContain("MINI_HOST: targetHost");
   });
 
   it("detaches remote deployment and reconciles a pinned durable receipt", () => {
