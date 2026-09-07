@@ -20,22 +20,22 @@ Candidate changes and production release are owned by separate workers under a p
 
 The public orchestrator now validates one pinned source tree, binds private execution to the reviewed clean Git tree, packages the combined candidate once, and deploys only the recorded artifact digest. Each stage records inputs, outputs, commands, timing, and resume data outside the candidate. Deployment rollback owns production checks and the dependency-ordered private and public merges. The target disables rollback before publishing success, and the final durable stage records the already verified landing.
 
-The first validation worker stopped before the release runner started because a pasted PATH assignment split an inherited application path at a space. Production remains unchanged. The release now has a committed launcher that accepts the supported Node executable and private pipeline as explicit arguments, constructs PATH internally, and invokes the runner without evaluating shell text. Focused validation, the cumulative pool, and retained review are green. Push, exact-head checks, and a new immutable handoff remain.
+Production remains unchanged. The latest release run passed public validation, private application, dependency materialization, snapshots, patch tests, and both builds. It stopped before packaging because the private production-layout step depended on ambient package-manager metadata. The private pipeline now uses the frozen lockfile and prepared package content with an isolated empty metadata cache, and it fails closed when actual package content is absent. That fix is reviewed, validated, and remotely green. The public pin and evidence now target the corrected private head. Public validation, retained review, push, exact-head checks, and a new immutable handoff remain.
 
 ## Agent section
 
 ### State
 
-- Phase: Push the clean argv-safe candidate and wait for exact-head checks.
+- Phase: Revalidate and review the public candidate pinned to the corrected private pipeline.
 - Public repository: `coletaylor788/puddles`.
 - Private coordination: creator session `ef5fc892-f0fb-4ba0-b024-cf08ca61adb8`.
 - Private implementation owner: session `66dd0a6d-f143-45c1-8011-15c95b616fb9`.
-- Public implementation owner: session `d56235cd-e6be-4c39-b691-f856cb76548e`.
+- Public implementation owner: session `1ed1953f-36a3-4094-b860-8cdd40e5137c`.
 - Parent orchestrator: session `ef5fc892-f0fb-4ba0-b024-cf08ca61adb8`.
 - Validation and deployment worker: Assigned only by the parent after the exact candidate handoff.
-- Failed validation worker: session `7f09538a-bb2d-494c-8bfc-63c24f239d3e`; exit 127 before Node or orchestrator startup because an inherited PATH entry containing a space was shell-split. Production was untouched.
+- Failed validation workers: session `7f09538a-bb2d-494c-8bfc-63c24f239d3e` stopped before Node startup because an inherited PATH entry containing a space was shell-split; session `5998fac5-b7ba-42c9-a376-6ae4c8399b8c` stopped before invocation after imposing an incorrect source HEAD gate; session `23aeba05-46a7-4fa1-8fa0-1585b917522d` stopped during combined validation because legacy offline deploy required ambient package metadata. Production was untouched in every run.
 - Production topology: user LaunchAgent `gui/502/ai.openclaw.gateway`, plist `~/Library/LaunchAgents/ai.openclaw.gateway.plist`, local port `18789`.
-- Private contract: Repository `coletaylor788/puddles-private`, executable `docs/openclaw-setup/patches/private-overlay.mjs`, head `4378cdcea1fbfb39fca5d994d7712705d35403b2`.
+- Private contract: Repository `coletaylor788/puddles-private`, executable `docs/openclaw-setup/patches/private-overlay.mjs`, head `6d37e6e99acd687b1541a93e39cc8c4c6d75417d`, tree `6f6fc0549adca68614ae2d9548dba8fd47c8da2c`, manifest SHA-256 `a72c237b3fdc96234360bf29c57f60da50df4f51cb5d4aa1531f5cb03bb33436`.
 - Blocker: None.
 
 ### Scope and acceptance criteria
@@ -112,6 +112,8 @@ The first validation worker stopped before the release runner started because a 
 - Final full managed result for the launcher correction: Passed with Node 22.23.1. Puddles package suites passed 163 E2E tests, 112 MCP hook tests, 61 calendar tests, 43 Gmail plugin tests, and 175 Gmail Python tests. The patched OpenClaw project groups and candidate suite passed 319 tests across 12 files.
 - Failed iterations found two lifecycle defects that are now covered: broad Vitest selection loaded tests into the wrong projects, and this host's Node 24.2.0 did not satisfy the pinned OpenClaw engine. The runner now uses one declared project per mapped test. Validation used the same supported Node 22.23.1 configured in CI.
 - Recoverable full-run history for this PR: one earlier implementation run passed before this ownership correction; one run in this session was stopped because the ownership contract changed while it was running; one run passed for the three-role contract; one pre-review run passed after the reviewer identity contract; one run passed after the first retained-review remediation; one run passed after the second remediation; and the final launcher-correction run passed.
+- Release run `20260906T235627626Z-fecfb474-f121-4d60-b573-2ac3d890a5ab` passed public validation, private apply, frozen dependency materialization, prompt snapshots, private patch tests, build, and UI build. It failed before packaging at private `production-layout` because legacy offline deploy lacked registry metadata for an already materialized dependency. No production state changed.
+- Corrected private candidate `6d37e6e99acd687b1541a93e39cc8c4c6d75417d` uses lockfile-driven offline deploy with explicit workspace injection and an isolated metadata cache. Empty-metadata-cache success and missing-content failure regressions pass. Full combined validation retained tree `f7a5d49cd01ec3e4af7315b7992737796913a3be862a3fd77d01f50aa8553723` as production stage `d1ce85dd93a01286dc9a26f126eb011d7a78b0b93bbabba1afdf984c6ca2f995`. Private CI run `34070927360` passed.
 
 ### Rollout and rollback
 
@@ -129,7 +131,7 @@ The first validation worker stopped before the release runner started because a 
 
 ### Review log
 
-- Independent retained reviewer: `71118f9e-0458-486c-8308-b51e88663719`.
+- Independent retained reviewer: `a33300f3-b349-4418-9723-0a9db370c05b`.
 - First pass: Three High findings. Run-directory symlink escape, single-shot remote receipt retrieval, and acceptance of private pull requests with no remote checks.
 - Second pass: The first three findings were resolved. Four material findings remained. Merge ambiguity could trigger rollback after merge, private receipts were not sanitized, pre-quiesce failures lacked receipts, and the orchestrator had only source-contract tests.
 - Cross-repository pass: Combined validation produced build outputs that the public candidate digest did not cover, while public packaging rebuilt the tree. The private receipt now declares a retained production stage with a complete directory digest. Public verifies and packages that exact stage without rebuilding.
@@ -141,6 +143,7 @@ The first validation worker stopped before the release runner started because a 
 - Final recheck at candidate `7c739f380f5b3af54458f3e0c149b68ab2988b0b`: The reviewer initially reported that merged public state was not accepted during reconciliation. Current source and regressions showed that both exact merged states are accepted and verified on their default branches. The reviewer withdrew the finding and reported no actionable findings in the complete diff. The remaining production and GitHub landing validation belongs to the designated validation and deployment worker.
 - Validation handoff failure after candidate `2e2661ea3bdf02483e8b1fb567b948b41dc6d464`: The worker never started Node because the pasted command prepended an unquoted inherited PATH containing `Copilot.app/Contents/MacOS`. The correction moves executable selection and PATH construction into a committed argv-safe launcher. The same retained reviewer will recheck the complete updated diff after local validation.
 - Launcher recheck at candidate `429685307fdd691ba4df2c7f8f69e6a9f95e1685`: The retained reviewer reported no actionable findings. It confirmed that the launcher preserves spaced paths and arguments without evaluation, validates absolute executables, safely constructs PATH, exports the private pipeline separately, and prevents the observed inline assignment failure.
+- Combined-validation failure at candidate `2b83b22d9389c79e73d5c8b6e092b93c52221fa7`: Public validation, private apply, dependency materialization, snapshots, tests, and builds passed. Private production layout failed before packaging because legacy offline deploy consulted undeclared ambient registry metadata. The private implementation now consumes the frozen lockfile and prepared content with an isolated empty metadata cache, and its reviewed exact head, tree, manifest, and CI result are pinned above.
 
 ### Checklist
 
