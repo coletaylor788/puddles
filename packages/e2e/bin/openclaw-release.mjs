@@ -163,6 +163,15 @@ async function runStage(runDir, name, inputs, argv, action, options = {}) {
   const path = stagePath(runDir, name);
   if (existsSync(path)) {
     const current = readJson(path);
+    if (
+      options.preservePassedProducer &&
+      current.status === "passed" &&
+      JSON.stringify(current.inputs) === JSON.stringify(inputs) &&
+      stageCanResume(current, { inputs, argv: current.argv })
+    ) {
+      console.log(`==> ${name}: reusing validated original producer result`);
+      return current.result;
+    }
     if (stageCanResume(current, { inputs, argv })) {
       console.log(`==> ${name}: reusing validated result`);
       return current.result;
@@ -743,6 +752,10 @@ async function main() {
     ? `-${releaseToolingHead.slice(0, 12)}`
     : "";
   const deploymentStageName = `deploy-validate${deploymentAttemptSuffix}`;
+  const featureStageOptions = {
+    immutable: true,
+    preservePassedProducer: Boolean(releaseToolingHead),
+  };
   const privateCheckout = await assertPrivatePipelineCheckout(
     resolvedPrivatePipeline,
     privateRepository,
@@ -953,6 +966,7 @@ async function main() {
         outputPaths: [publicReceipt],
       };
     },
+    featureStageOptions,
   );
   const overlayReceipt = join(runDir, "overlay.json");
   const rawOverlayReceipt = join(privateReceiptDir, "overlay.json");
@@ -1013,8 +1027,12 @@ async function main() {
         outputPaths: [overlayReceipt],
       };
     },
+    featureStageOptions,
   );
-  if (candidateTreeSha256(candidate) !== overlayResult.treeSha256) {
+  if (
+    !releaseToolingHead &&
+    candidateTreeSha256(candidate) !== overlayResult.treeSha256
+  ) {
     throw new Error("combined candidate changed after private apply");
   }
 
@@ -1097,8 +1115,12 @@ async function main() {
         outputPaths: [validationReceipt],
       };
     },
+    featureStageOptions,
   );
-  if (candidateTreeSha256(candidate) !== validationResult.treeSha256) {
+  if (
+    !releaseToolingHead &&
+    candidateTreeSha256(candidate) !== validationResult.treeSha256
+  ) {
     throw new Error("combined candidate changed after validation");
   }
 
@@ -1209,7 +1231,7 @@ async function main() {
         outputPaths: [artifactReceipt, artifact],
       };
     },
-    { immutable: true },
+    featureStageOptions,
   );
   if (sha256File(packageResult.artifact) !== packageResult.artifactSha256) {
     throw new Error("immutable artifact changed after packaging");

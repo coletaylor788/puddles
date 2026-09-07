@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import { argvSha256 } from "../src/release-state.mjs";
 
 const repoRoot = resolve(import.meta.dirname, "..", "..", "..");
 const release = join(repoRoot, "packages", "e2e", "bin", "openclaw-release.mjs");
@@ -525,6 +526,24 @@ describe("OpenClaw release CLI", () => {
       join(test.runDir, "deployment.json"),
       "utf8",
     );
+    const publicStagePath = join(
+      test.runDir,
+      "stages",
+      "public-validation.json",
+    );
+    const publicStage = JSON.parse(readFileSync(publicStagePath, "utf8"));
+    publicStage.argv[1] = "/immutable/producer/openclaw-test-env.mjs";
+    publicStage.argvSha256 = argvSha256(publicStage.argv);
+    writeFileSync(publicStagePath, `${JSON.stringify(publicStage, null, 2)}\n`);
+    const featureStagePaths = [
+      publicStagePath,
+      join(test.runDir, "stages", "private-apply.json"),
+      join(test.runDir, "stages", "combined-validation.json"),
+      join(test.runDir, "stages", "package.json"),
+    ];
+    const featureStageBytes = featureStagePaths.map((path) =>
+      readFileSync(path, "utf8"),
+    );
     const toolingHead = "e".repeat(40);
     test.env.DEPLOY_FAIL = "0";
     test.env.PUBLIC_CHECKOUT_HEAD = toolingHead;
@@ -560,6 +579,9 @@ describe("OpenClaw release CLI", () => {
         join(test.runDir, `deployment-${toolingHead.slice(0, 12)}.json`),
       ),
     ).toBe(true);
+    expect(featureStagePaths.map((path) => readFileSync(path, "utf8"))).toEqual(
+      featureStageBytes,
+    );
   });
 
   it("reconciles production receipts after interruption without redeploying", () => {
