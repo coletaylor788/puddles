@@ -58,31 +58,21 @@ publication boundaries, test isolation, or secret handling.
 
 ## Worker ownership and checkpoints
 
-The parent orchestrator owns worker creation and routing. Use separate workers
-for feature implementation and release validation when a change will be
-promoted:
+The parent orchestrator owns worker creation and routing. One engineering owner
+takes an approved design through the deterministic native pipeline. Scripts own
+commands and durable run state. The owner repairs defects with committed
+regressions and resumes the run instead of creating a handoff chain. A parent
+may assign separate implementation and release workers, but the pipeline and
+its evidence remain the same.
 
-- The implementer owns the requested code, focused tests, the committed
-  regression, related documentation, and retained adversarial review. It
-  produces an exact frozen candidate and does not troubleshoot release
-  infrastructure or deploy production.
-- The validation and deployment worker owns the full cumulative validation,
-  artifact sealing, deployment, production checks, rollback, and landing. It
-  also owns failures in validation, packaging, receipts, environment setup,
-  transport, deployment, and rollback tooling.
-- The validation and deployment worker fixes release-infrastructure defects on
-  its own branch, adds focused regression coverage, commits and pushes the fix,
-  lands that repair through the smallest repository-approved integration path,
-  and resumes the same release. It must preserve completed proofs and sealed
-  artifacts when their inputs did not change. The landed tooling identity is
-  recorded separately from the feature candidate.
-- The validation and deployment worker never changes the frozen feature. If
-  evidence identifies a feature or artifact defect, it routes the exact failure
-  back to the same implementer. The implementer returns a new reviewed
-  candidate, and only affected proofs rerun.
+Keep one independent reviewer through remediation. Review the complete current
+behavior diff after meaningful changes. Do not require a terminal fresh reviewer
+for routine bookkeeping. Reuse successful evidence only when its actual inputs
+and outputs still match. Packaging changes invalidate install and runtime
+proofs, not unrelated unchanged source tests.
 
-An approved implementation request authorizes both workers, through the parent
-orchestrator, to complete their assigned parts of the lifecycle. This includes
+An approved implementation request authorizes the assigned owner, through the
+parent orchestrator, to complete its part of the lifecycle. This includes
 commits, pushes, pull requests, review remediation, remote checks, deployment,
 rollback, merge, and verification. A controlling instruction may explicitly
 limit those actions, and repository permissions and protections always apply.
@@ -126,14 +116,13 @@ link plus two short prose sections, `Summary` and `Status`, and nothing else.
 ## Shared cumulative integration pool
 
 Every feature, behavior change, and bug fix must contribute a committed
-regression to the shared test pool. The implementer runs focused tests while
-iterating. The validation and deployment worker runs the entire accumulated pool
-against the exact frozen candidate before promotion:
+regression to the shared test pool. Run focused tests while iterating, then the
+entire accumulated pool against the exact final candidate before integration:
 
 - Use `packages/e2e/` for cross-component, deployment, and OpenClaw patch
   integration coverage. Keep focused package tests beside their implementation
   as well.
-- The validation and deployment worker runs
+- The engineering owner runs
   `node packages/e2e/bin/openclaw-test-env.mjs ci`. This is the required managed
   lifecycle whenever that runner exists on the active branch.
 - OpenClaw source patches must add or update tests in the patch and register
@@ -150,12 +139,19 @@ against the exact frozen candidate before promotion:
   Route all write and delivery behavior through deny-by-default recording
   mocks.
 
-Pure release-infrastructure repairs use a fast lane. They run focused safety and
-regression tests, land the repair independently for reuse, record the landed
-tooling identity separately, and resume the unchanged candidate. They do not
-repeat feature review or full cumulative validation. A repair that changes
-feature code, artifact contents, artifact construction, or the meaning of a
-completed proof leaves the fast lane and returns to the applicable implementer.
+Repair failures in the same engineering loop. Every repair contributes a
+regression. Rerun affected proofs based on source, test, environment, toolchain,
+build, and artifact inputs, not job names or transport retries. Never skip old
+regressions for a changed final candidate. Integrate eligible exact source
+before activation. No GitHub merge belongs inside the live rollback transaction.
+
+The native test environment is a second real OpenClaw process on a trusted
+host, not a VM or a security sandbox. Writable state, sessions, indexes,
+configuration, ports, and PIDs are separate. All test mutations and delivery
+must use explicit recording fixtures, with no silent live fallback. Deterministic
+read fixtures support assertions. Separately selected host health checks are
+read-only, bounded, and expose no personal results. Required unavailable host
+checks fail. Public CI never needs live credentials or another repository.
 
 ## OpenClaw deployment topology
 

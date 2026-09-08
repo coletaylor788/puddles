@@ -86,7 +86,7 @@ describe("OpenClaw cumulative patch suite", () => {
 
   it("checks generated prompt snapshots after applying the patch stack", () => {
     const runner = readFileSync(
-      join(packageDir, "bin", "openclaw-test-env.mjs"),
+      join(packageDir, "src", "native-pipeline.mjs"),
       "utf8",
     );
     const finalApply = runner.indexOf('await run("git", ["apply", patchFile]');
@@ -100,6 +100,18 @@ describe("OpenClaw cumulative patch suite", () => {
     expect(finalApply).toBeGreaterThan(-1);
     expect(snapshotCheck).toBeGreaterThan(finalApply);
     expect(mappedTests).toBeGreaterThan(snapshotCheck);
+  });
+
+  it("maps exact Vitest projects and proves collection before running old regressions", () => {
+    const manifest = JSON.parse(readFileSync(join(packageDir, "openclaw-patch-suite.json"), "utf8"));
+    for (const test of suite.patches.flatMap((patch) => patch.tests)) {
+      expect(manifest.testProjects[test], test).toMatch(/^[a-z-]+$/);
+    }
+    const runner = readFileSync(join(packageDir, "src/native-pipeline.mjs"), "utf8");
+    expect(runner).toContain('"list", "--filesOnly"');
+    expect(runner).toContain("Mapped regression was not collected");
+    expect(runner).toContain("...scenarios, ...extension.scenarios");
+    expect(readFileSync(join(packageDir, "scenarios/imessage.mjs"), "utf8")).toContain("no-output");
   });
 
   it("uses a SQLite WAL-reset-safe Node runtime in CI", () => {

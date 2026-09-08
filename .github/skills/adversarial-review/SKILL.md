@@ -3,7 +3,7 @@ name: adversarial-review
 description: Independently challenge a completed feature for hidden defects, unsafe assumptions, regressions, and incomplete requirements. Use for the mandatory post-implementation review of every feature.
 metadata:
   author: Cole Taylor
-  version: "1.3.0"
+  version: "1.4.0"
 ---
 
 # Adversarial Review
@@ -65,6 +65,12 @@ report minor or low-severity findings. If there are no actionable findings, say
 so and identify any useful residual validation gaps separately from findings.
 
 Apply any additional checks listed below.
+
+Retain the same independent reviewer across corrections. Routine bookkeeping
+does not require a terminal fresh reviewer. Inspect whether cached proofs bind
+the actual source, test, environment, toolchain, build, and artifact inputs.
+Reject a mock-only proxy for the installed real runtime. Check that source
+integration happens before activation, outside the live rollback transaction.
 
 ## Project-specific concerns
 
