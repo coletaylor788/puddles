@@ -116,6 +116,13 @@ retained proofs before activation and update local path references without
 changing the artifact bytes. Receipt and target paths then refer to the remote
 host. Transport never runs builds or package managers.
 
+Noninteractive SSH may not load the interactive shell's tool paths. Set
+`PUDDLES_REMOTE_NODE` to the absolute supported Node executable on the target
+when needed. Set `PUDDLES_REMOTE_PATH` explicitly if activation's child commands
+need a selected tool path. Both values are quoted as arguments, not evaluated
+as shell code. Without these settings, remote activation uses `node` and the
+remote shell's existing PATH. Local activation is unchanged.
+
 ## Recovery
 
 Activation holds a target lock, proves offline installation before stopping the

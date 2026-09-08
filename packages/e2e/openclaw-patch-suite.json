@@ -3,7 +3,7 @@
   "testProjects": {
     "src/plugin-sdk/file-lock.stale-contention.test.ts": "plugin-sdk",
     "src/agents/tools/sessions-yield-tool.test.ts": "agents-tools",
-    "src/agents/tools/yield-gather-state.test.ts": "unit-fast",
+    "src/agents/tools/yield-gather-state.test.ts": "agents-tools",
     "src/agents/acp-spawn.test.ts": "agents-core",
     "src/agents/subagent-spawn.test.ts": "agents-core",
     "src/agents/tools/sessions-spawn-tool.test.ts": "agents-tools",

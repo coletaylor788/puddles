@@ -33,17 +33,19 @@ are replaced; unrelated state and the runtime's existing records of installed
 packages are preserved. Successful proofs are reused only while their
 actual inputs and outputs remain unchanged. Optional local extensions compose
 additional scenarios and bounded health checks without making public code or
-CI depend on another repository.
+CI depend on another repository. Public hosted failures retain only bounded,
+sanitized evidence from their own fresh run, never local extension state.
 
 ### Status
 
-Release validation exposed an old Gmail assertion and a missing activation
-path for additional prepared packages. The mailbox protection now follows the
-delegated CI environment. Additional runtimes are sealed, rehearsed, and
-replaced under the existing stopped-state snapshot without changing unrelated
-state or package records. Focused checks pass, and the same retained reviewer
-cleared the combined correction. Refreshed validation of the complete bundle
-remains release-worker work. Production is unchanged.
+The native loop and additional-package activation are implemented. Release
+validation found one retained test assigned to the wrong test project and
+missing hosted failure evidence. The correction preserves the collection guard
+and adds bounded public diagnostics. Remote activation can also select an
+explicit interpreter and tool path without relying on an interactive shell.
+Focused checks pass, and the same retained reviewer cleared the complete
+current feature diff. Refreshed release validation remains pending.
+Production is unchanged.
 
 This worker hands off a reviewed candidate and pull request without deploying
 or merging it. A separate release worker will run the final accumulated gate,
@@ -90,6 +92,12 @@ integrate exact source, and activate the rehearsed artifacts.
   7 GB `macos-latest` host. Keep the 8 GiB native guards. The 90-minute job
   budget covers more than the 15-minute dependency and 30-minute build bounds
   and remains below GitHub's six-hour hosted-job maximum.
+- Public hosted attempts use a fresh marked run with local extensions disabled.
+  Failure exports contain bounded sanitized logs and projected stage status,
+  never raw run state. Environment redaction supplements synthetic test data.
+- Remote activation accepts optional absolute `PUDDLES_REMOTE_NODE` and
+  selected `PUDDLES_REMOTE_PATH`, passed through quoted arguments. Existing
+  default lookup and local behavior remain unchanged.
 - Prepare clean source on invalidation and keep the existing build when the
   resulting source bytes match. Bind regression proofs to effective test
   environments, interpreters, and installed test dependencies.
@@ -131,6 +139,12 @@ integrate exact source, and activate the rehearsed artifacts.
   recovery state. The same snapshot restores old content or removes a new
   subtree after failure. Registry/configuration outside selected subtrees is
   unchanged.
+- `public-ci-diagnostics.mjs` validates hosted run ownership, limits and
+  sanitizes allowed logs, rejects symlinks, and produces a bounded job summary.
+  The workflow uploads only its export directory on failure, for seven days.
+- `yield-gather-state.test.ts` belongs to `agents-tools`, not `unit-fast`.
+  Collection failures retain command output and identify the missing target
+  and project. No test target or collection guard is removed.
 
 ### Validation
 
@@ -167,6 +181,18 @@ integrate exact source, and activate the rehearsed artifacts.
   unchanged registry bytes, and interrupted rollback without archived inputs.
   Root source/build/artifact bytes are retained. Installation verification and
   bundle proofs have changed and require refreshed release evidence.
+- The current repair selection passes all 67 tests across public diagnostics,
+  deployment topology, patch mapping, native pipeline, and plan contracts.
+  E2E TypeScript, shell syntax, and diff checks also pass. It executes a real
+  failing child and the diagnostic CLI, proving bounded redacted output without
+  publishing context. Fake SSH exercises interpreter, PATH, and argument
+  quoting without accessing a real target.
+- Actual retained source collection under
+  `test/vitest/vitest.agents-tools.config.ts` finds
+  `src/agents/tools/yield-gather-state.test.ts`; its four tests pass.
+  The other mapped groups passed in release validation. No source patch or
+  package bytes change in this repair. Refresh affected regression evidence,
+  not unchanged source builds, according to actual input identities.
 
 ### Rollout and rollback
 
@@ -201,6 +227,10 @@ integrate exact source, and activate the rehearsed artifacts.
   Gmail contract and additional-artifact transaction corrections. The refreshed
   cumulative gate and real complete-bundle rehearsal remain required.
   No terminal fresh reviewer is required for bookkeeping.
+- The same reviewer cleared the complete feature diff including diagnostics,
+  mapping, and remote interpreter selection. No actionable high-confidence
+  findings remain. Hosted cumulative success and target-specific bundle
+  rehearsal remain required; fake SSH does not prove target tool availability.
 
 ### Checklist
 
@@ -210,5 +240,5 @@ integrate exact source, and activate the rehearsed artifacts.
 - [x] Durable pipeline and offline package rehearsal.
 - [x] Lifecycle guidance and regression assertions updated.
 - [x] Focused tests and repeated real runtime evidence.
-- [x] Retained independent review clear.
+- [x] Retained independent review clear for current correction.
 - [ ] Release worker cumulative gate, integration, and activation.

@@ -20,12 +20,19 @@ PATCHES=(
 
 if [ -n "${MINI_HOST:-}" ]; then
   : "${PUDDLES_REMOTE_ROOT:?set the reviewed Puddles tooling path on the approved remote host}"
-  printf -v command '%q ' node "$PUDDLES_REMOTE_ROOT/packages/e2e/bin/openclaw-activate.mjs" \
-    "$OPENCLAW_CANDIDATE_RECEIPT" "$OPENCLAW_DEPLOY_TARGET"
-  if [ -n "${OPENCLAW_RECOVERY_DIR:-}" ]; then
-    printf -v recovery '%q' "$OPENCLAW_RECOVERY_DIR"
-    command="$command $recovery"
+  remote_node="${PUDDLES_REMOTE_NODE:-node}"
+  if [ -n "${PUDDLES_REMOTE_NODE:-}" ] && [[ "$remote_node" != /* ]]; then
+    echo "PUDDLES_REMOTE_NODE must be an absolute executable path" >&2
+    exit 1
   fi
+  remote_args=()
+  if [ -n "${PUDDLES_REMOTE_PATH:-}" ]; then remote_args+=(env "PATH=$PUDDLES_REMOTE_PATH"); fi
+  remote_args+=("$remote_node" "$PUDDLES_REMOTE_ROOT/packages/e2e/bin/openclaw-activate.mjs" \
+    "$OPENCLAW_CANDIDATE_RECEIPT" "$OPENCLAW_DEPLOY_TARGET")
+  if [ -n "${OPENCLAW_RECOVERY_DIR:-}" ]; then
+    remote_args+=("$OPENCLAW_RECOVERY_DIR")
+  fi
+  printf -v command '%q ' "${remote_args[@]}"
   exec ssh "$MINI_HOST" "$command"
 fi
 args=("$OPENCLAW_CANDIDATE_RECEIPT" "$OPENCLAW_DEPLOY_TARGET")

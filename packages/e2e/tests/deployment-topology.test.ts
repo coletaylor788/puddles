@@ -231,6 +231,54 @@ describe("native activation and recovery transaction", () => {
       expect(calls.some((args) => args[0] === "docker")).toBe(false);
     });
 
+    describe("explicit remote activation interpreter", () => {
+      function remoteFixture() {
+        const directory = root();
+        const bin = join(directory, "bin");
+        const runtime = join(directory, "runtime 'quoted");
+        mkdirSync(bin);
+        mkdirSync(runtime);
+        const node = join(runtime, "node");
+        const argumentsFile = join(directory, "arguments");
+        const pathFile = join(directory, "path");
+        const sshMarker = join(directory, "ssh-called");
+        writeFileSync(node, '#!/bin/bash\nprintf "%s\\0" "$@" > "$REMOTE_ARGUMENTS"\nprintf "%s" "$PATH" > "$REMOTE_PATH_RECORD"\n');
+        chmodSync(node, 0o700);
+        writeFileSync(join(bin, "ssh"), '#!/bin/bash\nset -e\nprintf called > "$REMOTE_SSH_MARKER"\nPATH=/usr/bin:/bin /bin/bash -c "$2"\n');
+        chmodSync(join(bin, "ssh"), 0o700);
+        const env: NodeJS.ProcessEnv = {
+          ...process.env, PATH: `${bin}:/usr/bin:/bin`, MINI_HOST: "gateway.example.test",
+          PUDDLES_REMOTE_ROOT: join(directory, "tooling 'quoted"),
+          PUDDLES_REMOTE_NODE: node, PUDDLES_REMOTE_PATH: `${runtime}:/usr/bin:/bin`,
+          OPENCLAW_CANDIDATE_RECEIPT: join(directory, "candidate 'quoted; literal.json"),
+          OPENCLAW_DEPLOY_TARGET: join(directory, "target 'quoted.json"),
+          OPENCLAW_RECOVERY_DIR: join(directory, "recovery 'quoted"),
+          REMOTE_ARGUMENTS: argumentsFile, REMOTE_PATH_RECORD: pathFile, REMOTE_SSH_MARKER: sshMarker,
+        };
+        return { env, argumentsFile, pathFile, sshMarker };
+      }
+
+      it("uses a safely quoted pinned executable and selected PATH without relying on SSH's node lookup", () => {
+        const f = remoteFixture();
+        const result = spawnSync("/bin/bash", [join(repoRoot, "docs/openclaw-setup/patches/apply-and-deploy.sh")], { env: f.env, encoding: "utf8", timeout: 10_000 });
+        expect(result.status, result.stderr).toBe(0);
+        expect(readFileSync(f.argumentsFile, "utf8").split("\0").filter(Boolean)).toEqual([
+          `${f.env.PUDDLES_REMOTE_ROOT}/packages/e2e/bin/openclaw-activate.mjs`,
+          f.env.OPENCLAW_CANDIDATE_RECEIPT, f.env.OPENCLAW_DEPLOY_TARGET, f.env.OPENCLAW_RECOVERY_DIR,
+        ]);
+        expect(readFileSync(f.pathFile, "utf8")).toBe(f.env.PUDDLES_REMOTE_PATH);
+      });
+
+      it("rejects an explicitly selected relative interpreter before contacting SSH", () => {
+        const f = remoteFixture();
+        f.env.PUDDLES_REMOTE_NODE = "relative-node";
+        const result = spawnSync("/bin/bash", [join(repoRoot, "docs/openclaw-setup/patches/apply-and-deploy.sh")], { env: f.env, encoding: "utf8", timeout: 10_000 });
+        expect(result.status).not.toBe(0);
+        expect(result.stderr).toContain("absolute executable path");
+        expect(existsSync(f.sshMarker)).toBe(false);
+      });
+    });
+
     it("records the previous image before loading isolated tags and uses the retained CLI on recovery", async () => {
       const f = fixture();
       const previous = `sha256:${"b".repeat(64)}`;

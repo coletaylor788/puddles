@@ -166,12 +166,30 @@ it("forces CI for the delegated repository gate even when the caller disables it
     gateCalls++;
     await run("fixture-python", ["-m", "pytest", "tests/", "--ignore=tests/integration", "-q"], { cwd: runDir });
   });
+
   expect(gateCalls).toBe(1);
   const call = command.mock.calls.find(([name, args]) => name === "fixture-python" && args[0] === "-m");
   expect(call).toBeDefined();
   expect(call![1]).toContain("--ignore=tests/integration");
   expect(call![2]?.env?.CI).toBe("true");
   expect(call![2]?.cwd).toBe(runDir);
+});
+
+it("retains collection output and names the omitted public target without weakening the guard", async () => {
+  setup();
+  vi.stubEnv("GMAIL_MCP_PYTHON", "fixture-python");
+  const command = vi.mocked(runCommand);
+  const implementation = command.getMockImplementation()!;
+  command.mockClear();
+  command.mockImplementation(async (...args) => args[1].includes("--filesOnly") ? "" : implementation(...args));
+  try {
+    await expect(nativePipeline("ci", async () => {})).rejects.toThrow("src/plugin-sdk/file-lock.stale-contention.test.ts in plugin-sdk");
+    const collection = command.mock.calls.find(([, args]) => args.includes("--filesOnly"));
+    expect(collection?.[2]?.capture).toBe(true);
+    expect(collection?.[2]?.logPath).toMatch(/\/logs\/[0-9]+\.log$/);
+  } finally {
+    command.mockImplementation(implementation);
+  }
 });
 
 it("keeps source/build for later phase edits and safely reconstructs transactional preparation", async () => {

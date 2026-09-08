@@ -45,6 +45,20 @@ scenario, or selected required health prerequisite is a failure, not a skip.
 explicit upstream Vitest projects. New patches must register every added test.
 Do not replace earlier regressions with only the newest feature's targets.
 
+Public CI initializes a fresh run directory for each hosted attempt and
+explicitly disables local extensions. On failure, it retains a seven-day
+artifact with bounded, sanitized command and known public fixture logs, plus
+stage status. A short excerpt also appears in the job summary and output.
+Collection output is retained, and missing mapped tests name their target and
+project rather than silently skipping them.
+
+`bin/public-ci-diagnostics.mjs` accepts only that initialized public run.
+It redacts environment values and common credential forms, limits each exported
+log to 64 KiB, and refuses symlinked inputs. It never exports raw stage inputs,
+configuration, context, packages, or the whole run directory. Do not use this
+helper to publish local runs or extension diagnostics. Public tests must still
+use synthetic data; sanitization is not permission to log real account data.
+
 ## Focused iteration and recovery
 
 ```bash

@@ -158,9 +158,9 @@ export async function nativePipeline(command, repositoryGates) {
           groups.set(project, [...(groups.get(project) ?? []), test]);
         }
         for (const [project, targets] of groups) {
-          const collected = await run("corepack", ["pnpm", "exec", "vitest", "list", "--filesOnly", "--config", `test/vitest/vitest.${project}.config.ts`, ...targets], { cwd: candidate, env: buildEnv, capture: true });
+          const collected = await run("corepack", ["pnpm", "exec", "vitest", "list", "--filesOnly", "--config", `test/vitest/vitest.${project}.config.ts`, ...targets], { cwd: candidate, env: buildEnv, capture: true, logPath: join(runDir, "logs", `${sequence++}.log`) });
           for (const target of targets) {
-            if (!collected.split("\n").some((line) => line.trim() === target || line.trim().endsWith(`/${target}`) || line.trim().endsWith(` ${target}`))) throw new Error("Mapped regression was not collected");
+            if (!collected.split("\n").some((line) => line.trim() === target || line.trim().endsWith(`/${target}`) || line.trim().endsWith(` ${target}`))) throw new Error(`Mapped regression was not collected: ${target} in ${project}`);
           }
           await run("corepack", ["pnpm", "exec", "vitest", "run", "--config", `test/vitest/vitest.${project}.config.ts`, ...targets], { cwd: candidate, env: buildEnv });
         }
