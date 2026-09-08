@@ -14,7 +14,6 @@ jobs:
     runs-on: macos-15-intel
     timeout-minutes: 90
     env:
-      E2E_RUN_DIR: ${{ runner.temp }}/puddles-public-${{ github.run_id }}-${{ github.run_attempt }}
       E2E_LOCAL_EXTENSION: ""
     steps:
       - name: Check out Puddles
@@ -47,7 +46,10 @@ jobs:
         run: python -m pip install -e './servers/gmail-mcp[dev]'
 
       - name: Initialize public run evidence
-        run: node packages/e2e/bin/public-ci-diagnostics.mjs init
+        run: |
+          export E2E_RUN_DIR="$RUNNER_TEMP/puddles-public-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          node packages/e2e/bin/public-ci-diagnostics.mjs init
+          printf 'E2E_RUN_DIR=%s\n' "$E2E_RUN_DIR" >> "$GITHUB_ENV"
 
       - name: Run cumulative integration lifecycle
         id: cumulative

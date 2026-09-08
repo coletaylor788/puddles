@@ -2,6 +2,7 @@ import { afterEach, expect, it } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { isMap, isSeq, parseDocument } from "yaml";
 // @ts-expect-error The public CI helper runs directly in Node.
 import { collectPublicDiagnostics, initializePublicRun } from "../bin/public-ci-diagnostics.mjs";
 // @ts-expect-error The lifecycle modules run directly in Node.
@@ -98,10 +99,35 @@ it("does not write a job summary outside runner temporary storage", () => {
   expect(existsSync(join(f.root, "puddles-public-diagnostics-12345-1"))).toBe(false);
 });
 
+it("initializes and persists the public run path at step runtime, not job context evaluation", async () => {
+  const f = fixture();
+  const repository = resolve(import.meta.dirname, "../../..");
+  const workflow = parseDocument(readFileSync(join(repository, ".github/workflows/integration.yml"), "utf8"));
+  expect(workflow.errors).toEqual([]);
+  const jobEnvironment = workflow.getIn(["jobs", "cumulative", "env"]);
+  if (!isMap(jobEnvironment)) throw new Error("Missing cumulative job environment");
+  expect(jobEnvironment.toJSON()).toEqual({ E2E_LOCAL_EXTENSION: "" });
+  const steps = workflow.getIn(["jobs", "cumulative", "steps"]);
+  if (!isSeq(steps)) throw new Error("Missing cumulative job steps");
+  const initialization = steps.items.find((step) => isMap(step) && step.get("name") === "Initialize public run evidence");
+  if (!isMap(initialization)) throw new Error("Missing public initialization step");
+  const body = initialization.get("run");
+  if (typeof body !== "string") throw new Error("Missing public initialization script");
+  const environmentFile = join(f.root, "job-environment");
+  await runCommand("bash", ["-e", "-c", body], {
+    cwd: repository, env: { ...process.env, ...f.env, E2E_RUN_DIR: "/invalid-inherited-run", GITHUB_ENV: environmentFile },
+    quiet: true,
+  });
+  expect(readFileSync(environmentFile, "utf8")).toBe(`E2E_RUN_DIR=${f.env.E2E_RUN_DIR}\n`);
+  expect(JSON.parse(readFileSync(join(f.env.E2E_RUN_DIR, "public-ci.json"), "utf8"))).toEqual({
+    scope: "public-ci", run: f.env.GITHUB_RUN_ID, attempt: f.env.GITHUB_RUN_ATTEMPT,
+  });
+});
+
 it("wires failure-only upload to sanitized projections, never the raw run directory", () => {
   const workflow = readFileSync(resolve(import.meta.dirname, "../../../.github/workflows/integration.yml"), "utf8");
   expect(workflow).toContain('E2E_LOCAL_EXTENSION: ""');
-  expect(workflow).toContain("E2E_RUN_DIR: ${{ runner.temp }}/puddles-public-${{ github.run_id }}-${{ github.run_attempt }}");
+  expect(workflow).toContain('export E2E_RUN_DIR="$RUNNER_TEMP/puddles-public-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"');
   expect(workflow).toContain("node packages/e2e/bin/public-ci-diagnostics.mjs init");
   expect(workflow).toContain("node packages/e2e/bin/openclaw-test-env.mjs ci");
   expect(workflow).toContain("if: failure() && steps.cumulative.outcome == 'failure'");

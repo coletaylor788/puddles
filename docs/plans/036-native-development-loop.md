@@ -43,9 +43,11 @@ validation found one retained test assigned to the wrong test project and
 missing hosted failure evidence. The correction preserves the collection guard
 and adds bounded public diagnostics. Remote activation can also select an
 explicit interpreter and tool path without relying on an interactive shell.
-Focused checks pass, and the same retained reviewer cleared the complete
-current feature diff. Refreshed release validation remains pending.
-Production is unchanged.
+The retained reviewer cleared those corrections. Hosted startup then rejected
+the run-directory expression before starting a job. Initialization now sets
+that directory after the runner starts. Focused checks pass, and the same
+retained reviewer cleared this correction too. Refreshed release validation
+remains pending. Production is unchanged.
 
 This worker hands off a reviewed candidate and pull request without deploying
 or merging it. A separate release worker will run the final accumulated gate,
@@ -95,6 +97,8 @@ integrate exact source, and activate the rehearsed artifacts.
 - Public hosted attempts use a fresh marked run with local extensions disabled.
   Failure exports contain bounded sanitized logs and projected stage status,
   never raw run state. Environment redaction supplements synthetic test data.
+  Derive runner-dependent paths inside the initialization step and persist them
+  through `GITHUB_ENV`, not job-level expression evaluation.
 - Remote activation accepts optional absolute `PUDDLES_REMOTE_NODE` and
   selected `PUDDLES_REMOTE_PATH`, passed through quoted arguments. Existing
   default lookup and local behavior remain unchanged.
@@ -181,7 +185,7 @@ integrate exact source, and activate the rehearsed artifacts.
   unchanged registry bytes, and interrupted rollback without archived inputs.
   Root source/build/artifact bytes are retained. Installation verification and
   bundle proofs have changed and require refreshed release evidence.
-- The current repair selection passes all 67 tests across public diagnostics,
+- The diagnostics, mapping, and remote-path repair passes 67 tests across public diagnostics,
   deployment topology, patch mapping, native pipeline, and plan contracts.
   E2E TypeScript, shell syntax, and diff checks also pass. It executes a real
   failing child and the diagnostic CLI, proving bounded redacted output without
@@ -193,6 +197,13 @@ integrate exact source, and activate the rehearsed artifacts.
   The other mapped groups passed in release validation. No source patch or
   package bytes change in this repair. Refresh affected regression evidence,
   not unchanged source builds, according to actual input identities.
+- Hosted run `34178227458` rejected `runner.temp` in job-level `env` before any
+  job started. The startup regression uses the established `yaml` parser to
+  inspect job and step scope, then executes the actual initialization shell.
+  It checks the public marker and persisted environment and rejects the
+  runner-dependent setting at job scope. The parser is a test dependency only.
+  All 25 diagnostics, mapping, and plan tests pass for this startup correction,
+  together with e2e TypeScript and shell checks.
 
 ### Rollout and rollback
 
@@ -231,6 +242,9 @@ integrate exact source, and activate the rehearsed artifacts.
   mapping, and remote interpreter selection. No actionable high-confidence
   findings remain. Hosted cumulative success and target-specific bundle
   rehearsal remain required; fake SSH does not prove target tool availability.
+- The same reviewer cleared the complete diff including the initialization
+  scope correction and parsed workflow regression. Hosted workflow acceptance
+  and cumulative success remain required.
 
 ### Checklist
 
