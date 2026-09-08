@@ -34,26 +34,23 @@ Additional runtime packages join the same verified
 bundle and stopped-gateway transaction. Only their selected package subtrees
 are replaced; unrelated state and the runtime's existing records of installed
 packages are preserved. Successful proofs are reused only while their
-actual inputs and outputs remain unchanged. Optional local extensions compose
+actual inputs and outputs remain unchanged. Package-manager freshness
+timestamps are not dependency changes, but their other settings and installed
+files still count. A changed fingerprint policy refreshes old evidence before
+reuse. Optional local extensions compose
 additional scenarios and bounded health checks without making public code or
 CI depend on another repository. Public hosted failures retain only bounded,
 sanitized evidence from their own fresh run, never local extension state.
 
 ### Status
 
-The native loop and additional-package activation are implemented. Retained
-review cleared the test mapping, public diagnostics, remote runtime selection,
-and hosted startup corrections. A real hosted job now starts. Release
-validation also isolated unnecessary rebuilds to two generated test-cache
-directories. Their narrow exclusion preserves real dependency checks and is
-paired with an explicit rollback action for a later smoke failure. Ordinary
-recovery still leaves a healthy activation alone. The retained reviewer cleared
-both corrections. Hosted diagnostics now expose short test deadlines and a
-lock-fixture startup race. Bounded concurrency, scoped test budgets, and the
-existing readiness handshake address those failures. Focused checks pass, and
-the retained reviewer clears the complete correction. Refreshed release
-validation and an unchanged-input resume remain pending. Production is
-unchanged.
+The native loop, guarded post-activation rollback, and hosted test corrections
+are implemented and reviewed. Required unchanged-input acceptance exposed a
+remaining rebuild trigger in package-manager freshness metadata. The correction
+ignores only its validation timestamp and refreshes incompatible fingerprint
+policies before reuse. Real offline package-manager and seeded legacy-record
+regressions pass, and retained review clears the complete diff. Release validation and the
+unchanged-input resume remain required. Production is unchanged.
 
 This worker hands off a reviewed candidate and pull request without deploying
 or merging it. A separate release worker will run the final accumulated gate,
@@ -119,6 +116,11 @@ integrate exact source, and activate the rehearsed artifacts.
   Apply that scope consistently to dependency outputs, build/package inputs,
   and repository test-tool fingerprints. Same-named nested package files still
   count. Do not rewrite retained proofs or change runtime packaging.
+- Normalize only `lastValidatedTimestamp` in the exact root
+  `.pnpm-workspace-state-v1.json`. Preserve settings, projects, hooks, unknown
+  fields, modes, and nested package content. Bind the complete fingerprint
+  options into dependency-stage inputs, so legacy policies refresh through
+  normal execution before accepting a cached result.
 - Limit e2e Vitest to two workers on the standard hosted runner. Keep the
   default test deadline. Native pipeline orchestration and the observed
   expensive archive and Gmail rollback tests use explicit 15-second budgets.
@@ -264,6 +266,26 @@ integrate exact source, and activate the rehearsed artifacts.
   deadline placement, the neighboring test's restored default, and delayed
   helper readiness. The failed hosted test asserts its actual collected
   timeout. E2E TypeScript, shell syntax, and diff checks pass.
+- Pinned pnpm source explains the freshness-only update:
+  [`createWorkspaceState`](https://github.com/pnpm/pnpm/blob/v11.2.2/workspace/state/src/createWorkspaceState.ts)
+  stamps the validation time, and
+  [`checkDepsStatus`](https://github.com/pnpm/pnpm/blob/v11.2.2/deps/status/src/checkDepsStatus.ts)
+  refreshes it after checking unchanged manifests. The real pnpm 11.2.2 fixture
+  runs frozen offline installs with scripts/hooks disabled and an isolated
+  file dependency/store. It proves changed raw metadata but identical
+  normalized content and an unchanged successful dependency record.
+- Seeded legacy policy coverage requires one normal installation refresh,
+  then timestamp and generated-cache changes reuse dependency/build/package
+  records byte-for-byte. A real dependency change still invalidates. Settings,
+  project, unknown-field, nested-file, and malformed-metadata cases are covered.
+  Fingerprint definition changes need fresh matching evidence; old proofs and
+  successful runtime archives are not edited.
+- The freshness correction passes 94 focused tests across native loop,
+  pipeline, source integration, activation/rollback, and plan contracts.
+  E2E TypeScript and diff checks pass. The prior frozen public candidate's
+  hosted cumulative run `34181244415` passes on attempt 2. The corrected
+  fingerprint definition still requires fresh matching release evidence and
+  immediate unchanged-input acceptance.
 
 ### Rollout and rollback
 
@@ -314,6 +336,9 @@ integrate exact source, and activate the rehearsed artifacts.
   moved to the named failing test and asserted through runtime test metadata;
   the neighboring default is restored. The complete current diff is clear,
   including bounded hosted test timing. No material findings remain.
+- The same retained reviewer clears the complete diff including freshness
+  timestamp normalization and eager legacy-policy compatibility. No actionable
+  material findings remain.
 
 ### Checklist
 

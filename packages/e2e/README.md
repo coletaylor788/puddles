@@ -93,12 +93,23 @@ Dependency fingerprints exclude the generated `.experimental-vitest-cache`
 and `.unrun` directories directly under `node_modules`. Files with those names
 inside real packages remain part of the fingerprint. These root caches do not
 enter the production package graph. Existing proof records are never rewritten
-to conceal an input change; older dependency output checks may run installation
-once before recording the corrected cache scope.
+to conceal an input change. The dependency stage keys its fingerprint policy,
+so an older policy runs installation once before its result can be reused.
+In the root `.pnpm-workspace-state-v1.json`, fingerprints omit only
+`lastValidatedTimestamp`, which pnpm refreshes after unchanged validation.
+Settings, projects, hooks, unknown fields, file modes, and same-named nested
+package files still count. Invalid metadata fails rather than becoming a
+success-shaped default.
 Local stage records retain the input identities used to compute each proof key.
 Runtime evidence includes resolved installed commands, resolved scenarios, and
 the fixture environment, not only extension module bytes.
 The owner fixes failures with committed regressions and resumes the same run.
+
+The real pnpm regression uses the pinned upstream package manager from the
+Corepack cache populated during managed source preparation. Its synthetic
+file-only dependency install is offline, uses an isolated store, and disables
+scripts and pnpm hooks. It proves timestamp refresh without changed dependency
+identity or rewritten successful evidence.
 
 The run lock prevents concurrent mutation. If the owner was killed, inspect its
 recorded PID and confirm its process group is gone before removing only the

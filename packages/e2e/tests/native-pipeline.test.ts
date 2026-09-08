@@ -51,6 +51,9 @@ vi.mock("../src/process-runner.mjs", () => ({
       counters.install++;
       mkdirSync(join(cwd, "node_modules"), { recursive: true });
       writeFileSync(join(cwd, "node_modules/dependency"), counters.dependency);
+      writeFileSync(join(cwd, "node_modules/.pnpm-workspace-state-v1.json"), JSON.stringify({
+        lastValidatedTimestamp: counters.install * 1000, projects: {}, settings: { nodeLinker: "isolated" },
+      }));
     } else if (command === "corepack" && args[1] === "build") {
       counters.build++;
       mkdirSync(join(cwd, "dist"), { recursive: true });
@@ -117,6 +120,8 @@ vi.mock("../src/native-fixture.mjs", async (original) => ({
 }));
 // @ts-expect-error JS lifecycle exports are tested at runtime.
 import { nativePipeline, regressionEnvironment, removeOwnedWorktree } from "../src/native-pipeline.mjs";
+// @ts-expect-error JS lifecycle exports are tested at runtime.
+import { atomicJson, jsonDigest, treeDigest } from "../src/native-state.mjs";
 import { runCommand } from "../src/process-runner.mjs";
 
 const roots: string[] = [];
@@ -180,6 +185,38 @@ it("reuses dependency, build, and package proofs across generated root caches bu
   await nativePipeline("native", async () => {});
   expect(counters).toMatchObject({ install: 2, build: 2, package: 2 });
   expect(readFileSync(join(run, "installed/runtime/installed"), "utf8")).toBe("repaired");
+});
+
+it("refreshes a legacy fingerprint policy once before accepting a timestamp-and-cache-only resume", async () => {
+  const { run } = setup();
+  await nativePipeline("native", async () => {});
+  const modules = join(run, "source/node_modules");
+  const dependencyProof = join(run, "stages/dependencies.json");
+  const current = JSON.parse(readFileSync(dependencyProof, "utf8"));
+  const { fingerprint, ...legacyInputs } = current.inputs;
+  expect(fingerprint.normalizePnpmWorkspaceState).toBe(true);
+  const legacyOptions = { exclude: [".cache", ".vite", ".vite-temp", ".experimental-vitest-cache", ".unrun"] };
+  // Seed only this owned fixture with the output of the prior runner policy.
+  atomicJson(dependencyProof, { ...current, inputs: legacyInputs, key: jsonDigest(legacyInputs),
+    outputs: { [modules]: { sha256: treeDigest(modules, legacyOptions), options: legacyOptions } } });
+  await nativePipeline("native", async () => {});
+  expect(counters).toMatchObject({ install: 2, build: 1, package: 1 });
+  const proofs = ["dependencies", "build", "package"].map((name) => join(run, "stages", `${name}.json`));
+  const before = proofs.map((path) => readFileSync(path, "utf8"));
+  const metadata = join(modules, ".pnpm-workspace-state-v1.json");
+  const state = JSON.parse(readFileSync(metadata, "utf8"));
+  writeFileSync(metadata, JSON.stringify({ ...state, lastValidatedTimestamp: 99_000 }));
+  for (const name of [".experimental-vitest-cache", ".unrun"]) {
+    mkdirSync(join(modules, name));
+    writeFileSync(join(modules, name, "generated"), "new test cache");
+  }
+  await nativePipeline("native", async () => {});
+  expect(counters).toMatchObject({ install: 2, build: 1, package: 1 });
+  expect(proofs.map((path) => readFileSync(path, "utf8"))).toEqual(before);
+  counters.dependency = "repaired";
+  writeFileSync(join(modules, "dependency"), "changed real dependency");
+  await nativePipeline("native", async () => {});
+  expect(counters).toMatchObject({ install: 3, build: 2, package: 2 });
 });
 
 it("forces CI for the delegated repository gate even when the caller disables it", async () => {
@@ -271,6 +308,14 @@ it("binds regression reuse to effective environment, interpreter bytes and insta
     writeFileSync(join(directory, "node_modules", name, "generated"), "generated test cache");
     expect(await regressionEnvironment(directory, run, { GMAIL_MCP_PYTHON: python })).toEqual(first);
   }
+  const metadata = join(directory, "node_modules/.pnpm-workspace-state-v1.json");
+  writeFileSync(metadata, JSON.stringify({ lastValidatedTimestamp: 1, settings: { nodeLinker: "isolated" } }));
+  const withMetadata = await regressionEnvironment(directory, run, { GMAIL_MCP_PYTHON: python });
+  writeFileSync(metadata, JSON.stringify({ lastValidatedTimestamp: 2, settings: { nodeLinker: "isolated" } }));
+  expect(await regressionEnvironment(directory, run, { GMAIL_MCP_PYTHON: python })).toEqual(withMetadata);
+  writeFileSync(metadata, JSON.stringify({ lastValidatedTimestamp: 2, settings: { nodeLinker: "hoisted" } }));
+  expect(await regressionEnvironment(directory, run, { GMAIL_MCP_PYTHON: python })).not.toEqual(withMetadata);
+  rmSync(metadata);
   expect(await regressionEnvironment(directory, run, { GMAIL_MCP_PYTHON: `${python}-other` })).not.toEqual(first);
   expect(selected.at(-1)).toBe(`${python}-other`);
   writeFileSync(python, "interpreter two");

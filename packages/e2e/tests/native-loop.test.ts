@@ -38,6 +38,81 @@ describe("native exact-input evidence", () => {
     expect(calls).toBe(4);
   });
 
+  it("reuses a dependency proof after real offline pnpm refreshes only its validation timestamp", async () => {
+    const directory = root();
+    json(join(directory, "package.json"), {
+      name: "synthetic-pnpm-proof", version: "1.0.0", private: true,
+      packageManager: "pnpm@11.2.2", dependencies: { "synthetic-dependency": "file:./dependency" },
+    });
+    json(join(directory, "dependency/package.json"), { name: "synthetic-dependency", version: "1.0.0", main: "index.js" });
+    writeFileSync(join(directory, "dependency/index.js"), "module.exports = 'original';");
+    writeFileSync(join(directory, "pnpm-workspace.yaml"), "packages:\n  - '.'\n");
+    writeFileSync(join(directory, "empty.npmrc"), "");
+    const options = { normalizePnpmWorkspaceState: true };
+    const command = (args: string[]) => execFileSync("corepack", ["pnpm", ...args], {
+      cwd: directory, encoding: "utf8", timeout: 20_000,
+      env: { ...process.env, CI: "true", COREPACK_ENABLE_NETWORK: "0",
+        NPM_CONFIG_USERCONFIG: join(directory, "empty.npmrc") },
+    });
+    expect(command(["--version"]).trim()).toBe("11.2.2");
+    const install = (frozen: boolean) => command([
+      "install", "--offline", "--ignore-scripts", "--ignore-pnpmfile",
+      frozen ? "--frozen-lockfile" : "--no-frozen-lockfile", "--store-dir", join(directory, "store"),
+    ]);
+    install(false);
+    const modules = join(directory, "node_modules");
+    const metadata = join(modules, ".pnpm-workspace-state-v1.json");
+    const proofRoot = join(directory, "proof");
+    let installs = 0;
+    const proof = () => stage(proofRoot, "dependencies", { fingerprint: options }, async () => {
+      installs++;
+      install(true);
+      return { installed: true };
+    }, () => ({ [modules]: { sha256: treeDigest(modules, options), options } }));
+    await proof();
+    const before = JSON.parse(readFileSync(metadata, "utf8"));
+    const rawBefore = treeDigest(modules);
+    const normalizedBefore = treeDigest(modules, options);
+    const record = readFileSync(join(proofRoot, "stages/dependencies.json"), "utf8");
+    install(true);
+    const after = JSON.parse(readFileSync(metadata, "utf8"));
+    expect(after.lastValidatedTimestamp).toBeGreaterThan(before.lastValidatedTimestamp);
+    expect({ ...after, lastValidatedTimestamp: 0 }).toEqual({ ...before, lastValidatedTimestamp: 0 });
+    expect(treeDigest(modules)).not.toBe(rawBefore);
+    expect(treeDigest(modules, options)).toBe(normalizedBefore);
+    await proof();
+    expect(installs).toBe(1);
+    expect(readFileSync(join(proofRoot, "stages/dependencies.json"), "utf8")).toBe(record);
+    writeFileSync(metadata, JSON.stringify({ ...after, settings: { ...after.settings, nodeLinker: "hoisted" } }));
+    expect(treeDigest(modules, options)).not.toBe(normalizedBefore);
+    writeFileSync(metadata, JSON.stringify(after));
+    writeFileSync(join(modules, "synthetic-dependency/index.js"), "module.exports = 'changed real dependency';");
+    expect(treeDigest(modules, options)).not.toBe(normalizedBefore);
+  }, 60_000);
+
+  it("normalizes only the root pnpm timestamp and rejects malformed metadata", () => {
+    const directory = root();
+    const options = { normalizePnpmWorkspaceState: true };
+    const metadata = join(directory, ".pnpm-workspace-state-v1.json");
+    json(metadata, { lastValidatedTimestamp: 1, settings: {}, projects: {} });
+    const first = treeDigest(directory, options);
+    for (const content of [{ settings: { nodeLinker: "hoisted" } }, { projects: { synthetic: { version: "2.0.0" } } }, { unknown: true }]) {
+      json(metadata, { lastValidatedTimestamp: 1, settings: {}, projects: {}, ...content });
+      expect(treeDigest(directory, options)).not.toBe(first);
+    }
+    json(metadata, { lastValidatedTimestamp: 2, settings: {}, projects: {} });
+    expect(treeDigest(directory, options)).toBe(first);
+    const nested = join(directory, "dependency/.pnpm-workspace-state-v1.json");
+    json(nested, { lastValidatedTimestamp: 1 });
+    const withNested = treeDigest(directory, options);
+    json(nested, { lastValidatedTimestamp: 2 });
+    expect(treeDigest(directory, options)).not.toBe(withNested);
+    json(metadata, { lastValidatedTimestamp: "invalid", settings: {} });
+    expect(() => treeDigest(directory, options)).toThrow("Invalid pnpm");
+    writeFileSync(metadata, "{");
+    expect(() => treeDigest(directory, options)).toThrow();
+  });
+
   it("locks concurrent runs and retains a durable owner for interrupted recovery", () => {
     const directory = root();
     const unlock = acquireLock(directory);

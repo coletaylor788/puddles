@@ -15,8 +15,8 @@ const patchDir = join(repoRoot, "docs", "openclaw-setup", "patches");
 const suite = JSON.parse(readFileSync(join(packageDir, "openclaw-patch-suite.json"), "utf8"));
 const dependencyCacheNames = [".cache", ".vite", ".vite-temp"];
 const generatedRootCaches = [".experimental-vitest-cache", ".unrun"];
-const sourceDependencyOptions = { exclude: [...dependencyCacheNames, ...generatedRootCaches] };
-const repositoryDependencyOptions = { excludeNames: dependencyCacheNames, exclude: generatedRootCaches };
+const sourceDependencyOptions = { exclude: [...dependencyCacheNames, ...generatedRootCaches], normalizePnpmWorkspaceState: true };
+const repositoryDependencyOptions = { excludeNames: dependencyCacheNames, exclude: generatedRootCaches, normalizePnpmWorkspaceState: true };
 
 function safeNode() {
   const [major, minor, patch] = process.versions.node.split(".").map(Number);
@@ -135,7 +135,7 @@ export async function nativePipeline(command, repositoryGates) {
       manifest: fileDigest(join(candidate, "package.json")), tools, buildEnvironment,
       patches: existsSync(join(candidate, "patches")) ? treeDigest(join(candidate, "patches")) : null,
     });
-    await stage(runDir, "dependencies", { dependencies, installed: true }, async () => {
+    await stage(runDir, "dependencies", { dependencies, installed: true, fingerprint: sourceDependencyOptions }, async () => {
       await run("corepack", ["pnpm", "install", "--frozen-lockfile"], { cwd: candidate, env: buildEnv, timeoutMs: 15 * 60_000 });
       return { installed: true };
     }, () => ({ [join(candidate, "node_modules")]: { sha256: treeDigest(join(candidate, "node_modules"), sourceDependencyOptions), options: sourceDependencyOptions } }));

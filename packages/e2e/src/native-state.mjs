@@ -68,7 +68,7 @@ export function inside(root, path) {
 }
 
 // Hash links as links, but reject runtime bundles that depend on their build tree.
-export function treeDigest(root, { portable = false, exclude = [], excludeNames = [] } = {}) {
+export function treeDigest(root, { portable = false, exclude = [], excludeNames = [], normalizePnpmWorkspaceState = false } = {}) {
   const canonical = realpathSync(root);
   const records = [];
   function walk(path, name) {
@@ -83,7 +83,16 @@ export function treeDigest(root, { portable = false, exclude = [], excludeNames 
       }
       records.push(["link", target]);
     } else if (stat.isFile()) {
-      records.push(["file", fileDigest(path)]);
+      if (normalizePnpmWorkspaceState && name === ".pnpm-workspace-state-v1.json") {
+        const state = JSON.parse(readFileSync(path, "utf8"));
+        if (!state || typeof state !== "object" || Array.isArray(state) ||
+            !Number.isFinite(state.lastValidatedTimestamp)) throw new Error("Invalid pnpm workspace-state metadata");
+        // pnpm refreshes only this freshness timestamp after unchanged validation.
+        const { lastValidatedTimestamp, ...content } = state;
+        records.push(["file", jsonDigest(content)]);
+      } else {
+        records.push(["file", fileDigest(path)]);
+      }
     } else if (stat.isDirectory()) {
       for (const child of readdirSync(path).sort()) walk(join(path, child), name ? `${name}/${child}` : child);
     } else {
