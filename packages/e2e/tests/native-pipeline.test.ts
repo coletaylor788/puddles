@@ -4,7 +4,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameS
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-const counters = vi.hoisted(() => ({ prepare: 0, install: 0, build: 0, package: 0, additionalInstalls: 0, runtimeCommands: 0, dependency: "first" }));
+vi.setConfig({ testTimeout: 15_000 });
+
+const counters = vi.hoisted(() => ({ prepare: 0, install: 0, build: 0, package: 0, additionalInstalls: 0, runtimeCommands: 0, dependency: "first", generatedCaches: false }));
 const registrations = vi.hoisted(() => new Set<string>());
 vi.mock("../src/native-state.mjs", async (original) => {
   const state = await original<{ treeDigest: (path: string, options?: unknown) => string }>();
@@ -53,6 +55,12 @@ vi.mock("../src/process-runner.mjs", () => ({
       counters.build++;
       mkdirSync(join(cwd, "dist"), { recursive: true });
       writeFileSync(join(cwd, "dist/entry.js"), "unchanged build");
+      if (counters.generatedCaches) {
+        for (const name of [".experimental-vitest-cache", ".unrun"]) {
+          mkdirSync(join(cwd, "node_modules", name), { recursive: true });
+          writeFileSync(join(cwd, "node_modules", name, "generated"), "generated during build");
+        }
+      }
     } else if (command === "fixture-prepare") {
       counters.prepare++;
       // Transactional preparation must never run over an already-patched tree.
@@ -114,7 +122,7 @@ import { runCommand } from "../src/process-runner.mjs";
 const roots: string[] = [];
 function root() { const path = mkdtempSync(join(tmpdir(), "native-pipeline-test-")); roots.push(path); return path; }
 beforeEach(() => {
-  Object.assign(counters, { prepare: 0, install: 0, build: 0, package: 0, additionalInstalls: 0, runtimeCommands: 0, dependency: "first" });
+  Object.assign(counters, { prepare: 0, install: 0, build: 0, package: 0, additionalInstalls: 0, runtimeCommands: 0, dependency: "first", generatedCaches: false });
   registrations.clear();
 });
 afterEach(() => {
@@ -150,6 +158,25 @@ it("repackages repaired dependency bytes even when rebuilt dist is identical", a
   expect(counters).toMatchObject({ install: 1, build: 1, package: 1 });
   counters.dependency = "repaired";
   rmSync(join(run, "source/node_modules/dependency"));
+  await nativePipeline("native", async () => {});
+  expect(counters).toMatchObject({ install: 2, build: 2, package: 2 });
+  expect(readFileSync(join(run, "installed/runtime/installed"), "utf8")).toBe("repaired");
+});
+
+it("reuses dependency, build, and package proofs across generated root caches but not real dependency changes", async () => {
+  const { run } = setup();
+  counters.generatedCaches = true;
+  await nativePipeline("native", async () => {});
+  const proofs = ["dependencies", "build", "package"].map((name) => join(run, "stages", `${name}.json`));
+  const before = proofs.map((path) => readFileSync(path, "utf8"));
+  for (const name of [".experimental-vitest-cache", ".unrun"]) {
+    writeFileSync(join(run, "source/node_modules", name, "generated"), "changed by subsequent tests");
+  }
+  await nativePipeline("native", async () => {});
+  expect(counters).toMatchObject({ install: 1, build: 1, package: 1 });
+  expect(proofs.map((path) => readFileSync(path, "utf8"))).toEqual(before);
+  counters.dependency = "repaired";
+  writeFileSync(join(run, "source/node_modules/dependency"), "real dependency changed");
   await nativePipeline("native", async () => {});
   expect(counters).toMatchObject({ install: 2, build: 2, package: 2 });
   expect(readFileSync(join(run, "installed/runtime/installed"), "utf8")).toBe("repaired");
@@ -239,6 +266,11 @@ it("binds regression reuse to effective environment, interpreter bytes and insta
   };
   const first = await regressionEnvironment(directory, run, { GMAIL_MCP_PYTHON: python });
   expect(await regressionEnvironment(directory, run, { GMAIL_MCP_PYTHON: python })).toEqual(first);
+  for (const name of [".experimental-vitest-cache", ".unrun"]) {
+    mkdirSync(join(directory, "node_modules", name));
+    writeFileSync(join(directory, "node_modules", name, "generated"), "generated test cache");
+    expect(await regressionEnvironment(directory, run, { GMAIL_MCP_PYTHON: python })).toEqual(first);
+  }
   expect(await regressionEnvironment(directory, run, { GMAIL_MCP_PYTHON: `${python}-other` })).not.toEqual(first);
   expect(selected.at(-1)).toBe(`${python}-other`);
   writeFileSync(python, "interpreter two");
@@ -249,6 +281,12 @@ it("binds regression reuse to effective environment, interpreter bytes and insta
   writeFileSync(dependency, "test runner one");
   writeFileSync(join(library, "pytest.py"), "library two");
   expect(await regressionEnvironment(directory, run, { GMAIL_MCP_PYTHON: python })).not.toEqual(first);
+  const nested = join(directory, "node_modules/real-package/.unrun");
+  mkdirSync(nested, { recursive: true });
+  writeFileSync(join(nested, "entry"), "real package file");
+  const withNested = await regressionEnvironment(directory, run, { GMAIL_MCP_PYTHON: python });
+  writeFileSync(join(nested, "entry"), "real package changed");
+  expect(await regressionEnvironment(directory, run, { GMAIL_MCP_PYTHON: python })).not.toEqual(withNested);
 });
 
 it("clears only exact owned missing-worktree registrations using real Git", async () => {

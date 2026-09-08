@@ -5,6 +5,11 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
 : "${OPENCLAW_CANDIDATE_RECEIPT:?set the exact cumulative candidate receipt path}"
 : "${OPENCLAW_DEPLOY_TARGET:?set the local target JSON path}"
+case "${OPENCLAW_DEPLOY_ACTION:-activate}" in
+  activate) ;;
+  rollback) : "${OPENCLAW_RECOVERY_DIR:?explicit rollback requires the completed activation recovery directory}" ;;
+  *) echo "OPENCLAW_DEPLOY_ACTION must be activate or rollback" >&2; exit 1 ;;
+esac
 
 # Public patch order remains visible to the cumulative manifest regression.
 PATCHES=(
@@ -32,9 +37,11 @@ if [ -n "${MINI_HOST:-}" ]; then
   if [ -n "${OPENCLAW_RECOVERY_DIR:-}" ]; then
     remote_args+=("$OPENCLAW_RECOVERY_DIR")
   fi
+  if [ "${OPENCLAW_DEPLOY_ACTION:-activate}" = rollback ]; then remote_args+=(--rollback); fi
   printf -v command '%q ' "${remote_args[@]}"
   exec ssh "$MINI_HOST" "$command"
 fi
 args=("$OPENCLAW_CANDIDATE_RECEIPT" "$OPENCLAW_DEPLOY_TARGET")
 if [ -n "${OPENCLAW_RECOVERY_DIR:-}" ]; then args+=("$OPENCLAW_RECOVERY_DIR"); fi
+if [ "${OPENCLAW_DEPLOY_ACTION:-activate}" = rollback ]; then args+=(--rollback); fi
 exec node "$ROOT/packages/e2e/bin/openclaw-activate.mjs" "${args[@]}"

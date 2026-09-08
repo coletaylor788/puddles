@@ -80,6 +80,12 @@ describe("offline installed runtime", () => {
       return runCommand(command, args, { ...options, quiet: true });
     };
     const artifact = await packRuntime(source, artifacts, run);
+    for (const name of [".experimental-vitest-cache", ".unrun"]) {
+      mkdirSync(join(source, "node_modules", name));
+      writeFileSync(join(source, "node_modules", name, "generated"), "generated test cache");
+    }
+    const cached = await packRuntime(source, join(directory, "cached-artifacts"), run);
+    expect(cached.runtimeSha256).toBe(artifact.runtimeSha256);
     const installed = await installRuntime(artifact, join(directory, "prefix"), run);
     expect(execFileSync(process.execPath, [join(installed, "openclaw.mjs")], { encoding: "utf8", env: fixtureEnv(isolatedContext(join(directory, "context"))) }).trim()).toBe("patched fixture bytes");
     expect(commands.every((command) => command === "tar")).toBe(true);
@@ -94,7 +100,7 @@ describe("offline installed runtime", () => {
     writeFileSync(artifact.path, "damaged");
     await expect(installRuntime(artifact, join(directory, "damaged-prefix"), run)).rejects.toThrow("digest");
     expect(existsSync(join(directory, "damaged-prefix"))).toBe(false);
-  });
+  }, 15_000);
 });
 
 describe("recording fixture prerequisites", () => {

@@ -61,6 +61,13 @@ use synthetic data; sanitization is not permission to log real account data.
 
 ## Focused iteration and recovery
 
+The suite runs at most two workers so archive, hashing, and subprocess tests do
+not overwhelm standard hosted CPUs. The default test deadline stays unchanged.
+Native pipeline orchestration and the observed archive and concurrent-config
+rollback cases have explicit 15-second limits. Lock fixtures wait for the real
+readiness response with a bounded startup allowance, not a fixed sleep or a
+production timeout change.
+
 ```bash
 corepack pnpm --filter e2e exec vitest run tests/native-loop.test.ts
 
@@ -82,6 +89,12 @@ rerun installation and runtime rehearsal without rebuilding unchanged source.
 Packaging binds the installed dependency bytes, not only the lockfile. Regression
 proofs bind the effective environment, selected Python interpreter and installed
 test dependencies. Environment values are hashed, not written into receipts.
+Dependency fingerprints exclude the generated `.experimental-vitest-cache`
+and `.unrun` directories directly under `node_modules`. Files with those names
+inside real packages remain part of the fingerprint. These root caches do not
+enter the production package graph. Existing proof records are never rewritten
+to conceal an input change; older dependency output checks may run installation
+once before recording the corrected cache scope.
 Local stage records retain the input identities used to compute each proof key.
 Runtime evidence includes resolved installed commands, resolved scenarios, and
 the fixture environment, not only extension module bytes.

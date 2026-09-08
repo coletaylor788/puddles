@@ -13,6 +13,10 @@ const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = resolve(packageDir, "..", "..");
 const patchDir = join(repoRoot, "docs", "openclaw-setup", "patches");
 const suite = JSON.parse(readFileSync(join(packageDir, "openclaw-patch-suite.json"), "utf8"));
+const dependencyCacheNames = [".cache", ".vite", ".vite-temp"];
+const generatedRootCaches = [".experimental-vitest-cache", ".unrun"];
+const sourceDependencyOptions = { exclude: [...dependencyCacheNames, ...generatedRootCaches] };
+const repositoryDependencyOptions = { excludeNames: dependencyCacheNames, exclude: generatedRootCaches };
 
 function safeNode() {
   const [major, minor, patch] = process.versions.node.split(".").map(Number);
@@ -30,7 +34,7 @@ export async function regressionEnvironment(directory, run, env = process.env) {
     environment: jsonDigest(Object.entries(env).sort(([a], [b]) => a.localeCompare(b))),
     python: { executable: fileDigest(identity.executable), version: identity.version,
       libraries: identity.libraries.map((path) => treeDigest(path, { excludeNames: ["__pycache__", ".pytest_cache"] })) },
-    dependencies: treeDigest(join(directory, "node_modules"), { excludeNames: [".cache", ".vite", ".vite-temp"] }),
+    dependencies: treeDigest(join(directory, "node_modules"), repositoryDependencyOptions),
   };
 }
 
@@ -134,8 +138,8 @@ export async function nativePipeline(command, repositoryGates) {
     await stage(runDir, "dependencies", { dependencies, installed: true }, async () => {
       await run("corepack", ["pnpm", "install", "--frozen-lockfile"], { cwd: candidate, env: buildEnv, timeoutMs: 15 * 60_000 });
       return { installed: true };
-    }, () => ({ [join(candidate, "node_modules")]: { sha256: treeDigest(join(candidate, "node_modules"), { exclude: [".cache", ".vite", ".vite-temp"] }), options: { exclude: [".cache", ".vite", ".vite-temp"] } } }));
-    const installedDependencies = treeDigest(join(candidate, "node_modules"), { exclude: [".cache", ".vite", ".vite-temp"] });
+    }, () => ({ [join(candidate, "node_modules")]: { sha256: treeDigest(join(candidate, "node_modules"), sourceDependencyOptions), options: sourceDependencyOptions } }));
+    const installedDependencies = treeDigest(join(candidate, "node_modules"), sourceDependencyOptions);
     await stage(runDir, "build", { buildInputs, dependencies, installedDependencies, tools, buildEnvironment, prepareOutputs }, async () => {
       await run("corepack", ["pnpm", "build"], { cwd: candidate, env: buildEnv, timeoutMs: 30 * 60_000 });
       return { built: true };
@@ -144,7 +148,7 @@ export async function nativePipeline(command, repositoryGates) {
       const repoInputs = await tracked(repoRoot);
       const execution = command === "ci" ? await regressionEnvironment(repoRoot, run) : {
         environment: jsonDigest(Object.entries(process.env).sort(([a], [b]) => a.localeCompare(b))),
-        dependencies: treeDigest(join(repoRoot, "node_modules"), { excludeNames: [".cache", ".vite", ".vite-temp"] }),
+        dependencies: treeDigest(join(repoRoot, "node_modules"), repositoryDependencyOptions),
       };
       await stage(runDir, "regressions", { candidateInputs, repoInputs, installedDependencies, tools, harness, execution, prepareOutputs, extension: extension.phaseHashes.gate, command }, async () => {
         if (command === "ci") await repositoryGates(run);

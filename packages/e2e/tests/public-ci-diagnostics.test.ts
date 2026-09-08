@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpath
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { isMap, isSeq, parseDocument } from "yaml";
+import suiteConfig from "../vitest.config.js";
 // @ts-expect-error The public CI helper runs directly in Node.
 import { collectPublicDiagnostics, initializePublicRun } from "../bin/public-ci-diagnostics.mjs";
 // @ts-expect-error The lifecycle modules run directly in Node.
@@ -22,6 +23,11 @@ function fixture() {
   return { root, env };
 }
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+
+it("bounds process-heavy suite concurrency without relaxing the default test deadline", () => {
+  expect(suiteConfig.test?.maxWorkers).toBe(2);
+  expect(suiteConfig.test).not.toHaveProperty("testTimeout");
+});
 
 it("retains a real failed command and exposes a bounded redacted job summary without raw state", async () => {
   const f = fixture();

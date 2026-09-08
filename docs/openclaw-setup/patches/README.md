@@ -154,6 +154,33 @@ Then rerun the same wrapper with `OPENCLAW_RECOVERY_DIR` set to the recorded
 activation directory. Recovery verifies the target and artifact identities and
 restores independent snapshots rather than guessing whether a swap completed.
 
+Ordinary recovery leaves a completed healthy activation alone. If a required
+read-only smoke check fails after activation returns healthy, request rollback
+explicitly with the same receipt, target, and recorded recovery directory:
+
+```bash
+OPENCLAW_DEPLOY_ACTION=rollback \
+OPENCLAW_RECOVERY_DIR=/absolute/backups/activation-example \
+OPENCLAW_CANDIDATE_RECEIPT=/absolute/release/candidate.json \
+OPENCLAW_DEPLOY_TARGET=/absolute/release/target.json \
+  docs/openclaw-setup/patches/apply-and-deploy.sh
+```
+
+This action holds the same target lock. Before stopping, it checks the latest
+transaction marker, current runtime, additional packages, service, browser
+identity, and recovery snapshots. It refuses a superseded transaction, even
+if a newer activation installed identical package bytes. Old journals without
+ownership evidence cannot opt into explicit rollback.
+
+After stopping, rollback durably preserves failed live state, runtime, and
+service snapshots under `failed-state`, `failed-package`, and
+`failed-service.plist` in that recovery directory. It restores the original
+state and all managed package subtrees, the root runtime, service, and browser,
+then restarts and checks prior health. Repeating explicit rollback is safe.
+Interrupted rollback can resume through either explicit rollback or ordinary
+recovery, without archives or caller edits to the journal. Preserved failed
+state is not overwritten on replay. A newer transaction blocks stale recovery.
+
 Production checks are read-only. Never validate by sending a message or running
 a cron that can deliver one. Do not use the built-in updater for this patched
 runtime; it bypasses the cumulative gate, installed rehearsal, and recovery.

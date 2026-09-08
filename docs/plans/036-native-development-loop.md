@@ -27,7 +27,10 @@ The final candidate runs every accumulated regression. Its package carries its
 runtime dependencies and is installed and rehearsed before activation. Exact
 source is integrated before the live rollback transaction begins. Activation
 consumes the rehearsed artifacts, keeps a recovery snapshot, and rolls back if
-read-only health checks fail. Additional runtime packages join the same verified
+read-only health checks fail. A later required smoke failure can explicitly
+roll back the completed activation, but not a superseded release. Failed live
+state is preserved, and interrupted rollback resumes from durable snapshots.
+Additional runtime packages join the same verified
 bundle and stopped-gateway transaction. Only their selected package subtrees
 are replaced; unrelated state and the runtime's existing records of installed
 packages are preserved. Successful proofs are reused only while their
@@ -38,16 +41,19 @@ sanitized evidence from their own fresh run, never local extension state.
 
 ### Status
 
-The native loop and additional-package activation are implemented. Release
-validation found one retained test assigned to the wrong test project and
-missing hosted failure evidence. The correction preserves the collection guard
-and adds bounded public diagnostics. Remote activation can also select an
-explicit interpreter and tool path without relying on an interactive shell.
-The retained reviewer cleared those corrections. Hosted startup then rejected
-the run-directory expression before starting a job. Initialization now sets
-that directory after the runner starts. Focused checks pass, and the same
-retained reviewer cleared this correction too. Refreshed release validation
-remains pending. Production is unchanged.
+The native loop and additional-package activation are implemented. Retained
+review cleared the test mapping, public diagnostics, remote runtime selection,
+and hosted startup corrections. A real hosted job now starts. Release
+validation also isolated unnecessary rebuilds to two generated test-cache
+directories. Their narrow exclusion preserves real dependency checks and is
+paired with an explicit rollback action for a later smoke failure. Ordinary
+recovery still leaves a healthy activation alone. The retained reviewer cleared
+both corrections. Hosted diagnostics now expose short test deadlines and a
+lock-fixture startup race. Bounded concurrency, scoped test budgets, and the
+existing readiness handshake address those failures. Focused checks pass, and
+the retained reviewer clears the complete correction. Refreshed release
+validation and an unchanged-input resume remain pending. Production is
+unchanged.
 
 This worker hands off a reviewed candidate and pull request without deploying
 or merging it. A separate release worker will run the final accumulated gate,
@@ -78,6 +84,9 @@ integrate exact source, and activate the rehearsed artifacts.
 - Seal every declared additional portable runtime into the candidate and its
   install/runtime proofs. Stage before downtime and replace only mapped state
   subtrees after shutdown, with whole-state rollback and exact content checks.
+- Support explicit rollback after completed activation if a required read-only
+  smoke check fails. Refuse superseded ownership or changed deployed content,
+  preserve failed state, and resume interrupted rollback without journal edits.
 - No private resources, identities, configuration, or output in public files,
   CI, logs, plans, examples, or pull requests.
 
@@ -105,10 +114,27 @@ integrate exact source, and activate the rehearsed artifacts.
 - Prepare clean source on invalidation and keep the existing build when the
   resulting source bytes match. Bind regression proofs to effective test
   environments, interpreters, and installed test dependencies.
+- Ignore only the generated root `node_modules/.experimental-vitest-cache`
+  and `node_modules/.unrun` paths in addition to existing cache exclusions.
+  Apply that scope consistently to dependency outputs, build/package inputs,
+  and repository test-tool fingerprints. Same-named nested package files still
+  count. Do not rewrite retained proofs or change runtime packaging.
+- Limit e2e Vitest to two workers on the standard hosted runner. Keep the
+  default test deadline. Native pipeline orchestration and the observed
+  expensive archive and Gmail rollback tests use explicit 15-second budgets.
+  The positive shared-lock fixture allows two seconds for its existing stdout
+  readiness handshake, with a deliberately delayed module startup regression.
+  Production lock semantics, timeouts, and contention rejection are unchanged.
 - Optional `E2E_LOCAL_EXTENSION` loads a trusted local module. Only an explicit
   caller enables it. Extension inputs key local evidence, and extension output
   stays in protected local run state.
 - Keep source integration outside the activation and rollback transaction.
+- A durable latest-activation marker under the target backup root guards
+  rollback ownership, including repeated deployment of identical artifacts.
+  Explicit rollback additionally checks deployed root, additional, service, and
+  browser identities. Existing restore operations preserve failed snapshots,
+  verify restored content, restart, and check prior health. No generic hook or
+  metadata updater is added.
 - Optional extension `artifacts` entries name portable archive manifests inside
   verified package outputs. `additionalInstalledDirs` exposes offline installs
   to rehearsal hooks. `additionalInstalls` maps the sealed bundle to relative
@@ -149,6 +175,11 @@ integrate exact source, and activate the rehearsed artifacts.
 - `yield-gather-state.test.ts` belongs to `agents-tools`, not `unit-fast`.
   Collection failures retain command output and identify the missing target
   and project. No test target or collection guard is removed.
+- `OPENCLAW_DEPLOY_ACTION=rollback` plus `OPENCLAW_RECOVERY_DIR` selects
+  explicit rollback through the same local or remote wrapper. The CLI accepts
+  a trailing `--rollback`. Ordinary recovery keeps its healthy no-op behavior.
+  Interrupted explicit rollback is resumable by either action; later
+  transactions refuse stale recovery before mutation.
 
 ### Validation
 
@@ -166,6 +197,9 @@ integrate exact source, and activate the rehearsed artifacts.
   unchanged. Exact digests and detailed evidence stay in local run state.
 - The release worker runs the full cumulative command against the final
   frozen candidate. Unit-tested orchestration alone is not release evidence.
+  After it passes, repeat the same command with unchanged inputs and environment
+  and compare retained records and elapsed time. Dependency installation,
+  source build, packaging, and expensive passed gates must not repeat.
 - Public CI run `34174012214` rejected the old 7 GB host at the new memory
   preflight. Runner specifications and available job time are verified against
   GitHub's official runner and Actions limit references. The existing actual
@@ -204,6 +238,32 @@ integrate exact source, and activate the rehearsed artifacts.
   runner-dependent setting at job scope. The parser is a test dependency only.
   All 25 diagnostics, mapping, and plan tests pass for this startup correction,
   together with e2e TypeScript and shell checks.
+- Hosted run `34178595986` starts a real cumulative job with the corrected
+  workflow. Its source dependency/build stages pass. Diagnostic collection and
+  artifact upload succeed after five public e2e failures: four default
+  five-second test timeouts and a positive shared-lock fixture's 100ms startup
+  timeout. The fixture already waits for readiness, but its allowance did not
+  cover process startup. Full hosted success is not yet established.
+- Release diagnostics showed that excluding only the two generated root
+  caches recreates the original dependency digest exactly. No dependency bytes
+  changed. Focused orchestration creates those caches during build, changes
+  them during later tests, and proves dependency/build/package records stay
+  byte-for-byte unchanged. Real dependency changes still rebuild and repackage.
+  Real portable packaging confirms that the caches do not change runtime
+  content, so the packaging algorithm is unchanged.
+- Focused rollback coverage exercises success followed by smoke failure,
+  root/additional/service/browser identity refusal, corrupt snapshots,
+  same-artifact supersession, target locking, local/remote wrapper arguments,
+  and replay after snapshot, swap, browser, and restart failures. Failed state
+  remains intact. Both automatic and explicit rollback exercise real macOS
+  clone and atomic-swap helpers. No production target is used.
+  The combined six-file correction selection passes 101 tests:
+  `corepack pnpm --filter e2e exec vitest run --silent=true tests/deployment-topology.test.ts tests/native-pipeline.test.ts tests/native-loop.test.ts tests/patch-suite.test.ts tests/public-ci-diagnostics.test.ts tests/plan-and-issue-writing-contract.test.ts`.
+- The final seven-file selection adds `tests/gmail-deployment.test.ts` and
+  passes 131 tests. A subsequent three-test run confirms the precise Gmail
+  deadline placement, the neighboring test's restored default, and delayed
+  helper readiness. The failed hosted test asserts its actual collected
+  timeout. E2E TypeScript, shell syntax, and diff checks pass.
 
 ### Rollout and rollback
 
@@ -213,6 +273,9 @@ integrate exact source, and activate the rehearsed artifacts.
 - No dependency fetch, build, or GitHub merge while the gateway is stopped.
 - Keep runtime and service snapshots, target locking, bounded restart checks,
   automatic rollback, and explicit recovery state.
+- Required post-activation smoke checks remain read-only. On failure use the
+  explicit rollback action with the completed transaction directory, not an
+  ordinary healthy recovery no-op or a manually edited journal.
 
 ### Review log
 
@@ -245,6 +308,12 @@ integrate exact source, and activate the rehearsed artifacts.
 - The same reviewer cleared the complete diff including the initialization
   scope correction and parsed workflow regression. Hosted workflow acceptance
   and cumulative success remain required.
+- The generated-root-cache and explicit completed-activation rollback
+  corrections are cleared by the same reviewer across the complete diff.
+- The same reviewer caught a scoped deadline on the wrong Gmail test. It is
+  moved to the named failing test and asserted through runtime test metadata;
+  the neighboring default is restored. The complete current diff is clear,
+  including bounded hosted test timing. No material findings remain.
 
 ### Checklist
 
