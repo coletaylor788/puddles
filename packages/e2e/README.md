@@ -115,7 +115,7 @@ Cleanup stops only the fixture process group and removes its successful state.
 
 Public development works independently. A caller may explicitly set
 `E2E_LOCAL_EXTENSION` to an absolute local `.mjs` file. It exports a default
-object with `schemaVersion: 1`, `inputs`, `commands`, `scenarios`, and
+object with `schemaVersion: 1`, `inputs`, `commands`, `scenarios`, optional `artifacts`, and
 `healthChecks`. Nothing in public CI discovers or fetches that module.
 
 `inputs` lists absolute files whose bytes key extension evidence. Each command
@@ -126,7 +126,9 @@ accumulated regressions. Package runs after build and before sealing in both
 `ci` and focused `native` runs. Use it to prepare auxiliary artifacts, never
 build during installed rehearsal. Installed runs after offline installation and before
 scenario startup. Source remains available, but installed artifact bytes must
-not change. Install other managed packages under isolated state instead.
+not change. Use named artifacts for additional runtimes that need activation.
+Installed hooks can configure their isolated rehearsal through the supplied
+installed paths.
 
 Commands may declare `outputs`, a list of paths relative to the isolated root.
 Declare concrete artifact files or narrow directories. The runner records their
@@ -141,10 +143,22 @@ its temporary preparation path is not a stable output location. Declare all
 helper inputs that can affect commands. Global inputs conservatively apply to
 every phase.
 
+`artifacts` contains `{ id, manifest }` entries. `manifest` is relative to the
+isolated root and names the JSON identity returned by `packRuntime`. Both the
+manifest and archive must be covered by verified package outputs, either as
+explicit files or within a declared directory. They must remain beneath the
+isolated root. The runner seals these as `candidate.additionalArtifacts`,
+installs them offline before the installed hook, and exposes their paths in
+`context.additionalInstalledDirs[id]`. Each has its own install proof, and the
+runtime proof binds the complete bundle. Changing one archive reruns its
+installation and the combined rehearsal, not an unchanged source build.
+Integration and activation reject artifacts that do not match those proofs.
+Transport may change local archive paths, not content identities.
+
 Commands receive `E2E_CONTEXT_PATH`, a local JSON file with `schemaVersion`,
 `root`, `isolationRoot`, `home`, `stateDir`, `configPath`, `workspace`,
 `recordingsDir`, `sourceDir`, and, once available, `installedDir` and
-`artifact`. The artifact has `path`, `sha256`, `runtimeSha256`, `platform`,
+`artifact`, `additionalArtifacts`, and `additionalInstalledDirs`. The artifact has `path`, `sha256`, `runtimeSha256`, `platform`,
 `arch`, and `node`. Prepare, gate, and package use the source directory as cwd. Installed
 uses the isolated workspace. The runner selects environment values explicitly
 and does not inherit the user's runtime configuration or provider credentials.

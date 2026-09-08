@@ -4,8 +4,17 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameS
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-const counters = vi.hoisted(() => ({ prepare: 0, install: 0, build: 0, package: 0, runtimeCommands: 0, dependency: "first" }));
+const counters = vi.hoisted(() => ({ prepare: 0, install: 0, build: 0, package: 0, additionalInstalls: 0, runtimeCommands: 0, dependency: "first" }));
 const registrations = vi.hoisted(() => new Set<string>());
+vi.mock("../src/native-state.mjs", async (original) => {
+  const state = await original<{ treeDigest: (path: string, options?: unknown) => string }>();
+  return {
+    ...state,
+    // Keep orchestration fixtures independent of the host's installed test tools.
+    treeDigest: (path: string, options?: unknown) => path === join(import.meta.dirname, "../../../node_modules")
+      ? "synthetic-repository-dependencies" : state.treeDigest(path, options),
+  };
+});
 vi.mock("../src/process-runner.mjs", () => ({
   runCommand: vi.fn(async (command: string, args: string[], options: { cwd?: string; env?: Record<string, string> } = {}) => {
     const cwd = options.cwd!;
@@ -16,6 +25,13 @@ vi.mock("../src/process-runner.mjs", () => ({
         registrations.add(path);
         mkdirSync(path, { recursive: true });
         for (const name of ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "source.js"]) writeFileSync(join(path, name), name);
+        const suite = JSON.parse(readFileSync(join(import.meta.dirname, "../openclaw-patch-suite.json"), "utf8"));
+        for (const patch of suite.patches) {
+          for (const target of patch.tests) {
+            mkdirSync(dirname(join(path, target)), { recursive: true });
+            writeFileSync(join(path, target), "synthetic mapped test");
+          }
+        }
       } else if (args[0] === "worktree" && args[1] === "remove") {
         rmSync(args[3], { recursive: true, force: true });
         registrations.delete(args[3]);
@@ -46,6 +62,26 @@ vi.mock("../src/process-runner.mjs", () => ({
       writeFileSync(join(context.workspace, "prepared-output"), "same prepared output");
     } else if (command === "fixture-installed") {
       counters.runtimeCommands++;
+    } else if (command === "fixture-artifact") {
+      const context = JSON.parse(readFileSync(options.env!.E2E_CONTEXT_PATH, "utf8"));
+      const directory = join(context.workspace, "auxiliary");
+      const expected = join(directory, "expected");
+      mkdirSync(expected, { recursive: true });
+      const bytes = readFileSync(args[0]);
+      writeFileSync(join(expected, "installed"), bytes);
+      const archive = join(directory, "runtime.tar.gz");
+      writeFileSync(archive, bytes);
+      // @ts-expect-error JS lifecycle exports are tested at runtime.
+      const { fileDigest, treeDigest } = await import("../src/native-state.mjs");
+      writeFileSync(join(directory, "artifact.json"), JSON.stringify({
+        schemaVersion: 1, path: archive, sha256: fileDigest(archive), runtimeSha256: treeDigest(expected),
+        platform: process.platform, arch: process.arch, node: process.version,
+      }));
+    } else if (command === "fixture-python" && args[0] === "-c") {
+      return JSON.stringify({ executable: process.execPath, version: "synthetic",
+        libraries: [join(process.env.E2E_RUN_DIR!, "source/node_modules")] });
+    } else if (command === "corepack" && args.includes("--filesOnly")) {
+      return args.slice(args.indexOf("--config") + 2).join("\n");
     }
     return "synthetic-tool-version";
   }),
@@ -60,6 +96,7 @@ vi.mock("../src/native-package.mjs", () => ({
     return { path, sha256: fileDigest(path) };
   },
   installRuntime: async (artifact: { path: string }, prefix: string) => {
+    if (prefix.includes("/installed-additional/")) counters.additionalInstalls++;
     const path = join(prefix, "runtime");
     mkdirSync(path, { recursive: true });
     writeFileSync(join(path, "installed"), readFileSync(artifact.path));
@@ -72,11 +109,12 @@ vi.mock("../src/native-fixture.mjs", async (original) => ({
 }));
 // @ts-expect-error JS lifecycle exports are tested at runtime.
 import { nativePipeline, regressionEnvironment, removeOwnedWorktree } from "../src/native-pipeline.mjs";
+import { runCommand } from "../src/process-runner.mjs";
 
 const roots: string[] = [];
 function root() { const path = mkdtempSync(join(tmpdir(), "native-pipeline-test-")); roots.push(path); return path; }
 beforeEach(() => {
-  Object.assign(counters, { prepare: 0, install: 0, build: 0, package: 0, runtimeCommands: 0, dependency: "first" });
+  Object.assign(counters, { prepare: 0, install: 0, build: 0, package: 0, additionalInstalls: 0, runtimeCommands: 0, dependency: "first" });
   registrations.clear();
 });
 afterEach(() => {
@@ -115,6 +153,25 @@ it("repackages repaired dependency bytes even when rebuilt dist is identical", a
   await nativePipeline("native", async () => {});
   expect(counters).toMatchObject({ install: 2, build: 2, package: 2 });
   expect(readFileSync(join(run, "installed/runtime/installed"), "utf8")).toBe("repaired");
+});
+
+it("forces CI for the delegated repository gate even when the caller disables it", async () => {
+  const { run: runDir } = setup();
+  vi.stubEnv("CI", "false");
+  vi.stubEnv("GMAIL_MCP_PYTHON", "fixture-python");
+  const command = vi.mocked(runCommand);
+  command.mockClear();
+  let gateCalls = 0;
+  await nativePipeline("ci", async (run: typeof runCommand) => {
+    gateCalls++;
+    await run("fixture-python", ["-m", "pytest", "tests/", "--ignore=tests/integration", "-q"], { cwd: runDir });
+  });
+  expect(gateCalls).toBe(1);
+  const call = command.mock.calls.find(([name, args]) => name === "fixture-python" && args[0] === "-m");
+  expect(call).toBeDefined();
+  expect(call![1]).toContain("--ignore=tests/integration");
+  expect(call![2]?.env?.CI).toBe("true");
+  expect(call![2]?.cwd).toBe(runDir);
 });
 
 it("keeps source/build for later phase edits and safely reconstructs transactional preparation", async () => {
@@ -227,4 +284,31 @@ it("rehearses resolved installed commands and scenarios even when extension file
   expect(proof.inputs.scenarios).not.toBe(firstInputs.scenarios);
   expect(proof.inputs.environment).toBe(firstInputs.environment);
   expect(JSON.stringify(proof.inputs)).not.toContain("SELECTED");
+});
+
+it("seals and installs additional artifacts before rehearsal and invalidates only changed artifact proofs", async () => {
+  const { directory, run } = setup();
+  const input = join(directory, "auxiliary-input");
+  writeFileSync(input, "first auxiliary bytes");
+  const module = join(directory, "artifacts.mjs");
+  writeFileSync(module, `export default ${JSON.stringify({
+    schemaVersion: 1, inputs: [input],
+    artifacts: [{ id: "auxiliary", manifest: "workspace/auxiliary/artifact.json" }],
+    commands: [
+      { id: "package", phase: "package", command: "fixture-artifact", args: [input], timeoutMs: 1000, outputs: ["workspace/auxiliary"] },
+      { id: "installed", phase: "installed", command: "fixture-installed", args: [], timeoutMs: 1000 },
+    ],
+  })};`);
+  vi.stubEnv("E2E_LOCAL_EXTENSION", module);
+  const first = await nativePipeline("native", async () => {});
+  await nativePipeline("native", async () => {});
+  expect(first.additionalArtifacts[0].id).toBe("auxiliary");
+  expect(first.proofs["install-additional-0"]).toBeDefined();
+  expect(counters).toMatchObject({ build: 1, package: 1, additionalInstalls: 1, runtimeCommands: 1 });
+  writeFileSync(input, "second auxiliary bytes");
+  const second = await nativePipeline("native", async () => {});
+  expect(second.additionalArtifacts[0].artifact.sha256).not.toBe(first.additionalArtifacts[0].artifact.sha256);
+  expect(counters).toMatchObject({ build: 1, package: 1, additionalInstalls: 2, runtimeCommands: 2 });
+  const context = JSON.parse(readFileSync(join(run, "context/context.json"), "utf8"));
+  expect(readFileSync(join(context.additionalInstalledDirs.auxiliary, "installed"), "utf8")).toBe("second auxiliary bytes");
 });

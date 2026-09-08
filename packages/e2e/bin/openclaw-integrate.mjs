@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { atomicJson } from "../src/native-state.mjs";
+import { atomicJson, verifyCandidateProofs } from "../src/native-state.mjs";
 import { runCommand } from "../src/process-runner.mjs";
 
 // This command finishes before activation starts. A remote race can block
@@ -12,10 +12,7 @@ export async function integrateCandidate(receiptPath, repository, number, run = 
   if (receipt.status !== "passed" || receipt.accumulated !== true ||
       !/^[a-f0-9]{40}$/.test(receipt.repository?.head ?? "") ||
       !/^[a-f0-9]{40}$/.test(receipt.repository?.tree ?? "")) throw new Error("A frozen cumulative candidate is required");
-  for (const name of ["regressions", "runtime", "install"]) {
-    const proof = JSON.parse(readFileSync(join(dirname(receiptPath), "stages", `${name}.json`), "utf8"));
-    if (proof.status !== "passed" || proof.key !== receipt.proofs?.[name]) throw new Error("Candidate proof chain does not match");
-  }
+  verifyCandidateProofs(receiptPath, receipt);
   const api = async (path, args = []) => JSON.parse(await run("gh", ["api", path, ...args], { capture: true, quiet: true, timeoutMs: 60_000 }));
   const pullPath = `repos/${repository}/pulls/${number}`;
   const pull = await api(pullPath);

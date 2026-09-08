@@ -86,6 +86,23 @@ backup root. The service definition must already exist. Optional `browser`
 contains `path`, `sha256`, `imageId`, and `tag`. Its current production tag must
 be resolvable so rollback has an explicit prior image.
 
+When a candidate declares additional runtime artifacts, the target must map
+every artifact exactly once through `additionalInstalls`. Each entry has an
+`id` matching the candidate and a `path` relative to `stateDir`, for example
+`{ "id": "auxiliary", "path": "managed/example-runtime" }`. Paths must be
+disjoint real directories below state, without symlink traversal. Select only
+the managed runtime subtree, never a parent containing sessions or unrelated
+configuration.
+
+All archives are verified and installed into separate staging prefixes before
+shutdown. After the gateway stops and state is snapshotted, activation replaces
+each selected subtree completely and checks its exact runtime digest. It does
+not merge files or apply an earlier whole-state image. Existing registry,
+configuration, and session files outside those subtrees remain untouched.
+The consumer must prove those records remain valid for the selected stable
+install location and package identity. This interface does not migrate
+registration metadata or infer configuration changes.
+
 ```bash
 OPENCLAW_CANDIDATE_RECEIPT=/path/to/native-run/candidate.json \
 OPENCLAW_DEPLOY_TARGET=/absolute/local/target.json \
@@ -116,6 +133,11 @@ recovery uses a retained, digest-checked copy of the candidate CLI, even if an
 interrupted rollback already restored the older production package. Older CLIs
 can hide discovery errors. Critical restoration failures block restart and retain the
 original and rollback failures.
+
+The stopped-state snapshot also restores replaced additional runtimes, or
+removes a newly introduced subtree during rollback. Recovery does not require
+the original additional archives. The local recovery journal retains their
+deployed content digests separately from existing package provenance records.
 
 Recovery state is written before destructive steps. Signals request rollback;
 additional signals are deferred until recovery reaches a safe state. A killed

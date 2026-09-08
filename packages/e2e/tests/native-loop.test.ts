@@ -11,7 +11,7 @@ import { installRuntime, packRuntime } from "../src/native-package.mjs";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
 import { fixtureEnv, isolatedContext, runScenario } from "../src/native-fixture.mjs";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
-import { loadExtension, extensionPhase } from "../src/native-extension.mjs";
+import { additionalArtifacts, loadExtension, extensionPhase } from "../src/native-extension.mjs";
 import { runCommand } from "../src/process-runner.mjs";
 
 const roots: string[] = [];
@@ -90,6 +90,7 @@ describe("offline installed runtime", () => {
     }
     expect(existsSync(join(installed, "excluded-source.txt"))).toBe(false);
     expect(existsSync(join(installed, "dist/excluded.map"))).toBe(false);
+    await expect(installRuntime({ ...artifact, runtimeSha256: "0".repeat(64) }, join(directory, "mismatched-prefix"), run)).rejects.toThrow("Archive identity");
     writeFileSync(artifact.path, "damaged");
     await expect(installRuntime(artifact, join(directory, "damaged-prefix"), run)).rejects.toThrow("digest");
     expect(existsSync(join(directory, "damaged-prefix"))).toBe(false);
@@ -97,6 +98,24 @@ describe("offline installed runtime", () => {
 });
 
 describe("recording fixture prerequisites", () => {
+  it("seals named portable artifacts from verified declared package directories", async () => {
+    const context = isolatedContext(root());
+    const source = join(context.workspace, "source");
+    json(join(source, "package.json"), { name: "synthetic-component", version: "1.0.0", files: ["index.js"] });
+    writeFileSync(join(source, "index.js"), "module.exports = 'fixture';");
+    const prepared = join(context.workspace, "prepared");
+    const artifact = await packRuntime(source, prepared);
+    json(join(prepared, "artifact.json"), artifact);
+    const extension = { artifacts: [{ id: "auxiliary", manifest: "workspace/prepared/artifact.json" }] };
+    const outputs = { [prepared]: treeDigest(prepared) };
+    expect(additionalArtifacts(extension, context, outputs)).toEqual([{ id: "auxiliary", artifact }]);
+    const installed = await installRuntime(artifact, join(context.root, "installed-auxiliary"));
+    expect(readFileSync(join(installed, "index.js"), "utf8")).toBe("module.exports = 'fixture';");
+    expect(() => additionalArtifacts(extension, context, {})).toThrow("declared package output");
+    writeFileSync(artifact.path, "changed");
+    expect(() => additionalArtifacts(extension, context, outputs)).toThrow("output changed");
+  });
+
   it("does not inherit host profiles, credentials or user state", () => {
     const context = isolatedContext(root());
     const env = fixtureEnv(context);

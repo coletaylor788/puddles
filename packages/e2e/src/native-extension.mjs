@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { atomicJson, fileDigest, inside, jsonDigest, treeDigest } from "./native-state.mjs";
@@ -6,11 +6,11 @@ import { fixtureEnv } from "./native-fixture.mjs";
 import { runCommand } from "./process-runner.mjs";
 
 export async function loadExtension(path) {
-  if (!path) return { schemaVersion: 1, commands: [], scenarios: [], healthChecks: [], hash: "none", phaseHashes: {} };
+  if (!path) return { schemaVersion: 1, commands: [], scenarios: [], healthChecks: [], artifacts: [], hash: "none", phaseHashes: {} };
   if (!isAbsolute(path) || !existsSync(path)) throw new Error("Local extension requires an existing absolute module path");
   const extension = (await import(pathToFileURL(realpathSync(path)).href)).default;
   if (extension?.schemaVersion !== 1) throw new Error("Unsupported local extension version");
-  for (const key of ["commands", "scenarios", "healthChecks", "inputs"]) {
+  for (const key of ["commands", "scenarios", "healthChecks", "inputs", "artifacts"]) {
     if (!Array.isArray(extension[key] ?? [])) throw new Error("Invalid local extension list");
   }
   const files = [path, ...(extension.inputs ?? [])];
@@ -33,11 +33,56 @@ export async function loadExtension(path) {
     }
   }
   if (commands.some((command) => !["prepare", "gate", "package", "installed"].includes(command.phase))) throw new Error("Unknown local command phase");
+  const artifacts = extension.artifacts ?? [];
+  const artifactIds = new Set();
+  for (const artifact of artifacts) {
+    if (!/^[a-z][a-z0-9-]*$/.test(artifact.id) || artifactIds.has(artifact.id) ||
+        typeof artifact.manifest !== "string" || !artifact.manifest ||
+        isAbsolute(artifact.manifest) || artifact.manifest.split("/").includes("..")) {
+      throw new Error("Invalid named local artifact");
+    }
+    artifactIds.add(artifact.id);
+  }
   const inputs = (extension.inputs ?? []).map(fileDigest);
   const phaseHashes = Object.fromEntries(["prepare", "gate", "package", "installed"].map((phase) => [
     phase, jsonDigest({ commands: commands.filter((command) => command.phase === phase), inputs }),
   ]));
-  return { ...extension, commands, healthChecks, scenarios: extension.scenarios ?? [], phaseHashes, hash: jsonDigest(files.map(fileDigest)) };
+  return { ...extension, commands, healthChecks, artifacts, scenarios: extension.scenarios ?? [], phaseHashes, hash: jsonDigest(files.map(fileDigest)) };
+}
+
+export function additionalArtifacts(extension, context, outputs) {
+  const verified = new Set();
+  const verifyOutput = (path) => {
+    if (typeof path !== "string" || !isAbsolute(path) || !existsSync(path) ||
+        !inside(realpathSync(context.root), realpathSync(path))) {
+      throw new Error("Additional artifact must remain inside isolated state");
+    }
+    for (const [output, expected] of Object.entries(outputs)) {
+      if (typeof expected !== "string" || !existsSync(output)) continue;
+      const directory = lstatSync(output).isDirectory();
+      if (output !== path && !(directory && inside(realpathSync(output), realpathSync(path)))) continue;
+      if (!verified.has(output)) {
+        if ((directory ? treeDigest(output) : fileDigest(output)) !== expected) throw new Error("Additional artifact package output changed");
+        verified.add(output);
+      }
+      return;
+    }
+    throw new Error("Additional artifact requires a declared package output");
+  };
+  return extension.artifacts.map(({ id, manifest }) => {
+    const path = resolve(context.root, manifest);
+    verifyOutput(path);
+    const value = JSON.parse(readFileSync(path, "utf8"));
+    if (value.schemaVersion !== 1 || !/^[a-f0-9]{64}$/.test(value.sha256) ||
+        !/^[a-f0-9]{64}$/.test(value.runtimeSha256) ||
+        !["platform", "arch", "node", "path"].every((key) => typeof value[key] === "string")) {
+      throw new Error("Invalid additional runtime artifact manifest");
+    }
+    verifyOutput(value.path);
+    if (fileDigest(value.path) !== value.sha256) throw new Error("Additional archive differs from its manifest");
+    const artifact = Object.fromEntries(["path", "sha256", "runtimeSha256", "schemaVersion", "platform", "arch", "node"].map((key) => [key, value[key]]));
+    return { id, artifact };
+  });
 }
 
 export async function extensionPhase(extension, phase, context) {

@@ -4,7 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { acquireLock, atomicJson, externalDirectory, fileDigest, jsonDigest, stage, treeDigest } from "./native-state.mjs";
 import { fixtureEnv, isolatedContext, runScenario } from "./native-fixture.mjs";
-import { extensionPhase, loadExtension } from "./native-extension.mjs";
+import { additionalArtifacts, extensionPhase, loadExtension } from "./native-extension.mjs";
 import { installRuntime, packRuntime } from "./native-package.mjs";
 import { runCommand } from "./process-runner.mjs";
 import scenarios from "../scenarios/imessage.mjs";
@@ -172,21 +172,37 @@ export async function nativePipeline(command, repositoryGates) {
     }
     const artifacts = join(runDir, "artifacts");
     mkdirSync(artifacts, { recursive: true, mode: 0o700 });
-    const extensionOutputs = await stage(runDir, "extension-package", { candidateInputs, installedDependencies, tools, prepareOutputs, extension: extension.phaseHashes.package }, async () => extensionPhase(extension, "package", context), (outputs) => outputs);
+    const extensionOutputs = await stage(runDir, "extension-package", { candidateInputs, installedDependencies, tools, prepareOutputs, extension: extension.phaseHashes.package, artifacts: extension.artifacts }, async () => extensionPhase(extension, "package", context), (outputs) => outputs);
+    const extras = additionalArtifacts(extension, context, extensionOutputs);
+    context.additionalArtifacts = extras;
     const artifact = await stage(runDir, "package", { candidateInputs, installedDependencies, build: treeDigest(join(candidate, "dist")), tools, packaging: fileDigest(join(packageDir, "src", "native-package.mjs")) }, () => packRuntime(candidate, artifacts, run), (result) => ({ [result.path]: result.sha256 }));
     context.artifact = artifact;
     const prefix = join(runDir, "installed");
-    const installedDir = await stage(runDir, "install", { artifact, tools }, async () => {
+    const installer = fileDigest(join(packageDir, "src", "native-package.mjs"));
+    const installedDir = await stage(runDir, "install", { artifact, tools, installer }, async () => {
       if (existsSync(prefix)) rmSync(prefix, { recursive: true });
       const installed = await installRuntime(artifact, prefix, run);
       await run(process.execPath, [join(installed, "openclaw.mjs"), "--version"], { env: fixtureEnv(context), cwd: context.workspace });
       return installed;
     }, (result) => ({ [result]: treeDigest(result, { portable: true }) }));
     context.installedDir = installedDir;
+    context.additionalInstalledDirs = {};
+    const extraProofs = [];
+    for (const [index, { id, artifact: extra }] of extras.entries()) {
+      const name = `install-additional-${index}`;
+      const extraPrefix = join(runDir, "installed-additional", id);
+      const directory = await stage(runDir, name, { id, artifact: extra, tools, installer }, async () => {
+        if (existsSync(extraPrefix)) rmSync(extraPrefix, { recursive: true });
+        return installRuntime(extra, extraPrefix, run);
+      }, (result) => ({ [result]: treeDigest(result, { portable: true }) }));
+      context.additionalInstalledDirs[id] = directory;
+      extraProofs.push(name);
+    }
     const runtimeBefore = treeDigest(installedDir, { portable: true });
+    const additionalBefore = Object.fromEntries(Object.entries(context.additionalInstalledDirs).map(([id, directory]) => [id, treeDigest(directory, { portable: true })]));
     const runtimeScenarios = [...scenarios, ...extension.scenarios];
     const result = await stage(runDir, "runtime", {
-      artifact, tools, harness, extension: extension.hash, extensionOutputs,
+      artifact, additionalArtifacts: extras, tools, harness, extension: extension.hash, extensionOutputs,
       installedCommands: extension.phaseHashes.installed,
       scenarios: jsonDigest(runtimeScenarios), environment: jsonDigest(fixtureEnv(context)),
     }, async () => {
@@ -196,18 +212,21 @@ export async function nativePipeline(command, repositoryGates) {
         results.push(await runScenario(installedDir, scenario, { runDir }));
       }
       if (runtimeBefore !== treeDigest(installedDir, { portable: true })) throw new Error("Rehearsal changed the installed artifact");
+      for (const [id, directory] of Object.entries(context.additionalInstalledDirs)) {
+        if (additionalBefore[id] !== treeDigest(directory, { portable: true })) throw new Error("Rehearsal changed an additional installed artifact");
+      }
       return { scenarios: results, outputs };
     }, (result) => result.outputs);
     if (command === "ci" && (await git(repoRoot, ["status", "--porcelain", "--untracked-files=all"])).trim()) throw new Error("Candidate changed during cumulative validation");
     const proofs = {};
-    for (const name of ["regressions", "runtime", "install"]) {
+    for (const name of ["regressions", "runtime", "install", ...extraProofs]) {
       const path = join(runDir, "stages", `${name}.json`);
       if (existsSync(path)) proofs[name] = JSON.parse(readFileSync(path, "utf8")).key;
     }
     const receipt = {
       schemaVersion: 1, status: "passed", accumulated: command === "ci",
       repository: { head: (await git(repoRoot, ["rev-parse", "HEAD"])).trim(), tree: (await git(repoRoot, ["rev-parse", "HEAD^{tree}"])).trim() },
-      source: { ref: suite.openclawRef, sha256: candidateInputs }, artifact, installedDir,
+      source: { ref: suite.openclawRef, sha256: candidateInputs }, artifact, installedDir, additionalArtifacts: extras,
       scenarios: result.scenarios.length, tools, proofs,
     };
     atomicJson(join(runDir, "candidate.json"), receipt);

@@ -27,20 +27,23 @@ The final candidate runs every accumulated regression. Its package carries its
 runtime dependencies and is installed and rehearsed before activation. Exact
 source is integrated before the live rollback transaction begins. Activation
 consumes the rehearsed artifacts, keeps a recovery snapshot, and rolls back if
-read-only health checks fail. Successful proofs are reused only while their
+read-only health checks fail. Additional runtime packages join the same verified
+bundle and stopped-gateway transaction. Only their selected package subtrees
+are replaced; unrelated state and the runtime's existing records of installed
+packages are preserved. Successful proofs are reused only while their
 actual inputs and outputs remain unchanged. Optional local extensions compose
 additional scenarios and bounded health checks without making public code or
 CI depend on another repository.
 
 ### Status
 
-The public implementation has passed retained independent review. The corrected
-installed artifact passed all eight real gateway scenarios twice, with normal
-workspace bootstrap and bundled skill discovery. Public CI exposed a host
-capacity mismatch. The workflow now selects a standard runner with enough
-memory and time for the full gate. The correction passed focused checks and the
-same retained review. Hosted cumulative validation is still pending. Production
-is unchanged.
+Release validation exposed an old Gmail assertion and a missing activation
+path for additional prepared packages. The mailbox protection now follows the
+delegated CI environment. Additional runtimes are sealed, rehearsed, and
+replaced under the existing stopped-state snapshot without changing unrelated
+state or package records. Focused checks pass, and the same retained reviewer
+cleared the combined correction. Refreshed validation of the complete bundle
+remains release-worker work. Production is unchanged.
 
 This worker hands off a reviewed candidate and pull request without deploying
 or merging it. A separate release worker will run the final accumulated gate,
@@ -68,6 +71,9 @@ integrate exact source, and activate the rehearsed artifacts.
 - Use durable exact-input evidence, bounded commands, preflight, cached build
   work, offline install rehearsal, explicit target identity, locks, snapshots,
   read-only smoke, and rollback.
+- Seal every declared additional portable runtime into the candidate and its
+  install/runtime proofs. Stage before downtime and replace only mapped state
+  subtrees after shutdown, with whole-state rollback and exact content checks.
 - No private resources, identities, configuration, or output in public files,
   CI, logs, plans, examples, or pull requests.
 
@@ -91,6 +97,13 @@ integrate exact source, and activate the rehearsed artifacts.
   caller enables it. Extension inputs key local evidence, and extension output
   stays in protected local run state.
 - Keep source integration outside the activation and rollback transaction.
+- Optional extension `artifacts` entries name portable archive manifests inside
+  verified package outputs. `additionalInstalledDirs` exposes offline installs
+  to rehearsal hooks. `additionalInstalls` maps the sealed bundle to relative
+  state subtrees. Existing registration/configuration must remain valid at
+  those locations; no SQLite updater or general command hook is introduced.
+- Source integration and activation verify each artifact against retained
+  proof inputs. Archive transport paths are not content identities.
 - Keep one reviewer across remediation. Bookkeeping alone does not restart it.
 
 ### Implementation
@@ -110,12 +123,22 @@ integrate exact source, and activate the rehearsed artifacts.
   the exact integrated tree before locking the target and taking snapshots.
 - Instructions, skills, documentation, and their contract tests describe the
   approved loop. The old build-and-install deployment script is replaced.
+- The retained Gmail gate assertion follows delegation to the native pipeline.
+  A focused runtime test proves the delegated command forces `CI=true` even
+  when the caller sets it to false. The live integration exclusion remains.
+- Additional artifacts are staged before shutdown, replace complete managed
+  subtrees after the stopped-state snapshot, and retain digest identities in
+  recovery state. The same snapshot restores old content or removes a new
+  subtree after failure. Registry/configuration outside selected subtrees is
+  unchanged.
 
 ### Validation
 
 - Focused command:
-  `corepack pnpm --filter e2e exec vitest run tests/native-loop.test.ts tests/native-pipeline.test.ts tests/native-integration.test.ts tests/deployment-topology.test.ts tests/patch-suite.test.ts tests/review-workflow.test.ts tests/plan-and-issue-writing-contract.test.ts tests/writes.test.ts tests/process-runner.test.ts tests/test-discovery.test.ts tests/agent-setup-contract.test.ts`.
-  All 86 tests pass. `corepack pnpm --filter e2e lint` passes.
+  `corepack pnpm --filter e2e exec vitest run tests/native-loop.test.ts tests/native-pipeline.test.ts tests/native-integration.test.ts tests/deployment-topology.test.ts tests/gmail-keychain.test.ts tests/patch-suite.test.ts tests/plan-and-issue-writing-contract.test.ts`.
+  The current focused selection contains 82 tests, including real macOS
+  clone/swap rollback. `corepack pnpm --filter e2e lint` passes. Earlier
+  lifecycle and process regressions passed in the initial 86-test focused run.
 - Built the actual pinned patched OpenClaw release with Node 22.23.2 and its
   committed package manager. The runtime archive includes its dependency graph
   and installs in a fresh prefix without registry access.
@@ -134,8 +157,16 @@ integrate exact source, and activate the rehearsed artifacts.
 - The workflow-only correction has a focused resource-contract regression in
   `tests/patch-suite.test.ts`. No OpenClaw source, package, or fixture bytes
   change, so their retained build and runtime evidence is not rerun here.
-  `corepack pnpm --filter e2e exec vitest run tests/patch-suite.test.ts tests/plan-and-issue-writing-contract.test.ts`
-  passes all 18 tests, and the e2e TypeScript check passes.
+- Pipeline commands and host test-tool identity are mocked for the delegated
+  Gmail orchestration proof. Runtime
+  implementation, source builds, packages, and real gateway fixtures do not
+  change for the Gmail assertion correction.
+- Additional bundle coverage checks offline portable installation, declared
+  output containment, proof binding, per-artifact invalidation, target paths,
+  exact subtree replacement, preservation of sessions arriving before shutdown,
+  unchanged registry bytes, and interrupted rollback without archived inputs.
+  Root source/build/artifact bytes are retained. Installation verification and
+  bundle proofs have changed and require refreshed release evidence.
 
 ### Rollout and rollback
 
@@ -166,6 +197,9 @@ integrate exact source, and activate the rehearsed artifacts.
 - The same reviewer cleared the complete feature diff including the
   runner/resource correction. No runtime implementation changes accompany it.
   A successful hosted cumulative run remains required.
+- The same reviewer cleared the complete feature diff including the retained
+  Gmail contract and additional-artifact transaction corrections. The refreshed
+  cumulative gate and real complete-bundle rehearsal remain required.
   No terminal fresh reviewer is required for bookkeeping.
 
 ### Checklist

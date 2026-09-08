@@ -64,6 +64,7 @@ function fixture(failures: string[] = []) {
     stateDir: join(directory, "state"), plistPath: join(directory, "gateway.plist"),
     backupRoot: join(directory, "backups"), label: "test.gateway", port: 18799,
     browser: { imageId: "candidate-browser", path: "/synthetic/image", sha256: "synthetic", tag: "production-browser" },
+    additionalInstalls: [] as Array<{ id: string; path: string }>,
   };
   mkdirSync(target.installDir);
   mkdirSync(target.stateDir);
@@ -72,7 +73,8 @@ function fixture(failures: string[] = []) {
   writeFileSync(target.plistPath, "original-service");
   const artifact = join(directory, "artifact");
   writeFileSync(artifact, "synthetic artifact");
-  const receipt = { status: "passed", accumulated: true, scenarios: 8, artifact: { path: artifact, sha256: fileDigest(artifact) } };
+  const receipt = { status: "passed", accumulated: true, scenarios: 8, artifact: { path: artifact, sha256: fileDigest(artifact) },
+    additionalArtifacts: [] as Array<{ id: string; artifact: { path: string; sha256: string; runtimeSha256: string } }> };
   const calls: string[] = [];
   let started = true;
   let browser = "previous-browser";
@@ -93,7 +95,8 @@ function fixture(failures: string[] = []) {
     async stop() { check("stop"); started = false; },
     async start() { check("start"); started = true; },
     async clone(from: string, to: string) {
-      check(to.endsWith("/candidate") ? "candidate-snapshot" : to.includes("restore-") ? "restore-clone" : from === target.stateDir ? "state-snapshot" : "package-snapshot");
+      if (from.includes("/additional-staging/")) expect(started).toBe(false);
+      check(from.includes("/additional-staging/") ? "additional-copy" : to.endsWith("/candidate") ? "candidate-snapshot" : to.includes("restore-") ? "restore-clone" : from === target.stateDir ? "state-snapshot" : "package-snapshot");
       cpSync(from, to, { recursive: true });
     },
     async swap(from: string, to: string) {
@@ -116,6 +119,26 @@ function fixture(failures: string[] = []) {
     async health() { check("health"); expect(started).toBe(true); },
   };
   return { directory, target, receipt, calls, ops, running: () => started, browser: () => browser };
+}
+
+function addAuxiliary(f: ReturnType<typeof fixture>, existing = true) {
+  const path = "managed/auxiliary";
+  const destination = join(f.target.stateDir, path);
+  const expected = join(f.directory, "expected-auxiliary");
+  mkdirSync(expected);
+  writeFileSync(join(expected, "package"), "candidate");
+  const archive = join(f.directory, "auxiliary-archive");
+  writeFileSync(archive, "synthetic additional archive");
+  const artifact = { path: archive, sha256: fileDigest(archive), runtimeSha256: treeDigest(expected, { portable: true }) };
+  f.receipt.additionalArtifacts.push({ id: "auxiliary", artifact });
+  f.target.additionalInstalls.push({ id: "auxiliary", path });
+  if (existing) {
+    mkdirSync(destination, { recursive: true });
+    writeFileSync(join(destination, "package"), "previous-auxiliary");
+    writeFileSync(join(destination, "stale-chunk"), "must not survive replacement");
+  }
+  writeFileSync(join(f.target.stateDir, "registry.db"), "opaque existing registry");
+  return { destination, artifact };
 }
 
 describe("native activation and recovery transaction", () => {
@@ -250,5 +273,79 @@ describe("native activation and recovery transaction", () => {
     expect(wrapper).toContain('if [ -n "${MINI_HOST:-}" ]');
     expect(wrapper).toContain('exec ssh "$MINI_HOST" "$command"');
     expect(wrapper).toContain('exec node "$ROOT/packages/e2e/bin/openclaw-activate.mjs"');
+  });
+
+  it("stages all artifacts before stopping, replaces only the selected subtree, and preserves current state", async () => {
+    const f = fixture();
+    const extra = addAuxiliary(f);
+    const install = f.ops.install;
+    f.ops.install = async (artifact, prefix) => {
+      expect(f.running()).toBe(true);
+      writeFileSync(join(f.target.stateDir, "late-session"), "arrived before shutdown");
+      return install(artifact, prefix);
+    };
+    await activateNative(f.receipt, f.target, () => f.ops);
+    expect(f.calls.filter((call) => call === "install")).toHaveLength(2);
+    expect(f.calls.lastIndexOf("install")).toBeLessThan(f.calls.indexOf("stop"));
+    expect(f.calls.indexOf("additional-copy")).toBeGreaterThan(f.calls.indexOf("state-snapshot"));
+    expect(treeDigest(extra.destination, { portable: true })).toBe(extra.artifact.runtimeSha256);
+    expect(existsSync(join(extra.destination, "stale-chunk"))).toBe(false);
+    expect(readFileSync(join(f.target.stateDir, "late-session"), "utf8")).toBe("arrived before shutdown");
+    expect(readFileSync(join(f.target.stateDir, "registry.db"), "utf8")).toBe("opaque existing registry");
+  });
+
+  it.each(["additional-copy", "health"])("restores the root and additional runtime after %s fails", async (failure) => {
+    const f = fixture([failure]);
+    const extra = addAuxiliary(f);
+    await expect(activateNative(f.receipt, f.target, () => f.ops)).rejects.toThrow("Activation failed");
+    expect(readFileSync(join(f.target.installDir, "package"), "utf8")).toBe("previous");
+    expect(readFileSync(join(extra.destination, "package"), "utf8")).toBe("previous-auxiliary");
+    expect(existsSync(join(extra.destination, "stale-chunk"))).toBe(true);
+    expect(readFileSync(join(f.target.stateDir, "registry.db"), "utf8")).toBe("opaque existing registry");
+    expect(f.running()).toBe(true);
+  });
+
+  it("rolls back both runtimes through the real macOS clone and atomic-swap helpers", async () => {
+    const f = fixture(["health"]);
+    const extra = addAuxiliary(f);
+    f.ops.clone = async (from, to) => {
+      const result = spawnSync("python3", [cloneHelper, from, to], { encoding: "utf8", timeout: 10_000 });
+      expect(result.status, result.stderr).toBe(0);
+    };
+    f.ops.swap = async (from, to) => {
+      const result = spawnSync("python3", [swapHelper, from, to], { encoding: "utf8", timeout: 10_000 });
+      expect(result.status, result.stderr).toBe(0);
+    };
+    await expect(activateNative(f.receipt, f.target, () => f.ops)).rejects.toThrow("Activation failed");
+    expect(readFileSync(join(f.target.installDir, "package"), "utf8")).toBe("previous");
+    expect(readFileSync(join(extra.destination, "package"), "utf8")).toBe("previous-auxiliary");
+    expect(existsSync(join(extra.destination, "stale-chunk"))).toBe(true);
+    expect(readFileSync(join(f.target.stateDir, "registry.db"), "utf8")).toBe("opaque existing registry");
+    expect(f.running()).toBe(true);
+  });
+
+  it("recovers a failed additional install without requiring its archive or leaving a new subtree", async () => {
+    const f = fixture(["health", "restore-clone"]);
+    const extra = addAuxiliary(f, false);
+    await expect(activateNative(f.receipt, f.target, () => f.ops)).rejects.toThrow("Activation and rollback failed");
+    rmSync(extra.artifact.path);
+    const { readdirSync } = await import("node:fs");
+    const recovery = join(f.target.backupRoot, readdirSync(f.target.backupRoot).find((name) => name.startsWith("activation-"))!);
+    expect((await activateNative(f.receipt, f.target, () => f.ops, recovery)).status).toBe("rolled-back");
+    expect(existsSync(extra.destination)).toBe(false);
+    expect(f.running()).toBe(true);
+  });
+
+  it("rejects unsealed, unmapped, overlapping and symlinked additional installs before downtime", async () => {
+    const f = fixture();
+    const extra = addAuxiliary(f);
+    await expect(activateNative({ ...f.receipt, additionalArtifacts: [] }, f.target, () => f.ops)).rejects.toThrow("map every");
+    expect(() => validateTarget({ ...f.target, additionalInstalls: [{ id: "auxiliary", path: "../outside" }] })).toThrow("child");
+    expect(() => validateTarget({ ...f.target, additionalInstalls: [{ id: "auxiliary", path: "managed" }, { id: "nested", path: "managed/nested" }] })).toThrow("disjoint");
+    symlinkSync(join(f.directory, "missing-external"), join(f.target.stateDir, "broken-link"));
+    expect(() => validateTarget({ ...f.target, additionalInstalls: [{ id: "auxiliary", path: "broken-link/runtime" }] })).toThrow("real state");
+    writeFileSync(extra.artifact.path, "changed");
+    await expect(activateNative(f.receipt, f.target, () => f.ops)).rejects.toThrow("artifact changed");
+    expect(f.calls).toEqual([]);
   });
 });

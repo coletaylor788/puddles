@@ -3,11 +3,27 @@ import { hostname } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
-import { acquireLock, atomicJson, fileDigest, inside, jsonDigest, treeDigest } from "./native-state.mjs";
+import { acquireLock, atomicJson, fileDigest, inside, jsonDigest, treeDigest, verifyCandidateProofs } from "./native-state.mjs";
 import { installRuntime } from "./native-package.mjs";
 import { runCommand } from "./process-runner.mjs";
 
 const patchDir = resolve(dirname(fileURLToPath(import.meta.url)), "../../../docs/openclaw-setup/patches");
+
+function additionalInstallPath(target, path) {
+  if (typeof path !== "string" || !path || isAbsolute(path) ||
+      path.split("/").some((part) => !part || part === "." || part === "..")) {
+    throw new Error("Additional install path must be a child of target state");
+  }
+  let current = target.stateDir;
+  for (const part of path.split("/")) {
+    current = join(current, part);
+    const stat = lstatSync(current, { throwIfNoEntry: false });
+    if (stat && (stat.isSymbolicLink() || !stat.isDirectory())) {
+      throw new Error("Additional install path must use real state directories");
+    }
+  }
+  return current;
+}
 
 export function validateTarget(target) {
   if (target.schemaVersion !== 1 || target.host !== hostname()) throw new Error("Explicit deployment target identity does not match this host");
@@ -24,6 +40,16 @@ export function validateTarget(target) {
   const roots = [target.installDir, target.stateDir, target.backupRoot].map((path) => realpathSync(path));
   for (let index = 0; index < roots.length; index++) {
     if (roots.some((root, other) => other !== index && (inside(root, roots[index]) || inside(roots[index], root)))) throw new Error("Deployment roots must be disjoint");
+  }
+  if (!Array.isArray(target.additionalInstalls ?? [])) throw new Error("Invalid additional install list");
+  const ids = new Set();
+  const destinations = [];
+  for (const install of target.additionalInstalls ?? []) {
+    if (!/^[a-z][a-z0-9-]*$/.test(install.id) || ids.has(install.id)) throw new Error("Invalid additional install identity");
+    ids.add(install.id);
+    const destination = additionalInstallPath(target, install.path);
+    if (destinations.some((path) => inside(path, destination) || inside(destination, path))) throw new Error("Additional installs must be disjoint");
+    destinations.push(destination);
   }
 }
 
@@ -143,7 +169,19 @@ async function restore(target, recoveryDir, journal, operations) {
 export async function activateNative(receipt, target, operationsFactory = systemOperations, recoverDir) {
   validateTarget(target);
   if (receipt.status !== "passed" || receipt.accumulated !== true || !receipt.scenarios) throw new Error("A complete accumulated rehearsal is required before activation");
-  if (!recoverDir && fileDigest(receipt.artifact.path) !== receipt.artifact.sha256) throw new Error("Rehearsed artifact changed");
+  const extras = receipt.additionalArtifacts ?? [];
+  if (!Array.isArray(extras) || extras.some((extra) => !/^[a-z][a-z0-9-]*$/.test(extra.id) || !extra.artifact?.runtimeSha256) ||
+      new Set(extras.map((extra) => extra.id)).size !== extras.length ||
+      extras.length !== (target.additionalInstalls ?? []).length ||
+      extras.some((extra) => !target.additionalInstalls.some((install) => install.id === extra.id))) {
+    throw new Error("Target must map every rehearsed additional artifact exactly once");
+  }
+  const extraIdentity = extras.map(({ id, artifact }) => ({ id, sha256: artifact.sha256, runtimeSha256: artifact.runtimeSha256 }));
+  if (!recoverDir) {
+    for (const artifact of [receipt.artifact, ...extras.map((extra) => extra.artifact)]) {
+      if (fileDigest(artifact.path) !== artifact.sha256) throw new Error("Rehearsed artifact changed");
+    }
+  }
   const unlock = acquireLock(target.backupRoot);
   const recoveryDir = recoverDir ? realpathSync(recoverDir) : join(realpathSync(target.backupRoot), `activation-${Date.now()}-${process.pid}`);
   if (dirname(recoveryDir) !== realpathSync(target.backupRoot)) { unlock(); throw new Error("Recovery directory is outside target backups"); }
@@ -152,6 +190,7 @@ export async function activateNative(receipt, target, operationsFactory = system
   const journalPath = join(recoveryDir, "recovery.json");
   let journal = {
     schemaVersion: 1, target: jsonDigest(target), artifact: receipt.artifact.sha256,
+    additionalArtifacts: extraIdentity,
     status: "preflight", snapshotReady: false, browserChanged: false, quiesced: false,
   };
   let signal;
@@ -164,7 +203,8 @@ export async function activateNative(receipt, target, operationsFactory = system
   try {
     if (recoverDir) {
       journal = JSON.parse(readFileSync(journalPath, "utf8"));
-      if (journal.target !== jsonDigest(target) || journal.artifact !== receipt.artifact.sha256) throw new Error("Recovery identity differs from original target or artifact");
+      if (journal.target !== jsonDigest(target) || journal.artifact !== receipt.artifact.sha256 ||
+          jsonDigest(journal.additionalArtifacts ?? []) !== jsonDigest(extraIdentity)) throw new Error("Recovery identity differs from original target or artifact");
       recoveryIdentityVerified = true;
       if (["healthy", "rolled-back"].includes(journal.status)) return { status: journal.status, recoveryDir };
       if (!journal.quiesced) return { status: journal.status, recoveryDir };
@@ -177,6 +217,13 @@ export async function activateNative(receipt, target, operationsFactory = system
     const prefix = join(dirname(target.installDir), `.puddles-install-${Date.now()}-${process.pid}`);
     journal.prefix = prefix;
     const installed = await operations.install(receipt.artifact, prefix);
+    const stagedExtras = {};
+    for (const { id, artifact } of extras) {
+      const staged = await operations.install(artifact, join(recoveryDir, "additional-staging", id));
+      if (treeDigest(staged, { portable: true }) !== artifact.runtimeSha256) throw new Error("Additional staged runtime differs from rehearsal");
+      stagedExtras[id] = staged;
+      checkpoint();
+    }
     if (target.browser) {
       await operations.clone(installed, join(recoveryDir, "candidate"));
       journal.candidateSha256 = treeDigest(join(recoveryDir, "candidate"), { portable: true });
@@ -199,7 +246,22 @@ export async function activateNative(receipt, target, operationsFactory = system
     save("replacing");
     await operations.swap(target.installDir, installed);
     checkpoint();
+    const verifyAdditional = () => {
+      for (const install of target.additionalInstalls ?? []) {
+        const expected = extras.find((extra) => extra.id === install.id).artifact.runtimeSha256;
+        if (treeDigest(additionalInstallPath(target, install.path), { portable: true }) !== expected) throw new Error("Additional deployed runtime differs from rehearsal");
+      }
+    };
+    for (const install of target.additionalInstalls ?? []) {
+      const destination = additionalInstallPath(target, install.path);
+      if (existsSync(destination)) rmSync(destination, { recursive: true });
+      mkdirSync(dirname(destination), { recursive: true, mode: 0o700 });
+      await operations.clone(stagedExtras[install.id], destination);
+      checkpoint();
+    }
+    verifyAdditional();
     await operations.doctor();
+    verifyAdditional();
     checkpoint();
     if (target.browser) {
       journal.browserChanged = true;
@@ -210,6 +272,7 @@ export async function activateNative(receipt, target, operationsFactory = system
     save("starting");
     await operations.start();
     await operations.health();
+    verifyAdditional();
     checkpoint();
     journal.quiesced = false;
     save("healthy");
@@ -242,10 +305,6 @@ export async function verifyIntegratedCandidate(receiptPath, target) {
   if (!receipt.repository?.tree || !target.integration?.repository || !target.integration?.ref) throw new Error("Exact source integration evidence is required");
   const tree = (await runCommand("git", ["-C", target.integration.repository, "rev-parse", `${target.integration.ref}^{tree}`], { capture: true, quiet: true })).trim();
   if (tree !== receipt.repository.tree) throw new Error("Integrated source is not the rehearsed candidate");
-  for (const [name, key] of Object.entries(receipt.proofs ?? {})) {
-    const proof = JSON.parse(readFileSync(join(dirname(receiptPath), "stages", `${name}.json`), "utf8"));
-    if (proof.status !== "passed" || proof.key !== key) throw new Error("Candidate proof no longer matches");
-  }
-  if (!["regressions", "runtime", "install"].every((name) => receipt.proofs?.[name])) throw new Error("Candidate proof chain is incomplete");
+  verifyCandidateProofs(receiptPath, receipt);
   return receipt;
 }

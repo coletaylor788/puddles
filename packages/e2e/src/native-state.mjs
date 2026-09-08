@@ -10,6 +10,43 @@ export const digest = (value) => createHash("sha256").update(value).digest("hex"
 export const fileDigest = (path) => digest(readFileSync(path));
 export const jsonDigest = (value) => digest(JSON.stringify(value));
 
+function artifactIdentity(artifact) {
+  if (!artifact || artifact.schemaVersion !== 1 ||
+      !/^[a-f0-9]{64}$/.test(artifact.sha256) || !/^[a-f0-9]{64}$/.test(artifact.runtimeSha256) ||
+      !["platform", "arch", "node"].every((key) => typeof artifact[key] === "string" && artifact[key])) {
+    throw new Error("Invalid rehearsed artifact identity");
+  }
+  return ["schemaVersion", "sha256", "runtimeSha256", "platform", "arch", "node"].map((key) => artifact[key]);
+}
+
+export function verifyCandidateProofs(receiptPath, receipt) {
+  const extras = receipt.additionalArtifacts ?? [];
+  if (!Array.isArray(extras) || extras.some((extra) => !/^[a-z][a-z0-9-]*$/.test(extra.id)) ||
+      new Set(extras.map((extra) => extra.id)).size !== extras.length) throw new Error("Invalid additional artifact identities");
+  const required = ["regressions", "runtime", "install", ...extras.map((_extra, index) => `install-additional-${index}`)];
+  const proofs = {};
+  for (const name of required) {
+    const path = join(dirname(receiptPath), "stages", `${name}.json`);
+    if (!existsSync(path)) throw new Error("Candidate proof is missing");
+    const proof = JSON.parse(readFileSync(path, "utf8"));
+    if (!proof.inputs || proof.status !== "passed" || proof.key !== receipt.proofs?.[name] ||
+        proof.key !== jsonDigest(proof.inputs)) throw new Error("Candidate proof chain does not match");
+    proofs[name] = proof;
+  }
+  const rootIdentity = jsonDigest(artifactIdentity(receipt.artifact));
+  if (["runtime", "install"].some((name) => jsonDigest(artifactIdentity(proofs[name].inputs.artifact)) !== rootIdentity)) {
+    throw new Error("Root artifact differs from rehearsal proofs");
+  }
+  const bundleIdentity = (artifacts) => jsonDigest(artifacts.map(({ id, artifact }) => [id, artifactIdentity(artifact)]));
+  if (bundleIdentity(extras) !== bundleIdentity(proofs.runtime.inputs.additionalArtifacts ?? [])) throw new Error("Additional artifacts differ from runtime proof");
+  for (const [index, { id, artifact }] of extras.entries()) {
+    const inputs = proofs[`install-additional-${index}`].inputs;
+    if (inputs.id !== id || jsonDigest(artifactIdentity(artifact)) !== jsonDigest(artifactIdentity(inputs.artifact))) {
+      throw new Error("Additional artifact differs from installation proof");
+    }
+  }
+}
+
 export function atomicJson(path, value) {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   const temporary = `${path}.${randomUUID()}.tmp`;
