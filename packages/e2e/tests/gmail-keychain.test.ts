@@ -85,7 +85,8 @@ describe("Gmail Keychain backend", () => {
     expect(runner).toContain(
       '["-m", "pytest", "tests/", "--ignore=tests/integration", "-q"]',
     );
-    expect(runner).toContain('env: { ...process.env, CI: "true" }');
+    expect(runner).toContain("async function repositoryGates(run)");
+    expect(runner).toContain("await nativePipeline(command, repositoryGates)");
   });
 
   it("keeps clean installs on the supported MCP SDK major version", () => {

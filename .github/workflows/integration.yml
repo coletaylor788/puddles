@@ -10,8 +10,11 @@ permissions:
 
 jobs:
   cumulative:
-    runs-on: macos-latest
-    timeout-minutes: 30
+    # Standard Intel runners have 14 GB RAM; macos-latest has only 7 GB.
+    runs-on: macos-15-intel
+    timeout-minutes: 90
+    env:
+      E2E_LOCAL_EXTENSION: ""
     steps:
       - name: Check out Puddles
         uses: actions/checkout@v4
@@ -42,7 +45,28 @@ jobs:
       - name: Install Gmail test dependencies
         run: python -m pip install -e './servers/gmail-mcp[dev]'
 
+      - name: Initialize public run evidence
+        run: |
+          export E2E_RUN_DIR="$RUNNER_TEMP/puddles-public-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          node packages/e2e/bin/public-ci-diagnostics.mjs init
+          printf 'E2E_RUN_DIR=%s\n' "$E2E_RUN_DIR" >> "$GITHUB_ENV"
+
       - name: Run cumulative integration lifecycle
+        id: cumulative
         env:
           OPENCLAW_SRC: ${{ github.workspace }}/.openclaw-source
         run: node packages/e2e/bin/openclaw-test-env.mjs ci
+
+      - name: Collect public failure evidence
+        id: public-diagnostics
+        if: failure() && steps.cumulative.outcome == 'failure'
+        run: node packages/e2e/bin/public-ci-diagnostics.mjs collect
+
+      - name: Retain sanitized public failure evidence
+        if: failure() && steps.public-diagnostics.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-native-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/puddles-public-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: error

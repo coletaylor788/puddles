@@ -84,9 +84,23 @@ describe("OpenClaw cumulative patch suite", () => {
     expect(match?.[1]).toBe(suite.openclawRef);
   });
 
+  it("selects a standard macOS runner above the native memory floor with time for the whole gate", () => {
+    const workflow = readFileSync(join(repoRoot, ".github/workflows/integration.yml"), "utf8");
+    const runner = readFileSync(join(packageDir, "src/native-pipeline.mjs"), "utf8");
+    expect(workflow).toMatch(/runs-on:\s*macos-15-intel\b/);
+    const memoryFloor = runner.match(/totalmem\(\) < (\d+) \* 1024 \*\* 3/);
+    expect(memoryFloor).not.toBeNull();
+    expect(14 * 1_000_000_000).toBeGreaterThan(Number(memoryFloor![1]) * 1024 ** 3);
+    const timeout = Number(workflow.match(/timeout-minutes:\s*(\d+)/)?.[1]);
+    // Dependency installation and compilation alone allow 15 + 30 minutes.
+    expect(timeout).toBeGreaterThan(45);
+    expect(timeout).toBeLessThanOrEqual(360);
+    expect(workflow).toContain("node packages/e2e/bin/openclaw-test-env.mjs ci");
+  });
+
   it("checks generated prompt snapshots after applying the patch stack", () => {
     const runner = readFileSync(
-      join(packageDir, "bin", "openclaw-test-env.mjs"),
+      join(packageDir, "src", "native-pipeline.mjs"),
       "utf8",
     );
     const finalApply = runner.indexOf('await run("git", ["apply", patchFile]');
@@ -100,6 +114,20 @@ describe("OpenClaw cumulative patch suite", () => {
     expect(finalApply).toBeGreaterThan(-1);
     expect(snapshotCheck).toBeGreaterThan(finalApply);
     expect(mappedTests).toBeGreaterThan(snapshotCheck);
+  });
+
+  it("maps exact Vitest projects and proves collection before running old regressions", () => {
+    const manifest = JSON.parse(readFileSync(join(packageDir, "openclaw-patch-suite.json"), "utf8"));
+    expect(manifest.testProjects["src/agents/tools/yield-gather-state.test.ts"]).toBe("agents-tools");
+    expect(manifest.testProjects["packages/memory-host-sdk/src/host/backend-config.test.ts"]).toBe("unit-fast");
+    for (const test of suite.patches.flatMap((patch) => patch.tests)) {
+      expect(manifest.testProjects[test], test).toMatch(/^[a-z-]+$/);
+    }
+    const runner = readFileSync(join(packageDir, "src/native-pipeline.mjs"), "utf8");
+    expect(runner).toContain('"list", "--filesOnly"');
+    expect(runner).toContain("Mapped regression was not collected");
+    expect(runner).toContain("...scenarios, ...extension.scenarios");
+    expect(readFileSync(join(packageDir, "scenarios/imessage.mjs"), "utf8")).toContain("no-output");
   });
 
   it("uses a SQLite WAL-reset-safe Node runtime in CI", () => {

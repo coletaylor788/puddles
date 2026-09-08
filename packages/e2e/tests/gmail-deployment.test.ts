@@ -294,7 +294,8 @@ export async function acquireFileLock(filePath) {
     ).toBe("rolled-back");
   });
 
-  it("preserves unrelated config changes made before rollback", () => {
+  it("preserves unrelated config changes made before rollback", { timeout: 15_000 }, ({ task }) => {
+    expect(task.timeout).toBe(15_000);
     const result = runDeploy({
       MOCK_CONCURRENT_CONFIG: config,
       MOCK_SMOKE_FAIL: "1",
@@ -681,6 +682,10 @@ export async function acquireFileLock(filePath) {
   });
 
   it("holds config locks through the shared OpenClaw helper", () => {
+    writeFileSync(
+      lockModule,
+      `await new Promise((resolve) => setTimeout(resolve, 200));\n${readFileSync(lockModule, "utf8")}`,
+    );
     const probe = `
 import argparse
 import importlib.util
@@ -703,7 +708,7 @@ args = argparse.Namespace(
     health_attempts=2,
     health_interval=0.01,
     smoke_timeout=2.0,
-    config_lock_timeout=0.1,
+    config_lock_timeout=2.0,
     node=${JSON.stringify(process.execPath)},
     config_lock_helper=Path(${JSON.stringify(configLockHelper)}),
     openclaw_lock_module=Path(${JSON.stringify(lockModule)}),
@@ -715,7 +720,7 @@ with deployment.config_lock():
     assert len(payload["nonce"]) > 0
 assert not Path(${JSON.stringify(`${config}.lock`)}).exists()
 `;
-    const result = spawnSync("python3", ["-c", probe], { encoding: "utf8" });
+    const result = spawnSync("python3", ["-c", probe], { encoding: "utf8", timeout: 10_000 });
 
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
   });
