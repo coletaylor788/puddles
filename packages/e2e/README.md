@@ -22,6 +22,16 @@ OpenClaw each use their own committed package-manager version through Corepack.
 Preflight checks the source pin, toolchain, and host capacity before costly
 work. CI uses public source only and never needs live account credentials.
 
+Public CI uses the standard `macos-15-intel` runner. Its documented 14 GB RAM
+clears the native 8 GiB floor; `macos-latest` has only 7 GB. Both have 14 GB
+documented SSD capacity. The runtime free-disk check remains authoritative.
+The job allows 90 minutes for installation, compilation, regressions, and
+rehearsal, within GitHub's six-hour hosted-job limit. See the
+[runner specifications](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
+and [job limits](https://docs.github.com/en/actions/reference/limits).
+Hosted Intel artifacts are not production ARM artifacts; release rehearsal
+still uses the selected target's exact Node version, OS, and CPU.
+
 The gate runs every workspace build, lint, and test, the isolated Gmail Python
 pool, every mapped OpenClaw patch regression, and the cross-component candidate
 tests. It then packages the built runtime with its installed production

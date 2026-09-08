@@ -84,6 +84,20 @@ describe("OpenClaw cumulative patch suite", () => {
     expect(match?.[1]).toBe(suite.openclawRef);
   });
 
+  it("selects a standard macOS runner above the native memory floor with time for the whole gate", () => {
+    const workflow = readFileSync(join(repoRoot, ".github/workflows/integration.yml"), "utf8");
+    const runner = readFileSync(join(packageDir, "src/native-pipeline.mjs"), "utf8");
+    expect(workflow).toMatch(/runs-on:\s*macos-15-intel\b/);
+    const memoryFloor = runner.match(/totalmem\(\) < (\d+) \* 1024 \*\* 3/);
+    expect(memoryFloor).not.toBeNull();
+    expect(14 * 1_000_000_000).toBeGreaterThan(Number(memoryFloor![1]) * 1024 ** 3);
+    const timeout = Number(workflow.match(/timeout-minutes:\s*(\d+)/)?.[1]);
+    // Dependency installation and compilation alone allow 15 + 30 minutes.
+    expect(timeout).toBeGreaterThan(45);
+    expect(timeout).toBeLessThanOrEqual(360);
+    expect(workflow).toContain("node packages/e2e/bin/openclaw-test-env.mjs ci");
+  });
+
   it("checks generated prompt snapshots after applying the patch stack", () => {
     const runner = readFileSync(
       join(packageDir, "src", "native-pipeline.mjs"),

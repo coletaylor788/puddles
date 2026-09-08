@@ -10,8 +10,9 @@ permissions:
 
 jobs:
   cumulative:
-    runs-on: macos-latest
-    timeout-minutes: 30
+    # Standard Intel runners have 14 GB RAM; macos-latest has only 7 GB.
+    runs-on: macos-15-intel
+    timeout-minutes: 90
     steps:
       - name: Check out Puddles
         uses: actions/checkout@v4

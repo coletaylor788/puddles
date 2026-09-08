@@ -34,11 +34,13 @@ CI depend on another repository.
 
 ### Status
 
-The public implementation and retained independent review are complete. Review
-findings are corrected with focused regressions. The corrected installed
-artifact passed all eight real gateway scenarios twice, with normal workspace
-bootstrap and bundled skill discovery. It is ready for separate release
-validation. Production is unchanged.
+The public implementation has passed retained independent review. The corrected
+installed artifact passed all eight real gateway scenarios twice, with normal
+workspace bootstrap and bundled skill discovery. Public CI exposed a host
+capacity mismatch. The workflow now selects a standard runner with enough
+memory and time for the full gate. The correction passed focused checks and the
+same retained review. Hosted cumulative validation is still pending. Production
+is unchanged.
 
 This worker hands off a reviewed candidate and pull request without deploying
 or merging it. A separate release worker will run the final accumulated gate,
@@ -78,6 +80,10 @@ integrate exact source, and activate the rehearsed artifacts.
   the gateway is stopped.
 - Use upstream's package file selection, including bootstrap templates and
   bundled skills. Bind package reuse to actual installed dependency bytes.
+- Public CI uses standard `macos-15-intel` (14 GB RAM and 14 GB SSD), not the
+  7 GB `macos-latest` host. Keep the 8 GiB native guards. The 90-minute job
+  budget covers more than the 15-minute dependency and 30-minute build bounds
+  and remains below GitHub's six-hour hosted-job maximum.
 - Prepare clean source on invalidation and keep the existing build when the
   resulting source bytes match. Bind regression proofs to effective test
   environments, interpreters, and installed test dependencies.
@@ -119,6 +125,17 @@ integrate exact source, and activate the rehearsed artifacts.
   unchanged. Exact digests and detailed evidence stay in local run state.
 - The release worker runs the full cumulative command against the final
   frozen candidate. Unit-tested orchestration alone is not release evidence.
+- Public CI run `34174012214` rejected the old 7 GB host at the new memory
+  preflight. Runner specifications and available job time are verified against
+  GitHub's official runner and Actions limit references. The existing actual
+  candidate source, artifact tree, and installed tree occupy about 3.3 GiB;
+  the free-disk guard remains in place rather than assuming all advertised
+  storage is available.
+- The workflow-only correction has a focused resource-contract regression in
+  `tests/patch-suite.test.ts`. No OpenClaw source, package, or fixture bytes
+  change, so their retained build and runtime evidence is not rerun here.
+  `corepack pnpm --filter e2e exec vitest run tests/patch-suite.test.ts tests/plan-and-issue-writing-contract.test.ts`
+  passes all 18 tests, and the e2e TypeScript check passes.
 
 ### Rollout and rollback
 
@@ -146,6 +163,9 @@ integrate exact source, and activate the rehearsed artifacts.
   `7851ded`, including all nine corrections and retained input identities.
   No actionable high-confidence findings remain. Final cumulative validation
   and real target activation, health, and rollback remain release-worker work.
+- The same reviewer cleared the complete feature diff including the
+  runner/resource correction. No runtime implementation changes accompany it.
+  A successful hosted cumulative run remains required.
   No terminal fresh reviewer is required for bookkeeping.
 
 ### Checklist
