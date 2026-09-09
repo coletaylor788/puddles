@@ -91,6 +91,9 @@ async function stop(child) {
 
 function validateScenario(scenario) {
   if (!/^[a-z0-9-]+$/.test(scenario.id) || !scenario.steps?.length) throw new Error("Invalid native scenario");
+  if (scenario.chatType !== undefined && !["direct", "group"].includes(scenario.chatType)) {
+    throw new Error("Invalid fixture chat type");
+  }
   if (scenario.inboundDebounceMs !== undefined && scenario.inboundDebounceMs !== null &&
       (!Number.isInteger(scenario.inboundDebounceMs) || scenario.inboundDebounceMs < 0 || scenario.inboundDebounceMs > 15_000)) {
     throw new Error("Invalid fixture inbound debounce");
@@ -215,10 +218,13 @@ export async function runScenario(installedDir, scenario, options = {}) {
       browser: { enabled: false },
       agents: { defaults: { workspace: context.workspace, model: { primary: "fixture/fixture-model" }, compaction: { mode: "default" }, heartbeat: { every: "0m" } } },
       models: { mode: "replace", providers: { fixture: { api: "openai-completions", baseUrl: `http://127.0.0.1:${modelPort}/v1`, apiKey: "synthetic-fixture-key", models: [{ id: "fixture-model", name: "Scripted model", contextWindow: 128000, maxTokens: 4096, reasoning: false, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }] } } },
-      channels: { imessage: { enabled: true, cliPath: bridge, dbPath: join(context.stateDir, "fixture-chat.db"), dmPolicy: "allowlist", allowFrom: ["+15550001111"], groupPolicy: "disabled", coalesceSameSenderDms: true, sendReadReceipts: false } },
-      ...(scenario.inboundDebounceMs === null ? {} : {
-        messages: { inbound: { debounceMs: scenario.inboundDebounceMs ?? 250 } },
-      }),
+      channels: { imessage: { enabled: true, cliPath: bridge, dbPath: join(context.stateDir, "fixture-chat.db"), dmPolicy: "allowlist", allowFrom: ["+15550001111"], groupPolicy: scenario.chatType === "group" ? "allowlist" : "disabled",
+        ...(scenario.chatType === "group" ? { groupAllowFrom: ["+15550001111"], groups: { "123": { requireMention: false } } } : {}),
+        coalesceSameSenderDms: true, sendReadReceipts: false } },
+      messages: {
+        ...(scenario.inboundDebounceMs === null ? {} : { inbound: { debounceMs: scenario.inboundDebounceMs ?? 250 } }),
+        ...(scenario.chatType === "group" ? { groupChat: { mentionPatterns: ["@fixture-agent"], unmentionedInbound: "room_event" } } : {}),
+      },
       plugins: { allow: ["imessage", "puddles-recording-tools"], load: { paths: [plugin] }, entries: { imessage: { enabled: true }, "puddles-recording-tools": { enabled: true } } },
       tools: { allow: Object.keys(scenario.adapters ?? {}), deny: ["exec", "process", "browser", "web_fetch", "web_search", "cron", "sessions_spawn", "nodes"] },
       session: { dmScope: "per-channel-peer" },
@@ -253,8 +259,10 @@ export async function runScenario(installedDir, scenario, options = {}) {
         if (delayMs) await delay(delayMs);
         const message = {
           id: rowid++, guid: incoming.guid ?? `fixture-inbound-${rowid}`, chat_id: 123,
-          sender: "+15550001111", is_from_me: false, is_group: false,
-          chat_identifier: "+15550001111", created_at: new Date().toISOString(), ...payload,
+          sender: "+15550001111", is_from_me: false, is_group: scenario.chatType === "group",
+          chat_identifier: scenario.chatType === "group" ? "fixture-group-123" : "+15550001111",
+          ...(scenario.chatType === "group" ? { chat_guid: "iMessage;+;fixture-group-123" } : {}),
+          created_at: new Date().toISOString(), ...payload,
         };
         appendFileSync(join(context.recordingsDir, "imsg-incoming.jsonl"), JSON.stringify(message) + "\n");
       }
@@ -271,6 +279,9 @@ export async function runScenario(installedDir, scenario, options = {}) {
       const sends = records(join(context.recordingsDir, "imsg-sends.jsonl")).slice(sendCount);
       assert.equal(sends.length, expected.length, "unexpected outbound message count");
       sends.forEach((send, index) => assert.ok((send.params?.text ?? "").includes(expected[index]), "recorded reply differs"));
+      for (const text of step.expect.sendsExclude ?? []) {
+        assert.ok(sends.every((send) => !(send.params?.text ?? "").includes(text)), "recorded reply exposes excluded content");
+      }
       if (step.expect.promptIncludes) {
         const prompt = JSON.stringify(requests[requestCount - step.responses.length].messages);
         for (const text of step.expect.promptIncludes) assert.ok(prompt.includes(text), "incoming event missing from real model request");

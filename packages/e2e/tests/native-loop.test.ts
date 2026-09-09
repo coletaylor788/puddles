@@ -179,6 +179,13 @@ describe("offline installed runtime", () => {
 });
 
 describe("recording fixture prerequisites", () => {
+  it("rejects unsupported fixture chat types before starting a gateway", async () => {
+    await expect(runScenario("/missing", {
+      id: "invalid-chat",
+      chatType: "unrestricted",
+      steps: [{ incoming: [], responses: [], expect: { sends: [] } }],
+    })).rejects.toThrow("Invalid fixture chat type");
+  });
   it("seals named portable artifacts from verified declared package directories", async () => {
     const context = isolatedContext(root());
     const source = join(context.workspace, "source");

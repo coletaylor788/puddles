@@ -43,11 +43,23 @@ export default [
   },
   {
     id: "no-output",
+    chatType: "group",
     steps: [{ incoming: [{ text: "Do not reply." }], responses: [{ text: "NO_REPLY" }], expect: { sends: [], quietMs: 1800 } }],
   },
   {
+    id: "direct-silent-continuation",
+    steps: [{
+      incoming: [{ text: "A direct turn requires a visible answer." }],
+      responses: [{ text: "NO_REPLY" }, { text: "Recovered visible answer." }],
+      expect: { sends: ["Recovered visible answer."] },
+    }],
+  },
+  {
     id: "model-error",
-    steps: [{ incoming: [{ text: "Exercise a model failure." }], responses: [{ error: "Synthetic model failure" }], expect: { sends: ["Something went wrong while processing your request."] } }],
+    steps: [{ incoming: [{ text: "Exercise a model failure." }], responses: [{ error: "Synthetic model failure" }], expect: {
+      sends: ["fixture/fixture-model request failed (request format rejected, HTTP 400)."],
+      sendsExclude: ["Synthetic model failure"],
+    } }],
   },
   reply("fresh-state-reuses-guid", "This run must not inherit the prior replay cursor."),
 ];

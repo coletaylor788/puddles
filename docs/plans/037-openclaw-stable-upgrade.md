@@ -23,12 +23,17 @@ the same regression coverage. Keep the maintained iMessage plugin inside the
 runtime archive instead of letting startup download an unpatched replacement.
 Its generated startup schema must match the maintained channel schema.
 Completion gathering must not acknowledge a child until its exact tool result
-is saved in the requesting session.
+is saved in the requesting session. Keep the stable release's visible-answer
+recovery for silent direct replies, rather than restoring older direct-message
+silence. Group silence and classified model-error replies remain separate
+installed scenarios.
 
 A small plugin provides separate memory tools for agents that may read only
 their own notes. It binds the existing memory manager to the trusted calling
-agent and checks arguments, paths, and results at execution. Search excerpts
-come from authorized files rather than untrusted indexed snippets. It does not
+agent and checks arguments, paths, and results at execution. Returned bytes must
+come from an authorized opened file, even if another writer replaces a directory
+during the read. Search excerpts come from those files rather than untrusted
+indexed snippets. It does not
 read the shared wiki. Private configuration denies the broader native memory and
 wiki tools for these agents. A missing plugin therefore removes their memory
 capability rather than exposing a broader fallback. Private consolidation
@@ -52,17 +57,16 @@ and rollback remain in the existing deployment workflow.
 
 ### Status
 
-The channel and completion repairs pass source regressions. The generated
-iMessage schema now matches the maintained option at channel and account scope.
-Installed rehearsal is continuing. The scoped memory adapter passes its focused
-tests and build, including direct reads of its own dream notes. Its real-manager
-proof is registered in the shared pool.
+The installed runtime starts with the maintained channel and its generated
+schema. Conversation, coalescing, tool, direct-recovery, error, and replay
+scenarios pass. Group silence still triggers an unexpected model retry and is
+under investigation. Scoped memory passes its proof against the patched runtime.
 
-The retained reviewer clears the earlier completion and channel repairs. The
-metadata correction and scoped adapter still need a full-diff recheck and the
-final accumulated gate. Memory migration is authorized, but derived-data cleanup
-is not. Builtin does not retain QMD's model expansion or learned reranking.
-Installed access checks remain required before integration.
+The retained reviewer found a scoped-read race when another writer replaces
+and restores a containing directory. That repair and the group-silence
+investigation block the final accumulated gate. Memory migration is authorized,
+but derived-data cleanup is not. Builtin does not retain QMD's model expansion
+or learned reranking. Installed access checks remain required before integration.
 
 ## Agent section
 
@@ -76,6 +80,9 @@ Installed access checks remain required before integration.
 - Upstream package manager: `pnpm@12.3.4`. Puddles keeps its own manager.
 - Implementation authorized. No design pause. No production deployment.
 - Parent confirmation is required before merging public source.
+- Resumed the same run after an agent-service transport reset. No managed
+  process or run lock remained. Source, archives, and installed artifacts are
+  preserved; successful earlier stage receipts are not a final-candidate gate.
 - Parent-assigned worker `5501` exclusively owns `openclaw-plugins/scoped-memory/`
   and, if needed, `packages/e2e/tests/candidate.scoped-memory.test.ts`.
   This owner handles root registration, lockfile, commits, and final integration.
@@ -117,7 +124,9 @@ Installed access checks remain required before integration.
   lowercase extension, matching the upstream reader. This does not add dreams
   indexing or expose dreams search hits.
   Reject symlinks and hardlinks. Filter global extra-path results before
-  rereading authorized excerpts through the existing manager. No raw indexed
+  reading excerpts through an existing descriptor-bound safe-root reader.
+  Do not trust path identity checks around an asynchronous backend read.
+  No raw indexed
   snippets, backend metadata, or backend exception details escape.
 - Generic interpreter migration is included at the parent's request.
   `nodeMigration` retains both executable identities and the exact service
@@ -189,9 +198,14 @@ Installed access checks remain required before integration.
   Its SQLite test rejects an uncommitted or unrelated handoff.
 - The first managed run passed prepare, dependencies, build, accumulated
   regressions, extension packaging, root packaging, and offline install.
-  The repaired candidate repeats those passes but fails installed startup on
-  the stale channel schema. The new parity regression reproduces the defect.
-  Regeneration, upstream metadata checking, and 23 channel schema cases pass.
+  The generated schema correction passes parity, upstream metadata checking,
+  and 23 channel schema cases. Its native iteration passes build, package,
+  offline install, and maintained channel startup.
+  Installed ordinary/history/coalescing/read/write cases pass. Direct silent
+  continuation passes with two model calls and one send. Model-error delivery
+  now expects the stable classified HTTP 400 copy and rejects raw error text.
+  Fresh-state replay passes. Group silence still fails with an unscripted retry.
+  The parent-assigned helper owns read-only context tracing for that failure.
 - Run `node packages/e2e/bin/openclaw-test-env.mjs ci` with a supported Node
   and explicitly selected isolated source and external run directory.
 - Retain collection evidence for every cumulative target.
@@ -207,7 +221,7 @@ Installed access checks remain required before integration.
   The implementing worker reports 57 unit cases, type checking, and build pass.
   Its real builtin FTS proof passes against the exact published SDK. It proves
   excluded global roots were indexed before asserting filtered output. The
-  patched-candidate run remains pending. Integration passes 30 native loop and
+  patched-candidate run also passes. Integration passes 31 native loop and
   manifest cases plus the e2e type check.
 - Run fixture activation and rollback coverage through the accumulated pool.
 
@@ -224,8 +238,13 @@ Installed access checks remain required before integration.
 - Retained independent reviewer found premature durable acknowledgment during
   active gathering. A repair now waits for a committed exact tool result.
   The reviewer cleared the complete diff through `e83da72`, including the channel
-  packaging and migration repairs. The metadata correction and scoped adapter
-  are now with the same reviewer for a full-diff recheck. No interpreter finding.
+  packaging and migration repairs. Generated metadata changes are confirmed
+  limited to the intended iMessage properties. No interpreter finding.
+- The retained review found a P1 race in `scoped-memory/src/plugin.ts`: an
+  ancestor may be replaced during `manager.readFile` and restored before the
+  post-read file check. The finding is accepted. Reuse a descriptor-bound reader
+  and add a replacement-and-restoration regression before the same full-diff
+  review resumes. The parent routes this correction to the retained implementer.
 
 ### Checklist
 
