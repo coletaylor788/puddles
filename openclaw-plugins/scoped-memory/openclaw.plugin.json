@@ -1,0 +1,19 @@
+{
+  "id": "scoped-memory",
+  "name": "Scoped Memory",
+  "version": "0.1.0",
+  "description": "Separate search and read tools limited to the calling agent's own Markdown memory.",
+  "contracts": { "tools": ["scoped_memory_search", "scoped_memory_get"] },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "allowedAgents": {
+        "type": "array",
+        "uniqueItems": true,
+        "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" },
+        "default": []
+      }
+    }
+  }
+}

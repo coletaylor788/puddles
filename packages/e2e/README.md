@@ -59,6 +59,11 @@ Bootstrap checks follow the stable AGENTS, SOUL, IDENTITY, and USER files.
 explicit upstream Vitest projects. New patches must register every added test.
 Do not replace earlier regressions with only the newest feature's targets.
 
+The memory migration entry also runs the scoped-memory adapter against the
+built candidate's SDK. Workspace gates build and test that plugin before the
+candidate proof. Its synthetic notes and fixed sources must not consult live
+workspaces or shared knowledge stores.
+
 Public CI initializes a fresh run directory for each hosted attempt and
 explicitly disables local extensions. On failure, it retains a seven-day
 artifact with bounded, sanitized command and known public fixture logs, plus

@@ -19,6 +19,24 @@ importers:
 
   .: {}
 
+  openclaw-plugins/scoped-memory:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.17
+      esbuild:
+        specifier: ^0.25.0
+        version: 0.25.12
+      openclaw:
+        specifier: 2026.9.3
+        version: 2026.9.3(@aws-sdk/credential-provider-node@3.972.36)
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/node@22.19.17)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0)
+
   openclaw-plugins/secure-apple-calendar:
     dependencies:
       '@modelcontextprotocol/sdk':

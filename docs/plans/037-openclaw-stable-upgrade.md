@@ -27,8 +27,9 @@ is saved in the requesting session.
 
 A small plugin provides separate memory tools for agents that may read only
 their own notes. It binds the existing memory manager to the trusted calling
-agent and checks arguments, paths, and results at execution. It does not read
-the shared wiki. Private configuration denies the broader native memory and
+agent and checks arguments, paths, and results at execution. Search excerpts
+come from authorized files rather than untrusted indexed snippets. It does not
+read the shared wiki. Private configuration denies the broader native memory and
 wiki tools for these agents. A missing plugin therefore removes their memory
 capability rather than exposing a broader fallback. Private consolidation
 policy and data remain outside the public repository.
@@ -52,8 +53,8 @@ and rollback remain in the existing deployment workflow.
 
 The channel and completion repairs pass source regressions. The generated
 iMessage schema now matches the maintained option at channel and account scope.
-Installed rehearsal is continuing. A parent-assigned worker is adding the
-scoped memory adapter needed to preserve restricted agents' existing access.
+Installed rehearsal is continuing. The scoped memory adapter passes its focused
+tests and build, and its real-manager proof is registered in the shared pool.
 
 The retained reviewer clears the earlier completion and channel repairs. The
 metadata correction and scoped adapter still need a full-diff recheck and the
@@ -104,6 +105,15 @@ Installed access checks remain required before integration.
   final arguments, paths, and results without a new index or policy framework.
   Private configuration denies native memory/wiki tools for nonreaders and only
   permits scoped tools where memory is enabled. No main-owner migration is needed.
+- Plugin id/package `scoped-memory` accepts only `allowedAgents`. Empty or absent
+  permission denies access. Tools are `scoped_memory_search` and
+  `scoped_memory_get`; final execution rejects unknown argument keys.
+  `resolveMemorySearchConfig` enforces effective disablement and
+  `resolveAgentWorkspaceDir` resolves the owning root from trusted context.
+  Permit only `MEMORY.md`, `USER.md`, and Markdown files below `memory/`.
+  Reject symlinks and hardlinks. Filter global extra-path results before
+  rereading authorized excerpts through the existing manager. No raw indexed
+  snippets, backend metadata, or backend exception details escape.
 - Generic interpreter migration is included at the parent's request.
   `nodeMigration` retains both executable identities and the exact service
   argument index. The live target and activation remain with the release owner.
@@ -127,9 +137,12 @@ Installed access checks remain required before integration.
 - Workshop preserves configured proposal factory and agent-owned storage.
 - Browser patch applies without change.
 - Public plugins pin the 2026.9.3 SDK and use `openclaw/plugin-sdk/core`.
-- A retained parent-assigned worker implements scoped-memory code, tests, and
-  local documentation. Integrate its exact contract into the workspace and
-  cumulative pool without editing its files concurrently.
+- The parent-assigned worker completed scoped-memory code, tests, and local
+  documentation. This owner integrated its contract into the workspace and
+  cumulative pool.
+  Existing root workspace globs include package build, lint, and tests. The
+  lockfile links its SDK and build dependencies. The memory migration manifest
+  entry registers `tests/candidate.scoped-memory.test.ts`.
 - CI uses Node 26.1.0 and Corepack 0.36.0. Offline timestamp regression follows
   upstream pnpm 12.3.4. Node preflight rejects unsupported SQLite runtimes.
 - `native-activation.mjs` and `native-interpreter-migration.test.ts` include
@@ -186,6 +199,11 @@ Installed access checks remain required before integration.
 - Rehearse scoped-memory tools against deterministic per-agent notes. Prove
   restricted reads cannot reach other agents or the shared wiki, including
   hostile tool arguments and missing-plugin behavior in the private composition.
+  The implementing worker reports 50 unit cases, type checking, and build pass.
+  Its real builtin FTS proof passes against the exact published SDK. It proves
+  excluded global roots were indexed before asserting filtered output. The
+  patched-candidate run remains pending. Integration passes 30 native loop and
+  manifest cases plus the e2e type check.
 - Run fixture activation and rollback coverage through the accumulated pool.
 
 ### Rollout and rollback
@@ -201,8 +219,8 @@ Installed access checks remain required before integration.
 - Retained independent reviewer found premature durable acknowledgment during
   active gathering. A repair now waits for a committed exact tool result.
   The reviewer cleared the complete diff through `e83da72`, including the channel
-  packaging and migration repairs. The metadata correction still requires the
-  same reviewer's full-diff recheck. No interpreter finding.
+  packaging and migration repairs. The metadata correction and scoped adapter
+  are now with the same reviewer for a full-diff recheck. No interpreter finding.
 
 ### Checklist
 
@@ -210,7 +228,7 @@ Installed access checks remain required before integration.
 - [x] Complete patch compatibility inventory.
 - [x] Rebase patches and public SDK consumers.
 - [x] Commit focused compatibility regressions and documentation.
-- [ ] Integrate the parent-assigned scoped memory adapter and its regressions.
+- [x] Integrate the parent-assigned scoped memory adapter and its regressions.
 - [ ] Clear retained independent review.
 - [ ] Pass exact-candidate accumulated gate.
 - [ ] Confirm combined compatibility with parent.

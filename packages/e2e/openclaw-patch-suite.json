@@ -92,6 +92,9 @@
         "packages/memory-host-sdk/src/host/backend-config.test.ts",
         "src/commands/doctor/shared/legacy-config-migrations.memory-isolation.test.ts",
         "src/commands/doctor/shared/legacy-config-migrations.runtime.retired.memory-qmd.test.ts"
+      ],
+      "candidateTests": [
+        "tests/candidate.scoped-memory.test.ts"
       ]
     }
   ]
