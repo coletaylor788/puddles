@@ -59,8 +59,12 @@ agent, corpus, source, root, session, debug, or partial-result selectors.
 
 ## File boundary
 
-Only the owning workspace's `MEMORY.md`, `USER.md`, and `.md` files below
-`memory/` are eligible. Arbitrary workspace files, root `DREAMS.md`, hidden
+Search returns only the owning workspace's `MEMORY.md`, `USER.md`, and `.md`
+files below `memory/`. Reads also allow the root `dreams.md` file, including
+`DREAMS.md` and other basename capitalization with a lowercase `.md` extension,
+matching the native memory reader. The native index does not include this root
+file by default; the scoped search does not add it to the index or expose it
+through search. Arbitrary workspace files, hidden
 path components, absolute paths, traversal, symbolic links below the workspace,
 and hard-linked files are rejected. Missing files fail explicitly. The
 configured workspace must match the host's trusted workspace and the active

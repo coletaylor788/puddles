@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { linkSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 
@@ -159,7 +159,7 @@ describe("scoped memory authority", () => {
   });
 
   it.each(["../other/MEMORY.md", "/etc/passwd", "memory/../USER.md", "memory//note.md", "./MEMORY.md", "memory\\note.md",
-    "AGENTS.md", "DREAMS.md", "memory/data.json", "memory/.hidden.md", "memory/note.md\u0000"])("rejects path %s before reading", async (path) => {
+    "AGENTS.md", "memory/data.json", "memory/.hidden.md", "memory/note.md\u0000"])("rejects path %s before reading", async (path) => {
     const f = fixture();
     await expect(f.execute("scoped_memory_get", { path })).rejects.toThrow("Path");
     expect(f.manager.readFile).not.toHaveBeenCalled();
@@ -208,5 +208,35 @@ describe("scoped memory authority", () => {
     f.manager.status.mockReturnValue({ backend: "builtin", workspaceDir: f.workspace } as any);
     f.manager.readFile.mockResolvedValue({ status: "ok", path: "../other/MEMORY.md", text: "OTHER_AGENT_SECRET", from: 1 } as any);
     await expect(f.execute("scoped_memory_get", { path: "MEMORY.md" })).rejects.toThrow("invalid scoped excerpt");
+  });
+
+  it.each(["DREAMS.md", "dreams.md", "DrEaMs.md"])("reads own %s without expanding search", async (path) => {
+    const f = fixture();
+    writeFileSync(join(f.workspace, path), "own synthetic dream\nsecond line");
+    expect((await f.execute("scoped_memory_get", { path, lines: 1 })).details)
+      .toEqual({ path, from: 1, lines: 1, text: "own synthetic dream", citation: `${path}#L1` });
+    f.manager.search.mockResolvedValue([{ source: "memory", path, startLine: 1, endLine: 1, snippet: "not a default index source" }] as any);
+    expect((await f.execute("scoped_memory_search", { query: "dream" })).details.results).toEqual([]);
+  });
+
+  it.each(["foreign", "absolute", "symlink"])("rejects %s root dreams access", async (kind) => {
+    const f = fixture();
+    writeFileSync(join(f.other, "DREAMS.md"), "OTHER_DREAM_SECRET");
+    let path = "../other/DREAMS.md";
+    if (kind === "absolute") path = join(f.other, "DREAMS.md");
+    if (kind === "symlink") {
+      path = "DREAMS.md";
+      symlinkSync(join(f.other, path), join(f.workspace, path));
+    }
+    await expect(f.execute("scoped_memory_get", { path })).rejects.toThrow();
+    expect(f.manager.readFile).not.toHaveBeenCalled();
+  });
+
+  it("accepts a dreams basename case alias only when the filesystem resolves that own file", async () => {
+    const f = fixture();
+    writeFileSync(join(f.workspace, "DREAMS.md"), "own dream");
+    const read = f.execute("scoped_memory_get", { path: "dreams.md" });
+    if (existsSync(join(f.workspace, "dreams.md"))) expect((await read).details.text).toBe("own dream");
+    else await expect(read).rejects.toThrow();
   });
 });

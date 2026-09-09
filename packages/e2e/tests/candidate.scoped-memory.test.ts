@@ -19,8 +19,10 @@ describe("scoped tools with the actual pinned memory manager", () => {
     copyFileSync(join(repo, "openclaw-plugins/scoped-memory/dist/plugin.js"), join(root, "plugin.mjs"));
     writeFileSync(join(root, "reader/MEMORY.md"), "quartzreader owns a synthetic blue compass.\nThe compass is local to this agent.");
     writeFileSync(join(root, "reader/USER.md"), "The user prefers lavender.");
+    writeFileSync(join(root, "reader/DREAMS.md"), "quartzdream owns a synthetic dream.");
     writeFileSync(join(root, "reader/memory/note.md"), "quartzreader keeps a second synthetic note.");
     writeFileSync(join(root, "other/MEMORY.md"), "quartzforeign OTHER_AGENT_SECRET");
+    writeFileSync(join(root, "other/DREAMS.md"), "quartzforeign OTHER_DREAM_SECRET");
     writeFileSync(join(root, "wiki/page.md"), "quartzforeign GLOBAL_WIKI_SECRET");
     const config = {
       agents: { ownership: "explicit", entries: {
@@ -69,11 +71,15 @@ try {
   const read = await get.execute("read", { path: "MEMORY.md", from: 1, lines: 1 });
   assert.equal(read.details.text, "quartzreader owns a synthetic blue compass.");
   assert.equal(read.details.citation, "MEMORY.md#L1");
+  const dream = await get.execute("dream", { path: "DREAMS.md", lines: 1 });
+  assert.equal(dream.details.text, "quartzdream owns a synthetic dream.");
+  assert.deepEqual((await search.execute("dream-search", { query: "quartzdream", minScore: 0 })).details.results, []);
   for (const corpus of ["wiki", "all"]) {
     await assert.rejects(search.execute("rewrite", { query: "quartzforeign", corpus }));
     await assert.rejects(get.execute("rewrite", { path: "MEMORY.md", corpus }));
   }
-  for (const path of ["../other/MEMORY.md", cfg.agents.entries.other.workspace + "/MEMORY.md", "AGENTS.md", "wiki/page.md"]) {
+  for (const path of ["../other/MEMORY.md", "../other/DREAMS.md", cfg.agents.entries.other.workspace + "/DREAMS.md",
+    cfg.agents.entries.other.workspace + "/MEMORY.md", "AGENTS.md", "wiki/page.md"]) {
     await assert.rejects(get.execute("escape", { path }));
   }
   assert.equal(JSON.stringify([own, foreign, read]).includes("SECRET"), false);

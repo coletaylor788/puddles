@@ -32,7 +32,8 @@ come from authorized files rather than untrusted indexed snippets. It does not
 read the shared wiki. Private configuration denies the broader native memory and
 wiki tools for these agents. A missing plugin therefore removes their memory
 capability rather than exposing a broader fallback. Private consolidation
-policy and data remain outside the public repository.
+policy and data remain outside the public repository. Direct reads also support
+the agent's own dream notes without expanding the search corpus.
 
 The release requires a newer Node runtime because older builds can truncate
 SQLite text. Development and public CI use an explicitly supported version.
@@ -54,7 +55,8 @@ and rollback remain in the existing deployment workflow.
 The channel and completion repairs pass source regressions. The generated
 iMessage schema now matches the maintained option at channel and account scope.
 Installed rehearsal is continuing. The scoped memory adapter passes its focused
-tests and build, and its real-manager proof is registered in the shared pool.
+tests and build, including direct reads of its own dream notes. Its real-manager
+proof is registered in the shared pool.
 
 The retained reviewer clears the earlier completion and channel repairs. The
 metadata correction and scoped adapter still need a full-diff recheck and the
@@ -110,7 +112,10 @@ Installed access checks remain required before integration.
   `scoped_memory_get`; final execution rejects unknown argument keys.
   `resolveMemorySearchConfig` enforces effective disablement and
   `resolveAgentWorkspaceDir` resolves the owning root from trusted context.
-  Permit only `MEMORY.md`, `USER.md`, and Markdown files below `memory/`.
+  Search permits only `MEMORY.md`, `USER.md`, and Markdown below `memory/`.
+  GET also permits own-root `dreams.md` with case-insensitive basename and
+  lowercase extension, matching the upstream reader. This does not add dreams
+  indexing or expose dreams search hits.
   Reject symlinks and hardlinks. Filter global extra-path results before
   rereading authorized excerpts through the existing manager. No raw indexed
   snippets, backend metadata, or backend exception details escape.
@@ -199,7 +204,7 @@ Installed access checks remain required before integration.
 - Rehearse scoped-memory tools against deterministic per-agent notes. Prove
   restricted reads cannot reach other agents or the shared wiki, including
   hostile tool arguments and missing-plugin behavior in the private composition.
-  The implementing worker reports 50 unit cases, type checking, and build pass.
+  The implementing worker reports 57 unit cases, type checking, and build pass.
   Its real builtin FTS proof passes against the exact published SDK. It proves
   excluded global roots were indexed before asserting filtered output. The
   patched-candidate run remains pending. Integration passes 30 native loop and

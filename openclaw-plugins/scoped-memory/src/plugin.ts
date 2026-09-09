@@ -1,5 +1,5 @@
 import { lstatSync, realpathSync } from "node:fs";
-import { isAbsolute, join } from "node:path";
+import { basename, dirname, isAbsolute, join } from "node:path";
 import type { AnyAgentTool, OpenClawPluginApi, OpenClawPluginToolContext } from "openclaw/plugin-sdk/core";
 import { resolveAgentWorkspaceDir, resolveMemorySearchConfig } from "openclaw/plugin-sdk/memory-core-host-engine-foundation";
 import { getActiveMemorySearchManager, type ScopedMemoryManager } from "openclaw/plugin-sdk/memory-host-search";
@@ -33,19 +33,22 @@ function integer(value: unknown, fallback: number, maximum: number): number {
   return value;
 }
 
-function allowedPath(path: unknown): path is string {
+function allowedPath(path: unknown, includeDreams = false): path is string {
   if (typeof path !== "string" || path.length > 1_024 || path.includes("\\") || /[\x00-\x1f\x7f]/.test(path) ||
       path !== path.trim() || isAbsolute(path) || path.split("/").some((part) => !part || part === "." || part === ".." || part.startsWith("."))) return false;
-  return path === "MEMORY.md" || path === "USER.md" || (path.startsWith("memory/") && path.endsWith(".md"));
+  return path === "MEMORY.md" || path === "USER.md" || (path.startsWith("memory/") && path.endsWith(".md")) ||
+    (includeDreams && path.toLowerCase() === "dreams.md" && path.endsWith(".md"));
 }
 
 function fileIdentity(workspace: string, path: string) {
-  if (!allowedPath(path)) fail("Path is outside scoped Markdown memory");
+  if (!allowedPath(path, true)) fail("Path is outside scoped Markdown memory");
   let current = workspace;
   for (const part of path.split("/")) {
     current = join(current, part);
     const stat = lstatSync(current);
-    if (stat.isSymbolicLink() || realpathSync(current) !== current) fail("Scoped memory does not follow symbolic links");
+    const canonical = realpathSync(current);
+    const dreamCaseAlias = path.toLowerCase() === "dreams.md" && dirname(canonical) === workspace && basename(canonical).toLowerCase() === "dreams.md";
+    if (stat.isSymbolicLink() || (canonical !== current && !dreamCaseAlias)) fail("Scoped memory does not follow symbolic links");
   }
   const stat = lstatSync(current);
   if (!stat.isFile() || stat.nlink !== 1) fail("Scoped memory requires a single-link regular file");
@@ -141,7 +144,7 @@ function factory(api: OpenClawPluginApi, allowed: ReadonlySet<string>, ctx: Open
     },
     {
       name: names[1], label: "Scoped memory read",
-      description: "Read a bounded excerpt from this agent's own Markdown memory. No other workspace files are accessible.",
+      description: "Read this agent's own MEMORY.md, USER.md, root dreams.md or Markdown files under memory/. No other workspace files are accessible.",
       parameters: { type: "object", required: ["path"], additionalProperties: false, properties: {
         path: { type: "string", maxLength: 1_024 },
         from: { type: "integer", minimum: 1 }, lines: { type: "integer", minimum: 1, maximum: MAX_LINES },
@@ -149,7 +152,7 @@ function factory(api: OpenClawPluginApi, allowed: ReadonlySet<string>, ctx: Open
       async execute(_id, input) {
         const args = record(input);
         keys(args, ["path", "from", "lines"]);
-        if (!allowedPath(args.path)) fail("Path is outside scoped Markdown memory");
+        if (!allowedPath(args.path, true)) fail("Path is outside scoped Markdown memory");
         const path = args.path;
         const from = integer(args.from, 1, Number.MAX_SAFE_INTEGER);
         const lines = integer(args.lines, 40, MAX_LINES);
