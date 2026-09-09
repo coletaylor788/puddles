@@ -130,6 +130,13 @@ export async function runScenario(installedDir, scenario, options = {}) {
       JSON.parse(readFileSync(imessageManifest, "utf8")).openclaw?.build?.bundledDist !== true) {
     throw new Error("The maintained iMessage plugin must be bundled in the installed candidate");
   }
+  const channelSchema = JSON.parse(readFileSync(
+    join(installedDir, "dist/extensions/imessage/openclaw.plugin.json"), "utf8",
+  )).channelConfigs?.imessage?.schema;
+  assert.equal(channelSchema?.properties?.coalesceSameSenderDms?.type, "boolean",
+    "packaged channel schema is missing maintained iMessage coalescing");
+  assert.equal(channelSchema?.properties?.accounts?.additionalProperties?.properties?.coalesceSameSenderDms?.type,
+    "boolean", "packaged account schema is missing maintained iMessage coalescing");
   const root = mkdtempSync(join(options.runDir ?? tmpdir(), `fixture-${scenario.id}-`));
   const context = isolatedContext(root);
   const requests = [];

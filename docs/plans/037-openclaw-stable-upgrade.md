@@ -21,8 +21,17 @@ to a mixed knowledge store. Where
 upstream moves responsibilities, adapt the patches to the new owner and keep
 the same regression coverage. Keep the maintained iMessage plugin inside the
 runtime archive instead of letting startup download an unpatched replacement.
+Its generated startup schema must match the maintained channel schema.
 Completion gathering must not acknowledge a child until its exact tool result
 is saved in the requesting session.
+
+A small plugin provides separate memory tools for agents that may read only
+their own notes. It binds the existing memory manager to the trusted calling
+agent and checks arguments, paths, and results at execution. It does not read
+the shared wiki. Private configuration denies the broader native memory and
+wiki tools for these agents. A missing plugin therefore removes their memory
+capability rather than exposing a broader fallback. Private consolidation
+policy and data remain outside the public repository.
 
 The release requires a newer Node runtime because older builds can truncate
 SQLite text. Development and public CI use an explicitly supported version.
@@ -41,22 +50,16 @@ and rollback remain in the existing deployment workflow.
 
 ### Status
 
-The first candidate passed the accumulated source regressions, build, packaging,
-and offline installation. Installed rehearsal found that stable no longer
-bundles iMessage and still removes its coalescing option during migration.
-Those paths are being repaired. The fixture also now follows stable's bootstrap
-files rather than requiring the retired generated TOOLS.md.
+The channel and completion repairs pass source regressions. The generated
+iMessage schema now matches the maintained option at channel and account scope.
+Installed rehearsal is continuing. A parent-assigned worker is adding the
+scoped memory adapter needed to preserve restricted agents' existing access.
 
-Independent review found that active gathering acknowledged a child too early.
-The repair keeps delivery pending until the exact tool result is committed.
-Its registry recovery and SQLite receipt cases pass, but the retained reviewer
-has not yet cleared the repair. The full gate must pass on the final candidate
-before integration.
-
-Memory migration is authorized, but derived-data cleanup is not. Builtin retains
-bounded lexical expansion, not QMD's model-generated expansion or learned
-reranking. Installed access checks remain a release prerequisite. Configuration
-coverage alone is not proof that every runtime read path enforces the boundary.
+The retained reviewer clears the earlier completion and channel repairs. The
+metadata correction and scoped adapter still need a full-diff recheck and the
+final accumulated gate. Memory migration is authorized, but derived-data cleanup
+is not. Builtin does not retain QMD's model expansion or learned reranking.
+Installed access checks remain required before integration.
 
 ## Agent section
 
@@ -70,6 +73,9 @@ coverage alone is not proof that every runtime read path enforces the boundary.
 - Upstream package manager: `pnpm@12.3.4`. Puddles keeps its own manager.
 - Implementation authorized. No design pause. No production deployment.
 - Parent confirmation is required before merging public source.
+- Parent-assigned worker `5501` exclusively owns `openclaw-plugins/scoped-memory/`
+  and, if needed, `packages/e2e/tests/candidate.scoped-memory.test.ts`.
+  This owner handles root registration, lockfile, commits, and final integration.
 
 ### Scope and acceptance criteria
 
@@ -77,6 +83,8 @@ coverage alone is not proof that every runtime read path enforces the boundary.
 - Update source and CI pins, Node preflight, public SDK consumers and docs.
 - Preserve cumulative manifest collection and fixture-only message delivery.
 - Commit regressions for compatibility changes and prerequisite boundaries.
+- Add reusable scoped memory tools that preserve local-note access without
+  allowing native shared-wiki or broader-memory fallback for restricted agents.
 - Pass the full accumulated public gate on the exact committed candidate.
 - Complete independent full-diff review and public remote checks.
 - Send exact candidate identity and retained evidence to the parent.
@@ -91,6 +99,11 @@ coverage alone is not proof that every runtime read path enforces the boundary.
   Do not restore retired workspace ownership or bypass skill policy.
 - Use a side-by-side supported Node toolchain, not a host-global upgrade.
 - Keep installation offline and keep source integration outside activation.
+- The scoped adapter uses distinct tool names and trusted factory agent context.
+  Call the existing memory manager directly with fixed memory sources. Guard
+  final arguments, paths, and results without a new index or policy framework.
+  Private configuration denies native memory/wiki tools for nonreaders and only
+  permits scoped tools where memory is enabled. No main-owner migration is needed.
 - Generic interpreter migration is included at the parent's request.
   `nodeMigration` retains both executable identities and the exact service
   argument index. The live target and activation remain with the release owner.
@@ -114,6 +127,9 @@ coverage alone is not proof that every runtime read path enforces the boundary.
 - Workshop preserves configured proposal factory and agent-owned storage.
 - Browser patch applies without change.
 - Public plugins pin the 2026.9.3 SDK and use `openclaw/plugin-sdk/core`.
+- A retained parent-assigned worker implements scoped-memory code, tests, and
+  local documentation. Integrate its exact contract into the workspace and
+  cumulative pool without editing its files concurrently.
 - CI uses Node 26.1.0 and Corepack 0.36.0. Offline timestamp regression follows
   upstream pnpm 12.3.4. Node preflight rejects unsupported SQLite runtimes.
 - `native-activation.mjs` and `native-interpreter-migration.test.ts` include
@@ -122,6 +138,9 @@ coverage alone is not proof that every runtime read path enforces the boundary.
   current media facts, and receive-time deadlines. The restored setting is opt-in.
   Restore root package inclusion and `bundledDist` for the maintained channel.
   Doctor must preserve both enabled and disabled root and account settings.
+  Regenerate `bundled-channel-config-metadata.generated.ts` with upstream
+  `pnpm config:channels:gen`; packaging consumes this snapshot rather than the
+  live Zod schema. Only iMessage metadata changes.
 - Yield gathering uses current execution fields, current-turn/agent ownership,
   exact run suppression, explicit collector exclusion, and truthful timeouts.
   Active or uncommitted handoffs remain retryable. Only a persisted tool result
@@ -152,15 +171,21 @@ coverage alone is not proof that every runtime read path enforces the boundary.
   Its SQLite test rejects an uncommitted or unrelated handoff.
 - The first managed run passed prepare, dependencies, build, accumulated
   regressions, extension packaging, root packaging, and offline install.
-  Installed scenarios remain blocked until the channel and fixture repairs pass.
+  The repaired candidate repeats those passes but fails installed startup on
+  the stale channel schema. The new parity regression reproduces the defect.
+  Regeneration, upstream metadata checking, and 23 channel schema cases pass.
 - Run `node packages/e2e/bin/openclaw-test-env.mjs ci` with a supported Node
   and explicitly selected isolated source and external run directory.
 - Retain collection evidence for every cumulative target.
 - Installed scenarios use the real channel protocol with scripted models and
   deny-by-default recording adapters. No live accounts or delivery.
   Require bundled iMessage before startup, disable registry package resolution,
-  and assert that startup retains the opt-in setting. The split-message case
+  require generated channel and account schema support, and assert that startup
+  retains the opt-in setting. The split-message case
   has no explicit debounce and delays its second source row by 400 milliseconds.
+- Rehearse scoped-memory tools against deterministic per-agent notes. Prove
+  restricted reads cannot reach other agents or the shared wiki, including
+  hostile tool arguments and missing-plugin behavior in the private composition.
 - Run fixture activation and rollback coverage through the accumulated pool.
 
 ### Rollout and rollback
@@ -175,7 +200,9 @@ coverage alone is not proof that every runtime read path enforces the boundary.
 
 - Retained independent reviewer found premature durable acknowledgment during
   active gathering. A repair now waits for a committed exact tool result.
-  The same reviewer is rechecking the full current diff. No interpreter finding.
+  The reviewer cleared the complete diff through `e83da72`, including the channel
+  packaging and migration repairs. The metadata correction still requires the
+  same reviewer's full-diff recheck. No interpreter finding.
 
 ### Checklist
 
@@ -183,6 +210,7 @@ coverage alone is not proof that every runtime read path enforces the boundary.
 - [x] Complete patch compatibility inventory.
 - [x] Rebase patches and public SDK consumers.
 - [x] Commit focused compatibility regressions and documentation.
+- [ ] Integrate the parent-assigned scoped memory adapter and its regressions.
 - [ ] Clear retained independent review.
 - [ ] Pass exact-candidate accumulated gate.
 - [ ] Confirm combined compatibility with parent.

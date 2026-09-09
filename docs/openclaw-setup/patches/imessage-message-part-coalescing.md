@@ -25,6 +25,10 @@ Stable otherwise downloads the official external plugin, which does not contain
 these changes. Doctor preserves the setting at channel and account scope,
 including explicit `false` overrides. Installed rehearsal refuses a missing
 bundled plugin and confirms that startup kept the configured option.
+The archive's channel schema comes from committed generated metadata. Regenerate
+it with upstream `pnpm config:channels:gen` after changing the channel schema.
+Source parity and installed channel/account checks prevent an old snapshot from
+rejecting the maintained option before the channel starts.
 
 The queue saves a notification before advancing its recovery cursor. Each
 grouped agent turn owns only its own message claims. Separate turns wait for

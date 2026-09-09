@@ -238,6 +238,28 @@ describe("recording fixture prerequisites", () => {
     })).rejects.toThrow("Invalid fixture incoming delay");
   });
 
+  it.each(["channel", "account"])("rejects stale packaged %s metadata before startup", async (missing) => {
+    const directory = root();
+    mkdirSync(join(directory, "dist/extensions/imessage"), { recursive: true });
+    mkdirSync(join(directory, "node_modules"));
+    writeFileSync(join(directory, "openclaw.mjs"), "");
+    writeFileSync(join(directory, "dist/entry.js"), "");
+    json(join(directory, "dist/extensions/imessage/package.json"), {
+      openclaw: { build: { bundledDist: true } },
+    });
+    json(join(directory, "dist/extensions/imessage/openclaw.plugin.json"), {
+      channelConfigs: { imessage: { schema: { properties: {
+        ...(missing === "channel" ? {} : { coalesceSameSenderDms: { type: "boolean" } }),
+        accounts: { additionalProperties: { properties: missing === "account"
+          ? {} : { coalesceSameSenderDms: { type: "boolean" } } } },
+      } } } },
+    });
+    await expect(runScenario(directory, {
+      id: "stale-packaged-schema",
+      steps: [{ incoming: [{ text: "fixture" }], responses: [{ text: "fixture" }], expect: { sends: ["fixture"] } }],
+    })).rejects.toThrow(`packaged ${missing} schema is missing maintained iMessage coalescing`);
+  });
+
   it("requires explicit valid local extensions and failed host availability is not green", async () => {
     expect((await loadExtension()).healthChecks).toEqual([]);
     const directory = root();
