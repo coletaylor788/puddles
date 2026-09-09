@@ -1,6 +1,6 @@
 # OpenClaw stable upgrade
 
-Status: Reviewing stable candidate
+Status: Repairing installed candidate
 Issue: #114
 Last updated: 2026-09-09
 
@@ -19,7 +19,10 @@ An authorized agent may read another agent's scoped memory without granting the
 reverse direction. Writes through trusted consolidation do not grant read access
 to a mixed knowledge store. Where
 upstream moves responsibilities, adapt the patches to the new owner and keep
-the same regression coverage.
+the same regression coverage. Keep the maintained iMessage plugin inside the
+runtime archive instead of letting startup download an unpatched replacement.
+Completion gathering must not acknowledge a child until its exact tool result
+is saved in the requesting session.
 
 The release requires a newer Node runtime because older builds can truncate
 SQLite text. Development and public CI use an explicitly supported version.
@@ -38,10 +41,17 @@ and rollback remain in the existing deployment workflow.
 
 ### Status
 
-The complete patch stack applies to the stable source. Runtime and extension
-type checks pass. Focused cases cover the maintained behaviors, migration, and
-interpreter rollback. Independent review is in progress. The full accumulated
-gate remains required before integration.
+The first candidate passed the accumulated source regressions, build, packaging,
+and offline installation. Installed rehearsal found that stable no longer
+bundles iMessage and still removes its coalescing option during migration.
+Those paths are being repaired. The fixture also now follows stable's bootstrap
+files rather than requiring the retired generated TOOLS.md.
+
+Independent review found that active gathering acknowledged a child too early.
+The repair keeps delivery pending until the exact tool result is committed.
+Its registry recovery and SQLite receipt cases pass, but the retained reviewer
+has not yet cleared the repair. The full gate must pass on the final candidate
+before integration.
 
 Memory migration is authorized, but derived-data cleanup is not. Builtin retains
 bounded lexical expansion, not QMD's model-generated expansion or learned
@@ -110,8 +120,13 @@ coverage alone is not proof that every runtime read path enforces the boundary.
   parent-assigned interpreter migration with explicit old canonical-path binding.
 - iMessage keeps stable durable ingress, per-flush claims, GUID reply context,
   current media facts, and receive-time deadlines. The restored setting is opt-in.
+  Restore root package inclusion and `bundledDist` for the maintained channel.
+  Doctor must preserve both enabled and disabled root and account settings.
 - Yield gathering uses current execution fields, current-turn/agent ownership,
   exact run suppression, explicit collector exclusion, and truthful timeouts.
+  Active or uncommitted handoffs remain retryable. Only a persisted tool result
+  with the exact requester session, tool call, and execution IDs can acknowledge
+  completion through the existing durable registry.
 - Native and ACP target policy follows relocated request and launch boundaries.
   Prompt fixtures are regenerated with the documented upstream generator.
 - `builtin-memory-migration` replaces retired transport code with config and
@@ -132,11 +147,20 @@ coverage alone is not proof that every runtime read path enforces the boundary.
 - All eight exported patches apply sequentially to clean stable source and all
   mapped targets exist. Actual project collection is checked before execution.
 - Upstream `pnpm tsgo:core` and `pnpm tsgo:extensions` pass.
+- The repaired gather passes 502 focused cases and the core type check. Its
+  real registry controller test retains pending completion across interruption.
+  Its SQLite test rejects an uncommitted or unrelated handoff.
+- The first managed run passed prepare, dependencies, build, accumulated
+  regressions, extension packaging, root packaging, and offline install.
+  Installed scenarios remain blocked until the channel and fixture repairs pass.
 - Run `node packages/e2e/bin/openclaw-test-env.mjs ci` with a supported Node
   and explicitly selected isolated source and external run directory.
 - Retain collection evidence for every cumulative target.
 - Installed scenarios use the real channel protocol with scripted models and
   deny-by-default recording adapters. No live accounts or delivery.
+  Require bundled iMessage before startup, disable registry package resolution,
+  and assert that startup retains the opt-in setting. The split-message case
+  has no explicit debounce and delays its second source row by 400 milliseconds.
 - Run fixture activation and rollback coverage through the accumulated pool.
 
 ### Rollout and rollback
@@ -149,8 +173,9 @@ coverage alone is not proof that every runtime read path enforces the boundary.
 
 ### Review log
 
-- Retained independent reviewer is reviewing the complete current behavior diff,
-  including interpreter migration and all generated patch artifacts.
+- Retained independent reviewer found premature durable acknowledgment during
+  active gathering. A repair now waits for a committed exact tool result.
+  The same reviewer is rechecking the full current diff. No interpreter finding.
 
 ### Checklist
 

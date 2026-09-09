@@ -14,8 +14,9 @@ export default [
   },
   {
     id: "split-message-parts",
+    inboundDebounceMs: null,
     steps: [{
-      incoming: [{ text: "What link is this?", guid: "split-guid-text" }, { text: "https://example.test/item", guid: "split-guid-link", reply_to_guid: "split-guid-text", balloon_bundle_id: "com.apple.messages.URLBalloonProvider" }],
+      incoming: [{ text: "What link is this?", guid: "split-guid-text" }, { delayMs: 400, text: "https://example.test/item", guid: "split-guid-link", reply_to_guid: "split-guid-text", balloon_bundle_id: "com.apple.messages.URLBalloonProvider" }],
       responses: [{ text: "Received both parts." }],
       expect: { sends: ["Received both parts."], promptIncludes: ["What link is this?", "https://example.test/item"] },
     }],

@@ -20,6 +20,12 @@ restores the opt-in setting, notification metadata, and selective grouping on
 top of the new durable inbound queue. It does not restore the retired replay
 guard or replace the release's GUID and media representations.
 
+The patch also keeps iMessage in the built runtime and npm file selection.
+Stable otherwise downloads the official external plugin, which does not contain
+these changes. Doctor preserves the setting at channel and account scope,
+including explicit `false` overrides. Installed rehearsal refuses a missing
+bundled plugin and confirms that startup kept the configured option.
+
 The queue saves a notification before advancing its recovery cursor. Each
 grouped agent turn owns only its own message claims. Separate turns wait for
 admission in order, rather than sharing one completion claim. The hold deadline

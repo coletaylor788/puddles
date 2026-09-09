@@ -1,3 +1,16 @@
+diff --git a/extensions/imessage/package.json b/extensions/imessage/package.json
+index 6312b038659..d5063598fae 100644
+--- a/extensions/imessage/package.json
++++ b/extensions/imessage/package.json
+@@ -100,7 +100,7 @@
+     },
+     "build": {
+       "openclawVersion": "2026.9.3",
+-      "bundledDist": false
++      "bundledDist": true
+     },
+     "release": {
+       "publishToClawHub": true,
 diff --git a/extensions/imessage/src/config-schema.test.ts b/extensions/imessage/src/config-schema.test.ts
 index 524c8694eec..72190f444a6 100644
 --- a/extensions/imessage/src/config-schema.test.ts
@@ -2975,6 +2988,80 @@ index 332d23a9761..5304bf59fa8 100644
    is_from_me?: boolean | null;
    text?: string | null;
    // Thread origin owns quote identity; direct reply GUID also links poll captions.
+diff --git a/package.json b/package.json
+index 5751a829954..534dadc3674 100644
+--- a/package.json
++++ b/package.json
+@@ -299,7 +299,6 @@
+     "!dist/extensions/gradium/**",
+     "!dist/extensions/groq/**",
+     "!dist/extensions/inworld/**",
+-    "!dist/extensions/imessage/**",
+     "!dist/extensions/irc/**",
+     "!dist/extensions/kilocode/**",
+     "!dist/extensions/kimi-coding/**",
+diff --git a/src/commands/doctor/shared/legacy-config-migrations.runtime.retired.test.ts b/src/commands/doctor/shared/legacy-config-migrations.runtime.retired.test.ts
+index 51c67feeb0b..b562bdc5be4 100644
+--- a/src/commands/doctor/shared/legacy-config-migrations.runtime.retired.test.ts
++++ b/src/commands/doctor/shared/legacy-config-migrations.runtime.retired.test.ts
+@@ -562,10 +562,11 @@ describe("retired runtime config migrations", () => {
+           },
+         },
+         imessage: {
++          coalesceSameSenderDms: true,
+           accounts: {
+-            z: {},
++            z: { coalesceSameSenderDms: true },
+             malformed: false,
+-            a: {},
++            a: { coalesceSameSenderDms: true },
+           },
+         },
+       },
+@@ -578,12 +579,22 @@ describe("retired runtime config migrations", () => {
+       "Moved channels.slack.identity → channels.slack.postAs.",
+       "Removed channels.slack.accounts.z.identity (channels.slack.accounts.z.postAs already set).",
+       "Moved channels.slack.accounts.a.identity → channels.slack.accounts.a.postAs.",
+-      "Removed channels.imessage.coalesceSameSenderDms.",
+-      "Removed channels.imessage.accounts.z.coalesceSameSenderDms.",
+-      "Removed channels.imessage.accounts.a.coalesceSameSenderDms.",
+     ]);
+   });
+ 
++  it.each([true, false])("preserves explicit iMessage coalescing policy (%s)", (enabled) => {
++    const channels = {
++      imessage: {
++        coalesceSameSenderDms: enabled,
++        accounts: { separate: { coalesceSameSenderDms: !enabled } },
++      },
++    };
++    const expected = structuredClone(channels);
++    const result = applyAll({ channels });
++    expect(result.raw.channels).toEqual(expected);
++    expect(result.changes.some((change) => change.includes("coalesceSameSenderDms"))).toBe(false);
++  });
++
+   it("migrates the config tranche while preserving canonical settings", () => {
+     const result = applyAll({
+       ui: {
+diff --git a/src/commands/doctor/shared/legacy-config-migrations.runtime.retired.ts b/src/commands/doctor/shared/legacy-config-migrations.runtime.retired.ts
+index ae836403703..2d450247a89 100644
+--- a/src/commands/doctor/shared/legacy-config-migrations.runtime.retired.ts
++++ b/src/commands/doctor/shared/legacy-config-migrations.runtime.retired.ts
+@@ -387,13 +387,6 @@ function migrateFinalLayoutKills(raw: Record<string, unknown>, changes: string[]
+       delete entry.socketMode;
+     }
+   });
+-  visitChannelEntries(raw, "imessage", (entry, path) => {
+-    if (Object.hasOwn(entry, "coalesceSameSenderDms")) {
+-      delete entry.coalesceSameSenderDms;
+-      changes.push(`Removed ${path}.coalesceSameSenderDms.`);
+-    }
+-  });
+-
+   const commands = getRecord(raw.commands);
+   for (const key of ["ownerDisplay", "ownerDisplaySecret"]) {
+     if (commands && Object.hasOwn(commands, key)) {
 diff --git a/src/config/dead-config-keys.test.ts b/src/config/dead-config-keys.test.ts
 index 17467a4b59e..d66db1761ae 100644
 --- a/src/config/dead-config-keys.test.ts

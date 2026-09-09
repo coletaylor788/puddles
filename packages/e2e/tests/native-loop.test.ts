@@ -215,6 +215,29 @@ describe("recording fixture prerequisites", () => {
     await expect(runScenario(root(), { id: "missing-runtime", steps: [{ incoming: [{ text: "test" }], responses: [{ text: "test" }], expect: { sends: ["test"] } }] })).rejects.toThrow("real installed");
   });
 
+  it("rejects an omitted maintained channel before a fixture can install an external replacement", async () => {
+    const directory = root();
+    mkdirSync(join(directory, "dist"));
+    mkdirSync(join(directory, "node_modules"));
+    writeFileSync(join(directory, "openclaw.mjs"), "");
+    writeFileSync(join(directory, "dist/entry.js"), "");
+    await expect(runScenario(directory, {
+      id: "missing-maintained-channel",
+      steps: [{ incoming: [{ text: "fixture" }], responses: [{ text: "fixture" }], expect: { sends: ["fixture"] } }],
+    })).rejects.toThrow("maintained iMessage plugin must be bundled");
+    const env = fixtureEnv(isolatedContext(join(directory, "context")));
+    expect(env.npm_config_offline).toBe("true");
+    expect(env.COREPACK_ENABLE_NETWORK).toBe("0");
+    expect(env.npm_config_cache).toBe(join(directory, "context/home/.npm"));
+  });
+
+  it.each([-1, 1001, NaN])("rejects an unbounded incoming fixture delay (%s)", async (delayMs) => {
+    await expect(runScenario(root(), {
+      id: "invalid-delay",
+      steps: [{ incoming: [{ text: "fixture", delayMs }], responses: [], expect: { sends: [] } }],
+    })).rejects.toThrow("Invalid fixture incoming delay");
+  });
+
   it("requires explicit valid local extensions and failed host availability is not green", async () => {
     expect((await loadExtension()).healthChecks).toEqual([]);
     const directory = root();

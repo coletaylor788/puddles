@@ -7,6 +7,7 @@
     "src/agents/tools/yield-descendant-gather.test.ts": "agents-tools",
     "src/agents/subagents/announce/subagent-announce-delivery.test.ts": "agents-support",
     "src/agents/subagents/registry/subagent-registry-queries.test.ts": "unit-fast",
+    "src/agents/subagents/registry/subagent-registry-lifecycle.test.ts": "agents-support",
     "src/cron/isolated-agent/subagent-followup.test.ts": "cron",
     "src/agents/subagents/spawn/acp-spawn.test.ts": "agents-support",
     "src/agents/subagents/spawn/subagent-spawn.test.ts": "agents-support",
@@ -18,6 +19,7 @@
     "extensions/imessage/src/monitor/parse-notification.coalescing.test.ts": "extension-imessage",
     "extensions/imessage/src/monitor/ingress.test.ts": "extension-imessage",
     "src/config/dead-config-keys.test.ts": "runtime-config",
+    "src/commands/doctor/shared/legacy-config-migrations.runtime.retired.test.ts": "unit-fast",
     "src/commands/sandbox.test.ts": "commands",
     "packages/memory-host-sdk/src/host/backend-config.test.ts": "unit-fast-isolated",
     "src/commands/doctor/shared/legacy-config-migrations.memory-isolation.test.ts": "commands",
@@ -41,6 +43,7 @@
         "src/agents/tools/yield-descendant-gather.test.ts",
         "src/agents/subagents/announce/subagent-announce-delivery.test.ts",
         "src/agents/subagents/registry/subagent-registry-queries.test.ts",
+        "src/agents/subagents/registry/subagent-registry-lifecycle.test.ts",
         "src/cron/isolated-agent/subagent-followup.test.ts"
       ]
     },
@@ -66,7 +69,8 @@
         "extensions/imessage/src/config-schema.test.ts",
         "extensions/imessage/src/monitor/parse-notification.coalescing.test.ts",
         "extensions/imessage/src/monitor/ingress.test.ts",
-        "src/config/dead-config-keys.test.ts"
+        "src/config/dead-config-keys.test.ts",
+        "src/commands/doctor/shared/legacy-config-migrations.runtime.retired.test.ts"
       ]
     },
     {

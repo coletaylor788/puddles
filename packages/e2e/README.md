@@ -47,6 +47,14 @@ It installs that archive offline in a fresh prefix and executes all
 committed native scenarios. A missing test, runtime, dependency, recorder,
 scenario, or selected required health prerequisite is a failure, not a skip.
 
+Installed fixtures require the maintained bundled iMessage plugin before
+startup and disable registry package resolution. They also check that startup
+preserves its coalescing option. The split-message scenario omits an explicit
+debounce and delays the linked payload by 400 milliseconds, so ordinary
+debouncing cannot stand in for the maintained behavior. Other scenarios retain
+their explicit 250-millisecond debounce. Fixture delays are bounded to one second.
+Bootstrap checks follow the stable AGENTS, SOUL, IDENTITY, and USER files.
+
 `openclaw-patch-suite.json` retains the cumulative patch order, test targets, and
 explicit upstream Vitest projects. New patches must register every added test.
 Do not replace earlier regressions with only the newest feature's targets.

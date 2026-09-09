@@ -1,5 +1,5 @@
 diff --git a/src/agents/openclaw-tools.ts b/src/agents/openclaw-tools.ts
-index cf79f2e64d9..62a7f5af83d 100644
+index cf79f2e64d9..1ab52b1a68a 100644
 --- a/src/agents/openclaw-tools.ts
 +++ b/src/agents/openclaw-tools.ts
 @@ -88,6 +88,7 @@ import { createTtsTool } from "./tools/tts-tool.js";
@@ -10,44 +10,294 @@ index cf79f2e64d9..62a7f5af83d 100644
  
  export { filterToolsByClientCaps } from "./openclaw-tools.client-caps.js";
  export function createOpenClawTools(options?: OpenClawToolsOptions): AnyAgentTool[] {
-@@ -601,6 +602,12 @@ export function createOpenClawTools(options?: OpenClawToolsOptions): AnyAgentToo
+@@ -601,6 +602,14 @@ export function createOpenClawTools(options?: OpenClawToolsOptions): AnyAgentToo
      ...swarmToolGroups.agentsWait,
      createSessionsYieldTool({
        sessionId: options?.sessionId,
-+      gatherDescendants: () =>
++      gatherDescendants: (toolCallId) =>
 +        gatherYieldDescendants({
 +          agentSessionKey: trimmedRunSessionKey || options?.agentSessionKey,
 +          requesterAgentId: sessionAgentId,
++          requesterSessionId: options?.sessionId,
 +          requesterTurnRunId: options?.runId,
++          toolCallId,
 +        }),
        claimYield: createRequesterYieldCallback({
          requesterSessionKey: trimmedRunSessionKey || options?.agentSessionKey,
          requesterAgentId: sessionAgentId,
+diff --git a/src/agents/subagents/announce/subagent-announce-delivery.test.ts b/src/agents/subagents/announce/subagent-announce-delivery.test.ts
+index f8628be20a7..22421a3a504 100644
+--- a/src/agents/subagents/announce/subagent-announce-delivery.test.ts
++++ b/src/agents/subagents/announce/subagent-announce-delivery.test.ts
+@@ -8,6 +8,7 @@ import type { SessionEntry } from "../../../config/sessions.js";
+ import { formatSqliteSessionFileMarker } from "../../../config/sessions/legacy-sqlite-marker.js";
+ import {
+   loadTranscriptEvents,
++  persistSessionTranscriptTurn,
+   replaceSessionEntry,
+ } from "../../../config/sessions/session-accessor.js";
+ import type { OpenClawConfig } from "../../../config/types.openclaw.js";
+@@ -52,6 +53,7 @@ import {
+   musicCompletionEvents,
+   taskCompletionEvents,
+ } from "../../subagent-test-fixtures.test-helpers.js";
++import { markYieldGathered } from "../../tools/yield-gather-state.js";
+ import {
+   testing,
+   deliverSubagentAnnouncement,
+@@ -108,6 +110,84 @@ afterEach(() => {
+ });
+ 
+ describe("queued completion handoff", () => {
++  it("credits a gathered result only after its exact tool result is committed", async () => {
++    const root = tempDirs.make("yield-gather-handoff-");
++    const scope = {
++      agentId: "main",
++      sessionKey: "agent:main:main",
++      sessionId: "yield-gather-parent",
++      storePath: path.join(root, "main.sqlite"),
++    };
++    const runId = "durable-yield-gather-result";
++    const toolCallId = "durable-yield-tool-call";
++    testing.setDepsForTest({
++      loadRequesterSessionEntry: () => ({
++        cfg: {},
++        agentId: scope.agentId,
++        canonicalKey: scope.sessionKey,
++        storePath: scope.storePath,
++        entry: { sessionId: scope.sessionId, updatedAt: Date.now() },
++      }),
++    });
++    markYieldGathered(runId, {
++      requesterSessionKey: scope.sessionKey,
++      requesterSessionId: scope.sessionId,
++      requesterAgentId: scope.agentId,
++      toolCallId,
++    });
++    const params = {
++      requesterSessionKey: scope.sessionKey,
++      targetRequesterSessionKey: scope.sessionKey,
++      requesterIsSubagent: false,
++      sourceRunId: runId,
++      triggerMessage: "child result",
++      steerMessage: "child result",
++      expectsCompletionMessage: true,
++      directIdempotencyKey: runId,
++    };
++    await persistSessionTranscriptTurn(scope, {
++      messages: [
++        {
++          eventId: "request",
++          parentId: null,
++          message: { role: "user", content: "collect children" },
++        },
++      ],
++      touchSessionEntry: false,
++    });
++    expect(await deliverSubagentAnnouncement(params)).toMatchObject({
++      delivered: false,
++      disposition: "retryable",
++    });
++    const toolResult = {
++      role: "toolResult",
++      toolName: "sessions_yield",
++      toolCallId,
++      isError: false,
++      content: [{ type: "text", text: "child result" }],
++      details: { status: "subagent_results", gatheredRunIds: [runId] },
++    };
++    await persistSessionTranscriptTurn(scope, {
++      messages: [
++        {
++          eventId: "unrelated",
++          parentId: "request",
++          message: { ...toolResult, toolCallId: "different-call" },
++        },
++      ],
++      touchSessionEntry: false,
++    });
++    expect((await deliverSubagentAnnouncement(params)).delivered).toBe(false);
++    await persistSessionTranscriptTurn(scope, {
++      messages: [{ eventId: "handoff", parentId: "unrelated", message: toolResult }],
++      touchSessionEntry: false,
++    });
++    expect(await deliverSubagentAnnouncement(params)).toMatchObject({
++      delivered: true,
++      terminal: true,
++    });
++  });
++
+   it.each(["delivered", "source retired", "long execution", "delivery deadline"] as const)(
+     "keeps an accepted busy-parent completion pending until execution: %s",
+     async (outcome) => {
 diff --git a/src/agents/subagents/announce/subagent-announce-delivery.ts b/src/agents/subagents/announce/subagent-announce-delivery.ts
-index 3eeb51a00c4..ea97ed77406 100644
+index 3eeb51a00c4..d5be21a59c5 100644
 --- a/src/agents/subagents/announce/subagent-announce-delivery.ts
 +++ b/src/agents/subagents/announce/subagent-announce-delivery.ts
-@@ -25,6 +25,7 @@ import {
+@@ -3,7 +3,9 @@
+  *
+  * Routes completion payloads through gateway/channel/session paths and records delivery evidence.
+  */
++import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
+ import { completionRequiresMessageToolDelivery } from "../../../auto-reply/reply/completion-delivery-policy.js";
++import { readRecentSessionTranscriptMessageEvents } from "../../../config/sessions/session-accessor.js";
+ import { scheduleSessionDelivery } from "../../../infra/session-delivery-queue-runtime.js";
+ import {
+   enqueueClaimedSessionDelivery,
+@@ -25,6 +27,7 @@ import {
    formatAgentInternalEventsForPrompt,
    type AgentInternalEvent,
  } from "../../internal-events.js";
-+import { isYieldGathered, isYieldGathering } from "../../tools/yield-gather-state.js";
++import { getYieldGatherHandoff, isYieldGathering } from "../../tools/yield-gather-state.js";
  import { admitCorrelatedSubagentSessionDelivery } from "../completion/subagent-completion-delivery.js";
  import { getSubagentDepthFromSessionStore } from "../spawn/subagent-depth.js";
  import { maybeSteerSubagentAnnounce } from "./subagent-announce-active-wake.js";
-@@ -165,6 +166,12 @@ export async function deliverSubagentAnnouncement(params: {
+@@ -165,6 +168,46 @@ export async function deliverSubagentAnnouncement(params: {
    if (sourceOwnerChanged()) {
      return sourceOwnerChangedResult();
    }
-+  if (
-+    params.sourceRunId &&
-+    (isYieldGathering(params.sourceRunId) || isYieldGathered(params.sourceRunId))
-+  ) {
-+    return { delivered: true, path: "none", terminal: true };
++  const handoff = params.sourceRunId ? getYieldGatherHandoff(params.sourceRunId) : undefined;
++  if (params.sourceRunId && (isYieldGathering(params.sourceRunId) || handoff)) {
++    if (!isYieldGathering(params.sourceRunId) && handoff) {
++      const requester = loadRequesterSessionEntry(
++        handoff.requesterSessionKey,
++        handoff.requesterAgentId,
++      );
++      if (requester.agentId && requester.entry?.sessionId === handoff.requesterSessionId) {
++        const history = readRecentSessionTranscriptMessageEvents(
++          {
++            agentId: requester.agentId,
++            sessionId: handoff.requesterSessionId,
++            sessionKey: handoff.requesterSessionKey,
++            storePath: requester.storePath,
++          },
++          { maxMessages: 100, maxLines: 100, maxBytes: 8 * 1024 * 1024 },
++        );
++        const committed = history.events.some(({ event }) => {
++          const message = asOptionalRecord(asOptionalRecord(event)?.message);
++          const details = asOptionalRecord(message?.details);
++          return (
++            message?.role === "toolResult" &&
++            message.toolName === "sessions_yield" &&
++            message.toolCallId === handoff.toolCallId &&
++            message.isError !== true &&
++            (details?.status === "subagent_results" || details?.status === "subagents_pending") &&
++            Array.isArray(details.gatheredRunIds) &&
++            details.gatheredRunIds.includes(params.sourceRunId)
++          );
++        });
++        if (committed) return { delivered: true, path: "none", terminal: true };
++      }
++    }
++    return {
++      delivered: false,
++      path: "none",
++      reason: "completion_handoff_pending",
++      disposition: "retryable",
++    };
 +  }
    const durableGeneratedMediaHandoff =
      params.expectsCompletionMessage &&
      isAgentMediatedCompletionSourceTool(params.sourceTool) &&
+diff --git a/src/agents/subagents/registry/subagent-registry-lifecycle.test.ts b/src/agents/subagents/registry/subagent-registry-lifecycle.test.ts
+index 0a3d05ed913..78991c9b7bd 100644
+--- a/src/agents/subagents/registry/subagent-registry-lifecycle.test.ts
++++ b/src/agents/subagents/registry/subagent-registry-lifecycle.test.ts
+@@ -25,6 +25,8 @@ import {
+   buildAnnounceIdempotencyKey,
+ } from "../../announce-idempotency.js";
+ import { createStructuredOutputTool } from "../../tools/structured-output-tool.js";
++import { clearYieldGathering, markYieldGathering } from "../../tools/yield-gather-state.js";
++import { deliverSubagentAnnouncement } from "../announce/subagent-announce-delivery.js";
+ import {
+   runSubagentAnnounceDispatch,
+   type SubagentAnnounceDeliveryResult,
+@@ -35,6 +37,7 @@ import {
+   SUBAGENT_ENDED_REASON_KILLED,
+ } from "./subagent-lifecycle-events.js";
+ import { shouldSuppressSubagentRecoverySessionEffects } from "./subagent-recovery-state.js";
++import * as cleanupDecisions from "./subagent-registry-cleanup.js";
+ import { loadPendingFinalDeliveryPayload } from "./subagent-registry-lifecycle-delivery.js";
+ import {
+   SubagentLifecycleController,
+@@ -572,6 +575,77 @@ describe("subagent registry lifecycle hardening", () => {
+     });
+   });
+ 
++  it("retains durable completion when a blocking gather is interrupted before handoff", async () => {
++    const actualCleanup = await vi.importActual<typeof import("./subagent-registry-cleanup.js")>(
++      "./subagent-registry-cleanup.js",
++    );
++    const cleanupDecision = vi
++      .spyOn(cleanupDecisions, "resolveDeferredCleanupDecision")
++      .mockImplementation(actualCleanup.resolveDeferredCleanupDecision);
++    const entry = createRunEntry({
++      runId: "interrupted-yield-gather",
++      createdAt: Date.now(),
++      startedAt: Date.now(),
++      expectsCompletionMessage: true,
++      retainAttachmentsOnKeep: true,
++    });
++    let persisted: SubagentRunRecord | undefined;
++    const persist = vi.fn(() => {
++      persisted = structuredClone(entry);
++    });
++    const runSubagentAnnounceFlow: LifecycleControllerParams["runSubagentAnnounceFlow"] = async (
++      params,
++    ) => {
++      const result = await deliverSubagentAnnouncement({
++        requesterSessionKey: entry.requesterSessionKey,
++        targetRequesterSessionKey: entry.requesterSessionKey,
++        requesterIsSubagent: false,
++        sourceRunId: entry.runId,
++        triggerMessage: "completed child",
++        steerMessage: "completed child",
++        expectsCompletionMessage: true,
++        directIdempotencyKey: "interrupted-yield-gather",
++      });
++      params.onDeliveryResult?.(result);
++      return result.delivered ? "delivered" : "retryable";
++    };
++    const controller = createLifecycleController({ entry, persist, runSubagentAnnounceFlow });
++    markYieldGathering(entry.runId);
++    try {
++      await completeRun(controller, entry, {
++        endedAt: Date.now(),
++        triggerCleanup: true,
++        terminalReply: { disposition: "visible", text: "completed child" },
++      });
++      await waitForLifecycleState(() => {
++        expect(persisted?.delivery?.disposition).toBe("retryable");
++        expect(persisted?.completion?.resultText).toBe("completed child");
++        expect(persisted?.cleanupHandled).toBe(false);
++      });
++      expect(persisted?.delivery?.status).not.toBe("delivered");
++      expect(hasDeliveredTaskStatusUpdate(entry.runId)).toBe(false);
++    } finally {
++      clearYieldGathering(entry.runId);
++      controller.clearScheduledResumeTimers();
++      cleanupDecision.mockRestore();
++    }
++    if (!persisted) throw new Error("Expected a durable pending completion");
++    const restored = structuredClone(persisted);
++    const resumed = createLifecycleController({
++      entry: restored,
++      runSubagentAnnounceFlow: async (params) => {
++        params.onDeliveryResult?.({ delivered: true, path: "direct" });
++        return "delivered";
++      },
++    });
++    try {
++      expect(resumed.startSubagentAnnounceCleanupFlow(restored.runId, restored)).toBe(true);
++      await waitForLifecycleState(() => expect(restored.delivery?.status).toBe("delivered"));
++    } finally {
++      resumed.clearScheduledResumeTimers();
++    }
++  });
++
+   it("fails a required successful completion without producer reply evidence", async () => {
+     const entry = createRunEntry({ expectsCompletionMessage: true });
+     const captureSubagentCompletionReply = vi.fn(async () => "stale transcript reply");
 diff --git a/src/agents/subagents/registry/subagent-registry-maintenance.ts b/src/agents/subagents/registry/subagent-registry-maintenance.ts
 index 9fde2d0dded..ce5239ce898 100644
 --- a/src/agents/subagents/registry/subagent-registry-maintenance.ts
@@ -205,7 +455,7 @@ index d421cf9d947..c8aeeb6f265 100644
 +  });
  });
 diff --git a/src/agents/tools/sessions-yield-tool.ts b/src/agents/tools/sessions-yield-tool.ts
-index 0ccdae30cb7..1ba6213aa8c 100644
+index 0ccdae30cb7..f310f1d6871 100644
 --- a/src/agents/tools/sessions-yield-tool.ts
 +++ b/src/agents/tools/sessions-yield-tool.ts
 @@ -4,6 +4,7 @@
@@ -220,20 +470,29 @@ index 0ccdae30cb7..1ba6213aa8c 100644
  /** Creates the sessions_yield tool for runtimes that support yield callbacks. */
  export function createSessionsYieldTool(opts?: {
    sessionId?: string;
-+  gatherDescendants?: () => Promise<YieldDescendantGatherResult>;
++  gatherDescendants?: (toolCallId: string) => Promise<YieldDescendantGatherResult>;
    claimYield?: () => boolean | Promise<boolean>;
    onYield?: (message: string, acknowledgment?: string) => Promise<void> | void;
  }): AnyAgentTool {
-@@ -43,6 +45,18 @@ export function createSessionsYieldTool(opts?: {
+@@ -36,13 +38,26 @@ export function createSessionsYieldTool(opts?: {
+     description:
+       "End turn for announced child completion events. Collector runs require explicit collection instead. For an otherwise-silent interactive parent turn, acknowledgment can send a waiting reply.",
+     parameters: SessionsYieldToolSchema,
+-    execute: async (_toolCallId, args) => {
++    execute: async (toolCallId, args) => {
+       const params = args as Record<string, unknown>;
+       const message = readToolStringParam(params, "message") || "Turn yielded.";
+       const acknowledgment = readToolStringParam(params, "acknowledgment") || undefined;
        if (!opts?.sessionId) {
          return jsonResult({ status: "error", error: "No session context" });
        }
 +      if (opts.gatherDescendants) {
-+        const gathered = await opts.gatherDescendants();
++        const gathered = await opts.gatherDescendants(toolCallId);
 +        if (gathered.active) {
 +          return jsonResult({
 +            status: gathered.timedOut ? "subagents_pending" : "subagent_results",
 +            results: gathered.results ?? "(no readable content returned by completed subagents)",
++            gatheredRunIds: gathered.gatheredRunIds ?? [],
 +            instruction: gathered.timedOut
 +              ? "Some subagents are still running. Continue collecting their results before giving a final answer."
 +              : "Your subagents have finished. Synthesize the results into your final reply. Do not call sessions_yield again.",
@@ -245,10 +504,10 @@ index 0ccdae30cb7..1ba6213aa8c 100644
        }
 diff --git a/src/agents/tools/yield-descendant-gather.test.ts b/src/agents/tools/yield-descendant-gather.test.ts
 new file mode 100644
-index 00000000000..485a3a4eee5
+index 00000000000..bfa134eb110
 --- /dev/null
 +++ b/src/agents/tools/yield-descendant-gather.test.ts
-@@ -0,0 +1,103 @@
+@@ -0,0 +1,107 @@
 +import { beforeEach, describe, expect, it, vi } from "vitest";
 +import { gatherYieldDescendants } from "../yield-descendant-gather.js";
 +import { isYieldGathered, isYieldGathering } from "./yield-gather-state.js";
@@ -278,7 +537,9 @@ index 00000000000..485a3a4eee5
 +const params = {
 +  agentSessionKey: "agent:main:main",
 +  requesterAgentId: "main",
++  requesterSessionId: "requester-session",
 +  requesterTurnRunId: "current-turn",
++  toolCallId: "gather-tool-call",
 +};
 +
 +describe("blocking gather on current registry records", () => {
@@ -308,6 +569,7 @@ index 00000000000..485a3a4eee5
 +      active: true,
 +      timedOut: false,
 +      results: "frozen child result",
++      gatheredRunIds: [owned.runId, nested.runId],
 +    });
 +    expect(mocks.read).toHaveBeenCalledWith({
 +      sessionKey: params.agentSessionKey,
@@ -334,6 +596,7 @@ index 00000000000..485a3a4eee5
 +      active: true,
 +      timedOut: true,
 +      results: undefined,
++      gatheredRunIds: [],
 +    });
 +    expect(isYieldGathered(owned.runId)).toBe(false);
 +    expect(isYieldGathering(owned.runId)).toBe(false);
@@ -400,28 +663,32 @@ index 00000000000..89a70e356a3
 +});
 diff --git a/src/agents/tools/yield-gather-state.ts b/src/agents/tools/yield-gather-state.ts
 new file mode 100644
-index 00000000000..f03cec045c0
+index 00000000000..8e23ff8297d
 --- /dev/null
 +++ b/src/agents/tools/yield-gather-state.ts
-@@ -0,0 +1,67 @@
+@@ -0,0 +1,75 @@
 +/**
 + * Cross-module state coordinating block-at-yield gather with announce delivery.
 + * Backed by `globalThis` so it's a true singleton even across bundled chunks.
 + *
-+ * Both sets use exact execution IDs, not reusable child or requester sessions.
-+ * `keys` prevents active gathers from leaking raw results. `done` suppresses
-+ * delayed announcements for results already returned to the parent.
++ * Both collections use exact execution IDs, not reusable sessions.
++ * A completed read is only a candidate handoff. Delivery must find its
++ * committed tool result before acknowledging the durable child completion.
 + */
-+type YieldGatherStore = { keys: Set<string>; done: Set<string> };
++export type YieldGatherHandoff = {
++  requesterSessionKey: string;
++  requesterSessionId: string;
++  requesterAgentId?: string;
++  toolCallId: string;
++};
++type YieldGatherStore = { keys: Set<string>; done: Map<string, YieldGatherHandoff> };
 +
 +const DONE_CAP = 500;
 +
 +function store(): YieldGatherStore {
 +  const g = globalThis as typeof globalThis & { __ocYieldGather?: YieldGatherStore };
 +  if (!g.__ocYieldGather) {
-+    g.__ocYieldGather = { keys: new Set<string>(), done: new Set<string>() };
-+  } else if (!g.__ocYieldGather.done) {
-+    g.__ocYieldGather.done = new Set<string>();
++    g.__ocYieldGather = { keys: new Set<string>(), done: new Map() };
 +  }
 +  return g.__ocYieldGather;
 +}
@@ -446,18 +713,18 @@ index 00000000000..f03cec045c0
 +}
 +
 +/** Record an execution whose result a yield gather has returned. */
-+export function markYieldGathered(childSessionKey: string): void {
++export function markYieldGathered(childSessionKey: string, handoff: YieldGatherHandoff): void {
 +  const key = childSessionKey?.trim();
 +  if (!key) {
 +    return;
 +  }
 +  const done = store().done;
-+  done.add(key);
++  done.set(key, handoff);
 +  // Bound growth over a long-lived process.
 +  if (done.size > DONE_CAP) {
 +    const excess = done.size - DONE_CAP;
 +    let i = 0;
-+    for (const k of done) {
++    for (const k of done.keys()) {
 +      if (i++ >= excess) {
 +        break;
 +      }
@@ -466,17 +733,21 @@ index 00000000000..f03cec045c0
 +  }
 +}
 +
-+/** True once a yield gather has already delivered this subagent's result. */
++/** True once a yield gather has read this execution's result. */
 +export function isYieldGathered(childSessionKey: string): boolean {
 +  const key = childSessionKey?.trim();
 +  return key ? store().done.has(key) : false;
 +}
++
++export function getYieldGatherHandoff(runId: string): YieldGatherHandoff | undefined {
++  return store().done.get(runId.trim());
++}
 diff --git a/src/agents/yield-descendant-gather.ts b/src/agents/yield-descendant-gather.ts
 new file mode 100644
-index 00000000000..bf895da97f7
+index 00000000000..0615c772e93
 --- /dev/null
 +++ b/src/agents/yield-descendant-gather.ts
-@@ -0,0 +1,88 @@
+@@ -0,0 +1,107 @@
 +import { readDescendantSubagentFallbackReply } from "../cron/isolated-agent/subagent-followup.js";
 +import { waitForAgentRunsToDrain } from "./run-wait.js";
 +import { listDescendantRunsForRequester } from "./subagents/registry/subagent-registry-read.js";
@@ -490,16 +761,22 @@ index 00000000000..bf895da97f7
 +  active: boolean;
 +  timedOut?: boolean;
 +  results?: string;
++  gatheredRunIds?: string[];
 +};
 +
 +export async function gatherYieldDescendants(params: {
 +  agentSessionKey?: string;
 +  requesterAgentId?: string;
++  requesterSessionId?: string;
 +  requesterTurnRunId?: string;
++  toolCallId: string;
 +  timeoutMs?: number;
 +}): Promise<YieldDescendantGatherResult> {
 +  const requesterKey = params.agentSessionKey?.trim();
 +  if (!requesterKey) return { active: false };
++  if (!params.requesterSessionId || !params.toolCallId) {
++    throw new Error("Blocking gather requires a requester session and tool call identity");
++  }
 +  const scopedRuns = () => {
 +    const all = listDescendantRunsForRequester(requesterKey);
 +    const allowed = new Set<string>([requesterKey]);
@@ -559,8 +836,21 @@ index 00000000000..bf895da97f7
 +      runStartedAt,
 +      runIds: new Set(completed.map((entry) => entry.runId)),
 +    });
-+    for (const entry of completed) markYieldGathered(entry.runId);
-+    return { active: true, timedOut: drained.timedOut, results: results?.trim() || undefined };
++    const gatheredRunIds = completed.map((entry) => entry.runId);
++    for (const runId of gatheredRunIds) {
++      markYieldGathered(runId, {
++        requesterSessionKey: requesterKey,
++        requesterSessionId: params.requesterSessionId,
++        requesterAgentId: params.requesterAgentId,
++        toolCallId: params.toolCallId,
++      });
++    }
++    return {
++      active: true,
++      timedOut: drained.timedOut,
++      results: results?.trim() || undefined,
++      gatheredRunIds,
++    };
 +  } finally {
 +    for (const key of suppressionKeys) clearYieldGathering(key);
 +  }
