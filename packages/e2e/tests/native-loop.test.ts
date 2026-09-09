@@ -42,7 +42,7 @@ describe("native exact-input evidence", () => {
     const directory = root();
     json(join(directory, "package.json"), {
       name: "synthetic-pnpm-proof", version: "1.0.0", private: true,
-      packageManager: "pnpm@11.2.2", dependencies: { "synthetic-dependency": "file:./dependency" },
+      packageManager: "pnpm@12.3.4", dependencies: { "synthetic-dependency": "file:./dependency" },
     });
     json(join(directory, "dependency/package.json"), { name: "synthetic-dependency", version: "1.0.0", main: "index.js" });
     writeFileSync(join(directory, "dependency/index.js"), "module.exports = 'original';");
@@ -54,7 +54,7 @@ describe("native exact-input evidence", () => {
       env: { ...process.env, CI: "true", COREPACK_ENABLE_NETWORK: "0",
         NPM_CONFIG_USERCONFIG: join(directory, "empty.npmrc") },
     });
-    expect(command(["--version"]).trim()).toBe("11.2.2");
+    expect(command(["--version"]).trim()).toBe("12.3.4");
     const install = (frozen: boolean) => command([
       "install", "--offline", "--ignore-scripts", "--ignore-pnpmfile",
       frozen ? "--frozen-lockfile" : "--no-frozen-lockfile", "--store-dir", join(directory, "store"),

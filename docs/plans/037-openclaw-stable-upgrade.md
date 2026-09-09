@@ -1,0 +1,164 @@
+# OpenClaw stable upgrade
+
+Status: Reviewing stable candidate
+Issue: #114
+Last updated: 2026-09-09
+
+## Human section
+
+### Design
+
+Move the maintained runtime to the latest stable OpenClaw release without
+losing the local fixes that agents depend on. The public patch stack preserves
+file locking, child-agent targeting and result gathering, skill authoring,
+message coalescing, sandbox error reporting, and browser profiles. Upstream
+removed the external memory engine entirely. The requester approved migration
+to builtin search with explicit local embeddings and no remote fallback. Preserve
+configured sources, disabled agents, transcript opt-in, and asymmetric access.
+An authorized agent may read another agent's scoped memory without granting the
+reverse direction. Writes through trusted consolidation do not grant read access
+to a mixed knowledge store. Where
+upstream moves responsibilities, adapt the patches to the new owner and keep
+the same regression coverage.
+
+The release requires a newer Node runtime because older builds can truncate
+SQLite text. Development and public CI use an explicitly supported version.
+Plugin consumers compile against the new release rather than an older SDK.
+The existing native pipeline builds isolated source, runs the accumulated
+tests, packages dependencies, and rehearses the installed runtime with
+recorded messages. Public code never depends on private configuration or live
+accounts.
+
+The deployment helper can select a new interpreter without changing a service's
+shell wrapper or environment. It verifies both retained interpreters, changes
+only the selected service argument, and restores the old interpreter with the
+old runtime during rollback. Production deployment is outside this change's ownership. Source integration
+waits for the coordinating release owner to confirm compatibility. Activation
+and rollback remain in the existing deployment workflow.
+
+### Status
+
+The complete patch stack applies to the stable source. Runtime and extension
+type checks pass. Focused cases cover the maintained behaviors, migration, and
+interpreter rollback. Independent review is in progress. The full accumulated
+gate remains required before integration.
+
+Memory migration is authorized, but derived-data cleanup is not. Builtin retains
+bounded lexical expansion, not QMD's model-generated expansion or learned
+reranking. Installed access checks remain a release prerequisite. Configuration
+coverage alone is not proof that every runtime read path enforces the boundary.
+
+## Agent section
+
+### State
+
+- Base public source: `8cf0a92`.
+- Target OpenClaw tag: `v2026.9.3`, exact commit
+  `1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7`.
+- Selected Node: `26.1.0`. Upstream engine:
+  `>=24.16.0 <25 || >=26.1.0`.
+- Upstream package manager: `pnpm@12.3.4`. Puddles keeps its own manager.
+- Implementation authorized. No design pause. No production deployment.
+- Parent confirmation is required before merging public source.
+
+### Scope and acceptance criteria
+
+- Rebase all eight patches without dropping behavior or previous tests.
+- Update source and CI pins, Node preflight, public SDK consumers and docs.
+- Preserve cumulative manifest collection and fixture-only message delivery.
+- Commit regressions for compatibility changes and prerequisite boundaries.
+- Pass the full accumulated public gate on the exact committed candidate.
+- Complete independent full-diff review and public remote checks.
+- Send exact candidate identity and retained evidence to the parent.
+- Merge only after parent confirms combined compatibility.
+
+### Architecture and decisions
+
+- Use isolated detached OpenClaw source. Never modify the configured checkout.
+- Preserve patch order in `packages/e2e/openclaw-patch-suite.json` and the
+  deployment wrapper.
+- Port skill authoring to the release's agent-owned persistent collection.
+  Do not restore retired workspace ownership or bypass skill policy.
+- Use a side-by-side supported Node toolchain, not a host-global upgrade.
+- Keep installation offline and keep source integration outside activation.
+- Generic interpreter migration is included at the parent's request.
+  `nodeMigration` retains both executable identities and the exact service
+  argument index. The live target and activation remain with the release owner.
+- Upstream `8b0735e89f2` removes QMD rather than moving it to an extension.
+  `legacy-config-migrations.runtime.retired-memory-qmd.ts` migrates external
+  paths and session indexing before deleting retired configuration. Do not
+  restore the removed backend or declare equivalent search behavior. The requester
+  approved builtin/local migration. Builtin retains bounded lexical
+  expansion, not QMD's model-generated expansion or learned reranking. Preserve
+  QMD derived directories during the rollback window and do not opt into cleanup.
+  Session-source opt-in migration does not authorize broader cross-conversation
+  recall.
+  Public tests cover generic source and agent configuration boundaries. The release owner proves
+  configured asymmetric access and local-only embedding through installed routes.
+
+### Implementation
+
+- File-lock patch uses fs-safe 0.8.5 with kernel guards shared by async and
+  sync callers. Retain the contention test and add killed-reclaimer recovery.
+- Sandbox discovery retains selected-runtime querying and error propagation.
+- Workshop preserves configured proposal factory and agent-owned storage.
+- Browser patch applies without change.
+- Public plugins pin the 2026.9.3 SDK and use `openclaw/plugin-sdk/core`.
+- CI uses Node 26.1.0 and Corepack 0.36.0. Offline timestamp regression follows
+  upstream pnpm 12.3.4. Node preflight rejects unsupported SQLite runtimes.
+- `native-activation.mjs` and `native-interpreter-migration.test.ts` include
+  parent-assigned interpreter migration with explicit old canonical-path binding.
+- iMessage keeps stable durable ingress, per-flush claims, GUID reply context,
+  current media facts, and receive-time deadlines. The restored setting is opt-in.
+- Yield gathering uses current execution fields, current-turn/agent ownership,
+  exact run suppression, explicit collector exclusion, and truthful timeouts.
+- Native and ACP target policy follows relocated request and launch boundaries.
+  Prompt fixtures are regenerated with the documented upstream generator.
+- `builtin-memory-migration` replaces retired transport code with config and
+  source-resolution regressions. The original backend test target remains.
+
+### Validation
+
+- Run focused component tests while iterating.
+- Current focused results: file-lock 2, sandbox 21, workshop 20, candidate
+  browser/filesystem 2, public plugins 104, public native loop/pipeline/manifest
+  47. Plugin build and type checking pass.
+- The file-lock regression covers persistent-guard compatibility and recovery
+  with the maintained kernel behavior. Its fixture uses an existing
+  persistent guard and a killed child process, never production state.
+- Stable focused coverage also includes 99 iMessage monitor/coalescer cases,
+  config/parser/ingress cases, scoped gather and timeout cases, moved native/ACP
+  target cases, 24 registry cases, and explicit memory migration/recovery cases.
+- All eight exported patches apply sequentially to clean stable source and all
+  mapped targets exist. Actual project collection is checked before execution.
+- Upstream `pnpm tsgo:core` and `pnpm tsgo:extensions` pass.
+- Run `node packages/e2e/bin/openclaw-test-env.mjs ci` with a supported Node
+  and explicitly selected isolated source and external run directory.
+- Retain collection evidence for every cumulative target.
+- Installed scenarios use the real channel protocol with scripted models and
+  deny-by-default recording adapters. No live accounts or delivery.
+- Run fixture activation and rollback coverage through the accumulated pool.
+
+### Rollout and rollback
+
+- Push a reviewed candidate and open a non-draft pull request.
+- Resolve checks and review without routine user handoffs.
+- Coordinate exact public source with the parent before integration.
+- Production activation is out of scope. Do not invoke deployment against a
+  live target from this worker.
+
+### Review log
+
+- Retained independent reviewer is reviewing the complete current behavior diff,
+  including interpreter migration and all generated patch artifacts.
+
+### Checklist
+
+- [x] Identify stable source and supported toolchain.
+- [x] Complete patch compatibility inventory.
+- [x] Rebase patches and public SDK consumers.
+- [x] Commit focused compatibility regressions and documentation.
+- [ ] Clear retained independent review.
+- [ ] Pass exact-candidate accumulated gate.
+- [ ] Confirm combined compatibility with parent.
+- [ ] Integrate eligible source and verify the landed result.

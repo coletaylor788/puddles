@@ -1,17 +1,27 @@
 {
-  "openclawRef": "0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c",
+  "openclawRef": "1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7",
   "testProjects": {
     "src/plugin-sdk/file-lock.stale-contention.test.ts": "plugin-sdk",
     "src/agents/tools/sessions-yield-tool.test.ts": "agents-tools",
-    "src/agents/tools/yield-gather-state.test.ts": "agents-tools",
-    "src/agents/acp-spawn.test.ts": "agents-core",
-    "src/agents/subagent-spawn.test.ts": "agents-core",
+    "src/agents/tools/yield-gather-state.test.ts": "unit-fast",
+    "src/agents/tools/yield-descendant-gather.test.ts": "agents-tools",
+    "src/agents/subagents/announce/subagent-announce-delivery.test.ts": "agents-support",
+    "src/agents/subagents/registry/subagent-registry-queries.test.ts": "unit-fast",
+    "src/cron/isolated-agent/subagent-followup.test.ts": "cron",
+    "src/agents/subagents/spawn/acp-spawn.test.ts": "agents-support",
+    "src/agents/subagents/spawn/subagent-spawn.test.ts": "agents-support",
     "src/agents/tools/sessions-spawn-tool.test.ts": "agents-tools",
     "src/agents/tools/skill-workshop-tool.test.ts": "agents-tools",
     "extensions/imessage/src/monitor.last-route.test.ts": "extension-imessage",
     "extensions/imessage/src/monitor/coalesce.test.ts": "extension-imessage",
+    "extensions/imessage/src/config-schema.test.ts": "extension-imessage",
+    "extensions/imessage/src/monitor/parse-notification.coalescing.test.ts": "extension-imessage",
+    "extensions/imessage/src/monitor/ingress.test.ts": "extension-imessage",
+    "src/config/dead-config-keys.test.ts": "runtime-config",
     "src/commands/sandbox.test.ts": "commands",
-    "packages/memory-host-sdk/src/host/backend-config.test.ts": "unit-fast"
+    "packages/memory-host-sdk/src/host/backend-config.test.ts": "unit-fast-isolated",
+    "src/commands/doctor/shared/legacy-config-migrations.memory-isolation.test.ts": "commands",
+    "src/commands/doctor/shared/legacy-config-migrations.runtime.retired.memory-qmd.test.ts": "unit-fast"
   },
   "patches": [
     {
@@ -27,14 +37,18 @@
       "name": "sessions-yield-block-and-gather",
       "tests": [
         "src/agents/tools/sessions-yield-tool.test.ts",
-        "src/agents/tools/yield-gather-state.test.ts"
+        "src/agents/tools/yield-gather-state.test.ts",
+        "src/agents/tools/yield-descendant-gather.test.ts",
+        "src/agents/subagents/announce/subagent-announce-delivery.test.ts",
+        "src/agents/subagents/registry/subagent-registry-queries.test.ts",
+        "src/cron/isolated-agent/subagent-followup.test.ts"
       ]
     },
     {
       "name": "subagent-cross-agent-spawn-fix",
       "tests": [
-        "src/agents/acp-spawn.test.ts",
-        "src/agents/subagent-spawn.test.ts",
+        "src/agents/subagents/spawn/acp-spawn.test.ts",
+        "src/agents/subagents/spawn/subagent-spawn.test.ts",
         "src/agents/tools/sessions-spawn-tool.test.ts"
       ]
     },
@@ -48,7 +62,11 @@
       "name": "imessage-message-part-coalescing",
       "tests": [
         "extensions/imessage/src/monitor.last-route.test.ts",
-        "extensions/imessage/src/monitor/coalesce.test.ts"
+        "extensions/imessage/src/monitor/coalesce.test.ts",
+        "extensions/imessage/src/config-schema.test.ts",
+        "extensions/imessage/src/monitor/parse-notification.coalescing.test.ts",
+        "extensions/imessage/src/monitor/ingress.test.ts",
+        "src/config/dead-config-keys.test.ts"
       ]
     },
     {
@@ -65,9 +83,11 @@
       ]
     },
     {
-      "name": "qmd-mcporter-per-agent",
+      "name": "builtin-memory-migration",
       "tests": [
-        "packages/memory-host-sdk/src/host/backend-config.test.ts"
+        "packages/memory-host-sdk/src/host/backend-config.test.ts",
+        "src/commands/doctor/shared/legacy-config-migrations.memory-isolation.test.ts",
+        "src/commands/doctor/shared/legacy-config-migrations.runtime.retired.memory-qmd.test.ts"
       ]
     }
   ]

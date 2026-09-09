@@ -1,4 +1,4 @@
-import type { AnyAgentTool } from "openclaw/plugin-sdk";
+import type { AnyAgentTool } from "openclaw/plugin-sdk/core";
 import type { IngressHook } from "mcp-hooks";
 import type {
   CallToolResult,

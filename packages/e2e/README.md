@@ -17,7 +17,13 @@ E2E_RUN_DIR=/path/outside/checkouts/native-run \
   node packages/e2e/bin/openclaw-test-env.mjs ci
 ```
 
-Use a Node version supported by the pinned upstream package. Puddles and
+The pinned OpenClaw 2026.9.3 requires Node 24.16.0 or later on 24.x, or
+26.1.0 or later. Public CI uses Node 26.1.0. Earlier Node releases can truncate
+SQLite text and are rejected before native work begins. Node 26 no longer
+bundles Corepack, so install Corepack 0.36.0 explicitly before running the gate.
+Use a fresh `COREPACK_HOME` when upgrading from an older Corepack cache that
+records the retired pnpm CommonJS entrypoint. Upstream uses pnpm 12.3.4.
+Puddles and
 OpenClaw each use their own committed package-manager version through Corepack.
 Preflight checks the source pin, toolchain, and host capacity before costly
 work. CI uses public source only and never needs live account credentials.

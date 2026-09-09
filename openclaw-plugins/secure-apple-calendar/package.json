@@ -20,12 +20,15 @@
     "openclaw": "*"
   },
   "openclaw": {
-    "extensions": ["./dist/plugin.js"]
+    "extensions": [
+      "./dist/plugin.js"
+    ]
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "esbuild": "^0.25.0",
     "keytar": "^7.9.0",
+    "openclaw": "2026.9.3",
     "typescript": "^5.0.0",
     "vitest": "^3.0.0"
   }

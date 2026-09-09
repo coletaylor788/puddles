@@ -28,6 +28,12 @@ The folder is currently empty — concrete plugins are added by:
 
 ## Prerequisites
 
+The maintained release is OpenClaw 2026.9.3. Both plugins compile against that
+exact development dependency and import public types from
+`openclaw/plugin-sdk/core`. The retired root SDK entrypoint is not exported by
+this release. Use Node 24.16.0 or later on 24.x, or Node 26.1.0 or later, for
+the gateway and its native dependencies.
+
 - [OpenClaw](https://openclaw.dev) installed
 - An `LLMClient` implementation reachable from the gateway — see
   [`packages/mcp-hooks/README.md`](../packages/mcp-hooks/README.md) for the

@@ -5,6 +5,12 @@ runner applies them in a detached worktree, builds the real runtime, runs the
 cumulative regressions, and rehearses the installed package. It never modifies
 the configured source checkout or patches installed distribution chunks.
 
+The selected stable release is OpenClaw 2026.9.3 at
+`1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7`. It requires Node 24.16.0 or later
+on 24.x, or Node 26.1.0 or later. Earlier runtimes can truncate SQLite text.
+Use the same exact Node binary for packaging, installed rehearsal, and the
+activated gateway. Keep the previous interpreter available for rollback.
+
 ## Maintained patches
 
 | Patch | Purpose |
@@ -16,7 +22,7 @@ the configured source checkout or patches installed distribution chunks.
 | `imessage-message-part-coalescing.patch` | Selective text, link, and image coalescing |
 | `sandbox-discovery-failure-fix.patch` | Surface sandbox discovery failures |
 | `browser-userdata-dir-fix.patch` | Browser data directory and singleton cleanup |
-| `qmd-mcporter-per-agent.patch` | Per-agent memory backend configuration |
+| `builtin-memory-migration.patch` | Retired QMD migration and per-agent source isolation coverage |
 
 Each patch has a neighboring document explaining its behavior and history.
 Register new patches and every applicable test in the cumulative manifest at
@@ -85,6 +91,34 @@ roots must be real directories, not symlinks, and must be disjoint from the
 backup root. The service definition must already exist. Optional `browser`
 contains `path`, `sha256`, `imageId`, and `tag`. Its current production tag must
 be resolvable so rollback has an explicit prior image.
+
+For an interpreter upgrade, the optional `nodeMigration` target field records
+`argumentIndex`, `expected`, and `desired`. Each identity contains an absolute
+`path`, the executable's `sha256`, its `version` in the form `v26.1.0`, and
+its `platform` and `arch`. Select a separate installed interpreter outside the
+runtime, state, and backup trees. Do not replace or remove the old interpreter.
+The desired identity must match the sealed candidate and the activation
+process, not merely satisfy the minimum Node version.
+
+If the old service argument passes through a symlinked parent directory,
+`expected.path` keeps that literal argument and `expected.realPath` records the
+canonical executable. Both must remain outside the swapped trees. Without
+`expected.realPath`, the old path must already be canonical. The desired path
+must always be canonical; a desired `realPath` override is not accepted.
+
+The index identifies the unique exact old interpreter argument in the existing
+service definition. Only that argument changes. Shell wrappers, environment
+arguments, and other property-list fields remain intact. Preflight rejects
+ambiguous arguments and incompatible service program overrides before stopping
+anything. The original service is snapshotted, and the staged replacement is
+applied after migration but before restart.
+
+Recovery verifies the retained interpreters and restores the original service.
+Old-runtime checks use the old interpreter. Candidate migration, new-runtime
+checks, and retained candidate browser recovery use the candidate interpreter.
+This keeps native module bindings paired with their matching runtime during
+both activation and rollback. No package or interpreter download occurs while
+the gateway is stopped.
 
 When a candidate declares additional runtime artifacts, the target must map
 every artifact exactly once through `additionalInstalls`. Each entry has an

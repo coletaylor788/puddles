@@ -1,19 +1,45 @@
+diff --git a/extensions/imessage/src/config-schema.test.ts b/extensions/imessage/src/config-schema.test.ts
+index 524c8694eec..72190f444a6 100644
+--- a/extensions/imessage/src/config-schema.test.ts
++++ b/extensions/imessage/src/config-schema.test.ts
+@@ -3,6 +3,20 @@ import { describe, expect, it } from "vitest";
+ import { IMessageConfigSchema } from "../config-api.js";
+ 
+ describe("imessage config schema", () => {
++  it.each([true, false])(
++    "preserves selective DM coalescing opt-in %s at both scopes",
++    (enabled) => {
++      const res = IMessageConfigSchema.parse({
++        coalesceSameSenderDms: enabled,
++        accounts: { work: { coalesceSameSenderDms: enabled } },
++      });
++      expect(res.coalesceSameSenderDms).toBe(enabled);
++      expect(res.accounts?.work?.coalesceSameSenderDms).toBe(enabled);
++      expect(IMessageConfigSchema.parse({}).coalesceSameSenderDms).toBeUndefined();
++      expect(IMessageConfigSchema.safeParse({ coalesceSameSenderDms: "true" }).success).toBe(false);
++    },
++  );
++
+   it('accepts dmPolicy="open" with allowFrom "*"', () => {
+     const res = IMessageConfigSchema.safeParse({ dmPolicy: "open", allowFrom: ["*"] });
+ 
+diff --git a/extensions/imessage/src/config-schema.ts b/extensions/imessage/src/config-schema.ts
+index d5ee71b48f1..05d93ce30fb 100644
+--- a/extensions/imessage/src/config-schema.ts
++++ b/extensions/imessage/src/config-schema.ts
+@@ -59,6 +59,7 @@ const IMessageAccountSchemaBase = z
+       .array(z.string().refine(isValidInboundPathRootPattern, "expected absolute path root"))
+       .optional(),
+     probeTimeoutMs: z.number().int().positive().optional(),
++    coalesceSameSenderDms: z.boolean().optional(),
+     sendReadReceipts: ChannelSendReadReceiptsSchema,
+     ...buildChannelReactionShape({ notificationModes: ["off", "own", "all"] }),
+     catchup: z
 diff --git a/extensions/imessage/src/monitor.last-route.test.ts b/extensions/imessage/src/monitor.last-route.test.ts
-index e5c6a3c7ef..fad5932b7a 100644
+index 9dc1fb4129e..7f3be18cee4 100644
 --- a/extensions/imessage/src/monitor.last-route.test.ts
 +++ b/extensions/imessage/src/monitor.last-route.test.ts
-@@ -22,10 +22,29 @@ type DispatchInboundMessageParams = {
-   replyOptions?: GetReplyOptions;
- };
-
-+type InboundDebouncerMockOptions = {
-+  buildKey?: (entry: unknown) => string | null;
-+  resolveDebounceMs?: (entry: unknown) => number | undefined;
-+  shouldDebounce?: (entry: unknown) => boolean;
-+  onFlush: (entries: unknown[]) => Promise<void>;
-+};
-+
- const waitForTransportReadyMock = vi.hoisted(() =>
+@@ -159,6 +159,18 @@ const waitForTransportReadyMock = vi.hoisted(() =>
    vi.fn<typeof waitForTransportReady>(async () => {}),
  );
  const createIMessageRpcClientMock = vi.hoisted(() => vi.fn<typeof createIMessageRpcClient>());
@@ -30,9 +56,9 @@ index e5c6a3c7ef..fad5932b7a 100644
 +  },
 +}));
  const readChannelAllowFromStoreMock = vi.hoisted(() => vi.fn(async () => [] as string[]));
- const recordInboundSessionMock = vi.hoisted(() => vi.fn(async (_params: unknown) => {}));
- const dispatchInboundMessageMock = vi.hoisted(() =>
-@@ -36,32 +55,56 @@ const dispatchInboundMessageMock = vi.hoisted(() =>
+ const ensureConfiguredBindingRouteReadyMock = vi.hoisted(() =>
+   vi.fn<typeof ensureConfiguredBindingRouteReady>(async () => ({ ok: true })),
+@@ -171,12 +183,18 @@ const dispatchReplyWithBufferedBlockDispatcherMock = vi.hoisted(() =>
  );
  const debouncerControl = vi.hoisted(() => ({
    holdEntries: false,
@@ -51,61 +77,53 @@ index e5c6a3c7ef..fad5932b7a 100644
      this.flush = undefined;
      this.flushEach = undefined;
    },
- }));
+@@ -184,6 +202,9 @@ const debouncerControl = vi.hoisted(() => ({
  const createChannelInboundDebouncerMock = vi.hoisted(() =>
--  vi.fn((opts: { onFlush: (entries: unknown[]) => Promise<void> }) => ({
-+  vi.fn((opts: InboundDebouncerMockOptions) => ({
-     debouncer: {
-       enqueue: async (entry: unknown) => {
-+        debouncerControl.resolvedDebounceMs.push(opts.resolveDebounceMs?.(entry));
-         if (!debouncerControl.holdEntries) {
-           await opts.onFlush([entry]);
-           return;
-         }
-+        if (debouncerControl.respectDebouncePolicy && opts.shouldDebounce?.(entry) === false) {
-+          const key = opts.buildKey?.(entry);
-+          const matching: unknown[] = [];
-+          const remaining: unknown[] = [];
-+          for (const queued of debouncerControl.entries) {
-+            if (key && opts.buildKey?.(queued) === key) {
-+              matching.push(queued);
-+            } else {
-+              remaining.push(queued);
-+            }
-+          }
-+          debouncerControl.entries = remaining;
-+          if (matching.length > 0) {
-+            await opts.onFlush(matching);
-+          }
-+          await opts.onFlush([entry]);
-+          return;
-+        }
-         debouncerControl.entries.push(entry);
-         debouncerControl.flush = async () => {
-           const entries = debouncerControl.entries.splice(0);
-           await opts.onFlush(entries);
-         };
--        // Flush each collected entry as its own single-entry bucket, modeling
--        // the real non-debounced path (shouldDebounceTextInbound is mocked to
--        // false here) where every row dispatches individually.
-+        // Flush each collected entry as its own single-entry bucket when a test
-+        // needs to model independent immediate dispatch.
-         debouncerControl.flushEach = async () => {
-           const entries = debouncerControl.entries.splice(0);
-           for (const queued of entries) {
-@@ -69,6 +112,11 @@ const createChannelInboundDebouncerMock = vi.hoisted(() =>
+   vi.fn(
+     (opts: {
++      buildKey?: (entry: unknown) => string | null | undefined;
++      resolveDebounceMs?: (entry: unknown) => number | undefined;
++      shouldDebounce?: (entry: unknown) => boolean;
+       onFlush: (
+         entries: unknown[],
+         createFlush: typeof createTestInboundDebounceFlush,
+@@ -191,10 +212,24 @@ const createChannelInboundDebouncerMock = vi.hoisted(() =>
+     }) => ({
+       debouncer: {
+         enqueue: async (entry: unknown) => {
++          debouncerControl.resolvedDebounceMs.push(opts.resolveDebounceMs?.(entry));
+           if (!debouncerControl.holdEntries) {
+             await opts.onFlush([entry], createTestInboundDebounceFlush).completion;
+             return;
            }
-         };
++          if (debouncerControl.respectDebouncePolicy && opts.shouldDebounce?.(entry) === false) {
++            const key = opts.buildKey?.(entry);
++            const matching = debouncerControl.entries.filter(
++              (queued) => key && opts.buildKey?.(queued) === key,
++            );
++            debouncerControl.entries = debouncerControl.entries.filter(
++              (queued) => !matching.includes(queued),
++            );
++            if (matching.length)
++              await opts.onFlush(matching, createTestInboundDebounceFlush).completion;
++            await opts.onFlush([entry], createTestInboundDebounceFlush).completion;
++            return;
++          }
+           debouncerControl.entries.push(entry);
+           debouncerControl.flush = async () => {
+             const entries = debouncerControl.entries.splice(0);
+@@ -210,7 +245,9 @@ const createChannelInboundDebouncerMock = vi.hoisted(() =>
+             }
+           };
+         },
+-        flushKey: async () => {},
++        flushKey: async () => {
++          if (!debouncerControl.suppressFlushKey) await debouncerControl.flush?.();
++        },
+         cancelKey: () => false,
+         drain: async () => {},
        },
-+      flushKey: async () => {
-+        if (!debouncerControl.suppressFlushKey) {
-+          await debouncerControl.flush?.();
-+        }
-+      },
-     },
-   })),
- );
-@@ -92,7 +140,7 @@ vi.mock("openclaw/plugin-sdk/channel-inbound", async (importOriginal) => {
+@@ -237,7 +274,7 @@ vi.mock("openclaw/plugin-sdk/channel-inbound", async (importOriginal) => {
    return {
      ...actual,
      createChannelInboundDebouncer: createChannelInboundDebouncerMock,
@@ -113,11 +131,11 @@ index e5c6a3c7ef..fad5932b7a 100644
 +    shouldDebounceTextInbound: actual.shouldDebounceTextInbound,
    };
  });
-
-@@ -108,6 +156,44 @@ vi.mock("./client.js", () => ({
+ 
+@@ -245,6 +282,43 @@ vi.mock("./client.js", () => ({
    createIMessageRpcClient: createIMessageRpcClientMock,
  }));
-
+ 
 +vi.mock("./monitor/catchup.js", async (importOriginal) => {
 +  const actual = await importOriginal<typeof import("./monitor/catchup.js")>();
 +  return {
@@ -130,7 +148,6 @@ index e5c6a3c7ef..fad5932b7a 100644
 +        : actual.advanceIMessageCatchupCursor(...args),
 +  };
 +});
-+
 +vi.mock("./monitor/catchup-bridge.js", async (importOriginal) => {
 +  const actual = await importOriginal<typeof import("./monitor/catchup-bridge.js")>();
 +  return {
@@ -159,18 +176,19 @@ index e5c6a3c7ef..fad5932b7a 100644
  vi.mock("./monitor/abort-handler.js", () => ({
    attachIMessageMonitorAbortHandler: vi.fn(() => () => {}),
  }));
-@@ -119,6 +205,7 @@ describe("iMessage monitor last-route updates", () => {
+@@ -287,6 +361,7 @@ describe("iMessage monitor last-route updates", () => {
      installIMessageStateRuntimeForTest();
      waitForTransportReadyMock.mockReset().mockResolvedValue(undefined);
      createIMessageRpcClientMock.mockReset();
 +    catchupTestControl.reset();
      readChannelAllowFromStoreMock.mockReset().mockResolvedValue([]);
-     recordInboundSessionMock.mockClear();
-     dispatchInboundMessageMock.mockClear();
-@@ -766,6 +853,283 @@ describe("iMessage monitor last-route updates", () => {
-     },
-   );
-
+     ensureConfiguredBindingRouteReadyMock.mockReset().mockResolvedValue({ ok: true });
+     dispatchReplyWithBufferedBlockDispatcherMock.mockClear();
+@@ -1699,5 +1774,1591 @@ describe("iMessage monitor last-route updates", () => {
+       }
+     });
+   }
++
 +  it("flushes an unchained second payload as a separate immediate turn", async () => {
 +    debouncerControl.holdEntries = true;
 +    debouncerControl.respectDebouncePolicy = true;
@@ -222,7 +240,7 @@ index e5c6a3c7ef..fad5932b7a 100644
 +          });
 +        }
 +        await vi.waitFor(() => {
-+          expect(dispatchInboundMessageMock).toHaveBeenCalledTimes(2);
++          expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(2);
 +        });
 +      }),
 +      stop: vi.fn(async () => {}),
@@ -250,10 +268,10 @@ index e5c6a3c7ef..fad5932b7a 100644
 +      runtime: { error: vi.fn(), exit: vi.fn(), log: vi.fn() },
 +    });
 +
-+    expect(dispatchInboundMessageMock.mock.calls[0]?.[0].ctx.Body).toContain(
++    expect(dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[0]?.[0].ctx.Body).toContain(
 +      "What link is this? https://example.com/first",
 +    );
-+    expect(dispatchInboundMessageMock.mock.calls[1]?.[0].ctx.Body).toContain(
++    expect(dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[1]?.[0].ctx.Body).toContain(
 +      "https://example.com/separate",
 +    );
 +  });
@@ -292,7 +310,7 @@ index e5c6a3c7ef..fad5932b7a 100644
 +          },
 +        });
 +        await vi.waitFor(() => {
-+          expect(dispatchInboundMessageMock).toHaveBeenCalledTimes(1);
++          expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(1);
 +        });
 +
 +        onNotification?.({
@@ -318,7 +336,7 @@ index e5c6a3c7ef..fad5932b7a 100644
 +          },
 +        });
 +        await vi.waitFor(() => {
-+          expect(dispatchInboundMessageMock).toHaveBeenCalledTimes(2);
++          expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(2);
 +        });
 +      }),
 +      stop: vi.fn(async () => {}),
@@ -348,15 +366,19 @@ index e5c6a3c7ef..fad5932b7a 100644
 +      runtime: { error: vi.fn(), exit: vi.fn(), log: vi.fn() },
 +    });
 +
-+    expect(dispatchInboundMessageMock.mock.calls[0]?.[0].ctx.Body).toContain(
++    expect(dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[0]?.[0].ctx.Body).toContain(
 +      "https://example.com/standalone",
 +    );
-+    expect(dispatchInboundMessageMock.mock.calls[1]?.[0].ctx.MediaPaths).toEqual([
-+      expect.stringMatching(/standalone---.+\.jpg$/),
-+    ]);
-+    expect(dispatchInboundMessageMock.mock.calls[1]?.[0].ctx.MediaTypes).toEqual([
-+      "image/jpeg",
-+    ]);
++    expect(
++      dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[1]?.[0].ctx.media?.map(
++        (item) => item.path,
++      ),
++    ).toEqual([expect.stringMatching(/standalone---.+\.jpg$/)]);
++    expect(
++      dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[1]?.[0].ctx.media?.map(
++        (item) => item.contentType,
++      ),
++    ).toEqual(["image/jpeg"]);
 +  });
 +
 +  it("does not merge a payload after an overdue absolute deadline", async () => {
@@ -385,6 +407,131 @@ index e5c6a3c7ef..fad5932b7a 100644
 +      return client as never;
 +    });
 +
++    client.waitForClose.mockImplementation(async () => {
++      onNotification?.({
++        method: "message",
++        params: {
++          message: {
++            id: 731,
++            guid: "LIVE-GUID-731",
++            text: "What link is this?",
++            chat_id: 123,
++            sender: "+15550001111",
++            is_from_me: false,
++            is_group: false,
++            created_at: new Date(startedAt).toISOString(),
++          },
++        },
++      });
++      await vi.advanceTimersByTimeAsync(0);
++      expect(debouncerControl.entries).toHaveLength(1);
++      vi.setSystemTime(startedAt + 15_001);
++      onNotification?.({
++        method: "message",
++        params: {
++          message: {
++            id: 732,
++            guid: "LIVE-GUID-732",
++            text: "https://example.com/late",
++            balloon_bundle_id: "com.apple.messages.URLBalloonProvider",
++            reply_to_guid: "LIVE-GUID-731",
++            chat_id: 123,
++            sender: "+15550001111",
++            is_from_me: false,
++            is_group: false,
++            created_at: new Date(startedAt + 5_348).toISOString(),
++          },
++        },
++      });
++      await vi.advanceTimersByTimeAsync(0);
++      expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(2);
++      expect(dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[0]?.[0].ctx.Body).toContain(
++        "What link is this?",
++      );
++      expect(
++        dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[0]?.[0].ctx.Body,
++      ).not.toContain("https://example.com/late");
++      expect(dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[1]?.[0].ctx.Body).toContain(
++        "https://example.com/late",
++      );
++    });
++    await monitorIMessageProvider({
++      config: {
++        channels: {
++          imessage: {
++            coalesceSameSenderDms: true,
++            dmPolicy: "allowlist",
++            allowFrom: ["+15550001111"],
++            sendReadReceipts: false,
++          },
++        },
++        session: { mainKey: "main" },
++      } as never,
++      runtime: { error: vi.fn(), exit: vi.fn(), log: vi.fn() },
++    });
++  });
++
++  it("merges a command row with the following URL balloon row", async () => {
++    // Apple's command+URL composition can arrive as a command row followed by a
++    // URL-preview balloon row. The opt-in coalescer keeps the pair as one agent
++    // turn and uses balloon metadata to avoid collapsing ordinary rows.
++    debouncerControl.holdEntries = true;
++
++    let onNotification: ((message: { method: string; params: unknown }) => void) | undefined;
++    const client = {
++      request: vi.fn(async (method: string) => {
++        if (method === "watch.subscribe") {
++          return { subscription: 1 };
++        }
++        throw new Error(`unexpected imsg method ${method}`);
++      }),
++      waitForClose: vi.fn(async () => {
++        // Fresh dates relative to now so the stale-backlog age fence lets the
++        // live rows through to the debouncer.
++        for (const row of [
++          {
++            id: 91,
++            guid: "LIVE-GUID-91",
++            text: "summarize",
++            created_at: new Date(Date.now() - 2000).toISOString(),
++          },
++          {
++            id: 92,
++            guid: "LIVE-GUID-92",
++            text: "www.example.com/article",
++            balloon_bundle_id: "com.apple.messages.URLBalloonProvider",
++            created_at: new Date(Date.now() - 1000).toISOString(),
++          },
++        ]) {
++          onNotification?.({
++            method: "message",
++            params: {
++              message: {
++                ...row,
++                chat_id: 123,
++                sender: "+15550001111",
++                is_from_me: false,
++                is_group: false,
++              },
++            },
++          });
++        }
++        await vi.waitFor(() => {
++          expect(debouncerControl.flush).toBeDefined();
++        });
++        await debouncerControl.flush?.();
++        await Promise.resolve();
++      }),
++      stop: vi.fn(async () => {}),
++    };
++    createIMessageRpcClientMock.mockImplementation(async (params) => {
++      if (!params?.onNotification) {
++        throw new Error("expected iMessage notification handler");
++      }
++      onNotification = params.onNotification;
++      return client as never;
++    });
++
 +    await monitorIMessageProvider({
 +      config: {
 +        channels: {
@@ -400,75 +547,19 @@ index e5c6a3c7ef..fad5932b7a 100644
 +      runtime: { error: vi.fn(), exit: vi.fn(), log: vi.fn() },
 +    });
 +
-+    onNotification?.({
-+      method: "message",
-+      params: {
-+        message: {
-+          id: 731,
-+          guid: "LIVE-GUID-731",
-+          text: "What link is this?",
-+          chat_id: 123,
-+          sender: "+15550001111",
-+          is_from_me: false,
-+          is_group: false,
-+          created_at: new Date(startedAt).toISOString(),
-+        },
-+      },
-+    });
-+    await vi.advanceTimersByTimeAsync(0);
-+    expect(debouncerControl.entries).toHaveLength(1);
-+
-+    vi.setSystemTime(startedAt + 15_001);
-+    onNotification?.({
-+      method: "message",
-+      params: {
-+        message: {
-+          id: 732,
-+          guid: "LIVE-GUID-732",
-+          text: "https://example.com/late",
-+          balloon_bundle_id: "com.apple.messages.URLBalloonProvider",
-+          reply_to_guid: "LIVE-GUID-731",
-+          chat_id: 123,
-+          sender: "+15550001111",
-+          is_from_me: false,
-+          is_group: false,
-+          created_at: new Date(startedAt + 5_348).toISOString(),
-+        },
-+      },
-+    });
-+    await vi.advanceTimersByTimeAsync(0);
-+
-+    expect(dispatchInboundMessageMock).toHaveBeenCalledTimes(2);
-+    expect(dispatchInboundMessageMock.mock.calls[0]?.[0].ctx.Body).toContain("What link is this?");
-+    expect(dispatchInboundMessageMock.mock.calls[0]?.[0].ctx.Body).not.toContain(
-+      "https://example.com/late",
-+    );
-+    expect(dispatchInboundMessageMock.mock.calls[1]?.[0].ctx.Body).toContain(
-+      "https://example.com/late",
-+    );
++    const debouncerOptions = createChannelInboundDebouncerMock.mock.calls.at(-1)?.[0] as
++      | { debounceMsOverride?: number }
++      | undefined;
++    expect(debouncerOptions?.debounceMsOverride).toBeUndefined();
++    expect(debouncerControl.resolvedDebounceMs[0]).toBeGreaterThan(0);
++    expect(debouncerControl.resolvedDebounceMs[0]).toBeLessThanOrEqual(7000);
++    expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(1);
++    const mergedBody =
++      dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[0]?.[0].ctx.Body ?? "";
++    expect(mergedBody).toContain("summarize");
++    expect(mergedBody).toContain("www.example.com/article");
 +  });
 +
-   it.each([
-     {
-       label: "flat false overrides channel nested true",
-@@ -1708,7 +1971,7 @@ describe("iMessage monitor last-route updates", () => {
-           {
-             id: 92,
-             guid: "LIVE-GUID-92",
--            text: "https://example.com/article",
-+            text: "www.example.com/article",
-             balloon_bundle_id: "com.apple.messages.URLBalloonProvider",
-             created_at: new Date(Date.now() - 1000).toISOString(),
-           },
-@@ -1764,11 +2027,251 @@ describe("iMessage monitor last-route updates", () => {
-     expect(dispatchInboundMessageMock).toHaveBeenCalledTimes(1);
-     const mergedBody = dispatchInboundMessageMock.mock.calls[0]?.[0].ctx.Body ?? "";
-     expect(mergedBody).toContain("summarize");
--    expect(mergedBody).toContain("https://example.com/article");
-+    expect(mergedBody).toContain("www.example.com/article");
-   });
-
--  it("keeps ordinary buffered DMs separate after balloon metadata is observed", async () => {
 +  it.each([
 +    {
 +      name: "question-mark prompt",
@@ -541,7 +632,7 @@ index e5c6a3c7ef..fad5932b7a 100644
 +          });
 +          await debouncerControl.flush?.();
 +          await vi.waitFor(() => {
-+            expect(dispatchInboundMessageMock).toHaveBeenCalledTimes(1);
++            expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(1);
 +          });
 +        }),
 +        stop: vi.fn(async () => {}),
@@ -569,8 +660,9 @@ index e5c6a3c7ef..fad5932b7a 100644
 +        runtime: { error: vi.fn(), exit: vi.fn(), log: vi.fn() },
 +      });
 +
-+      expect(dispatchInboundMessageMock).toHaveBeenCalledTimes(1);
-+      const mergedBody = dispatchInboundMessageMock.mock.calls[0]?.[0].ctx.Body ?? "";
++      expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(1);
++      const mergedBody =
++        dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[0]?.[0].ctx.Body ?? "";
 +      expect(mergedBody).toContain(prompt);
 +      expect(mergedBody).toContain(url);
 +      expect(debouncerControl.resolvedDebounceMs[0]).toBeGreaterThanOrEqual(
@@ -621,6 +713,74 @@ index e5c6a3c7ef..fad5932b7a 100644
 +        return client as never;
 +      });
 +
++      client.waitForClose.mockImplementation(async () => {
++        onNotification?.({
++          method: "message",
++          params: {
++            message: {
++              id: rowBase,
++              guid: `LIVE-GUID-${rowBase}`,
++              text: prompt,
++              created_at: new Date().toISOString(),
++              chat_id: 123,
++              sender: "+15550001111",
++              is_from_me: false,
++              is_group: false,
++            },
++          },
++        });
++        await vi.advanceTimersByTimeAsync(0);
++        expect(debouncerControl.entries).toHaveLength(1);
++        vi.setSystemTime(startedAt + gapMs);
++        onNotification?.({
++          method: "message",
++          params: {
++            message: {
++              id: rowBase + 1,
++              guid: `LIVE-GUID-${rowBase + 1}`,
++              text: "https://www.quince.com/",
++              balloon_bundle_id: "com.apple.messages.URLBalloonProvider",
++              reply_to_guid: `LIVE-GUID-${rowBase}`,
++              created_at: new Date().toISOString(),
++              chat_id: 123,
++              sender: "+15550001111",
++              is_from_me: false,
++              is_group: false,
++            },
++          },
++        });
++        await vi.advanceTimersByTimeAsync(0);
++        expect(debouncerControl.entries).toHaveLength(2);
++        const [promptEntry, urlEntry] = debouncerControl.entries.splice(0);
++        const debouncerOptions = createChannelInboundDebouncerMock.mock.calls.at(-1)?.[0];
++        if (!debouncerOptions) {
++          throw new Error("expected inbound debouncer options");
++        }
++        const actual = await vi.importActual<typeof import("openclaw/plugin-sdk/channel-inbound")>(
++          "openclaw/plugin-sdk/channel-inbound",
++        );
++        const createActualDebouncer = actual.createChannelInboundDebouncer<unknown>;
++        const { debouncer } = createActualDebouncer(
++          debouncerOptions as Parameters<typeof createActualDebouncer>[0],
++        );
++        dispatchReplyWithBufferedBlockDispatcherMock.mockClear();
++        vi.setSystemTime(startedAt);
++        await debouncer.enqueue(promptEntry);
++        const firstCheckpointMs = Math.min(7_000, gapMs);
++        await vi.advanceTimersByTimeAsync(firstCheckpointMs);
++        expect(dispatchReplyWithBufferedBlockDispatcherMock).not.toHaveBeenCalled();
++        if (gapMs > firstCheckpointMs) {
++          await vi.advanceTimersByTimeAsync(gapMs - firstCheckpointMs);
++          expect(dispatchReplyWithBufferedBlockDispatcherMock).not.toHaveBeenCalled();
++        }
++        await debouncer.enqueue(urlEntry);
++        await vi.advanceTimersByTimeAsync(15_000 - gapMs);
++        expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(1);
++        const mergedBody =
++          dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[0]?.[0].ctx.Body ?? "";
++        expect(mergedBody).toContain(prompt);
++        expect(mergedBody).toContain("https://www.quince.com/");
++      });
 +      await monitorIMessageProvider({
 +        config: {
 +          channels: {
@@ -635,105 +795,33 @@ index e5c6a3c7ef..fad5932b7a 100644
 +        } as never,
 +        runtime: { error: vi.fn(), exit: vi.fn(), log: vi.fn() },
 +      });
-+
-+      onNotification?.({
-+        method: "message",
-+        params: {
-+          message: {
-+            id: rowBase,
-+            guid: `LIVE-GUID-${rowBase}`,
-+            text: prompt,
-+            created_at: new Date().toISOString(),
-+            chat_id: 123,
-+            sender: "+15550001111",
-+            is_from_me: false,
-+            is_group: false,
-+          },
-+        },
-+      });
-+      await vi.advanceTimersByTimeAsync(0);
-+      expect(debouncerControl.entries).toHaveLength(1);
-+
-+      vi.setSystemTime(startedAt + gapMs);
-+      onNotification?.({
-+        method: "message",
-+        params: {
-+          message: {
-+            id: rowBase + 1,
-+            guid: `LIVE-GUID-${rowBase + 1}`,
-+            text: "https://www.quince.com/",
-+            balloon_bundle_id: "com.apple.messages.URLBalloonProvider",
-+            reply_to_guid: `LIVE-GUID-${rowBase}`,
-+            created_at: new Date().toISOString(),
-+            chat_id: 123,
-+            sender: "+15550001111",
-+            is_from_me: false,
-+            is_group: false,
-+          },
-+        },
-+      });
-+      await vi.advanceTimersByTimeAsync(0);
-+      expect(debouncerControl.entries).toHaveLength(2);
-+
-+      const [promptEntry, urlEntry] = debouncerControl.entries.splice(0);
-+      const debouncerOptions = createChannelInboundDebouncerMock.mock.calls.at(-1)?.[0];
-+      if (!debouncerOptions) {
-+        throw new Error("expected inbound debouncer options");
-+      }
-+      const actual = await vi.importActual<typeof import("openclaw/plugin-sdk/channel-inbound")>(
-+        "openclaw/plugin-sdk/channel-inbound",
-+      );
-+      const createActualDebouncer = actual.createChannelInboundDebouncer<unknown>;
-+      const { debouncer } = createActualDebouncer(
-+        debouncerOptions as Parameters<typeof createActualDebouncer>[0],
-+      );
-+
-+      dispatchInboundMessageMock.mockClear();
-+      vi.setSystemTime(startedAt);
-+      await debouncer.enqueue(promptEntry);
-+      const firstCheckpointMs = Math.min(7_000, gapMs);
-+      await vi.advanceTimersByTimeAsync(firstCheckpointMs);
-+      expect(dispatchInboundMessageMock).not.toHaveBeenCalled();
-+      if (gapMs > firstCheckpointMs) {
-+        await vi.advanceTimersByTimeAsync(gapMs - firstCheckpointMs);
-+        expect(dispatchInboundMessageMock).not.toHaveBeenCalled();
-+      }
-+      await debouncer.enqueue(urlEntry);
-+      await vi.advanceTimersByTimeAsync(15_000 - gapMs);
-+
-+      expect(dispatchInboundMessageMock).toHaveBeenCalledTimes(1);
-+      const mergedBody = dispatchInboundMessageMock.mock.calls[0]?.[0].ctx.Body ?? "";
-+      expect(mergedBody).toContain(prompt);
-+      expect(mergedBody).toContain("https://www.quince.com/");
 +    },
 +  );
 +
 +  it("starts a fresh bucket after a payload without continuation metadata", async () => {
-     debouncerControl.holdEntries = true;
++    debouncerControl.holdEntries = true;
 +    debouncerControl.respectDebouncePolicy = true;
-
-     let onNotification: ((message: { method: string; params: unknown }) => void) | undefined;
-     const client = {
-@@ -1779,16 +2282,903 @@ describe("iMessage monitor last-route updates", () => {
-         throw new Error(`unexpected imsg method ${method}`);
-       }),
-       waitForClose: vi.fn(async () => {
++
++    let onNotification: ((message: { method: string; params: unknown }) => void) | undefined;
++    const client = {
++      request: vi.fn(async (method: string) => {
++        if (method === "watch.subscribe") {
++          return { subscription: 1 };
++        }
++        throw new Error(`unexpected imsg method ${method}`);
++      }),
++      waitForClose: vi.fn(async () => {
 +        const startedAt = Date.now() - 1_000;
-         for (const row of [
-           {
--            id: 101,
--            guid: "LIVE-GUID-101",
--            text: "handwriting",
--            balloon_bundle_id: "com.apple.messages.HandwritingProvider",
--            created_at: new Date(Date.now() - 3000).toISOString(),
++        for (const row of [
++          {
 +            id: 741,
 +            guid: "LIVE-GUID-741",
 +            text: "What link is this?",
 +            created_at: new Date(startedAt).toISOString(),
-           },
-           {
--            id: 102,
++          },
++          {
 +            id: 742,
++            guid: "LIVE-GUID-742",
 +            text: "https://example.com/first",
 +            balloon_bundle_id: "com.apple.messages.URLBalloonProvider",
 +            reply_to_guid: "LIVE-GUID-741",
@@ -775,7 +863,7 @@ index e5c6a3c7ef..fad5932b7a 100644
 +          });
 +        }
 +        await vi.waitFor(() => {
-+          expect(dispatchInboundMessageMock).toHaveBeenCalledTimes(1);
++          expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(1);
 +        });
 +        expect(debouncerControl.entries).toHaveLength(3);
 +        await debouncerControl.flush?.();
@@ -805,11 +893,12 @@ index e5c6a3c7ef..fad5932b7a 100644
 +      runtime: { error: vi.fn(), exit: vi.fn(), log: vi.fn() },
 +    });
 +
-+    expect(dispatchInboundMessageMock).toHaveBeenCalledTimes(2);
-+    expect(dispatchInboundMessageMock.mock.calls[0]?.[0].ctx.Body).toContain(
++    expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(2);
++    expect(dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[0]?.[0].ctx.Body).toContain(
 +      "What link is this? https://example.com/first",
 +    );
-+    const secondBody = dispatchInboundMessageMock.mock.calls[1]?.[0].ctx.Body ?? "";
++    const secondBody =
++      dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[1]?.[0].ctx.Body ?? "";
 +    expect(secondBody).toContain("Check this");
 +    expect(secondBody).toContain("https://example.com/second");
 +    expect(secondBody).toContain("second composition tail");
@@ -867,7 +956,7 @@ index e5c6a3c7ef..fad5932b7a 100644
 +          });
 +        }
 +        await vi.waitFor(() => {
-+          expect(dispatchInboundMessageMock).toHaveBeenCalledTimes(2);
++          expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(2);
 +        });
 +      }),
 +      stop: vi.fn(async () => {}),
@@ -895,10 +984,12 @@ index e5c6a3c7ef..fad5932b7a 100644
 +      runtime: { error: vi.fn(), exit: vi.fn(), log: vi.fn() },
 +    });
 +
-+    expect(dispatchInboundMessageMock.mock.calls[0]?.[0].ctx.Body).toContain(
++    expect(dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[0]?.[0].ctx.Body).toContain(
 +      "What link is this? https://example.com/",
 +    );
-+    expect(dispatchInboundMessageMock.mock.calls[1]?.[0].ctx.Body).toContain("drawing");
++    expect(dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[1]?.[0].ctx.Body).toContain(
++      "drawing",
++    );
 +  });
 +
 +  it.each([
@@ -941,6 +1032,77 @@ index e5c6a3c7ef..fad5932b7a 100644
 +        return client as never;
 +      });
 +
++      client.waitForClose.mockImplementation(async () => {
++        const rows = [
++          {
++            notificationOffsetMs: 0,
++            id: rowBase,
++            guid: `LIVE-GUID-${rowBase}`,
++            text: "What link is this?",
++            createdAtOffsetMs: 0,
++          },
++          {
++            notificationOffsetMs: 6_447,
++            id: rowBase + 1,
++            guid: `LIVE-GUID-${rowBase + 1}`,
++            text: "https://example.com/",
++            balloon_bundle_id: "com.apple.messages.URLBalloonProvider",
++            reply_to_guid: `LIVE-GUID-${rowBase}`,
++            createdAtOffsetMs: 5_348,
++          },
++          {
++            notificationOffsetMs: 14_282,
++            id: rowBase + 2,
++            guid: `LIVE-GUID-${rowBase + 2}`,
++            text: "And the magic word is foo",
++            reply_to_guid: `LIVE-GUID-${rowBase + 1}`,
++            createdAtOffsetMs: 5_462,
++          },
++        ] as const;
++        for (const row of rows) {
++          vi.setSystemTime(startedAt + row.notificationOffsetMs);
++          onNotification?.({
++            method: "message",
++            params: {
++              message: {
++                ...row,
++                created_at: new Date(startedAt + row.createdAtOffsetMs).toISOString(),
++                chat_id: 123,
++                sender: "+15550001111",
++                is_from_me: false,
++                is_group: false,
++              },
++            },
++          });
++          await vi.advanceTimersByTimeAsync(0);
++        }
++        expect(debouncerControl.entries).toHaveLength(3);
++        const entries = debouncerControl.entries.splice(0);
++        const debouncerOptions = createChannelInboundDebouncerMock.mock.calls.at(-1)?.[0];
++        if (!debouncerOptions) {
++          throw new Error("expected inbound debouncer options");
++        }
++        const actual = await vi.importActual<typeof import("openclaw/plugin-sdk/channel-inbound")>(
++          "openclaw/plugin-sdk/channel-inbound",
++        );
++        const createActualDebouncer = actual.createChannelInboundDebouncer<unknown>;
++        const { debouncer } = createActualDebouncer(
++          debouncerOptions as Parameters<typeof createActualDebouncer>[0],
++        );
++        dispatchReplyWithBufferedBlockDispatcherMock.mockClear();
++        for (const [index, row] of rows.entries()) {
++          vi.setSystemTime(startedAt + row.notificationOffsetMs);
++          await debouncer.enqueue(entries[index]);
++          expect(dispatchReplyWithBufferedBlockDispatcherMock).not.toHaveBeenCalled();
++        }
++        await vi.advanceTimersByTimeAsync(718);
++        expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(1);
++        const mergedBody =
++          dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[0]?.[0].ctx.Body ?? "";
++        expect(mergedBody).toContain("What link is this?");
++        expect(mergedBody).toContain("https://example.com/");
++        expect(mergedBody).toContain("And the magic word is foo");
++      });
 +      await monitorIMessageProvider({
 +        config: {
 +          messages: inbound ? { inbound } : undefined,
@@ -956,79 +1118,6 @@ index e5c6a3c7ef..fad5932b7a 100644
 +        } as never,
 +        runtime: { error: vi.fn(), exit: vi.fn(), log: vi.fn() },
 +      });
-+
-+      const rows = [
-+        {
-+          notificationOffsetMs: 0,
-+          id: rowBase,
-+          guid: `LIVE-GUID-${rowBase}`,
-+          text: "What link is this?",
-+          createdAtOffsetMs: 0,
-+        },
-+        {
-+          notificationOffsetMs: 6_447,
-+          id: rowBase + 1,
-+          guid: `LIVE-GUID-${rowBase + 1}`,
-+          text: "https://example.com/",
-+          balloon_bundle_id: "com.apple.messages.URLBalloonProvider",
-+          reply_to_guid: `LIVE-GUID-${rowBase}`,
-+          createdAtOffsetMs: 5_348,
-+        },
-+        {
-+          notificationOffsetMs: 14_282,
-+          id: rowBase + 2,
-+          guid: `LIVE-GUID-${rowBase + 2}`,
-+          text: "And the magic word is foo",
-+          reply_to_guid: `LIVE-GUID-${rowBase + 1}`,
-+          createdAtOffsetMs: 5_462,
-+        },
-+      ] as const;
-+
-+      for (const row of rows) {
-+        vi.setSystemTime(startedAt + row.notificationOffsetMs);
-+        onNotification?.({
-+          method: "message",
-+          params: {
-+            message: {
-+              ...row,
-+              created_at: new Date(startedAt + row.createdAtOffsetMs).toISOString(),
-+              chat_id: 123,
-+              sender: "+15550001111",
-+              is_from_me: false,
-+              is_group: false,
-+            },
-+          },
-+        });
-+        await vi.advanceTimersByTimeAsync(0);
-+      }
-+      expect(debouncerControl.entries).toHaveLength(3);
-+
-+      const entries = debouncerControl.entries.splice(0);
-+      const debouncerOptions = createChannelInboundDebouncerMock.mock.calls.at(-1)?.[0];
-+      if (!debouncerOptions) {
-+        throw new Error("expected inbound debouncer options");
-+      }
-+      const actual = await vi.importActual<typeof import("openclaw/plugin-sdk/channel-inbound")>(
-+        "openclaw/plugin-sdk/channel-inbound",
-+      );
-+      const createActualDebouncer = actual.createChannelInboundDebouncer<unknown>;
-+      const { debouncer } = createActualDebouncer(
-+        debouncerOptions as Parameters<typeof createActualDebouncer>[0],
-+      );
-+
-+      dispatchInboundMessageMock.mockClear();
-+      for (const [index, row] of rows.entries()) {
-+        vi.setSystemTime(startedAt + row.notificationOffsetMs);
-+        await debouncer.enqueue(entries[index]);
-+        expect(dispatchInboundMessageMock).not.toHaveBeenCalled();
-+      }
-+      await vi.advanceTimersByTimeAsync(718);
-+
-+      expect(dispatchInboundMessageMock).toHaveBeenCalledTimes(1);
-+      const mergedBody = dispatchInboundMessageMock.mock.calls[0]?.[0].ctx.Body ?? "";
-+      expect(mergedBody).toContain("What link is this?");
-+      expect(mergedBody).toContain("https://example.com/");
-+      expect(mergedBody).toContain("And the magic word is foo");
 +    },
 +  );
 +
@@ -1057,6 +1146,58 @@ index e5c6a3c7ef..fad5932b7a 100644
 +      return client as never;
 +    });
 +
++    client.waitForClose.mockImplementation(async () => {
++      for (const [offsetMs, id, text] of [
++        [0, 601, "What link is this"],
++        [12_416, 602, "Which page is that"],
++      ] as const) {
++        vi.setSystemTime(startedAt + offsetMs);
++        onNotification?.({
++          method: "message",
++          params: {
++            message: {
++              id,
++              guid: `LIVE-GUID-${id}`,
++              text,
++              created_at: new Date().toISOString(),
++              chat_id: 123,
++              sender: "+15550001111",
++              is_from_me: false,
++              is_group: false,
++            },
++          },
++        });
++        await vi.advanceTimersByTimeAsync(0);
++        expect(debouncerControl.entries).toHaveLength(id - 600);
++      }
++      const [firstEntry, secondEntry] = debouncerControl.entries.splice(0);
++      const debouncerOptions = createChannelInboundDebouncerMock.mock.calls.at(-1)?.[0];
++      if (!debouncerOptions) {
++        throw new Error("expected inbound debouncer options");
++      }
++      const actual = await vi.importActual<typeof import("openclaw/plugin-sdk/channel-inbound")>(
++        "openclaw/plugin-sdk/channel-inbound",
++      );
++      const createActualDebouncer = actual.createChannelInboundDebouncer<unknown>;
++      const { debouncer } = createActualDebouncer(
++        debouncerOptions as Parameters<typeof createActualDebouncer>[0],
++      );
++      dispatchReplyWithBufferedBlockDispatcherMock.mockClear();
++      vi.setSystemTime(startedAt);
++      await debouncer.enqueue(firstEntry);
++      await vi.advanceTimersByTimeAsync(12_416);
++      await debouncer.enqueue(secondEntry);
++      await vi.advanceTimersByTimeAsync(2_583);
++      expect(dispatchReplyWithBufferedBlockDispatcherMock).not.toHaveBeenCalled();
++      await vi.advanceTimersByTimeAsync(1);
++      expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(2);
++      expect(dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[0]?.[0].ctx.Body).toContain(
++        "What link is this",
++      );
++      expect(dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[1]?.[0].ctx.Body).toContain(
++        "Which page is that",
++      );
++    });
 +    await monitorIMessageProvider({
 +      config: {
 +        channels: {
@@ -1071,56 +1212,6 @@ index e5c6a3c7ef..fad5932b7a 100644
 +      } as never,
 +      runtime: { error: vi.fn(), exit: vi.fn(), log: vi.fn() },
 +    });
-+
-+    for (const [offsetMs, id, text] of [
-+      [0, 601, "What link is this"],
-+      [12_416, 602, "Which page is that"],
-+    ] as const) {
-+      vi.setSystemTime(startedAt + offsetMs);
-+      onNotification?.({
-+        method: "message",
-+        params: {
-+          message: {
-+            id,
-+            guid: `LIVE-GUID-${id}`,
-+            text,
-+            created_at: new Date().toISOString(),
-+            chat_id: 123,
-+            sender: "+15550001111",
-+            is_from_me: false,
-+            is_group: false,
-+          },
-+        },
-+      });
-+      await vi.advanceTimersByTimeAsync(0);
-+      expect(debouncerControl.entries).toHaveLength(id - 600);
-+    }
-+
-+    const [firstEntry, secondEntry] = debouncerControl.entries.splice(0);
-+    const debouncerOptions = createChannelInboundDebouncerMock.mock.calls.at(-1)?.[0];
-+    if (!debouncerOptions) {
-+      throw new Error("expected inbound debouncer options");
-+    }
-+    const actual = await vi.importActual<typeof import("openclaw/plugin-sdk/channel-inbound")>(
-+      "openclaw/plugin-sdk/channel-inbound",
-+    );
-+    const createActualDebouncer = actual.createChannelInboundDebouncer<unknown>;
-+    const { debouncer } = createActualDebouncer(
-+      debouncerOptions as Parameters<typeof createActualDebouncer>[0],
-+    );
-+
-+    dispatchInboundMessageMock.mockClear();
-+    vi.setSystemTime(startedAt);
-+    await debouncer.enqueue(firstEntry);
-+    await vi.advanceTimersByTimeAsync(12_416);
-+    await debouncer.enqueue(secondEntry);
-+    await vi.advanceTimersByTimeAsync(2_583);
-+    expect(dispatchInboundMessageMock).not.toHaveBeenCalled();
-+    await vi.advanceTimersByTimeAsync(1);
-+
-+    expect(dispatchInboundMessageMock).toHaveBeenCalledTimes(2);
-+    expect(dispatchInboundMessageMock.mock.calls[0]?.[0].ctx.Body).toContain("What link is this");
-+    expect(dispatchInboundMessageMock.mock.calls[1]?.[0].ctx.Body).toContain("Which page is that");
 +  });
 +
 +  it("dispatches an unmatched payload-referential question after the hold window", async () => {
@@ -1154,7 +1245,7 @@ index e5c6a3c7ef..fad5932b7a 100644
 +        await vi.waitFor(() => {
 +          expect(debouncerControl.flush).toBeDefined();
 +        });
-+        expect(dispatchInboundMessageMock).not.toHaveBeenCalled();
++        expect(dispatchReplyWithBufferedBlockDispatcherMock).not.toHaveBeenCalled();
 +        await debouncerControl.flush?.();
 +      }),
 +      stop: vi.fn(async () => {}),
@@ -1182,8 +1273,8 @@ index e5c6a3c7ef..fad5932b7a 100644
 +      runtime: { error: vi.fn(), exit: vi.fn(), log: vi.fn() },
 +    });
 +
-+    expect(dispatchInboundMessageMock).toHaveBeenCalledTimes(1);
-+    expect(dispatchInboundMessageMock.mock.calls[0]?.[0].ctx.Body).toContain(
++    expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(1);
++    expect(dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[0]?.[0].ctx.Body).toContain(
 +      "Next quiz, what website is this?",
 +    );
 +  });
@@ -1245,7 +1336,7 @@ index e5c6a3c7ef..fad5932b7a 100644
 +          });
 +        }
 +        await vi.waitFor(() => {
-+          expect(dispatchInboundMessageMock).toHaveBeenCalledTimes(1);
++          expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(1);
 +          expect(debouncerControl.entries).toHaveLength(1);
 +        });
 +        await debouncerControl.flush?.();
@@ -1277,13 +1368,23 @@ index e5c6a3c7ef..fad5932b7a 100644
 +      runtime: { error: vi.fn(), exit: vi.fn(), log: vi.fn() },
 +    });
 +
-+    expect(dispatchInboundMessageMock).toHaveBeenCalledTimes(2);
-+    expect(dispatchInboundMessageMock.mock.calls[0]?.[0].ctx.Body).toContain("Look at this");
-+    expect(dispatchInboundMessageMock.mock.calls[0]?.[0].ctx.MediaPaths).toEqual([
-+      expect.stringMatching(/photo---.+\.jpg$/),
-+    ]);
-+    expect(dispatchInboundMessageMock.mock.calls[0]?.[0].ctx.MediaTypes).toEqual(["image/jpeg"]);
-+    expect(dispatchInboundMessageMock.mock.calls[1]?.[0].ctx.Body).toContain("next thought");
++    expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(2);
++    expect(dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[0]?.[0].ctx.Body).toContain(
++      "Look at this",
++    );
++    expect(
++      dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[0]?.[0].ctx.media?.map(
++        (item) => item.path,
++      ),
++    ).toEqual([expect.stringMatching(/photo---.+\.jpg$/)]);
++    expect(
++      dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[0]?.[0].ctx.media?.map(
++        (item) => item.contentType,
++      ),
++    ).toEqual(["image/jpeg"]);
++    expect(dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[1]?.[0].ctx.Body).toContain(
++      "next thought",
++    );
 +  });
 +
 +  it("keeps consecutive short text messages as separate turns", async () => {
@@ -1355,9 +1456,13 @@ index e5c6a3c7ef..fad5932b7a 100644
 +      runtime: { error: vi.fn(), exit: vi.fn(), log: vi.fn() },
 +    });
 +
-+    expect(dispatchInboundMessageMock).toHaveBeenCalledTimes(2);
-+    expect(dispatchInboundMessageMock.mock.calls[0]?.[0].ctx.Body).toContain("first thought");
-+    expect(dispatchInboundMessageMock.mock.calls[1]?.[0].ctx.Body).toContain("second thought");
++    expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(2);
++    expect(dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[0]?.[0].ctx.Body).toContain(
++      "first thought",
++    );
++    expect(dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[1]?.[0].ctx.Body).toContain(
++      "second thought",
++    );
 +  });
 +
 +  it("dispatches control commands ahead of held lead-ins", async () => {
@@ -1402,11 +1507,13 @@ index e5c6a3c7ef..fad5932b7a 100644
 +          });
 +        }
 +        await vi.waitFor(() => {
-+          expect(dispatchInboundMessageMock).toHaveBeenCalledTimes(1);
++          expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(1);
 +        });
-+        expect(dispatchInboundMessageMock.mock.calls[0]?.[0].ctx.Body).toContain("/stop");
++        expect(dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[0]?.[0].ctx.Body).toContain(
++          "/stop",
++        );
 +        expect(debouncerControl.entries).toHaveLength(1);
-+        expect(catchupTestControl.advance).not.toHaveBeenCalled();
++        expect(catchupTestControl.advance).toHaveBeenCalledTimes(2);
 +        await debouncerControl.flush?.();
 +      }),
 +      stop: vi.fn(async () => {}),
@@ -1435,9 +1542,13 @@ index e5c6a3c7ef..fad5932b7a 100644
 +      runtime: { error: vi.fn(), exit: vi.fn(), log: vi.fn() },
 +    });
 +
-+    expect(dispatchInboundMessageMock).toHaveBeenCalledTimes(2);
-+    expect(dispatchInboundMessageMock.mock.calls[0]?.[0].ctx.Body).toContain("/stop");
-+    expect(dispatchInboundMessageMock.mock.calls[1]?.[0].ctx.Body).toContain("Look at this");
++    expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(2);
++    expect(dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[0]?.[0].ctx.Body).toContain(
++      "/stop",
++    );
++    expect(dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[1]?.[0].ctx.Body).toContain(
++      "Look at this",
++    );
 +    expect(catchupTestControl.advance.mock.calls.map((call) => call[1].lastSeenRowid)).toEqual([
 +      321, 322,
 +    ]);
@@ -1496,11 +1607,13 @@ index e5c6a3c7ef..fad5932b7a 100644
 +          });
 +        }
 +        await vi.waitFor(() => {
-+          expect(dispatchInboundMessageMock).toHaveBeenCalledTimes(1);
++          expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(1);
 +        });
-+        expect(dispatchInboundMessageMock.mock.calls[0]?.[0].ctx.Body).toContain("/stop");
++        expect(dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[0]?.[0].ctx.Body).toContain(
++          "/stop",
++        );
 +        expect(debouncerControl.entries).toHaveLength(1);
-+        expect(catchupTestControl.advance).not.toHaveBeenCalled();
++        expect(catchupTestControl.advance).toHaveBeenCalledTimes(2);
 +        await debouncerControl.flush?.();
 +      }),
 +      stop: vi.fn(async () => {}),
@@ -1531,9 +1644,13 @@ index e5c6a3c7ef..fad5932b7a 100644
 +      runtime: { error: vi.fn(), exit: vi.fn(), log: vi.fn() },
 +    });
 +
-+    expect(dispatchInboundMessageMock).toHaveBeenCalledTimes(2);
-+    expect(dispatchInboundMessageMock.mock.calls[0]?.[0].ctx.Body).toContain("/stop");
-+    expect(dispatchInboundMessageMock.mock.calls[1]?.[0].ctx.Body).toContain("Look at this");
++    expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(2);
++    expect(dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[0]?.[0].ctx.Body).toContain(
++      "/stop",
++    );
++    expect(dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[1]?.[0].ctx.Body).toContain(
++      "Look at this",
++    );
 +    expect(catchupTestControl.advance.mock.calls.map((call) => call[1].lastSeenRowid)).toEqual([
 +      325, 326,
 +    ]);
@@ -1568,7 +1685,7 @@ index e5c6a3c7ef..fad5932b7a 100644
 +          },
 +        });
 +        await vi.waitFor(() => {
-+          expect(dispatchInboundMessageMock).toHaveBeenCalledTimes(1);
++          expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(1);
 +        });
 +      }),
 +      stop: vi.fn(async () => {}),
@@ -1599,9 +1716,7 @@ index e5c6a3c7ef..fad5932b7a 100644
 +    expect(catchupTestControl.advance).not.toHaveBeenCalled();
 +  });
 +
-+  it("keeps ordinary buffered DMs separate after balloon metadata is observed", async () => {
-+    debouncerControl.holdEntries = true;
-+
++  it("respects explicit iMessage inbound debounce timing", async () => {
 +    let onNotification: ((message: { method: string; params: unknown }) => void) | undefined;
 +    const client = {
 +      request: vi.fn(async (method: string) => {
@@ -1610,33 +1725,6 @@ index e5c6a3c7ef..fad5932b7a 100644
 +        }
 +        throw new Error(`unexpected imsg method ${method}`);
 +      }),
-+      waitForClose: vi.fn(async () => {
-+        for (const row of [
-+          {
-+            id: 101,
-+            guid: "LIVE-GUID-101",
-+            text: "handwriting",
-+            balloon_bundle_id: "com.apple.messages.HandwritingProvider",
-+            created_at: new Date(Date.now() - 3000).toISOString(),
-+          },
-+          {
-+            id: 102,
-             guid: "LIVE-GUID-102",
-             text: "first thought",
-             created_at: new Date(Date.now() - 2000).toISOString(),
-@@ -2103,6 +3493,7 @@ describe("iMessage monitor last-route updates", () => {
-   });
-
-   it("respects explicit iMessage inbound debounce timing", async () => {
-+    let onNotification: ((message: { method: string; params: unknown }) => void) | undefined;
-     const client = {
-       request: vi.fn(async (method: string) => {
-         if (method === "watch.subscribe") {
-@@ -2110,10 +3501,32 @@ describe("iMessage monitor last-route updates", () => {
-         }
-         throw new Error(`unexpected imsg method ${method}`);
-       }),
--      waitForClose: vi.fn(async () => {}),
 +      waitForClose: vi.fn(async () => {
 +        onNotification?.({
 +          method: "message",
@@ -1654,9 +1742,8 @@ index e5c6a3c7ef..fad5932b7a 100644
 +          },
 +        });
 +      }),
-       stop: vi.fn(async () => {}),
-     };
--    createIMessageRpcClientMock.mockImplementation(async () => client as never);
++      stop: vi.fn(async () => {}),
++    };
 +    createIMessageRpcClientMock.mockImplementation(async (params) => {
 +      if (!params?.onNotification) {
 +        throw new Error("expected iMessage notification handler");
@@ -1664,44 +1751,255 @@ index e5c6a3c7ef..fad5932b7a 100644
 +      onNotification = params.onNotification;
 +      return client as never;
 +    });
-
-     await monitorIMessageProvider({
-       config: {
-@@ -2135,5 +3548,6 @@ describe("iMessage monitor last-route updates", () => {
-       | { debounceMsOverride?: number }
-       | undefined;
-     expect(debouncerOptions?.debounceMsOverride).toBeUndefined();
-+    expect(debouncerControl.resolvedDebounceMs[0]).toBeUndefined();
-   });
++
++    await monitorIMessageProvider({
++      config: {
++        channels: {
++          imessage: {
++            coalesceSameSenderDms: true,
++            dmPolicy: "allowlist",
++            allowFrom: ["+15550001111"],
++            sendReadReceipts: false,
++          },
++        },
++        messages: { inbound: { byChannel: { imessage: 0 } } },
++        session: { mainKey: "main" },
++      } as never,
++      runtime: { error: vi.fn(), exit: vi.fn(), log: vi.fn() },
++    });
++
++    const debouncerOptions = createChannelInboundDebouncerMock.mock.calls.at(-1)?.[0] as
++      | { debounceMsOverride?: number }
++      | undefined;
++    expect(debouncerOptions?.debounceMsOverride).toBeUndefined();
++    expect(debouncerControl.resolvedDebounceMs[0]).toBe(0);
++  });
  });
+ /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
 diff --git a/extensions/imessage/src/monitor/coalesce.test.ts b/extensions/imessage/src/monitor/coalesce.test.ts
-index 5fd7162d78..c424a1dfb7 100644
---- a/extensions/imessage/src/monitor/coalesce.test.ts
+new file mode 100644
+index 00000000000..df2b9ec6df0
+--- /dev/null
 +++ b/extensions/imessage/src/monitor/coalesce.test.ts
-@@ -1,12 +1,19 @@
- // Imessage tests cover coalesce plugin behavior.
- import { describe, expect, it } from "vitest";
- import {
+@@ -0,0 +1,511 @@
++// Imessage tests cover coalesce plugin behavior.
++import { describe, expect, it } from "vitest";
++import {
 +  buildIMessageDmCoalesceKey,
-   combineIMessagePayloads,
++  combineIMessagePayloads,
 +  iMessageTextHasUrl,
-   IMESSAGE_URL_BALLOON_BUNDLE_ID,
++  IMESSAGE_URL_BALLOON_BUNDLE_ID,
 +  isIMessagePayloadReferentialLeadIn,
 +  isIMessageSplitContinuation,
 +  isIMessageSplitLeadIn,
 +  isIMessageStandaloneUrlText,
-   isStandaloneIMessageUrlPreviewPayload,
-   MAX_COALESCED_ATTACHMENTS,
-   MAX_COALESCED_ENTRIES,
-   MAX_COALESCED_TEXT_CHARS,
++  isStandaloneIMessageUrlPreviewPayload,
++  MAX_COALESCED_ATTACHMENTS,
++  MAX_COALESCED_ENTRIES,
++  MAX_COALESCED_TEXT_CHARS,
 +  resolveIMessageDmCoalesceMode,
-   shouldCombineIMessagePayloadBucket,
- } from "./coalesce.js";
- import type { IMessagePayload } from "./types.js";
-@@ -209,6 +216,262 @@ describe("isStandaloneIMessageUrlPreviewPayload", () => {
-   });
- });
-
++  shouldCombineIMessagePayloadBucket,
++} from "./coalesce.js";
++import type { IMessagePayload } from "./types.js";
++
++const makePayload = (overrides: Partial<IMessagePayload> = {}): IMessagePayload => ({
++  guid: `msg-${Math.random().toString(36).slice(2, 10)}`,
++  chat_id: 1,
++  sender: "+15555550100",
++  is_from_me: false,
++  is_group: false,
++  text: null,
++  attachments: null,
++  created_at: new Date(2025, 0, 1).toISOString(),
++  ...overrides,
++});
++
++describe("combineIMessagePayloads", () => {
++  it("throws on empty input", () => {
++    expect(() => combineIMessagePayloads([])).toThrow(
++      "combineIMessagePayloads: cannot combine empty payloads",
++    );
++  });
++
++  it("returns the lone payload unchanged when only one entry", () => {
++    const payload = makePayload({ text: "alone", guid: "solo" });
++    const result = combineIMessagePayloads([payload]);
++    expect(result).toBe(payload);
++    expect(result.guid).toBe("solo");
++  });
++
++  it("merges two same-sender rows into one payload anchored on the first GUID", () => {
++    const first = makePayload({
++      id: 41,
++      text: "summarize",
++      guid: "row-1",
++      created_at: "2025-01-01T00:00:00Z",
++    });
++    const second = makePayload({
++      id: 42,
++      text: "https://example.com/article",
++      guid: "row-2",
++      created_at: "2025-01-01T00:00:01.500Z",
++    });
++    const merged = combineIMessagePayloads([first, second]);
++
++    expect(merged.text).toBe("summarize https://example.com/article");
++    expect(merged.guid).toBe("row-1");
++    expect(merged.created_at).toBe("2025-01-01T00:00:01.500Z");
++    expect(merged.coalescedMessageGuids).toEqual(["row-1", "row-2"]);
++    expect(merged.coalescedCatchupCursor).toEqual({
++      lastSeenMs: Date.parse("2025-01-01T00:00:01.500Z"),
++      lastSeenRowid: 42,
++    });
++  });
++
++  it("preserves attachments instead of dropping them on merge", () => {
++    const text = makePayload({ text: "Save", guid: "row-1" });
++    const image = makePayload({
++      text: "caption",
++      guid: "row-2",
++      attachments: [{ original_path: "/tmp/a.jpg", mime_type: "image/jpeg" }],
++    });
++    const merged = combineIMessagePayloads([text, image]);
++
++    expect(merged.attachments).toEqual([{ original_path: "/tmp/a.jpg", mime_type: "image/jpeg" }]);
++  });
++
++  it("dedupes identical text appearing in both rows (URL in text and balloon)", () => {
++    const a = makePayload({ text: "https://example.com", guid: "row-1" });
++    const b = makePayload({ text: "https://example.com", guid: "row-2" });
++    const merged = combineIMessagePayloads([a, b]);
++
++    expect(merged.text).toBe("https://example.com");
++    expect(merged.coalescedMessageGuids).toEqual(["row-1", "row-2"]);
++  });
++
++  it("caps merged text length and appends the truncated marker", () => {
++    const longA = makePayload({ text: "A".repeat(3000), guid: "row-1" });
++    const longB = makePayload({ text: "B".repeat(3000), guid: "row-2" });
++    const merged = combineIMessagePayloads([longA, longB]);
++
++    expect(merged.text?.endsWith("…[truncated]")).toBe(true);
++    expect(merged.text?.length).toBeLessThanOrEqual(
++      MAX_COALESCED_TEXT_CHARS + "…[truncated]".length,
++    );
++  });
++
++  it("caps the attachment count", () => {
++    // 5 attachments per row × 6 rows = 30 attachments offered, capped at 20.
++    // Stays under the entry cap so the merge isn't pruned for that reason.
++    const payloads = Array.from({ length: 6 }, (_, i) =>
++      makePayload({
++        guid: `row-${i}`,
++        attachments: Array.from({ length: 5 }, (_Local, j) => ({
++          original_path: `/tmp/${i}-${j}.jpg`,
++          mime_type: "image/jpeg",
++        })),
++      }),
++    );
++    const merged = combineIMessagePayloads(payloads);
++
++    expect(merged.attachments?.length).toBe(MAX_COALESCED_ATTACHMENTS);
++  });
++
++  it("keeps first + most recent when entry count exceeds the cap, but tracks every GUID", () => {
++    const payloads = Array.from({ length: 25 }, (_, i) =>
++      makePayload({
++        id: i,
++        text: `msg ${i}`,
++        guid: `row-${i}`,
++        created_at: new Date(Date.UTC(2025, 0, 1, 0, 0, i)).toISOString(),
++      }),
++    );
++    const merged = combineIMessagePayloads(payloads);
++
++    // First payload's GUID anchors the merged shape.
++    expect(merged.guid).toBe("row-0");
++    // Every source GUID is tracked, even those whose text was dropped by the cap.
++    expect(merged.coalescedMessageGuids?.length).toBe(25);
++    expect(merged.coalescedMessageGuids?.[0]).toBe("row-0");
++    expect(merged.coalescedMessageGuids?.[24]).toBe("row-24");
++    // Merged text contains only first MAX_COALESCED_ENTRIES-1 entries plus the latest.
++    expect(merged.text).toContain("msg 0");
++    expect(merged.text).toContain("msg 24");
++    expect(merged.text).not.toContain("msg 10"); // dropped by cap
++  });
++
++  it("preserves reply context from any entry that carries one", () => {
++    const noReply = makePayload({ text: "hello", guid: "row-1" });
++    const reply = makePayload({
++      text: "follow-up",
++      guid: "row-2",
++      reply_to_guid: "parent-msg",
++      reply_to_text: "earlier",
++      reply_to_sender: "+15555550199",
++    });
++    const merged = combineIMessagePayloads([noReply, reply]);
++
++    expect(merged.reply_to_guid).toBe("parent-msg");
++    expect(merged.reply_to_text).toBe("earlier");
++    expect(merged.reply_to_sender).toBe("+15555550199");
++  });
++
++  it("does not set coalescedMessageGuids when no entry carries a GUID", () => {
++    const a = makePayload({ text: "a", guid: null });
++    const b = makePayload({ text: "b", guid: null });
++    const merged = combineIMessagePayloads([a, b]);
++
++    expect(merged.coalescedMessageGuids).toBeUndefined();
++  });
++
++  it("respects the documented entry cap value", () => {
++    expect(MAX_COALESCED_ENTRIES).toBeGreaterThan(1);
++  });
++});
++
++describe("isStandaloneIMessageUrlPreviewPayload", () => {
++  it("matches URL balloon rows that only carry the preview URL", () => {
++    expect(
++      isStandaloneIMessageUrlPreviewPayload(
++        makePayload({
++          text: "https://example.com/article",
++          balloon_bundle_id: IMESSAGE_URL_BALLOON_BUNDLE_ID,
++        }),
++      ),
++    ).toBe(true);
++  });
++
++  it("matches scheme-less www URL preview rows", () => {
++    expect(
++      isStandaloneIMessageUrlPreviewPayload(
++        makePayload({
++          text: "www.example.com/article",
++          balloon_bundle_id: IMESSAGE_URL_BALLOON_BUNDLE_ID,
++        }),
++      ),
++    ).toBe(true);
++  });
++
++  it("does not match already-complete URL balloon messages with text context", () => {
++    expect(
++      isStandaloneIMessageUrlPreviewPayload(
++        makePayload({
++          text: "summarize https://example.com/article",
++          balloon_bundle_id: IMESSAGE_URL_BALLOON_BUNDLE_ID,
++        }),
++      ),
++    ).toBe(false);
++  });
++
++  it("does not match non-URL balloon payloads", () => {
++    expect(
++      isStandaloneIMessageUrlPreviewPayload(
++        makePayload({
++          text: "https://example.com/article",
++          balloon_bundle_id: "com.apple.messages.HandwritingProvider",
++        }),
++      ),
++    ).toBe(false);
++  });
++});
++
 +describe("isIMessageSplitLeadIn", () => {
 +  it("matches short payload-free fragments", () => {
 +    expect(isIMessageSplitLeadIn({ text: "Summarize", hasMedia: false })).toBe(true);
@@ -1958,22 +2256,64 @@ index 5fd7162d78..c424a1dfb7 100644
 +  });
 +});
 +
- describe("shouldCombineIMessagePayloadBucket", () => {
-   it("combines a command row with a structurally marked URL balloon row", () => {
-     const command = makePayload({ text: "summarize", guid: "row-1" });
++describe("shouldCombineIMessagePayloadBucket", () => {
++  it("combines a command row with a structurally marked URL balloon row", () => {
++    const command = makePayload({ text: "summarize", guid: "row-1" });
++    const preview = makePayload({
++      text: "https://example.com/article",
++      guid: "row-2",
++      balloon_bundle_id: IMESSAGE_URL_BALLOON_BUNDLE_ID,
++    });
++
++    expect(shouldCombineIMessagePayloadBucket([command, preview], true)).toBe(true);
++  });
++
++  it("keeps ordinary buffered rows separate once the bridge emits balloon metadata", () => {
++    const first = makePayload({ text: "first thought", guid: "row-1" });
++    const second = makePayload({ text: "second thought", guid: "row-2" });
++
++    expect(shouldCombineIMessagePayloadBucket([first, second], true)).toBe(false);
++  });
++
++  it("keeps non-URL balloon rows separate", () => {
++    const first = makePayload({ text: "first thought", guid: "row-1" });
++    const second = makePayload({
++      text: "second thought",
++      guid: "row-2",
++      balloon_bundle_id: "com.apple.messages.HandwritingProvider",
++    });
++
++    expect(shouldCombineIMessagePayloadBucket([first, second], false)).toBe(false);
++  });
++
++  it("falls back to combining old bridge buckets with no balloon metadata", () => {
++    const command = makePayload({ text: "summarize", guid: "row-1" });
++    const url = makePayload({ text: "https://example.com/article", guid: "row-2" });
++
++    expect(shouldCombineIMessagePayloadBucket([command, url], false)).toBe(true);
++  });
++});
 diff --git a/extensions/imessage/src/monitor/coalesce.ts b/extensions/imessage/src/monitor/coalesce.ts
-index 096146b162..7c4a64599e 100644
+index 222b33f3700..b092dce22ce 100644
 --- a/extensions/imessage/src/monitor/coalesce.ts
 +++ b/extensions/imessage/src/monitor/coalesce.ts
-@@ -18,12 +18,100 @@ export const MAX_COALESCED_TEXT_CHARS = 4000;
- export const MAX_COALESCED_ATTACHMENTS = 20;
- export const MAX_COALESCED_ENTRIES = 10;
- export const IMESSAGE_URL_BALLOON_BUNDLE_ID = "com.apple.messages.URLBalloonProvider";
+@@ -14,11 +14,228 @@ import type { IMessagePayload } from "./types.js";
+  * prompt past a safe ceiling. Every source GUID still surfaces via
+  * `coalescedMessageGuids` so a future replay path can recognize duplicates.
+  */
+-const MAX_COALESCED_TEXT_CHARS = 4000;
+-const MAX_COALESCED_ATTACHMENTS = 20;
+-const MAX_COALESCED_ENTRIES = 10;
++export const MAX_COALESCED_TEXT_CHARS = 4000;
++export const MAX_COALESCED_ATTACHMENTS = 20;
++export const MAX_COALESCED_ENTRIES = 10;
++export const IMESSAGE_URL_BALLOON_BUNDLE_ID = "com.apple.messages.URLBalloonProvider";
 +export const IMESSAGE_SPLIT_LEAD_IN_MAX_WORDS = 3;
 +export const IMESSAGE_SPLIT_REFERENTIAL_QUESTION_MAX_WORDS = 8;
 +export const IMESSAGE_SPLIT_REFERENTIAL_DEBOUNCE_MS = 15_000;
 +export const IMESSAGE_SPLIT_CONTINUATION_MAX_SOURCE_GAP_MS = 1_000;
-+
+ 
+-type CoalescedIMessagePayload = IMessagePayload & {
 +const URL_PATTERN = /\b(?:https?:\/\/|www\.)\S+/i;
 +const PAYLOAD_REFERENCE_PATTERN = /\b(?:this|that|these|those|one|here)\b/i;
 +const PAYLOAD_KIND_PATTERN =
@@ -2057,29 +2397,41 @@ index 096146b162..7c4a64599e 100644
 +  const words = text.split(/\s+/).filter(Boolean);
 +  return !/[.?!…]$/.test(text) && words.length <= IMESSAGE_SPLIT_LEAD_IN_MAX_WORDS;
 +}
-
- export function hasIMessageUrlBalloonBundleID(payload: IMessagePayload): boolean {
-   return payload.balloon_bundle_id === IMESSAGE_URL_BALLOON_BUNDLE_ID;
- }
-
--function isSingleUrlToken(text: string): boolean {
++
++export function hasIMessageUrlBalloonBundleID(payload: IMessagePayload): boolean {
++  return payload.balloon_bundle_id === IMESSAGE_URL_BALLOON_BUNDLE_ID;
++}
++
 +export function isIMessageStandaloneUrlText(text: string): boolean {
-   if (/\s/.test(text)) {
-     return false;
-   }
-@@ -43,7 +131,7 @@ export function isStandaloneIMessageUrlPreviewPayload(payload: IMessagePayload):
-     return false;
-   }
-   const text = (payload.text ?? "").trim();
--  return text.length === 0 || isSingleUrlToken(text);
++  if (/\s/.test(text)) {
++    return false;
++  }
++  if (/^www\.[^\s.]+\.[^\s]+$/i.test(text)) {
++    return true;
++  }
++  try {
++    const url = new URL(text);
++    return url.protocol === "http:" || url.protocol === "https:";
++  } catch {
++    return false;
++  }
++}
++
++export function isStandaloneIMessageUrlPreviewPayload(payload: IMessagePayload): boolean {
++  if (!hasIMessageUrlBalloonBundleID(payload)) {
++    return false;
++  }
++  const text = (payload.text ?? "").trim();
 +  return text.length === 0 || isIMessageStandaloneUrlText(text);
- }
-
- // imsg omits `balloon_bundle_id` for non-balloon rows, so a present value is
-@@ -53,6 +141,76 @@ export function hasIMessageBalloonMetadata(payload: IMessagePayload): boolean {
-   return typeof payload.balloon_bundle_id === "string" && payload.balloon_bundle_id.length > 0;
- }
-
++}
++
++// imsg omits `balloon_bundle_id` for non-balloon rows, so a present value is
++// the session signal that this bridge build exposes structural balloon
++// metadata. Once latched, missing URL metadata is meaningful.
++export function hasIMessageBalloonMetadata(payload: IMessagePayload): boolean {
++  return typeof payload.balloon_bundle_id === "string" && payload.balloon_bundle_id.length > 0;
++}
++
 +export type IMessageDmCoalesceMode = "lead-in" | "payload" | "continuation" | "instant";
 +
 +export function isIMessageSplitContinuation(params: {
@@ -2150,133 +2502,169 @@ index 096146b162..7c4a64599e 100644
 +    : "instant";
 +}
 +
- /**
-  * Decide whether a debounced same-sender iMessage bucket should merge.
-  *
++/**
++ * Decide whether a debounced same-sender iMessage bucket should merge.
++ *
++ * URL-preview rows are merged with their preceding command row so Apple's
++ * command+URL split-send still reaches the agent as one turn. Once a bridge
++ * session has emitted balloon metadata, ordinary same-sender DMs without the
++ * URL marker flush separately instead of being collapsed.
++ */
++export function shouldCombineIMessagePayloadBucket(
++  payloads: readonly IMessagePayload[],
++  buildEmitsBalloonMetadata: boolean,
++): boolean {
++  if (payloads.some(hasIMessageUrlBalloonBundleID)) {
++    return true;
++  }
++  if (buildEmitsBalloonMetadata || payloads.some(hasIMessageBalloonMetadata)) {
++    return false;
++  }
++  // Older imsg builds expose no balloon metadata, so a command+URL split-send
++  // is indistinguishable from two ordinary text rows. Keep the internal fallback
++  // until imsg advertises upstream coalescing for that exact shape.
++  return true;
++}
++
++export type CoalescedIMessagePayload = IMessagePayload & {
+   /**
+    * Source GUIDs folded into this merged payload, in arrival order. Includes
+    * GUIDs from entries that were dropped by the entry cap so downstream
 diff --git a/extensions/imessage/src/monitor/monitor-provider.ts b/extensions/imessage/src/monitor/monitor-provider.ts
-index 6a30df8949..c6d519a293 100644
+index b9cf726baa5..b4b5b968c82 100644
 --- a/extensions/imessage/src/monitor/monitor-provider.ts
 +++ b/extensions/imessage/src/monitor/monitor-provider.ts
-@@ -68,10 +68,16 @@ import { attachIMessageMonitorAbortHandler } from "./abort-handler.js";
+@@ -30,7 +30,6 @@ import {
+   readChannelAllowFromStore,
+   upsertChannelPairingRequest,
+ } from "openclaw/plugin-sdk/conversation-runtime";
+-import { expectDefined } from "openclaw/plugin-sdk/expect-runtime";
+ import { channelReadyPatch } from "openclaw/plugin-sdk/gateway-runtime";
+ import { redactIdentifier } from "openclaw/plugin-sdk/logging-core";
+ import { isInboundPathAllowed, kindFromMime } from "openclaw/plugin-sdk/media-runtime";
+@@ -57,7 +56,7 @@ import {
+ } from "openclaw/plugin-sdk/session-store-runtime";
+ import { openNodeSqliteDatabase } from "openclaw/plugin-sdk/sqlite-runtime";
+ import { normalizeStringEntries } from "openclaw/plugin-sdk/string-coerce-runtime";
+-import { sliceUtf16Safe, truncateUtf16Safe } from "openclaw/plugin-sdk/text-utility-runtime";
++import { truncateUtf16Safe } from "openclaw/plugin-sdk/text-utility-runtime";
+ import { waitForTransportReady } from "openclaw/plugin-sdk/transport-ready-runtime";
+ import { resolveIMessageAccount } from "../accounts.js";
+ import { iMessageApprovalControlBindings } from "../approval-control-binding-window.js";
+@@ -90,7 +89,19 @@ import { normalizeIMessageHandle } from "../targets.js";
+ import { attachIMessageMonitorAbortHandler } from "./abort-handler.js";
  import { runIMessageCatchup } from "./catchup-bridge.js";
  import { advanceIMessageCatchupCursor, resolveCatchupConfig } from "./catchup.js";
- import {
+-import { combineIMessagePayloads } from "./coalesce.js";
++import {
 +  buildIMessageDmCoalesceKey,
-   combineIMessagePayloads,
-   hasIMessageBalloonMetadata,
-   hasIMessageUrlBalloonBundleID,
++  combineIMessagePayloads,
++  hasIMessageBalloonMetadata,
++  hasIMessageUrlBalloonBundleID,
 +  IMESSAGE_SPLIT_REFERENTIAL_DEBOUNCE_MS,
 +  isIMessagePayloadReferentialLeadIn,
 +  isIMessageSplitContinuation,
-   isStandaloneIMessageUrlPreviewPayload,
++  isStandaloneIMessageUrlPreviewPayload,
 +  type IMessageDmCoalesceMode,
 +  resolveIMessageDmCoalesceMode,
-   shouldCombineIMessagePayloadBucket,
- } from "./coalesce.js";
++  shouldCombineIMessagePayloadBucket,
++} from "./coalesce.js";
  import { repairIMessageConversationAnchor } from "./conversation-repair.js";
-@@ -143,6 +149,26 @@ function resolveIMessageSplitSendCompatDebounceMs(
-   return IMESSAGE_SPLIT_SEND_COMPAT_DEBOUNCE_MS;
- }
-
-+function resolveIMessageEffectiveDebounceMs(
-+  cfg: OpenClawConfig,
-+  debounceMsOverride: number | undefined,
-+): number {
-+  const normalize = (value: unknown): number | undefined => {
-+    if (typeof value !== "number" || !Number.isFinite(value)) {
-+      return undefined;
-+    }
-+    const normalized = Math.trunc(value);
-+    return normalized >= 0 ? normalized : undefined;
-+  };
+ import { createIMessageEchoCachingSend, deliverIMessageReply } from "./deliver.js";
+ import { resolveIMessageDmHistoryContext, resolveIMessageDmHistoryLimit } from "./dm-history.js";
+@@ -534,93 +545,242 @@ export async function monitorIMessageProvider(opts: MonitorIMessageOpts = {}): P
+     failedRecoveryCursorRowids.add(rowid);
+   }
+ 
+-  const { debouncer: inboundDebouncer } = createChannelInboundDebouncer<{
++  const coalesceSameSenderDms = imessageCfg.coalesceSameSenderDms === true;
 +  const inbound = cfg.messages?.inbound;
-+  return (
-+    normalize(debounceMsOverride) ??
-+    normalize(inbound?.byChannel?.imessage) ??
-+    normalize(inbound?.debounceMs) ??
-+    0
-+  );
-+}
-+
- function isIMessagePluginPayloadAttachment(attachment: {
-   original_path?: string | null;
-   transfer_name?: string | null;
-@@ -483,6 +509,7 @@ export async function monitorIMessageProvider(opts: MonitorIMessageOpts = {}): P
-
-   const coalesceSameSenderDms = imessageCfg.coalesceSameSenderDms === true;
-   const debounceMsOverride = resolveIMessageSplitSendCompatDebounceMs(cfg, coalesceSameSenderDms);
-+  const effectiveDebounceMs = resolveIMessageEffectiveDebounceMs(cfg, debounceMsOverride);
-   // Session capability latch: flips true once any inbound row from this imsg
-   // build carries balloon metadata. The coalesce flush gate needs a build-level
-   // signal because imsg omits `balloon_bundle_id` for plain rows.
-@@ -491,6 +518,141 @@ export async function monitorIMessageProvider(opts: MonitorIMessageOpts = {}): P
-   let latestAdvancedRecoveryCursorRowid = recoveryCursorRowid ?? -1;
-   const pendingRecoveryReplayRowids = new Set<number>();
-   const handledRecoveryCursorRowids = new Set<number>();
-+  const pendingCatchupInboundRowids = new Set<number>();
++  const usesDefaultSplitWindow =
++    coalesceSameSenderDms &&
++    !Number.isFinite(inbound?.byChannel?.imessage) &&
++    !Number.isFinite(inbound?.debounceMs);
++  const effectiveDebounceMs = usesDefaultSplitWindow
++    ? 7_000
++    : resolveInboundDebounceMs({ cfg, channel: "imessage" });
++  let imsgEmitsBalloonMetadata = false;
 +  const dmCoalesceDeadlineByKey = new Map<string, number>();
 +  const dmCoalescePayloadStateByKey = new Map<
 +    string,
-+    {
-+      deadlineAt: number;
-+      lastMessage?: Pick<IMessagePayload, "guid" | "created_at">;
-+    }
++    { deadlineAt: number; lastMessage?: Pick<IMessagePayload, "guid" | "created_at"> }
 +  >();
-+
 +  type IMessageDmCoalesceDecision = {
 +    key: string;
 +    mode: IMessageDmCoalesceMode;
 +    debounceDeadlineAt?: number;
 +    flushPendingBeforeEnqueue?: boolean;
 +  };
-+
-+  function classifyIMessageDmCoalesce(message: IMessagePayload): IMessageDmCoalesceDecision | null {
++  type IMessageInboundDebounceEntry = {
+     message: IMessagePayload;
+     ingressLifecycle?: IMessageIngressLifecycle;
+-  }>({
+-    cfg,
+-    channel: "imessage",
+-    resolveDebounceMs: () => resolveInboundDebounceMs({ cfg: readConfig(), channel: "imessage" }),
+-    buildKey: (entry) => {
+-      const msg = entry.message;
+-      const sender = msg.sender?.trim();
+-      if (!sender) {
+-        return null;
+-      }
+-      const conversationId =
+-        msg.chat_id != null
+-          ? `chat:${msg.chat_id}`
+-          : (msg.chat_guid ?? msg.chat_identifier ?? "unknown");
+-
+-      return `imessage:${accountInfo.accountId}:${conversationId}:${sender}`;
+-    },
+-    shouldDebounce: (entry) => {
+-      const msg = entry.message;
+-      if (resolveIMessageReactionContext(msg, (msg.text ?? "").trim())) {
+-        return false;
+-      }
+-      // From-me messages are cached, not processed — never debounce.
+-      if (msg.is_from_me === true) {
+-        return false;
+-      }
++    dmCoalesce?: IMessageDmCoalesceDecision;
++  };
+ 
+-      // General same-sender inbound debounce: text-only, no control commands,
+-      // no media. Off by default unless messages.inbound is configured.
+-      return shouldDebounceTextInbound({
+-        text: msg.text,
+-        cfg,
+-        hasMedia: Boolean(
+-          msg.attachments?.some((attachment) => !isIMessagePluginPayloadAttachment(attachment)),
+-        ),
++  function classifyIMessageDmCoalesce(
++    message: IMessagePayload,
++    receivedAt: number,
++  ): IMessageDmCoalesceDecision | undefined {
 +    if (
 +      !coalesceSameSenderDms ||
 +      message.is_group === true ||
 +      message.is_from_me === true ||
 +      resolveIMessageReactionContext(message, (message.text ?? "").trim())
-+    ) {
-+      return null;
-+    }
++    )
++      return undefined;
 +    const text = (message.text ?? "").trim();
-+    if (
-+      text &&
-+      !shouldDebounceTextInbound({
-+        text,
-+        cfg,
-+        hasMedia: false,
-+      })
-+    ) {
-+      return null;
-+    }
-+    const key = buildIMessageDmCoalesceKey({
-+      accountId: accountInfo.accountId,
-+      payload: message,
-+    });
-+    if (!key) {
-+      return null;
-+    }
++    if (text && !shouldDebounceTextInbound({ text, cfg: readConfig(), hasMedia: false }))
++      return undefined;
++    const key = buildIMessageDmCoalesceKey({ accountId: accountInfo.accountId, payload: message });
++    if (!key) return undefined;
 +    const hasMedia = Boolean(
-+      message.attachments?.some((attachment) => !isIMessagePluginPayloadAttachment(attachment)),
++      message.attachments?.some((item) => !isIMessagePluginPayloadAttachment(item)),
 +    );
 +    const canDebounceText = shouldDebounceTextInbound({
 +      text: message.text,
-+      cfg,
++      cfg: readConfig(),
 +      hasMedia,
 +    });
-+    const isReferentialLeadIn = isIMessagePayloadReferentialLeadIn({
-+      text: message.text,
-+      hasMedia,
-+    });
-+    let mode = resolveIMessageDmCoalesceMode({
-+      payload: message,
-+      hasMedia,
-+      canDebounceText,
-+    });
-+    if (mode === "instant" && !canDebounceText) {
-+      return null;
-+    }
++    const referential = isIMessagePayloadReferentialLeadIn({ text: message.text, hasMedia });
++    let mode = resolveIMessageDmCoalesceMode({ payload: message, hasMedia, canDebounceText });
++    if (mode === "instant" && !canDebounceText) return undefined;
 +    let debounceDeadlineAt = dmCoalesceDeadlineByKey.get(key);
 +    let flushPendingBeforeEnqueue = false;
 +    if (debounceDeadlineAt !== undefined && debounceDeadlineAt <= Date.now()) {
@@ -2292,16 +2680,23 @@ index 6a30df8949..c6d519a293 100644
 +      pendingPayload.deadlineAt > Date.now() &&
 +      canDebounceText &&
 +      !hasIMessageBalloonMetadata(message) &&
-+      isIMessageSplitContinuation({
-+        previous: pendingPayload.lastMessage,
-+        current: message,
-+      })
++      isIMessageSplitContinuation({ previous: pendingPayload.lastMessage, current: message })
 +    ) {
 +      mode = "continuation";
 +      dmCoalescePayloadStateByKey.set(key, {
 +        deadlineAt: pendingPayload.deadlineAt,
 +        lastMessage: message,
-+      });
+       });
+-    },
+-    onFlush: (entries, createFlush) => {
+-      const { lifecycle, settle, abandon } = fanInChannelIngressLifecycles(
+-        entries.flatMap((entry) => (entry.ingressLifecycle ? [entry.ingressLifecycle] : [])),
+-      );
+-      return createFlush({
+-        lifecycle,
+-        dispatch: async (admissionLifecycle) => {
+-          if (entries.length === 0) {
+-            return;
 +    }
 +    if (pendingPayload?.deadlineAt === debounceDeadlineAt && mode === "lead-in") {
 +      dmCoalesceDeadlineByKey.delete(key);
@@ -2311,8 +2706,8 @@ index 6a30df8949..c6d519a293 100644
 +    }
 +    if (debounceDeadlineAt === undefined && mode === "lead-in" && effectiveDebounceMs > 0) {
 +      debounceDeadlineAt =
-+        Date.now() +
-+        (debounceMsOverride === IMESSAGE_SPLIT_SEND_COMPAT_DEBOUNCE_MS && isReferentialLeadIn
++        receivedAt +
++        (usesDefaultSplitWindow && referential
 +          ? IMESSAGE_SPLIT_REFERENTIAL_DEBOUNCE_MS
 +          : effectiveDebounceMs);
 +      dmCoalesceDeadlineByKey.set(key, debounceDeadlineAt);
@@ -2321,292 +2716,291 @@ index 6a30df8949..c6d519a293 100644
 +      mode === "payload" &&
 +      debounceDeadlineAt !== undefined &&
 +      pendingPayload?.deadlineAt === debounceDeadlineAt
-+    ) {
-+      return {
-+        key,
-+        mode,
-+      };
-+    }
++    )
++      return { key, mode };
 +    if (mode === "payload" && debounceDeadlineAt !== undefined) {
-+      const hasContinuationAnchor =
++      const anchored =
 +        Boolean(message.guid?.trim()) && Number.isFinite(Date.parse(message.created_at ?? ""));
 +      dmCoalescePayloadStateByKey.set(key, {
 +        deadlineAt: debounceDeadlineAt,
-+        lastMessage: hasContinuationAnchor ? message : undefined,
++        lastMessage: anchored ? message : undefined,
 +      });
 +    }
-+    return {
-+      key,
-+      mode,
-+      debounceDeadlineAt,
-+      flushPendingBeforeEnqueue,
-+    };
++    return { key, mode, debounceDeadlineAt, flushPendingBeforeEnqueue };
 +  }
 +
-+  type IMessageInboundDebounceEntry = {
-+    message: IMessagePayload;
-+    replayKey: string | null;
-+    dmCoalesce?: IMessageDmCoalesceDecision;
-+  };
-
-   function collectFiniteRowids(
-     entries: readonly { message: Pick<IMessagePayload, "id"> }[],
-@@ -551,6 +713,23 @@ export async function monitorIMessageProvider(opts: MonitorIMessageOpts = {}): P
-     return min;
-   }
-
-+  function trackPendingCatchupInboundRow(message: Pick<IMessagePayload, "id">): void {
-+    if (catchupCfg.enabled && typeof message.id === "number" && Number.isFinite(message.id)) {
-+      pendingCatchupInboundRowids.add(message.id);
-+    }
-+  }
-+
-+  function clearPendingCatchupInboundRows(
-+    entries: readonly { message: Pick<IMessagePayload, "id"> }[],
-+  ): void {
-+    if (!catchupCfg.enabled) {
-+      return;
-+    }
-+    for (const rowid of collectFiniteRowids(entries)) {
-+      pendingCatchupInboundRowids.delete(rowid);
-+    }
-+  }
-+
-   function resolveRecoveryCursorHoldFloor(): number | null {
-     const pendingFloor = minSetValue(pendingRecoveryReplayRowids);
-     if (pendingFloor === null) {
-@@ -593,19 +772,17 @@ export async function monitorIMessageProvider(opts: MonitorIMessageOpts = {}): P
-     }
-   }
-
--  const { debouncer: inboundDebouncer } = createChannelInboundDebouncer<{
--    message: IMessagePayload;
--    // Exact replay-guard key claimed for this row at ingestion (GUID or, for a
--    // GUID-less row, the composite fallback). Carried through so flush commits
--    // or releases the same key it claimed, even after a debounce merge rewrites
--    // the payload identity. null when the row had no derivable key (fail open).
--    replayKey: string | null;
--  }>({
-+  const createIMessageInboundDebouncer =
-+    createChannelInboundDebouncer<IMessageInboundDebounceEntry>;
-+  const { debouncer: inboundDebouncer } = createIMessageInboundDebouncer({
-     cfg,
-     channel: "imessage",
-     debounceMsOverride,
-     buildKey: (entry) => {
-       const msg = entry.message;
-+      if (entry.dmCoalesce) {
-+        return entry.dmCoalesce.key;
-+      }
-       const sender = msg.sender?.trim();
-       if (!sender) {
-         return null;
-@@ -615,12 +792,12 @@ export async function monitorIMessageProvider(opts: MonitorIMessageOpts = {}): P
-           ? `chat:${msg.chat_id}`
-           : (msg.chat_guid ?? msg.chat_identifier ?? "unknown");
-
--      if (coalesceSameSenderDms && msg.is_group !== true) {
--        return `imessage:${accountInfo.accountId}:dm:${conversationId}:${sender}`;
--      }
--
-       return `imessage:${accountInfo.accountId}:${conversationId}:${sender}`;
-     },
-+    resolveDebounceMs: (entry) => {
-+      const deadlineAt = entry.dmCoalesce?.debounceDeadlineAt;
-+      return deadlineAt === undefined ? undefined : Math.max(1, deadlineAt - Date.now());
-+    },
-     shouldDebounce: (entry) => {
-       const msg = entry.message;
-       if (resolveIMessageReactionContext(msg, (msg.text ?? "").trim())) {
-@@ -631,10 +808,11 @@ export async function monitorIMessageProvider(opts: MonitorIMessageOpts = {}): P
-         return false;
-       }
-
--      // Opt-in DM coalescing holds rows long enough for Apple's command+URL
--      // split-send to arrive. Group chats keep instant per-message dispatch.
-+      if (entry.dmCoalesce) {
-+        return entry.dmCoalesce.mode !== "instant";
-+      }
-       if (coalesceSameSenderDms) {
--        return msg.is_group !== true;
-+        return false;
-       }
-
-       // General same-sender inbound debounce: text-only, no control commands,
-@@ -651,25 +829,38 @@ export async function monitorIMessageProvider(opts: MonitorIMessageOpts = {}): P
-       if (entries.length === 0) {
-         return;
-       }
-+      for (const entry of entries) {
-+        const decision = entry.dmCoalesce;
-+        if (
-+          decision?.debounceDeadlineAt !== undefined &&
-+          dmCoalesceDeadlineByKey.get(decision.key) === decision.debounceDeadlineAt
-+        ) {
-+          dmCoalesceDeadlineByKey.delete(decision.key);
-+          dmCoalescePayloadStateByKey.delete(decision.key);
++  const { debouncer: inboundDebouncer } =
++    createChannelInboundDebouncer<IMessageInboundDebounceEntry>({
++      cfg,
++      channel: "imessage",
++      resolveDebounceMs: (entry) => {
++        const deadline = entry.dmCoalesce?.debounceDeadlineAt;
++        return deadline === undefined
++          ? resolveInboundDebounceMs({ cfg: readConfig(), channel: "imessage" })
++          : Math.max(1, deadline - Date.now());
++      },
++      buildKey: (entry) => {
++        const msg = entry.message;
++        if (entry.dmCoalesce) return entry.dmCoalesce.key;
++        const sender = msg.sender?.trim();
++        if (!sender) {
++          return null;
 +        }
-+      }
-       // Dispatch one unit (a single row or a merged bucket), then commit the
-       // exact replay keys that were claimed at ingestion, or release them if
-       // dispatch throws so a transient failure can retry on a later re-emit. Per
-       // unit so a failure in one bucket entry cannot strand another's claim.
-       const dispatchUnit = async (
--        unitEntries: { message: IMessagePayload; replayKey: string | null }[],
-+        unitEntries: IMessageInboundDebounceEntry[],
-         message: IMessagePayload,
-       ) => {
-         const keys = unitEntries
-           .map((entry) => entry.replayKey)
-           .filter((key): key is string => key !== null);
-         try {
--          await handleMessageNow(message);
-+          await handleMessageNow(message, { advanceCatchupCursor: false });
-           await commitIMessageInboundReplay({
-             guard: inboundReplayGuard,
-             accountId: accountInfo.accountId,
-             keys,
-           });
-           advanceRecoveryCursorAfterHandled(unitEntries);
-+          clearPendingCatchupInboundRows(unitEntries);
-+          await maybeAdvanceLiveCatchupCursor(message);
-+          await flushPendingLiveCatchupCursorAdvances();
-         } catch (err) {
-           holdRecoveryCursorBeforeFailedRows(unitEntries);
-           releaseIMessageInboundReplay({
-@@ -687,6 +878,47 @@ export async function monitorIMessageProvider(opts: MonitorIMessageOpts = {}): P
-         return;
-       }
-
-+      if (entries.some((entry) => entry.dmCoalesce)) {
-+        let pending: IMessageInboundDebounceEntry[] = [];
-+        const dispatchPending = async () => {
-+          if (pending.length === 0) {
-+            return;
-+          }
-+          if (pending.length === 1) {
-+            await dispatchUnit(pending, pending[0].message);
-+          } else {
-+            await dispatchUnit(
-+              pending,
-+              combineIMessagePayloads(pending.map((unit) => unit.message)),
-+            );
-+          }
-+          pending = [];
-+        };
++        const conversationId =
++          msg.chat_id != null
++            ? `chat:${msg.chat_id}`
++            : (msg.chat_guid ?? msg.chat_identifier ?? "unknown");
++
++        return `imessage:${accountInfo.accountId}:${conversationId}:${sender}`;
++      },
++      shouldDebounce: (entry) => {
++        const msg = entry.message;
++        if (resolveIMessageReactionContext(msg, (msg.text ?? "").trim())) {
++          return false;
++        }
++        // From-me messages are cached, not processed — never debounce.
++        if (msg.is_from_me === true) {
++          return false;
++        }
++        if (entry.dmCoalesce) return entry.dmCoalesce.mode !== "instant";
++        if (coalesceSameSenderDms) return false;
++
++        // General same-sender inbound debounce: text-only, no control commands,
++        // no media. Off by default unless messages.inbound is configured.
++        return shouldDebounceTextInbound({
++          text: msg.text,
++          cfg,
++          hasMedia: Boolean(
++            msg.attachments?.some((attachment) => !isIMessagePluginPayloadAttachment(attachment)),
++          ),
++        });
++      },
++      onFlush: (entries, createFlush) => {
 +        for (const entry of entries) {
++          const decision = entry.dmCoalesce;
 +          if (
-+            pending.length === 1 &&
-+            entry.dmCoalesce?.mode === "payload" &&
-+            pending[0].dmCoalesce?.mode === "lead-in"
++            decision?.debounceDeadlineAt !== undefined &&
++            dmCoalesceDeadlineByKey.get(decision.key) === decision.debounceDeadlineAt
 +          ) {
-+            pending.push(entry);
-+            continue;
-+          }
-+          if (
-+            pending.length >= 2 &&
-+            pending[0].dmCoalesce?.mode === "lead-in" &&
-+            pending[1].dmCoalesce?.mode === "payload" &&
-+            entry.dmCoalesce?.mode === "continuation"
-+          ) {
-+            pending.push(entry);
-+            continue;
-+          }
-+          await dispatchPending();
-+          pending.push(entry);
++            dmCoalesceDeadlineByKey.delete(decision.key);
++            dmCoalescePayloadStateByKey.delete(decision.key);
+           }
+-          try {
+-            if (admissionLifecycle.abortSignal.aborted) {
+-              await abandon();
+-              return;
+-            }
+-            if (entries.length === 1) {
+-              await handleMessageNow(
+-                expectDefined(entries[0], "single iMessage dispatch entry").message,
+-                admissionLifecycle,
+-              );
+-              await settle();
+-              return;
 +        }
-+        await dispatchPending();
-+        return;
-+      }
-+
-       const messages = entries.map((e) => e.message);
-       if (!shouldCombineIMessagePayloadBucket(messages, imsgEmitsBalloonMetadata)) {
-         for (const entry of entries) {
-@@ -743,6 +975,40 @@ export async function monitorIMessageProvider(opts: MonitorIMessageOpts = {}): P
-     },
-   });
-
-+  // Keep payload enqueue+flush atomic per DM key so a following composition
-+  // cannot enter the same flush bucket and lose its own coalescing window.
-+  const dmCoalesceIngestChains = new Map<string, Promise<void>>();
-+
-+  async function enqueueInboundEntry(entry: IMessageInboundDebounceEntry): Promise<void> {
-+    const enqueueAndFlush = async () => {
-+      if (entry.dmCoalesce?.flushPendingBeforeEnqueue) {
-+        await inboundDebouncer.flushKey(entry.dmCoalesce.key);
-+      }
-+      await inboundDebouncer.enqueue(entry);
-+      if (
-+        entry.dmCoalesce?.mode === "payload" &&
-+        entry.dmCoalesce.debounceDeadlineAt === undefined
-+      ) {
-+        await inboundDebouncer.flushKey(entry.dmCoalesce.key);
-+      }
-+    };
-+    const key = entry.dmCoalesce?.key;
-+    if (!key) {
-+      await enqueueAndFlush();
-+      return;
-+    }
-+    const previous = dmCoalesceIngestChains.get(key);
-+    const task = previous ? previous.then(enqueueAndFlush, enqueueAndFlush) : enqueueAndFlush();
-+    dmCoalesceIngestChains.set(key, task);
-+    try {
-+      await task;
-+    } finally {
-+      if (dmCoalesceIngestChains.get(key) === task) {
-+        dmCoalesceIngestChains.delete(key);
-+      }
-+    }
-+  }
-+
++        const units: IMessageInboundDebounceEntry[][] = [];
++        if (entries.some((entry) => entry.dmCoalesce)) {
++          for (const entry of entries) {
++            const pending = units.at(-1);
++            if (
++              (pending?.length === 1 &&
++                pending[0]?.dmCoalesce?.mode === "lead-in" &&
++                entry.dmCoalesce?.mode === "payload") ||
++              (pending &&
++                pending.length >= 2 &&
++                pending[0]?.dmCoalesce?.mode === "lead-in" &&
++                pending[1]?.dmCoalesce?.mode === "payload" &&
++                entry.dmCoalesce?.mode === "continuation")
++            ) {
++              pending.push(entry);
++            } else units.push([entry]);
++          }
++        } else {
++          const messages = entries.map((entry) => entry.message);
++          if (!shouldCombineIMessagePayloadBucket(messages, imsgEmitsBalloonMetadata)) {
++            units.push(...entries.map((entry) => [entry]));
++          } else if (messages.some(hasIMessageUrlBalloonBundleID)) {
++            for (const entry of entries) {
++              const pending = units.at(-1);
++              if (
++                isStandaloneIMessageUrlPreviewPayload(entry.message) &&
++                pending?.length === 1 &&
++                !hasIMessageUrlBalloonBundleID(pending[0]!.message)
++              )
++                pending.push(entry);
++              else units.push([entry]);
+             }
+-
+-            const messages = entries.map((entry) => entry.message);
+-            const combined = combineIMessagePayloads(messages);
+-            if (shouldLogVerbose()) {
+-              const text = combined.text ?? "";
+-              const preview = sliceUtf16Safe(text, 0, 50);
+-              const ellipsis = text.length > 50 ? "..." : "";
+-              logVerbose(
+-                `[imessage] merged ${entries.length} debounced messages: "${preview}${ellipsis}"`,
++          } else units.push(entries);
++        }
++        let admission = Promise.resolve();
++        const completions = units
++          .filter((unit) => unit.length > 0)
++          .map((unit) => {
++            const start = admission.then(() => {
++              const { lifecycle, settle, abandon } = fanInChannelIngressLifecycles(
++                unit.flatMap((entry) => (entry.ingressLifecycle ? [entry.ingressLifecycle] : [])),
+               );
+-            }
+-            await handleMessageNow(combined, admissionLifecycle);
+-            await settle();
+-          } catch (err) {
+-            await abandon();
+-            runtime.error?.(`imessage: inbound dispatch failed: ${String(err)}`);
+-          }
+-        },
+-      });
+-    },
+-    onError: (err) => {
+-      runtime.error?.(`imessage debounce flush failed: ${String(err)}`);
+-    },
+-  });
++              return createFlush({
++                lifecycle,
++                dispatch: async (admissionLifecycle) => {
++                  try {
++                    if (admissionLifecycle.abortSignal.aborted) {
++                      await abandon();
++                      return;
++                    }
++                    await handleMessageNow(
++                      combineIMessagePayloads(unit.map((entry) => entry.message)),
++                      admissionLifecycle,
++                    );
++                    await settle();
++                  } catch (err) {
++                    await abandon();
++                    runtime.error?.(`imessage: inbound dispatch failed: ${String(err)}`);
++                  }
++                },
++              });
++            });
++            admission = start.then((flush) => flush.admission);
++            return start.then((flush) => flush.completion);
++          });
++        return { admission, completion: Promise.all(completions).then(() => {}) };
++      },
++      onError: (err) => {
++        runtime.error?.(`imessage debounce flush failed: ${String(err)}`);
++      },
++    });
+ 
    let client: IMessageRpcClient | undefined;
    let detachAbortHandler = () => {};
-   let liveCatchupCursorAdvanceEnabled = false;
-@@ -806,6 +1072,11 @@ export async function monitorIMessageProvider(opts: MonitorIMessageOpts = {}): P
+@@ -1480,10 +1640,17 @@ export async function monitorIMessageProvider(opts: MonitorIMessageOpts = {}): P
+       if (await maybeHandleApprovalControl(repairedMessage)) {
+         return { kind: "completed" };
        }
-       return;
-     }
-+    const pendingFloor = minSetValue(pendingCatchupInboundRowids);
-+    if (pendingFloor !== null && cursor.lastSeenRowid >= pendingFloor) {
-+      pendingLiveCatchupCursorAdvances.push(cursor);
-+      return;
-+    }
-     try {
-       await advanceIMessageCatchupCursor(accountInfo.accountId, cursor, catchupCfg);
-     } catch (err) {
-@@ -814,7 +1085,18 @@ export async function monitorIMessageProvider(opts: MonitorIMessageOpts = {}): P
-   }
-
-   async function flushPendingLiveCatchupCursorAdvances(): Promise<void> {
--    for (const cursor of pendingLiveCatchupCursorAdvances.splice(0)) {
-+    if (!liveCatchupCursorAdvanceEnabled) {
-+      return;
-+    }
-+    const pendingFloor = minSetValue(pendingCatchupInboundRowids);
-+    const queued = pendingLiveCatchupCursorAdvances.splice(0);
-+    const ready = queued
-+      .filter((cursor) => pendingFloor === null || cursor.lastSeenRowid < pendingFloor)
-+      .toSorted((a, b) => a.lastSeenRowid - b.lastSeenRowid);
-+    pendingLiveCatchupCursorAdvances.push(
-+      ...queued.filter((cursor) => pendingFloor !== null && cursor.lastSeenRowid >= pendingFloor),
-+    );
-+    for (const cursor of ready) {
-       try {
-         await advanceIMessageCatchupCursor(accountInfo.accountId, cursor, catchupCfg);
-       } catch (err) {
-@@ -1534,7 +1816,13 @@ export async function monitorIMessageProvider(opts: MonitorIMessageOpts = {}): P
-       return;
-     }
-     trackPendingRecoveryReplayRow(repairedMessage);
--    await inboundDebouncer.enqueue({ message: repairedMessage, replayKey: replay.key });
-+    trackPendingCatchupInboundRow(repairedMessage);
-+    const dmCoalesce = classifyIMessageDmCoalesce(repairedMessage) ?? undefined;
-+    await enqueueInboundEntry({
-+      message: repairedMessage,
-+      replayKey: replay.key,
-+      dmCoalesce,
++      if (hasIMessageBalloonMetadata(repairedMessage)) imsgEmitsBalloonMetadata = true;
++      const dmCoalesce = classifyIMessageDmCoalesce(repairedMessage, receivedAt);
++      if (dmCoalesce?.flushPendingBeforeEnqueue) await inboundDebouncer.flushKey(dmCoalesce.key);
+       await inboundDebouncer.enqueue({
+         message: repairedMessage,
+         ingressLifecycle,
++        dmCoalesce,
+       });
++      if (dmCoalesce?.mode === "payload" && dmCoalesce.debounceDeadlineAt === undefined) {
++        await inboundDebouncer.flushKey(dmCoalesce.key);
++      }
+       // Debounce owns the claim until its eventual flush adopts or abandons.
+       return { kind: "deferred" };
+     },
+diff --git a/extensions/imessage/src/monitor/parse-notification.coalescing.test.ts b/extensions/imessage/src/monitor/parse-notification.coalescing.test.ts
+new file mode 100644
+index 00000000000..595c3b98d5c
+--- /dev/null
++++ b/extensions/imessage/src/monitor/parse-notification.coalescing.test.ts
+@@ -0,0 +1,32 @@
++import { describe, expect, it } from "vitest";
++import { parseIMessageNotification } from "./parse-notification.js";
++
++describe("split-message metadata at durable ingress", () => {
++  it("retains URL balloon identity and current reply GUID", () => {
++    const parsed = parseIMessageNotification({
++      message: {
++        id: 1,
++        guid: "url-row",
++        chat_id: 1,
++        text: "https://example.com",
++        balloon_bundle_id: "com.apple.messages.URLBalloonProvider",
++        reply_to_guid: "lead-in",
++      },
 +    });
-   };
-
-   await waitForTransportReady({
++    expect(parsed?.balloon_bundle_id).toBe("com.apple.messages.URLBalloonProvider");
++    expect(parsed?.reply_to_guid).toBe("lead-in");
++  });
++
++  it.each([42, {}, []])("rejects malformed balloon metadata %j", (balloon_bundle_id) => {
++    expect(
++      parseIMessageNotification({
++        message: {
++          id: 1,
++          guid: "url-row",
++          chat_id: 1,
++          balloon_bundle_id,
++        },
++      }),
++    ).toBeNull();
++  });
++});
+diff --git a/extensions/imessage/src/monitor/parse-notification.ts b/extensions/imessage/src/monitor/parse-notification.ts
+index 2a59d5065e4..63dcf1466fc 100644
+--- a/extensions/imessage/src/monitor/parse-notification.ts
++++ b/extensions/imessage/src/monitor/parse-notification.ts
+@@ -60,6 +60,7 @@ export function parseIMessageNotification(raw: unknown): IMessagePayload | null
+     !isOptionalNumber(message.chat_id) ||
+     !isOptionalString(message.sender) ||
+     !isOptionalString(message.destination_caller_id) ||
++    !isOptionalString(message.balloon_bundle_id) ||
+     !isOptionalBoolean(message.is_from_me) ||
+     !isOptionalString(message.text) ||
+     !isOptionalString(message.thread_originator_guid) ||
+diff --git a/extensions/imessage/src/monitor/types.ts b/extensions/imessage/src/monitor/types.ts
+index 332d23a9761..5304bf59fa8 100644
+--- a/extensions/imessage/src/monitor/types.ts
++++ b/extensions/imessage/src/monitor/types.ts
+@@ -44,6 +44,7 @@ export type IMessagePayload = {
+   chat_id?: number | null;
+   sender?: string | null;
+   destination_caller_id?: string | null;
++  balloon_bundle_id?: string | null;
+   is_from_me?: boolean | null;
+   text?: string | null;
+   // Thread origin owns quote identity; direct reply GUID also links poll captions.
+diff --git a/src/config/dead-config-keys.test.ts b/src/config/dead-config-keys.test.ts
+index 17467a4b59e..d66db1761ae 100644
+--- a/src/config/dead-config-keys.test.ts
++++ b/src/config/dead-config-keys.test.ts
+@@ -334,12 +334,6 @@ describe("dead config keys", () => {
+       "channels.whatsapp",
+       "ackReaction",
+     ],
+-    [
+-      "iMessage coalesce",
+-      { channels: { imessage: { coalesceSameSenderDms: true } } },
+-      "channels.imessage",
+-      "coalesceSameSenderDms",
+-    ],
+     ["cron.webhook", { cron: { webhook: "https://example.com" } }, "cron", "webhook"],
+     ["commands.modelsWrite", { commands: { modelsWrite: true } }, "commands", "modelsWrite"],
+     ["messages.messagePrefix", { messages: { messagePrefix: "x" } }, "messages", "messagePrefix"],
+diff --git a/src/config/types.imessage.ts b/src/config/types.imessage.ts
+index ad1d88c69bf..41ddd6d8477 100644
+--- a/src/config/types.imessage.ts
++++ b/src/config/types.imessage.ts
+@@ -67,6 +67,7 @@ export type IMessageAccountConfig = Omit<
+      * `messages.inbound.byChannel.imessage` or global
+      * `messages.inbound.debounceMs`. Default: `false`.
+      */
++    coalesceSameSenderDms?: boolean;
+     groups?: Record<
+       string,
+       {

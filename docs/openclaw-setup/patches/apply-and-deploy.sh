@@ -20,7 +20,7 @@ PATCHES=(
   imessage-message-part-coalescing
   sandbox-discovery-failure-fix
   browser-userdata-dir-fix
-  qmd-mcporter-per-agent
+  builtin-memory-migration
 )
 
 if [ -n "${MINI_HOST:-}" ]; then

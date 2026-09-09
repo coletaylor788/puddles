@@ -18,10 +18,10 @@ const generatedRootCaches = [".experimental-vitest-cache", ".unrun"];
 const sourceDependencyOptions = { exclude: [...dependencyCacheNames, ...generatedRootCaches], normalizePnpmWorkspaceState: true };
 const repositoryDependencyOptions = { excludeNames: dependencyCacheNames, exclude: generatedRootCaches, normalizePnpmWorkspaceState: true };
 
-function safeNode() {
-  const [major, minor, patch] = process.versions.node.split(".").map(Number);
-  return major === 22 && (minor > 22 || minor === 22 && patch >= 3) ||
-    major === 24 && minor >= 15 || major === 25 && minor >= 9 || major >= 26;
+export function safeNode(version = process.versions.node) {
+  if (!/^\d+\.\d+\.\d+$/.test(version)) return false;
+  const [major, minor] = version.split(".").map(Number);
+  return major === 24 && minor >= 16 || major === 26 && minor >= 1 || major > 26;
 }
 
 export async function regressionEnvironment(directory, run, env = process.env) {
@@ -48,7 +48,7 @@ export async function removeOwnedWorktree(repository, path, git) {
 }
 
 export async function nativePipeline(command, repositoryGates) {
-  if (!safeNode()) throw new Error("Use OpenClaw's supported Node version (22.22.3+, 24.15+, or 25.9+ on supported major lines)");
+  if (!safeNode()) throw new Error("Use OpenClaw's supported Node version (24.16.0+ on 24.x, or 26.1.0+). Older releases can truncate SQLite text.");
   const source = resolve(process.env.OPENCLAW_SRC ?? join(homedir(), "git", "openclaw"));
   if (!existsSync(join(source, ".git"))) throw new Error("OPENCLAW_SRC must be a source checkout");
   const runDir = externalDirectory(process.env.E2E_RUN_DIR ?? mkdtempSync(join(tmpdir(), "puddles-native-")), [repoRoot, source]);

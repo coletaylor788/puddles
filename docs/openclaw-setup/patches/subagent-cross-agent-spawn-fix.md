@@ -1,4 +1,12 @@
-# OpenClaw — explicit cron targets and cross-agent tool policy
+# OpenClaw explicit cron targets and cross-agent tool policy
+
+The current patch targets OpenClaw 2026.9.3. Native target checks run before
+child admission in the request resolver. ACP keeps its command-capability
+boundary while reporting actionable target errors first. Both backends preserve
+the configured target's tool policy for cross-agent children. The cumulative
+pool follows the relocated spawn tests and regenerated prompt fixtures.
+
+The older release notes below describe the maintained behavior's history.
 
 > **2026.7.1:** ported and live-verified at `0790d9f` in the maintained source
 > patch `subagent-cross-agent-spawn-fix.patch`.

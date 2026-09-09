@@ -119,12 +119,20 @@ vi.mock("../src/native-fixture.mjs", async (original) => ({
   runScenario: async (_installed: string, scenario: { id: string }) => ({ id: scenario.id, passed: true }),
 }));
 // @ts-expect-error JS lifecycle exports are tested at runtime.
-import { nativePipeline, regressionEnvironment, removeOwnedWorktree } from "../src/native-pipeline.mjs";
+import { nativePipeline, regressionEnvironment, removeOwnedWorktree, safeNode } from "../src/native-pipeline.mjs";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
 import { atomicJson, jsonDigest, treeDigest } from "../src/native-state.mjs";
 import { runCommand } from "../src/process-runner.mjs";
 
 const roots: string[] = [];
+it.each(["22.23.2", "23.0.0", "24.15.99", "25.9.0", "26.0.99", "26.1.0-rc.1", "invalid"])(
+  "rejects unsupported or prerelease Node %s before native work",
+  (version) => expect(safeNode(version)).toBe(false),
+);
+it.each(["24.16.0", "24.17.0", "26.1.0", "26.2.0", "27.0.0"])(
+  "accepts upstream-supported Node %s",
+  (version) => expect(safeNode(version)).toBe(true),
+);
 function root() { const path = mkdtempSync(join(tmpdir(), "native-pipeline-test-")); roots.push(path); return path; }
 beforeEach(() => {
   Object.assign(counters, { prepare: 0, install: 0, build: 0, package: 0, additionalInstalls: 0, runtimeCommands: 0, dependency: "first", generatedCaches: false });
