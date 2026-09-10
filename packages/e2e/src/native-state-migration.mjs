@@ -197,10 +197,12 @@ export async function executeStateMigration({ phase, runtime, stateDir, manifest
     statePath(stateDir, join(stateDir, "config-journal-fingerprint.key"));
   };
   assertSelection();
-  const { snapshot } = await sdk.readConfigFileSnapshotForWrite({ observe: false });
+  const { snapshot } = await sdk.readConfigFileSnapshotForWrite({
+    observe: false, pluginValidation: ["preflight", "schema"].includes(phase) ? "core-only" : "full",
+  });
   assertSelection();
   for (const source of [snapshot.sourceConfigBeforeMigrations, snapshot.sourceConfig].filter(record)) {
-    statePath(stateDir, sdk.resolveCronJobsStorePathFromConfig(source, process.env));
+    statePath(stateDir, sdk.resolveCronJobsStorePathFromConfig(source, process.env, { artifactPreservingReadOnly: true }));
   }
   if (phase === "preflight") {
     configBoundary(snapshot, manifest.configOperations, stateDir, sdk);
@@ -228,7 +230,7 @@ export async function executeStateMigration({ phase, runtime, stateDir, manifest
   }
   if (phase === "cron" && manifest.cronOperation) {
     configBoundary(snapshot, [], stateDir, sdk);
-    const storePath = statePath(stateDir, sdk.resolveCronJobsStorePathFromConfig(snapshot.sourceConfig, process.env));
+    const storePath = statePath(stateDir, sdk.resolveCronJobsStorePathFromConfig(snapshot.sourceConfig, process.env, { artifactPreservingReadOnly: true }));
     const loaded = await sdk.loadCronJobsStoreWithConfigJobsReadOnly(storePath, process.env);
     const matches = loaded.store.jobs.filter((job) => job.id === manifest.cronOperation.jobId);
     if (matches.length !== 1 || loaded.invalidConfigRows?.some((row) => row.id === manifest.cronOperation.jobId) ||

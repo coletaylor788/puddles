@@ -159,8 +159,13 @@ nonrouting fields, and concurrent runtime state. Unknown routing-shaped fields
 fail. This does not revoke tools or prevent a job's own agent from using them;
 that policy belongs in the operator's reviewed configuration.
 
-Preflight reads config with observation disabled, without creating or changing
-config-health state. The selected database must already exist for a job
+Preflight reads config with observation disabled and core-only validation,
+without loading the installed plugin index or recording config health. The
+stopped source writer still performs full plugin validation before committing.
+Cron path selection uses the maintained artifact-preserving reader, so even an
+older database without WAL or SHM files remains unchanged. Private temporary
+read snapshots use the recovery directory's cache, not the target state.
+The selected database must already exist for a job
 operation. After stopping and snapshotting, activation records each stage
 before it runs: schema-only repair, checked config mutation, ordinary doctor,
 then a fresh readonly job snapshot and targeted compare-and-swap write. Only

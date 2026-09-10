@@ -1,21 +1,80 @@
 diff --git a/src/config/io.runtime.ts b/src/config/io.runtime.ts
-index 7616394119c..64dea2f456e 100644
+index 7616394119c..07a06d2eb24 100644
 --- a/src/config/io.runtime.ts
 +++ b/src/config/io.runtime.ts
-@@ -241,8 +241,12 @@ export async function readConfigFileSnapshotForRuntimeTransaction(
+@@ -239,10 +239,20 @@ export async function readConfigFileSnapshotForRuntimeTransaction(
+   }).readConfigFileSnapshot();
+ }
  
- export async function readConfigFileSnapshotForWrite(options?: {
-   skipPluginValidation?: boolean;
-+  observe?: boolean;
- }): Promise<ReadConfigFileSnapshotForWriteResult> {
+-export async function readConfigFileSnapshotForWrite(options?: {
+-  skipPluginValidation?: boolean;
+-}): Promise<ReadConfigFileSnapshotForWriteResult> {
 -  const readOptions = options?.skipPluginValidation ? { pluginValidation: "skip" as const } : {};
++export async function readConfigFileSnapshotForWrite(
++  options?: Pick<
++    ConfigSnapshotReadOptions,
++    "skipPluginValidation" | "pluginValidation" | "observe"
++  >,
++): Promise<ReadConfigFileSnapshotForWriteResult> {
 +  const readOptions = {
-+    ...(options?.skipPluginValidation ? { pluginValidation: "skip" as const } : {}),
++    ...(options?.pluginValidation
++      ? { pluginValidation: options.pluginValidation }
++      : options?.skipPluginValidation
++        ? { pluginValidation: "skip" as const }
++        : {}),
 +    ...(options?.observe !== undefined ? { observe: options.observe } : {}),
 +  };
    for (let attempt = 0; attempt < 3; attempt += 1) {
      try {
        const processIo = createConfigIO(readOptions);
+diff --git a/src/cron/store.ts b/src/cron/store.ts
+index 7b8243e3bef..6a6e8559339 100644
+--- a/src/cron/store.ts
++++ b/src/cron/store.ts
+@@ -82,8 +82,12 @@ function resolveDefaultCronStorePath(env: NodeJS.ProcessEnv): string {
+ }
+ 
+ /** Resolves the cron jobs store path, expanding home-relative user input. */
+-export function resolveCronJobsStorePath(storePath?: string, env: NodeJS.ProcessEnv = process.env) {
+-  const selected = storePath?.trim() || readCronStoreStatePath(env);
++export function resolveCronJobsStorePath(
++  storePath?: string,
++  env: NodeJS.ProcessEnv = process.env,
++  behavior: { artifactPreservingReadOnly?: boolean } = {},
++) {
++  const selected = storePath?.trim() || readCronStoreStatePath(env, behavior);
+   if (selected) {
+     const raw = selected.trim();
+     if (raw.startsWith("~")) {
+@@ -98,9 +102,10 @@ export function resolveCronJobsStorePath(storePath?: string, env: NodeJS.Process
+ export function resolveCronJobsStorePathFromConfig(
+   cfg: { cron?: unknown },
+   env: NodeJS.ProcessEnv = process.env,
++  behavior: { artifactPreservingReadOnly?: boolean } = {},
+ ): string {
+   const store = (cfg.cron as { store?: unknown } | undefined)?.store;
+-  return resolveCronJobsStorePath(typeof store === "string" ? store : undefined, env);
++  return resolveCronJobsStorePath(typeof store === "string" ? store : undefined, env, behavior);
+ }
+ 
+ /** Loads cron jobs plus config/runtime sidecars from the SQLite-backed store. */
+diff --git a/src/cron/store/config-state.ts b/src/cron/store/config-state.ts
+index 1bcdcec6bc9..b35f88388e5 100644
+--- a/src/cron/store/config-state.ts
++++ b/src/cron/store/config-state.ts
+@@ -1,7 +1,10 @@
+ // Cron store selection preserves the retired configured partition through shared SQLite state.
+ import { readConfigMachineState } from "../../state/config-machine-state.js";
+ 
+-export function readCronStoreStatePath(env: NodeJS.ProcessEnv = process.env): string | undefined {
+-  const value = readConfigMachineState<unknown>("cron.store", { env });
++export function readCronStoreStatePath(
++  env: NodeJS.ProcessEnv = process.env,
++  behavior: { artifactPreservingReadOnly?: boolean } = {},
++): string | undefined {
++  const value = readConfigMachineState<unknown>("cron.store", { env }, behavior);
+   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+ }
 diff --git a/src/plugin-sdk/config-mutation.ts b/src/plugin-sdk/config-mutation.ts
 index 3caf4de38f6..0306371aa9c 100644
 --- a/src/plugin-sdk/config-mutation.ts
@@ -30,10 +89,10 @@ index 3caf4de38f6..0306371aa9c 100644
  export { updateConfig } from "../commands/models/shared.js";
 diff --git a/src/plugin-sdk/cron-store-runtime.test.ts b/src/plugin-sdk/cron-store-runtime.test.ts
 new file mode 100644
-index 00000000000..e07eeeb2c1a
+index 00000000000..00d5caff70c
 --- /dev/null
 +++ b/src/plugin-sdk/cron-store-runtime.test.ts
-@@ -0,0 +1,175 @@
+@@ -0,0 +1,183 @@
 +import fs from "node:fs/promises";
 +import { DatabaseSync } from "node:sqlite";
 +import { gunzipSync } from "node:zlib";
@@ -85,7 +144,7 @@ index 00000000000..e07eeeb2c1a
 +      );
 +      const selected = job("historical-selected");
 +      const expectedRevision = resolveCronJobConfigRevision(selected);
-+      const storePath = resolveCronJobsStorePathFromConfig({}, state.env);
++      const storePath = state.statePath("cron", "jobs.json");
 +      const database = new DatabaseSync(databasePath);
 +      database
 +        .prepare(`INSERT INTO cron_jobs (
@@ -109,9 +168,17 @@ index 00000000000..e07eeeb2c1a
 +        }),
 +      );
 +      const before = await fs.readFile(databasePath);
-+      const snapshot = await readConfigFileSnapshotForWrite({ observe: false });
++      const beforeFiles = await fs.readdir(state.statePath("state"));
++      const snapshot = await readConfigFileSnapshotForWrite({
++        observe: false,
++        pluginValidation: "core-only",
++      });
 +      expect(snapshot.snapshot.sourceConfig.memory?.search?.provider).toBe("none");
++      expect(
++        resolveCronJobsStorePathFromConfig({}, state.env, { artifactPreservingReadOnly: true }),
++      ).toBe(storePath);
 +      expect(await fs.readFile(databasePath)).toEqual(before);
++      expect(await fs.readdir(state.statePath("state"))).toEqual(beforeFiles);
 +      expect(repairOpenClawStateDatabaseSchema({ env: state.env }).warnings).toEqual([]);
 +      await mutateConfigFile({
 +        base: "source",

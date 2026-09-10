@@ -74,9 +74,10 @@ Scoped memory passes its proof against the patched runtime.
 
 The scoped-read race is repaired with the existing safe-root reader, including
 a regression that replaces and restores a containing directory. The same
-reviewer is rechecking the complete diff. The narrow stopped-state migration
-passes local tests, including the historical database. Its installed proof is
-running before the final accumulated gate. Memory migration is authorized,
+reviewer clears the committed candidate. Installed migration passes current
+state, include ownership, and conflict cases. The historical case catches
+readonly metadata reads creating SQLite sidecars. That defect is repaired
+locally and needs the same review and final accumulated gate. Memory migration is authorized,
 but derived-data cleanup is not. Builtin does not retain QMD's model expansion
 or learned reranking. Installed access checks remain required before integration.
 
@@ -152,7 +153,9 @@ or learned reranking. Installed access checks remain required before integration
   gateway, model, or network activity belongs in the migration helper.
   Bind manifest bytes into target/recovery identity before shutdown. Validate
   include ownership and state boundaries before shutdown and on fresh writes.
-  Use `readConfigFileSnapshotForWrite({ observe: false })` and `mutateConfigFile` with `base: "source"`,
+  Preflight uses `readConfigFileSnapshotForWrite` with `observe: false` and
+  `pluginValidation: "core-only"` so it does not load the SQLite plugin index.
+  Use `mutateConfigFile` with `base: "source"`,
   explicit no after-write work, and `skipRuntimeSnapshotRefresh: true`.
   Snapshot before any mutation. The parent approved calling the existing
   `doctor-repair-runtime.repairOpenClawStateDatabaseSchema` before config because
@@ -161,6 +164,11 @@ or learned reranking. Installed access checks remain required before integration
   Apply config before ordinary doctor, then read the
   selected cron partition through the readonly SDK and perform one targeted CAS
   update. Reject drift rather than silently rebaseline or replace the store.
+  Cron partition resolution passes `artifactPreservingReadOnly: true` to the
+  existing machine-state reader. Ordinary readonly SQLite opens may create
+  WAL/SHM files. The maintained private snapshot reader avoids that and keeps
+  temporary copies in the recovery directory's cache. Full plugin validation
+  remains in the stopped source write; no validation is removed from mutation.
   The selected private architecture retains its global wiki, continuous bridge,
   and dedicated builder. No bridge disable, scope switch, or reowner is in scope.
 - Upstream `8b0735e89f2` removes QMD rather than moving it to an extension.
@@ -208,8 +216,9 @@ or learned reranking. Installed access checks remain required before integration
   `expectedRevision` uses the maintained config-only `sha256:` token.
   Expose `resolveIncludeWriteBoundary` and `resolveOpenClawStateSqlitePath`
   through their existing narrow SDK facades. Forward the config reader's existing
-  `observe` option without changing defaults for current callers. Preflight
-  observation must be false; the default records config-health state.
+  `observe` and `pluginValidation` options without changing defaults for current
+  callers. Preflight observation must be false; the default records health.
+  Forward the existing artifact-preserving behavior through cron path selection.
   `native-state-migration.mjs` validates the manifest and performs fixed phases.
   `E2E_STATE_MIGRATION_MANIFEST` binds its SHA into both cumulative and installed
   proofs, and into the activation target and durable journal.
@@ -289,9 +298,12 @@ or learned reranking. Installed access checks remain required before integration
   model startup. Recovery must preserve the original failure and rollback errors.
 - The maintained 2026.7.1-2 SQLite fixture reproduces config-health writes during
   default snapshot reading and the old-schema prerequisite for config writes.
-  Observation-disabled reads plus the approved schema-only step pass four SDK
-  cases and core types. The first public migration set passes 104 cases and
-  e2e types; the expanded schema-stage and installed fixtures are being rerun.
+  Current/include/conflict cases pass in the installed artifact. The historical
+  installed case exposes sidecar creation missed by checking only DB bytes.
+  The strengthened regression asserts the old directory's files are unchanged.
+  Core-only inspection and artifact-preserving path resolution pass four SDK
+  cases, 75 retained cron cases, and core types. The broader public lifecycle
+  set passes 135 cases and e2e types. The latest focused subset passes 86.
 
 ### Rollout and rollback
 
@@ -313,6 +325,9 @@ or learned reranking. Installed access checks remain required before integration
   post-read file check. The accepted finding is repaired with the existing
   descriptor-bound SDK reader and replacement-and-restoration regressions.
   The same reviewer must recheck the complete current diff before clearance.
+- The retained reviewer clears all of `8cf0a92..75407a1`, including the scoped
+  descriptor repair, silence, and migration. The installed sidecar failure then
+  requires a focused correction and the same reviewer's full-diff recheck.
 
 ### Checklist
 

@@ -231,6 +231,7 @@ shutil.copymode(source, destination)
         env: {
           ...env, OPENCLAW_STATE_DIR: realpathSync(target.stateDir),
           OPENCLAW_CONFIG_PATH: join(realpathSync(target.stateDir), "openclaw.json"),
+          XDG_CACHE_HOME: join(recoveryDir, "read-cache"),
         },
       });
     },

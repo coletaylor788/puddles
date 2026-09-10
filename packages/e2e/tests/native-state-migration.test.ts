@@ -100,7 +100,7 @@ describe("digest-bound stopped-state operations", () => {
     await f.run("preflight");
     expect(readFileSync(f.configPath)).toEqual(before);
     expect(f.sdk.mutateConfigFile).not.toHaveBeenCalled();
-    expect(f.sdk.readConfigFileSnapshotForWrite).toHaveBeenCalledWith({ observe: false });
+    expect(f.sdk.readConfigFileSnapshotForWrite).toHaveBeenCalledWith({ observe: false, pluginValidation: "core-only" });
     expect(f.sdk.repairOpenClawStateDatabaseSchema).not.toHaveBeenCalled();
     expect(f.sdk.saveCronJobsStoreChanges).not.toHaveBeenCalled();
     expect(f.sdk.loadCronStore).not.toHaveBeenCalled();
@@ -119,6 +119,7 @@ describe("digest-bound stopped-state operations", () => {
       base: "source", afterWrite: { mode: "none" },
       writeOptions: { skipRuntimeSnapshotRefresh: true, skipOutputLogs: true },
     });
+    expect(f.sdk.readConfigFileSnapshotForWrite).toHaveBeenLastCalledWith({ observe: false, pluginValidation: "full" });
   });
 
   it("rejects changed leaf preconditions without partial writes", async () => {

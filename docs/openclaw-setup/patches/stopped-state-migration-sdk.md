@@ -8,8 +8,13 @@ It also exposes existing include ownership and state database path helpers.
 
 The config snapshot reader normally records config health in SQLite. A release
 preflight must not do that. The patch forwards its existing optional `observe`
-setting through the public reader. `observe: false` reads the source without
-recording health. Existing callers retain their current default behavior.
+settings through the public reader. `observe: false` disables health recording.
+Preflight also selects `pluginValidation: "core-only"` to avoid reading the
+installed plugin index. Full plugin validation remains in the stopped config
+write. Cron partition resolution can request the existing
+`artifactPreservingReadOnly` path, which inspects a private SQLite snapshot
+instead of creating WAL or SHM files beside an older database. Existing callers
+retain their current default behavior.
 
 The public native helper accepts a versioned manifest with checked config
 leaves and, optionally, one job whose final and failure delivery must be
