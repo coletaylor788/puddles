@@ -50,6 +50,16 @@ tests, packages dependencies, and rehearses the installed runtime with
 recorded messages. Public code never depends on private configuration or live
 accounts.
 
+Required pre-reply recall must survive a cold local embedding service. After
+the ordinary policy checks, optional trigger lookup and required recall share
+one bounded budget. They cannot spend the setup allowance twice. Local
+embedding services also need a proven lifetime across stop and rollback.
+The existing process supervisor can clean children after a gateway crash, but
+its proof does not survive the gateway. The release owner is comparing a narrow
+repair with an independently supervised local endpoint. No new persistent
+process protocol is approved. Uncertain cleanup must block the stopped-state
+snapshot and runtime swap.
+
 The deployment helper can select a new interpreter without changing a service's
 shell wrapper or environment. It verifies both retained interpreters, changes
 only the selected service argument, and restores the old interpreter with the
@@ -77,7 +87,10 @@ a regression that replaces and restores a containing directory. The same
 reviewer clears the committed candidate. Installed migration passes current
 state, include ownership, and conflict cases. The historical case catches
 readonly metadata reads creating SQLite sidecars. That defect is repaired
-locally and needs the same review and final accumulated gate. Memory migration is authorized,
+locally and needs the same review and final accumulated gate. The release owner
+also routes repairs for cold recall and owned-service cleanup. Cold recall
+passes the affected suite. Installed cold recall and the service lifetime
+decision still block integration. Memory migration is authorized,
 but derived-data cleanup is not. Builtin does not retain QMD's model expansion
 or learned reranking. Installed access checks remain required before integration.
 
@@ -115,6 +128,12 @@ or learned reranking. Installed access checks remain required before integration
 - Complete independent full-diff review and public remote checks.
 - Send exact candidate identity and retained evidence to the parent.
 - Merge only after parent confirms combined compatibility.
+- Preserve always-mode recall during cold embedding startup within the existing
+  configured setup grace, consumed once. Keep ordinary preflight and optional
+  trigger caps, other modes, authorization, and isolation unchanged.
+- Reap owned local provider processes on normal stop, startup failure, and
+  forced/crashed parent termination. Preserve preexisting endpoints and unrelated
+  processes. Require positive extinction evidence before stopped-state snapshot.
 
 ### Architecture and decisions
 
@@ -124,6 +143,20 @@ or learned reranking. Installed access checks remain required before integration
 - Port skill authoring to the release's agent-owned persistent collection.
   Do not restore retired workspace ownership or bypass skill policy.
 - Use a side-by-side supported Node toolchain, not a host-global upgrade.
+- Active Memory's lexical trigger lookup still initializes Memory Core's required
+  provider. A status-purpose manager does not safely bypass that requirement.
+  For eligible `always` recall, arm the existing recall deadline before the
+  trigger lookup and do not rearm it. Charge elapsed setup to the existing
+  `setupGraceTimeoutMs`; retain the model timeout and settlement allowance.
+- The proposed reuse of `createServiceChildRelayAdapter` for POSIX local providers has a boundary. Its private
+  host pipe and independent group anchor survive host/relay death long enough
+  to clean the owned tree. Do not replace them with PID/name heuristics.
+  A reuse would preserve one-shot host exit through explicit unref support and
+  retain the adapter's extinction failure signal. The current release stop only
+  observes launchd label removal; it has no durable descendant proof. The parent
+  holds new admission/closure protocols while comparing supported independent
+  endpoint supervision. No service-lifetime source change is implemented yet.
+  Do not invent process claims or treat port closure as complete extinction.
 - Keep installation offline and keep source integration outside activation.
 - The scoped adapter uses distinct tool names and trusted factory agent context.
   Call the existing memory manager directly with fixed memory sources. Guard
@@ -209,6 +242,10 @@ or learned reranking. Installed access checks remain required before integration
 - `silent-reply-completion-evidence` uses this attempt's assistant text only
   when the delivery subscription has no visible text. It never uses historical
   `lastAssistant`. Existing silence policy and terminal failure guards remain.
+- `active-memory-cold-recall` changes the bundled hook's deadline frontier only
+  for eligible `always` recall. Link optional lookup cancellation to the owning
+  deadline and debit its elapsed setup from deep recall's grace. The original
+  model timeout and other modes stay unchanged.
 - Expose maintained `loadCronJobsStoreWithConfigJobsReadOnly`,
   `saveCronJobsStoreChanges`, `resolveCronJobsStorePathFromConfig`, and
   `resolveCronJobConfigRevision` through `cron-store-runtime`. Do not use its
@@ -242,6 +279,15 @@ or learned reranking. Installed access checks remain required before integration
 ### Validation
 
 - Run focused component tests while iterating.
+- Reproduce delayed cold lookup before the recall repair. Cover shared grace
+  expiration, disabled/policy-excluded destinations, and existing warm modes.
+  The private owner owns the official-provider cold installed matrix.
+  Both new delayed cases reproduce a zero-recall failure before repair. The
+  repaired index, trigger, config, and escalation suites pass all 403 cases;
+  extension types pass. Installed cold proof awaits the rebuilt candidate.
+- Add actual subprocess tests for forced parent loss and startup interruption,
+  normal stop, one-shot host exit, and preservation of an unrelated listener.
+  Include existing provider and supervisor regressions in the cumulative pool.
 - Current focused results: file-lock 2, sandbox 21, workshop 20, candidate
   browser/filesystem 2, public plugins 104, public native loop/pipeline/manifest
   47. Plugin build and type checking pass.
@@ -337,6 +383,7 @@ or learned reranking. Installed access checks remain required before integration
 - [x] Commit focused compatibility regressions and documentation.
 - [x] Integrate the parent-assigned scoped memory adapter and its regressions.
 - [ ] Complete stopped-state config and one-job migration with regressions.
+- [ ] Repair bounded cold recall and owned local-service cleanup.
 - [ ] Clear retained independent review.
 - [ ] Pass exact-candidate accumulated gate.
 - [ ] Confirm combined compatibility with parent.

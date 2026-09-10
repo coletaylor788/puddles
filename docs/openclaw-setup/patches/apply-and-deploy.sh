@@ -23,6 +23,7 @@ PATCHES=(
   builtin-memory-migration
   silent-reply-completion-evidence
   stopped-state-migration-sdk
+  active-memory-cold-recall
 )
 
 if [ -n "${MINI_HOST:-}" ]; then

@@ -1,6 +1,10 @@
 {
   "openclawRef": "1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7",
   "testProjects": {
+    "extensions/active-memory/index.test.ts": "extension-active-memory",
+    "extensions/active-memory/trigger-recall.test.ts": "extension-active-memory",
+    "extensions/active-memory/config.test.ts": "extension-active-memory",
+    "extensions/active-memory/escalation.test.ts": "extension-active-memory",
     "src/plugin-sdk/cron-store-runtime.test.ts": "plugin-sdk",
     "src/cron/store.test.ts": "cron",
     "src/agents/embedded-agent-runner/run/terminal-resolution.test.ts": "agents-embedded-agent-run",
@@ -114,6 +118,15 @@
       ],
       "candidateTests": [
         "tests/candidate.state-migration.test.ts"
+      ]
+    },
+    {
+      "name": "active-memory-cold-recall",
+      "tests": [
+        "extensions/active-memory/index.test.ts",
+        "extensions/active-memory/trigger-recall.test.ts",
+        "extensions/active-memory/config.test.ts",
+        "extensions/active-memory/escalation.test.ts"
       ]
     }
   ]
