@@ -34,6 +34,9 @@ export function verifyCandidateProofs(receiptPath, receipt) {
     proofs[name] = proof;
   }
   const rootIdentity = jsonDigest(artifactIdentity(receipt.artifact));
+  if (["regressions", "runtime"].some((name) => jsonDigest(proofs[name].inputs.stateMigration ?? null) !== jsonDigest(receipt.stateMigration ?? null))) {
+    throw new Error("State migration differs from candidate proofs");
+  }
   if (["runtime", "install"].some((name) => jsonDigest(artifactIdentity(proofs[name].inputs.artifact)) !== rootIdentity)) {
     throw new Error("Root artifact differs from rehearsal proofs");
   }

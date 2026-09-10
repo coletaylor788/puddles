@@ -150,8 +150,31 @@ function setup() {
   vi.stubEnv("OPENCLAW_SRC", source);
   vi.stubEnv("E2E_RUN_DIR", run);
   vi.stubEnv("E2E_LOCAL_EXTENSION", "");
+  vi.stubEnv("E2E_STATE_MIGRATION_MANIFEST", "");
   return { directory, run };
 }
+
+it("binds migration bytes to cumulative and runtime proofs without rebuilding unchanged source", async () => {
+  const { directory, run } = setup();
+  const path = join(realpathSync(directory), "migration.json");
+  const manifest = { schemaVersion: 1, configOperations: [
+    { kind: "set", path: ["memory", "search", "provider"], expected: { exists: false }, value: "local" },
+  ] };
+  writeFileSync(path, JSON.stringify(manifest));
+  vi.stubEnv("E2E_STATE_MIGRATION_MANIFEST", path);
+  vi.stubEnv("GMAIL_MCP_PYTHON", "fixture-python");
+  const first = await nativePipeline("ci", async () => {});
+  for (const name of ["regressions", "runtime"]) {
+    expect(JSON.parse(readFileSync(join(run, `stages/${name}.json`), "utf8")).inputs.stateMigration).toEqual(first.stateMigration);
+  }
+  manifest.configOperations[0].value = "none";
+  writeFileSync(path, JSON.stringify(manifest));
+  const second = await nativePipeline("ci", async () => {});
+  expect(second.stateMigration.sha256).not.toBe(first.stateMigration.sha256);
+  expect(second.proofs.regressions).not.toBe(first.proofs.regressions);
+  expect(second.proofs.runtime).not.toBe(first.proofs.runtime);
+  expect(counters.build).toBe(1);
+});
 function extension(directory: string, name: string, phase = "package", inputs: string[] = [], outputs = true) {
   const path = join(directory, `${name}.mjs`);
   writeFileSync(path, `export default ${JSON.stringify({

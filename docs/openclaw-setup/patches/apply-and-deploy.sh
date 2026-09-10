@@ -21,6 +21,8 @@ PATCHES=(
   sandbox-discovery-failure-fix
   browser-userdata-dir-fix
   builtin-memory-migration
+  silent-reply-completion-evidence
+  stopped-state-migration-sdk
 )
 
 if [ -n "${MINI_HOST:-}" ]; then

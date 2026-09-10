@@ -8,6 +8,8 @@ import { additionalArtifacts, extensionPhase, loadExtension } from "./native-ext
 import { installRuntime, packRuntime } from "./native-package.mjs";
 import { runCommand } from "./process-runner.mjs";
 import scenarios from "../scenarios/imessage.mjs";
+import { readMigrationManifest } from "./native-state-migration.mjs";
+import { rehearseStateMigration } from "./native-state-migration-fixture.mjs";
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = resolve(packageDir, "..", "..");
@@ -83,7 +85,11 @@ export async function nativePipeline(command, repositoryGates) {
     if (disk.bavail * disk.bsize < 8 * 1024 ** 3) throw new Error("Native candidate needs at least 8 GiB free disk");
     if (totalmem() < 8 * 1024 ** 3) throw new Error("Native candidate needs a host with at least 8 GiB memory");
     const extension = await loadExtension(process.env.E2E_LOCAL_EXTENSION);
+    const migrationPath = process.env.E2E_STATE_MIGRATION_MANIFEST;
+    const stateMigration = migrationPath ? { sha256: fileDigest(migrationPath) } : null;
+    if (migrationPath) readMigrationManifest(migrationPath, stateMigration.sha256);
     const context = isolatedContext(join(runDir, "context"));
+    if (migrationPath) context.stateMigration = { manifestPath: migrationPath, ...stateMigration };
     const candidate = join(runDir, "source");
     context.sourceDir = candidate;
     const tools = { node: process.version, nodeBinary: fileDigest(process.execPath), platform: process.platform, arch: process.arch, manager, npm };
@@ -150,7 +156,7 @@ export async function nativePipeline(command, repositoryGates) {
         environment: jsonDigest(Object.entries(process.env).sort(([a], [b]) => a.localeCompare(b))),
         dependencies: treeDigest(join(repoRoot, "node_modules"), repositoryDependencyOptions),
       };
-      await stage(runDir, "regressions", { candidateInputs, repoInputs, installedDependencies, tools, harness, execution, prepareOutputs, extension: extension.phaseHashes.gate, command }, async () => {
+      await stage(runDir, "regressions", { candidateInputs, repoInputs, installedDependencies, tools, harness, execution, prepareOutputs, extension: extension.phaseHashes.gate, command, stateMigration }, async () => {
         if (command === "ci") await repositoryGates(run);
         await run("corepack", ["pnpm", "prompt:snapshots:check"], { cwd: candidate, env: buildEnv });
         const tests = [...new Set(suite.patches.flatMap((patch) => patch.tests))];
@@ -209,8 +215,10 @@ export async function nativePipeline(command, repositoryGates) {
       artifact, additionalArtifacts: extras, tools, harness, extension: extension.hash, extensionOutputs,
       installedCommands: extension.phaseHashes.installed,
       scenarios: jsonDigest(runtimeScenarios), environment: jsonDigest(fixtureEnv(context)),
+      stateMigration,
     }, async () => {
       const outputs = await extensionPhase(extension, "installed", context);
+      const migrationFixtures = await rehearseStateMigration(installedDir, candidate, runDir);
       const results = [];
       for (const scenario of runtimeScenarios) {
         results.push(await runScenario(installedDir, scenario, { runDir }));
@@ -219,9 +227,10 @@ export async function nativePipeline(command, repositoryGates) {
       for (const [id, directory] of Object.entries(context.additionalInstalledDirs)) {
         if (additionalBefore[id] !== treeDigest(directory, { portable: true })) throw new Error("Rehearsal changed an additional installed artifact");
       }
-      return { scenarios: results, outputs };
+      return { scenarios: results, migrationFixtures, outputs };
     }, (result) => result.outputs);
     if (command === "ci" && (await git(repoRoot, ["status", "--porcelain", "--untracked-files=all"])).trim()) throw new Error("Candidate changed during cumulative validation");
+    if (migrationPath) readMigrationManifest(migrationPath, stateMigration.sha256);
     const proofs = {};
     for (const name of ["regressions", "runtime", "install", ...extraProofs]) {
       const path = join(runDir, "stages", `${name}.json`);
@@ -232,6 +241,7 @@ export async function nativePipeline(command, repositoryGates) {
       repository: { head: (await git(repoRoot, ["rev-parse", "HEAD"])).trim(), tree: (await git(repoRoot, ["rev-parse", "HEAD^{tree}"])).trim() },
       source: { ref: suite.openclawRef, sha256: candidateInputs }, artifact, installedDir, additionalArtifacts: extras,
       scenarios: result.scenarios.length, tools, proofs,
+      ...(stateMigration ? { stateMigration } : {}),
     };
     atomicJson(join(runDir, "candidate.json"), receipt);
     console.log(`Native ${command}: passed (${result.scenarios.length} scenarios). Local state: ${runDir}`);

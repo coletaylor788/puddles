@@ -118,6 +118,20 @@ function fixture(wrapper = true, migration = true, binary = false, oldAlias = fa
         renameSync(from, `${from}.exchange`); renameSync(to, from); renameSync(`${from}.exchange`, to);
       },
       async doctor() { check("doctor"); await native.doctor(); },
+      async stateMigration(phase: string, runtime: string, manifestPath: string, sha256: string) {
+        check(`migration:${phase}`);
+        expect(readFileSync(join(runtime, "openclaw.mjs"), "utf8")).toBe("candidate runtime");
+        expect(fileDigest(manifestPath)).toBe(sha256);
+        if (phase === "preflight") {
+          expect(running).toBe(true);
+        } else {
+          expect(running).toBe(false);
+          const journal = JSON.parse(readFileSync(join(recovery, "recovery.json"), "utf8"));
+          expect(journal.snapshotReady).toBe(true);
+          expect(readFileSync(join(recovery, "state/config"), "utf8")).toBe("old state");
+          writeFileSync(join(target.stateDir, "config"), `${phase} migrated state`);
+        }
+      },
       async health(interpreter?: string) { check("health"); await native.health(interpreter); },
     };
   };
@@ -125,6 +139,77 @@ function fixture(wrapper = true, migration = true, binary = false, oldAlias = fa
   const recovery = () => join(target.backupRoot, readdirSync(target.backupRoot).find((name) => name.startsWith("activation-"))!);
   return { root, target, expected, desired, service, original, receipt, calls, events, failures, metadata, execute, activate, recovery };
 }
+
+function stateMigration(f: ReturnType<typeof fixture>) {
+  const manifestPath = join(f.root, "migration.json");
+  writeFileSync(manifestPath, JSON.stringify({
+    schemaVersion: 1,
+    configOperations: [{ kind: "set", path: ["memory", "search", "provider"], expected: { exists: false }, value: "local" }],
+  }));
+  const sha256 = fileDigest(manifestPath);
+  Object.assign(f.target, { stateMigration: { manifestPath, sha256 } });
+  Object.assign(f.receipt, { stateMigration: { sha256 } });
+  return { manifestPath, sha256 };
+}
+
+describe("stopped-state migration inside interpreter rollback", () => {
+  it("checks the manifest before stop, then mutates config before doctor and cron before start", async () => {
+    const f = fixture();
+    const migration = stateMigration(f);
+    const result = await f.activate();
+    expect(f.events.indexOf("migration:preflight")).toBeLessThan(f.events.indexOf("stop"));
+    expect(f.events.indexOf("migration:config")).toBeGreaterThan(f.events.indexOf("stop"));
+    expect(f.events.indexOf("migration:schema")).toBeGreaterThan(f.events.indexOf("stop"));
+    expect(f.events.indexOf("migration:schema")).toBeLessThan(f.events.indexOf("migration:config"));
+    expect(f.events.indexOf("migration:config")).toBeLessThan(f.events.indexOf("doctor"));
+    expect(f.events.indexOf("migration:cron")).toBeGreaterThan(f.events.indexOf("doctor"));
+    expect(f.events.indexOf("migration:cron")).toBeLessThan(f.events.indexOf("start"));
+    expect(fileDigest(join(result.recoveryDir, "state-migration.json"))).toBe(migration.sha256);
+    expect(JSON.parse(readFileSync(join(result.recoveryDir, "recovery.json"), "utf8")).stateMigration).toEqual({
+      sha256: migration.sha256, phase: "complete",
+    });
+  });
+
+  it.each(["migration:schema", "migration:config", "doctor", "migration:cron"])("restores stopped snapshots and the old interpreter after %s fails", async (failure) => {
+    const f = fixture();
+    stateMigration(f);
+    f.failures.push(failure);
+    await expect(f.activate()).rejects.toThrow("Activation failed");
+    expect(readFileSync(join(f.target.stateDir, "config"), "utf8")).toBe("old state");
+    expect(readFileSync(f.target.plistPath)).toEqual(f.original);
+    expect(readFileSync(join(f.target.installDir, "openclaw.mjs"), "utf8")).toBe("old runtime");
+    expect(JSON.parse(readFileSync(join(f.recovery(), "failure.json"), "utf8")).message).toBe(`synthetic ${failure} failure`);
+  });
+
+  it("retains recovery after a partial config migration and interrupted rollback", async () => {
+    const f = fixture();
+    const migration = stateMigration(f);
+    f.failures.push("migration:cron", "restore-package");
+    await expect(f.activate()).rejects.toThrow();
+    rmSync(migration.manifestPath);
+    const recovered = await f.activate(f.recovery());
+    expect(recovered.status).toBe("rolled-back");
+    expect(readFileSync(join(f.target.stateDir, "config"), "utf8")).toBe("old state");
+    expect(readFileSync(f.target.plistPath)).toEqual(f.original);
+  });
+
+  it.each(["receipt", "digest", "manifest", "preflight"])("rejects %s mismatch before stopping", async (failure) => {
+    const f = fixture();
+    const migration = stateMigration(f);
+    if (failure === "receipt") Object.assign(f.receipt, { stateMigration: { sha256: "0".repeat(64) } });
+    if (failure === "digest") writeFileSync(migration.manifestPath, "{}");
+    if (failure === "manifest") {
+      writeFileSync(migration.manifestPath, '{"schemaVersion":1,"command":"forbidden"}');
+      const sha256 = fileDigest(migration.manifestPath);
+      Object.assign(f.target, { stateMigration: { manifestPath: migration.manifestPath, sha256 } });
+      Object.assign(f.receipt, { stateMigration: { sha256 } });
+    }
+    if (failure === "preflight") f.failures.push("migration:preflight");
+    await expect(f.activate()).rejects.toThrow();
+    expect(f.events).not.toContain("stop");
+    expect(readFileSync(join(f.target.stateDir, "config"), "utf8")).toBe("old state");
+  });
+});
 
 describe("reversible configured Node interpreter migration", () => {
   it("keeps no-option activation unchanged without inspecting or rewriting the service", async () => {

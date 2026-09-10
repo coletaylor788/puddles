@@ -7,6 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { acquireLock, atomicJson, fileDigest, inside, jsonDigest, treeDigest, verifyCandidateProofs } from "./native-state.mjs";
 import { installRuntime } from "./native-package.mjs";
 import { runCommand } from "./process-runner.mjs";
+import { readMigrationManifest } from "./native-state-migration.mjs";
 
 const patchDir = resolve(dirname(fileURLToPath(import.meta.url)), "../../../docs/openclaw-setup/patches");
 
@@ -101,6 +102,14 @@ export function validateTarget(target) {
   }
   if (!lstatSync(target.plistPath).isFile()) throw new Error("Gateway service definition is missing");
   validateNodeMigration(target);
+  if (target.stateMigration) {
+    const migration = target.stateMigration;
+    if (Object.keys(migration).some((key) => !["manifestPath", "sha256"].includes(key)) ||
+        !isAbsolute(migration.manifestPath ?? "") || !/^[a-f0-9]{64}$/.test(migration.sha256 ?? "") ||
+        [target.installDir, target.stateDir].some((root) => inside(resolve(root), resolve(migration.manifestPath)))) {
+      throw new Error("Invalid stopped-state migration identity");
+    }
+  }
   if (target.nodeMigration && lstatSync(target.plistPath).isSymbolicLink()) throw new Error("Gateway service definition must be a real file");
   mkdirSync(target.backupRoot, { recursive: true, mode: 0o700 });
   const roots = [target.installDir, target.stateDir, target.backupRoot].map((path) => realpathSync(path));
@@ -214,6 +223,17 @@ shutil.copymode(source, destination)
       await cli(["doctor", "--fix", "--yes"]);
       if (await loaded()) throw new Error("Doctor activated the externally managed gateway");
     },
+    async stateMigration(phase, runtime, manifestPath, sha256) {
+      await run(target.nodeMigration?.desired.path ?? process.execPath, [
+        resolve(patchDir, "../../../packages/e2e/bin/openclaw-state-migrate.mjs"),
+        phase, runtime, realpathSync(target.stateDir), manifestPath, sha256,
+      ], {
+        env: {
+          ...env, OPENCLAW_STATE_DIR: realpathSync(target.stateDir),
+          OPENCLAW_CONFIG_PATH: join(realpathSync(target.stateDir), "openclaw.json"),
+        },
+      });
+    },
     async browser(imageId, runtime, interpreter) {
       if (!target.browser) return;
       await run("docker", ["tag", imageId, target.browser.tag]);
@@ -302,6 +322,9 @@ export async function activateNative(receipt, target, operationsFactory = system
   if (!["recover", "rollback"].includes(action) || action === "rollback" && !recoverDir) throw new Error("Explicit rollback requires its recovery directory");
   validateTarget(target);
   if (receipt.status !== "passed" || receipt.accumulated !== true || !receipt.scenarios) throw new Error("A complete accumulated rehearsal is required before activation");
+  if ((receipt.stateMigration?.sha256 ?? null) !== (target.stateMigration?.sha256 ?? null)) {
+    throw new Error("State migration differs from the rehearsed candidate");
+  }
   const extras = receipt.additionalArtifacts ?? [];
   if (!Array.isArray(extras) || extras.some((extra) => !/^[a-z][a-z0-9-]*$/.test(extra.id) || !extra.artifact?.runtimeSha256) ||
       new Set(extras.map((extra) => extra.id)).size !== extras.length ||
@@ -403,6 +426,16 @@ export async function activateNative(receipt, target, operationsFactory = system
     journal.prefix = prefix;
     const installed = await operations.install(receipt.artifact, prefix);
     journal.deployedRuntimeSha256 = treeDigest(installed, { portable: true });
+    if (target.stateMigration) {
+      readMigrationManifest(target.stateMigration.manifestPath, target.stateMigration.sha256);
+      const manifestPath = join(recoveryDir, "state-migration.json");
+      durableServiceCopy(target.stateMigration.manifestPath, manifestPath);
+      readMigrationManifest(manifestPath, target.stateMigration.sha256);
+      journal.stateMigration = { sha256: target.stateMigration.sha256, phase: "preflight" };
+      save("preflight");
+      await operations.stateMigration("preflight", installed, manifestPath, target.stateMigration.sha256);
+      checkpoint();
+    }
     const stagedExtras = {};
     for (const { id, artifact } of extras) {
       const staged = await operations.install(artifact, join(recoveryDir, "additional-staging", id));
@@ -448,7 +481,24 @@ export async function activateNative(receipt, target, operationsFactory = system
       checkpoint();
     }
     verifyAdditional();
+    if (journal.stateMigration) {
+      journal.stateMigration.phase = "schema";
+      save("migrating-schema");
+      await operations.stateMigration("schema", target.installDir, join(recoveryDir, "state-migration.json"), journal.stateMigration.sha256);
+      checkpoint();
+      journal.stateMigration.phase = "config";
+      save("migrating-config");
+      await operations.stateMigration("config", target.installDir, join(recoveryDir, "state-migration.json"), journal.stateMigration.sha256);
+      checkpoint();
+    }
     await operations.doctor();
+    if (journal.stateMigration) {
+      journal.stateMigration.phase = "cron";
+      save("migrating-cron");
+      await operations.stateMigration("cron", target.installDir, join(recoveryDir, "state-migration.json"), journal.stateMigration.sha256);
+      journal.stateMigration.phase = "complete";
+      save("migrated");
+    }
     verifyAdditional();
     checkpoint();
     if (journal.nodeMigration) {

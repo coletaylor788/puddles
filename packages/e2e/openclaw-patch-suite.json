@@ -1,6 +1,8 @@
 {
   "openclawRef": "1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7",
   "testProjects": {
+    "src/plugin-sdk/cron-store-runtime.test.ts": "plugin-sdk",
+    "src/agents/embedded-agent-runner/run/terminal-resolution.test.ts": "agents-embedded-agent-run",
     "src/plugin-sdk/file-lock.stale-contention.test.ts": "plugin-sdk",
     "src/agents/tools/sessions-yield-tool.test.ts": "agents-tools",
     "src/agents/tools/yield-gather-state.test.ts": "unit-fast",
@@ -95,6 +97,21 @@
       ],
       "candidateTests": [
         "tests/candidate.scoped-memory.test.ts"
+      ]
+    },
+    {
+      "name": "silent-reply-completion-evidence",
+      "tests": [
+        "src/agents/embedded-agent-runner/run/terminal-resolution.test.ts"
+      ]
+    },
+    {
+      "name": "stopped-state-migration-sdk",
+      "tests": [
+        "src/plugin-sdk/cron-store-runtime.test.ts"
+      ],
+      "candidateTests": [
+        "tests/candidate.state-migration.test.ts"
       ]
     }
   ]

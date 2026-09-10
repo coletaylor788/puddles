@@ -25,7 +25,9 @@ Its generated startup schema must match the maintained channel schema.
 Completion gathering must not acknowledge a child until its exact tool result
 is saved in the requesting session. Keep the stable release's visible-answer
 recovery for silent direct replies, rather than restoring older direct-message
-silence. Group silence and classified model-error replies remain separate
+silence. Preserve an allowed group's deliberate silence even when the delivery
+stream has filtered out its silent token. Only the current response can supply
+that evidence. Group silence and classified model-error replies remain separate
 installed scenarios.
 
 A small plugin provides separate memory tools for agents that may read only
@@ -51,7 +53,14 @@ accounts.
 The deployment helper can select a new interpreter without changing a service's
 shell wrapper or environment. It verifies both retained interpreters, changes
 only the selected service argument, and restores the old interpreter with the
-old runtime during rollback. Production deployment is outside this change's ownership. Source integration
+old runtime during rollback. An optional reviewed manifest changes selected
+configuration leaves and silences one existing scheduled job. It cannot run
+commands or replace unrelated state. The stopped gateway's complete state is
+snapshotted first. Repair only its database schema before changing configuration.
+Configuration changes still precede ordinary runtime migration and compilation.
+The job change uses a fresh read afterward and checks its reviewed revision.
+Any mismatch restores the old runtime, interpreter, configuration, and job state.
+Production deployment is outside this change's ownership. Source integration
 waits for the coordinating release owner to confirm compatibility. Activation
 and rollback remain in the existing deployment workflow.
 
@@ -59,13 +68,15 @@ and rollback remain in the existing deployment workflow.
 
 The installed runtime starts with the maintained channel and its generated
 schema. Conversation, coalescing, tool, direct-recovery, error, and replay
-scenarios pass. Group silence still triggers an unexpected model retry and is
-under investigation. Scoped memory passes its proof against the patched runtime.
+scenarios pass. The group-silence retry is repaired and all nine installed
+message scenarios pass on the rebuilt candidate.
+Scoped memory passes its proof against the patched runtime.
 
 The scoped-read race is repaired with the existing safe-root reader, including
 a regression that replaces and restores a containing directory. The same
-reviewer is rechecking it. Group silence still blocks the final accumulated
-gate. Memory migration is authorized,
+reviewer is rechecking the complete diff. The narrow stopped-state migration
+passes local tests, including the historical database. Its installed proof is
+running before the final accumulated gate. Memory migration is authorized,
 but derived-data cleanup is not. Builtin does not retain QMD's model expansion
 or learned reranking. Installed access checks remain required before integration.
 
@@ -96,6 +107,9 @@ or learned reranking. Installed access checks remain required before integration
 - Commit regressions for compatibility changes and prerequisite boundaries.
 - Add reusable scoped memory tools that preserve local-note access without
   allowing native shared-wiki or broader-memory fallback for restricted agents.
+- Add a digest-bound, versioned stopped-state manifest for exact config leaf
+  operations and one existing job's no-delivery migration. Preserve unrelated
+  config, job definitions, runtime state, and the existing rollback transaction.
 - Pass the full accumulated public gate on the exact committed candidate.
 - Complete independent full-diff review and public remote checks.
 - Send exact candidate identity and retained evidence to the parent.
@@ -132,6 +146,23 @@ or learned reranking. Installed access checks remain required before integration
 - Generic interpreter migration is included at the parent's request.
   `nodeMigration` retains both executable identities and the exact service
   argument index. The live target and activation remain with the release owner.
+- The parent additionally authorized generic stopped-state config and cron
+  migration. Keep values and job identities in a local manifest, not public
+  source. No arbitrary commands, target callbacks, SQL surgery, scheduler,
+  gateway, model, or network activity belongs in the migration helper.
+  Bind manifest bytes into target/recovery identity before shutdown. Validate
+  include ownership and state boundaries before shutdown and on fresh writes.
+  Use `readConfigFileSnapshotForWrite({ observe: false })` and `mutateConfigFile` with `base: "source"`,
+  explicit no after-write work, and `skipRuntimeSnapshotRefresh: true`.
+  Snapshot before any mutation. The parent approved calling the existing
+  `doctor-repair-runtime.repairOpenClawStateDatabaseSchema` before config because
+  config writes also need a current SQLite schema. This step is schema-only,
+  without compilation, hooks, inference, delivery, package fetching, or startup.
+  Apply config before ordinary doctor, then read the
+  selected cron partition through the readonly SDK and perform one targeted CAS
+  update. Reject drift rather than silently rebaseline or replace the store.
+  The selected private architecture retains its global wiki, continuous bridge,
+  and dedicated builder. No bridge disable, scope switch, or reowner is in scope.
 - Upstream `8b0735e89f2` removes QMD rather than moving it to an extension.
   `legacy-config-migrations.runtime.retired-memory-qmd.ts` migrates external
   paths and session indexing before deleting retired configuration. Do not
@@ -167,6 +198,21 @@ or learned reranking. Installed access checks remain required before integration
   upstream pnpm 12.3.4. Node preflight rejects unsupported SQLite runtimes.
 - `native-activation.mjs` and `native-interpreter-migration.test.ts` include
   parent-assigned interpreter migration with explicit old canonical-path binding.
+- `silent-reply-completion-evidence` uses this attempt's assistant text only
+  when the delivery subscription has no visible text. It never uses historical
+  `lastAssistant`. Existing silence policy and terminal failure guards remain.
+- Expose maintained `loadCronJobsStoreWithConfigJobsReadOnly`,
+  `saveCronJobsStoreChanges`, `resolveCronJobsStorePathFromConfig`, and
+  `resolveCronJobConfigRevision` through `cron-store-runtime`. Do not use its
+  existing mutating load or whole-store save aliases. The manifest's
+  `expectedRevision` uses the maintained config-only `sha256:` token.
+  Expose `resolveIncludeWriteBoundary` and `resolveOpenClawStateSqlitePath`
+  through their existing narrow SDK facades. Forward the config reader's existing
+  `observe` option without changing defaults for current callers. Preflight
+  observation must be false; the default records config-health state.
+  `native-state-migration.mjs` validates the manifest and performs fixed phases.
+  `E2E_STATE_MIGRATION_MANIFEST` binds its SHA into both cumulative and installed
+  proofs, and into the activation target and durable journal.
 - iMessage keeps stable durable ingress, per-flush claims, GUID reply context,
   current media facts, and receive-time deadlines. The restored setting is opt-in.
   Restore root package inclusion and `bundledDist` for the maintained channel.
@@ -210,8 +256,12 @@ or learned reranking. Installed access checks remain required before integration
   Installed ordinary/history/coalescing/read/write cases pass. Direct silent
   continuation passes with two model calls and one send. Model-error delivery
   now expects the stable classified HTTP 400 copy and rejects raw error text.
-  Fresh-state replay passes. Group silence still fails with an unscripted retry.
-  This engineering owner is tracing the failed silent context.
+  Fresh-state replay passes. Installed inspection confirms group silence is
+  allowed, but its subscription texts are empty despite an authored NO_REPLY.
+  Two terminal regressions reproduce that failure before the repair. All 52
+  terminal-resolution cases and core types pass with current/completed response
+  fallback. The rebuilt native iteration passes all nine installed scenarios,
+  including zero sends for group silence and direct visible-answer recovery.
 - Run `node packages/e2e/bin/openclaw-test-env.mjs ci` with a supported Node
   and explicitly selected isolated source and external run directory.
 - Retain collection evidence for every cumulative target.
@@ -232,6 +282,16 @@ or learned reranking. Installed access checks remain required before integration
   the foreign-byte leak before the repair. Integration passes 31 native loop and
   manifest cases plus the e2e type check.
 - Run fixture activation and rollback coverage through the accumulated pool.
+- Migration proofs must cover old/new schemas, readonly preflight, source
+  include/secret-reference preservation, all-leaf precondition validation,
+  same-job drift, concurrent unrelated job/runtime updates, and interruption
+  between config and cron operations. Assert no delivery, scheduler, RPC, or
+  model startup. Recovery must preserve the original failure and rollback errors.
+- The maintained 2026.7.1-2 SQLite fixture reproduces config-health writes during
+  default snapshot reading and the old-schema prerequisite for config writes.
+  Observation-disabled reads plus the approved schema-only step pass four SDK
+  cases and core types. The first public migration set passes 104 cases and
+  e2e types; the expanded schema-stage and installed fixtures are being rerun.
 
 ### Rollout and rollback
 
@@ -261,6 +321,7 @@ or learned reranking. Installed access checks remain required before integration
 - [x] Rebase patches and public SDK consumers.
 - [x] Commit focused compatibility regressions and documentation.
 - [x] Integrate the parent-assigned scoped memory adapter and its regressions.
+- [ ] Complete stopped-state config and one-job migration with regressions.
 - [ ] Clear retained independent review.
 - [ ] Pass exact-candidate accumulated gate.
 - [ ] Confirm combined compatibility with parent.

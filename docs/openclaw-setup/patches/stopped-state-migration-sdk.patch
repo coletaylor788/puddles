@@ -1,0 +1,234 @@
+diff --git a/src/config/io.runtime.ts b/src/config/io.runtime.ts
+index 7616394119c..64dea2f456e 100644
+--- a/src/config/io.runtime.ts
++++ b/src/config/io.runtime.ts
+@@ -241,8 +241,12 @@ export async function readConfigFileSnapshotForRuntimeTransaction(
+ 
+ export async function readConfigFileSnapshotForWrite(options?: {
+   skipPluginValidation?: boolean;
++  observe?: boolean;
+ }): Promise<ReadConfigFileSnapshotForWriteResult> {
+-  const readOptions = options?.skipPluginValidation ? { pluginValidation: "skip" as const } : {};
++  const readOptions = {
++    ...(options?.skipPluginValidation ? { pluginValidation: "skip" as const } : {}),
++    ...(options?.observe !== undefined ? { observe: options.observe } : {}),
++  };
+   for (let attempt = 0; attempt < 3; attempt += 1) {
+     try {
+       const processIo = createConfigIO(readOptions);
+diff --git a/src/plugin-sdk/config-mutation.ts b/src/plugin-sdk/config-mutation.ts
+index 3caf4de38f6..0306371aa9c 100644
+--- a/src/plugin-sdk/config-mutation.ts
++++ b/src/plugin-sdk/config-mutation.ts
+@@ -3,6 +3,7 @@
+  */
+ export { logConfigUpdated } from "../config/logging.js";
+ export { readConfigFileSnapshotForWrite } from "../config/io.js";
++export { resolveIncludeWriteBoundary } from "../config/include-write-boundary.js";
+ export { mutateConfigFile, replaceConfigFile } from "../config/mutate.js";
+ export type { ConfigWriteAfterWrite } from "../config/runtime-snapshot.js";
+ export { updateConfig } from "../commands/models/shared.js";
+diff --git a/src/plugin-sdk/cron-store-runtime.test.ts b/src/plugin-sdk/cron-store-runtime.test.ts
+new file mode 100644
+index 00000000000..e07eeeb2c1a
+--- /dev/null
++++ b/src/plugin-sdk/cron-store-runtime.test.ts
+@@ -0,0 +1,175 @@
++import fs from "node:fs/promises";
++import { DatabaseSync } from "node:sqlite";
++import { gunzipSync } from "node:zlib";
++import { describe, expect, it } from "vitest";
++import type { CronStoredJob } from "../cron/types.js";
++import { repairOpenClawStateDatabaseSchema } from "../state/openclaw-state-db.js";
++import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
++import { mutateConfigFile, readConfigFileSnapshotForWrite } from "./config-mutation.js";
++import {
++  loadCronJobsStoreWithConfigJobsReadOnly,
++  resolveCronJobConfigRevision,
++  resolveCronJobsStorePathFromConfig,
++  saveCronJobsStoreChanges,
++} from "./cron-store-runtime.js";
++import { resolveOpenClawStateSqlitePath } from "./state-paths.js";
++
++function job(id: string): CronStoredJob {
++  return {
++    id,
++    name: id,
++    enabled: true,
++    createdAtMs: 1,
++    updatedAtMs: 1,
++    schedule: { kind: "every", everyMs: 60_000 },
++    sessionTarget: "isolated",
++    wakeMode: "next-heartbeat",
++    payload: { kind: "agentTurn", message: "Synthetic scheduled task" },
++    delivery: { mode: "announce", channel: "imessage", to: "synthetic", bestEffort: true },
++    failureAlert: { after: 1, channel: "imessage", to: "synthetic" },
++    state: {},
++  };
++}
++
++describe("offline cron SDK snapshot and targeted commit", () => {
++  it("preserves a reviewed revision across the historical schema and stopped config write", async () => {
++    await withOpenClawTestState({ label: "cron-sdk-historical" }, async (state) => {
++      const databasePath = resolveOpenClawStateSqlitePath(state.env);
++      await fs.mkdir(state.statePath("state"), { recursive: true });
++      await fs.writeFile(
++        databasePath,
++        gunzipSync(
++          await fs.readFile(
++            new URL(
++              "../../test/fixtures/sqlite/openclaw-state-v2026.7.1-2.sqlite.gz",
++              import.meta.url,
++            ),
++          ),
++        ),
++      );
++      const selected = job("historical-selected");
++      const expectedRevision = resolveCronJobConfigRevision(selected);
++      const storePath = resolveCronJobsStorePathFromConfig({}, state.env);
++      const database = new DatabaseSync(databasePath);
++      database
++        .prepare(`INSERT INTO cron_jobs (
++        store_key, job_id, name, enabled, created_at_ms, schedule_kind, every_ms,
++        session_target, wake_mode, payload_kind, payload_message, job_json, state_json,
++        sort_order, updated_at
++      ) VALUES (?, ?, ?, 1, 1, 'every', 60000, 'isolated', 'next-heartbeat', 'agentTurn',
++        ?, ?, '{}', 0, 1)`)
++        .run(
++          storePath,
++          selected.id,
++          selected.name,
++          selected.payload.kind === "agentTurn" ? selected.payload.message : "",
++          JSON.stringify(selected),
++        );
++      database.close();
++      await fs.writeFile(
++        state.statePath("openclaw.json"),
++        JSON.stringify({
++          memory: { search: { provider: "none", fallback: "none" } },
++        }),
++      );
++      const before = await fs.readFile(databasePath);
++      const snapshot = await readConfigFileSnapshotForWrite({ observe: false });
++      expect(snapshot.snapshot.sourceConfig.memory?.search?.provider).toBe("none");
++      expect(await fs.readFile(databasePath)).toEqual(before);
++      expect(repairOpenClawStateDatabaseSchema({ env: state.env }).warnings).toEqual([]);
++      await mutateConfigFile({
++        base: "source",
++        afterWrite: { mode: "none", reason: "stopped release migration" },
++        writeOptions: { skipRuntimeSnapshotRefresh: true, skipOutputLogs: true },
++        mutate(draft) {
++          draft.memory = {
++            ...draft.memory,
++            search: { ...draft.memory?.search, provider: "local" },
++          };
++        },
++      });
++      expect(repairOpenClawStateDatabaseSchema({ env: state.env }).warnings).toEqual([]);
++      const loaded = (await loadCronJobsStoreWithConfigJobsReadOnly(storePath, state.env)).store;
++      const migrated = loaded.jobs.find((entry) => entry.id === selected.id)!;
++      expect(resolveCronJobConfigRevision(migrated)).toBe(expectedRevision);
++      const next = structuredClone(loaded);
++      const changed = next.jobs.find((entry) => entry.id === selected.id)!;
++      changed.delivery = { mode: "none", bestEffort: true };
++      changed.failureAlert = false;
++      await saveCronJobsStoreChanges(storePath, loaded, next);
++      expect(
++        (await loadCronJobsStoreWithConfigJobsReadOnly(storePath, state.env)).store.jobs.find(
++          (entry) => entry.id === selected.id,
++        ),
++      ).toMatchObject({
++        name: selected.name,
++        schedule: selected.schedule,
++        payload: selected.payload,
++        delivery: { mode: "none", bestEffort: true },
++        failureAlert: false,
++      });
++    });
++  });
++
++  it("does not create state while reading an absent database", async () => {
++    await withOpenClawTestState({ label: "cron-sdk-readonly" }, async (state) => {
++      const before = await fs.readdir(state.statePath(), { recursive: true });
++      const storePath = resolveCronJobsStorePathFromConfig({}, state.env);
++      const loaded = await loadCronJobsStoreWithConfigJobsReadOnly(storePath, state.env);
++      expect(loaded.store.jobs).toEqual([]);
++      expect(await fs.readdir(state.statePath(), { recursive: true })).toEqual(before);
++    });
++  });
++
++  it("changes one job while preserving another writer's jobs and runtime state", async () => {
++    await withOpenClawTestState({ label: "cron-sdk-targeted" }, async (state) => {
++      const storePath = resolveCronJobsStorePathFromConfig({}, state.env);
++      const initial = { version: 1 as const, jobs: [job("selected"), job("other")] };
++      await saveCronJobsStoreChanges(storePath, { version: 1, jobs: [] }, initial);
++      const previous = (await loadCronJobsStoreWithConfigJobsReadOnly(storePath, state.env)).store;
++      const concurrent = structuredClone(previous);
++      concurrent.jobs[0]!.state.lastRunAtMs = 50;
++      concurrent.jobs[1]!.name = "Changed by another writer";
++      concurrent.jobs.push(job("new"));
++      await saveCronJobsStoreChanges(storePath, previous, concurrent);
++      const next = structuredClone(previous);
++      next.jobs[0]!.delivery = { mode: "none", bestEffort: true };
++      next.jobs[0]!.failureAlert = false;
++      const committed = await saveCronJobsStoreChanges(storePath, previous, next);
++      expect(committed.jobs.find((entry) => entry.id === "selected")).toMatchObject({
++        ...next.jobs[0],
++        state: { lastRunAtMs: 50 },
++      });
++      expect(committed.jobs.find((entry) => entry.id === "other")?.name).toBe(
++        "Changed by another writer",
++      );
++      expect(committed.jobs.some((entry) => entry.id === "new")).toBe(true);
++      expect(resolveCronJobConfigRevision(concurrent.jobs[0]!)).toBe(
++        resolveCronJobConfigRevision(previous.jobs[0]!),
++      );
++    });
++  });
++
++  it("rejects a stale selected-job definition instead of overwriting it", async () => {
++    await withOpenClawTestState({ label: "cron-sdk-conflict" }, async (state) => {
++      const storePath = resolveCronJobsStorePathFromConfig({}, state.env);
++      await saveCronJobsStoreChanges(
++        storePath,
++        { version: 1, jobs: [] },
++        { version: 1, jobs: [job("selected")] },
++      );
++      const previous = (await loadCronJobsStoreWithConfigJobsReadOnly(storePath, state.env)).store;
++      const concurrent = structuredClone(previous);
++      concurrent.jobs[0]!.payload = { kind: "agentTurn", message: "Changed by another writer" };
++      await saveCronJobsStoreChanges(storePath, previous, concurrent);
++      const next = structuredClone(previous);
++      next.jobs[0]!.delivery = { mode: "none" };
++      await expect(saveCronJobsStoreChanges(storePath, previous, next)).rejects.toThrow(
++        "changed after it was read",
++      );
++      const current = (await loadCronJobsStoreWithConfigJobsReadOnly(storePath, state.env)).store;
++      expect(current.jobs[0]!.payload).toEqual(concurrent.jobs[0]!.payload);
++      expect(current.jobs[0]!.delivery?.mode).toBe("announce");
++    });
++  });
++});
+diff --git a/src/plugin-sdk/cron-store-runtime.ts b/src/plugin-sdk/cron-store-runtime.ts
+index 859dfbfb73b..599f6c25998 100644
+--- a/src/plugin-sdk/cron-store-runtime.ts
++++ b/src/plugin-sdk/cron-store-runtime.ts
+@@ -2,3 +2,9 @@
+  * Runtime SDK subpath for reading and writing persisted cron state.
+  */
+ export { loadCronStore, resolveCronStorePath, saveCronStore } from "../cron/store.js";
++export {
++  loadCronJobsStoreWithConfigJobsReadOnly,
++  resolveCronJobsStorePathFromConfig,
++  saveCronJobsStoreChanges,
++} from "../cron/store.js";
++export { resolveCronJobConfigRevision } from "../cron/config-revision.js";
+diff --git a/src/plugin-sdk/state-paths.ts b/src/plugin-sdk/state-paths.ts
+index a2337a042f0..4dac071c0ea 100644
+--- a/src/plugin-sdk/state-paths.ts
++++ b/src/plugin-sdk/state-paths.ts
+@@ -2,3 +2,4 @@
+ 
+ export { resolveOAuthDir, resolveStateDir, STATE_DIR } from "../config/paths.js";
+ export { resolveRequiredHomeDir } from "../infra/home-dir.js";
++export { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";

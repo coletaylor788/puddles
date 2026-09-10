@@ -23,6 +23,8 @@ activated gateway. Keep the previous interpreter available for rollback.
 | `sandbox-discovery-failure-fix.patch` | Surface sandbox discovery failures |
 | `browser-userdata-dir-fix.patch` | Browser data directory and singleton cleanup |
 | `builtin-memory-migration.patch` | Retired QMD migration and per-agent source isolation coverage |
+| `silent-reply-completion-evidence.patch` | Preserve current-attempt silent reply evidence after delivery filtering |
+| `stopped-state-migration-sdk.patch` | Expose maintained readonly cron, targeted writes, and config ownership helpers |
 
 Each patch has a neighboring document explaining its behavior and history.
 Register new patches and every applicable test in the cumulative manifest at
@@ -119,6 +121,54 @@ checks, and retained candidate browser recovery use the candidate interpreter.
 This keeps native module bindings paired with their matching runtime during
 both activation and rollback. No package or interpreter download occurs while
 the gateway is stopped.
+
+For a stopped-state migration, add `stateMigration` to the local target with
+`manifestPath` (a canonical absolute file outside replaced roots) and `sha256`
+(the file's SHA256 hex digest). Supply the same manifest through
+`E2E_STATE_MIGRATION_MANIFEST` during the combined cumulative rehearsal.
+Its digest is bound to the regression and installed-runtime proofs. Activation
+rejects a different manifest or a candidate that did not include it.
+
+The manifest contains `schemaVersion: 1`, `configOperations`, and an optional
+`cronOperation`. Config operations have `kind` (`set` or `unset`), a nonempty
+array of string path segments, and `expected`. An absent leaf uses
+`{ "exists": false }`. An existing leaf uses
+`{ "exists": true, "sha256": "<value digest>" }`. Only `set` has a `value`.
+Generate old-value hashes with `canonicalValueDigest` exported by
+`packages/e2e/src/native-state-migration.mjs`, not a separate implementation.
+Preconditions describe the maintained source writer's view before runtime
+defaults, rather than a stale whole-config snapshot.
+
+Operations cannot overlap, address array positions or prototype keys, change
+environment selection or the cron store, or rewrite include directives.
+Missing object parents can be created; scalar parents cannot be replaced.
+An included config must have one internal sole owner for every changed leaf.
+Merged, shared, external, array-owned, and cross-boundary writes fail preflight.
+All config, include, backup, audit, and database paths must remain inside the
+snapshotted state tree without symlink or hardlink traversal. The source writer
+preserves authored secret references and home-relative paths.
+
+The optional job operation is
+`{ "kind": "silence-delivery", "jobId": "synthetic-job", "expectedRevision": "sha256:<token>" }`.
+Use `resolveCronJobConfigRevision` from `openclaw/plugin-sdk/cron-store-runtime`
+for that token. Any reviewed normalization of an older definition must be
+proven before selecting it, not silently accepted after doctor. The helper
+changes final delivery to `none`, clears known destinations, and disables
+failure alerts. It retains the owner, enabled state, schedule, payload, model,
+nonrouting fields, and concurrent runtime state. Unknown routing-shaped fields
+fail. This does not revoke tools or prevent a job's own agent from using them;
+that policy belongs in the operator's reviewed configuration.
+
+Preflight reads config with observation disabled, without creating or changing
+config-health state. The selected database must already exist for a job
+operation. After stopping and snapshotting, activation records each stage
+before it runs: schema-only repair, checked config mutation, ordinary doctor,
+then a fresh readonly job snapshot and targeted compare-and-swap write. Only
+then can the gateway start. Schema repair uses the existing public doctor
+repair API and never compiles memory or starts a service. There are no manifest
+commands, callbacks, network access, or direct database writes. Any failure
+restores the original state, runtime, and service through the existing journal.
+Interrupted recovery uses the retained snapshots, not a new baseline.
 
 When a candidate declares additional runtime artifacts, the target must map
 every artifact exactly once through `additionalInstalls`. Each entry has an

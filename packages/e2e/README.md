@@ -64,6 +64,26 @@ built candidate's SDK. Workspace gates build and test that plugin before the
 candidate proof. Its synthetic notes and fixed sources must not consult live
 workspaces or shared knowledge stores.
 
+The stopped-state migration entry exercises the real SDK on current and
+historical SQLite schemas. Installed rehearsal runs the same executor again
+from the packaged runtime, with network access denied. It checks readonly
+preflight, schema repair before config mutation, sole include ownership, job
+revision conflicts, and preservation of unrelated state. Wrapper fixtures
+cover ordering, each failure stage, and interrupted rollback with the retained
+interpreter. The historical fixture comes from the pinned upstream test pool,
+with its compressed digest checked before use.
+
+An operator may select `E2E_STATE_MIGRATION_MANIFEST` as a canonical absolute
+local manifest file for a combined rehearsal. The runner validates its shape,
+binds its bytes to regression and runtime evidence, and provides
+`context.stateMigration` with `manifestPath` and `sha256` to the explicitly
+selected local extension. It never applies that manifest to a live target.
+The extension must prove its private values against isolated state. Public CI
+leaves this option unset and runs the committed synthetic migration fixtures.
+Activation requires the same digest in its local target. See the
+[deployment guide](../../docs/openclaw-setup/patches/README.md) for the narrow
+manifest and recovery contract.
+
 Public CI initializes a fresh run directory for each hosted attempt and
 explicitly disables local extensions. On failure, it retains a seven-day
 artifact with bounded, sanitized command and known public fixture logs, plus
