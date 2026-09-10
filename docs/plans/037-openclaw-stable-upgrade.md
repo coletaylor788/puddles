@@ -1,8 +1,8 @@
 # OpenClaw stable upgrade
 
-Status: Repairing installed candidate
+Status: Public gates pass; combined release held
 Issue: #114
-Last updated: 2026-09-10
+Last updated: 2026-09-09
 
 ## Human section
 
@@ -82,12 +82,11 @@ Scoped memory passes against the rebuilt candidate, including the
 replace-and-restore race. The cold-recall repair passes its affected suite.
 The retained reviewer clears the complete current behavior diff.
 
-Installed cold recall and the service lifetime decision still block integration.
-The local accumulated gate passes. Hosted checks expose slow interpreter
-fixtures across the activation and rollback suite. The first timing correction
-is too narrow. A file-scoped lifecycle allowance preserves all real checks and
-needs the retained review and hosted rerun. Combined access checks remain
-required before integration.
+The public behavior passes both local and hosted accumulated gates. The
+interpreter fixture has one bounded lifecycle allowance, with all real checks
+intact. Installed cold recall, combined access checks, and the service lifetime
+decision still block integration. The coordinating owner must clear that
+checkpoint before merge.
 Memory migration is authorized, but derived-data cleanup is not. Builtin does
 not retain QMD's model expansion or learned reranking. Production deployment
 remains with the coordinating release owner.
@@ -110,18 +109,16 @@ remains with the coordinating release owner.
 - The parent-assigned worker completed its scoped-memory handoff. Its later
   read-only silence turn ended without findings. The parent released both
   repairs to this engineering owner; no helper owns an active source scope.
-- Reviewed behavior checkpoint: `76854b4`. The accumulated public gate passes
-  on `0bd7275`, which only records that checkpoint's evidence. Runtime and test
-  inputs remain identical. The private owner has copied the sealed runtime
-  for isolated rehearsal while service topology is decided.
-- Published head `1c16f14` also passes local accumulated CI. Hosted run
-  `34437364226` passes build and CodeQL but fails three interpreter-recovery
-  cases at the default five-second limit. The same fixture blocks worker
-  reporting across its synchronous work. No runtime assertion is removed.
-- Hosted retry `34439888698` confirms the reporting yield and the three
-  previously adjusted cases pass. Nine other cases exceed five seconds, while
-  complete multi-pass cases take 14.7-14.9 seconds. Treat the entire interpreter
-  fixture as one bounded lifecycle suite instead of adjusting cases piecemeal.
+- Reviewed public behavior and test checkpoint:
+  `d6c442a1d9f2a1c86184411cbd4bf8ee00642dc3`. The same head passes local
+  accumulated CI and hosted run `34443062989`, job `102761932660`, in 40m13s.
+  All CodeQL checks pass. PR #115 is mergeable, but parent clearance is absent.
+- Runtime inputs remain identical to `76854b4`. The private owner has copied
+  the sealed runtime for isolated rehearsal while service topology is decided.
+  Later corrections affect interpreter fixture timing and reporting only.
+- Hosted timings justify a single file-scoped lifecycle allowance, rather than
+  case-by-case changes. All real hashes, plist subprocesses, and assertions
+  remain intact. This plan update records evidence only, not new behavior.
 
 ### Scope and acceptance criteria
 
@@ -295,8 +292,11 @@ remains with the coordinating release owner.
   deadlines stay unchanged. Yield between cases so synchronous work cannot
   starve worker RPC. Thirty local hashes read a 144 MB real executable and take
   2.4 seconds; removing or caching identity checks is not an acceptable shortcut.
-  The previous 68-case local run passes but does not prove the hosted correction.
-  Repeat focused coverage, retained review, accumulated CI, and hosted checks.
+  All 68 interpreter/pipeline cases and e2e types pass after the correction.
+  The retained full-diff review and local accumulated CI pass on `d6c442a`.
+  Hosted run `34443062989` also passes the complete accumulated lifecycle on
+  that exact head. Earlier runs `34437364226` and `34439888698` establish the
+  timing and worker-reporting failures; the passing run confirms the correction.
 - Reproduce delayed cold lookup before the recall repair. Cover shared grace
   expiration, disabled/policy-excluded destinations, and existing warm modes.
   The private owner owns the official-provider cold installed matrix.
@@ -414,6 +414,9 @@ remains with the coordinating release owner.
   readonly and cold-recall remediation. No actionable material defects remain.
   Installed cold recall, service lifetime, and private compatibility
   remain separate release gates, not claimed successful review evidence.
+- The retained reviewer also clears the complete `8cf0a92..d6c442a` diff and
+  all new files after both hosted fixture corrections. No actionable material
+  defects remain. This evidence-only plan update does not change those inputs.
 
 ### Checklist
 
@@ -426,6 +429,6 @@ remains with the coordinating release owner.
 - [ ] Repair bounded cold recall and owned local-service cleanup.
 - [x] Clear retained independent review for the current behavior.
 - [x] Pass accumulated gate for the current reviewed behavior.
-- [ ] Clear hosted checks after the narrow recovery-fixture correction.
+- [x] Clear hosted checks for the reviewed behavior and fixture correction.
 - [ ] Confirm combined compatibility with parent.
 - [ ] Integrate eligible source and verify the landed result.
