@@ -2,7 +2,7 @@
 
 Status: Repairing installed candidate
 Issue: #114
-Last updated: 2026-09-09
+Last updated: 2026-09-10
 
 ## Human section
 
@@ -76,23 +76,17 @@ and rollback remain in the existing deployment workflow.
 
 ### Status
 
-The installed runtime starts with the maintained channel and its generated
-schema. Conversation, coalescing, tool, direct-recovery, error, and replay
-scenarios pass. The group-silence retry is repaired and all nine installed
-message scenarios pass on the rebuilt candidate.
-Scoped memory passes its proof against the patched runtime.
+The rebuilt installed runtime passes all nine message scenarios and all four
+migration cases, including unchanged historical state during readonly preflight.
+Scoped memory passes against the rebuilt candidate, including the
+replace-and-restore race. The cold-recall repair passes its affected suite.
+The retained reviewer clears the complete current behavior diff.
 
-The scoped-read race is repaired with the existing safe-root reader, including
-a regression that replaces and restores a containing directory. The same
-reviewer clears the committed candidate. Installed migration passes current
-state, include ownership, and conflict cases. The historical case catches
-readonly metadata reads creating SQLite sidecars. That defect is repaired
-locally and needs the same review and final accumulated gate. The release owner
-also routes repairs for cold recall and owned-service cleanup. Cold recall
-passes the affected suite. Installed cold recall and the service lifetime
-decision still block integration. Memory migration is authorized,
-but derived-data cleanup is not. Builtin does not retain QMD's model expansion
-or learned reranking. Installed access checks remain required before integration.
+Installed cold recall and the service lifetime decision still block integration.
+The final accumulated gate and combined access checks remain required.
+Memory migration is authorized, but derived-data cleanup is not. Builtin does
+not retain QMD's model expansion or learned reranking. Production deployment
+remains with the coordinating release owner.
 
 ## Agent section
 
@@ -112,6 +106,9 @@ or learned reranking. Installed access checks remain required before integration
 - The parent-assigned worker completed its scoped-memory handoff. Its later
   read-only silence turn ended without findings. The parent released both
   repairs to this engineering owner; no helper owns an active source scope.
+- Reviewed behavior checkpoint: `76854b4`. Its native iteration passes; this is
+  not the final accumulated gate. The private owner may copy its sealed runtime
+  for isolated rehearsal while service topology is decided.
 
 ### Scope and acceptance criteria
 
@@ -284,7 +281,8 @@ or learned reranking. Installed access checks remain required before integration
   The private owner owns the official-provider cold installed matrix.
   Both new delayed cases reproduce a zero-recall failure before repair. The
   repaired index, trigger, config, and escalation suites pass all 403 cases;
-  extension types pass. Installed cold proof awaits the rebuilt candidate.
+  extension types pass. The rebuilt bundled candidate is ready for the private
+  owner's installed cold proof.
 - Add actual subprocess tests for forced parent loss and startup interruption,
   normal stop, one-shot host exit, and preservation of an unrelated listener.
   Include existing provider and supervisor regressions in the cumulative pool.
@@ -350,6 +348,17 @@ or learned reranking. Installed access checks remain required before integration
   Core-only inspection and artifact-preserving path resolution pass four SDK
   cases, 75 retained cron cases, and core types. The broader public lifecycle
   set passes 135 cases and e2e types. The latest focused subset passes 86.
+- Native iteration on `76854b4` passes prepare, dependencies, build, package,
+  offline install, all nine message scenarios, and all four migration modes.
+  The historical case now preserves the complete state digest across preflight.
+  The separate rebuilt-candidate run passes all five scoped-memory and migration
+  cases using `vitest.candidate.config.ts`.
+  Archive SHA256:
+  `9f2ec16dbfddf20da466f050020e85cb150c9844807a86d9b7bd159b44f8f4db`.
+  Installed runtime tree:
+  `bf74f4e247d900d72681088086b81d690a7d2c474f21ec1035b5b8ee08d796f2`.
+  The receipt explicitly records `accumulated: false`; it cannot authorize
+  integration or activation in place of final CI.
 
 ### Rollout and rollback
 
@@ -374,6 +383,10 @@ or learned reranking. Installed access checks remain required before integration
 - The retained reviewer clears all of `8cf0a92..75407a1`, including the scoped
   descriptor repair, silence, and migration. The installed sidecar failure then
   requires a focused correction and the same reviewer's full-diff recheck.
+- The same reviewer clears all of `8cf0a92..76854b4` and every new file after
+  readonly and cold-recall remediation. No actionable material defects remain.
+  Installed cold recall, service lifetime, final CI, and private compatibility
+  remain separate release gates, not claimed successful review evidence.
 
 ### Checklist
 
@@ -382,9 +395,9 @@ or learned reranking. Installed access checks remain required before integration
 - [x] Rebase patches and public SDK consumers.
 - [x] Commit focused compatibility regressions and documentation.
 - [x] Integrate the parent-assigned scoped memory adapter and its regressions.
-- [ ] Complete stopped-state config and one-job migration with regressions.
+- [x] Complete stopped-state config and one-job migration with regressions.
 - [ ] Repair bounded cold recall and owned local-service cleanup.
-- [ ] Clear retained independent review.
+- [x] Clear retained independent review for the current behavior.
 - [ ] Pass exact-candidate accumulated gate.
 - [ ] Confirm combined compatibility with parent.
 - [ ] Integrate eligible source and verify the landed result.
