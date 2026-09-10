@@ -83,7 +83,8 @@ replace-and-restore race. The cold-recall repair passes its affected suite.
 The retained reviewer clears the complete current behavior diff.
 
 Installed cold recall and the service lifetime decision still block integration.
-The final accumulated gate and combined access checks remain required.
+The accumulated public gate passes. Combined access checks and remote checks
+remain required before integration.
 Memory migration is authorized, but derived-data cleanup is not. Builtin does
 not retain QMD's model expansion or learned reranking. Production deployment
 remains with the coordinating release owner.
@@ -106,8 +107,9 @@ remains with the coordinating release owner.
 - The parent-assigned worker completed its scoped-memory handoff. Its later
   read-only silence turn ended without findings. The parent released both
   repairs to this engineering owner; no helper owns an active source scope.
-- Reviewed behavior checkpoint: `76854b4`. Its native iteration passes; this is
-  not the final accumulated gate. The private owner may copy its sealed runtime
+- Reviewed behavior checkpoint: `76854b4`. The accumulated public gate passes
+  on `0bd7275`, which only records that checkpoint's evidence. Runtime and test
+  inputs remain identical. The private owner has copied the sealed runtime
   for isolated rehearsal while service topology is decided.
 
 ### Scope and acceptance criteria
@@ -357,8 +359,14 @@ remains with the coordinating release owner.
   `9f2ec16dbfddf20da466f050020e85cb150c9844807a86d9b7bd159b44f8f4db`.
   Installed runtime tree:
   `bf74f4e247d900d72681088086b81d690a7d2c474f21ec1035b5b8ee08d796f2`.
-  The receipt explicitly records `accumulated: false`; it cannot authorize
-  integration or activation in place of final CI.
+  That iteration records `accumulated: false` and cannot replace final CI.
+- `node packages/e2e/bin/openclaw-test-env.mjs ci` then passes on `0bd7275`.
+  All accumulated regressions execute. Unchanged build, package, installation,
+  and installed runtime proofs are reused by their exact inputs and outputs.
+  The resulting receipt records `accumulated: true` with regression proof
+  `58ee65c87e3a02dd571ca0858d22a75b6853416eda0fc3c9c75d6bc04136c0ce`.
+  This is public evidence only. Private cold recall and service lifetime remain
+  unresolved; any later public behavior change requires the full pool again.
 
 ### Rollout and rollback
 
@@ -385,7 +393,7 @@ remains with the coordinating release owner.
   requires a focused correction and the same reviewer's full-diff recheck.
 - The same reviewer clears all of `8cf0a92..76854b4` and every new file after
   readonly and cold-recall remediation. No actionable material defects remain.
-  Installed cold recall, service lifetime, final CI, and private compatibility
+  Installed cold recall, service lifetime, and private compatibility
   remain separate release gates, not claimed successful review evidence.
 
 ### Checklist
@@ -398,6 +406,6 @@ remains with the coordinating release owner.
 - [x] Complete stopped-state config and one-job migration with regressions.
 - [ ] Repair bounded cold recall and owned local-service cleanup.
 - [x] Clear retained independent review for the current behavior.
-- [ ] Pass exact-candidate accumulated gate.
+- [x] Pass accumulated gate for the current reviewed behavior.
 - [ ] Confirm combined compatibility with parent.
 - [ ] Integrate eligible source and verify the landed result.
