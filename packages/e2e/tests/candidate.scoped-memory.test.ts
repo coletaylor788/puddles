@@ -22,6 +22,7 @@ describe("scoped tools with the actual pinned memory manager", () => {
     writeFileSync(join(root, "reader/DREAMS.md"), "quartzdream owns a synthetic dream.");
     writeFileSync(join(root, "reader/memory/note.md"), "quartzreader keeps a second synthetic note.");
     writeFileSync(join(root, "other/MEMORY.md"), "quartzforeign OTHER_AGENT_SECRET");
+    writeFileSync(join(root, "other/note.md"), "quartzforeign RESTORED_ANCESTOR_SECRET");
     writeFileSync(join(root, "other/DREAMS.md"), "quartzforeign OTHER_DREAM_SECRET");
     writeFileSync(join(root, "wiki/page.md"), "quartzforeign GLOBAL_WIKI_SECRET");
     const config = {
@@ -37,7 +38,8 @@ describe("scoped tools with the actual pinned memory manager", () => {
     writeFileSync(join(root, "config.json"), JSON.stringify(config));
     writeFileSync(join(root, "check.mjs"), `
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, renameSync, symlinkSync, unlinkSync } from "node:fs";
+import fsPromises from "node:fs/promises";
 import http from "node:http";
 import https from "node:https";
 const noNetwork = () => { throw new Error("Network inference is forbidden in this fixture"); };
@@ -74,6 +76,28 @@ try {
   const dream = await get.execute("dream", { path: "DREAMS.md", lines: 1 });
   assert.equal(dream.details.text, "quartzdream owns a synthetic dream.");
   assert.deepEqual((await search.execute("dream-search", { query: "quartzdream", minScore: 0 })).details.results, []);
+  const parent = cfg.agents.entries.reader.workspace + "/memory";
+  const retained = cfg.agents.entries.reader.workspace + "/retained-memory";
+  const open = fsPromises.open;
+  let substituted = false;
+  fsPromises.open = async (...args) => {
+    if (String(args[0]) !== parent + "/note.md") return open(...args);
+    renameSync(parent, retained);
+    symlinkSync(cfg.agents.entries.other.workspace, parent);
+    try {
+      substituted = true;
+      return await open(...args);
+    } finally {
+      unlinkSync(parent);
+      renameSync(retained, parent);
+    }
+  };
+  try {
+    await assert.rejects(get.execute("restored-ancestor", { path: "memory/note.md" }));
+    assert.equal(substituted, true, "race must reach the actual safe reader's file open");
+  } finally {
+    fsPromises.open = open;
+  }
   for (const corpus of ["wiki", "all"]) {
     await assert.rejects(search.execute("rewrite", { query: "quartzforeign", corpus }));
     await assert.rejects(get.execute("rewrite", { path: "MEMORY.md", corpus }));

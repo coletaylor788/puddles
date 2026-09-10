@@ -62,9 +62,10 @@ schema. Conversation, coalescing, tool, direct-recovery, error, and replay
 scenarios pass. Group silence still triggers an unexpected model retry and is
 under investigation. Scoped memory passes its proof against the patched runtime.
 
-The retained reviewer found a scoped-read race when another writer replaces
-and restores a containing directory. That repair and the group-silence
-investigation block the final accumulated gate. Memory migration is authorized,
+The scoped-read race is repaired with the existing safe-root reader, including
+a regression that replaces and restores a containing directory. The same
+reviewer is rechecking it. Group silence still blocks the final accumulated
+gate. Memory migration is authorized,
 but derived-data cleanup is not. Builtin does not retain QMD's model expansion
 or learned reranking. Installed access checks remain required before integration.
 
@@ -83,9 +84,9 @@ or learned reranking. Installed access checks remain required before integration
 - Resumed the same run after an agent-service transport reset. No managed
   process or run lock remained. Source, archives, and installed artifacts are
   preserved; successful earlier stage receipts are not a final-candidate gate.
-- Parent-assigned worker `5501` exclusively owns `openclaw-plugins/scoped-memory/`
-  and, if needed, `packages/e2e/tests/candidate.scoped-memory.test.ts`.
-  This owner handles root registration, lockfile, commits, and final integration.
+- The parent-assigned worker completed its scoped-memory handoff. Its later
+  read-only silence turn ended without findings. The parent released both
+  repairs to this engineering owner; no helper owns an active source scope.
 
 ### Scope and acceptance criteria
 
@@ -157,6 +158,11 @@ or learned reranking. Installed access checks remain required before integration
   Existing root workspace globs include package build, lint, and tests. The
   lockfile links its SDK and build dependencies. The memory migration manifest
   entry registers `tests/candidate.scoped-memory.test.ts`.
+- Scoped excerpts use `root(...).read(...)` from the public file-access SDK.
+  It returns bytes and identity from the same opened descriptor. Compare that
+  identity to the authorized file and recheck the current pathname. Retain
+  native symlink/hardlink rejection and the reader's 16 MiB limit. The published
+  facade lacks declarations, so a narrow verified local type records its API.
 - CI uses Node 26.1.0 and Corepack 0.36.0. Offline timestamp regression follows
   upstream pnpm 12.3.4. Node preflight rejects unsupported SQLite runtimes.
 - `native-activation.mjs` and `native-interpreter-migration.test.ts` include
@@ -205,7 +211,7 @@ or learned reranking. Installed access checks remain required before integration
   continuation passes with two model calls and one send. Model-error delivery
   now expects the stable classified HTTP 400 copy and rejects raw error text.
   Fresh-state replay passes. Group silence still fails with an unscripted retry.
-  The parent-assigned helper owns read-only context tracing for that failure.
+  This engineering owner is tracing the failed silent context.
 - Run `node packages/e2e/bin/openclaw-test-env.mjs ci` with a supported Node
   and explicitly selected isolated source and external run directory.
 - Retain collection evidence for every cumulative target.
@@ -218,10 +224,12 @@ or learned reranking. Installed access checks remain required before integration
 - Rehearse scoped-memory tools against deterministic per-agent notes. Prove
   restricted reads cannot reach other agents or the shared wiki, including
   hostile tool arguments and missing-plugin behavior in the private composition.
-  The implementing worker reports 57 unit cases, type checking, and build pass.
+  The descriptor repair passes 60 unit cases, type checking, and build.
   Its real builtin FTS proof passes against the exact published SDK. It proves
   excluded global roots were indexed before asserting filtered output. The
-  patched-candidate run also passes. Integration passes 31 native loop and
+  patched-candidate run also passes, including actual file-open substitution
+  and restoration before validation. The previous pathname reader reproduced
+  the foreign-byte leak before the repair. Integration passes 31 native loop and
   manifest cases plus the e2e type check.
 - Run fixture activation and rollback coverage through the accumulated pool.
 
@@ -242,9 +250,9 @@ or learned reranking. Installed access checks remain required before integration
   limited to the intended iMessage properties. No interpreter finding.
 - The retained review found a P1 race in `scoped-memory/src/plugin.ts`: an
   ancestor may be replaced during `manager.readFile` and restored before the
-  post-read file check. The finding is accepted. Reuse a descriptor-bound reader
-  and add a replacement-and-restoration regression before the same full-diff
-  review resumes. The parent routes this correction to the retained implementer.
+  post-read file check. The accepted finding is repaired with the existing
+  descriptor-bound SDK reader and replacement-and-restoration regressions.
+  The same reviewer must recheck the complete current diff before clearance.
 
 ### Checklist
 

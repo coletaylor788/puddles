@@ -72,11 +72,17 @@ builtin manager's workspace.
 
 Global and agent-specific extra paths remain part of OpenClaw's existing index.
 They are not new authorized roots. Search hits outside the file boundary are
-discarded before producing output. Authorized hits are reread with the manager's
-guarded file reader, so stale indexed snippets and arbitrary index metadata are
-never returned. Excluded hits can reduce the number of returned results.
-File identity is checked before and after each read. No backend status, debug,
-partial results, or raw failure text is exposed.
+discarded before producing output. Authorized hits are reread with the public
+SDK's safe-root reader, not the memory manager's pathname-based reader. It binds
+bytes to an opened file descriptor and rejects symbolic links and hardlinks.
+The descriptor's file identity must match the authorized file, with another
+check after reading. Replacing and restoring a containing directory cannot
+substitute another file's bytes. The reader retains its default 16 MiB file
+limit; the tool's smaller excerpt limits still apply.
+
+Stale indexed snippets and arbitrary index metadata are never returned.
+Excluded hits can reduce the number of returned results. No backend status,
+debug, partial results, or raw failure text is exposed.
 
 The trusted host and configured embedding provider remain the processing
 boundary. This plugin restricts tool results; it does not prevent the existing

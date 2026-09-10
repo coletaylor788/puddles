@@ -8,10 +8,6 @@ declare module "openclaw/plugin-sdk/memory-host-search" {
       path: string; source: "memory" | "sessions"; startLine: number;
       endLine: number; score: number; snippet: string;
     }>>;
-    readFile(options: { relPath: string; from?: number; lines?: number }): Promise<{
-      status: "ok" | "not_found"; path: string; text: string;
-      from?: number; lines?: number; truncated?: boolean; nextFrom?: number;
-    }>;
     status(): { workspaceDir?: string; backend: string };
   }
   export function getActiveMemorySearchManager(params: {

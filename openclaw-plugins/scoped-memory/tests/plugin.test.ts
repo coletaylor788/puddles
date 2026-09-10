@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { existsSync, linkSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import fsPromises from "node:fs/promises";
 import { join } from "node:path";
 
 const host = vi.hoisted(() => ({ get: vi.fn(), settings: vi.fn(), workspace: vi.fn() }));
@@ -19,7 +20,10 @@ beforeEach(() => {
   });
   host.workspace.mockImplementation((cfg, id) => cfg.agents.list.find((entry: any) => entry.id === id)?.workspace);
 });
-afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(() => {
+  vi.restoreAllMocks();
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
 
 function fixture(config: any = { allowedAgents: ["reader"] }) {
   const root = join(realpathSync(process.cwd()), `.scoped-memory-${randomUUID()}`);
@@ -149,13 +153,14 @@ describe("scoped memory authority", () => {
     f.manager.readFile.mockResolvedValue({ status: "ok", path: "MEMORY.md", from: 1, lines: 1,
       text: "own first\n\n[More content available. METADATA_SECRET]", truncated: true } as any);
     expect((await f.execute("scoped_memory_get", { path: "MEMORY.md", lines: 100 })).details)
-      .toEqual({ path: "MEMORY.md", from: 1, lines: 1, text: "own first", citation: "MEMORY.md#L1" });
+      .toEqual({ path: "MEMORY.md", from: 1, lines: 3, text: "own first\nown second\nown third", citation: "MEMORY.md#L1-L3" });
+    expect(f.manager.readFile).not.toHaveBeenCalled();
   });
 
   it("preserves the source line count for a blank line", async () => {
     const f = fixture();
-    f.manager.readFile.mockResolvedValue({ status: "ok", path: "MEMORY.md", from: 1, lines: 1, text: "" } as any);
-    expect((await f.execute("scoped_memory_get", { path: "MEMORY.md" })).details.lines).toBe(1);
+    writeFileSync(join(f.workspace, "MEMORY.md"), "\nsecond line");
+    expect((await f.execute("scoped_memory_get", { path: "MEMORY.md", lines: 1 })).details.lines).toBe(1);
   });
 
   it.each(["../other/MEMORY.md", "/etc/passwd", "memory/../USER.md", "memory//note.md", "./MEMORY.md", "memory\\note.md",
@@ -178,14 +183,61 @@ describe("scoped memory authority", () => {
     expect(f.manager.readFile).not.toHaveBeenCalled();
   });
 
-  it("rejects a file changed during the asynchronous manager read", async () => {
+  it("rejects a file replaced while opening the validated pathname", async () => {
     const f = fixture();
-    f.manager.readFile.mockImplementation(async ({ relPath }: any) => {
-      rmSync(join(f.workspace, relPath));
-      symlinkSync(join(f.other, "MEMORY.md"), join(f.workspace, relPath));
-      return { status: "ok", path: relPath, text: "OTHER_AGENT_SECRET", from: 1 };
+    const open = fsPromises.open;
+    vi.spyOn(fsPromises, "open").mockImplementationOnce(async (...args) => {
+      rmSync(join(f.workspace, "MEMORY.md"));
+      symlinkSync(join(f.other, "MEMORY.md"), join(f.workspace, "MEMORY.md"));
+      return open(...args);
     });
     await expect(f.execute("scoped_memory_get", { path: "MEMORY.md" })).rejects.toThrow();
+  });
+
+  it("never returns backend bytes from a substituted ancestor restored before validation", async () => {
+    const f = fixture();
+    writeFileSync(join(f.other, "note.md"), "OTHER_AGENT_SECRET");
+    f.manager.readFile.mockImplementation(async ({ relPath, from }: any) => {
+      const parent = join(f.workspace, "memory");
+      const retained = join(f.workspace, "retained-memory");
+      renameSync(parent, retained);
+      symlinkSync(f.other, parent);
+      try {
+        return { status: "ok", path: relPath, from, lines: 1,
+          text: readFileSync(join(f.workspace, relPath), "utf8") };
+      } finally {
+        unlinkSync(parent);
+        renameSync(retained, parent);
+      }
+    });
+    const read = await f.execute("scoped_memory_get", { path: "memory/note.md" });
+    expect(read.details.text).toBe("own nested note");
+    expect(f.manager.readFile).not.toHaveBeenCalled();
+  });
+
+  it.each(["symlink", "directory"])("rejects a %s ancestor substituted during open and restored before validation", async (kind) => {
+    const f = fixture();
+    writeFileSync(join(f.other, "note.md"), "OTHER_AGENT_SECRET");
+    const parent = join(f.workspace, "memory");
+    const retained = join(f.workspace, "retained-memory");
+    const open = fsPromises.open;
+    let substituted = false;
+    vi.spyOn(fsPromises, "open").mockImplementationOnce(async (...args) => {
+      renameSync(parent, retained);
+      if (kind === "symlink") symlinkSync(f.other, parent);
+      else renameSync(f.other, parent);
+      try {
+        substituted = true;
+        return await open(...args);
+      } finally {
+        if (kind === "symlink") unlinkSync(parent);
+        else renameSync(parent, f.other);
+        renameSync(retained, parent);
+      }
+    });
+    await expect(f.execute("scoped_memory_get", { path: "memory/note.md" })).rejects.toThrow();
+    expect(substituted).toBe(true);
+    expect(readFileSync(join(parent, "note.md"), "utf8")).toBe("own nested note");
   });
 
   it.each(["lookup", "status", "search", "read"])("surfaces explicit %s failure without backend secrets or partial data", async (stage) => {
@@ -193,21 +245,22 @@ describe("scoped memory authority", () => {
     if (stage === "lookup") host.get.mockResolvedValue({ manager: null, error: "PRIVATE_LOOKUP_SECRET" });
     if (stage === "status") f.manager.status.mockImplementation(() => { throw new Error("PRIVATE_STATUS_SECRET"); });
     if (stage === "search") f.manager.search.mockImplementation(async () => { throw new Error("PRIVATE_SEARCH_SECRET"); });
-    if (stage === "read") f.manager.readFile.mockImplementation(async () => { throw new Error("PRIVATE_READ_SECRET"); });
+    if (stage === "read") vi.spyOn(fsPromises, "open").mockRejectedValueOnce(new Error("PRIVATE_READ_SECRET"));
     const error = await f.execute("scoped_memory_search", { query: "own" }).catch((error: Error) => error);
     expect(error).toBeInstanceOf(Error);
     expect(String(error)).not.toContain("SECRET");
     expect(error.cause).toBeUndefined();
   });
 
-  it("rejects wrong manager ownership and response paths before returning content", async () => {
+  it("rejects wrong manager ownership and ignores backend read response paths", async () => {
     const f = fixture();
     f.manager.status.mockReturnValue({ backend: "builtin", workspaceDir: f.other } as any);
     await expect(f.execute("scoped_memory_get", { path: "MEMORY.md" })).rejects.toThrow("workspace");
     expect(f.manager.readFile).not.toHaveBeenCalled();
     f.manager.status.mockReturnValue({ backend: "builtin", workspaceDir: f.workspace } as any);
     f.manager.readFile.mockResolvedValue({ status: "ok", path: "../other/MEMORY.md", text: "OTHER_AGENT_SECRET", from: 1 } as any);
-    await expect(f.execute("scoped_memory_get", { path: "MEMORY.md" })).rejects.toThrow("invalid scoped excerpt");
+    expect((await f.execute("scoped_memory_get", { path: "MEMORY.md" })).details.text).toBe("own first\nown second\nown third");
+    expect(f.manager.readFile).not.toHaveBeenCalled();
   });
 
   it.each(["DREAMS.md", "dreams.md", "DrEaMs.md"])("reads own %s without expanding search", async (path) => {

@@ -1,8 +1,9 @@
-import { lstatSync, realpathSync } from "node:fs";
+import { lstatSync, realpathSync, type Stats } from "node:fs";
 import { basename, dirname, isAbsolute, join } from "node:path";
 import type { AnyAgentTool, OpenClawPluginApi, OpenClawPluginToolContext } from "openclaw/plugin-sdk/core";
 import { resolveAgentWorkspaceDir, resolveMemorySearchConfig } from "openclaw/plugin-sdk/memory-core-host-engine-foundation";
 import { getActiveMemorySearchManager, type ScopedMemoryManager } from "openclaw/plugin-sdk/memory-host-search";
+import { root } from "openclaw/plugin-sdk/file-access-runtime";
 
 const MAX_QUERY = 2_000;
 const MAX_RESULTS = 10;
@@ -40,6 +41,10 @@ function allowedPath(path: unknown, includeDreams = false): path is string {
     (includeDreams && path.toLowerCase() === "dreams.md" && path.endsWith(".md"));
 }
 
+function statIdentity(stat: Stats) {
+  return `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`;
+}
+
 function fileIdentity(workspace: string, path: string) {
   if (!allowedPath(path, true)) fail("Path is outside scoped Markdown memory");
   let current = workspace;
@@ -52,21 +57,19 @@ function fileIdentity(workspace: string, path: string) {
   }
   const stat = lstatSync(current);
   if (!stat.isFile() || stat.nlink !== 1) fail("Scoped memory requires a single-link regular file");
-  return `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`;
+  return statIdentity(stat);
 }
 
-async function excerpt(manager: ScopedMemoryManager, workspace: string, path: string, from: number, lines: number) {
+async function excerpt(workspace: string, path: string, from: number, lines: number) {
   const identity = fileIdentity(workspace, path);
-  const result = await manager.readFile({ relPath: path, from, lines });
-  if (fileIdentity(workspace, path) !== identity) fail("Scoped memory file changed during read");
-  if (result.status !== "ok" || result.path !== path || typeof result.text !== "string" ||
-      result.from !== from || !Number.isSafeInteger(result.lines) ||
-      result.lines! < 0 || result.lines! > lines) {
-    fail("Memory manager returned an invalid scoped excerpt");
+  const workspaceRoot = await root(workspace, { symlinks: "reject", hardlinks: "reject" });
+  const opened = await workspaceRoot.read(path);
+  if (statIdentity(opened.stat) !== identity || fileIdentity(workspace, path) !== identity) {
+    fail("Scoped memory file changed during read");
   }
-  // Reconstruct the public result. Backend diagnostics and indexed metadata are not an output contract.
-  const text = result.text.split("\n").slice(0, result.lines).join("\n").slice(0, MAX_CHARS);
-  const count = result.lines === 0 ? 0 : text.split("\n").length;
+  const selected = opened.buffer.toString("utf8").split("\n").slice(from - 1, from - 1 + lines);
+  const text = selected.join("\n").slice(0, MAX_CHARS);
+  const count = selected.length === 0 ? 0 : text.split("\n").length;
   return { path, text, from, lines: count, citation: `${path}#L${from}${count > 1 ? `-L${from + count - 1}` : ""}` };
 }
 
@@ -134,7 +137,7 @@ function factory(api: OpenClawPluginApi, allowed: ReadonlySet<string>, ctx: Open
           for (const hit of hits.slice(0, maxResults)) {
             if (hit.source !== "memory" || !allowedPath(hit.path)) continue;
             if (!Number.isSafeInteger(hit.startLine) || hit.startLine < 1 || !Number.isSafeInteger(hit.endLine) || hit.endLine < hit.startLine) fail("Memory manager returned invalid line ranges");
-            const value = await excerpt(manager, workspace, hit.path, hit.startLine, Math.min(MAX_LINES, hit.endLine - hit.startLine + 1));
+            const value = await excerpt(workspace, hit.path, hit.startLine, Math.min(MAX_LINES, hit.endLine - hit.startLine + 1));
             results.push({ path: value.path, startLine: value.from, endLine: value.from + Math.max(0, value.lines - 1),
               snippet: value.text, source: "memory", citation: value.citation });
           }
@@ -156,7 +159,7 @@ function factory(api: OpenClawPluginApi, allowed: ReadonlySet<string>, ctx: Open
         const path = args.path;
         const from = integer(args.from, 1, Number.MAX_SAFE_INTEGER);
         const lines = integer(args.lines, 40, MAX_LINES);
-        return run((manager) => excerpt(manager, workspace, path, from, lines));
+        return run(() => excerpt(workspace, path, from, lines));
       },
     },
   ];
