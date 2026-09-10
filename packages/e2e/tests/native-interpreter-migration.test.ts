@@ -4,13 +4,18 @@ import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, re
 import { hostname } from "node:os";
 import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
+import { setImmediate } from "node:timers/promises";
 // @ts-expect-error Native lifecycle also runs without TypeScript.
 import { activateNative, systemOperations } from "../src/native-activation.mjs";
 // @ts-expect-error Native lifecycle also runs without TypeScript.
 import { fileDigest } from "../src/native-state.mjs";
 
 const roots: string[] = [];
-afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(async () => {
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  // Synchronous plist subprocesses and binary hashes must not starve worker RPC.
+  await setImmediate();
+});
 
 function plist(path: string, value?: unknown, binary = false) {
   if (value) {
@@ -314,7 +319,7 @@ describe("reversible configured Node interpreter migration", () => {
     expect(replay.find(({ args }) => args.includes("health"))?.command).toBe(f.expected.path);
     expect(readFileSync(join(activated.recoveryDir, "failed-service.plist"))).toEqual(failedService);
     expect(readFileSync(f.target.plistPath)).toEqual(f.original);
-  });
+  }, 15_000);
 
   it("recovers failed activation after package restoration was interrupted without the archive", async () => {
     const f = fixture();
@@ -324,7 +329,7 @@ describe("reversible configured Node interpreter migration", () => {
     expect((await f.activate(f.recovery())).status).toBe("rolled-back");
     expect(readFileSync(f.target.plistPath)).toEqual(f.original);
     expect(f.calls.filter(({ args }) => args.includes("health")).at(-1)?.command).toBe(f.expected.path);
-  });
+  }, 15_000);
 
   it("refuses changed retained interpreter identity on recovery before stopping", async () => {
     const f = fixture();
