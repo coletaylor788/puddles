@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
@@ -9,6 +9,9 @@ import { setImmediate } from "node:timers/promises";
 import { activateNative, systemOperations } from "../src/native-activation.mjs";
 // @ts-expect-error Native lifecycle also runs without TypeScript.
 import { fileDigest } from "../src/native-state.mjs";
+
+// Repeated real binary hashes and complete rollback passes take up to 15s on hosted Intel.
+vi.setConfig({ testTimeout: 30_000 });
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -319,7 +322,7 @@ describe("reversible configured Node interpreter migration", () => {
     expect(replay.find(({ args }) => args.includes("health"))?.command).toBe(f.expected.path);
     expect(readFileSync(join(activated.recoveryDir, "failed-service.plist"))).toEqual(failedService);
     expect(readFileSync(f.target.plistPath)).toEqual(f.original);
-  }, 15_000);
+  });
 
   it("recovers failed activation after package restoration was interrupted without the archive", async () => {
     const f = fixture();
@@ -329,7 +332,7 @@ describe("reversible configured Node interpreter migration", () => {
     expect((await f.activate(f.recovery())).status).toBe("rolled-back");
     expect(readFileSync(f.target.plistPath)).toEqual(f.original);
     expect(f.calls.filter(({ args }) => args.includes("health")).at(-1)?.command).toBe(f.expected.path);
-  }, 15_000);
+  });
 
   it("refuses changed retained interpreter identity on recovery before stopping", async () => {
     const f = fixture();

@@ -83,9 +83,10 @@ replace-and-restore race. The cold-recall repair passes its affected suite.
 The retained reviewer clears the complete current behavior diff.
 
 Installed cold recall and the service lifetime decision still block integration.
-The local accumulated gate passes. Hosted checks expose three rollback fixtures
-exceeding the default test limit. Their narrow harness repair passes focused
-coverage and awaits review and the hosted rerun. Combined access checks remain
+The local accumulated gate passes. Hosted checks expose slow interpreter
+fixtures across the activation and rollback suite. The first timing correction
+is too narrow. A file-scoped lifecycle allowance preserves all real checks and
+needs the retained review and hosted rerun. Combined access checks remain
 required before integration.
 Memory migration is authorized, but derived-data cleanup is not. Builtin does
 not retain QMD's model expansion or learned reranking. Production deployment
@@ -117,6 +118,10 @@ remains with the coordinating release owner.
   `34437364226` passes build and CodeQL but fails three interpreter-recovery
   cases at the default five-second limit. The same fixture blocks worker
   reporting across its synchronous work. No runtime assertion is removed.
+- Hosted retry `34439888698` confirms the reporting yield and the three
+  previously adjusted cases pass. Nine other cases exceed five seconds, while
+  complete multi-pass cases take 14.7-14.9 seconds. Treat the entire interpreter
+  fixture as one bounded lifecycle suite instead of adjusting cases piecemeal.
 
 ### Scope and acceptance criteria
 
@@ -285,11 +290,13 @@ remains with the coordinating release owner.
 
 - Run focused component tests while iterating.
 - Interpreter fixtures retain real plist subprocesses and repeated full Node
-  binary identity checks. The three observed multi-pass recovery cases use the
-  existing explicit 15-second lifecycle allowance, not a global timeout change.
-  Yield between test cases so synchronous work cannot starve worker RPC.
-  All 68 interpreter and pipeline cases plus e2e types pass locally. Hosted
-  confirmation and the full accumulated rerun remain required.
+  binary identity checks. Use one file-scoped 30-second test allowance, with
+  headroom over measured 14.9-second hosted passes. Other files and production
+  deadlines stay unchanged. Yield between cases so synchronous work cannot
+  starve worker RPC. Thirty local hashes read a 144 MB real executable and take
+  2.4 seconds; removing or caching identity checks is not an acceptable shortcut.
+  The previous 68-case local run passes but does not prove the hosted correction.
+  Repeat focused coverage, retained review, accumulated CI, and hosted checks.
 - Reproduce delayed cold lookup before the recall repair. Cover shared grace
   expiration, disabled/policy-excluded destinations, and existing warm modes.
   The private owner owns the official-provider cold installed matrix.

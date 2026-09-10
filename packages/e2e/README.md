@@ -105,10 +105,13 @@ not overwhelm standard hosted CPUs. The default test deadline stays unchanged.
 Native pipeline orchestration and the observed archive and concurrent-config
 rollback cases have explicit 15-second limits. Lock fixtures wait for the real
 readiness response with a bounded startup allowance, not a fixed sleep or a
-global timeout increase. Interpreter rollback cases with repeated activation,
-failure, and recovery also use that explicit limit. Their real binary hashes
-and plist subprocesses remain intact. The fixture yields between tests so
-synchronous work cannot starve the worker's reporting channel.
+global timeout increase. The interpreter migration fixture has a file-scoped
+30-second limit because its complete activation and rollback passes repeatedly
+hash the real Node binary and run plist subprocesses. Hosted Intel runs measure
+up to 15 seconds per multi-pass case; a single allowance covers the whole
+fixture instead of chasing individual timeouts. Its assertions and real checks
+remain intact. The fixture yields between tests so synchronous work cannot
+starve the worker's reporting channel.
 
 ```bash
 corepack pnpm --filter e2e exec vitest run tests/native-loop.test.ts
