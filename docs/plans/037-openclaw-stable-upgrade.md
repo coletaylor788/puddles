@@ -99,8 +99,11 @@ composition. Test coordination uses the trusted host's normal locks, with
 separate test databases and no production changes. Memory fixtures now join
 their delayed writers and cleanup before replacing shared test state.
 Owned service shutdown and recovery now have focused process and activation
-coverage. Startup vector preparation and lifetime residency remain in progress. The final
-candidate needs the full accumulated gate and retained independent review.
+coverage. Gateway startup now prepares two real local vectors under one
+90-second allowance before channels start, retains the owned service lease, and
+keeps only the embedding preset awake. Gathered completion ownership is durable
+across gateway restart and bounded-map eviction. The final candidate still
+needs the full accumulated gate and retained independent review.
 Integration stays held for the coordinating owner's combined compatibility
 confirmation. Production deployment remains with that owner.
 
@@ -121,7 +124,8 @@ confirmation. Production deployment remains with that owner.
   pull request with the parent. Preserve previous sealed runs without edits.
 - Current repair scope is bundled dependencies, installed ESM registration,
   explicit isolated temporary state, active-memory asynchronous cleanup, and
-  gateway-managed local embeddings. Historical results below are not current
+  gateway-managed local embeddings. The retained review also drove a durable
+  gathered-completion handoff repair. Historical results below are not current
   eligibility. Production activation and private composition stay out of scope.
 - Resumed the same run after an agent-service transport reset. No managed
   process or run lock remained. Source, archives, and installed artifacts are
@@ -388,6 +392,13 @@ confirmation. Production deployment remains with that owner.
   helper, interpreter, and activation tests pass 105 cases, including a failed
   extinction join before any mutable state snapshot. These focused results do
   not replace final cumulative or installed model proofs.
+- Gateway warmup and startup ordering pass 132 cases. Managed embedding
+  transport passes 35 cases. The llama.cpp provider and preset pass 57 cases,
+  including embedding-only idle-sleep retention. Core and extension type
+  checks pass.
+- Gathered completion recovery passes exact transcript, bounded-map eviction,
+  persistence-failure, and SQLite round-trip regressions. The focused gather,
+  announcement, and registry suites pass 319 cases with core types.
 - Current focused results: file-lock 2, sandbox 21, workshop 20, candidate
   browser/filesystem 2, public plugins 104, public native loop/pipeline/manifest
   47. Plugin build and type checking pass.
@@ -397,7 +408,7 @@ confirmation. Production deployment remains with that owner.
 - Stable focused coverage also includes 99 iMessage monitor/coalescer cases,
   config/parser/ingress cases, scoped gather and timeout cases, moved native/ACP
   target cases, 24 registry cases, and explicit memory migration/recovery cases.
-- All eight exported patches apply sequentially to clean stable source and all
+- All sixteen exported patches apply sequentially to clean stable source and all
   mapped targets exist. Actual project collection is checked before execution.
 - Upstream `pnpm tsgo:core` and `pnpm tsgo:extensions` pass.
 - The repaired gather passes 502 focused cases and the core type check. Its

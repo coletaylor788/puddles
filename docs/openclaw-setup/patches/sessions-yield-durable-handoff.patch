@@ -1,0 +1,314 @@
+diff --git a/src/agents/subagents/announce/subagent-announce-delivery.test.ts b/src/agents/subagents/announce/subagent-announce-delivery.test.ts
+index 22421a3a504..33639408615 100644
+--- a/src/agents/subagents/announce/subagent-announce-delivery.test.ts
++++ b/src/agents/subagents/announce/subagent-announce-delivery.test.ts
+@@ -54,6 +54,8 @@ import {
+   taskCompletionEvents,
+ } from "../../subagent-test-fixtures.test-helpers.js";
+ import { markYieldGathered } from "../../tools/yield-gather-state.js";
++import { subagentRuns } from "../registry/subagent-registry-memory.js";
++import type { SubagentRunRecord } from "../registry/subagent-registry.types.js";
+ import {
+   testing,
+   deliverSubagentAnnouncement,
+@@ -129,6 +131,7 @@ describe("queued completion handoff", () => {
+         entry: { sessionId: scope.sessionId, updatedAt: Date.now() },
+       }),
+     });
++
+     markYieldGathered(runId, {
+       requesterSessionKey: scope.sessionKey,
+       requesterSessionId: scope.sessionId,
+@@ -188,6 +191,70 @@ describe("queued completion handoff", () => {
+     });
+   });
+ 
++  it("credits a durable gathered result after volatile handoff eviction", async () => {
++    const root = tempDirs.make("durable-yield-gather-handoff-");
++    const scope = {
++      agentId: "main",
++      sessionKey: "agent:main:main",
++      sessionId: "durable-yield-gather-parent",
++      storePath: path.join(root, "main.sqlite"),
++    };
++    const runId = "durable-yield-gather-evicted";
++    const toolCallId = "durable-yield-tool-call-evicted";
++    const handoff = {
++      requesterSessionKey: scope.sessionKey,
++      requesterSessionId: scope.sessionId,
++      requesterAgentId: scope.agentId,
++      toolCallId,
++    };
++    subagentRuns.set(runId, {
++      runId,
++      childSessionKey: "agent:worker:subagent:durable-yield-gather-evicted",
++      requesterSessionKey: scope.sessionKey,
++      requesterAgentId: scope.agentId,
++      createdAt: Date.now(),
++      expectsCompletionMessage: true,
++      delivery: { yieldGatherHandoff: handoff },
++    } as SubagentRunRecord);
++    for (let index = 0; index <= 500; index += 1) {
++      markYieldGathered(`eviction-${index}`, handoff);
++    }
++    testing.setDepsForTest({
++      loadRequesterSessionEntry: () => ({
++        cfg: {},
++        agentId: scope.agentId,
++        canonicalKey: scope.sessionKey,
++        storePath: scope.storePath,
++        entry: { sessionId: scope.sessionId, updatedAt: Date.now() },
++      }),
++    });
++    const toolResult = {
++      role: "toolResult",
++      toolName: "sessions_yield",
++      toolCallId,
++      isError: false,
++      content: [{ type: "text", text: "child result" }],
++      details: { status: "subagent_results", gatheredRunIds: [runId] },
++    };
++    await persistSessionTranscriptTurn(scope, {
++      messages: [{ eventId: "handoff", parentId: null, message: toolResult }],
++      touchSessionEntry: false,
++    });
++    expect(
++      await deliverSubagentAnnouncement({
++        requesterSessionKey: scope.sessionKey,
++        targetRequesterSessionKey: scope.sessionKey,
++        requesterIsSubagent: false,
++        sourceRunId: runId,
++        triggerMessage: "child result",
++        steerMessage: "child result",
++        expectsCompletionMessage: true,
++        directIdempotencyKey: runId,
++      }),
++    ).toMatchObject({ delivered: true, terminal: true });
++    subagentRuns.delete(runId);
++  });
++
+   it.each(["delivered", "source retired", "long execution", "delivery deadline"] as const)(
+     "keeps an accepted busy-parent completion pending until execution: %s",
+     async (outcome) => {
+diff --git a/src/agents/subagents/announce/subagent-announce-delivery.ts b/src/agents/subagents/announce/subagent-announce-delivery.ts
+index d5be21a59c5..ce28292480f 100644
+--- a/src/agents/subagents/announce/subagent-announce-delivery.ts
++++ b/src/agents/subagents/announce/subagent-announce-delivery.ts
+@@ -29,6 +29,7 @@ import {
+ } from "../../internal-events.js";
+ import { getYieldGatherHandoff, isYieldGathering } from "../../tools/yield-gather-state.js";
+ import { admitCorrelatedSubagentSessionDelivery } from "../completion/subagent-completion-delivery.js";
++import { getSubagentRunByRunIdForRead } from "../registry/subagent-registry-read.js";
+ import { getSubagentDepthFromSessionStore } from "../spawn/subagent-depth.js";
+ import { maybeSteerSubagentAnnounce } from "./subagent-announce-active-wake.js";
+ import {
+@@ -168,7 +169,10 @@ export async function deliverSubagentAnnouncement(params: {
+   if (sourceOwnerChanged()) {
+     return sourceOwnerChangedResult();
+   }
+-  const handoff = params.sourceRunId ? getYieldGatherHandoff(params.sourceRunId) : undefined;
++  const handoff = params.sourceRunId
++    ? (getYieldGatherHandoff(params.sourceRunId) ??
++      getSubagentRunByRunIdForRead(params.sourceRunId)?.delivery?.yieldGatherHandoff)
++    : undefined;
+   if (params.sourceRunId && (isYieldGathering(params.sourceRunId) || handoff)) {
+     if (!isYieldGathering(params.sourceRunId) && handoff) {
+       const requester = loadRequesterSessionEntry(
+diff --git a/src/agents/subagents/registry/subagent-registry-read.ts b/src/agents/subagents/registry/subagent-registry-read.ts
+index cadbbf431f3..72e93c5e6f4 100644
+--- a/src/agents/subagents/registry/subagent-registry-read.ts
++++ b/src/agents/subagents/registry/subagent-registry-read.ts
+@@ -101,6 +101,11 @@ export function listDescendantRunsForRequester(rootSessionKey: string): Subagent
+   );
+ }
+ 
++/** Reads one run from the merged durable and live registry snapshot. */
++export function getSubagentRunByRunIdForRead(runId: string): SubagentRunRecord | undefined {
++  return getSubagentRunsSnapshotForRead(subagentRuns).get(runId.trim());
++}
++
+ /** Counts pending descendant runs below a requester/session tree. */
+ export function countPendingDescendantRuns(rootSessionKey: string): number {
+   return countPendingDescendantRunsFromRuns(
+diff --git a/src/agents/subagents/registry/subagent-registry-yield-gather.ts b/src/agents/subagents/registry/subagent-registry-yield-gather.ts
+new file mode 100644
+index 00000000000..f73917442ed
+--- /dev/null
++++ b/src/agents/subagents/registry/subagent-registry-yield-gather.ts
+@@ -0,0 +1,31 @@
++import { subagentRuns } from "./subagent-registry-memory.js";
++import { persistSubagentRunsToDiskOrThrow } from "./subagent-registry-state.js";
++import type { SubagentCompletionDeliveryState } from "./subagent-registry.types.js";
++
++type YieldGatherHandoff = NonNullable<SubagentCompletionDeliveryState["yieldGatherHandoff"]>;
++
++/** Persists gather ownership before sessions_yield can commit its visible tool result. */
++export function recordYieldGatherHandoff(runIds: readonly string[], handoff: YieldGatherHandoff) {
++  const records = runIds.map((runId) => {
++    const entry = subagentRuns.get(runId);
++    if (!entry?.delivery || entry.expectsCompletionMessage !== true) {
++      throw new Error(`Cannot persist sessions_yield handoff for run ${runId}`);
++    }
++    return { entry, delivery: entry.delivery };
++  });
++  const previous = records.map(({ delivery }) => structuredClone(delivery));
++  for (const { delivery } of records) {
++    delivery.yieldGatherHandoff = structuredClone(handoff);
++  }
++  try {
++    persistSubagentRunsToDiskOrThrow(
++      subagentRuns,
++      records.map(({ entry }) => entry.runId),
++    );
++  } catch (error) {
++    records.forEach(({ entry }, index) => {
++      entry.delivery = previous[index];
++    });
++    throw error;
++  }
++}
+diff --git a/src/agents/subagents/registry/subagent-registry.store.sqlite.test.ts b/src/agents/subagents/registry/subagent-registry.store.sqlite.test.ts
+index 98efa5c845a..d0dac126bbd 100644
+--- a/src/agents/subagents/registry/subagent-registry.store.sqlite.test.ts
++++ b/src/agents/subagents/registry/subagent-registry.store.sqlite.test.ts
+@@ -139,13 +139,21 @@ describe("subagent registry sqlite store", () => {
+     });
+   });
+ 
+-  it("preserves requester-owned final receipts in the existing SQLite payload", async () => {
++  it("preserves requester-owned final and yield handoff receipts in SQLite", async () => {
+     await withTempStateEnv(async () => {
+       const requesterVisibleFinal = {
+         requesterTurnRunId: "run-requester",
+         batchRunIds: ["run-one"],
+       };
+-      const run = createRun({ delivery: { status: "delivered", requesterVisibleFinal } });
++      const yieldGatherHandoff = {
++        requesterSessionKey: "agent:main:main",
++        requesterSessionId: "session-main",
++        requesterAgentId: "main",
++        toolCallId: "yield-call",
++      };
++      const run = createRun({
++        delivery: { status: "delivered", requesterVisibleFinal, yieldGatherHandoff },
++      });
+ 
+       saveSubagentRegistryToSqlite(new Map([[run.runId, run]]));
+       closeOpenClawStateDatabaseForTest();
+@@ -153,6 +161,7 @@ describe("subagent registry sqlite store", () => {
+       expect(loadSubagentRegistryFromSqlite().get(run.runId)?.delivery).toMatchObject({
+         status: "delivered",
+         requesterVisibleFinal,
++        yieldGatherHandoff,
+       });
+     });
+   });
+diff --git a/src/agents/subagents/registry/subagent-registry.types.ts b/src/agents/subagents/registry/subagent-registry.types.ts
+index 27b73b1f8cc..50b37db981e 100644
+--- a/src/agents/subagents/registry/subagent-registry.types.ts
++++ b/src/agents/subagents/registry/subagent-registry.types.ts
+@@ -141,6 +141,13 @@ export type SubagentCompletionDeliveryState = {
+   announcedAt?: number;
+   /** Exact requester turn and completed child batch that already produced its visible final. */
+   requesterVisibleFinal?: { requesterTurnRunId: string; batchRunIds: string[] };
++  /** Exact committed sessions_yield result that owns this completion across restart. */
++  yieldGatherHandoff?: {
++    requesterSessionKey: string;
++    requesterSessionId: string;
++    requesterAgentId?: string;
++    toolCallId: string;
++  };
+   lastAttemptAt?: number;
+   attemptCount?: number;
+   lastError?: string | null;
+diff --git a/src/agents/tools/yield-descendant-gather.test.ts b/src/agents/tools/yield-descendant-gather.test.ts
+index bfa134eb110..80a089ab27d 100644
+--- a/src/agents/tools/yield-descendant-gather.test.ts
++++ b/src/agents/tools/yield-descendant-gather.test.ts
+@@ -2,10 +2,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
+ import { gatherYieldDescendants } from "../yield-descendant-gather.js";
+ import { isYieldGathered, isYieldGathering } from "./yield-gather-state.js";
+ 
+-const mocks = vi.hoisted(() => ({ list: vi.fn(), wait: vi.fn(), read: vi.fn() }));
++const mocks = vi.hoisted(() => ({
++  list: vi.fn(),
++  wait: vi.fn(),
++  read: vi.fn(),
++  recordHandoff: vi.fn(),
++}));
+ vi.mock("../subagents/registry/subagent-registry-read.js", () => ({
+   listDescendantRunsForRequester: mocks.list,
+ }));
++vi.mock("../subagents/registry/subagent-registry-yield-gather.js", () => ({
++  recordYieldGatherHandoff: mocks.recordHandoff,
++}));
+ vi.mock("../run-wait.js", () => ({ waitForAgentRunsToDrain: mocks.wait }));
+ vi.mock("../../cron/isolated-agent/subagent-followup.js", () => ({
+   readDescendantSubagentFallbackReply: mocks.read,
+@@ -66,6 +74,12 @@ describe("blocking gather on current registry records", () => {
+       runStartedAt: 99,
+       runIds: new Set([owned.runId, nested.runId]),
+     });
++    expect(mocks.recordHandoff).toHaveBeenCalledWith([owned.runId, nested.runId], {
++      requesterSessionKey: params.agentSessionKey,
++      requesterSessionId: params.requesterSessionId,
++      requesterAgentId: params.requesterAgentId,
++      toolCallId: params.toolCallId,
++    });
+     expect(isYieldGathered(owned.runId)).toBe(true);
+     expect(isYieldGathered(owned.childSessionKey)).toBe(false);
+     expect(isYieldGathering(owned.runId)).toBe(false);
+@@ -104,4 +118,19 @@ describe("blocking gather on current registry records", () => {
+     expect(isYieldGathering(owned.runId)).toBe(false);
+     expect(isYieldGathered(owned.runId)).toBe(false);
+   });
++
++  it("does not publish volatile ownership when durable handoff persistence fails", async () => {
++    const owned = run();
++    mocks.list.mockReturnValue([owned]);
++    mocks.wait.mockImplementation(async () => {
++      owned.execution.endedAt = 200;
++      return { timedOut: false };
++    });
++    mocks.recordHandoff.mockImplementation(() => {
++      throw new Error("registry unavailable");
++    });
++    await expect(gatherYieldDescendants(params)).rejects.toThrow("registry unavailable");
++    expect(isYieldGathered(owned.runId)).toBe(false);
++    expect(isYieldGathering(owned.runId)).toBe(false);
++  });
+ });
+diff --git a/src/agents/yield-descendant-gather.ts b/src/agents/yield-descendant-gather.ts
+index 0615c772e93..518428388a4 100644
+--- a/src/agents/yield-descendant-gather.ts
++++ b/src/agents/yield-descendant-gather.ts
+@@ -1,6 +1,7 @@
+ import { readDescendantSubagentFallbackReply } from "../cron/isolated-agent/subagent-followup.js";
+ import { waitForAgentRunsToDrain } from "./run-wait.js";
+ import { listDescendantRunsForRequester } from "./subagents/registry/subagent-registry-read.js";
++import { recordYieldGatherHandoff } from "./subagents/registry/subagent-registry-yield-gather.js";
+ import {
+   clearYieldGathering,
+   markYieldGathered,
+@@ -87,13 +88,15 @@ export async function gatherYieldDescendants(params: {
+       runIds: new Set(completed.map((entry) => entry.runId)),
+     });
+     const gatheredRunIds = completed.map((entry) => entry.runId);
++    const handoff = {
++      requesterSessionKey: requesterKey,
++      requesterSessionId: params.requesterSessionId,
++      requesterAgentId: params.requesterAgentId,
++      toolCallId: params.toolCallId,
++    };
++    recordYieldGatherHandoff(gatheredRunIds, handoff);
+     for (const runId of gatheredRunIds) {
+-      markYieldGathered(runId, {
+-        requesterSessionKey: requesterKey,
+-        requesterSessionId: params.requesterSessionId,
+-        requesterAgentId: params.requesterAgentId,
+-        toolCallId: params.toolCallId,
+-      });
++      markYieldGathered(runId, handoff);
+     }
+     return {
+       active: true,

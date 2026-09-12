@@ -17,6 +17,7 @@ activated gateway. Keep the previous interpreter available for rollback.
 |---|---|
 | `file-lock-stale-reclaim-guard.patch` | Guard stale file-lock recovery |
 | `sessions-yield-block-and-gather.patch` | Block at yield and gather subagent results |
+| `sessions-yield-durable-handoff.patch` | Preserve gathered completion ownership across restart |
 | `subagent-cross-agent-spawn-fix.patch` | Explicit targeting and inherited tools |
 | `skill-workshop-sandbox-fix.patch` | Skill workshop in sandboxed agents |
 | `imessage-message-part-coalescing.patch` | Selective text, link, and image coalescing |
@@ -29,6 +30,7 @@ activated gateway. Keep the previous interpreter available for rollback.
 | `active-memory-cold-recall.patch` | Preserve required recall within one shared cold-setup budget |
 | `active-memory-fixture-cleanup.patch` | Join delayed recall fixtures before replacing shared test state |
 | `managed-local-service-lifecycle.patch` | Join gateway-owned service groups before stopped-state changes |
+| `gateway-memory-warmup.patch` | Prepare and retain managed local embeddings before readiness |
 
 Each patch has a neighboring document explaining its behavior and history.
 Register new patches and every applicable test in the cumulative manifest at
