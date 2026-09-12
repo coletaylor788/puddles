@@ -6,6 +6,22 @@ sessions, indexes, workspace, logs, ports, and processes are isolated. Host
 dependencies are deliberately shared. This is not a security sandbox against
 arbitrary shell commands or other ambient host access.
 
+The purpose of this separation is to start and exercise a candidate without
+causing outages or changing the live instance. Normal host filesystem access
+and existing shared coordination directories are allowed on the trusted host.
+Use the runtime's normal locking, keep test databases distinct, and leave
+foreign locks and unrelated processes alone. Cleanup removes only resources
+owned by the test run, never a shared directory.
+
+Harness-only filesystem permission restrictions are optional. If they block
+normal installed startup, doctor, or plugin loading, simplify the harness
+restriction rather than patching production locking or adding a special
+fixture-entry protocol. Do not require adversarial host confinement unless the
+requester explicitly asks for it. This does not relax product agent access
+controls or permit live-state mutations, real message delivery, or secrets in
+fixtures and logs. Content assertions still use synthetic data, and external
+writes still require recording adapters.
+
 ## Required cumulative gate
 
 Every feature and fix contributes a committed regression. Run focused tests
