@@ -7,8 +7,9 @@ memory request budget. This patch adds the explicit
 uses one 90-second allowance to create the configured local provider and verify
 two real, finite, nonzero, distinct vectors before channels start.
 
-The warmup accepts only a registered local transport and a gateway-owned local
-service. It keeps that service lease and provider open for the gateway lifetime.
+The warmup accepts only registered local transports. Every selected provider
+must acquire its own gateway-owned local-service lease. It keeps those leases
+and providers open for the gateway lifetime.
 Shutdown aborts unfinished preparation, closes providers, and releases leases.
 A restart must acquire and prepare the service again. The ordinary memory
 request budget and Active Memory's separate 30-second setup cap are unchanged.

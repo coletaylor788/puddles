@@ -392,7 +392,7 @@ confirmation. Production deployment remains with that owner.
   helper, interpreter, and activation tests pass 105 cases, including a failed
   extinction join before any mutable state snapshot. These focused results do
   not replace final cumulative or installed model proofs.
-- Gateway warmup and startup ordering pass 132 cases. Managed embedding
+- Gateway warmup and startup ordering pass 133 cases. Managed embedding
   transport passes 35 cases. The llama.cpp provider and preset pass 57 cases,
   including embedding-only idle-sleep retention. Core and extension type
   checks pass.

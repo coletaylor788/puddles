@@ -320,10 +320,10 @@ index 0ed2e7d5e68..ff8f5bfc07b 100644
        .optional(),
 diff --git a/src/gateway/server-memory-warmup.test.ts b/src/gateway/server-memory-warmup.test.ts
 new file mode 100644
-index 00000000000..5f77be94951
+index 00000000000..4a22dcb2c8b
 --- /dev/null
 +++ b/src/gateway/server-memory-warmup.test.ts
-@@ -0,0 +1,212 @@
+@@ -0,0 +1,230 @@
 +import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 +import type { AcquireConfiguredProviderLocalService } from "../agents/provider-local-service-target.js";
 +import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -434,6 +434,24 @@ index 00000000000..5f77be94951
 +    await owner.stop();
 +  });
 +
++  it("requires every selected provider to acquire its own managed lease", async () => {
++    const configured = config();
++    configured.agents = { entries: { first: {}, second: {} } };
++    const create = mocks.create.getMockImplementation()!;
++    mocks.create.mockImplementationOnce(create).mockImplementationOnce(async () => ({
++      provider: {
++        id: "local",
++        model: "fixture",
++        embedBatch: mocks.vectors,
++      },
++    }));
++    const owner = createGatewayMemoryWarmup(configured)!;
++    await expect(owner.ready).rejects.toThrow("own its local service");
++    await owner.stop();
++    expect(mocks.acquire).toHaveBeenCalledOnce();
++    expect(mocks.release).toHaveBeenCalledOnce();
++  });
++
 +  it("proves two actual vectors and retains the lease until gateway stop", async () => {
 +    const owner = createGatewayMemoryWarmup(config())!;
 +    await owner.ready;
@@ -538,10 +556,10 @@ index 00000000000..5f77be94951
 +});
 diff --git a/src/gateway/server-memory-warmup.ts b/src/gateway/server-memory-warmup.ts
 new file mode 100644
-index 00000000000..59760bf4baf
+index 00000000000..bd85f52a2af
 --- /dev/null
 +++ b/src/gateway/server-memory-warmup.ts
-@@ -0,0 +1,140 @@
+@@ -0,0 +1,143 @@
 +import { listAgentIds, resolveAgentConfig, resolveAgentDir } from "../agents/agent-scope.js";
 +import { resolveMemorySearchConfig } from "../agents/memory-search.js";
 +import type {
@@ -609,6 +627,7 @@ index 00000000000..59760bf4baf
 +    try {
 +      for (const { agentId, memory } of selected) {
 +        controller.signal.throwIfAborted();
++        const leaseCount = leases.size;
 +        const adapter = getMemoryEmbeddingProvider(memory.provider, config);
 +        if (adapter?.transport !== "local")
 +          throw new Error("Gateway memory warmup requires an explicit local embedding provider");
@@ -634,8 +653,10 @@ index 00000000000..59760bf4baf
 +        });
 +        const [first, second] = vectors;
 +        controller.signal.throwIfAborted();
++        if (leases.size === leaseCount) {
++          throw new Error("Gateway memory warmup requires each provider to own its local service");
++        }
 +        if (
-+          leases.size === 0 ||
 +          vectors.length !== 2 ||
 +          !first ||
 +          !second ||
