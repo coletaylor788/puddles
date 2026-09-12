@@ -1016,3 +1016,29 @@ index 00000000000..8b76097190c
 +    await expect(stopGatewayAndJoinLocalServices(stateDir, null, NaN)).rejects.toThrow("Invalid");
 +  });
 +});
+diff --git a/src/agents/provider-local-service.test.ts b/src/agents/provider-local-service.test.ts
+index d3014683f18..21655dfc749 100644
+--- a/src/agents/provider-local-service.test.ts
++++ b/src/agents/provider-local-service.test.ts
+@@ -54,6 +54,12 @@ async function waitForProbeFailure(url: string): Promise<void> {
+   }
+ }
+ 
++async function waitForManagedLocalServicesToStop(): Promise<void> {
++  await expect
++    .poll(() => hasManagedProviderLocalServices(), { timeout: 15_000, interval: 50 })
++    .toBe(false);
++}
++
+ async function withSpawnReadyHealthProbe<T>(run: () => Promise<T>): Promise<T> {
+   const realFetch = globalThis.fetch;
+   const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+@@ -255,7 +261,7 @@ describe("provider local service", () => {
+     expect((await fetch(healthUrl)).ok).toBe(true);
+     secondLease.release();
+     await waitForProbeFailure(healthUrl);
+-    expect(hasManagedProviderLocalServices()).toBe(false);
++    await waitForManagedLocalServicesToStop();
+   });
+ 
+   it("resolves process configuration for root and exact legacy baseURL endpoints", async () => {
