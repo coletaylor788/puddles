@@ -23,6 +23,7 @@ PATCHES=(
   builtin-memory-migration
   silent-reply-completion-evidence
   stopped-state-migration-sdk
+  scoped-container-temp-root
   active-memory-cold-recall
 )
 

@@ -1,6 +1,11 @@
 {
   "openclawRef": "1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7",
   "testProjects": {
+    "src/infra/container-env-file.test.ts": "infra",
+    "src/agents/sandbox.resolveSandboxContext.test.ts": "agents-core",
+    "src/agents/sandbox/docker-backend.test.ts": "agents-support",
+    "src/agents/sandbox/docker.config-hash-recreate.test.ts": "agents-support",
+    "src/agents/sandbox/browser.create.test.ts": "agents-support",
     "extensions/active-memory/index.test.ts": "extension-active-memory",
     "extensions/active-memory/trigger-recall.test.ts": "extension-active-memory",
     "extensions/active-memory/config.test.ts": "extension-active-memory",
@@ -118,6 +123,16 @@
       ],
       "candidateTests": [
         "tests/candidate.state-migration.test.ts"
+      ]
+    },
+    {
+      "name": "scoped-container-temp-root",
+      "tests": [
+        "src/infra/container-env-file.test.ts",
+        "src/agents/sandbox.resolveSandboxContext.test.ts",
+        "src/agents/sandbox/docker-backend.test.ts",
+        "src/agents/sandbox/docker.config-hash-recreate.test.ts",
+        "src/agents/sandbox/browser.create.test.ts"
       ]
     },
     {

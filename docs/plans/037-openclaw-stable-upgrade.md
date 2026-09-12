@@ -88,9 +88,10 @@ and asynchronous memory-fixture defects. Those results are not release
 eligibility. The packaging collision is repaired without dropping required peers or embedded
 runtime assets. A real bundled archive now passes packaging and offline install.
 Public service bundles include Node's module bridge so their bundled dependencies
-can load under native ESM.
+can load under native ESM. Sandbox and browser provisioning can now stage
+environment files in an explicitly selected private directory.
 
-Installed registry compatibility, isolated state paths, memory cleanup, and
+Installed registry compatibility, isolated coordination, memory cleanup, and
 gateway-managed embedding readiness and shutdown remain in progress. The final
 candidate needs the full accumulated gate and retained independent review.
 Integration stays held for the coordinating owner's combined compatibility
@@ -249,9 +250,13 @@ confirmation. Production deployment remains with that owner.
   banner for their bundled CommonJS dependencies. Keep their registration
   synchronous and external tool execution lazy. No gateway or private loader
   shim is needed.
-- Trace supported runtime-directory options through state writers and container
-  staging. Explicit fixture isolation must preserve production cross-process
-  lock identity and deny shared temporary writes.
+- `scoped-container-temp-root.patch` forwards `resolveSandboxContext.tempRoot`
+  through the backend to both container and browser environment files. The
+  low-level option is `{ rootDir }`. Production defaults are unchanged.
+  The caller-selected root is not a database or lifecycle-lock override.
+- State coordination remains unresolved across real CLI processes. Do not
+  redirect the canonical production coordinator with environment variables.
+  Evaluate exact-resource fixture access before introducing a new seam.
 - Diagnose late active-memory work before fixture teardown and rotated
   transcript reads. Preserve assertions and existing production deadlines.
 - File-lock patch uses fs-safe 0.8.5 with kernel guards shared by async and
@@ -323,6 +328,10 @@ confirmation. Production deployment remains with that owner.
   public-bundle cases and e2e types pass. A real previously failing bundled
   archive also packages and installs offline in fresh isolated scratch.
   That is artifact proof only, not a claim of installed model or doctor health.
+- Explicit container staging first reproduces an escaped-root failure.
+  All 125 context, backend, container, browser, and staging cases pass after
+  forwarding the root. Core types pass. Every changed test is mapped in the
+  cumulative patch manifest; physical installed composition is still pending.
 - `public-plugin-bundles.test.ts` reproduces both native ESM import failures.
   It packages each built dist, installs offline outside the source tree, and
   invokes every registered factory in a child with external activity denied.

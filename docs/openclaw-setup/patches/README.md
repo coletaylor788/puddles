@@ -25,6 +25,7 @@ activated gateway. Keep the previous interpreter available for rollback.
 | `builtin-memory-migration.patch` | Retired QMD migration and per-agent source isolation coverage |
 | `silent-reply-completion-evidence.patch` | Preserve current-attempt silent reply evidence after delivery filtering |
 | `stopped-state-migration-sdk.patch` | Expose maintained readonly cron, targeted writes, and config ownership helpers |
+| `scoped-container-temp-root.patch` | Carry explicit private staging through sandbox and browser creation |
 | `active-memory-cold-recall.patch` | Preserve required recall within one shared cold-setup budget |
 
 Each patch has a neighboring document explaining its behavior and history.
