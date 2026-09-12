@@ -276,7 +276,14 @@ it("retains collection output and names the omitted public target without weaken
   const command = vi.mocked(runCommand);
   const implementation = command.getMockImplementation()!;
   command.mockClear();
-  command.mockImplementation(async (...args) => args[1].includes("--filesOnly") ? "" : implementation(...args));
+  command.mockImplementation(async (...args) => {
+    if (!args[1].includes("--filesOnly")) {
+      return implementation(...args);
+    }
+    return args[1]
+      .filter((arg) => arg.endsWith(".test.ts") && arg !== "src/plugin-sdk/file-lock.stale-contention.test.ts")
+      .join("\n");
+  });
   try {
     await expect(nativePipeline("ci", async () => {})).rejects.toThrow("src/plugin-sdk/file-lock.stale-contention.test.ts in plugin-sdk");
     const collection = command.mock.calls.find(([, args]) => args.includes("--filesOnly"));
