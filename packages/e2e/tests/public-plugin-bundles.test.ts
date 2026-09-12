@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
@@ -20,7 +20,9 @@ describe("self-contained public plugin bundles", () => {
     roots.push(root);
     const context = isolatedContext(join(root, "context"));
     const source = resolve(import.meta.dirname, "../../../openclaw-plugins", id, "dist");
-    const artifact = await packRuntime(source, join(root, "artifact"));
+    const snapshot = join(root, "source");
+    cpSync(source, snapshot, { recursive: true });
+    const artifact = await packRuntime(snapshot, join(root, "artifact"));
     const installed = await installRuntime(artifact, join(root, "installed"));
     const script = join(context.workspace, "register.mjs");
     writeFileSync(script, `
