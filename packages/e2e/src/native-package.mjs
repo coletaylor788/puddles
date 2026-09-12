@@ -77,10 +77,11 @@ export function materializeRuntime(source, destination) {
     if (isAbsolute(name) || parts.includes("..")) throw new Error("Invalid upstream package path");
     if (parts[0] === "node_modules") {
       // npm also selects bundled dependencies. Only the resolved graph owns their bytes.
-      const index = parts.lastIndexOf("node_modules") + 1;
-      const end = index + (parts[index]?.startsWith("@") ? 2 : 1);
-      const packageRoot = realpathSync(join(source, ...parts.slice(0, end)));
-      if (!installed.has(packageRoot) || installed.get(packageRoot) === destination) {
+      const selected = realpathSync(join(source, name));
+      let owner = dirname(selected);
+      while (!installed.has(owner) && dirname(owner) !== owner) owner = dirname(owner);
+      if (!installed.has(owner) || installed.get(owner) === destination
+        || ["node_modules", ".git"].includes(relative(owner, selected).split("/")[0])) {
         throw new Error("Bundled package is outside the production dependency graph");
       }
       continue;

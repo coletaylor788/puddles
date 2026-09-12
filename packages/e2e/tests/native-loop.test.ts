@@ -143,7 +143,10 @@ describe("offline installed runtime", () => {
       name: "@synthetic/bundled", version: "1.0.0", main: "index.cjs",
       dependencies: { transitive: "2.0.0" }, peerDependencies: { "required-peer": "3.0.0" },
     });
-    writeFileSync(join(bundled, "index.cjs"), "module.exports = require('transitive') + require('required-peer');");
+    writeFileSync(join(bundled, "index.cjs"), "module.exports = require('transitive') + require('required-peer') + require('./payload/node_modules/embedded');");
+    const embedded = join(bundled, "payload/node_modules/embedded");
+    json(join(embedded, "package.json"), { name: "embedded", version: "1.0.0", main: "index.cjs" });
+    writeFileSync(join(embedded, "index.cjs"), "module.exports = '-embedded';");
     for (const [name, version, value] of [["transitive", "2.0.0", "patched-"], ["required-peer", "3.0.0", "peer"]]) {
       const dependency = join(source, "node_modules", name);
       json(join(dependency, "package.json"), { name, version, main: "index.cjs" });
@@ -160,7 +163,7 @@ describe("offline installed runtime", () => {
     rmSync(source, { recursive: true });
     expect(execFileSync(process.execPath, [join(installed, "index.cjs")], {
       encoding: "utf8", timeout: 10_000, env: fixtureEnv(isolatedContext(join(directory, "context"))),
-    }).trim()).toBe("patched-peer");
+    }).trim()).toBe("patched-peer-embedded");
     expect(treeDigest(installed, { portable: true })).toBe(artifact.runtimeSha256);
   }, 15_000);
 

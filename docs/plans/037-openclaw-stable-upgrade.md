@@ -85,9 +85,10 @@ and rollback remain in the existing deployment workflow.
 The inherited upgrade has passing historical public gates, but later combined
 rehearsal exposes packaging, installed plugin loading, isolated temporary-state,
 and asynchronous memory-fixture defects. Those results are not release
-eligibility. The packaging collision has a committed repair that retains required peers
-and offline archive identity checks. Public service bundles now include Node's
-module bridge so their bundled dependencies can load under native ESM.
+eligibility. The packaging collision is repaired without dropping required peers or embedded
+runtime assets. A real bundled archive now passes packaging and offline install.
+Public service bundles include Node's module bridge so their bundled dependencies
+can load under native ESM.
 
 Installed registry compatibility, isolated state paths, memory cleanup, and
 gateway-managed embedding readiness and shutdown remain in progress. The final
@@ -239,8 +240,11 @@ confirmation. Production deployment remains with that owner.
 
 - `native-package.mjs` materializes the production graph before copying npm's
   selected root assets. Selected bundled files are accepted only when their
-  owning package is already in that graph. This avoids duplicate directories
-  without excluding arbitrary dependency content or relaxing required peers.
+  owning package is already in that graph and its copy includes those bytes.
+  A package-owned asset directory may contain an embedded `node_modules`; that
+  does not make it another graph root. Unowned top-level dependency directories
+  still fail. This avoids duplicate directories without excluding arbitrary
+  dependency content or relaxing required peers.
 - Installed secure Gmail and calendar bundles use a `createRequire` build
   banner for their bundled CommonJS dependencies. Keep their registration
   synchronous and external tool execution lazy. No gateway or private loader
@@ -314,6 +318,11 @@ confirmation. Production deployment remains with that owner.
   spellings. They pack and install synthetic scoped, transitive, and required
   peer dependencies, remove the source tree, execute the installed entrypoint,
   and reject a missing required peer.
+  The strengthened fixture also reproduces incorrect rejection of embedded
+  module assets. Both aliases now preserve those bytes. All 26 packaging and
+  public-bundle cases and e2e types pass. A real previously failing bundled
+  archive also packages and installs offline in fresh isolated scratch.
+  That is artifact proof only, not a claim of installed model or doctor health.
 - `public-plugin-bundles.test.ts` reproduces both native ESM import failures.
   It packages each built dist, installs offline outside the source tree, and
   invokes every registered factory in a child with external activity denied.
