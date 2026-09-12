@@ -28,6 +28,7 @@ activated gateway. Keep the previous interpreter available for rollback.
 | `scoped-container-temp-root.patch` | Carry explicit private staging through sandbox and browser creation |
 | `active-memory-cold-recall.patch` | Preserve required recall within one shared cold-setup budget |
 | `active-memory-fixture-cleanup.patch` | Join delayed recall fixtures before replacing shared test state |
+| `managed-local-service-lifecycle.patch` | Join gateway-owned service groups before stopped-state changes |
 
 Each patch has a neighboring document explaining its behavior and history.
 Register new patches and every applicable test in the cumulative manifest at

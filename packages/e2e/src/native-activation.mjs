@@ -207,11 +207,22 @@ shutil.copymode(source, destination)
       return null;
     },
     async install(artifact, prefix) { return installRuntime(artifact, prefix, run); },
-    async stop() {
+    async stop(runtime) {
+      const helper = resolve(patchDir, "../../../packages/e2e/bin/openclaw-service-stop.mjs");
+      const interpreter = target.nodeMigration?.desired.path ?? process.execPath;
+      let owner = "null";
+      if (await loaded()) {
+        const details = await run("launchctl", ["print", service], { capture: true });
+        const pid = /^\s*pid = (\d+)\s*$/m.exec(details)?.[1];
+        if (pid) owner = await run(interpreter, [helper, "capture", runtime, pid], { capture: true });
+      }
       try { await run("launchctl", ["bootout", service]); }
       catch (error) { if (await loaded()) throw error; }
       for (let attempt = 0; attempt < 30; attempt++) {
-        if (!(await loaded())) return;
+        if (!(await loaded())) {
+          await run(interpreter, [helper, "join", runtime, target.stateDir, owner]);
+          return;
+        }
         await delay(1000);
       }
       throw new Error("Gateway shutdown did not complete");
@@ -258,7 +269,7 @@ function verifySnapshots(recoveryDir, journal) {
         treeDigest(join(recoveryDir, "package")) !== journal.snapshots.package ||
         fileDigest(join(recoveryDir, "service.plist")) !== journal.snapshots.service) throw new Error("Recovery snapshot content changed");
   }
-  if (journal.browserChanged &&
+  if (journal.candidateSha256 &&
       treeDigest(join(recoveryDir, "candidate"), { portable: true }) !== journal.candidateSha256) throw new Error("Recovery candidate content changed");
 }
 
@@ -268,7 +279,7 @@ async function restore(target, recoveryDir, journal, operations) {
     verifyNodeFile(journal.nodeMigration.expected);
     verifyNodeFile(journal.nodeMigration.desired);
   }
-  await operations.stop();
+  await operations.stop(join(recoveryDir, "candidate"));
   if (journal.explicitRollback && !journal.failedSnapshots) {
     for (const [name, source] of [["failed-state", target.stateDir], ["failed-package", target.installDir]]) {
       const destination = join(recoveryDir, name);
@@ -444,10 +455,8 @@ export async function activateNative(receipt, target, operationsFactory = system
       stagedExtras[id] = staged;
       checkpoint();
     }
-    if (target.browser) {
-      await operations.clone(installed, join(recoveryDir, "candidate"));
-      journal.candidateSha256 = treeDigest(join(recoveryDir, "candidate"), { portable: true });
-    }
+    await operations.clone(installed, join(recoveryDir, "candidate"));
+    journal.candidateSha256 = treeDigest(join(recoveryDir, "candidate"), { portable: true });
     checkpoint();
     // Snapshots use clonefile through the existing helper, with no fallback copy.
     await operations.clone(target.installDir, join(recoveryDir, "package"));
@@ -462,7 +471,7 @@ export async function activateNative(receipt, target, operationsFactory = system
     atomicJson(latestPath, { transaction: journal.transaction, target: journal.target });
     journal.quiesced = true;
     save("stopping");
-    await operations.stop();
+    await operations.stop(join(recoveryDir, "candidate"));
     checkpoint();
     await operations.clone(target.stateDir, join(recoveryDir, "state"));
     journal.snapshots = {

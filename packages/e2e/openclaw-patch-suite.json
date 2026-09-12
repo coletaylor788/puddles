@@ -1,6 +1,11 @@
 {
   "openclawRef": "1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7",
   "testProjects": {
+    "src/agents/provider-local-service.test.ts": "agents-core",
+    "src/agents/provider-local-service.shutdown.test.ts": "agents-core",
+    "src/process/supervisor/service-child-ownership.test.ts": "process",
+    "src/process/supervisor/service-child-relay-host.test.ts": "process",
+    "src/process/supervisor/adapters/child.service-lifecycle.test.ts": "process",
     "src/infra/container-env-file.test.ts": "infra",
     "src/agents/sandbox.resolveSandboxContext.test.ts": "agents-core",
     "src/agents/sandbox/docker-backend.test.ts": "agents-support",
@@ -38,6 +43,16 @@
     "src/commands/doctor/shared/legacy-config-migrations.runtime.retired.memory-qmd.test.ts": "unit-fast"
   },
   "patches": [
+    {
+      "name": "managed-local-service-lifecycle",
+      "tests": [
+        "src/agents/provider-local-service.test.ts",
+        "src/agents/provider-local-service.shutdown.test.ts",
+        "src/process/supervisor/service-child-ownership.test.ts",
+        "src/process/supervisor/service-child-relay-host.test.ts",
+        "src/process/supervisor/adapters/child.service-lifecycle.test.ts"
+      ]
+    },
     {
       "name": "file-lock-stale-reclaim-guard",
       "tests": [

@@ -56,14 +56,17 @@ configuration or live accounts.
 Required pre-reply recall must survive a cold local embedding service. After
 the ordinary policy checks, optional trigger lookup and required recall share
 one bounded budget. They cannot spend the setup allowance twice. Local
-embedding services remain gateway-managed. Readiness must prove a real
-synthetic embedding under one setup deadline, including after restart or model
-unload. A listener alone does not prove that the model is ready. Graceful
+embedding services remain gateway-managed. Before accepting requests, startup
+must prove real synthetic vectors within one allowance of up to ninety seconds.
+The gateway keeps the embedding model resident for its lifetime. Ordinary
+memory requests retain their fifteen-second budget. Restart repeats preparation;
+a listener alone does not prove that the model is ready. Graceful
 gateway shutdown must stop the owned model service first. A bounded fallback
 must terminate only that owned service and its model descendants, then join
 their exits before snapshot, replacement, or rollback. Reuse the existing
-process supervisor and its private ownership channel. Do not introduce a
-separate daemon or a new persistent process protocol. Uncertain cleanup blocks
+process supervisor and its private ownership channel. A small record of the
+gateway and its service processes permits recovery after gateway loss. Do not
+introduce a separate daemon or a new admission framework. Uncertain cleanup blocks
 the stopped-state snapshot and runtime swap.
 
 The deployment helper can select a new interpreter without changing a service's
@@ -95,7 +98,8 @@ Installed service registration and actual bundled packaging now pass focused
 composition. Test coordination uses the trusted host's normal locks, with
 separate test databases and no production changes. Memory fixtures now join
 their delayed writers and cleanup before replacing shared test state.
-Gateway-managed embedding readiness and shutdown remain in progress. The final
+Owned service shutdown and recovery now have focused process and activation
+coverage. Startup vector preparation and lifetime residency remain in progress. The final
 candidate needs the full accumulated gate and retained independent review.
 Integration stays held for the coordinating owner's combined compatibility
 confirmation. Production deployment remains with that owner.
@@ -129,9 +133,8 @@ confirmation. Production deployment remains with that owner.
   `d6c442a1d9f2a1c86184411cbd4bf8ee00642dc3`. The same head passes local
   accumulated CI and hosted run `34443062989`, job `102761932660`, in 40m13s.
   All CodeQL checks passed for that historical candidate.
-- Runtime inputs remain identical to `76854b4`. The private owner has copied
-  the sealed runtime for isolated rehearsal.
-  Later corrections affect interpreter fixture timing and reporting only.
+- That historical runtime matched `76854b4`. Current packaging, service, and
+  startup corrections require a new sealed runtime for final composition.
 - Hosted timings justify a single file-scoped lifecycle allowance, rather than
   case-by-case changes. All real hashes, plist subprocesses, and assertions
   remain intact. This plan update records evidence only, not new behavior.
@@ -157,6 +160,10 @@ confirmation. Production deployment remains with that owner.
 - Reap owned local provider processes on normal stop, startup failure, and
   forced/crashed parent termination. Preserve preexisting endpoints and unrelated
   processes. Require positive extinction evidence before stopped-state snapshot.
+- Gate channels and gateway readiness on two synthetic local vectors within
+  one approved 90-second startup allowance. Retain the service lease and model
+  residency until gateway shutdown. Keep ordinary memory requests at 15 seconds
+  and the Active Memory setup cap at 30 seconds, without combining budgets.
 
 ### Architecture and decisions
 
@@ -174,12 +181,12 @@ confirmation. Production deployment remains with that owner.
 - Reuse of `createServiceChildRelayAdapter` for POSIX local providers has a boundary. Its private
   host pipe and independent group anchor survive host/relay death long enough
   to clean the owned tree. Do not replace them with PID/name heuristics.
-  A reuse would preserve one-shot host exit through explicit unref support and
-  retain the adapter's extinction failure signal. The current release stop only
-  observes launchd label removal; it has no durable descendant proof. The
-  approved design keeps gateway-managed embeddings with graceful-first,
-  bounded owned-group cleanup and positive exit join. No independent daemon
-  or new admission/closure protocol is approved.
+  Reuse preserves one-shot host exit through explicit unref support and
+  retains the adapter's extinction failure signal. The approved minimal record
+  binds owner, relay, and anchor to existing process start identities before
+  model launch. Activation and rollback consume that record through the
+  retained candidate SDK after disabling launchd. They join exits before
+  mutable state snapshots. No independent daemon or admission framework is added.
   Do not invent process claims or treat port closure as complete extinction.
 - Keep installation offline and keep source integration outside activation.
 - The scoped adapter uses distinct tool names and trusted factory agent context.
@@ -257,11 +264,13 @@ confirmation. Production deployment remains with that owner.
   through the backend to both container and browser environment files. The
   low-level option is `{ rootDir }`. Production defaults are unchanged.
   The caller-selected root is not a database or lifecycle-lock override.
-- State coordination remains unresolved across real CLI processes. Do not
-  redirect the canonical production coordinator with environment variables.
-  Evaluate exact-resource fixture access before introducing a new seam.
-- Diagnose late active-memory work before fixture teardown and rotated
-  transcript reads. Preserve assertions and existing production deadlines.
+- State coordination uses the existing canonical production coordinator on
+  the trusted host. Test state remains separate. No environment override or
+  process-entry permission seam is needed.
+- `managed-local-service-lifecycle.patch` retains POSIX relay ownership through
+  exit and exposes the recorded stopped-state join through `process-runtime`.
+  `openclaw-service-stop.mjs` calls the exact installed helper. Activation keeps
+  its candidate copy for both initial stop and interrupted rollback.
 - File-lock patch uses fs-safe 0.8.5 with kernel guards shared by async and
   sync callers. Retain the contention test and add killed-reclaimer recovery.
 - Sandbox discovery retains selected-runtime querying and error propagation.
@@ -372,9 +381,13 @@ confirmation. Production deployment remains with that owner.
   rotated-transcript test. All 403 cases pass with both repairs; extension types,
   all nine patch-manifest checks, and exact patch applicability pass. These
   results replace neither the final accumulated gate nor installed cold proof.
-- Add actual subprocess tests for forced parent loss and startup interruption,
-  normal stop, one-shot host exit, and preservation of an unrelated listener.
-  Include existing provider and supervisor regressions in the cumulative pool.
+- Local-service source tests pass 26 cases including real SIGKILL of a synthetic
+  gateway during startup and after readiness, with stubborn model descendants.
+  All 58 existing generic relay cases remain green. Twelve ownership cases cover
+  generation reuse, incomplete records, and relay/group exit. Public installed
+  helper, interpreter, and activation tests pass 105 cases, including a failed
+  extinction join before any mutable state snapshot. These focused results do
+  not replace final cumulative or installed model proofs.
 - Current focused results: file-lock 2, sandbox 21, workshop 20, candidate
   browser/filesystem 2, public plugins 104, public native loop/pipeline/manifest
   47. Plugin build and type checking pass.

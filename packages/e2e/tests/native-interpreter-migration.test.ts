@@ -82,6 +82,15 @@ function fixture(wrapper = true, migration = true, binary = false, oldAlias = fa
     if (command === "python3" && args[0] === "--version") return "Python fixture";
     if (metadata.has(command)) {
       if (args[0] === "-p") return JSON.stringify(metadata.get(command));
+      if (args[0].endsWith("openclaw-service-stop.mjs")) {
+        expect(command).toBe(desired.path);
+        expect(readFileSync(join(args[2], "openclaw.mjs"), "utf8")).toBe("candidate runtime");
+        if (args[1] === "capture") return JSON.stringify({ pid: 4242, startTime: 100 });
+        expect(args[1]).toBe("join");
+        expect(running).toBe(false);
+        check("join");
+        return "";
+      }
       if (!args[0].endsWith("openclaw.mjs")) throw new Error("Unexpected fixture Node command");
       if (migration) {
         const oldRuntime = readFileSync(args[0], "utf8") === "old runtime";
@@ -100,7 +109,7 @@ function fixture(wrapper = true, migration = true, binary = false, oldAlias = fa
         }
         running = true;
       }
-      return "";
+      return args[0] === "print" ? "    pid = 4242\n" : "";
     }
     if (command === "docker" && args[0] === "tag") { browser = args[1]; return ""; }
     throw new Error(`Unrecorded fixture command: ${command}`);
@@ -161,6 +170,28 @@ function stateMigration(f: ReturnType<typeof fixture>) {
 }
 
 describe("stopped-state migration inside interpreter rollback", () => {
+  it("joins owned services before the first state snapshot and again before rollback", async () => {
+    const f = fixture();
+    const result = await f.activate();
+    expect(f.events.indexOf("join")).toBeGreaterThan(f.events.indexOf("stop"));
+    const helpers = f.calls.filter((call) => call.args[0]?.endsWith("openclaw-service-stop.mjs"));
+    expect(helpers.map((call) => call.args[1])).toEqual(["capture", "join"]);
+    expect(JSON.parse(helpers[1].args[4])).toEqual({ pid: 4242, startTime: 100 });
+    await f.activate(result.recoveryDir, "rollback");
+    const joins = f.calls.filter((call) => call.args[1] === "join");
+    expect(joins).toHaveLength(2);
+    expect(joins.every((call) => call.args[2] === join(result.recoveryDir, "candidate"))).toBe(true);
+  });
+
+  it("does not snapshot live state when owned-service extinction fails", async () => {
+    const f = fixture();
+    f.failures.push("join", "join");
+    await expect(f.activate()).rejects.toThrow("Activation and rollback failed");
+    expect(existsSync(join(f.recovery(), "state"))).toBe(false);
+    expect(readFileSync(join(f.target.stateDir, "config"), "utf8")).toBe("old state");
+    expect(f.events).not.toContain("swap");
+  });
+
   it("checks the manifest before stop, then mutates config before doctor and cron before start", async () => {
     const f = fixture();
     const migration = stateMigration(f);

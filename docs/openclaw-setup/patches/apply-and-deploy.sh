@@ -13,6 +13,7 @@ esac
 
 # Public patch order remains visible to the cumulative manifest regression.
 PATCHES=(
+  managed-local-service-lifecycle
   file-lock-stale-reclaim-guard
   sessions-yield-block-and-gather
   subagent-cross-agent-spawn-fix
