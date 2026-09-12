@@ -603,7 +603,7 @@ new file mode 100644
 index 00000000000..400b95dda14
 --- /dev/null
 +++ b/src/process/supervisor/service-child-ownership.ts
-@@ -0,0 +1,232 @@
+@@ -0,0 +1,237 @@
 +import fs from "node:fs";
 +import path from "node:path";
 +import { setTimeout as delay } from "node:timers/promises";
@@ -737,8 +737,13 @@ index 00000000000..400b95dda14
 +    process.kill(-pid, 0);
 +    return false;
 +  } catch (error) {
-+    if (typeof error === "object" && error !== null && "code" in error && error.code === "ESRCH") {
-+      return true;
++    if (typeof error === "object" && error !== null && "code" in error) {
++      if (error.code === "ESRCH") {
++        return true;
++      }
++      if (error.code === "EPERM") {
++        return false;
++      }
 +    }
 +    throw error;
 +  }
@@ -841,7 +846,7 @@ new file mode 100644
 index 00000000000..8b76097190c
 --- /dev/null
 +++ b/src/process/supervisor/service-child-ownership.test.ts
-@@ -0,0 +1,174 @@
+@@ -0,0 +1,192 @@
 +import fs from "node:fs";
 +import os from "node:os";
 +import path from "node:path";
@@ -937,6 +942,24 @@ index 00000000000..8b76097190c
 +    await expect(joinStoppedLocalServiceGroups(stateDir, 1)).rejects.toThrow("deadline");
 +    expect(kill.mock.calls.every(([, signal]) => signal === 0)).toBe(true);
 +    expect(fs.existsSync(file)).toBe(true);
++  });
++
++  it("treats a denied group probe as present until extinction is confirmed", async () => {
++    record();
++    let probes = 0;
++    const kill = vi.spyOn(process, "kill").mockImplementation((_pid, signal) => {
++      if (signal === 0) {
++        const code = probes++ === 0 ? "EPERM" : "ESRCH";
++        throw Object.assign(new Error(code), { code });
++      }
++      return true;
++    });
++    await joinStoppedLocalServiceGroups(stateDir, 200);
++    expect(kill.mock.calls).toEqual([
++      [-anchor.pid, 0],
++      [-anchor.pid, 0],
++    ]);
++    expect(fs.existsSync(file)).toBe(false);
 +  });
 +
 +  it("requires the relay to exit as well as its group", async () => {
