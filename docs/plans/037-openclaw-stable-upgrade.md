@@ -1,6 +1,6 @@
 # OpenClaw stable upgrade
 
-Status: Compatibility repairs in progress; integration held
+Status: Public candidate passed; combined compatibility and integration held
 Issue: #114
 Last updated: 2026-09-12
 
@@ -103,9 +103,10 @@ coverage. Gateway startup now prepares two real local vectors under one
 90-second allowance before channels start, retains the owned service lease, and
 keeps only the embedding preset awake. Gathered completion ownership is durable
 across gateway restart and bounded-map eviction. The final candidate still
-needs the full accumulated gate and retained independent review.
-Integration stays held for the coordinating owner's combined compatibility
-confirmation. Production deployment remains with that owner.
+needs combined private and target-host validation. The exact public candidate
+passed the full accumulated gate and retained independent review. Integration
+stays held for the coordinating owner's compatibility confirmation. Production
+deployment remains with that owner.
 
 ## Agent section
 
@@ -120,8 +121,9 @@ confirmation. Production deployment remains with that owner.
 - Implementation authorized. No design pause. No production deployment.
 - Parent confirmation is required before merging public source.
 - Replacement public engineering owner starts from clean `947f8867a19e1ebb6d1b54765693d7c5b420fc2b`.
-  PR #115 is stale-green and must not be merged. Coordinate any replacement
-  pull request with the parent. Preserve previous sealed runs without edits.
+  PR #116 supersedes the closed, unmerged PR #115. Do not merge #116 until the
+  parent confirms combined compatibility. Preserve previous sealed runs without
+  edits.
 - Current repair scope is bundled dependencies, installed ESM registration,
   explicit isolated temporary state, active-memory asynchronous cleanup, and
   gateway-managed local embeddings. The retained review also drove a durable
@@ -399,6 +401,13 @@ confirmation. Production deployment remains with that owner.
 - Gathered completion recovery passes exact transcript, bounded-map eviction,
   persistence-failure, and SQLite round-trip regressions. The focused gather,
   announcement, and registry suites pass 319 cases with core types.
+- `node packages/e2e/bin/openclaw-test-env.mjs ci` passed on exact public head
+  `d3159e2bb9a2140072994de3dbc85bf8153c603f` with Node 26.1.0. It passed
+  preparation, dependencies, build, all accumulated mapped regressions,
+  extension packaging, portable root packaging, offline installation, and all
+  nine installed runtime scenarios. The retained independent Sol reviewer
+  rechecked the complete diff from `8cf0a92` and reported no actionable
+  material findings.
 - Current focused results: file-lock 2, sandbox 21, workshop 20, candidate
   browser/filesystem 2, public plugins 104, public native loop/pipeline/manifest
   47. Plugin build and type checking pass.
