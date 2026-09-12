@@ -1,8 +1,8 @@
 # OpenClaw stable upgrade
 
-Status: Public gates pass; combined release held
+Status: Compatibility repairs in progress; integration held
 Issue: #114
-Last updated: 2026-09-09
+Last updated: 2026-09-12
 
 ## Human section
 
@@ -47,18 +47,24 @@ SQLite text. Development and public CI use an explicitly supported version.
 Plugin consumers compile against the new release rather than an older SDK.
 The existing native pipeline builds isolated source, runs the accumulated
 tests, packages dependencies, and rehearses the installed runtime with
-recorded messages. Public code never depends on private configuration or live
-accounts.
+recorded messages. Bundled dependencies must be materialized once through the
+complete production graph. Installed plugins must load as native modules
+without depending on the source checkout. Explicit isolated test paths must
+not change production lock ownership. Public code never depends on private
+configuration or live accounts.
 
 Required pre-reply recall must survive a cold local embedding service. After
 the ordinary policy checks, optional trigger lookup and required recall share
 one bounded budget. They cannot spend the setup allowance twice. Local
-embedding services also need a proven lifetime across stop and rollback.
-The existing process supervisor can clean children after a gateway crash, but
-its proof does not survive the gateway. The release owner is comparing a narrow
-repair with an independently supervised local endpoint. No new persistent
-process protocol is approved. Uncertain cleanup must block the stopped-state
-snapshot and runtime swap.
+embedding services remain gateway-managed. Readiness must prove a real
+synthetic embedding under one setup deadline, including after restart or model
+unload. A listener alone does not prove that the model is ready. Graceful
+gateway shutdown must stop the owned model service first. A bounded fallback
+must terminate only that owned service and its model descendants, then join
+their exits before snapshot, replacement, or rollback. Reuse the existing
+process supervisor and its private ownership channel. Do not introduce a
+separate daemon or a new persistent process protocol. Uncertain cleanup blocks
+the stopped-state snapshot and runtime swap.
 
 The deployment helper can select a new interpreter without changing a service's
 shell wrapper or environment. It verifies both retained interpreters, changes
@@ -76,20 +82,17 @@ and rollback remain in the existing deployment workflow.
 
 ### Status
 
-The rebuilt installed runtime passes all nine message scenarios and all four
-migration cases, including unchanged historical state during readonly preflight.
-Scoped memory passes against the rebuilt candidate, including the
-replace-and-restore race. The cold-recall repair passes its affected suite.
-The retained reviewer clears the complete current behavior diff.
+The inherited upgrade has passing historical public gates, but later combined
+rehearsal exposes packaging, installed plugin loading, isolated temporary-state,
+and asynchronous memory-fixture defects. Those results are not release
+eligibility. The packaging collision now has a synthetic reproduction and a
+repair that retains required peers and offline archive identity checks.
 
-The public behavior passes both local and hosted accumulated gates. The
-interpreter fixture has one bounded lifecycle allowance, with all real checks
-intact. Installed cold recall, combined access checks, and the service lifetime
-decision still block integration. The coordinating owner must clear that
-checkpoint before merge.
-Memory migration is authorized, but derived-data cleanup is not. Builtin does
-not retain QMD's model expansion or learned reranking. Production deployment
-remains with the coordinating release owner.
+Installed plugin compatibility, isolated state paths, memory cleanup, and
+gateway-managed embedding readiness and shutdown remain in progress. The final
+candidate needs the full accumulated gate and retained independent review.
+Integration stays held for the coordinating owner's combined compatibility
+confirmation. Production deployment remains with that owner.
 
 ## Agent section
 
@@ -103,6 +106,13 @@ remains with the coordinating release owner.
 - Upstream package manager: `pnpm@12.3.4`. Puddles keeps its own manager.
 - Implementation authorized. No design pause. No production deployment.
 - Parent confirmation is required before merging public source.
+- Replacement public engineering owner starts from clean `947f8867a19e1ebb6d1b54765693d7c5b420fc2b`.
+  PR #115 is stale-green and must not be merged. Coordinate any replacement
+  pull request with the parent. Preserve previous sealed runs without edits.
+- Current repair scope is bundled dependencies, installed ESM registration,
+  explicit isolated temporary state, active-memory asynchronous cleanup, and
+  gateway-managed local embeddings. Historical results below are not current
+  eligibility. Production activation and private composition stay out of scope.
 - Resumed the same run after an agent-service transport reset. No managed
   process or run lock remained. Source, archives, and installed artifacts are
   preserved; successful earlier stage receipts are not a final-candidate gate.
@@ -112,9 +122,9 @@ remains with the coordinating release owner.
 - Reviewed public behavior and test checkpoint:
   `d6c442a1d9f2a1c86184411cbd4bf8ee00642dc3`. The same head passes local
   accumulated CI and hosted run `34443062989`, job `102761932660`, in 40m13s.
-  All CodeQL checks pass. PR #115 is mergeable, but parent clearance is absent.
+  All CodeQL checks passed for that historical candidate.
 - Runtime inputs remain identical to `76854b4`. The private owner has copied
-  the sealed runtime for isolated rehearsal while service topology is decided.
+  the sealed runtime for isolated rehearsal.
   Later corrections affect interpreter fixture timing and reporting only.
 - Hosted timings justify a single file-scoped lifecycle allowance, rather than
   case-by-case changes. All real hashes, plist subprocesses, and assertions
@@ -155,14 +165,15 @@ remains with the coordinating release owner.
   For eligible `always` recall, arm the existing recall deadline before the
   trigger lookup and do not rearm it. Charge elapsed setup to the existing
   `setupGraceTimeoutMs`; retain the model timeout and settlement allowance.
-- The proposed reuse of `createServiceChildRelayAdapter` for POSIX local providers has a boundary. Its private
+- Reuse of `createServiceChildRelayAdapter` for POSIX local providers has a boundary. Its private
   host pipe and independent group anchor survive host/relay death long enough
   to clean the owned tree. Do not replace them with PID/name heuristics.
   A reuse would preserve one-shot host exit through explicit unref support and
   retain the adapter's extinction failure signal. The current release stop only
-  observes launchd label removal; it has no durable descendant proof. The parent
-  holds new admission/closure protocols while comparing supported independent
-  endpoint supervision. No service-lifetime source change is implemented yet.
+  observes launchd label removal; it has no durable descendant proof. The
+  approved design keeps gateway-managed embeddings with graceful-first,
+  bounded owned-group cleanup and positive exit join. No independent daemon
+  or new admission/closure protocol is approved.
   Do not invent process claims or treat port closure as complete extinction.
 - Keep installation offline and keep source integration outside activation.
 - The scoped adapter uses distinct tool names and trusted factory agent context.
@@ -225,6 +236,17 @@ remains with the coordinating release owner.
 
 ### Implementation
 
+- `native-package.mjs` materializes the production graph before copying npm's
+  selected root assets. Selected bundled files are accepted only when their
+  owning package is already in that graph. This avoids duplicate directories
+  without excluding arbitrary dependency content or relaxing required peers.
+- Installed secure Gmail and calendar bundles need a native ESM-compatible
+  build. Keep their registration synchronous and external tool execution lazy.
+- Trace supported runtime-directory options through state writers and container
+  staging. Explicit fixture isolation must preserve production cross-process
+  lock identity and deny shared temporary writes.
+- Diagnose late active-memory work before fixture teardown and rotated
+  transcript reads. Preserve assertions and existing production deadlines.
 - File-lock patch uses fs-safe 0.8.5 with kernel guards shared by async and
   sync callers. Retain the contention test and add killed-reclaimer recovery.
 - Sandbox discovery retains selected-runtime querying and error propagation.
@@ -285,6 +307,10 @@ remains with the coordinating release owner.
 
 ### Validation
 
+- New bundled-package regressions reproduce EEXIST for both npm bundle field
+  spellings. They pack and install synthetic scoped, transitive, and required
+  peer dependencies, remove the source tree, execute the installed entrypoint,
+  and reject a missing required peer.
 - Run focused component tests while iterating.
 - Interpreter fixtures retain real plist subprocesses and repeated full Node
   binary identity checks. Use one file-scoped 30-second test allowance, with
@@ -427,8 +453,10 @@ remains with the coordinating release owner.
 - [x] Integrate the parent-assigned scoped memory adapter and its regressions.
 - [x] Complete stopped-state config and one-job migration with regressions.
 - [ ] Repair bounded cold recall and owned local-service cleanup.
-- [x] Clear retained independent review for the current behavior.
-- [x] Pass accumulated gate for the current reviewed behavior.
-- [x] Clear hosted checks for the reviewed behavior and fixture correction.
+- [ ] Repair bundled dependency and installed plugin compatibility.
+- [ ] Repair scoped temporary-state and asynchronous memory fixtures.
+- [ ] Clear retained independent review for the final behavior.
+- [ ] Pass accumulated gate for the final reviewed behavior.
+- [ ] Clear hosted checks for the final reviewed behavior.
 - [ ] Confirm combined compatibility with parent.
 - [ ] Integrate eligible source and verify the landed result.

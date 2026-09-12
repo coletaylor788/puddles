@@ -57,11 +57,6 @@ export function materializeRuntime(source, destination) {
   if (selection.error || selection.status !== 0) throw new Error("Bounded upstream package file selection failed");
   const [pack] = JSON.parse(selection.stdout);
   if (!pack?.files?.length) throw new Error("Upstream selected an empty package");
-  for (const { path: name } of pack.files) {
-    if (isAbsolute(name) || name.split("/").includes("..")) throw new Error("Invalid upstream package path");
-    mkdirSync(dirname(join(destination, name)), { recursive: true });
-    cpSync(join(source, name), join(destination, name), { dereference: true });
-  }
   // Copy exactly the production graph by resolving from the root package.
   for (const name of Object.keys({ ...manifest.dependencies, ...manifest.optionalDependencies })) {
     const from = join(source, "node_modules", name);
@@ -76,6 +71,22 @@ export function materializeRuntime(source, destination) {
     for (const field of ["dependencies", "optionalDependencies"]) {
       if (manifest[field]?.[name]) manifest[field][name] = JSON.parse(readFileSync(join(from, "package.json"), "utf8")).version;
     }
+  }
+  for (const { path: name } of pack.files) {
+    const parts = name.split("/");
+    if (isAbsolute(name) || parts.includes("..")) throw new Error("Invalid upstream package path");
+    if (parts[0] === "node_modules") {
+      // npm also selects bundled dependencies. Only the resolved graph owns their bytes.
+      const index = parts.lastIndexOf("node_modules") + 1;
+      const end = index + (parts[index]?.startsWith("@") ? 2 : 1);
+      const packageRoot = realpathSync(join(source, ...parts.slice(0, end)));
+      if (!installed.has(packageRoot) || installed.get(packageRoot) === destination) {
+        throw new Error("Bundled package is outside the production dependency graph");
+      }
+      continue;
+    }
+    mkdirSync(dirname(join(destination, name)), { recursive: true });
+    cpSync(join(source, name), join(destination, name), { dereference: true });
   }
   delete manifest.devDependencies;
   atomicJson(join(destination, "package.json"), manifest);

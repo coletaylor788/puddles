@@ -131,6 +131,10 @@ evidence. Reuse the same directory to resume. Successful stages are reused only
 when their inputs and outputs match. Source, tests, environment, toolchain,
 build options, and artifact changes invalidate affected proofs. Package repairs
 rerun installation and runtime rehearsal without rebuilding unchanged source.
+When npm's file selection includes bundled dependencies, the resolved production
+graph owns those files. Packaging rejects bundled packages outside that graph.
+Required transitive peers stay required, and installation still verifies every
+archive and runtime digest without registry access.
 Packaging binds the installed dependency bytes, not only the lockfile. Regression
 proofs bind the effective environment, selected Python interpreter and installed
 test dependencies. Environment values are hashed, not written into receipts.

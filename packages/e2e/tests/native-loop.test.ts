@@ -130,6 +130,40 @@ describe("native exact-input evidence", () => {
 });
 
 describe("offline installed runtime", () => {
+  it.each(["bundleDependencies", "bundledDependencies"])("materializes %s without overlapping npm's bundled files", async (field) => {
+    const directory = root();
+    const source = join(directory, "source");
+    json(join(source, "package.json"), {
+      name: "synthetic-bundled-runtime", version: "1.0.0", files: ["index.cjs"],
+      dependencies: { "@synthetic/bundled": "1.0.0" }, [field]: ["@synthetic/bundled"],
+    });
+    writeFileSync(join(source, "index.cjs"), "console.log(require('@synthetic/bundled'));");
+    const bundled = join(source, "node_modules/@synthetic/bundled");
+    json(join(bundled, "package.json"), {
+      name: "@synthetic/bundled", version: "1.0.0", main: "index.cjs",
+      dependencies: { transitive: "2.0.0" }, peerDependencies: { "required-peer": "3.0.0" },
+    });
+    writeFileSync(join(bundled, "index.cjs"), "module.exports = require('transitive') + require('required-peer');");
+    for (const [name, version, value] of [["transitive", "2.0.0", "patched-"], ["required-peer", "3.0.0", "peer"]]) {
+      const dependency = join(source, "node_modules", name);
+      json(join(dependency, "package.json"), { name, version, main: "index.cjs" });
+      writeFileSync(join(dependency, "index.cjs"), `module.exports = ${JSON.stringify(value)};`);
+    }
+    const selection = JSON.parse(execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
+      cwd: source, encoding: "utf8", timeout: 10_000,
+    }));
+    expect(selection[0].files.some(({ path }: { path: string }) => path.startsWith("node_modules/"))).toBe(true);
+    const artifact = await packRuntime(source, join(directory, "artifacts"));
+    const installed = await installRuntime(artifact, join(directory, "prefix"));
+    rmSync(join(source, "node_modules/required-peer"), { recursive: true });
+    await expect(packRuntime(source, join(directory, "missing-peer"))).rejects.toThrow("Missing production dependency: required-peer");
+    rmSync(source, { recursive: true });
+    expect(execFileSync(process.execPath, [join(installed, "index.cjs")], {
+      encoding: "utf8", timeout: 10_000, env: fixtureEnv(isolatedContext(join(directory, "context"))),
+    }).trim()).toBe("patched-peer");
+    expect(treeDigest(installed, { portable: true })).toBe(artifact.runtimeSha256);
+  }, 15_000);
+
   it("ships actual patched dependency bytes, cycles and versions without registry resolution", async () => {
     const directory = root();
     const source = join(directory, "source");
