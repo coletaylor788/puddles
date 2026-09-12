@@ -89,6 +89,12 @@ Secure service wrappers depend on `mcp-hooks` through the workspace and follow
 its hook error policy. When a hook blocks, they surface its reason so the user
 can act instead of the agent retrying blindly.
 
+Their self-contained ESM bundles use Node's `createRequire` for bundled
+CommonJS dependencies that load built-in modules. The bridge belongs to the
+published bundle, not the gateway or a deployment-specific loader. The shared
+regression pool installs each bundle outside the source tree and resolves its
+tool factories without starting a bridge, loading credentials, or using a model.
+
 Restrictive tools are a different boundary. The scoped memory adapter has no
 hook dependency and never fails open. Missing permission, disabled memory,
 invalid arguments, and backend failures cannot expose a broader read path.

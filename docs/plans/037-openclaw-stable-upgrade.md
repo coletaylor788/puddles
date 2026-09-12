@@ -85,10 +85,11 @@ and rollback remain in the existing deployment workflow.
 The inherited upgrade has passing historical public gates, but later combined
 rehearsal exposes packaging, installed plugin loading, isolated temporary-state,
 and asynchronous memory-fixture defects. Those results are not release
-eligibility. The packaging collision now has a synthetic reproduction and a
-repair that retains required peers and offline archive identity checks.
+eligibility. The packaging collision has a committed repair that retains required peers
+and offline archive identity checks. Public service bundles now include Node's
+module bridge so their bundled dependencies can load under native ESM.
 
-Installed plugin compatibility, isolated state paths, memory cleanup, and
+Installed registry compatibility, isolated state paths, memory cleanup, and
 gateway-managed embedding readiness and shutdown remain in progress. The final
 candidate needs the full accumulated gate and retained independent review.
 Integration stays held for the coordinating owner's combined compatibility
@@ -240,8 +241,10 @@ confirmation. Production deployment remains with that owner.
   selected root assets. Selected bundled files are accepted only when their
   owning package is already in that graph. This avoids duplicate directories
   without excluding arbitrary dependency content or relaxing required peers.
-- Installed secure Gmail and calendar bundles need a native ESM-compatible
-  build. Keep their registration synchronous and external tool execution lazy.
+- Installed secure Gmail and calendar bundles use a `createRequire` build
+  banner for their bundled CommonJS dependencies. Keep their registration
+  synchronous and external tool execution lazy. No gateway or private loader
+  shim is needed.
 - Trace supported runtime-directory options through state writers and container
   staging. Explicit fixture isolation must preserve production cross-process
   lock identity and deny shared temporary writes.
@@ -311,6 +314,10 @@ confirmation. Production deployment remains with that owner.
   spellings. They pack and install synthetic scoped, transitive, and required
   peer dependencies, remove the source tree, execute the installed entrypoint,
   and reject a missing required peer.
+- `public-plugin-bundles.test.ts` reproduces both native ESM import failures.
+  It packages each built dist, installs offline outside the source tree, and
+  invokes every registered factory in a child with external activity denied.
+  Actual installed registry compatibility remains a separate combined proof.
 - Run focused component tests while iterating.
 - Interpreter fixtures retain real plist subprocesses and repeated full Node
   binary identity checks. Use one file-scoped 30-second test allowance, with
