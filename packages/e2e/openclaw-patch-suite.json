@@ -143,6 +143,12 @@
         "extensions/active-memory/config.test.ts",
         "extensions/active-memory/escalation.test.ts"
       ]
+    },
+    {
+      "name": "active-memory-fixture-cleanup",
+      "tests": [
+        "extensions/active-memory/index.test.ts"
+      ]
     }
   ]
 }

@@ -27,6 +27,7 @@ activated gateway. Keep the previous interpreter available for rollback.
 | `stopped-state-migration-sdk.patch` | Expose maintained readonly cron, targeted writes, and config ownership helpers |
 | `scoped-container-temp-root.patch` | Carry explicit private staging through sandbox and browser creation |
 | `active-memory-cold-recall.patch` | Preserve required recall within one shared cold-setup budget |
+| `active-memory-fixture-cleanup.patch` | Join delayed recall fixtures before replacing shared test state |
 
 Each patch has a neighboring document explaining its behavior and history.
 Register new patches and every applicable test in the cumulative manifest at

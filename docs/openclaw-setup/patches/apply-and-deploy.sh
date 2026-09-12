@@ -25,6 +25,7 @@ PATCHES=(
   stopped-state-migration-sdk
   scoped-container-temp-root
   active-memory-cold-recall
+  active-memory-fixture-cleanup
 )
 
 if [ -n "${MINI_HOST:-}" ]; then

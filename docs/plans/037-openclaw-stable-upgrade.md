@@ -91,8 +91,11 @@ Public service bundles include Node's module bridge so their bundled dependencie
 can load under native ESM. Sandbox and browser provisioning can now stage
 environment files in an explicitly selected private directory.
 
-Installed registry compatibility, isolated coordination, memory cleanup, and
-gateway-managed embedding readiness and shutdown remain in progress. The final
+Installed service registration and actual bundled packaging now pass focused
+composition. Test coordination uses the trusted host's normal locks, with
+separate test databases and no production changes. Memory fixtures now join
+their delayed writers and cleanup before replacing shared test state.
+Gateway-managed embedding readiness and shutdown remain in progress. The final
 candidate needs the full accumulated gate and retained independent review.
 Integration stays held for the coordinating owner's combined compatibility
 confirmation. Production deployment remains with that owner.
@@ -287,6 +290,13 @@ confirmation. Production deployment remains with that owner.
   for eligible `always` recall. Link optional lookup cancellation to the owning
   deadline and debit its elapsed setup from deep recall's grace. The original
   model timeout and other modes stay unchanged.
+- `active-memory-fixture-cleanup` tracks the two finite recall mocks that can
+  outlive a prompt hook. Join their complete session cleanup before replacing
+  test state or one-shot mocks. Force terminal polling to win with cleanup held,
+  then prove the cleanup join. Production recall and timers are unchanged.
+- Test hosts are trusted. Use supported CLI coordination and its normal shared
+  lock directory, without a fixture-entry override. Separate writable test
+  state, ports, and deliveries; preserve foreign locks and production fencing.
 - Expose maintained `loadCronJobsStoreWithConfigJobsReadOnly`,
   `saveCronJobsStoreChanges`, `resolveCronJobsStorePathFromConfig`, and
   `resolveCronJobConfigRevision` through `cron-store-runtime`. Do not use its
@@ -335,7 +345,9 @@ confirmation. Production deployment remains with that owner.
 - `public-plugin-bundles.test.ts` reproduces both native ESM import failures.
   It packages each built dist, installs offline outside the source tree, and
   invokes every registered factory in a child with external activity denied.
-  Actual installed registry compatibility remains a separate combined proof.
+  Combined installed baseline now passes both single-plugin and all-plugin
+  registry/factory cases. Final rebuilt host, doctor, and stale-registry cases
+  remain separate proofs.
 - Run focused component tests while iterating.
 - Interpreter fixtures retain real plist subprocesses and repeated full Node
   binary identity checks. Use one file-scoped 30-second test allowance, with
@@ -352,9 +364,14 @@ confirmation. Production deployment remains with that owner.
   expiration, disabled/policy-excluded destinations, and existing warm modes.
   The private owner owns the official-provider cold installed matrix.
   Both new delayed cases reproduce a zero-recall failure before repair. The
-  repaired index, trigger, config, and escalation suites pass all 403 cases;
-  extension types pass. The rebuilt bundled candidate is ready for the private
-  owner's installed cold proof.
+  repaired index, trigger, config, and escalation suites previously passed all
+  403 cases, then combined repetition exposed late fixture work. Removing the
+  new cleanup join deterministically leaves a recall session alive. The join
+  repairs that leak without changing timing assertions. A forced terminal-poll
+  fixture also holds cleanup past the hook result and joins it before the next
+  rotated-transcript test. All 403 cases pass with both repairs; extension types,
+  all nine patch-manifest checks, and exact patch applicability pass. These
+  results replace neither the final accumulated gate nor installed cold proof.
 - Add actual subprocess tests for forced parent loss and startup interruption,
   normal stop, one-shot host exit, and preservation of an unrelated listener.
   Include existing provider and supervisor regressions in the cumulative pool.
