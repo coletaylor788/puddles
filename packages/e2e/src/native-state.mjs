@@ -19,6 +19,30 @@ function artifactIdentity(artifact) {
   return ["schemaVersion", "sha256", "runtimeSha256", "platform", "arch", "node"].map((key) => artifact[key]);
 }
 
+function provenanceIdentity(provenance) {
+  if (provenance == null) return null;
+  if (!provenance || provenance.schema !== "puddles.openclaw-provider-artifact/v1" ||
+      !/^[a-f0-9]{64}$/.test(provenance.sha256) ||
+      !/^[a-f0-9]{40}$/.test(provenance.publicHead) ||
+      !["sourceSha256", "buildInputsSha256", "buildCommandSha256"].every(
+        (key) => /^[a-f0-9]{64}$/.test(provenance[key]),
+      )) {
+    throw new Error("Invalid additional artifact provenance");
+  }
+  return [
+    provenance.schema,
+    provenance.sha256,
+    provenance.publicHead,
+    provenance.sourceSha256,
+    provenance.buildInputsSha256,
+    provenance.buildCommandSha256,
+  ];
+}
+
+function additionalArtifactIdentity({ id, artifact, provenance }) {
+  return [id, artifactIdentity(artifact), provenanceIdentity(provenance)];
+}
+
 export function verifyCandidateProofs(receiptPath, receipt) {
   const extras = receipt.additionalArtifacts ?? [];
   if (!Array.isArray(extras) || extras.some((extra) => !/^[a-z][a-z0-9-]*$/.test(extra.id)) ||
@@ -40,11 +64,16 @@ export function verifyCandidateProofs(receiptPath, receipt) {
   if (["runtime", "install"].some((name) => jsonDigest(artifactIdentity(proofs[name].inputs.artifact)) !== rootIdentity)) {
     throw new Error("Root artifact differs from rehearsal proofs");
   }
-  const bundleIdentity = (artifacts) => jsonDigest(artifacts.map(({ id, artifact }) => [id, artifactIdentity(artifact)]));
+  const bundleIdentity = (artifacts) => jsonDigest(artifacts.map(additionalArtifactIdentity));
   if (bundleIdentity(extras) !== bundleIdentity(proofs.runtime.inputs.additionalArtifacts ?? [])) throw new Error("Additional artifacts differ from runtime proof");
-  for (const [index, { id, artifact }] of extras.entries()) {
+  for (const [index, extra] of extras.entries()) {
     const inputs = proofs[`install-additional-${index}`].inputs;
-    if (inputs.id !== id || jsonDigest(artifactIdentity(artifact)) !== jsonDigest(artifactIdentity(inputs.artifact))) {
+    if (jsonDigest(additionalArtifactIdentity(extra)) !==
+        jsonDigest(additionalArtifactIdentity({
+          id: inputs.id,
+          artifact: inputs.artifact,
+          provenance: inputs.provenance,
+        }))) {
       throw new Error("Additional artifact differs from installation proof");
     }
   }

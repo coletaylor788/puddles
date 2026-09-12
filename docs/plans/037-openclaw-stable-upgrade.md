@@ -1,6 +1,6 @@
 # OpenClaw stable upgrade
 
-Status: Public candidate passed; combined compatibility and integration held
+Status: Provider artifact correction in validation; integration held
 Issue: #114
 Last updated: 2026-09-12
 
@@ -85,28 +85,18 @@ and rollback remain in the existing deployment workflow.
 
 ### Status
 
-The inherited upgrade has passing historical public gates, but later combined
-rehearsal exposes packaging, installed plugin loading, isolated temporary-state,
-and asynchronous memory-fixture defects. Those results are not release
-eligibility. The packaging collision is repaired without dropping required peers or embedded
-runtime assets. A real bundled archive now passes packaging and offline install.
-Public service bundles include Node's module bridge so their bundled dependencies
-can load under native ESM. Sandbox and browser provisioning can now stage
-environment files in an explicitly selected private directory.
+The runtime behavior and prior public candidate pass local cumulative testing,
+hosted testing, and retained independent review. Physical combined rehearsal
+then found that the separately installed local-embedding provider still came
+from an older registry archive. That archive did not contain the new residency
+behavior even though the root runtime did.
 
-Installed service registration and actual bundled packaging now pass focused
-composition. Test coordination uses the trusted host's normal locks, with
-separate test databases and no production changes. Memory fixtures now join
-their delayed writers and cleanup before replacing shared test state.
-Owned service shutdown and recovery now have focused process and activation
-coverage. Gateway startup now prepares two real local vectors under one
-90-second allowance before channels start, retains the owned service lease, and
-keeps only the embedding preset awake. Gathered completion ownership is durable
-across gateway restart and bounded-map eviction. The final candidate still
-needs combined private and target-host validation. The exact public candidate
-passed the full accumulated gate and retained independent review. Integration
-stays held for the coordinating owner's compatibility confirmation. Production
-deployment remains with that owner.
+The runner now owns a separate provider artifact built from the same patched
+source as the root runtime. A machine-readable receipt binds its source, build,
+toolchain, and archive identity. Focused artifact and proof tests pass. The
+corrected candidate still needs the full cumulative gate, retained review,
+combined private rehearsal, and the coordinating owner's integration decision.
+Production remains untouched.
 
 ## Agent section
 
@@ -126,9 +116,12 @@ deployment remains with that owner.
   edits.
 - Current repair scope is bundled dependencies, installed ESM registration,
   explicit isolated temporary state, active-memory asynchronous cleanup, and
-  gateway-managed local embeddings. The retained review also drove a durable
-  gathered-completion handoff repair. Historical results below are not current
-  eligibility. Production activation and private composition stay out of scope.
+  gateway-managed local embeddings. Physical rehearsal found that the provider
+  is packaged separately from the root runtime, so the current correction adds
+  a public provider artifact and exact provenance. The retained review also
+  drove a durable gathered-completion handoff repair. Historical results below
+  are not current eligibility. Production activation and private composition
+  stay out of scope.
 - Resumed the same run after an agent-service transport reset. No managed
   process or run lock remained. Source, archives, and installed artifacts are
   preserved; successful earlier stage receipts are not a final-candidate gate.
@@ -262,6 +255,12 @@ deployment remains with that owner.
   does not make it another graph root. Unowned top-level dependency directories
   still fail. This avoids duplicate directories without excluding arbitrary
   dependency content or relaxing required peers.
+- The native pipeline packages `dist/extensions/llama-cpp` as the built-in
+  `llama-cpp-provider` additional artifact. Its
+  `provider-provenance.json` binds the repository head, patched provider source,
+  complete build inputs, build command, selected toolchain, archive digest, and
+  portable runtime digest. Local extensions cannot replace that artifact ID.
+  Installation and runtime proofs bind the provenance digest with the archive.
 - Installed secure Gmail and calendar bundles use a `createRequire` build
   banner for their bundled CommonJS dependencies. Keep their registration
   synchronous and external tool execution lazy. No gateway or private loader
@@ -344,6 +343,13 @@ deployment remains with that owner.
 
 ### Validation
 
+- A focused regression packages synthetic patched provider source and built
+  output, installs it offline, and verifies both the behavior bytes and
+  provenance receipt. Pipeline tests prove the provider is always installed
+  before rehearsal and that local artifacts cannot replace it. Integration and
+  activation tests bind provenance through runtime, install, and recovery
+  identities. The focused native loop, pipeline, integration, and deployment
+  set passes 109 cases with Node 26.1.0.
 - New bundled-package regressions reproduce EEXIST for both npm bundle field
   spellings. They pack and install synthetic scoped, transitive, and required
   peer dependencies, remove the source tree, execute the installed entrypoint,
@@ -518,6 +524,11 @@ deployment remains with that owner.
 - The retained reviewer also clears the complete `8cf0a92..d6c442a` diff and
   all new files after both hosted fixture corrections. No actionable material
   defects remain. This evidence-only plan update does not change those inputs.
+- Physical combined rehearsal found that the separately selected
+  `@openclaw/llama-cpp-provider` archive predated the warmup behavior. The
+  public runner now produces that package directly from the patched build and
+  records exact provenance. This behavior change requires the retained
+  reviewer's complete-diff recheck.
 
 ### Checklist
 
@@ -527,9 +538,10 @@ deployment remains with that owner.
 - [x] Commit focused compatibility regressions and documentation.
 - [x] Integrate the parent-assigned scoped memory adapter and its regressions.
 - [x] Complete stopped-state config and one-job migration with regressions.
-- [ ] Repair bounded cold recall and owned local-service cleanup.
-- [ ] Repair bundled dependency and installed plugin compatibility.
-- [ ] Repair scoped temporary-state and asynchronous memory fixtures.
+- [x] Repair bounded cold recall and owned local-service cleanup.
+- [x] Repair bundled dependency and installed plugin compatibility.
+- [x] Repair scoped temporary-state and asynchronous memory fixtures.
+- [x] Add a provenance-bound provider artifact from patched source.
 - [ ] Clear retained independent review for the final behavior.
 - [ ] Pass accumulated gate for the final reviewed behavior.
 - [ ] Clear hosted checks for the final reviewed behavior.

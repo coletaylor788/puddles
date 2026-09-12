@@ -344,7 +344,12 @@ export async function activateNative(receipt, target, operationsFactory = system
       extras.some((extra) => !target.additionalInstalls.some((install) => install.id === extra.id))) {
     throw new Error("Target must map every rehearsed additional artifact exactly once");
   }
-  const extraIdentity = extras.map(({ id, artifact }) => ({ id, sha256: artifact.sha256, runtimeSha256: artifact.runtimeSha256 }));
+  const extraIdentity = extras.map(({ id, artifact, provenance }) => ({
+    id,
+    sha256: artifact.sha256,
+    runtimeSha256: artifact.runtimeSha256,
+    ...(provenance ? { provenanceSha256: provenance.sha256 } : {}),
+  }));
   if (!recoverDir) {
     for (const artifact of [receipt.artifact, ...extras.map((extra) => extra.artifact)]) {
       if (fileDigest(artifact.path) !== artifact.sha256) throw new Error("Rehearsed artifact changed");

@@ -154,6 +154,13 @@ archive and runtime digest without registry access.
 Packaging binds the installed dependency bytes, not only the lockfile. Regression
 proofs bind the effective environment, selected Python interpreter and installed
 test dependencies. Environment values are hashed, not written into receipts.
+The patched llama.cpp provider is a separate installable package, so the runner
+always seals its built output as a named additional artifact. Its provenance
+receipt binds the public repository head, patched provider source, build inputs,
+build command, toolchain, archive, and installed runtime digest. Local extensions
+cannot replace this artifact with an older registry package. Combined consumers
+must select the public archive and verify the provenance receipt instead of
+inferring compatibility from the package version.
 Dependency fingerprints exclude the generated `.experimental-vitest-cache`
 and `.unrun` directories directly under `node_modules`. Files with those names
 inside real packages remain part of the fingerprint. These root caches do not

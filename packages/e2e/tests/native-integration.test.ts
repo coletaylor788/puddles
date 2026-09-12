@@ -101,4 +101,38 @@ describe("source integration before activation", () => {
     await expect(integrateCandidate(f.path, "example/public-repo", 123, f.run)).rejects.toThrow("proof chain");
     expect(f.calls).toEqual([]);
   });
+  it("binds provider provenance to installation and runtime proofs", async () => {
+    const f = setup();
+    const receipt = JSON.parse(readFileSync(f.path, "utf8"));
+    const provenance = {
+      path: "/synthetic/provider-provenance.json",
+      sha256: "5".repeat(64),
+      schema: "puddles.openclaw-provider-artifact/v1",
+      publicHead: "a".repeat(40),
+      sourceSha256: "6".repeat(64),
+      buildInputsSha256: "7".repeat(64),
+      buildCommandSha256: "8".repeat(64),
+    };
+    const extra = {
+      id: "llama-cpp-provider",
+      artifact: { ...receipt.artifact, sha256: "3".repeat(64), runtimeSha256: "4".repeat(64) },
+      provenance,
+    };
+    receipt.additionalArtifacts = [extra];
+    const inputs = { id: extra.id, artifact: extra.artifact, provenance };
+    const key = jsonDigest(inputs);
+    receipt.proofs["install-additional-0"] = key;
+    writeFileSync(join(f.root, "stages/install-additional-0.json"), JSON.stringify({ key, inputs, status: "passed" }));
+    const runtimePath = join(f.root, "stages/runtime.json");
+    const runtime = JSON.parse(readFileSync(runtimePath, "utf8"));
+    runtime.inputs.additionalArtifacts = [extra];
+    runtime.key = jsonDigest(runtime.inputs);
+    receipt.proofs.runtime = runtime.key;
+    writeFileSync(runtimePath, JSON.stringify(runtime));
+    writeFileSync(f.path, JSON.stringify(receipt));
+    await integrateCandidate(f.path, "example/public-repo", 123, f.run);
+    receipt.additionalArtifacts[0].provenance.sha256 = "9".repeat(64);
+    writeFileSync(f.path, JSON.stringify(receipt));
+    await expect(integrateCandidate(f.path, "example/public-repo", 123, f.run)).rejects.toThrow("Additional artifacts differ from runtime proof");
+  });
 });

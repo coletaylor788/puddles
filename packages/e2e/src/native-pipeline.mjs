@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { acquireLock, atomicJson, externalDirectory, fileDigest, jsonDigest, stage, treeDigest } from "./native-state.mjs";
 import { fixtureEnv, isolatedContext, runScenario } from "./native-fixture.mjs";
 import { additionalArtifacts, extensionPhase, loadExtension } from "./native-extension.mjs";
-import { installRuntime, packRuntime } from "./native-package.mjs";
+import { installRuntime, packProviderRuntime, packRuntime } from "./native-package.mjs";
 import { runCommand } from "./process-runner.mjs";
 import scenarios from "../scenarios/imessage.mjs";
 import { readMigrationManifest } from "./native-state-migration.mjs";
@@ -146,7 +146,8 @@ export async function nativePipeline(command, repositoryGates) {
       return { installed: true };
     }, () => ({ [join(candidate, "node_modules")]: { sha256: treeDigest(join(candidate, "node_modules"), sourceDependencyOptions), options: sourceDependencyOptions } }));
     const installedDependencies = treeDigest(join(candidate, "node_modules"), sourceDependencyOptions);
-    await stage(runDir, "build", { buildInputs, dependencies, installedDependencies, tools, buildEnvironment, prepareOutputs }, async () => {
+    const buildStageInputs = { buildInputs, dependencies, installedDependencies, tools, buildEnvironment, prepareOutputs };
+    await stage(runDir, "build", buildStageInputs, async () => {
       await run("corepack", ["pnpm", "build"], { cwd: candidate, env: buildEnv, timeoutMs: 30 * 60_000 });
       return { built: true };
     }, () => ({ [join(candidate, "dist")]: treeDigest(join(candidate, "dist")) }));
@@ -183,7 +184,34 @@ export async function nativePipeline(command, repositoryGates) {
     const artifacts = join(runDir, "artifacts");
     mkdirSync(artifacts, { recursive: true, mode: 0o700 });
     const extensionOutputs = await stage(runDir, "extension-package", { candidateInputs, installedDependencies, tools, prepareOutputs, extension: extension.phaseHashes.package, artifacts: extension.artifacts }, async () => extensionPhase(extension, "package", context), (outputs) => outputs);
-    const extras = additionalArtifacts(extension, context, extensionOutputs);
+    const extensionArtifacts = additionalArtifacts(extension, context, extensionOutputs);
+    if (extensionArtifacts.some(({ id }) => id === "llama-cpp-provider")) {
+      throw new Error("The patched llama.cpp provider is owned by the public candidate");
+    }
+    const publicHead = (await git(repoRoot, ["rev-parse", "HEAD"])).trim();
+    const providerDirectory = join(artifacts, "llama-cpp-provider");
+    const providerProvenance = {
+      publicHead,
+      buildInputsSha256: jsonDigest(buildStageInputs),
+      buildCommandSha256: jsonDigest({
+        command: "corepack",
+        args: ["pnpm", "build"],
+        cwd: "candidate-source",
+        environment: buildEnvironment,
+      }),
+      tools,
+    };
+    const provider = await stage(runDir, "provider-package", {
+      candidateInputs,
+      source: treeDigest(join(candidate, "extensions", "llama-cpp")),
+      build: treeDigest(join(candidate, "dist", "extensions", "llama-cpp"), { portable: true }),
+      provenance: providerProvenance,
+      packaging: fileDigest(join(packageDir, "src", "native-package.mjs")),
+    }, () => packProviderRuntime(candidate, providerDirectory, providerProvenance, run), (result) => ({
+      [result.artifact.path]: result.artifact.sha256,
+      [result.provenance.path]: result.provenance.sha256,
+    }));
+    const extras = [provider, ...extensionArtifacts];
     context.additionalArtifacts = extras;
     const artifact = await stage(runDir, "package", { candidateInputs, installedDependencies, build: treeDigest(join(candidate, "dist")), tools, packaging: fileDigest(join(packageDir, "src", "native-package.mjs")) }, () => packRuntime(candidate, artifacts, run), (result) => ({ [result.path]: result.sha256 }));
     context.artifact = artifact;
@@ -198,10 +226,11 @@ export async function nativePipeline(command, repositoryGates) {
     context.installedDir = installedDir;
     context.additionalInstalledDirs = {};
     const extraProofs = [];
-    for (const [index, { id, artifact: extra }] of extras.entries()) {
+    for (const [index, extraRecord] of extras.entries()) {
+      const { id, artifact: extra, provenance } = extraRecord;
       const name = `install-additional-${index}`;
       const extraPrefix = join(runDir, "installed-additional", id);
-      const directory = await stage(runDir, name, { id, artifact: extra, tools, installer }, async () => {
+      const directory = await stage(runDir, name, { id, artifact: extra, provenance: provenance ?? null, tools, installer }, async () => {
         if (existsSync(extraPrefix)) rmSync(extraPrefix, { recursive: true });
         return installRuntime(extra, extraPrefix, run);
       }, (result) => ({ [result]: treeDigest(result, { portable: true }) }));
@@ -238,7 +267,7 @@ export async function nativePipeline(command, repositoryGates) {
     }
     const receipt = {
       schemaVersion: 1, status: "passed", accumulated: command === "ci",
-      repository: { head: (await git(repoRoot, ["rev-parse", "HEAD"])).trim(), tree: (await git(repoRoot, ["rev-parse", "HEAD^{tree}"])).trim() },
+      repository: { head: publicHead, tree: (await git(repoRoot, ["rev-parse", "HEAD^{tree}"])).trim() },
       source: { ref: suite.openclawRef, sha256: candidateInputs }, artifact, installedDir, additionalArtifacts: extras,
       scenarios: result.scenarios.length, tools, proofs,
       ...(stateMigration ? { stateMigration } : {}),

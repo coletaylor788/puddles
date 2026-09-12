@@ -7,7 +7,7 @@ import { join } from "node:path";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
 import { acquireLock, atomicJson, fileDigest, stage, treeDigest } from "../src/native-state.mjs";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
-import { installRuntime, packRuntime } from "../src/native-package.mjs";
+import { installRuntime, packProviderRuntime, packRuntime } from "../src/native-package.mjs";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
 import { fixtureEnv, isolatedContext, runScenario } from "../src/native-fixture.mjs";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
@@ -130,6 +130,44 @@ describe("native exact-input evidence", () => {
 });
 
 describe("offline installed runtime", () => {
+  it("seals the patched llama.cpp provider with source and build provenance", async () => {
+    const directory = root();
+    const source = join(directory, "source");
+    const providerSource = join(source, "extensions/llama-cpp");
+    const providerBuild = join(source, "dist/extensions/llama-cpp");
+    const manifest = {
+      name: "@openclaw/llama-cpp-provider",
+      version: "2026.9.3",
+      type: "module",
+      openclaw: { extensions: ["./index.js"] },
+    };
+    json(join(providerSource, "package.json"), { ...manifest, openclaw: { extensions: ["./index.ts"] } });
+    writeFileSync(join(providerSource, "index.ts"), "export const keepEmbeddingResident = true;");
+    json(join(providerBuild, "package.json"), manifest);
+    writeFileSync(join(providerBuild, "index.js"), "export const keepEmbeddingResident = true;");
+    const provenance = {
+      publicHead: "1".repeat(40),
+      buildInputsSha256: "2".repeat(64),
+      buildCommandSha256: "3".repeat(64),
+      tools: { node: process.version, platform: process.platform, arch: process.arch },
+    };
+    const result = await packProviderRuntime(source, join(directory, "artifact"), provenance);
+    const receipt = JSON.parse(readFileSync(result.provenance.path, "utf8"));
+    expect(receipt).toMatchObject({
+      schema: "puddles.openclaw-provider-artifact/v1",
+      publicHead: provenance.publicHead,
+      source: { sha256: result.provenance.sourceSha256 },
+      build: {
+        inputsSha256: provenance.buildInputsSha256,
+        commandSha256: provenance.buildCommandSha256,
+      },
+      artifact: { sha256: result.artifact.sha256, runtimeSha256: result.artifact.runtimeSha256 },
+    });
+    const installed = await installRuntime(result.artifact, join(directory, "installed"));
+    expect(readFileSync(join(installed, "index.js"), "utf8")).toContain("keepEmbeddingResident");
+    expect(fileDigest(result.provenance.path)).toBe(result.provenance.sha256);
+  });
+
   it.each(["bundleDependencies", "bundledDependencies"])("materializes %s without overlapping npm's bundled files", async (field) => {
     const directory = root();
     const source = join(directory, "source");

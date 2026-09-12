@@ -189,6 +189,14 @@ disjoint real directories below state, without symlink traversal. Select only
 the managed runtime subtree, never a parent containing sessions or unrelated
 configuration.
 
+The public candidate always declares `llama-cpp-provider`. OpenClaw packages
+this provider separately from the root runtime, even though its source is built
+in the same checkout. The runner packages the provider from the patched build
+output and writes `provider-provenance.json` beside its archive. That receipt
+binds the public head, provider source and build inputs, build command, selected
+toolchain, archive digest, and installed runtime digest. A target must use this
+artifact rather than a registry archive with the same package version.
+
 All archives are verified and installed into separate staging prefixes before
 shutdown. After the gateway stops and state is snapshotted, activation replaces
 each selected subtree completely and checks its exact runtime digest. It does

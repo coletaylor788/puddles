@@ -1,7 +1,7 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { dirname, isAbsolute, join, relative } from "node:path";
-import { atomicJson, digest, fileDigest, treeDigest } from "./native-state.mjs";
+import { basename, dirname, isAbsolute, join, relative } from "node:path";
+import { atomicJson, digest, fileDigest, jsonDigest, treeDigest } from "./native-state.mjs";
 import { runCommand } from "./process-runner.mjs";
 
 // Materialize the production dependency graph from the installed frozen graph.
@@ -103,6 +103,55 @@ export async function packRuntime(source, directory, run = runCommand) {
   const artifact = join(directory, "openclaw-runtime.tar.gz");
   await run("tar", ["-czf", artifact, "-C", directory, "runtime", "runtime-identity.json"]);
   return { path: artifact, sha256: fileDigest(artifact), ...identity };
+}
+
+export async function packProviderRuntime(sourceRoot, directory, provenance, run = runCommand) {
+  const source = join(sourceRoot, "extensions", "llama-cpp");
+  const built = join(sourceRoot, "dist", "extensions", "llama-cpp");
+  const sourceManifest = JSON.parse(readFileSync(join(source, "package.json"), "utf8"));
+  const builtManifest = JSON.parse(readFileSync(join(built, "package.json"), "utf8"));
+  if (sourceManifest.name !== "@openclaw/llama-cpp-provider" ||
+      builtManifest.name !== sourceManifest.name || builtManifest.version !== sourceManifest.version ||
+      builtManifest.openclaw?.extensions?.[0] !== "./index.js") {
+    throw new Error("Built llama.cpp provider identity differs from its patched source");
+  }
+  const sourceSha256 = treeDigest(source);
+  const buildOutputSha256 = treeDigest(built, { portable: true });
+  const artifact = await packRuntime(built, directory, run);
+  const receipt = {
+    schema: "puddles.openclaw-provider-artifact/v1",
+    schemaVersion: 1,
+    id: "llama-cpp-provider",
+    package: { name: sourceManifest.name, version: sourceManifest.version },
+    publicHead: provenance.publicHead,
+    source: { sha256: sourceSha256 },
+    build: {
+      inputsSha256: provenance.buildInputsSha256,
+      commandSha256: provenance.buildCommandSha256,
+      outputSha256: buildOutputSha256,
+    },
+    toolchain: provenance.tools,
+    artifact: {
+      file: basename(artifact.path),
+      sha256: artifact.sha256,
+      runtimeSha256: artifact.runtimeSha256,
+    },
+  };
+  const provenancePath = join(directory, "provider-provenance.json");
+  atomicJson(provenancePath, receipt);
+  return {
+    id: "llama-cpp-provider",
+    artifact,
+    provenance: {
+      path: provenancePath,
+      sha256: fileDigest(provenancePath),
+      schema: receipt.schema,
+      publicHead: receipt.publicHead,
+      sourceSha256,
+      buildInputsSha256: receipt.build.inputsSha256,
+      buildCommandSha256: receipt.build.commandSha256,
+    },
+  };
 }
 
 export async function installRuntime(artifact, prefix, run = runCommand) {
