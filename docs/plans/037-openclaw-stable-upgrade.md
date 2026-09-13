@@ -2,7 +2,7 @@
 
 Status: Provider artifact correction in validation; integration held
 Issue: #114
-Last updated: 2026-09-12
+Last updated: 2026-09-13
 
 ## Human section
 
@@ -51,7 +51,10 @@ recorded messages. Bundled dependencies must be materialized once through the
 complete production graph. Installed plugins must load as native modules
 without depending on the source checkout. Explicit isolated test paths must
 not change production lock ownership. Public code never depends on private
-configuration or live accounts.
+configuration or live accounts. A separately packaged provider must carry a
+receipt whose source, build command, complete toolchain, and output identities
+match the retained build and packaging proofs. The receipt cannot attest those
+identities by itself.
 
 Required pre-reply recall must survive a cold local embedding service. After
 the ordinary policy checks, optional trigger lookup and required recall share
@@ -93,10 +96,11 @@ behavior even though the root runtime did.
 
 The runner now owns a separate provider artifact built from the same patched
 source as the root runtime. A machine-readable receipt binds its source, build,
-toolchain, and archive identity. Focused artifact and proof tests pass. The
-corrected candidate still needs the full cumulative gate, retained review,
-combined private rehearsal, and the coordinating owner's integration decision.
-Production remains untouched.
+toolchain, and archive identity to retained pipeline proofs. Focused artifact
+and proof tests pass. The retained reviewer found one remaining self-attestation
+gap in that chain. The verifier correction is under recheck before the head is
+frozen for the full cumulative gate. Combined private rehearsal and the
+coordinating owner's integration decision follow. Production remains untouched.
 
 ## Agent section
 
@@ -118,10 +122,12 @@ Production remains untouched.
   explicit isolated temporary state, active-memory asynchronous cleanup, and
   gateway-managed local embeddings. Physical rehearsal found that the provider
   is packaged separately from the root runtime, so the current correction adds
-  a public provider artifact and exact provenance. The retained review also
-  drove a durable gathered-completion handoff repair. Historical results below
-  are not current eligibility. Production activation and private composition
-  stay out of scope.
+  a public provider artifact and exact provenance. Integration verifies the
+  provenance source, build command, and complete toolchain against the retained
+  build and provider-package inputs rather than trusting the receipt alone.
+  The retained review also drove a durable gathered-completion handoff repair.
+  Historical results below are not current eligibility. Production activation
+  and private composition stay out of scope.
 - Resumed the same run after an agent-service transport reset. No managed
   process or run lock remained. Source, archives, and installed artifacts are
   preserved; successful earlier stage receipts are not a final-candidate gate.
@@ -348,8 +354,10 @@ Production remains untouched.
   provenance receipt. Pipeline tests prove the provider is always installed
   before rehearsal and that local artifacts cannot replace it. Integration and
   activation tests bind provenance through runtime, install, and recovery
-  identities. The focused native loop, pipeline, integration, and deployment
-  set passes 109 cases with Node 26.1.0.
+  identities. Integration also rejects retained provider-package inputs whose
+  source, build command, or complete toolchain differs from the provenance
+  receipt. The focused native loop, pipeline, integration, and deployment set
+  passes 109 cases with Node 26.1.0. E2E type checking passes.
 - New bundled-package regressions reproduce EEXIST for both npm bundle field
   spellings. They pack and install synthetic scoped, transitive, and required
   peer dependencies, remove the source tree, execute the installed entrypoint,
@@ -527,8 +535,11 @@ Production remains untouched.
 - Physical combined rehearsal found that the separately selected
   `@openclaw/llama-cpp-provider` archive predated the warmup behavior. The
   public runner now produces that package directly from the patched build and
-  records exact provenance. This behavior change requires the retained
-  reviewer's complete-diff recheck.
+  records exact provenance. The retained reviewer accepted the build-only
+  symlink handling, then found that later verification still let the provenance
+  receipt self-attest its source, build command, and toolchain. The verifier now
+  compares each value with retained build and provider-package inputs. The same
+  reviewer is rechecking that correction before the candidate is frozen.
 
 ### Checklist
 

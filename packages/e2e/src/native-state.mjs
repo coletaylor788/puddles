@@ -92,19 +92,21 @@ export function verifyCandidateProofs(receiptPath, receipt) {
       throw new Error("Provider provenance receipt differs from candidate");
     }
     const value = JSON.parse(readFileSync(provenance.path, "utf8"));
+    const providerInputs = proofs["provider-package"].inputs;
     if (value.schema !== provenance.schema || value.schemaVersion !== 1 ||
         value.id !== provider.id || value.publicHead !== receipt.repository?.head ||
         value.publicHead !== provenance.publicHead ||
         value.source?.sha256 !== provenance.sourceSha256 ||
+        value.source.sha256 !== providerInputs.source ||
         value.build?.inputsSha256 !== proofs.build.key ||
         value.build.inputsSha256 !== provenance.buildInputsSha256 ||
         value.build.commandSha256 !== provenance.buildCommandSha256 ||
-        value.build.outputSha256 !== proofs["provider-package"].inputs.build ||
+        value.build.commandSha256 !== providerInputs.provenance?.buildCommandSha256 ||
+        value.build.outputSha256 !== providerInputs.build ||
         value.artifact?.sha256 !== provider.artifact.sha256 ||
         value.artifact.runtimeSha256 !== provider.artifact.runtimeSha256 ||
-        value.toolchain?.node !== provider.artifact.node ||
-        value.toolchain?.platform !== provider.artifact.platform ||
-        value.toolchain?.arch !== provider.artifact.arch ||
+        jsonDigest(value.toolchain) !== jsonDigest(proofs.build.inputs.tools) ||
+        jsonDigest(value.toolchain) !== jsonDigest(providerInputs.provenance?.tools) ||
         jsonDigest(additionalArtifactIdentity(proofs["provider-package"].result)) !==
           jsonDigest(additionalArtifactIdentity(provider))) {
       throw new Error("Provider provenance does not match candidate proofs");

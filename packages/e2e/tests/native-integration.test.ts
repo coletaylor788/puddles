@@ -104,6 +104,20 @@ describe("source integration before activation", () => {
   it("binds provider provenance to installation and runtime proofs", async () => {
     const f = setup();
     const receipt = JSON.parse(readFileSync(f.path, "utf8"));
+    const tools = {
+      node: receipt.artifact.node,
+      nodeBinary: "5".repeat(64),
+      platform: receipt.artifact.platform,
+      arch: receipt.artifact.arch,
+      manager: "pnpm@10.31.0",
+      npm: "11.8.0",
+    };
+    const buildPath = join(f.root, "stages/build.json");
+    const build = JSON.parse(readFileSync(buildPath, "utf8"));
+    build.inputs.tools = tools;
+    build.key = jsonDigest(build.inputs);
+    receipt.proofs.build = build.key;
+    writeFileSync(buildPath, JSON.stringify(build));
     const provenancePath = join(f.root, "provider-provenance.json");
     const provenance = {
       path: provenancePath,
@@ -127,6 +141,7 @@ describe("source integration before activation", () => {
         publicHead: provenance.publicHead,
         buildInputsSha256: provenance.buildInputsSha256,
         buildCommandSha256: provenance.buildCommandSha256,
+        tools,
       },
       packaging: "9".repeat(64),
     };
@@ -142,7 +157,7 @@ describe("source integration before activation", () => {
         commandSha256: provenance.buildCommandSha256,
         outputSha256: providerInputs.build,
       },
-      toolchain: { node: extra.artifact.node, platform: extra.artifact.platform, arch: extra.artifact.arch },
+      toolchain: tools,
       artifact: { file: "provider.tar.gz", sha256: extra.artifact.sha256, runtimeSha256: extra.artifact.runtimeSha256 },
     }));
     provenance.sha256 = fileDigest(provenancePath);
@@ -167,6 +182,31 @@ describe("source integration before activation", () => {
     writeFileSync(runtimePath, JSON.stringify(runtime));
     writeFileSync(f.path, JSON.stringify(receipt));
     await integrateCandidate(f.path, "example/public-repo", 123, f.run);
+    const providerPath = join(f.root, "stages/provider-package.json");
+    const writeProviderProof = () => {
+      const nextKey = jsonDigest(providerInputs);
+      receipt.proofs["provider-package"] = nextKey;
+      writeFileSync(providerPath, JSON.stringify({
+        key: nextKey,
+        inputs: providerInputs,
+        result: extra,
+        status: "passed",
+      }));
+      writeFileSync(f.path, JSON.stringify(receipt));
+    };
+    providerInputs.source = "0".repeat(64);
+    writeProviderProof();
+    await expect(integrateCandidate(f.path, "example/public-repo", 123, f.run)).rejects.toThrow("provenance does not match");
+    providerInputs.source = provenance.sourceSha256;
+    providerInputs.provenance.buildCommandSha256 = "0".repeat(64);
+    writeProviderProof();
+    await expect(integrateCandidate(f.path, "example/public-repo", 123, f.run)).rejects.toThrow("provenance does not match");
+    providerInputs.provenance.buildCommandSha256 = provenance.buildCommandSha256;
+    providerInputs.provenance.tools = { ...tools, nodeBinary: "0".repeat(64) };
+    writeProviderProof();
+    await expect(integrateCandidate(f.path, "example/public-repo", 123, f.run)).rejects.toThrow("provenance does not match");
+    providerInputs.provenance.tools = tools;
+    writeProviderProof();
     receipt.additionalArtifacts[0].provenance.sha256 = "9".repeat(64);
     writeFileSync(f.path, JSON.stringify(receipt));
     await expect(integrateCandidate(f.path, "example/public-repo", 123, f.run)).rejects.toThrow("Additional artifacts differ from runtime proof");
