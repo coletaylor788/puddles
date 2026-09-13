@@ -83,13 +83,14 @@ workspaces or shared knowledge stores.
 The stopped-state migration entry exercises the real SDK on current and
 historical SQLite schemas. Installed rehearsal runs the same executor again
 from the packaged runtime, with network access denied. Readonly preflight binds
-the source config, the maintained legacy migration preview, both old and new
-cron partitions, the complete effective job set, and the selected job revision.
-After the full state snapshot, activation repairs the schema, copies effective
-jobs to the post-migration partition, persists legacy config normalization,
-runs selected config writes, then ordinary doctor and the selected cron write.
-The tests cover sole include ownership, job revision conflicts, retired
-`cron.store` paths, unrelated state, each failure stage, and interrupted
+the maintained migration semantics, both old and new cron partition paths, and
+the selected job revision. After the full state snapshot, activation reads
+fresh row fingerprints and the complete effective job set, repairs the schema,
+copies those jobs to the post-migration partition, persists legacy config and
+multi-agent ownership normalization, runs selected config writes, then ordinary
+doctor and the selected cron write. The tests cover sole include ownership, job
+revision conflicts, retired `cron.store` paths, unrelated live-staging state,
+each failure stage, and interrupted
 rollback with the retained interpreter. The historical fixture comes from the
 pinned upstream test pool, with its compressed digest checked before use.
 

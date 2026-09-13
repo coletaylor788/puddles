@@ -26,8 +26,14 @@ const configSdk = await import(pathToFileURL(require.resolve("openclaw/plugin-sd
 const stateDir = process.env.OPENCLAW_STATE_DIR;
 const configPath = process.env.OPENCLAW_CONFIG_PATH;
 const memory = { search: { provider: "none", fallback: "none", extraPaths: ["~/synthetic-extra"] } };
+const agents = mode === "legacy-config"
+  ? { list: Array.from({ length: 8 }, (_, index) => ({
+      id: `agent-${index + 1}`,
+      ...(index === 0 ? { workspace: "~/synthetic-workspace" } : {}),
+    })) }
+  : { ownership: "explicit", entries: { fixture: { workspace: "~/synthetic-workspace" } } };
 const original = {
-  agents: { ownership: "explicit", entries: { fixture: { workspace: "~/synthetic-workspace" } } },
+  agents,
   memory: mode === "include" ? { $include: "memory.json" } : memory,
   ...(mode === "legacy-config"
     ? { cron: { store: join(stateDir, "cron", "legacy-jobs.json") } }
@@ -107,7 +113,18 @@ await executeStateMigration({ ...options, phase: "schema" });
 await executeStateMigration({ ...options, phase: "builtin-config", expectedBuiltIn });
 await executeStateMigration({ ...options, phase: "config" });
 const written = JSON.parse(readFileSync(configPath, "utf8"));
-assert.deepEqual(written.agents, original.agents, "authored tilde paths must survive");
+if (mode === "legacy-config") {
+  assert.equal(written.agents.ownership, "explicit");
+  assert.equal(Object.keys(written.agents.entries).length, 8);
+  assert.equal(written.agents.entries["agent-1"].workspace, "~/synthetic-workspace");
+  assert.equal(
+    Object.values(written.agents.entries).some((entry) => entry.default === true),
+    false,
+    "canonical roster must not retain default markers",
+  );
+} else {
+  assert.deepEqual(written.agents, original.agents, "authored tilde paths must survive");
+}
 assert.deepEqual(written.models, original.models, "authored secret references must survive");
 if (mode === "include") {
   assert.deepEqual(written.memory, { $include: "memory.json" });

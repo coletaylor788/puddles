@@ -1,6 +1,6 @@
 # OpenClaw stable upgrade
 
-Status: Stopped migration ordering repair in progress; activation held
+Status: Final stopped migration correction in progress; activation held
 Issue: #114
 Last updated: 2026-09-13
 
@@ -79,9 +79,12 @@ old runtime during rollback. An optional reviewed manifest changes selected
 configuration leaves and silences one existing scheduled job. It cannot run
 commands or replace unrelated state. The stopped gateway's complete state is
 snapshotted first. Activation then repairs only the database schema and runs the
-maintained legacy config migrations through OpenClaw's writer. Preflight binds
-the source config, expected normalized config, old and new cron partitions, the
-complete effective job set, and the reviewed job revision. If legacy
+maintained legacy config migrations through OpenClaw's writer. That migration
+also converts a legacy multi-agent roster to explicit ownership without
+choosing a default owner or granting access. Preflight binds the stable
+migration result, old and new cron partition paths, and the reviewed job
+revision. Once stopped, activation reads fresh row identities and the complete
+effective job set. If legacy
 `cron.store` is retired, activation copies that effective set to the
 post-migration partition before writing config. Both row sets use
 compare-and-swap fingerprints. Private selected config changes still precede
@@ -113,11 +116,15 @@ cannot run until OpenClaw's maintained legacy config migrations have completed.
 Those migrations can retire an old cron partition that still contains the
 reviewed scheduled job.
 
-The remaining follow-up adds only this stopped ordering boundary. It preserves
-the complete effective job set before config normalization, then runs private
-config changes, ordinary doctor, and the selected cron change in that order. It
-will rerun the installed migration fixture, actual deployment rehearsal,
-retained review, and cumulative gate. Production remains untouched.
+The stopped ordering boundary is implemented and previously passed the full
+public gate. Exact private state exposed one final missing roster normalization,
+and retained review found that live preflight held volatile cron state across
+asset staging. The correction now uses the maintained explicit-ownership
+result and takes fresh row identities only after shutdown.
+
+Focused validation and the managed installed-runtime patch gate pass. Retained
+review and the exact clean-head cumulative gate remain. Private will then
+repeat the combined deployment rehearsal. Production remains untouched.
 
 ## Agent section
 
@@ -264,6 +271,15 @@ retained review, and cumulative gate. Production remains untouched.
   `doctor-repair-runtime.repairOpenClawStateDatabaseSchema` before config because
   config writes also need a current SQLite schema. This step is schema-only,
   without compilation, hooks, inference, delivery, package fetching, or startup.
+  Reuse doctor's canonical roster migration in the stopped preview and write.
+  A markerless multi-agent roster becomes `agents.ownership: "explicit"` without
+  choosing a default agent or adding an access binding.
+  Carry only stable migration semantics, cron partition path digests, and the
+  reviewed job revision from live preflight into the stopped phase. Recompute
+  complete jobs and source and target row fingerprints after shutdown, then use
+  those fresh values in the partition copy. Runtime-only cron updates and
+  unrelated config writes during asset staging must not cause avoidable
+  downtime. A changed selected job definition still fails before mutation.
   Apply config before ordinary doctor, then read the
   selected cron partition through the readonly SDK and perform one targeted CAS
   update. Reject drift rather than silently rebaseline or replace the store.
@@ -527,9 +543,10 @@ retained review, and cumulative gate. Production remains untouched.
   successful migration ordering and injected post-replacement rollback.
 - Migration proofs must cover old/new schemas, readonly preflight, source
   include/secret-reference preservation, all-leaf precondition validation,
-  same-job drift, concurrent unrelated job/runtime updates, and interruption
-  between config and cron operations. Assert no delivery, scheduler, RPC, or
-  model startup. Recovery must preserve the original failure and rollback errors.
+  markerless eight-agent ownership, same-job drift, concurrent unrelated
+  config/job/runtime updates, and interruption between config and cron
+  operations. Assert no delivery, scheduler, RPC, or model startup. Recovery
+  must preserve the original failure and rollback errors.
 - The maintained 2026.7.1-2 SQLite fixture reproduces config-health writes during
   default snapshot reading and the old-schema prerequisite for config writes.
   Current/include/conflict cases pass in the installed artifact. The historical
@@ -538,6 +555,13 @@ retained review, and cumulative gate. Production remains untouched.
   Core-only inspection and artifact-preserving path resolution pass four SDK
   cases, 75 retained cron cases, and core types. The broader public lifecycle
   set passes 135 cases and e2e types. The latest focused subset passes 86.
+- The final stopped-migration correction passes 85 focused public migration and
+  activation cases under Node 26.1.0, the e2e type check, and six real OpenClaw
+  SDK tests. The managed `patches` lifecycle passes prepare, dependencies,
+  build, all mapped regressions, extension and provider packaging, prepared
+  files, portable packaging, offline install, additional install, runtime, and
+  all nine installed scenarios. Its installed legacy-config fixture uses an
+  eight-agent markerless roster and preserves all effective jobs.
 - Native iteration on `76854b4` passes prepare, dependencies, build, package,
   offline install, all nine message scenarios, and all four migration modes.
   The historical case now preserves the complete state digest across preflight.
@@ -597,6 +621,12 @@ retained review, and cumulative gate. Production remains untouched.
 - The retained Sol reviewer cleared the complete merged public behavior through
   `5b5d9de`. Resume that reviewer after the prepared-file behavior change and
   keep it through remediation.
+- The retained reviewer found that the first stopped-migration correction held
+  full config hashes and mutable cron row state from live preflight through
+  asset staging. The accepted repair carries only stable migration semantics,
+  partition identities, and selected revision across that boundary. Fresh
+  stopped-state fingerprints protect the atomic copy. The same reviewer must
+  recheck the complete current diff after focused and installed validation.
 
 ### Checklist
 
@@ -615,8 +645,9 @@ retained review, and cumulative gate. Production remains untouched.
 - [x] Confirm combined runtime compatibility and integrate exact source.
 - [x] Bind immutable prepared files into candidate and runtime proofs.
 - [x] Rehearse actual deployment and rollback with test-owned state.
-- [ ] Preserve effective cron jobs while maintained legacy config migrations retire old store paths.
-- [ ] Rehearse built-in normalization before private config and cron CAS in the stopped transaction.
+- [x] Preserve effective cron jobs while maintained legacy config migrations retire old store paths.
+- [x] Persist canonical multi-agent ownership before private config CAS.
+- [x] Rehearse built-in normalization before private config and cron CAS in the stopped transaction.
 - [ ] Clear retained review for the deployment correction.
 - [ ] Pass affected and accumulated gates for the deployment correction.
 - [ ] Integrate the follow-up and hand activation back to private.

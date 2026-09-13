@@ -29,6 +29,20 @@ function canonicalJson(value) {
 
 export const canonicalValueDigest = (value) => digest(canonicalJson(value));
 
+function migrationProjection(before, after, path = []) {
+  if (canonicalJson(before) === canonicalJson(after)) return [];
+  if (record(before) && record(after)) {
+    const names = [...new Set([...Object.keys(before), ...Object.keys(after)])].sort();
+    return names.flatMap((name) => {
+      const nextPath = [...path, name];
+      if (!Object.hasOwn(after, name)) return [{ path: nextPath, exists: false }];
+      if (!Object.hasOwn(before, name)) return [{ path: nextPath, exists: true, value: after[name] }];
+      return migrationProjection(before[name], after[name], nextPath);
+    });
+  }
+  return [{ path, exists: true, value: after }];
+}
+
 export function validateMigrationManifest(manifest) {
   keys(manifest, ["schemaVersion", "configOperations", "cronOperation"], ["schemaVersion", "configOperations"]);
   if (manifest.schemaVersion !== 1 || !Array.isArray(manifest.configOperations) ||
@@ -246,23 +260,25 @@ export async function executeStateMigration(
     }
     return {
       config: {
-        sourceHash: snapshot.hash,
-        expectedSha256: canonicalValueDigest(expectedConfig),
+        expectedSha256: canonicalValueDigest(migrationProjection(
+          snapshot.sourceConfigBeforeMigrations ?? snapshot.sourceConfig,
+          preview?.sourceConfig ?? snapshot.sourceConfig,
+        )),
         changesSha256: canonicalValueDigest(preview?.changes ?? []),
         required: Boolean(preview),
       },
       cron: {
         sourceStoreSha256: canonicalValueDigest(sourceStorePath),
         targetStoreSha256: canonicalValueDigest(targetStorePath),
-        sourceJobsFingerprint: loaded.jobsFingerprint,
-        targetJobsFingerprint: targetLoaded.jobsFingerprint,
-        jobsSha256: canonicalValueDigest(loaded.store.jobs),
         selectedRevision: manifest.cronOperation?.expectedRevision ?? null,
       },
       preview,
       sourceStorePath,
       targetStorePath,
       loaded,
+      targetLoaded,
+      jobsSha256: canonicalValueDigest(loaded.store.jobs),
+      expectedConfigSha256: canonicalValueDigest(expectedConfig),
     };
   };
   if (phase === "preflight") {
@@ -291,11 +307,11 @@ export async function executeStateMigration(
     const materialized = await sdk.materializeCronConfigJobsForMigration(
       plan.sourceStorePath,
       plan.targetStorePath,
-      plan.cron.sourceJobsFingerprint,
-      plan.cron.targetJobsFingerprint,
+      plan.loaded.jobsFingerprint,
+      plan.targetLoaded.jobsFingerprint,
     );
-    if (canonicalValueDigest(materialized.before.jobs) !== plan.cron.jobsSha256 ||
-        canonicalValueDigest(materialized.after.jobs) !== plan.cron.jobsSha256) {
+    if (canonicalValueDigest(materialized.before.jobs) !== plan.jobsSha256 ||
+        canonicalValueDigest(materialized.after.jobs) !== plan.jobsSha256) {
       throw new Error("Built-in stopped migration changed effective cron jobs");
     }
     const repaired = plan.preview
@@ -304,7 +320,7 @@ export async function executeStateMigration(
           configWriteOptions: { skipRuntimeSnapshotRefresh: true, skipOutputLogs: true },
         })
       : { snapshot };
-    if (canonicalValueDigest(repaired.snapshot.sourceConfig) !== plan.config.expectedSha256) {
+    if (canonicalValueDigest(repaired.snapshot.sourceConfig) !== plan.expectedConfigSha256) {
       throw new Error("Built-in stopped config migration differs from preflight");
     }
     const postStorePath = statePath(
@@ -319,14 +335,14 @@ export async function executeStateMigration(
       throw new Error("Built-in stopped config migration selected an unexpected cron store");
     }
     const reloaded = await sdk.loadCronJobsStoreWithConfigJobsReadOnly(postStorePath, process.env);
-    if (canonicalValueDigest(reloaded.store.jobs) !== plan.cron.jobsSha256) {
+    if (canonicalValueDigest(reloaded.store.jobs) !== plan.jobsSha256) {
       throw new Error("Built-in stopped config migration lost effective cron jobs");
     }
     return {
-      config: { sourceHash: repaired.snapshot.hash, sha256: plan.config.expectedSha256 },
+      config: { sourceHash: repaired.snapshot.hash, sha256: plan.expectedConfigSha256 },
       cron: {
         jobsFingerprint: reloaded.jobsFingerprint,
-        jobsSha256: plan.cron.jobsSha256,
+        jobsSha256: plan.jobsSha256,
         selectedRevision: plan.cron.selectedRevision,
       },
     };

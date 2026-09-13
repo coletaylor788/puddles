@@ -1,11 +1,12 @@
 diff --git a/src/commands/doctor/legacy-config-repair.ts b/src/commands/doctor/legacy-config-repair.ts
-index 8d00d51bd3f..6ffe2af245e 100644
+index 8d00d51bd3f..3da93179550 100644
 --- a/src/commands/doctor/legacy-config-repair.ts
 +++ b/src/commands/doctor/legacy-config-repair.ts
-@@ -1,13 +1,92 @@
+@@ -1,13 +1,122 @@
  // Update-channel config repair for legacy config files before normal command startup.
 -import { readConfigFileSnapshot, replaceConfigFile } from "../../config/config.js";
 +import { isDeepStrictEqual } from "node:util";
++import { listAgentEntries, readAgentRosterProperty } from "../../agents/agent-scope-config.js";
 +import {
 +  readConfigFileSnapshot,
 +  readConfigFileSnapshotForWrite,
@@ -13,6 +14,7 @@ index 8d00d51bd3f..6ffe2af245e 100644
 +} from "../../config/config.js";
  import type { ConfigWriteOptions } from "../../config/io.js";
 +import { stampConfigWriteMetadata } from "../../config/io.meta.js";
++import { migratePersistedImplicitMainRoster } from "../../config/legacy.roster.js";
  import { configWriteTargetsIncludeBoundary } from "../../config/mutate.js";
 +import type { OpenClawConfig } from "../../config/types.js";
  import { validateConfigObjectRawWithPlugins } from "../../config/validation.js";
@@ -41,11 +43,34 @@ index 8d00d51bd3f..6ffe2af245e 100644
 +      (hasAuthoredIncludes ? configSnapshot.sourceConfig : configSnapshot.parsed),
 +    configSnapshot.sourceConfig,
 +  );
-+  const nextConfig =
++  let nextConfig =
 +    (migrated.next as OpenClawConfig | null) ??
 +    (readTimeChanged ? configSnapshot.sourceConfig : null);
 +  if (!nextConfig) {
 +    return null;
++  }
++  const rosterMigrationNeeded =
++    [configSnapshot.sourceConfigBeforeMigrations, configSnapshot.parsed]
++      .filter((source) => source !== undefined)
++      .some((source) => migratePersistedImplicitMainRoster(source).changed) ||
++    (nextConfig.agents?.ownership === undefined && listAgentEntries(nextConfig).length > 1);
++  let stampsExplicitOwnership = false;
++  if (rosterMigrationNeeded) {
++    const canonical = migratePersistedImplicitMainRoster(nextConfig, {
++      materializeWorkspace: true,
++    }).config as OpenClawConfig;
++    const roster = readAgentRosterProperty(canonical);
++    const entries = roster?.kind === "entries" ? roster.value : undefined;
++    const { list: _legacyList, ...agents } = canonical.agents ?? {};
++    stampsExplicitOwnership = Object.keys(entries ?? {}).length > 1;
++    nextConfig = {
++      ...canonical,
++      agents: {
++        ...agents,
++        ...(stampsExplicitOwnership ? { ownership: "explicit" as const } : {}),
++        entries: entries as NonNullable<OpenClawConfig["agents"]>["entries"],
++      },
++    };
 +  }
 +  if (
 +    hasAuthoredIncludes &&
@@ -61,7 +86,12 @@ index 8d00d51bd3f..6ffe2af245e 100644
 +      undefined,
 +      configSnapshot.sourceConfig,
 +    ),
-+    changes: migrated.changes,
++    changes: stampsExplicitOwnership
++      ? [
++          ...migrated.changes,
++          "Stamped the multi-agent roster for explicit per-surface ownership.",
++        ]
++      : migrated.changes,
 +  };
 +}
 +
@@ -541,10 +571,10 @@ index 859dfbfb73b..56d65fa6bdb 100644
 +export { resolveCronJobConfigRevision } from "../cron/config-revision.js";
 diff --git a/src/plugin-sdk/doctor-repair-runtime.test.ts b/src/plugin-sdk/doctor-repair-runtime.test.ts
 new file mode 100644
-index 00000000000..16c35c379b7
+index 00000000000..1bc76653edf
 --- /dev/null
 +++ b/src/plugin-sdk/doctor-repair-runtime.test.ts
-@@ -0,0 +1,40 @@
+@@ -0,0 +1,74 @@
 +import fs from "node:fs/promises";
 +import { describe, expect, it } from "vitest";
 +import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
@@ -580,6 +610,40 @@ index 00000000000..16c35c379b7
 +        configWriteOptions: { skipRuntimeSnapshotRefresh: true, skipOutputLogs: true },
 +      });
 +      expect(result.repaired).toBe(true);
++      expect(result.snapshot.valid).toBe(true);
++      expect(result.snapshot.sourceConfig).toEqual(preview?.expectedConfig);
++    });
++  });
++
++  it("persists explicit ownership for a markerless legacy multi-agent roster", async () => {
++    await withOpenClawTestState({ label: "stopped-config-roster" }, async (state) => {
++      await fs.writeFile(
++        state.statePath("openclaw.json"),
++        JSON.stringify({
++          agents: {
++            list: Array.from({ length: 8 }, (_, index) => ({
++              id: `agent-${index + 1}`,
++            })),
++          },
++        }),
++      );
++      const { snapshot } = await readConfigFileSnapshotForWrite({
++        observe: false,
++        pluginValidation: "core-only",
++      });
++      const preview = previewLegacyConfigRepair(snapshot);
++      expect(preview?.sourceConfig.agents?.ownership).toBe("explicit");
++      expect(Object.keys(preview?.sourceConfig.agents?.entries ?? {})).toHaveLength(8);
++      expect(
++        Object.values(preview?.sourceConfig.agents?.entries ?? {}).some(
++          (entry) => entry.default === true,
++        ),
++      ).toBe(false);
++
++      const result = await repairLegacyConfigForStoppedState({
++        configSnapshot: snapshot,
++        configWriteOptions: { skipRuntimeSnapshotRefresh: true, skipOutputLogs: true },
++      });
 +      expect(result.snapshot.valid).toBe(true);
 +      expect(result.snapshot.sourceConfig).toEqual(preview?.expectedConfig);
 +    });

@@ -27,7 +27,11 @@ An older SQLite schema can prevent even a config write because the writer
 records metadata. Legacy config can also fail current validation before a
 selected write runs. After the stopped-state snapshot, the helper repairs the
 schema, previews the maintained legacy config migrations, and binds the
-expected config and cron rows to preflight evidence. It copies the complete
+migration semantics, cron partition paths, and selected job revision to
+preflight evidence. The stopped phase reads fresh cron row fingerprints and
+the complete effective job set, then uses those values for its atomic copy.
+Normal job runtime updates during pre-downtime staging therefore do not force
+rollback after shutdown. It copies the complete
 effective job set from a retired `cron.store` partition to the post-migration
 partition before persisting the normalized config. Both partitions have
 compare-and-swap fingerprints. The selected job revision and the semantic job
@@ -35,7 +39,10 @@ set must remain unchanged.
 
 The stopped config repair calls the same migration, plugin validation, include
 ownership, metadata stamping, and config writer used by doctor. It rejects
-partial validation instead of persisting a half-migrated file. Private selected
+partial validation instead of persisting a half-migrated file. It also
+canonicalizes a legacy markerless multi-agent roster and stamps explicit
+ownership before private compare-and-swap writes. It does not select a default
+agent or grant access to an unowned surface. Private selected
 config writes run next, followed by ordinary doctor and the revision-bound cron
 write. None of the bounded pre-doctor steps compile memory or start a gateway,
 scheduler, plugin hook, or model. Private policy remains in the selected local
@@ -45,8 +52,9 @@ The patch targets stable source
 `1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7`. Its registered SDK tests use real
 SQLite, including the maintained compressed 2026.7.1-2 fixture. They cover
 readonly absent-state behavior, old-schema ordering, legacy config repair,
-cron partition migration, reviewed revision preservation, conflicts, and
-concurrent unrelated jobs and runtime updates.
+markerless multi-agent ownership, cron partition migration, reviewed revision
+preservation, conflicts, and concurrent unrelated config, job, and runtime
+updates.
 The accumulated pool also runs the public executor against the built SDK and
 the offline installed artifact. It checks config ownership, retained secret
 references and tilde paths, unchanged preflight state, and denied network

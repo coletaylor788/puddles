@@ -153,14 +153,71 @@ describe("digest-bound stopped-state operations", () => {
     });
   });
 
-  it("rejects config or effective-job drift between preflight and stopped migration", async () => {
+  it("allows unrelated config and cron runtime-state drift after live preflight", async () => {
+    const f = fixture();
+    f.sdk.loadCronJobsStoreWithConfigJobsReadOnly.mockImplementation(async () => ({
+      store: { version: 1, jobs: [f.job] },
+      invalidConfigRows: [],
+      jobsFingerprint: `runtime-${f.job.state.lastRunAtMs}`,
+    }));
+    const selected = f.selected();
+    const expectedBuiltIn = await executeStateMigration(
+      { phase: "preflight", ...selected },
+      async () => f.sdk,
+    );
+    expect(expectedBuiltIn.config).not.toHaveProperty("sourceHash");
+    expect(expectedBuiltIn.cron).not.toHaveProperty("sourceJobsFingerprint");
+    expect(expectedBuiltIn.cron).not.toHaveProperty("targetJobsFingerprint");
+    expect(expectedBuiltIn.cron).not.toHaveProperty("jobsSha256");
+    f.snapshot.hash = "changed-source";
+    f.snapshot.sourceConfig.plugins.entries.fixture.config.unknown = 8;
+    f.job.state.lastRunAtMs = 2;
+    await expect(executeStateMigration(
+      { phase: "builtin-config", ...selected, expectedBuiltIn },
+      async () => f.sdk,
+    )).resolves.toMatchObject({
+      cron: { selectedRevision: `sha256:${"a".repeat(43)}` },
+    });
+    expect(f.sdk.materializeCronConfigJobsForMigration).toHaveBeenCalledOnce();
+    expect(f.sdk.materializeCronConfigJobsForMigration).toHaveBeenCalledWith(
+      join(f.stateDir, "cron/jobs.json"),
+      join(f.stateDir, "cron/jobs.json"),
+      "runtime-2",
+      "runtime-2",
+    );
+  });
+
+  it("rejects selected job definition drift after live preflight", async () => {
     const f = fixture();
     const selected = f.selected();
     const expectedBuiltIn = await executeStateMigration(
       { phase: "preflight", ...selected },
       async () => f.sdk,
     );
-    f.snapshot.hash = "changed-source";
+    f.sdk.resolveCronJobConfigRevision.mockReturnValue(`sha256:${"b".repeat(43)}`);
+    await expect(executeStateMigration(
+      { phase: "builtin-config", ...selected, expectedBuiltIn },
+      async () => f.sdk,
+    )).rejects.toThrow("reviewed revision changed");
+    expect(f.sdk.materializeCronConfigJobsForMigration).not.toHaveBeenCalled();
+  });
+
+  it("rejects changed maintained migration semantics after live preflight", async () => {
+    const f = fixture();
+    type LegacyConfig = typeof f.snapshot.sourceConfig & { legacy?: string; normalized?: string };
+    const source = f.snapshot.sourceConfig as LegacyConfig;
+    source.legacy = "before";
+    f.snapshot.sourceConfigBeforeMigrations = structuredClone(source);
+    f.sdk.previewLegacyConfigRepair.mockImplementation(() => {
+      const expected = { ...source, normalized: source.legacy };
+      return { sourceConfig: expected, expectedConfig: expected, changes: ["Normalized legacy"] };
+    });
+    const selected = f.selected();
+    const expectedBuiltIn = await executeStateMigration(
+      { phase: "preflight", ...selected },
+      async () => f.sdk,
+    );
+    source.legacy = "changed";
     await expect(executeStateMigration(
       { phase: "builtin-config", ...selected, expectedBuiltIn },
       async () => f.sdk,
@@ -211,9 +268,9 @@ describe("digest-bound stopped-state operations", () => {
       { phase: "preflight", ...selected },
       async () => f.sdk,
     );
-    expect(expectedBuiltIn.cron).toMatchObject({
-      sourceJobsFingerprint: "source-fingerprint",
-      targetJobsFingerprint: "target-fingerprint",
+    expect(expectedBuiltIn.cron).toEqual({
+      sourceStoreSha256: canonicalValueDigest(legacyStore),
+      targetStoreSha256: canonicalValueDigest(targetStore),
       selectedRevision: `sha256:${"a".repeat(43)}`,
     });
     const result = await executeStateMigration(

@@ -142,13 +142,10 @@ function fixture(wrapper = true, migration = true, binary = false, oldAlias = fa
         if (phase === "preflight") {
           expect(running).toBe(true);
           return {
-            config: { sourceHash: "before", expectedSha256: "a".repeat(64), changesSha256: "b".repeat(64), required: true },
+            config: { expectedSha256: "a".repeat(64), changesSha256: "b".repeat(64), required: true },
             cron: {
               sourceStoreSha256: "d".repeat(64),
               targetStoreSha256: "d".repeat(64),
-              sourceJobsFingerprint: "before",
-              targetJobsFingerprint: "before",
-              jobsSha256: "c".repeat(64),
               selectedRevision: null,
             },
           };
@@ -226,7 +223,10 @@ describe("stopped-state migration inside interpreter rollback", () => {
     expect(fileDigest(join(result.recoveryDir, "state-migration.json"))).toBe(migration.sha256);
     expect(JSON.parse(readFileSync(join(result.recoveryDir, "recovery.json"), "utf8")).stateMigration).toMatchObject({
       sha256: migration.sha256, phase: "complete",
-      builtIn: { config: { sourceHash: "before" }, cron: { sourceJobsFingerprint: "before" } },
+      builtIn: {
+        config: { expectedSha256: "a".repeat(64) },
+        cron: { sourceStoreSha256: "d".repeat(64) },
+      },
       builtInResult: { config: { sourceHash: "after" }, cron: { jobsFingerprint: "after" } },
     });
   });
