@@ -7,7 +7,7 @@ import { join } from "node:path";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
 import { acquireLock, atomicJson, fileDigest, stage, treeDigest } from "../src/native-state.mjs";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
-import { installRuntime, packRuntime } from "../src/native-package.mjs";
+import { installRuntime, packProviderRuntime, packRuntime } from "../src/native-package.mjs";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
 import { fixtureEnv, isolatedContext, runScenario } from "../src/native-fixture.mjs";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
@@ -42,7 +42,7 @@ describe("native exact-input evidence", () => {
     const directory = root();
     json(join(directory, "package.json"), {
       name: "synthetic-pnpm-proof", version: "1.0.0", private: true,
-      packageManager: "pnpm@11.2.2", dependencies: { "synthetic-dependency": "file:./dependency" },
+      packageManager: "pnpm@12.3.4", dependencies: { "synthetic-dependency": "file:./dependency" },
     });
     json(join(directory, "dependency/package.json"), { name: "synthetic-dependency", version: "1.0.0", main: "index.js" });
     writeFileSync(join(directory, "dependency/index.js"), "module.exports = 'original';");
@@ -54,7 +54,7 @@ describe("native exact-input evidence", () => {
       env: { ...process.env, CI: "true", COREPACK_ENABLE_NETWORK: "0",
         NPM_CONFIG_USERCONFIG: join(directory, "empty.npmrc") },
     });
-    expect(command(["--version"]).trim()).toBe("11.2.2");
+    expect(command(["--version"]).trim()).toBe("12.3.4");
     const install = (frozen: boolean) => command([
       "install", "--offline", "--ignore-scripts", "--ignore-pnpmfile",
       frozen ? "--frozen-lockfile" : "--no-frozen-lockfile", "--store-dir", join(directory, "store"),
@@ -130,6 +130,83 @@ describe("native exact-input evidence", () => {
 });
 
 describe("offline installed runtime", () => {
+  it("seals the patched llama.cpp provider with source and build provenance", async () => {
+    const directory = root();
+    const source = join(directory, "source");
+    const providerSource = join(source, "extensions/llama-cpp");
+    const providerBuild = join(source, "dist/extensions/llama-cpp");
+    const manifest = {
+      name: "@openclaw/llama-cpp-provider",
+      version: "2026.9.3",
+      type: "module",
+      openclaw: { extensions: ["./index.js"] },
+    };
+    json(join(providerSource, "package.json"), { ...manifest, openclaw: { extensions: ["./index.ts"] } });
+    writeFileSync(join(providerSource, "index.ts"), "export const keepEmbeddingResident = true;");
+    json(join(providerBuild, "package.json"), manifest);
+    writeFileSync(join(providerBuild, "index.js"), "export const keepEmbeddingResident = true;");
+    mkdirSync(join(providerBuild, "node_modules/@openclaw"), { recursive: true });
+    symlinkSync(providerSource, join(providerBuild, "node_modules/@openclaw/plugin-sdk"));
+    const provenance = {
+      publicHead: "1".repeat(40),
+      buildInputsSha256: "2".repeat(64),
+      buildCommandSha256: "3".repeat(64),
+      tools: { node: process.version, platform: process.platform, arch: process.arch },
+    };
+    const result = await packProviderRuntime(source, join(directory, "artifact"), provenance);
+    const receipt = JSON.parse(readFileSync(result.provenance.path, "utf8"));
+    expect(receipt).toMatchObject({
+      schema: "puddles.openclaw-provider-artifact/v1",
+      publicHead: provenance.publicHead,
+      source: { sha256: result.provenance.sourceSha256 },
+      build: {
+        inputsSha256: provenance.buildInputsSha256,
+        commandSha256: provenance.buildCommandSha256,
+      },
+      artifact: { sha256: result.artifact.sha256, runtimeSha256: result.artifact.runtimeSha256 },
+    });
+    const installed = await installRuntime(result.artifact, join(directory, "installed"));
+    expect(readFileSync(join(installed, "index.js"), "utf8")).toContain("keepEmbeddingResident");
+    expect(fileDigest(result.provenance.path)).toBe(result.provenance.sha256);
+  });
+
+  it.each(["bundleDependencies", "bundledDependencies"])("materializes %s without overlapping npm's bundled files", async (field) => {
+    const directory = root();
+    const source = join(directory, "source");
+    json(join(source, "package.json"), {
+      name: "synthetic-bundled-runtime", version: "1.0.0", files: ["index.cjs"],
+      dependencies: { "@synthetic/bundled": "1.0.0" }, [field]: ["@synthetic/bundled"],
+    });
+    writeFileSync(join(source, "index.cjs"), "console.log(require('@synthetic/bundled'));");
+    const bundled = join(source, "node_modules/@synthetic/bundled");
+    json(join(bundled, "package.json"), {
+      name: "@synthetic/bundled", version: "1.0.0", main: "index.cjs",
+      dependencies: { transitive: "2.0.0" }, peerDependencies: { "required-peer": "3.0.0" },
+    });
+    writeFileSync(join(bundled, "index.cjs"), "module.exports = require('transitive') + require('required-peer') + require('./payload/node_modules/embedded');");
+    const embedded = join(bundled, "payload/node_modules/embedded");
+    json(join(embedded, "package.json"), { name: "embedded", version: "1.0.0", main: "index.cjs" });
+    writeFileSync(join(embedded, "index.cjs"), "module.exports = '-embedded';");
+    for (const [name, version, value] of [["transitive", "2.0.0", "patched-"], ["required-peer", "3.0.0", "peer"]]) {
+      const dependency = join(source, "node_modules", name);
+      json(join(dependency, "package.json"), { name, version, main: "index.cjs" });
+      writeFileSync(join(dependency, "index.cjs"), `module.exports = ${JSON.stringify(value)};`);
+    }
+    const selection = JSON.parse(execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
+      cwd: source, encoding: "utf8", timeout: 10_000,
+    }));
+    expect(selection[0].files.some(({ path }: { path: string }) => path.startsWith("node_modules/"))).toBe(true);
+    const artifact = await packRuntime(source, join(directory, "artifacts"));
+    const installed = await installRuntime(artifact, join(directory, "prefix"));
+    rmSync(join(source, "node_modules/required-peer"), { recursive: true });
+    await expect(packRuntime(source, join(directory, "missing-peer"))).rejects.toThrow("Missing production dependency: required-peer");
+    rmSync(source, { recursive: true });
+    expect(execFileSync(process.execPath, [join(installed, "index.cjs")], {
+      encoding: "utf8", timeout: 10_000, env: fixtureEnv(isolatedContext(join(directory, "context"))),
+    }).trim()).toBe("patched-peer-embedded");
+    expect(treeDigest(installed, { portable: true })).toBe(artifact.runtimeSha256);
+  }, 15_000);
+
   it("ships actual patched dependency bytes, cycles and versions without registry resolution", async () => {
     const directory = root();
     const source = join(directory, "source");
@@ -179,6 +256,13 @@ describe("offline installed runtime", () => {
 });
 
 describe("recording fixture prerequisites", () => {
+  it("rejects unsupported fixture chat types before starting a gateway", async () => {
+    await expect(runScenario("/missing", {
+      id: "invalid-chat",
+      chatType: "unrestricted",
+      steps: [{ incoming: [], responses: [], expect: { sends: [] } }],
+    })).rejects.toThrow("Invalid fixture chat type");
+  });
   it("seals named portable artifacts from verified declared package directories", async () => {
     const context = isolatedContext(root());
     const source = join(context.workspace, "source");
@@ -213,6 +297,51 @@ describe("recording fixture prerequisites", () => {
 
   it("never counts a missing real installed candidate as green", async () => {
     await expect(runScenario(root(), { id: "missing-runtime", steps: [{ incoming: [{ text: "test" }], responses: [{ text: "test" }], expect: { sends: ["test"] } }] })).rejects.toThrow("real installed");
+  });
+
+  it("rejects an omitted maintained channel before a fixture can install an external replacement", async () => {
+    const directory = root();
+    mkdirSync(join(directory, "dist"));
+    mkdirSync(join(directory, "node_modules"));
+    writeFileSync(join(directory, "openclaw.mjs"), "");
+    writeFileSync(join(directory, "dist/entry.js"), "");
+    await expect(runScenario(directory, {
+      id: "missing-maintained-channel",
+      steps: [{ incoming: [{ text: "fixture" }], responses: [{ text: "fixture" }], expect: { sends: ["fixture"] } }],
+    })).rejects.toThrow("maintained iMessage plugin must be bundled");
+    const env = fixtureEnv(isolatedContext(join(directory, "context")));
+    expect(env.npm_config_offline).toBe("true");
+    expect(env.COREPACK_ENABLE_NETWORK).toBe("0");
+    expect(env.npm_config_cache).toBe(join(directory, "context/home/.npm"));
+  });
+
+  it.each([-1, 1001, NaN])("rejects an unbounded incoming fixture delay (%s)", async (delayMs) => {
+    await expect(runScenario(root(), {
+      id: "invalid-delay",
+      steps: [{ incoming: [{ text: "fixture", delayMs }], responses: [], expect: { sends: [] } }],
+    })).rejects.toThrow("Invalid fixture incoming delay");
+  });
+
+  it.each(["channel", "account"])("rejects stale packaged %s metadata before startup", async (missing) => {
+    const directory = root();
+    mkdirSync(join(directory, "dist/extensions/imessage"), { recursive: true });
+    mkdirSync(join(directory, "node_modules"));
+    writeFileSync(join(directory, "openclaw.mjs"), "");
+    writeFileSync(join(directory, "dist/entry.js"), "");
+    json(join(directory, "dist/extensions/imessage/package.json"), {
+      openclaw: { build: { bundledDist: true } },
+    });
+    json(join(directory, "dist/extensions/imessage/openclaw.plugin.json"), {
+      channelConfigs: { imessage: { schema: { properties: {
+        ...(missing === "channel" ? {} : { coalesceSameSenderDms: { type: "boolean" } }),
+        accounts: { additionalProperties: { properties: missing === "account"
+          ? {} : { coalesceSameSenderDms: { type: "boolean" } } } },
+      } } } },
+    });
+    await expect(runScenario(directory, {
+      id: "stale-packaged-schema",
+      steps: [{ incoming: [{ text: "fixture" }], responses: [{ text: "fixture" }], expect: { sends: ["fixture"] } }],
+    })).rejects.toThrow(`packaged ${missing} schema is missing maintained iMessage coalescing`);
   });
 
   it("requires explicit valid local extensions and failed host availability is not green", async () => {

@@ -23,13 +23,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: openclaw/openclaw
-          ref: 0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c
+          ref: 1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7
           path: .openclaw-source
 
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: "22.23.1"
+          node-version: "26.1.0"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -37,7 +37,7 @@ jobs:
           python-version: "3.11"
 
       - name: Enable package managers
-        run: corepack enable
+        run: npm install --global corepack@0.36.0 && corepack enable
 
       - name: Install Puddles dependencies
         run: pnpm install --frozen-lockfile

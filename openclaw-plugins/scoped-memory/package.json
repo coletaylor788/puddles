@@ -1,0 +1,23 @@
+{
+  "name": "scoped-memory",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenClaw tools restricted to the calling agent's own Markdown memory",
+  "type": "module",
+  "main": "dist/plugin.js",
+  "types": "dist/plugin.d.ts",
+  "scripts": {
+    "build": "tsc --emitDeclarationOnly && esbuild src/plugin.ts --bundle --platform=node --format=esm --target=node24 --outfile=dist/plugin.js --external:openclaw && node scripts/write-dist-manifest.mjs",
+    "test": "vitest run",
+    "lint": "tsc --noEmit"
+  },
+  "peerDependencies": { "openclaw": ">=2026.9.3" },
+  "openclaw": { "extensions": ["./dist/plugin.js"] },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.25.0",
+    "openclaw": "2026.9.3",
+    "typescript": "^5.0.0",
+    "vitest": "^3.0.0"
+  }
+}

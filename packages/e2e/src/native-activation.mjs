@@ -1,4 +1,5 @@
-import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { accessSync, closeSync, constants, cpSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, rmSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -6,8 +7,72 @@ import { setTimeout as delay } from "node:timers/promises";
 import { acquireLock, atomicJson, fileDigest, inside, jsonDigest, treeDigest, verifyCandidateProofs } from "./native-state.mjs";
 import { installRuntime } from "./native-package.mjs";
 import { runCommand } from "./process-runner.mjs";
+import { readMigrationManifest } from "./native-state-migration.mjs";
 
 const patchDir = resolve(dirname(fileURLToPath(import.meta.url)), "../../../docs/openclaw-setup/patches");
+
+function validateNodeMigration(target) {
+  const migration = target.nodeMigration;
+  if (migration === undefined) return;
+  if (!migration || !Number.isInteger(migration.argumentIndex) || migration.argumentIndex < 0) throw new Error("Invalid Node interpreter argument index");
+  for (const identity of [migration.expected, migration.desired]) {
+    if (!identity || !isAbsolute(identity.path ?? "") || !/^[a-f0-9]{64}$/.test(identity.sha256) ||
+        !/^v\d+\.\d+\.\d+$/.test(identity.version) || identity.platform !== process.platform ||
+        identity.arch !== process.arch) throw new Error("Invalid Node interpreter identity");
+    if (identity.realPath !== undefined && (identity !== migration.expected || !isAbsolute(identity.realPath))) {
+      throw new Error("Only the expected Node interpreter may select an explicit canonical realPath");
+    }
+    if ([target.installDir, target.stateDir, target.backupRoot].some((root) =>
+      [identity.path, identity.realPath ?? identity.path].some((path) => inside(existsSync(root) ? realpathSync(root) : resolve(root), resolve(path))))) {
+      throw new Error("Node interpreter must remain outside replaced runtime and recovery roots");
+    }
+  }
+  if (migration.expected.path === migration.desired.path || (migration.expected.realPath ?? migration.expected.path) === migration.desired.path) {
+    throw new Error("Node migration requires distinct retained executables");
+  }
+  const [major, minor] = migration.desired.version.slice(1).split(".").map(Number);
+  if (!(major === 24 && minor >= 16 || major === 26 && minor >= 1 || major > 26)) throw new Error("Unsupported desired Node runtime");
+}
+
+function verifyNodeFile(identity) {
+  const canonical = identity.realPath ?? identity.path;
+  if (!lstatSync(identity.path, { throwIfNoEntry: false })?.isFile() ||
+      !lstatSync(canonical, { throwIfNoEntry: false })?.isFile() || realpathSync(canonical) !== canonical) {
+    throw new Error("Node interpreter must be an available canonical executable");
+  }
+  if (realpathSync(identity.path) !== canonical) throw new Error("Node interpreter path resolution differs from expected canonical binary");
+  accessSync(canonical, constants.X_OK);
+  if (fileDigest(canonical) !== identity.sha256) throw new Error("Node interpreter executable digest changed");
+}
+
+async function verifyNodeIdentities(migration, receipt, operations) {
+  for (const identity of [migration.expected, migration.desired]) {
+    verifyNodeFile(identity);
+    const actual = await operations.inspectNode(identity.realPath ?? identity.path);
+    if (["version", "platform", "arch"].some((key) => actual[key] !== identity[key])) throw new Error("Node interpreter version, platform or arch differs");
+    verifyNodeFile(identity);
+  }
+  const desired = migration.desired;
+  if (receipt.tools?.node !== desired.version || receipt.tools?.nodeBinary !== desired.sha256 ||
+      receipt.tools?.platform !== desired.platform || receipt.tools?.arch !== desired.arch ||
+      receipt.artifact.node !== desired.version || receipt.artifact.platform !== desired.platform ||
+      receipt.artifact.arch !== desired.arch || process.version !== desired.version ||
+      fileDigest(process.execPath) !== desired.sha256) throw new Error("Node interpreter differs from candidate toolchain");
+}
+
+function durableServiceCopy(from, to) {
+  const staged = `${to}.${randomUUID()}.staged`;
+  try {
+    cpSync(from, staged, { errorOnExist: true, force: false });
+    const file = openSync(staged, "r");
+    try { fsyncSync(file); } finally { closeSync(file); }
+    renameSync(staged, to);
+    const directory = openSync(dirname(to), "r");
+    try { fsyncSync(directory); } finally { closeSync(directory); }
+  } finally {
+    rmSync(staged, { force: true });
+  }
+}
 
 function additionalInstallPath(target, path) {
   if (typeof path !== "string" || !path || isAbsolute(path) ||
@@ -36,6 +101,16 @@ export function validateTarget(target) {
     if (!lstatSync(target[name]).isDirectory() || lstatSync(target[name]).isSymbolicLink()) throw new Error("Deployment root must be a real directory");
   }
   if (!lstatSync(target.plistPath).isFile()) throw new Error("Gateway service definition is missing");
+  validateNodeMigration(target);
+  if (target.stateMigration) {
+    const migration = target.stateMigration;
+    if (Object.keys(migration).some((key) => !["manifestPath", "sha256"].includes(key)) ||
+        !isAbsolute(migration.manifestPath ?? "") || !/^[a-f0-9]{64}$/.test(migration.sha256 ?? "") ||
+        [target.installDir, target.stateDir].some((root) => inside(resolve(root), resolve(migration.manifestPath)))) {
+      throw new Error("Invalid stopped-state migration identity");
+    }
+  }
+  if (target.nodeMigration && lstatSync(target.plistPath).isSymbolicLink()) throw new Error("Gateway service definition must be a real file");
   mkdirSync(target.backupRoot, { recursive: true, mode: 0o700 });
   const roots = [target.installDir, target.stateDir, target.backupRoot].map((path) => realpathSync(path));
   for (let index = 0; index < roots.length; index++) {
@@ -66,7 +141,10 @@ export function systemOperations(target, recoveryDir, execute = runCommand) {
     logPath: join(recoveryDir, `command-${counter++}.log`), ...options,
   });
   const service = `gui/${process.getuid()}/${target.label}`;
-  const cli = (args, runtime = target.installDir) => run(process.execPath, [join(runtime, "openclaw.mjs"), ...args]);
+  const cli = (args, runtime = target.installDir, interpreter = target.nodeMigration?.desired.path ?? process.execPath) =>
+    run(interpreter, [join(runtime, "openclaw.mjs"), ...args], {
+      env: { ...env, PATH: `${dirname(interpreter)}:${process.env.PATH ?? "/usr/bin:/bin"}` },
+    });
   const currentBrowser = async () => target.browser
     ? (await run("docker", ["image", "inspect", "--format", "{{.Id}}", target.browser.tag], { capture: true })).trim()
     : null;
@@ -78,8 +156,33 @@ export function systemOperations(target, recoveryDir, execute = runCommand) {
     }
   };
   return {
+    async inspectNode(path) {
+      return JSON.parse(await run(path, ["-p", "JSON.stringify({version:process.version,platform:process.platform,arch:process.arch})"], { capture: true }));
+    },
+    async prepareService(migration, destination) {
+      await run("python3", ["-c", `
+import os, plistlib, shutil, sys
+source, destination, index, expected, desired = sys.argv[1:]
+index = int(index)
+with open(source, "rb") as file:
+    raw = file.read()
+service = plistlib.loads(raw)
+args = service.get("ProgramArguments")
+if (not isinstance(args, list) or not all(isinstance(arg, str) for arg in args)
+    or index >= len(args) or args[index] != expected or args.count(expected) != 1):
+    raise ValueError("Missing, ambiguous or mismatched interpreter argument")
+if "Program" in service and (index == 0 or service["Program"] != args[0]):
+    raise ValueError("Unsupported service Program override")
+args[index] = desired
+with open(destination, "xb") as file:
+    plistlib.dump(service, file, fmt=plistlib.FMT_BINARY if raw.startswith(b"bplist00") else plistlib.FMT_XML, sort_keys=False)
+    file.flush()
+    os.fsync(file.fileno())
+shutil.copymode(source, destination)
+`, target.plistPath, destination, String(migration.argumentIndex), migration.expected.path, migration.desired.path]);
+    },
     async preflight() {
-      await run(process.execPath, [join(target.installDir, "openclaw.mjs"), "--version"]);
+      await cli(["--version"], target.installDir, target.nodeMigration?.expected.realPath ?? target.nodeMigration?.expected.path ?? process.execPath);
       await run("python3", ["--version"]);
       treeDigest(target.installDir, { portable: true });
       if (target.browser) {
@@ -104,11 +207,22 @@ export function systemOperations(target, recoveryDir, execute = runCommand) {
       return null;
     },
     async install(artifact, prefix) { return installRuntime(artifact, prefix, run); },
-    async stop() {
+    async stop(runtime) {
+      const helper = resolve(patchDir, "../../../packages/e2e/bin/openclaw-service-stop.mjs");
+      const interpreter = target.nodeMigration?.desired.path ?? process.execPath;
+      let owner = "null";
+      if (await loaded()) {
+        const details = await run("launchctl", ["print", service], { capture: true });
+        const pid = /^\s*pid = (\d+)\s*$/m.exec(details)?.[1];
+        if (pid) owner = await run(interpreter, [helper, "capture", runtime, pid], { capture: true });
+      }
       try { await run("launchctl", ["bootout", service]); }
       catch (error) { if (await loaded()) throw error; }
       for (let attempt = 0; attempt < 30; attempt++) {
-        if (!(await loaded())) return;
+        if (!(await loaded())) {
+          await run(interpreter, [helper, "join", runtime, target.stateDir, owner]);
+          return;
+        }
         await delay(1000);
       }
       throw new Error("Gateway shutdown did not complete");
@@ -120,16 +234,28 @@ export function systemOperations(target, recoveryDir, execute = runCommand) {
       await cli(["doctor", "--fix", "--yes"]);
       if (await loaded()) throw new Error("Doctor activated the externally managed gateway");
     },
-    async browser(imageId, runtime) {
+    async stateMigration(phase, runtime, manifestPath, sha256) {
+      await run(target.nodeMigration?.desired.path ?? process.execPath, [
+        resolve(patchDir, "../../../packages/e2e/bin/openclaw-state-migrate.mjs"),
+        phase, runtime, realpathSync(target.stateDir), manifestPath, sha256,
+      ], {
+        env: {
+          ...env, OPENCLAW_STATE_DIR: realpathSync(target.stateDir),
+          OPENCLAW_CONFIG_PATH: join(realpathSync(target.stateDir), "openclaw.json"),
+          XDG_CACHE_HOME: join(recoveryDir, "read-cache"),
+        },
+      });
+    },
+    async browser(imageId, runtime, interpreter) {
       if (!target.browser) return;
       await run("docker", ["tag", imageId, target.browser.tag]);
-      await cli(["sandbox", "recreate", "--agent", "browser-agent", "--force"], runtime);
-      await cli(["sandbox", "recreate", "--browser", "--agent", "browser-agent", "--force"], runtime);
+      await cli(["sandbox", "recreate", "--agent", "browser-agent", "--force"], runtime, interpreter);
+      await cli(["sandbox", "recreate", "--browser", "--agent", "browser-agent", "--force"], runtime, interpreter);
     },
     currentBrowser,
-    async health() {
+    async health(interpreter) {
       for (let attempt = 0; attempt < 30; attempt++) {
-        try { await cli(["gateway", "health", "--port", String(target.port)]); return; }
+        try { await cli(["gateway", "health", "--port", String(target.port)], target.installDir, interpreter); return; }
         catch (error) { if (attempt === 29) throw error; }
         await delay(1000);
       }
@@ -143,13 +269,17 @@ function verifySnapshots(recoveryDir, journal) {
         treeDigest(join(recoveryDir, "package")) !== journal.snapshots.package ||
         fileDigest(join(recoveryDir, "service.plist")) !== journal.snapshots.service) throw new Error("Recovery snapshot content changed");
   }
-  if (journal.browserChanged &&
+  if (journal.candidateSha256 &&
       treeDigest(join(recoveryDir, "candidate"), { portable: true }) !== journal.candidateSha256) throw new Error("Recovery candidate content changed");
 }
 
 async function restore(target, recoveryDir, journal, operations) {
   verifySnapshots(recoveryDir, journal);
-  await operations.stop();
+  if (journal.nodeMigration) {
+    verifyNodeFile(journal.nodeMigration.expected);
+    verifyNodeFile(journal.nodeMigration.desired);
+  }
+  await operations.stop(join(recoveryDir, "candidate"));
   if (journal.explicitRollback && !journal.failedSnapshots) {
     for (const [name, source] of [["failed-state", target.stateDir], ["failed-package", target.installDir]]) {
       const destination = join(recoveryDir, name);
@@ -173,7 +303,8 @@ async function restore(target, recoveryDir, journal, operations) {
       await operations.clone(join(recoveryDir, name), replacement);
       await operations.swap(destination, replacement);
     }
-    cpSync(join(recoveryDir, "service.plist"), target.plistPath);
+    if (journal.nodeMigration) durableServiceCopy(join(recoveryDir, "service.plist"), target.plistPath);
+    else cpSync(join(recoveryDir, "service.plist"), target.plistPath);
     if (treeDigest(target.stateDir) !== journal.snapshots.state ||
         fileDigest(target.plistPath) !== journal.snapshots.service) throw new Error("Restored state or service differs from snapshot");
   }
@@ -182,7 +313,7 @@ async function restore(target, recoveryDir, journal, operations) {
   if (journal.browserChanged) {
     const candidate = join(recoveryDir, "candidate");
     if (treeDigest(candidate, { portable: true }) !== journal.candidateSha256) throw new Error("Recovery candidate content changed");
-    await operations.browser(journal.previousBrowser, candidate);
+    await operations.browser(journal.previousBrowser, candidate, journal.nodeMigration?.desired.path);
   }
   if (journal.snapshotReady) {
     const replacement = join(recoveryDir, "restore-package");
@@ -191,14 +322,21 @@ async function restore(target, recoveryDir, journal, operations) {
     await operations.swap(target.installDir, replacement);
     if (treeDigest(target.installDir) !== journal.snapshots.package) throw new Error("Restored runtime differs from snapshot");
   }
+  if (journal.nodeMigration) {
+    verifyNodeFile(journal.nodeMigration.expected);
+    verifyNodeFile(journal.nodeMigration.desired);
+  }
   await operations.start();
-  await operations.health();
+  await operations.health(journal.nodeMigration?.expected.realPath ?? journal.nodeMigration?.expected.path);
 }
 
 export async function activateNative(receipt, target, operationsFactory = systemOperations, recoverDir, action = "recover") {
   if (!["recover", "rollback"].includes(action) || action === "rollback" && !recoverDir) throw new Error("Explicit rollback requires its recovery directory");
   validateTarget(target);
   if (receipt.status !== "passed" || receipt.accumulated !== true || !receipt.scenarios) throw new Error("A complete accumulated rehearsal is required before activation");
+  if ((receipt.stateMigration?.sha256 ?? null) !== (target.stateMigration?.sha256 ?? null)) {
+    throw new Error("State migration differs from the rehearsed candidate");
+  }
   const extras = receipt.additionalArtifacts ?? [];
   if (!Array.isArray(extras) || extras.some((extra) => !/^[a-z][a-z0-9-]*$/.test(extra.id) || !extra.artifact?.runtimeSha256) ||
       new Set(extras.map((extra) => extra.id)).size !== extras.length ||
@@ -206,7 +344,12 @@ export async function activateNative(receipt, target, operationsFactory = system
       extras.some((extra) => !target.additionalInstalls.some((install) => install.id === extra.id))) {
     throw new Error("Target must map every rehearsed additional artifact exactly once");
   }
-  const extraIdentity = extras.map(({ id, artifact }) => ({ id, sha256: artifact.sha256, runtimeSha256: artifact.runtimeSha256 }));
+  const extraIdentity = extras.map(({ id, artifact, provenance }) => ({
+    id,
+    sha256: artifact.sha256,
+    runtimeSha256: artifact.runtimeSha256,
+    ...(provenance ? { provenanceSha256: provenance.sha256 } : {}),
+  }));
   if (!recoverDir) {
     for (const artifact of [receipt.artifact, ...extras.map((extra) => extra.artifact)]) {
       if (fileDigest(artifact.path) !== artifact.sha256) throw new Error("Rehearsed artifact changed");
@@ -248,6 +391,13 @@ export async function activateNative(receipt, target, operationsFactory = system
       journal = JSON.parse(readFileSync(journalPath, "utf8"));
       if (journal.target !== jsonDigest(target) || journal.artifact !== receipt.artifact.sha256 ||
           jsonDigest(journal.additionalArtifacts ?? []) !== jsonDigest(extraIdentity)) throw new Error("Recovery identity differs from original target or artifact");
+      if ((journal.quiesced || journal.snapshotReady) && (target.nodeMigration || journal.nodeMigration)) {
+        const migration = journal.nodeMigration;
+        if (!migration || jsonDigest({ argumentIndex: migration.argumentIndex, expected: migration.expected, desired: migration.desired }) !==
+            jsonDigest({ argumentIndex: target.nodeMigration?.argumentIndex, expected: target.nodeMigration?.expected, desired: target.nodeMigration?.desired }) ||
+            migration.originalServiceSha256 !== fileDigest(join(recoveryDir, "service.plist"))) throw new Error("Recovery Node migration identity differs");
+        await verifyNodeIdentities(migration, receipt, operations);
+      }
       if (action === "rollback") {
         verifyLatest();
         if (journal.status === "rolled-back") return { status: journal.status, recoveryDir };
@@ -277,11 +427,32 @@ export async function activateNative(receipt, target, operationsFactory = system
       return { status: "rolled-back", recoveryDir };
     }
     save("preflight");
+    if (target.nodeMigration) {
+      await verifyNodeIdentities(target.nodeMigration, receipt, operations);
+      const originalServiceSha256 = fileDigest(target.plistPath);
+      await operations.prepareService(target.nodeMigration, join(recoveryDir, "candidate-service.plist"));
+      if (fileDigest(target.plistPath) !== originalServiceSha256) throw new Error("Gateway service changed during migration preflight");
+      journal.nodeMigration = {
+        ...target.nodeMigration, originalServiceSha256,
+        migratedServiceSha256: fileDigest(join(recoveryDir, "candidate-service.plist")),
+      };
+      save("preflight");
+    }
     journal.previousBrowser = await operations.preflight();
     const prefix = join(dirname(target.installDir), `.puddles-install-${Date.now()}-${process.pid}`);
     journal.prefix = prefix;
     const installed = await operations.install(receipt.artifact, prefix);
     journal.deployedRuntimeSha256 = treeDigest(installed, { portable: true });
+    if (target.stateMigration) {
+      readMigrationManifest(target.stateMigration.manifestPath, target.stateMigration.sha256);
+      const manifestPath = join(recoveryDir, "state-migration.json");
+      durableServiceCopy(target.stateMigration.manifestPath, manifestPath);
+      readMigrationManifest(manifestPath, target.stateMigration.sha256);
+      journal.stateMigration = { sha256: target.stateMigration.sha256, phase: "preflight" };
+      save("preflight");
+      await operations.stateMigration("preflight", installed, manifestPath, target.stateMigration.sha256);
+      checkpoint();
+    }
     const stagedExtras = {};
     for (const { id, artifact } of extras) {
       const staged = await operations.install(artifact, join(recoveryDir, "additional-staging", id));
@@ -289,18 +460,23 @@ export async function activateNative(receipt, target, operationsFactory = system
       stagedExtras[id] = staged;
       checkpoint();
     }
-    if (target.browser) {
-      await operations.clone(installed, join(recoveryDir, "candidate"));
-      journal.candidateSha256 = treeDigest(join(recoveryDir, "candidate"), { portable: true });
-    }
+    await operations.clone(installed, join(recoveryDir, "candidate"));
+    journal.candidateSha256 = treeDigest(join(recoveryDir, "candidate"), { portable: true });
     checkpoint();
     // Snapshots use clonefile through the existing helper, with no fallback copy.
     await operations.clone(target.installDir, join(recoveryDir, "package"));
-    cpSync(target.plistPath, join(recoveryDir, "service.plist"));
+    if (journal.nodeMigration) {
+      verifyNodeFile(journal.nodeMigration.expected);
+      verifyNodeFile(journal.nodeMigration.desired);
+      if (fileDigest(target.plistPath) !== journal.nodeMigration.originalServiceSha256 ||
+          fileDigest(join(recoveryDir, "candidate-service.plist")) !== journal.nodeMigration.migratedServiceSha256) throw new Error("Gateway service changed before shutdown");
+      durableServiceCopy(target.plistPath, join(recoveryDir, "service.plist"));
+      if (fileDigest(join(recoveryDir, "service.plist")) !== journal.nodeMigration.originalServiceSha256) throw new Error("Gateway service changed while snapshotting");
+    } else cpSync(target.plistPath, join(recoveryDir, "service.plist"));
     atomicJson(latestPath, { transaction: journal.transaction, target: journal.target });
     journal.quiesced = true;
     save("stopping");
-    await operations.stop();
+    await operations.stop(join(recoveryDir, "candidate"));
     checkpoint();
     await operations.clone(target.stateDir, join(recoveryDir, "state"));
     journal.snapshots = {
@@ -320,9 +496,33 @@ export async function activateNative(receipt, target, operationsFactory = system
       checkpoint();
     }
     verifyAdditional();
+    if (journal.stateMigration) {
+      journal.stateMigration.phase = "schema";
+      save("migrating-schema");
+      await operations.stateMigration("schema", target.installDir, join(recoveryDir, "state-migration.json"), journal.stateMigration.sha256);
+      checkpoint();
+      journal.stateMigration.phase = "config";
+      save("migrating-config");
+      await operations.stateMigration("config", target.installDir, join(recoveryDir, "state-migration.json"), journal.stateMigration.sha256);
+      checkpoint();
+    }
     await operations.doctor();
+    if (journal.stateMigration) {
+      journal.stateMigration.phase = "cron";
+      save("migrating-cron");
+      await operations.stateMigration("cron", target.installDir, join(recoveryDir, "state-migration.json"), journal.stateMigration.sha256);
+      journal.stateMigration.phase = "complete";
+      save("migrated");
+    }
     verifyAdditional();
     checkpoint();
+    if (journal.nodeMigration) {
+      verifyNodeFile(journal.nodeMigration.expected);
+      verifyNodeFile(journal.nodeMigration.desired);
+      if (fileDigest(target.plistPath) !== journal.nodeMigration.originalServiceSha256 ||
+          fileDigest(join(recoveryDir, "candidate-service.plist")) !== journal.nodeMigration.migratedServiceSha256) throw new Error("Gateway service changed before interpreter replacement");
+      durableServiceCopy(join(recoveryDir, "candidate-service.plist"), target.plistPath);
+    }
     if (target.browser) {
       journal.browserChanged = true;
       save("browser");
@@ -335,6 +535,7 @@ export async function activateNative(receipt, target, operationsFactory = system
     verifyAdditional();
     if (treeDigest(target.installDir, { portable: true }) !== journal.deployedRuntimeSha256) throw new Error("Deployed runtime changed during activation");
     journal.deployedServiceSha256 = fileDigest(target.plistPath);
+    if (journal.nodeMigration && journal.deployedServiceSha256 !== journal.nodeMigration.migratedServiceSha256) throw new Error("Deployed interpreter service changed");
     checkpoint();
     journal.quiesced = false;
     save("healthy");
@@ -373,5 +574,11 @@ export async function verifyIntegratedCandidate(receiptPath, target) {
   const tree = (await runCommand("git", ["-C", target.integration.repository, "rev-parse", `${target.integration.ref}^{tree}`], { capture: true, quiet: true })).trim();
   if (tree !== receipt.repository.tree) throw new Error("Integrated source is not the rehearsed candidate");
   verifyCandidateProofs(receiptPath, receipt);
+  if (target.nodeMigration) {
+    const proof = JSON.parse(readFileSync(join(dirname(receiptPath), "stages", "runtime.json"), "utf8"));
+    if (["node", "nodeBinary", "platform", "arch"].some((key) => proof.inputs.tools?.[key] !== receipt.tools?.[key])) {
+      throw new Error("Candidate Node toolchain differs from rehearsal proof");
+    }
+  }
   return receipt;
 }

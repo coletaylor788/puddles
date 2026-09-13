@@ -58,6 +58,10 @@ vi.mock("../src/process-runner.mjs", () => ({
       counters.build++;
       mkdirSync(join(cwd, "dist"), { recursive: true });
       writeFileSync(join(cwd, "dist/entry.js"), "unchanged build");
+      mkdirSync(join(cwd, "extensions/llama-cpp"), { recursive: true });
+      writeFileSync(join(cwd, "extensions/llama-cpp/package.json"), "{}");
+      mkdirSync(join(cwd, "dist/extensions/llama-cpp"), { recursive: true });
+      writeFileSync(join(cwd, "dist/extensions/llama-cpp/index.js"), "provider");
       if (counters.generatedCaches) {
         for (const name of [".experimental-vitest-cache", ".unrun"]) {
           mkdirSync(join(cwd, "node_modules", name), { recursive: true });
@@ -113,18 +117,43 @@ vi.mock("../src/native-package.mjs", () => ({
     writeFileSync(join(path, "installed"), readFileSync(artifact.path));
     return path;
   },
+  packProviderRuntime: async (_source: string, directory: string, provenance: {
+    publicHead: string; buildInputsSha256: string; buildCommandSha256: string;
+  }) => {
+    mkdirSync(directory, { recursive: true });
+    const path = join(directory, "provider-artifact");
+    const provenancePath = join(directory, "provider-provenance.json");
+    writeFileSync(path, "provider");
+    writeFileSync(provenancePath, "provenance");
+    return {
+      id: "llama-cpp-provider",
+      artifact: { path, sha256: "a".repeat(64), runtimeSha256: "b".repeat(64),
+        schemaVersion: 1, platform: process.platform, arch: process.arch, node: process.version },
+      provenance: { path: provenancePath, sha256: "c".repeat(64),
+        schema: "puddles.openclaw-provider-artifact/v1", ...provenance,
+        sourceSha256: "d".repeat(64) },
+    };
+  },
 }));
 vi.mock("../src/native-fixture.mjs", async (original) => ({
   ...await original<object>(),
   runScenario: async (_installed: string, scenario: { id: string }) => ({ id: scenario.id, passed: true }),
 }));
 // @ts-expect-error JS lifecycle exports are tested at runtime.
-import { nativePipeline, regressionEnvironment, removeOwnedWorktree } from "../src/native-pipeline.mjs";
+import { nativePipeline, regressionEnvironment, removeOwnedWorktree, safeNode } from "../src/native-pipeline.mjs";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
 import { atomicJson, jsonDigest, treeDigest } from "../src/native-state.mjs";
 import { runCommand } from "../src/process-runner.mjs";
 
 const roots: string[] = [];
+it.each(["22.23.2", "23.0.0", "24.15.99", "25.9.0", "26.0.99", "26.1.0-rc.1", "invalid"])(
+  "rejects unsupported or prerelease Node %s before native work",
+  (version) => expect(safeNode(version)).toBe(false),
+);
+it.each(["24.16.0", "24.17.0", "26.1.0", "26.2.0", "27.0.0"])(
+  "accepts upstream-supported Node %s",
+  (version) => expect(safeNode(version)).toBe(true),
+);
 function root() { const path = mkdtempSync(join(tmpdir(), "native-pipeline-test-")); roots.push(path); return path; }
 beforeEach(() => {
   Object.assign(counters, { prepare: 0, install: 0, build: 0, package: 0, additionalInstalls: 0, runtimeCommands: 0, dependency: "first", generatedCaches: false });
@@ -142,8 +171,31 @@ function setup() {
   vi.stubEnv("OPENCLAW_SRC", source);
   vi.stubEnv("E2E_RUN_DIR", run);
   vi.stubEnv("E2E_LOCAL_EXTENSION", "");
+  vi.stubEnv("E2E_STATE_MIGRATION_MANIFEST", "");
   return { directory, run };
 }
+
+it("binds migration bytes to cumulative and runtime proofs without rebuilding unchanged source", async () => {
+  const { directory, run } = setup();
+  const path = join(realpathSync(directory), "migration.json");
+  const manifest = { schemaVersion: 1, configOperations: [
+    { kind: "set", path: ["memory", "search", "provider"], expected: { exists: false }, value: "local" },
+  ] };
+  writeFileSync(path, JSON.stringify(manifest));
+  vi.stubEnv("E2E_STATE_MIGRATION_MANIFEST", path);
+  vi.stubEnv("GMAIL_MCP_PYTHON", "fixture-python");
+  const first = await nativePipeline("ci", async () => {});
+  for (const name of ["regressions", "runtime"]) {
+    expect(JSON.parse(readFileSync(join(run, `stages/${name}.json`), "utf8")).inputs.stateMigration).toEqual(first.stateMigration);
+  }
+  manifest.configOperations[0].value = "none";
+  writeFileSync(path, JSON.stringify(manifest));
+  const second = await nativePipeline("ci", async () => {});
+  expect(second.stateMigration.sha256).not.toBe(first.stateMigration.sha256);
+  expect(second.proofs.regressions).not.toBe(first.proofs.regressions);
+  expect(second.proofs.runtime).not.toBe(first.proofs.runtime);
+  expect(counters.build).toBe(1);
+});
 function extension(directory: string, name: string, phase = "package", inputs: string[] = [], outputs = true) {
   const path = join(directory, `${name}.mjs`);
   writeFileSync(path, `export default ${JSON.stringify({
@@ -245,7 +297,14 @@ it("retains collection output and names the omitted public target without weaken
   const command = vi.mocked(runCommand);
   const implementation = command.getMockImplementation()!;
   command.mockClear();
-  command.mockImplementation(async (...args) => args[1].includes("--filesOnly") ? "" : implementation(...args));
+  command.mockImplementation(async (...args) => {
+    if (!args[1].includes("--filesOnly")) {
+      return implementation(...args);
+    }
+    return args[1]
+      .filter((arg) => arg.endsWith(".test.ts") && arg !== "src/plugin-sdk/file-lock.stale-contention.test.ts")
+      .join("\n");
+  });
   try {
     await expect(nativePipeline("ci", async () => {})).rejects.toThrow("src/plugin-sdk/file-lock.stale-contention.test.ts in plugin-sdk");
     const collection = command.mock.calls.find(([, args]) => args.includes("--filesOnly"));
@@ -403,13 +462,13 @@ it("seals and installs additional artifacts before rehearsal and invalidates onl
   vi.stubEnv("E2E_LOCAL_EXTENSION", module);
   const first = await nativePipeline("native", async () => {});
   await nativePipeline("native", async () => {});
-  expect(first.additionalArtifacts[0].id).toBe("auxiliary");
-  expect(first.proofs["install-additional-0"]).toBeDefined();
-  expect(counters).toMatchObject({ build: 1, package: 1, additionalInstalls: 1, runtimeCommands: 1 });
+  expect(first.additionalArtifacts.map(({ id }: { id: string }) => id)).toEqual(["llama-cpp-provider", "auxiliary"]);
+  expect(first.proofs["install-additional-1"]).toBeDefined();
+  expect(counters).toMatchObject({ build: 1, package: 1, additionalInstalls: 2, runtimeCommands: 1 });
   writeFileSync(input, "second auxiliary bytes");
   const second = await nativePipeline("native", async () => {});
-  expect(second.additionalArtifacts[0].artifact.sha256).not.toBe(first.additionalArtifacts[0].artifact.sha256);
-  expect(counters).toMatchObject({ build: 1, package: 1, additionalInstalls: 2, runtimeCommands: 2 });
+  expect(second.additionalArtifacts[1].artifact.sha256).not.toBe(first.additionalArtifacts[1].artifact.sha256);
+  expect(counters).toMatchObject({ build: 1, package: 1, additionalInstalls: 3, runtimeCommands: 2 });
   const context = JSON.parse(readFileSync(join(run, "context/context.json"), "utf8"));
   expect(readFileSync(join(context.additionalInstalledDirs.auxiliary, "installed"), "utf8")).toBe("second auxiliary bytes");
 });

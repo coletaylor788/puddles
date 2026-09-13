@@ -13,14 +13,22 @@ esac
 
 # Public patch order remains visible to the cumulative manifest regression.
 PATCHES=(
+  managed-local-service-lifecycle
+  gateway-memory-warmup
   file-lock-stale-reclaim-guard
   sessions-yield-block-and-gather
+  sessions-yield-durable-handoff
   subagent-cross-agent-spawn-fix
   skill-workshop-sandbox-fix
   imessage-message-part-coalescing
   sandbox-discovery-failure-fix
   browser-userdata-dir-fix
-  qmd-mcporter-per-agent
+  builtin-memory-migration
+  silent-reply-completion-evidence
+  stopped-state-migration-sdk
+  scoped-container-temp-root
+  active-memory-cold-recall
+  active-memory-fixture-cleanup
 )
 
 if [ -n "${MINI_HOST:-}" ]; then

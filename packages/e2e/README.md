@@ -6,6 +6,22 @@ sessions, indexes, workspace, logs, ports, and processes are isolated. Host
 dependencies are deliberately shared. This is not a security sandbox against
 arbitrary shell commands or other ambient host access.
 
+The purpose of this separation is to start and exercise a candidate without
+causing outages or changing the live instance. Normal host filesystem access
+and existing shared coordination directories are allowed on the trusted host.
+Use the runtime's normal locking, keep test databases distinct, and leave
+foreign locks and unrelated processes alone. Cleanup removes only resources
+owned by the test run, never a shared directory.
+
+Harness-only filesystem permission restrictions are optional. If they block
+normal installed startup, doctor, or plugin loading, simplify the harness
+restriction rather than patching production locking or adding a special
+fixture-entry protocol. Do not require adversarial host confinement unless the
+requester explicitly asks for it. This does not relax product agent access
+controls or permit live-state mutations, real message delivery, or secrets in
+fixtures and logs. Content assertions still use synthetic data, and external
+writes still require recording adapters.
+
 ## Required cumulative gate
 
 Every feature and fix contributes a committed regression. Run focused tests
@@ -17,7 +33,13 @@ E2E_RUN_DIR=/path/outside/checkouts/native-run \
   node packages/e2e/bin/openclaw-test-env.mjs ci
 ```
 
-Use a Node version supported by the pinned upstream package. Puddles and
+The pinned OpenClaw 2026.9.3 requires Node 24.16.0 or later on 24.x, or
+26.1.0 or later. Public CI uses Node 26.1.0. Earlier Node releases can truncate
+SQLite text and are rejected before native work begins. Node 26 no longer
+bundles Corepack, so install Corepack 0.36.0 explicitly before running the gate.
+Use a fresh `COREPACK_HOME` when upgrading from an older Corepack cache that
+records the retired pnpm CommonJS entrypoint. Upstream uses pnpm 12.3.4.
+Puddles and
 OpenClaw each use their own committed package-manager version through Corepack.
 Preflight checks the source pin, toolchain, and host capacity before costly
 work. CI uses public source only and never needs live account credentials.
@@ -41,9 +63,42 @@ It installs that archive offline in a fresh prefix and executes all
 committed native scenarios. A missing test, runtime, dependency, recorder,
 scenario, or selected required health prerequisite is a failure, not a skip.
 
+Installed fixtures require the maintained bundled iMessage plugin before
+startup and disable registry package resolution. They also check that startup
+preserves its coalescing option. The split-message scenario omits an explicit
+debounce and delays the linked payload by 400 milliseconds, so ordinary
+debouncing cannot stand in for the maintained behavior. Other scenarios retain
+their explicit 250-millisecond debounce. Fixture delays are bounded to one second.
+Bootstrap checks follow the stable AGENTS, SOUL, IDENTITY, and USER files.
+
 `openclaw-patch-suite.json` retains the cumulative patch order, test targets, and
 explicit upstream Vitest projects. New patches must register every added test.
 Do not replace earlier regressions with only the newest feature's targets.
+
+The memory migration entry also runs the scoped-memory adapter against the
+built candidate's SDK. Workspace gates build and test that plugin before the
+candidate proof. Its synthetic notes and fixed sources must not consult live
+workspaces or shared knowledge stores.
+
+The stopped-state migration entry exercises the real SDK on current and
+historical SQLite schemas. Installed rehearsal runs the same executor again
+from the packaged runtime, with network access denied. It checks readonly
+preflight, schema repair before config mutation, sole include ownership, job
+revision conflicts, and preservation of unrelated state. Wrapper fixtures
+cover ordering, each failure stage, and interrupted rollback with the retained
+interpreter. The historical fixture comes from the pinned upstream test pool,
+with its compressed digest checked before use.
+
+An operator may select `E2E_STATE_MIGRATION_MANIFEST` as a canonical absolute
+local manifest file for a combined rehearsal. The runner validates its shape,
+binds its bytes to regression and runtime evidence, and provides
+`context.stateMigration` with `manifestPath` and `sha256` to the explicitly
+selected local extension. It never applies that manifest to a live target.
+The extension must prove its private values against isolated state. Public CI
+leaves this option unset and runs the committed synthetic migration fixtures.
+Activation requires the same digest in its local target. See the
+[deployment guide](../../docs/openclaw-setup/patches/README.md) for the narrow
+manifest and recovery contract.
 
 Public CI initializes a fresh run directory for each hosted attempt and
 explicitly disables local extensions. On failure, it retains a seven-day
@@ -66,7 +121,13 @@ not overwhelm standard hosted CPUs. The default test deadline stays unchanged.
 Native pipeline orchestration and the observed archive and concurrent-config
 rollback cases have explicit 15-second limits. Lock fixtures wait for the real
 readiness response with a bounded startup allowance, not a fixed sleep or a
-production timeout change.
+global timeout increase. The interpreter migration fixture has a file-scoped
+30-second limit because its complete activation and rollback passes repeatedly
+hash the real Node binary and run plist subprocesses. Hosted Intel runs measure
+up to 15 seconds per multi-pass case; a single allowance covers the whole
+fixture instead of chasing individual timeouts. Its assertions and real checks
+remain intact. The fixture yields between tests so synchronous work cannot
+starve the worker's reporting channel.
 
 ```bash
 corepack pnpm --filter e2e exec vitest run tests/native-loop.test.ts
@@ -86,9 +147,20 @@ evidence. Reuse the same directory to resume. Successful stages are reused only
 when their inputs and outputs match. Source, tests, environment, toolchain,
 build options, and artifact changes invalidate affected proofs. Package repairs
 rerun installation and runtime rehearsal without rebuilding unchanged source.
+When npm's file selection includes bundled dependencies, the resolved production
+graph owns those files. Packaging rejects bundled packages outside that graph.
+Required transitive peers stay required, and installation still verifies every
+archive and runtime digest without registry access.
 Packaging binds the installed dependency bytes, not only the lockfile. Regression
 proofs bind the effective environment, selected Python interpreter and installed
 test dependencies. Environment values are hashed, not written into receipts.
+The patched llama.cpp provider is a separate installable package, so the runner
+always seals its built output as a named additional artifact. Its provenance
+receipt binds the public repository head, patched provider source, build inputs,
+build command, toolchain, archive, and installed runtime digest. Local extensions
+cannot replace this artifact with an older registry package. Combined consumers
+must select the public archive and verify the provenance receipt instead of
+inferring compatibility from the package version.
 Dependency fingerprints exclude the generated `.experimental-vitest-cache`
 and `.unrun` directories directly under `node_modules`. Files with those names
 inside real packages remain part of the fingerprint. These root caches do not

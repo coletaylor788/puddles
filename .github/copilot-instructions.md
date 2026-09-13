@@ -56,6 +56,16 @@ adversarial review, promotion, production validation, and rollback.
 Component instructions may add requirements but must not weaken that workflow,
 publication boundaries, test isolation, or secret handling.
 
+Test isolation means protecting production uptime and writable state, not
+confining trusted code against the host. Keep the candidate's state, ports, and
+processes separate, but use normal host access and existing shared services,
+including coordination directories. Preserve production locking and clean up
+only test-owned resources. Simplify harness-only permission restrictions before
+adding runtime patches or new fixture protocols. Do not invent security
+boundaries or repeat permission questions already settled by the requester's
+scope. Product agent access controls, external-write recording, secret handling,
+and deployment gates still apply.
+
 ## Worker ownership and checkpoints
 
 The parent orchestrator owns worker creation and routing. One engineering owner
@@ -148,7 +158,9 @@ before activation. No GitHub merge belongs inside the live rollback transaction.
 The native test environment is a second real OpenClaw process on a trusted
 host, not a VM or a security sandbox. Writable state, sessions, indexes,
 configuration, ports, and PIDs are separate. All test mutations and delivery
-must use explicit recording fixtures, with no silent live fallback. Deterministic
+against external services must use explicit recording fixtures, with no silent
+live fallback. Local test state is writable; live state must not be changed by
+rehearsal. Deterministic
 read fixtures support assertions. Separately selected host health checks are
 read-only, bounded, and expose no personal results. Required unavailable host
 checks fail. Public CI never needs live credentials or another repository.

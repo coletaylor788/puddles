@@ -4,7 +4,7 @@ import { __resetCacheForTests } from "../src/bridge-cache.js";
 import type {
   AnyAgentTool,
   OpenClawPluginApi,
-} from "openclaw/plugin-sdk";
+} from "openclaw/plugin-sdk/core";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 /**

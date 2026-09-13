@@ -5,18 +5,32 @@ runner applies them in a detached worktree, builds the real runtime, runs the
 cumulative regressions, and rehearses the installed package. It never modifies
 the configured source checkout or patches installed distribution chunks.
 
+The selected stable release is OpenClaw 2026.9.3 at
+`1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7`. It requires Node 24.16.0 or later
+on 24.x, or Node 26.1.0 or later. Earlier runtimes can truncate SQLite text.
+Use the same exact Node binary for packaging, installed rehearsal, and the
+activated gateway. Keep the previous interpreter available for rollback.
+
 ## Maintained patches
 
 | Patch | Purpose |
 |---|---|
 | `file-lock-stale-reclaim-guard.patch` | Guard stale file-lock recovery |
 | `sessions-yield-block-and-gather.patch` | Block at yield and gather subagent results |
+| `sessions-yield-durable-handoff.patch` | Preserve gathered completion ownership across restart |
 | `subagent-cross-agent-spawn-fix.patch` | Explicit targeting and inherited tools |
 | `skill-workshop-sandbox-fix.patch` | Skill workshop in sandboxed agents |
 | `imessage-message-part-coalescing.patch` | Selective text, link, and image coalescing |
 | `sandbox-discovery-failure-fix.patch` | Surface sandbox discovery failures |
 | `browser-userdata-dir-fix.patch` | Browser data directory and singleton cleanup |
-| `qmd-mcporter-per-agent.patch` | Per-agent memory backend configuration |
+| `builtin-memory-migration.patch` | Retired QMD migration and per-agent source isolation coverage |
+| `silent-reply-completion-evidence.patch` | Preserve current-attempt silent reply evidence after delivery filtering |
+| `stopped-state-migration-sdk.patch` | Expose maintained readonly cron, targeted writes, and config ownership helpers |
+| `scoped-container-temp-root.patch` | Carry explicit private staging through sandbox and browser creation |
+| `active-memory-cold-recall.patch` | Preserve required recall within one shared cold-setup budget |
+| `active-memory-fixture-cleanup.patch` | Join delayed recall fixtures before replacing shared test state |
+| `managed-local-service-lifecycle.patch` | Join gateway-owned service groups before stopped-state changes |
+| `gateway-memory-warmup.patch` | Prepare and retain managed local embeddings before readiness |
 
 Each patch has a neighboring document explaining its behavior and history.
 Register new patches and every applicable test in the cumulative manifest at
@@ -86,6 +100,87 @@ backup root. The service definition must already exist. Optional `browser`
 contains `path`, `sha256`, `imageId`, and `tag`. Its current production tag must
 be resolvable so rollback has an explicit prior image.
 
+For an interpreter upgrade, the optional `nodeMigration` target field records
+`argumentIndex`, `expected`, and `desired`. Each identity contains an absolute
+`path`, the executable's `sha256`, its `version` in the form `v26.1.0`, and
+its `platform` and `arch`. Select a separate installed interpreter outside the
+runtime, state, and backup trees. Do not replace or remove the old interpreter.
+The desired identity must match the sealed candidate and the activation
+process, not merely satisfy the minimum Node version.
+
+If the old service argument passes through a symlinked parent directory,
+`expected.path` keeps that literal argument and `expected.realPath` records the
+canonical executable. Both must remain outside the swapped trees. Without
+`expected.realPath`, the old path must already be canonical. The desired path
+must always be canonical; a desired `realPath` override is not accepted.
+
+The index identifies the unique exact old interpreter argument in the existing
+service definition. Only that argument changes. Shell wrappers, environment
+arguments, and other property-list fields remain intact. Preflight rejects
+ambiguous arguments and incompatible service program overrides before stopping
+anything. The original service is snapshotted, and the staged replacement is
+applied after migration but before restart.
+
+Recovery verifies the retained interpreters and restores the original service.
+Old-runtime checks use the old interpreter. Candidate migration, new-runtime
+checks, and retained candidate browser recovery use the candidate interpreter.
+This keeps native module bindings paired with their matching runtime during
+both activation and rollback. No package or interpreter download occurs while
+the gateway is stopped.
+
+For a stopped-state migration, add `stateMigration` to the local target with
+`manifestPath` (a canonical absolute file outside replaced roots) and `sha256`
+(the file's SHA256 hex digest). Supply the same manifest through
+`E2E_STATE_MIGRATION_MANIFEST` during the combined cumulative rehearsal.
+Its digest is bound to the regression and installed-runtime proofs. Activation
+rejects a different manifest or a candidate that did not include it.
+
+The manifest contains `schemaVersion: 1`, `configOperations`, and an optional
+`cronOperation`. Config operations have `kind` (`set` or `unset`), a nonempty
+array of string path segments, and `expected`. An absent leaf uses
+`{ "exists": false }`. An existing leaf uses
+`{ "exists": true, "sha256": "<value digest>" }`. Only `set` has a `value`.
+Generate old-value hashes with `canonicalValueDigest` exported by
+`packages/e2e/src/native-state-migration.mjs`, not a separate implementation.
+Preconditions describe the maintained source writer's view before runtime
+defaults, rather than a stale whole-config snapshot.
+
+Operations cannot overlap, address array positions or prototype keys, change
+environment selection or the cron store, or rewrite include directives.
+Missing object parents can be created; scalar parents cannot be replaced.
+An included config must have one internal sole owner for every changed leaf.
+Merged, shared, external, array-owned, and cross-boundary writes fail preflight.
+All config, include, backup, audit, and database paths must remain inside the
+snapshotted state tree without symlink or hardlink traversal. The source writer
+preserves authored secret references and home-relative paths.
+
+The optional job operation is
+`{ "kind": "silence-delivery", "jobId": "synthetic-job", "expectedRevision": "sha256:<token>" }`.
+Use `resolveCronJobConfigRevision` from `openclaw/plugin-sdk/cron-store-runtime`
+for that token. Any reviewed normalization of an older definition must be
+proven before selecting it, not silently accepted after doctor. The helper
+changes final delivery to `none`, clears known destinations, and disables
+failure alerts. It retains the owner, enabled state, schedule, payload, model,
+nonrouting fields, and concurrent runtime state. Unknown routing-shaped fields
+fail. This does not revoke tools or prevent a job's own agent from using them;
+that policy belongs in the operator's reviewed configuration.
+
+Preflight reads config with observation disabled and core-only validation,
+without loading the installed plugin index or recording config health. The
+stopped source writer still performs full plugin validation before committing.
+Cron path selection uses the maintained artifact-preserving reader, so even an
+older database without WAL or SHM files remains unchanged. Private temporary
+read snapshots use the recovery directory's cache, not the target state.
+The selected database must already exist for a job
+operation. After stopping and snapshotting, activation records each stage
+before it runs: schema-only repair, checked config mutation, ordinary doctor,
+then a fresh readonly job snapshot and targeted compare-and-swap write. Only
+then can the gateway start. Schema repair uses the existing public doctor
+repair API and never compiles memory or starts a service. There are no manifest
+commands, callbacks, network access, or direct database writes. Any failure
+restores the original state, runtime, and service through the existing journal.
+Interrupted recovery uses the retained snapshots, not a new baseline.
+
 When a candidate declares additional runtime artifacts, the target must map
 every artifact exactly once through `additionalInstalls`. Each entry has an
 `id` matching the candidate and a `path` relative to `stateDir`, for example
@@ -93,6 +188,14 @@ every artifact exactly once through `additionalInstalls`. Each entry has an
 disjoint real directories below state, without symlink traversal. Select only
 the managed runtime subtree, never a parent containing sessions or unrelated
 configuration.
+
+The public candidate always declares `llama-cpp-provider`. OpenClaw packages
+this provider separately from the root runtime, even though its source is built
+in the same checkout. The runner packages the provider from the patched build
+output and writes `provider-provenance.json` beside its archive. That receipt
+binds the public head, provider source and build inputs, build command, selected
+toolchain, archive digest, and installed runtime digest. A target must use this
+artifact rather than a registry archive with the same package version.
 
 All archives are verified and installed into separate staging prefixes before
 shutdown. After the gateway stops and state is snapshotted, activation replaces

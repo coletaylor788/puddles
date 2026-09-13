@@ -1,0 +1,166 @@
+diff --git a/packages/memory-host-sdk/src/host/backend-config.test.ts b/packages/memory-host-sdk/src/host/backend-config.test.ts
+index 1df195ffb41..359df7e7682 100644
+--- a/packages/memory-host-sdk/src/host/backend-config.test.ts
++++ b/packages/memory-host-sdk/src/host/backend-config.test.ts
+@@ -1,7 +1,37 @@
+ import { describe, expect, it } from "vitest";
+ import { resolveMemoryBackendConfig } from "./backend-config.js";
++import { resolveMemoryHostSearchPathConfig } from "./config-utils.js";
+ 
+ describe("resolveMemoryBackendConfig", () => {
++  it("keeps named builtin sources asymmetric without shared transport overrides", () => {
++    const cfg = {
++      memory: { search: { rememberAcrossConversations: false } },
++      agents: {
++        entries: {
++          trusted: { memory: { search: { extraPaths: ["/fixtures/scoped", "/fixtures/mixed"] } } },
++          scoped: { memory: { search: { extraPaths: ["/fixtures/scoped"] } } },
++          disabled: { memory: { search: { enabled: false } } },
++        },
++      },
++    };
++    expect(resolveMemoryHostSearchPathConfig(cfg, "trusted")?.extraPaths).toEqual([
++      "/fixtures/scoped",
++      "/fixtures/mixed",
++    ]);
++    expect(resolveMemoryHostSearchPathConfig(cfg, "scoped")).toEqual({
++      enabled: true,
++      rememberAcrossConversations: false,
++      extraPaths: ["/fixtures/scoped"],
++    });
++    expect(resolveMemoryHostSearchPathConfig(cfg, "disabled")).toBeNull();
++    for (const agentId of ["trusted", "scoped"]) {
++      expect(resolveMemoryBackendConfig({ cfg, agentId })).toEqual({
++        backend: "builtin",
++        citations: "auto",
++      });
++    }
++  });
++
+   it("uses the builtin backend with automatic citations by default", () => {
+     expect(resolveMemoryBackendConfig({ cfg: {}, agentId: "main" })).toEqual({
+       backend: "builtin",
+diff --git a/src/commands/doctor/shared/legacy-config-migrations.memory-isolation.test.ts b/src/commands/doctor/shared/legacy-config-migrations.memory-isolation.test.ts
+new file mode 100644
+index 00000000000..78b68f61046
+--- /dev/null
++++ b/src/commands/doctor/shared/legacy-config-migrations.memory-isolation.test.ts
+@@ -0,0 +1,118 @@
++import fs from "node:fs";
++import os from "node:os";
++import path from "node:path";
++import { describe, expect, it } from "vitest";
++import { validateConfigObjectRaw } from "../../../config/validation.js";
++import { applyLegacyDoctorMigrations } from "./legacy-config-compat.js";
++
++function fixture() {
++  return {
++    memory: { backend: "qmd", qmd: { mcporter: { enabled: true, serverName: "fixture" } } },
++    agents: {
++      defaults: {
++        memorySearch: {
++          provider: "local",
++          fallback: "none",
++          rememberAcrossConversations: false,
++          local: { modelPath: "/fixtures/embedding.gguf" },
++          qmd: { mcporter: { startDaemon: false } },
++        },
++      },
++      list: [
++        {
++          id: "trusted",
++          default: true,
++          memorySearch: {
++            qmd: {
++              extraCollections: [
++                { path: "/fixtures/scoped", pattern: "**/*.md" },
++                { path: "/fixtures/mixed", pattern: "**/*.md" },
++              ],
++            },
++          },
++        },
++        {
++          id: "scoped",
++          memorySearch: {
++            qmd: { extraCollections: [{ path: "/fixtures/scoped", pattern: "**/*.md" }] },
++          },
++        },
++        {
++          id: "disabled",
++          memorySearch: {
++            enabled: false,
++            qmd: {
++              mcporter: { enabled: false },
++              sessions: { enabled: true },
++            },
++          },
++        },
++      ],
++    },
++  };
++}
++function migrate(raw: unknown) {
++  return applyLegacyDoctorMigrations(raw, undefined, { pluginContracts: false });
++}
++
++describe("retired transport migration preserves explicit memory boundaries", () => {
++  it("migrates old per-agent paths without promoting them into shared defaults", () => {
++    const original = fixture();
++    const snapshot = structuredClone(original);
++    const result = migrate(original);
++    const validated = validateConfigObjectRaw(result.next);
++    if (!validated.ok) throw new Error(JSON.stringify(validated.issues));
++    const cfg = validated.config;
++    expect(cfg.memory?.search).toMatchObject({
++      provider: "local",
++      fallback: "none",
++      rememberAcrossConversations: false,
++      local: { modelPath: "/fixtures/embedding.gguf" },
++    });
++    expect(cfg.memory?.search?.extraPaths).toBeUndefined();
++    expect(cfg.agents?.entries?.trusted?.memory?.search?.extraPaths).toEqual([
++      { path: "/fixtures/scoped", pattern: "**/*.md" },
++      { path: "/fixtures/mixed", pattern: "**/*.md" },
++    ]);
++    expect(cfg.agents?.entries?.scoped?.memory?.search?.extraPaths).toEqual([
++      { path: "/fixtures/scoped", pattern: "**/*.md" },
++    ]);
++    expect(cfg.agents?.entries?.disabled?.memory?.search?.enabled).toBe(false);
++    expect(cfg.agents?.entries?.disabled?.memory?.search?.experimental?.sessionMemory).toBe(true);
++    expect(
++      cfg.agents?.entries?.scoped?.memory?.search?.experimental?.sessionMemory,
++    ).toBeUndefined();
++    expect(JSON.stringify(result.next)).not.toMatch(/mcporter|extraCollections|"qmd"/);
++    expect(original).toEqual(snapshot);
++    expect(migrate(result.next).next).toBeNull();
++  });
++
++  it("leaves canonical files and retired derived data available for rollback", () => {
++    const root = fs.mkdtempSync(path.join(os.tmpdir(), "memory-upgrade-recovery-"));
++    try {
++      const source = path.join(root, "notes.md");
++      const index = path.join(root, "qmd-index.sqlite");
++      fs.writeFileSync(source, "synthetic canonical note\n");
++      fs.writeFileSync(index, "synthetic retained derived state\n");
++      const oldConfig = {
++        memory: {
++          backend: "qmd",
++          qmd: {
++            paths: [{ path: source }],
++            command: path.join(root, "qmd"),
++            sessions: { enabled: false },
++          },
++        },
++      };
++      const savedConfig = JSON.stringify(oldConfig);
++      const result = migrate(oldConfig);
++      expect(result.next).toHaveProperty("memory.search.extraPaths", [source]);
++      expect(result.next).not.toHaveProperty("memory.search.experimental.sessionMemory");
++      expect(JSON.stringify(oldConfig)).toBe(savedConfig);
++      expect(fs.readFileSync(source, "utf8")).toBe("synthetic canonical note\n");
++      expect(fs.readFileSync(index, "utf8")).toBe("synthetic retained derived state\n");
++    } finally {
++      fs.rmSync(root, { recursive: true, force: true });
++    }
++  });
++});

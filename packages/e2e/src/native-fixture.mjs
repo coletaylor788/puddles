@@ -49,6 +49,8 @@ export function fixtureEnv(context) {
     OPENCLAW_CONFIG_PATH: context.configPath,
     E2E_MOCK_STATE: context.recordingsDir,
     OPENCLAW_DISABLE_BONJOUR: "1", OPENCLAW_SKIP_CANVAS_HOST: "1",
+    npm_config_offline: "true", npm_config_cache: join(context.home, ".npm"),
+    COREPACK_ENABLE_NETWORK: "0",
     NODE_ENV: "production", NO_COLOR: "1",
   };
 }
@@ -89,6 +91,13 @@ async function stop(child) {
 
 function validateScenario(scenario) {
   if (!/^[a-z0-9-]+$/.test(scenario.id) || !scenario.steps?.length) throw new Error("Invalid native scenario");
+  if (scenario.chatType !== undefined && !["direct", "group"].includes(scenario.chatType)) {
+    throw new Error("Invalid fixture chat type");
+  }
+  if (scenario.inboundDebounceMs !== undefined && scenario.inboundDebounceMs !== null &&
+      (!Number.isInteger(scenario.inboundDebounceMs) || scenario.inboundDebounceMs < 0 || scenario.inboundDebounceMs > 15_000)) {
+    throw new Error("Invalid fixture inbound debounce");
+  }
   for (const [name, adapter] of Object.entries(scenario.adapters ?? {})) {
     if (!/^[a-z][a-z0-9_]+$/.test(name) || !["read", "write"].includes(adapter.kind) || !adapter.operations?.length) {
       throw new Error("Missing required recording adapter");
@@ -98,6 +107,12 @@ function validateScenario(scenario) {
     }
   }
   for (const step of scenario.steps) {
+    for (const incoming of step.incoming ?? []) {
+      if (incoming.delayMs !== undefined &&
+          (!Number.isInteger(incoming.delayMs) || incoming.delayMs < 0 || incoming.delayMs > 1_000)) {
+        throw new Error("Invalid fixture incoming delay");
+      }
+    }
     for (const response of step.responses) {
       for (const tool of response.toolCalls ?? []) {
         if (!scenario.adapters?.[tool.name]) throw new Error(`Missing required recording adapter: ${tool.name}`);
@@ -113,6 +128,18 @@ export async function runScenario(installedDir, scenario, options = {}) {
       !existsSync(join(installedDir, "node_modules"))) {
     throw new Error("A real installed OpenClaw candidate with runtime dependencies is required");
   }
+  const imessageManifest = join(installedDir, "dist/extensions/imessage/package.json");
+  if (!existsSync(imessageManifest) ||
+      JSON.parse(readFileSync(imessageManifest, "utf8")).openclaw?.build?.bundledDist !== true) {
+    throw new Error("The maintained iMessage plugin must be bundled in the installed candidate");
+  }
+  const channelSchema = JSON.parse(readFileSync(
+    join(installedDir, "dist/extensions/imessage/openclaw.plugin.json"), "utf8",
+  )).channelConfigs?.imessage?.schema;
+  assert.equal(channelSchema?.properties?.coalesceSameSenderDms?.type, "boolean",
+    "packaged channel schema is missing maintained iMessage coalescing");
+  assert.equal(channelSchema?.properties?.accounts?.additionalProperties?.properties?.coalesceSameSenderDms?.type,
+    "boolean", "packaged account schema is missing maintained iMessage coalescing");
   const root = mkdtempSync(join(options.runDir ?? tmpdir(), `fixture-${scenario.id}-`));
   const context = isolatedContext(root);
   const requests = [];
@@ -191,8 +218,13 @@ export async function runScenario(installedDir, scenario, options = {}) {
       browser: { enabled: false },
       agents: { defaults: { workspace: context.workspace, model: { primary: "fixture/fixture-model" }, compaction: { mode: "default" }, heartbeat: { every: "0m" } } },
       models: { mode: "replace", providers: { fixture: { api: "openai-completions", baseUrl: `http://127.0.0.1:${modelPort}/v1`, apiKey: "synthetic-fixture-key", models: [{ id: "fixture-model", name: "Scripted model", contextWindow: 128000, maxTokens: 4096, reasoning: false, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }] } } },
-      channels: { imessage: { enabled: true, cliPath: bridge, dbPath: join(context.stateDir, "fixture-chat.db"), dmPolicy: "allowlist", allowFrom: ["+15550001111"], groupPolicy: "disabled", coalesceSameSenderDms: true, sendReadReceipts: false } },
-      messages: { inbound: { debounceMs: 250 } },
+      channels: { imessage: { enabled: true, cliPath: bridge, dbPath: join(context.stateDir, "fixture-chat.db"), dmPolicy: "allowlist", allowFrom: ["+15550001111"], groupPolicy: scenario.chatType === "group" ? "allowlist" : "disabled",
+        ...(scenario.chatType === "group" ? { groupAllowFrom: ["+15550001111"], groups: { "123": { requireMention: false } } } : {}),
+        coalesceSameSenderDms: true, sendReadReceipts: false } },
+      messages: {
+        ...(scenario.inboundDebounceMs === null ? {} : { inbound: { debounceMs: scenario.inboundDebounceMs ?? 250 } }),
+        ...(scenario.chatType === "group" ? { groupChat: { mentionPatterns: ["@fixture-agent"], unmentionedInbound: "room_event" } } : {}),
+      },
       plugins: { allow: ["imessage", "puddles-recording-tools"], load: { paths: [plugin] }, entries: { imessage: { enabled: true }, "puddles-recording-tools": { enabled: true } } },
       tools: { allow: Object.keys(scenario.adapters ?? {}), deny: ["exec", "process", "browser", "web_fetch", "web_search", "cron", "sessions_spawn", "nodes"] },
       session: { dmScope: "per-channel-peer" },
@@ -223,10 +255,14 @@ export async function runScenario(installedDir, scenario, options = {}) {
       responses.push(...step.responses);
       requestCount += step.responses.length;
       for (const incoming of step.incoming) {
+        const { delayMs = 0, ...payload } = incoming;
+        if (delayMs) await delay(delayMs);
         const message = {
           id: rowid++, guid: incoming.guid ?? `fixture-inbound-${rowid}`, chat_id: 123,
-          sender: "+15550001111", is_from_me: false, is_group: false,
-          chat_identifier: "+15550001111", created_at: new Date().toISOString(), ...incoming,
+          sender: "+15550001111", is_from_me: false, is_group: scenario.chatType === "group",
+          chat_identifier: scenario.chatType === "group" ? "fixture-group-123" : "+15550001111",
+          ...(scenario.chatType === "group" ? { chat_guid: "iMessage;+;fixture-group-123" } : {}),
+          created_at: new Date().toISOString(), ...payload,
         };
         appendFileSync(join(context.recordingsDir, "imsg-incoming.jsonl"), JSON.stringify(message) + "\n");
       }
@@ -243,6 +279,9 @@ export async function runScenario(installedDir, scenario, options = {}) {
       const sends = records(join(context.recordingsDir, "imsg-sends.jsonl")).slice(sendCount);
       assert.equal(sends.length, expected.length, "unexpected outbound message count");
       sends.forEach((send, index) => assert.ok((send.params?.text ?? "").includes(expected[index]), "recorded reply differs"));
+      for (const text of step.expect.sendsExclude ?? []) {
+        assert.ok(sends.every((send) => !(send.params?.text ?? "").includes(text)), "recorded reply exposes excluded content");
+      }
       if (step.expect.promptIncludes) {
         const prompt = JSON.stringify(requests[requestCount - step.responses.length].messages);
         for (const text of step.expect.promptIncludes) assert.ok(prompt.includes(text), "incoming event missing from real model request");
@@ -250,9 +289,11 @@ export async function runScenario(installedDir, scenario, options = {}) {
       sendCount += expected.length;
     }
     const calls = records(join(context.recordingsDir, "tool-calls.jsonl"));
-    for (const name of ["SOUL.md", "TOOLS.md", "IDENTITY.md", "USER.md"]) {
+    for (const name of ["AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md"]) {
       assert.ok(existsSync(join(context.workspace, name)), "normal workspace bootstrap file missing");
     }
+    assert.equal(JSON.parse(readFileSync(context.configPath, "utf8")).channels.imessage.coalesceSameSenderDms,
+      true, "startup removed the maintained coalescing policy");
     if (scenario.expectCalls) assert.deepEqual(calls, scenario.expectCalls);
     assert.equal(records(join(context.recordingsDir, "imsg-denied.jsonl")).length, 0, "unsupported bridge method");
     assert.equal(responses.length, 0, "unconsumed model script");

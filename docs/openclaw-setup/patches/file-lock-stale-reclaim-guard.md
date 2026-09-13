@@ -10,16 +10,23 @@ config writers to proceed.
 
 ## Patch
 
-The dependency patch adds a macOS kernel guard around stale inspection and
-removal. It opens a persistent sibling reclaim file with `O_EXLOCK`, so only one
-reclaimer can enter that section. The kernel releases the guard automatically
-when the process exits or dies. Other platforms keep the existing behavior.
+OpenClaw 2026.9.3 uses `@openclaw/fs-safe` 0.8.5. Upstream now serializes stale
+reclaimers with a sibling directory. That prevents overlapping writers, but a
+killed reclaimer leaves the directory behind. It also treats the persistent
+guard files from the earlier Puddles patch as permanent contention.
 
-The OpenClaw source patch updates the existing `@openclaw/fs-safe` pnpm patch and
-its lockfile hash. A multi-process test pauses the first stale reclaimer inside
-approval, starts a second reclaimer, and proves the second cannot enter until
-the first releases. It also verifies that their held critical sections never
-overlap.
+The maintained dependency patch keeps a macOS kernel guard at that same path.
+It uses nonblocking `O_EXLOCK`, so normal retry limits still apply. The kernel
+releases ownership after process death without deleting the persistent file.
+Both synchronous and asynchronous locks use the same guard, and process cleanup
+closes held descriptors. Symlink and non-file guards fail explicitly. Other
+platforms keep upstream behavior.
+
+The source patch registers the dependency patch and its lockfile hash. The
+original multi-process regression still pauses one stale reclaimer and proves
+the second cannot enter its critical section. A new regression starts with an
+existing persistent guard, kills its reclaimer, and proves recovery and
+synchronous/asynchronous interoperability.
 
 ## Validation
 
@@ -29,6 +36,6 @@ The regression is registered in the cumulative OpenClaw patch suite. Run:
 node packages/e2e/bin/openclaw-test-env.mjs ci
 ```
 
-Deployment uses `docs/openclaw-setup/patches/apply-and-deploy.sh`, which builds
-the patched dependency into OpenClaw, snapshots production state, and rolls back
-on install, restart, or health failure.
+Deployment uses `docs/openclaw-setup/patches/apply-and-deploy.sh`. The managed
+pipeline builds and rehearses the patched dependency before activation. The
+wrapper consumes the sealed artifact and retains rollback snapshots.
