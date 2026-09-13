@@ -129,9 +129,10 @@ Doctor-only wizard timestamps are not needed for validity. The stopped repair
 now runs the complete maintained plugin migrations after shutdown instead of
 hardcoding those keys. Agent permissions and all ten jobs remain unchanged.
 
-Focused validation and the rebuilt managed installed-runtime patch gate pass.
-Retained review and the exact clean-head cumulative gate remain. Private will
-then repeat the combined deployment rehearsal. Production remains untouched.
+Focused validation, the rebuilt managed installed-runtime patch gate, the exact
+clean-head cumulative gate, and retained complete-diff review pass. Private is
+repeating the combined deployment rehearsal against the sealed public tuple.
+Production remains untouched.
 
 ## Agent section
 
@@ -644,6 +645,11 @@ then repeat the combined deployment rehearsal. Production remains untouched.
   partition identities, and selected revision across that boundary. Fresh
   stopped-state fingerprints protect the atomic copy. The same reviewer must
   recheck the complete current diff after focused and installed validation.
+- The same reviewer cleared the complete `8cf0a92..43d5192` diff after the
+  volatile-state and full plugin-migration corrections. No actionable material
+  findings remain. Loading full plugin contracts only after shutdown can still
+  turn an unrepairable private plugin config into bounded downtime and rollback;
+  this is an accepted operational limit of keeping live preflight state-free.
 
 ### Checklist
 
@@ -666,6 +672,6 @@ then repeat the combined deployment rehearsal. Production remains untouched.
 - [x] Persist canonical multi-agent ownership before private config CAS.
 - [x] Apply every validation-required maintained plugin migration after shutdown.
 - [x] Rehearse built-in normalization before private config and cron CAS in the stopped transaction.
-- [ ] Clear retained review for the deployment correction.
-- [ ] Pass affected and accumulated gates for the deployment correction.
+- [x] Clear retained review for the deployment correction.
+- [x] Pass affected and accumulated gates for the deployment correction.
 - [ ] Integrate the follow-up and hand activation back to private.
