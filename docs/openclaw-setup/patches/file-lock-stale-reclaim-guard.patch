@@ -1,145 +1,234 @@
-diff --git a/patches/@openclaw__fs-safe@0.4.1.patch b/patches/@openclaw__fs-safe@0.4.1.patch
-index 18ef0e9afd..d7ce80a917 100644
---- a/patches/@openclaw__fs-safe@0.4.1.patch
-+++ b/patches/@openclaw__fs-safe@0.4.1.patch
-@@ -70,3 +70,96 @@ index 77d0ddfa5a1df2de0449c806d19781daaed4910b..09dd77aef95659865b93ce29e15f26e8
-          await handle.close().catch(() => undefined);
-          handle = undefined;
-          await withAsyncDirectoryGuards([parentGuard], async () => {
-+diff --git a/dist/sidecar-lock.js b/dist/sidecar-lock.js
-+index eecf60d00793ddfeb54415811c18cb2f40ab2568..fecf98b86c1bdc22755ae53d9c9c784a73dfd829 100644
-+--- a/dist/sidecar-lock.js
-++++ b/dist/sidecar-lock.js
-+@@ -3,6 +3,13 @@ import fs from "node:fs/promises";
+diff --git a/patches/@openclaw__fs-safe@0.8.5.patch b/patches/@openclaw__fs-safe@0.8.5.patch
+new file mode 100644
+index 00000000000..6c03e8f6336
+--- /dev/null
++++ b/patches/@openclaw__fs-safe@0.8.5.patch
+@@ -0,0 +1,156 @@
++diff --git a/dist/file-lock-sync.js b/dist/file-lock-sync.js
++index 193b10d5cf1de0951d28c202c17ba60f551ae81f..d517aa93fc60426fd20e6ebdb99ff6f95ac672ad 100644
++--- a/dist/file-lock-sync.js
+++++ b/dist/file-lock-sync.js
++@@ -2,6 +2,7 @@ import fs from "node:fs";
 + import path from "node:path";
-+ import { sameFileIdentity } from "./file-identity.js";
-+ const GLOBAL_STATE_KEY = Symbol.for("fsSafe.sidecarLockManagers");
-++const DARWIN_O_EXLOCK = 32;
-++async function acquireStaleReclaimGuard(lockPath) {
-++    if (process.platform !== "darwin") {
-++        return null;
-++    }
-++    return await fs.open(`${lockPath}.reclaim`, fsSync.constants.O_CREAT | fsSync.constants.O_RDWR | DARWIN_O_EXLOCK, 0o600);
-++}
-+ function getGlobalManagers() {
-+     const globalWithState = globalThis;
-+     if (!globalWithState[GLOBAL_STATE_KEY]) {
-+@@ -264,40 +271,46 @@ export function createSidecarLockManager(key) {
-+                 if (err.code !== "EEXIST") {
-+                     throw err;
-+                 }
-+-                const nowMs = Date.now();
-+-                const snapshot = await readLockSnapshot(lockPath);
-+-                if (!snapshot) {
-+-                    continue;
-+-                }
-+-                const shouldReclaim = options.shouldReclaim ?? defaultShouldReclaim;
-+-                if (await shouldReclaim({
-+-                    lockPath,
-+-                    normalizedTargetPath,
-+-                    payload: snapshot?.payload ?? null,
-+-                    staleMs: options.staleMs,
-+-                    nowMs,
-+-                    heldByThisProcess: state.held.has(normalizedTargetPath),
-+-                })) {
-+-                    if (!(await lockSnapshotStillPresent(lockPath, snapshot))) {
-++                const reclaimGuard = await acquireStaleReclaimGuard(lockPath);
-++                try {
-++                    const nowMs = Date.now();
-++                    const snapshot = await readLockSnapshot(lockPath);
-++                    if (!snapshot) {
-+                         continue;
-+                     }
-+-                    const staleRecovery = options.staleRecovery ?? "fail-closed";
-+-                    if (staleRecovery === "remove-if-unchanged") {
-+-                        const removal = await removeStaleLockIfAllowed({
-++                    const shouldReclaim = options.shouldReclaim ?? defaultShouldReclaim;
-++                    if (await shouldReclaim({
-++                        lockPath,
-++                        normalizedTargetPath,
-++                        payload: snapshot?.payload ?? null,
-++                        staleMs: options.staleMs,
-++                        nowMs,
-++                        heldByThisProcess: state.held.has(normalizedTargetPath),
-++                    })) {
-++                        if (!(await lockSnapshotStillPresent(lockPath, snapshot))) {
-++                            continue;
-++                        }
-++                        const staleRecovery = options.staleRecovery ?? "fail-closed";
-++                        if (staleRecovery === "remove-if-unchanged") {
-++                            const removal = await removeStaleLockIfAllowed({
-++                                lockPath,
-++                                normalizedTargetPath,
-++                                snapshot,
-++                                shouldRemoveStaleLock: options.shouldRemoveStaleLock,
-++                            });
-++                            if (removal === "removed" || removal === "changed") {
++ import { FsSafeError } from "./errors.js";
++ import { readSidecarLockSnapshotSync, readSidecarLockRawSnapshotSync, parseSidecarLockSnapshot, relativeSidecarLockPath, removeSidecarLockIfUnchangedSync, serializeSidecarLockPayload, sidecarLockSnapshotMatches, } from "./sidecar-lock-reclaim.js";
+++import { kernelReclaimGuardExists, releaseKernelReclaimGuard, tryAcquireKernelReclaimGuard } from "./reclaim-kernel-guard.js";
++ import { computeSidecarLockDelayMs, isTransientLockFileDenial, maxTransientLockDenials, sidecarLockPayloadCreatedAtMs, validateSidecarLockRetryOptions, validateSidecarLockTimeoutMs, } from "./sidecar-lock-policy.js";
++ import { getFsSafeLockConfig } from "./lock-config.js";
++ import { sleepSync } from "./timing.js";
++@@ -124,6 +125,7 @@ function defaultShouldReclaim(snapshot, staleMs, nowMs) {
++     return !snapshot.stat || nowMs - snapshot.stat.mtimeMs > staleMs;
++ }
++ function reclaimGuardExists(reclaimGuardPath) {
+++    if (process.platform === "darwin") return kernelReclaimGuardExists(reclaimGuardPath);
++     try {
++         fs.lstatSync(reclaimGuardPath);
++         return true;
++@@ -305,7 +307,12 @@ export function acquireFileLockSync(targetPath, options) {
++                     })) {
++                     let ownsReclaimGuard = false;
++                     try {
++-                        fs.mkdirSync(reclaimGuardPath);
+++                        if (process.platform === "darwin") {
+++                            if (!tryAcquireKernelReclaimGuard(reclaimGuardPath)) {
+++                                waitForRetry();
 ++                                continue;
 ++                            }
-++                        }
-++                        throw Object.assign(new Error(`file lock stale for ${normalizedTargetPath}`), {
-++                            code: "file_lock_stale",
-+                             lockPath,
-+                             normalizedTargetPath,
-+-                            snapshot,
-+-                            shouldRemoveStaleLock: options.shouldRemoveStaleLock,
-+                         });
-+-                        if (removal === "removed" || removal === "changed") {
-+-                            continue;
-+-                        }
-+                     }
-+-                    throw Object.assign(new Error(`file lock stale for ${normalizedTargetPath}`), {
-+-                        code: "file_lock_stale",
-+-                        lockPath,
-+-                        normalizedTargetPath,
-+-                    });
-++                }
-++                finally {
-++                    await reclaimGuard?.close().catch(() => undefined);
-+                 }
-+                 const elapsed = Date.now() - startedAt;
-+                 if ((options.timeoutMs !== undefined &&
+++                        } else fs.mkdirSync(reclaimGuardPath);
++                         ownsReclaimGuard = true;
++                         if (removeSidecarLockIfUnchangedSync(lockPath, snapshot))
++                             continue;
++@@ -320,7 +327,8 @@ export function acquireFileLockSync(targetPath, options) {
++                     finally {
++                         if (ownsReclaimGuard) {
++                             try {
++-                                fs.rmdirSync(reclaimGuardPath);
+++                                if (process.platform === "darwin") releaseKernelReclaimGuard(reclaimGuardPath);
+++                                else fs.rmdirSync(reclaimGuardPath);
++                             }
++                             catch {
++                                 // A surviving reclaim guard fails closed.
++diff --git adist/reclaim-kernel-guard.js b/dist/reclaim-kernel-guard.js
++new file mode 100644
++index 0000000000000000000000000000000000000000..053747764b1f662309c7146a010e7d0a34278205
++--- /dev/null
+++++ b/dist/reclaim-kernel-guard.js
++@@ -0,0 +1,42 @@
+++import fs from "node:fs";
+++
+++const key = Symbol.for("fsSafe.darwinReclaimGuards");
+++const guards = globalThis[key] ??= new Map();
+++const DARWIN_O_EXLOCK = 32;
+++
+++export function tryAcquireKernelReclaimGuard(path) {
+++    if (guards.has(path)) return false;
+++    let fd;
+++    try {
+++        fd = fs.openSync(path, fs.constants.O_CREAT | fs.constants.O_RDWR |
+++            fs.constants.O_NONBLOCK | fs.constants.O_NOFOLLOW | DARWIN_O_EXLOCK, 0o600);
+++        if (!fs.fstatSync(fd).isFile()) {
+++            throw new Error("Reclaim guard must be a regular file");
+++        }
+++        guards.set(path, fd);
+++        return true;
+++    }
+++    catch (error) {
+++        if (fd !== undefined) fs.closeSync(fd);
+++        if (error.code === "EAGAIN" || error.code === "EWOULDBLOCK") return false;
+++        throw error;
+++    }
+++}
+++
+++export function releaseKernelReclaimGuard(path) {
+++    const fd = guards.get(path);
+++    if (fd === undefined) throw new Error("Reclaim guard is not held");
+++    fs.closeSync(fd);
+++    guards.delete(path);
+++}
+++
+++export function kernelReclaimGuardExists(path) {
+++    try {
+++        if (!tryAcquireKernelReclaimGuard(path)) return true;
+++    } catch (error) {
+++        if (error.code === "ENOENT") return false;
+++        throw error;
+++    }
+++    releaseKernelReclaimGuard(path);
+++    return false;
+++}
++diff --git a/dist/sidecar-lock-reclaim.js b/dist/sidecar-lock-reclaim.js
++index c64195d22815a65a29ba7f34df93c2303d6f8b5e..19c3884e91c41ec5ee3f9fba5983af7ca0ec5f02 100644
++--- a/dist/sidecar-lock-reclaim.js
+++++ b/dist/sidecar-lock-reclaim.js
++@@ -1,4 +1,5 @@
++ import { randomBytes } from "node:crypto";
+++import { kernelReclaimGuardExists, releaseKernelReclaimGuard, tryAcquireKernelReclaimGuard } from "./reclaim-kernel-guard.js";
++ import fsSync, {} from "node:fs";
++ import fs from "node:fs/promises";
++ import path from "node:path";
++@@ -240,6 +241,7 @@ export async function sidecarLockSnapshotStillPresent(lockPath, observed, option
++     return !!current && !!observed && sidecarLockSnapshotMatches(current, observed);
++ }
++ export async function sidecarReclaimGuardExists(pathname) {
+++    if (process.platform === "darwin") return kernelReclaimGuardExists(pathname);
++     try {
++         await fs.lstat(pathname);
++         return true;
++@@ -252,6 +254,11 @@ export async function sidecarReclaimGuardExists(pathname) {
++     }
++ }
++ export async function tryAcquireSidecarReclaimGuard(reclaimGuards, reclaimGuardPath) {
+++    if (process.platform === "darwin") {
+++        if (!tryAcquireKernelReclaimGuard(reclaimGuardPath)) return false;
+++        reclaimGuards.add(reclaimGuardPath);
+++        return true;
+++    }
++     try {
++         await fs.mkdir(reclaimGuardPath);
++         reclaimGuards.add(reclaimGuardPath);
++@@ -265,6 +272,11 @@ export async function tryAcquireSidecarReclaimGuard(reclaimGuards, reclaimGuardP
++     }
++ }
++ export async function releaseSidecarReclaimGuard(reclaimGuards, reclaimGuardPath) {
+++    if (process.platform === "darwin") {
+++        releaseKernelReclaimGuard(reclaimGuardPath);
+++        reclaimGuards.delete(reclaimGuardPath);
+++        return;
+++    }
++     await fs.rmdir(reclaimGuardPath);
++     reclaimGuards.delete(reclaimGuardPath);
++ }
++diff --git a/dist/sidecar-lock.js b/dist/sidecar-lock.js
++index c6ac2d4f76716266176f0af1ad0ef0f6ebe86869..3d96ec7b49749d0c8e29ac85b531a92e272d118e 100644
++--- a/dist/sidecar-lock.js
+++++ b/dist/sidecar-lock.js
++@@ -2,6 +2,7 @@ import fsSync from "node:fs";
++ import { FsSafeError } from "./errors.js";
++ import { sameFileIdentity } from "./file-identity.js";
++ import { removeSidecarLockIfUnchanged, sidecarLockSnapshotMatches, } from "./sidecar-lock-reclaim.js";
+++import { releaseKernelReclaimGuard } from "./reclaim-kernel-guard.js";
++ import { acquireSidecarLock } from "./sidecar-lock-acquire.js";
++ import { createHeldSidecarLockHandle } from "./sidecar-lock-handle.js";
++ import { createSuppressedError } from "./suppressed-error.js";
++@@ -87,7 +88,8 @@ function snapshotMatchesSync(lockPath, observed) {
++ function releaseAllReclaimGuardsSync(state) {
++     for (const reclaimGuardPath of state.reclaimGuards) {
++         try {
++-            fsSync.rmdirSync(reclaimGuardPath);
+++            if (process.platform === "darwin") releaseKernelReclaimGuard(reclaimGuardPath);
+++            else fsSync.rmdirSync(reclaimGuardPath);
++             state.reclaimGuards.delete(reclaimGuardPath);
++         }
++         catch {
 diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
-index 7a352da863..aedc71e632 100644
+index 411dddab5a4..effac948818 100644
 --- a/pnpm-lock.yaml
 +++ b/pnpm-lock.yaml
-@@ -37,7 +37,7 @@ overrides:
- packageExtensionsChecksum: sha256-zZ8fyodhMTumshonC7kktCqTPsiHL3UAyS9vltFAlMo=
- 
+@@ -152,6 +152,7 @@ packageExtensionsChecksum: sha256-zZ8fyodhMTumshonC7kktCqTPsiHL3UAyS9vltFAlMo=
  patchedDependencies:
--  '@openclaw/fs-safe@0.4.1': e49004277fcb3e714125baf15a996682c7310e8e9269c865cc5bcb9fef46a57c
-+  '@openclaw/fs-safe@0.4.1': 2e63f67851cf32eb18a4a4ab913747796ef102d67fd01778eb7b446da23884de
+   '@awesome.me/webawesome@3.12.0': a366a1422e3d8f0b9699205e969a73294877cbff761550bb360380e3ab9428f1
+   '@novnc/novnc@1.7.0': bfde0e1bda172da3525f9f5014d85ad28073325b74f09609084598a65d2f412d
++  '@openclaw/fs-safe@0.8.5': 216c40535420fe23b1510d910aa9b97176d6de318af5339675271a12fd6c1090
+   matrix-js-sdk@42.2.0: 9e97147d99b86977d6665a676cdf853434ef61eee7cfb176bb66c9c48da599b4
+   vitest@5.0.0: 76a69c6de8bc85bb68eebebddf7e1e798a4ebf46d36ad60e6447ebc62c49f702
  
- importers:
- 
-@@ -87,7 +87,7 @@ importers:
+@@ -203,7 +204,7 @@ importers:
          version: link:packages/ai
        '@openclaw/fs-safe':
-         specifier: 0.4.1
--        version: 0.4.1(patch_hash=e49004277fcb3e714125baf15a996682c7310e8e9269c865cc5bcb9fef46a57c)
-+        version: 0.4.1(patch_hash=2e63f67851cf32eb18a4a4ab913747796ef102d67fd01778eb7b446da23884de)
+         specifier: 0.8.5
+-        version: 0.8.5
++        version: 0.8.5(patch_hash=216c40535420fe23b1510d910aa9b97176d6de318af5339675271a12fd6c1090)
        '@openclaw/proxyline':
-         specifier: 0.3.3
-         version: 0.3.3(undici@8.5.0)
-@@ -8987,7 +8987,7 @@ snapshots:
-       - bufferutil
-       - utf-8-validate
+         specifier: 0.3.11
+         version: 0.3.11(undici@8.10.2)
+@@ -1698,7 +1699,7 @@ importers:
+     dependencies:
+       '@openclaw/fs-safe':
+         specifier: 0.8.5
+-        version: 0.8.5
++        version: 0.8.5(patch_hash=216c40535420fe23b1510d910aa9b97176d6de318af5339675271a12fd6c1090)
+     devDependencies:
+       '@openclaw/plugin-sdk':
+         specifier: workspace:*
+@@ -1745,7 +1746,7 @@ importers:
+     dependencies:
+       '@openclaw/fs-safe':
+         specifier: 0.8.5
+-        version: 0.8.5
++        version: 0.8.5(patch_hash=216c40535420fe23b1510d910aa9b97176d6de318af5339675271a12fd6c1090)
+       p-limit:
+         specifier: 7.3.1
+         version: 7.3.1
+@@ -11490,7 +11491,7 @@ snapshots:
+   '@openclaw/fs-safe-win32-x64-msvc@0.8.5':
+     optional: true
  
--  '@openclaw/fs-safe@0.4.1(patch_hash=e49004277fcb3e714125baf15a996682c7310e8e9269c865cc5bcb9fef46a57c)':
-+  '@openclaw/fs-safe@0.4.1(patch_hash=2e63f67851cf32eb18a4a4ab913747796ef102d67fd01778eb7b446da23884de)':
+-  '@openclaw/fs-safe@0.8.5':
++  '@openclaw/fs-safe@0.8.5(patch_hash=216c40535420fe23b1510d910aa9b97176d6de318af5339675271a12fd6c1090)':
      optionalDependencies:
-       jszip: 3.10.1
-       tar: 7.5.19
+       '@openclaw/fs-safe-darwin-arm64': 0.8.5
+       '@openclaw/fs-safe-darwin-x64': 0.8.5
+diff --git a/pnpm-workspace.yaml b/pnpm-workspace.yaml
+index 4f307cf72e1..5630b43a44b 100644
+--- a/pnpm-workspace.yaml
++++ b/pnpm-workspace.yaml
+@@ -130,3 +130,4 @@ patchedDependencies:
+   "matrix-js-sdk@42.2.0": patches/matrix-js-sdk@42.2.0.patch
+   "@novnc/novnc@1.7.0": patches/@novnc__novnc@1.7.0.patch
+   vitest@5.0.0: patches/vitest@5.0.0.patch
++  '@openclaw/fs-safe@0.8.5': patches/@openclaw__fs-safe@0.8.5.patch
 diff --git a/src/plugin-sdk/file-lock.stale-contention.test.ts b/src/plugin-sdk/file-lock.stale-contention.test.ts
 new file mode 100644
-index 0000000000..20addbf6c3
+index 00000000000..a56a09bafe5
 --- /dev/null
 +++ b/src/plugin-sdk/file-lock.stale-contention.test.ts
-@@ -0,0 +1,165 @@
+@@ -0,0 +1,221 @@
 +import { spawn } from "node:child_process";
++import { once } from "node:events";
 +import fs from "node:fs/promises";
 +import os from "node:os";
 +import path from "node:path";
++import { pathToFileURL } from "node:url";
 +import { afterEach, describe, expect, it } from "vitest";
 +
 +const workerSource = `
@@ -199,7 +288,61 @@ index 0000000000..20addbf6c3
 +  });
 +
 +  it.skipIf(process.platform !== "darwin")(
-+    "serializes two stale reclaimers behind the kernel guard",
++    "recovers after a killed reclaimer and shares persistent guards with sync callers",
++    async () => {
++      const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-killed-lock-"));
++      tempDirs.push(tempDir);
++      const target = path.join(tempDir, "config.json");
++      const ready = path.join(tempDir, "ready");
++      const modulePath = path.join(process.cwd(), "node_modules/@openclaw/fs-safe/dist/file-lock.js");
++      await fs.writeFile(`${target}.lock`, JSON.stringify({ pid: -1 }));
++      // Existing production guards are persistent files, not stale directories.
++      await fs.writeFile(`${target}.lock.reclaim`, "");
++      const child = spawn(process.execPath, ["--input-type=module", "-e", `
++        import fs from "node:fs/promises";
++        const { acquireFileLock } = await import(${JSON.stringify(pathToFileURL(modulePath).href)});
++        await acquireFileLock(${JSON.stringify(target)}, {
++          payload: () => ({ pid: process.pid, createdAt: new Date().toISOString() }),
++          staleRecovery: "remove-if-unchanged", shouldReclaim: () => true,
++          shouldRemoveStaleLock: async () => {
++            await fs.writeFile(${JSON.stringify(ready)}, "");
++            await new Promise(() => setInterval(() => {}, 1000));
++            return true;
++          },
++        });
++      `], { stdio: ["ignore", "ignore", "pipe"] });
++      const exited = once(child, "exit");
++      try {
++        await waitFor(() => fs.access(ready));
++        child.kill("SIGKILL");
++        await exited;
++        const { acquireFileLock, acquireFileLockSync } = await import(pathToFileURL(modulePath).href);
++        const options = {
++          payload: () => ({ pid: process.pid, createdAt: new Date().toISOString() }),
++          staleRecovery: "remove-if-unchanged",
++          shouldReclaim: ({ payload }: { payload?: { pid?: number } }) => payload?.pid === -1,
++          shouldRemoveStaleLock: () => true,
++          retry: { retries: 1, minTimeout: 1, maxTimeout: 1 },
++        };
++        const first = await acquireFileLock(target, options);
++        try {
++          expect(() => acquireFileLockSync(target, options)).toThrow("file lock timeout");
++        } finally {
++          await first.release();
++        }
++        const second = acquireFileLockSync(target, options);
++        second.release();
++        expect((await fs.stat(`${target}.lock.reclaim`)).isFile()).toBe(true);
++      } finally {
++        if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
++        await exited;
++      }
++    },
++    15_000,
++  );
++
++  it.skipIf(process.platform !== "darwin")(
++    "serializes two stale reclaimers without overlapping lock owners",
 +    async () => {
 +      const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-stale-lock-"));
 +      tempDirs.push(tempDir);

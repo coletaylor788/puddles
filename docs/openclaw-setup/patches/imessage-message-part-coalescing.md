@@ -1,6 +1,6 @@
 # Selective iMessage message-part coalescing
 
-**Status:** Verified in an isolated fixture against OpenClaw 2026.6.11.
+**Status:** Ported to OpenClaw 2026.9.3 with recording fixtures.
 
 ## Symptom
 
@@ -15,10 +15,25 @@ Without coalescing, the first row starts an agent turn before the payload
 arrives. The reply therefore lacks the link or image, and the payload starts a
 second turn after the fact.
 
-OpenClaw's existing `channels.imessage.coalesceSameSenderDms` compatibility mode
-solves structurally marked URL previews, but it can hold every direct message
-for the full compatibility window and does not reliably join caption-plus-image
-rows after `imsg` advertises balloon metadata.
+Upstream removed split-message coalescing in this release. The maintained patch
+restores the opt-in setting, notification metadata, and selective grouping on
+top of the new durable inbound queue. It does not restore the retired replay
+guard or replace the release's GUID and media representations.
+
+The patch also keeps iMessage in the built runtime and npm file selection.
+Stable otherwise downloads the official external plugin, which does not contain
+these changes. Doctor preserves the setting at channel and account scope,
+including explicit `false` overrides. Installed rehearsal refuses a missing
+bundled plugin and confirms that startup kept the configured option.
+The archive's channel schema comes from committed generated metadata. Regenerate
+it with upstream `pnpm config:channels:gen` after changing the channel schema.
+Source parity and installed channel/account checks prevent an old snapshot from
+rejecting the maintained option before the channel starts.
+
+The queue saves a notification before advancing its recovery cursor. Each
+grouped agent turn owns only its own message claims. Separate turns wait for
+admission in order, rather than sharing one completion claim. The hold deadline
+starts at the notification's recorded receive time, not at a later disk callback.
 
 ## Fix
 
@@ -122,8 +137,9 @@ The patch adds regression coverage for:
   with no prior composition state;
 - back-to-back text-link-text compositions retaining independent continuation
   buckets;
-- a joined payload without a GUID and with a malformed timestamp still closing
-  its composition bucket without qualifying as a continuation anchor;
+- a joined payload with a malformed timestamp closing its composition bucket
+  without qualifying as a continuation anchor; durable ingress independently
+  rejects raw notifications without a GUID;
 - quickly reply-chained non-URL balloons remaining structurally instant;
 - broken reply chains, malformed timestamps, out-of-order source times, and
   source gaps above one second remaining separate;
@@ -145,8 +161,9 @@ The patch adds regression coverage for:
 - invalid conversation anchors failing open instead of sharing a coalescing key;
 - the existing merge caps, reply context, cursor, and GUID tracking.
 
-The focused coalescer and monitor suites pass all 88 tests after a clean
-reapplication of the exported patch.
+The coalescer and monitor suites retain 99 cases on this release. Configuration,
+notification parsing, and durable ingress coverage are also registered in the
+accumulated pool.
 
 Run all message-delivery scenarios through the registered managed test
 environment with recording mocks:

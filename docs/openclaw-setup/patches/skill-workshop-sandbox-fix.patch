@@ -1,66 +1,47 @@
-diff --git a/src/agents/tools/skill-workshop-tool.test.ts b/src/agents/tools/skill-workshop-tool.test.ts
---- a/src/agents/tools/skill-workshop-tool.test.ts
-+++ b/src/agents/tools/skill-workshop-tool.test.ts
-@@ -57,7 +57,7 @@ describe("skill_workshop tool", () => {
-     expect(tools.some((tool) => tool.name === "skill_workshop")).toBe(true);
-   });
--
-+
--  it("is not exposed from sandboxed OpenClaw tool sets", async () => {
-+  it("is exposed from sandboxed OpenClaw tool sets", async () => {
-     const workspaceDir = await tempDirs.make("openclaw-skill-workshop-tool-");
-     const tools = createOpenClawTools({
-       workspaceDir,
-@@ -66,7 +66,7 @@ describe("skill_workshop tool", () => {
-       sandboxed: true,
-     });
--
-+
--    expect(tools.some((tool) => tool.name === "skill_workshop")).toBe(false);
-+    expect(tools.some((tool) => tool.name === "skill_workshop")).toBe(true);
-   });
--
-+
-   it("creates pending skill proposals without applying them", async () => {
 diff --git a/src/agents/openclaw-tools.ts b/src/agents/openclaw-tools.ts
-index 81ac6a76e0..8eed0922d5 100644
+index 1162e89f33f..cf79f2e64d9 100644
 --- a/src/agents/openclaw-tools.ts
 +++ b/src/agents/openclaw-tools.ts
-@@ -476,21 +476,22 @@ export function createOpenClawTools(
+@@ -480,7 +480,7 @@ export function createOpenClawTools(options?: OpenClawToolsOptions): AnyAgentToo
        sessionAgentId,
        config: resolvedConfig,
      }),
--    ...(options?.sandboxed
--      ? []
--      : [
--          createSkillWorkshopTool({
--            workspaceDir,
--            config: resolvedConfig,
--            agentId: sessionAgentId,
--            origin: {
--              agentId: sessionAgentId,
--              ...(skillWorkshopSessionKey ? { sessionKey: skillWorkshopSessionKey } : {}),
--              ...(skillWorkshopRunId ? { runId: skillWorkshopRunId } : {}),
--              ...(skillWorkshopMessageId ? { messageId: skillWorkshopMessageId } : {}),
--            },
--          }),
--        ]),
-+    // FIX-SKILL-WORKSHOP-IN-SANDBOX: skill_workshop is fully gateway-routed via
-+    // proposal-based flows (no direct FS access), so it is safe in sandboxed
-+    // subagents too. Drop the sandboxed gate that previously withheld it.
-+    ...[
-+      createSkillWorkshopTool({
-+        workspaceDir,
-+        config: resolvedConfig,
-+        agentId: sessionAgentId,
-+        origin: {
-+          agentId: sessionAgentId,
-+          ...(skillWorkshopSessionKey ? { sessionKey: skillWorkshopSessionKey } : {}),
-+          ...(skillWorkshopRunId ? { runId: skillWorkshopRunId } : {}),
-+          ...(skillWorkshopMessageId ? { messageId: skillWorkshopMessageId } : {}),
-+        },
-+      }),
-+    ],
-     ...(includeUpdatePlanTool ? [createUpdatePlanTool()] : []),
-     createSessionsListTool({
-       agentSessionKey: options?.agentSessionKey,
+-    ...((options?.sandboxed && !options.skillWorkshop?.libraryAuthoring) || !resolvedConfig
++    ...(!resolvedConfig
+       ? []
+       : [
+           createConfiguredSkillWorkshopTool({
+diff --git a/src/agents/tools/skill-workshop-tool.test.ts b/src/agents/tools/skill-workshop-tool.test.ts
+index 0cc3c451e31..8037a34847a 100644
+--- a/src/agents/tools/skill-workshop-tool.test.ts
++++ b/src/agents/tools/skill-workshop-tool.test.ts
+@@ -406,7 +406,7 @@ describe("skill_workshop tool", () => {
+     expect(proposalMutationBudget.successfulMutations).toBe(3);
+   });
+ 
+-  it("is not exposed from sandboxed OpenClaw tool sets", async () => {
++  it("exposes proposal authoring from sandboxed OpenClaw tool sets", async () => {
+     const workspaceDir = await tempDirs.make("openclaw-skill-workshop-tool-");
+     const tools = createOpenClawTools({
+       workspaceDir,
+@@ -415,7 +415,19 @@ describe("skill_workshop tool", () => {
+       sandboxed: true,
+     });
+ 
+-    expect(tools.some((tool) => tool.name === "skill_workshop")).toBe(false);
++    const tool = tools.find((tool) => tool.name === "skill_workshop");
++    expect(tool).toBeDefined();
++    const result = await tool!.execute("sandbox-proposal", {
++      action: "create",
++      name: "Sandbox Workflow",
++      description: "A reusable sandbox workflow",
++      proposal_content: "# Sandbox Workflow\n\nReview the inputs before making changes.\n",
++    });
++    expect(result.details).toMatchObject({ status: "pending", kind: "create" });
++    await expect(
++      fs.access(workshopSkillPath("sandbox-workflow", "SKILL.md")),
++    ).rejects.toThrow();
++    await expect(fs.access(path.join(workspaceDir, "skills"))).rejects.toThrow();
+   });
+ 
+   it("creates pending skill proposals without applying them", async () => {

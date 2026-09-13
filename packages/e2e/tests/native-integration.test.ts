@@ -5,7 +5,7 @@ import { join } from "node:path";
 // @ts-expect-error Native lifecycle exports are executable JavaScript.
 import { integrateCandidate } from "../bin/openclaw-integrate.mjs";
 // @ts-expect-error Native lifecycle exports are executable JavaScript.
-import { jsonDigest } from "../src/native-state.mjs";
+import { fileDigest, jsonDigest } from "../src/native-state.mjs";
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -20,7 +20,7 @@ function setup(changeBase = false, changedTree = false) {
     schemaVersion: 1, platform: "darwin", arch: "arm64", node: "v22.23.2" };
   const proofs: Record<string, string> = {};
   mkdirSync(join(root, "stages"));
-  for (const name of ["regressions", "runtime", "install"]) {
+  for (const name of ["build", "regressions", "runtime", "install"]) {
     const inputs = name === "runtime" ? { artifact, additionalArtifacts: [] } : name === "install" ? { artifact } : { source: "synthetic" };
     const key = jsonDigest(inputs);
     proofs[name] = key;
@@ -100,5 +100,115 @@ describe("source integration before activation", () => {
     writeFileSync(runtimePath, JSON.stringify(runtime));
     await expect(integrateCandidate(f.path, "example/public-repo", 123, f.run)).rejects.toThrow("proof chain");
     expect(f.calls).toEqual([]);
+  });
+  it("binds provider provenance to installation and runtime proofs", async () => {
+    const f = setup();
+    const receipt = JSON.parse(readFileSync(f.path, "utf8"));
+    const tools = {
+      node: receipt.artifact.node,
+      nodeBinary: "5".repeat(64),
+      platform: receipt.artifact.platform,
+      arch: receipt.artifact.arch,
+      manager: "pnpm@10.31.0",
+      npm: "11.8.0",
+    };
+    const buildPath = join(f.root, "stages/build.json");
+    const build = JSON.parse(readFileSync(buildPath, "utf8"));
+    build.inputs.tools = tools;
+    build.key = jsonDigest(build.inputs);
+    receipt.proofs.build = build.key;
+    writeFileSync(buildPath, JSON.stringify(build));
+    const provenancePath = join(f.root, "provider-provenance.json");
+    const provenance = {
+      path: provenancePath,
+      sha256: "",
+      schema: "puddles.openclaw-provider-artifact/v1",
+      publicHead: "a".repeat(40),
+      sourceSha256: "6".repeat(64),
+      buildInputsSha256: receipt.proofs.build,
+      buildCommandSha256: "8".repeat(64),
+    };
+    const extra = {
+      id: "llama-cpp-provider",
+      artifact: { ...receipt.artifact, sha256: "3".repeat(64), runtimeSha256: "4".repeat(64) },
+      provenance,
+    };
+    const providerInputs = {
+      candidateInputs: "synthetic",
+      source: provenance.sourceSha256,
+      build: "7".repeat(64),
+      provenance: {
+        publicHead: provenance.publicHead,
+        buildInputsSha256: provenance.buildInputsSha256,
+        buildCommandSha256: provenance.buildCommandSha256,
+        tools,
+      },
+      packaging: "9".repeat(64),
+    };
+    writeFileSync(provenancePath, JSON.stringify({
+      schema: provenance.schema,
+      schemaVersion: 1,
+      id: extra.id,
+      package: { name: "@openclaw/llama-cpp-provider", version: "2026.9.3" },
+      publicHead: provenance.publicHead,
+      source: { sha256: provenance.sourceSha256 },
+      build: {
+        inputsSha256: provenance.buildInputsSha256,
+        commandSha256: provenance.buildCommandSha256,
+        outputSha256: providerInputs.build,
+      },
+      toolchain: tools,
+      artifact: { file: "provider.tar.gz", sha256: extra.artifact.sha256, runtimeSha256: extra.artifact.runtimeSha256 },
+    }));
+    provenance.sha256 = fileDigest(provenancePath);
+    receipt.additionalArtifacts = [extra];
+    const providerKey = jsonDigest(providerInputs);
+    receipt.proofs["provider-package"] = providerKey;
+    writeFileSync(join(f.root, "stages/provider-package.json"), JSON.stringify({
+      key: providerKey,
+      inputs: providerInputs,
+      result: extra,
+      status: "passed",
+    }));
+    const inputs = { id: extra.id, artifact: extra.artifact, provenance };
+    const key = jsonDigest(inputs);
+    receipt.proofs["install-additional-0"] = key;
+    writeFileSync(join(f.root, "stages/install-additional-0.json"), JSON.stringify({ key, inputs, status: "passed" }));
+    const runtimePath = join(f.root, "stages/runtime.json");
+    const runtime = JSON.parse(readFileSync(runtimePath, "utf8"));
+    runtime.inputs.additionalArtifacts = [extra];
+    runtime.key = jsonDigest(runtime.inputs);
+    receipt.proofs.runtime = runtime.key;
+    writeFileSync(runtimePath, JSON.stringify(runtime));
+    writeFileSync(f.path, JSON.stringify(receipt));
+    await integrateCandidate(f.path, "example/public-repo", 123, f.run);
+    const providerPath = join(f.root, "stages/provider-package.json");
+    const writeProviderProof = () => {
+      const nextKey = jsonDigest(providerInputs);
+      receipt.proofs["provider-package"] = nextKey;
+      writeFileSync(providerPath, JSON.stringify({
+        key: nextKey,
+        inputs: providerInputs,
+        result: extra,
+        status: "passed",
+      }));
+      writeFileSync(f.path, JSON.stringify(receipt));
+    };
+    providerInputs.source = "0".repeat(64);
+    writeProviderProof();
+    await expect(integrateCandidate(f.path, "example/public-repo", 123, f.run)).rejects.toThrow("provenance does not match");
+    providerInputs.source = provenance.sourceSha256;
+    providerInputs.provenance.buildCommandSha256 = "0".repeat(64);
+    writeProviderProof();
+    await expect(integrateCandidate(f.path, "example/public-repo", 123, f.run)).rejects.toThrow("provenance does not match");
+    providerInputs.provenance.buildCommandSha256 = provenance.buildCommandSha256;
+    providerInputs.provenance.tools = { ...tools, nodeBinary: "0".repeat(64) };
+    writeProviderProof();
+    await expect(integrateCandidate(f.path, "example/public-repo", 123, f.run)).rejects.toThrow("provenance does not match");
+    providerInputs.provenance.tools = tools;
+    writeProviderProof();
+    receipt.additionalArtifacts[0].provenance.sha256 = "9".repeat(64);
+    writeFileSync(f.path, JSON.stringify(receipt));
+    await expect(integrateCandidate(f.path, "example/public-repo", 123, f.run)).rejects.toThrow("Additional artifacts differ from runtime proof");
   });
 });

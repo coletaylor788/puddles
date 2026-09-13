@@ -1,0 +1,368 @@
+diff --git a/src/agents/sandbox.resolveSandboxContext.test.ts b/src/agents/sandbox.resolveSandboxContext.test.ts
+index 421aaac9975..17c695bc51c 100644
+--- a/src/agents/sandbox.resolveSandboxContext.test.ts
++++ b/src/agents/sandbox.resolveSandboxContext.test.ts
+@@ -329,6 +329,7 @@ describe("resolveSandboxContext", () => {
+         sessionKey: "agent:worker:task",
+         skillsSnapshot,
+         workspaceDir: "/tmp/openclaw-test",
++        tempRoot: path.join(sandboxFixtureRoot, "explicit-staging"),
+       });
+ 
+       expect(result?.backendId).toBe("test-backend");
+@@ -338,6 +339,7 @@ describe("resolveSandboxContext", () => {
+       expect(backendFactory).toHaveBeenCalledWith(
+         expect.objectContaining({
+           registeredRuntimeIds: ["registered-runtime"],
++          tempRoot: path.join(sandboxFixtureRoot, "explicit-staging"),
+         }),
+       );
+       expect(resolveNodeExecEligibilityMock).toHaveBeenCalledWith(
+diff --git a/src/agents/sandbox/backend.types.ts b/src/agents/sandbox/backend.types.ts
+index 06334709c63..4c5717ec0ec 100644
+--- a/src/agents/sandbox/backend.types.ts
++++ b/src/agents/sandbox/backend.types.ts
+@@ -38,6 +38,8 @@ export type CreateSandboxBackendParams = {
+   workspaceDir: string;
+   agentWorkspaceDir: string;
+   skillsWorkspaceDir?: string;
++  /** Explicit private root for short-lived container environment files. */
++  tempRoot?: string;
+   cfg: SandboxConfig;
+   requireCurrentConfig?: boolean;
+ };
+diff --git a/src/agents/sandbox/browser.create.test.ts b/src/agents/sandbox/browser.create.test.ts
+index 7213fa904a4..339d4f620fb 100644
+--- a/src/agents/sandbox/browser.create.test.ts
++++ b/src/agents/sandbox/browser.create.test.ts
+@@ -1,6 +1,6 @@
+ // Sandbox browser creation tests cover Docker args, bridge auth, noVNC access,
+ // config hashing, and cached bridge invalidation.
+-import { mkdirSync, readFileSync } from "node:fs";
++import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync } from "node:fs";
+ import { createServer } from "node:http";
+ import type { AddressInfo, Socket } from "node:net";
+ import path from "node:path";
+@@ -324,6 +324,26 @@ describe("ensureSandboxBrowser create args", () => {
+     expect(findDockerArgsCall(dockerMocks.execDocker.mock.calls, "create")).toBeUndefined();
+   });
+ 
++  it("stages browser environment inside an explicit root and removes it after create", async () => {
++    const tempRoot = realpathSync(tempDirs.make("openclaw-browser-staging-"));
++    const cfg = buildConfig(false);
++    cfg.browser.autoStart = false;
++    await ensureTestSandboxBrowser({
++      scopeKey: "session:scoped-staging",
++      workspaceDir: testWorkspaceDir,
++      agentWorkspaceDir: testWorkspaceDir,
++      tempRoot,
++      cfg,
++    });
++    const args = findDockerArgsCall(dockerMocks.execDocker.mock.calls, "create");
++    expect(args).toBeDefined();
++    const [envFile] = collectDockerFlagValues(args!, "--env-file");
++    expect(path.relative(tempRoot, envFile)).not.toMatch(/^\.\./u);
++    expect(capturedDockerCreateEnvEntries).toBeDefined();
++    expect(existsSync(envFile)).toBe(false);
++    expect(readdirSync(tempRoot)).toEqual([]);
++  });
++
+   it("keeps the browser Dockerfile contract label aligned with the runtime constant", () => {
+     const dockerfile = readFileSync(
+       new URL("../../../scripts/docker/sandbox/Dockerfile.browser", import.meta.url),
+diff --git a/src/agents/sandbox/browser.ts b/src/agents/sandbox/browser.ts
+index 756e3516d32..d1ef659c446 100644
+--- a/src/agents/sandbox/browser.ts
++++ b/src/agents/sandbox/browser.ts
+@@ -232,6 +232,7 @@ type EnsureSandboxBrowserParams = {
+   workspaceDir: string;
+   agentWorkspaceDir: string;
+   skillsWorkspaceDir?: string;
++  tempRoot?: string;
+   cfg: SandboxConfig;
+   evaluateEnabled?: boolean;
+   bridgeAuth?: { token?: string; password?: string };
+@@ -447,10 +448,14 @@ async function ensureSandboxBrowserContainer(
+     if (noVncEnabled && noVncPassword) {
+       env[NOVNC_PASSWORD_ENV_KEY] = noVncPassword;
+     }
+-    await withContainerEnvFile(env, async (envFile) => {
+-      args.push("--env-file", envFile, browserImage);
+-      await execDocker(args);
+-    });
++    await withContainerEnvFile(
++      env,
++      async (envFile) => {
++        args.push("--env-file", envFile, browserImage);
++        await execDocker(args);
++      },
++      { rootDir: params.tempRoot },
++    );
+     await execDocker(["start", containerName]);
+   } else if (!running) {
+     await execDocker(["start", containerName]);
+diff --git a/src/agents/sandbox/context.ts b/src/agents/sandbox/context.ts
+index 9fb2ee7c27d..98e0c2f9692 100644
+--- a/src/agents/sandbox/context.ts
++++ b/src/agents/sandbox/context.ts
+@@ -232,6 +232,8 @@ type ResolveSandboxContextParams = {
+   sessionKey?: string;
+   skillsSnapshot?: SkillSnapshot;
+   workspaceDir?: string;
++  /** Staging only. Does not change state paths or lifecycle coordinator authority. */
++  tempRoot?: string;
+ };
+ 
+ type ResolvedSandboxSession = NonNullable<ReturnType<typeof resolveSandboxSession>>;
+@@ -299,6 +301,7 @@ async function resolveProvisionedSandboxContext(
+     workspaceDir,
+     agentWorkspaceDir,
+     skillsWorkspaceDir,
++    ...(params.tempRoot !== undefined ? { tempRoot: params.tempRoot } : {}),
+     cfg: resolvedCfg,
+     ...(params.requireCurrentConfig !== undefined
+       ? { requireCurrentConfig: params.requireCurrentConfig }
+@@ -348,6 +351,7 @@ async function resolveProvisionedSandboxContext(
+           workspaceDir,
+           agentWorkspaceDir,
+           skillsWorkspaceDir,
++          ...(params.tempRoot !== undefined ? { tempRoot: params.tempRoot } : {}),
+           cfg: resolvedCfg,
+           evaluateEnabled,
+           bridgeAuth,
+@@ -384,15 +388,9 @@ async function resolveProvisionedSandboxContext(
+   return sandboxContext;
+ }
+ 
+-export async function resolveSandboxContext(params: {
+-  config?: OpenClawConfig;
+-  agentId?: string;
+-  execOverrides?: ExecPolicyOverrides;
+-  requireCurrentConfig?: boolean;
+-  sessionKey?: string;
+-  skillsSnapshot?: SkillSnapshot;
+-  workspaceDir?: string;
+-}): Promise<SandboxContext | null> {
++export async function resolveSandboxContext(
++  params: ResolveSandboxContextParams,
++): Promise<SandboxContext | null> {
+   const resolved = resolveSandboxSession(params);
+   if (!resolved) {
+     return null;
+diff --git a/src/agents/sandbox/docker-backend.test.ts b/src/agents/sandbox/docker-backend.test.ts
+index 2b7791501eb..9395e065bb7 100644
+--- a/src/agents/sandbox/docker-backend.test.ts
++++ b/src/agents/sandbox/docker-backend.test.ts
+@@ -86,7 +86,7 @@ describe("docker sandbox backend manager", () => {
+     });
+   });
+ 
+-  it("forwards the canonical scope key to container provisioning", async () => {
++  it("forwards the canonical scope key and explicit temp root to container provisioning", async () => {
+     dockerMocks.ensureSandboxContainer.mockResolvedValueOnce("sandbox-container");
+     const scopeKey = `agent:poly:workspace:${"a".repeat(32)}`;
+ 
+@@ -95,11 +95,12 @@ describe("docker sandbox backend manager", () => {
+       scopeKey,
+       workspaceDir: "/tmp/customer/workspace",
+       agentWorkspaceDir: "/tmp/customer/workspace",
++      tempRoot: "/tmp/customer/staging",
+       cfg: resolveSandboxConfigForAgent(createConfig(), "poly"),
+     });
+ 
+     expect(dockerMocks.ensureSandboxContainer).toHaveBeenCalledWith(
+-      expect.objectContaining({ scopeKey }),
++      expect.objectContaining({ scopeKey, tempRoot: "/tmp/customer/staging" }),
+     );
+   });
+ 
+diff --git a/src/agents/sandbox/docker-backend.ts b/src/agents/sandbox/docker-backend.ts
+index 41b7cab0032..208c8aca965 100644
+--- a/src/agents/sandbox/docker-backend.ts
++++ b/src/agents/sandbox/docker-backend.ts
+@@ -95,6 +95,7 @@ async function createContainerSandboxBackend(
+     workspaceDir: params.workspaceDir,
+     agentWorkspaceDir: params.agentWorkspaceDir,
+     skillsWorkspaceDir: params.skillsWorkspaceDir,
++    ...(params.tempRoot !== undefined ? { tempRoot: params.tempRoot } : {}),
+     cfg: params.cfg,
+     ...(params.requireCurrentConfig !== undefined
+       ? { requireCurrentConfig: params.requireCurrentConfig }
+diff --git a/src/agents/sandbox/docker.config-hash-recreate.test.ts b/src/agents/sandbox/docker.config-hash-recreate.test.ts
+index 6826839eba5..e9a22af6ddf 100644
+--- a/src/agents/sandbox/docker.config-hash-recreate.test.ts
++++ b/src/agents/sandbox/docker.config-hash-recreate.test.ts
+@@ -243,6 +243,7 @@ async function ensureSandboxCreateCallForTest(params: {
+   workspaceDir?: string;
+   scopeKey?: string;
+   engine?: import("./docker.js").SandboxContainerEngine;
++  tempRoot?: string;
+ }): Promise<SpawnCall> {
+   const workspaceDir = params.workspaceDir ?? "/tmp/workspace";
+   await ensureSandboxContainer({
+@@ -250,6 +251,7 @@ async function ensureSandboxCreateCallForTest(params: {
+     workspaceDir,
+     agentWorkspaceDir: workspaceDir,
+     cfg: params.cfg,
++    ...(params.tempRoot !== undefined ? { tempRoot: params.tempRoot } : {}),
+     ...(params.engine ? { engine: params.engine } : {}),
+   });
+ 
+@@ -263,6 +265,19 @@ async function ensureSandboxCreateCallForTest(params: {
+ }
+ 
+ describe("ensureSandboxContainer config-hash recreation", () => {
++  it("stages container environment inside an explicit root and removes it after create", async () => {
++    spawnState.containerExists = false;
++    const tempRoot = fs.realpathSync(tempDirs.make("openclaw-container-staging-"));
++    const call = await ensureSandboxCreateCallForTest({
++      cfg: createSandboxConfig([]), tempRoot,
++    });
++    const [envFile] = collectDockerFlagValues(call.args, "--env-file");
++    expect(path.relative(tempRoot, envFile)).not.toMatch(/^\.\./u);
++    expect(call.envFileContents).toContain("LANG=C.UTF-8");
++    expect(fs.existsSync(envFile)).toBe(false);
++    expect(fs.readdirSync(tempRoot)).toEqual([]);
++  });
++
+   beforeEach(() => {
+     spawnState.calls.length = 0;
+     spawnState.containerExists = true;
+diff --git a/src/agents/sandbox/docker.ts b/src/agents/sandbox/docker.ts
+index 8d78ea6d911..5fd0796d841 100644
+--- a/src/agents/sandbox/docker.ts
++++ b/src/agents/sandbox/docker.ts
+@@ -460,6 +460,7 @@ async function createSandboxContainer(params: {
+   workspaceAccess: SandboxWorkspaceAccess;
+   agentWorkspaceDir: string;
+   skillsWorkspaceDir?: string;
++  tempRoot?: string;
+   scopeKey: string;
+   configHash?: string;
+   readOnlyWorkspaceSkillMounts: readonly ReadOnlyWorkspaceSkillMount[];
+@@ -523,10 +524,14 @@ async function createSandboxContainer(params: {
+     args,
+     readOnlyWorkspaceSkillMounts: params.readOnlyWorkspaceSkillMounts,
+   });
+-  await withContainerEnvFile(env, async (envFile) => {
+-    args.push("--env-file", envFile, cfg.image, "sleep", "infinity");
+-    await execContainer(engine, args);
+-  });
++  await withContainerEnvFile(
++    env,
++    async (envFile) => {
++      args.push("--env-file", envFile, cfg.image, "sleep", "infinity");
++      await execContainer(engine, args);
++    },
++    { rootDir: params.tempRoot },
++  );
+   await execContainer(engine, ["start", name]);
+ 
+   if (cfg.setupCommand?.trim()) {
+@@ -548,6 +553,7 @@ type EnsureSandboxContainerParams = {
+   workspaceDir: string;
+   agentWorkspaceDir: string;
+   skillsWorkspaceDir?: string;
++  tempRoot?: string;
+   cfg: SandboxConfig;
+   requireCurrentConfig?: boolean;
+ };
+@@ -679,6 +685,7 @@ async function ensureSandboxContainerLifecycle(
+       workspaceAccess: params.cfg.workspaceAccess,
+       agentWorkspaceDir: params.agentWorkspaceDir,
+       skillsWorkspaceDir: params.skillsWorkspaceDir,
++      tempRoot: params.tempRoot,
+       scopeKey: params.scopeKey,
+       configHash: expectedHash,
+       readOnlyWorkspaceSkillMounts,
+diff --git a/src/infra/container-env-file.test.ts b/src/infra/container-env-file.test.ts
+index 0e042f48749..3cc24754766 100644
+--- a/src/infra/container-env-file.test.ts
++++ b/src/infra/container-env-file.test.ts
+@@ -1,10 +1,58 @@
+ // Container environment transport keeps values private while preserving engine env-file semantics.
+ import fs from "node:fs/promises";
++import os from "node:os";
+ import path from "node:path";
+ import { describe, expect, it } from "vitest";
+ import { createContainerEnvFile, withContainerEnvFile } from "./container-env-file.js";
+ 
+ describe("container environment transport", () => {
++  it.each(["completed", "failed"] as const)(
++    "keeps explicitly scoped staging inside its root when the operation %s",
++    async (outcome) => {
++      const root = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-scoped-container-env-"));
++      let stagedPath = "";
++      try {
++        const operation = withContainerEnvFile(
++          { SYNTHETIC_VALUE: "fixture" },
++          async (filePath) => {
++            stagedPath = filePath;
++            expect(path.relative(await fs.realpath(root), await fs.realpath(filePath))).not.toMatch(
++              /^\.\./u,
++            );
++            expect(await fs.readFile(filePath, "utf8")).toBe("SYNTHETIC_VALUE=fixture\n");
++            if (outcome === "failed") {
++              throw new Error("synthetic operation failure");
++            }
++          },
++          { rootDir: root },
++        );
++        if (outcome === "failed") {
++          await expect(operation).rejects.toThrow("synthetic operation failure");
++        } else {
++          await operation;
++        }
++        await expect(fs.access(stagedPath)).rejects.toMatchObject({ code: "ENOENT" });
++        expect(await fs.readdir(root)).toEqual([]);
++      } finally {
++        await fs.rm(root, { recursive: true, force: true });
++      }
++    },
++  );
++
++  it("fails instead of falling back when an explicit staging root is not a directory", async () => {
++    const root = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-invalid-container-env-"));
++    const selected = path.join(root, "not-a-directory");
++    try {
++      await fs.writeFile(selected, "fixture");
++      await expect(createContainerEnvFile({ SYNTHETIC_VALUE: "fixture" }, { rootDir: selected }))
++        .rejects.toThrow();
++      expect(await fs.readFile(selected, "utf8")).toBe("fixture");
++      expect(await fs.readdir(root)).toEqual(["not-a-directory"]);
++    } finally {
++      await fs.rm(root, { recursive: true, force: true });
++    }
++  });
++
+   it("preserves UTF-8, spaces, equals, empty values, and surrounding whitespace in a private env file", async () => {
+     const environment = {
+       PLAIN: "synthetic-container-value",
+diff --git a/src/infra/container-env-file.ts b/src/infra/container-env-file.ts
+index f82fa9ba735..be043b2dd29 100644
+--- a/src/infra/container-env-file.ts
++++ b/src/infra/container-env-file.ts
+@@ -47,10 +47,11 @@ function serializeContainerEnv(env: Readonly<Record<string, string>>): string {
+ /** Stages engine environment values outside process arguments until the caller-owned cleanup. */
+ export async function createContainerEnvFile(
+   env: Readonly<Record<string, string>>,
++  options: { rootDir?: string } = {},
+ ): Promise<ContainerEnvFile> {
+   const content = serializeContainerEnv(env);
+   const workspace = await tempWorkspace({
+-    rootDir: resolvePreferredOpenClawTmpDir(),
++    rootDir: options.rootDir ?? resolvePreferredOpenClawTmpDir(),
+     prefix: "openclaw-container-env-",
+     dirMode: 0o700,
+     mode: 0o600,
+@@ -74,8 +75,9 @@ export async function createContainerEnvFile(
+ export async function withContainerEnvFile<T>(
+   env: Readonly<Record<string, string>>,
+   run: (filePath: string) => Promise<T>,
++  options: { rootDir?: string } = {},
+ ): Promise<T> {
+-  const file = await createContainerEnvFile(env);
++  const file = await createContainerEnvFile(env, options);
+   try {
+     return await run(file.path);
+   } finally {

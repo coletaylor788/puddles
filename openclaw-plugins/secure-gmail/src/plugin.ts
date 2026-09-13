@@ -1,6 +1,6 @@
 import type {
   OpenClawPluginApi,
-} from "openclaw/plugin-sdk";
+} from "openclaw/plugin-sdk/core";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";

@@ -1,0 +1,1067 @@
+diff --git a/src/agents/provider-local-service.shutdown.test.ts b/src/agents/provider-local-service.shutdown.test.ts
+index 3fe710af012..3a3ac10a5fa 100644
+--- a/src/agents/provider-local-service.shutdown.test.ts
++++ b/src/agents/provider-local-service.shutdown.test.ts
+@@ -1,10 +1,13 @@
++import { spawn } from "node:child_process";
++import { once } from "node:events";
+ import fs from "node:fs/promises";
+ import net from "node:net";
+ import path from "node:path";
+ import { afterEach, describe, expect, it } from "vitest";
+ import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
++import { joinStoppedLocalServiceGroups } from "../process/supervisor/service-child-ownership.js";
+ import { isPidAlive } from "../shared/pid-alive.js";
+-import { killPidIfAlive } from "../test-utils/process-tree.js";
++import { killPidIfAlive, waitForPidFile, waitForPidToExit } from "../test-utils/process-tree.js";
+ import {
+   ensureProviderLocalService,
+   getManagedProviderLocalServiceDiagnosticsForTest,
+@@ -35,45 +38,122 @@ describe("provider local service shutdown", () => {
+     await stopManagedProviderLocalServices();
+   });
+ 
+-  it("waits for a stubborn descendant after its parent exits", async () => {
+-    const port = await freePort();
+-    const healthUrl = `http://127.0.0.1:${port}/v1/models`;
+-    const descendantPidPath = path.join(tempDirs.make("local-service-tree-"), "descendant.pid");
+-    let pid: number | undefined;
+-    let descendantPid: number | undefined;
++  it.each([false, true])(
++    "joins a stubborn descendant when the router exited earlier (%s)",
++    async (exitFirst) => {
++      const port = await freePort();
++      const healthUrl = `http://127.0.0.1:${port}/v1/models`;
++      const descendantPidPath = path.join(tempDirs.make("local-service-tree-"), "descendant.pid");
++      let pid: number | undefined;
++      let descendantPid: number | undefined;
+ 
+-    try {
+-      const lease = await ensureProviderLocalService({
+-        providerId: "local-stubborn-stop",
+-        baseUrl: `http://127.0.0.1:${port}/v1`,
+-        service: {
+-          command: process.execPath,
+-          args: [
+-            "-e",
+-            `const {spawn}=require("node:child_process");const fs=require("node:fs");const http=require("node:http");const child=spawn(process.execPath,["-e",'process.on("SIGTERM",()=>{});setInterval(()=>{},1000);'],{stdio:"ignore"});fs.writeFileSync(${JSON.stringify(descendantPidPath)},String(child.pid));http.createServer((req,res)=>res.end("ok")).listen(${port},"127.0.0.1");`,
+-          ],
+-          healthUrl,
+-          readyTimeoutMs: 5_000,
+-          idleStopMs: 0,
++      try {
++        const lease = await ensureProviderLocalService({
++          providerId: "local-stubborn-stop",
++          baseUrl: `http://127.0.0.1:${port}/v1`,
++          service: {
++            command: process.execPath,
++            args: [
++              "-e",
++              `const {spawn}=require("node:child_process");const fs=require("node:fs");const http=require("node:http");const child=spawn(process.execPath,["-e",'process.on("SIGTERM",()=>{});setInterval(()=>{},1000);'],{stdio:"ignore"});fs.writeFileSync(${JSON.stringify(descendantPidPath)},String(child.pid));http.createServer((req,res)=>res.end("ok")).listen(${port},"127.0.0.1");`,
++            ],
++            healthUrl,
++            readyTimeoutMs: 5_000,
++            idleStopMs: 0,
++          },
++        });
++        if (!lease) {
++          throw new Error("Expected provider local service lease");
++        }
++        pid = getManagedProviderLocalServiceDiagnosticsForTest()[0]?.pid;
++        if (!pid) {
++          throw new Error("Expected managed provider local service pid");
++        }
++        descendantPid = Number(await fs.readFile(descendantPidPath, "utf8"));
++
++        if (exitFirst) {
++          process.kill(pid, "SIGTERM");
++          expect(await waitForPidToExit(pid)).toBe(true);
++        }
++        await stopManagedProviderLocalServices();
++
++        expect(isPidAlive(pid)).toBe(false);
++        expect(isPidAlive(descendantPid)).toBe(false);
++        lease.release();
++      } finally {
++        killPidIfAlive(descendantPid);
++        killPidIfAlive(pid);
++      }
++    },
++  );
++
++  it.skipIf(process.platform === "win32").each(["starting", "ready"])(
++    "joins model descendants after gateway SIGKILL while %s",
++    async (phase) => {
++      const stateDir = tempDirs.make("local-service-forced-host-");
++      const routerPidPath = path.join(stateDir, "router.pid");
++      const modelPidPath = path.join(stateDir, "model.pid");
++      const port = await freePort();
++      const routerScript = `
++        const {spawn}=require("node:child_process");
++        const fs=require("node:fs");
++        const http=require("node:http");
++        const model=spawn(process.execPath,["-e",
++          'process.on("SIGTERM",()=>{});process.send("ready");setInterval(()=>{},1000);'
++        ],{stdio:["ignore","ignore","ignore","ipc"]});
++        model.once("message",()=>{
++          model.disconnect();
++          fs.writeFileSync(${JSON.stringify(routerPidPath)},String(process.pid));
++          fs.writeFileSync(${JSON.stringify(modelPidPath)},String(model.pid));
++          setTimeout(()=>http.createServer((req,res)=>res.end("ok")).listen(${port},"127.0.0.1"),
++            ${phase === "ready" ? 0 : 60_000});
++        });
++      `;
++      const hostScript = `
++        import {ensureProviderLocalService} from ${JSON.stringify(new URL("./provider-local-service.ts", import.meta.url).href)};
++        await ensureProviderLocalService({
++          providerId:"fixture-local",baseUrl:"http://127.0.0.1:${port}",
++          service:{command:process.execPath,args:["-e",${JSON.stringify(routerScript)}],readyTimeoutMs:60000}
++        });
++        process.send("ready");
++        setInterval(()=>{},1000);
++      `;
++      const host = spawn(
++        process.execPath,
++        ["--import", "tsx", "--input-type=module", "-e", hostScript],
++        {
++          cwd: process.cwd(),
++          env: { ...process.env, OPENCLAW_STATE_DIR: stateDir },
++          stdio: ["ignore", "ignore", "pipe", "ipc"],
+         },
++      );
++      const ready = once(host, "message");
++      void ready.catch(() => {});
++      const exited = once(host, "exit");
++      let routerPid: number | undefined;
++      let modelPid: number | undefined;
++      let stderr = "";
++      host.stderr?.on("data", (chunk) => {
++        stderr += String(chunk);
+       });
+-      if (!lease) {
+-        throw new Error("Expected provider local service lease");
+-      }
+-      pid = getManagedProviderLocalServiceDiagnosticsForTest()[0]?.pid;
+-      if (!pid) {
+-        throw new Error("Expected managed provider local service pid");
++      try {
++        routerPid = await waitForPidFile(routerPidPath);
++        modelPid = await waitForPidFile(modelPidPath);
++        if (phase === "ready") await ready;
++        host.kill("SIGKILL");
++        await exited;
++        await joinStoppedLocalServiceGroups(stateDir, 12_000);
++        expect(await waitForPidToExit(routerPid), stderr).toBe(true);
++        expect(await waitForPidToExit(modelPid), stderr).toBe(true);
++        expect(await fs.readdir(path.join(stateDir, "runtime", "local-service-owners"))).toEqual(
++          [],
++        );
++      } finally {
++        killPidIfAlive(host.pid);
++        await exited;
++        killPidIfAlive(routerPid);
++        killPidIfAlive(modelPid);
+       }
+-      descendantPid = Number(await fs.readFile(descendantPidPath, "utf8"));
+-
+-      await stopManagedProviderLocalServices();
+-
+-      expect(isPidAlive(pid)).toBe(false);
+-      expect(isPidAlive(descendantPid)).toBe(false);
+-      lease.release();
+-    } finally {
+-      killPidIfAlive(descendantPid);
+-      killPidIfAlive(pid);
+-    }
+-  });
++    },
++  );
+ });
+diff --git a/src/agents/provider-local-service.ts b/src/agents/provider-local-service.ts
+index 88af9a99f9c..f4db822e3c3 100644
+--- a/src/agents/provider-local-service.ts
++++ b/src/agents/provider-local-service.ts
+@@ -7,9 +7,11 @@ import {
+   resolvePositiveTimerTimeoutMs,
+ } from "@openclaw/normalization-core/number-coercion";
+ import { sleepWithAbort } from "@openclaw/retry";
++import { resolveStateDir } from "../config/paths.js";
+ import type { ModelProviderLocalServiceConfig } from "../config/types.models.js";
+ import type { OpenClawConfig } from "../config/types.openclaw.js";
+ import { toErrorObject } from "../infra/errors.js";
++import { withTimeout } from "../infra/fs-safe.js";
+ import { mergeProcessEnv } from "../infra/process-env.js";
+ import type { Model } from "../llm/types.js";
+ import { isSensitiveFieldKey, redactSensitiveText } from "../logging/redact.js";
+@@ -21,6 +23,9 @@ import {
+   shouldDetachChildForProcessTree,
+ } from "../process/child-process-tree.js";
+ import { prepareOomScoreAdjustedSpawnPreservingExecEnv as prepareLocalServiceSpawn } from "../process/linux-oom-score.js";
++import { GRACEFUL_CANCEL_TIMEOUT_MS } from "../process/supervisor/cancellation-policy.js";
++import { requireServiceProcessIdentity } from "../process/supervisor/service-child-ownership.js";
++import { createServiceChildRelayAdapter } from "../process/supervisor/service-child-relay-host.js";
+ import { getModelProviderLocalServiceReconciler } from "./provider-local-service-reconcile.js";
+ import type {
+   AcquireConfiguredProviderLocalService,
+@@ -46,6 +51,9 @@ type ModelWithProviderLocalService = {
+ 
+ type ManagedLocalService = {
+   process?: ChildProcess;
++  relay?: Awaited<ReturnType<typeof createServiceChildRelayAdapter>>;
++  extinction?: Promise<void>;
++  stopping?: Promise<void>;
+   starting?: Promise<void>;
+   startupAbort?: AbortController;
+   active: number;
+@@ -158,6 +166,10 @@ async function acquireProviderLocalService(
+   const healthHeaders = buildHealthProbeHeaders(target.headers, undefined);
+   const key = localServiceKey(target.providerId, service, healthUrl);
+   installExitHandler();
++  const stopping = services.get(key)?.stopping;
++  if (stopping) {
++    await waitForAbort(stopping, signal);
++  }
+   const managed = services.get(key) ?? { active: 0 };
+   services.set(key, managed);
+   setManagedProviderLocalServicesActive(true);
+@@ -171,15 +183,13 @@ async function acquireProviderLocalService(
+     }
+     released = true;
+     managed.active = Math.max(0, managed.active - 1);
+-    scheduleIdleStop(key, managed, service);
++    if (services.get(key) === managed) {
++      scheduleIdleStop(key, managed, service);
++    }
+   };
+ 
+   try {
+-    if (
+-      managed.process &&
+-      !hasLocalServiceProcessExited(managed.process) &&
+-      (await probeHealth(healthUrl, healthHeaders, signal))
+-    ) {
++    if (hasManagedProcess(managed) && (await probeHealth(healthUrl, healthHeaders, signal))) {
+       return { release };
+     }
+     if (!managed.starting) {
+@@ -201,10 +211,7 @@ async function acquireProviderLocalService(
+       });
+     }
+     await waitForAbort(managed.starting, signal);
+-    if (
+-      (managed.process && !hasLocalServiceProcessExited(managed.process)) ||
+-      (await probeHealth(healthUrl, healthHeaders, signal))
+-    ) {
++    if (hasManagedProcess(managed) || (await probeHealth(healthUrl, healthHeaders, signal))) {
+       return { release };
+     }
+     release();
+@@ -336,7 +343,7 @@ async function startAndWaitForLocalService(params: {
+   if (await probeHealth(healthUrl, healthHeaders, signal)) {
+     return;
+   }
+-  if (managed.process && !hasLocalServiceProcessExited(managed.process)) {
++  if (managed.relay || managed.process) {
+     log.info(`restarting unhealthy ${provider} local service`);
+     await stopManagedProcess(managed, signal);
+   }
+@@ -357,17 +364,6 @@ async function startAndWaitForLocalService(params: {
+   const preparedSpawn = prepareLocalServiceSpawn(service.command, service.args ?? [], {
+     env: serviceEnv,
+   });
+-  managed.process = spawn(preparedSpawn.command, preparedSpawn.args, {
+-    cwd: service.cwd,
+-    env: preparedSpawn.env,
+-    stdio: ["ignore", "pipe", "pipe"],
+-    detached: shouldDetachChildForProcessTree(),
+-  });
+-  const child = managed.process;
+-  diagnostics.pid = child.pid;
+-  managed.lastExit = undefined;
+-  child.stdout?.setEncoding("utf8");
+-  child.stderr?.setEncoding("utf8");
+   const captureStdout = (chunk: string) => {
+     diagnostics.stdoutTail = appendLocalServiceOutputTail(
+       diagnostics.stdoutTail,
+@@ -388,25 +384,65 @@ async function startAndWaitForLocalService(params: {
+       healthHeaders,
+     );
+   };
+-  child.stdout?.on("data", captureStdout);
+-  child.stderr?.on("data", captureStderr);
+-  child.unref();
+-  child.once("exit", (code, signalLocal) => {
++  const onExit = (code: number | null, signalLocal: NodeJS.Signals | null) => {
+     const exit = { code, signal: signalLocal };
+     diagnostics.lastExit = exit;
++    managed.lastExit = exit;
+     log.info(
+       `${provider} local service exited: ${signalLocal ? `signal=${signalLocal}` : `code=${code ?? 0}`}`,
+     );
+-    if (managed.process === child) {
+-      managed.lastExit = exit;
+-      managed.process = undefined;
++  };
++  managed.lastExit = undefined;
++  if (process.platform !== "win32") {
++    const relay = await createServiceChildRelayAdapter({
++      command: preparedSpawn.command,
++      args: preparedSpawn.args,
++      cwd: service.cwd,
++      env: preparedSpawn.env,
++      stdinMode: "pipe-closed",
++      oomScoreWrapperSelected: preparedSpawn.wrapped,
++      ownership: {
++        directory: path.join(resolveStateDir(), "runtime", "local-service-owners"),
++        owner: requireServiceProcessIdentity(process.pid),
++      },
++      onSpawnCleanup: (extinction) => {
++        managed.extinction = extinction;
++      },
++    });
++    managed.relay = relay;
++    managed.extinction = relay.waitForExtinction();
++    void managed.extinction.catch(() => {});
++    diagnostics.pid = relay.pid;
++    relay.onStdout((chunk) => {
++      if (diagnostics.readyAt === undefined) captureStdout(chunk);
++    });
++    relay.onStderr((chunk) => {
++      if (diagnostics.readyAt === undefined) captureStderr(chunk);
++    });
++    relay.onExit(onExit);
++    relay.onError((error) => log.warn(`local service supervision failed: ${error.message}`));
++    throwIfAborted(signal);
++  } else {
++    managed.process = spawn(preparedSpawn.command, preparedSpawn.args, {
++      cwd: service.cwd,
++      env: preparedSpawn.env,
++      stdio: ["ignore", "pipe", "pipe"],
++      detached: shouldDetachChildForProcessTree(),
++    });
++    const child = managed.process;
++    diagnostics.pid = child.pid;
++    child.stdout?.setEncoding("utf8");
++    child.stderr?.setEncoding("utf8");
++    child.stdout?.on("data", captureStdout);
++    child.stderr?.on("data", captureStderr);
++    child.unref();
++    child.once("exit", onExit);
++    const spawnError = await waitForSpawnResult(child, signal);
++    if (spawnError) {
++      throw new Error(
++        `${provider} local service failed to start: ${spawnError.message}${formatLocalServiceDiagnosticTail(diagnostics)}`,
++      );
+     }
+-  });
+-  const spawnError = await waitForSpawnResult(child, signal);
+-  if (spawnError) {
+-    throw new Error(
+-      `${provider} local service failed to start: ${spawnError.message}${formatLocalServiceDiagnosticTail(diagnostics)}`,
+-    );
+   }
+   diagnostics.spawnedAt = Date.now();
+ 
+@@ -422,7 +458,8 @@ async function startAndWaitForLocalService(params: {
+       // Drain readiness diagnostics so pipes cannot pin one-shot hosts.
+       diagnostics.stdoutTail = "";
+       diagnostics.stderrTail = "";
+-      drainLocalServiceOutput(child);
++      if (managed.process) drainLocalServiceOutput(managed.process);
++      managed.relay?.unref();
+       log.info(
+         `${provider} local service ready: pid=${diagnostics.pid ?? "unknown"} spawnMs=${diagnostics.spawnedAt - startedAt} readyMs=${diagnostics.readyAt - startedAt}`,
+       );
+@@ -512,7 +549,7 @@ function scheduleIdleStop(
+   if (managed.active > 0) {
+     return;
+   }
+-  if (!managed.process) {
++  if (!managed.process && !managed.relay) {
+     if (!managed.starting) {
+       services.delete(key);
+       setManagedProviderLocalServicesActive(services.size > 0);
+@@ -525,7 +562,11 @@ function scheduleIdleStop(
+   // Services without idleStopMs remain running until process exit or test cleanup.
+   managed.idleTimer = setTimeout(() => {
+     if (managed.active === 0) {
+-      void stopManagedService(key, managed, "idle");
++      void stopManagedService(key, managed, "idle").catch((error: unknown) => {
++        log.error(
++          `local service idle cleanup failed: ${toErrorObject(error, "Non-Error rejection").message}`,
++        );
++      });
+     }
+   }, idleStopMs);
+   managed.idleTimer.unref?.();
+@@ -539,18 +580,42 @@ function clearIdleTimer(managed: ManagedLocalService) {
+ }
+ 
+ async function stopManagedService(key: string, managed: ManagedLocalService, reason: string) {
++  if (managed.stopping) return await managed.stopping;
+   clearIdleTimer(managed);
+   managed.startupAbort?.abort(new Error(`local service stopped: ${reason}`));
+   managed.startupAbort = undefined;
+-  services.delete(key);
+-  setManagedProviderLocalServicesActive(services.size > 0);
+-  if (managed.process && !hasLocalServiceProcessExited(managed.process)) {
++  if (hasManagedProcess(managed)) {
+     log.info(`stopping local model service: reason=${reason}`);
+   }
+-  await stopManagedProcess(managed, new AbortController().signal);
++  managed.stopping = (async () => {
++    // Construction publishes ownership before returning. Join it even after
++    // cancellation so shutdown cannot finish ahead of a late spawn.
++    if (managed.starting) await Promise.allSettled([managed.starting]);
++    await stopManagedProcess(managed, new AbortController().signal);
++    if (services.get(key) === managed) services.delete(key);
++    setManagedProviderLocalServicesActive(services.size > 0);
++  })();
++  try {
++    await managed.stopping;
++  } finally {
++    managed.stopping = undefined;
++  }
+ }
+ 
+ async function stopManagedProcess(managed: ManagedLocalService, signal: AbortSignal) {
++  if (managed.relay || managed.extinction) {
++    managed.relay?.kill("SIGTERM");
++    await withTimeout(
++      managed.extinction ?? managed.relay!.waitForExtinction(),
++      2 * GRACEFUL_CANCEL_TIMEOUT_MS + DEFAULT_PROBE_TIMEOUT_MS,
++      { message: "local service owned process group did not exit" },
++    );
++    managed.relay?.dispose();
++    managed.relay = undefined;
++    managed.extinction = undefined;
++    managed.lastExit = undefined;
++    return;
++  }
+   const child = managed.process;
+   managed.process = undefined;
+   managed.lastExit = undefined;
+@@ -568,6 +633,11 @@ async function stopManagedProcess(managed: ManagedLocalService, signal: AbortSig
+ 
+ function forceStopManagedService(key: string, managed: ManagedLocalService) {
+   clearIdleTimer(managed);
++  if (managed.relay) {
++    managed.relay.kill("SIGKILL");
++    services.delete(key);
++    return;
++  }
+   const child = managed.process;
+   managed.process = undefined;
+   services.delete(key);
+@@ -578,6 +648,12 @@ function forceStopManagedService(key: string, managed: ManagedLocalService) {
+   forceKillChildProcessTree(child);
+ }
+ 
++function hasManagedProcess(managed: ManagedLocalService): boolean {
++  return managed.relay
++    ? managed.lastExit === undefined
++    : Boolean(managed.process && !hasLocalServiceProcessExited(managed.process));
++}
++
+ function formatLocalServiceExit(exit: LocalServiceExit): string {
+   return exit.signal ? `signal ${exit.signal}` : `code ${exit.code ?? 0}`;
+ }
+diff --git a/src/plugin-sdk/process-runtime.ts b/src/plugin-sdk/process-runtime.ts
+index a6215062da8..75b9885ea30 100644
+--- a/src/plugin-sdk/process-runtime.ts
++++ b/src/plugin-sdk/process-runtime.ts
+@@ -23,3 +23,7 @@ export {
+   isPidDefinitelyDead,
+ } from "../shared/pid-alive.js";
+ export { prepareSecretInputStdio, type SpawnStdioEntry } from "../process/spawn-secret-input.js";
++export {
++  requireServiceProcessIdentity,
++  stopGatewayAndJoinLocalServices,
++} from "../process/supervisor/service-child-ownership.js";
+diff --git a/src/process/supervisor/service-child-group-anchor.ts b/src/process/supervisor/service-child-group-anchor.ts
+index db337adbe5c..3d56ae2902c 100644
+--- a/src/process/supervisor/service-child-group-anchor.ts
++++ b/src/process/supervisor/service-child-group-anchor.ts
+@@ -6,6 +6,7 @@ import { pipeline, type Readable } from "node:stream";
+ import { createDeferredCore } from "../../shared/deferred.js";
+ import { GRACEFUL_CANCEL_TIMEOUT_MS } from "./cancellation-policy.js";
+ import { hasLiveOwnedProcessGroupMembers } from "./service-child-group-ownership.js";
++import { bindServiceChildAnchor } from "./service-child-ownership.js";
+ import {
+   encodeServiceChildMessage,
+   type ServiceChildAnchorMessage,
+@@ -95,8 +96,9 @@ export function runServiceChildGroupAnchor(): void {
+     }
+     state = "closed";
+     if (hardKill) {
+-      // Killing the observer cannot confirm descendant death. Missing closure
+-      // leaves the host's existing ownership receipt uncertain.
++      // This records retirement intent, not extinction. The outside-group host
++      // still requires relay exit and kernel group disappearance.
++      if (start.ownership) await send({ type: "closing", reason });
+       process.kill(0, "SIGKILL");
+       return;
+     }
+@@ -246,6 +248,7 @@ export function runServiceChildGroupAnchor(): void {
+ 
+     const { stdio, lineageFd } = commandStdio(start);
+     try {
++      if (start.ownership) bindServiceChildAnchor(start.ownership, start.generation);
+       command = spawn(start.command, start.args, {
+         cwd: start.cwd,
+         env: start.env,
+diff --git a/src/process/supervisor/service-child-protocol.ts b/src/process/supervisor/service-child-protocol.ts
+index fa090116cc6..9803060d8c5 100644
+--- a/src/process/supervisor/service-child-protocol.ts
++++ b/src/process/supervisor/service-child-protocol.ts
+@@ -1,3 +1,5 @@
++import type { ServiceChildOwnership } from "./service-child-ownership.js";
++
+ export type ServiceChildStart = {
+   type: "start";
+   generation: string;
+@@ -10,6 +12,7 @@ export type ServiceChildStart = {
+   secretFd?: number;
+   controlFd?: number;
+   windowsShellCommand?: string;
++  ownership?: ServiceChildOwnership;
+ };
+ 
+ export type ServiceChildControlMessage = {
+diff --git a/src/process/supervisor/service-child-relay-host.ts b/src/process/supervisor/service-child-relay-host.ts
+index 7a1d3fe6ee5..8a2536a6597 100644
+--- a/src/process/supervisor/service-child-relay-host.ts
++++ b/src/process/supervisor/service-child-relay-host.ts
+@@ -18,6 +18,11 @@ import { createManagedChildStdin } from "./adapters/child-stdin.js";
+ import { toStringEnv } from "./adapters/env.js";
+ import { createProcessAdapterEvents } from "./adapters/process-events.js";
+ import { GRACEFUL_CANCEL_TIMEOUT_MS } from "./cancellation-policy.js";
++import {
++  writeServiceChildOwnership,
++  removeServiceChildOwnership,
++  type ServiceChildOwnership,
++} from "./service-child-ownership.js";
+ import {
+   encodeServiceChildMessage,
+   type ServiceChildAnchorMessage,
+@@ -29,6 +34,7 @@ import type { ProcessAdapterConstruction, SpawnProcessAdapter, SpawnSecretInput
+ 
+ type ServiceChildRelayAdapter = SpawnProcessAdapter<NodeJS.Signals | null> & {
+   waitForExtinction: () => Promise<void>;
++  unref: () => void;
+ } & Required<Pick<SpawnProcessAdapter<NodeJS.Signals | null>, "onExit" | "onError">>;
+ type AuthorityState = "starting" | "active" | "closing" | "closed" | "identity-lost";
+ type StdioEntry = "ignore" | "inherit" | "ipc" | "pipe" | number;
+@@ -144,6 +150,7 @@ export async function createServiceChildRelayAdapter(
+     stderrDestination?: Writable;
+     oomScoreWrapperSelected: boolean;
+     windowsShellCommand?: string;
++    ownership?: ServiceChildOwnership;
+   },
+ ): Promise<ServiceChildRelayAdapter> {
+   const generation = randomUUID();
+@@ -568,6 +575,7 @@ export async function createServiceChildRelayAdapter(
+     secretFd: params.secretInput?.fd,
+     controlFd,
+     windowsShellCommand: params.windowsShellCommand,
++    ownership: params.ownership,
+   };
+   const stdin = createManagedChildStdin(child.stdin);
+   params.abortSignal?.addEventListener("abort", onConstructionAbort, { once: true });
+@@ -576,6 +584,10 @@ export async function createServiceChildRelayAdapter(
+     if (params.abortSignal?.aborted) {
+       onConstructionAbort();
+     }
++    if (params.ownership) {
++      if (!child.pid) throw new Error("Local service relay has no process identity");
++      writeServiceChildOwnership(params.ownership, generation, child.pid);
++    }
+     await Promise.race([sendChildMessage(start), constructionAbort.promise]);
+     params.assertCurrent?.();
+     const [startupResult, secretDeliveryResult] = await Promise.allSettled([
+@@ -651,7 +663,17 @@ export async function createServiceChildRelayAdapter(
+       settleWait();
+       return await resultCompletion.promise;
+     },
+-    waitForExtinction: async () => await extinctionCompletion.promise,
++    waitForExtinction: async () => {
++      await extinctionCompletion.promise;
++      if (params.ownership) removeServiceChildOwnership(params.ownership, generation);
++    },
++    unref: () => {
++      child.unref();
++      child.channel?.unref();
++      for (const stream of [child.stdin, child.stdout, child.stderr, control]) {
++        (stream as { unref?: () => void } | null)?.unref?.();
++      }
++    },
+     kill,
+     dispose: () => {
+       if (unpipeStderr) {
+diff --git a/src/process/supervisor/service-child-ownership.ts b/src/process/supervisor/service-child-ownership.ts
+new file mode 100644
+index 00000000000..400b95dda14
+--- /dev/null
++++ b/src/process/supervisor/service-child-ownership.ts
+@@ -0,0 +1,237 @@
++import fs from "node:fs";
++import path from "node:path";
++import { setTimeout as delay } from "node:timers/promises";
++import { getFileLockProcessStartTime, isPidDefinitelyDead } from "../../shared/pid-alive.js";
++
++type ProcessIdentity = { pid: number; startTime: number };
++export type ServiceChildOwnership = {
++  directory: string;
++  owner: ProcessIdentity;
++};
++type OwnershipRecord = {
++  version: 1;
++  generation: string;
++  owner: ProcessIdentity;
++  relay: ProcessIdentity;
++  anchor?: ProcessIdentity;
++};
++
++export function requireServiceProcessIdentity(pid: number): ProcessIdentity {
++  if (!Number.isSafeInteger(pid) || pid <= 0) throw new Error("Invalid local service PID");
++  const startTime = getFileLockProcessStartTime(pid);
++  if (startTime === null) throw new Error("Cannot establish local service process identity");
++  return { pid, startTime };
++}
++
++export function isServiceProcessIdentityAlive(identity: ProcessIdentity): boolean {
++  const current = getFileLockProcessStartTime(identity.pid);
++  if (current === identity.startTime && !isPidDefinitelyDead(identity.pid)) return true;
++  if (isPidDefinitelyDead(identity.pid)) return false;
++  throw new Error("Local service process identity changed or is unavailable");
++}
++
++function recordPath(directory: string, generation: string): string {
++  if (!path.isAbsolute(directory) || !/^[a-f0-9-]{36}$/.test(generation)) {
++    throw new Error("Invalid local service ownership location");
++  }
++  return path.join(directory, `${generation}.json`);
++}
++
++export function writeServiceChildOwnership(
++  ownership: ServiceChildOwnership,
++  generation: string,
++  relayPid: number,
++): void {
++  fs.mkdirSync(ownership.directory, { recursive: true, mode: 0o700 });
++  const record: OwnershipRecord = {
++    version: 1,
++    generation,
++    owner: ownership.owner,
++    relay: requireServiceProcessIdentity(relayPid),
++  };
++  fs.writeFileSync(recordPath(ownership.directory, generation), JSON.stringify(record), {
++    flag: "wx",
++    mode: 0o600,
++    flush: true,
++  });
++}
++
++function readRecord(file: string): OwnershipRecord {
++  const value: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
++  const identity = (item: unknown): item is ProcessIdentity =>
++    typeof item === "object" &&
++    item !== null &&
++    "pid" in item &&
++    Number.isInteger(item.pid) &&
++    Number(item.pid) > 0 &&
++    "startTime" in item &&
++    typeof item.startTime === "number" &&
++    Number.isFinite(item.startTime);
++  if (
++    typeof value !== "object" ||
++    value === null ||
++    !("version" in value) ||
++    value.version !== 1 ||
++    !("generation" in value) ||
++    typeof value.generation !== "string" ||
++    path.basename(file) !== `${value.generation}.json` ||
++    !("owner" in value) ||
++    !identity(value.owner) ||
++    !("relay" in value) ||
++    !identity(value.relay) ||
++    ("anchor" in value && !identity(value.anchor))
++  ) {
++    throw new Error("Invalid local service ownership record");
++  }
++  return {
++    version: 1,
++    generation: value.generation,
++    owner: value.owner,
++    relay: value.relay,
++    ...("anchor" in value && identity(value.anchor) ? { anchor: value.anchor } : {}),
++  };
++}
++
++export function bindServiceChildAnchor(ownership: ServiceChildOwnership, generation: string): void {
++  const file = recordPath(ownership.directory, generation);
++  const record = readRecord(file);
++  if (
++    record.owner.pid !== ownership.owner.pid ||
++    record.owner.startTime !== ownership.owner.startTime ||
++    record.anchor
++  ) {
++    throw new Error("Local service ownership changed before anchor startup");
++  }
++  const next = `${file}.next`;
++  fs.writeFileSync(
++    next,
++    JSON.stringify({
++      ...record,
++      anchor: requireServiceProcessIdentity(process.pid),
++    }),
++    { flag: "wx", mode: 0o600, flush: true },
++  );
++  fs.renameSync(next, file);
++  // Publication precedes this check. Once the owner is dead a stopped-state
++  // reader either sees this anchor or knows it cannot launch a model.
++  if (!isServiceProcessIdentityAlive(record.owner)) {
++    throw new Error("Local service owner exited before startup");
++  }
++}
++
++export function removeServiceChildOwnership(
++  ownership: ServiceChildOwnership,
++  generation: string,
++): void {
++  fs.rmSync(recordPath(ownership.directory, generation), { force: true });
++}
++
++function groupGone(pid: number): boolean {
++  try {
++    process.kill(-pid, 0);
++    return false;
++  } catch (error) {
++    if (typeof error === "object" && error !== null && "code" in error) {
++      if (error.code === "ESRCH") {
++        return true;
++      }
++      if (error.code === "EPERM") {
++        return false;
++      }
++    }
++    throw error;
++  }
++}
++
++function signalIdentity(identity: ProcessIdentity, signal: NodeJS.Signals): void {
++  if (!isServiceProcessIdentityAlive(identity)) return;
++  try {
++    process.kill(identity.pid, signal);
++  } catch (error) {
++    if (typeof error === "object" && error !== null && "code" in error && error.code === "ESRCH")
++      return;
++    throw error;
++  }
++}
++
++/** Called only after the service manager disables launches and its gateway exits. */
++export async function joinStoppedLocalServiceGroups(
++  stateDir: string,
++  timeoutMs: number,
++): Promise<void> {
++  if (!path.isAbsolute(stateDir) || !Number.isFinite(timeoutMs) || timeoutMs <= 0) {
++    throw new Error("Invalid local service extinction bound or state directory");
++  }
++  const directory = path.join(stateDir, "runtime", "local-service-owners");
++  let names: string[];
++  try {
++    names = fs.readdirSync(directory).filter((name) => name.endsWith(".json"));
++  } catch (error) {
++    if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT")
++      return;
++    throw error;
++  }
++  const deadline = Date.now() + timeoutMs;
++  for (const name of names) {
++    const file = path.join(directory, name);
++    let signalled = false;
++    for (;;) {
++      let record: OwnershipRecord;
++      try {
++        record = readRecord(file);
++      } catch (error) {
++        if (
++          typeof error === "object" &&
++          error !== null &&
++          "code" in error &&
++          error.code === "ENOENT"
++        )
++          break;
++        throw error;
++      }
++      if (isServiceProcessIdentityAlive(record.owner)) {
++        throw new Error("Local service gateway owner is still running");
++      }
++      if (record.anchor) {
++        if (groupGone(record.anchor.pid)) {
++          if (!isServiceProcessIdentityAlive(record.relay)) {
++            fs.rmSync(file);
++            break;
++          }
++        } else if (!signalled && isServiceProcessIdentityAlive(record.anchor)) {
++          // The live anchor, not a stale PGID, owns group cancellation.
++          signalIdentity(record.anchor, "SIGTERM");
++          signalled = true;
++        }
++      }
++
++      if (Date.now() >= deadline)
++        throw new Error("Local service group extinction deadline exceeded");
++      await delay(Math.min(50, Math.max(1, deadline - Date.now())));
++    }
++  }
++}
++
++export async function stopGatewayAndJoinLocalServices(
++  stateDir: string,
++  owner: ProcessIdentity | null,
++  timeoutMs = 30_000,
++): Promise<void> {
++  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error("Invalid gateway stop bound");
++  const deadline = Date.now() + timeoutMs;
++  const forceAt = Date.now() + 5_000;
++  let sentTerm = false;
++  let sentKill = false;
++  while (owner && isServiceProcessIdentityAlive(owner)) {
++    if (!sentTerm) {
++      signalIdentity(owner, "SIGTERM");
++      sentTerm = true;
++    } else if (!sentKill && Date.now() >= forceAt) {
++      signalIdentity(owner, "SIGKILL");
++      sentKill = true;
++    }
++    if (Date.now() >= deadline) throw new Error("Gateway process extinction deadline exceeded");
++    await delay(50);
++  }
++  await joinStoppedLocalServiceGroups(stateDir, Math.max(1, deadline - Date.now()));
++}
+diff --git a/src/process/supervisor/service-child-ownership.test.ts b/src/process/supervisor/service-child-ownership.test.ts
+new file mode 100644
+index 00000000000..8b76097190c
+--- /dev/null
++++ b/src/process/supervisor/service-child-ownership.test.ts
+@@ -0,0 +1,192 @@
++import fs from "node:fs";
++import os from "node:os";
++import path from "node:path";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++import {
++  bindServiceChildAnchor,
++  joinStoppedLocalServiceGroups,
++  requireServiceProcessIdentity,
++  stopGatewayAndJoinLocalServices,
++  writeServiceChildOwnership,
++} from "./service-child-ownership.js";
++
++const identities = vi.hoisted(() => new Map<number, number>());
++vi.mock("../../shared/pid-alive.js", () => ({
++  getFileLockProcessStartTime: (pid: number) => identities.get(pid) ?? null,
++  isPidDefinitelyDead: (pid: number) => !identities.has(pid),
++}));
++
++describe("stopped local service ownership", () => {
++  const generation = "11111111-1111-1111-1111-111111111111";
++  const owner = { pid: 101, startTime: 10 };
++  const relay = { pid: 102, startTime: 20 };
++  const anchor = { pid: 103, startTime: 30 };
++  let stateDir: string;
++  let directory: string;
++  let file: string;
++
++  beforeEach(() => {
++    identities.clear();
++    stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "service-ownership-"));
++    directory = path.join(stateDir, "runtime", "local-service-owners");
++    file = path.join(directory, `${generation}.json`);
++  });
++  afterEach(() => {
++    vi.restoreAllMocks();
++    vi.useRealTimers();
++    fs.rmSync(stateDir, { recursive: true, force: true });
++  });
++
++  function record(includeAnchor = true) {
++    fs.mkdirSync(directory, { recursive: true });
++    fs.writeFileSync(
++      file,
++      JSON.stringify({
++        version: 1,
++        generation,
++        owner,
++        relay,
++        ...(includeAnchor ? { anchor } : {}),
++      }),
++    );
++  }
++  function probe(gone: () => boolean) {
++    return vi.spyOn(process, "kill").mockImplementation((_pid, signal) => {
++      if (signal === 0 && gone()) throw Object.assign(new Error("gone"), { code: "ESRCH" });
++      return true;
++    });
++  }
++
++  it("refuses a live owner before signalling any process", async () => {
++    record();
++    identities.set(owner.pid, owner.startTime);
++    const kill = probe(() => false);
++    await expect(joinStoppedLocalServiceGroups(stateDir, 10)).rejects.toThrow("still running");
++    expect(kill).not.toHaveBeenCalled();
++  });
++
++  it("never signals a reused anchor PID", async () => {
++    record();
++    identities.set(anchor.pid, anchor.startTime + 1);
++    const kill = probe(() => false);
++    await expect(joinStoppedLocalServiceGroups(stateDir, 10)).rejects.toThrow("identity changed");
++    expect(kill.mock.calls).toEqual([[-anchor.pid, 0]]);
++  });
++
++  it("fails an incomplete published record without assuming no group exists", async () => {
++    record(false);
++    const kill = probe(() => true);
++    await expect(joinStoppedLocalServiceGroups(stateDir, 1)).rejects.toThrow("deadline");
++    expect(fs.existsSync(file)).toBe(true);
++    expect(kill).not.toHaveBeenCalled();
++  });
++
++  it("refuses corrupted records", async () => {
++    record();
++    fs.writeFileSync(file, JSON.stringify({ version: 1, generation, owner }));
++    await expect(joinStoppedLocalServiceGroups(stateDir, 10)).rejects.toThrow("Invalid");
++  });
++
++  it("retains evidence if the anchor died but its group survived", async () => {
++    record();
++    const kill = probe(() => false);
++    await expect(joinStoppedLocalServiceGroups(stateDir, 1)).rejects.toThrow("deadline");
++    expect(kill.mock.calls.every(([, signal]) => signal === 0)).toBe(true);
++    expect(fs.existsSync(file)).toBe(true);
++  });
++
++  it("treats a denied group probe as present until extinction is confirmed", async () => {
++    record();
++    let probes = 0;
++    const kill = vi.spyOn(process, "kill").mockImplementation((_pid, signal) => {
++      if (signal === 0) {
++        const code = probes++ === 0 ? "EPERM" : "ESRCH";
++        throw Object.assign(new Error(code), { code });
++      }
++      return true;
++    });
++    await joinStoppedLocalServiceGroups(stateDir, 200);
++    expect(kill.mock.calls).toEqual([
++      [-anchor.pid, 0],
++      [-anchor.pid, 0],
++    ]);
++    expect(fs.existsSync(file)).toBe(false);
++  });
++
++  it("requires the relay to exit as well as its group", async () => {
++    record();
++    identities.set(relay.pid, relay.startTime);
++    probe(() => true);
++    await expect(joinStoppedLocalServiceGroups(stateDir, 1)).rejects.toThrow("deadline");
++    expect(fs.existsSync(file)).toBe(true);
++    identities.delete(relay.pid);
++    await joinStoppedLocalServiceGroups(stateDir, 10);
++    expect(fs.existsSync(file)).toBe(false);
++  });
++
++  it("signals only a matching live anchor and joins group and relay exit", async () => {
++    record();
++    identities.set(anchor.pid, anchor.startTime);
++    const kill = probe(() => !identities.has(anchor.pid));
++    kill.mockImplementation((pid, signal) => {
++      if (signal === "SIGTERM" && pid === anchor.pid) identities.delete(anchor.pid);
++      if (signal === 0 && !identities.has(anchor.pid))
++        throw Object.assign(new Error("gone"), { code: "ESRCH" });
++      return true;
++    });
++    await joinStoppedLocalServiceGroups(stateDir, 200);
++    expect(kill.mock.calls.filter(([, signal]) => signal !== 0)).toEqual([[anchor.pid, "SIGTERM"]]);
++    expect(fs.existsSync(file)).toBe(false);
++  });
++
++  it("publishes the anchor before refusing startup after owner death", () => {
++    identities.set(relay.pid, relay.startTime);
++    identities.set(process.pid, 40);
++    const ownership = { directory, owner };
++    writeServiceChildOwnership(ownership, generation, relay.pid);
++    expect(() => bindServiceChildAnchor(ownership, generation)).toThrow("owner exited");
++    expect(JSON.parse(fs.readFileSync(file, "utf8")).anchor).toEqual({
++      pid: process.pid,
++      startTime: 40,
++    });
++    expect(fs.statSync(file).mode & 0o777).toBe(0o600);
++  });
++
++  it("does not overwrite an existing ownership generation", () => {
++    identities.set(relay.pid, relay.startTime);
++    writeServiceChildOwnership({ directory, owner }, generation, relay.pid);
++    expect(() => writeServiceChildOwnership({ directory, owner }, generation, relay.pid)).toThrow();
++  });
++
++  it("stops the same gateway generation gracefully before forcing it", async () => {
++    vi.useFakeTimers();
++    identities.set(owner.pid, owner.startTime);
++    const kill = probe(() => true);
++    kill.mockImplementation((_pid, signal) => {
++      if (signal === "SIGKILL") identities.delete(owner.pid);
++      return true;
++    });
++    const stopped = stopGatewayAndJoinLocalServices(stateDir, owner, 10_000);
++    await vi.advanceTimersByTimeAsync(5_100);
++    await stopped;
++    expect(kill.mock.calls).toEqual([
++      [owner.pid, "SIGTERM"],
++      [owner.pid, "SIGKILL"],
++    ]);
++  });
++
++  it("does not signal a reused gateway PID", async () => {
++    identities.set(owner.pid, owner.startTime + 1);
++    const kill = probe(() => true);
++    await expect(stopGatewayAndJoinLocalServices(stateDir, owner)).rejects.toThrow(
++      "identity changed",
++    );
++    expect(kill).not.toHaveBeenCalled();
++  });
++
++  it("rejects invalid bounds and nonpositive process IDs", async () => {
++    expect(() => requireServiceProcessIdentity(0)).toThrow("Invalid");
++    await expect(joinStoppedLocalServiceGroups(stateDir, Infinity)).rejects.toThrow("Invalid");
++    await expect(stopGatewayAndJoinLocalServices(stateDir, null, NaN)).rejects.toThrow("Invalid");
++  });
++});
+diff --git a/src/agents/provider-local-service.test.ts b/src/agents/provider-local-service.test.ts
+index d3014683f18..21655dfc749 100644
+--- a/src/agents/provider-local-service.test.ts
++++ b/src/agents/provider-local-service.test.ts
+@@ -54,6 +54,12 @@ async function waitForProbeFailure(url: string): Promise<void> {
+   }
+ }
+ 
++async function waitForManagedLocalServicesToStop(): Promise<void> {
++  await expect
++    .poll(() => hasManagedProviderLocalServices(), { timeout: 15_000, interval: 50 })
++    .toBe(false);
++}
++
+ async function withSpawnReadyHealthProbe<T>(run: () => Promise<T>): Promise<T> {
+   const realFetch = globalThis.fetch;
+   const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+@@ -255,7 +261,7 @@ describe("provider local service", () => {
+     expect((await fetch(healthUrl)).ok).toBe(true);
+     secondLease.release();
+     await waitForProbeFailure(healthUrl);
+-    expect(hasManagedProviderLocalServices()).toBe(false);
++    await waitForManagedLocalServicesToStop();
+   });
+ 
+   it("resolves process configuration for root and exact legacy baseURL endpoints", async () => {

@@ -1,0 +1,228 @@
+diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/index.test.ts
+index e5e479f7c75..d2682b11d42 100644
+--- a/extensions/active-memory/index.test.ts
++++ b/extensions/active-memory/index.test.ts
+@@ -4709,6 +4709,62 @@ describe("active-memory plugin", () => {
+     expect(runEmbeddedAgent).not.toHaveBeenCalled();
+   });
+ 
++  it.each([
++    { readyAfterMs: 1_850, setupGraceTimeoutMs: 2_000, recalled: true },
++    { readyAfterMs: 2_600, setupGraceTimeoutMs: 1_700, recalled: false },
++  ])(
++    "shares always recall setup with a cold trigger lookup (recalled=$recalled)",
++    async ({ readyAfterMs, setupGraceTimeoutMs, recalled }) => {
++      const timeoutMs = 250;
++      registerPluginConfig({ timeoutMs, setupGraceTimeoutMs, logging: true });
++      const providerReady = createDeferred<void>();
++      let readinessTimer: ReturnType<typeof setTimeout> | undefined;
++      hoisted.getActiveMemorySearchManager.mockImplementationOnce(async () => {
++        readinessTimer = setTimeout(() => providerReady.resolve(), readyAfterMs);
++        await providerReady.promise;
++        return { manager: null };
++      });
++      runEmbeddedAgent.mockImplementationOnce(async (params: { sessionFile: string }) => {
++        await providerReady.promise;
++        await writeUsableMemoryTranscript(params.sessionFile, "cold local recall");
++        return { payloads: [{ text: "cold local recall" }] };
++      });
++      const startedAt = Date.now();
++      try {
++        const result = await runPromptBuild(
++          { prompt: "What did we decide about the project?" },
++          {
++            sessionKey: "agent:main:telegram:direct:cold",
++            messageProvider: "telegram",
++            channelId: "cold",
++          },
++        );
++        expect(runEmbeddedAgent).toHaveBeenCalledTimes(1);
++        // The optional lookup cannot receive a second setup allowance for deep recall.
++        expect(lastEmbeddedRunParams().timeoutMs).toBeLessThan(timeoutMs + setupGraceTimeoutMs);
++        if (recalled) {
++          expectPrependContextContains(result, "cold local recall");
++        } else {
++          expect(result).toBeUndefined();
++          expectLinesToContain(
++            vi.mocked(api.logger.info).mock.calls.map((call: unknown[]) => String(call[0])),
++            "status=timeout",
++          );
++        }
++        expect(Date.now() - startedAt).toBeLessThan(
++          timeoutMs + setupGraceTimeoutMs + 1_500 + 1_000,
++        );
++        expectLinesNotToContain(
++          vi.mocked(api.logger.warn).mock.calls.map((call: unknown[]) => String(call[0])),
++          "preflight timed out",
++        );
++      } finally {
++        clearTimeout(readinessTimer);
++        providerReady.resolve();
++      }
++    },
++  );
++
+   it("preserves recall settlement time after near-limit preflight latency", async () => {
+     vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+     testing.setMinimumTimeoutMsForTests(1);
+diff --git a/extensions/active-memory/index.ts b/extensions/active-memory/index.ts
+index cb691aaa6e7..241f3c595d3 100644
+--- a/extensions/active-memory/index.ts
++++ b/extensions/active-memory/index.ts
+@@ -254,6 +254,7 @@ export default definePluginEntry({
+           HOOK_TIMEOUT_RECOVERY_GRACE_MS;
+         const deadlineController = new AbortController();
+         const hookDeadline = createActiveMemoryHookDeadline();
++        let recallStartedAt: number | undefined;
+         const armHookDeadline = (timeoutMs: number, phase: "preflight" | "recall") => {
+           hookDeadline.arm(timeoutMs, () => {
+             deadlineController.abort(
+@@ -264,6 +265,12 @@ export default definePluginEntry({
+             );
+           });
+         };
++        const armRecallDeadline = () => {
++          if (recallStartedAt === undefined) {
++            recallStartedAt = Date.now();
++            armHookDeadline(liveRecallTimeoutMs, "recall");
++          }
++        };
+         armHookDeadline(HOOK_TIMEOUT_RECOVERY_GRACE_MS, "preflight");
+         const handlerPromise = (async () => {
+           try {
+@@ -347,6 +354,36 @@ export default definePluginEntry({
+               channelId: destinationContext.channelId,
+             });
+             const activeMemoryConfigured = isEnabledForAgent(invocationConfig, effectiveAgentId);
++            const activeMemoryAllowed =
++              activeMemoryConfigured &&
++              isAllowedChatType(invocationConfig, destinationContext) &&
++              chatIdAllowed;
++            const productRecallRequested = Boolean(
++              invocationConfig.enabled &&
++              resolvedSessionKey &&
++              shouldRememberAcrossConversations(liveConfig, effectiveAgentId) &&
++              isPrivateRecallDestination(destinationContext) &&
++              chatIdAllowed,
++            );
++            const productRecallEligible =
++              productRecallRequested && memoryCapability?.supportsPrivateTranscriptRecall === true;
++            if (productRecallRequested && !productRecallEligible) {
++              api.logger.warn?.(
++                "active-memory: the current memory provider does not support protected private transcript recall; skipping Remember across conversations",
++              );
++            }
++            const productRecallToolName =
++              productRecallEligible &&
++              deterministicRecallToolName &&
++              allowedRecallTools.includes(deterministicRecallToolName)
++                ? deterministicRecallToolName
++                : undefined;
++            const productRecallAllowed = Boolean(productRecallToolName);
++            if (productRecallEligible && !productRecallAllowed) {
++              api.logger.warn?.(
++                `active-memory: ${deterministicRecallToolName ?? "the provider's deterministic recall tool"} is unavailable; skipping Remember across conversations private transcript recall`,
++              );
++            }
+             let laneOne: { context?: string; hasStrongHit: boolean; injectedCount: number } = {
+               hasStrongHit: false,
+               injectedCount: 0,
+@@ -360,13 +397,24 @@ export default definePluginEntry({
+               chatIdAllowed
+             ) {
+               toolAuthority.assertActive();
++              if (
++                invocationConfig.mode === "always" &&
++                (activeMemoryAllowed || productRecallAllowed)
++              ) {
++                // Lexical lookup can initialize a cold provider. Required recall
++                // shares its existing budget rather than losing to preflight.
++                armRecallDeadline();
++              }
+               laneOne = await resolveTriggerRecall({
+                 cfg: liveConfig,
+                 agentId: effectiveAgentId,
+                 query: searchQuery,
+                 message: event.prompt,
+                 activeProjectKeys: ctx.activeProjectKeys,
+-                signal: AbortSignal.timeout(HOOK_TIMEOUT_RECOVERY_GRACE_MS),
++                signal: AbortSignal.any([
++                  deadlineController.signal,
++                  AbortSignal.timeout(HOOK_TIMEOUT_RECOVERY_GRACE_MS),
++                ]),
+                 runId: ctx.runId,
+                 authorityFingerprint: toolAuthority.fingerprint,
+               }).catch((error: unknown) => {
+@@ -383,36 +431,6 @@ export default definePluginEntry({
+               }
+             }
+             const laneOneContext = laneOne.context;
+-            const activeMemoryAllowed =
+-              activeMemoryConfigured &&
+-              isAllowedChatType(invocationConfig, destinationContext) &&
+-              chatIdAllowed;
+-            const productRecallRequested = Boolean(
+-              invocationConfig.enabled &&
+-              resolvedSessionKey &&
+-              shouldRememberAcrossConversations(liveConfig, effectiveAgentId) &&
+-              isPrivateRecallDestination(destinationContext) &&
+-              chatIdAllowed,
+-            );
+-            const productRecallEligible =
+-              productRecallRequested && memoryCapability?.supportsPrivateTranscriptRecall === true;
+-            if (productRecallRequested && !productRecallEligible) {
+-              api.logger.warn?.(
+-                "active-memory: the current memory provider does not support protected private transcript recall; skipping Remember across conversations",
+-              );
+-            }
+-            const productRecallToolName =
+-              productRecallEligible &&
+-              deterministicRecallToolName &&
+-              allowedRecallTools.includes(deterministicRecallToolName)
+-                ? deterministicRecallToolName
+-                : undefined;
+-            const productRecallAllowed = Boolean(productRecallToolName);
+-            if (productRecallEligible && !productRecallAllowed) {
+-              api.logger.warn?.(
+-                `active-memory: ${deterministicRecallToolName ?? "the provider's deterministic recall tool"} is unavailable; skipping Remember across conversations private transcript recall`,
+-              );
+-            }
+             if (!activeMemoryAllowed && !productRecallAllowed) {
+               await persistPluginStatusLines({
+                 api,
+@@ -443,18 +461,28 @@ export default definePluginEntry({
+                     corpus: activeMemoryAllowed ? "configured" : "sessions",
+                   }
+                 : undefined;
+-            const recallConfig =
+-              productRecallToolName && !activeMemoryAllowed
+-                ? { ...invocationConfig, toolsAllow: [productRecallToolName] }
+-                : { ...invocationConfig, toolsAllow: allowedRecallTools };
++            const recallConfig = {
++              ...invocationConfig,
++              toolsAllow:
++                productRecallToolName && !activeMemoryAllowed
++                  ? [productRecallToolName]
++                  : allowedRecallTools,
++              setupGraceTimeoutMs:
++                recallStartedAt === undefined
++                  ? invocationConfig.setupGraceTimeoutMs
++                  : Math.max(
++                      0,
++                      invocationConfig.setupGraceTimeoutMs - (Date.now() - recallStartedAt),
++                    ),
++            };
+             const query = buildQuery({
+               latestUserMessage: event.prompt,
+               recentTurns,
+               config: recallConfig,
+             });
+-            // Start recall with its full configured budget. The preceding
+-            // session/config checks must not consume abort-settlement time.
+-            armHookDeadline(liveRecallTimeoutMs, "recall");
++            // Preserve any budget already started by required trigger lookup.
++            armRecallDeadline();
++            deadlineController.signal.throwIfAborted();
+             toolAuthority.assertActive();
+             const result = await maybeResolveActiveRecall({
+               api,

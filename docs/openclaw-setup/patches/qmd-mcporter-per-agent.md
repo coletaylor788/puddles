@@ -1,6 +1,9 @@
 # Per-agent QMD mcporter configuration
 
-**Status:** Verified on 2026.7.1 (`0790d9f`) in the managed patch pool.
+**Status:** Historical fix for 2026.7.1. OpenClaw 2026.9.3 removed QMD and its
+transport. The current stack uses
+[builtin memory migration coverage](builtin-memory-migration.md) instead.
+Do not apply the historical configuration below to the current release.
 
 ## The bug
 

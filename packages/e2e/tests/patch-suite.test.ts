@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+// @ts-expect-error JS lifecycle exports are tested at runtime.
+import { safeNode } from "../src/native-pipeline.mjs";
 
 type PatchEntry = {
   name: string;
@@ -118,8 +120,11 @@ describe("OpenClaw cumulative patch suite", () => {
 
   it("maps exact Vitest projects and proves collection before running old regressions", () => {
     const manifest = JSON.parse(readFileSync(join(packageDir, "openclaw-patch-suite.json"), "utf8"));
-    expect(manifest.testProjects["src/agents/tools/yield-gather-state.test.ts"]).toBe("agents-tools");
-    expect(manifest.testProjects["packages/memory-host-sdk/src/host/backend-config.test.ts"]).toBe("unit-fast");
+    expect(manifest.testProjects["src/agents/tools/yield-gather-state.test.ts"]).toBe("unit-fast");
+    expect(manifest.testProjects["packages/memory-host-sdk/src/host/backend-config.test.ts"]).toBe("unit-fast-isolated");
+    expect(manifest.testProjects["src/agents/subagents/spawn/acp-spawn.test.ts"]).toBe("agents-support");
+    expect(manifest.testProjects["src/agents/subagents/spawn/subagent-spawn.test.ts"]).toBe("agents-support");
+    expect(manifest.testProjects["src/config/dead-config-keys.test.ts"]).toBe("runtime-config");
     for (const test of suite.patches.flatMap((patch) => patch.tests)) {
       expect(manifest.testProjects[test], test).toMatch(/^[a-z-]+$/);
     }
@@ -130,43 +135,14 @@ describe("OpenClaw cumulative patch suite", () => {
     expect(readFileSync(join(packageDir, "scenarios/imessage.mjs"), "utf8")).toContain("no-output");
   });
 
-  it("uses a SQLite WAL-reset-safe Node runtime in CI", () => {
+  it("uses an upstream-supported SQLite-safe Node runtime and explicit Corepack in CI", () => {
     const workflow = readFileSync(
       join(repoRoot, ".github", "workflows", "integration.yml"),
       "utf8",
     );
     const match = workflow.match(/node-version:\s*"(\d+)\.(\d+)\.(\d+)"/);
-    const version = match?.slice(1).map(Number);
-    const isWalResetSafe = ([major, minor, patch]: number[]) => {
-      if (major === 22) {
-        return minor > 22 || (minor === 22 && patch >= 3);
-      }
-      if (major === 24) {
-        return minor > 15 || (minor === 15 && patch >= 0);
-      }
-      if (major === 25) {
-        return minor > 9 || (minor === 9 && patch >= 0);
-      }
-      return major >= 26;
-    };
-
-    expect(version).toBeDefined();
-    expect(isWalResetSafe(version!)).toBe(true);
-    for (const unsafe of [
-      [22, 22, 2],
-      [23, 11, 1],
-      [24, 14, 1],
-      [25, 8, 0],
-    ]) {
-      expect(isWalResetSafe(unsafe), unsafe.join(".")).toBe(false);
-    }
-    for (const safe of [
-      [22, 22, 3],
-      [24, 15, 0],
-      [25, 9, 0],
-      [26, 0, 0],
-    ]) {
-      expect(isWalResetSafe(safe), safe.join(".")).toBe(true);
-    }
+    expect(match).not.toBeNull();
+    expect(safeNode(match!.slice(1).join("."))).toBe(true);
+    expect(workflow).toContain("npm install --global corepack@0.36.0");
   });
 });

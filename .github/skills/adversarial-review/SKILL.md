@@ -3,7 +3,7 @@ name: adversarial-review
 description: Independently challenge a completed feature for hidden defects, unsafe assumptions, regressions, and incomplete requirements. Use for the mandatory post-implementation review of every feature.
 metadata:
   author: Cole Taylor
-  version: "1.4.0"
+  version: "1.5.0"
 ---
 
 # Adversarial Review
@@ -31,6 +31,22 @@ Record residual validation gaps only when useful, and do not promote minor gaps
 into actionable remediation-loop findings. Before reporting, verify that the
 concern is not speculative, duplicative, already resolved, or unrelated to the
 current change.
+
+Use the agreed trust model, not a stricter one invented during review. Native
+rehearsal runs trusted code on a trusted host. Its isolation protects production
+uptime and writable state; it is not an adversarial host security boundary.
+Normal host filesystem access, shared dependencies, and existing coordination
+directories are not defects by themselves. Keep product agent access controls,
+recorded external writes, secret handling, and deployment rollback in scope.
+Report a concrete path to violating those requirements, not the mere absence
+of an optional harness sandbox.
+
+Challenge unnecessary complexity as well as missing safeguards. Prefer removing
+a harness-only restriction over adding runtime patches, alternate locking, or
+new fixture protocols to work around it. Require extra machinery only when an
+existing supported mechanism cannot meet a concrete requirement. Do not turn
+optional hardening into a release gate or ask for repeat approval of access
+already covered by the requester's stated scope.
 
 When the implementation agent disputes a significant finding, assess its
 evidence and rationale on the merits. Withdraw or revise a finding that is no

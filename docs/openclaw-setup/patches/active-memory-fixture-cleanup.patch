@@ -1,0 +1,97 @@
+diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/index.test.ts
+index d2682b1..a51d6c5 100644
+--- a/extensions/active-memory/index.test.ts
++++ b/extensions/active-memory/index.test.ts
+@@ -470,6 +470,16 @@ describe("active-memory plugin", () => {
+       );
+     });
+   };
++  const trackRecallRun = async () => {
++    const recallRuntime = await import("./recall-run.js");
++    const runRecallSubagent = recallRuntime.runRecallSubagent;
++    let pendingRecall: ReturnType<typeof runRecallSubagent> | undefined;
++    vi.spyOn(recallRuntime, "runRecallSubagent").mockImplementation((params) => {
++      pendingRecall = runRecallSubagent(params);
++      return pendingRecall;
++    });
++    return () => expectDefined(pendingRecall, "expected an owned recall run");
++  };
+   const makeMemoryToolAllowlistError = (
+     reason: string,
+     sources = "runtime toolsAllow: memory_search, memory_get",
+@@ -4719,6 +4729,7 @@ describe("active-memory plugin", () => {
+       registerPluginConfig({ timeoutMs, setupGraceTimeoutMs, logging: true });
+       const providerReady = createDeferred<void>();
+       let readinessTimer: ReturnType<typeof setTimeout> | undefined;
++      const pendingRecall = await trackRecallRun();
+       hoisted.getActiveMemorySearchManager.mockImplementationOnce(async () => {
+         readinessTimer = setTimeout(() => providerReady.resolve(), readyAfterMs);
+         await providerReady.promise;
+@@ -4761,7 +4772,18 @@ describe("active-memory plugin", () => {
+       } finally {
+         clearTimeout(readinessTimer);
+         providerReady.resolve();
++        // The timeout mock deliberately outlives recall. Join its transcript
++        // write and session cleanup before the next case replaces shared state.
++        await pendingRecall().catch((error: unknown) => {
++          expect(recalled).toBe(false);
++          expect(error).toBeInstanceOf(Error);
++          expect(String(error)).toContain("active-memory timeout after");
++        });
+       }
++      expect(Object.keys(hoisted.sessionStore).some((key) => key.includes(":active-memory:"))).toBe(
++        false,
++      );
++      expect(Object.keys(hoisted.runtimeTranscriptFiles)).toEqual([]);
+     },
+   );
+ 
+@@ -4855,7 +4877,19 @@ describe("active-memory plugin", () => {
+     seedSession(sessionKey, "s-terminal-unavailable-then-diagnostic", 0);
+     const warning = "Memory search is unavailable due to an embedding/provider error.";
+     const action = "Check the embedding provider configuration, then retry memory_search.";
+-    runEmbeddedAgent.mockImplementationOnce(async (params: { sessionFile: string }) => {
++    const pendingRecall = await trackRecallRun();
++    const cleanupStarted = createDeferred<void>();
++    const releaseCleanup = createDeferred<void>();
++    const cleanup = expectDefined(
++      hoisted.cleanupSessionLifecycleArtifacts.getMockImplementation(),
++      "expected the recording cleanup adapter",
++    );
++    hoisted.cleanupSessionLifecycleArtifacts.mockImplementationOnce(async (params) => {
++      cleanupStarted.resolve();
++      await releaseCleanup.promise;
++      return await cleanup(params);
++    });
++    runEmbeddedAgent.mockImplementationOnce(async (params: { sessionFile: string; abortSignal?: AbortSignal }) => {
+       await writeTranscriptJsonl(params.sessionFile, [
+         {
+           message: {
+@@ -4870,13 +4904,26 @@ describe("active-memory plugin", () => {
+           },
+         },
+       ]);
++      await waitForAbort(params.abortSignal).catch((error: unknown) => {
++        expect(String(error)).toContain("active-memory terminal memory search result");
++      });
+       return { payloads: [{ text: "User usually orders tonkotsu ramen." }] };
+     });
+ 
+-    const result = await runPromptBuild(
++    const resultPromise = runPromptBuild(
+       { prompt: "what food do i usually order? unavailable diagnostic" },
+       { sessionKey },
+     );
++    // Force the terminal result to win while cleanup remains in flight.
++    await cleanupStarted.promise;
++    let result: Awaited<typeof resultPromise>;
++    try {
++      result = await resultPromise;
++    } finally {
++      releaseCleanup.resolve();
++      await expect(pendingRecall()).rejects.toThrow("active-memory terminal memory search result");
++    }
++    expect(Object.keys(hoisted.runtimeTranscriptFiles)).toEqual([]);
+ 
+     expectPrependContextContains(result, unavailableRecallContext);
+     const infoLines = vi

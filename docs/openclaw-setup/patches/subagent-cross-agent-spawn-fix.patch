@@ -1,37 +1,25 @@
-diff --git a/docs/gateway/config-agents.md b/docs/gateway/config-agents.md
-index 869d35882d..e09a5541c0 100644
---- a/docs/gateway/config-agents.md
-+++ b/docs/gateway/config-agents.md
-@@ -1104,7 +1104,7 @@ for provider examples and precedence.
- - `identity` derives defaults: `ackReaction` from `emoji`, `mentionPatterns` from `name`/`emoji`.
- - `subagents.allowAgents`: allowlist of configured agent ids for explicit `sessions_spawn.agentId` targets (`["*"]` = any configured target; default: same agent only). Include the requester id when self-targeted `agentId` calls should be allowed. Stale entries whose agent config was deleted are rejected by `sessions_spawn` and omitted from `agents_list`; run `openclaw doctor --fix` to clean them up, or add a minimal `agents.list[]` entry if that target should remain spawnable while inheriting defaults.
- - Sandbox inheritance guard: if the requester session is sandboxed, `sessions_spawn` rejects targets that would run unsandboxed.
--- `subagents.requireAgentId`: when true, block `sessions_spawn` calls that omit `agentId` (forces explicit profile selection; default: false).
-+- `subagents.requireAgentId`: when true, block `sessions_spawn` calls that omit `agentId`. Cron callers under this policy also cannot target their own profile; the denial lists configured non-requester targets directly. Set `false` only to opt into implicit or explicit same-agent cron children. Native cron callers default to `true` when unset. ACP cron callers default to `true` only when `acp.defaultAgent` resolves to the requester profile; a distinct ACP default remains valid. Other callers default to `false`.
- - `subagents.maxConcurrent`: max concurrent child-agent runs across subagent execution. Default: `8`.
- - `subagents.maxChildrenPerAgent`: max active children a single agent session can spawn. Default: `5`.
- - `subagents.maxSpawnDepth`: max nesting depth for sub-agent spawning (`1`-`5`). Default: `1` (no nesting).
 diff --git a/docs/tools/subagents.md b/docs/tools/subagents.md
-index d3d3c26b13..097b867aa8 100644
+index 566c090d149..db11780763b 100644
 --- a/docs/tools/subagents.md
 +++ b/docs/tools/subagents.md
-@@ -345,7 +345,7 @@ See [Configuration reference](/gateway/configuration-reference) and
+@@ -462,7 +462,7 @@ See [Configuration reference](/gateway/configuration-reference) and
    Default configured target-agent allowlist used when the requester agent does not set its own `subagents.allowAgents`.
  </ParamField>
  <ParamField path="agents.defaults.subagents.requireAgentId" type="boolean" default="false">
--  Block `sessions_spawn` calls that omit `agentId` (forces explicit profile selection). Per-agent override: `agents.list[].subagents.requireAgentId`.
-+  Block `sessions_spawn` calls that omit `agentId` (forces explicit profile selection). Cron callers under this policy also cannot target their own profile; the denial lists configured non-requester targets directly. Set `false` only to opt into implicit or explicit same-agent cron children. Per-agent override: `agents.list[].subagents.requireAgentId`. Native cron callers default to `true` when neither setting is configured. ACP cron callers default to `true` only when `acp.defaultAgent` resolves to the requester profile; a distinct ACP default remains valid. Other callers default to `false`.
+-  Block `sessions_spawn` calls that omit `agentId` (forces explicit profile selection). Per-agent override: `agents.entries.*.subagents.requireAgentId`.
++  Block `sessions_spawn` calls that omit `agentId`. Native cron callers default to requiring an explicit non-requester target. ACP cron callers may use a distinct `acp.defaultAgent`, but cannot implicitly or explicitly target their own profile unless this setting is `false`. Denials list allowed non-requester targets. Per-agent override: `agents.entries.*.subagents.requireAgentId`.
  </ParamField>
  <ParamField path="agents.defaults.subagents.announceTimeoutMs" type="number" default="120000">
-   Per-call timeout for gateway `agent` announce delivery attempts. Values are positive integer milliseconds and are clamped to the platform-safe timer maximum. Transient retries can make the total announce wait longer than one configured timeout.
-diff --git a/src/agents/acp-spawn.test.ts b/src/agents/acp-spawn.test.ts
-index e0a33f481e..6d7668a6c6 100644
---- a/src/agents/acp-spawn.test.ts
-+++ b/src/agents/acp-spawn.test.ts
-@@ -912,6 +912,372 @@ describe("spawnAcpDirect", () => {
-     expect(transcriptCalls[1]?.threadId).toBe("child-thread");
+   Timeout for gateway `agent` announcement handoff attempts. Once a handoff is accepted, waiting for the parent session's turn does not consume this budget. After execution starts, the requester's normal [runtime timeout and cancellation controls](/concepts/agent-loop#timeouts) apply; the announcement timer does not restart. Values are positive integer milliseconds and are clamped to the platform-safe timer maximum. Queue waits, requester execution, and transient retries can make total delivery time longer than one configured timeout.
+diff --git a/src/agents/subagents/spawn/acp-spawn.test.ts b/src/agents/subagents/spawn/acp-spawn.test.ts
+index bdebc4eba48..133e93e79af 100644
+--- a/src/agents/subagents/spawn/acp-spawn.test.ts
++++ b/src/agents/subagents/spawn/acp-spawn.test.ts
+@@ -3857,5 +3857,374 @@ describe("spawnAcpDirect", () => {
+     expect(hoisted.callGatewayMock).not.toHaveBeenCalled();
+     expect(hoisted.startAcpSpawnParentStreamRelayMock).not.toHaveBeenCalled();
    });
- 
++
 +  it("allows cron ACP runs to use a distinct default agent", async () => {
 +    replaceSpawnConfig({
 +      ...createDefaultSpawnConfig(),
@@ -275,7 +263,10 @@ index e0a33f481e..6d7668a6c6 100644
 +    );
 +
 +    expectAcceptedSpawn(result);
-+    const patch = expectRecordFields(gatewayRequest("sessions.patch").params, {});
++    const patch = expectRecordFields(
++      firstMockCall(hoisted.upsertSessionEntryMock, "session create")[1],
++      {},
++    );
 +    expect(patch).not.toHaveProperty("inheritedToolAllow");
 +    expect(patch).not.toHaveProperty("inheritedToolDeny");
 +  });
@@ -302,7 +293,7 @@ index e0a33f481e..6d7668a6c6 100644
 +    );
 +
 +    expectAcceptedSpawn(result);
-+    expectSessionPatchFields({
++    expectCreatedSessionFields({
 +      inheritedToolAllow: ["apply_patch", "edit", "exec", "process", "read", "write", "message"],
 +      inheritedToolDeny: ["message"],
 +    });
@@ -392,136 +383,97 @@ index e0a33f481e..6d7668a6c6 100644
 +    );
 +
 +    expectAcceptedSpawn(result);
-+    expectSessionPatchFields({
++    expectCreatedSessionFields({
 +      inheritedToolAllow: ["apply_patch", "edit", "exec", "process", "read", "write", "message"],
 +      inheritedToolDeny: ["message"],
 +    });
 +  });
-+
-   it("allows ACP resume IDs recorded for the requester session", async () => {
-     const resumeSessionId = "codex-inner-resume";
-     const ownedSessionKey = "agent:codex:acp:owned";
-diff --git a/src/agents/acp-spawn.ts b/src/agents/acp-spawn.ts
-index d463046cd1..6d11bd58d9 100644
---- a/src/agents/acp-spawn.ts
-+++ b/src/agents/acp-spawn.ts
-@@ -65,6 +65,7 @@ import {
- } from "../infra/outbound/session-binding-service.js";
- import { createSubsystemLogger } from "../logging/subsystem.js";
+ });
+ /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
+diff --git a/src/agents/subagents/spawn/acp-spawn.ts b/src/agents/subagents/spawn/acp-spawn.ts
+index ae0c63d1fdf..632105f415b 100644
+--- a/src/agents/subagents/spawn/acp-spawn.ts
++++ b/src/agents/subagents/spawn/acp-spawn.ts
+@@ -23,6 +23,8 @@ import {
+ } from "../../../infra/outbound/session-binding-service.js";
+ import { getGlobalHookRunner } from "../../../plugins/hook-runner-global.js";
  import {
 +  isCronSessionKey,
-   isSubagentSessionKey,
-   normalizeAgentId,
++  normalizeAgentId,
    normalizeOptionalAgentId,
-@@ -109,7 +110,10 @@ import {
-   splitModelRef,
- } from "./subagent-spawn-plan.js";
- import { resolveSubagentThinkingOverride } from "./subagent-spawn-thinking.js";
--import { resolveSubagentTargetPolicy } from "./subagent-target-policy.js";
-+import {
-+  resolveCronSelfSpawnPolicyError,
-+  resolveSubagentTargetPolicy,
-+} from "./subagent-target-policy.js";
- import { resolveInternalSessionKey, resolveMainSessionAlias } from "./tools/sessions-helpers.js";
+   resolveAgentIdFromSessionKey,
+ } from "../../../routing/session-key.js";
+@@ -31,7 +33,7 @@ import {
+   recordSubagentSpawned,
+ } from "../../../sessions/session-state-events.js";
+ import { deliveryContextFromSession } from "../../../utils/delivery-context.shared.js";
+-import { resolveSessionAgentId } from "../../agent-scope.js";
++import { resolveAgentConfig, resolveSessionAgentId } from "../../agent-scope.js";
+ import { reserveChildAdmissionSlot } from "../../child-admission.js";
+ import {
+   findAcpUnsupportedInheritedToolAllow,
+@@ -98,6 +100,7 @@ import {
+ import { readGatewayRunId } from "./subagent-spawn-gateway.js";
+ import { resolveSubagentSpawnOwnership } from "./subagent-spawn-ownership.js";
+ import { resolveConfiguredSubagentRunTimeoutSeconds } from "./subagent-spawn-plan.js";
++import { resolveCronSelfSpawnPolicyError } from "./subagent-target-policy.js";
  
- const log = createSubsystemLogger("agents/acp-spawn");
-@@ -537,6 +541,21 @@ function resolveConfiguredAcpSubagentTargetIds(cfg: OpenClawConfig): string[] {
-   return Array.from(ids);
- }
+ type SpawnAcpSandboxMode = "inherit" | "require";
  
-+function resolveRoutableAcpSubagentTargetIds(
-+  cfg: OpenClawConfig,
-+  requesterAgentId: string,
-+): string[] {
-+  const requester = normalizeAgentId(requesterAgentId);
-+  return resolveConfiguredAcpSubagentTargetIds(cfg).filter((id) => {
+@@ -207,6 +210,52 @@ export async function spawnAcpDirect(
+     sessionKey: requesterInternalKey,
+     agentId: ctx.requesterAgentIdOverride,
+   });
++  const requesterSubagents = resolveAgentConfig(cfg, requesterAgentId)?.subagents;
++  const configuredRequireAgentId =
++    requesterSubagents?.requireAgentId ?? cfg.agents?.defaults?.subagents?.requireAgentId;
++  const isCronRequester = isCronSessionKey(requesterInternalKey);
++  const requesterAllowAgents =
++    requesterSubagents?.allowAgents ?? cfg.agents?.defaults?.subagents?.allowAgents;
++  const routableAcpTargetIds = resolveConfiguredAcpSubagentTargetIds(cfg).filter((id) => {
 +    const target = resolveTargetAcpAgentId({ requestedAgentId: id, cfg });
 +    return (
 +      target.ok &&
-+      normalizeAgentId(target.agentId) !== requester &&
++      normalizeAgentId(target.agentId) !== requesterAgentId &&
 +      !resolveAcpAgentPolicyError(cfg, target.agentId)
 +    );
 +  });
-+}
-+
- function summarizeError(err: unknown): string {
-   return formatErrorMessage(err);
- }
-@@ -862,17 +881,6 @@ function resolveAcpSubagentEnvelopeState(params: {
-     };
-   }
- 
--  const requireAgentId =
--    resolveAgentConfig(params.cfg, params.requesterAgentId)?.subagents?.requireAgentId ??
--    params.cfg.agents?.defaults?.subagents?.requireAgentId ??
--    false;
--  if (requireAgentId && !params.requestedAgentId?.trim()) {
--    return {
--      error:
--        "sessions_spawn requires explicit agentId when requireAgentId is configured. Use agents_list to see allowed agent ids.",
--    };
--  }
--
-   const targetPolicy = resolveSubagentTargetPolicy({
-     requesterAgentId: params.requesterAgentId,
-     targetAgentId: params.targetAgentId,
-@@ -1285,6 +1293,55 @@ export async function spawnAcpDirect(
-       error: "ACP is disabled by policy (`acp.enabled=false`).",
-     });
-   }
-+  const configuredRequireAgentId =
-+    resolveAgentConfig(cfg, requesterAgentId)?.subagents?.requireAgentId ??
-+    cfg.agents?.defaults?.subagents?.requireAgentId;
-+  const isCronRequester = isCronSessionKey(requesterInternalKey);
-+  const requesterAllowAgents =
-+    resolveAgentConfig(cfg, requesterAgentId)?.subagents?.allowAgents ??
-+    cfg.agents?.defaults?.subagents?.allowAgents;
-+  const routableAcpTargetIds = isCronRequester
-+    ? resolveRoutableAcpSubagentTargetIds(cfg, requesterAgentId)
-+    : undefined;
-+  const implicitCronTarget =
-+    configuredRequireAgentId === undefined && isCronRequester && !params.agentId?.trim()
-+      ? resolveTargetAcpAgentId({ requestedAgentId: undefined, cfg })
-+      : undefined;
++  const implicitTarget = !params.agentId?.trim() ? resolveTargetAcpAgentId({ cfg }) : undefined;
 +  const requireAgentId =
 +    configuredRequireAgentId ??
-+    (implicitCronTarget?.ok === true && implicitCronTarget.agentId === requesterAgentId);
-+  if (requireAgentId && !params.agentId?.trim()) {
-+    const repair = isCronRequester
++    (isCronRequester && implicitTarget?.ok === true && implicitTarget.agentId === requesterAgentId);
++  const cronRepair = (targetAgentId: string) =>
++    isCronRequester
 +      ? resolveCronSelfSpawnPolicyError({
 +          requesterAgentId,
-+          targetAgentId: requesterAgentId,
++          targetAgentId,
 +          configuredRequireAgentId,
 +          allowAgents: requesterAllowAgents,
 +          configuredAgentIds: routableAcpTargetIds,
 +        })
 +      : undefined;
++  if (requireAgentId && !params.agentId?.trim()) {
++    const repair = cronRepair(requesterAgentId);
 +    return createAcpSpawnFailure({
 +      status: "forbidden",
 +      errorCode: "subagent_policy",
-+      error: `sessions_spawn requires explicit agentId for this requester.${repair ? ` ${repair}` : " Set agentId to the configured ACP harness id (for example acp.defaultAgent)."}`,
++      error: `sessions_spawn requires explicit agentId for this requester.${repair ? ` ${repair}` : " Set agentId to the configured ACP harness id."}`,
 +    });
 +  }
-+  if (isCronRequester && normalizeOptionalAgentId(params.agentId) === requesterAgentId) {
-+    const cronSelfSpawnError = resolveCronSelfSpawnPolicyError({
-+      requesterAgentId,
-+      targetAgentId: requesterAgentId,
-+      configuredRequireAgentId,
-+      allowAgents: requesterAllowAgents,
-+      configuredAgentIds: routableAcpTargetIds,
++  const explicitSelfError =
++    normalizeOptionalAgentId(params.agentId) === requesterAgentId
++      ? cronRepair(requesterAgentId)
++      : undefined;
++  if (explicitSelfError)
++    return createAcpSpawnFailure({
++      status: "forbidden",
++      errorCode: "subagent_policy",
++      error: explicitSelfError,
 +    });
-+    if (cronSelfSpawnError) {
-+      return createAcpSpawnFailure({
-+        status: "forbidden",
-+        errorCode: "subagent_policy",
-+        error: cronSelfSpawnError,
-+      });
-+    }
-+  }
-   const streamToParentRequested = params.streamTo === "parent";
-   const parentSessionKey = normalizeOptionalString(ctx.agentSessionKey);
-   if (streamToParentRequested && !parentSessionKey) {
-@@ -1309,27 +1366,6 @@ export async function spawnAcpDirect(
+   const runtimePolicyError = resolveAcpSpawnRuntimePolicyError({
+     cfg,
+     requesterAgentId,
+@@ -221,27 +270,6 @@ export async function spawnAcpDirect(
        error: runtimePolicyError,
      });
    }
@@ -549,74 +501,117 @@ index d463046cd1..6d11bd58d9 100644
    const spawnMode = resolveSpawnMode({
      requestedMode: params.mode,
      threadRequested: requestThreadBinding,
-@@ -1359,6 +1395,42 @@ export async function spawnAcpDirect(
+@@ -271,6 +299,31 @@ export async function spawnAcpDirect(
      });
    }
-   const targetAgentId = targetAgentResult.agentId;
-+  if (isCronRequester) {
-+    const cronSelfSpawnError = resolveCronSelfSpawnPolicyError({
-+      requesterAgentId,
-+      targetAgentId,
-+      configuredRequireAgentId,
-+      allowAgents: requesterAllowAgents,
-+      configuredAgentIds: routableAcpTargetIds,
+   const { agentId: targetAgentId, backendId } = targetAgentResult;
++  const selfError = cronRepair(targetAgentId);
++  if (selfError)
++    return createAcpSpawnFailure({
++      status: "forbidden",
++      errorCode: "subagent_policy",
++      error: selfError,
 +    });
-+    if (cronSelfSpawnError) {
-+      return createAcpSpawnFailure({
-+        status: "forbidden",
-+        errorCode: "subagent_policy",
-+        error: cronSelfSpawnError,
-+      });
-+    }
-+  }
 +  const acpUnsupportedInheritedTool = findAcpUnsupportedInheritedToolDeny(
 +    ctx.inheritedToolDenylist,
 +  );
-+  if (acpUnsupportedInheritedTool) {
++  if (acpUnsupportedInheritedTool)
 +    return createAcpSpawnFailure({
 +      status: "forbidden",
 +      errorCode: "runtime_policy",
 +      error: formatAcpInheritedToolDenyError(acpUnsupportedInheritedTool),
 +    });
-+  }
 +  const acpUnsupportedInheritedAllow = findAcpUnsupportedInheritedToolAllow(
 +    ctx.inheritedToolAllowlist,
 +  );
-+  if (acpUnsupportedInheritedAllow) {
++  if (acpUnsupportedInheritedAllow)
 +    return createAcpSpawnFailure({
 +      status: "forbidden",
 +      errorCode: "runtime_policy",
 +      error: formatAcpInheritedToolAllowError(acpUnsupportedInheritedAllow),
 +    });
-+  }
    const agentPolicyError = resolveAcpAgentPolicyError(cfg, targetAgentId);
    if (agentPolicyError) {
      return createAcpSpawnFailure({
-@@ -1480,8 +1552,14 @@ export async function spawnAcpDirect(
-         key: sessionKey,
-         spawnedBy: requesterInternalKey,
-         ...subagentEnvelopeState.childSessionPatch,
--        ...inheritedToolAllowPatch(ctx.inheritedToolAllowlist),
--        ...inheritedToolDenyPatch(ctx.inheritedToolDenylist),
-+        // FIX-CROSS-AGENT-SPAWN: only inherit tool allow/deny for same-agent
-+        // spawns; cross-agent spawns keep the child agent's own tool set.
-+        ...(targetAgentId === requesterAgentId
-+          ? inheritedToolAllowPatch(ctx.inheritedToolAllowlist)
-+          : {}),
-+        ...(targetAgentId === requesterAgentId
-+          ? inheritedToolDenyPatch(ctx.inheritedToolDenylist)
-+          : {}),
-         ...(params.label ? { label: params.label } : {}),
-       },
-       timeoutMs: 10_000,
-diff --git a/src/agents/subagent-spawn.test.ts b/src/agents/subagent-spawn.test.ts
-index 1c863991e5..d58becc002 100644
---- a/src/agents/subagent-spawn.test.ts
-+++ b/src/agents/subagent-spawn.test.ts
-@@ -187,6 +187,161 @@ describe("spawnSubagentDirect seam flow", () => {
-     expect(result.childSessionKey).toMatch(/^agent:task-manager:subagent:/);
-   });
+@@ -466,8 +519,12 @@ export async function spawnAcpDirect(
+             parentSessionKey: requesterInternalKey,
+             ...childSessionPatch,
+             inheritedToolPolicyVersion: 1,
+-            ...inheritedToolAllowPatch(ctx.inheritedToolAllowlist),
+-            ...inheritedToolDenyPatch(ctx.inheritedToolDenylist),
++            ...(targetAgentId === requesterAgentId
++              ? inheritedToolAllowPatch(ctx.inheritedToolAllowlist)
++              : {}),
++            ...(targetAgentId === requesterAgentId
++              ? inheritedToolDenyPatch(ctx.inheritedToolDenylist)
++              : {}),
+             ...(params.label ? { label: params.label } : {}),
+           },
+           { assertCommitAllowed: ctx.assertActive },
+diff --git a/src/agents/subagents/spawn/subagent-spawn-request.ts b/src/agents/subagents/spawn/subagent-spawn-request.ts
+index 3ce075702b0..0b474268b5c 100644
+--- a/src/agents/subagents/spawn/subagent-spawn-request.ts
++++ b/src/agents/subagents/spawn/subagent-spawn-request.ts
+@@ -2,8 +2,13 @@ import crypto from "node:crypto";
+ import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+ import type { OpenClawConfig } from "../../../config/types.openclaw.js";
+ import type { SubagentLifecycleHookRunner } from "../../../plugins/hooks.js";
+-import { isValidAgentId, normalizeAgentId } from "../../../routing/session-key.js";
++import {
++  isCronSessionKey,
++  isValidAgentId,
++  normalizeAgentId,
++} from "../../../routing/session-key.js";
+ import { listAgentIds } from "../../agent-scope-config.js";
++import { resolveAgentConfig } from "../../agent-scope.js";
+ import { resolveSessionAgentId } from "../../agent-scope.js";
+ import { reserveChildAdmissionSlot } from "../../child-admission.js";
+ import { resolveSpawnAdmission, resolveSpawnMode } from "../../spawn-plan.js";
+@@ -22,6 +27,7 @@ import { resolveSubagentSpawnOwnership } from "./subagent-spawn-ownership.js";
+ import { resolveConfiguredSubagentRunTimeoutSeconds } from "./subagent-spawn-plan.js";
+ import { loadSubagentConfig } from "./subagent-spawn-session-patch.js";
+ import { resolveInternalSessionKey, resolveMainSessionAlias } from "./subagent-spawn.runtime.js";
++import { resolveCronSelfSpawnPolicyError } from "./subagent-target-policy.js";
+ import { normalizeSubagentTaskName } from "./subagent-task-name.js";
  
+ type ResolvedSubagentSpawnRequest = {
+@@ -202,6 +208,27 @@ export function resolveSubagentSpawnRequest(
+     ? normalizeAgentId(effectiveRequestedAgentId)
+     : requesterAgentId;
+   const configuredAgentIds = listAgentIds(cfg);
++  const requesterSubagents = resolveAgentConfig(cfg, requesterAgentId)?.subagents;
++  const configuredRequireAgentId =
++    requesterSubagents?.requireAgentId ?? cfg.agents?.defaults?.subagents?.requireAgentId;
++  const isCronRequester = isCronSessionKey(requesterInternalKey);
++  const cronRepair = isCronRequester
++    ? resolveCronSelfSpawnPolicyError({
++        requesterAgentId,
++        targetAgentId,
++        configuredRequireAgentId,
++        allowAgents:
++          requesterSubagents?.allowAgents ?? cfg.agents?.defaults?.subagents?.allowAgents,
++        configuredAgentIds,
++      })
++    : undefined;
++  if ((configuredRequireAgentId ?? isCronRequester) && !requestedAgentId?.trim()) {
++    return rejectSubagentSpawnRequest(
++      "forbidden",
++      `sessions_spawn requires explicit agentId for this requester.${cronRepair ? ` ${cronRepair}` : " Use agents_list to see allowed agent ids."}`,
++    );
++  }
++  if (cronRepair) return rejectSubagentSpawnRequest("forbidden", cronRepair);
+   const explicitSwarmGroupId = normalizeOptionalString(params.groupId);
+   const requesterRunId = normalizeOptionalString(ctx.requesterRunId);
+   const swarmGroupId = params.collect
+diff --git a/src/agents/subagents/spawn/subagent-spawn.test.ts b/src/agents/subagents/spawn/subagent-spawn.test.ts
+index 1dc1d1e6b91..92d1dd9d303 100644
+--- a/src/agents/subagents/spawn/subagent-spawn.test.ts
++++ b/src/agents/subagents/spawn/subagent-spawn.test.ts
+@@ -2471,5 +2471,279 @@ describe("spawnSubagentDirect seam flow", () => {
+     expect(hoisted.callGatewayMock).not.toHaveBeenCalled();
+     expect(hoisted.emitSessionLifecycleEventMock).not.toHaveBeenCalled();
+   });
++
 +  it("replays cron target repair without falling back to the requester", async () => {
 +    hoisted.configOverride = createConfigOverride({
 +      agents: {
@@ -772,13 +767,6 @@ index 1c863991e5..d58becc002 100644
 +    expect(gatewayRequestRecords().some((request) => request.method === "agent")).toBe(false);
 +  });
 +
-   it("registers the target agent id for cross-agent task attribution", async () => {
-     hoisted.configOverride = createConfigOverride({
-       session: {
-@@ -232,6 +387,125 @@ describe("spawnSubagentDirect seam flow", () => {
-     expect(registerInput.requesterAgentId).toBe("main");
-   });
- 
 +  it("preserves requester tool policy for same-agent spawns", async () => {
 +    let persistedStore: Record<string, Record<string, unknown>> | undefined;
 +    installSessionStoreCaptureMock(hoisted.updateSessionStoreMock, {
@@ -897,127 +885,29 @@ index 1c863991e5..d58becc002 100644
 +    expect(childEntry).not.toHaveProperty("inheritedToolAllow");
 +    expect(childEntry).not.toHaveProperty("inheritedToolDeny");
 +  });
-+
-   it("accepts a spawned run across session patching, runtime-model persistence, registry registration, and lifecycle emission", async () => {
-     const operations: string[] = [];
-     let persistedStore: Record<string, Record<string, unknown>> | undefined;
-diff --git a/src/agents/subagent-spawn.ts b/src/agents/subagent-spawn.ts
-index 2ce1c4cda0..ca9d10cfb3 100644
---- a/src/agents/subagent-spawn.ts
-+++ b/src/agents/subagent-spawn.ts
-@@ -33,7 +33,12 @@ import type { SubagentSpawnPreparation } from "../context-engine/types.js";
- import { stringifyRouteThreadId } from "../plugin-sdk/channel-route.js";
- import { listRegisteredPluginAgentPromptGuidance } from "../plugins/command-registry-state.js";
- import type { SubagentLifecycleHookRunner } from "../plugins/hooks.js";
--import { isValidAgentId, normalizeAgentId, parseAgentSessionKey } from "../routing/session-key.js";
-+import {
-+  isCronSessionKey,
-+  isValidAgentId,
-+  normalizeAgentId,
-+  parseAgentSessionKey,
-+} from "../routing/session-key.js";
- import { resolveUserPath } from "../utils.js";
- import type { DeliveryContext } from "../utils/delivery-context.types.js";
- import { listAgentIds, resolveAgentDir } from "./agent-scope-config.js";
-@@ -66,7 +71,10 @@ import { countActiveRunsForSession, registerSubagentRun } from "./subagent-regis
- import { resolveSubagentRunTimerDelayMs } from "./subagent-run-timeout.js";
- import { resolveSubagentSpawnAcceptedNote } from "./subagent-spawn-accepted-note.js";
- import { resolveSubagentSpawnOwnership } from "./subagent-spawn-ownership.js";
--import { resolveSubagentTargetPolicy } from "./subagent-target-policy.js";
-+import {
-+  resolveCronSelfSpawnPolicyError,
-+  resolveSubagentTargetPolicy,
-+} from "./subagent-target-policy.js";
- import { normalizeSubagentTaskName } from "./subagent-task-name.js";
- export {
-   SUBAGENT_SPAWN_ACCEPTED_NOTE,
-@@ -1179,18 +1187,45 @@ export async function spawnSubagentDirect(
-   const requesterAgentId = normalizeAgentId(
-     ctx.requesterAgentIdOverride ?? parseAgentSessionKey(requesterInternalKey)?.agentId,
-   );
--  const requireAgentId =
--    resolveAgentConfig(cfg, requesterAgentId)?.subagents?.requireAgentId ??
--    cfg.agents?.defaults?.subagents?.requireAgentId ??
--    false;
-+  const requesterSubagentConfig = resolveAgentConfig(cfg, requesterAgentId)?.subagents;
-+  const configuredRequireAgentId =
-+    requesterSubagentConfig?.requireAgentId ?? cfg.agents?.defaults?.subagents?.requireAgentId;
-+  const isCronRequester = isCronSessionKey(requesterInternalKey);
-+  const requireAgentId = configuredRequireAgentId ?? isCronRequester;
-+  const configuredAgentIds = resolveConfiguredAgentIds(cfg);
-+  const allowAgents =
-+    requesterSubagentConfig?.allowAgents ?? cfg.agents?.defaults?.subagents?.allowAgents;
-   if (requireAgentId && !requestedAgentId?.trim()) {
-+    const repair = isCronRequester
-+      ? resolveCronSelfSpawnPolicyError({
-+          requesterAgentId,
-+          targetAgentId: requesterAgentId,
-+          configuredRequireAgentId,
-+          allowAgents,
-+          configuredAgentIds,
-+        })
-+      : undefined;
-     return {
-       status: "forbidden",
--      error:
--        "sessions_spawn requires explicit agentId when requireAgentId is configured. Use agents_list to see allowed agent ids.",
-+      error: `sessions_spawn requires explicit agentId for this requester.${repair ? ` ${repair}` : " Use agents_list to see allowed agent ids."}`,
-     };
-   }
-   const targetAgentId = requestedAgentId ? normalizeAgentId(requestedAgentId) : requesterAgentId;
-+  if (isCronRequester) {
-+    const cronSelfSpawnError = resolveCronSelfSpawnPolicyError({
-+      requesterAgentId,
-+      targetAgentId,
-+      configuredRequireAgentId,
-+      allowAgents,
-+      configuredAgentIds,
-+    });
-+    if (cronSelfSpawnError) {
-+      return {
-+        status: "forbidden",
-+        error: cronSelfSpawnError,
-+      };
-+    }
-+  }
-   const requestedCwd = normalizeOptionalString(params.cwd);
-   const spawnedCwd = requestedCwd ? resolveUserPath(requestedCwd) : undefined;
-   const toolSpawnMetadata = mapToolContextToSpawnedRunMetadata({
-@@ -1229,10 +1264,8 @@ export async function spawnSubagentDirect(
-     requesterAgentId,
-     targetAgentId,
-     requestedAgentId,
--    allowAgents:
--      resolveAgentConfig(cfg, requesterAgentId)?.subagents?.allowAgents ??
--      cfg?.agents?.defaults?.subagents?.allowAgents,
--    configuredAgentIds: resolveConfiguredAgentIds(cfg),
-+    allowAgents,
-+    configuredAgentIds,
-   });
-   if (!targetPolicy.ok) {
-     return {
-@@ -1332,8 +1365,15 @@ export async function spawnSubagentDirect(
-     spawnDepth: childDepth,
-     subagentRole: childCapabilities.role === "main" ? null : childCapabilities.role,
-     subagentControlScope: childCapabilities.controlScope,
--    ...inheritedToolAllowPatch(ctx.inheritedToolAllowlist),
--    ...inheritedToolDenyPatch(ctx.inheritedToolDenylist),
-+    // FIX-CROSS-AGENT-SPAWN: only inherit tool allow/deny restrictions for
-+    // same-agent spawns. Cross-agent spawns (e.g. main -> reader) must keep the
-+    // child agent's own configured tool set, matching the workspaceDir gate above.
-+    ...(targetAgentId === requesterAgentId
-+      ? inheritedToolAllowPatch(ctx.inheritedToolAllowlist)
-+      : {}),
-+    ...(targetAgentId === requesterAgentId
-+      ? inheritedToolDenyPatch(ctx.inheritedToolDenylist)
-+      : {}),
-     ...plan.initialSessionPatch,
-   };
- 
-diff --git a/src/agents/subagent-target-policy.ts b/src/agents/subagent-target-policy.ts
-index 4b5b17235e..ff654867fe 100644
---- a/src/agents/subagent-target-policy.ts
-+++ b/src/agents/subagent-target-policy.ts
+ });
+ /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
+diff --git a/src/agents/subagents/spawn/subagent-spawn.ts b/src/agents/subagents/spawn/subagent-spawn.ts
+index f9649c2845e..321f6382328 100644
+--- a/src/agents/subagents/spawn/subagent-spawn.ts
++++ b/src/agents/subagents/spawn/subagent-spawn.ts
+@@ -177,8 +177,10 @@ export async function spawnSubagentDirect(
+       spawnedCwd,
+       sessionPermissionPolicy: ctx.sessionPermissionPolicy,
+       admissionPatch: admission.childSessionPatch,
+-      inheritedToolAllowlist: ctx.inheritedToolAllowlist,
+-      inheritedToolDenylist: ctx.inheritedToolDenylist,
++      inheritedToolAllowlist:
++        targetAgentId === requesterAgentId ? ctx.inheritedToolAllowlist : undefined,
++      inheritedToolDenylist:
++        targetAgentId === requesterAgentId ? ctx.inheritedToolDenylist : undefined,
+       modelPatch: plan.initialSessionPatch,
+       swarmGroupId,
+       collect: params.collect === true,
+diff --git a/src/agents/subagents/spawn/subagent-target-policy.ts b/src/agents/subagents/spawn/subagent-target-policy.ts
+index 18da8045f33..4a4c3c8bb59 100644
+--- a/src/agents/subagents/spawn/subagent-target-policy.ts
++++ b/src/agents/subagents/spawn/subagent-target-policy.ts
 @@ -81,6 +81,34 @@ export function resolveSubagentAllowedTargetIds(params: {
    };
  }
@@ -1054,12 +944,12 @@ index 4b5b17235e..ff654867fe 100644
  export function resolveSubagentTargetPolicy(params: {
    requesterAgentId: string;
 diff --git a/src/agents/tools/sessions-spawn-tool.test.ts b/src/agents/tools/sessions-spawn-tool.test.ts
-index 1cf0c030b6..d50166b37b 100644
+index e5b9cd45fc7..49d3f438fcc 100644
 --- a/src/agents/tools/sessions-spawn-tool.test.ts
 +++ b/src/agents/tools/sessions-spawn-tool.test.ts
-@@ -382,6 +382,12 @@ describe("sessions_spawn tool", () => {
+@@ -1795,6 +1795,12 @@ describe("sessions_spawn tool", () => {
      expect(requireSchemaProperty(schema.properties, "taskName").description).toContain(
-       "Stable alias",
+       "starts lowercase letter",
      );
 +    expect(requireSchemaProperty(schema.properties, "taskName").description).toContain(
 +      "does not select an agent profile",
@@ -1070,7 +960,7 @@ index 1cf0c030b6..d50166b37b 100644
  
      const result = await tool.execute("call-task-name", {
        task: "review subagent handling",
-@@ -618,69 +624,6 @@ describe("sessions_spawn tool", () => {
+@@ -2102,69 +2108,6 @@ describe("sessions_spawn tool", () => {
      expect(spawnContext.inheritedToolDenylist).toEqual(["custom_control_tool"]);
    });
  
@@ -1141,13 +1031,13 @@ index 1cf0c030b6..d50166b37b 100644
      registerAcpBackendForTest();
      const tool = createSessionsSpawnTool({
 diff --git a/src/agents/tools/sessions-spawn-tool.ts b/src/agents/tools/sessions-spawn-tool.ts
-index 22e5c6240d..380738d8ff 100644
+index d2e4fa34f30..a86b4bd2dc5 100644
 --- a/src/agents/tools/sessions-spawn-tool.ts
 +++ b/src/agents/tools/sessions-spawn-tool.ts
-@@ -16,12 +16,6 @@ import { resolveSnakeCaseParamKey } from "../../param-key.js";
+@@ -15,12 +15,6 @@ import { resolveSnakeCaseParamKey } from "../../param-key.js";
+ import { parseAgentSessionKey } from "../../routing/session-key.js";
  import { createLazyImportLoader } from "../../shared/lazy-promise.js";
- import { normalizeDeliveryContext } from "../../utils/delivery-context.shared.js";
- import type { GatewayMessageChannel } from "../../utils/message-channel.js";
+ import { captureAgentToolSourceExecutionGuard } from "../agent-tool-source-execution-guard.js";
 -import {
 -  findAcpUnsupportedInheritedToolAllow,
 -  findAcpUnsupportedInheritedToolDeny,
@@ -1156,18 +1046,19 @@ index 22e5c6240d..380738d8ff 100644
 -} from "../inherited-tool-deny.js";
  import { optionalStringEnum } from "../schema/typebox.js";
  import type { SpawnedToolContext } from "../spawned-context.js";
- import { resolveAcpSessionsSpawnImageAttachments } from "../subagent-attachments.js";
-@@ -169,14 +163,19 @@ function createSessionsSpawnToolSchema(params: {
+ import { getSubagentDeliveryBacklogPressure } from "../subagents/registry/subagent-registry.js";
+@@ -169,7 +163,7 @@ function createSessionsSpawnToolSchema(params: {
      taskName: Type.Optional(
        Type.String({
          description:
--          "Stable alias for later targeting; lowercase letters/digits/underscores/hyphens, starts letter.",
-+          "Stable alias for later targeting; does not select an agent profile. Lowercase letters/digits/underscores/hyphens, starts letter.",
+-          "Stable later-target alias; starts lowercase letter; then lowercase/digit/_/-.",
++          "Stable later-target alias; does not select an agent profile; starts lowercase letter; then lowercase/digit/_/-.",
        }),
      ),
-     label: Type.Optional(Type.String()),
-     runtime: optionalStringEnum(
+     label: Type.Optional(
+@@ -181,7 +175,12 @@ function createSessionsSpawnToolSchema(params: {
        params.acpAvailable ? SESSIONS_SPAWN_RUNTIMES : (["subagent"] as const),
+       { description: 'Runtime; visible=true requires "subagent".' },
      ),
 -    agentId: Type.Optional(Type.String()),
 +    agentId: Type.Optional(
@@ -1177,42 +1068,42 @@ index 22e5c6240d..380738d8ff 100644
 +      }),
 +    ),
      model: Type.Optional(Type.String()),
-     thinking: Type.Optional(Type.String()),
-     cwd: Type.Optional(Type.String()),
-@@ -332,28 +331,6 @@ export function createSessionsSpawnTool(
-           ...roleContext,
-         });
-       }
--      const acpUnsupportedInheritedTool =
--        runtime === "acp"
--          ? findAcpUnsupportedInheritedToolDeny(opts?.inheritedToolDenylist)
--          : undefined;
--      if (acpUnsupportedInheritedTool) {
--        return jsonResult({
--          status: "forbidden",
--          error: formatAcpInheritedToolDenyError(acpUnsupportedInheritedTool),
--          ...roleContext,
--        });
--      }
--      const acpUnsupportedInheritedAllow =
--        runtime === "acp"
--          ? findAcpUnsupportedInheritedToolAllow(opts?.inheritedToolAllowlist)
--          : undefined;
--      if (acpUnsupportedInheritedAllow) {
--        return jsonResult({
--          status: "forbidden",
--          error: formatAcpInheritedToolAllowError(acpUnsupportedInheritedAllow),
--          ...roleContext,
--        });
--      }
-       if (runtime === "acp" && lightContext) {
-         throw new Error("lightContext is only supported for runtime='subagent'.");
-       }
+     runTimeoutSeconds: Type.Optional(
+       Type.Integer({
+@@ -512,28 +511,6 @@ export function createSessionsSpawnTool(
+             ...roleContext,
+           });
+         }
+-        const acpUnsupportedInheritedTool =
+-          runtime === "acp"
+-            ? findAcpUnsupportedInheritedToolDeny(opts?.inheritedToolDenylist)
+-            : undefined;
+-        if (acpUnsupportedInheritedTool) {
+-          return jsonResult({
+-            status: "forbidden",
+-            error: formatAcpInheritedToolDenyError(acpUnsupportedInheritedTool),
+-            ...roleContext,
+-          });
+-        }
+-        const acpUnsupportedInheritedAllow =
+-          runtime === "acp"
+-            ? findAcpUnsupportedInheritedToolAllow(opts?.inheritedToolAllowlist)
+-            : undefined;
+-        if (acpUnsupportedInheritedAllow) {
+-          return jsonResult({
+-            status: "forbidden",
+-            error: formatAcpInheritedToolAllowError(acpUnsupportedInheritedAllow),
+-            ...roleContext,
+-          });
+-        }
+         if (runtime === "acp" && lightContext) {
+           throw new Error("lightContext is only supported for runtime='subagent'.");
+         }
 diff --git a/src/config/types.agent-defaults.ts b/src/config/types.agent-defaults.ts
-index 4fe2cbd351..ff95010909 100644
+index 9ae4af06d04..3191538fcfc 100644
 --- a/src/config/types.agent-defaults.ts
 +++ b/src/config/types.agent-defaults.ts
-@@ -491,7 +491,7 @@ export type AgentDefaultsConfig = {
+@@ -362,7 +362,7 @@ export type AgentDefaultsConfig = {
      runTimeoutSeconds?: number;
      /** Gateway timeout in ms for sub-agent announce delivery calls (default: 120000). */
      announceTimeoutMs?: number;
@@ -1222,10 +1113,10 @@ index 4fe2cbd351..ff95010909 100644
    };
    /** Optional sandbox settings for non-main sessions. */
 diff --git a/src/config/types.agents.ts b/src/config/types.agents.ts
-index 2332eead80..267646041b 100644
+index 667d6285594..2f80234524d 100644
 --- a/src/config/types.agents.ts
 +++ b/src/config/types.agents.ts
-@@ -141,7 +141,7 @@ export type AgentConfig = {
+@@ -154,7 +154,7 @@ export type AgentConfig = {
      model?: AgentModelConfig;
      /** Per-agent default thinking level for spawned sub-agents. */
      thinking?: string;
@@ -1233,54 +1124,33 @@ index 2332eead80..267646041b 100644
 +    /** Require explicit agentId; cron callers under this policy also cannot self-target. */
      requireAgentId?: boolean;
    };
-   /** Optional outer run loop retry boundaries. */
+   /** Optional per-agent embedded OpenClaw overrides. */
 diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.discord-group.json b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.discord-group.json
-index 484070a9db..0d4c83e0c1 100644
+index bafefbbcc9b..2d7b979da66 100644
 --- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.discord-group.json
 +++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.discord-group.json
-@@ -138,6 +138,7 @@
-     "inputSchema": {
-       "properties": {
-         "agentId": {
-+          "description": "Target agent profile. Native scheduled/cron callers require it by default. ACP scheduled/cron callers may omit it when acp.defaultAgent selects a distinct profile; same-profile omission requires policy to allow it.",
-           "type": "string"
-         },
-         "attachAs": {
-@@ -209,7 +210,7 @@
-           "type": "string"
-         },
-         "taskName": {
--          "description": "Stable alias for later targeting; lowercase letters/digits/underscores/hyphens, starts letter.",
-+          "description": "Stable alias for later targeting; does not select an agent profile. Lowercase letters/digits/underscores/hyphens, starts letter.",
-           "type": "string"
-         },
-         "thinking": {
-diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.heartbeat-turn.json b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.heartbeat-turn.json
-index e74fdee1a0..ff8babcd28 100644
---- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.heartbeat-turn.json
-+++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.heartbeat-turn.json
-@@ -138,6 +138,7 @@
-     "inputSchema": {
-       "properties": {
-         "agentId": {
-+          "description": "Target agent profile. Native scheduled/cron callers require it by default. ACP scheduled/cron callers may omit it when acp.defaultAgent selects a distinct profile; same-profile omission requires policy to allow it.",
-           "type": "string"
-         },
-         "attachAs": {
-@@ -209,7 +210,7 @@
-           "type": "string"
-         },
-         "taskName": {
--          "description": "Stable alias for later targeting; lowercase letters/digits/underscores/hyphens, starts letter.",
-+          "description": "Stable alias for later targeting; does not select an agent profile. Lowercase letters/digits/underscores/hyphens, starts letter.",
-           "type": "string"
-         },
-         "thinking": {
+@@ -6,6 +6,7 @@
+       "inputSchema": {
+         "properties": {
+           "agentId": {
++            "description": "Target agent profile. Native scheduled/cron callers require it by default. ACP scheduled/cron callers may omit it when acp.defaultAgent selects a distinct profile; same-profile omission requires policy to allow it.",
+             "type": "string"
+           },
+           "attachAs": {
+@@ -109,7 +110,7 @@
+             "type": "string"
+           },
+           "taskName": {
+-            "description": "Stable later-target alias; starts lowercase letter; then lowercase/digit/_/-.",
++            "description": "Stable later-target alias; does not select an agent profile; starts lowercase letter; then lowercase/digit/_/-.",
+             "type": "string"
+           },
+           "thinking": {
 diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.telegram-direct.json b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.telegram-direct.json
-index fd531c5a6f..17e09c2f17 100644
+index 344b8e4b235..cf0f086d901 100644
 --- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.telegram-direct.json
 +++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/codex-dynamic-tools.telegram-direct.json
-@@ -138,6 +138,7 @@
+@@ -159,6 +159,7 @@
      "inputSchema": {
        "properties": {
          "agentId": {
@@ -1288,90 +1158,121 @@ index fd531c5a6f..17e09c2f17 100644
            "type": "string"
          },
          "attachAs": {
-@@ -209,7 +210,7 @@
+@@ -262,7 +263,7 @@
            "type": "string"
          },
          "taskName": {
--          "description": "Stable alias for later targeting; lowercase letters/digits/underscores/hyphens, starts letter.",
-+          "description": "Stable alias for later targeting; does not select an agent profile. Lowercase letters/digits/underscores/hyphens, starts letter.",
+-          "description": "Stable later-target alias; starts lowercase letter; then lowercase/digit/_/-.",
++          "description": "Stable later-target alias; does not select an agent profile; starts lowercase letter; then lowercase/digit/_/-.",
            "type": "string"
          },
          "thinking": {
-diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/discord-group-codex-message-tool.md b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/discord-group-codex-message-tool.md
-index d936e33352..bad4996ede 100644
---- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/discord-group-codex-message-tool.md
-+++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/discord-group-codex-message-tool.md
-@@ -225,8 +225,8 @@ This is the deterministic model-bound layer stack OpenClaw can snapshot for the
-     "roughTokens": 0
-   },
-   "dynamicToolsJson": {
--    "chars": 53471,
--    "roughTokens": 13368
-+    "chars": 53748,
-+    "roughTokens": 13437
-   },
-   "openClawDeveloperInstructions": {
-     "chars": 3245,
-@@ -237,8 +237,8 @@ This is the deterministic model-bound layer stack OpenClaw can snapshot for the
-     "roughTokens": 6943
-   },
-   "totalWithDynamicToolsJson": {
--    "chars": 81243,
--    "roughTokens": 20311
-+    "chars": 81520,
-+    "roughTokens": 20380
-   },
-   "userInputText": {
-     "chars": 1442,
+diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/discord-group-codex-message-tool.md.diff b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/discord-group-codex-message-tool.md.diff
+index 3e1d70e26f4..9af3c87f090 100644
+--- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/discord-group-codex-message-tool.md.diff
++++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/discord-group-codex-message-tool.md.diff
+@@ -1,5 +1,5 @@
+---- telegram-direct-codex-message-tool.md	sha256=1f0e5aa6d2bd912cd45d8e604558bb4f4d82124496c23526c62d00e7e3cf8237
+-+++ discord-group-codex-message-tool.md	sha256=63d926a4f2a0f55a67faace9939eb9e283a550c794b3da6f9bf60f9b375da41f
++--- telegram-direct-codex-message-tool.md	sha256=59676ed969c85bc97989bc8e7be2e5d8dbf32b4a41a049d7cbe559933c28657e
+++++ discord-group-codex-message-tool.md	sha256=06dc2bc03cef1b97434f34b607178221a9c3452f1e5186feae86e48b5f6088de
+ @@ -1,1 +1,1 @@
+ -# Telegram Direct Codex Message Tool Turn
+ +# Discord Group Codex Message Tool Turn
+@@ -32,10 +32,10 @@
+ -    "chars": 882,
+ +    "chars": 881,
+ @@ -254,2 +254,2 @@
+--    "chars": 57821,
+--    "roughTokens": 14456
+-+    "chars": 58377,
+-+    "roughTokens": 14595
++-    "chars": 58098,
++-    "roughTokens": 14525
+++    "chars": 58654,
+++    "roughTokens": 14664
+ @@ -258,2 +258,2 @@
+ -    "chars": 3672,
+ -    "roughTokens": 918
+@@ -47,10 +47,10 @@
+ +    "chars": 29820,
+ +    "roughTokens": 7455
+ @@ -266,2 +266,2 @@
+--    "chars": 86325,
+--    "roughTokens": 21582
+-+    "chars": 88199,
+-+    "roughTokens": 22050
++-    "chars": 86602,
++-    "roughTokens": 21651
+++    "chars": 88476,
+++    "roughTokens": 22119
+ @@ -270,2 +270,2 @@
+ -    "chars": 863,
+ -    "roughTokens": 216
 diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-direct-codex-message-tool.md b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-direct-codex-message-tool.md
-index 9bb7fddcbc..65576f7fb8 100644
+index 654445dc220..e49e125ae8c 100644
 --- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-direct-codex-message-tool.md
 +++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-direct-codex-message-tool.md
-@@ -225,8 +225,8 @@ This is the deterministic model-bound layer stack OpenClaw can snapshot for the
+@@ -251,8 +251,8 @@ This is the deterministic model-bound layer stack OpenClaw can snapshot for the
      "roughTokens": 0
    },
    "dynamicToolsJson": {
--    "chars": 53160,
--    "roughTokens": 13290
-+    "chars": 53437,
-+    "roughTokens": 13360
+-    "chars": 57821,
+-    "roughTokens": 14456
++    "chars": 58098,
++    "roughTokens": 14525
    },
    "openClawDeveloperInstructions": {
-     "chars": 2136,
-@@ -237,8 +237,8 @@ This is the deterministic model-bound layer stack OpenClaw can snapshot for the
-     "roughTokens": 6563
+     "chars": 3672,
+@@ -263,8 +263,8 @@ This is the deterministic model-bound layer stack OpenClaw can snapshot for the
+     "roughTokens": 7126
    },
    "totalWithDynamicToolsJson": {
--    "chars": 79414,
--    "roughTokens": 19854
-+    "chars": 79691,
-+    "roughTokens": 19923
+-    "chars": 86325,
+-    "roughTokens": 21582
++    "chars": 86602,
++    "roughTokens": 21651
    },
    "userInputText": {
-     "chars": 1033,
-diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-heartbeat-codex-tool.md b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-heartbeat-codex-tool.md
-index f004bd6819..e24693f97b 100644
---- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-heartbeat-codex-tool.md
-+++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-heartbeat-codex-tool.md
-@@ -226,8 +226,8 @@ This is the deterministic model-bound layer stack OpenClaw can snapshot for the
-     "roughTokens": 0
-   },
-   "dynamicToolsJson": {
--    "chars": 54450,
--    "roughTokens": 13613
-+    "chars": 54727,
-+    "roughTokens": 13682
-   },
-   "openClawDeveloperInstructions": {
-     "chars": 2155,
-@@ -238,8 +238,8 @@ This is the deterministic model-bound layer stack OpenClaw can snapshot for the
-     "roughTokens": 6799
-   },
-   "totalWithDynamicToolsJson": {
--    "chars": 81647,
--    "roughTokens": 20412
-+    "chars": 81924,
-+    "roughTokens": 20481
-   },
-   "userInputText": {
-     "chars": 1271,
+     "chars": 863,
+diff --git a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-heartbeat-codex-tool.md.diff b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-heartbeat-codex-tool.md.diff
+index 2610d9b537f..049a3f7c3eb 100644
+--- a/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-heartbeat-codex-tool.md.diff
++++ b/test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/telegram-heartbeat-codex-tool.md.diff
+@@ -1,5 +1,5 @@
+---- telegram-direct-codex-message-tool.md	sha256=1f0e5aa6d2bd912cd45d8e604558bb4f4d82124496c23526c62d00e7e3cf8237
+-+++ telegram-heartbeat-codex-tool.md	sha256=7e5abdc146ad20d5f942987155452b38e0792332b8a78acc190c59d2ba0eb5d6
++--- telegram-direct-codex-message-tool.md	sha256=59676ed969c85bc97989bc8e7be2e5d8dbf32b4a41a049d7cbe559933c28657e
+++++ telegram-heartbeat-codex-tool.md	sha256=5953bcfee8986efb1e7bc6fd76a5ad26b2bed4a72fd9776b299b552fd0c7850c
+ @@ -1,1 +1,1 @@
+ -# Telegram Direct Codex Message Tool Turn
+ +# Telegram Direct Codex Heartbeat Tool Turn
+@@ -35,20 +35,20 @@
+ +    "chars": 752,
+ +    "roughTokens": 188
+ @@ -254,2 +251,2 @@
+--    "chars": 57821,
+--    "roughTokens": 14456
+-+    "chars": 59314,
+-+    "roughTokens": 14829
++-    "chars": 58098,
++-    "roughTokens": 14525
+++    "chars": 59591,
+++    "roughTokens": 14898
+ @@ -262,2 +259,2 @@
+ -    "chars": 28502,
+ -    "roughTokens": 7126
+ +    "chars": 28714,
+ +    "roughTokens": 7179
+ @@ -266,2 +263,2 @@
+--    "chars": 86325,
+--    "roughTokens": 21582
+-+    "chars": 88030,
+-+    "roughTokens": 22008
++-    "chars": 86602,
++-    "roughTokens": 21651
+++    "chars": 88307,
+++    "roughTokens": 22077
+ @@ -270,2 +267,2 @@
+ -    "chars": 863,
+ -    "roughTokens": 216

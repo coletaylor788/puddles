@@ -1,0 +1,124 @@
+diff --git a/src/agents/embedded-agent-runner/run/incomplete-turn-recovery.ts b/src/agents/embedded-agent-runner/run/incomplete-turn-recovery.ts
+index c4eeedc76f3..872499b7fb1 100644
+--- a/src/agents/embedded-agent-runner/run/incomplete-turn-recovery.ts
++++ b/src/agents/embedded-agent-runner/run/incomplete-turn-recovery.ts
+@@ -1,6 +1,7 @@
+ /** Owns side-effect-sensitive retry and silent-reply recovery policy. */
+ import { isTerminalAssistantError } from "../../../llm/utils/retry.js";
+ import { hasAcceptedSessionSpawn } from "../../accepted-session-spawn.js";
++import { extractEmbeddedAssistantText } from "../../embedded-agent-utils.js";
+ import { hasOnlyAssistantReasoningContent } from "../../replay-turn-classification.js";
+ import { TOOL_FAILURE_INSTRUCTION } from "../../tool-outcome-instructions.js";
+ import {
+@@ -122,10 +123,16 @@ export function shouldTreatEmptyAssistantReplyAsSilent(params: {
+   // Actual failures, aborts and pending work still pass through the guards below.
+   const terminalReplyOptional = params.terminalReplyExpectation === "optional";
+   const assistant = resolveCurrentAttemptAssistant(params.attempt);
++  // Delivery subscriptions omit silent tokens. Only this attempt's authored
++  // response can supply that evidence; historical transcript text cannot.
++  const assistantTexts =
++    assistant && !joinAssistantTexts(params.attempt.assistantTexts)
++      ? [extractEmbeddedAssistantText(assistant)]
++      : params.attempt.assistantTexts;
+   const explicitSilentReply =
+     params.payloadCount === 0 &&
+     assistant?.stopReason !== "error" &&
+-    hasOnlySilentAssistantReply(params.attempt.assistantTexts);
++    hasOnlySilentAssistantReply(assistantTexts);
+   const tolerateSideEffects = terminalReplyOptional || explicitSilentReply;
+   if (
+     !params.allowEmptyAssistantReplyAsSilent ||
+diff --git a/src/agents/embedded-agent-runner/run/terminal-resolution.test.ts b/src/agents/embedded-agent-runner/run/terminal-resolution.test.ts
+index 40722af1346..e73521ffcaf 100644
+--- a/src/agents/embedded-agent-runner/run/terminal-resolution.test.ts
++++ b/src/agents/embedded-agent-runner/run/terminal-resolution.test.ts
+@@ -285,34 +285,68 @@ describe("terminal resolution", () => {
+     expect(activateInternalPrompt).toHaveBeenCalledWith(EMPTY_RESPONSE_RETRY_INSTRUCTION);
+   });
+ 
+-  it("completes an explicit silent reply without retrying", async () => {
++  it.each(["subscription", "current", "completed"])(
++    "completes an explicit %s silent reply without retrying",
++    async (evidence) => {
++      const assistant = buildEmbeddedRunnerAssistant({
++        content: [{ type: "text", text: SILENT_REPLY_TOKEN }],
++      });
++      const attempt = makeEmbeddedRunnerAttempt({
++        assistantTexts: evidence === "subscription" ? [SILENT_REPLY_TOKEN] : [],
++        lastAssistant: assistant,
++        currentAttemptAssistant: evidence === "completed" ? undefined : assistant,
++        currentAttemptCompletedAssistant: evidence === "completed" ? assistant : undefined,
++        currentAttemptReplayMetadata: { hadPotentialSideEffects: false, replaySafe: true },
++      });
++      const activateInternalPrompt = vi.fn();
++      const input = makeTerminalInput({
++        attempt,
++        attemptAssistant: assistant,
++        runParams: { allowEmptyAssistantReplyAsSilent: true, terminalReplyExpectation: "required" },
++        activateInternalPrompt,
++      });
++
++      const resolved = await resolveEmbeddedRunTerminal(input);
++
++      expect(resolved.action).toBe("complete");
++      if (resolved.action !== "complete") {
++        return;
++      }
++      expect(resolved.result.payloads).toEqual([{ text: SILENT_REPLY_TOKEN }]);
++      expect(resolved.result.meta.terminalReplyKind).toBe("silent-empty");
++      expect(resolved.result.meta.livenessState).toBe("working");
++      expect(activateInternalPrompt).not.toHaveBeenCalled();
++    },
++  );
++
++  it("does not revive a historical silent reply when this attempt returned nothing", async () => {
+     const assistant = buildEmbeddedRunnerAssistant({
+       content: [{ type: "text", text: SILENT_REPLY_TOKEN }],
+     });
+-    const attempt = makeEmbeddedRunnerAttempt({
+-      assistantTexts: [SILENT_REPLY_TOKEN],
+-      lastAssistant: assistant,
+-      currentAttemptAssistant: assistant,
+-      currentAttemptReplayMetadata: { hadPotentialSideEffects: false, replaySafe: true },
+-    });
+-    const activateInternalPrompt = vi.fn();
+     const input = makeTerminalInput({
+-      attempt,
+-      attemptAssistant: assistant,
++      attempt: makeEmbeddedRunnerAttempt({
++        assistantTexts: [],
++        lastAssistant: assistant,
++        currentAttemptAssistant: undefined,
++        currentAttemptCompletedAssistant: undefined,
++      }),
+       runParams: { allowEmptyAssistantReplyAsSilent: true, terminalReplyExpectation: "required" },
+-      activateInternalPrompt,
+     });
++    await expect(resolveEmbeddedRunTerminal(input)).resolves.toEqual({ action: "retry" });
++  });
+ 
+-    const resolved = await resolveEmbeddedRunTerminal(input);
+-
+-    expect(resolved.action).toBe("complete");
+-    if (resolved.action !== "complete") {
+-      return;
+-    }
+-    expect(resolved.result.payloads).toEqual([{ text: SILENT_REPLY_TOKEN }]);
+-    expect(resolved.result.meta.terminalReplyKind).toBe("silent-empty");
+-    expect(resolved.result.meta.livenessState).toBe("working");
+-    expect(activateInternalPrompt).not.toHaveBeenCalled();
++  it("keeps visible-answer recovery when the conversation does not permit silence", async () => {
++    const assistant = buildEmbeddedRunnerAssistant({
++      content: [{ type: "text", text: SILENT_REPLY_TOKEN }],
++    });
++    const input = makeTerminalInput({
++      attempt: makeEmbeddedRunnerAttempt({
++        assistantTexts: [],
++        currentAttemptAssistant: assistant,
++      }),
++      runParams: { allowEmptyAssistantReplyAsSilent: false, terminalReplyExpectation: "required" },
++    });
++    await expect(resolveEmbeddedRunTerminal(input)).resolves.toEqual({ action: "retry" });
+   });
+ 
+   it("keeps an empty visible parent alive for accepted completion children", async () => {

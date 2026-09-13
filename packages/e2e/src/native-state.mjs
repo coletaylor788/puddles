@@ -19,11 +19,43 @@ function artifactIdentity(artifact) {
   return ["schemaVersion", "sha256", "runtimeSha256", "platform", "arch", "node"].map((key) => artifact[key]);
 }
 
+function provenanceIdentity(provenance) {
+  if (provenance == null) return null;
+  if (!provenance || provenance.schema !== "puddles.openclaw-provider-artifact/v1" ||
+      !/^[a-f0-9]{64}$/.test(provenance.sha256) ||
+      !/^[a-f0-9]{40}$/.test(provenance.publicHead) ||
+      !["sourceSha256", "buildInputsSha256", "buildCommandSha256"].every(
+        (key) => /^[a-f0-9]{64}$/.test(provenance[key]),
+      )) {
+    throw new Error("Invalid additional artifact provenance");
+  }
+  return [
+    provenance.schema,
+    provenance.sha256,
+    provenance.publicHead,
+    provenance.sourceSha256,
+    provenance.buildInputsSha256,
+    provenance.buildCommandSha256,
+  ];
+}
+
+function additionalArtifactIdentity({ id, artifact, provenance }) {
+  return [id, artifactIdentity(artifact), provenanceIdentity(provenance)];
+}
+
 export function verifyCandidateProofs(receiptPath, receipt) {
   const extras = receipt.additionalArtifacts ?? [];
   if (!Array.isArray(extras) || extras.some((extra) => !/^[a-z][a-z0-9-]*$/.test(extra.id)) ||
       new Set(extras.map((extra) => extra.id)).size !== extras.length) throw new Error("Invalid additional artifact identities");
-  const required = ["regressions", "runtime", "install", ...extras.map((_extra, index) => `install-additional-${index}`)];
+  const provider = extras.find((extra) => extra.id === "llama-cpp-provider");
+  const required = [
+    "build",
+    ...(provider ? ["provider-package"] : []),
+    "regressions",
+    "runtime",
+    "install",
+    ...extras.map((_extra, index) => `install-additional-${index}`),
+  ];
   const proofs = {};
   for (const name of required) {
     const path = join(dirname(receiptPath), "stages", `${name}.json`);
@@ -34,15 +66,50 @@ export function verifyCandidateProofs(receiptPath, receipt) {
     proofs[name] = proof;
   }
   const rootIdentity = jsonDigest(artifactIdentity(receipt.artifact));
+  if (["regressions", "runtime"].some((name) => jsonDigest(proofs[name].inputs.stateMigration ?? null) !== jsonDigest(receipt.stateMigration ?? null))) {
+    throw new Error("State migration differs from candidate proofs");
+  }
   if (["runtime", "install"].some((name) => jsonDigest(artifactIdentity(proofs[name].inputs.artifact)) !== rootIdentity)) {
     throw new Error("Root artifact differs from rehearsal proofs");
   }
-  const bundleIdentity = (artifacts) => jsonDigest(artifacts.map(({ id, artifact }) => [id, artifactIdentity(artifact)]));
+  const bundleIdentity = (artifacts) => jsonDigest(artifacts.map(additionalArtifactIdentity));
   if (bundleIdentity(extras) !== bundleIdentity(proofs.runtime.inputs.additionalArtifacts ?? [])) throw new Error("Additional artifacts differ from runtime proof");
-  for (const [index, { id, artifact }] of extras.entries()) {
+  for (const [index, extra] of extras.entries()) {
     const inputs = proofs[`install-additional-${index}`].inputs;
-    if (inputs.id !== id || jsonDigest(artifactIdentity(artifact)) !== jsonDigest(artifactIdentity(inputs.artifact))) {
+    if (jsonDigest(additionalArtifactIdentity(extra)) !==
+        jsonDigest(additionalArtifactIdentity({
+          id: inputs.id,
+          artifact: inputs.artifact,
+          provenance: inputs.provenance,
+        }))) {
       throw new Error("Additional artifact differs from installation proof");
+    }
+  }
+  if (provider) {
+    const provenance = provider.provenance;
+    if (!provenance?.path || !existsSync(provenance.path) ||
+        fileDigest(provenance.path) !== provenance.sha256) {
+      throw new Error("Provider provenance receipt differs from candidate");
+    }
+    const value = JSON.parse(readFileSync(provenance.path, "utf8"));
+    const providerInputs = proofs["provider-package"].inputs;
+    if (value.schema !== provenance.schema || value.schemaVersion !== 1 ||
+        value.id !== provider.id || value.publicHead !== receipt.repository?.head ||
+        value.publicHead !== provenance.publicHead ||
+        value.source?.sha256 !== provenance.sourceSha256 ||
+        value.source.sha256 !== providerInputs.source ||
+        value.build?.inputsSha256 !== proofs.build.key ||
+        value.build.inputsSha256 !== provenance.buildInputsSha256 ||
+        value.build.commandSha256 !== provenance.buildCommandSha256 ||
+        value.build.commandSha256 !== providerInputs.provenance?.buildCommandSha256 ||
+        value.build.outputSha256 !== providerInputs.build ||
+        value.artifact?.sha256 !== provider.artifact.sha256 ||
+        value.artifact.runtimeSha256 !== provider.artifact.runtimeSha256 ||
+        jsonDigest(value.toolchain) !== jsonDigest(proofs.build.inputs.tools) ||
+        jsonDigest(value.toolchain) !== jsonDigest(providerInputs.provenance?.tools) ||
+        jsonDigest(additionalArtifactIdentity(proofs["provider-package"].result)) !==
+          jsonDigest(additionalArtifactIdentity(provider))) {
+      throw new Error("Provider provenance does not match candidate proofs");
     }
   }
 }

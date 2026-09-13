@@ -8,7 +8,7 @@ if (!candidate) {
 }
 
 describe("materialized fs-safe stale reclaim guard", () => {
-  it("contains the macOS kernel-exclusive reclaim guard", () => {
+  it("retains the upstream guard across stale reclaim and replacement admission", () => {
     const sidecarLock = readFileSync(
       join(
         candidate,
@@ -16,13 +16,19 @@ describe("materialized fs-safe stale reclaim guard", () => {
         "@openclaw",
         "fs-safe",
         "dist",
-        "sidecar-lock.js",
+        "sidecar-lock-acquire.js",
       ),
       "utf8",
     );
 
-    expect(sidecarLock).toContain("DARWIN_O_EXLOCK = 32");
-    expect(sidecarLock).toContain("acquireStaleReclaimGuard");
-    expect(sidecarLock).toContain("await acquireStaleReclaimGuard(lockPath)");
+    const kernelGuard = readFileSync(
+      join(candidate, "node_modules/@openclaw/fs-safe/dist/reclaim-kernel-guard.js"),
+      "utf8",
+    );
+    expect(kernelGuard).toContain("DARWIN_O_EXLOCK = 32");
+    expect(kernelGuard).toContain("fs.constants.O_NONBLOCK");
+    expect(sidecarLock).toContain("tryAcquireSidecarReclaimGuard");
+    expect(sidecarLock).toContain("sidecarReclaimGuardExists(reclaimGuardPath)");
+    expect(sidecarLock).toContain("releaseSidecarReclaimGuard(context.reclaimGuards, reclaimGuardPath)");
   });
 });
