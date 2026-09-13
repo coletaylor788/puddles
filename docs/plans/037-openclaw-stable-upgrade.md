@@ -136,8 +136,9 @@ The next exact replay exposed one ordering issue: live preflight compared a
 private parent-object operation with the obsolete pre-plugin object. The
 correction keeps live structural and migration checks, then defers exact config
 value comparison until immediately after full stopped normalization. Focused
-tests and the managed installed-runtime patch gate pass. Retained review and
-the exact cumulative gate remain. Production remains untouched.
+tests, the managed installed-runtime patch gate, exact cumulative gate, and
+retained complete-diff review pass. Private must repeat the exact combined
+deployment rehearsal. Production remains untouched.
 
 ## Agent section
 
@@ -664,6 +665,10 @@ the exact cumulative gate remain. Production remains untouched.
   findings remain. Loading full plugin contracts only after shutdown can still
   turn an unrepairable private plugin config into bounded downtime and rollback;
   this is an accepted operational limit of keeping live preflight state-free.
+- The same reviewer cleared the complete `8cf0a92..9f9fcd1` diff after the
+  deferred config-precondition correction. Exact preconditions still run inside
+  the stopped source-writer transaction before selected mutation. No actionable
+  material findings remain.
 
 ### Checklist
 
@@ -686,6 +691,6 @@ the exact cumulative gate remain. Production remains untouched.
 - [x] Persist canonical multi-agent ownership before private config CAS.
 - [x] Apply every validation-required maintained plugin migration after shutdown.
 - [ ] Rehearse deferred exact private config CAS after full built-in normalization.
-- [ ] Clear retained review for the deployment correction.
-- [ ] Pass affected and accumulated gates for the deployment correction.
+- [x] Clear retained review for the deployment correction.
+- [x] Pass affected and accumulated gates for the deployment correction.
 - [ ] Integrate the follow-up and hand activation back to private.
