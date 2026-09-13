@@ -1,13 +1,27 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   closeSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync,
-  readFileSync, readdirSync, readlinkSync, realpathSync, renameSync,
+  readFileSync, readdirSync, readlinkSync, readSync, realpathSync, renameSync,
   rmSync, writeFileSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 export const digest = (value) => createHash("sha256").update(value).digest("hex");
-export const fileDigest = (path) => digest(readFileSync(path));
+export const fileDigest = (path) => {
+  const hash = createHash("sha256");
+  const file = openSync(path, "r");
+  const buffer = Buffer.allocUnsafe(1024 * 1024);
+  try {
+    for (;;) {
+      const bytes = readSync(file, buffer, 0, buffer.length, null);
+      if (!bytes) break;
+      hash.update(buffer.subarray(0, bytes));
+    }
+  } finally {
+    closeSync(file);
+  }
+  return hash.digest("hex");
+};
 export const jsonDigest = (value) => digest(JSON.stringify(value));
 
 function artifactIdentity(artifact) {
@@ -43,14 +57,29 @@ function additionalArtifactIdentity({ id, artifact, provenance }) {
   return [id, artifactIdentity(artifact), provenanceIdentity(provenance)];
 }
 
+function preparedFileIdentity(record) {
+  if (!record || !/^[a-z][a-z0-9-]*$/.test(record.id) ||
+      !["file", "directory"].includes(record.type) ||
+      !/^[a-f0-9]{64}$/.test(record.sha256)) {
+    throw new Error("Invalid prepared file identity");
+  }
+  return [record.id, record.type, record.sha256];
+}
+
 export function verifyCandidateProofs(receiptPath, receipt) {
   const extras = receipt.additionalArtifacts ?? [];
   if (!Array.isArray(extras) || extras.some((extra) => !/^[a-z][a-z0-9-]*$/.test(extra.id)) ||
       new Set(extras.map((extra) => extra.id)).size !== extras.length) throw new Error("Invalid additional artifact identities");
   const provider = extras.find((extra) => extra.id === "llama-cpp-provider");
+  const prepared = receipt.preparedFiles ?? [];
+  if (!Array.isArray(prepared) ||
+      new Set(prepared.map((record) => preparedFileIdentity(record)[0])).size !== prepared.length) {
+    throw new Error("Invalid prepared file identities");
+  }
   const required = [
     "build",
     ...(provider ? ["provider-package"] : []),
+    ...(prepared.length ? ["prepared-files"] : []),
     "regressions",
     "runtime",
     "install",
@@ -74,6 +103,14 @@ export function verifyCandidateProofs(receiptPath, receipt) {
   }
   const bundleIdentity = (artifacts) => jsonDigest(artifacts.map(additionalArtifactIdentity));
   if (bundleIdentity(extras) !== bundleIdentity(proofs.runtime.inputs.additionalArtifacts ?? [])) throw new Error("Additional artifacts differ from runtime proof");
+  const preparedIdentity = (records) => jsonDigest(records.map(preparedFileIdentity));
+  if (preparedIdentity(prepared) !== preparedIdentity(proofs.runtime.inputs.preparedFiles ?? [])) {
+    throw new Error("Prepared files differ from runtime proof");
+  }
+  if (prepared.length &&
+      preparedIdentity(prepared) !== preparedIdentity(proofs["prepared-files"].result ?? [])) {
+    throw new Error("Prepared files differ from package proof");
+  }
   for (const [index, extra] of extras.entries()) {
     const inputs = proofs[`install-additional-${index}`].inputs;
     if (jsonDigest(additionalArtifactIdentity(extra)) !==

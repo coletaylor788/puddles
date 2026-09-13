@@ -1,6 +1,6 @@
 # OpenClaw stable upgrade
 
-Status: Provider artifact correction in validation; integration held
+Status: Deployment omission repair in progress; activation held
 Issue: #114
 Last updated: 2026-09-13
 
@@ -81,26 +81,34 @@ commands or replace unrelated state. The stopped gateway's complete state is
 snapshotted first. Repair only its database schema before changing configuration.
 Configuration changes still precede ordinary runtime migration and compilation.
 The job change uses a fresh read afterward and checks its reviewed revision.
-Any mismatch restores the old runtime, interpreter, configuration, and job state.
-Production deployment is outside this change's ownership. Source integration
-waits for the coordinating release owner to confirm compatibility. Activation
-and rollback remain in the existing deployment workflow.
+
+The same candidate may need immutable files that are not package archives, such
+as a local service binary tree or model file. These files are named and hashed
+when the candidate is sealed. A target maps every named file to one disjoint
+location below its managed state directory. Activation stages and verifies the
+bytes before downtime, records whether each destination already exists, and
+replaces it only after the existing state snapshot is durable. Rollback restores
+the prior state or removes additions owned by the failed transaction. This is a
+narrow file delivery contract, not a new package system or service manager.
+Browser images, package artifacts, configuration migration, and process
+ownership keep their existing mechanisms.
+
+Any mismatch restores the old runtime, interpreter, configuration, job state,
+and prepared files. Production deployment is outside this change's ownership.
+Activation and rollback remain in the existing deployment workflow.
 
 ### Status
 
-The runtime behavior and prior public candidate pass local cumulative testing,
-hosted testing, and retained independent review. Physical combined rehearsal
-then found that the separately installed local-embedding provider still came
-from an older registry archive. That archive did not contain the new residency
-behavior even though the root runtime did.
+The runtime and private composition are integrated and all source, installed,
+and physical target proofs are green. Activation stopped before live mutation
+because the sealed candidate does not describe the immutable local service and
+model files required by its reviewed migration. The existing package, browser,
+and migration contracts cannot safely infer or fetch those bytes.
 
-The runner now owns a separate provider artifact built from the same patched
-source as the root runtime. A machine-readable receipt binds its source, build,
-toolchain, and archive identity to retained pipeline proofs. Focused artifact
-and proof tests pass. The retained reviewer found one remaining self-attestation
-gap in that chain. The verifier correction is under recheck before the head is
-frozen for the full cumulative gate. Combined private rehearsal and the
-coordinating owner's integration decision follow. Production remains untouched.
+The current follow-up adds only the missing prepared-file contract to the
+existing candidate and rollback transaction. It will rehearse the actual
+deployment entrypoint with test-owned state and a fault rollback, then return to
+the retained reviewer and cumulative gate. Production remains untouched.
 
 ## Agent section
 
@@ -113,21 +121,23 @@ coordinating owner's integration decision follow. Production remains untouched.
   `>=24.16.0 <25 || >=26.1.0`.
 - Upstream package manager: `pnpm@12.3.4`. Puddles keeps its own manager.
 - Implementation authorized. No design pause. No production deployment.
-- Parent confirmation is required before merging public source.
+- Parent confirmation is required before merging follow-up public source.
 - Replacement public engineering owner starts from clean `947f8867a19e1ebb6d1b54765693d7c5b420fc2b`.
   PR #116 supersedes the closed, unmerged PR #115. Do not merge #116 until the
   parent confirms combined compatibility. Preserve previous sealed runs without
   edits.
-- Current repair scope is bundled dependencies, installed ESM registration,
-  explicit isolated temporary state, active-memory asynchronous cleanup, and
-  gateway-managed local embeddings. Physical rehearsal found that the provider
-  is packaged separately from the root runtime, so the current correction adds
-  a public provider artifact and exact provenance. Integration verifies the
-  provenance source, build command, and complete toolchain against the retained
-  build and provider-package inputs rather than trusting the receipt alone.
-  The retained review also drove a durable gathered-completion handoff repair.
-  Historical results below are not current eligibility. Production activation
-  and private composition stay out of scope.
+- PR #116 merged reviewed public head `5b5d9de` as
+  `07819c2870886054e72881a146326fae88f5d6ee`; the landed tree
+  `49e3bb0ddd5df61eaa2c3346ba0b6778bef393dd` matches the candidate.
+  Private `87fefe0981bc3887a0ace2037646aa4c18fc42c1` sealed all eleven
+  installed and physical target proofs. Production activation then stopped
+  before mutation because immutable embedding assets were supplied outside the
+  public candidate and could not participate in deployment rollback.
+- Current scope is only generic prepared-file sealing, target mapping,
+  pre-downtime staging, checked replacement, and rollback through the existing
+  transaction. Private owns the manifest, six additional runtime destinations,
+  browser target binding, composition regression, and production activation.
+  No provider, daemon, package framework, or runtime source change is in scope.
 - Resumed the same run after an agent-service transport reset. No managed
   process or run lock remained. Source, archives, and installed artifacts are
   preserved; successful earlier stage receipts are not a final-candidate gate.
@@ -169,6 +179,12 @@ coordinating owner's integration decision follow. Production remains untouched.
   one approved 90-second startup allowance. Retain the service lease and model
   residency until gateway shutdown. Keep ordinary memory requests at 15 seconds
   and the Active Memory setup cap at 30 seconds, without combining budgets.
+- Seal every selected non-package deployment file with a stable id, exact type,
+  and digest. Require one disjoint state-relative target mapping per file.
+- Stage and verify prepared files before shutdown. Replace them only after the
+  existing state snapshot, and prove both fault rollback and explicit rollback
+  restore old destinations or remove transaction-owned additions.
+- Rehearse the executable `apply-and-deploy.sh` contract with test-owned state.
 
 ### Architecture and decisions
 
@@ -194,6 +210,15 @@ coordinating owner's integration decision follow. Production remains untouched.
   mutable state snapshots. No independent daemon or admission framework is added.
   Do not invent process claims or treat port closure as complete extinction.
 - Keep installation offline and keep source integration outside activation.
+- Reuse the local extension package phase to select prepared files. Retain a
+  dedicated proof that connects extension outputs to candidate prepared-file
+  identities. Paths may change during approved transport; ids, types, and
+  digests may not.
+- Map prepared files below `stateDir` with the same real-path and overlap rules
+  used for additional installs. Stage them in a transaction-owned sibling on
+  the target filesystem before shutdown so replacement is atomic. The existing
+  complete state snapshot remains the rollback authority. Journal prior
+  existence and digest so recovery never guesses whether an addition was owned.
 - The scoped adapter uses distinct tool names and trusted factory agent context.
   Call the existing memory manager directly with fixed memory sources. Guard
   final arguments, paths, and results without a new index or policy framework.
@@ -303,6 +328,13 @@ coordinating owner's integration decision follow. Production remains untouched.
   upstream pnpm 12.3.4. Node preflight rejects unsupported SQLite runtimes.
 - `native-activation.mjs` and `native-interpreter-migration.test.ts` include
   parent-assigned interpreter migration with explicit old canonical-path binding.
+- `native-extension.mjs` validates named prepared-file manifests emitted by
+  the package phase. `native-pipeline.mjs` retains their proof and binds them
+  into runtime evidence and `candidate.json`.
+- `native-activation.mjs` requires exact target mappings, pre-stages and
+  verifies file or directory bytes, journals prior destination identity, replaces
+  after the state snapshot, and verifies prepared files before health and explicit
+  rollback. Recovery continues to restore the complete state snapshot.
 - `silent-reply-completion-evidence` uses this attempt's assistant text only
   when the delivery subscription has no visible text. It never uses historical
   `lastAssistant`. Existing silence policy and terminal failure guards remain.
@@ -358,6 +390,11 @@ coordinating owner's integration decision follow. Production remains untouched.
   source, build command, or complete toolchain differs from the provenance
   receipt. The focused native loop, pipeline, integration, and deployment set
   passes 109 cases with Node 26.1.0. E2E type checking passes.
+- Prepared-file regressions seal a synthetic model into its own candidate proof,
+  reject identity and mapping changes, deploy file and directory forms, and
+  recover existing and newly added destinations without their original
+  sources. The real `apply-and-deploy.sh` entrypoint covers both success and an
+  injected post-replacement failure against test-owned state.
 - New bundled-package regressions reproduce EEXIST for both npm bundle field
   spellings. They pack and install synthetic scoped, transitive, and required
   peer dependencies, remove the source tree, execute the installed entrypoint,
@@ -471,6 +508,14 @@ coordinating owner's integration decision follow. Production remains untouched.
   the foreign-byte leak before the repair. Integration passes 31 native loop and
   manifest cases plus the e2e type check.
 - Run fixture activation and rollback coverage through the accumulated pool.
+- Add focused candidate-proof tests for prepared-file manifest/output binding,
+  transportable source paths, tamper rejection, and exact runtime-proof
+  identity.
+- Add activation tests for file and directory destinations, overlap and symlink
+  rejection, pre-stop staging, replacement after snapshot, health failure,
+  explicit rollback, missing-destination cleanup, and interrupted recovery.
+- Run the actual `apply-and-deploy.sh` entrypoint against test-owned state for
+  successful migration ordering and injected post-replacement rollback.
 - Migration proofs must cover old/new schemas, readonly preflight, source
   include/secret-reference preservation, all-leaf precondition validation,
   same-job drift, concurrent unrelated job/runtime updates, and interruption
@@ -507,8 +552,8 @@ coordinating owner's integration decision follow. Production remains untouched.
 - Push a reviewed candidate and open a non-draft pull request.
 - Resolve checks and review without routine user handoffs.
 - Coordinate exact public source with the parent before integration.
-- Production activation is out of scope. Do not invoke deployment against a
-  live target from this worker.
+- Production activation is suspended and private-owned. Do not invoke
+  deployment against a live target from this worker.
 
 ### Review log
 
@@ -540,6 +585,9 @@ coordinating owner's integration decision follow. Production remains untouched.
   receipt self-attest its source, build command, and toolchain. The verifier now
   compares each value with retained build and provider-package inputs. The same
   reviewer is rechecking that correction before the candidate is frozen.
+- The retained Sol reviewer cleared the complete merged public behavior through
+  `5b5d9de`. Resume that reviewer after the prepared-file behavior change and
+  keep it through remediation.
 
 ### Checklist
 
@@ -553,8 +601,11 @@ coordinating owner's integration decision follow. Production remains untouched.
 - [x] Repair bundled dependency and installed plugin compatibility.
 - [x] Repair scoped temporary-state and asynchronous memory fixtures.
 - [x] Add a provenance-bound provider artifact from patched source.
-- [ ] Clear retained independent review for the final behavior.
-- [ ] Pass accumulated gate for the final reviewed behavior.
-- [ ] Clear hosted checks for the final reviewed behavior.
-- [ ] Confirm combined compatibility with parent.
-- [ ] Integrate eligible source and verify the landed result.
+- [x] Clear retained independent review for the integrated runtime behavior.
+- [x] Pass accumulated and hosted gates for the integrated runtime behavior.
+- [x] Confirm combined runtime compatibility and integrate exact source.
+- [x] Bind immutable prepared files into candidate and runtime proofs.
+- [x] Rehearse actual deployment and rollback with test-owned state.
+- [ ] Clear retained review for the deployment correction.
+- [ ] Pass affected and accumulated gates for the deployment correction.
+- [ ] Integrate the follow-up and hand activation back to private.

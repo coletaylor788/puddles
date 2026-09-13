@@ -101,6 +101,32 @@ describe("source integration before activation", () => {
     await expect(integrateCandidate(f.path, "example/public-repo", 123, f.run)).rejects.toThrow("proof chain");
     expect(f.calls).toEqual([]);
   });
+  it("binds prepared file identity while allowing its transport path to change", async () => {
+    const f = setup();
+    const receipt = JSON.parse(readFileSync(f.path, "utf8"));
+    const prepared = { id: "embedding-model", type: "file", path: "/transport/model.gguf", sha256: "6".repeat(64) };
+    receipt.preparedFiles = [prepared];
+    const preparedInputs = { candidate: "synthetic" };
+    const preparedKey = jsonDigest(preparedInputs);
+    receipt.proofs["prepared-files"] = preparedKey;
+    writeFileSync(join(f.root, "stages/prepared-files.json"), JSON.stringify({
+      key: preparedKey, inputs: preparedInputs, result: [prepared], status: "passed",
+    }));
+    const runtimePath = join(f.root, "stages/runtime.json");
+    const runtime = JSON.parse(readFileSync(runtimePath, "utf8"));
+    runtime.inputs.preparedFiles = [prepared];
+    runtime.key = jsonDigest(runtime.inputs);
+    receipt.proofs.runtime = runtime.key;
+    writeFileSync(runtimePath, JSON.stringify(runtime));
+    writeFileSync(f.path, JSON.stringify(receipt));
+    await integrateCandidate(f.path, "example/public-repo", 123, f.run);
+    receipt.preparedFiles[0].path = "/different-transport/model.gguf";
+    writeFileSync(f.path, JSON.stringify(receipt));
+    await integrateCandidate(f.path, "example/public-repo", 123, f.run);
+    receipt.preparedFiles[0].sha256 = "7".repeat(64);
+    writeFileSync(f.path, JSON.stringify(receipt));
+    await expect(integrateCandidate(f.path, "example/public-repo", 123, f.run)).rejects.toThrow("runtime proof");
+  });
   it("binds provider provenance to installation and runtime proofs", async () => {
     const f = setup();
     const receipt = JSON.parse(readFileSync(f.path, "utf8"));

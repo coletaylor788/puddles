@@ -90,6 +90,9 @@ shows the required fields. Set real paths and host identity locally.
   "backupRoot": "/home/example/.openclaw-deploy-backups",
   "label": "ai.openclaw.gateway",
   "port": 18789,
+  "preparedFiles": [
+    { "id": "embedding-model", "path": "managed/models/model.gguf" }
+  ],
   "integration": { "repository": "/path/to/puddles", "ref": "origin/main" }
 }
 ```
@@ -206,6 +209,22 @@ The consumer must prove those records remain valid for the selected stable
 install location and package identity. This interface does not migrate
 registration metadata or infer configuration changes.
 
+When the candidate declares immutable non-package `preparedFiles`, the target
+must map every id exactly once to a relative path below `stateDir`. These
+destinations and `additionalInstalls` must all be disjoint. Paths cannot be
+absolute, contain `..`, cross symlinks, or disagree with the candidate's file
+or directory type. Prepared directories cannot contain symbolic links.
+
+Activation verifies and copies all prepared bytes to a transaction-owned
+staging directory beside `stateDir` before shutdown. After the complete state
+snapshot, it atomically exchanges an existing destination or renames a new
+destination into place, then checks the sealed digest before migration,
+startup, and health completion. The recovery journal records whether each
+destination existed and its prior type and digest. The state snapshot remains
+rollback authority, so recovery restores old destinations and removes only
+additions owned by the failed transaction. Recovery does not need the original
+prepared sources.
+
 ```bash
 OPENCLAW_CANDIDATE_RECEIPT=/path/to/native-run/candidate.json \
 OPENCLAW_DEPLOY_TARGET=/absolute/local/target.json \
@@ -244,10 +263,11 @@ interrupted rollback already restored the older production package. Older CLIs
 can hide discovery errors. Critical restoration failures block restart and retain the
 original and rollback failures.
 
-The stopped-state snapshot also restores replaced additional runtimes, or
-removes a newly introduced subtree during rollback. Recovery does not require
-the original additional archives. The local recovery journal retains their
-deployed content digests separately from existing package provenance records.
+The stopped-state snapshot also restores replaced additional runtimes and
+prepared files, or removes a newly introduced destination during rollback.
+Recovery does not require the original archives or prepared sources. The local
+recovery journal retains their deployed identities separately from existing
+package provenance records.
 
 Recovery state is written before destructive steps. Signals request rollback;
 additional signals are deferred until recovery reaches a safe state. A killed

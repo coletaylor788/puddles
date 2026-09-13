@@ -92,6 +92,17 @@ vi.mock("../src/process-runner.mjs", () => ({
         schemaVersion: 1, path: archive, sha256: fileDigest(archive), runtimeSha256: treeDigest(expected),
         platform: process.platform, arch: process.arch, node: process.version,
       }));
+    } else if (command === "fixture-prepared-file") {
+      const context = JSON.parse(readFileSync(options.env!.E2E_CONTEXT_PATH, "utf8"));
+      const directory = join(context.workspace, "prepared-file");
+      mkdirSync(directory, { recursive: true });
+      const path = join(directory, "model.gguf");
+      writeFileSync(path, readFileSync(args[0]));
+      // @ts-expect-error JS lifecycle exports are tested at runtime.
+      const { fileDigest } = await import("../src/native-state.mjs");
+      writeFileSync(join(directory, "manifest.json"), JSON.stringify({
+        schemaVersion: 1, type: "file", path, sha256: fileDigest(path),
+      }));
     } else if (command === "fixture-python" && args[0] === "-c") {
       return JSON.stringify({ executable: process.execPath, version: "synthetic",
         libraries: [join(process.env.E2E_RUN_DIR!, "source/node_modules")] });
@@ -471,4 +482,30 @@ it("seals and installs additional artifacts before rehearsal and invalidates onl
   expect(counters).toMatchObject({ build: 1, package: 1, additionalInstalls: 3, runtimeCommands: 2 });
   const context = JSON.parse(readFileSync(join(run, "context/context.json"), "utf8"));
   expect(readFileSync(join(context.additionalInstalledDirs.auxiliary, "installed"), "utf8")).toBe("second auxiliary bytes");
+});
+
+it("seals prepared files into their own proof and invalidates runtime rehearsal when their bytes change", async () => {
+  const { directory, run } = setup();
+  const input = join(directory, "model-input");
+  writeFileSync(input, "first model bytes");
+  const module = join(directory, "prepared-files.mjs");
+  writeFileSync(module, `export default ${JSON.stringify({
+    schemaVersion: 1, inputs: [input],
+    preparedFiles: [{ id: "embedding-model", manifest: "workspace/prepared-file/manifest.json" }],
+    commands: [
+      { id: "package", phase: "package", command: "fixture-prepared-file", args: [input], timeoutMs: 1000, outputs: ["workspace/prepared-file"] },
+      { id: "installed", phase: "installed", command: "fixture-installed", args: [], timeoutMs: 1000 },
+    ],
+  })};`);
+  vi.stubEnv("E2E_LOCAL_EXTENSION", module);
+  const first = await nativePipeline("native", async () => {});
+  expect(first.preparedFiles.map(({ id }: { id: string }) => id)).toEqual(["embedding-model"]);
+  expect(first.proofs["prepared-files"]).toBeDefined();
+  const proof = JSON.parse(readFileSync(join(run, "stages/prepared-files.json"), "utf8"));
+  expect(proof.result[0]).toMatchObject({ id: "embedding-model", type: "file" });
+  const runs = counters.runtimeCommands;
+  writeFileSync(input, "second model bytes");
+  const second = await nativePipeline("native", async () => {});
+  expect(second.preparedFiles[0].sha256).not.toBe(first.preparedFiles[0].sha256);
+  expect(counters.runtimeCommands).toBe(runs + 1);
 });

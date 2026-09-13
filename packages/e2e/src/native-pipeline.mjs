@@ -4,7 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { acquireLock, atomicJson, externalDirectory, fileDigest, jsonDigest, stage, treeDigest } from "./native-state.mjs";
 import { fixtureEnv, isolatedContext, runScenario } from "./native-fixture.mjs";
-import { additionalArtifacts, extensionPhase, loadExtension } from "./native-extension.mjs";
+import { additionalArtifacts, extensionPhase, loadExtension, preparedFiles } from "./native-extension.mjs";
 import { installRuntime, packProviderRuntime, packRuntime } from "./native-package.mjs";
 import { runCommand } from "./process-runner.mjs";
 import scenarios from "../scenarios/imessage.mjs";
@@ -183,8 +183,21 @@ export async function nativePipeline(command, repositoryGates) {
     }
     const artifacts = join(runDir, "artifacts");
     mkdirSync(artifacts, { recursive: true, mode: 0o700 });
-    const extensionOutputs = await stage(runDir, "extension-package", { candidateInputs, installedDependencies, tools, prepareOutputs, extension: extension.phaseHashes.package, artifacts: extension.artifacts }, async () => extensionPhase(extension, "package", context), (outputs) => outputs);
+    const extensionOutputs = await stage(runDir, "extension-package", {
+      candidateInputs, installedDependencies, tools, prepareOutputs,
+      extension: extension.phaseHashes.package, artifacts: extension.artifacts,
+      preparedFiles: extension.preparedFiles,
+    }, async () => extensionPhase(extension, "package", context), (outputs) => outputs);
     const extensionArtifacts = additionalArtifacts(extension, context, extensionOutputs);
+    const preparedFileRecords = await stage(runDir, "prepared-files", {
+      candidateInputs, tools, extension: extension.phaseHashes.package,
+      selected: extension.preparedFiles, extensionOutputs,
+    }, async () => preparedFiles(extension, context, extensionOutputs), (records) =>
+      Object.fromEntries(records.map((record) => [
+        record.path,
+        record.type === "file" ? record.sha256 : { sha256: record.sha256, options: { portable: true } },
+      ])));
+    context.preparedFiles = preparedFileRecords;
     if (extensionArtifacts.some(({ id }) => id === "llama-cpp-provider")) {
       throw new Error("The patched llama.cpp provider is owned by the public candidate");
     }
@@ -244,7 +257,8 @@ export async function nativePipeline(command, repositoryGates) {
     const additionalBefore = Object.fromEntries(Object.entries(context.additionalInstalledDirs).map(([id, directory]) => [id, treeDigest(directory, { portable: true })]));
     const runtimeScenarios = [...scenarios, ...extension.scenarios];
     const result = await stage(runDir, "runtime", {
-      artifact, additionalArtifacts: extras, tools, harness, extension: extension.hash, extensionOutputs,
+      artifact, additionalArtifacts: extras, preparedFiles: preparedFileRecords,
+      tools, harness, extension: extension.hash, extensionOutputs,
       installedCommands: extension.phaseHashes.installed,
       scenarios: jsonDigest(runtimeScenarios), environment: jsonDigest(fixtureEnv(context)),
       stateMigration,
@@ -264,14 +278,15 @@ export async function nativePipeline(command, repositoryGates) {
     if (command === "ci" && (await git(repoRoot, ["status", "--porcelain", "--untracked-files=all"])).trim()) throw new Error("Candidate changed during cumulative validation");
     if (migrationPath) readMigrationManifest(migrationPath, stateMigration.sha256);
     const proofs = {};
-    for (const name of ["build", "provider-package", "regressions", "runtime", "install", ...extraProofs]) {
+    for (const name of ["build", "provider-package", "prepared-files", "regressions", "runtime", "install", ...extraProofs]) {
       const path = join(runDir, "stages", `${name}.json`);
       if (existsSync(path)) proofs[name] = JSON.parse(readFileSync(path, "utf8")).key;
     }
     const receipt = {
       schemaVersion: 1, status: "passed", accumulated: command === "ci",
       repository: { head: publicHead, tree: (await git(repoRoot, ["rev-parse", "HEAD^{tree}"])).trim() },
-      source: { ref: suite.openclawRef, sha256: candidateInputs }, artifact, installedDir, additionalArtifacts: extras,
+      source: { ref: suite.openclawRef, sha256: candidateInputs }, artifact, installedDir,
+      additionalArtifacts: extras, preparedFiles: preparedFileRecords,
       scenarios: result.scenarios.length, tools, proofs,
       ...(stateMigration ? { stateMigration } : {}),
     };

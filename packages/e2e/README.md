@@ -225,8 +225,9 @@ Cleanup stops only the fixture process group and removes its successful state.
 
 Public development works independently. A caller may explicitly set
 `E2E_LOCAL_EXTENSION` to an absolute local `.mjs` file. It exports a default
-object with `schemaVersion: 1`, `inputs`, `commands`, `scenarios`, optional `artifacts`, and
-`healthChecks`. Nothing in public CI discovers or fetches that module.
+object with `schemaVersion: 1`, `inputs`, `commands`, `scenarios`, optional
+`artifacts`, `preparedFiles`, and `healthChecks`. Nothing in public CI discovers
+or fetches that module.
 
 `inputs` lists absolute files whose bytes key extension evidence. Each command
 declares `id`, `phase` (`prepare`, `gate`, `package`, or `installed`), `command`, `args`,
@@ -265,10 +266,21 @@ installation and the combined rehearsal, not an unchanged source build.
 Integration and activation reject artifacts that do not match those proofs.
 Transport may change local archive paths, not content identities.
 
+`preparedFiles` contains `{ id, manifest }` entries for immutable non-package
+files or directories that must be deployed with the candidate. The manifest is
+a verified package output with `schemaVersion: 1`, `type` (`file` or
+`directory`), an absolute `path` beneath the isolated root, and its exact
+`sha256`. Prepared directories cannot contain symbolic links. The runner keeps
+a dedicated proof and binds each id, type, and digest into runtime evidence and
+`candidate.preparedFiles`. Transport may change the source path, but not that
+identity. Prepared files are not packages and are not exposed as installed
+runtimes.
+
 Commands receive `E2E_CONTEXT_PATH`, a local JSON file with `schemaVersion`,
 `root`, `isolationRoot`, `home`, `stateDir`, `configPath`, `workspace`,
 `recordingsDir`, `sourceDir`, and, once available, `installedDir` and
-`artifact`, `additionalArtifacts`, and `additionalInstalledDirs`. The artifact has `path`, `sha256`, `runtimeSha256`, `platform`,
+`artifact`, `additionalArtifacts`, `additionalInstalledDirs`, and
+`preparedFiles`. The artifact has `path`, `sha256`, `runtimeSha256`, `platform`,
 `arch`, and `node`. Prepare, gate, and package use the source directory as cwd. Installed
 uses the isolated workspace. The runner selects environment values explicitly
 and does not inherit the user's runtime configuration or provider credentials.
