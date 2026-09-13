@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -102,6 +102,16 @@ vi.mock("../src/process-runner.mjs", () => ({
       const { fileDigest } = await import("../src/native-state.mjs");
       writeFileSync(join(directory, "manifest.json"), JSON.stringify({
         schemaVersion: 1, type: "file", path, sha256: fileDigest(path),
+      }));
+      const server = join(directory, "server");
+      rmSync(server, { recursive: true, force: true });
+      mkdirSync(server);
+      writeFileSync(join(server, "libserver.1.dylib"), readFileSync(args[0]));
+      symlinkSync("libserver.1.dylib", join(server, "libserver.dylib"));
+      // @ts-expect-error JS lifecycle exports are tested at runtime.
+      const { treeDigest } = await import("../src/native-state.mjs");
+      writeFileSync(join(directory, "server-manifest.json"), JSON.stringify({
+        schemaVersion: 1, type: "directory", path: server, sha256: treeDigest(server, { portable: true }),
       }));
     } else if (command === "fixture-python" && args[0] === "-c") {
       return JSON.stringify({ executable: process.execPath, version: "synthetic",
@@ -491,7 +501,10 @@ it("seals prepared files into their own proof and invalidates runtime rehearsal 
   const module = join(directory, "prepared-files.mjs");
   writeFileSync(module, `export default ${JSON.stringify({
     schemaVersion: 1, inputs: [input],
-    preparedFiles: [{ id: "embedding-model", manifest: "workspace/prepared-file/manifest.json" }],
+    preparedFiles: [
+      { id: "embedding-model", manifest: "workspace/prepared-file/manifest.json" },
+      { id: "embedding-server", manifest: "workspace/prepared-file/server-manifest.json" },
+    ],
     commands: [
       { id: "package", phase: "package", command: "fixture-prepared-file", args: [input], timeoutMs: 1000, outputs: ["workspace/prepared-file"] },
       { id: "installed", phase: "installed", command: "fixture-installed", args: [], timeoutMs: 1000 },
@@ -499,10 +512,11 @@ it("seals prepared files into their own proof and invalidates runtime rehearsal 
   })};`);
   vi.stubEnv("E2E_LOCAL_EXTENSION", module);
   const first = await nativePipeline("native", async () => {});
-  expect(first.preparedFiles.map(({ id }: { id: string }) => id)).toEqual(["embedding-model"]);
+  expect(first.preparedFiles.map(({ id }: { id: string }) => id)).toEqual(["embedding-model", "embedding-server"]);
   expect(first.proofs["prepared-files"]).toBeDefined();
   const proof = JSON.parse(readFileSync(join(run, "stages/prepared-files.json"), "utf8"));
   expect(proof.result[0]).toMatchObject({ id: "embedding-model", type: "file" });
+  expect(proof.result[1]).toMatchObject({ id: "embedding-server", type: "directory" });
   const runs = counters.runtimeCommands;
   writeFileSync(input, "second model bytes");
   const second = await nativePipeline("native", async () => {});

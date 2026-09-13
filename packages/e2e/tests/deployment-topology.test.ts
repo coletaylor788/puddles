@@ -105,7 +105,7 @@ function fixture(failures: string[] = []) {
     async stagePrepared(record: { path: string; type: "file" | "directory" }, destination: string) {
       check("prepared-stage");
       expect(started).toBe(true);
-      cpSync(record.path, destination, { recursive: record.type === "directory" });
+      cpSync(record.path, destination, { recursive: record.type === "directory", verbatimSymlinks: true });
     },
     async move(from: string, to: string) {
       check("prepared-move");
@@ -175,6 +175,7 @@ function addPrepared(f: ReturnType<typeof fixture>, type: "file" | "directory", 
   else {
     mkdirSync(source);
     writeFileSync(join(source, "model"), "candidate bytes");
+    symlinkSync("model", join(source, "model-current"));
   }
   const sha256 = type === "file" ? fileDigest(source) : treeDigest(source, { portable: true });
   f.receipt.preparedFiles.push({ id, type, path: source, sha256 });
@@ -639,6 +640,7 @@ describe("native activation and recovery transaction", () => {
     expect(f.calls.lastIndexOf("prepared-stage")).toBeLessThan(f.calls.indexOf("stop"));
     expect(fileDigest(file.destination)).toBe(file.sha256);
     expect(treeDigest(directory.destination, { portable: true })).toBe(directory.sha256);
+    expect(readlinkSync(join(directory.destination, "model-current"))).toBe("model");
     expect((await activateNative(f.receipt, f.target, () => f.ops, activated.recoveryDir, "rollback")).status).toBe("rolled-back");
     expect(readFileSync(file.destination, "utf8")).toBe("previous bytes");
     expect(existsSync(directory.destination)).toBe(false);
@@ -733,5 +735,20 @@ describe("native activation and recovery transaction", () => {
     writeFileSync(prepared.source, "changed");
     await expect(activateNative(f.receipt, f.target, () => f.ops)).rejects.toThrow("prepared file changed");
     expect(f.calls).toEqual([]);
+  });
+
+  it("allows in-tree prepared directory links and rejects escaping links before downtime", async () => {
+    const valid = fixture();
+    const directory = addPrepared(valid, "directory");
+    await activateNative(valid.receipt, valid.target, () => valid.ops);
+    expect(readlinkSync(join(directory.destination, "model-current"))).toBe("model");
+
+    const escaped = fixture();
+    const unsafe = addPrepared(escaped, "directory");
+    writeFileSync(join(escaped.directory, "outside"), "outside");
+    symlinkSync(join(escaped.directory, "outside"), join(unsafe.source, "escaping"));
+    escaped.receipt.preparedFiles[0].sha256 = treeDigest(unsafe.source);
+    await expect(activateNative(escaped.receipt, escaped.target, () => escaped.ops)).rejects.toThrow("escapes");
+    expect(escaped.calls).toEqual([]);
   });
 });

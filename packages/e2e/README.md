@@ -270,8 +270,9 @@ Transport may change local archive paths, not content identities.
 files or directories that must be deployed with the candidate. The manifest is
 a verified package output with `schemaVersion: 1`, `type` (`file` or
 `directory`), an absolute `path` beneath the isolated root, and its exact
-`sha256`. Prepared directories cannot contain symbolic links. The runner keeps
-a dedicated proof and binds each id, type, and digest into runtime evidence and
+`sha256`. Prepared directories may contain relative links that resolve within
+the selected tree. Absolute and escaping links are rejected. The runner keeps a
+dedicated proof and binds each id, type, and digest into runtime evidence and
 `candidate.preparedFiles`. Transport may change the source path, but not that
 identity. Prepared files are not packages and are not exposed as installed
 runtimes.

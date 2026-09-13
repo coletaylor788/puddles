@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, readFileSync, realpathSync, readdirSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { atomicJson, fileDigest, inside, jsonDigest, treeDigest } from "./native-state.mjs";
@@ -112,10 +112,6 @@ export function preparedFiles(extension, context, outputs) {
         value.type === "file" && !stat.isFile() ||
         value.type === "directory" && !stat.isDirectory()) {
       throw new Error("Prepared file type differs from its manifest");
-    }
-    if (stat.isDirectory() &&
-        readdirSync(value.path, { recursive: true, withFileTypes: true }).some((entry) => entry.isSymbolicLink())) {
-      throw new Error("Prepared directories cannot contain symbolic links");
     }
     const sha256 = value.type === "file"
       ? fileDigest(value.path)

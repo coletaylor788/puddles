@@ -1,4 +1,4 @@
-import { accessSync, closeSync, constants, cpSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, readdirSync, renameSync, rmSync } from "node:fs";
+import { accessSync, closeSync, constants, cpSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, rmSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
@@ -103,11 +103,6 @@ function preparedFileDigest(record, path = record.path) {
       record.type === "file" && !stat.isFile() ||
       record.type === "directory" && !stat.isDirectory()) {
     throw new Error("Prepared file type differs from candidate");
-  }
-  if (stat.isDirectory()) {
-    for (const entry of readdirSync(path, { recursive: true, withFileTypes: true })) {
-      if (entry.isSymbolicLink()) throw new Error("Prepared directories cannot contain symbolic links");
-    }
   }
   return record.type === "file" ? fileDigest(path) : treeDigest(path, { portable: true });
 }
@@ -244,7 +239,9 @@ shutil.copymode(source, destination)
     async install(artifact, prefix) { return installRuntime(artifact, prefix, run); },
     async stagePrepared(record, destination) {
       mkdirSync(dirname(destination), { recursive: true, mode: 0o700 });
-      cpSync(record.path, destination, { recursive: record.type === "directory", errorOnExist: true, force: false });
+      cpSync(record.path, destination, {
+        recursive: record.type === "directory", errorOnExist: true, force: false, verbatimSymlinks: true,
+      });
     },
     async move(from, to) {
       mkdirSync(dirname(to), { recursive: true, mode: 0o700 });

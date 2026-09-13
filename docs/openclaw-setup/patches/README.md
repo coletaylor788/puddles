@@ -213,7 +213,8 @@ When the candidate declares immutable non-package `preparedFiles`, the target
 must map every id exactly once to a relative path below `stateDir`. These
 destinations and `additionalInstalls` must all be disjoint. Paths cannot be
 absolute, contain `..`, cross symlinks, or disagree with the candidate's file
-or directory type. Prepared directories cannot contain symbolic links.
+or directory type. Prepared directories may contain relative links that
+resolve within the selected tree. Absolute and escaping links are rejected.
 
 Activation verifies and copies all prepared bytes to a transaction-owned
 staging directory beside `stateDir` before shutdown. After the complete state
