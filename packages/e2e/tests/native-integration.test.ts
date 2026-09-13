@@ -5,7 +5,7 @@ import { join } from "node:path";
 // @ts-expect-error Native lifecycle exports are executable JavaScript.
 import { integrateCandidate } from "../bin/openclaw-integrate.mjs";
 // @ts-expect-error Native lifecycle exports are executable JavaScript.
-import { jsonDigest } from "../src/native-state.mjs";
+import { fileDigest, jsonDigest } from "../src/native-state.mjs";
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -20,7 +20,7 @@ function setup(changeBase = false, changedTree = false) {
     schemaVersion: 1, platform: "darwin", arch: "arm64", node: "v22.23.2" };
   const proofs: Record<string, string> = {};
   mkdirSync(join(root, "stages"));
-  for (const name of ["regressions", "runtime", "install"]) {
+  for (const name of ["build", "regressions", "runtime", "install"]) {
     const inputs = name === "runtime" ? { artifact, additionalArtifacts: [] } : name === "install" ? { artifact } : { source: "synthetic" };
     const key = jsonDigest(inputs);
     proofs[name] = key;
@@ -104,13 +104,14 @@ describe("source integration before activation", () => {
   it("binds provider provenance to installation and runtime proofs", async () => {
     const f = setup();
     const receipt = JSON.parse(readFileSync(f.path, "utf8"));
+    const provenancePath = join(f.root, "provider-provenance.json");
     const provenance = {
-      path: "/synthetic/provider-provenance.json",
-      sha256: "5".repeat(64),
+      path: provenancePath,
+      sha256: "",
       schema: "puddles.openclaw-provider-artifact/v1",
       publicHead: "a".repeat(40),
       sourceSha256: "6".repeat(64),
-      buildInputsSha256: "7".repeat(64),
+      buildInputsSha256: receipt.proofs.build,
       buildCommandSha256: "8".repeat(64),
     };
     const extra = {
@@ -118,7 +119,42 @@ describe("source integration before activation", () => {
       artifact: { ...receipt.artifact, sha256: "3".repeat(64), runtimeSha256: "4".repeat(64) },
       provenance,
     };
+    const providerInputs = {
+      candidateInputs: "synthetic",
+      source: provenance.sourceSha256,
+      build: "7".repeat(64),
+      provenance: {
+        publicHead: provenance.publicHead,
+        buildInputsSha256: provenance.buildInputsSha256,
+        buildCommandSha256: provenance.buildCommandSha256,
+      },
+      packaging: "9".repeat(64),
+    };
+    writeFileSync(provenancePath, JSON.stringify({
+      schema: provenance.schema,
+      schemaVersion: 1,
+      id: extra.id,
+      package: { name: "@openclaw/llama-cpp-provider", version: "2026.9.3" },
+      publicHead: provenance.publicHead,
+      source: { sha256: provenance.sourceSha256 },
+      build: {
+        inputsSha256: provenance.buildInputsSha256,
+        commandSha256: provenance.buildCommandSha256,
+        outputSha256: providerInputs.build,
+      },
+      toolchain: { node: extra.artifact.node, platform: extra.artifact.platform, arch: extra.artifact.arch },
+      artifact: { file: "provider.tar.gz", sha256: extra.artifact.sha256, runtimeSha256: extra.artifact.runtimeSha256 },
+    }));
+    provenance.sha256 = fileDigest(provenancePath);
     receipt.additionalArtifacts = [extra];
+    const providerKey = jsonDigest(providerInputs);
+    receipt.proofs["provider-package"] = providerKey;
+    writeFileSync(join(f.root, "stages/provider-package.json"), JSON.stringify({
+      key: providerKey,
+      inputs: providerInputs,
+      result: extra,
+      status: "passed",
+    }));
     const inputs = { id: extra.id, artifact: extra.artifact, provenance };
     const key = jsonDigest(inputs);
     receipt.proofs["install-additional-0"] = key;

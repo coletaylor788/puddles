@@ -264,7 +264,7 @@ export async function nativePipeline(command, repositoryGates) {
     if (command === "ci" && (await git(repoRoot, ["status", "--porcelain", "--untracked-files=all"])).trim()) throw new Error("Candidate changed during cumulative validation");
     if (migrationPath) readMigrationManifest(migrationPath, stateMigration.sha256);
     const proofs = {};
-    for (const name of ["regressions", "runtime", "install", ...extraProofs]) {
+    for (const name of ["build", "provider-package", "regressions", "runtime", "install", ...extraProofs]) {
       const path = join(runDir, "stages", `${name}.json`);
       if (existsSync(path)) proofs[name] = JSON.parse(readFileSync(path, "utf8")).key;
     }
