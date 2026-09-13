@@ -116,7 +116,7 @@ export async function packProviderRuntime(sourceRoot, directory, provenance, run
     throw new Error("Built llama.cpp provider identity differs from its patched source");
   }
   const sourceSha256 = treeDigest(source);
-  const buildOutputSha256 = treeDigest(built, { portable: true });
+  const buildOutputSha256 = treeDigest(built, { portable: true, excludeNames: ["node_modules"] });
   const artifact = await packRuntime(built, directory, run);
   const receipt = {
     schema: "puddles.openclaw-provider-artifact/v1",

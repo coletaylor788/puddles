@@ -204,7 +204,10 @@ export async function nativePipeline(command, repositoryGates) {
     const provider = await stage(runDir, "provider-package", {
       candidateInputs,
       source: treeDigest(join(candidate, "extensions", "llama-cpp")),
-      build: treeDigest(join(candidate, "dist", "extensions", "llama-cpp"), { portable: true }),
+      build: treeDigest(join(candidate, "dist", "extensions", "llama-cpp"), {
+        portable: true,
+        excludeNames: ["node_modules"],
+      }),
       provenance: providerProvenance,
       packaging: fileDigest(join(packageDir, "src", "native-package.mjs")),
     }, () => packProviderRuntime(candidate, providerDirectory, providerProvenance, run), (result) => ({

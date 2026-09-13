@@ -145,6 +145,8 @@ describe("offline installed runtime", () => {
     writeFileSync(join(providerSource, "index.ts"), "export const keepEmbeddingResident = true;");
     json(join(providerBuild, "package.json"), manifest);
     writeFileSync(join(providerBuild, "index.js"), "export const keepEmbeddingResident = true;");
+    mkdirSync(join(providerBuild, "node_modules/@openclaw"), { recursive: true });
+    symlinkSync(providerSource, join(providerBuild, "node_modules/@openclaw/plugin-sdk"));
     const provenance = {
       publicHead: "1".repeat(40),
       buildInputsSha256: "2".repeat(64),
