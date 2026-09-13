@@ -222,8 +222,14 @@ export async function executeStateMigration(
     statePath(stateDir, sdk.resolveCronJobsStorePathFromConfig(source, process.env, { artifactPreservingReadOnly: true }));
   }
   const builtInPlan = async () => {
-    const preview = sdk.previewLegacyConfigRepair(snapshot);
+    const preview = sdk.previewLegacyConfigRepair(snapshot, {
+      pluginContracts: phase === "builtin-config",
+    });
+    const stablePreview = phase === "builtin-config"
+      ? sdk.previewLegacyConfigRepair(snapshot)
+      : preview;
     const expectedConfig = preview?.expectedConfig ?? snapshot.sourceConfig;
+    const stableConfig = stablePreview?.sourceConfig ?? snapshot.sourceConfig;
     const sourceStorePath = statePath(
       stateDir,
       sdk.resolveCronJobsStorePathFromConfig(
@@ -262,10 +268,10 @@ export async function executeStateMigration(
       config: {
         expectedSha256: canonicalValueDigest(migrationProjection(
           snapshot.sourceConfigBeforeMigrations ?? snapshot.sourceConfig,
-          preview?.sourceConfig ?? snapshot.sourceConfig,
+          stableConfig,
         )),
-        changesSha256: canonicalValueDigest(preview?.changes ?? []),
-        required: Boolean(preview),
+        changesSha256: canonicalValueDigest(stablePreview?.changes ?? []),
+        required: Boolean(stablePreview),
       },
       cron: {
         sourceStoreSha256: canonicalValueDigest(sourceStorePath),

@@ -1,8 +1,8 @@
 diff --git a/src/commands/doctor/legacy-config-repair.ts b/src/commands/doctor/legacy-config-repair.ts
-index 8d00d51bd3f..3da93179550 100644
+index 8d00d51bd3f..f76d568b3e3 100644
 --- a/src/commands/doctor/legacy-config-repair.ts
 +++ b/src/commands/doctor/legacy-config-repair.ts
-@@ -1,13 +1,122 @@
+@@ -1,13 +1,133 @@
  // Update-channel config repair for legacy config files before normal command startup.
 -import { readConfigFileSnapshot, replaceConfigFile } from "../../config/config.js";
 +import { isDeepStrictEqual } from "node:util";
@@ -20,11 +20,15 @@ index 8d00d51bd3f..3da93179550 100644
  import { validateConfigObjectRawWithPlugins } from "../../config/validation.js";
  import { containsAuthoredInclude } from "./shared/include-migration-ownership.js";
 +import { applyLegacyDoctorMigrations } from "./shared/legacy-config-compat.js";
++import { findDoctorLegacyConfigIssues } from "./shared/legacy-config-issues.js";
  import { migrateLegacyConfig } from "./shared/legacy-config-migrate.js";
  
  type ConfigSnapshot = Awaited<ReturnType<typeof readConfigFileSnapshot>>;
  
-+export function previewLegacyConfigRepair(configSnapshot: ConfigSnapshot): {
++export function previewLegacyConfigRepair(
++  configSnapshot: ConfigSnapshot,
++  options?: { pluginContracts?: boolean },
++): {
 +  sourceConfig: OpenClawConfig;
 +  expectedConfig: OpenClawConfig;
 +  changes: string[];
@@ -36,7 +40,7 @@ index 8d00d51bd3f..3da93179550 100644
 +      authoredRaw: configSnapshot.parsed,
 +      resolvedRaw: configSnapshot.sourceConfig,
 +    },
-+    { pluginContracts: false },
++    { pluginContracts: options?.pluginContracts === true },
 +  );
 +  const readTimeChanged = !isDeepStrictEqual(
 +    configSnapshot.sourceConfigBeforeMigrations ??
@@ -73,6 +77,13 @@ index 8d00d51bd3f..3da93179550 100644
 +    };
 +  }
 +  if (
++    options?.pluginContracts === true &&
++    (!validateConfigObjectRawWithPlugins(nextConfig).ok ||
++      findDoctorLegacyConfigIssues(nextConfig, nextConfig).length > 0)
++  ) {
++    throw new Error("Maintained legacy config migration did not produce a valid config");
++  }
++  if (
 +    hasAuthoredIncludes &&
 +    !configWriteTargetsIncludeBoundary({ snapshot: configSnapshot, nextConfig })
 +  ) {
@@ -99,7 +110,7 @@ index 8d00d51bd3f..3da93179550 100644
 +  configSnapshot: ConfigSnapshot;
 +  configWriteOptions: ConfigWriteOptions;
 +}): Promise<{ snapshot: ConfigSnapshot; repaired: boolean; changes: string[] }> {
-+  const preview = previewLegacyConfigRepair(params.configSnapshot);
++  const preview = previewLegacyConfigRepair(params.configSnapshot, { pluginContracts: true });
 +  if (!preview) {
 +    return { snapshot: params.configSnapshot, repaired: false, changes: [] };
 +  }
@@ -571,10 +582,10 @@ index 859dfbfb73b..56d65fa6bdb 100644
 +export { resolveCronJobConfigRevision } from "../cron/config-revision.js";
 diff --git a/src/plugin-sdk/doctor-repair-runtime.test.ts b/src/plugin-sdk/doctor-repair-runtime.test.ts
 new file mode 100644
-index 00000000000..1bc76653edf
+index 00000000000..e4a555f86f5
 --- /dev/null
 +++ b/src/plugin-sdk/doctor-repair-runtime.test.ts
-@@ -0,0 +1,74 @@
+@@ -0,0 +1,107 @@
 +import fs from "node:fs/promises";
 +import { describe, expect, it } from "vitest";
 +import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
@@ -592,6 +603,20 @@ index 00000000000..1bc76653edf
 +        JSON.stringify({
 +          cron: { store: state.statePath("cron", "legacy-jobs.json") },
 +          memory: { backend: "qmd" },
++          plugins: {
++            entries: {
++              "active-memory": { config: { qmd: { enabled: true } } },
++              canvas: {
++                config: {
++                  host: {
++                    enabled: true,
++                    root: state.statePath("legacy-canvas"),
++                    liveReload: true,
++                  },
++                },
++              },
++            },
++          },
 +          meta: { lastTouchedAt: "2025-01-01T00:00:00.000Z" },
 +        }),
 +      );
@@ -604,6 +629,25 @@ index 00000000000..1bc76653edf
 +      expect(preview?.expectedConfig).not.toHaveProperty("cron.store");
 +      expect(preview?.expectedConfig).not.toHaveProperty("memory.backend");
 +      expect(preview?.expectedConfig).not.toHaveProperty("meta.lastTouchedAt");
++      expect(preview?.expectedConfig).toHaveProperty(
++        "plugins.entries.active-memory.config.qmd",
++      );
++      expect(preview?.expectedConfig).toHaveProperty("plugins.entries.canvas.config.host.root");
++
++      const fullPreview = previewLegacyConfigRepair(snapshot, { pluginContracts: true });
++      expect(fullPreview?.expectedConfig).not.toHaveProperty(
++        "plugins.entries.active-memory.config.qmd",
++      );
++      expect(fullPreview?.expectedConfig).not.toHaveProperty(
++        "plugins.entries.canvas.config.host.root",
++      );
++      expect(fullPreview?.expectedConfig).not.toHaveProperty(
++        "plugins.entries.canvas.config.host.liveReload",
++      );
++      expect(fullPreview?.expectedConfig).toHaveProperty(
++        "plugins.entries.canvas.config.host.enabled",
++        true,
++      );
 +
 +      const result = await repairLegacyConfigForStoppedState({
 +        configSnapshot: snapshot,
@@ -611,7 +655,7 @@ index 00000000000..1bc76653edf
 +      });
 +      expect(result.repaired).toBe(true);
 +      expect(result.snapshot.valid).toBe(true);
-+      expect(result.snapshot.sourceConfig).toEqual(preview?.expectedConfig);
++      expect(result.snapshot.sourceConfig).toEqual(fullPreview?.expectedConfig);
 +    });
 +  });
 +

@@ -225,6 +225,41 @@ describe("digest-bound stopped-state operations", () => {
     expect(f.sdk.materializeCronConfigJobsForMigration).not.toHaveBeenCalled();
   });
 
+  it("applies complete stopped plugin migrations beyond the state-free preflight", async () => {
+    const f = fixture();
+    const source = f.snapshot.sourceConfig;
+    const coreConfig = { ...source, coreNormalized: true };
+    const fullConfig = { ...coreConfig, pluginNormalized: true };
+    f.sdk.previewLegacyConfigRepair.mockImplementation((_snapshot, options?: {
+      pluginContracts?: boolean;
+    }) => ({
+      sourceConfig: options?.pluginContracts ? fullConfig : coreConfig,
+      expectedConfig: options?.pluginContracts ? fullConfig : coreConfig,
+      changes: options?.pluginContracts
+        ? ["Normalized core", "Normalized plugin"]
+        : ["Normalized core"],
+    }));
+    f.sdk.repairLegacyConfigForStoppedState.mockResolvedValue({
+      snapshot: { ...f.snapshot, sourceConfig: fullConfig },
+      repaired: true,
+      changes: ["Normalized core", "Normalized plugin"],
+    });
+    const selected = f.selected();
+    const expectedBuiltIn = await executeStateMigration(
+      { phase: "preflight", ...selected },
+      async () => f.sdk,
+    );
+    const result = await executeStateMigration(
+      { phase: "builtin-config", ...selected, expectedBuiltIn },
+      async () => f.sdk,
+    );
+    expect(f.sdk.previewLegacyConfigRepair).toHaveBeenCalledWith(
+      f.snapshot,
+      { pluginContracts: true },
+    );
+    expect(result.config.sha256).toBe(canonicalValueDigest(fullConfig));
+  });
+
   it("moves effective jobs to the post-migration store before retiring its legacy path", async () => {
     const f = fixture();
     const legacyStore = join(f.stateDir, "cron/legacy-jobs.json");

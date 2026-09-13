@@ -78,13 +78,14 @@ only the selected service argument, and restores the old interpreter with the
 old runtime during rollback. An optional reviewed manifest changes selected
 configuration leaves and silences one existing scheduled job. It cannot run
 commands or replace unrelated state. The stopped gateway's complete state is
-snapshotted first. Activation then repairs only the database schema and runs the
-maintained legacy config migrations through OpenClaw's writer. That migration
-also converts a legacy multi-agent roster to explicit ownership without
-choosing a default owner or granting access. Preflight binds the stable
-migration result, old and new cron partition paths, and the reviewed job
-revision. Once stopped, activation reads fresh row identities and the complete
-effective job set. If legacy
+snapshotted first. Activation then repairs only the database schema and runs the maintained core
+and plugin config migrations through OpenClaw's writer. Live preflight remains
+state-free and binds the stable core migration result, old and new cron
+partition paths, and the reviewed job revision. Once stopped, activation reads
+fresh row identities and the complete effective job set, applies the full
+maintained plugin contracts, and requires a valid result. That migration also
+converts a legacy multi-agent roster to explicit ownership without choosing a
+default owner or granting access. If legacy
 `cron.store` is retired, activation copies that effective set to the
 post-migration partition before writing config. Both row sets use
 compare-and-swap fingerprints. Private selected config changes still precede
@@ -122,9 +123,15 @@ and retained review found that live preflight held volatile cron state across
 asset staging. The correction now uses the maintained explicit-ownership
 result and takes fresh row identities only after shutdown.
 
-Focused validation and the managed installed-runtime patch gate pass. Retained
-review and the exact clean-head cumulative gate remain. Private will then
-repeat the combined deployment rehearsal. Production remains untouched.
+One exact private comparison found all remaining validation-required changes:
+retired Active Memory QMD configuration and two retired Canvas host settings.
+Doctor-only wizard timestamps are not needed for validity. The stopped repair
+now runs the complete maintained plugin migrations after shutdown instead of
+hardcoding those keys. Agent permissions and all ten jobs remain unchanged.
+
+Focused validation and the rebuilt managed installed-runtime patch gate pass.
+Retained review and the exact clean-head cumulative gate remain. Private will
+then repeat the combined deployment rehearsal. Production remains untouched.
 
 ## Agent section
 
@@ -265,6 +272,11 @@ repeat the combined deployment rehearsal. Production remains untouched.
   include ownership and state boundaries before shutdown and on fresh writes.
   Preflight uses `readConfigFileSnapshotForWrite` with `observe: false` and
   `pluginValidation: "core-only"` so it does not load the SQLite plugin index.
+  This live preview binds only state-free core migration semantics. After
+  shutdown, reload with full plugin validation, apply all maintained plugin
+  doctor config contracts, and require zero remaining validation or legacy
+  issue paths. Do not copy doctor-only wizard timestamps, run plugin state
+  migrations, delete unknown keys, or encode private plugin policy.
   Use `mutateConfigFile` with `base: "source"`,
   explicit no after-write work, and `skipRuntimeSnapshotRefresh: true`.
   Snapshot before any mutation. The parent approved calling the existing
@@ -562,6 +574,11 @@ repeat the combined deployment rehearsal. Production remains untouched.
   files, portable packaging, offline install, additional install, runtime, and
   all nine installed scenarios. Its installed legacy-config fixture uses an
   eight-agent markerless roster and preserves all effective jobs.
+- The complete plugin-migration correction passes 39 public executor cases and
+  14 real OpenClaw stopped-repair and startup-repair cases. The rebuilt managed
+  `patches` lifecycle passes every stage and all nine installed scenarios. The
+  installed legacy-config case now also removes retired Active Memory QMD and
+  Canvas host settings through their maintained doctor contracts.
 - Native iteration on `76854b4` passes prepare, dependencies, build, package,
   offline install, all nine message scenarios, and all four migration modes.
   The historical case now preserves the complete state digest across preflight.
@@ -647,6 +664,7 @@ repeat the combined deployment rehearsal. Production remains untouched.
 - [x] Rehearse actual deployment and rollback with test-owned state.
 - [x] Preserve effective cron jobs while maintained legacy config migrations retire old store paths.
 - [x] Persist canonical multi-agent ownership before private config CAS.
+- [x] Apply every validation-required maintained plugin migration after shutdown.
 - [x] Rehearse built-in normalization before private config and cron CAS in the stopped transaction.
 - [ ] Clear retained review for the deployment correction.
 - [ ] Pass affected and accumulated gates for the deployment correction.

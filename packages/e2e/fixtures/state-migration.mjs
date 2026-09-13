@@ -38,6 +38,24 @@ const original = {
   ...(mode === "legacy-config"
     ? { cron: { store: join(stateDir, "cron", "legacy-jobs.json") } }
     : {}),
+  ...(mode === "legacy-config"
+    ? {
+        plugins: {
+          entries: {
+            "active-memory": { config: { qmd: { enabled: true } } },
+            canvas: {
+              config: {
+                host: {
+                  enabled: true,
+                  root: join(stateDir, "legacy-canvas"),
+                  liveReload: true,
+                },
+              },
+            },
+          },
+        },
+      }
+    : {}),
   models: { providers: { fixture: {
     baseUrl: "http://127.0.0.1:9/v1", api: "openai-completions",
     apiKey: { source: "env", provider: "default", id: "FIXTURE_KEY" },
@@ -122,6 +140,8 @@ if (mode === "legacy-config") {
     false,
     "canonical roster must not retain default markers",
   );
+  assert.deepEqual(written.plugins.entries["active-memory"].config, {});
+  assert.deepEqual(written.plugins.entries.canvas.config.host, { enabled: true });
 } else {
   assert.deepEqual(written.agents, original.agents, "authored tilde paths must survive");
 }
