@@ -21,9 +21,15 @@ function fixture() {
   const configPath = join(stateDir, "openclaw.json");
   const database = join(stateDir, "state/openclaw.sqlite");
   writeFileSync(database, "synthetic database");
-  const source = { plugins: { entries: { fixture: { config: { selected: "before", secret: { source: "env", provider: "default", id: "FIXTURE_SECRET" }, unknown: 7 } } } } };
+  type SourceConfig = {
+    plugins: { entries: { fixture: { config: { selected: string; secret: { source: string; provider: string; id: string }; unknown: number } } } };
+    cron?: { store?: string };
+  };
+  const source: SourceConfig = { plugins: { entries: { fixture: { config: { selected: "before", secret: { source: "env", provider: "default", id: "FIXTURE_SECRET" }, unknown: 7 } } } } };
   writeFileSync(configPath, JSON.stringify(source));
-  const snapshot = { path: configPath, exists: true, raw: JSON.stringify(source), parsed: source, sourceConfig: source,
+  const snapshot = { path: configPath, hash: "source-hash", exists: true, valid: true,
+    raw: JSON.stringify(source), parsed: source, sourceConfig: source,
+    sourceConfigBeforeMigrations: undefined as SourceConfig | undefined,
     includedPaths: [] as string[], includeProvenance: [] as object[] };
   const operation = { kind: "set", path: ["plugins", "entries", "fixture", "config", "selected"],
     expected: { exists: true, sha256: canonicalValueDigest("before") }, value: "after" };
@@ -44,17 +50,31 @@ function fixture() {
   const sdk = {
     resolveStateDir: () => process.env.OPENCLAW_STATE_DIR,
     resolveOpenClawStateSqlitePath: () => database,
-    resolveCronJobsStorePathFromConfig: (config?: { cron?: { store?: string } }) => config?.cron?.store ?? join(stateDir, "cron/jobs.json"),
+    resolveCronJobsStorePathFromConfig: vi.fn((config?: { cron?: { store?: string } }) =>
+      config?.cron?.store ?? join(stateDir, "cron/jobs.json")),
     resolveIncludeWriteBoundary: vi.fn((): null | { includePath: string } => null),
     readConfigFileSnapshotForWrite: vi.fn(async () => ({ snapshot })),
     repairOpenClawStateDatabaseSchema: vi.fn(() => ({ changes: [], warnings: [] as string[] })),
+    previewLegacyConfigRepair: vi.fn((_snapshot): {
+      sourceConfig: SourceConfig;
+      expectedConfig: SourceConfig;
+      changes: string[];
+    } | null => null),
+    repairLegacyConfigForStoppedState: vi.fn(async () => ({
+      snapshot, repaired: false, changes: [] as string[],
+    })),
     mutateConfigFile: vi.fn(async (options: { mutate: (draft: typeof source, context: { snapshot: typeof snapshot }) => void }) => {
       const draft = structuredClone(snapshot.sourceConfig);
       options.mutate(draft, { snapshot });
       snapshot.sourceConfig = draft;
       writeFileSync(configPath, JSON.stringify(draft));
     }),
-    loadCronJobsStoreWithConfigJobsReadOnly: vi.fn(async () => ({ store: { version: 1, jobs: [job] } })),
+    loadCronJobsStoreWithConfigJobsReadOnly: vi.fn(async (_storePath?: string) => ({
+      store: { version: 1, jobs: [job] }, invalidConfigRows: [], jobsFingerprint: "jobs-fingerprint",
+    })),
+    materializeCronConfigJobsForMigration: vi.fn(async () => ({
+      before: { version: 1, jobs: [job] }, after: { version: 1, jobs: [job] }, materialized: 1,
+    })),
     resolveCronJobConfigRevision: vi.fn(() => revision),
     saveCronJobsStoreChanges: vi.fn(async () => {}),
     loadCronStore: vi.fn(() => { throw new Error("Mutating load forbidden"); }),
@@ -105,6 +125,108 @@ describe("digest-bound stopped-state operations", () => {
     expect(f.sdk.saveCronJobsStoreChanges).not.toHaveBeenCalled();
     expect(f.sdk.loadCronStore).not.toHaveBeenCalled();
     expect(f.sdk.saveCronStore).not.toHaveBeenCalled();
+  });
+
+  it("binds and materializes the complete effective job set before selected config writes", async () => {
+    const f = fixture();
+    const selected = f.selected();
+    const expectedBuiltIn = await executeStateMigration(
+      { phase: "preflight", ...selected },
+      async () => f.sdk,
+    );
+    const result = await executeStateMigration(
+      { phase: "builtin-config", ...selected, expectedBuiltIn },
+      async () => f.sdk,
+    );
+    expect(f.sdk.materializeCronConfigJobsForMigration).toHaveBeenCalledWith(
+      join(f.stateDir, "cron/jobs.json"),
+      join(f.stateDir, "cron/jobs.json"),
+      "jobs-fingerprint",
+      "jobs-fingerprint",
+    );
+    expect(result).toMatchObject({
+      config: { sha256: canonicalValueDigest(f.snapshot.sourceConfig) },
+      cron: {
+        jobsSha256: canonicalValueDigest({ version: 1, jobs: [f.job] }.jobs),
+        selectedRevision: `sha256:${"a".repeat(43)}`,
+      },
+    });
+  });
+
+  it("rejects config or effective-job drift between preflight and stopped migration", async () => {
+    const f = fixture();
+    const selected = f.selected();
+    const expectedBuiltIn = await executeStateMigration(
+      { phase: "preflight", ...selected },
+      async () => f.sdk,
+    );
+    f.snapshot.hash = "changed-source";
+    await expect(executeStateMigration(
+      { phase: "builtin-config", ...selected, expectedBuiltIn },
+      async () => f.sdk,
+    )).rejects.toThrow("inputs changed");
+    expect(f.sdk.materializeCronConfigJobsForMigration).not.toHaveBeenCalled();
+  });
+
+  it("moves effective jobs to the post-migration store before retiring its legacy path", async () => {
+    const f = fixture();
+    const legacyStore = join(f.stateDir, "cron/legacy-jobs.json");
+    const targetStore = join(f.stateDir, "cron/jobs.json");
+    const legacyConfig = { ...f.snapshot.sourceConfig, cron: { store: legacyStore } };
+    const migratedConfig = structuredClone(f.snapshot.sourceConfig);
+    f.snapshot.sourceConfigBeforeMigrations = legacyConfig;
+    f.snapshot.sourceConfig = migratedConfig;
+    f.sdk.previewLegacyConfigRepair.mockReturnValue({
+      sourceConfig: migratedConfig,
+      expectedConfig: migratedConfig,
+      changes: ["Removed cron.store"],
+    });
+    f.sdk.resolveCronJobsStorePathFromConfig.mockImplementation(
+      (config?: { cron?: { store?: string } }) => config?.cron?.store ?? targetStore,
+    );
+    let materialized = false;
+    f.sdk.loadCronJobsStoreWithConfigJobsReadOnly.mockImplementation(async (storePath?: string) => {
+      const source = storePath === legacyStore || materialized;
+      return {
+        store: { version: 1, jobs: source ? [f.job] : [] },
+        invalidConfigRows: [],
+        jobsFingerprint: source ? "source-fingerprint" : "target-fingerprint",
+      };
+    });
+    f.sdk.materializeCronConfigJobsForMigration.mockImplementation(async () => {
+      materialized = true;
+      return {
+        before: { version: 1, jobs: [f.job] },
+        after: { version: 1, jobs: [f.job] },
+        materialized: 1,
+      };
+    });
+    f.sdk.repairLegacyConfigForStoppedState.mockResolvedValue({
+      snapshot: { ...f.snapshot, hash: "migrated-hash", sourceConfig: migratedConfig },
+      repaired: true,
+      changes: ["Removed cron.store"],
+    });
+    const selected = f.selected();
+    const expectedBuiltIn = await executeStateMigration(
+      { phase: "preflight", ...selected },
+      async () => f.sdk,
+    );
+    expect(expectedBuiltIn.cron).toMatchObject({
+      sourceJobsFingerprint: "source-fingerprint",
+      targetJobsFingerprint: "target-fingerprint",
+      selectedRevision: `sha256:${"a".repeat(43)}`,
+    });
+    const result = await executeStateMigration(
+      { phase: "builtin-config", ...selected, expectedBuiltIn },
+      async () => f.sdk,
+    );
+    expect(f.sdk.materializeCronConfigJobsForMigration).toHaveBeenCalledWith(
+      legacyStore,
+      targetStore,
+      "source-fingerprint",
+      "target-fingerprint",
+    );
+    expect(result.cron.selectedRevision).toBe(`sha256:${"a".repeat(43)}`);
   });
 
   it("uses the fresh source writer, preserves unrelated references, and suppresses runtime work", async () => {
@@ -223,7 +345,9 @@ describe("digest-bound stopped-state operations", () => {
 
   it.each(["missing", "revision", "unknown-route"])("rejects %s job state without writes or revision rebaselining", async (kind) => {
     const f = fixture();
-    if (kind === "missing") f.sdk.loadCronJobsStoreWithConfigJobsReadOnly.mockResolvedValue({ store: { version: 1, jobs: [] } });
+    if (kind === "missing") f.sdk.loadCronJobsStoreWithConfigJobsReadOnly.mockResolvedValue({
+      store: { version: 1, jobs: [] }, invalidConfigRows: [], jobsFingerprint: "jobs-fingerprint",
+    });
     if (kind === "revision") f.sdk.resolveCronJobConfigRevision.mockReturnValue(`sha256:${"b".repeat(43)}`);
     if (kind === "unknown-route") Object.assign(f.job.delivery, { alternateWebhook: "https://example.invalid" });
     await expect(f.run("cron")).rejects.toThrow();

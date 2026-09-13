@@ -16,6 +16,7 @@
     "extensions/active-memory/config.test.ts": "extension-active-memory",
     "extensions/active-memory/escalation.test.ts": "extension-active-memory",
     "src/plugin-sdk/cron-store-runtime.test.ts": "plugin-sdk",
+    "src/plugin-sdk/doctor-repair-runtime.test.ts": "plugin-sdk",
     "src/cron/store.test.ts": "cron",
     "src/agents/embedded-agent-runner/run/terminal-resolution.test.ts": "agents-embedded-agent-run",
     "src/plugin-sdk/file-lock.stale-contention.test.ts": "plugin-sdk",
@@ -158,6 +159,7 @@
       "name": "stopped-state-migration-sdk",
       "tests": [
         "src/plugin-sdk/cron-store-runtime.test.ts",
+        "src/plugin-sdk/doctor-repair-runtime.test.ts",
         "src/cron/store.test.ts"
       ],
       "candidateTests": [

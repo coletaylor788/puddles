@@ -22,12 +22,16 @@ http.request = http.get = https.request = https.get = denyNetwork;
 net.connect = net.createConnection = net.Socket.prototype.connect = denyNetwork;
 const require = createRequire(join(runtime, "package.json"));
 const sdk = await import(pathToFileURL(require.resolve("openclaw/plugin-sdk/cron-store-runtime")).href);
+const configSdk = await import(pathToFileURL(require.resolve("openclaw/plugin-sdk/config-mutation")).href);
 const stateDir = process.env.OPENCLAW_STATE_DIR;
 const configPath = process.env.OPENCLAW_CONFIG_PATH;
 const memory = { search: { provider: "none", fallback: "none", extraPaths: ["~/synthetic-extra"] } };
 const original = {
   agents: { ownership: "explicit", entries: { fixture: { workspace: "~/synthetic-workspace" } } },
   memory: mode === "include" ? { $include: "memory.json" } : memory,
+  ...(mode === "legacy-config"
+    ? { cron: { store: join(stateDir, "cron", "legacy-jobs.json") } }
+    : {}),
   models: { providers: { fixture: {
     baseUrl: "http://127.0.0.1:9/v1", api: "openai-completions",
     apiKey: { source: "env", provider: "default", id: "FIXTURE_KEY" },
@@ -36,7 +40,7 @@ const original = {
 };
 writeFileSync(configPath, JSON.stringify(original));
 if (mode === "include") writeFileSync(join(stateDir, "memory.json"), JSON.stringify(memory));
-const storePath = sdk.resolveCronJobsStorePathFromConfig({}, process.env);
+const storePath = sdk.resolveCronJobsStorePathFromConfig(original, process.env);
 const initial = {
   id: "selected", name: "Synthetic job", enabled: true, createdAtMs: 1, updatedAtMs: 1,
   schedule: { kind: "cron", expr: "0 4 * * *", tz: "UTC" },
@@ -86,9 +90,21 @@ const manifestPath = join(root, "migration.json");
 writeFileSync(manifestPath, JSON.stringify(manifest));
 const options = { runtime, stateDir, manifestPath, sha256: fileDigest(manifestPath) };
 const digestBefore = treeDigest(stateDir);
-await executeStateMigration({ ...options, phase: "preflight" });
+if (mode === "legacy") {
+  const { snapshot } = await configSdk.readConfigFileSnapshotForWrite({
+    observe: false,
+    pluginValidation: "core-only",
+  });
+  assert.equal(treeDigest(stateDir), digestBefore, "config snapshot must not mutate target state");
+  configSdk.previewLegacyConfigRepair(snapshot);
+  assert.equal(treeDigest(stateDir), digestBefore, "config preview must not mutate target state");
+  await sdk.loadCronJobsStoreWithConfigJobsReadOnly(storePath, process.env);
+  assert.equal(treeDigest(stateDir), digestBefore, "cron snapshot must not mutate target state");
+}
+const expectedBuiltIn = await executeStateMigration({ ...options, phase: "preflight" });
 assert.equal(treeDigest(stateDir), digestBefore, "preflight must not mutate target state");
 await executeStateMigration({ ...options, phase: "schema" });
+await executeStateMigration({ ...options, phase: "builtin-config", expectedBuiltIn });
 await executeStateMigration({ ...options, phase: "config" });
 const written = JSON.parse(readFileSync(configPath, "utf8"));
 assert.deepEqual(written.agents, original.agents, "authored tilde paths must survive");
@@ -100,21 +116,25 @@ if (mode === "include") {
   assert.equal(written.memory.search.provider, "local");
   assert.deepEqual(written.memory.search.extraPaths, memory.search.extraPaths);
 }
+const activeStorePath = sdk.resolveCronJobsStorePathFromConfig(written, process.env);
+if (mode === "legacy-config") {
+  assert.notEqual(activeStorePath, storePath, "legacy cron store path must be retired");
+}
 const concurrent = structuredClone(before);
-const migrated = (await sdk.loadCronJobsStoreWithConfigJobsReadOnly(storePath, process.env)).store;
+const migrated = (await sdk.loadCronJobsStoreWithConfigJobsReadOnly(activeStorePath, process.env)).store;
 assert.equal(sdk.resolveCronJobConfigRevision(migrated.jobs.find((job) => job.id === "selected")),
   manifest.cronOperation.expectedRevision, "schema repair must not silently rebaseline the job");
 concurrent.jobs.find((job) => job.id === "other").name = "Concurrent unrelated change";
 concurrent.jobs.find((job) => job.id === "selected").state.lastRunAtMs = 50;
 concurrent.jobs.push({ ...initial, id: "new" });
 if (mode === "conflict") concurrent.jobs.find((job) => job.id === "selected").name = "Concurrent selected change";
-await sdk.saveCronJobsStoreChanges(storePath, before, concurrent);
+await sdk.saveCronJobsStoreChanges(activeStorePath, before, concurrent);
 if (mode === "conflict") {
   await assert.rejects(executeStateMigration({ ...options, phase: "cron" }), /revision changed/);
 } else {
   await executeStateMigration({ ...options, phase: "cron" });
 }
-const after = (await sdk.loadCronJobsStoreWithConfigJobsReadOnly(storePath, process.env)).store;
+const after = (await sdk.loadCronJobsStoreWithConfigJobsReadOnly(activeStorePath, process.env)).store;
 const actual = after.jobs.find((job) => job.id === "selected");
 if (mode === "conflict") {
   assert.equal(actual.delivery.mode, "announce");

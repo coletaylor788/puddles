@@ -24,17 +24,29 @@ Job revision tokens come from the maintained storage codec, not a second hash
 of a partly normalized job.
 
 An older SQLite schema can prevent even a config write because the writer
-records metadata. After the stopped-state snapshot, the helper calls the
-already public schema-only repair operation. It then changes config before
-ordinary doctor and checks the job's fresh revision afterward. The schema step
-does not compile memory or start a gateway, scheduler, plugin hook, or model.
-Private policy remains in the selected local manifest.
+records metadata. Legacy config can also fail current validation before a
+selected write runs. After the stopped-state snapshot, the helper repairs the
+schema, previews the maintained legacy config migrations, and binds the
+expected config and cron rows to preflight evidence. It copies the complete
+effective job set from a retired `cron.store` partition to the post-migration
+partition before persisting the normalized config. Both partitions have
+compare-and-swap fingerprints. The selected job revision and the semantic job
+set must remain unchanged.
+
+The stopped config repair calls the same migration, plugin validation, include
+ownership, metadata stamping, and config writer used by doctor. It rejects
+partial validation instead of persisting a half-migrated file. Private selected
+config writes run next, followed by ordinary doctor and the revision-bound cron
+write. None of the bounded pre-doctor steps compile memory or start a gateway,
+scheduler, plugin hook, or model. Private policy remains in the selected local
+manifest.
 
 The patch targets stable source
 `1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7`. Its registered SDK tests use real
 SQLite, including the maintained compressed 2026.7.1-2 fixture. They cover
-readonly absent-state behavior, old-schema ordering, reviewed revision
-preservation, conflicts, and concurrent unrelated jobs and runtime updates.
+readonly absent-state behavior, old-schema ordering, legacy config repair,
+cron partition migration, reviewed revision preservation, conflicts, and
+concurrent unrelated jobs and runtime updates.
 The accumulated pool also runs the public executor against the built SDK and
 the offline installed artifact. It checks config ownership, retained secret
 references and tilde paths, unchanged preflight state, and denied network

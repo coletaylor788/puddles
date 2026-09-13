@@ -135,18 +135,36 @@ function fixture(wrapper = true, migration = true, binary = false, oldAlias = fa
         renameSync(from, `${from}.exchange`); renameSync(to, from); renameSync(`${from}.exchange`, to);
       },
       async doctor() { check("doctor"); await native.doctor(); },
-      async stateMigration(phase: string, runtime: string, manifestPath: string, sha256: string) {
+      async stateMigration(phase: string, runtime: string, manifestPath: string, sha256: string, expectedBuiltIn?: object) {
         check(`migration:${phase}`);
         expect(readFileSync(join(runtime, "openclaw.mjs"), "utf8")).toBe("candidate runtime");
         expect(fileDigest(manifestPath)).toBe(sha256);
         if (phase === "preflight") {
           expect(running).toBe(true);
+          return {
+            config: { sourceHash: "before", expectedSha256: "a".repeat(64), changesSha256: "b".repeat(64), required: true },
+            cron: {
+              sourceStoreSha256: "d".repeat(64),
+              targetStoreSha256: "d".repeat(64),
+              sourceJobsFingerprint: "before",
+              targetJobsFingerprint: "before",
+              jobsSha256: "c".repeat(64),
+              selectedRevision: null,
+            },
+          };
         } else {
           expect(running).toBe(false);
           const journal = JSON.parse(readFileSync(join(recovery, "recovery.json"), "utf8"));
           expect(journal.snapshotReady).toBe(true);
           expect(readFileSync(join(recovery, "state/config"), "utf8")).toBe("old state");
           writeFileSync(join(target.stateDir, "config"), `${phase} migrated state`);
+          if (phase === "builtin-config") {
+            expect(expectedBuiltIn).toBeDefined();
+            return {
+              config: { sourceHash: "after", sha256: "a".repeat(64) },
+              cron: { jobsFingerprint: "after", jobsSha256: "c".repeat(64), selectedRevision: null },
+            };
+          }
         }
       },
       async health(interpreter?: string) { check("health"); await native.health(interpreter); },
@@ -199,17 +217,21 @@ describe("stopped-state migration inside interpreter rollback", () => {
     expect(f.events.indexOf("migration:preflight")).toBeLessThan(f.events.indexOf("stop"));
     expect(f.events.indexOf("migration:config")).toBeGreaterThan(f.events.indexOf("stop"));
     expect(f.events.indexOf("migration:schema")).toBeGreaterThan(f.events.indexOf("stop"));
+    expect(f.events.indexOf("migration:builtin-config")).toBeGreaterThan(f.events.indexOf("migration:schema"));
+    expect(f.events.indexOf("migration:builtin-config")).toBeLessThan(f.events.indexOf("migration:config"));
     expect(f.events.indexOf("migration:schema")).toBeLessThan(f.events.indexOf("migration:config"));
     expect(f.events.indexOf("migration:config")).toBeLessThan(f.events.indexOf("doctor"));
     expect(f.events.indexOf("migration:cron")).toBeGreaterThan(f.events.indexOf("doctor"));
     expect(f.events.indexOf("migration:cron")).toBeLessThan(f.events.indexOf("start"));
     expect(fileDigest(join(result.recoveryDir, "state-migration.json"))).toBe(migration.sha256);
-    expect(JSON.parse(readFileSync(join(result.recoveryDir, "recovery.json"), "utf8")).stateMigration).toEqual({
+    expect(JSON.parse(readFileSync(join(result.recoveryDir, "recovery.json"), "utf8")).stateMigration).toMatchObject({
       sha256: migration.sha256, phase: "complete",
+      builtIn: { config: { sourceHash: "before" }, cron: { sourceJobsFingerprint: "before" } },
+      builtInResult: { config: { sourceHash: "after" }, cron: { jobsFingerprint: "after" } },
     });
   });
 
-  it.each(["migration:schema", "migration:config", "doctor", "migration:cron"])("restores stopped snapshots and the old interpreter after %s fails", async (failure) => {
+  it.each(["migration:schema", "migration:builtin-config", "migration:config", "doctor", "migration:cron"])("restores stopped snapshots and the old interpreter after %s fails", async (failure) => {
     const f = fixture();
     stateMigration(f);
     f.failures.push(failure);

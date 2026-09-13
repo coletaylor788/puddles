@@ -274,17 +274,20 @@ shutil.copymode(source, destination)
       await cli(["doctor", "--fix", "--yes"]);
       if (await loaded()) throw new Error("Doctor activated the externally managed gateway");
     },
-    async stateMigration(phase, runtime, manifestPath, sha256) {
-      await run(target.nodeMigration?.desired.path ?? process.execPath, [
+    async stateMigration(phase, runtime, manifestPath, sha256, expectedBuiltIn) {
+      const output = await run(target.nodeMigration?.desired.path ?? process.execPath, [
         resolve(patchDir, "../../../packages/e2e/bin/openclaw-state-migrate.mjs"),
         phase, runtime, realpathSync(target.stateDir), manifestPath, sha256,
+        ...(expectedBuiltIn ? [JSON.stringify(expectedBuiltIn)] : []),
       ], {
+        ...(phase === "preflight" || phase === "builtin-config" ? { capture: true } : {}),
         env: {
           ...env, OPENCLAW_STATE_DIR: realpathSync(target.stateDir),
           OPENCLAW_CONFIG_PATH: join(realpathSync(target.stateDir), "openclaw.json"),
           XDG_CACHE_HOME: join(recoveryDir, "read-cache"),
         },
       });
+      return output ? JSON.parse(output) : undefined;
     },
     async browser(imageId, runtime, interpreter) {
       if (!target.browser) return;
@@ -542,7 +545,11 @@ export async function activateNative(receipt, target, operationsFactory = system
       readMigrationManifest(manifestPath, target.stateMigration.sha256);
       journal.stateMigration = { sha256: target.stateMigration.sha256, phase: "preflight" };
       save("preflight");
-      await operations.stateMigration("preflight", installed, manifestPath, target.stateMigration.sha256);
+      journal.stateMigration.builtIn = await operations.stateMigration(
+        "preflight", installed, manifestPath, target.stateMigration.sha256,
+      );
+      if (!journal.stateMigration.builtIn) throw new Error("Stopped migration preflight evidence is missing");
+      save("preflight");
       checkpoint();
     }
     const stagedExtras = {};
@@ -641,6 +648,19 @@ export async function activateNative(receipt, target, operationsFactory = system
       journal.stateMigration.phase = "schema";
       save("migrating-schema");
       await operations.stateMigration("schema", target.installDir, join(recoveryDir, "state-migration.json"), journal.stateMigration.sha256);
+      checkpoint();
+      journal.stateMigration.phase = "builtin-config";
+      save("migrating-builtin-config");
+      journal.stateMigration.builtInResult = await operations.stateMigration(
+        "builtin-config",
+        target.installDir,
+        join(recoveryDir, "state-migration.json"),
+        journal.stateMigration.sha256,
+        journal.stateMigration.builtIn,
+      );
+      if (!journal.stateMigration.builtInResult) {
+        throw new Error("Stopped built-in migration evidence is missing");
+      }
       checkpoint();
       journal.stateMigration.phase = "config";
       save("migrating-config");

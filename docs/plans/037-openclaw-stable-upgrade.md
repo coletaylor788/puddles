@@ -1,6 +1,6 @@
 # OpenClaw stable upgrade
 
-Status: Deployment omission repair in progress; activation held
+Status: Stopped migration ordering repair in progress; activation held
 Issue: #114
 Last updated: 2026-09-13
 
@@ -78,9 +78,15 @@ only the selected service argument, and restores the old interpreter with the
 old runtime during rollback. An optional reviewed manifest changes selected
 configuration leaves and silences one existing scheduled job. It cannot run
 commands or replace unrelated state. The stopped gateway's complete state is
-snapshotted first. Repair only its database schema before changing configuration.
-Configuration changes still precede ordinary runtime migration and compilation.
-The job change uses a fresh read afterward and checks its reviewed revision.
+snapshotted first. Activation then repairs only the database schema and runs the
+maintained legacy config migrations through OpenClaw's writer. Preflight binds
+the source config, expected normalized config, old and new cron partitions, the
+complete effective job set, and the reviewed job revision. If legacy
+`cron.store` is retired, activation copies that effective set to the
+post-migration partition before writing config. Both row sets use
+compare-and-swap fingerprints. Private selected config changes still precede
+ordinary doctor and compilation. The job change uses a fresh read afterward
+and checks the same reviewed revision.
 
 The same candidate may need immutable files that are not package archives, such
 as a local service binary tree or model file. These files are named and hashed
@@ -99,16 +105,19 @@ Activation and rollback remain in the existing deployment workflow.
 
 ### Status
 
-The runtime and private composition are integrated and all source, installed,
-and physical target proofs are green. Activation stopped before live mutation
-because the sealed candidate does not describe the immutable local service and
-model files required by its reviewed migration. The existing package, browser,
-and migration contracts cannot safely infer or fetch those bytes.
+The prepared-file contract now carries immutable local service and model bytes
+through the existing candidate and rollback transaction. Its focused deployment
+and rollback tests pass. Activation remains stopped before live mutation
+because an isolated exact-state probe found that private compare-and-swap
+cannot run until OpenClaw's maintained legacy config migrations have completed.
+Those migrations can retire an old cron partition that still contains the
+reviewed scheduled job.
 
-The current follow-up adds only the missing prepared-file contract to the
-existing candidate and rollback transaction. It will rehearse the actual
-deployment entrypoint with test-owned state and a fault rollback, then return to
-the retained reviewer and cumulative gate. Production remains untouched.
+The remaining follow-up adds only this stopped ordering boundary. It preserves
+the complete effective job set before config normalization, then runs private
+config changes, ordinary doctor, and the selected cron change in that order. It
+will rerun the installed migration fixture, actual deployment rehearsal,
+retained review, and cumulative gate. Production remains untouched.
 
 ## Agent section
 
@@ -606,6 +615,8 @@ the retained reviewer and cumulative gate. Production remains untouched.
 - [x] Confirm combined runtime compatibility and integrate exact source.
 - [x] Bind immutable prepared files into candidate and runtime proofs.
 - [x] Rehearse actual deployment and rollback with test-owned state.
+- [ ] Preserve effective cron jobs while maintained legacy config migrations retire old store paths.
+- [ ] Rehearse built-in normalization before private config and cron CAS in the stopped transaction.
 - [ ] Clear retained review for the deployment correction.
 - [ ] Pass affected and accumulated gates for the deployment correction.
 - [ ] Integrate the follow-up and hand activation back to private.
