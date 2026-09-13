@@ -26,6 +26,14 @@ checks. It never loads the mutating cron API or replaces a whole cron store.
 Job revision tokens come from the maintained storage codec, not a second hash
 of a partly normalized job.
 
+Live preflight validates the manifest identity, operation shape, file and
+include ownership, state-free core migration, cron partitions, and selected job
+revision. It does not evaluate selected config value preconditions against the
+pre-plugin config. Those exact compare-and-swap checks run in the stopped config
+transaction, immediately after complete maintained normalization and before any
+selected mutation. This allows a reviewed parent-object operation to target the
+canonical post-migration plugin object without weakening its final precondition.
+
 An older SQLite schema can prevent even a config write because the writer
 records metadata. Legacy config can also fail current validation before a
 selected write runs. After the stopped-state snapshot, the helper repairs the
@@ -57,7 +65,8 @@ The patch targets stable source
 SQLite, including the maintained compressed 2026.7.1-2 fixture. They cover
 readonly absent-state behavior, old-schema ordering, legacy config repair,
 markerless multi-agent ownership, Active Memory QMD retirement, Canvas host
-setting retirement, cron partition migration, reviewed revision preservation,
+setting retirement, a parent-object config precondition based on that normalized
+plugin state, cron partition migration, reviewed revision preservation,
 conflicts, and concurrent unrelated config, job, and runtime updates.
 The accumulated pool also runs the public executor against the built SDK and
 the offline installed artifact. It checks config ownership, retained secret

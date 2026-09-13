@@ -137,7 +137,14 @@ function configDraft(source, operations) {
   return draft;
 }
 
-function configBoundary(snapshot, operations, stateDir, sdk, source = snapshot.sourceConfig) {
+function configBoundary(
+  snapshot,
+  operations,
+  stateDir,
+  sdk,
+  source = snapshot.sourceConfig,
+  checkPreconditions = true,
+) {
   const expectedPath = join(stateDir, "openclaw.json");
   if (!snapshot.exists || snapshot.path !== expectedPath || !record(snapshot.sourceConfig) || snapshot.readError ||
       snapshot.raw === null || !record(snapshot.parsed)) throw new Error("Migration config snapshot is unavailable");
@@ -159,7 +166,7 @@ function configBoundary(snapshot, operations, stateDir, sdk, source = snapshot.s
     if (!boundary || !inside(dirname(expectedPath), boundary.includePath)) throw new Error("Migration must stay within one internal include owner");
     statePath(stateDir, boundary.includePath, true);
   }
-  return configDraft(source, operations);
+  return checkPreconditions ? configDraft(source, operations) : source;
 }
 
 export function silenceCronJob(job) {
@@ -295,6 +302,7 @@ export async function executeStateMigration(
       stateDir,
       sdk,
       plan.preview?.expectedConfig ?? snapshot.sourceConfig,
+      false,
     );
     return { config: plan.config, cron: plan.cron };
   }

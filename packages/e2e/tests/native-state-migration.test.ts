@@ -225,11 +225,24 @@ describe("digest-bound stopped-state operations", () => {
     expect(f.sdk.materializeCronConfigJobsForMigration).not.toHaveBeenCalled();
   });
 
-  it("applies complete stopped plugin migrations beyond the state-free preflight", async () => {
+  it("defers a plugin parent-object CAS until complete stopped normalization", async () => {
     const f = fixture();
     const source = f.snapshot.sourceConfig;
-    const coreConfig = { ...source, coreNormalized: true };
-    const fullConfig = { ...coreConfig, pluginNormalized: true };
+    const activeMemory = { config: { qmd: { enabled: true } } };
+    const sourceEntries = source.plugins.entries as Record<string, unknown>;
+    sourceEntries["active-memory"] = activeMemory;
+    const coreConfig = structuredClone(source);
+    const fullConfig = structuredClone(source);
+    const fullEntries = fullConfig.plugins.entries as Record<string, unknown>;
+    fullEntries["active-memory"] = { config: {} };
+    Object.assign(f.manifest, {
+      configOperations: [{
+        kind: "set",
+        path: ["plugins", "entries", "active-memory"],
+        expected: { exists: true, sha256: canonicalValueDigest({ config: {} }) },
+        value: { enabled: true, config: {} },
+      }],
+    });
     f.sdk.previewLegacyConfigRepair.mockImplementation((_snapshot, options?: {
       pluginContracts?: boolean;
     }) => ({
@@ -239,10 +252,14 @@ describe("digest-bound stopped-state operations", () => {
         ? ["Normalized core", "Normalized plugin"]
         : ["Normalized core"],
     }));
-    f.sdk.repairLegacyConfigForStoppedState.mockResolvedValue({
-      snapshot: { ...f.snapshot, sourceConfig: fullConfig },
-      repaired: true,
-      changes: ["Normalized core", "Normalized plugin"],
+    f.sdk.repairLegacyConfigForStoppedState.mockImplementation(async () => {
+      f.snapshot.sourceConfig = structuredClone(fullConfig);
+      writeFileSync(f.configPath, JSON.stringify(fullConfig));
+      return {
+        snapshot: f.snapshot,
+        repaired: true,
+        changes: ["Normalized core", "Normalized plugin"],
+      };
     });
     const selected = f.selected();
     const expectedBuiltIn = await executeStateMigration(
@@ -258,6 +275,14 @@ describe("digest-bound stopped-state operations", () => {
       { pluginContracts: true },
     );
     expect(result.config.sha256).toBe(canonicalValueDigest(fullConfig));
+    await executeStateMigration(
+      { phase: "config", ...selected },
+      async () => f.sdk,
+    );
+    expect((f.snapshot.sourceConfig.plugins.entries as Record<string, unknown>)["active-memory"]).toEqual({
+      enabled: true,
+      config: {},
+    });
   });
 
   it("moves effective jobs to the post-migration store before retiring its legacy path", async () => {
@@ -360,10 +385,11 @@ describe("digest-bound stopped-state operations", () => {
     expect(f.sdk.mutateConfigFile).not.toHaveBeenCalled();
   });
 
-  it("rejects scalar parents instead of replacing them with objects", async () => {
+  it("defers scalar-parent rejection until the stopped config transaction", async () => {
     const f = fixture();
     f.manifest.configOperations[0].path.push("child");
-    await expect(f.run("preflight")).rejects.toThrow("ancestor");
+    await expect(f.run("preflight")).resolves.toBeDefined();
+    await expect(f.run("config")).rejects.toThrow("ancestor");
   });
 
   it("creates missing object parents only after checking every selected leaf", async () => {

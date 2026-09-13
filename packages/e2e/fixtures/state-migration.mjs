@@ -102,12 +102,21 @@ if (mode === "legacy") {
   before = (await sdk.loadCronJobsStoreWithConfigJobsReadOnly(storePath, process.env)).store;
 }
 const selected = before.jobs.find((job) => job.id === "selected");
-const manifest = {
-  schemaVersion: 1,
-  configOperations: [{
+const configOperations = [{
     kind: "set", path: ["memory", "search", "provider"],
     expected: { exists: true, sha256: canonicalValueDigest("none") }, value: "local",
-  }],
+  }];
+if (mode === "legacy-config") {
+  configOperations.push({
+    kind: "set",
+    path: ["plugins", "entries", "active-memory"],
+    expected: { exists: true, sha256: canonicalValueDigest({ config: {} }) },
+    value: { enabled: true, config: {} },
+  });
+}
+const manifest = {
+  schemaVersion: 1,
+  configOperations,
   cronOperation: { kind: "silence-delivery", jobId: "selected", expectedRevision: sdk.resolveCronJobConfigRevision(selected) },
 };
 const manifestPath = join(root, "migration.json");
@@ -141,6 +150,7 @@ if (mode === "legacy-config") {
     "canonical roster must not retain default markers",
   );
   assert.deepEqual(written.plugins.entries["active-memory"].config, {});
+  assert.equal(written.plugins.entries["active-memory"].enabled, true);
   assert.deepEqual(written.plugins.entries.canvas.config.host, { enabled: true });
 } else {
   assert.deepEqual(written.agents, original.agents, "authored tilde paths must survive");

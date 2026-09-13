@@ -85,7 +85,10 @@ partition paths, and the reviewed job revision. Once stopped, activation reads
 fresh row identities and the complete effective job set, applies the full
 maintained plugin contracts, and requires a valid result. That migration also
 converts a legacy multi-agent roster to explicit ownership without choosing a
-default owner or granting access. If legacy
+default owner or granting access. Selected config values are compared only
+after this normalization, in the stopped source-writer transaction and before
+any private mutation. This preserves exact compare-and-swap while allowing a
+manifest to describe the canonical plugin object. If legacy
 `cron.store` is retired, activation copies that effective set to the
 post-migration partition before writing config. Both row sets use
 compare-and-swap fingerprints. Private selected config changes still precede
@@ -129,10 +132,12 @@ Doctor-only wizard timestamps are not needed for validity. The stopped repair
 now runs the complete maintained plugin migrations after shutdown instead of
 hardcoding those keys. Agent permissions and all ten jobs remain unchanged.
 
-Focused validation, the rebuilt managed installed-runtime patch gate, the exact
-clean-head cumulative gate, and retained complete-diff review pass. Private is
-repeating the combined deployment rehearsal against the sealed public tuple.
-Production remains untouched.
+The next exact replay exposed one ordering issue: live preflight compared a
+private parent-object operation with the obsolete pre-plugin object. The
+correction keeps live structural and migration checks, then defers exact config
+value comparison until immediately after full stopped normalization. Focused
+tests and the managed installed-runtime patch gate pass. Retained review and
+the exact cumulative gate remain. Production remains untouched.
 
 ## Agent section
 
@@ -278,6 +283,11 @@ Production remains untouched.
   doctor config contracts, and require zero remaining validation or legacy
   issue paths. Do not copy doctor-only wizard timestamps, run plugin state
   migrations, delete unknown keys, or encode private plugin policy.
+  Preflight checks manifest structure, digest, path and include ownership, but
+  does not compare selected values against the core-only projection. The later
+  `mutateConfigFile` call performs every exact leaf and parent-object
+  precondition against the fresh fully normalized stopped config before
+  changing any selected value.
   Use `mutateConfigFile` with `base: "source"`,
   explicit no after-write work, and `skipRuntimeSnapshotRefresh: true`.
   Snapshot before any mutation. The parent approved calling the existing
@@ -580,6 +590,10 @@ Production remains untouched.
   `patches` lifecycle passes every stage and all nine installed scenarios. The
   installed legacy-config case now also removes retired Active Memory QMD and
   Canvas host settings through their maintained doctor contracts.
+- The deferred precondition correction passes 86 focused migration and
+  activation cases, the e2e type check, and the managed `patches` lifecycle.
+  Its installed legacy-config case applies an exact parent-object operation for
+  Active Memory only after maintained plugin normalization.
 - Native iteration on `76854b4` passes prepare, dependencies, build, package,
   offline install, all nine message scenarios, and all four migration modes.
   The historical case now preserves the complete state digest across preflight.
@@ -671,7 +685,7 @@ Production remains untouched.
 - [x] Preserve effective cron jobs while maintained legacy config migrations retire old store paths.
 - [x] Persist canonical multi-agent ownership before private config CAS.
 - [x] Apply every validation-required maintained plugin migration after shutdown.
-- [x] Rehearse built-in normalization before private config and cron CAS in the stopped transaction.
-- [x] Clear retained review for the deployment correction.
-- [x] Pass affected and accumulated gates for the deployment correction.
+- [ ] Rehearse deferred exact private config CAS after full built-in normalization.
+- [ ] Clear retained review for the deployment correction.
+- [ ] Pass affected and accumulated gates for the deployment correction.
 - [ ] Integrate the follow-up and hand activation back to private.

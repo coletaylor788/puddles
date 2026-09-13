@@ -89,10 +89,13 @@ snapshot, activation reads fresh row fingerprints and the complete effective
 job set, repairs the schema, then runs the complete maintained core and plugin
 doctor migrations with full validation. It copies the jobs to the
 post-migration partition, persists legacy config and multi-agent ownership
-normalization, runs selected config writes, then ordinary doctor and the
-selected cron write. The tests cover sole include ownership, plugin-owned
-retired settings, job revision conflicts, retired `cron.store` paths, unrelated
-live-staging state, each failure stage, and interrupted
+normalization, then checks every selected config value and applies those writes
+in one source-writer transaction. This stopped compare lets a manifest target
+the canonical post-plugin object without comparing it to obsolete live input.
+Ordinary doctor and the selected cron write follow. The tests cover sole include
+ownership, plugin-owned retired settings, parent-object config preconditions,
+job revision conflicts, retired `cron.store` paths, unrelated live-staging
+state, each failure stage, and interrupted
 rollback with the retained interpreter. The historical fixture comes from the
 pinned upstream test pool, with its compressed digest checked before use.
 
