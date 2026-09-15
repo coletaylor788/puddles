@@ -63,9 +63,11 @@ The first fresh ARM build exposed a declaration portability error before
 deployment. The public source patch now gives all 16 fragment registries exact
 explicit types without changing their runtime objects. A representative
 runtime and compile-time registry test passes for every fragment, and the exact
-fresh pinned pnpm 12 root build emits all declarations successfully. Full
-accumulated validation, retained review, hosted checks, and the resumed private
-ARM flow remain.
+five root exports that exposed the next capped diagnostic batch now name their
+existing factory return types. The exact fresh pinned pnpm 12 root build emits
+the package and unified declarations successfully. Full accumulated
+validation, retained review, hosted checks, and the resumed private ARM flow
+remain.
 
 ## Agent section
 
@@ -236,7 +238,8 @@ ARM flow remain.
   native build hooks.
 - [x] Add public workflow concurrency and x64 bundle publication.
 - [x] Add portable declaration types for all 16 gateway protocol fragment
-  registries and register their regression in the cumulative patch suite.
+  registries and the five affected root exports. Register the fragment
+  regression and full root declaration build in the cumulative suite.
 - [x] Update `packages/e2e/README.md`,
   `docs/openclaw-setup/patches/README.md`, and only the lifecycle instructions
   that need the new split.
@@ -261,7 +264,7 @@ ARM flow remain.
   activation transaction.
 - Gateway protocol tests preserve exact schema identity and compile-time types
   for every fragment. The root build must emit declarations successfully from
-  a fresh pinned pnpm 12 install.
+  a fresh pinned pnpm 12 install, including the five root exports.
 - Proof tests reject edited source and deployment summaries unless their
   maintained stage records and recovery journals match.
 - Integration tests prove interim receipts cannot integrate or activate,
@@ -311,6 +314,10 @@ ARM flow remain.
   and the next batch named more. Exact explicit annotations now cover all 16
   fragments, preserving runtime and static schema identity while making
   declaration output portable.
+- 2026-09-14: The next ARM build passed the package declaration phase and
+  exposed five inferred root exports in the unified declaration phase. Exact
+  existing factory return types now cover those exports, and a fresh pinned
+  root build passes the complete declaration pipeline.
 
 ### Checklist
 

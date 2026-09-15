@@ -1234,3 +1234,68 @@ index 45252ff0f0f..5898173addc 100644
    ConnectParams: frames.ConnectParamsSchema,
    WorkerAdmissionHandshake: workerAdmission.WorkerAdmissionHandshakeSchema,
    HelloOk: frames.HelloOkSchema,
+diff --git a/src/agents/bash-tools.exec-run.ts b/src/agents/bash-tools.exec-run.ts
+index 69d8b3e38a6..5ec9411fbe3 100644
+--- a/src/agents/bash-tools.exec-run.ts
++++ b/src/agents/bash-tools.exec-run.ts
+@@ -742,4 +742,4 @@ export function createExecTool(
+ }
+ 
+ /** Default exec tool instance used by agent tool registries. */
+-export const execTool = createExecTool();
++export const execTool: ReturnType<typeof createExecTool> = createExecTool();
+diff --git a/src/agents/bash-tools.process.ts b/src/agents/bash-tools.process.ts
+index 69a841dcaf9..5df3cee37c3 100644
+--- a/src/agents/bash-tools.process.ts
++++ b/src/agents/bash-tools.process.ts
+@@ -659,4 +659,4 @@ export function createProcessTool(
+ }
+ 
+ /** Shared process-control tool instance used by the default Bash tool barrel. */
+-export const processTool = createProcessTool();
++export const processTool: ReturnType<typeof createProcessTool> = createProcessTool();
+diff --git a/src/config/sessions/session-accessor.sqlite-active-projection.ts b/src/config/sessions/session-accessor.sqlite-active-projection.ts
+index d07c37c0c62..0729927406c 100644
+--- a/src/config/sessions/session-accessor.sqlite-active-projection.ts
++++ b/src/config/sessions/session-accessor.sqlite-active-projection.ts
+@@ -49,7 +49,9 @@ const EMPTY_PROJECTION_STATE: SessionTranscriptProjectionState = {
+   needsRebuild: false,
+ };
+ 
+-export function getActiveTranscriptKysely(database: OpenClawAgentDatabase) {
++export function getActiveTranscriptKysely(
++  database: OpenClawAgentDatabase,
++): ReturnType<typeof getNodeSqliteKysely<ActiveTranscriptDatabase>> {
+   return getNodeSqliteKysely<ActiveTranscriptDatabase>(database.db);
+ }
+ 
+diff --git a/src/config/sessions/session-accessor.sqlite-scope.ts b/src/config/sessions/session-accessor.sqlite-scope.ts
+index 5b5d38ae2b0..50b5a624d73 100644
+--- a/src/config/sessions/session-accessor.sqlite-scope.ts
++++ b/src/config/sessions/session-accessor.sqlite-scope.ts
+@@ -98,7 +98,9 @@ const SQLITE_SESSION_SLOW_WRITE_MS = 1_000;
+ const SQLITE_SESSION_WRITE_ERROR_MAX_CHARS = 2_048;
+ const SQLITE_TRANSCRIPT_READ_QUERY_CHUNK_SIZE = 400;
+ 
+-export function getSessionKysely(database: import("node:sqlite").DatabaseSync) {
++export function getSessionKysely(
++  database: import("node:sqlite").DatabaseSync,
++): ReturnType<typeof getNodeSqliteKysely<SessionSqliteDatabase>> {
+   return getNodeSqliteKysely<SessionSqliteDatabase>(database);
+ }
+ 
+diff --git a/src/gateway/github-publication-store.ts b/src/gateway/github-publication-store.ts
+index b32e3c5eafb..ca6d56fc064 100644
+--- a/src/gateway/github-publication-store.ts
++++ b/src/gateway/github-publication-store.ts
+@@ -45,7 +45,9 @@ function publicationFailureCode(value: string): PublicationFailureCode {
+   return PUBLICATION_FAILURE_CODES.has(value) ? (value as PublicationFailureCode) : "unavailable";
+ }
+ 
+-export const githubPublicationDatabase = (db: Parameters<typeof getNodeSqliteKysely>[0]) =>
++export const githubPublicationDatabase = (
++  db: Parameters<typeof getNodeSqliteKysely>[0],
++): ReturnType<typeof getNodeSqliteKysely<GitHubPublicationDatabase>> =>
+   getNodeSqliteKysely<GitHubPublicationDatabase>(db);
+ 
+ export function ensureGitHubPublicationStore(): void {
