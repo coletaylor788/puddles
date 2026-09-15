@@ -30,6 +30,7 @@ PATCHES=(
   scoped-container-temp-root
   active-memory-cold-recall
   active-memory-fixture-cleanup
+  gateway-protocol-declaration-portability
 )
 
 if [ -n "${MINI_HOST:-}" ]; then

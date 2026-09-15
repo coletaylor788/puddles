@@ -21,7 +21,9 @@ configuration, credentials, logs, or private extension inputs. A consumer can
 import it at a different path or on another host and verify the same source,
 toolchain, archive, provider, prepared-file, and browser identities. Installed
 checks use these verified records instead of reaching back into the build
-workspace.
+workspace. The patched source also gives its large protocol schema registries
+explicit public types. This keeps declaration generation stable when a fresh
+host lays out the same pinned TypeBox dependency differently.
 
 Source tests continue to run on the builder because they need the composed
 source and development dependencies. They produce a separate immutable
@@ -53,20 +55,15 @@ unregistered legacy directories are never adopted automatically.
 
 ### Status
 
-The existing build, package, offline install, installed scenarios, activation,
-and rollback paths are the implementation base. The stable command and receipt
-contract is shared with the coordinator, process owner, and private consumer.
-The contract builds once from the combined selected source and keeps source-only
-checks before export.
+The delivery contract, retention lifecycle, isolated target creator, and public
+hosted workflow are implemented. Public focused tests, accumulated CI, hosted
+checks, and retained review passed for the prior candidate.
 
-The portable bundle, source attestation, archive-only target context, split
-certification and promotion receipts, isolated wrapper rehearsal, durable
-status, selective reuse, public workflow publication, and deterministic
-artifact retention are implemented. Bundle import and target runs now register
-their build, active, success, diagnostic, and failed-reproduction evidence
-automatically. Focused delivery tests and the real wrapper success and rollback
-cases pass. Retained review, the exact accumulated gate, hosted checks, and
-private ARM adoption remain.
+The first fresh ARM build exposed a declaration portability error before
+deployment. The public source patch now gives the five affected schema
+registries exact explicit types without changing their runtime objects. Focused
+package build and registry tests pass. Full accumulated validation, retained
+review, hosted checks, and the resumed private ARM flow remain.
 
 ## Agent section
 
@@ -236,6 +233,8 @@ private ARM adoption remain.
 - [x] Add deterministic artifact ownership, references, cleanup, and automatic
   native build hooks.
 - [x] Add public workflow concurrency and x64 bundle publication.
+- [x] Add portable declaration types for the five affected gateway protocol
+  registries and register their regression in the cumulative patch suite.
 - [x] Update `packages/e2e/README.md`,
   `docs/openclaw-setup/patches/README.md`, and only the lifecycle instructions
   that need the new split.
@@ -258,6 +257,9 @@ private ARM adoption remain.
 - Deployment tests invoke the real `apply-and-deploy.sh` path against test-owned
   state for success and compare-and-swap drift rollback. Both use the normal
   activation transaction.
+- Gateway protocol tests preserve exact schema identity and compile-time types.
+  The package build must emit declarations successfully from a fresh pnpm 12
+  install.
 - Proof tests reject edited source and deployment summaries unless their
   maintained stage records and recovery journals match.
 - Integration tests prove interim receipts cannot integrate or activate,
@@ -301,7 +303,10 @@ private ARM adoption remain.
 - 2026-09-14: Process review separated builder-only source gates from
   importer-only archive and physical-target checks. Both produce immutable
   maintained evidence for the same build identity.
-- Retained complete-diff review is pending implementation and focused tests.
+- 2026-09-14: The retained reviewer cleared public head `76ed2e4`.
+- 2026-09-14: The first fresh private ARM build exposed TS2883 in five gateway
+  protocol registries. Exact explicit annotations preserve runtime and static
+  schema identity while making declaration output portable.
 
 ### Checklist
 

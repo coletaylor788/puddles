@@ -31,6 +31,7 @@ activated gateway. Keep the previous interpreter available for rollback.
 | `active-memory-fixture-cleanup.patch` | Join delayed recall fixtures before replacing shared test state |
 | `managed-local-service-lifecycle.patch` | Join gateway-owned service groups before stopped-state changes |
 | `gateway-memory-warmup.patch` | Prepare and retain managed local embeddings before readiness |
+| `gateway-protocol-declaration-portability.patch` | Keep protocol registry declarations portable across fresh installs |
 
 Each patch has a neighboring document explaining its behavior and history.
 Register new patches and every applicable test in the cumulative manifest at

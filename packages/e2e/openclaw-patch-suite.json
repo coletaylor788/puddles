@@ -47,7 +47,8 @@
     "src/gateway/server-startup-post-attach.test.ts": "gateway",
     "src/plugins/openai-compatible-embedding-provider.test.ts": "plugins",
     "extensions/llama-cpp/index.test.ts": "extensions",
-    "extensions/llama-cpp/src/managed-server.test.ts": "extensions"
+    "extensions/llama-cpp/src/managed-server.test.ts": "extensions",
+    "packages/gateway-protocol/src/schema/protocol-schema-fragment-portability.test.ts": "gateway-client"
   },
   "patches": [
     {
@@ -189,6 +190,12 @@
       "name": "active-memory-fixture-cleanup",
       "tests": [
         "extensions/active-memory/index.test.ts"
+      ]
+    },
+    {
+      "name": "gateway-protocol-declaration-portability",
+      "tests": [
+        "packages/gateway-protocol/src/schema/protocol-schema-fragment-portability.test.ts"
       ]
     }
   ]

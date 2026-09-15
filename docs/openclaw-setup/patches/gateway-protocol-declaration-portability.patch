@@ -1,0 +1,473 @@
+diff --git a/packages/gateway-protocol/src/schema/protocol-schema-fragment-agent-control.ts b/packages/gateway-protocol/src/schema/protocol-schema-fragment-agent-control.ts
+index d014009c723a668613542b02c13660dcc0992dcb..f3edbb30e72b1a3cbc7baa48ae4778f879254b16 100644
+--- a/packages/gateway-protocol/src/schema/protocol-schema-fragment-agent-control.ts
++++ b/packages/gateway-protocol/src/schema/protocol-schema-fragment-agent-control.ts
+@@ -6,7 +6,87 @@ import * as projects from "./projects.js";
+ import * as systemInfo from "./system-info.js";
+ import * as worktrees from "./worktrees.js";
+ 
+-export const AgentControlProtocolSchemas = {
++export const AgentControlProtocolSchemas: {
++  readonly EnvironmentStatus: typeof environments.EnvironmentStatusSchema;
++  readonly WorkerEnvironmentState: typeof environments.WorkerEnvironmentStateSchema;
++  readonly WorkerTunnelStatus: typeof environments.WorkerTunnelStatusSchema;
++  readonly WorkerDesktopAppId: typeof environments.WorkerDesktopAppIdSchema;
++  readonly RequiredNodeCommandState: typeof environments.RequiredNodeCommandStateSchema;
++  readonly RequiredNodeCommand: typeof environments.RequiredNodeCommandSchema;
++  readonly WorkerEnvironmentMetadata: typeof environments.WorkerEnvironmentMetadataSchema;
++  readonly WorkerSlotSummary: typeof environments.WorkerSlotSummarySchema;
++  readonly EnvironmentSummary: typeof environments.EnvironmentSummarySchema;
++  readonly EnvironmentsCreateParams: typeof environments.EnvironmentsCreateParamsSchema;
++  readonly EnvironmentsCreateResult: typeof environments.EnvironmentsCreateResultSchema;
++  readonly EnvironmentsDestroyParams: typeof environments.EnvironmentsDestroyParamsSchema;
++  readonly EnvironmentsDestroyResult: typeof environments.EnvironmentsDestroyResultSchema;
++  readonly EnvironmentsListParams: typeof environments.EnvironmentsListParamsSchema;
++  readonly EnvironmentsListResult: typeof environments.EnvironmentsListResultSchema;
++  readonly EnvironmentsStatusParams: typeof environments.EnvironmentsStatusParamsSchema;
++  readonly EnvironmentsStatusResult: typeof environments.EnvironmentsStatusResultSchema;
++  readonly WorkerDesktopObserveParams: typeof environments.WorkerDesktopObserveParamsSchema;
++  readonly WorkerDesktopObserveResult: typeof environments.WorkerDesktopObserveResultSchema;
++  readonly WorkerDesktopLaunchParams: typeof environments.WorkerDesktopLaunchParamsSchema;
++  readonly WorkerDesktopLaunchResult: typeof environments.WorkerDesktopLaunchResultSchema;
++  readonly ProjectCheckout: typeof projects.ProjectCheckoutSchema;
++  readonly ProjectSummary: typeof projects.ProjectSummarySchema;
++  readonly DesktopSource: typeof desktop.DesktopSourceSchema;
++  readonly DesktopObserveParams: typeof desktop.DesktopObserveParamsSchema;
++  readonly DesktopObserveResult: typeof desktop.DesktopObserveResultSchema;
++  readonly DesktopLaunchParams: typeof desktop.DesktopLaunchParamsSchema;
++  readonly SystemInfoParams: typeof systemInfo.SystemInfoParamsSchema;
++  readonly SystemInfoResult: typeof systemInfo.SystemInfoResultSchema;
++  readonly AgentEvent: typeof agent.AgentEventSchema;
++  readonly ConversationSendParams: typeof agent.ConversationSendParamsSchema;
++  readonly ConversationSendResult: typeof agent.ConversationSendResultSchema;
++  readonly ConversationListItem: typeof agent.ConversationListItemSchema;
++  readonly ConversationListParams: typeof agent.ConversationListParamsSchema;
++  readonly ConversationListResult: typeof agent.ConversationListResultSchema;
++  readonly ConversationTurnCancelParams: typeof agent.ConversationTurnCancelParamsSchema;
++  readonly ConversationTurnCancelResult: typeof agent.ConversationTurnCancelResultSchema;
++  readonly ConversationTurnParams: typeof agent.ConversationTurnParamsSchema;
++  readonly ConversationTurnReply: typeof agent.ConversationTurnReplySchema;
++  readonly ConversationTurnResult: typeof agent.ConversationTurnResultSchema;
++  readonly MessageActionParams: typeof agent.MessageActionParamsSchema;
++  readonly SendParams: typeof agent.SendParamsSchema;
++  readonly PollParams: typeof agent.PollParamsSchema;
++  readonly AgentParams: typeof agent.AgentParamsSchema;
++  readonly AgentIdentityParams: typeof agent.AgentIdentityParamsSchema;
++  readonly AgentIdentityResult: typeof agent.AgentIdentityResultSchema;
++  readonly AgentWaitParams: typeof agent.AgentWaitParamsSchema;
++  readonly WakeParams: typeof agent.WakeParamsSchema;
++  readonly ProjectRecord: typeof projects.ProjectRecordSchema;
++  readonly ProjectRecentFolder: typeof projects.ProjectRecentFolderSchema;
++  readonly ProjectRecentProject: typeof projects.ProjectRecentProjectSchema;
++  readonly ProjectRecent: typeof projects.ProjectRecentSchema;
++  readonly ProjectsListParams: typeof projects.ProjectsListParamsSchema;
++  readonly ProjectsListResult: typeof projects.ProjectsListResultSchema;
++  readonly ProjectsRegisterParams: typeof projects.ProjectsRegisterParamsSchema;
++  readonly ProjectsRegisterResult: typeof projects.ProjectsRegisterResultSchema;
++  readonly ProjectsAddParams: typeof projects.ProjectsAddParamsSchema;
++  readonly ProjectsAddResult: typeof projects.ProjectsAddResultSchema;
++  readonly RemoteProject: typeof projects.RemoteProjectSchema;
++  readonly ProjectsSearchRemoteParams: typeof projects.ProjectsSearchRemoteParamsSchema;
++  readonly ProjectsSearchRemoteResult: typeof projects.ProjectsSearchRemoteResultSchema;
++  readonly ProjectsRemoveParams: typeof projects.ProjectsRemoveParamsSchema;
++  readonly ProjectsRemoveResult: typeof projects.ProjectsRemoveResultSchema;
++  readonly WorktreeRecord: typeof worktrees.WorktreeRecordSchema;
++  readonly WorktreesListParams: typeof worktrees.WorktreesListParamsSchema;
++  readonly WorktreesListResult: typeof worktrees.WorktreesListResultSchema;
++  readonly WorktreesCreateParams: typeof worktrees.WorktreesCreateParamsSchema;
++  readonly WorktreesRemoveParams: typeof worktrees.WorktreesRemoveParamsSchema;
++  readonly WorktreesRemoveResult: typeof worktrees.WorktreesRemoveResultSchema;
++  readonly WorktreesRestoreParams: typeof worktrees.WorktreesRestoreParamsSchema;
++  readonly WorktreesGcParams: typeof worktrees.WorktreesGcParamsSchema;
++  readonly WorktreesGcResult: typeof worktrees.WorktreesGcResultSchema;
++  readonly WorktreeBranch: typeof worktrees.WorktreeBranchSchema;
++  readonly WorktreeRepositoryStatus: typeof worktrees.WorktreeRepositoryStatusSchema;
++  readonly WorktreesBranchesParams: typeof worktrees.WorktreesBranchesParamsSchema;
++  readonly WorktreesBranchesResult: typeof worktrees.WorktreesBranchesResultSchema;
++  readonly FsDirEntry: typeof fsSchemas.FsDirEntrySchema;
++  readonly FsListDirParams: typeof fsSchemas.FsListDirParamsSchema;
++  readonly FsListDirResult: typeof fsSchemas.FsListDirResultSchema;
++} = {
+   EnvironmentStatus: environments.EnvironmentStatusSchema,
+   WorkerEnvironmentState: environments.WorkerEnvironmentStateSchema,
+   WorkerTunnelStatus: environments.WorkerTunnelStatusSchema,
+diff --git a/packages/gateway-protocol/src/schema/protocol-schema-fragment-agents-skills.ts b/packages/gateway-protocol/src/schema/protocol-schema-fragment-agents-skills.ts
+index 465733842c940eb7268e261ae301fab9dfe8b21e..b27cf1464554d038b5fdc0f3cd56cf025653f569 100644
+--- a/packages/gateway-protocol/src/schema/protocol-schema-fragment-agents-skills.ts
++++ b/packages/gateway-protocol/src/schema/protocol-schema-fragment-agents-skills.ts
+@@ -6,7 +6,145 @@ import * as skillHistory from "./skill-history.js";
+ import * as skillLibrary from "./skill-library.js";
+ import * as transcripts from "./transcripts.js";
+ 
+-export const AgentSkillProtocolSchemas = {
++export const AgentSkillProtocolSchemas: {
++  readonly TranscriptSessionSummary: typeof transcripts.TranscriptSessionSummarySchema;
++  readonly TranscriptsListParams: typeof transcripts.TranscriptsListParamsSchema;
++  readonly TranscriptsListResult: typeof transcripts.TranscriptsListResultSchema;
++  readonly TranscriptsGetParams: typeof transcripts.TranscriptsGetParamsSchema;
++  readonly TranscriptsGetResult: typeof transcripts.TranscriptsGetResultSchema;
++  readonly SkillsLibraryListParams: typeof skillLibrary.SkillsLibraryListParamsSchema;
++  readonly SkillsLibraryReadParams: typeof skillLibrary.SkillsLibraryReadParamsSchema;
++  readonly SkillsLibrarySaveParams: typeof skillLibrary.SkillsLibrarySaveParamsSchema;
++  readonly SkillsLibraryMutateParams: typeof skillLibrary.SkillsLibraryMutateParamsSchema;
++  readonly SkillsLibraryActivateParams: typeof skillLibrary.SkillsLibraryActivateParamsSchema;
++  readonly SkillsLibraryImportParams: typeof skillLibrary.SkillsLibraryImportParamsSchema;
++  readonly SkillsLibraryUploadParams: typeof skillLibrary.SkillsLibraryUploadParamsSchema;
++  readonly AgentKind: typeof agentsModelsSkills.AgentKindSchema;
++  readonly AgentSummary: typeof agentsModelsSkills.AgentSummarySchema;
++  readonly AgentsCreateParams: typeof agentsModelsSkills.AgentsCreateParamsSchema;
++  readonly AgentsCreateResult: typeof agentsModelsSkills.AgentsCreateResultSchema;
++  readonly AgentsUpdateParams: typeof agentsModelsSkills.AgentsUpdateParamsSchema;
++  readonly AgentsUpdateResult: typeof agentsModelsSkills.AgentsUpdateResultSchema;
++  readonly AgentsDeleteParams: typeof agentsModelsSkills.AgentsDeleteParamsSchema;
++  readonly AgentsDeleteResult: typeof agentsModelsSkills.AgentsDeleteResultSchema;
++  readonly AgentsFileEntry: typeof agentsModelsSkills.AgentsFileEntrySchema;
++  readonly AgentsFilesListParams: typeof agentsModelsSkills.AgentsFilesListParamsSchema;
++  readonly AgentsFilesListResult: typeof agentsModelsSkills.AgentsFilesListResultSchema;
++  readonly AgentsFilesGetParams: typeof agentsModelsSkills.AgentsFilesGetParamsSchema;
++  readonly AgentsFilesGetResult: typeof agentsModelsSkills.AgentsFilesGetResultSchema;
++  readonly AgentsFilesSetParams: typeof agentsModelsSkills.AgentsFilesSetParamsSchema;
++  readonly AgentsFilesSetResult: typeof agentsModelsSkills.AgentsFilesSetResultSchema;
++  readonly AgentsWorkspaceEntry: typeof agentsWorkspace.AgentsWorkspaceEntrySchema;
++  readonly AgentsWorkspaceFile: typeof agentsWorkspace.AgentsWorkspaceFileSchema;
++  readonly AgentsWorkspaceListParams: typeof agentsWorkspace.AgentsWorkspaceListParamsSchema;
++  readonly AgentsWorkspaceListResult: typeof agentsWorkspace.AgentsWorkspaceListResultSchema;
++  readonly AgentsWorkspaceGetParams: typeof agentsWorkspace.AgentsWorkspaceGetParamsSchema;
++  readonly AgentsWorkspaceGetResult: typeof agentsWorkspace.AgentsWorkspaceGetResultSchema;
++  readonly ArtifactSummary: typeof artifacts.ArtifactSummarySchema;
++  readonly ArtifactsListParams: typeof artifacts.ArtifactsListParamsSchema;
++  readonly ArtifactsListResult: typeof artifacts.ArtifactsListResultSchema;
++  readonly ArtifactsGetParams: typeof artifacts.ArtifactsGetParamsSchema;
++  readonly ArtifactsGetResult: typeof artifacts.ArtifactsGetResultSchema;
++  readonly ArtifactsDownloadParams: typeof artifacts.ArtifactsDownloadParamsSchema;
++  readonly ArtifactsDownloadResult: typeof artifacts.ArtifactsDownloadResultSchema;
++  readonly AgentsListParams: typeof agentsModelsSkills.AgentsListParamsSchema;
++  readonly AgentsListResult: typeof agentsModelsSkills.AgentsListResultSchema;
++  readonly ModelChoice: typeof agentsModelsSkills.ModelChoiceSchema;
++  readonly ModelsAuthLogoutParams: typeof agentsModelsSkills.ModelsAuthLogoutParamsSchema;
++  readonly ModelsAuthOrderSetParams: typeof agentsModelsSkills.ModelsAuthOrderSetParamsSchema;
++  readonly ModelsAuthStatusParams: typeof agentsModelsSkills.ModelsAuthStatusParamsSchema;
++  readonly ModelsListParams: typeof agentsModelsSkills.ModelsListParamsSchema;
++  readonly ModelsListResult: typeof agentsModelsSkills.ModelsListResultSchema;
++  readonly ModelsProbeParams: typeof agentsModelsSkills.ModelsProbeParamsSchema;
++  readonly ModelsProbeTargetResult: typeof agentsModelsSkills.ModelsProbeTargetResultSchema;
++  readonly ModelsProbeResult: typeof agentsModelsSkills.ModelsProbeResultSchema;
++  readonly CommandEntry: typeof commands.CommandEntrySchema;
++  readonly CommandsListParams: typeof commands.CommandsListParamsSchema;
++  readonly CommandsListResult: typeof commands.CommandsListResultSchema;
++  readonly SkillsStatusParams: typeof agentsModelsSkills.SkillsStatusParamsSchema;
++  readonly ToolsCatalogParams: typeof agentsModelsSkills.ToolsCatalogParamsSchema;
++  readonly GitHubIdentitySource: typeof agentsModelsSkills.GitHubIdentitySourceSchema;
++  readonly GitHubAuthor: typeof agentsModelsSkills.GitHubAuthorSchema;
++  readonly GitHubIdentityFacts: typeof agentsModelsSkills.GitHubIdentityFactsSchema;
++  readonly GitHubIdentityScope: typeof agentsModelsSkills.GitHubIdentityScopeSchema;
++  readonly GitHubSelectedIdentity: typeof agentsModelsSkills.GitHubSelectedIdentitySchema;
++  readonly ToolsGitHubStatusParams: typeof agentsModelsSkills.ToolsGitHubStatusParamsSchema;
++  readonly ToolsGitHubStatusResult: typeof agentsModelsSkills.ToolsGitHubStatusResultSchema;
++  readonly ToolsGitHubManagedConfigureParams: typeof agentsModelsSkills.ToolsGitHubManagedConfigureParamsSchema;
++  readonly ToolsGitHubInheritConfigureParams: typeof agentsModelsSkills.ToolsGitHubInheritConfigureParamsSchema;
++  readonly ToolsGitHubConfigureParams: typeof agentsModelsSkills.ToolsGitHubConfigureParamsSchema;
++  readonly ToolsGitHubAuthorizeStartParams: typeof agentsModelsSkills.ToolsGitHubAuthorizeStartParamsSchema;
++  readonly ToolsGitHubAuthorizeStartResult: typeof agentsModelsSkills.ToolsGitHubAuthorizeStartResultSchema;
++  readonly ToolsGitHubAuthorizePollParams: typeof agentsModelsSkills.ToolsGitHubAuthorizePollParamsSchema;
++  readonly ToolsGitHubAuthorizePendingResult: typeof agentsModelsSkills.ToolsGitHubAuthorizePendingResultSchema;
++  readonly ToolsGitHubAuthorizeSlowDownResult: typeof agentsModelsSkills.ToolsGitHubAuthorizeSlowDownResultSchema;
++  readonly ToolsGitHubAuthorizeAccessDeniedResult: typeof agentsModelsSkills.ToolsGitHubAuthorizeAccessDeniedResultSchema;
++  readonly ToolsGitHubAuthorizeExpiredResult: typeof agentsModelsSkills.ToolsGitHubAuthorizeExpiredResultSchema;
++  readonly ToolsGitHubAuthorizeIncorrectDeviceCodeResult: typeof agentsModelsSkills.ToolsGitHubAuthorizeIncorrectDeviceCodeResultSchema;
++  readonly ToolsGitHubAuthorizeNetworkErrorResult: typeof agentsModelsSkills.ToolsGitHubAuthorizeNetworkErrorResultSchema;
++  readonly ToolsGitHubAuthorizeFailedResult: typeof agentsModelsSkills.ToolsGitHubAuthorizeFailedResultSchema;
++  readonly ToolsGitHubAuthorizeSuccessResult: typeof agentsModelsSkills.ToolsGitHubAuthorizeSuccessResultSchema;
++  readonly ToolsGitHubAuthorizePollResult: typeof agentsModelsSkills.ToolsGitHubAuthorizePollResultSchema;
++  readonly ToolsGitHubAuthorizeCancelParams: typeof agentsModelsSkills.ToolsGitHubAuthorizeCancelParamsSchema;
++  readonly ToolsGitHubAuthorizeCancelResult: typeof agentsModelsSkills.ToolsGitHubAuthorizeCancelResultSchema;
++  readonly ToolCatalogProfile: typeof agentsModelsSkills.ToolCatalogProfileSchema;
++  readonly ToolCatalogEntry: typeof agentsModelsSkills.ToolCatalogEntrySchema;
++  readonly ToolCatalogGroup: typeof agentsModelsSkills.ToolCatalogGroupSchema;
++  readonly ToolsCatalogResult: typeof agentsModelsSkills.ToolsCatalogResultSchema;
++  readonly ToolsEffectiveParams: typeof agentsModelsSkills.ToolsEffectiveParamsSchema;
++  readonly ToolsEffectiveEntry: typeof agentsModelsSkills.ToolsEffectiveEntrySchema;
++  readonly ToolsEffectiveGroup: typeof agentsModelsSkills.ToolsEffectiveGroupSchema;
++  readonly ToolsEffectiveNotice: typeof agentsModelsSkills.ToolsEffectiveNoticeSchema;
++  readonly ToolsEffectiveResult: typeof agentsModelsSkills.ToolsEffectiveResultSchema;
++  readonly ToolsInvokeParams: typeof agentsModelsSkills.ToolsInvokeParamsSchema;
++  readonly ToolsInvokeError: typeof agentsModelsSkills.ToolsInvokeErrorSchema;
++  readonly ToolsInvokeResult: typeof agentsModelsSkills.ToolsInvokeResultSchema;
++  readonly SkillsBinsParams: typeof agentsModelsSkills.SkillsBinsParamsSchema;
++  readonly SkillsBinsResult: typeof agentsModelsSkills.SkillsBinsResultSchema;
++  readonly SkillsSearchParams: typeof agentsModelsSkills.SkillsSearchParamsSchema;
++  readonly SkillsSearchResult: typeof agentsModelsSkills.SkillsSearchResultSchema;
++  readonly SkillsDetailParams: typeof agentsModelsSkills.SkillsDetailParamsSchema;
++  readonly SkillsDetailResult: typeof agentsModelsSkills.SkillsDetailResultSchema;
++  readonly SkillsCuratorActionParams: typeof agentsModelsSkills.SkillsCuratorActionParamsSchema;
++  readonly SkillsCuratorActionResult: typeof agentsModelsSkills.SkillsCuratorActionResultSchema;
++  readonly SkillsCuratorStatusParams: typeof agentsModelsSkills.SkillsCuratorStatusParamsSchema;
++  readonly SkillsCuratorStatusResult: typeof agentsModelsSkills.SkillsCuratorStatusResultSchema;
++  readonly SkillsProposalsListParams: typeof agentsModelsSkills.SkillsProposalsListParamsSchema;
++  readonly SkillsProposalsListResult: typeof agentsModelsSkills.SkillsProposalsListResultSchema;
++  readonly SkillsWorkshopReadParams: typeof agentsModelsSkills.SkillsWorkshopReadParamsSchema;
++  readonly SkillsWorkshopReadResult: typeof agentsModelsSkills.SkillsWorkshopReadResultSchema;
++  readonly SkillsProposalEvaluateParams: typeof agentsModelsSkills.SkillsProposalEvaluateParamsSchema;
++  readonly SkillsProposalEvaluateResult: typeof agentsModelsSkills.SkillsProposalEvaluateResultSchema;
++  readonly SkillsProposalEventsListParams: typeof agentsModelsSkills.SkillsProposalEventsListParamsSchema;
++  readonly SkillsProposalEventsListResult: typeof agentsModelsSkills.SkillsProposalEventsListResultSchema;
++  readonly SkillsProposalHistoryStatusParams: typeof skillHistory.SkillsProposalHistoryStatusParamsSchema;
++  readonly SkillsProposalHistoryScanParams: typeof skillHistory.SkillsProposalHistoryScanParamsSchema;
++  readonly SkillsProposalHistoryScanResult: typeof skillHistory.SkillsProposalHistoryScanResultSchema;
++  readonly SkillsProposalInspectParams: typeof agentsModelsSkills.SkillsProposalInspectParamsSchema;
++  readonly SkillsProposalInspectResult: typeof agentsModelsSkills.SkillsProposalInspectResultSchema;
++  readonly SkillsProposalCreateParams: typeof agentsModelsSkills.SkillsProposalCreateParamsSchema;
++  readonly SkillsProposalUpdateParams: typeof agentsModelsSkills.SkillsProposalUpdateParamsSchema;
++  readonly SkillsProposalReviseParams: typeof agentsModelsSkills.SkillsProposalReviseParamsSchema;
++  readonly SkillsProposalRequestRevisionParams: typeof agentsModelsSkills.SkillsProposalRequestRevisionParamsSchema;
++  readonly SkillsProposalRequestRevisionResult: typeof agentsModelsSkills.SkillsProposalRequestRevisionResultSchema;
++  readonly SkillsProposalDecisionParams: typeof agentsModelsSkills.SkillsProposalDecisionParamsSchema;
++  readonly SkillsProposalActionParams: typeof agentsModelsSkills.SkillsProposalActionParamsSchema;
++  readonly SkillsProposalApplyResult: typeof agentsModelsSkills.SkillsProposalApplyResultSchema;
++  readonly SkillsProposalRecordResult: typeof agentsModelsSkills.SkillsProposalRecordResultSchema;
++  readonly SkillsSecurityVerdictsParams: typeof agentsModelsSkills.SkillsSecurityVerdictsParamsSchema;
++  readonly SkillsSecurityVerdictsResult: typeof agentsModelsSkills.SkillsSecurityVerdictsResultSchema;
++  readonly SkillsSkillCardParams: typeof agentsModelsSkills.SkillsSkillCardParamsSchema;
++  readonly SkillsSkillCardResult: typeof agentsModelsSkills.SkillsSkillCardResultSchema;
++  readonly SkillsUploadBeginParams: typeof agentsModelsSkills.SkillsUploadBeginParamsSchema;
++  readonly SkillsUploadChunkParams: typeof agentsModelsSkills.SkillsUploadChunkParamsSchema;
++  readonly SkillsUploadCommitParams: typeof agentsModelsSkills.SkillsUploadCommitParamsSchema;
++  readonly SkillsInstallParams: typeof agentsModelsSkills.SkillsInstallParamsSchema;
++  readonly SkillsUpdateParams: typeof agentsModelsSkills.SkillsUpdateParamsSchema;
++  readonly TranscriptsExportParams: typeof transcripts.TranscriptsExportParamsSchema;
++  readonly TranscriptsExportResult: typeof transcripts.TranscriptsExportResultSchema;
++  readonly TranscriptsStatusParams: typeof transcripts.TranscriptsStatusParamsSchema;
++  readonly TranscriptsStatusResult: typeof transcripts.TranscriptsStatusResultSchema;
++} = {
+   TranscriptSessionSummary: transcripts.TranscriptSessionSummarySchema,
+   TranscriptsListParams: transcripts.TranscriptsListParamsSchema,
+   TranscriptsListResult: transcripts.TranscriptsListResultSchema,
+diff --git a/packages/gateway-protocol/src/schema/protocol-schema-fragment-approvals.ts b/packages/gateway-protocol/src/schema/protocol-schema-fragment-approvals.ts
+index f2cf59fa6bdec4681c82924df72617049802b362..2129f0e9f0a7e84fed65b13676cce2a5be991e93 100644
+--- a/packages/gateway-protocol/src/schema/protocol-schema-fragment-approvals.ts
++++ b/packages/gateway-protocol/src/schema/protocol-schema-fragment-approvals.ts
+@@ -2,7 +2,77 @@ import * as approvals from "./approvals.js";
+ import * as execApprovals from "./exec-approvals.js";
+ import * as questions from "./questions.js";
+ 
+-export const ApprovalProtocolSchemas = {
++export const ApprovalProtocolSchemas: {
++  readonly ApprovalKind: typeof approvals.ApprovalKindSchema;
++  readonly ApprovalDecision: typeof approvals.ApprovalDecisionSchema;
++  readonly ApprovalAllowDecision: typeof approvals.ApprovalAllowDecisionSchema;
++  readonly ApprovalAllowedReason: typeof approvals.ApprovalAllowedReasonSchema;
++  readonly ApprovalDeniedReason: typeof approvals.ApprovalDeniedReasonSchema;
++  readonly ApprovalExpiredReason: typeof approvals.ApprovalExpiredReasonSchema;
++  readonly ApprovalCancelledReason: typeof approvals.ApprovalCancelledReasonSchema;
++  readonly PluginApprovalSeverity: typeof approvals.PluginApprovalSeveritySchema;
++  readonly MessageSendApprovalScope: typeof approvals.MessageSendApprovalScopeSchema;
++  readonly PaymentApprovalScope: typeof approvals.PaymentApprovalScopeSchema;
++  readonly ExternalPostApprovalScope: typeof approvals.ExternalPostApprovalScopeSchema;
++  readonly StandingGrantApprovalScope: typeof approvals.StandingGrantApprovalScopeSchema;
++  readonly ApprovalScope: typeof approvals.ApprovalScopeSchema;
++  readonly PluginApprovalExternalResolution: typeof approvals.PluginApprovalExternalResolutionSchema;
++  readonly ExecApprovalPresentation: typeof approvals.ExecApprovalPresentationSchema;
++  readonly PluginApprovalPresentation: typeof approvals.PluginApprovalPresentationSchema;
++  readonly SystemAgentApprovalPresentation: typeof approvals.SystemAgentApprovalPresentationSchema;
++  readonly ApprovalPresentation: typeof approvals.ApprovalPresentationSchema;
++  readonly PendingApprovalSnapshot: typeof approvals.PendingApprovalSnapshotSchema;
++  readonly AllowedApprovalSnapshot: typeof approvals.AllowedApprovalSnapshotSchema;
++  readonly DeniedApprovalSnapshot: typeof approvals.DeniedApprovalSnapshotSchema;
++  readonly ExpiredApprovalSnapshot: typeof approvals.ExpiredApprovalSnapshotSchema;
++  readonly CancelledApprovalSnapshot: typeof approvals.CancelledApprovalSnapshotSchema;
++  readonly ApprovalSnapshot: typeof approvals.ApprovalSnapshotSchema;
++  readonly ApprovalTerminalReason: typeof approvals.ApprovalTerminalReasonSchema;
++  readonly TerminalApprovalSnapshot: typeof approvals.TerminalApprovalSnapshotSchema;
++  readonly ApprovalGetParams: typeof approvals.ApprovalGetParamsSchema;
++  readonly ApprovalGetResult: typeof approvals.ApprovalGetResultSchema;
++  readonly ApprovalHistoryParams: typeof approvals.ApprovalHistoryParamsSchema;
++  readonly ApprovalHistoryResult: typeof approvals.ApprovalHistoryResultSchema;
++  readonly ApprovalResolveParams: typeof approvals.ApprovalResolveParamsSchema;
++  readonly ApprovalResolveResult: typeof approvals.ApprovalResolveResultSchema;
++  readonly PendingSessionApprovalEvent: typeof approvals.PendingSessionApprovalEventSchema;
++  readonly TerminalSessionApprovalEvent: typeof approvals.TerminalSessionApprovalEventSchema;
++  readonly SessionApprovalEvent: typeof approvals.SessionApprovalEventSchema;
++  readonly SessionApprovalReplay: typeof approvals.SessionApprovalReplaySchema;
++  readonly ExecApprovalsGetParams: typeof execApprovals.ExecApprovalsGetParamsSchema;
++  readonly ExecApprovalsSetParams: typeof execApprovals.ExecApprovalsSetParamsSchema;
++  readonly ExecApprovalsNodeGetParams: typeof execApprovals.ExecApprovalsNodeGetParamsSchema;
++  readonly ExecApprovalsNodeSnapshot: typeof execApprovals.ExecApprovalsNodeSnapshotSchema;
++  readonly ExecApprovalsNodeSetParams: typeof execApprovals.ExecApprovalsNodeSetParamsSchema;
++  readonly ExecApprovalsSnapshot: typeof execApprovals.ExecApprovalsSnapshotSchema;
++  readonly ExecApprovalGetParams: typeof execApprovals.ExecApprovalGetParamsSchema;
++  readonly ExecApprovalRequestParams: typeof execApprovals.ExecApprovalRequestParamsSchema;
++  readonly ExecApprovalResolveParams: typeof execApprovals.ExecApprovalResolveParamsSchema;
++  readonly ExecApprovalGrantsListParams: typeof execApprovals.ExecApprovalGrantsListParamsSchema;
++  readonly ExecApprovalStandingGrant: typeof execApprovals.ExecApprovalStandingGrantSchema;
++  readonly ExecApprovalGrantsListResult: typeof execApprovals.ExecApprovalGrantsListResultSchema;
++  readonly ExecApprovalGrantsRevokeParams: typeof execApprovals.ExecApprovalGrantsRevokeParamsSchema;
++  readonly ExecApprovalGrantsRevokeResult: typeof execApprovals.ExecApprovalGrantsRevokeResultSchema;
++  readonly QuestionOption: typeof questions.QuestionOptionSchema;
++  readonly QuestionSecretStoreBinding: typeof questions.QuestionSecretStoreBindingSchema;
++  readonly QuestionSecretStoreExisting: typeof questions.QuestionSecretStoreExistingSchema;
++  readonly Question: typeof questions.QuestionSchema;
++  readonly QuestionRequestQuestion: typeof questions.QuestionRequestQuestionSchema;
++  readonly QuestionAnswers: typeof questions.QuestionAnswersSchema;
++  readonly QuestionStatus: typeof questions.QuestionStatusSchema;
++  readonly QuestionRecord: typeof questions.QuestionRecordSchema;
++  readonly QuestionRequestParams: typeof questions.QuestionRequestParamsSchema;
++  readonly QuestionRequestResult: typeof questions.QuestionRequestResultSchema;
++  readonly QuestionWaitAnswerParams: typeof questions.QuestionWaitAnswerParamsSchema;
++  readonly QuestionWaitAnswerResult: typeof questions.QuestionWaitAnswerResultSchema;
++  readonly QuestionResolveParams: typeof questions.QuestionResolveParamsSchema;
++  readonly QuestionResolveResult: typeof questions.QuestionResolveResultSchema;
++  readonly QuestionGetParams: typeof questions.QuestionGetParamsSchema;
++  readonly QuestionGetResult: typeof questions.QuestionGetResultSchema;
++  readonly QuestionListParams: typeof questions.QuestionListParamsSchema;
++  readonly QuestionListResult: typeof questions.QuestionListResultSchema;
++  readonly QuestionResolvedEvent: typeof questions.QuestionResolvedEventSchema;
++} = {
+   ApprovalKind: approvals.ApprovalKindSchema,
+   ApprovalDecision: approvals.ApprovalDecisionSchema,
+   ApprovalAllowDecision: approvals.ApprovalAllowDecisionSchema,
+diff --git a/packages/gateway-protocol/src/schema/protocol-schema-fragment-board.ts b/packages/gateway-protocol/src/schema/protocol-schema-fragment-board.ts
+index 49461d2eb16ea2e9e0b4a49adaa87035e1aba83a..444e5d0a6454f696a4024b30d5bd92cbf8980b95 100644
+--- a/packages/gateway-protocol/src/schema/protocol-schema-fragment-board.ts
++++ b/packages/gateway-protocol/src/schema/protocol-schema-fragment-board.ts
+@@ -2,7 +2,49 @@ import * as agentsModelsSkills from "./agents-models-skills.js";
+ import * as board from "./board.js";
+ import * as canvas from "./canvas.js";
+ 
+-export const BoardProtocolSchemas = {
++export const BoardProtocolSchemas: {
++  readonly CanvasDocumentViewParams: typeof canvas.CanvasDocumentViewParamsSchema;
++  readonly CanvasDocumentViewResult: typeof canvas.CanvasDocumentViewResultSchema;
++  readonly BoardTab: typeof board.BoardTabSchema;
++  readonly BoardWidget: typeof board.BoardWidgetSchema;
++  readonly BoardWidgetDeclared: typeof board.BoardWidgetDeclaredSchema;
++  readonly BoardSnapshot: typeof board.BoardSnapshotSchema;
++  readonly BoardTabCreateOp: typeof board.BoardTabCreateOpSchema;
++  readonly BoardTabUpdateOp: typeof board.BoardTabUpdateOpSchema;
++  readonly BoardTabDeleteOp: typeof board.BoardTabDeleteOpSchema;
++  readonly BoardTabsReorderOp: typeof board.BoardTabsReorderOpSchema;
++  readonly BoardWidgetMoveOp: typeof board.BoardWidgetMoveOpSchema;
++  readonly BoardWidgetResizeOp: typeof board.BoardWidgetResizeOpSchema;
++  readonly BoardWidgetRemoveOp: typeof board.BoardWidgetRemoveOpSchema;
++  readonly BoardOp: typeof board.BoardOpSchema;
++  readonly BoardMcpAppDescriptor: typeof board.BoardMcpAppDescriptorSchema;
++  readonly BoardWidgetHtmlContent: typeof board.BoardWidgetHtmlContentSchema;
++  readonly BoardWidgetMcpAppContent: typeof board.BoardWidgetMcpAppContentSchema;
++  readonly BoardWidgetMcpAppPutContent: typeof board.BoardWidgetMcpAppPutContentSchema;
++  readonly BoardWidgetPluginContent: typeof board.BoardWidgetPluginContentSchema;
++  readonly BoardWidgetRegisteredContent: typeof board.BoardWidgetRegisteredContentSchema;
++  readonly BoardCanvasDocumentSource: typeof board.BoardCanvasDocumentSourceSchema;
++  readonly BoardWidgetContent: typeof board.BoardWidgetContentSchema;
++  readonly BoardWidgetPutContent: typeof board.BoardWidgetPutContentSchema;
++  readonly BoardWidgetGeneratedIdentity: typeof board.BoardWidgetGeneratedIdentitySchema;
++  readonly BoardGetParams: typeof board.BoardGetParamsSchema;
++  readonly BoardUpdateParams: typeof board.BoardUpdateParamsSchema;
++  readonly BoardWidgetPutParams: typeof board.BoardWidgetPutParamsSchema;
++  readonly BoardWidgetPutResult: typeof board.BoardWidgetPutResultSchema;
++  readonly BoardWidgetGrantParams: typeof board.BoardWidgetGrantParamsSchema;
++  readonly BoardWidgetAppViewParams: typeof board.BoardWidgetAppViewParamsSchema;
++  readonly BoardWidgetAppViewResult: typeof board.BoardWidgetAppViewResultSchema;
++  readonly BoardEventParams: typeof board.BoardEventParamsSchema;
++  readonly BoardPromptAuthorizeParams: typeof board.BoardPromptAuthorizeParamsSchema;
++  readonly BoardDataReadParams: typeof board.BoardDataReadParamsSchema;
++  readonly BoardActionParams: typeof board.BoardActionParamsSchema;
++  readonly BoardChangedEvent: typeof board.BoardChangedEventSchema;
++  readonly BoardFocusTabCommand: typeof board.BoardFocusTabCommandSchema;
++  readonly BoardSetChatDockCommand: typeof board.BoardSetChatDockCommandSchema;
++  readonly BoardCommand: typeof board.BoardCommandSchema;
++  readonly BoardCommandEvent: typeof board.BoardCommandEventSchema;
++  readonly AuthProbeStatus: typeof agentsModelsSkills.AuthProbeStatusSchema;
++} = {
+   CanvasDocumentViewParams: canvas.CanvasDocumentViewParamsSchema,
+   CanvasDocumentViewResult: canvas.CanvasDocumentViewResultSchema,
+   BoardTab: board.BoardTabSchema,
+diff --git a/packages/gateway-protocol/src/schema/protocol-schema-fragment-portability.test.ts b/packages/gateway-protocol/src/schema/protocol-schema-fragment-portability.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..0764dbe73c8bf28405516b278311782e275d55ab
+--- /dev/null
++++ b/packages/gateway-protocol/src/schema/protocol-schema-fragment-portability.test.ts
+@@ -0,0 +1,31 @@
++import { expect, expectTypeOf, it } from "vitest";
++import { AgentsListResultSchema } from "./agents-models-skills.js";
++import { ApprovalHistoryResultSchema } from "./approvals.js";
++import { BoardSnapshotSchema } from "./board.js";
++import { EnvironmentsListResultSchema } from "./environments.js";
++import { AgentControlProtocolSchemas } from "./protocol-schema-fragment-agent-control.js";
++import { AgentSkillProtocolSchemas } from "./protocol-schema-fragment-agents-skills.js";
++import { ApprovalProtocolSchemas } from "./protocol-schema-fragment-approvals.js";
++import { BoardProtocolSchemas } from "./protocol-schema-fragment-board.js";
++import { TransportProtocolSchemas } from "./protocol-schema-fragment-transport.js";
++import { SnapshotSchema } from "./snapshot.js";
++
++it("keeps fragment registry values exact and nameable for declaration output", () => {
++  expect(TransportProtocolSchemas.Snapshot).toBe(SnapshotSchema);
++  expect(AgentControlProtocolSchemas.EnvironmentsListResult).toBe(EnvironmentsListResultSchema);
++  expect(AgentSkillProtocolSchemas.AgentsListResult).toBe(AgentsListResultSchema);
++  expect(ApprovalProtocolSchemas.ApprovalHistoryResult).toBe(ApprovalHistoryResultSchema);
++  expect(BoardProtocolSchemas.BoardSnapshot).toBe(BoardSnapshotSchema);
++
++  expectTypeOf(TransportProtocolSchemas.Snapshot).toEqualTypeOf<typeof SnapshotSchema>();
++  expectTypeOf(AgentControlProtocolSchemas.EnvironmentsListResult).toEqualTypeOf<
++    typeof EnvironmentsListResultSchema
++  >();
++  expectTypeOf(AgentSkillProtocolSchemas.AgentsListResult).toEqualTypeOf<
++    typeof AgentsListResultSchema
++  >();
++  expectTypeOf(ApprovalProtocolSchemas.ApprovalHistoryResult).toEqualTypeOf<
++    typeof ApprovalHistoryResultSchema
++  >();
++  expectTypeOf(BoardProtocolSchemas.BoardSnapshot).toEqualTypeOf<typeof BoardSnapshotSchema>();
++});
+diff --git a/packages/gateway-protocol/src/schema/protocol-schema-fragment-transport.ts b/packages/gateway-protocol/src/schema/protocol-schema-fragment-transport.ts
+index 45252ff0f0fa72b3cf23fade58e398a47a6bd3ef..5898173addcb8a2c42bbbc826df4b5d3154fecaa 100644
+--- a/packages/gateway-protocol/src/schema/protocol-schema-fragment-transport.ts
++++ b/packages/gateway-protocol/src/schema/protocol-schema-fragment-transport.ts
+@@ -4,7 +4,48 @@ import * as gatewaySuspend from "./gateway-suspend.js";
+ import * as snapshot from "./snapshot.js";
+ import * as workerAdmission from "./worker-admission.js";
+ 
+-export const TransportProtocolSchemas = {
++export const TransportProtocolSchemas: {
++  readonly ConnectParams: typeof frames.ConnectParamsSchema;
++  readonly WorkerAdmissionHandshake: typeof workerAdmission.WorkerAdmissionHandshakeSchema;
++  readonly HelloOk: typeof frames.HelloOkSchema;
++  readonly RequestFrame: typeof frames.RequestFrameSchema;
++  readonly ResponseFrame: typeof frames.ResponseFrameSchema;
++  readonly EventFrame: typeof frames.EventFrameSchema;
++  readonly GatewayFrame: typeof frames.GatewayFrameSchema;
++  readonly PresenceEntry: typeof snapshot.PresenceEntrySchema;
++  readonly StateVersion: typeof snapshot.StateVersionSchema;
++  readonly Snapshot: typeof snapshot.SnapshotSchema;
++  readonly ErrorShape: typeof frames.ErrorShapeSchema;
++  readonly CronJobNotFoundErrorDetails: typeof errorCodes.CronJobNotFoundErrorDetailsSchema;
++  readonly MissingScopeErrorDetails: typeof errorCodes.MissingScopeErrorDetailsSchema;
++  readonly McpAppViewExpiredErrorDetails: typeof errorCodes.McpAppViewExpiredErrorDetailsSchema;
++  readonly OutboundDeliveryQueuedErrorDetails: typeof errorCodes.OutboundDeliveryQueuedErrorDetailsSchema;
++  readonly SkillProposalRevisionChangedErrorDetails: typeof errorCodes.SkillProposalRevisionChangedErrorDetailsSchema;
++  readonly UnknownAgentIdErrorDetails: typeof errorCodes.UnknownAgentIdErrorDetailsSchema;
++  readonly WizardNotFoundErrorDetails: typeof errorCodes.WizardNotFoundErrorDetailsSchema;
++  readonly SetupAdmissionBusyErrorDetails: typeof errorCodes.SetupAdmissionBusyErrorDetailsSchema;
++  readonly GitHubPublicationSelectionRejectedErrorDetails: typeof errorCodes.GitHubPublicationSelectionRejectedErrorDetailsSchema;
++  readonly GatewayErrorDetails: typeof errorCodes.GatewayErrorDetailsSchema;
++  readonly ProjectCloneErrorDetails: typeof errorCodes.ProjectCloneErrorDetailsSchema;
++  readonly GatewaySuspendTaskBlocker: typeof gatewaySuspend.GatewaySuspendTaskBlockerSchema;
++  readonly GatewaySuspension: typeof gatewaySuspend.GatewaySuspensionSchema;
++  readonly GatewaySuspendBlocker: typeof gatewaySuspend.GatewaySuspendBlockerSchema;
++  readonly GatewaySuspendPrepareParams: typeof gatewaySuspend.GatewaySuspendPrepareParamsSchema;
++  readonly GatewaySuspendPrepareBusyResult: typeof gatewaySuspend.GatewaySuspendPrepareBusyResultSchema;
++  readonly GatewaySuspendPrepareDrainingResult: typeof gatewaySuspend.GatewaySuspendPrepareDrainingResultSchema;
++  readonly GatewaySuspendPrepareReadyResult: typeof gatewaySuspend.GatewaySuspendPrepareReadyResultSchema;
++  readonly GatewaySuspendPrepareResult: typeof gatewaySuspend.GatewaySuspendPrepareResultSchema;
++  readonly GatewaySuspendStatusParams: typeof gatewaySuspend.GatewaySuspendStatusParamsSchema;
++  readonly GatewaySuspendStatusRunningResult: typeof gatewaySuspend.GatewaySuspendStatusRunningResultSchema;
++  readonly GatewaySuspendStatusDrainingResult: typeof gatewaySuspend.GatewaySuspendStatusDrainingResultSchema;
++  readonly GatewaySuspendStatusReadyResult: typeof gatewaySuspend.GatewaySuspendStatusReadyResultSchema;
++  readonly GatewaySuspendStatusResult: typeof gatewaySuspend.GatewaySuspendStatusResultSchema;
++  readonly GatewaySuspendResumeParams: typeof gatewaySuspend.GatewaySuspendResumeParamsSchema;
++  readonly GatewaySuspendResumeResult: typeof gatewaySuspend.GatewaySuspendResumeResultSchema;
++  readonly GatewaySuspendHandoffParams: typeof gatewaySuspend.GatewaySuspendHandoffParamsSchema;
++  readonly GatewaySuspendHandoffResult: typeof gatewaySuspend.GatewaySuspendHandoffResultSchema;
++  readonly UserPrefsLimitExceededErrorDetails: typeof errorCodes.UserPrefsLimitExceededErrorDetailsSchema;
++} = {
+   ConnectParams: frames.ConnectParamsSchema,
+   WorkerAdmissionHandshake: workerAdmission.WorkerAdmissionHandshakeSchema,
+   HelloOk: frames.HelloOkSchema,
