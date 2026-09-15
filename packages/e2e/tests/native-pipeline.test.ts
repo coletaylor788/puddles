@@ -181,6 +181,8 @@ vi.mock("../src/native-fixture.mjs", async (original) => ({
 // @ts-expect-error JS lifecycle exports are tested at runtime.
 import { nativePipeline, nativeTargetPipeline, regressionEnvironment, removeOwnedWorktree, safeNode } from "../src/native-pipeline.mjs";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
+import { createRehearsalTarget } from "../src/native-target.mjs";
+// @ts-expect-error JS lifecycle exports are tested at runtime.
 import { atomicJson, jsonDigest, treeDigest } from "../src/native-state.mjs";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
 import { initializeArtifactPool, planArtifactCleanup } from "../src/native-retention.mjs";
@@ -606,13 +608,24 @@ it("retains a failed target reproduction and its diagnostics", async () => {
   const buildPath = join(run, "build.json");
   const build = JSON.parse(readFileSync(buildPath, "utf8"));
   const targetRoot = join(directory, "deployment-target");
-  const targetPath = join(targetRoot, "target.json");
-  for (const path of ["installed", "state", "backups"]) mkdirSync(join(targetRoot, path), { recursive: true });
-  writeFileSync(join(targetRoot, "gateway.plist"), "fixture service");
-  writeFileSync(targetPath, JSON.stringify({
+  const targetManifest = join(directory, "manifest", "target.json");
+  mkdirSync(dirname(targetManifest));
+  const seedRoot = join(directory, "target-seed");
+  for (const path of ["installed", "state"]) mkdirSync(join(seedRoot, path), { recursive: true });
+  writeFileSync(join(seedRoot, "installed/previous"), "previous runtime");
+  writeFileSync(join(seedRoot, "state/config"), "previous state");
+  writeFileSync(join(seedRoot, "gateway.plist"), "fixture service");
+  const seedPath = join(directory, "target-seed.json");
+  writeFileSync(seedPath, JSON.stringify({
+    schema: "puddles.openclaw-rehearsal-seed/v1",
+    installDir: join(seedRoot, "installed"),
+    stateDir: join(seedRoot, "state"),
+    plistPath: join(seedRoot, "gateway.plist"),
+  }));
+  writeFileSync(targetManifest, JSON.stringify({
     schemaVersion: 1,
     purpose: "rehearsal",
-    isolation: { schema: "puddles.openclaw-rehearsal-target/v1", root: realpathSync(targetRoot) },
+    isolation: { schema: "puddles.openclaw-rehearsal-target/v1", root: targetRoot },
     host: hostname(),
     installDir: join(targetRoot, "installed"),
     stateDir: join(targetRoot, "state"),
@@ -633,11 +646,51 @@ it("retains a failed target reproduction and its diagnostics", async () => {
   };`);
   vi.stubEnv("E2E_RUN_DIR", join(directory, "target-run"));
   vi.stubEnv("E2E_LOCAL_EXTENSION", module);
-  await expect(nativeTargetPipeline(buildPath, targetPath)).rejects.toThrow("synthetic installed failure");
+  await expect(nativeTargetPipeline(buildPath, targetManifest, seedPath)).rejects.toThrow("synthetic installed failure");
+  expect(readFileSync(join(targetRoot, "installed/previous"), "utf8")).toBe("previous runtime");
+  expect(readFileSync(join(targetRoot, "state/config"), "utf8")).toBe("previous state");
+  expect(existsSync(join(targetRoot, ".puddles-rehearsal-seed.json"))).toBe(true);
   const objects = readdirSync(join(pool, "objects"));
   expect(objects.some((name) => name.startsWith("failure-"))).toBe(true);
   expect(objects.some((name) => name.startsWith("log-"))).toBe(true);
   expect(JSON.parse(readFileSync(join(pool, "references/failed-debug.json"), "utf8")).objectIds).toHaveLength(1);
+});
+
+it("refuses to create a rehearsal target with a destination outside its root", () => {
+  const directory = mkdtempSync(join(tmpdir(), "native-target-create-test-"));
+  const seedRoot = join(directory, "seed");
+  for (const path of ["installed", "state"]) mkdirSync(join(seedRoot, path), { recursive: true });
+  writeFileSync(join(seedRoot, "gateway.plist"), "fixture service");
+  const seedPath = join(directory, "seed.json");
+  writeFileSync(seedPath, JSON.stringify({
+    schema: "puddles.openclaw-rehearsal-seed/v1",
+    installDir: join(seedRoot, "installed"),
+    stateDir: join(seedRoot, "state"),
+    plistPath: join(seedRoot, "gateway.plist"),
+  }));
+  const targetRoot = join(directory, "target");
+  expect(() => createRehearsalTarget({
+    schemaVersion: 1,
+    purpose: "rehearsal",
+    isolation: { schema: "puddles.openclaw-rehearsal-target/v1", root: targetRoot },
+    installDir: join(targetRoot, "installed"),
+    stateDir: join(directory, "outside"),
+    plistPath: join(targetRoot, "gateway.plist"),
+    backupRoot: join(targetRoot, "backups"),
+  }, seedPath)).toThrow("state directory");
+  expect(existsSync(targetRoot)).toBe(false);
+  symlinkSync(seedRoot, join(seedRoot, "state", "outside-link"));
+  expect(() => createRehearsalTarget({
+    schemaVersion: 1,
+    purpose: "rehearsal",
+    isolation: { schema: "puddles.openclaw-rehearsal-target/v1", root: targetRoot },
+    installDir: join(targetRoot, "installed"),
+    stateDir: join(targetRoot, "state"),
+    plistPath: join(targetRoot, "gateway.plist"),
+    backupRoot: join(targetRoot, "backups"),
+  }, seedPath)).toThrow("link outside");
+  expect(existsSync(targetRoot)).toBe(false);
+  rmSync(directory, { recursive: true, force: true });
 });
 
 it("seals and installs additional artifacts before rehearsal and invalidates only changed artifact proofs", async () => {

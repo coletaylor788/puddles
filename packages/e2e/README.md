@@ -163,7 +163,8 @@ node packages/e2e/bin/openclaw-release-bundle.mjs import \
 # Run archive-only checks against an explicit test-owned deployment target.
 E2E_RUN_DIR=/path/to/target-run E2E_LOCAL_EXTENSION=/path/to/adapter.mjs \
   node packages/e2e/bin/openclaw-test-env.mjs target \
-  /fresh/import/imported-build.json /path/to/rehearsal-target.json
+  /fresh/import/imported-build.json /path/to/rehearsal-target.json \
+  /path/to/rehearsal-seed.json
 
 # Reuse an installed candidate while changing scenario fixtures.
 OPENCLAW_CANDIDATE_DIR=/path/to/native-run/installed/runtime \
@@ -179,7 +180,17 @@ prepared-file mapping before giving installed hooks a digest-bound
 `deploymentTarget`. The target has `purpose: "rehearsal"` and an explicit
 test-owned isolation root. It contains host, Node migration, browser,
 additional install, prepared-file, and stopped-migration bindings. Installed
-hooks receive no source checkout or package workspace.
+hooks receive no source checkout or package workspace. For a new isolation
+root, the optional seed argument must use
+`puddles.openclaw-rehearsal-seed/v1` and name existing absolute `installDir`,
+`stateDir`, and `plistPath` inputs. When the target binds a stopped-state
+migration, the seed must also name its `stateMigrationPath`. The command copies
+those inputs into a new root atomically, records their digests, creates the
+backup root, and then runs the same target checks. The supplied service
+definition selects the test-only service identity and recording command shims;
+the public creator does not invent private configuration. It refuses an
+existing destination or paths outside the declared root. Omitting the seed
+keeps support for an already provisioned, explicit target.
 
 Use `openclaw-release.mjs target-proof` to derive physical success and rollback
 evidence from retained stage records and deployment recovery journals. Then use

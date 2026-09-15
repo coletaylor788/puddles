@@ -12,6 +12,7 @@ import { installRuntime, packProviderRuntime, packRuntime } from "./native-packa
 import { runCommand } from "./process-runner.mjs";
 import scenarios from "../scenarios/imessage.mjs";
 import { readMigrationManifest } from "./native-state-migration.mjs";
+import { createRehearsalTarget, rehearsalTargetSeed } from "./native-target.mjs";
 import { rehearseStateMigration } from "./native-state-migration-fixture.mjs";
 import { createBuildReceipt, createSourceGate, verifyBuildReceipt } from "./native-release.mjs";
 import { exportReleaseBundle } from "./native-release.mjs";
@@ -475,7 +476,7 @@ export async function nativePipeline(command, repositoryGates) {
   }
 }
 
-export async function nativeTargetPipeline(receiptPath, targetPath) {
+export async function nativeTargetPipeline(receiptPath, targetPath, seedPath) {
   const receipt = verifyBuildReceipt(JSON.parse(readFileSync(receiptPath, "utf8")));
   if (receipt.artifact.platform !== process.platform ||
       receipt.artifact.arch !== process.arch ||
@@ -484,8 +485,10 @@ export async function nativeTargetPipeline(receiptPath, targetPath) {
   }
   if (!targetPath) throw new Error("Artifact target requires an explicit rehearsal target");
   const target = JSON.parse(readFileSync(targetPath, "utf8"));
+  createRehearsalTarget(target, seedPath);
   validateTarget(target);
   verifyRehearsalTarget(target);
+  const seed = rehearsalTargetSeed(target);
   if ((receipt.stateMigration?.sha256 ?? null) !== (target.stateMigration?.sha256 ?? null)) {
     throw new Error("Target migration differs from the imported build");
   }
@@ -571,6 +574,7 @@ export async function nativeTargetPipeline(receiptPath, targetPath) {
       browser: target.browser ?? null,
       nodeMigration: target.nodeMigration ?? null,
       stateMigration: target.stateMigration ?? null,
+      seed,
     };
     if (target.stateMigration) context.stateMigration = target.stateMigration;
     context.sourceDir = undefined;
@@ -622,6 +626,7 @@ export async function nativeTargetPipeline(receiptPath, targetPath) {
       scenarios: jsonDigest(runtimeScenarios),
       environment: jsonDigest(fixtureEnv(context)),
       stateMigration: receipt.stateMigration ?? null,
+      seedSha256: seed?.sha256 ?? null,
     }, async () => {
       const before = treeDigest(installedDir, { portable: true });
       const additionalBefore = Object.fromEntries(
@@ -655,6 +660,7 @@ export async function nativeTargetPipeline(receiptPath, targetPath) {
       scenarios: runtime.scenarios.length,
       adapterSha256: extension.hash,
       adapterInputs: extension.inputs?.map(fileDigest) ?? [],
+      seedSha256: seed?.sha256 ?? null,
     };
     atomicJson(join(runDir, "installed-proof.json"), result);
     if (artifactPool) {
@@ -673,6 +679,7 @@ export async function nativeTargetPipeline(receiptPath, targetPath) {
           assets: [
             { source: join(runDir, "installed-proof.json"), path: "installed-proof.json" },
             { source: stageProofs, path: "proofs" },
+            ...(seed ? [{ source: seed.path, path: "target-seed.json" }] : []),
           ],
         });
         setRetentionReference(artifactPool, {
@@ -704,6 +711,7 @@ export async function nativeTargetPipeline(receiptPath, targetPath) {
             runDir,
             new Date(),
             build ? [build.metadata.id] : [],
+            seed ? [{ source: seed.path, path: "target-seed.json" }] : [],
           );
           registerDiagnosticLogs(artifactPool, runDir);
           removeRetentionReference(artifactPool, retentionReference);

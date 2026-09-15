@@ -49,8 +49,15 @@ identity. `build` creates a noneligible immutable build receipt. Export and
 import move only its declared archives, provenance, prepared files, and
 normalized manifest. The importer needs no builder checkout or development
 dependencies. `source-gate` records source-dependent accumulated checks on the
-builder. `target IMPORTED_BUILD_JSON TARGET_JSON` runs archive-only installed
-checks against the exact rehearsal target.
+builder. `target IMPORTED_BUILD_JSON TARGET_JSON [TARGET_SEED_JSON]` runs
+archive-only installed checks against the exact rehearsal target. For a new
+physical root, the seed uses `puddles.openclaw-rehearsal-seed/v1` and names the
+existing absolute install, state, and service definition inputs. The public
+command copies those inputs into the new test-owned root atomically and records
+their digests before any target checks. A target with a stopped-state migration
+also requires `stateMigrationPath`; its bytes must match the target's bound
+digest. The supplied service definition carries the rehearsal-only service
+identity and recording shims.
 
 The rehearsal target uses the normal deployment schema plus
 `"purpose": "rehearsal"` and an isolation record:

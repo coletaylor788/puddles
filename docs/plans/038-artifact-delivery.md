@@ -185,9 +185,11 @@ private ARM adoption remain.
   config, environment, logs, raw receipts, secrets, or migration values.
 - Imported migration identity contains only its digest. The target supplies an
   explicit local path with the same digest.
-- `openclaw-test-env.mjs target IMPORTED_BUILD_JSON TARGET_JSON` runs
-  archive-only installation, installed hooks and scenarios, plus deployment
-  rehearsal without source or development dependencies.
+- `openclaw-test-env.mjs target IMPORTED_BUILD_JSON TARGET_JSON
+  [TARGET_SEED_JSON]` creates a new physical rehearsal root atomically when a
+  seed is supplied, then runs archive-only installation, installed hooks and
+  scenarios without source or development dependencies. The seed binds the
+  prior install, state, and service definition bytes used for rollback.
 - `apply-and-deploy.sh` action `rehearse` requires an imported build plus a
   target with `purpose: "rehearsal"`. It invokes `activateNative` and derives
   deployment evidence from its journal. It cannot integrate, promote, or

@@ -580,7 +580,13 @@ export function registerImportedBuild(poolPath, bundlePath, receiptPath, buildId
   return metadata;
 }
 
-export function registerFailedReproduction(poolPath, runDir, now = new Date(), dependencies = []) {
+export function registerFailedReproduction(
+  poolPath,
+  runDir,
+  now = new Date(),
+  dependencies = [],
+  additionalAssets = [],
+) {
   const runStatus = join(runDir, "run-status.json");
   regular(runStatus);
   const key = jsonDigest(JSON.parse(readFileSync(runStatus, "utf8")));
@@ -598,6 +604,7 @@ export function registerFailedReproduction(poolPath, runDir, now = new Date(), d
     assets: [
       { source: runStatus, path: "run-status.json" },
       ...stages.map((path) => ({ source: path, path: `proofs/${basename(path)}` })),
+      ...additionalAssets,
     ],
   });
   setRetentionReference(poolPath, { id: "failed-debug", kind: "failed-debug", objectIds: [id] });

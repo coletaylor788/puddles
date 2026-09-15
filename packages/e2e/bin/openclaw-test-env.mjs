@@ -31,10 +31,11 @@ try {
   } else if (command === "target") {
     const receipt = process.argv[3];
     const target = process.argv[4];
-    if (!receipt || !target || process.argv[5]) {
-      throw new Error("Usage: openclaw-test-env.mjs target IMPORTED_BUILD_JSON TARGET_JSON");
+    const seed = process.argv[5];
+    if (!receipt || !target || process.argv[6]) {
+      throw new Error("Usage: openclaw-test-env.mjs target IMPORTED_BUILD_JSON TARGET_JSON [TARGET_SEED_JSON]");
     }
-    await nativeTargetPipeline(resolve(receipt), resolve(target));
+    await nativeTargetPipeline(resolve(receipt), resolve(target), seed ? resolve(seed) : undefined);
   } else if (command === "resume") {
     const resumed = process.argv[3];
     if (!["ci", "patches", "native", "build", "source-gate"].includes(resumed)) {
