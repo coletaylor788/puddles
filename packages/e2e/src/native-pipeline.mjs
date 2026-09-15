@@ -73,9 +73,13 @@ export async function nativePipeline(command, repositoryGates) {
   updateNativeRunStatus(runDir, { command, status: "running", pid: process.pid, startedAt: new Date().toISOString(), failure: null });
   mkdirSync(join(runDir, "logs"), { recursive: true, mode: 0o700 });
   let sequence = 0;
+  const childEnvironment = { ...process.env };
+  for (const name of ["E2E_ARTIFACT_POOL", "E2E_REQUIRED_FREE_BYTES", "E2E_RESUME_FAILED", "E2E_RUN_DIR"]) {
+    delete childEnvironment[name];
+  }
   const run = (executable, args, options = {}) => runCommand(executable, args, {
     cwd: options.cwd ?? repoRoot,
-    env: options.env ?? { ...process.env, PATH: `${dirname(process.execPath)}:${process.env.PATH}`, CI: "true" },
+    env: options.env ?? { ...childEnvironment, PATH: `${dirname(process.execPath)}:${process.env.PATH}`, CI: "true" },
     timeoutMs: options.timeoutMs ?? 10 * 60_000,
     logPath: options.capture ? undefined : join(runDir, "logs", `${sequence++}.log`),
     quiet: true, ...options,

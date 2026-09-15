@@ -125,6 +125,26 @@ describe("owned artifact retention", () => {
     expect(existsSync(join(directory, "objects/success-three"))).toBe(true);
   });
 
+  it("recovers interrupted registration staging without blocking cleanup", () => {
+    const directory = pool();
+    object(directory, "success-one", "successful-build", "2026-01-01T00:00:00.000Z");
+    const interrupted = join(directory, "trash/.register-deadbeef");
+    mkdirSync(interrupted);
+    writeFileSync(join(interrupted, "partial"), "partial copied asset");
+    expect(planArtifactCleanup(directory).retained.map((entry: { id: string }) => entry.id))
+      .toEqual(["success-one"]);
+    applyArtifactCleanup(directory);
+    expect(existsSync(interrupted)).toBe(false);
+    expect(planArtifactCleanup(directory).remove).toEqual([]);
+  });
+
+  it("blocks cleanup when a retained object contains undeclared bytes", () => {
+    const directory = pool();
+    object(directory, "success-one", "successful-build", "2026-01-01T00:00:00.000Z");
+    writeFileSync(join(directory, "objects/success-one/unowned"), "not registered");
+    expect(() => planArtifactCleanup(directory)).toThrow("undeclared");
+  });
+
   it("keeps declared logs across artifact cleanup and reports actual space separately from logical bytes", () => {
     const directory = pool();
     const run = root();

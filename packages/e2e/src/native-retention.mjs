@@ -103,7 +103,7 @@ function walkOwned(root) {
     for (const child of readdirSync(path).sort()) walk(join(path, child), name ? `${name}/${child}` : child);
   }
   walk(root, "");
-  return { bytes, digest: jsonDigest(entries) };
+  return { bytes, entries, digest: jsonDigest(entries) };
 }
 
 function validateObject(root, path) {
@@ -140,17 +140,28 @@ function validateObject(root, path) {
       throw new Error(`Retained asset differs from ownership metadata: ${metadata.id}/${name}`);
     }
   }
-  const all = walkOwned(path);
-  if (metadata.objectSha256 !== all.digest) {
-    // ownership.json includes objectSha256, so verify a projection that omits
-    // that self-referential field instead.
-    const { objectSha256, ...projection } = metadata;
-    const expected = jsonDigest({
-      metadata: projection,
-      assets: metadata.assets.map(({ path: name, sha256, bytes, type }) => [name, type, sha256, bytes]),
-    });
-    if (objectSha256 !== expected) throw new Error(`Retained object digest is invalid: ${metadata.id}`);
+  const entries = walkOwned(path).entries.map(([name]) => name);
+  const allowed = new Set(["", "ownership.json"]);
+  for (const asset of metadata.assets) {
+    const parts = asset.path.split("/");
+    for (let index = 1; index <= parts.length; index++) {
+      allowed.add(parts.slice(0, index).join("/"));
+    }
+    if (asset.type === "directory") {
+      for (const name of entries) {
+        if (name.startsWith(`${asset.path}/`)) allowed.add(name);
+      }
+    }
   }
+  if (entries.some((name) => !allowed.has(name))) {
+    throw new Error(`Retained object contains undeclared content: ${metadata.id}`);
+  }
+  const { objectSha256, ...projection } = metadata;
+  const expected = jsonDigest({
+    metadata: projection,
+    assets: metadata.assets.map(({ path: name, sha256, bytes, type }) => [name, type, sha256, bytes]),
+  });
+  if (objectSha256 !== expected) throw new Error(`Retained object digest is invalid: ${metadata.id}`);
   return { path, metadata, bytes: metadata.assets.reduce((sum, asset) => sum + asset.bytes, 0) };
 }
 
@@ -282,6 +293,18 @@ function recoverCleanup(root) {
   if (journal.entries.every((entry) => entry.status === "removed")) rmSync(journalPath);
 }
 
+function recoverRegistrations(root) {
+  const trash = join(root, "trash");
+  for (const name of readdirSync(trash)) {
+    if (!/^\.register-[a-f0-9-]+$/.test(name)) continue;
+    const path = join(trash, name);
+    const stat = regular(path, true);
+    if (!stat || dirname(path) !== trash) throw new Error(`Invalid interrupted registration: ${name}`);
+    walkOwned(path);
+    rmSync(path, { recursive: true });
+  }
+}
+
 export function planArtifactCleanup(poolPath, now = new Date()) {
   const root = canonicalPool(poolPath);
   recoverCleanup(root);
@@ -328,6 +351,7 @@ export function planArtifactCleanup(poolPath, now = new Date()) {
 
 export function applyArtifactCleanup(poolPath, now = new Date()) {
   const root = canonicalPool(poolPath);
+  recoverRegistrations(root);
   const plan = planArtifactCleanup(root, now);
   if (!plan.remove.length) {
     return { ...plan, applied: true, summary: { ...plan.summary, diskAfter: disk(root) } };
@@ -406,7 +430,7 @@ export function registerRetainedObject(poolPath, value) {
     }
     return existing;
   }
-  const temporary = join(root, "objects", `.register-${randomUUID()}`);
+  const temporary = join(root, "trash", `.register-${randomUUID()}`);
   mkdirSync(temporary, { mode: 0o700 });
   try {
     const assets = [];

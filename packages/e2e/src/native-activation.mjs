@@ -464,7 +464,7 @@ export async function activateNative(receipt, target, operationsFactory = system
   }
   const recoveryDir = recoverDir ? realpathSync(recoverDir) : join(realpathSync(target.backupRoot), `activation-${Date.now()}-${process.pid}`);
   if (dirname(recoveryDir) !== realpathSync(target.backupRoot)) throw new Error("Recovery directory is outside target backups");
-  const poolUnlock = process.env.E2E_ARTIFACT_POOL
+  const poolUnlock = !recoverDir && process.env.E2E_ARTIFACT_POOL
     ? acquireArtifactPoolLock(resolve(process.env.E2E_ARTIFACT_POOL))
     : null;
   let unlock;

@@ -9,6 +9,8 @@ import { activateNative, systemOperations, validateTarget, verifyIntegratedCandi
 import { fileDigest, jsonDigest, treeDigest } from "../src/native-state.mjs";
 // @ts-expect-error Native lifecycle is also executable without TypeScript.
 import { createBuildReceipt } from "../src/native-release.mjs";
+// @ts-expect-error Native retention is also executable without TypeScript.
+import { acquireArtifactPoolLock, initializeArtifactPool } from "../src/native-retention.mjs";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cloneHelper = join(repoRoot, "docs/openclaw-setup/patches/clone-runtime-tree.py");
@@ -367,6 +369,29 @@ describe("native activation and recovery transaction", () => {
     const completedCalls = f.calls.length;
     expect((await activateNative(f.receipt, f.target, () => f.ops, activated.recoveryDir, "rollback")).status).toBe("rolled-back");
     expect(f.calls).toHaveLength(completedCalls);
+  });
+
+  it("does not let a stale artifact housekeeping lock block explicit recovery", async () => {
+    const f = fixture();
+    const activated = await activateNative(f.receipt, f.target, () => f.ops);
+    const pool = join(f.directory, "artifact-pool");
+    initializeArtifactPool(pool);
+    const release = acquireArtifactPoolLock(pool);
+    const previous = process.env.E2E_ARTIFACT_POOL;
+    process.env.E2E_ARTIFACT_POOL = pool;
+    try {
+      await expect(activateNative(
+        f.receipt,
+        f.target,
+        () => f.ops,
+        activated.recoveryDir,
+        "rollback",
+      )).resolves.toMatchObject({ status: "rolled-back" });
+    } finally {
+      if (previous === undefined) delete process.env.E2E_ARTIFACT_POOL;
+      else process.env.E2E_ARTIFACT_POOL = previous;
+      release();
+    }
   });
 
   it.each(["root", "additional", "service", "browser", "snapshot", "candidate"])("refuses explicit rollback if current %s identity changed", async (part) => {
