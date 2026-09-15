@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import {
   cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync,
@@ -9,9 +9,12 @@ import { join } from "node:path";
 import { certifyRelease, createBuildReceipt, createSourceGate, createTargetProof, exportReleaseBundle, importReleaseBundle, promoteRelease, verifyBuildReceipt } from "../src/native-release.mjs";
 // @ts-expect-error Native lifecycle modules are executable JavaScript.
 import { fileDigest, jsonDigest, treeDigest } from "../src/native-state.mjs";
+// @ts-expect-error Native retention modules are executable JavaScript.
+import { initializeArtifactPool } from "../src/native-retention.mjs";
 
 const roots: string[] = [];
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 function root() {
@@ -117,6 +120,9 @@ describe("portable OpenClaw release bundle", () => {
     writeFileSync(receiptPath, JSON.stringify(receipt));
     const bundle = join(directory, "bundle.tar.gz");
     await exportReleaseBundle(receiptPath, bundle, "local");
+    const pool = join(root(), "pool");
+    initializeArtifactPool(pool);
+    vi.stubEnv("E2E_ARTIFACT_POOL", pool);
     const importedRoot = join(root(), "relocated");
     const imported = await importReleaseBundle(bundle, importedRoot);
     expect(imported.receipt.buildId).toBe(receipt.buildId);
@@ -125,6 +131,8 @@ describe("portable OpenClaw release bundle", () => {
     expect(imported.receipt.preparedFiles[0].path).toBe(join(importedRoot, "prepared/embedding-model"));
     rmSync(directory, { recursive: true });
     expect(() => verifyBuildReceipt(imported.receipt)).not.toThrow();
+    expect(JSON.parse(readFileSync(join(pool, "references/current.json"), "utf8")).objectIds)
+      .toEqual([`success-${receipt.buildId.slice(0, 48)}`]);
   });
 
   it("rejects local composition from the public export profile", async () => {

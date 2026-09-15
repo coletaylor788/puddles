@@ -552,7 +552,35 @@ export function findSuccessfulBuild(poolPath, buildId) {
   return { metadata: object.metadata, receiptPath, bundlePath };
 }
 
-export function registerFailedReproduction(poolPath, runDir, now = new Date()) {
+export function registerImportedBuild(poolPath, bundlePath, receiptPath, buildId, now = new Date()) {
+  const existing = findSuccessfulBuild(poolPath, buildId);
+  if (existing) {
+    setRetentionReference(poolPath, {
+      id: "current",
+      kind: "current",
+      objectIds: [existing.metadata.id],
+    });
+    return existing.metadata;
+  }
+  const metadata = registerRetainedObject(poolPath, {
+    id: `success-${buildId.slice(0, 48)}`,
+    kind: "successful-build",
+    createdAt: now.toISOString(),
+    dependencies: [],
+    assets: [
+      { source: bundlePath, path: "bundle.tar.gz" },
+      { source: receiptPath, path: "build.json" },
+    ],
+  });
+  setRetentionReference(poolPath, {
+    id: "current",
+    kind: "current",
+    objectIds: [metadata.id],
+  });
+  return metadata;
+}
+
+export function registerFailedReproduction(poolPath, runDir, now = new Date(), dependencies = []) {
   const runStatus = join(runDir, "run-status.json");
   regular(runStatus);
   const key = jsonDigest(JSON.parse(readFileSync(runStatus, "utf8")));
@@ -566,7 +594,7 @@ export function registerFailedReproduction(poolPath, runDir, now = new Date()) {
     id,
     kind: "failed-reproduction",
     createdAt: now.toISOString(),
-    dependencies: [],
+    dependencies,
     assets: [
       { source: runStatus, path: "run-status.json" },
       ...stages.map((path) => ({ source: path, path: `proofs/${basename(path)}` })),
@@ -580,8 +608,18 @@ export function registerDiagnosticLogs(poolPath, runDir, now = new Date()) {
   const logs = join(runDir, "logs");
   if (!regular(logs, true) || !readdirSync(logs).length) return null;
   const identity = treeDigest(logs, { portable: true });
+  const root = canonicalPool(poolPath);
+  const id = `log-${identity.slice(0, 48)}`;
+  const existing = join(root, "objects", id);
+  if (existsSync(existing)) {
+    const object = validateObject(root, existing);
+    if (object.metadata.kind !== "diagnostic-log") {
+      throw new Error(`Retained log id has the wrong object kind: ${id}`);
+    }
+    return object.metadata;
+  }
   return registerRetainedObject(poolPath, {
-    id: `log-${identity.slice(0, 48)}`,
+    id,
     kind: "diagnostic-log",
     createdAt: now.toISOString(),
     dependencies: [],

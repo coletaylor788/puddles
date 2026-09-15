@@ -6,7 +6,11 @@ import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { atomicJson, fileDigest, inside, jsonDigest, treeDigest } from "./native-state.mjs";
 import { runCommand } from "./process-runner.mjs";
-import { acquireArtifactPoolLock } from "./native-retention.mjs";
+import {
+  acquireArtifactPoolLock,
+  applyArtifactCleanup,
+  registerImportedBuild,
+} from "./native-retention.mjs";
 
 const buildSchema = "puddles.openclaw-build/v1";
 const bundleSchema = "puddles.openclaw-bundle/v1";
@@ -277,6 +281,15 @@ export async function importReleaseBundle(bundlePath, destination, run = runComm
     }
     const importedPath = join(destination, "imported-build.json");
     atomicJson(importedPath, receipt);
+    if (process.env.E2E_ARTIFACT_POOL) {
+      registerImportedBuild(
+        resolve(process.env.E2E_ARTIFACT_POOL),
+        bundlePath,
+        importedPath,
+        receipt.buildId,
+      );
+      applyArtifactCleanup(resolve(process.env.E2E_ARTIFACT_POOL));
+    }
     return { receiptPath: importedPath, receipt };
   } catch (error) {
     rmSync(destination, { recursive: true, force: true });

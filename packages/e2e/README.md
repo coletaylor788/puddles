@@ -227,6 +227,8 @@ failed stage, so an ordinary command never retries the same failure in a loop.
 
 Set `E2E_ARTIFACT_POOL` to an initialized owner-managed pool to enable automatic
 retention before the disk-capacity check and after terminal success or failure.
+Bundle import registers the immutable build. Target runs protect it while active,
+then retain successful stage proofs or one failed reproduction plus diagnostics.
 Initialize, inspect, and apply it with
 `openclaw-artifact-retention.mjs init|dry-run|apply`. Producers register exact
 owned objects and references. Cleanup keeps the newest two successful build

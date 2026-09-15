@@ -19,7 +19,7 @@ import { validateTarget, verifyRehearsalTarget } from "./native-activation.mjs";
 import {
   acquireArtifactPoolLock, applyArtifactCleanup, artifactPoolRunId,
   findSuccessfulBuild, registerDiagnosticLogs, registerFailedReproduction, registerSuccessfulBuild,
-  removeRetentionReference, retentionSpaceSummary, setRetentionReference,
+  registerRetainedObject, removeRetentionReference, retentionSpaceSummary, setRetentionReference,
 } from "./native-retention.mjs";
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -506,6 +506,15 @@ export async function nativeTargetPipeline(receiptPath, targetPath) {
     [repoRoot, dirname(receiptPath), dirname(targetPath)],
   );
   const unlock = acquireLock(runDir);
+  const artifactPool = process.env.E2E_ARTIFACT_POOL
+    ? resolve(process.env.E2E_ARTIFACT_POOL)
+    : null;
+  const retentionReference = artifactPool ? artifactPoolRunId(runDir) : null;
+  const withRetentionLock = (action) => {
+    if (!artifactPool) return undefined;
+    const release = acquireArtifactPoolLock(artifactPool);
+    try { return action(); } finally { release(); }
+  };
   updateNativeRunStatus(runDir, { command: "target", status: "running", pid: process.pid, startedAt: new Date().toISOString(), failure: null });
   mkdirSync(join(runDir, "logs"), { recursive: true, mode: 0o700 });
   let sequence = 0;
@@ -517,6 +526,18 @@ export async function nativeTargetPipeline(receiptPath, targetPath) {
     quiet: true, ...options,
   });
   try {
+    if (artifactPool) {
+      withRetentionLock(() => {
+        applyArtifactCleanup(artifactPool);
+        const build = findSuccessfulBuild(artifactPool, receipt.buildId);
+        if (!build) throw new Error("Artifact target requires its imported build in the artifact pool");
+        setRetentionReference(artifactPool, {
+          id: retentionReference,
+          kind: "active",
+          objectIds: [build.metadata.id],
+        });
+      });
+    }
     const extension = await loadExtension(process.env.E2E_LOCAL_EXTENSION);
     if (extension.commands.some((command) => command.phase !== "installed")) {
       throw new Error("Artifact target adapters may declare installed commands only");
@@ -636,6 +657,34 @@ export async function nativeTargetPipeline(receiptPath, targetPath) {
       adapterInputs: extension.inputs?.map(fileDigest) ?? [],
     };
     atomicJson(join(runDir, "installed-proof.json"), result);
+    if (artifactPool) {
+      withRetentionLock(() => {
+        const build = findSuccessfulBuild(artifactPool, receipt.buildId);
+        if (!build) throw new Error("Retained imported build disappeared during target checks");
+        const stageProofs = join(runDir, "stages");
+        const retained = registerRetainedObject(artifactPool, {
+          id: `target-${jsonDigest({
+            result,
+            proofs: treeDigest(stageProofs, { portable: true }),
+          }).slice(0, 48)}`,
+          kind: "target-rehearsal",
+          createdAt: new Date().toISOString(),
+          dependencies: [build.metadata.id],
+          assets: [
+            { source: join(runDir, "installed-proof.json"), path: "installed-proof.json" },
+            { source: stageProofs, path: "proofs" },
+          ],
+        });
+        setRetentionReference(artifactPool, {
+          id: "current",
+          kind: "current",
+          objectIds: [build.metadata.id, retained.id],
+        });
+        registerDiagnosticLogs(artifactPool, runDir);
+        removeRetentionReference(artifactPool, retentionReference);
+        applyArtifactCleanup(artifactPool);
+      });
+    }
     console.log(`Native target: passed (${runtime.scenarios.length} scenarios). Evidence: ${join(runDir, "installed-proof.json")}`);
     updateNativeRunStatus(runDir, { command: "target", status: "passed", finishedAt: new Date().toISOString() });
     return result;
@@ -646,6 +695,24 @@ export async function nativeTargetPipeline(receiptPath, targetPath) {
       finishedAt: new Date().toISOString(),
       failure: { code: error.code ?? null, message: String(error.message ?? error).slice(0, 1000) },
     });
+    if (artifactPool) {
+      try {
+        withRetentionLock(() => {
+          const build = findSuccessfulBuild(artifactPool, receipt.buildId);
+          registerFailedReproduction(
+            artifactPool,
+            runDir,
+            new Date(),
+            build ? [build.metadata.id] : [],
+          );
+          registerDiagnosticLogs(artifactPool, runDir);
+          removeRetentionReference(artifactPool, retentionReference);
+          applyArtifactCleanup(artifactPool);
+        });
+      } catch (cleanupError) {
+        throw new AggregateError([error, cleanupError], "Native target and artifact retention failed");
+      }
+    }
     throw error;
   } finally {
     unlock();

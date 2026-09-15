@@ -62,9 +62,11 @@ checks before export.
 The portable bundle, source attestation, archive-only target context, split
 certification and promotion receipts, isolated wrapper rehearsal, durable
 status, selective reuse, public workflow publication, and deterministic
-artifact retention are implemented. Focused delivery tests and the real
-wrapper success and rollback cases pass. Documentation, retained review, the
-exact accumulated gate, hosted checks, and private ARM adoption remain.
+artifact retention are implemented. Bundle import and target runs now register
+their build, active, success, diagnostic, and failed-reproduction evidence
+automatically. Focused delivery tests and the real wrapper success and rollback
+cases pass. Retained review, the exact accumulated gate, hosted checks, and
+private ARM adoption remain.
 
 ## Agent section
 

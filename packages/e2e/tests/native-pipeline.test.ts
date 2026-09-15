@@ -18,8 +18,12 @@ vi.mock("../src/native-state.mjs", async (original) => {
   };
 });
 vi.mock("../src/process-runner.mjs", () => ({
-  runCommand: vi.fn(async (command: string, args: string[], options: { cwd?: string; env?: Record<string, string> } = {}) => {
+  runCommand: vi.fn(async (command: string, args: string[], options: { cwd?: string; env?: Record<string, string>; logPath?: string } = {}) => {
     const cwd = options.cwd!;
+    if (options.logPath) {
+      mkdirSync(dirname(options.logPath), { recursive: true });
+      writeFileSync(options.logPath, `synthetic ${command} log`);
+    }
     if (command === "git") {
       if (args[0] === "worktree" && args[1] === "add") {
         const path = args[3];
@@ -77,6 +81,8 @@ vi.mock("../src/process-runner.mjs", () => ({
       writeFileSync(join(context.workspace, "prepared-output"), "same prepared output");
     } else if (command === "fixture-installed") {
       counters.runtimeCommands++;
+    } else if (command === "fixture-fail") {
+      throw new Error("synthetic installed failure");
     } else if (command === "fixture-artifact") {
       const context = JSON.parse(readFileSync(options.env!.E2E_CONTEXT_PATH, "utf8"));
       const directory = join(context.workspace, "auxiliary");
@@ -523,6 +529,9 @@ it("rehearses resolved installed commands and scenarios even when extension file
 
 it("binds the explicit rehearsal target into artifact-only installed context", async () => {
   const { directory, run } = setup();
+  const pool = join(directory, "pool");
+  initializeArtifactPool(pool);
+  vi.stubEnv("E2E_ARTIFACT_POOL", pool);
   await nativePipeline("build", async () => {});
   const buildPath = join(run, "build.json");
   const build = JSON.parse(readFileSync(buildPath, "utf8"));
@@ -584,6 +593,51 @@ it("binds the explicit rehearsal target into artifact-only installed context", a
     nodeMigration: null,
     stateMigration: null,
   });
+  expect(readdirSync(join(pool, "objects")).some((name) => name.startsWith("target-"))).toBe(true);
+  expect(readdirSync(join(pool, "objects")).some((name) => name.startsWith("log-"))).toBe(true);
+});
+
+it("retains a failed target reproduction and its diagnostics", async () => {
+  const { directory, run } = setup();
+  const pool = join(directory, "pool");
+  initializeArtifactPool(pool);
+  vi.stubEnv("E2E_ARTIFACT_POOL", pool);
+  await nativePipeline("build", async () => {});
+  const buildPath = join(run, "build.json");
+  const build = JSON.parse(readFileSync(buildPath, "utf8"));
+  const targetRoot = join(directory, "deployment-target");
+  const targetPath = join(targetRoot, "target.json");
+  for (const path of ["installed", "state", "backups"]) mkdirSync(join(targetRoot, path), { recursive: true });
+  writeFileSync(join(targetRoot, "gateway.plist"), "fixture service");
+  writeFileSync(targetPath, JSON.stringify({
+    schemaVersion: 1,
+    purpose: "rehearsal",
+    isolation: { schema: "puddles.openclaw-rehearsal-target/v1", root: realpathSync(targetRoot) },
+    host: hostname(),
+    installDir: join(targetRoot, "installed"),
+    stateDir: join(targetRoot, "state"),
+    plistPath: join(targetRoot, "gateway.plist"),
+    backupRoot: join(targetRoot, "backups"),
+    label: "puddles.rehearsal.gateway",
+    port: 18799,
+    additionalInstalls: build.additionalArtifacts.map(({ id }: { id: string }) => ({
+      id,
+      path: `managed/${id}`,
+    })),
+    preparedFiles: [],
+  }));
+  const module = join(directory, "target-adapter.mjs");
+  writeFileSync(module, `export default {
+    schemaVersion: 1,
+    commands: [{id:"installed",phase:"installed",command:"fixture-fail",args:[],timeoutMs:1000}]
+  };`);
+  vi.stubEnv("E2E_RUN_DIR", join(directory, "target-run"));
+  vi.stubEnv("E2E_LOCAL_EXTENSION", module);
+  await expect(nativeTargetPipeline(buildPath, targetPath)).rejects.toThrow("synthetic installed failure");
+  const objects = readdirSync(join(pool, "objects"));
+  expect(objects.some((name) => name.startsWith("failure-"))).toBe(true);
+  expect(objects.some((name) => name.startsWith("log-"))).toBe(true);
+  expect(JSON.parse(readFileSync(join(pool, "references/failed-debug.json"), "utf8")).objectIds).toHaveLength(1);
 });
 
 it("seals and installs additional artifacts before rehearsal and invalidates only changed artifact proofs", async () => {
