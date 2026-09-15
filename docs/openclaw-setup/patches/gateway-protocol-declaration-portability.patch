@@ -1,5 +1,5 @@
 diff --git a/packages/gateway-protocol/src/schema/protocol-schema-fragment-agent-control.ts b/packages/gateway-protocol/src/schema/protocol-schema-fragment-agent-control.ts
-index d014009c723a668613542b02c13660dcc0992dcb..f3edbb30e72b1a3cbc7baa48ae4778f879254b16 100644
+index d014009c723..f3edbb30e72 100644
 --- a/packages/gateway-protocol/src/schema/protocol-schema-fragment-agent-control.ts
 +++ b/packages/gateway-protocol/src/schema/protocol-schema-fragment-agent-control.ts
 @@ -6,7 +6,87 @@ import * as projects from "./projects.js";
@@ -92,7 +92,7 @@ index d014009c723a668613542b02c13660dcc0992dcb..f3edbb30e72b1a3cbc7baa48ae4778f8
    WorkerEnvironmentState: environments.WorkerEnvironmentStateSchema,
    WorkerTunnelStatus: environments.WorkerTunnelStatusSchema,
 diff --git a/packages/gateway-protocol/src/schema/protocol-schema-fragment-agents-skills.ts b/packages/gateway-protocol/src/schema/protocol-schema-fragment-agents-skills.ts
-index 465733842c940eb7268e261ae301fab9dfe8b21e..b27cf1464554d038b5fdc0f3cd56cf025653f569 100644
+index 465733842c9..b27cf146455 100644
 --- a/packages/gateway-protocol/src/schema/protocol-schema-fragment-agents-skills.ts
 +++ b/packages/gateway-protocol/src/schema/protocol-schema-fragment-agents-skills.ts
 @@ -6,7 +6,145 @@ import * as skillHistory from "./skill-history.js";
@@ -243,7 +243,7 @@ index 465733842c940eb7268e261ae301fab9dfe8b21e..b27cf1464554d038b5fdc0f3cd56cf02
    TranscriptsListParams: transcripts.TranscriptsListParamsSchema,
    TranscriptsListResult: transcripts.TranscriptsListResultSchema,
 diff --git a/packages/gateway-protocol/src/schema/protocol-schema-fragment-approvals.ts b/packages/gateway-protocol/src/schema/protocol-schema-fragment-approvals.ts
-index f2cf59fa6bdec4681c82924df72617049802b362..2129f0e9f0a7e84fed65b13676cce2a5be991e93 100644
+index f2cf59fa6bd..2129f0e9f0a 100644
 --- a/packages/gateway-protocol/src/schema/protocol-schema-fragment-approvals.ts
 +++ b/packages/gateway-protocol/src/schema/protocol-schema-fragment-approvals.ts
 @@ -2,7 +2,77 @@ import * as approvals from "./approvals.js";
@@ -326,7 +326,7 @@ index f2cf59fa6bdec4681c82924df72617049802b362..2129f0e9f0a7e84fed65b13676cce2a5
    ApprovalDecision: approvals.ApprovalDecisionSchema,
    ApprovalAllowDecision: approvals.ApprovalAllowDecisionSchema,
 diff --git a/packages/gateway-protocol/src/schema/protocol-schema-fragment-board.ts b/packages/gateway-protocol/src/schema/protocol-schema-fragment-board.ts
-index 49461d2eb16ea2e9e0b4a49adaa87035e1aba83a..444e5d0a6454f696a4024b30d5bd92cbf8980b95 100644
+index 49461d2eb16..444e5d0a645 100644
 --- a/packages/gateway-protocol/src/schema/protocol-schema-fragment-board.ts
 +++ b/packages/gateway-protocol/src/schema/protocol-schema-fragment-board.ts
 @@ -2,7 +2,49 @@ import * as agentsModelsSkills from "./agents-models-skills.js";
@@ -380,22 +380,430 @@ index 49461d2eb16ea2e9e0b4a49adaa87035e1aba83a..444e5d0a6454f696a4024b30d5bd92cb
    CanvasDocumentViewParams: canvas.CanvasDocumentViewParamsSchema,
    CanvasDocumentViewResult: canvas.CanvasDocumentViewResultSchema,
    BoardTab: board.BoardTabSchema,
+diff --git a/packages/gateway-protocol/src/schema/protocol-schema-fragment-channels.ts b/packages/gateway-protocol/src/schema/protocol-schema-fragment-channels.ts
+index 0864577582d..f99c1fd18c5 100644
+--- a/packages/gateway-protocol/src/schema/protocol-schema-fragment-channels.ts
++++ b/packages/gateway-protocol/src/schema/protocol-schema-fragment-channels.ts
+@@ -2,7 +2,50 @@ import * as channelPairing from "./channel-pairing.js";
+ import * as channels from "./channels.js";
+ import * as talkMarks from "./talk-marks.js";
+ 
+-export const ChannelProtocolSchemas = {
++export const ChannelProtocolSchemas: {
++  readonly TalkModeParams: typeof channels.TalkModeParamsSchema;
++  readonly TalkEvent: typeof channels.TalkEventSchema;
++  readonly TalkCatalogParams: typeof channels.TalkCatalogParamsSchema;
++  readonly TalkCatalogResult: typeof channels.TalkCatalogResultSchema;
++  readonly TalkClientCreateParams: typeof channels.TalkClientCreateParamsSchema;
++  readonly TalkClientCreateResult: typeof channels.TalkClientCreateResultSchema;
++  readonly TalkClientCloseParams: typeof channels.TalkClientCloseParamsSchema;
++  readonly TalkClientMutationResult: typeof channels.TalkClientMutationResultSchema;
++  readonly TalkClientSteerParams: typeof channels.TalkClientSteerParamsSchema;
++  readonly TalkAgentControlResult: typeof channels.TalkAgentControlResultSchema;
++  readonly TalkClientToolCallParams: typeof channels.TalkClientToolCallParamsSchema;
++  readonly TalkClientToolCallResult: typeof channels.TalkClientToolCallResultSchema;
++  readonly TalkClientTranscriptParams: typeof channels.TalkClientTranscriptParamsSchema;
++  readonly TalkConfigParams: typeof channels.TalkConfigParamsSchema;
++  readonly TalkConfigResult: typeof channels.TalkConfigResultSchema;
++  readonly TalkSessionAppendAudioParams: typeof channels.TalkSessionAppendAudioParamsSchema;
++  readonly TalkSessionAcknowledgeMarkParams: typeof talkMarks.TalkSessionAcknowledgeMarkParamsSchema;
++  readonly TalkSessionCancelOutputParams: typeof channels.TalkSessionCancelOutputParamsSchema;
++  readonly TalkSessionCancelOutputResult: typeof channels.TalkSessionCancelOutputResultSchema;
++  readonly TalkSessionCreateParams: typeof channels.TalkSessionCreateParamsSchema;
++  readonly TalkSessionCreateResult: typeof channels.TalkSessionCreateResultSchema;
++  readonly TalkSessionSteerParams: typeof channels.TalkSessionSteerParamsSchema;
++  readonly TalkSessionSubmitToolResultParams: typeof channels.TalkSessionSubmitToolResultParamsSchema;
++  readonly TalkSessionCloseParams: typeof channels.TalkSessionCloseParamsSchema;
++  readonly TalkSessionOkResult: typeof channels.TalkSessionOkResultSchema;
++  readonly TalkSpeakParams: typeof channels.TalkSpeakParamsSchema;
++  readonly TalkSpeakResult: typeof channels.TalkSpeakResultSchema;
++  readonly TtsSpeakParams: typeof channels.TtsSpeakParamsSchema;
++  readonly TtsSpeakResult: typeof channels.TtsSpeakResultSchema;
++  readonly ChannelsStatusParams: typeof channels.ChannelsStatusParamsSchema;
++  readonly ChannelsStatusResult: typeof channels.ChannelsStatusResultSchema;
++  readonly ChannelsPairingListParams: typeof channelPairing.ChannelsPairingListParamsSchema;
++  readonly ChannelsPairingListResult: typeof channelPairing.ChannelsPairingListResultSchema;
++  readonly ChannelsPairingApproveParams: typeof channelPairing.ChannelsPairingApproveParamsSchema;
++  readonly ChannelsPairingApproveResult: typeof channelPairing.ChannelsPairingApproveResultSchema;
++  readonly ChannelsPairingDismissParams: typeof channelPairing.ChannelsPairingDismissParamsSchema;
++  readonly ChannelsPairingDismissResult: typeof channelPairing.ChannelsPairingDismissResultSchema;
++  readonly ChannelsStartParams: typeof channels.ChannelsStartParamsSchema;
++  readonly ChannelsStopParams: typeof channels.ChannelsStopParamsSchema;
++  readonly ChannelsLogoutParams: typeof channels.ChannelsLogoutParamsSchema;
++  readonly WebLoginStartParams: typeof channels.WebLoginStartParamsSchema;
++  readonly WebLoginWaitParams: typeof channels.WebLoginWaitParamsSchema;
++} = {
+   TalkModeParams: channels.TalkModeParamsSchema,
+   TalkEvent: channels.TalkEventSchema,
+   TalkCatalogParams: channels.TalkCatalogParamsSchema,
+diff --git a/packages/gateway-protocol/src/schema/protocol-schema-fragment-integrations.ts b/packages/gateway-protocol/src/schema/protocol-schema-fragment-integrations.ts
+index 9dc577d2d38..1b7c86cf31e 100644
+--- a/packages/gateway-protocol/src/schema/protocol-schema-fragment-integrations.ts
++++ b/packages/gateway-protocol/src/schema/protocol-schema-fragment-integrations.ts
+@@ -2,7 +2,31 @@ import * as push from "./push.js";
+ import * as secrets from "./secrets.js";
+ import * as uiCommand from "./ui-command.js";
+ 
+-export const IntegrationProtocolSchemas = {
++export const IntegrationProtocolSchemas: {
++  readonly PushTestParams: typeof push.PushTestParamsSchema;
++  readonly PushTestResult: typeof push.PushTestResultSchema;
++  readonly UiSplitCommand: typeof uiCommand.UiSplitCommandSchema;
++  readonly UiClosePaneCommand: typeof uiCommand.UiClosePaneCommandSchema;
++  readonly UiFocusCommand: typeof uiCommand.UiFocusCommandSchema;
++  readonly UiSidebarCommand: typeof uiCommand.UiSidebarCommandSchema;
++  readonly UiPanelCommand: typeof uiCommand.UiPanelCommandSchema;
++  readonly UiNavigateCommand: typeof uiCommand.UiNavigateCommandSchema;
++  readonly UiCommand: typeof uiCommand.UiCommandSchema;
++  readonly UiCommandParams: typeof uiCommand.UiCommandParamsSchema;
++  readonly UiCommandResult: typeof uiCommand.UiCommandResultSchema;
++  readonly SecretsReloadParams: typeof secrets.SecretsReloadParamsSchema;
++  readonly SecretStoreSecretEntry: typeof secrets.SecretStoreSecretEntrySchema;
++  readonly SecretStoreEnvEntry: typeof secrets.SecretStoreEnvEntrySchema;
++  readonly SecretStoreEntry: typeof secrets.SecretStoreEntrySchema;
++  readonly SecretsStoreListParams: typeof secrets.SecretsStoreListParamsSchema;
++  readonly SecretsStoreListResult: typeof secrets.SecretsStoreListResultSchema;
++  readonly SecretsStoreSetParams: typeof secrets.SecretsStoreSetParamsSchema;
++  readonly SecretsStoreDeleteParams: typeof secrets.SecretsStoreDeleteParamsSchema;
++  readonly SecretsStoreMutationResult: typeof secrets.SecretsStoreMutationResultSchema;
++  readonly SecretsResolveParams: typeof secrets.SecretsResolveParamsSchema;
++  readonly SecretsResolveAssignment: typeof secrets.SecretsResolveAssignmentSchema;
++  readonly SecretsResolveResult: typeof secrets.SecretsResolveResultSchema;
++} = {
+   PushTestParams: push.PushTestParamsSchema,
+   PushTestResult: push.PushTestResultSchema,
+   UiSplitCommand: uiCommand.UiSplitCommandSchema,
+diff --git a/packages/gateway-protocol/src/schema/protocol-schema-fragment-nodes.ts b/packages/gateway-protocol/src/schema/protocol-schema-fragment-nodes.ts
+index 10004840c28..2203f53d523 100644
+--- a/packages/gateway-protocol/src/schema/protocol-schema-fragment-nodes.ts
++++ b/packages/gateway-protocol/src/schema/protocol-schema-fragment-nodes.ts
+@@ -1,6 +1,34 @@
+ import * as nodes from "./nodes.js";
+ 
+-export const NodeProtocolSchemas = {
++export const NodeProtocolSchemas: {
++  readonly NodePairListParams: typeof nodes.NodePairListParamsSchema;
++  readonly NodePairApproveParams: typeof nodes.NodePairApproveParamsSchema;
++  readonly NodePairRejectParams: typeof nodes.NodePairRejectParamsSchema;
++  readonly NodePairRemoveParams: typeof nodes.NodePairRemoveParamsSchema;
++  readonly NodeRenameParams: typeof nodes.NodeRenameParamsSchema;
++  readonly NodeListParams: typeof nodes.NodeListParamsSchema;
++  readonly NodePluginToolDescriptor: typeof nodes.NodePluginToolDescriptorSchema;
++  readonly NodePluginToolsUpdateParams: typeof nodes.NodePluginToolsUpdateParamsSchema;
++  readonly NodeSkillDescriptor: typeof nodes.NodeSkillDescriptorSchema;
++  readonly NodeSkillsUpdateParams: typeof nodes.NodeSkillsUpdateParamsSchema;
++  readonly NodePendingAckParams: typeof nodes.NodePendingAckParamsSchema;
++  readonly NodeDescribeParams: typeof nodes.NodeDescribeParamsSchema;
++  readonly NodeInvokeParams: typeof nodes.NodeInvokeParamsSchema;
++  readonly NodeInvokeInputEvent: typeof nodes.NodeInvokeInputEventSchema;
++  readonly NodeInvokeProgressParams: typeof nodes.NodeInvokeProgressParamsSchema;
++  readonly NodeInvokeResultParams: typeof nodes.NodeInvokeResultParamsSchema;
++  readonly NodeInvokeRequestEvent: typeof nodes.NodeInvokeRequestEventSchema;
++  readonly NodeEventParams: typeof nodes.NodeEventParamsSchema;
++  readonly NodeEventResult: typeof nodes.NodeEventResultSchema;
++  readonly NodePresenceAlivePayload: typeof nodes.NodePresenceAlivePayloadSchema;
++  readonly NodePresenceAliveReason: typeof nodes.NodePresenceAliveReasonSchema;
++  readonly NodePresenceActivityPayload: typeof nodes.NodePresenceActivityPayloadSchema;
++  readonly NodeHostStatsPayload: typeof nodes.NodeHostStatsPayloadSchema;
++  readonly NodePendingDrainParams: typeof nodes.NodePendingDrainParamsSchema;
++  readonly NodePendingDrainResult: typeof nodes.NodePendingDrainResultSchema;
++  readonly NodePendingEnqueueParams: typeof nodes.NodePendingEnqueueParamsSchema;
++  readonly NodePendingEnqueueResult: typeof nodes.NodePendingEnqueueResultSchema;
++} = {
+   NodePairListParams: nodes.NodePairListParamsSchema,
+   NodePairApproveParams: nodes.NodePairApproveParamsSchema,
+   NodePairRejectParams: nodes.NodePairRejectParamsSchema,
+diff --git a/packages/gateway-protocol/src/schema/protocol-schema-fragment-operations.ts b/packages/gateway-protocol/src/schema/protocol-schema-fragment-operations.ts
+index 454387db307..4ef84dfcd4b 100644
+--- a/packages/gateway-protocol/src/schema/protocol-schema-fragment-operations.ts
++++ b/packages/gateway-protocol/src/schema/protocol-schema-fragment-operations.ts
+@@ -9,7 +9,127 @@ import * as tasks from "./tasks.js";
+ import * as users from "./users.js";
+ import * as wizard from "./wizard.js";
+ 
+-export const OperationsProtocolSchemas = {
++export const OperationsProtocolSchemas: {
++  readonly AuditActivityAgentRunV1: typeof auditActivity.AuditActivityAgentRunV1Schema;
++  readonly AuditActivityToolActionV1: typeof auditActivity.AuditActivityToolActionV1Schema;
++  readonly AuditActivityInboundMessageV1: typeof auditActivity.AuditActivityInboundMessageV1Schema;
++  readonly AuditActivityOutboundMessageV1: typeof auditActivity.AuditActivityOutboundMessageV1Schema;
++  readonly AuditActivityEventV1: typeof auditActivity.AuditActivityEventV1Schema;
++  readonly AuditActivityListParams: typeof auditActivity.AuditActivityListParamsSchema;
++  readonly AuditActivityListResult: typeof auditActivity.AuditActivityListResultSchema;
++  readonly ExecutionIdentityContextV1: typeof auditRun.ExecutionIdentityContextV1Schema;
++  readonly DecisionReceiptV1: typeof auditRun.DecisionReceiptV1Schema;
++  readonly DecisionReceiptDisplayV1: typeof auditRun.DecisionReceiptDisplayV1Schema;
++  readonly AuditRunIdentityPresentV1: typeof auditRun.AuditRunIdentityPresentV1Schema;
++  readonly AuditRunIdentityUnknownV1: typeof auditRun.AuditRunIdentityUnknownV1Schema;
++  readonly AuditRunIdentityUnsupportedV1: typeof auditRun.AuditRunIdentityUnsupportedV1Schema;
++  readonly AuditRunIdentityAmbiguousV1: typeof auditRun.AuditRunIdentityAmbiguousV1Schema;
++  readonly AuditRunIdentityV1: typeof auditRun.AuditRunIdentityV1Schema;
++  readonly AuditRunInspectParams: typeof auditRun.AuditRunInspectParamsSchema;
++  readonly AuditRunInspectResult: typeof auditRun.AuditRunInspectResultSchema;
++  readonly AuditEvent: typeof audit.AuditEventSchema;
++  readonly AuditListParams: typeof audit.AuditListParamsSchema;
++  readonly AuditListResult: typeof audit.AuditListResultSchema;
++  readonly UserProfileAuthLink: typeof users.UserProfileAuthLinkSchema;
++  readonly UserModelAccount: typeof users.UserModelAccountSchema;
++  readonly UsersListModelAccountsParams: typeof users.UsersListModelAccountsParamsSchema;
++  readonly UsersListModelAccountsResult: typeof users.UsersListModelAccountsResultSchema;
++  readonly UsersSelectModelAccountParams: typeof users.UsersSelectModelAccountParamsSchema;
++  readonly UsersSelectModelAccountResult: typeof users.UsersSelectModelAccountResultSchema;
++  readonly ChatAccountSelection: typeof users.ChatAccountSelectionSchema;
++  readonly UsersListAuthLinksParams: typeof users.UsersListAuthLinksParamsSchema;
++  readonly UsersListAuthLinksResult: typeof users.UsersListAuthLinksResultSchema;
++  readonly UsersLinkAuthProfileParams: typeof users.UsersLinkAuthProfileParamsSchema;
++  readonly UsersLinkAuthProfileResult: typeof users.UsersLinkAuthProfileResultSchema;
++  readonly UsersUnlinkAuthProfileParams: typeof users.UsersUnlinkAuthProfileParamsSchema;
++  readonly UsersUnlinkAuthProfileResult: typeof users.UsersUnlinkAuthProfileResultSchema;
++  readonly UsersAuthConnectCatalogParams: typeof users.UsersAuthConnectCatalogParamsSchema;
++  readonly UsersAuthConnectCatalogResult: typeof users.UsersAuthConnectCatalogResultSchema;
++  readonly UsersAuthConnectStartParams: typeof users.UsersAuthConnectStartParamsSchema;
++  readonly UsersAuthConnectStartResult: typeof users.UsersAuthConnectStartResultSchema;
++  readonly UsersAuthConnectAnswerParams: typeof users.UsersAuthConnectAnswerParamsSchema;
++  readonly UsersAuthConnectStatusParams: typeof users.UsersAuthConnectStatusParamsSchema;
++  readonly UsersAuthConnectCancelParams: typeof users.UsersAuthConnectCancelParamsSchema;
++  readonly UsersAuthConnectStatusResult: typeof users.UsersAuthConnectStatusResultSchema;
++  readonly UsersAuthConnectResult: typeof users.UsersAuthConnectResultSchema;
++  readonly PersonalGitHubStatus: typeof users.PersonalGitHubStatusSchema;
++  readonly UsersGitHubStatusParams: typeof users.UsersGitHubStatusParamsSchema;
++  readonly UsersGitHubStatusResult: typeof users.UsersGitHubStatusResultSchema;
++  readonly UsersGitHubAuthorizeStartParams: typeof users.UsersGitHubAuthorizeStartParamsSchema;
++  readonly UsersGitHubAuthorizeStartResult: typeof users.UsersGitHubAuthorizeStartResultSchema;
++  readonly UsersGitHubAuthorizePollParams: typeof users.UsersGitHubAuthorizePollParamsSchema;
++  readonly UsersGitHubAuthorizePollResult: typeof users.UsersGitHubAuthorizePollResultSchema;
++  readonly UsersGitHubAuthorizeCancelParams: typeof users.UsersGitHubAuthorizeCancelParamsSchema;
++  readonly UsersGitHubAuthorizeCancelResult: typeof users.UsersGitHubAuthorizeCancelResultSchema;
++  readonly UsersGitHubDisconnectParams: typeof users.UsersGitHubDisconnectParamsSchema;
++  readonly UsersGitHubDisconnectResult: typeof users.UsersGitHubDisconnectResultSchema;
++  readonly UsersPrefsChangedEvent: typeof users.UsersPrefsChangedEventSchema;
++  readonly HumanMention: typeof humanMentions.HumanMentionSchema;
++  readonly MentionableUser: typeof humanMentions.MentionableUserSchema;
++  readonly UsersMentionableParams: typeof humanMentions.UsersMentionableParamsSchema;
++  readonly UsersMentionableResult: typeof humanMentions.UsersMentionableResultSchema;
++  readonly MentionInboxItem: typeof humanMentions.MentionInboxItemSchema;
++  readonly MentionsListParams: typeof humanMentions.MentionsListParamsSchema;
++  readonly MentionsDismissParams: typeof humanMentions.MentionsDismissParamsSchema;
++  readonly MentionsListResult: typeof humanMentions.MentionsListResultSchema;
++  readonly MentionsChangedEvent: typeof humanMentions.MentionsChangedEventSchema;
++  readonly TaskSuggestion: typeof taskSuggestions.TaskSuggestionSchema;
++  readonly TaskSuggestionEvent: typeof taskSuggestions.TaskSuggestionEventSchema;
++  readonly TaskSuggestionResolution: typeof taskSuggestions.TaskSuggestionResolutionSchema;
++  readonly TaskSuggestionsAcceptParams: typeof taskSuggestions.TaskSuggestionsAcceptParamsSchema;
++  readonly TaskSuggestionsAcceptResult: typeof taskSuggestions.TaskSuggestionsAcceptResultSchema;
++  readonly TaskSuggestionsCreateParams: typeof taskSuggestions.TaskSuggestionsCreateParamsSchema;
++  readonly TaskSuggestionsCreateResult: typeof taskSuggestions.TaskSuggestionsCreateResultSchema;
++  readonly TaskSuggestionsDismissParams: typeof taskSuggestions.TaskSuggestionsDismissParamsSchema;
++  readonly TaskSuggestionsDismissResult: typeof taskSuggestions.TaskSuggestionsDismissResultSchema;
++  readonly TaskSuggestionsListParams: typeof taskSuggestions.TaskSuggestionsListParamsSchema;
++  readonly TaskSuggestionsListResult: typeof taskSuggestions.TaskSuggestionsListResultSchema;
++  readonly TaskSummary: typeof tasks.TaskSummarySchema;
++  readonly TasksListParams: typeof tasks.TasksListParamsSchema;
++  readonly TasksListResult: typeof tasks.TasksListResultSchema;
++  readonly TasksGetParams: typeof tasks.TasksGetParamsSchema;
++  readonly TasksGetResult: typeof tasks.TasksGetResultSchema;
++  readonly TasksCancelParams: typeof tasks.TasksCancelParamsSchema;
++  readonly TasksCancelResult: typeof tasks.TasksCancelResultSchema;
++  readonly TasksRecoveryParams: typeof tasks.TasksRecoveryParamsSchema;
++  readonly TasksRecoveryResult: typeof tasks.TasksRecoveryResultSchema;
++  readonly ConfigGetParams: typeof config.ConfigGetParamsSchema;
++  readonly ConfigSetParams: typeof config.ConfigSetParamsSchema;
++  readonly ConfigApplyParams: typeof config.ConfigApplyParamsSchema;
++  readonly ConfigPatchParams: typeof config.ConfigPatchParamsSchema;
++  readonly ConfigSchemaParams: typeof config.ConfigSchemaParamsSchema;
++  readonly ConfigSchemaLookupParams: typeof config.ConfigSchemaLookupParamsSchema;
++  readonly ConfigSchemaResponse: typeof config.ConfigSchemaResponseSchema;
++  readonly ConfigSchemaLookupResult: typeof config.ConfigSchemaLookupResultSchema;
++  readonly SystemAgentChatParams: typeof openclaw.SystemAgentChatParamsSchema;
++  readonly SystemAgentChatResult: typeof openclaw.SystemAgentChatResultSchema;
++  readonly SystemAgentChatHistoryParams: typeof openclaw.SystemAgentChatHistoryParamsSchema;
++  readonly SystemAgentChatHistoryTurn: typeof openclaw.SystemAgentChatHistoryTurnSchema;
++  readonly SystemAgentChatHistoryResult: typeof openclaw.SystemAgentChatHistoryResultSchema;
++  readonly SystemChangeEntry: typeof openclaw.SystemChangeEntrySchema;
++  readonly SystemChangeKind: typeof openclaw.SystemChangeKindSchema;
++  readonly SystemChangeSource: typeof openclaw.SystemChangeSourceSchema;
++  readonly SystemChangesListParams: typeof openclaw.SystemChangesListParamsSchema;
++  readonly SystemChangesListResult: typeof openclaw.SystemChangesListResultSchema;
++  readonly SystemAgentSetupDetectParams: typeof openclaw.SystemAgentSetupDetectParamsSchema;
++  readonly SystemAgentSetupDetectResult: typeof openclaw.SystemAgentSetupDetectResultSchema;
++  readonly SystemAgentSetupVerifyParams: typeof openclaw.SystemAgentSetupVerifyParamsSchema;
++  readonly SystemAgentSetupVerifyResult: typeof openclaw.SystemAgentSetupVerifyResultSchema;
++  readonly SystemAgentSetupActivateParams: typeof openclaw.SystemAgentSetupActivateParamsSchema;
++  readonly SystemAgentSetupActivateResult: typeof openclaw.SystemAgentSetupActivateResultSchema;
++  readonly SystemAgentSetupActivateStartParams: typeof openclaw.SystemAgentSetupActivateStartParamsSchema;
++  readonly SystemAgentSetupActivateStartResult: typeof openclaw.SystemAgentSetupActivateStartResultSchema;
++  readonly SystemAgentSetupAuthStartParams: typeof openclaw.SystemAgentSetupAuthStartParamsSchema;
++  readonly SystemAgentSetupAuthStartResult: typeof openclaw.SystemAgentSetupAuthStartResultSchema;
++  readonly WizardStartParams: typeof wizard.WizardStartParamsSchema;
++  readonly WizardNextParams: typeof wizard.WizardNextParamsSchema;
++  readonly WizardCancelParams: typeof wizard.WizardCancelParamsSchema;
++  readonly WizardStatusParams: typeof wizard.WizardStatusParamsSchema;
++  readonly WizardStep: typeof wizard.WizardStepSchema;
++  readonly WizardNextResult: typeof wizard.WizardNextResultSchema;
++  readonly WizardStartResult: typeof wizard.WizardStartResultSchema;
++  readonly WizardStatusResult: typeof wizard.WizardStatusResultSchema;
++} = {
+   AuditActivityAgentRunV1: auditActivity.AuditActivityAgentRunV1Schema,
+   AuditActivityToolActionV1: auditActivity.AuditActivityToolActionV1Schema,
+   AuditActivityInboundMessageV1: auditActivity.AuditActivityInboundMessageV1Schema,
+diff --git a/packages/gateway-protocol/src/schema/protocol-schema-fragment-plugins-lifecycle.ts b/packages/gateway-protocol/src/schema/protocol-schema-fragment-plugins-lifecycle.ts
+index 8bbaf27490d..667a368c702 100644
+--- a/packages/gateway-protocol/src/schema/protocol-schema-fragment-plugins-lifecycle.ts
++++ b/packages/gateway-protocol/src/schema/protocol-schema-fragment-plugins-lifecycle.ts
+@@ -7,7 +7,115 @@ import * as pluginApprovals from "./plugin-approvals.js";
+ import * as plugins from "./plugins.js";
+ import * as updateRuns from "./update-runs.js";
+ 
+-export const PluginLifecycleProtocolSchemas = {
++export const PluginLifecycleProtocolSchemas: {
++  readonly CapabilityConsentErrorDetails: typeof plugins.CapabilityConsentErrorDetailsSchema;
++  readonly HooksStatusParams: typeof hooks.HooksStatusParamsSchema;
++  readonly PluginApprovalRequestParams: typeof pluginApprovals.PluginApprovalRequestParamsSchema;
++  readonly PluginApprovalResolveParams: typeof pluginApprovals.PluginApprovalResolveParamsSchema;
++  readonly PluginCatalogClawHubInstall: typeof plugins.PluginCatalogClawHubInstallSchema;
++  readonly PluginCatalogEntry: typeof plugins.PluginCatalogEntrySchema;
++  readonly PluginCatalogInstallAction: typeof plugins.PluginCatalogInstallActionSchema;
++  readonly PluginCatalogOfficialInstall: typeof plugins.PluginCatalogOfficialInstallSchema;
++  readonly PluginControlUiDescriptor: typeof plugins.PluginControlUiDescriptorSchema;
++  readonly PluginControlUiModule: typeof plugins.PluginControlUiModuleSchema;
++  readonly PluginControlUiDiagnostic: typeof plugins.PluginControlUiDiagnosticSchema;
++  readonly PluginsControlUiListParams: typeof plugins.PluginsControlUiListParamsSchema;
++  readonly PluginsControlUiReloadParams: typeof plugins.PluginsControlUiReloadParamsSchema;
++  readonly PluginsControlUiCatalog: typeof plugins.PluginsControlUiCatalogSchema;
++  readonly PluginsControlUiChangedEvent: typeof plugins.PluginsControlUiChangedEventSchema;
++  readonly PluginsControlUiReportParams: typeof plugins.PluginsControlUiReportParamsSchema;
++  readonly PluginsControlUiStatusParams: typeof plugins.PluginsControlUiStatusParamsSchema;
++  readonly PluginsControlUiStatusResult: typeof plugins.PluginsControlUiStatusResultSchema;
++  readonly PluginDeclaredSurface: typeof plugins.PluginDeclaredSurfaceSchema;
++  readonly PluginDeclaredSurfaceWidening: typeof plugins.PluginDeclaredSurfaceWideningSchema;
++  readonly PluginHookGrant: typeof plugins.PluginHookGrantSchema;
++  readonly PluginInspectSource: typeof plugins.PluginInspectSourceSchema;
++  readonly PluginInstallTrust: typeof plugins.PluginInstallTrustSchema;
++  readonly PluginOperatorGrants: typeof plugins.PluginOperatorGrantsSchema;
++  readonly PluginSearchPackage: typeof plugins.PluginSearchPackageSchema;
++  readonly PluginSearchResultEntry: typeof plugins.PluginSearchResultEntrySchema;
++  readonly PluginsInspectParams: typeof plugins.PluginsInspectParamsSchema;
++  readonly PluginsInspectResult: typeof plugins.PluginsInspectResultSchema;
++  readonly PluginsInstallParams: typeof plugins.PluginsInstallParamsSchema;
++  readonly PluginsInstallResult: typeof plugins.PluginsInstallResultSchema;
++  readonly PluginsListParams: typeof plugins.PluginsListParamsSchema;
++  readonly PluginsListResult: typeof plugins.PluginsListResultSchema;
++  readonly PluginsRefreshParams: typeof plugins.PluginsRefreshParamsSchema;
++  readonly PluginsRefreshResult: typeof plugins.PluginsRefreshResultSchema;
++  readonly PluginsSearchParams: typeof plugins.PluginsSearchParamsSchema;
++  readonly PluginsSearchResult: typeof plugins.PluginsSearchResultSchema;
++  readonly PluginsSessionActionFailureResult: typeof plugins.PluginsSessionActionFailureResultSchema;
++  readonly PluginsSessionActionParams: typeof plugins.PluginsSessionActionParamsSchema;
++  readonly PluginsSessionActionResult: typeof plugins.PluginsSessionActionResultSchema;
++  readonly PluginsSessionActionSuccessResult: typeof plugins.PluginsSessionActionSuccessResultSchema;
++  readonly PluginsSetEnabledParams: typeof plugins.PluginsSetEnabledParamsSchema;
++  readonly PluginsSetEnabledResult: typeof plugins.PluginsSetEnabledResultSchema;
++  readonly PluginsUiDescriptorsParams: typeof plugins.PluginsUiDescriptorsParamsSchema;
++  readonly PluginsUiDescriptorsResult: typeof plugins.PluginsUiDescriptorsResultSchema;
++  readonly PluginsUninstallParams: typeof plugins.PluginsUninstallParamsSchema;
++  readonly PluginsUninstallResult: typeof plugins.PluginsUninstallResultSchema;
++  readonly DevicePairListParams: typeof devices.DevicePairListParamsSchema;
++  readonly DevicePairApproveParams: typeof devices.DevicePairApproveParamsSchema;
++  readonly DevicePairRejectParams: typeof devices.DevicePairRejectParamsSchema;
++  readonly DevicePairRemoveParams: typeof devices.DevicePairRemoveParamsSchema;
++  readonly DevicePairSetupCodeParams: typeof devices.DevicePairSetupCodeParamsSchema;
++  readonly DevicePairSetupCodeResult: typeof devices.DevicePairSetupCodeResultSchema;
++  readonly DevicePairSetupStatusParams: typeof devices.DevicePairSetupStatusParamsSchema;
++  readonly DevicePairSetupStatusResult: typeof devices.DevicePairSetupStatusResultSchema;
++  readonly DevicePairRenameParams: typeof devices.DevicePairRenameParamsSchema;
++  readonly DeviceTokenRotateParams: typeof devices.DeviceTokenRotateParamsSchema;
++  readonly DeviceTokenRotateResult: typeof devices.DeviceTokenRotateResultSchema;
++  readonly DeviceTokenRevokeParams: typeof devices.DeviceTokenRevokeParamsSchema;
++  readonly ScopeUpgradeRequest: typeof devices.ScopeUpgradeRequestSchema;
++  readonly ScopeUpgradeWait: typeof devices.ScopeUpgradeWaitSchema;
++  readonly ScopeUpgradeRegistration: typeof devices.ScopeUpgradeRegistrationSchema;
++  readonly ScopeUpgradeApproved: typeof devices.ScopeUpgradeApprovedSchema;
++  readonly ScopeUpgradeRejected: typeof devices.ScopeUpgradeRejectedSchema;
++  readonly ScopeUpgradeExpired: typeof devices.ScopeUpgradeExpiredSchema;
++  readonly ScopeUpgradeResult: typeof devices.ScopeUpgradeResultSchema;
++  readonly DevicePairRequestedEvent: typeof devices.DevicePairRequestedEventSchema;
++  readonly DevicePairResolvedEvent: typeof devices.DevicePairResolvedEventSchema;
++  readonly DevicePairSetupCompletedEvent: typeof devices.DevicePairSetupCompletedEventSchema;
++  readonly DevicePairSetupDeliveryUncertainEvent: typeof devices.DevicePairSetupDeliveryUncertainEventSchema;
++  readonly ChatHistoryParams: typeof logsChat.ChatHistoryParamsSchema;
++  readonly ChatStartupParams: typeof logsChat.ChatStartupParamsSchema;
++  readonly ChatHistoryDeltaResult: typeof logsChat.ChatHistoryDeltaResultSchema;
++  readonly ChatHistoryResetResult: typeof logsChat.ChatHistoryResetResultSchema;
++  readonly ChatHistoryCursorResult: typeof logsChat.ChatHistoryCursorResultSchema;
++  readonly ChatMetadataParams: typeof logsChat.ChatMetadataParamsSchema;
++  readonly ChatMessageGetParams: typeof logsChat.ChatMessageGetParamsSchema;
++  readonly ChatMessageGetResult: typeof logsChat.ChatMessageGetResultSchema;
++  readonly ChatToolTitlesParams: typeof logsChat.ChatToolTitlesParamsSchema;
++  readonly ChatToolTitlesResult: typeof logsChat.ChatToolTitlesResultSchema;
++  readonly ChatSendParams: typeof logsChat.ChatSendParamsSchema;
++  readonly ChatAbortParams: typeof logsChat.ChatAbortParamsSchema;
++  readonly ChatInjectParams: typeof logsChat.ChatInjectParamsSchema;
++  readonly ChatRunStartupPhase: typeof logsChat.ChatRunStartupPhaseSchema;
++  readonly ChatStatusEvent: typeof logsChat.ChatStatusEventSchema;
++  readonly ChatDeltaEvent: typeof logsChat.ChatDeltaEventSchema;
++  readonly ChatFinalEvent: typeof logsChat.ChatFinalEventSchema;
++  readonly ChatAbortedEvent: typeof logsChat.ChatAbortedEventSchema;
++  readonly ChatErrorEvent: typeof logsChat.ChatErrorEventSchema;
++  readonly ChatEvent: typeof logsChat.ChatEventSchema;
++  readonly UpdateStatusParams: typeof config.UpdateStatusParamsSchema;
++  readonly UpdateStatusResult: typeof config.UpdateStatusResultSchema;
++  readonly UpdateAvailable: typeof config.UpdateAvailableSchema;
++  readonly UpdateScheduleState: typeof config.UpdateScheduleStateSchema;
++  readonly UpdateHoldParams: typeof config.UpdateHoldParamsSchema;
++  readonly UpdateHoldResult: typeof config.UpdateHoldResultSchema;
++  readonly UpdateRunParams: typeof config.UpdateRunParamsSchema;
++  readonly UpdateRunRecord: typeof updateRuns.UpdateRunRecordSchema;
++  readonly UpdateRunResult: typeof updateRuns.UpdateRunResultSchema;
++  readonly UpdateRunsGetParams: typeof updateRuns.UpdateRunsGetParamsSchema;
++  readonly UpdateRunsGetResult: typeof updateRuns.UpdateRunsGetResultSchema;
++  readonly UpdateRunsListParams: typeof updateRuns.UpdateRunsListParamsSchema;
++  readonly UpdateRunsListResult: typeof updateRuns.UpdateRunsListResultSchema;
++  readonly UpdateRunChangedEvent: typeof updateRuns.UpdateRunChangedEventSchema;
++  readonly UpdateReportParams: typeof config.UpdateReportParamsSchema;
++  readonly UpdateReportResult: typeof config.UpdateReportResultSchema;
++  readonly TickEvent: typeof frames.TickEventSchema;
++  readonly ShutdownEvent: typeof frames.ShutdownEventSchema;
++} = {
+   CapabilityConsentErrorDetails: plugins.CapabilityConsentErrorDetailsSchema,
+   HooksStatusParams: hooks.HooksStatusParamsSchema,
+   PluginApprovalRequestParams: pluginApprovals.PluginApprovalRequestParamsSchema,
 diff --git a/packages/gateway-protocol/src/schema/protocol-schema-fragment-portability.test.ts b/packages/gateway-protocol/src/schema/protocol-schema-fragment-portability.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..0764dbe73c8bf28405516b278311782e275d55ab
+index 00000000000..3a016ad0abb
 --- /dev/null
 +++ b/packages/gateway-protocol/src/schema/protocol-schema-fragment-portability.test.ts
-@@ -0,0 +1,31 @@
+@@ -0,0 +1,96 @@
 +import { expect, expectTypeOf, it } from "vitest";
 +import { AgentsListResultSchema } from "./agents-models-skills.js";
 +import { ApprovalHistoryResultSchema } from "./approvals.js";
++import { AuditActivityAgentRunV1Schema } from "./audit-activity.js";
 +import { BoardSnapshotSchema } from "./board.js";
++import { TalkModeParamsSchema } from "./channels.js";
++import { CronJobSchema } from "./cron.js";
 +import { EnvironmentsListResultSchema } from "./environments.js";
++import { NodePairListParamsSchema } from "./nodes.js";
++import { CapabilityConsentErrorDetailsSchema } from "./plugins.js";
++import { PortalSummarySchema } from "./portals.js";
++import { ProgressCardStepStatusSchema } from "./progress-card.js";
 +import { AgentControlProtocolSchemas } from "./protocol-schema-fragment-agent-control.js";
 +import { AgentSkillProtocolSchemas } from "./protocol-schema-fragment-agents-skills.js";
 +import { ApprovalProtocolSchemas } from "./protocol-schema-fragment-approvals.js";
 +import { BoardProtocolSchemas } from "./protocol-schema-fragment-board.js";
++import { ChannelProtocolSchemas } from "./protocol-schema-fragment-channels.js";
++import { IntegrationProtocolSchemas } from "./protocol-schema-fragment-integrations.js";
++import { NodeProtocolSchemas } from "./protocol-schema-fragment-nodes.js";
++import { OperationsProtocolSchemas } from "./protocol-schema-fragment-operations.js";
++import { PluginLifecycleProtocolSchemas } from "./protocol-schema-fragment-plugins-lifecycle.js";
++import { PortalProtocolSchemas } from "./protocol-schema-fragment-portals.js";
++import { ProgressCardProtocolSchemas } from "./protocol-schema-fragment-progress-card.js";
++import { SchedulerProtocolSchemas } from "./protocol-schema-fragment-scheduler.js";
++import { SessionCollaborationProtocolSchemas } from "./protocol-schema-fragment-sessions-collaboration.js";
++import { SessionCoreProtocolSchemas } from "./protocol-schema-fragment-sessions-core.js";
++import { SessionLifecycleProtocolSchemas } from "./protocol-schema-fragment-sessions-lifecycle.js";
 +import { TransportProtocolSchemas } from "./protocol-schema-fragment-transport.js";
++import { PushTestParamsSchema } from "./push.js";
++import { SessionGitHubOptionsParamsSchema } from "./session-github-publication.js";
++import { SessionPermissionModeSchema, SessionsGoalUpdateParamsSchema } from "./sessions.js";
 +import { SnapshotSchema } from "./snapshot.js";
 +
 +it("keeps fragment registry values exact and nameable for declaration output", () => {
@@ -404,6 +812,23 @@ index 0000000000000000000000000000000000000000..0764dbe73c8bf28405516b278311782e
 +  expect(AgentSkillProtocolSchemas.AgentsListResult).toBe(AgentsListResultSchema);
 +  expect(ApprovalProtocolSchemas.ApprovalHistoryResult).toBe(ApprovalHistoryResultSchema);
 +  expect(BoardProtocolSchemas.BoardSnapshot).toBe(BoardSnapshotSchema);
++  expect(ChannelProtocolSchemas.TalkModeParams).toBe(TalkModeParamsSchema);
++  expect(IntegrationProtocolSchemas.PushTestParams).toBe(PushTestParamsSchema);
++  expect(NodeProtocolSchemas.NodePairListParams).toBe(NodePairListParamsSchema);
++  expect(OperationsProtocolSchemas.AuditActivityAgentRunV1).toBe(AuditActivityAgentRunV1Schema);
++  expect(PluginLifecycleProtocolSchemas.CapabilityConsentErrorDetails).toBe(
++    CapabilityConsentErrorDetailsSchema,
++  );
++  expect(PortalProtocolSchemas.PortalSummary).toBe(PortalSummarySchema);
++  expect(ProgressCardProtocolSchemas.ProgressCardStepStatus).toBe(ProgressCardStepStatusSchema);
++  expect(SchedulerProtocolSchemas.CronJob).toBe(CronJobSchema);
++  expect(SessionCollaborationProtocolSchemas.SessionGitHubOptionsParams).toBe(
++    SessionGitHubOptionsParamsSchema,
++  );
++  expect(SessionCoreProtocolSchemas.SessionPermissionMode).toBe(SessionPermissionModeSchema);
++  expect(SessionLifecycleProtocolSchemas.SessionsGoalUpdateParams).toBe(
++    SessionsGoalUpdateParamsSchema,
++  );
 +
 +  expectTypeOf(TransportProtocolSchemas.Snapshot).toEqualTypeOf<typeof SnapshotSchema>();
 +  expectTypeOf(AgentControlProtocolSchemas.EnvironmentsListResult).toEqualTypeOf<
@@ -416,9 +841,347 @@ index 0000000000000000000000000000000000000000..0764dbe73c8bf28405516b278311782e
 +    typeof ApprovalHistoryResultSchema
 +  >();
 +  expectTypeOf(BoardProtocolSchemas.BoardSnapshot).toEqualTypeOf<typeof BoardSnapshotSchema>();
++  expectTypeOf(ChannelProtocolSchemas.TalkModeParams).toEqualTypeOf<typeof TalkModeParamsSchema>();
++  expectTypeOf(IntegrationProtocolSchemas.PushTestParams).toEqualTypeOf<
++    typeof PushTestParamsSchema
++  >();
++  expectTypeOf(NodeProtocolSchemas.NodePairListParams).toEqualTypeOf<
++    typeof NodePairListParamsSchema
++  >();
++  expectTypeOf(OperationsProtocolSchemas.AuditActivityAgentRunV1).toEqualTypeOf<
++    typeof AuditActivityAgentRunV1Schema
++  >();
++  expectTypeOf(PluginLifecycleProtocolSchemas.CapabilityConsentErrorDetails).toEqualTypeOf<
++    typeof CapabilityConsentErrorDetailsSchema
++  >();
++  expectTypeOf(PortalProtocolSchemas.PortalSummary).toEqualTypeOf<typeof PortalSummarySchema>();
++  expectTypeOf(ProgressCardProtocolSchemas.ProgressCardStepStatus).toEqualTypeOf<
++    typeof ProgressCardStepStatusSchema
++  >();
++  expectTypeOf(SchedulerProtocolSchemas.CronJob).toEqualTypeOf<typeof CronJobSchema>();
++  expectTypeOf(SessionCollaborationProtocolSchemas.SessionGitHubOptionsParams).toEqualTypeOf<
++    typeof SessionGitHubOptionsParamsSchema
++  >();
++  expectTypeOf(SessionCoreProtocolSchemas.SessionPermissionMode).toEqualTypeOf<
++    typeof SessionPermissionModeSchema
++  >();
++  expectTypeOf(SessionLifecycleProtocolSchemas.SessionsGoalUpdateParams).toEqualTypeOf<
++    typeof SessionsGoalUpdateParamsSchema
++  >();
 +});
+diff --git a/packages/gateway-protocol/src/schema/protocol-schema-fragment-portals.ts b/packages/gateway-protocol/src/schema/protocol-schema-fragment-portals.ts
+index 0c25310c14d..b933b5489a6 100644
+--- a/packages/gateway-protocol/src/schema/protocol-schema-fragment-portals.ts
++++ b/packages/gateway-protocol/src/schema/protocol-schema-fragment-portals.ts
+@@ -1,6 +1,15 @@
+ import * as portals from "./portals.js";
+ 
+-export const PortalProtocolSchemas = {
++export const PortalProtocolSchemas: {
++  readonly PortalSummary: typeof portals.PortalSummarySchema;
++  readonly PortalListParams: typeof portals.PortalListParamsSchema;
++  readonly PortalListResult: typeof portals.PortalListResultSchema;
++  readonly PortalOpenParams: typeof portals.PortalOpenParamsSchema;
++  readonly PortalOpenResult: typeof portals.PortalOpenResultSchema;
++  readonly PortalCloseParams: typeof portals.PortalCloseParamsSchema;
++  readonly PortalCloseResult: typeof portals.PortalCloseResultSchema;
++  readonly PortalChangedEvent: typeof portals.PortalChangedEventSchema;
++} = {
+   PortalSummary: portals.PortalSummarySchema,
+   PortalListParams: portals.PortalListParamsSchema,
+   PortalListResult: portals.PortalListResultSchema,
+diff --git a/packages/gateway-protocol/src/schema/protocol-schema-fragment-progress-card.ts b/packages/gateway-protocol/src/schema/protocol-schema-fragment-progress-card.ts
+index 73dbc4d5c2c..c435b0631c6 100644
+--- a/packages/gateway-protocol/src/schema/protocol-schema-fragment-progress-card.ts
++++ b/packages/gateway-protocol/src/schema/protocol-schema-fragment-progress-card.ts
+@@ -1,6 +1,15 @@
+ import * as progressCard from "./progress-card.js";
+ 
+-export const ProgressCardProtocolSchemas = {
++export const ProgressCardProtocolSchemas: {
++  readonly ProgressCardStepStatus: typeof progressCard.ProgressCardStepStatusSchema;
++  readonly ProgressCardStep: typeof progressCard.ProgressCardStepSchema;
++  readonly ProgressCard: typeof progressCard.ProgressCardSchema;
++  readonly ProgressCardGetParams: typeof progressCard.ProgressCardGetParamsSchema;
++  readonly ProgressCardGetResult: typeof progressCard.ProgressCardGetResultSchema;
++  readonly ProgressCardPutParams: typeof progressCard.ProgressCardPutParamsSchema;
++  readonly ProgressCardPutResult: typeof progressCard.ProgressCardPutResultSchema;
++  readonly ProgressCardChangedEvent: typeof progressCard.ProgressCardChangedEventSchema;
++} = {
+   ProgressCardStepStatus: progressCard.ProgressCardStepStatusSchema,
+   ProgressCardStep: progressCard.ProgressCardStepSchema,
+   ProgressCard: progressCard.ProgressCardSchema,
+diff --git a/packages/gateway-protocol/src/schema/protocol-schema-fragment-scheduler.ts b/packages/gateway-protocol/src/schema/protocol-schema-fragment-scheduler.ts
+index 252a37e2a38..d63d2542aaa 100644
+--- a/packages/gateway-protocol/src/schema/protocol-schema-fragment-scheduler.ts
++++ b/packages/gateway-protocol/src/schema/protocol-schema-fragment-scheduler.ts
+@@ -3,7 +3,43 @@ import * as logsChat from "./logs-chat.js";
+ import * as migrations from "./migrations.js";
+ import * as terminal from "./terminal.js";
+ 
+-export const SchedulerProtocolSchemas = {
++export const SchedulerProtocolSchemas: {
++  readonly CronJob: typeof cron.CronJobSchema;
++  readonly CronListParams: typeof cron.CronListParamsSchema;
++  readonly CronStatusParams: typeof cron.CronStatusParamsSchema;
++  readonly CronGetParams: typeof cron.CronGetParamsSchema;
++  readonly CronAddParams: typeof cron.CronAddParamsSchema;
++  readonly CronAddJobResult: typeof cron.CronAddJobResultSchema;
++  readonly CronAddResult: typeof cron.CronAddResultSchema;
++  readonly CronDeclarativeAddResult: typeof cron.CronDeclarativeAddResultSchema;
++  readonly CronDeliveryPreview: typeof cron.CronDeliveryPreviewSchema;
++  readonly CronUpdateParams: typeof cron.CronUpdateParamsSchema;
++  readonly CronRemoveParams: typeof cron.CronRemoveParamsSchema;
++  readonly CronRunParams: typeof cron.CronRunParamsSchema;
++  readonly CronRunsParams: typeof cron.CronRunsParamsSchema;
++  readonly CronScratchGetParams: typeof cron.CronScratchGetParamsSchema;
++  readonly CronScratchGetResult: typeof cron.CronScratchGetResultSchema;
++  readonly CronScratchSetParams: typeof cron.CronScratchSetParamsSchema;
++  readonly CronScratchSetResult: typeof cron.CronScratchSetResultSchema;
++  readonly CronRunLogEntry: typeof cron.CronRunLogEntrySchema;
++  readonly LogsTailParams: typeof logsChat.LogsTailParamsSchema;
++  readonly LogsTailResult: typeof logsChat.LogsTailResultSchema;
++  readonly TerminalOpenParams: typeof terminal.TerminalOpenParamsSchema;
++  readonly TerminalOpenResult: typeof terminal.TerminalOpenResultSchema;
++  readonly TerminalInputParams: typeof terminal.TerminalInputParamsSchema;
++  readonly TerminalResizeParams: typeof terminal.TerminalResizeParamsSchema;
++  readonly TerminalCloseParams: typeof terminal.TerminalCloseParamsSchema;
++  readonly TerminalAttachParams: typeof terminal.TerminalAttachParamsSchema;
++  readonly TerminalAttachResult: typeof terminal.TerminalAttachResultSchema;
++  readonly TerminalSessionInfo: typeof terminal.TerminalSessionInfoSchema;
++  readonly TerminalListResult: typeof terminal.TerminalListResultSchema;
++  readonly TerminalUploadParams: typeof terminal.TerminalUploadParamsSchema;
++  readonly TerminalUploadResult: typeof terminal.TerminalUploadResultSchema;
++  readonly TerminalAckResult: typeof terminal.TerminalAckResultSchema;
++  readonly TerminalDataEvent: typeof terminal.TerminalDataEventSchema;
++  readonly TerminalExitEvent: typeof terminal.TerminalExitEventSchema;
++  readonly TerminalEvent: typeof terminal.TerminalEventSchema;
++} & typeof migrations.MigrationProtocolSchemas = {
+   CronJob: cron.CronJobSchema,
+   CronListParams: cron.CronListParamsSchema,
+   CronStatusParams: cron.CronStatusParamsSchema,
+diff --git a/packages/gateway-protocol/src/schema/protocol-schema-fragment-sessions-collaboration.ts b/packages/gateway-protocol/src/schema/protocol-schema-fragment-sessions-collaboration.ts
+index 06a34212a68..0bfb1e1dcef 100644
+--- a/packages/gateway-protocol/src/schema/protocol-schema-fragment-sessions-collaboration.ts
++++ b/packages/gateway-protocol/src/schema/protocol-schema-fragment-sessions-collaboration.ts
+@@ -4,7 +4,59 @@ import * as sessionPlacement from "./session-placement.js";
+ import * as sessionsSharing from "./sessions-sharing.js";
+ import * as sessionsSuggestions from "./sessions-suggestions.js";
+ 
+-export const SessionCollaborationProtocolSchemas = {
++export const SessionCollaborationProtocolSchemas: {
++  readonly SessionGitHubOptionsParams: typeof sessionGitHubPublication.SessionGitHubOptionsParamsSchema;
++  readonly SessionGitHubOptionsResult: typeof sessionGitHubPublication.SessionGitHubOptionsResultSchema;
++  readonly SessionGitHubStatusParams: typeof sessionGitHubPublication.SessionGitHubStatusParamsSchema;
++  readonly SessionGitHubStatusResult: typeof sessionGitHubPublication.SessionGitHubStatusResultSchema;
++  readonly SessionGitHubConfirmParams: typeof sessionGitHubPublication.SessionGitHubConfirmParamsSchema;
++  readonly SessionGitHubPublishParams: typeof sessionGitHubPublication.SessionGitHubPublishParamsSchema;
++  readonly SessionGitHubPublicationRequested: typeof sessionGitHubPublication.SessionGitHubPublicationRequestedSchema;
++  readonly SessionGitHubPublicationPublishing: typeof sessionGitHubPublication.SessionGitHubPublicationPublishingSchema;
++  readonly SessionGitHubPublicationPublished: typeof sessionGitHubPublication.SessionGitHubPublicationPublishedSchema;
++  readonly SessionGitHubPublicationFailed: typeof sessionGitHubPublication.SessionGitHubPublicationFailedSchema;
++  readonly SessionGitHubPublicationNeedsConfirmation: typeof sessionGitHubPublication.SessionGitHubPublicationNeedsConfirmationSchema;
++  readonly SessionGitHubPublicationResult: typeof sessionGitHubPublication.SessionGitHubPublicationResultSchema;
++  readonly SessionVisibility: typeof sessionsSharing.SessionVisibilitySchema;
++  readonly SessionSharingIdentity: typeof sessionsSharing.SessionSharingIdentitySchema;
++  readonly SessionSharingRole: typeof sessionsSharing.SessionSharingRoleSchema;
++  readonly SessionVisibilitySetParams: typeof sessionsSharing.SessionVisibilitySetParamsSchema;
++  readonly SessionVisibilitySetResult: typeof sessionsSharing.SessionVisibilitySetResultSchema;
++  readonly SessionPublicShare: typeof sessionsSharing.SessionPublicShareSchema;
++  readonly SessionPublicShareSetParams: typeof sessionsSharing.SessionPublicShareSetParamsSchema;
++  readonly SessionPublicShareSetResult: typeof sessionsSharing.SessionPublicShareSetResultSchema;
++  readonly SessionMembersListParams: typeof sessionsSharing.SessionMembersListParamsSchema;
++  readonly SessionMember: typeof sessionsSharing.SessionMemberSchema;
++  readonly SessionMemberEvidence: typeof sessionsSharing.SessionMemberEvidenceSchema;
++  readonly SessionMembersListResult: typeof sessionsSharing.SessionMembersListResultSchema;
++  readonly SessionMembersListEvidenceResult: typeof sessionsSharing.SessionMembersListEvidenceResultSchema;
++  readonly SessionMemberAddParams: typeof sessionsSharing.SessionMemberAddParamsSchema;
++  readonly SessionMemberRemoveParams: typeof sessionsSharing.SessionMemberRemoveParamsSchema;
++  readonly SessionMemberMutationResult: typeof sessionsSharing.SessionMemberMutationResultSchema;
++  readonly SessionSharingAction: typeof sessionsSharing.SessionSharingActionSchema;
++  readonly SessionSharingEvent: typeof sessionsSharing.SessionSharingEventSchema;
++  readonly SessionSharingEvidenceEvent: typeof sessionsSharing.SessionSharingEvidenceEventSchema;
++  readonly SessionSuggestionState: typeof sessionsSuggestions.SessionSuggestionStateSchema;
++  readonly SessionSuggestionAction: typeof sessionsSuggestions.SessionSuggestionActionSchema;
++  readonly SessionSuggestionResolution: typeof sessionsSuggestions.SessionSuggestionResolutionSchema;
++  readonly SessionSuggestion: typeof sessionsSuggestions.SessionSuggestionSchema;
++  readonly SessionSuggestionsAddParams: typeof sessionsSuggestions.SessionSuggestionsAddParamsSchema;
++  readonly SessionSuggestionsAddResult: typeof sessionsSuggestions.SessionSuggestionsAddResultSchema;
++  readonly SessionSuggestionsListParams: typeof sessionsSuggestions.SessionSuggestionsListParamsSchema;
++  readonly SessionSuggestionsListResult: typeof sessionsSuggestions.SessionSuggestionsListResultSchema;
++  readonly SessionSuggestionsResolveParams: typeof sessionsSuggestions.SessionSuggestionsResolveParamsSchema;
++  readonly SessionSuggestionsResolveResult: typeof sessionsSuggestions.SessionSuggestionsResolveResultSchema;
++  readonly SessionSuggestionEvent: typeof sessionsSuggestions.SessionSuggestionEventSchema;
++  readonly SessionTypingParams: typeof sessionsSuggestions.SessionTypingParamsSchema;
++  readonly SessionTypingResult: typeof sessionsSuggestions.SessionTypingResultSchema;
++  readonly SessionTypingEvent: typeof sessionsSuggestions.SessionTypingEventSchema;
++  readonly SessionDiscussionState: typeof sessionDiscussion.SessionDiscussionStateSchema;
++  readonly SessionDiscussionInfo: typeof sessionDiscussion.SessionDiscussionInfoSchema;
++  readonly SessionDiscussionInfoParams: typeof sessionDiscussion.SessionDiscussionInfoParamsSchema;
++  readonly SessionDiscussionInfoResult: typeof sessionDiscussion.SessionDiscussionInfoResultSchema;
++  readonly SessionDiscussionOpenParams: typeof sessionDiscussion.SessionDiscussionOpenParamsSchema;
++  readonly SessionDiscussionOpenResult: typeof sessionDiscussion.SessionDiscussionOpenResultSchema;
++} & typeof sessionPlacement.SessionPlacementProtocolSchemas = {
+   SessionGitHubOptionsParams: sessionGitHubPublication.SessionGitHubOptionsParamsSchema,
+   SessionGitHubOptionsResult: sessionGitHubPublication.SessionGitHubOptionsResultSchema,
+   SessionGitHubStatusParams: sessionGitHubPublication.SessionGitHubStatusParamsSchema,
+diff --git a/packages/gateway-protocol/src/schema/protocol-schema-fragment-sessions-core.ts b/packages/gateway-protocol/src/schema/protocol-schema-fragment-sessions-core.ts
+index 86d5aa72dc6..b601b4fc101 100644
+--- a/packages/gateway-protocol/src/schema/protocol-schema-fragment-sessions-core.ts
++++ b/packages/gateway-protocol/src/schema/protocol-schema-fragment-sessions-core.ts
+@@ -7,7 +7,56 @@ import {
+ } from "./sessions-resolve.js";
+ import * as sessions from "./sessions.js";
+ 
+-export const SessionCoreProtocolSchemas = {
++export const SessionCoreProtocolSchemas: {
++  readonly SessionPermissionMode: typeof sessions.SessionPermissionModeSchema;
++  readonly SessionsListParams: typeof sessions.SessionsListParamsSchema;
++  readonly SessionCatalogCapabilities: typeof sessionsCatalog.SessionCatalogCapabilitiesSchema;
++  readonly SessionCatalogDescriptor: typeof sessionsCatalog.SessionCatalogDescriptorSchema;
++  readonly SessionCatalogPullRequestSummary: typeof sessionsCatalog.SessionCatalogPullRequestSummarySchema;
++  readonly SessionCatalogSession: typeof sessionsCatalog.SessionCatalogSessionSchema;
++  readonly SessionCatalogHost: typeof sessionsCatalog.SessionCatalogHostSchema;
++  readonly SessionCatalog: typeof sessionsCatalog.SessionCatalogSchema;
++  readonly SessionCatalogTranscriptItem: typeof sessionsCatalog.SessionCatalogTranscriptItemSchema;
++  readonly SessionsCatalogListParams: typeof sessionsCatalog.SessionsCatalogListParamsSchema;
++  readonly SessionsCatalogListResult: typeof sessionsCatalog.SessionsCatalogListResultSchema;
++  readonly SessionsCatalogReadParams: typeof sessionsCatalog.SessionsCatalogReadParamsSchema;
++  readonly SessionsCatalogReadResult: typeof sessionsCatalog.SessionsCatalogReadResultSchema;
++  readonly SessionsCatalogContinueParams: typeof sessionsCatalog.SessionsCatalogContinueParamsSchema;
++  readonly SessionsCatalogContinueResult: typeof sessionsCatalog.SessionsCatalogContinueResultSchema;
++  readonly SessionsCatalogArchiveParams: typeof sessionsCatalog.SessionsCatalogArchiveParamsSchema;
++  readonly SessionsCatalogArchiveResult: typeof sessionsCatalog.SessionsCatalogArchiveResultSchema;
++  readonly SessionsCatalogStartTerminalParams: typeof sessionsCatalog.SessionsCatalogStartTerminalParamsSchema;
++  readonly SessionsCatalogStartTerminalResult: typeof sessionsCatalog.SessionsCatalogStartTerminalResultSchema;
++  readonly SessionsCleanupParams: typeof sessions.SessionsCleanupParamsSchema;
++  readonly SessionsPreviewParams: typeof sessions.SessionsPreviewParamsSchema;
++  readonly SessionsDescribeParams: typeof sessions.SessionsDescribeParamsSchema;
++  readonly SessionsResolveCandidate: typeof SessionsResolveCandidateSchema;
++  readonly SessionsResolveParams: typeof SessionsResolveParamsSchema;
++  readonly SessionsResolveResult: typeof SessionsResolveResultSchema;
++  readonly SessionsSearchHit: typeof sessions.SessionsSearchHitSchema;
++  readonly SessionsSearchParams: typeof sessions.SessionsSearchParamsSchema;
++  readonly SessionsSearchResult: typeof sessions.SessionsSearchResultSchema;
++  readonly SessionCompactionCheckpoint: typeof sessions.SessionCompactionCheckpointSchema;
++  readonly SessionOperationEvent: typeof sessions.SessionOperationEventSchema;
++  readonly SessionCreatedActor: typeof sessions.SessionCreatedActorSchema;
++  readonly SessionParticipantIdentity: typeof participants.SessionParticipantIdentitySchema;
++  readonly SessionParticipant: typeof participants.SessionParticipantSchema;
++  readonly SessionPerson: typeof participants.SessionPersonSchema;
++  readonly SessionOwner: typeof sessions.SessionOwnerSchema;
++  readonly SessionObserverHealth: typeof sessions.SessionObserverHealthSchema;
++  readonly SessionObserverPlanProgress: typeof sessions.SessionObserverPlanProgressSchema;
++  readonly SessionObserverDigest: typeof sessions.SessionObserverDigestSchema;
++  readonly SessionCompanionExchange: typeof sessions.SessionCompanionExchangeSchema;
++  readonly SessionRow: typeof sessions.SessionRowSchema;
++  readonly SessionsCompanionAskParams: typeof sessions.SessionsCompanionAskParamsSchema;
++  readonly SessionsCompanionAskResult: typeof sessions.SessionsCompanionAskResultSchema;
++  readonly SessionsCompanionResetParams: typeof sessions.SessionsCompanionResetParamsSchema;
++  readonly SessionsCompanionResetResult: typeof sessions.SessionsCompanionResetResultSchema;
++  readonly SessionsCompanionStateParams: typeof sessions.SessionsCompanionStateParamsSchema;
++  readonly SessionsCompanionStateResult: typeof sessions.SessionsCompanionStateResultSchema;
++  readonly SessionsObserverVisibilityParams: typeof sessions.SessionsObserverVisibilityParamsSchema;
++  readonly SessionsObserverVisibilityResult: typeof sessions.SessionsObserverVisibilityResultSchema;
++} = {
+   SessionPermissionMode: sessions.SessionPermissionModeSchema,
+   SessionsListParams: sessions.SessionsListParamsSchema,
+   SessionCatalogCapabilities: sessionsCatalog.SessionCatalogCapabilitiesSchema,
+diff --git a/packages/gateway-protocol/src/schema/protocol-schema-fragment-sessions-lifecycle.ts b/packages/gateway-protocol/src/schema/protocol-schema-fragment-sessions-lifecycle.ts
+index a3c8c2a0e60..d2ff31d4dd8 100644
+--- a/packages/gateway-protocol/src/schema/protocol-schema-fragment-sessions-lifecycle.ts
++++ b/packages/gateway-protocol/src/schema/protocol-schema-fragment-sessions-lifecycle.ts
+@@ -1,7 +1,87 @@
+ import * as viewerPresence from "./sessions-viewer-presence.js";
+ import * as sessions from "./sessions.js";
+ 
+-export const SessionLifecycleProtocolSchemas = {
++export const SessionLifecycleProtocolSchemas: {
++  readonly SessionsGoalUpdateParams: typeof sessions.SessionsGoalUpdateParamsSchema;
++  readonly SessionsGoalClearParams: typeof sessions.SessionsGoalClearParamsSchema;
++  readonly SessionsGoalMutationResult: typeof sessions.SessionsGoalMutationResultSchema;
++  readonly SessionsCompactionListParams: typeof sessions.SessionsCompactionListParamsSchema;
++  readonly SessionsCompactionBranchParams: typeof sessions.SessionsCompactionBranchParamsSchema;
++  readonly SessionsCompactionRestoreParams: typeof sessions.SessionsCompactionRestoreParamsSchema;
++  readonly SessionsCompactionListResult: typeof sessions.SessionsCompactionListResultSchema;
++  readonly SessionsCompactionBranchResult: typeof sessions.SessionsCompactionBranchResultSchema;
++  readonly SessionsCompactionRestoreResult: typeof sessions.SessionsCompactionRestoreResultSchema;
++  readonly SessionsRewindParams: typeof sessions.SessionsRewindParamsSchema;
++  readonly SessionsRewindResult: typeof sessions.SessionsRewindResultSchema;
++  readonly SessionsForkParams: typeof sessions.SessionsForkParamsSchema;
++  readonly SessionsForkResult: typeof sessions.SessionsForkResultSchema;
++  readonly SessionBranch: typeof sessions.SessionBranchSchema;
++  readonly SessionsBranchesListParams: typeof sessions.SessionsBranchesListParamsSchema;
++  readonly SessionsBranchesListResult: typeof sessions.SessionsBranchesListResultSchema;
++  readonly SessionsBranchesSwitchParams: typeof sessions.SessionsBranchesSwitchParamsSchema;
++  readonly SessionsBranchesSwitchResult: typeof sessions.SessionsBranchesSwitchResultSchema;
++  readonly SessionFileBrowserEntry: typeof sessions.SessionFileBrowserEntrySchema;
++  readonly SessionFileBrowserResult: typeof sessions.SessionFileBrowserResultSchema;
++  readonly SessionFileKind: typeof sessions.SessionFileKindSchema;
++  readonly SessionFileEntry: typeof sessions.SessionFileEntrySchema;
++  readonly SessionFilePreviewKind: typeof sessions.SessionFilePreviewKindSchema;
++  readonly SessionFileRelevance: typeof sessions.SessionFileRelevanceSchema;
++  readonly SessionsFilesListParams: typeof sessions.SessionsFilesListParamsSchema;
++  readonly SessionsFilesListResult: typeof sessions.SessionsFilesListResultSchema;
++  readonly SessionsFilesGetParams: typeof sessions.SessionsFilesGetParamsSchema;
++  readonly SessionsFilesGetResult: typeof sessions.SessionsFilesGetResultSchema;
++  readonly SessionsFilesRevealParams: typeof sessions.SessionsFilesRevealParamsSchema;
++  readonly SessionsFilesRevealResult: typeof sessions.SessionsFilesRevealResultSchema;
++  readonly SessionsFilesSetParams: typeof sessions.SessionsFilesSetParamsSchema;
++  readonly SessionsFilesSetResult: typeof sessions.SessionsFilesSetResultSchema;
++  readonly SessionDiffFileStatus: typeof sessions.SessionDiffFileStatusSchema;
++  readonly SessionDiffFile: typeof sessions.SessionDiffFileSchema;
++  readonly SessionDiffCommit: typeof sessions.SessionDiffCommitSchema;
++  readonly SessionDiffScope: typeof sessions.SessionDiffScopeSchema;
++  readonly SessionsDiffParams: typeof sessions.SessionsDiffParamsSchema;
++  readonly SessionsDiffResult: typeof sessions.SessionsDiffResultSchema;
++  readonly SessionWorktreeInfo: typeof sessions.SessionWorktreeInfoSchema;
++  readonly SessionsCreateParams: typeof sessions.SessionsCreateParamsSchema;
++  readonly SessionsCreateResult: typeof sessions.SessionsCreateResultSchema;
++  readonly SessionsTitlePrepareParams: typeof sessions.SessionsTitlePrepareParamsSchema;
++  readonly SessionsTitlePrepareResult: typeof sessions.SessionsTitlePrepareResultSchema;
++  readonly SessionsRecoverParams: typeof sessions.SessionsRecoverParamsSchema;
++  readonly SessionsRecoverResult: typeof sessions.SessionsRecoverResultSchema;
++  readonly SessionsSendParams: typeof sessions.SessionsSendParamsSchema;
++  readonly SessionsMessagesSubscribeParams: typeof sessions.SessionsMessagesSubscribeParamsSchema;
++  readonly SessionsMessagesUnsubscribeParams: typeof sessions.SessionsMessagesUnsubscribeParamsSchema;
++  readonly SessionsViewerPresenceSetParams: typeof viewerPresence.SessionsViewerPresenceSetParamsSchema;
++  readonly SessionsViewerPresenceSetResult: typeof viewerPresence.SessionsViewerPresenceSetResultSchema;
++  readonly SessionsAbortParams: typeof sessions.SessionsAbortParamsSchema;
++  readonly SessionsPatchParams: typeof sessions.SessionsPatchParamsSchema;
++  readonly SessionsPatchMutation: typeof sessions.SessionsPatchMutationSchema;
++  readonly SessionsPatchManyTarget: typeof sessions.SessionsPatchManyTargetSchema;
++  readonly SessionsPatchManyParams: typeof sessions.SessionsPatchManyParamsSchema;
++  readonly SessionsPatchManyResult: typeof sessions.SessionsPatchManyResultSchema;
++  readonly SessionsPluginPatchParams: typeof sessions.SessionsPluginPatchParamsSchema;
++  readonly SessionsPluginPatchResult: typeof sessions.SessionsPluginPatchResultSchema;
++  readonly SessionsResetParams: typeof sessions.SessionsResetParamsSchema;
++  readonly SessionsDeleteParams: typeof sessions.SessionsDeleteParamsSchema;
++  readonly WorktreePreservationReason: typeof sessions.WorktreePreservationReasonSchema;
++  readonly PreservedSessionWorktree: typeof sessions.PreservedSessionWorktreeSchema;
++  readonly SessionsDeleteResult: typeof sessions.SessionsDeleteResultSchema;
++  readonly SessionsAssignOwnerParams: typeof sessions.SessionsAssignOwnerParamsSchema;
++  readonly SessionsAssignOwnerResult: typeof sessions.SessionsAssignOwnerResultSchema;
++  readonly SessionGroup: typeof sessions.SessionGroupSchema;
++  readonly SessionGroupDefaults: typeof sessions.SessionGroupDefaultsSchema;
++  readonly SessionsGroupsListParams: typeof sessions.SessionsGroupsListParamsSchema;
++  readonly SessionsGroupsListResult: typeof sessions.SessionsGroupsListResultSchema;
++  readonly SessionsGroupsDefaultsParams: typeof sessions.SessionsGroupsDefaultsParamsSchema;
++  readonly SessionsGroupsDefaultsResult: typeof sessions.SessionsGroupsDefaultsResultSchema;
++  readonly SessionsGroupsPutParams: typeof sessions.SessionsGroupsPutParamsSchema;
++  readonly SessionsGroupsRenameParams: typeof sessions.SessionsGroupsRenameParamsSchema;
++  readonly SessionsGroupsUpdateParams: typeof sessions.SessionsGroupsUpdateParamsSchema;
++  readonly SessionsGroupsUpdateResult: typeof sessions.SessionsGroupsUpdateResultSchema;
++  readonly SessionsGroupsDeleteParams: typeof sessions.SessionsGroupsDeleteParamsSchema;
++  readonly SessionsGroupsMutationResult: typeof sessions.SessionsGroupsMutationResultSchema;
++  readonly SessionsCompactParams: typeof sessions.SessionsCompactParamsSchema;
++  readonly SessionsUsageParams: typeof sessions.SessionsUsageParamsSchema;
++} = {
+   SessionsGoalUpdateParams: sessions.SessionsGoalUpdateParamsSchema,
+   SessionsGoalClearParams: sessions.SessionsGoalClearParamsSchema,
+   SessionsGoalMutationResult: sessions.SessionsGoalMutationResultSchema,
 diff --git a/packages/gateway-protocol/src/schema/protocol-schema-fragment-transport.ts b/packages/gateway-protocol/src/schema/protocol-schema-fragment-transport.ts
-index 45252ff0f0fa72b3cf23fade58e398a47a6bd3ef..5898173addcb8a2c42bbbc826df4b5d3154fecaa 100644
+index 45252ff0f0f..5898173addc 100644
 --- a/packages/gateway-protocol/src/schema/protocol-schema-fragment-transport.ts
 +++ b/packages/gateway-protocol/src/schema/protocol-schema-fragment-transport.ts
 @@ -4,7 +4,48 @@ import * as gatewaySuspend from "./gateway-suspend.js";

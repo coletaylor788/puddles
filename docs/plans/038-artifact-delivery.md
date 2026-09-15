@@ -60,10 +60,12 @@ hosted workflow are implemented. Public focused tests, accumulated CI, hosted
 checks, and retained review passed for the prior candidate.
 
 The first fresh ARM build exposed a declaration portability error before
-deployment. The public source patch now gives the five affected schema
-registries exact explicit types without changing their runtime objects. Focused
-package build and registry tests pass. Full accumulated validation, retained
-review, hosted checks, and the resumed private ARM flow remain.
+deployment. The public source patch now gives all 16 fragment registries exact
+explicit types without changing their runtime objects. A representative
+runtime and compile-time registry test passes for every fragment, and the exact
+fresh pinned pnpm 12 root build emits all declarations successfully. Full
+accumulated validation, retained review, hosted checks, and the resumed private
+ARM flow remain.
 
 ## Agent section
 
@@ -233,7 +235,7 @@ review, hosted checks, and the resumed private ARM flow remain.
 - [x] Add deterministic artifact ownership, references, cleanup, and automatic
   native build hooks.
 - [x] Add public workflow concurrency and x64 bundle publication.
-- [x] Add portable declaration types for the five affected gateway protocol
+- [x] Add portable declaration types for all 16 gateway protocol fragment
   registries and register their regression in the cumulative patch suite.
 - [x] Update `packages/e2e/README.md`,
   `docs/openclaw-setup/patches/README.md`, and only the lifecycle instructions
@@ -257,9 +259,9 @@ review, hosted checks, and the resumed private ARM flow remain.
 - Deployment tests invoke the real `apply-and-deploy.sh` path against test-owned
   state for success and compare-and-swap drift rollback. Both use the normal
   activation transaction.
-- Gateway protocol tests preserve exact schema identity and compile-time types.
-  The package build must emit declarations successfully from a fresh pnpm 12
-  install.
+- Gateway protocol tests preserve exact schema identity and compile-time types
+  for every fragment. The root build must emit declarations successfully from
+  a fresh pinned pnpm 12 install.
 - Proof tests reject edited source and deployment summaries unless their
   maintained stage records and recovery journals match.
 - Integration tests prove interim receipts cannot integrate or activate,
@@ -304,9 +306,11 @@ review, hosted checks, and the resumed private ARM flow remain.
   importer-only archive and physical-target checks. Both produce immutable
   maintained evidence for the same build identity.
 - 2026-09-14: The retained reviewer cleared public head `76ed2e4`.
-- 2026-09-14: The first fresh private ARM build exposed TS2883 in five gateway
-  protocol registries. Exact explicit annotations preserve runtime and static
-  schema identity while making declaration output portable.
+- 2026-09-14: The first fresh private ARM build exposed TS2883 in gateway
+  protocol registries. The first capped diagnostic batch named five fragments,
+  and the next batch named more. Exact explicit annotations now cover all 16
+  fragments, preserving runtime and static schema identity while making
+  declaration output portable.
 
 ### Checklist
 
