@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -612,8 +612,10 @@ it("retains a failed target reproduction and its diagnostics", async () => {
   mkdirSync(dirname(targetManifest));
   const seedRoot = join(directory, "target-seed");
   for (const path of ["installed", "state"]) mkdirSync(join(seedRoot, path), { recursive: true });
+  mkdirSync(join(seedRoot, "state", "private"), { mode: 0o700 });
   writeFileSync(join(seedRoot, "installed/previous"), "previous runtime");
-  writeFileSync(join(seedRoot, "state/config"), "previous state");
+  writeFileSync(join(seedRoot, "state/private/config"), "previous state");
+  chmodSync(join(seedRoot, "state", "private"), 0o700);
   writeFileSync(join(seedRoot, "gateway.plist"), "fixture service");
   const seedPath = join(directory, "target-seed.json");
   writeFileSync(seedPath, JSON.stringify({
@@ -648,7 +650,8 @@ it("retains a failed target reproduction and its diagnostics", async () => {
   vi.stubEnv("E2E_LOCAL_EXTENSION", module);
   await expect(nativeTargetPipeline(buildPath, targetManifest, seedPath)).rejects.toThrow("synthetic installed failure");
   expect(readFileSync(join(targetRoot, "installed/previous"), "utf8")).toBe("previous runtime");
-  expect(readFileSync(join(targetRoot, "state/config"), "utf8")).toBe("previous state");
+  expect(readFileSync(join(targetRoot, "state/private/config"), "utf8")).toBe("previous state");
+  expect(statSync(join(targetRoot, "state/private")).mode & 0o777).toBe(0o700);
   expect(existsSync(join(targetRoot, ".puddles-rehearsal-seed.json"))).toBe(true);
   const objects = readdirSync(join(pool, "objects"));
   expect(objects.some((name) => name.startsWith("failure-"))).toBe(true);

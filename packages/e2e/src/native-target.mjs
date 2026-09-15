@@ -1,5 +1,5 @@
 import {
-  cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync,
+  chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync,
   renameSync, rmSync,
 } from "node:fs";
 import { randomUUID } from "node:crypto";
@@ -43,6 +43,16 @@ function verifyContainedLinks(root, path = root) {
       verifyContainedLinks(root, childPath);
     }
   }
+}
+
+function preserveModes(sourcePath, destinationPath) {
+  const stat = lstatSync(sourcePath);
+  if (stat.isDirectory()) {
+    for (const entry of readdirSync(sourcePath)) {
+      preserveModes(join(sourcePath, entry), join(destinationPath, entry));
+    }
+  }
+  if (!stat.isSymbolicLink()) chmodSync(destinationPath, stat.mode & 0o7777);
 }
 
 export function createRehearsalTarget(target, seedPath) {
@@ -107,6 +117,7 @@ export function createRehearsalTarget(target, seedPath) {
       const destination = join(staging, destinations[name]);
       mkdirSync(dirname(destination), { recursive: true, mode: 0o700 });
       cpSync(sources[name], destination, { recursive: true, verbatimSymlinks: true });
+      preserveModes(sources[name], destination);
     }
     const service = join(staging, destinations.plistPath);
     mkdirSync(dirname(service), { recursive: true, mode: 0o700 });
