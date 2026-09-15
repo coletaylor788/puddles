@@ -25,12 +25,13 @@ activated gateway. Keep the previous interpreter available for rollback.
 | `browser-userdata-dir-fix.patch` | Browser data directory and singleton cleanup |
 | `builtin-memory-migration.patch` | Retired QMD migration and per-agent source isolation coverage |
 | `silent-reply-completion-evidence.patch` | Preserve current-attempt silent reply evidence after delivery filtering |
-| `stopped-state-migration-sdk.patch` | Expose maintained readonly cron, targeted writes, and config ownership helpers |
+| `stopped-state-migration-sdk.patch` | Expose maintained stopped config repair, cron partition migration, and targeted writes |
 | `scoped-container-temp-root.patch` | Carry explicit private staging through sandbox and browser creation |
 | `active-memory-cold-recall.patch` | Preserve required recall within one shared cold-setup budget |
 | `active-memory-fixture-cleanup.patch` | Join delayed recall fixtures before replacing shared test state |
 | `managed-local-service-lifecycle.patch` | Join gateway-owned service groups before stopped-state changes |
 | `gateway-memory-warmup.patch` | Prepare and retain managed local embeddings before readiness |
+| `gateway-protocol-declaration-portability.patch` | Keep protocol registry declarations portable across fresh installs |
 
 Each patch has a neighboring document explaining its behavior and history.
 Register new patches and every applicable test in the cumulative manifest at
@@ -43,6 +44,44 @@ Register new patches and every applicable test in the cumulative manifest at
 OPENCLAW_SRC=/path/to/openclaw E2E_RUN_DIR=/path/to/native-run \
   node packages/e2e/bin/openclaw-test-env.mjs ci
 ```
+
+The delivery lifecycle can split this final command without changing artifact
+identity. `build` creates a noneligible immutable build receipt. Export and
+import move only its declared archives, provenance, prepared files, and
+normalized manifest. The importer needs no builder checkout or development
+dependencies. `source-gate` records source-dependent accumulated checks on the
+builder. `target IMPORTED_BUILD_JSON TARGET_JSON [TARGET_SEED_JSON]` runs
+archive-only installed checks against the exact rehearsal target. For a new
+physical root, the seed uses `puddles.openclaw-rehearsal-seed/v1` and names the
+existing absolute install, state, and service definition inputs. The public
+command copies those inputs into the new test-owned root atomically and records
+their digests before any target checks. A target with a stopped-state migration
+also requires `stateMigrationPath`; its bytes must match the target's bound
+digest. The supplied service definition carries the rehearsal-only service
+identity and recording shims.
+
+The rehearsal target uses the normal deployment schema plus
+`"purpose": "rehearsal"` and an isolation record:
+
+```json
+{
+  "schema": "puddles.openclaw-rehearsal-target/v1",
+  "root": "/absolute/test-owned/root"
+}
+```
+
+All install, state, service, and backup paths must stay under that root. The
+service label and optional browser tag must use rehearsal-only names. The
+target maps every additional runtime and prepared file exactly once and
+supplies the target-local stopped-migration file whose digest is already bound
+to the build.
+
+Run the wrapper with `OPENCLAW_DEPLOY_ACTION=rehearse` for physical success and
+again with the maintained compare-and-swap drift fixture for rollback. Both
+paths use the same staging, shutdown, migration, startup, journal, and recovery
+implementation as production. A target proof is derived from those recovery
+journals. Certification joins it to the source gate, and promotion emits the
+only production-eligible release receipt.
 
 The [native test guide](../../../packages/e2e/README.md) describes focused
 iteration, fixtures, the optional local extension, and cache invalidation. The
@@ -69,7 +108,7 @@ never part of the live rollback transaction.
 
 ```bash
 node packages/e2e/bin/openclaw-integrate.mjs \
-  /path/to/native-run/candidate.json example/public-repo 123
+  /path/to/release/release.json example/public-repo 123
 ```
 
 This separate bounded command checks the exact candidate head, current base,
@@ -90,6 +129,9 @@ shows the required fields. Set real paths and host identity locally.
   "backupRoot": "/home/example/.openclaw-deploy-backups",
   "label": "ai.openclaw.gateway",
   "port": 18789,
+  "preparedFiles": [
+    { "id": "embedding-model", "path": "managed/models/model.gguf" }
+  ],
   "integration": { "repository": "/path/to/puddles", "ref": "origin/main" }
 }
 ```
@@ -206,11 +248,33 @@ The consumer must prove those records remain valid for the selected stable
 install location and package identity. This interface does not migrate
 registration metadata or infer configuration changes.
 
+When the candidate declares immutable non-package `preparedFiles`, the target
+must map every id exactly once to a relative path below `stateDir`. These
+destinations and `additionalInstalls` must all be disjoint. Paths cannot be
+absolute, contain `..`, cross symlinks, or disagree with the candidate's file
+or directory type. Prepared directories may contain relative links that
+resolve within the selected tree. Absolute and escaping links are rejected.
+
+Activation verifies and copies all prepared bytes to a transaction-owned
+staging directory beside `stateDir` before shutdown. After the complete state
+snapshot, it atomically exchanges an existing destination or renames a new
+destination into place, then checks the sealed digest before migration,
+startup, and health completion. The recovery journal records whether each
+destination existed and its prior type and digest. The state snapshot remains
+rollback authority, so recovery restores old destinations and removes only
+additions owned by the failed transaction. Recovery does not need the original
+prepared sources.
+
 ```bash
-OPENCLAW_CANDIDATE_RECEIPT=/path/to/native-run/candidate.json \
+OPENCLAW_CANDIDATE_RECEIPT=/path/to/release/release.json \
 OPENCLAW_DEPLOY_TARGET=/absolute/local/target.json \
   bash docs/openclaw-setup/patches/apply-and-deploy.sh
 ```
+
+Production activation requires a promoted release receipt and a target with
+`"purpose": "production"`. Existing older candidate receipts remain usable
+only to recover transactions that already recorded them. They cannot authorize
+a new production activation or source integration.
 
 An unset `MINI_HOST` means local deployment. Set it only for an intentional
 approved remote target. Remote activation also requires `PUDDLES_REMOTE_ROOT`,
@@ -244,10 +308,11 @@ interrupted rollback already restored the older production package. Older CLIs
 can hide discovery errors. Critical restoration failures block restart and retain the
 original and rollback failures.
 
-The stopped-state snapshot also restores replaced additional runtimes, or
-removes a newly introduced subtree during rollback. Recovery does not require
-the original additional archives. The local recovery journal retains their
-deployed content digests separately from existing package provenance records.
+The stopped-state snapshot also restores replaced additional runtimes and
+prepared files, or removes a newly introduced destination during rollback.
+Recovery does not require the original archives or prepared sources. The local
+recovery journal retains their deployed identities separately from existing
+package provenance records.
 
 Recovery state is written before destructive steps. Signals request rollback;
 additional signals are deferred until recovery reaches a safe state. A killed
@@ -264,7 +329,7 @@ explicitly with the same receipt, target, and recorded recovery directory:
 ```bash
 OPENCLAW_DEPLOY_ACTION=rollback \
 OPENCLAW_RECOVERY_DIR=/absolute/backups/activation-example \
-OPENCLAW_CANDIDATE_RECEIPT=/absolute/release/candidate.json \
+OPENCLAW_CANDIDATE_RECEIPT=/absolute/release/release.json \
 OPENCLAW_DEPLOY_TARGET=/absolute/release/target.json \
   docs/openclaw-setup/patches/apply-and-deploy.sh
 ```

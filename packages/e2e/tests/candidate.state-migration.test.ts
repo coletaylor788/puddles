@@ -11,7 +11,7 @@ const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
 describe("stopped-state operations through the actual candidate SDK", () => {
-  it.each(["root", "include", "conflict", "legacy"])("preserves source ownership and targeted cron state (%s)", (mode) => {
+  it.each(["root", "include", "conflict", "legacy", "legacy-config"])("preserves source ownership and targeted cron state (%s)", (mode) => {
     const root = join(repo, `.state-migration-candidate-${randomUUID()}`);
     roots.push(root);
     for (const name of ["home", "state", "scratch"]) mkdirSync(join(root, name), { recursive: true });

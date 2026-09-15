@@ -1,6 +1,6 @@
 # OpenClaw stable upgrade
 
-Status: Provider artifact correction in validation; integration held
+Status: Final stopped migration correction in progress; activation held
 Issue: #114
 Last updated: 2026-09-13
 
@@ -78,29 +78,67 @@ only the selected service argument, and restores the old interpreter with the
 old runtime during rollback. An optional reviewed manifest changes selected
 configuration leaves and silences one existing scheduled job. It cannot run
 commands or replace unrelated state. The stopped gateway's complete state is
-snapshotted first. Repair only its database schema before changing configuration.
-Configuration changes still precede ordinary runtime migration and compilation.
-The job change uses a fresh read afterward and checks its reviewed revision.
-Any mismatch restores the old runtime, interpreter, configuration, and job state.
-Production deployment is outside this change's ownership. Source integration
-waits for the coordinating release owner to confirm compatibility. Activation
-and rollback remain in the existing deployment workflow.
+snapshotted first. Activation then repairs only the database schema and runs the maintained core
+and plugin config migrations through OpenClaw's writer. Live preflight remains
+state-free and binds the stable core migration result, old and new cron
+partition paths, and the reviewed job revision. Once stopped, activation reads
+fresh row identities and the complete effective job set, applies the full
+maintained plugin contracts, and requires a valid result. That migration also
+converts a legacy multi-agent roster to explicit ownership without choosing a
+default owner or granting access. Selected config values are compared only
+after this normalization, in the stopped source-writer transaction and before
+any private mutation. This preserves exact compare-and-swap while allowing a
+manifest to describe the canonical plugin object. If legacy
+`cron.store` is retired, activation copies that effective set to the
+post-migration partition before writing config. Both row sets use
+compare-and-swap fingerprints. Private selected config changes still precede
+ordinary doctor and compilation. The job change uses a fresh read afterward
+and checks the same reviewed revision.
+
+The same candidate may need immutable files that are not package archives, such
+as a local service binary tree or model file. These files are named and hashed
+when the candidate is sealed. A target maps every named file to one disjoint
+location below its managed state directory. Activation stages and verifies the
+bytes before downtime, records whether each destination already exists, and
+replaces it only after the existing state snapshot is durable. Rollback restores
+the prior state or removes additions owned by the failed transaction. This is a
+narrow file delivery contract, not a new package system or service manager.
+Browser images, package artifacts, configuration migration, and process
+ownership keep their existing mechanisms.
+
+Any mismatch restores the old runtime, interpreter, configuration, job state,
+and prepared files. Production deployment is outside this change's ownership.
+Activation and rollback remain in the existing deployment workflow.
 
 ### Status
 
-The runtime behavior and prior public candidate pass local cumulative testing,
-hosted testing, and retained independent review. Physical combined rehearsal
-then found that the separately installed local-embedding provider still came
-from an older registry archive. That archive did not contain the new residency
-behavior even though the root runtime did.
+The prepared-file contract now carries immutable local service and model bytes
+through the existing candidate and rollback transaction. Its focused deployment
+and rollback tests pass. Activation remains stopped before live mutation
+because an isolated exact-state probe found that private compare-and-swap
+cannot run until OpenClaw's maintained legacy config migrations have completed.
+Those migrations can retire an old cron partition that still contains the
+reviewed scheduled job.
 
-The runner now owns a separate provider artifact built from the same patched
-source as the root runtime. A machine-readable receipt binds its source, build,
-toolchain, and archive identity to retained pipeline proofs. Focused artifact
-and proof tests pass. The retained reviewer found one remaining self-attestation
-gap in that chain. The verifier correction is under recheck before the head is
-frozen for the full cumulative gate. Combined private rehearsal and the
-coordinating owner's integration decision follow. Production remains untouched.
+The stopped ordering boundary is implemented and previously passed the full
+public gate. Exact private state exposed one final missing roster normalization,
+and retained review found that live preflight held volatile cron state across
+asset staging. The correction now uses the maintained explicit-ownership
+result and takes fresh row identities only after shutdown.
+
+One exact private comparison found all remaining validation-required changes:
+retired Active Memory QMD configuration and two retired Canvas host settings.
+Doctor-only wizard timestamps are not needed for validity. The stopped repair
+now runs the complete maintained plugin migrations after shutdown instead of
+hardcoding those keys. Agent permissions and all ten jobs remain unchanged.
+
+The next exact replay exposed one ordering issue: live preflight compared a
+private parent-object operation with the obsolete pre-plugin object. The
+correction keeps live structural and migration checks, then defers exact config
+value comparison until immediately after full stopped normalization. Focused
+tests, the managed installed-runtime patch gate, exact cumulative gate, and
+retained complete-diff review pass. Private must repeat the exact combined
+deployment rehearsal. Production remains untouched.
 
 ## Agent section
 
@@ -113,21 +151,23 @@ coordinating owner's integration decision follow. Production remains untouched.
   `>=24.16.0 <25 || >=26.1.0`.
 - Upstream package manager: `pnpm@12.3.4`. Puddles keeps its own manager.
 - Implementation authorized. No design pause. No production deployment.
-- Parent confirmation is required before merging public source.
+- Parent confirmation is required before merging follow-up public source.
 - Replacement public engineering owner starts from clean `947f8867a19e1ebb6d1b54765693d7c5b420fc2b`.
   PR #116 supersedes the closed, unmerged PR #115. Do not merge #116 until the
   parent confirms combined compatibility. Preserve previous sealed runs without
   edits.
-- Current repair scope is bundled dependencies, installed ESM registration,
-  explicit isolated temporary state, active-memory asynchronous cleanup, and
-  gateway-managed local embeddings. Physical rehearsal found that the provider
-  is packaged separately from the root runtime, so the current correction adds
-  a public provider artifact and exact provenance. Integration verifies the
-  provenance source, build command, and complete toolchain against the retained
-  build and provider-package inputs rather than trusting the receipt alone.
-  The retained review also drove a durable gathered-completion handoff repair.
-  Historical results below are not current eligibility. Production activation
-  and private composition stay out of scope.
+- PR #116 merged reviewed public head `5b5d9de` as
+  `07819c2870886054e72881a146326fae88f5d6ee`; the landed tree
+  `49e3bb0ddd5df61eaa2c3346ba0b6778bef393dd` matches the candidate.
+  Private `87fefe0981bc3887a0ace2037646aa4c18fc42c1` sealed all eleven
+  installed and physical target proofs. Production activation then stopped
+  before mutation because immutable embedding assets were supplied outside the
+  public candidate and could not participate in deployment rollback.
+- Current scope is only generic prepared-file sealing, target mapping,
+  pre-downtime staging, checked replacement, and rollback through the existing
+  transaction. Private owns the manifest, six additional runtime destinations,
+  browser target binding, composition regression, and production activation.
+  No provider, daemon, package framework, or runtime source change is in scope.
 - Resumed the same run after an agent-service transport reset. No managed
   process or run lock remained. Source, archives, and installed artifacts are
   preserved; successful earlier stage receipts are not a final-candidate gate.
@@ -169,6 +209,12 @@ coordinating owner's integration decision follow. Production remains untouched.
   one approved 90-second startup allowance. Retain the service lease and model
   residency until gateway shutdown. Keep ordinary memory requests at 15 seconds
   and the Active Memory setup cap at 30 seconds, without combining budgets.
+- Seal every selected non-package deployment file with a stable id, exact type,
+  and digest. Require one disjoint state-relative target mapping per file.
+- Stage and verify prepared files before shutdown. Replace them only after the
+  existing state snapshot, and prove both fault rollback and explicit rollback
+  restore old destinations or remove transaction-owned additions.
+- Rehearse the executable `apply-and-deploy.sh` contract with test-owned state.
 
 ### Architecture and decisions
 
@@ -194,6 +240,15 @@ coordinating owner's integration decision follow. Production remains untouched.
   mutable state snapshots. No independent daemon or admission framework is added.
   Do not invent process claims or treat port closure as complete extinction.
 - Keep installation offline and keep source integration outside activation.
+- Reuse the local extension package phase to select prepared files. Retain a
+  dedicated proof that connects extension outputs to candidate prepared-file
+  identities. Paths may change during approved transport; ids, types, and
+  digests may not.
+- Map prepared files below `stateDir` with the same real-path and overlap rules
+  used for additional installs. Stage them in a transaction-owned sibling on
+  the target filesystem before shutdown so replacement is atomic. The existing
+  complete state snapshot remains the rollback authority. Journal prior
+  existence and digest so recovery never guesses whether an addition was owned.
 - The scoped adapter uses distinct tool names and trusted factory agent context.
   Call the existing memory manager directly with fixed memory sources. Guard
   final arguments, paths, and results without a new index or policy framework.
@@ -224,12 +279,31 @@ coordinating owner's integration decision follow. Production remains untouched.
   include ownership and state boundaries before shutdown and on fresh writes.
   Preflight uses `readConfigFileSnapshotForWrite` with `observe: false` and
   `pluginValidation: "core-only"` so it does not load the SQLite plugin index.
+  This live preview binds only state-free core migration semantics. After
+  shutdown, reload with full plugin validation, apply all maintained plugin
+  doctor config contracts, and require zero remaining validation or legacy
+  issue paths. Do not copy doctor-only wizard timestamps, run plugin state
+  migrations, delete unknown keys, or encode private plugin policy.
+  Preflight checks manifest structure, digest, path and include ownership, but
+  does not compare selected values against the core-only projection. The later
+  `mutateConfigFile` call performs every exact leaf and parent-object
+  precondition against the fresh fully normalized stopped config before
+  changing any selected value.
   Use `mutateConfigFile` with `base: "source"`,
   explicit no after-write work, and `skipRuntimeSnapshotRefresh: true`.
   Snapshot before any mutation. The parent approved calling the existing
   `doctor-repair-runtime.repairOpenClawStateDatabaseSchema` before config because
   config writes also need a current SQLite schema. This step is schema-only,
   without compilation, hooks, inference, delivery, package fetching, or startup.
+  Reuse doctor's canonical roster migration in the stopped preview and write.
+  A markerless multi-agent roster becomes `agents.ownership: "explicit"` without
+  choosing a default agent or adding an access binding.
+  Carry only stable migration semantics, cron partition path digests, and the
+  reviewed job revision from live preflight into the stopped phase. Recompute
+  complete jobs and source and target row fingerprints after shutdown, then use
+  those fresh values in the partition copy. Runtime-only cron updates and
+  unrelated config writes during asset staging must not cause avoidable
+  downtime. A changed selected job definition still fails before mutation.
   Apply config before ordinary doctor, then read the
   selected cron partition through the readonly SDK and perform one targeted CAS
   update. Reject drift rather than silently rebaseline or replace the store.
@@ -303,6 +377,13 @@ coordinating owner's integration decision follow. Production remains untouched.
   upstream pnpm 12.3.4. Node preflight rejects unsupported SQLite runtimes.
 - `native-activation.mjs` and `native-interpreter-migration.test.ts` include
   parent-assigned interpreter migration with explicit old canonical-path binding.
+- `native-extension.mjs` validates named prepared-file manifests emitted by
+  the package phase. `native-pipeline.mjs` retains their proof and binds them
+  into runtime evidence and `candidate.json`.
+- `native-activation.mjs` requires exact target mappings, pre-stages and
+  verifies file or directory bytes, journals prior destination identity, replaces
+  after the state snapshot, and verifies prepared files before health and explicit
+  rollback. Recovery continues to restore the complete state snapshot.
 - `silent-reply-completion-evidence` uses this attempt's assistant text only
   when the delivery subscription has no visible text. It never uses historical
   `lastAssistant`. Existing silence policy and terminal failure guards remain.
@@ -358,6 +439,11 @@ coordinating owner's integration decision follow. Production remains untouched.
   source, build command, or complete toolchain differs from the provenance
   receipt. The focused native loop, pipeline, integration, and deployment set
   passes 109 cases with Node 26.1.0. E2E type checking passes.
+- Prepared-file regressions seal a synthetic model into its own candidate proof,
+  reject identity and mapping changes, deploy file and directory forms, and
+  recover existing and newly added destinations without their original
+  sources. The real `apply-and-deploy.sh` entrypoint covers both success and an
+  injected post-replacement failure against test-owned state.
 - New bundled-package regressions reproduce EEXIST for both npm bundle field
   spellings. They pack and install synthetic scoped, transitive, and required
   peer dependencies, remove the source tree, execute the installed entrypoint,
@@ -471,11 +557,20 @@ coordinating owner's integration decision follow. Production remains untouched.
   the foreign-byte leak before the repair. Integration passes 31 native loop and
   manifest cases plus the e2e type check.
 - Run fixture activation and rollback coverage through the accumulated pool.
+- Add focused candidate-proof tests for prepared-file manifest/output binding,
+  transportable source paths, tamper rejection, and exact runtime-proof
+  identity.
+- Add activation tests for file and directory destinations, overlap and symlink
+  rejection, pre-stop staging, replacement after snapshot, health failure,
+  explicit rollback, missing-destination cleanup, and interrupted recovery.
+- Run the actual `apply-and-deploy.sh` entrypoint against test-owned state for
+  successful migration ordering and injected post-replacement rollback.
 - Migration proofs must cover old/new schemas, readonly preflight, source
   include/secret-reference preservation, all-leaf precondition validation,
-  same-job drift, concurrent unrelated job/runtime updates, and interruption
-  between config and cron operations. Assert no delivery, scheduler, RPC, or
-  model startup. Recovery must preserve the original failure and rollback errors.
+  markerless eight-agent ownership, same-job drift, concurrent unrelated
+  config/job/runtime updates, and interruption between config and cron
+  operations. Assert no delivery, scheduler, RPC, or model startup. Recovery
+  must preserve the original failure and rollback errors.
 - The maintained 2026.7.1-2 SQLite fixture reproduces config-health writes during
   default snapshot reading and the old-schema prerequisite for config writes.
   Current/include/conflict cases pass in the installed artifact. The historical
@@ -484,6 +579,22 @@ coordinating owner's integration decision follow. Production remains untouched.
   Core-only inspection and artifact-preserving path resolution pass four SDK
   cases, 75 retained cron cases, and core types. The broader public lifecycle
   set passes 135 cases and e2e types. The latest focused subset passes 86.
+- The final stopped-migration correction passes 85 focused public migration and
+  activation cases under Node 26.1.0, the e2e type check, and six real OpenClaw
+  SDK tests. The managed `patches` lifecycle passes prepare, dependencies,
+  build, all mapped regressions, extension and provider packaging, prepared
+  files, portable packaging, offline install, additional install, runtime, and
+  all nine installed scenarios. Its installed legacy-config fixture uses an
+  eight-agent markerless roster and preserves all effective jobs.
+- The complete plugin-migration correction passes 39 public executor cases and
+  14 real OpenClaw stopped-repair and startup-repair cases. The rebuilt managed
+  `patches` lifecycle passes every stage and all nine installed scenarios. The
+  installed legacy-config case now also removes retired Active Memory QMD and
+  Canvas host settings through their maintained doctor contracts.
+- The deferred precondition correction passes 86 focused migration and
+  activation cases, the e2e type check, and the managed `patches` lifecycle.
+  Its installed legacy-config case applies an exact parent-object operation for
+  Active Memory only after maintained plugin normalization.
 - Native iteration on `76854b4` passes prepare, dependencies, build, package,
   offline install, all nine message scenarios, and all four migration modes.
   The historical case now preserves the complete state digest across preflight.
@@ -507,8 +618,8 @@ coordinating owner's integration decision follow. Production remains untouched.
 - Push a reviewed candidate and open a non-draft pull request.
 - Resolve checks and review without routine user handoffs.
 - Coordinate exact public source with the parent before integration.
-- Production activation is out of scope. Do not invoke deployment against a
-  live target from this worker.
+- Production activation is suspended and private-owned. Do not invoke
+  deployment against a live target from this worker.
 
 ### Review log
 
@@ -540,6 +651,24 @@ coordinating owner's integration decision follow. Production remains untouched.
   receipt self-attest its source, build command, and toolchain. The verifier now
   compares each value with retained build and provider-package inputs. The same
   reviewer is rechecking that correction before the candidate is frozen.
+- The retained Sol reviewer cleared the complete merged public behavior through
+  `5b5d9de`. Resume that reviewer after the prepared-file behavior change and
+  keep it through remediation.
+- The retained reviewer found that the first stopped-migration correction held
+  full config hashes and mutable cron row state from live preflight through
+  asset staging. The accepted repair carries only stable migration semantics,
+  partition identities, and selected revision across that boundary. Fresh
+  stopped-state fingerprints protect the atomic copy. The same reviewer must
+  recheck the complete current diff after focused and installed validation.
+- The same reviewer cleared the complete `8cf0a92..43d5192` diff after the
+  volatile-state and full plugin-migration corrections. No actionable material
+  findings remain. Loading full plugin contracts only after shutdown can still
+  turn an unrepairable private plugin config into bounded downtime and rollback;
+  this is an accepted operational limit of keeping live preflight state-free.
+- The same reviewer cleared the complete `8cf0a92..9f9fcd1` diff after the
+  deferred config-precondition correction. Exact preconditions still run inside
+  the stopped source-writer transaction before selected mutation. No actionable
+  material findings remain.
 
 ### Checklist
 
@@ -553,8 +682,15 @@ coordinating owner's integration decision follow. Production remains untouched.
 - [x] Repair bundled dependency and installed plugin compatibility.
 - [x] Repair scoped temporary-state and asynchronous memory fixtures.
 - [x] Add a provenance-bound provider artifact from patched source.
-- [ ] Clear retained independent review for the final behavior.
-- [ ] Pass accumulated gate for the final reviewed behavior.
-- [ ] Clear hosted checks for the final reviewed behavior.
-- [ ] Confirm combined compatibility with parent.
-- [ ] Integrate eligible source and verify the landed result.
+- [x] Clear retained independent review for the integrated runtime behavior.
+- [x] Pass accumulated and hosted gates for the integrated runtime behavior.
+- [x] Confirm combined runtime compatibility and integrate exact source.
+- [x] Bind immutable prepared files into candidate and runtime proofs.
+- [x] Rehearse actual deployment and rollback with test-owned state.
+- [x] Preserve effective cron jobs while maintained legacy config migrations retire old store paths.
+- [x] Persist canonical multi-agent ownership before private config CAS.
+- [x] Apply every validation-required maintained plugin migration after shutdown.
+- [ ] Rehearse deferred exact private config CAS after full built-in normalization.
+- [x] Clear retained review for the deployment correction.
+- [x] Pass affected and accumulated gates for the deployment correction.
+- [ ] Integrate the follow-up and hand activation back to private.

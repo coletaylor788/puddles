@@ -1,12 +1,16 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync, chmodSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { cpSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync, chmodSync } from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 // @ts-expect-error Native lifecycle is also executable without TypeScript.
 import { activateNative, systemOperations, validateTarget, verifyIntegratedCandidate } from "../src/native-activation.mjs";
 // @ts-expect-error Native lifecycle is also executable without TypeScript.
-import { fileDigest, treeDigest } from "../src/native-state.mjs";
+import { fileDigest, jsonDigest, treeDigest } from "../src/native-state.mjs";
+// @ts-expect-error Native lifecycle is also executable without TypeScript.
+import { createBuildReceipt } from "../src/native-release.mjs";
+// @ts-expect-error Native retention is also executable without TypeScript.
+import { acquireArtifactPoolLock, initializeArtifactPool } from "../src/native-retention.mjs";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cloneHelper = join(repoRoot, "docs/openclaw-setup/patches/clone-runtime-tree.py");
@@ -41,6 +45,14 @@ describe("runtime clone and atomic swap", () => {
     expect(swapped.status, swapped.stderr).toBe(0);
     expect(readFileSync(join(source, "nested/state"), "utf8")).toBe("replacement");
     expect(readFileSync(join(destination, "nested/state"), "utf8")).toBe("original");
+    const firstFile = join(directory, "first-file");
+    const secondFile = join(directory, "second-file");
+    writeFileSync(firstFile, "first");
+    writeFileSync(secondFile, "second");
+    const swappedFiles = spawnSync("python3", [swapHelper, firstFile, secondFile], { encoding: "utf8" });
+    expect(swappedFiles.status, swappedFiles.stderr).toBe(0);
+    expect(readFileSync(firstFile, "utf8")).toBe("second");
+    expect(readFileSync(secondFile, "utf8")).toBe("first");
   });
 
   it("rejects nested and differently-cased APFS destination aliases", () => {
@@ -65,6 +77,7 @@ function fixture(failures: string[] = []) {
     backupRoot: join(directory, "backups"), label: "test.gateway", port: 18799,
     browser: { imageId: "candidate-browser", path: "/synthetic/image", sha256: "synthetic", tag: "production-browser" },
     additionalInstalls: [] as Array<{ id: string; path: string }>,
+    preparedFiles: [] as Array<{ id: string; path: string }>,
   };
   mkdirSync(target.installDir);
   mkdirSync(target.stateDir);
@@ -74,7 +87,8 @@ function fixture(failures: string[] = []) {
   const artifact = join(directory, "artifact");
   writeFileSync(artifact, "synthetic artifact");
   const receipt = { status: "passed", accumulated: true, scenarios: 8, artifact: { path: artifact, sha256: fileDigest(artifact) },
-    additionalArtifacts: [] as Array<{ id: string; artifact: { path: string; sha256: string; runtimeSha256: string } }> };
+    additionalArtifacts: [] as Array<{ id: string; artifact: { path: string; sha256: string; runtimeSha256: string } }>,
+    preparedFiles: [] as Array<{ id: string; type: "file" | "directory"; path: string; sha256: string }> };
   const calls: string[] = [];
   let started = true;
   let browser = "previous-browser";
@@ -91,6 +105,16 @@ function fixture(failures: string[] = []) {
       mkdirSync(runtime, { recursive: true });
       writeFileSync(join(runtime, "package"), "candidate");
       return runtime;
+    },
+    async stagePrepared(record: { path: string; type: "file" | "directory" }, destination: string) {
+      check("prepared-stage");
+      expect(started).toBe(true);
+      cpSync(record.path, destination, { recursive: record.type === "directory", verbatimSymlinks: true });
+    },
+    async move(from: string, to: string) {
+      check("prepared-move");
+      mkdirSync(dirname(to), { recursive: true });
+      renameSync(from, to);
     },
     async stop() { check("stop"); started = false; },
     async start() { check("start"); started = true; },
@@ -147,6 +171,168 @@ function addAuxiliary(f: ReturnType<typeof fixture>, existing = true) {
   return { destination, artifact };
 }
 
+function addPrepared(f: ReturnType<typeof fixture>, type: "file" | "directory", existing = true) {
+  const id = `embedding-${type}`;
+  const path = `managed/${id}`;
+  const source = join(f.directory, `source-${id}`);
+  if (type === "file") writeFileSync(source, "candidate bytes");
+  else {
+    mkdirSync(source);
+    writeFileSync(join(source, "model"), "candidate bytes");
+    symlinkSync("model", join(source, "model-current"));
+  }
+  const sha256 = type === "file" ? fileDigest(source) : treeDigest(source, { portable: true });
+  f.receipt.preparedFiles.push({ id, type, path: source, sha256 });
+  f.target.preparedFiles.push({ id, path });
+  const destination = join(f.target.stateDir, path);
+  if (existing) {
+    mkdirSync(dirname(destination), { recursive: true });
+    if (type === "file") writeFileSync(destination, "previous bytes");
+    else {
+      mkdirSync(destination);
+      writeFileSync(join(destination, "model"), "previous bytes");
+    }
+  }
+  return { id, source, destination, sha256 };
+}
+
+function wrapperFixture(fault: boolean) {
+    const directory = root();
+    const installed = join(directory, "installed");
+    const state = join(directory, "state");
+    const backups = join(directory, "backups");
+    const bin = join(directory, "bin");
+    const packageRoot = join(directory, "package");
+    const runtime = join(packageRoot, "runtime");
+    const faultMarker = join(directory, "fail-doctor");
+    const serviceMarker = join(directory, "service-loaded");
+    for (const path of [installed, state, backups, bin, runtime]) mkdirSync(path, { recursive: true });
+    const runtimeScript = `import { existsSync, rmSync } from "node:fs";
+  if (process.argv[2] === "doctor" && existsSync(${JSON.stringify(faultMarker)})) {
+    rmSync(${JSON.stringify(faultMarker)}); process.exit(42);
+  }`;
+    writeFileSync(join(runtime, "openclaw.mjs"), runtimeScript);
+    mkdirSync(join(runtime, "node_modules/openclaw"), { recursive: true });
+    writeFileSync(join(runtime, "package.json"), JSON.stringify({ type: "module" }));
+    writeFileSync(join(runtime, "node_modules/openclaw/package.json"), JSON.stringify({
+      type: "module", exports: { "./plugin-sdk/process-runtime": "./process-runtime.mjs" },
+    }));
+    writeFileSync(join(runtime, "node_modules/openclaw/process-runtime.mjs"),
+      "export async function stopGatewayAndJoinLocalServices() {}\nexport function requireServiceProcessIdentity() { return null; }\n");
+    writeFileSync(join(installed, "openclaw.mjs"), "");
+    writeFileSync(join(installed, "version"), "previous");
+    writeFileSync(join(state, "openclaw.json"), "{}");
+    const preparedSource = join(directory, "model.gguf");
+    const preparedDestination = join(state, "models/model.gguf");
+    mkdirSync(dirname(preparedDestination), { recursive: true });
+    writeFileSync(preparedSource, "candidate model");
+    writeFileSync(preparedDestination, "previous model");
+    const runtimeSha256 = treeDigest(runtime, { portable: true });
+    writeFileSync(join(packageRoot, "runtime-identity.json"), JSON.stringify({
+      schemaVersion: 1, platform: process.platform, arch: process.arch, node: process.version, runtimeSha256,
+    }));
+    const archive = join(directory, "runtime.tar.gz");
+    expect(spawnSync("tar", ["-czf", archive, "-C", packageRoot, "runtime", "runtime-identity.json"]).status).toBe(0);
+    const artifact = {
+      schemaVersion: 1, path: archive, sha256: fileDigest(archive), runtimeSha256,
+      platform: process.platform, arch: process.arch, node: process.version,
+    };
+    const prepared = { id: "embedding-model", type: "file", path: preparedSource, sha256: fileDigest(preparedSource) };
+    const receiptDir = join(directory, "candidate");
+    mkdirSync(join(receiptDir, "stages"), { recursive: true });
+    const proofs: Record<string, string> = {};
+    const stages: Record<string, { inputs: unknown; result?: unknown }> = {
+      build: { inputs: { source: "wrapper-fixture" } },
+      "prepared-files": { inputs: { source: "wrapper-fixture" }, result: [prepared] },
+      regressions: { inputs: { source: "wrapper-fixture" } },
+      runtime: { inputs: { artifact, additionalArtifacts: [], preparedFiles: [prepared] } },
+      install: { inputs: { artifact } },
+    };
+    for (const [name, stage] of Object.entries(stages)) {
+      const key = jsonDigest(stage.inputs);
+      proofs[name] = key;
+      writeFileSync(join(receiptDir, "stages", `${name}.json`), JSON.stringify({ ...stage, key, status: "passed" }));
+    }
+
+    const tree = execFileSync("git", ["-C", repoRoot, "rev-parse", "HEAD^{tree}"], { encoding: "utf8" }).trim();
+    const receiptPath = join(receiptDir, "candidate.json");
+    writeFileSync(receiptPath, JSON.stringify({
+      status: "passed", accumulated: true, scenarios: 1, repository: { tree },
+      artifact, additionalArtifacts: [], preparedFiles: [prepared], proofs,
+    }));
+    const plistPath = join(directory, "gateway.plist");
+    writeFileSync(plistPath, "fixture service");
+    const targetPath = join(directory, "target.json");
+    writeFileSync(targetPath, JSON.stringify({
+      schemaVersion: 1, host: hostname(), installDir: installed, stateDir: state, plistPath,
+      backupRoot: backups, label: "test.gateway", port: 18799, additionalInstalls: [],
+      preparedFiles: [{ id: prepared.id, path: "models/model.gguf" }],
+      integration: { repository: repoRoot, ref: "HEAD" },
+    }));
+    writeFileSync(join(bin, "launchctl"), `#!/bin/bash
+  if [ "$1" = print ]; then [ -f ${JSON.stringify(serviceMarker)} ] && exit 0 || exit 113; fi
+  if [ "$1" = bootout ]; then rm -f ${JSON.stringify(serviceMarker)}; exit 0; fi
+  if [ "$1" = bootstrap ]; then touch ${JSON.stringify(serviceMarker)}; exit 0; fi
+  exit 2
+  `);
+    chmodSync(join(bin, "launchctl"), 0o700);
+    writeFileSync(serviceMarker, "");
+    if (fault) writeFileSync(faultMarker, "");
+    return {
+      directory, receiptPath, targetPath, preparedDestination, backups,
+      env: {
+        ...process.env, PATH: `${bin}:${process.env.PATH}`,
+        OPENCLAW_CANDIDATE_RECEIPT: receiptPath, OPENCLAW_DEPLOY_TARGET: targetPath,
+        MINI_HOST: "", OPENCLAW_DEPLOY_ACTION: "activate",
+      },
+    };
+}
+
+function rehearsalWrapperFixture(fault: boolean) {
+  const fixture = wrapperFixture(fault);
+  const candidate = JSON.parse(readFileSync(fixture.receiptPath, "utf8"));
+  const receipt = createBuildReceipt({
+    repository: candidate.repository,
+    source: {
+      ref: "a".repeat(40),
+      sha256: "b".repeat(64),
+      buildInputsSha256: "c".repeat(64),
+      patchesSha256: "d".repeat(64),
+      extensionSha256: "none",
+    },
+    composition: { extensionSha256: "none" },
+    tools: {
+      node: process.version,
+      nodeBinary: fileDigest(process.execPath),
+      platform: process.platform,
+      arch: process.arch,
+      manager: "synthetic",
+      npm: "synthetic",
+    },
+    artifact: candidate.artifact,
+    additionalArtifacts: candidate.additionalArtifacts,
+    preparedFiles: candidate.preparedFiles,
+    proofs: {
+      prepare: "1".repeat(64),
+      dependencies: "2".repeat(64),
+      build: "3".repeat(64),
+      package: "4".repeat(64),
+    },
+  });
+  writeFileSync(fixture.receiptPath, JSON.stringify(receipt));
+  const target = JSON.parse(readFileSync(fixture.targetPath, "utf8"));
+  target.purpose = "rehearsal";
+  target.isolation = {
+    schema: "puddles.openclaw-rehearsal-target/v1",
+    root: realpathSync(fixture.directory),
+  };
+  target.label = "puddles.rehearsal.gateway";
+  delete target.integration;
+  writeFileSync(fixture.targetPath, JSON.stringify(target));
+  fixture.env.OPENCLAW_DEPLOY_ACTION = "rehearse";
+  return fixture;
+}
+
 describe("native activation and recovery transaction", () => {
   it("installs before downtime and preserves exact snapshots, locking and local health", async () => {
     const f = fixture();
@@ -183,6 +369,29 @@ describe("native activation and recovery transaction", () => {
     const completedCalls = f.calls.length;
     expect((await activateNative(f.receipt, f.target, () => f.ops, activated.recoveryDir, "rollback")).status).toBe("rolled-back");
     expect(f.calls).toHaveLength(completedCalls);
+  });
+
+  it("does not let a stale artifact housekeeping lock block explicit recovery", async () => {
+    const f = fixture();
+    const activated = await activateNative(f.receipt, f.target, () => f.ops);
+    const pool = join(f.directory, "artifact-pool");
+    initializeArtifactPool(pool);
+    const release = acquireArtifactPoolLock(pool);
+    const previous = process.env.E2E_ARTIFACT_POOL;
+    process.env.E2E_ARTIFACT_POOL = pool;
+    try {
+      await expect(activateNative(
+        f.receipt,
+        f.target,
+        () => f.ops,
+        activated.recoveryDir,
+        "rollback",
+      )).resolves.toMatchObject({ status: "rolled-back" });
+    } finally {
+      if (previous === undefined) delete process.env.E2E_ARTIFACT_POOL;
+      else process.env.E2E_ARTIFACT_POOL = previous;
+      release();
+    }
   });
 
   it.each(["root", "additional", "service", "browser", "snapshot", "candidate"])("refuses explicit rollback if current %s identity changed", async (part) => {
@@ -446,7 +655,41 @@ describe("native activation and recovery transaction", () => {
     const wrapper = readFileSync(join(repoRoot, "docs/openclaw-setup/patches/apply-and-deploy.sh"), "utf8");
     expect(wrapper).toContain('if [ -n "${MINI_HOST:-}" ]');
     expect(wrapper).toContain('exec ssh "$MINI_HOST" "$command"');
-    expect(wrapper).toContain('exec node "$ROOT/packages/e2e/bin/openclaw-activate.mjs"');
+    expect(wrapper).toContain('exec node "$ROOT/packages/e2e/bin/$entrypoint"');
+  });
+
+  it.each([
+    ["success", false],
+    ["fault rollback", true],
+  ] as const)("runs prepared-file %s through the executable rehearsal wrapper", (_name, fault) => {
+    const f = rehearsalWrapperFixture(fault);
+    expect(JSON.parse(readFileSync(f.targetPath, "utf8"))).toMatchObject({
+      purpose: "rehearsal",
+      isolation: {
+        schema: "puddles.openclaw-rehearsal-target/v1",
+        root: realpathSync(dirname(f.targetPath)),
+      },
+    });
+    const result = spawnSync("/bin/bash", [join(repoRoot, "docs/openclaw-setup/patches/apply-and-deploy.sh")], {
+      env: f.env, encoding: "utf8", timeout: 30_000,
+    });
+    if (fault) {
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("Activation failed");
+      expect(readFileSync(f.preparedDestination, "utf8")).toBe("previous model");
+      const recovery = readdirSync(f.backups).find((name) => name.startsWith("activation-"))!;
+      expect(JSON.parse(readFileSync(join(f.backups, recovery, "recovery.json"), "utf8")).status).toBe("rolled-back");
+    } else {
+      const recovery = readdirSync(f.backups).find((name) => name.startsWith("activation-"));
+      const details = recovery && existsSync(join(f.backups, recovery, "failure.json"))
+        ? readFileSync(join(f.backups, recovery, "failure.json"), "utf8") : "";
+      const rollback = recovery && existsSync(join(f.backups, recovery, "rollback-failure.json"))
+        ? readFileSync(join(f.backups, recovery, "rollback-failure.json"), "utf8") : "";
+      const logs = recovery ? readdirSync(join(f.backups, recovery)).filter((name) => name.startsWith("command-"))
+        .map((name) => `${name}: ${readFileSync(join(f.backups, recovery, name), "utf8")}`).join("\n") : "";
+      expect(result.status, `${result.stderr}\n${details}\n${rollback}\n${logs}`).toBe(0);
+      expect(readFileSync(f.preparedDestination, "utf8")).toBe("candidate model");
+    }
   });
 
   it("stages all artifacts before stopping, replaces only the selected subtree, and preserves current state", async () => {
@@ -466,6 +709,34 @@ describe("native activation and recovery transaction", () => {
     expect(existsSync(join(extra.destination, "stale-chunk"))).toBe(false);
     expect(readFileSync(join(f.target.stateDir, "late-session"), "utf8")).toBe("arrived before shutdown");
     expect(readFileSync(join(f.target.stateDir, "registry.db"), "utf8")).toBe("opaque existing registry");
+  });
+
+  it("stages immutable files and directories before downtime and restores both through the state snapshot", async () => {
+    const f = fixture();
+    const file = addPrepared(f, "file");
+    const directory = addPrepared(f, "directory", false);
+    const activated = await activateNative(f.receipt, f.target, () => f.ops);
+    expect(f.calls.filter((call) => call === "prepared-stage")).toHaveLength(2);
+    expect(f.calls.lastIndexOf("prepared-stage")).toBeLessThan(f.calls.indexOf("stop"));
+    expect(fileDigest(file.destination)).toBe(file.sha256);
+    expect(treeDigest(directory.destination, { portable: true })).toBe(directory.sha256);
+    expect(readlinkSync(join(directory.destination, "model-current"))).toBe("model");
+    expect((await activateNative(f.receipt, f.target, () => f.ops, activated.recoveryDir, "rollback")).status).toBe("rolled-back");
+    expect(readFileSync(file.destination, "utf8")).toBe("previous bytes");
+    expect(existsSync(directory.destination)).toBe(false);
+  });
+
+  it("restores prepared destinations after a post-replacement fault without their original sources", async () => {
+    const f = fixture(["health", "restore-clone"]);
+    const file = addPrepared(f, "file");
+    const added = addPrepared(f, "directory", false);
+    await expect(activateNative(f.receipt, f.target, () => f.ops)).rejects.toThrow("Activation and rollback failed");
+    rmSync(file.source, { force: true });
+    rmSync(added.source, { recursive: true, force: true });
+    const recovery = join(f.target.backupRoot, readdirSync(f.target.backupRoot).find((name) => name.startsWith("activation-"))!);
+    expect((await activateNative(f.receipt, f.target, () => f.ops, recovery)).status).toBe("rolled-back");
+    expect(readFileSync(file.destination, "utf8")).toBe("previous bytes");
+    expect(existsSync(added.destination)).toBe(false);
   });
 
   it.each(["additional-copy", "health"])("restores the root and additional runtime after %s fails", async (failure) => {
@@ -527,5 +798,37 @@ describe("native activation and recovery transaction", () => {
     writeFileSync(extra.artifact.path, "changed");
     await expect(activateNative(f.receipt, f.target, () => f.ops)).rejects.toThrow("artifact changed");
     expect(f.calls).toEqual([]);
+  });
+
+  it("rejects changed, unmapped, overlapping and symlinked prepared files before downtime", async () => {
+    const f = fixture();
+    const prepared = addPrepared(f, "file");
+    await expect(activateNative({ ...f.receipt, preparedFiles: [] }, f.target, () => f.ops)).rejects.toThrow("map every");
+    expect(() => validateTarget({ ...f.target, preparedFiles: [{ id: prepared.id, path: "../outside" }] })).toThrow("child");
+    expect(() => validateTarget({
+      ...f.target,
+      additionalInstalls: [{ id: "auxiliary", path: "managed" }],
+      preparedFiles: [{ id: prepared.id, path: "managed/model" }],
+    })).toThrow("disjoint");
+    symlinkSync(join(f.directory, "missing-external"), join(f.target.stateDir, "prepared-link"));
+    expect(() => validateTarget({ ...f.target, preparedFiles: [{ id: prepared.id, path: "prepared-link/model" }] })).toThrow("real state entries");
+    writeFileSync(prepared.source, "changed");
+    await expect(activateNative(f.receipt, f.target, () => f.ops)).rejects.toThrow("prepared file changed");
+    expect(f.calls).toEqual([]);
+  });
+
+  it("allows in-tree prepared directory links and rejects escaping links before downtime", async () => {
+    const valid = fixture();
+    const directory = addPrepared(valid, "directory");
+    await activateNative(valid.receipt, valid.target, () => valid.ops);
+    expect(readlinkSync(join(directory.destination, "model-current"))).toBe("model");
+
+    const escaped = fixture();
+    const unsafe = addPrepared(escaped, "directory");
+    writeFileSync(join(escaped.directory, "outside"), "outside");
+    symlinkSync(join(escaped.directory, "outside"), join(unsafe.source, "escaping"));
+    escaped.receipt.preparedFiles[0].sha256 = treeDigest(unsafe.source);
+    await expect(activateNative(escaped.receipt, escaped.target, () => escaped.ops)).rejects.toThrow("escapes");
+    expect(escaped.calls).toEqual([]);
   });
 });

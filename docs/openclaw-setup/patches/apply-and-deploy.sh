@@ -3,12 +3,13 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
-: "${OPENCLAW_CANDIDATE_RECEIPT:?set the exact cumulative candidate receipt path}"
+: "${OPENCLAW_CANDIDATE_RECEIPT:?set the exact build or release receipt path}"
 : "${OPENCLAW_DEPLOY_TARGET:?set the local target JSON path}"
 case "${OPENCLAW_DEPLOY_ACTION:-activate}" in
   activate) ;;
+  rehearse) ;;
   rollback) : "${OPENCLAW_RECOVERY_DIR:?explicit rollback requires the completed activation recovery directory}" ;;
-  *) echo "OPENCLAW_DEPLOY_ACTION must be activate or rollback" >&2; exit 1 ;;
+  *) echo "OPENCLAW_DEPLOY_ACTION must be activate, rehearse, or rollback" >&2; exit 1 ;;
 esac
 
 # Public patch order remains visible to the cumulative manifest regression.
@@ -29,6 +30,7 @@ PATCHES=(
   scoped-container-temp-root
   active-memory-cold-recall
   active-memory-fixture-cleanup
+  gateway-protocol-declaration-portability
 )
 
 if [ -n "${MINI_HOST:-}" ]; then
@@ -40,7 +42,9 @@ if [ -n "${MINI_HOST:-}" ]; then
   fi
   remote_args=()
   if [ -n "${PUDDLES_REMOTE_PATH:-}" ]; then remote_args+=(env "PATH=$PUDDLES_REMOTE_PATH"); fi
-  remote_args+=("$remote_node" "$PUDDLES_REMOTE_ROOT/packages/e2e/bin/openclaw-activate.mjs" \
+  entrypoint="openclaw-activate.mjs"
+  if [ "${OPENCLAW_DEPLOY_ACTION:-activate}" = rehearse ]; then entrypoint="openclaw-rehearse.mjs"; fi
+  remote_args+=("$remote_node" "$PUDDLES_REMOTE_ROOT/packages/e2e/bin/$entrypoint" \
     "$OPENCLAW_CANDIDATE_RECEIPT" "$OPENCLAW_DEPLOY_TARGET")
   if [ -n "${OPENCLAW_RECOVERY_DIR:-}" ]; then
     remote_args+=("$OPENCLAW_RECOVERY_DIR")
@@ -52,4 +56,6 @@ fi
 args=("$OPENCLAW_CANDIDATE_RECEIPT" "$OPENCLAW_DEPLOY_TARGET")
 if [ -n "${OPENCLAW_RECOVERY_DIR:-}" ]; then args+=("$OPENCLAW_RECOVERY_DIR"); fi
 if [ "${OPENCLAW_DEPLOY_ACTION:-activate}" = rollback ]; then args+=(--rollback); fi
-exec node "$ROOT/packages/e2e/bin/openclaw-activate.mjs" "${args[@]}"
+entrypoint="openclaw-activate.mjs"
+if [ "${OPENCLAW_DEPLOY_ACTION:-activate}" = rehearse ]; then entrypoint="openclaw-rehearse.mjs"; fi
+exec node "$ROOT/packages/e2e/bin/$entrypoint" "${args[@]}"

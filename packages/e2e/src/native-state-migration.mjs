@@ -29,6 +29,20 @@ function canonicalJson(value) {
 
 export const canonicalValueDigest = (value) => digest(canonicalJson(value));
 
+function migrationProjection(before, after, path = []) {
+  if (canonicalJson(before) === canonicalJson(after)) return [];
+  if (record(before) && record(after)) {
+    const names = [...new Set([...Object.keys(before), ...Object.keys(after)])].sort();
+    return names.flatMap((name) => {
+      const nextPath = [...path, name];
+      if (!Object.hasOwn(after, name)) return [{ path: nextPath, exists: false }];
+      if (!Object.hasOwn(before, name)) return [{ path: nextPath, exists: true, value: after[name] }];
+      return migrationProjection(before[name], after[name], nextPath);
+    });
+  }
+  return [{ path, exists: true, value: after }];
+}
+
 export function validateMigrationManifest(manifest) {
   keys(manifest, ["schemaVersion", "configOperations", "cronOperation"], ["schemaVersion", "configOperations"]);
   if (manifest.schemaVersion !== 1 || !Array.isArray(manifest.configOperations) ||
@@ -123,7 +137,14 @@ function configDraft(source, operations) {
   return draft;
 }
 
-function configBoundary(snapshot, operations, stateDir, sdk) {
+function configBoundary(
+  snapshot,
+  operations,
+  stateDir,
+  sdk,
+  source = snapshot.sourceConfig,
+  checkPreconditions = true,
+) {
   const expectedPath = join(stateDir, "openclaw.json");
   if (!snapshot.exists || snapshot.path !== expectedPath || !record(snapshot.sourceConfig) || snapshot.readError ||
       snapshot.raw === null || !record(snapshot.parsed)) throw new Error("Migration config snapshot is unavailable");
@@ -145,7 +166,7 @@ function configBoundary(snapshot, operations, stateDir, sdk) {
     if (!boundary || !inside(dirname(expectedPath), boundary.includePath)) throw new Error("Migration must stay within one internal include owner");
     statePath(stateDir, boundary.includePath, true);
   }
-  return configDraft(snapshot.sourceConfig, operations);
+  return checkPreconditions ? configDraft(source, operations) : source;
 }
 
 export function silenceCronJob(job) {
@@ -167,7 +188,7 @@ async function loadSdk(runtime, phase) {
   const require = createRequire(join(runtime, "package.json"));
   const sdk = {};
   const names = ["config-mutation", "cron-store-runtime", "state-paths"];
-  if (phase === "schema") names.push("doctor-repair-runtime");
+  if (["schema", "builtin-config"].includes(phase)) names.push("doctor-repair-runtime");
   for (const name of names) {
     const path = require.resolve(`openclaw/plugin-sdk/${name}`);
     if (!inside(realpathSync(runtime), realpathSync(path))) throw new Error("Migration SDK resolved outside candidate runtime");
@@ -176,8 +197,11 @@ async function loadSdk(runtime, phase) {
   return sdk;
 }
 
-export async function executeStateMigration({ phase, runtime, stateDir, manifestPath, sha256 }, sdkLoader = loadSdk) {
-  if (!["preflight", "schema", "config", "cron"].includes(phase) || !isAbsolute(runtime) ||
+export async function executeStateMigration(
+  { phase, runtime, stateDir, manifestPath, sha256, expectedBuiltIn },
+  sdkLoader = loadSdk,
+) {
+  if (!["preflight", "schema", "builtin-config", "config", "cron"].includes(phase) || !isAbsolute(runtime) ||
       !isAbsolute(stateDir) || realpathSync(stateDir) !== stateDir ||
       process.env.OPENCLAW_STATE_DIR !== stateDir || process.env.OPENCLAW_CONFIG_PATH !== join(stateDir, "openclaw.json")) {
     throw new Error("Migration requires an explicit canonical stopped-state target");
@@ -204,15 +228,138 @@ export async function executeStateMigration({ phase, runtime, stateDir, manifest
   for (const source of [snapshot.sourceConfigBeforeMigrations, snapshot.sourceConfig].filter(record)) {
     statePath(stateDir, sdk.resolveCronJobsStorePathFromConfig(source, process.env, { artifactPreservingReadOnly: true }));
   }
+  const builtInPlan = async () => {
+    const preview = sdk.previewLegacyConfigRepair(snapshot, {
+      pluginContracts: phase === "builtin-config",
+    });
+    const stablePreview = phase === "builtin-config"
+      ? sdk.previewLegacyConfigRepair(snapshot)
+      : preview;
+    const expectedConfig = preview?.expectedConfig ?? snapshot.sourceConfig;
+    const stableConfig = stablePreview?.sourceConfig ?? snapshot.sourceConfig;
+    const sourceStorePath = statePath(
+      stateDir,
+      sdk.resolveCronJobsStorePathFromConfig(
+        snapshot.sourceConfigBeforeMigrations ?? snapshot.sourceConfig,
+        process.env,
+        { artifactPreservingReadOnly: true },
+      ),
+    );
+    const targetStorePath = statePath(
+      stateDir,
+      sdk.resolveCronJobsStorePathFromConfig(
+        expectedConfig,
+        process.env,
+        { artifactPreservingReadOnly: true },
+      ),
+    );
+    const loaded = await sdk.loadCronJobsStoreWithConfigJobsReadOnly(sourceStorePath, process.env);
+    const targetLoaded = sourceStorePath === targetStorePath
+      ? loaded
+      : await sdk.loadCronJobsStoreWithConfigJobsReadOnly(targetStorePath, process.env);
+    if (loaded.invalidConfigRows?.length || targetLoaded.invalidConfigRows?.length) {
+      throw new Error("Stopped migration cannot preserve invalid cron config rows");
+    }
+    if (typeof loaded.jobsFingerprint !== "string" || typeof targetLoaded.jobsFingerprint !== "string") {
+      throw new Error("Stopped migration cannot bind cron store rows");
+    }
+    const selected = manifest.cronOperation
+      ? loaded.store.jobs.filter((job) => job.id === manifest.cronOperation.jobId)
+      : [];
+    if (manifest.cronOperation &&
+        (selected.length !== 1 ||
+          sdk.resolveCronJobConfigRevision(selected[0]) !== manifest.cronOperation.expectedRevision)) {
+      throw new Error("Migration job is missing or its reviewed revision changed");
+    }
+    return {
+      config: {
+        expectedSha256: canonicalValueDigest(migrationProjection(
+          snapshot.sourceConfigBeforeMigrations ?? snapshot.sourceConfig,
+          stableConfig,
+        )),
+        changesSha256: canonicalValueDigest(stablePreview?.changes ?? []),
+        required: Boolean(stablePreview),
+      },
+      cron: {
+        sourceStoreSha256: canonicalValueDigest(sourceStorePath),
+        targetStoreSha256: canonicalValueDigest(targetStorePath),
+        selectedRevision: manifest.cronOperation?.expectedRevision ?? null,
+      },
+      preview,
+      sourceStorePath,
+      targetStorePath,
+      loaded,
+      targetLoaded,
+      jobsSha256: canonicalValueDigest(loaded.store.jobs),
+      expectedConfigSha256: canonicalValueDigest(expectedConfig),
+    };
+  };
   if (phase === "preflight") {
-    configBoundary(snapshot, manifest.configOperations, stateDir, sdk);
-    return;
+    const plan = await builtInPlan();
+    configBoundary(
+      snapshot,
+      manifest.configOperations,
+      stateDir,
+      sdk,
+      plan.preview?.expectedConfig ?? snapshot.sourceConfig,
+      false,
+    );
+    return { config: plan.config, cron: plan.cron };
   }
   if (phase === "schema") {
-    configBoundary(snapshot, manifest.configOperations, stateDir, sdk);
     const result = sdk.repairOpenClawStateDatabaseSchema({ env: process.env });
     if (result.warnings.length) throw new Error("Stopped-state schema repair reported warnings");
     assertSelection();
+  }
+  if (phase === "builtin-config") {
+    const plan = await builtInPlan();
+    if (!record(expectedBuiltIn) ||
+        canonicalValueDigest({ config: plan.config, cron: plan.cron }) !==
+          canonicalValueDigest(expectedBuiltIn)) {
+      throw new Error("Built-in stopped migration inputs changed after preflight");
+    }
+    const materialized = await sdk.materializeCronConfigJobsForMigration(
+      plan.sourceStorePath,
+      plan.targetStorePath,
+      plan.loaded.jobsFingerprint,
+      plan.targetLoaded.jobsFingerprint,
+    );
+    if (canonicalValueDigest(materialized.before.jobs) !== plan.jobsSha256 ||
+        canonicalValueDigest(materialized.after.jobs) !== plan.jobsSha256) {
+      throw new Error("Built-in stopped migration changed effective cron jobs");
+    }
+    const repaired = plan.preview
+      ? await sdk.repairLegacyConfigForStoppedState({
+          configSnapshot: snapshot,
+          configWriteOptions: { skipRuntimeSnapshotRefresh: true, skipOutputLogs: true },
+        })
+      : { snapshot };
+    if (canonicalValueDigest(repaired.snapshot.sourceConfig) !== plan.expectedConfigSha256) {
+      throw new Error("Built-in stopped config migration differs from preflight");
+    }
+    const postStorePath = statePath(
+      stateDir,
+      sdk.resolveCronJobsStorePathFromConfig(
+        repaired.snapshot.sourceConfig,
+        process.env,
+        { artifactPreservingReadOnly: true },
+      ),
+    );
+    if (canonicalValueDigest(postStorePath) !== plan.cron.targetStoreSha256) {
+      throw new Error("Built-in stopped config migration selected an unexpected cron store");
+    }
+    const reloaded = await sdk.loadCronJobsStoreWithConfigJobsReadOnly(postStorePath, process.env);
+    if (canonicalValueDigest(reloaded.store.jobs) !== plan.jobsSha256) {
+      throw new Error("Built-in stopped config migration lost effective cron jobs");
+    }
+    return {
+      config: { sourceHash: repaired.snapshot.hash, sha256: plan.expectedConfigSha256 },
+      cron: {
+        jobsFingerprint: reloaded.jobsFingerprint,
+        jobsSha256: plan.jobsSha256,
+        selectedRevision: plan.cron.selectedRevision,
+      },
+    };
   }
   if (phase === "config" && manifest.configOperations.length) {
     await sdk.mutateConfigFile({
