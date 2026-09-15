@@ -61,13 +61,14 @@ and unregistered legacy directories are never adopted automatically.
 The delivery contract, retention lifecycle, isolated target creator, and public
 hosted workflow are implemented. Retention now keeps the genuine source
 attestation and test-stage proof needed to certify an imported bundle after its
-disposable builder state is removed. Focused validation passes for this repair.
+disposable builder state is removed. Focused validation and retained
+complete-diff review pass for this repair.
 
 The declaration portability correction is fully green at its frozen public
-tuple. This retention repair changes only lifecycle evidence ownership, so its
-focused tests, retained review, accumulated validation, and hosted checks must
-refresh before the public candidate is eligible again. Private owns
-artifact-only physical diagnosis and production remains held.
+tuple. This retention repair changes only lifecycle evidence ownership. Exact
+accumulated validation and hosted checks must refresh before the public
+candidate is eligible again. Private owns artifact-only physical diagnosis and
+production remains held.
 
 ## Agent section
 
@@ -338,6 +339,10 @@ artifact-only physical diagnosis and production remains held.
   package proofs but dropped the separate source attestation. Source gates now
   have an immutable retained sidecar and dependency closure, so deleting a
   successful run no longer makes unchanged certification impossible.
+- 2026-09-15: Retained review found that the first repair kept only the current
+  build's gate. Cleanup now keeps the newest gate for each of the two retained
+  successful builds and collects superseded gates. The reviewer reproduced
+  two-build retention and third-build eviction, then cleared the complete diff.
 
 ### Checklist
 
@@ -352,10 +357,10 @@ artifact-only physical diagnosis and production remains held.
   promotion.
 - [x] Add committed focused regressions.
 - [x] Update public workflow and documentation.
+- [x] Complete retained adversarial review with no material finding.
 - [ ] Run final cumulative validation, retained review, and hosted checks for
   the source-gate retention repair.
 - [ ] Push PR #117 updates and verify conflict-free ancestry.
-- [ ] Complete retained adversarial review with no material finding.
 - [ ] Pass exact local accumulated CI and hosted public checks.
 - [ ] Hand stable commands to private ARM consumer for combined proof.
 - [ ] Hold merge and production activation for coordinator authorization.
