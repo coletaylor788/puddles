@@ -4,7 +4,9 @@ import { hostname } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
-import { acquireLock, atomicJson, fileDigest, inside, jsonDigest, treeDigest, verifyCandidateProofs } from "./native-state.mjs";
+import { acquireLock, atomicJson, fileDigest, inside, jsonDigest, treeDigest } from "./native-state.mjs";
+import { verifyBuildReceipt, verifyProductionRelease } from "./native-release.mjs";
+import { acquireArtifactPoolLock } from "./native-retention.mjs";
 import { installRuntime } from "./native-package.mjs";
 import { runCommand } from "./process-runner.mjs";
 import { readMigrationManifest } from "./native-state-migration.mjs";
@@ -397,10 +399,37 @@ async function restore(target, recoveryDir, journal, operations) {
   if (journal.preparedStagingRoot) rmSync(journal.preparedStagingRoot, { recursive: true, force: true });
 }
 
-export async function activateNative(receipt, target, operationsFactory = systemOperations, recoverDir, action = "recover") {
+export function verifyRehearsalTarget(target) {
+  if (target.purpose !== "rehearsal") throw new Error("Rehearsal target purpose must be rehearsal");
+  if (target.isolation?.schema !== "puddles.openclaw-rehearsal-target/v1") {
+    throw new Error("Rehearsal target isolation schema is invalid");
+  }
+  if (typeof target.isolation.root !== "string") throw new Error("Rehearsal target isolation root is required");
+  const root = realpathSync(target.isolation.root);
+  for (const path of [target.installDir, target.stateDir, target.plistPath, target.backupRoot]) {
+    const absolute = existsSync(path)
+      ? realpathSync(path)
+      : resolve(realpathSync(dirname(path)), basename(path));
+    if (!inside(root, absolute)) throw new Error("Rehearsal target escapes its test-owned root");
+  }
+  if (!target.label.startsWith("puddles.rehearsal.") ||
+      target.browser && !target.browser.tag.startsWith("puddles-rehearsal-")) {
+    throw new Error("Rehearsal service or browser identity is not test-owned");
+  }
+}
+
+export async function activateNative(receipt, target, operationsFactory = systemOperations, recoverDir, action = "recover", mode = "legacy") {
   if (!["recover", "rollback"].includes(action) || action === "rollback" && !recoverDir) throw new Error("Explicit rollback requires its recovery directory");
   validateTarget(target);
-  if (receipt.status !== "passed" || receipt.accumulated !== true || !receipt.scenarios) throw new Error("A complete accumulated rehearsal is required before activation");
+  if (mode === "rehearsal") {
+    verifyBuildReceipt(receipt);
+    verifyRehearsalTarget(target);
+  } else if (mode === "production") {
+    verifyProductionRelease(receipt, { verifyAssets: !recoverDir });
+    if (target.purpose !== "production") throw new Error("Production activation requires a production target");
+  } else if (receipt.status !== "passed" || receipt.accumulated !== true || !receipt.scenarios) {
+    throw new Error("A complete accumulated rehearsal is required before activation");
+  }
   if ((receipt.stateMigration?.sha256 ?? null) !== (target.stateMigration?.sha256 ?? null)) {
     throw new Error("State migration differs from the rehearsed candidate");
   }
@@ -435,7 +464,16 @@ export async function activateNative(receipt, target, operationsFactory = system
   }
   const recoveryDir = recoverDir ? realpathSync(recoverDir) : join(realpathSync(target.backupRoot), `activation-${Date.now()}-${process.pid}`);
   if (dirname(recoveryDir) !== realpathSync(target.backupRoot)) throw new Error("Recovery directory is outside target backups");
-  const unlock = acquireLock(target.backupRoot);
+  const poolUnlock = process.env.E2E_ARTIFACT_POOL
+    ? acquireArtifactPoolLock(resolve(process.env.E2E_ARTIFACT_POOL))
+    : null;
+  let unlock;
+  try {
+    unlock = acquireLock(target.backupRoot);
+  } catch (error) {
+    poolUnlock?.();
+    throw error;
+  }
   mkdirSync(recoveryDir, { recursive: true, mode: 0o700 });
   const operations = operationsFactory(target, recoveryDir);
   const journalPath = join(recoveryDir, "recovery.json");
@@ -730,6 +768,7 @@ export async function activateNative(receipt, target, operationsFactory = system
   } finally {
     for (const [name, handler] of handlers) process.removeListener(name, handler);
     unlock();
+    poolUnlock?.();
   }
 }
 
@@ -738,7 +777,7 @@ export async function verifyIntegratedCandidate(receiptPath, target) {
   if (!receipt.repository?.tree || !target.integration?.repository || !target.integration?.ref) throw new Error("Exact source integration evidence is required");
   const tree = (await runCommand("git", ["-C", target.integration.repository, "rev-parse", `${target.integration.ref}^{tree}`], { capture: true, quiet: true })).trim();
   if (tree !== receipt.repository.tree) throw new Error("Integrated source is not the rehearsed candidate");
-  verifyCandidateProofs(receiptPath, receipt);
+  verifyProductionRelease(receipt);
   if (target.nodeMigration) {
     const proof = JSON.parse(readFileSync(join(dirname(receiptPath), "stages", "runtime.json"), "utf8"));
     if (["node", "nodeBinary", "platform", "arch"].some((key) => proof.inputs.tools?.[key] !== receipt.tools?.[key])) {

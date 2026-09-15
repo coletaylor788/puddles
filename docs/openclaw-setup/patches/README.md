@@ -44,6 +44,37 @@ OPENCLAW_SRC=/path/to/openclaw E2E_RUN_DIR=/path/to/native-run \
   node packages/e2e/bin/openclaw-test-env.mjs ci
 ```
 
+The delivery lifecycle can split this final command without changing artifact
+identity. `build` creates a noneligible immutable build receipt. Export and
+import move only its declared archives, provenance, prepared files, and
+normalized manifest. The importer needs no builder checkout or development
+dependencies. `source-gate` records source-dependent accumulated checks on the
+builder. `target IMPORTED_BUILD_JSON TARGET_JSON` runs archive-only installed
+checks against the exact rehearsal target.
+
+The rehearsal target uses the normal deployment schema plus
+`"purpose": "rehearsal"` and an isolation record:
+
+```json
+{
+  "schema": "puddles.openclaw-rehearsal-target/v1",
+  "root": "/absolute/test-owned/root"
+}
+```
+
+All install, state, service, and backup paths must stay under that root. The
+service label and optional browser tag must use rehearsal-only names. The
+target maps every additional runtime and prepared file exactly once and
+supplies the target-local stopped-migration file whose digest is already bound
+to the build.
+
+Run the wrapper with `OPENCLAW_DEPLOY_ACTION=rehearse` for physical success and
+again with the maintained compare-and-swap drift fixture for rollback. Both
+paths use the same staging, shutdown, migration, startup, journal, and recovery
+implementation as production. A target proof is derived from those recovery
+journals. Certification joins it to the source gate, and promotion emits the
+only production-eligible release receipt.
+
 The [native test guide](../../../packages/e2e/README.md) describes focused
 iteration, fixtures, the optional local extension, and cache invalidation. The
 final gate packages the materialized runtime dependency graph into a portable
@@ -69,7 +100,7 @@ never part of the live rollback transaction.
 
 ```bash
 node packages/e2e/bin/openclaw-integrate.mjs \
-  /path/to/native-run/candidate.json example/public-repo 123
+  /path/to/release/release.json example/public-repo 123
 ```
 
 This separate bounded command checks the exact candidate head, current base,
@@ -227,10 +258,15 @@ additions owned by the failed transaction. Recovery does not need the original
 prepared sources.
 
 ```bash
-OPENCLAW_CANDIDATE_RECEIPT=/path/to/native-run/candidate.json \
+OPENCLAW_CANDIDATE_RECEIPT=/path/to/release/release.json \
 OPENCLAW_DEPLOY_TARGET=/absolute/local/target.json \
   bash docs/openclaw-setup/patches/apply-and-deploy.sh
 ```
+
+Production activation requires a promoted release receipt and a target with
+`"purpose": "production"`. Existing older candidate receipts remain usable
+only to recover transactions that already recorded them. They cannot authorize
+a new production activation or source integration.
 
 An unset `MINI_HOST` means local deployment. Set it only for an intentional
 approved remote target. Remote activation also requires `PUDDLES_REMOTE_ROOT`,
@@ -285,7 +321,7 @@ explicitly with the same receipt, target, and recorded recovery directory:
 ```bash
 OPENCLAW_DEPLOY_ACTION=rollback \
 OPENCLAW_RECOVERY_DIR=/absolute/backups/activation-example \
-OPENCLAW_CANDIDATE_RECEIPT=/absolute/release/candidate.json \
+OPENCLAW_CANDIDATE_RECEIPT=/absolute/release/release.json \
 OPENCLAW_DEPLOY_TARGET=/absolute/release/target.json \
   docs/openclaw-setup/patches/apply-and-deploy.sh
 ```

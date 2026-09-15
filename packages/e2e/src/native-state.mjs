@@ -231,9 +231,40 @@ export function acquireLock(directory) {
   return () => rmSync(lock, { recursive: true });
 }
 
+export function nativeRunStatus(runDir) {
+  const stagesDir = join(runDir, "stages");
+  const stages = existsSync(stagesDir)
+    ? readdirSync(stagesDir).filter((name) => name.endsWith(".json")).sort().map((name) => {
+      const record = JSON.parse(readFileSync(join(stagesDir, name), "utf8"));
+      return {
+        name: record.name,
+        status: record.status,
+        key: record.key,
+        startedAt: record.startedAt,
+        finishedAt: record.finishedAt ?? null,
+        durationMs: record.durationMs ?? null,
+        invalidation: record.invalidation ?? null,
+        failure: record.failure ?? null,
+      };
+    })
+    : [];
+  const runPath = join(runDir, "run-status.json");
+  const run = existsSync(runPath) ? JSON.parse(readFileSync(runPath, "utf8")) : null;
+  return { schemaVersion: 1, run, stages };
+}
+
+export function updateNativeRunStatus(runDir, value) {
+  const path = join(runDir, "run-status.json");
+  const previous = existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : {};
+  const next = { schemaVersion: 1, ...previous, ...value, updatedAt: new Date().toISOString() };
+  atomicJson(path, next);
+  return next;
+}
+
 export async function stage(runDir, name, inputs, action, outputs = () => ({}), validate = async () => true) {
   const path = join(runDir, "stages", `${name}.json`);
   const key = jsonDigest(inputs);
+  let invalidation = "new";
   if (existsSync(path)) {
     const previous = JSON.parse(readFileSync(path, "utf8"));
     if (previous.status === "passed" && previous.key === key) {
@@ -248,18 +279,41 @@ export async function stage(runDir, name, inputs, action, outputs = () => ({}), 
         console.log(`${name}: reused`);
         return previous.result;
       }
+      invalidation = valid ? "result-invalid" : "output-changed";
+    } else if (previous.status === "failed" && previous.key === key) {
+      if (process.env.E2E_RESUME_FAILED !== "1") {
+        throw new Error(`${name} failed with unchanged inputs. Run the explicit resume command after addressing the failure.`);
+      }
+      invalidation = "explicit-resume";
+    } else if (previous.status === "running" && previous.key === key) {
+      invalidation = "interrupted";
+    } else {
+      invalidation = "inputs-changed";
     }
   }
-  const record = { schemaVersion: 1, name, inputs, key, status: "running", startedAt: new Date().toISOString() };
+  const started = Date.now();
+  const record = {
+    schemaVersion: 1, name, inputs, key, status: "running",
+    invalidation, startedAt: new Date(started).toISOString(),
+  };
   atomicJson(path, record);
   try {
     const result = await action();
-    atomicJson(path, { ...record, status: "passed", outputs: outputs(result), result, finishedAt: new Date().toISOString() });
+    const finished = Date.now();
+    atomicJson(path, {
+      ...record, status: "passed", outputs: outputs(result), result,
+      finishedAt: new Date(finished).toISOString(), durationMs: finished - started,
+    });
     console.log(`${name}: passed`);
     return result;
   } catch (error) {
     // Command output can contain local extension data. Keep diagnostics in local logs.
-    atomicJson(path, { ...record, status: "failed", finishedAt: new Date().toISOString() });
+    const finished = Date.now();
+    atomicJson(path, {
+      ...record, status: "failed", finishedAt: new Date(finished).toISOString(),
+      durationMs: finished - started,
+      failure: { code: error.code ?? null, message: String(error.message ?? error).slice(0, 1000) },
+    });
     throw error;
   }
 }

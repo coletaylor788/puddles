@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: integration-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   cumulative:
     # Standard Intel runners have 14 GB RAM; macos-latest has only 7 GB.
@@ -56,6 +60,23 @@ jobs:
         env:
           OPENCLAW_SRC: ${{ github.workspace }}/.openclaw-source
         run: node packages/e2e/bin/openclaw-test-env.mjs ci
+
+      - name: Export public Intel build bundle
+        if: success()
+        run: |
+          node packages/e2e/bin/openclaw-release-bundle.mjs export \
+            "$E2E_RUN_DIR/build.json" \
+            "$RUNNER_TEMP/openclaw-public-x64-build.tar.gz" \
+            public
+
+      - name: Retain public Intel build bundle
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openclaw-public-x64-build-${{ github.sha }}
+          path: ${{ runner.temp }}/openclaw-public-x64-build.tar.gz
+          retention-days: 7
+          if-no-files-found: error
 
       - name: Collect public failure evidence
         id: public-diagnostics

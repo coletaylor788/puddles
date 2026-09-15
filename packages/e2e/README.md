@@ -142,14 +142,50 @@ starve the worker's reporting channel.
 ```bash
 corepack pnpm --filter e2e exec vitest run tests/native-loop.test.ts
 
-# Build, package, install, and rehearse. This is not the full accumulated gate.
+# Cheap local build, package, install, and scenario rehearsal.
 OPENCLAW_SRC=/path/to/openclaw E2E_RUN_DIR=/path/to/native-run \
   node packages/e2e/bin/openclaw-test-env.mjs native
+
+# Create immutable package output before certification.
+OPENCLAW_SRC=/path/to/openclaw E2E_RUN_DIR=/path/to/native-run \
+  node packages/e2e/bin/openclaw-test-env.mjs build
+
+# Run the source-dependent accumulated gate on that exact build.
+OPENCLAW_SRC=/path/to/openclaw E2E_RUN_DIR=/path/to/native-run \
+  node packages/e2e/bin/openclaw-test-env.mjs source-gate
+
+# Export and import without carrying the builder checkout or dependencies.
+node packages/e2e/bin/openclaw-release-bundle.mjs export \
+  /path/to/native-run/build.json /path/to/release.tar.gz local
+node packages/e2e/bin/openclaw-release-bundle.mjs import \
+  /path/to/release.tar.gz /fresh/import
+
+# Run archive-only checks against an explicit test-owned deployment target.
+E2E_RUN_DIR=/path/to/target-run E2E_LOCAL_EXTENSION=/path/to/adapter.mjs \
+  node packages/e2e/bin/openclaw-test-env.mjs target \
+  /fresh/import/imported-build.json /path/to/rehearsal-target.json
 
 # Reuse an installed candidate while changing scenario fixtures.
 OPENCLAW_CANDIDATE_DIR=/path/to/native-run/installed/runtime \
   node packages/e2e/bin/openclaw-test-env.mjs scenarios
 ```
+
+`build.json` is immutable package evidence with
+`eligibility: "built-not-certified"`. It is useful input for target testing,
+but it cannot integrate or activate production. `source-gate` records the
+builder-only test inventory. The target command verifies the imported
+platform, Node binary identity, local migration file, and every additional and
+prepared-file mapping before giving installed hooks a digest-bound
+`deploymentTarget`. The target has `purpose: "rehearsal"` and an explicit
+test-owned isolation root. It contains host, Node migration, browser,
+additional install, prepared-file, and stopped-migration bindings. Installed
+hooks receive no source checkout or package workspace.
+
+Use `openclaw-release.mjs target-proof` to derive physical success and rollback
+evidence from retained stage records and deployment recovery journals. Then use
+`certify` and `promote`. Certification is still nonproduction. Promotion emits
+the only production release receipt. Production integration and activation
+reject a build receipt, a target proof, or a certification used alone.
 
 The external run directory holds concise stage records, protected logs, a
 detached source worktree, build outputs, artifact digests, and installation
@@ -186,6 +222,32 @@ Local stage records retain the input identities used to compute each proof key.
 Runtime evidence includes resolved installed commands, resolved scenarios, and
 the fixture environment, not only extension module bytes.
 The owner fixes failures with committed regressions and resumes the same run.
+`status` prints the durable run state. `resume` is required after an unchanged
+failed stage, so an ordinary command never retries the same failure in a loop.
+
+Set `E2E_ARTIFACT_POOL` to an initialized owner-managed pool to enable automatic
+retention before the disk-capacity check and after terminal success or failure.
+Initialize, inspect, and apply it with
+`openclaw-artifact-retention.mjs init|dry-run|apply`. Producers register exact
+owned objects and references. Cleanup keeps the newest two successful build
+bundles with their package proofs, the newest failed reproduction, every local
+diagnostic log, and the dependency closure of current, pinned, active, paused,
+failed-debug, deployed, and latest-healthy-recovery references. Protected
+objects do not consume the ordinary two-build or one-failure quota.
+
+The pool never adopts a directory by its name or timestamp. Missing ownership,
+references, assets, digests, or lock state stop cleanup. Deletion revalidates
+the canonical direct child and ownership digest, rejects links and escapes,
+and moves the exact object through pool-owned trash with a resumable journal.
+Unregistered legacy directories, production recovery state, Copilot sessions,
+worktrees, package-manager caches, containers, and global caches stay outside
+this policy. Local diagnostic logs have no age or byte limit. Full homes,
+databases, runtime state, and recordings are not diagnostic logs.
+
+`E2E_REQUIRED_FREE_BYTES` may raise the default 8 GiB preflight to a measured
+host requirement. A failed capacity check reports required, free, retained,
+protected, and removable bytes once. Logical removable bytes are not reported
+as physical space freed.
 
 The real pnpm regression uses the pinned upstream package manager from the
 Corepack cache populated during managed source preparation. Its synthetic

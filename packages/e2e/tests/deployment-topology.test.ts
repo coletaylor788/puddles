@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync, chmodSync } from "node:fs";
+import { cpSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync, chmodSync } from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 // @ts-expect-error Native lifecycle is also executable without TypeScript.
 import { activateNative, systemOperations, validateTarget, verifyIntegratedCandidate } from "../src/native-activation.mjs";
 // @ts-expect-error Native lifecycle is also executable without TypeScript.
 import { fileDigest, jsonDigest, treeDigest } from "../src/native-state.mjs";
+// @ts-expect-error Native lifecycle is also executable without TypeScript.
+import { createBuildReceipt } from "../src/native-release.mjs";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cloneHelper = join(repoRoot, "docs/openclaw-setup/patches/clone-runtime-tree.py");
@@ -249,6 +251,7 @@ function wrapperFixture(fault: boolean) {
       proofs[name] = key;
       writeFileSync(join(receiptDir, "stages", `${name}.json`), JSON.stringify({ ...stage, key, status: "passed" }));
     }
+
     const tree = execFileSync("git", ["-C", repoRoot, "rev-parse", "HEAD^{tree}"], { encoding: "utf8" }).trim();
     const receiptPath = join(receiptDir, "candidate.json");
     writeFileSync(receiptPath, JSON.stringify({
@@ -274,13 +277,58 @@ function wrapperFixture(fault: boolean) {
     writeFileSync(serviceMarker, "");
     if (fault) writeFileSync(faultMarker, "");
     return {
-      receiptPath, targetPath, preparedDestination, backups,
+      directory, receiptPath, targetPath, preparedDestination, backups,
       env: {
         ...process.env, PATH: `${bin}:${process.env.PATH}`,
         OPENCLAW_CANDIDATE_RECEIPT: receiptPath, OPENCLAW_DEPLOY_TARGET: targetPath,
-        MINI_HOST: "",
+        MINI_HOST: "", OPENCLAW_DEPLOY_ACTION: "activate",
       },
     };
+}
+
+function rehearsalWrapperFixture(fault: boolean) {
+  const fixture = wrapperFixture(fault);
+  const candidate = JSON.parse(readFileSync(fixture.receiptPath, "utf8"));
+  const receipt = createBuildReceipt({
+    repository: candidate.repository,
+    source: {
+      ref: "a".repeat(40),
+      sha256: "b".repeat(64),
+      buildInputsSha256: "c".repeat(64),
+      patchesSha256: "d".repeat(64),
+      extensionSha256: "none",
+    },
+    composition: { extensionSha256: "none" },
+    tools: {
+      node: process.version,
+      nodeBinary: fileDigest(process.execPath),
+      platform: process.platform,
+      arch: process.arch,
+      manager: "synthetic",
+      npm: "synthetic",
+    },
+    artifact: candidate.artifact,
+    additionalArtifacts: candidate.additionalArtifacts,
+    preparedFiles: candidate.preparedFiles,
+    proofs: {
+      prepare: "1".repeat(64),
+      dependencies: "2".repeat(64),
+      build: "3".repeat(64),
+      package: "4".repeat(64),
+    },
+  });
+  writeFileSync(fixture.receiptPath, JSON.stringify(receipt));
+  const target = JSON.parse(readFileSync(fixture.targetPath, "utf8"));
+  target.purpose = "rehearsal";
+  target.isolation = {
+    schema: "puddles.openclaw-rehearsal-target/v1",
+    root: realpathSync(fixture.directory),
+  };
+  target.label = "puddles.rehearsal.gateway";
+  delete target.integration;
+  writeFileSync(fixture.targetPath, JSON.stringify(target));
+  fixture.env.OPENCLAW_DEPLOY_ACTION = "rehearse";
+  return fixture;
 }
 
 describe("native activation and recovery transaction", () => {
@@ -582,14 +630,21 @@ describe("native activation and recovery transaction", () => {
     const wrapper = readFileSync(join(repoRoot, "docs/openclaw-setup/patches/apply-and-deploy.sh"), "utf8");
     expect(wrapper).toContain('if [ -n "${MINI_HOST:-}" ]');
     expect(wrapper).toContain('exec ssh "$MINI_HOST" "$command"');
-    expect(wrapper).toContain('exec node "$ROOT/packages/e2e/bin/openclaw-activate.mjs"');
+    expect(wrapper).toContain('exec node "$ROOT/packages/e2e/bin/$entrypoint"');
   });
 
   it.each([
     ["success", false],
     ["fault rollback", true],
-  ] as const)("runs prepared-file %s through the executable deployment wrapper", (_name, fault) => {
-    const f = wrapperFixture(fault);
+  ] as const)("runs prepared-file %s through the executable rehearsal wrapper", (_name, fault) => {
+    const f = rehearsalWrapperFixture(fault);
+    expect(JSON.parse(readFileSync(f.targetPath, "utf8"))).toMatchObject({
+      purpose: "rehearsal",
+      isolation: {
+        schema: "puddles.openclaw-rehearsal-target/v1",
+        root: realpathSync(dirname(f.targetPath)),
+      },
+    });
     const result = spawnSync("/bin/bash", [join(repoRoot, "docs/openclaw-setup/patches/apply-and-deploy.sh")], {
       env: f.env, encoding: "utf8", timeout: 30_000,
     });

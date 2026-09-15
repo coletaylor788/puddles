@@ -142,3 +142,13 @@ it("wires failure-only upload to sanitized projections, never the raw run direct
   expect(workflow).toContain("path: ${{ runner.temp }}/puddles-public-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}");
   expect(workflow).not.toMatch(/path:\s*\$\{\{\s*env\.E2E_RUN_DIR/);
 });
+
+it("cancels only obsolete pull-request checks and publishes an explicit x64 build bundle", () => {
+  const workflow = readFileSync(resolve(import.meta.dirname, "../../../.github/workflows/integration.yml"), "utf8");
+  expect(workflow).toContain("group: integration-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}");
+  expect(workflow).toContain("cancel-in-progress: ${{ github.event_name == 'pull_request' }}");
+  expect(workflow).toContain("openclaw-release-bundle.mjs export");
+  expect(workflow).toContain("openclaw-public-x64-build");
+  expect(workflow).toContain("public");
+  expect(workflow).not.toMatch(/runs-on:\s*self-hosted/);
+});

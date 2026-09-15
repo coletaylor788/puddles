@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { hostname, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 vi.setConfig({ testTimeout: 15_000 });
@@ -44,7 +44,7 @@ vi.mock("../src/process-runner.mjs", () => ({
         registrations.add(args[3]);
       } else if (args[0] === "worktree" && args[1] === "list") return [...registrations].map((path) => `worktree ${path}\0HEAD synthetic\0\0`).join("");
       else if (args[0] === "ls-files") return ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "source.js", "prepared"].filter((name) => existsSync(join(cwd, name))).join("\0");
-      else if (args[0] === "rev-parse") return "synthetic-identity";
+      else if (args[0] === "rev-parse") return "a".repeat(40);
       return "";
     }
     if (command === "corepack" && args[1] === "install") {
@@ -118,6 +118,8 @@ vi.mock("../src/process-runner.mjs", () => ({
         libraries: [join(process.env.E2E_RUN_DIR!, "source/node_modules")] });
     } else if (command === "corepack" && args.includes("--filesOnly")) {
       return args.slice(args.indexOf("--config") + 2).join("\n");
+    } else if (command === "tar" && args[0] === "-czf") {
+      writeFileSync(args[1], "synthetic portable bundle");
     }
     return "synthetic-tool-version";
   }),
@@ -129,7 +131,15 @@ vi.mock("../src/native-package.mjs", () => ({
     writeFileSync(path, readFileSync(join(source, "node_modules/dependency")));
     // @ts-expect-error JS lifecycle exports are tested at runtime.
     const { fileDigest } = await import("../src/native-state.mjs");
-    return { path, sha256: fileDigest(path) };
+    return {
+      schemaVersion: 1,
+      path,
+      sha256: fileDigest(path),
+      runtimeSha256: "f".repeat(64),
+      platform: process.platform,
+      arch: process.arch,
+      node: process.version,
+    };
   },
   installRuntime: async (artifact: { path: string }, prefix: string) => {
     if (prefix.includes("/installed-additional/")) counters.additionalInstalls++;
@@ -146,11 +156,13 @@ vi.mock("../src/native-package.mjs", () => ({
     const provenancePath = join(directory, "provider-provenance.json");
     writeFileSync(path, "provider");
     writeFileSync(provenancePath, "provenance");
+    // @ts-expect-error JS lifecycle exports are tested at runtime.
+    const { fileDigest } = await import("../src/native-state.mjs");
     return {
       id: "llama-cpp-provider",
-      artifact: { path, sha256: "a".repeat(64), runtimeSha256: "b".repeat(64),
+      artifact: { path, sha256: fileDigest(path), runtimeSha256: "b".repeat(64),
         schemaVersion: 1, platform: process.platform, arch: process.arch, node: process.version },
-      provenance: { path: provenancePath, sha256: "c".repeat(64),
+      provenance: { path: provenancePath, sha256: fileDigest(provenancePath),
         schema: "puddles.openclaw-provider-artifact/v1", ...provenance,
         sourceSha256: "d".repeat(64) },
     };
@@ -161,9 +173,11 @@ vi.mock("../src/native-fixture.mjs", async (original) => ({
   runScenario: async (_installed: string, scenario: { id: string }) => ({ id: scenario.id, passed: true }),
 }));
 // @ts-expect-error JS lifecycle exports are tested at runtime.
-import { nativePipeline, regressionEnvironment, removeOwnedWorktree, safeNode } from "../src/native-pipeline.mjs";
+import { nativePipeline, nativeTargetPipeline, regressionEnvironment, removeOwnedWorktree, safeNode } from "../src/native-pipeline.mjs";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
 import { atomicJson, jsonDigest, treeDigest } from "../src/native-state.mjs";
+// @ts-expect-error JS lifecycle exports are tested at runtime.
+import { initializeArtifactPool, planArtifactCleanup } from "../src/native-retention.mjs";
 import { runCommand } from "../src/process-runner.mjs";
 
 const roots: string[] = [];
@@ -216,6 +230,46 @@ it("binds migration bytes to cumulative and runtime proofs without rebuilding un
   expect(second.proofs.regressions).not.toBe(first.proofs.regressions);
   expect(second.proofs.runtime).not.toBe(first.proofs.runtime);
   expect(counters.build).toBe(1);
+});
+
+it("runs automatic retention before and after a real build command without invalidating no-op proofs", async () => {
+  const { directory, run } = setup();
+  const pool = join(directory, "pool");
+  initializeArtifactPool(pool);
+  vi.stubEnv("E2E_ARTIFACT_POOL", pool);
+  vi.stubEnv("GMAIL_MCP_PYTHON", "fixture-python");
+  await nativePipeline("build", async () => {});
+  expect(readdirSync(join(pool, "objects")).filter((name) => name.startsWith("success-"))).toHaveLength(1);
+  expect(JSON.parse(readFileSync(join(pool, "references/current.json"), "utf8")).objectIds).toHaveLength(1);
+  const proofs = ["prepare", "dependencies", "build", "package"].map((name) =>
+    readFileSync(join(run, "stages", `${name}.json`), "utf8"));
+  await nativePipeline("build", async () => {});
+  expect(readdirSync(join(pool, "objects")).filter((name) => name.startsWith("success-"))).toHaveLength(1);
+  expect(["prepare", "dependencies", "build", "package"].map((name) =>
+    readFileSync(join(run, "stages", `${name}.json`), "utf8"))).toEqual(proofs);
+  expect(planArtifactCleanup(pool).remove).toEqual([]);
+});
+
+it("preserves the primary pipeline error when terminal retention also fails", async () => {
+  const { directory } = setup();
+  const pool = join(directory, "pool");
+  initializeArtifactPool(pool);
+  vi.stubEnv("E2E_ARTIFACT_POOL", pool);
+  vi.stubEnv("GMAIL_MCP_PYTHON", "fixture-python");
+  let error: unknown;
+  try {
+    await nativePipeline("ci", async () => {
+      mkdirSync(join(pool, "objects/unregistered"));
+      throw new Error("primary repository gate failure");
+    });
+  } catch (caught) {
+    error = caught;
+  }
+  if (!(error instanceof AggregateError)) throw error;
+  expect((error as AggregateError).errors.map((entry) => entry.message)).toEqual(expect.arrayContaining([
+    "primary repository gate failure",
+    expect.stringContaining("ownership"),
+  ]));
 });
 function extension(directory: string, name: string, phase = "package", inputs: string[] = [], outputs = true) {
   const path = join(directory, `${name}.mjs`);
@@ -465,6 +519,71 @@ it("rehearses resolved installed commands and scenarios even when extension file
   expect(proof.inputs.scenarios).not.toBe(firstInputs.scenarios);
   expect(proof.inputs.environment).toBe(firstInputs.environment);
   expect(JSON.stringify(proof.inputs)).not.toContain("SELECTED");
+});
+
+it("binds the explicit rehearsal target into artifact-only installed context", async () => {
+  const { directory, run } = setup();
+  await nativePipeline("build", async () => {});
+  const buildPath = join(run, "build.json");
+  const build = JSON.parse(readFileSync(buildPath, "utf8"));
+  const targetRoot = join(directory, "deployment-target");
+  const installDir = join(targetRoot, "installed");
+  const stateDir = join(targetRoot, "state");
+  const backupRoot = join(targetRoot, "backups");
+  const plistPath = join(targetRoot, "gateway.plist");
+  for (const path of [installDir, stateDir, backupRoot]) mkdirSync(path, { recursive: true });
+  writeFileSync(plistPath, "fixture service");
+  const targetPath = join(targetRoot, "target.json");
+  const target = {
+    schemaVersion: 1,
+    purpose: "rehearsal",
+    isolation: {
+      schema: "puddles.openclaw-rehearsal-target/v1",
+      root: realpathSync(targetRoot),
+    },
+    host: hostname(),
+    installDir,
+    stateDir,
+    plistPath,
+    backupRoot,
+    label: "puddles.rehearsal.gateway",
+    port: 18799,
+    additionalInstalls: build.additionalArtifacts.map(({ id }: { id: string }) => ({
+      id,
+      path: `managed/${id}`,
+    })),
+    preparedFiles: [],
+  };
+  writeFileSync(targetPath, JSON.stringify(target));
+  const module = join(directory, "target-adapter.mjs");
+  writeFileSync(module, `export default {
+    schemaVersion: 1,
+    commands: [{id:"installed",phase:"installed",command:"fixture-installed",args:[],timeoutMs:1000}]
+  };`);
+  const targetRun = join(directory, "target-run");
+  vi.stubEnv("E2E_RUN_DIR", targetRun);
+  vi.stubEnv("E2E_LOCAL_EXTENSION", module);
+  const proof = await nativeTargetPipeline(buildPath, targetPath);
+  const context = JSON.parse(readFileSync(join(targetRun, "context/context.json"), "utf8"));
+  expect(proof).toMatchObject({ buildId: build.buildId, targetSha256: context.deploymentTarget.sha256 });
+  expect(context).not.toHaveProperty("sourceDir");
+  expect(context.deploymentTarget).toMatchObject({
+    path: targetPath,
+    purpose: "rehearsal",
+    isolation: target.isolation,
+    host: target.host,
+    installDir,
+    stateDir,
+    plistPath,
+    backupRoot,
+    label: target.label,
+    port: target.port,
+    additionalInstalls: target.additionalInstalls,
+    preparedFiles: [],
+    browser: null,
+    nodeMigration: null,
+    stateMigration: null,
+  });
 });
 
 it("seals and installs additional artifacts before rehearsal and invalidates only changed artifact proofs", async () => {
