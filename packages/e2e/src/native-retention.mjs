@@ -12,7 +12,7 @@ const objectSchema = "puddles.openclaw-retained-object/v1";
 const referenceSchema = "puddles.openclaw-retained-reference/v1";
 const objectKinds = new Set([
   "successful-build", "failed-reproduction", "diagnostic-log",
-  "target-rehearsal", "target-proof",
+  "source-gate", "target-rehearsal", "target-proof",
 ]);
 const referenceKinds = new Set([
   "current", "pinned", "active", "paused", "failed-debug", "deployed",
@@ -512,6 +512,76 @@ function copyProofAssets(runDir, names) {
   });
 }
 
+function validateSourceGateObject(object, buildId) {
+  if (object.metadata.kind !== "source-gate") {
+    throw new Error(`Retained source gate has the wrong object kind: ${object.metadata.id}`);
+  }
+  const sourceGatePath = join(object.path, "source-gate.json");
+  const regressionPath = join(object.path, "proofs", "regressions.json");
+  const sourceGate = JSON.parse(readFileSync(sourceGatePath, "utf8"));
+  const regression = JSON.parse(readFileSync(regressionPath, "utf8"));
+  if (sourceGate.schema !== "puddles.openclaw-source-gate/v1" ||
+      sourceGate.schemaVersion !== 1 || sourceGate.status !== "passed" ||
+      sourceGate.buildId !== buildId || regression.name !== "regressions" ||
+      regression.status !== "passed" || regression.key !== jsonDigest(regression.inputs) ||
+      sourceGate.stages?.regressions !== regression.key) {
+    throw new Error(`Retained source gate evidence is invalid: ${object.metadata.id}`);
+  }
+  return { metadata: object.metadata, sourceGatePath, regressionPath };
+}
+
+export function findRetainedSourceGate(poolPath, buildId) {
+  if (!/^[a-f0-9]{64}$/.test(buildId)) throw new Error("Source gate requires an exact build id");
+  const root = canonicalPool(poolPath);
+  const matches = [];
+  for (const name of readdirSync(join(root, "objects")).sort()) {
+    if (!name.startsWith("source-gate-")) continue;
+    const object = validateObject(root, join(root, "objects", name));
+    const sourceGate = JSON.parse(readFileSync(join(object.path, "source-gate.json"), "utf8"));
+    if (sourceGate.buildId === buildId) matches.push(validateSourceGateObject(object, buildId));
+  }
+  return matches.sort((a, b) =>
+    Date.parse(b.metadata.createdAt) - Date.parse(a.metadata.createdAt) ||
+    b.metadata.id.localeCompare(a.metadata.id))[0] ?? null;
+}
+
+export function registerSourceGate(poolPath, runDir, buildId, now = new Date()) {
+  const root = canonicalPool(poolPath);
+  const build = findSuccessfulBuild(poolPath, buildId);
+  if (!build) throw new Error("Source gate requires its retained successful build");
+  const sourceGatePath = join(runDir, "source-gate.json");
+  const regressionPath = join(runDir, "stages", "regressions.json");
+  regular(sourceGatePath);
+  regular(regressionPath);
+  const sourceGate = JSON.parse(readFileSync(sourceGatePath, "utf8"));
+  const regression = JSON.parse(readFileSync(regressionPath, "utf8"));
+  const metadata = registerRetainedObject(poolPath, {
+    id: `source-gate-${jsonDigest({ sourceGate, regression }).slice(0, 48)}`,
+    kind: "source-gate",
+    createdAt: now.toISOString(),
+    dependencies: [build.metadata.id],
+    assets: [
+      { source: sourceGatePath, path: "source-gate.json" },
+      { source: regressionPath, path: "proofs/regressions.json" },
+    ],
+  });
+  const retained = validateSourceGateObject(
+    validateObject(root, join(root, "objects", metadata.id)),
+    buildId,
+  );
+  setRetentionReference(poolPath, {
+    id: "current",
+    kind: "current",
+    objectIds: [build.metadata.id, retained.metadata.id],
+  });
+  return metadata;
+}
+
+function retainedBuildReferences(poolPath, buildId, buildMetadata) {
+  const sourceGate = findRetainedSourceGate(poolPath, buildId);
+  return [buildMetadata.id, ...(sourceGate ? [sourceGate.metadata.id] : [])];
+}
+
 export function registerSuccessfulBuild(poolPath, runDir, bundlePath, buildId, now = new Date()) {
   if (!/^[a-f0-9]{64}$/.test(buildId)) throw new Error("Successful build requires an exact build id");
   const id = `success-${buildId.slice(0, 48)}`;
@@ -558,7 +628,7 @@ export function registerImportedBuild(poolPath, bundlePath, receiptPath, buildId
     setRetentionReference(poolPath, {
       id: "current",
       kind: "current",
-      objectIds: [existing.metadata.id],
+      objectIds: retainedBuildReferences(poolPath, buildId, existing.metadata),
     });
     return existing.metadata;
   }
@@ -575,7 +645,7 @@ export function registerImportedBuild(poolPath, bundlePath, receiptPath, buildId
   setRetentionReference(poolPath, {
     id: "current",
     kind: "current",
-    objectIds: [metadata.id],
+    objectIds: retainedBuildReferences(poolPath, buildId, metadata),
   });
   return metadata;
 }
@@ -666,12 +736,17 @@ export function registerTargetProof(
     dependencies: [build.metadata.id],
     assets: proofAssets,
   });
+  const sourceGate = findRetainedSourceGate(poolPath, buildId);
   const proofId = `target-proof-${jsonDigest(proof).slice(0, 41)}`;
   const retainedProof = registerRetainedObject(poolPath, {
     id: proofId,
     kind: "target-proof",
     createdAt: now.toISOString(),
-    dependencies: [build.metadata.id, rehearsal.id],
+    dependencies: [
+      build.metadata.id,
+      ...(sourceGate ? [sourceGate.metadata.id] : []),
+      rehearsal.id,
+    ],
     assets: [{ source: targetProofPath, path: "target-proof.json" }],
   });
   setRetentionReference(poolPath, {

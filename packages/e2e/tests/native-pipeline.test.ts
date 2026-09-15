@@ -124,8 +124,8 @@ vi.mock("../src/process-runner.mjs", () => ({
         libraries: [join(process.env.E2E_RUN_DIR!, "source/node_modules")] });
     } else if (command === "corepack" && args.includes("--filesOnly")) {
       return args.slice(args.indexOf("--config") + 2).join("\n");
-    } else if (command === "tar" && args[0] === "-czf") {
-      writeFileSync(args[1], "synthetic portable bundle");
+    } else if (command === "tar") {
+      return execFileSync(command, args, { encoding: "utf8" });
     }
     return "synthetic-tool-version";
   }),
@@ -180,12 +180,14 @@ vi.mock("../src/native-fixture.mjs", async (original) => ({
 }));
 // @ts-expect-error JS lifecycle exports are tested at runtime.
 import { nativePipeline, nativeTargetPipeline, regressionEnvironment, removeOwnedWorktree, safeNode } from "../src/native-pipeline.mjs";
+// @ts-expect-error JS release modules are tested at runtime.
+import { certifyRelease, createTargetProof, importReleaseBundle } from "../src/native-release.mjs";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
 import { createRehearsalTarget } from "../src/native-target.mjs";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
 import { atomicJson, jsonDigest, treeDigest } from "../src/native-state.mjs";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
-import { initializeArtifactPool, planArtifactCleanup } from "../src/native-retention.mjs";
+import { findRetainedSourceGate, initializeArtifactPool, planArtifactCleanup } from "../src/native-retention.mjs";
 import { runCommand } from "../src/process-runner.mjs";
 
 const roots: string[] = [];
@@ -256,6 +258,67 @@ it("runs automatic retention before and after a real build command without inval
   expect(["prepare", "dependencies", "build", "package"].map((name) =>
     readFileSync(join(run, "stages", `${name}.json`), "utf8"))).toEqual(proofs);
   expect(planArtifactCleanup(pool).remove).toEqual([]);
+});
+
+it("retains genuine source evidence for certification after disposable build state is removed", async () => {
+  const { directory, run } = setup();
+  const pool = join(directory, "pool");
+  initializeArtifactPool(pool);
+  vi.stubEnv("E2E_ARTIFACT_POOL", pool);
+  vi.stubEnv("GMAIL_MCP_PYTHON", "fixture-python");
+  await nativePipeline("ci", async () => {});
+
+  const build = JSON.parse(readFileSync(join(run, "build.json"), "utf8"));
+  const sourceGate = findRetainedSourceGate(pool, build.buildId);
+  expect(sourceGate).not.toBeNull();
+  const retainedSource = JSON.parse(readFileSync(sourceGate!.sourceGatePath, "utf8"));
+  const regression = JSON.parse(readFileSync(sourceGate!.regressionPath, "utf8"));
+  expect(retainedSource.stages.regressions).toBe(regression.key);
+  vi.stubEnv("E2E_SOURCE_GATE_REVISION", "changed");
+  await nativePipeline("ci", async () => {});
+  const changedSourceGate = findRetainedSourceGate(pool, build.buildId);
+  expect(changedSourceGate!.metadata.id).not.toBe(sourceGate!.metadata.id);
+  expect(counters.build).toBe(1);
+
+  const writeRecovery = (name: string, status: "healthy" | "rolled-back") => {
+    const path = join(directory, name);
+    mkdirSync(path);
+    writeFileSync(join(path, "recovery.json"), JSON.stringify({
+      schemaVersion: 1,
+      status,
+      transaction: name,
+      target: "9".repeat(64),
+      artifact: build.artifact.sha256,
+    }));
+    if (status === "rolled-back") {
+      writeFileSync(join(path, "failure.json"), JSON.stringify({ message: "injected failure" }));
+    }
+    return path;
+  };
+  const targetProof = createTargetProof(
+    build,
+    run,
+    writeRecovery("healthy", "healthy"),
+    writeRecovery("rollback", "rolled-back"),
+  );
+  const retainedBundle = join(
+    pool,
+    "objects",
+    `success-${build.buildId.slice(0, 48)}`,
+    "bundle.tar.gz",
+  );
+  rmSync(run, { recursive: true });
+
+  const imported = await importReleaseBundle(retainedBundle, join(directory, "imported"));
+  const recoveredSource = findRetainedSourceGate(pool, build.buildId);
+  expect(recoveredSource).not.toBeNull();
+  expect(() => certifyRelease(
+    imported.receipt,
+    JSON.parse(readFileSync(recoveredSource!.sourceGatePath, "utf8")),
+    targetProof,
+  )).not.toThrow();
+  expect(JSON.parse(readFileSync(join(pool, "references/current.json"), "utf8")).objectIds)
+    .toContain(recoveredSource!.metadata.id);
 });
 
 it("preserves the primary pipeline error when terminal retention also fails", async () => {

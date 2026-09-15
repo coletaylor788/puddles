@@ -19,7 +19,8 @@ import { exportReleaseBundle } from "./native-release.mjs";
 import { validateTarget, verifyRehearsalTarget } from "./native-activation.mjs";
 import {
   acquireArtifactPoolLock, applyArtifactCleanup, artifactPoolRunId,
-  findSuccessfulBuild, registerDiagnosticLogs, registerFailedReproduction, registerSuccessfulBuild,
+  findRetainedSourceGate, findSuccessfulBuild, registerDiagnosticLogs, registerFailedReproduction,
+  registerSourceGate, registerSuccessfulBuild,
   registerRetainedObject, removeRetentionReference, retentionSpaceSummary, setRetentionReference,
 } from "./native-retention.mjs";
 
@@ -93,13 +94,20 @@ export async function nativePipeline(command, repositoryGates) {
   };
   const completeRetention = async (buildReceipt) => {
     if (!artifactPool) return;
+    const retainsSourceGate = command === "ci" || command === "source-gate";
     const reused = withRetentionLock(() => {
       const retained = findSuccessfulBuild(artifactPool, buildReceipt.buildId);
       if (!retained) return false;
+      const sourceGate = retainsSourceGate
+        ? { metadata: registerSourceGate(artifactPool, runDir, buildReceipt.buildId) }
+        : findRetainedSourceGate(artifactPool, buildReceipt.buildId);
       setRetentionReference(artifactPool, {
         id: "current",
         kind: "current",
-        objectIds: [retained.metadata.id],
+        objectIds: [
+          retained.metadata.id,
+          ...(sourceGate ? [sourceGate.metadata.id] : []),
+        ],
       });
       registerDiagnosticLogs(artifactPool, runDir);
       removeRetentionReference(artifactPool, retentionReference);
@@ -118,6 +126,9 @@ export async function nativePipeline(command, repositoryGates) {
     withRetentionLock(() => {
       if (!findSuccessfulBuild(artifactPool, buildReceipt.buildId)) {
         registerSuccessfulBuild(artifactPool, runDir, bundle, buildReceipt.buildId);
+      }
+      if (retainsSourceGate) {
+        registerSourceGate(artifactPool, runDir, buildReceipt.buildId);
       }
       registerDiagnosticLogs(artifactPool, runDir);
       removeRetentionReference(artifactPool, retentionReference);

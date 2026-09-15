@@ -47,27 +47,27 @@ run only through the private self-hosted workflow.
 An owner-managed artifact pool keeps disk use bounded without guessing which
 directories are safe to delete. Producers register exact assets, ownership,
 dependencies, and lifecycle references. Cleanup keeps two successful bundles
-and their package proofs, one failed reproduction, every local diagnostic log,
-and everything reachable from active, paused, pinned, deployed, recovery, and
-debug references. It runs before capacity checks and after terminal results.
-Unknown or malformed state blocks deletion. Production recovery state and
-unregistered legacy directories are never adopted automatically.
+with their package and source attestations, one failed reproduction, every
+local diagnostic log, and everything reachable from active, paused, pinned,
+deployed, recovery, and debug references. A source attestation is a separate
+immutable sidecar because source tests finish after the bundle is built. It
+keeps its exact test-stage proof and follows the bundle through import and
+target proof retention. Cleanup runs before capacity checks and after terminal
+results. Unknown or malformed state blocks deletion. Production recovery state
+and unregistered legacy directories are never adopted automatically.
 
 ### Status
 
 The delivery contract, retention lifecycle, isolated target creator, and public
-hosted workflow are implemented. Public focused tests, accumulated CI, hosted
-checks, and retained review passed for the prior candidate.
+hosted workflow are implemented. Retention now keeps the genuine source
+attestation and test-stage proof needed to certify an imported bundle after its
+disposable builder state is removed. Focused validation passes for this repair.
 
-The first fresh ARM build exposed a declaration portability error before
-deployment. The public source patch now gives all 16 fragment registries exact
-explicit types without changing their runtime objects. A representative
-runtime and compile-time registry test passes for every fragment, and the exact
-five root exports that exposed the next capped diagnostic batch now name their
-existing factory return types. The exact fresh pinned pnpm 12 root build emits
-the package and unified declarations successfully. Full accumulated
-validation, retained review, hosted checks, and the resumed private ARM flow
-remain.
+The declaration portability correction is fully green at its frozen public
+tuple. This retention repair changes only lifecycle evidence ownership, so its
+focused tests, retained review, accumulated validation, and hosted checks must
+refresh before the public candidate is eligible again. Private owns
+artifact-only physical diagnosis and production remains held.
 
 ## Agent section
 
@@ -138,8 +138,12 @@ remain.
   interpreter, prepared-file, browser, additional-install, and rollback
   contracts.
 - Add an explicit owner-managed artifact pool. Keep the newest two successful
-  bundles and required package proofs, the newest failed reproduction, all
-  local diagnostic logs, and every protected dependency closure.
+  bundles and required package proofs, each selected source-gate attestation
+  with its regression proof, the newest failed reproduction, all local
+  diagnostic logs, and every protected dependency closure.
+- Re-importing a retained bundle must recover its source-gate sidecar without a
+  source checkout. Certification must accept the recovered genuine attestation
+  with unchanged target evidence after disposable run state is removed.
 - Run cleanup before capacity checks and after terminal results. Serialize it
   with build registration, import, activation, reference changes, and cleanup.
 - Never infer ownership from a directory name or age. Reject links, escapes,
@@ -215,6 +219,12 @@ remain.
   object owns copied immutable assets and an ownership digest. References name
   current, pinned, active, paused, failed-debug, deployed, or latest healthy
   recovery closure.
+- A successful source gate is a separate immutable pool object that depends on
+  its build and owns `source-gate.json` plus the exact passed regression stage
+  record. Import restores the current reference to both objects. A retained
+  target proof depends on the selected source gate so cleanup cannot break
+  later certification. Changed gate inputs create a new sidecar for unchanged
+  build bytes instead of mutating old evidence.
 - Cleanup keeps all diagnostic-log objects without age or size limits. Full
   homes, databases, runtime state, and recordings are never classified as
   logs.
@@ -236,6 +246,8 @@ remain.
   production activation.
 - [x] Add deterministic artifact ownership, references, cleanup, and automatic
   native build hooks.
+- [x] Retain source-gate attestations and regression proofs as immutable build
+  dependencies that survive import and disposable run cleanup.
 - [x] Add public workflow concurrency and x64 bundle publication.
 - [x] Add portable declaration types for all 16 gateway protocol fragment
   registries and the five affected root exports. Register the fragment
@@ -267,6 +279,10 @@ remain.
   a fresh pinned pnpm 12 install, including the five root exports.
 - Proof tests reject edited source and deployment summaries unless their
   maintained stage records and recovery journals match.
+- Retention integration creates source evidence through the real pipeline,
+  removes the complete disposable run, imports the retained bundle, recovers
+  the attestation and regression proof, and certifies against unchanged target
+  evidence.
 - Integration tests prove interim receipts cannot integrate or activate,
   promotion requires complete evidence, and production activation rejects
   rehearsal targets.
@@ -318,6 +334,10 @@ remain.
   exposed five inferred root exports in the unified declaration phase. Exact
   existing factory return types now cover those exports, and a fresh pinned
   root build passes the complete declaration pipeline.
+- 2026-09-15: Artifact-only diagnosis found that successful retention kept
+  package proofs but dropped the separate source attestation. Source gates now
+  have an immutable retained sidecar and dependency closure, so deleting a
+  successful run no longer makes unchanged certification impossible.
 
 ### Checklist
 
@@ -328,10 +348,12 @@ remain.
 - [x] Send the stable command and receipt contract to the process owner,
   coordinator, and private consumer.
 - [x] Resolve the combined-source build and rehearsal eligibility cycle.
-- [ ] Implement receipts, bundle, lifecycle split, status, rehearsal, and
+- [x] Implement receipts, bundle, lifecycle split, status, rehearsal, and
   promotion.
-- [ ] Add committed focused and cumulative regressions.
-- [ ] Update public workflow and documentation.
+- [x] Add committed focused regressions.
+- [x] Update public workflow and documentation.
+- [ ] Run final cumulative validation, retained review, and hosted checks for
+  the source-gate retention repair.
 - [ ] Push PR #117 updates and verify conflict-free ancestry.
 - [ ] Complete retained adversarial review with no material finding.
 - [ ] Pass exact local accumulated CI and hosted public checks.

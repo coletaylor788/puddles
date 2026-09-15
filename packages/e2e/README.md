@@ -240,6 +240,13 @@ Set `E2E_ARTIFACT_POOL` to an initialized owner-managed pool to enable automatic
 retention before the disk-capacity check and after terminal success or failure.
 Bundle import registers the immutable build. Target runs protect it while active,
 then retain successful stage proofs or one failed reproduction plus diagnostics.
+Successful source gates are retained as immutable sidecars with their exact
+regression-stage proof and a dependency on the build. Re-importing an existing
+build restores the current reference to both objects, and later target proofs
+retain the source-gate dependency. This lets certification reuse genuine source
+evidence after the disposable source checkout and run context are removed.
+Running a changed source gate for unchanged build bytes creates a new sidecar
+instead of overwriting or reusing the older attestation.
 Initialize, inspect, and apply it with
 `openclaw-artifact-retention.mjs init|dry-run|apply`. Producers register exact
 owned objects and references. Cleanup keeps the newest two successful build
