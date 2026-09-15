@@ -245,6 +245,17 @@ function selectRetention(state) {
   for (const [kind, count] of [["successful-build", 2], ["failed-reproduction", 1]]) {
     for (const object of newest(state.objects, kind).slice(0, count)) retained.add(object.metadata.id);
   }
+  const retainedBuilds = new Set([...retained].filter((id) =>
+    state.objects.get(id)?.metadata.kind === "successful-build"));
+  const gatedBuilds = new Set();
+  for (const object of newest(state.objects, "source-gate")) {
+    const [build] = object.metadata.dependencies;
+    if (object.metadata.dependencies.length === 1 &&
+        retainedBuilds.has(build) && !gatedBuilds.has(build)) {
+      retained.add(object.metadata.id);
+      gatedBuilds.add(build);
+    }
+  }
 
   return { protectedIds, retained: closure(state.objects, retained) };
 }

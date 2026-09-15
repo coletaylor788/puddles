@@ -266,6 +266,15 @@ it("retains genuine source evidence for certification after disposable build sta
   initializeArtifactPool(pool);
   vi.stubEnv("E2E_ARTIFACT_POOL", pool);
   vi.stubEnv("GMAIL_MCP_PYTHON", "fixture-python");
+  const migrationPath = join(realpathSync(directory), "migration.json");
+  const migration = {
+    schemaVersion: 1,
+    configOperations: [
+      { kind: "set", path: ["memory", "search", "provider"], expected: { exists: false }, value: "first" },
+    ],
+  };
+  writeFileSync(migrationPath, JSON.stringify(migration));
+  vi.stubEnv("E2E_STATE_MIGRATION_MANIFEST", migrationPath);
   await nativePipeline("ci", async () => {});
 
   const build = JSON.parse(readFileSync(join(run, "build.json"), "utf8"));
@@ -301,6 +310,14 @@ it("retains genuine source evidence for certification after disposable build sta
     writeRecovery("healthy", "healthy"),
     writeRecovery("rollback", "rolled-back"),
   );
+  migration.configOperations[0].value = "second";
+  writeFileSync(migrationPath, JSON.stringify(migration));
+  await nativePipeline("ci", async () => {});
+  const nextBuild = JSON.parse(readFileSync(join(run, "build.json"), "utf8"));
+  expect(nextBuild.buildId).not.toBe(build.buildId);
+  expect(findRetainedSourceGate(pool, build.buildId)).not.toBeNull();
+  expect(findRetainedSourceGate(pool, nextBuild.buildId)).not.toBeNull();
+  expect(counters.build).toBe(1);
   const retainedBundle = join(
     pool,
     "objects",
