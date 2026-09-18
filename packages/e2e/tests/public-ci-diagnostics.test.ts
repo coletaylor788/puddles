@@ -114,6 +114,7 @@ it("initializes and persists the public run path at step runtime, not job contex
   if (!isMap(jobEnvironment)) throw new Error("Missing cumulative job environment");
   expect(jobEnvironment.toJSON()).toEqual({
     E2E_LOCAL_EXTENSION: "",
+    E2E_RESOURCE_MEASURE: "1",
     E2E_RESOURCE_PROFILE: "hosted-arm",
   });
   const steps = workflow.getIn(["jobs", "cumulative", "steps"]);
@@ -151,7 +152,7 @@ it("exports bounded public resource evidence without command arguments or paths"
   const run = initializePublicRun(f.env);
   mkdirSync(join(run, "resources"));
   writeFileSync(join(run, "resources/0.json"), JSON.stringify({
-    schema: "puddles.native-command-resources/v1",
+    schema: "puddles.native-command-resources/v2",
     profile: "hosted-arm",
     label: "corepack pnpm",
     startedAt: "2026-09-15T00:00:00.000Z",
@@ -160,7 +161,7 @@ it("exports bounded public resource evidence without command arguments or paths"
     host: { platform: "darwin", arch: "arm64", totalMemoryBytes: 7_000_000_000, logicalCpuCount: 3 },
     concurrency: { mappedTestWorkers: 1 },
     sampleCount: 2,
-    peakProcessGroupRssBytes: 4_500_000_000,
+    peakProcessTreeRssBytes: 4_500_000_000,
     minimumFreeMemoryPercent: 18,
     peakSwapUsedBytes: 0,
     minimumFreeDiskBytes: 9_000_000_000,
@@ -179,11 +180,11 @@ it("rejects missing RSS and resource sets above the public evidence bound", () =
   const run = initializePublicRun(f.env);
   mkdirSync(join(run, "resources"));
   const record = {
-    schema: "puddles.native-command-resources/v1",
+    schema: "puddles.native-command-resources/v2",
     profile: "hosted-arm",
     label: "node fixture",
     host: { platform: "darwin", arch: "arm64" },
-    peakProcessGroupRssBytes: 0,
+    peakProcessTreeRssBytes: 0,
     minimumFreeMemoryPercent: 20,
     peakSwapUsedBytes: 0,
     minimumFreeDiskBytes: 10,
@@ -194,7 +195,7 @@ it("rejects missing RSS and resource sets above the public evidence bound", () =
   for (let index = 0; index <= 256; index += 1) {
     writeFileSync(join(run, `resources/${index}.json`), JSON.stringify({
       ...record,
-      peakProcessGroupRssBytes: 1,
+      peakProcessTreeRssBytes: 1,
     }));
   }
   expect(() => collectPublicResources(f.env)).toThrow("256-command bound");

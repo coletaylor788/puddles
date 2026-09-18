@@ -91,7 +91,10 @@ describe("OpenClaw cumulative patch suite", () => {
     const runner = readFileSync(join(packageDir, "src/native-pipeline.mjs"), "utf8");
     expect(workflow).toMatch(/runs-on:\s*macos-15\b/);
     expect(workflow).toContain("E2E_RESOURCE_PROFILE: hosted-arm");
+    expect(workflow).toContain('E2E_RESOURCE_MEASURE: "1"');
     expect(runner).toContain("resolveResourceProfile()");
+    expect(runner).not.toMatch(/\[[^\]]*"E2E_RESOURCE_PROFILE"[^\]]*\]/);
+    expect(runner).toMatch(/\[[^\]]*"E2E_RESOURCE_MEASURE"[^\]]*\]/);
     expect(runner).toMatch(/stage\(runDir,\s*"regressions",\s*\{[^}]*buildEnvironment/s);
     const timeout = Number(workflow.match(/timeout-minutes:\s*(\d+)/)?.[1]);
     expect(timeout).toBeGreaterThan(90);

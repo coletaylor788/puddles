@@ -79,9 +79,12 @@ measured standard ARM profile. The branch trial must complete the pinned build,
 package, offline install, and full accumulated suite before ARM becomes the
 supported default.
 
-The private owner is adopting the same resource and receipt contract for its
-combined hosted builder. Development, test, and production targets remain
-separate. Production remains held.
+The first ARM trial completed the pinned root build with zero swap and ample
+memory and disk headroom, then a nested regression selected the old default
+profile and stopped on its 8 GiB guard. That profile propagation is corrected,
+and resource accounting now follows recursive process ancestry. A complete
+rerun is next. Development, test, and production targets remain separate.
+Production remains held.
 
 ## Agent section
 
@@ -153,7 +156,7 @@ separate. Production remains held.
 - Publish a successful sanitized public arm64 bundle. Never upload a run tree,
   private input, configuration, environment, log, secret, or private artifact.
 - Add a measured `hosted-arm` profile for standard 7 GB macOS ARM runners. It
-  must record descendant RSS, memory pressure, swap, disk, duration, and
+  must record recursive process-tree RSS, memory pressure, swap, disk, duration, and
   concurrency for each child command.
 - Keep the complete accumulated suite. Constrain concurrency through supported
   OpenClaw and Vitest controls, not by skipping tests or adding arbitrary heaps.
@@ -248,9 +251,14 @@ separate. Production remains held.
   OpenClaw compiler uses its maintained host-aware budget. That compiler already
   documents a measured 4.73 GiB peak in a successful 5 GiB slice and failure in
   a 4 GiB slice. The profile runs mapped OpenClaw tests with one worker.
-- Resource receipts are bounded diagnostics outside immutable bundle identity.
+- Version 2 resource receipts use the union of recursive ancestry and the
+  command's original process group. This covers detached child groups and
+  reparented descendants without changing immutable bundle identity.
   They contain no command arguments, paths, environment, private input, or
   source content. The hosted workflow publishes their sanitized projection.
+- `E2E_RESOURCE_MEASURE=1` belongs only to the top-level hosted run. It is
+  removed from child environments so nested pipeline regressions inherit the
+  host profile without recursively running the sampler.
 - The existing `build` and bundle export commands form the draft developer
   producer. The existing rehearsal action forms the development consumer.
   Private code owns target provisioning and SSH transport. No new public
@@ -340,6 +348,11 @@ separate. Production remains held.
 - The hosted ARM trial must run the fresh pinned root build, package, offline
   install, all mapped regressions, and all installed scenarios. Its published
   resource evidence decides support. A lowered guard alone is not evidence.
+- Hosted run `35302470356` passed prepare, dependency install, and the pinned
+  root build. The build took 673 seconds, swap stayed at zero, free memory stayed
+  at or above 55 percent, and free disk stayed above 38.5 GB. Regressions then
+  failed because nested pipeline tests did not inherit `hosted-arm`; no package
+  or installed result from that run is accepted.
 - Existing release tests prove draft builds and rehearsal targets cannot
   certify, promote, or activate production.
 - Development-loop tests must prove selected installed and integration checks
@@ -412,6 +425,10 @@ separate. Production remains held.
   and private source work, with the mini limited to artifact-only checks.
   Research found the public 8 GiB floor had no benchmark, while pinned OpenClaw
   already carries measured host-aware compiler sizing.
+- 2026-09-17: Retained review cleared `557e0d8`. Hosted run `35302470356`
+  proved the root build fits, then exposed profile loss in nested pipeline
+  tests and incomplete RSS accounting for detached grandchildren. The repair
+  propagates the selected profile and measures recursive process ancestry.
 
 ### Checklist
 

@@ -79,7 +79,7 @@ export async function nativePipeline(command, repositoryGates) {
   let sequence = 0;
   let resourceSequence = 0;
   const childEnvironment = { ...process.env };
-  for (const name of ["E2E_ARTIFACT_POOL", "E2E_REQUIRED_FREE_BYTES", "E2E_RESOURCE_PROFILE", "E2E_RESUME_FAILED", "E2E_RUN_DIR"]) {
+  for (const name of ["E2E_ARTIFACT_POOL", "E2E_REQUIRED_FREE_BYTES", "E2E_RESOURCE_MEASURE", "E2E_RESUME_FAILED", "E2E_RUN_DIR"]) {
     delete childEnvironment[name];
   }
   const run = (executable, args, options = {}) => runCommand(executable, args, {
@@ -88,7 +88,7 @@ export async function nativePipeline(command, repositoryGates) {
     timeoutMs: options.timeoutMs ?? 10 * 60_000,
     logPath: options.capture ? undefined : join(runDir, "logs", `${sequence++}.log`),
     quiet: true,
-    resourcePath: resourceProfile.name === "hosted-arm"
+    resourcePath: resourceProfile.measure
       ? join(runDir, "resources", `${resourceSequence++}.json`)
       : undefined,
     resourceDiskPath: runDir,

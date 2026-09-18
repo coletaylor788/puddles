@@ -55,13 +55,13 @@ describe("managed runner signals", () => {
     }
   }, 10_000);
 
-  it.runIf(process.platform === "darwin")("records RSS for a command and its detached child group", async () => {
+  it.runIf(process.platform === "darwin")("records RSS for descendants that create another process group", async () => {
     const state = mkdtempSync(join(tmpdir(), "e2e-resources-"));
     const receipt = join(state, "resources.json");
     try {
       await runCommand(process.execPath, ["-e", `
         const { spawn } = require("node:child_process");
-        const child = spawn(process.execPath, ["-e", "const bytes = Buffer.alloc(8 * 1024 * 1024); setTimeout(() => console.log(bytes.length), 1200)"], { stdio: "ignore" });
+        const child = spawn(process.execPath, ["-e", "const bytes = Buffer.alloc(8 * 1024 * 1024); setTimeout(() => console.log(bytes.length), 1200)"], { detached: true, stdio: "ignore" });
         child.on("exit", () => process.exit(0));
       `], {
         quiet: true,
@@ -79,9 +79,9 @@ describe("managed runner signals", () => {
         resourceLabel: "node fixture",
       });
       const evidence = JSON.parse(readFileSync(receipt, "utf8"));
-      expect(evidence.schema).toBe("puddles.native-command-resources/v1");
+      expect(evidence.schema).toBe("puddles.native-command-resources/v2");
       expect(evidence.sampleCount).toBeGreaterThan(1);
-      expect(evidence.peakProcessGroupRssBytes).toBeGreaterThan(8 * 1024 * 1024);
+      expect(evidence.peakProcessTreeRssBytes).toBeGreaterThan(8 * 1024 * 1024);
       expect(evidence.minimumFreeMemoryPercent).toBeTypeOf("number");
       expect(evidence.peakSwapUsedBytes).toBeTypeOf("number");
     } finally {

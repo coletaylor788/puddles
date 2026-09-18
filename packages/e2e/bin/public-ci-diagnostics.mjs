@@ -159,7 +159,7 @@ export function collectPublicResources(env = process.env) {
     if (names.length > 256) throw new Error("Public resource evidence exceeds the 256-command bound");
     for (const name of names) {
       const record = json(join(directory, name));
-      if (record.schema !== "puddles.native-command-resources/v1" ||
+      if (record.schema !== "puddles.native-command-resources/v2" ||
           !["default", "hosted-arm"].includes(record.profile) ||
           !/^[A-Za-z0-9._-]+(?: [A-Za-z0-9._:-]+)?$/.test(record.label) ||
           record.host?.platform !== "darwin" ||
@@ -170,7 +170,7 @@ export function collectPublicResources(env = process.env) {
     }
   }
   atomicJson(join(output, "commands.json"), records);
-  const peak = records.reduce((value, record) => Math.max(value, record.peakProcessGroupRssBytes ?? 0), 0);
+  const peak = records.reduce((value, record) => Math.max(value, record.peakProcessTreeRssBytes ?? 0), 0);
   const minimumDisk = records.reduce((value, record) => Math.min(value, record.minimumFreeDiskBytes ?? value), Number.MAX_SAFE_INTEGER);
   const pressure = records.map((record) => record.minimumFreeMemoryPercent).filter(Number.isFinite);
   if (records.some((record) => record.profile === "hosted-arm") && peak <= 0) {
@@ -179,7 +179,7 @@ export function collectPublicResources(env = process.env) {
   const summary = [
     `Public native resource profile: ${records[0]?.profile ?? "no command evidence"}.`,
     `Commands measured: ${records.length}.`,
-    `Peak process-group RSS: ${peak} bytes.`,
+    `Peak process-tree RSS: ${peak} bytes.`,
     `Minimum free memory: ${pressure.length ? Math.min(...pressure) + "%" : "unavailable"}.`,
     `Minimum free disk: ${minimumDisk === Number.MAX_SAFE_INTEGER ? "unavailable" : minimumDisk + " bytes"}.`,
   ].join("\n");

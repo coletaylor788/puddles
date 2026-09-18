@@ -7,6 +7,10 @@ const gib = 1024 ** 3;
 
 export function resolveResourceProfile(env = process.env, host = {}) {
   const name = env.E2E_RESOURCE_PROFILE ?? "default";
+  const measure = env.E2E_RESOURCE_MEASURE === "1";
+  if (env.E2E_RESOURCE_MEASURE !== undefined && !["0", "1"].includes(env.E2E_RESOURCE_MEASURE)) {
+    throw new Error("E2E_RESOURCE_MEASURE must be 0 or 1");
+  }
   const platform = host.platform ?? process.platform;
   const arch = host.arch ?? process.arch;
   const totalMemoryBytes = host.totalMemoryBytes ?? totalmem();
@@ -29,6 +33,7 @@ export function resolveResourceProfile(env = process.env, host = {}) {
     totalMemoryBytes,
     logicalCpuCount: host.logicalCpuCount ?? availableParallelism(),
     minimumMemoryBytes,
+    measure,
     testWorkers: name === "hosted-arm" ? 1 : undefined,
     buildEnvironment: name === "hosted-arm"
       ? { OPENCLAW_NODE_TEST_PLAN_CONCURRENCY: "1" }
@@ -52,11 +57,28 @@ export function parseMacSwapUsage(output) {
   return Math.round(Number(match[1]) * scale);
 }
 
-export function parseProcessGroupRss(output, processGroupId) {
-  return output.trim().split("\n").reduce((total, line) => {
-    const [group, rss] = line.trim().split(/\s+/).map(Number);
-    return group === processGroupId && Number.isFinite(rss) ? total + rss * 1024 : total;
-  }, 0);
+export function parseProcessTreeRss(output, rootPid) {
+  const processes = output.trim().split("\n").map((line) => {
+    const [pid, parentPid, processGroupId, rss] = line.trim().split(/\s+/).map(Number);
+    return { pid, parentPid, processGroupId, rss };
+  }).filter(({ pid, parentPid, processGroupId, rss }) =>
+    Number.isSafeInteger(pid) && Number.isSafeInteger(parentPid) &&
+    Number.isSafeInteger(processGroupId) && Number.isFinite(rss));
+  const descendants = new Set([rootPid]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const process of processes) {
+      if (descendants.has(process.parentPid) && !descendants.has(process.pid)) {
+        descendants.add(process.pid);
+        changed = true;
+      }
+    }
+  }
+  return processes.reduce((total, process) =>
+    descendants.has(process.pid) || process.processGroupId === rootPid
+      ? total + process.rss * 1024
+      : total, 0);
 }
 
 function commandOutput(command, args) {
@@ -64,10 +86,10 @@ function commandOutput(command, args) {
   return result.status === 0 ? result.stdout : "";
 }
 
-export function sampleCommandResources(processGroupId, diskPath, platform = process.platform) {
-  const rssBytes = parseProcessGroupRss(
-    commandOutput("ps", ["-axo", "pgid=,rss="]),
-    processGroupId,
+export function sampleCommandResources(rootPid, diskPath, platform = process.platform) {
+  const rssBytes = parseProcessTreeRss(
+    commandOutput("ps", ["-axo", "pid=,ppid=,pgid=,rss="]),
+    rootPid,
   );
   const disk = statfsSync(diskPath);
   if (platform !== "darwin") {
@@ -90,7 +112,7 @@ export function summarizeResourceSamples(samples) {
   const disk = present("freeDiskBytes");
   return {
     sampleCount: samples.length,
-    peakProcessGroupRssBytes: rss.length ? Math.max(...rss) : null,
+    peakProcessTreeRssBytes: rss.length ? Math.max(...rss) : null,
     minimumFreeMemoryPercent: pressure.length ? Math.min(...pressure) : null,
     peakSwapUsedBytes: swap.length ? Math.max(...swap) : null,
     minimumFreeDiskBytes: disk.length ? Math.min(...disk) : null,
@@ -101,7 +123,7 @@ export function summarizeResourceSamples(samples) {
 
 export function startCommandResourceMonitor({
   path,
-  processGroupId,
+  rootPid,
   diskPath,
   profile,
   label,
@@ -110,7 +132,7 @@ export function startCommandResourceMonitor({
 }) {
   const startedAt = new Date();
   const samples = [];
-  const takeSample = () => samples.push(sample(processGroupId, diskPath, profile.platform));
+  const takeSample = () => samples.push(sample(rootPid, diskPath, profile.platform));
   takeSample();
   const timer = setInterval(takeSample, intervalMs);
   timer.unref();
@@ -124,7 +146,7 @@ export function startCommandResourceMonitor({
     }
     const finishedAt = new Date();
     const receipt = {
-      schema: "puddles.native-command-resources/v1",
+      schema: "puddles.native-command-resources/v2",
       profile: profile.name,
       label,
       startedAt: startedAt.toISOString(),

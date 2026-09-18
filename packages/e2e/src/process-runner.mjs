@@ -72,7 +72,7 @@ export async function runCommand(command, args, options = {}) {
   const stopResourceMonitor = options.resourcePath && child.pid
     ? startCommandResourceMonitor({
         path: options.resourcePath,
-        processGroupId: child.pid,
+        rootPid: child.pid,
         diskPath: options.resourceDiskPath ?? options.cwd ?? process.cwd(),
         profile: options.resourceProfile,
         label: options.resourceLabel ?? command,

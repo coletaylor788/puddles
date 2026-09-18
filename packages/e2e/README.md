@@ -49,13 +49,16 @@ documented SSD capacity. Set `E2E_RESOURCE_PROFILE=hosted-arm` for this class of
 host. The profile requires macOS arm64 with at least 6 GiB reported memory,
 uses OpenClaw's measured host-aware compiler heap sizing, and runs mapped
 OpenClaw tests one worker at a time. It does not skip or narrow the accumulated
-suite. The runtime free-disk check remains authoritative. The job allows 180
+suite. `E2E_RESOURCE_MEASURE=1` enables outer-run sampling and is removed from
+child environments so nested fixture pipelines do not recursively instrument
+themselves. The runtime free-disk check remains authoritative. The job allows 180
 minutes for installation, compilation, regressions, and rehearsal, within
 GitHub's six-hour hosted-job limit. See the
 [runner specifications](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
 and [job limits](https://docs.github.com/en/actions/reference/limits).
-Each child command records process-group RSS, including descendants, macOS
-memory pressure, swap use, free disk, duration, and the selected concurrency.
+Each child command records recursive process-tree RSS, including descendants
+that create their own process groups, macOS memory pressure, swap use, free
+disk, duration, and the selected concurrency.
 The workflow publishes that bounded evidence separately from the run tree.
 Hosted artifacts are labeled arm64. Release rehearsal still checks the selected
 target's exact Node version, OS, and CPU.

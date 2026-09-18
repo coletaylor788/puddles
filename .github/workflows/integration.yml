@@ -19,6 +19,7 @@ jobs:
     timeout-minutes: 180
     env:
       E2E_LOCAL_EXTENSION: ""
+      E2E_RESOURCE_MEASURE: "1"
       E2E_RESOURCE_PROFILE: hosted-arm
     steps:
       - name: Check out Puddles
