@@ -141,7 +141,7 @@ rollback cases have explicit 15-second limits. Lock fixtures wait for the real
 readiness response with a bounded startup allowance, not a fixed sleep or a
 global timeout increase. The interpreter migration fixture has a file-scoped
 30-second limit because its complete activation and rollback passes repeatedly
-hash the real Node binary and run plist subprocesses. Hosted Intel runs measure
+hash the real Node binary and run plist subprocesses. Hosted ARM runs measure
 up to 15 seconds per multi-pass case; a single allowance covers the whole
 fixture instead of chasing individual timeouts. Its assertions and real checks
 remain intact. The fixture yields between tests so synchronous work cannot

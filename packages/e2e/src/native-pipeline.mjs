@@ -68,8 +68,8 @@ export async function nativePipeline(command, repositoryGates) {
   const source = resolve(process.env.OPENCLAW_SRC ?? join(homedir(), "git", "openclaw"));
   if (!existsSync(join(source, ".git"))) throw new Error("OPENCLAW_SRC must be a source checkout");
   const runDir = externalDirectory(process.env.E2E_RUN_DIR ?? mkdtempSync(join(tmpdir(), "puddles-native-")), [repoRoot, source]);
-  const resourceProfile = resolveResourceProfile();
   const unlock = acquireLock(runDir);
+  let resourceProfile;
   const artifactPool = process.env.E2E_ARTIFACT_POOL
     ? resolve(process.env.E2E_ARTIFACT_POOL)
     : null;
@@ -79,7 +79,7 @@ export async function nativePipeline(command, repositoryGates) {
   let sequence = 0;
   let resourceSequence = 0;
   const childEnvironment = { ...process.env };
-  for (const name of ["E2E_ARTIFACT_POOL", "E2E_REQUIRED_FREE_BYTES", "E2E_RESUME_FAILED", "E2E_RUN_DIR"]) {
+  for (const name of ["E2E_ARTIFACT_POOL", "E2E_REQUIRED_FREE_BYTES", "E2E_RESOURCE_PROFILE", "E2E_RESUME_FAILED", "E2E_RUN_DIR"]) {
     delete childEnvironment[name];
   }
   const run = (executable, args, options = {}) => runCommand(executable, args, {
@@ -146,6 +146,7 @@ export async function nativePipeline(command, repositoryGates) {
     });
   };
   try {
+    resourceProfile = resolveResourceProfile();
     if (artifactPool) {
       withRetentionLock(() => {
         applyArtifactCleanup(artifactPool);
@@ -260,7 +261,7 @@ export async function nativePipeline(command, repositoryGates) {
         environment: jsonDigest(Object.entries(process.env).sort(([a], [b]) => a.localeCompare(b))),
         dependencies: treeDigest(join(repoRoot, "node_modules"), repositoryDependencyOptions),
       };
-      await stage(runDir, "regressions", { candidateInputs, repoInputs, installedDependencies, tools, harness, execution, prepareOutputs, extension: extension.phaseHashes.gate, command, stateMigration }, async () => {
+      await stage(runDir, "regressions", { candidateInputs, repoInputs, installedDependencies, tools, harness, execution, prepareOutputs, extension: extension.phaseHashes.gate, command, stateMigration, buildEnvironment }, async () => {
         if (command === "ci" || command === "source-gate") await repositoryGates(run);
         await run("corepack", ["pnpm", "prompt:snapshots:check"], { cwd: candidate, env: buildEnv });
         const tests = [...new Set(suite.patches.flatMap((patch) => patch.tests))];

@@ -92,6 +92,7 @@ describe("OpenClaw cumulative patch suite", () => {
     expect(workflow).toMatch(/runs-on:\s*macos-15\b/);
     expect(workflow).toContain("E2E_RESOURCE_PROFILE: hosted-arm");
     expect(runner).toContain("resolveResourceProfile()");
+    expect(runner).toMatch(/stage\(runDir,\s*"regressions",\s*\{[^}]*buildEnvironment/s);
     const timeout = Number(workflow.match(/timeout-minutes:\s*(\d+)/)?.[1]);
     expect(timeout).toBeGreaterThan(90);
     expect(timeout).toBeLessThanOrEqual(360);

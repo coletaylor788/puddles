@@ -174,6 +174,32 @@ it("exports bounded public resource evidence without command arguments or paths"
   expect(readFileSync(join(result.output, "commands.json"), "utf8")).not.toContain(f.root);
 });
 
+it("rejects missing RSS and resource sets above the public evidence bound", () => {
+  const f = fixture();
+  const run = initializePublicRun(f.env);
+  mkdirSync(join(run, "resources"));
+  const record = {
+    schema: "puddles.native-command-resources/v1",
+    profile: "hosted-arm",
+    label: "node fixture",
+    host: { platform: "darwin", arch: "arm64" },
+    peakProcessGroupRssBytes: 0,
+    minimumFreeMemoryPercent: 20,
+    peakSwapUsedBytes: 0,
+    minimumFreeDiskBytes: 10,
+  };
+  writeFileSync(join(run, "resources/0.json"), JSON.stringify(record));
+  expect(() => collectPublicResources(f.env)).toThrow("did not observe");
+  rmSync(join(f.root, "puddles-public-resources-12345-1"), { recursive: true });
+  for (let index = 0; index <= 256; index += 1) {
+    writeFileSync(join(run, `resources/${index}.json`), JSON.stringify({
+      ...record,
+      peakProcessGroupRssBytes: 1,
+    }));
+  }
+  expect(() => collectPublicResources(f.env)).toThrow("256-command bound");
+});
+
 it("cancels only obsolete pull-request checks and publishes an explicit ARM build bundle", () => {
   const workflow = readFileSync(resolve(import.meta.dirname, "../../../.github/workflows/integration.yml"), "utf8");
   expect(workflow).toContain("group: integration-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}");

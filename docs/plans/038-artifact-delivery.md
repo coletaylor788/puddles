@@ -88,6 +88,9 @@ separate. Production remains held.
 ### State
 
 - Tracking issue: #118.
+- Canonical cross-repository scope and completion checklist:
+  [plan 039](039-development-delivery-master.md). This plan keeps only the
+  public implementation detail for that delivery flow.
 - Follow-up pull request: #117, based on `main`.
 - Current public branch includes the reviewed stopped migration and deployment
   correction from plan 037. Those behaviors remain prerequisites.
@@ -295,8 +298,9 @@ separate. Production remains held.
   that need the new split.
 - [x] Add the hosted ARM resource profile, per-command process-group
   measurements, bounded public evidence, and arm64 artifact labeling.
-- [x] Keep the existing draft build and isolated rehearsal commands as the
-  nonpromotable development loop.
+- [ ] Prove the existing draft build and isolated rehearsal commands as the
+  nonpromotable development loop with selected installed integration checks on
+  the dedicated development target.
 
 ### Validation
 

@@ -154,8 +154,10 @@ export function collectPublicResources(env = process.env) {
   const records = [];
   const directory = join(root, "resources");
   if (regular(directory, true)) {
-    for (const name of readdirSync(directory).filter((name) => /^\d+\.json$/.test(name))
-      .sort((a, b) => Number.parseInt(a) - Number.parseInt(b)).slice(0, 256)) {
+    const names = readdirSync(directory).filter((name) => /^\d+\.json$/.test(name))
+      .sort((a, b) => Number.parseInt(a) - Number.parseInt(b));
+    if (names.length > 256) throw new Error("Public resource evidence exceeds the 256-command bound");
+    for (const name of names) {
       const record = json(join(directory, name));
       if (record.schema !== "puddles.native-command-resources/v1" ||
           !["default", "hosted-arm"].includes(record.profile) ||
@@ -171,6 +173,9 @@ export function collectPublicResources(env = process.env) {
   const peak = records.reduce((value, record) => Math.max(value, record.peakProcessGroupRssBytes ?? 0), 0);
   const minimumDisk = records.reduce((value, record) => Math.min(value, record.minimumFreeDiskBytes ?? value), Number.MAX_SAFE_INTEGER);
   const pressure = records.map((record) => record.minimumFreeMemoryPercent).filter(Number.isFinite);
+  if (records.some((record) => record.profile === "hosted-arm") && peak <= 0) {
+    throw new Error("Hosted ARM resource evidence did not observe process-group RSS");
+  }
   const summary = [
     `Public native resource profile: ${records[0]?.profile ?? "no command evidence"}.`,
     `Commands measured: ${records.length}.`,
