@@ -2,7 +2,7 @@
 
 **Status:** Implementation in progress
 **Issue:** [#118](https://github.com/coletaylor788/puddles/issues/118)
-**Last updated:** 2026-09-17
+**Last updated:** 2026-09-18
 **Owner:** Delivery coordinator
 
 ## Human section
@@ -44,7 +44,8 @@ the complete runtime once. Its private patches change the runtime, so it cannot
 simply reuse an unmodified public binary. Each builder keeps its source tests
 with the source and exports an immutable bundle with matching evidence. The
 target host imports that bundle without a source checkout or build tools.
-Actual resource measurements must establish whether the hosted builders fit.
+Actual resource measurements establish support for each builder profile;
+public success alone does not establish support for the private composition.
 A development Mac can provide the builder fallback and transfer artifacts to
 the target over the existing SSH path.
 
@@ -70,16 +71,16 @@ decision, using verified included capacity or the local builder fallback.
 
 ### Status
 
-The public delivery and retention machinery has a reviewed, fully green
-checkpoint under the previous runner profile. An actual private artifact-only
-run imports and installs a retained bundle and passes its installed scenarios.
-Its physical deployment test stops before shutdown because a fixture job does
-not satisfy the reviewed migration precondition. It has not proved the intended
-post-snapshot failure and recovery path.
+The complete public pipeline passes on a standard 7 GB hosted ARM runner,
+including the fresh build, accumulated regressions, offline installation and
+runtime scenarios. The ARM bundle is published and independent review is clear.
+The local development path has a separate blocker: a fixed build deadline
+terminates the first local build while declaration generation is still making
+progress. Hosted success does not close that local development requirement.
 
-Standard hosted ARM validation, the separate fast development instance, the
-private builder/consumer split, and the remaining workspace cleanup are in
-progress or pending. Neither delivery change is merged. Production remains
+The private composed release, actual DEV deployment and integration checks,
+complete physical release proof, and remaining workspace cleanup are not yet
+confirmed complete. Neither delivery change is merged. Production remains
 unchanged. The checklist below is the completion contract, not a claim that
 working components already make the entire process ready.
 
@@ -104,17 +105,33 @@ working components already make the entire process ready.
   A high pass-through rate from CI to production is an outcome to measure,
   not a reason to suppress an independent release check.
 - Public evidence checkpoint:
-  `348eed7f3fdc6f82996f78917934a8587dc2aaf3`, tree
-  `035528a0e2b29f31815ffe45aad6bd2a3dc17e5c`. Retained review, 59 focused proof
-  tests, exact local cumulative validation with nine scenarios, hosted
-  cumulative run `34961080293`, and CodeQL pass. This is not evidence for the
-  newly requested hosted ARM profile.
+  `f547621e6b6e3c24260c8530a7b9d2371ddc7c1f`, tree
+  `954b2e3e9b566ac7e350f140085dc0430a7a0022`. Hosted cumulative run
+  `35316103588` passes prepare, dependencies, the pinned root build, full
+  regressions, packaging, offline installation, runtime and nine scenarios
+  in about 27 minutes. CodeQL passes and the retained reviewer clears the
+  complete diff. This is actual hosted ARM evidence, not a lowered guard alone.
+- That run uses `macos-15`, 7,516,192,768 bytes of RAM and three CPUs.
+  The owner reports resource-v2 measurements over 107 commands:
+  3,467,526,144 bytes peak recursive/process-group-union RSS, at least 49 percent
+  free memory, zero swap, and at least 36,548,571,136 bytes free disk.
+  The run publishes `public-native-resources-35316103588-1` and a correctly
+  labeled `openclaw-public-arm64-build-*` bundle.
+- The local DEV proof passes the private contract, preparation and dependencies
+  with the selected tools, then the public build stage's fixed 30-minute
+  deadline terminates `pnpm build` with exit 143 during
+  `write-unified-entry-dts`. The private owner reports continuing progress
+  before termination. No artifact handoff or target deployment occurs in that
+  attempt. The public owner owns a bounded, reviewed local-profile/configurable
+  timeout or maintained incremental build correction, not a second private
+  builder. Keep stage duration distinct from the overall run duration.
 - The selected OpenClaw source is
   `1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7` (`v2026.9.3`). The selected
   candidate Node version is `26.1.0`; upstream pnpm is `12.3.4`. Do not silently
   change the release or toolchain while changing the delivery topology.
-- The private owner reports a retained-bundle import, offline install, and all
-  11 installed scenarios passing. Physical preflight reports
+- The latest completed private physical diagnosis recorded here passes
+  retained-bundle import, offline install, and all 11 installed scenarios.
+  Its physical preflight reports
   `Migration job is missing or its reviewed revision changed`.
   `expectedCAS=false` and failure before shutdown are not rollback evidence.
 - The missing source-gate retention defect is repaired in the public checkpoint.
@@ -228,8 +245,12 @@ flowchart TD
   experiment; distinguish that experiment from release certification.
 - The hosted target profile is macOS ARM with 7 GB advertised RAM. The previous
   Intel choice followed a hardcoded 8 GiB total-memory preflight, not a recorded
-  out-of-memory measurement. Measure the full process tree, memory pressure,
-  disk high-water marks, and stage durations before settling the new profile.
+  out-of-memory measurement. The measured `hosted-arm` profile requires macOS
+  arm64 and at least 6 GiB reported RAM, uses the pinned compiler's host-aware
+  memory budget instead of forcing an 8 GiB Node heap, and runs mapped
+  OpenClaw tests with one worker. Its complete hosted run establishes public
+  support. Continue measuring the private composition rather than assume it
+  has the same resource footprint.
 - Do not confuse a Node heap limit with total process-tree memory. Record
   supported worker/concurrency choices and bind relevant environment inputs
   into proof reuse.
@@ -254,6 +275,11 @@ flowchart TD
 - Keep capacity policy stage-specific and evidence-based. A historical
   free-space measurement is not a new minimum. A lower-memory builder trial
   does not authorize reducing unrelated disk or production safety checks.
+- Keep build deadlines bounded and specific to the execution profile. The
+  successful hosted deadline is not evidence that the same deadline fits a
+  shared development host. Validate any local override, preserve termination
+  and failure diagnostics, and prove the actual local build and integration
+  loop rather than only accepting a configuration value.
 - Global package caches, unknown legacy fixtures, and sealed production
   recovery directories remain outside automatic collection. Dedicated external
   storage is a possible later capacity choice, not an approved purchase or a
@@ -268,8 +294,8 @@ end-to-end checklist.
 | Workstream | Owner | Dependencies | Next required outcome |
 | --- | --- | --- | --- |
 | PLAN | Coordinator | Requester decisions | Versioned full scope, diagram, owners and checklist |
-| DEV | Private, shared helpers by public | Existing build/rehearsal APIs | Local unit and deployed integration checks green through the documented fast command |
-| ARM | Public and private | Resource measurements and cost boundary | Complete hosted ARM runs or explicit measured fallback |
+| DEV | Private, shared helpers by public | Bounded local build policy repair | Local unit and deployed integration checks green through the documented fast command |
+| ARM | Public and private | Public profile proven; private composition and cost boundary remain | Complete private builder proof or explicit measured fallback |
 | FLOW | Public and private | ARM profile, receipt interfaces | Automated builder-to-artifact-consumer handoff |
 | TEST | Private | Valid synthetic seed and imported bundle | Healthy deployment and intended stopped-state rollback |
 | STORE | Public and private | Ownership and reference records | Automatic complete evidence retention and scratch cleanup |
@@ -358,10 +384,14 @@ and any recovery error.
 
 ### Review log
 
-The public owner reports retained complete-diff clearance and exact local and
-hosted gates at the checkpoint recorded in State. The private owner reports
-retained review clearance for artifact-only diagnosis. Those reviews do not
-cover unimplemented DEV support or the new hosted ARM profile.
+The public owner reports retained complete-diff clearance for the measured
+hosted ARM profile, with its complete hosted gate green at the checkpoint in
+State. Local shared-host retries hit the maintained declaration-build deadline;
+they are not reported as successful local DEV proof. The pending local build
+policy repair needs its own focused regression and the same reviewer's recheck.
+The private owner reports retained review clearance for artifact-only diagnosis.
+These results do not establish an operational DEV instance or final private
+release eligibility.
 
 This master document records agreed scope and available evidence. It does not
 grant new production, billing, deletion or external-message permissions. Owners
@@ -388,8 +418,10 @@ record in the relevant component plan, not a status assertion alone.
 
 - [ ] DEV-01 (private, in progress): Provision and verify a distinct DEV target,
   separate from release TEST and PROD in every writable/process identity.
-- [ ] DEV-02 (private): Provide a maintained incremental-build/unit-test command
-  on the development Mac and an artifact-based SSH deploy to DEV.
+- [ ] DEV-02 (private/public, blocked on local build policy): Provide a maintained
+  incremental-build/unit-test command on the development Mac and an
+  artifact-based SSH deploy to DEV. Repair and verify the bounded local build
+  deadline without changing the proven hosted policy or bypassing the lifecycle.
 - [ ] DEV-03 (private/public): Support local drafts explicitly without full
   certification and prove they cannot authorize production activation.
 - [ ] DEV-04 (private): Pass the relevant deployed integration and smoke checks,
@@ -403,12 +435,15 @@ record in the relevant component plan, not a status assertion alone.
 
 **Hosted ARM and local fallback**
 
-- [ ] ARM-01 (public, in progress): Measure the real root build and cumulative
-  pipeline on a standard 7 GB hosted ARM machine, including child processes.
-- [ ] ARM-02 (public): Set documented resource/concurrency policy from evidence,
-  with regressions for profile validation and exact-input reuse.
-- [ ] ARM-03 (public; ARM-01/02): Pass the full hosted ARM public gate and publish
-  correctly labeled ARM artifacts before replacing Intel as the default.
+- [x] ARM-01 (public): Measure the real root build and cumulative pipeline on a
+  standard 7 GB hosted ARM machine, including child processes. Run
+  `35316103588` supplies the resource evidence recorded in State.
+- [x] ARM-02 (public): Implement the documented resource/concurrency profile
+  with profile, nested-test propagation and resource-accounting regressions.
+  The measured full run and retained review clear this public profile.
+- [x] ARM-03 (public; ARM-01/02): Pass the full hosted ARM public gate and publish
+  correctly labeled ARM artifacts on the feature branch. The default-branch
+  switch remains part of LAND-02/03, not an already completed merge.
 - [ ] ARM-04 (private): Verify included hosted capacity and no-overage controls,
   or record why the authorized local builder fallback is required.
 - [ ] ARM-05 (private; ARM-02/04): Build the exact composed release and run all
