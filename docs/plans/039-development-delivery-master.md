@@ -74,9 +74,10 @@ decision, using verified included capacity or the local builder fallback.
 The complete public pipeline passes on a standard 7 GB hosted ARM runner,
 including the fresh build, accumulated regressions, offline installation and
 runtime scenarios. The ARM bundle is published and independent review is clear.
-The local development path has a separate blocker: a fixed build deadline
-terminates the first local build while declaration generation is still making
-progress. Hosted success does not close that local development requirement.
+A reviewed draft-only timeout option now allows the retained local development
+build to resume with a larger finite budget. Its actual local build, deployment
+and integration result is not yet confirmed. Hosted success and a working
+configuration option do not close that local development requirement.
 
 The private composed release, actual DEV deployment and integration checks,
 complete physical release proof, and remaining workspace cleanup are not yet
@@ -117,14 +118,21 @@ working components already make the entire process ready.
   free memory, zero swap, and at least 36,548,571,136 bytes free disk.
   The run publishes `public-native-resources-35316103588-1` and a correctly
   labeled `openclaw-public-arm64-build-*` bundle.
-- The local DEV proof passes the private contract, preparation and dependencies
-  with the selected tools, then the public build stage's fixed 30-minute
-  deadline terminates `pnpm build` with exit 143 during
-  `write-unified-entry-dts`. The private owner reports continuing progress
-  before termination. No artifact handoff or target deployment occurs in that
-  attempt. The public owner owns a bounded, reviewed local-profile/configurable
-  timeout or maintained incremental build correction, not a second private
-  builder. Keep stage duration distinct from the overall run duration.
+- The draft build timeout repair is reviewed and focused-green at
+  `5945dc74b339dc6db16f2a87ae9bf94009b79f97`, tree
+  `2996dd2847b49bfbe8cce88ae39d0ab03d1751ec`; its hosted checks are pending.
+  `E2E_DEV_BUILD_TIMEOUT_MS` accepts an integer from 1,800,000 through 7,200,000
+  only for `build`. A retained failed run can use the same `E2E_RUN_DIR` and
+  `node packages/e2e/bin/openclaw-test-env.mjs resume build` with the larger
+  bound. The actual producing bound remains in proof/provenance, and increasing
+  a later draft's requested allowance does not rebuild an unchanged success.
+- The repair addresses a first local DEV build terminated with exit 143 during
+  progressing declaration generation. No artifact handoff or target deployment
+  occurred in that failed attempt. The private owner has the reviewed repair
+  for actual resumed proof; that result is not yet recorded here.
+  `ci`, `source-gate` and other commands reject the override and keep their
+  release policy. Unset it before those commands. Keep stage duration distinct
+  from overall run duration and preserve managed process-tree termination.
 - The selected OpenClaw source is
   `1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7` (`v2026.9.3`). The selected
   candidate Node version is `26.1.0`; upstream pnpm is `12.3.4`. Do not silently
@@ -294,7 +302,7 @@ end-to-end checklist.
 | Workstream | Owner | Dependencies | Next required outcome |
 | --- | --- | --- | --- |
 | PLAN | Coordinator | Requester decisions | Versioned full scope, diagram, owners and checklist |
-| DEV | Private, shared helpers by public | Bounded local build policy repair | Local unit and deployed integration checks green through the documented fast command |
+| DEV | Private, shared helpers by public | Reviewed local build policy; actual resumed proof pending | Local unit and deployed integration checks green through the documented fast command |
 | ARM | Public and private | Public profile proven; private composition and cost boundary remain | Complete private builder proof or explicit measured fallback |
 | FLOW | Public and private | ARM profile, receipt interfaces | Automated builder-to-artifact-consumer handoff |
 | TEST | Private | Valid synthetic seed and imported bundle | Healthy deployment and intended stopped-state rollback |
@@ -386,12 +394,12 @@ and any recovery error.
 
 The public owner reports retained complete-diff clearance for the measured
 hosted ARM profile, with its complete hosted gate green at the checkpoint in
-State. Local shared-host retries hit the maintained declaration-build deadline;
-they are not reported as successful local DEV proof. The pending local build
-policy repair needs its own focused regression and the same reviewer's recheck.
-The private owner reports retained review clearance for artifact-only diagnosis.
-These results do not establish an operational DEV instance or final private
-release eligibility.
+State. The same reviewer clears the draft-only build-timeout repair and its
+focused gates pass; the repair's hosted gate is pending. The earlier terminated
+local build is not successful DEV evidence, and the resumed local result still
+needs verification. The private owner reports retained review clearance for
+artifact-only diagnosis. These results do not establish an operational DEV
+instance or final private release eligibility.
 
 This master document records agreed scope and available evidence. It does not
 grant new production, billing, deletion or external-message permissions. Owners
@@ -418,10 +426,11 @@ record in the relevant component plan, not a status assertion alone.
 
 - [ ] DEV-01 (private, in progress): Provision and verify a distinct DEV target,
   separate from release TEST and PROD in every writable/process identity.
-- [ ] DEV-02 (private/public, blocked on local build policy): Provide a maintained
+- [ ] DEV-02 (private/public, in progress): Provide a maintained
   incremental-build/unit-test command on the development Mac and an
-  artifact-based SSH deploy to DEV. Repair and verify the bounded local build
-  deadline without changing the proven hosted policy or bypassing the lifecycle.
+  artifact-based SSH deploy to DEV. The bounded draft-only timeout repair is
+  reviewed; prove the actual resumed local build and target handoff without
+  changing the hosted release policy or bypassing the lifecycle.
 - [ ] DEV-03 (private/public): Support local drafts explicitly without full
   certification and prove they cannot authorize production activation.
 - [ ] DEV-04 (private): Pass the relevant deployed integration and smoke checks,
