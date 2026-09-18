@@ -83,11 +83,11 @@ completes the pinned build, full accumulated regressions, package, offline
 install, runtime rehearsal, and all nine scenarios with measured memory and disk
 headroom. The public ARM bundle and proof chain are green on the feature branch.
 
-The local development build remains blocked only by the fixed 30-minute build
-window on slower development hardware. A bounded draft-only override is
-implemented and under review so the retained failed build can resume without
-changing release limits. Development, test, and production targets remain
-separate. Production remains held.
+The local development build had been blocked only by the fixed 30-minute build
+window on slower development hardware. The reviewed bounded draft-only override
+lets the retained failed build resume without changing release limits.
+Development, test, and production targets remain separate. Production remains
+held.
 
 ## Agent section
 
@@ -476,5 +476,5 @@ separate. Production remains held.
   nonpromotion regressions.
 - [x] Run the branch-only hosted ARM trial and inspect its resource evidence.
 - [x] Resume the retained reviewer on the complete ARM profile diff.
-- [ ] Review and publish the bounded draft-only timeout repair.
+- [x] Review and publish the bounded draft-only timeout repair.
 - [ ] Hold merge and production activation for coordinator authorization.
