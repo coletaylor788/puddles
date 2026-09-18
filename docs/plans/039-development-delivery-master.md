@@ -19,6 +19,24 @@ accepts frequent local drafts. Test is reserved for a frozen release. Production
 does not change during either kind of testing. Development and test can run on
 demand rather than consuming memory continuously.
 
+The short version:
+
+```mermaid
+flowchart TD
+    Local["Code, build and unit test locally"]
+    Dev["Deploy to DEV and run integration tests"]
+    CI["CI builds and checks a release"]
+    Test["Install and validate that release in TEST"]
+    Prod["Deploy the same release to PROD"]
+
+    Local --> Dev
+    Dev -->|Fix and retry| Local
+    Dev -->|Green| CI
+    CI -->|Pass| Test
+    Test -->|Fix and retry| Local
+    Test -->|Pass, merge and approve| Prod
+```
+
 The preferred release builders are standard GitHub-hosted ARM machines with
 7 GB of RAM. Public CI validates the reusable code without private inputs.
 The private builder composes the selected public and private changes and builds
