@@ -179,7 +179,7 @@ vi.mock("../src/native-fixture.mjs", async (original) => ({
   runScenario: async (_installed: string, scenario: { id: string }) => ({ id: scenario.id, passed: true }),
 }));
 // @ts-expect-error JS lifecycle exports are tested at runtime.
-import { nativePipeline, nativeTargetPipeline, regressionEnvironment, removeOwnedWorktree, safeNode } from "../src/native-pipeline.mjs";
+import { nativePipeline, nativeTargetPipeline, regressionEnvironment, removeOwnedWorktree, resolveBuildTimeoutMs, safeNode } from "../src/native-pipeline.mjs";
 // @ts-expect-error JS release modules are tested at runtime.
 import { certifyRelease, createTargetProof, importReleaseBundle } from "../src/native-release.mjs";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
@@ -199,6 +199,14 @@ it.each(["24.16.0", "24.17.0", "26.1.0", "26.2.0", "27.0.0"])(
   "accepts upstream-supported Node %s",
   (version) => expect(safeNode(version)).toBe(true),
 );
+it("keeps release builds at 30 minutes and validates the bounded draft override", () => {
+  expect(resolveBuildTimeoutMs("ci", {})).toBe(30 * 60_000);
+  expect(resolveBuildTimeoutMs("build", { E2E_DEV_BUILD_TIMEOUT_MS: "3600000" })).toBe(60 * 60_000);
+  expect(() => resolveBuildTimeoutMs("ci", { E2E_DEV_BUILD_TIMEOUT_MS: "3600000" })).toThrow("draft build");
+  expect(() => resolveBuildTimeoutMs("build", { E2E_DEV_BUILD_TIMEOUT_MS: "1799999" })).toThrow("between");
+  expect(() => resolveBuildTimeoutMs("build", { E2E_DEV_BUILD_TIMEOUT_MS: "7200001" })).toThrow("between");
+  expect(() => resolveBuildTimeoutMs("build", { E2E_DEV_BUILD_TIMEOUT_MS: "unbounded" })).toThrow("positive integer");
+});
 function root() { const path = mkdtempSync(join(tmpdir(), "native-pipeline-test-")); roots.push(path); return path; }
 beforeEach(() => {
   Object.assign(counters, { prepare: 0, install: 0, build: 0, package: 0, additionalInstalls: 0, runtimeCommands: 0, dependency: "first", generatedCaches: false });
@@ -258,6 +266,63 @@ it("runs automatic retention before and after a real build command without inval
   expect(["prepare", "dependencies", "build", "package"].map((name) =>
     readFileSync(join(run, "stages", `${name}.json`), "utf8"))).toEqual(proofs);
   expect(planArtifactCleanup(pool).remove).toEqual([]);
+});
+
+it("passes the bounded draft timeout to the real build invocation and its proof", async () => {
+  const { run } = setup();
+  vi.stubEnv("E2E_DEV_BUILD_TIMEOUT_MS", "3600000");
+  const command = vi.mocked(runCommand);
+  command.mockClear();
+  await nativePipeline("build", async () => {});
+  const build = command.mock.calls.find(([name, args]) =>
+    name === "corepack" && args[0] === "pnpm" && args[1] === "build");
+  expect(build?.[2]?.timeoutMs).toBe(3600000);
+  expect(build?.[2]?.env).not.toHaveProperty("E2E_DEV_BUILD_TIMEOUT_MS");
+  const proof = JSON.parse(readFileSync(join(run, "stages/build.json"), "utf8"));
+  expect(proof.inputs).not.toHaveProperty("executionPolicy");
+  expect(proof.result).toEqual({ built: true, timeoutMs: 3600000 });
+  vi.stubEnv("E2E_DEV_BUILD_TIMEOUT_MS", "7200000");
+  await nativePipeline("build", async () => {});
+  expect(counters.build).toBe(1);
+  expect(JSON.parse(readFileSync(join(run, "stages/build.json"), "utf8")).result)
+    .toEqual({ built: true, timeoutMs: 3600000 });
+});
+
+it("rejects an invalid draft timeout before preparing source", async () => {
+  setup();
+  vi.stubEnv("E2E_DEV_BUILD_TIMEOUT_MS", "forever");
+  await expect(nativePipeline("build", async () => {})).rejects.toThrow("positive integer");
+  expect(registrations.size).toBe(0);
+  expect(counters.build).toBe(0);
+});
+
+it("resumes a timed-out draft build with a larger bounded policy", async () => {
+  const { run } = setup();
+  const command = vi.mocked(runCommand);
+  const implementation = command.getMockImplementation()!;
+  command.mockClear();
+  command.mockImplementation(async (...args) => {
+    if (args[0] === "corepack" && args[1][0] === "pnpm" && args[1][1] === "build" &&
+        args[2]?.timeoutMs === 30 * 60_000) {
+      throw new Error("Command exceeded 1800000ms and was terminated");
+    }
+    return implementation(...args);
+  });
+  try {
+    await expect(nativePipeline("build", async () => {})).rejects.toThrow("1800000ms");
+    vi.stubEnv("E2E_DEV_BUILD_TIMEOUT_MS", "3600000");
+    vi.stubEnv("E2E_RESUME_FAILED", "1");
+    await nativePipeline("build", async () => {});
+    const buildTimeouts = command.mock.calls
+      .filter(([name, args]) => name === "corepack" && args[0] === "pnpm" && args[1] === "build")
+      .map(([, , options]) => options?.timeoutMs);
+    expect(buildTimeouts).toEqual([1800000, 3600000]);
+    const proof = JSON.parse(readFileSync(join(run, "stages/build.json"), "utf8"));
+    expect(proof.invalidation).toBe("explicit-resume");
+    expect(proof.result.timeoutMs).toBe(3600000);
+  } finally {
+    command.mockImplementation(implementation);
+  }
 });
 
 it("retains genuine source evidence for certification after disposable build state is removed", async () => {

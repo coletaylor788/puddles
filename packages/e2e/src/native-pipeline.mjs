@@ -33,11 +33,33 @@ const dependencyCacheNames = [".cache", ".vite", ".vite-temp"];
 const generatedRootCaches = [".experimental-vitest-cache", ".unrun"];
 const sourceDependencyOptions = { exclude: [...dependencyCacheNames, ...generatedRootCaches], normalizePnpmWorkspaceState: true };
 const repositoryDependencyOptions = { excludeNames: dependencyCacheNames, exclude: generatedRootCaches, normalizePnpmWorkspaceState: true };
+const defaultBuildTimeoutMs = 30 * 60_000;
+const maximumDevBuildTimeoutMs = 2 * 60 * 60_000;
 
 export function safeNode(version = process.versions.node) {
   if (!/^\d+\.\d+\.\d+$/.test(version)) return false;
   const [major, minor] = version.split(".").map(Number);
   return major === 24 && minor >= 16 || major === 26 && minor >= 1 || major > 26;
+}
+
+export function resolveBuildTimeoutMs(command, env = process.env) {
+  const configured = env.E2E_DEV_BUILD_TIMEOUT_MS;
+  if (configured === undefined || configured === "") return defaultBuildTimeoutMs;
+  if (command !== "build") {
+    throw new Error("E2E_DEV_BUILD_TIMEOUT_MS is allowed only for the draft build command");
+  }
+  if (!/^[1-9][0-9]*$/.test(configured)) {
+    throw new Error("E2E_DEV_BUILD_TIMEOUT_MS must be a positive integer");
+  }
+  const timeoutMs = Number(configured);
+  if (!Number.isSafeInteger(timeoutMs) ||
+      timeoutMs < defaultBuildTimeoutMs ||
+      timeoutMs > maximumDevBuildTimeoutMs) {
+    throw new Error(
+      `E2E_DEV_BUILD_TIMEOUT_MS must be between ${defaultBuildTimeoutMs} and ${maximumDevBuildTimeoutMs}`,
+    );
+  }
+  return timeoutMs;
 }
 
 export async function regressionEnvironment(directory, run, env = process.env) {
@@ -79,7 +101,7 @@ export async function nativePipeline(command, repositoryGates) {
   let sequence = 0;
   let resourceSequence = 0;
   const childEnvironment = { ...process.env };
-  for (const name of ["E2E_ARTIFACT_POOL", "E2E_REQUIRED_FREE_BYTES", "E2E_RESOURCE_MEASURE", "E2E_RESUME_FAILED", "E2E_RUN_DIR"]) {
+  for (const name of ["E2E_ARTIFACT_POOL", "E2E_DEV_BUILD_TIMEOUT_MS", "E2E_REQUIRED_FREE_BYTES", "E2E_RESOURCE_MEASURE", "E2E_RESUME_FAILED", "E2E_RUN_DIR"]) {
     delete childEnvironment[name];
   }
   const run = (executable, args, options = {}) => runCommand(executable, args, {
@@ -147,6 +169,7 @@ export async function nativePipeline(command, repositoryGates) {
   };
   try {
     resourceProfile = resolveResourceProfile();
+    const buildTimeoutMs = resolveBuildTimeoutMs(command);
     if (artifactPool) {
       withRetentionLock(() => {
         applyArtifactCleanup(artifactPool);
@@ -250,11 +273,22 @@ export async function nativePipeline(command, repositoryGates) {
       return { installed: true };
     }, () => ({ [join(candidate, "node_modules")]: { sha256: treeDigest(join(candidate, "node_modules"), sourceDependencyOptions), options: sourceDependencyOptions } }));
     const installedDependencies = treeDigest(join(candidate, "node_modules"), sourceDependencyOptions);
-    const buildStageInputs = { buildInputs, dependencies, installedDependencies, tools, buildEnvironment, prepareOutputs };
-    await stage(runDir, "build", buildStageInputs, async () => {
-      await run("corepack", ["pnpm", "build"], { cwd: candidate, env: buildEnv, timeoutMs: 30 * 60_000 });
-      return { built: true };
-    }, () => ({ [join(candidate, "dist")]: treeDigest(join(candidate, "dist")) }));
+    const buildStageInputs = {
+      buildInputs,
+      dependencies,
+      installedDependencies,
+      tools,
+      buildEnvironment,
+      prepareOutputs,
+    };
+    const buildResult = await stage(runDir, "build", buildStageInputs, async () => {
+      await run("corepack", ["pnpm", "build"], { cwd: candidate, env: buildEnv, timeoutMs: buildTimeoutMs });
+      return { built: true, timeoutMs: buildTimeoutMs };
+    }, () => ({ [join(candidate, "dist")]: treeDigest(join(candidate, "dist")) }),
+    (result) => result?.built === true &&
+      Number.isSafeInteger(result.timeoutMs) &&
+      result.timeoutMs >= defaultBuildTimeoutMs &&
+      result.timeoutMs <= maximumDevBuildTimeoutMs);
     if (command === "ci" || command === "patches" || command === "source-gate") {
       const repoInputs = await tracked(repoRoot);
       const execution = command === "ci" || command === "source-gate" ? await regressionEnvironment(repoRoot, run) : {
@@ -317,6 +351,7 @@ export async function nativePipeline(command, repositoryGates) {
         args: ["pnpm", "build"],
         cwd: "candidate-source",
         environment: buildEnvironment,
+        timeoutMs: buildResult.timeoutMs,
       }),
       tools,
     };

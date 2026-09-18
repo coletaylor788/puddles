@@ -59,6 +59,11 @@ performs the complete installed, physical, deployment, and rollback checks.
 Promotion and production remain separate and require their existing explicit
 authorization.
 
+A development build can use a larger bounded compilation window when the local
+machine is slower than the release builder. That exception applies only to the
+draft artifact step. Final CI keeps the normal release limit, so local
+convenience cannot weaken production evidence.
+
 An owner-managed artifact pool keeps disk use bounded without guessing which
 directories are safe to delete. Producers register exact assets, ownership,
 dependencies, and lifecycle references. Cleanup keeps two successful bundles
@@ -73,18 +78,16 @@ and unregistered legacy directories are never adopted automatically.
 
 ### Status
 
-The delivery, retention, declaration, and proof-chain baseline remains green.
-The public workflow is now being moved from an unmeasured 8 GiB Intel guard to a
-measured standard ARM profile. The branch trial must complete the pinned build,
-package, offline install, and full accumulated suite before ARM becomes the
-supported default.
+The public hosted ARM profile is proven on the standard 7 GB runner. It
+completes the pinned build, full accumulated regressions, package, offline
+install, runtime rehearsal, and all nine scenarios with measured memory and disk
+headroom. The public ARM bundle and proof chain are green on the feature branch.
 
-The first ARM trial completed the pinned root build with zero swap and ample
-memory and disk headroom, then a nested regression selected the old default
-profile and stopped on its 8 GiB guard. That profile propagation is corrected,
-and resource accounting now follows recursive process ancestry. A complete
-rerun is next. Development, test, and production targets remain separate.
-Production remains held.
+The local development build remains blocked only by the fixed 30-minute build
+window on slower development hardware. A bounded draft-only override is
+implemented and under review so the retained failed build can resume without
+changing release limits. Development, test, and production targets remain
+separate. Production remains held.
 
 ## Agent section
 
@@ -165,6 +168,9 @@ Production remains held.
   and integration checks must pass on the development target before CI
   submission. Draft or development evidence must never satisfy certification
   or promotion.
+- Let the draft-only build command raise its compilation timeout through one
+  validated bound. Reject the override for release and source-gate commands.
+  Keep timeout failure terminal and preserve managed child cleanup.
 - Preserve every accumulated regression and the plan 037 migration,
   interpreter, prepared-file, browser, additional-install, and rollback
   contracts.
@@ -264,6 +270,12 @@ Production remains held.
   Private code owns target provisioning and SSH transport. No new public
   deployment path is needed. The development consumer runs selected integration
   checks through the installed artifact boundary before ordinary CI.
+- `E2E_DEV_BUILD_TIMEOUT_MS` is accepted only by `build`, defaults to the
+  release budget when unset, and may range from 1,800,000 through 7,200,000
+  milliseconds. Its resolved value is bound to the build proof and provider
+  provenance. A successful proof keeps the bound that actually produced it and
+  remains reusable when a later draft only raises the requested bound. `ci` and
+  `source-gate` always keep 1,800,000 milliseconds.
 - `E2E_ARTIFACT_POOL` selects an explicitly initialized stable pool. Each
   object owns copied immutable assets and an ownership digest. References name
   current, pinned, active, paused, failed-debug, deployed, or latest healthy
@@ -309,6 +321,8 @@ Production remains held.
 - [ ] Prove the existing draft build and isolated rehearsal commands as the
   nonpromotable development loop with selected installed integration checks on
   the dedicated development target.
+- [x] Add a bounded draft-only build timeout override without changing the
+  release timeout.
 
 ### Validation
 
@@ -345,6 +359,10 @@ Production remains held.
 - Resource tests prove profile architecture and memory checks, child process
   group accounting, pressure and swap parsing, bounded public projection, and
   one-worker mapped test execution.
+- Pipeline tests prove the draft timeout reaches the actual build invocation,
+  is recorded in its proof, does not leak to the child environment, rejects
+  invalid bounds before preparation, cannot alter release commands, and does
+  not rebuild a successful artifact merely because the requested bound changes.
 - The hosted ARM trial must run the fresh pinned root build, package, offline
   install, all mapped regressions, and all installed scenarios. Its published
   resource evidence decides support. A lowered guard alone is not evidence.
@@ -429,6 +447,10 @@ Production remains held.
   proved the root build fits, then exposed profile loss in nested pipeline
   tests and incomplete RSS accounting for detached grandchildren. The repair
   propagates the selected profile and measures recursive process ancestry.
+- 2026-09-18: Hosted run `35316103588` passed the complete public lifecycle at
+  `f547621`, with a 3.47 GB process-tree RSS peak, at least 49 percent free
+  memory, zero swap, and at least 36.5 GB free disk. The remaining development
+  blocker is the separate draft build timeout on slower local hardware.
 
 ### Checklist
 
@@ -452,6 +474,7 @@ Production remains held.
 - [x] Define the shared hosted ARM resource and receipt contract.
 - [x] Add focused ARM profile, measurement, artifact-label, and development
   nonpromotion regressions.
-- [ ] Run the branch-only hosted ARM trial and inspect its resource evidence.
-- [ ] Resume the retained reviewer on the complete current diff.
+- [x] Run the branch-only hosted ARM trial and inspect its resource evidence.
+- [x] Resume the retained reviewer on the complete ARM profile diff.
+- [ ] Review and publish the bounded draft-only timeout repair.
 - [ ] Hold merge and production activation for coordinator authorization.

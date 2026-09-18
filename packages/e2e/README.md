@@ -63,6 +63,23 @@ The workflow publishes that bounded evidence separately from the run tree.
 Hosted artifacts are labeled arm64. Release rehearsal still checks the selected
 target's exact Node version, OS, and CPU.
 
+The draft-only `build` command accepts `E2E_DEV_BUILD_TIMEOUT_MS` when a
+development Mac needs more than the 30-minute release build budget. The value
+must be an integer from 1,800,000 through 7,200,000 milliseconds. It is rejected
+for `ci`, `source-gate`, and every other command, so final release gates keep the
+30-minute default. The selected bound is part of the build-stage proof and
+provider build provenance. A successful build keeps the bound that actually
+produced it and remains reusable if a later draft merely requests more time.
+Timeout failure stays terminal and the managed runner still terminates the
+complete child process tree.
+
+For a retained timed-out draft, resume the same run with a larger bound:
+
+```bash
+E2E_DEV_BUILD_TIMEOUT_MS=3600000 \
+  node packages/e2e/bin/openclaw-test-env.mjs resume build
+```
+
 The gate runs every workspace build, lint, and test, the isolated Gmail Python
 pool, every mapped OpenClaw patch regression, and the cross-component candidate
 tests. It then packages the built runtime with its installed production
