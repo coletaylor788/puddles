@@ -44,15 +44,21 @@ OpenClaw each use their own committed package-manager version through Corepack.
 Preflight checks the source pin, toolchain, and host capacity before costly
 work. CI uses public source only and never needs live account credentials.
 
-Public CI uses the standard `macos-15-intel` runner. Its documented 14 GB RAM
-clears the native 8 GiB floor; `macos-latest` has only 7 GB. Both have 14 GB
-documented SSD capacity. The runtime free-disk check remains authoritative.
-The job allows 90 minutes for installation, compilation, regressions, and
-rehearsal, within GitHub's six-hour hosted-job limit. See the
+Public CI uses the standard `macos-15` ARM runner with 7 GB RAM and 14 GB
+documented SSD capacity. Set `E2E_RESOURCE_PROFILE=hosted-arm` for this class of
+host. The profile requires macOS arm64 with at least 6 GiB reported memory,
+uses OpenClaw's measured host-aware compiler heap sizing, and runs mapped
+OpenClaw tests one worker at a time. It does not skip or narrow the accumulated
+suite. The runtime free-disk check remains authoritative. The job allows 180
+minutes for installation, compilation, regressions, and rehearsal, within
+GitHub's six-hour hosted-job limit. See the
 [runner specifications](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
 and [job limits](https://docs.github.com/en/actions/reference/limits).
-Hosted Intel artifacts are not production ARM artifacts; release rehearsal
-still uses the selected target's exact Node version, OS, and CPU.
+Each child command records process-group RSS, including descendants, macOS
+memory pressure, swap use, free disk, duration, and the selected concurrency.
+The workflow publishes that bounded evidence separately from the run tree.
+Hosted artifacts are labeled arm64. Release rehearsal still checks the selected
+target's exact Node version, OS, and CPU.
 
 The gate runs every workspace build, lint, and test, the isolated Gmail Python
 pool, every mapped OpenClaw patch regression, and the cross-component candidate
@@ -126,8 +132,10 @@ use synthetic data; sanitization is not permission to log real account data.
 
 ## Focused iteration and recovery
 
-The suite runs at most two workers so archive, hashing, and subprocess tests do
-not overwhelm standard hosted CPUs. The default test deadline stays unchanged.
+The Puddles suite runs at most two workers so archive, hashing, and subprocess
+tests do not overwhelm standard hosted CPUs. The hosted ARM profile additionally
+serializes mapped OpenClaw Vitest groups and asks OpenClaw's own node-test
+planner for one plan at a time. The default test deadline stays unchanged.
 Native pipeline orchestration and the observed archive and concurrent-config
 rollback cases have explicit 15-second limits. Lock fixtures wait for the real
 readiness response with a bounded startup allowance, not a fixed sleep or a

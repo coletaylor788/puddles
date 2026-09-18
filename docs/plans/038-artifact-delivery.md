@@ -40,9 +40,24 @@ confirmed source integration.
 Ordinary scripts own this lifecycle. Each command records a bounded terminal
 result, duration, reuse decision, and failure or invalidation reason. A stopped
 or failed run can be inspected and resumed without an agent watching logs.
-Public pull requests remain credential-free. They publish only an Intel test
-bundle and cancel obsolete checks for the same pull request. Private ARM builds
-run only through the private self-hosted workflow.
+Public pull requests remain credential-free. They build on the standard hosted
+ARM runner, publish an accurately labeled ARM bundle, and cancel obsolete
+checks for the same pull request. The low-memory profile keeps the complete
+test pool but serializes the heaviest mapped tests. It records process-tree
+memory, pressure, swap, disk, and duration so the supported host requirement is
+based on the real run instead of an inherited memory guess.
+
+Daily development is separate from certification. A developer can run focused
+tests and an incremental build, export a draft nonproduction bundle, and send
+it through the existing transport and rehearsal path to a dedicated development
+instance. The relevant installed and integration checks must pass there before
+the change enters ordinary CI. That loop does not require the full source gate,
+certification, or a forced rollback on every edit, and none of its evidence can
+promote a release. Final hosted ARM builds remain an independent reproducibility
+check and run the complete source proof. An independent test target then
+performs the complete installed, physical, deployment, and rollback checks.
+Promotion and production remain separate and require their existing explicit
+authorization.
 
 An owner-managed artifact pool keeps disk use bounded without guessing which
 directories are safe to delete. Producers register exact assets, ownership,
@@ -58,17 +73,15 @@ and unregistered legacy directories are never adopted automatically.
 
 ### Status
 
-The delivery contract, retention lifecycle, isolated target creator, and public
-hosted workflow are implemented. Retention now keeps the genuine source
-attestation and test-stage proof needed to certify an imported bundle after its
-disposable builder state is removed. Focused validation and retained
-complete-diff review pass for this repair.
+The delivery, retention, declaration, and proof-chain baseline remains green.
+The public workflow is now being moved from an unmeasured 8 GiB Intel guard to a
+measured standard ARM profile. The branch trial must complete the pinned build,
+package, offline install, and full accumulated suite before ARM becomes the
+supported default.
 
-The declaration portability correction is fully green at its frozen public
-tuple. This retention repair changes only lifecycle evidence ownership. Exact
-accumulated validation and hosted checks must refresh before the public
-candidate is eligible again. Private owns artifact-only physical diagnosis and
-production remains held.
+The private owner is adopting the same resource and receipt contract for its
+combined hosted builder. Development, test, and production targets remain
+separate. Production remains held.
 
 ## Agent section
 
@@ -84,8 +97,9 @@ production remains held.
   current diff.
 - Private composition, target values, self-hosted ARM workflow, and production
   activation stay outside the public repository.
-- Public hosted output is Intel x64 test evidence. It is never labeled or
-  accepted as an ARM production release.
+- Public hosted output is an arm64 nonproduction bundle from the standard
+  `macos-15` runner. The branch trial must prove the full lifecycle before this
+  replaces the frozen `348eed7` baseline.
 
 ### Scope and acceptance criteria
 
@@ -133,8 +147,18 @@ production remains held.
   from build-content identity.
 - Add pull-request-specific public workflow concurrency. Never share its group
   with release or production transactions.
-- Publish a successful sanitized public x64 bundle. Never upload a run tree,
+- Publish a successful sanitized public arm64 bundle. Never upload a run tree,
   private input, configuration, environment, log, secret, or private artifact.
+- Add a measured `hosted-arm` profile for standard 7 GB macOS ARM runners. It
+  must record descendant RSS, memory pressure, swap, disk, duration, and
+  concurrency for each child command.
+- Keep the complete accumulated suite. Constrain concurrency through supported
+  OpenClaw and Vitest controls, not by skipping tests or adding arbitrary heaps.
+- Preserve a fast developer path: focused tests, incremental build, draft
+  nonproduction bundle, and isolated development rehearsal. Relevant installed
+  and integration checks must pass on the development target before CI
+  submission. Draft or development evidence must never satisfy certification
+  or promotion.
 - Preserve every accumulated regression and the plan 037 migration,
   interpreter, prepared-file, browser, additional-install, and rollback
   contracts.
@@ -216,6 +240,19 @@ production remains held.
   resume is requested. Keep lock ownership and interruption recovery.
 - Public workflow concurrency keys only the repository and pull-request number.
   Push-to-main and private release jobs do not share that group.
+- `E2E_RESOURCE_PROFILE=hosted-arm` requires macOS arm64 and at least 6 GiB of
+  reported memory. It removes the wrapper's fixed 8 GiB Node heap so the pinned
+  OpenClaw compiler uses its maintained host-aware budget. That compiler already
+  documents a measured 4.73 GiB peak in a successful 5 GiB slice and failure in
+  a 4 GiB slice. The profile runs mapped OpenClaw tests with one worker.
+- Resource receipts are bounded diagnostics outside immutable bundle identity.
+  They contain no command arguments, paths, environment, private input, or
+  source content. The hosted workflow publishes their sanitized projection.
+- The existing `build` and bundle export commands form the draft developer
+  producer. The existing rehearsal action forms the development consumer.
+  Private code owns target provisioning and SSH transport. No new public
+  deployment path is needed. The development consumer runs selected integration
+  checks through the installed artifact boundary before ordinary CI.
 - `E2E_ARTIFACT_POOL` selects an explicitly initialized stable pool. Each
   object owns copied immutable assets and an ownership digest. References name
   current, pinned, active, paused, failed-debug, deployed, or latest healthy
@@ -249,13 +286,17 @@ production remains held.
   native build hooks.
 - [x] Retain source-gate attestations and regression proofs as immutable build
   dependencies that survive import and disposable run cleanup.
-- [x] Add public workflow concurrency and x64 bundle publication.
+- [x] Add public workflow concurrency and immutable bundle publication.
 - [x] Add portable declaration types for all 16 gateway protocol fragment
   registries and the five affected root exports. Register the fragment
   regression and full root declaration build in the cumulative suite.
 - [x] Update `packages/e2e/README.md`,
   `docs/openclaw-setup/patches/README.md`, and only the lifecycle instructions
   that need the new split.
+- [x] Add the hosted ARM resource profile, per-command process-group
+  measurements, bounded public evidence, and arm64 artifact labeling.
+- [x] Keep the existing draft build and isolated rehearsal commands as the
+  nonpromotable development loop.
 
 ### Validation
 
@@ -289,11 +330,23 @@ production remains held.
   rehearsal targets.
 - Workflow tests prove obsolete checks cancel only within one pull request and
   public jobs never select a self-hosted runner.
+- Resource tests prove profile architecture and memory checks, child process
+  group accounting, pressure and swap parsing, bounded public projection, and
+  one-worker mapped test execution.
+- The hosted ARM trial must run the fresh pinned root build, package, offline
+  install, all mapped regressions, and all installed scenarios. Its published
+  resource evidence decides support. A lowered guard alone is not evidence.
+- Existing release tests prove draft builds and rehearsal targets cannot
+  certify, promote, or activate production.
+- Development-loop tests must prove selected installed and integration checks
+  run before CI submission while unchanged build and package evidence can be
+  reused.
 - Run focused TypeScript and executable-wrapper tests while iterating.
 - Final public candidate runs:
   `node packages/e2e/bin/openclaw-test-env.mjs ci`.
 - The retained reviewer rechecks the complete diff after focused gates.
-- Hosted public checks must pass and publish the x64 nonproduction bundle.
+- Hosted public checks must pass on `macos-15` and publish the arm64
+  nonproduction bundle plus bounded resource evidence.
 - Private owner must prove the combined ARM flow with the same commands before
   coordinator integration.
 
@@ -302,8 +355,16 @@ production remains held.
 - Push coherent commits to PR #117 so public checks overlap implementation.
 - Do not merge or activate production from this session. Coordinator session
   `972af1c7-a25d-46c6-8e49-cf5250d74b8b` owns the integration decision.
-- Private self-hosted workflow builds the combined exact source on the selected
-  ARM host. Public workflows never call that runner.
+- Public and private final builders use hosted ARM with the same resource
+  profile and receipt contract. Public workflows never consume private input.
+- The dedicated development instance may consume a draft bundle through the
+  existing reviewed transport and rehearsal path. Relevant installed and
+  integration checks pass there before ordinary CI submission. The independent
+  test target consumes the final hosted bundle. Neither can authorize
+  production.
+- If hosted ARM cannot complete within measured capacity, the approved fallback
+  builds on a development Mac and transfers the sealed bundle to the
+  development instance only. It does not change production.
 - A failed build or certification leaves terminal local evidence and no eligible
   receipt.
 - A failed rehearsal uses the existing activation recovery journal and restores
@@ -343,6 +404,10 @@ production remains held.
   build's gate. Cleanup now keeps the newest gate for each of the two retained
   successful builds and collects superseded gates. The reviewer reproduced
   two-build retention and third-build eviction, then cleared the complete diff.
+- 2026-09-15: The user selected standard 7 GB hosted ARM builders for public
+  and private source work, with the mini limited to artifact-only checks.
+  Research found the public 8 GiB floor had no benchmark, while pinned OpenClaw
+  already carries measured host-aware compiler sizing.
 
 ### Checklist
 
@@ -363,4 +428,9 @@ production remains held.
 - [ ] Push PR #117 updates and verify conflict-free ancestry.
 - [ ] Pass exact local accumulated CI and hosted public checks.
 - [ ] Hand stable commands to private ARM consumer for combined proof.
+- [x] Define the shared hosted ARM resource and receipt contract.
+- [x] Add focused ARM profile, measurement, artifact-label, and development
+  nonpromotion regressions.
+- [ ] Run the branch-only hosted ARM trial and inspect its resource evidence.
+- [ ] Resume the retained reviewer on the complete current diff.
 - [ ] Hold merge and production activation for coordinator authorization.

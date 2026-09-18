@@ -24,6 +24,15 @@ function locations(env) {
   return { root, output: join(temporary, `puddles-public-diagnostics-${suffix}`) };
 }
 
+function validateSummaryPath(env) {
+  if (!env.GITHUB_STEP_SUMMARY) return;
+  if (!isAbsolute(env.GITHUB_STEP_SUMMARY) ||
+      !inside(realpathSync(env.RUNNER_TEMP), realpathSync(dirname(env.GITHUB_STEP_SUMMARY)))) {
+    throw new Error("Job summary must stay inside runner temporary storage");
+  }
+  regular(env.GITHUB_STEP_SUMMARY);
+}
+
 function regular(path, directory = false) {
   const stat = lstatSync(path, { throwIfNoEntry: false });
   if (!stat) return undefined;
@@ -84,11 +93,8 @@ export function collectPublicDiagnostics(env = process.env) {
   if (!regular(root, true)) throw new Error("Public run was not initialized");
   const marker = json(join(root, "public-ci.json"));
   if (marker.scope !== "public-ci" || marker.run !== env.GITHUB_RUN_ID || marker.attempt !== env.GITHUB_RUN_ATTEMPT) throw new Error("Public run marker does not match this attempt");
-  if (env.GITHUB_STEP_SUMMARY) {
-    if (!isAbsolute(env.GITHUB_STEP_SUMMARY) ||
-        !inside(realpathSync(env.RUNNER_TEMP), realpathSync(dirname(env.GITHUB_STEP_SUMMARY)))) throw new Error("Job summary must stay inside runner temporary storage");
-    regular(env.GITHUB_STEP_SUMMARY);
-  }
+  validateSummaryPath(env);
+
   const redact = redactor(env);
   const stages = [];
   if (regular(join(root, "stages"), true)) {
@@ -135,13 +141,59 @@ export function collectPublicDiagnostics(env = process.env) {
   return { output, summary, logCount: logs.slice(-160).length };
 }
 
+export function collectPublicResources(env = process.env) {
+  const { root } = locations(env);
+  if (!regular(root, true)) throw new Error("Public run was not initialized");
+  const marker = json(join(root, "public-ci.json"));
+  if (marker.scope !== "public-ci" || marker.run !== env.GITHUB_RUN_ID || marker.attempt !== env.GITHUB_RUN_ATTEMPT) {
+    throw new Error("Public run marker does not match this attempt");
+  }
+  validateSummaryPath(env);
+  const output = join(realpathSync(env.RUNNER_TEMP), `puddles-public-resources-${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT}`);
+  mkdirSync(output, { mode: 0o700 });
+  const records = [];
+  const directory = join(root, "resources");
+  if (regular(directory, true)) {
+    for (const name of readdirSync(directory).filter((name) => /^\d+\.json$/.test(name))
+      .sort((a, b) => Number.parseInt(a) - Number.parseInt(b)).slice(0, 256)) {
+      const record = json(join(directory, name));
+      if (record.schema !== "puddles.native-command-resources/v1" ||
+          !["default", "hosted-arm"].includes(record.profile) ||
+          !/^[A-Za-z0-9._-]+(?: [A-Za-z0-9._:-]+)?$/.test(record.label) ||
+          record.host?.platform !== "darwin" ||
+          !["arm64", "x64"].includes(record.host?.arch)) {
+        throw new Error("Invalid public resource record");
+      }
+      records.push(record);
+    }
+  }
+  atomicJson(join(output, "commands.json"), records);
+  const peak = records.reduce((value, record) => Math.max(value, record.peakProcessGroupRssBytes ?? 0), 0);
+  const minimumDisk = records.reduce((value, record) => Math.min(value, record.minimumFreeDiskBytes ?? value), Number.MAX_SAFE_INTEGER);
+  const pressure = records.map((record) => record.minimumFreeMemoryPercent).filter(Number.isFinite);
+  const summary = [
+    `Public native resource profile: ${records[0]?.profile ?? "no command evidence"}.`,
+    `Commands measured: ${records.length}.`,
+    `Peak process-group RSS: ${peak} bytes.`,
+    `Minimum free memory: ${pressure.length ? Math.min(...pressure) + "%" : "unavailable"}.`,
+    `Minimum free disk: ${minimumDisk === Number.MAX_SAFE_INTEGER ? "unavailable" : minimumDisk + " bytes"}.`,
+  ].join("\n");
+  writeFileSync(join(output, "summary.md"), `${summary}\n`, { mode: 0o600 });
+  if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, `\n${summary}\n`);
+  return { output, records, summary };
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     if (process.argv[2] === "init") initializePublicRun();
+    else if (process.argv[2] === "resources") {
+      const result = collectPublicResources();
+      console.log(result.summary);
+    }
     else if (process.argv[2] === "collect") {
       const result = collectPublicDiagnostics();
       console.log(result.summary.split("\n").map((line) => `| ${line}`).join("\n"));
-    } else throw new Error("Usage: public-ci-diagnostics.mjs <init|collect>");
+    } else throw new Error("Usage: public-ci-diagnostics.mjs <init|resources|collect>");
   } catch (error) {
     console.error(error.message);
     process.exitCode = 1;

@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { isMap, isSeq, parseDocument } from "yaml";
 import suiteConfig from "../vitest.config.js";
 // @ts-expect-error The public CI helper runs directly in Node.
-import { collectPublicDiagnostics, initializePublicRun } from "../bin/public-ci-diagnostics.mjs";
+import { collectPublicDiagnostics, collectPublicResources, initializePublicRun } from "../bin/public-ci-diagnostics.mjs";
 // @ts-expect-error The lifecycle modules run directly in Node.
 import { stage } from "../src/native-state.mjs";
 import { runCommand } from "../src/process-runner.mjs";
@@ -112,7 +112,10 @@ it("initializes and persists the public run path at step runtime, not job contex
   expect(workflow.errors).toEqual([]);
   const jobEnvironment = workflow.getIn(["jobs", "cumulative", "env"]);
   if (!isMap(jobEnvironment)) throw new Error("Missing cumulative job environment");
-  expect(jobEnvironment.toJSON()).toEqual({ E2E_LOCAL_EXTENSION: "" });
+  expect(jobEnvironment.toJSON()).toEqual({
+    E2E_LOCAL_EXTENSION: "",
+    E2E_RESOURCE_PROFILE: "hosted-arm",
+  });
   const steps = workflow.getIn(["jobs", "cumulative", "steps"]);
   if (!isSeq(steps)) throw new Error("Missing cumulative job steps");
   const initialization = steps.items.find((step) => isMap(step) && step.get("name") === "Initialize public run evidence");
@@ -143,12 +146,42 @@ it("wires failure-only upload to sanitized projections, never the raw run direct
   expect(workflow).not.toMatch(/path:\s*\$\{\{\s*env\.E2E_RUN_DIR/);
 });
 
-it("cancels only obsolete pull-request checks and publishes an explicit x64 build bundle", () => {
+it("exports bounded public resource evidence without command arguments or paths", () => {
+  const f = fixture();
+  const run = initializePublicRun(f.env);
+  mkdirSync(join(run, "resources"));
+  writeFileSync(join(run, "resources/0.json"), JSON.stringify({
+    schema: "puddles.native-command-resources/v1",
+    profile: "hosted-arm",
+    label: "corepack pnpm",
+    startedAt: "2026-09-15T00:00:00.000Z",
+    finishedAt: "2026-09-15T00:00:01.000Z",
+    durationMs: 1000,
+    host: { platform: "darwin", arch: "arm64", totalMemoryBytes: 7_000_000_000, logicalCpuCount: 3 },
+    concurrency: { mappedTestWorkers: 1 },
+    sampleCount: 2,
+    peakProcessGroupRssBytes: 4_500_000_000,
+    minimumFreeMemoryPercent: 18,
+    peakSwapUsedBytes: 0,
+    minimumFreeDiskBytes: 9_000_000_000,
+    initialFreeDiskBytes: 10_000_000_000,
+    finalFreeDiskBytes: 9_500_000_000,
+  }));
+  const result = collectPublicResources(f.env);
+  expect(result.records).toHaveLength(1);
+  expect(result.summary).toContain("4500000000 bytes");
+  expect(readdirSync(result.output).sort()).toEqual(["commands.json", "summary.md"]);
+  expect(readFileSync(join(result.output, "commands.json"), "utf8")).not.toContain(f.root);
+});
+
+it("cancels only obsolete pull-request checks and publishes an explicit ARM build bundle", () => {
   const workflow = readFileSync(resolve(import.meta.dirname, "../../../.github/workflows/integration.yml"), "utf8");
   expect(workflow).toContain("group: integration-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}");
   expect(workflow).toContain("cancel-in-progress: ${{ github.event_name == 'pull_request' }}");
   expect(workflow).toContain("openclaw-release-bundle.mjs export");
-  expect(workflow).toContain("openclaw-public-x64-build");
+  expect(workflow).toContain("openclaw-public-arm64-build");
+  expect(workflow).toContain("public-ci-diagnostics.mjs resources");
+  expect(workflow).toContain("public-native-resources-");
   expect(workflow).toContain("public");
   expect(workflow).not.toMatch(/runs-on:\s*self-hosted/);
 });

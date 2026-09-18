@@ -14,11 +14,12 @@ concurrency:
 
 jobs:
   cumulative:
-    # Standard Intel runners have 14 GB RAM; macos-latest has only 7 GB.
-    runs-on: macos-15-intel
-    timeout-minutes: 90
+    # Standard public ARM runner. The managed profile measures the complete job.
+    runs-on: macos-15
+    timeout-minutes: 180
     env:
       E2E_LOCAL_EXTENSION: ""
+      E2E_RESOURCE_PROFILE: hosted-arm
     steps:
       - name: Check out Puddles
         uses: actions/checkout@v4
@@ -61,20 +62,34 @@ jobs:
           OPENCLAW_SRC: ${{ github.workspace }}/.openclaw-source
         run: node packages/e2e/bin/openclaw-test-env.mjs ci
 
-      - name: Export public Intel build bundle
+      - name: Export public ARM build bundle
         if: success()
         run: |
           node packages/e2e/bin/openclaw-release-bundle.mjs export \
             "$E2E_RUN_DIR/build.json" \
-            "$RUNNER_TEMP/openclaw-public-x64-build.tar.gz" \
+            "$RUNNER_TEMP/openclaw-public-arm64-build.tar.gz" \
             public
 
-      - name: Retain public Intel build bundle
+      - name: Retain public ARM build bundle
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: openclaw-public-x64-build-${{ github.sha }}
-          path: ${{ runner.temp }}/openclaw-public-x64-build.tar.gz
+          name: openclaw-public-arm64-build-${{ github.sha }}
+          path: ${{ runner.temp }}/openclaw-public-arm64-build.tar.gz
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Collect public resource evidence
+        id: public-resources
+        if: always()
+        run: node packages/e2e/bin/public-ci-diagnostics.mjs resources
+
+      - name: Retain public resource evidence
+        if: always() && steps.public-resources.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-native-resources-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/puddles-public-resources-${{ github.run_id }}-${{ github.run_attempt }}
           retention-days: 7
           if-no-files-found: error
 

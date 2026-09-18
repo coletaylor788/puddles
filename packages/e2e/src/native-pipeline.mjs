@@ -1,6 +1,6 @@
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, statfsSync } from "node:fs";
-import { totalmem, homedir, tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   acquireLock, atomicJson, externalDirectory, fileDigest, jsonDigest, stage,
@@ -23,6 +23,7 @@ import {
   registerSourceGate, registerSuccessfulBuild,
   registerRetainedObject, removeRetentionReference, retentionSpaceSummary, setRetentionReference,
 } from "./native-retention.mjs";
+import { resolveResourceProfile } from "./native-resources.mjs";
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = resolve(packageDir, "..", "..");
@@ -67,6 +68,7 @@ export async function nativePipeline(command, repositoryGates) {
   const source = resolve(process.env.OPENCLAW_SRC ?? join(homedir(), "git", "openclaw"));
   if (!existsSync(join(source, ".git"))) throw new Error("OPENCLAW_SRC must be a source checkout");
   const runDir = externalDirectory(process.env.E2E_RUN_DIR ?? mkdtempSync(join(tmpdir(), "puddles-native-")), [repoRoot, source]);
+  const resourceProfile = resolveResourceProfile();
   const unlock = acquireLock(runDir);
   const artifactPool = process.env.E2E_ARTIFACT_POOL
     ? resolve(process.env.E2E_ARTIFACT_POOL)
@@ -75,6 +77,7 @@ export async function nativePipeline(command, repositoryGates) {
   updateNativeRunStatus(runDir, { command, status: "running", pid: process.pid, startedAt: new Date().toISOString(), failure: null });
   mkdirSync(join(runDir, "logs"), { recursive: true, mode: 0o700 });
   let sequence = 0;
+  let resourceSequence = 0;
   const childEnvironment = { ...process.env };
   for (const name of ["E2E_ARTIFACT_POOL", "E2E_REQUIRED_FREE_BYTES", "E2E_RESUME_FAILED", "E2E_RUN_DIR"]) {
     delete childEnvironment[name];
@@ -84,7 +87,14 @@ export async function nativePipeline(command, repositoryGates) {
     env: options.env ?? { ...childEnvironment, PATH: `${dirname(process.execPath)}:${process.env.PATH}`, CI: "true" },
     timeoutMs: options.timeoutMs ?? 10 * 60_000,
     logPath: options.capture ? undefined : join(runDir, "logs", `${sequence++}.log`),
-    quiet: true, ...options,
+    quiet: true,
+    resourcePath: resourceProfile.name === "hosted-arm"
+      ? join(runDir, "resources", `${resourceSequence++}.json`)
+      : undefined,
+    resourceDiskPath: runDir,
+    resourceProfile,
+    resourceLabel: [basename(executable), args[0] ? basename(args[0]) : null].filter(Boolean).join(" "),
+    ...options,
   });
   const git = (cwd, args) => run("git", args, { cwd, capture: true });
   const withRetentionLock = (action) => {
@@ -177,7 +187,6 @@ export async function nativePipeline(command, repositoryGates) {
         (retention ? ` retained=${retention.retainedBytes} protected=${retention.protectedBytes} removable=${retention.removableBytes}` : ""),
       );
     }
-    if (totalmem() < 8 * 1024 ** 3) throw new Error("Native candidate needs a host with at least 8 GiB memory");
     const extension = await loadExtension(process.env.E2E_LOCAL_EXTENSION);
     const migrationPath = process.env.E2E_STATE_MIGRATION_MANIFEST;
     const stateMigration = migrationPath ? { sha256: fileDigest(migrationPath) } : null;
@@ -226,7 +235,7 @@ export async function nativePipeline(command, repositoryGates) {
     const buildEnv = {
       PATH: `${dirname(process.execPath)}:${process.env.PATH}`, HOME: process.env.HOME,
       TMPDIR: process.env.TMPDIR, COREPACK_HOME: process.env.COREPACK_HOME,
-      CI: "true", NODE_OPTIONS: "--max-old-space-size=8192",
+      CI: "true", ...resourceProfile.buildEnvironment,
     };
     const buildEnvironment = jsonDigest(buildEnv);
     tools.sourceManager = (await run("corepack", ["pnpm", "--version"], { cwd: candidate, capture: true, env: buildEnv })).trim();
@@ -263,14 +272,16 @@ export async function nativePipeline(command, repositoryGates) {
           groups.set(project, [...(groups.get(project) ?? []), test]);
         }
         for (const [project, targets] of groups) {
-          const collected = await run("corepack", ["pnpm", "exec", "vitest", "list", "--filesOnly", "--config", `test/vitest/vitest.${project}.config.ts`, ...targets], { cwd: candidate, env: buildEnv, capture: true, logPath: join(runDir, "logs", `${sequence++}.log`) });
+          const workerArgs = resourceProfile.testWorkers ? ["--maxWorkers", String(resourceProfile.testWorkers)] : [];
+          const collected = await run("corepack", ["pnpm", "exec", "vitest", "list", "--filesOnly", "--config", `test/vitest/vitest.${project}.config.ts`, ...workerArgs, ...targets], { cwd: candidate, env: buildEnv, capture: true, logPath: join(runDir, "logs", `${sequence++}.log`) });
           for (const target of targets) {
             if (!collected.split("\n").some((line) => line.trim() === target || line.trim().endsWith(`/${target}`) || line.trim().endsWith(` ${target}`))) throw new Error(`Mapped regression was not collected: ${target} in ${project}`);
           }
-          await run("corepack", ["pnpm", "exec", "vitest", "run", "--config", `test/vitest/vitest.${project}.config.ts`, ...targets], { cwd: candidate, env: buildEnv });
+          await run("corepack", ["pnpm", "exec", "vitest", "run", "--config", `test/vitest/vitest.${project}.config.ts`, ...workerArgs, ...targets], { cwd: candidate, env: buildEnv });
         }
         const candidateTests = [...new Set(suite.patches.flatMap((patch) => patch.candidateTests ?? []))];
-        await run("corepack", ["pnpm", "--filter", "e2e", "exec", "vitest", "run", "--config", "vitest.candidate.config.ts", ...candidateTests], { env: { ...buildEnv, OPENCLAW_CANDIDATE: candidate } });
+        const candidateWorkerArgs = resourceProfile.testWorkers ? ["--maxWorkers", String(resourceProfile.testWorkers)] : [];
+        await run("corepack", ["pnpm", "--filter", "e2e", "exec", "vitest", "run", "--config", "vitest.candidate.config.ts", ...candidateWorkerArgs, ...candidateTests], { env: { ...buildEnv, OPENCLAW_CANDIDATE: candidate } });
         const outputs = await extensionPhase(extension, "gate", context);
         return { accumulated: true, outputs };
       }, (result) => result.outputs);
