@@ -49,11 +49,15 @@ public success alone does not establish support for the private composition.
 A development Mac can provide the builder fallback and transfer artifacts to
 the target over the existing SSH path.
 
-The development loop runs focused unit tests and the relevant deployed
-integration tests, not the entire release gate after every edit. It uses the
-same packaging and installation mechanisms as the release path so local
-success does not hide missing dependencies. CI is the independent, reproducible
-check of a change that already works, not the first place its pieces meet.
+The development loop keeps a persistent workspace and incremental compiler
+outputs. Ordinary warm edits should return compilation and integration feedback
+in a few minutes, not repeat a full release build. A cold bootstrap or a broad
+dependency change is measured separately. Focused unit tests and the relevant
+deployed integration tests run locally, not the entire release gate after every
+edit. Use the same packaging and installation boundaries as the release path
+without rebuilding unchanged components, so local success does not hide missing
+dependencies. CI remains the independent, reproducible clean-build check of a
+change that already works, not the first place its pieces meet.
 The release test uses the real deployment
 mechanism and proves both a healthy installation and recovery from a deliberate
 failure in isolated test state. A normal production deployment does not force
@@ -74,12 +78,12 @@ decision, using verified included capacity or the local builder fallback.
 The complete public pipeline passes on a standard 7 GB hosted ARM runner,
 including the fresh build, accumulated regressions, offline installation and
 runtime scenarios. The ARM bundle is published and independent review is clear.
-The retained local development build also passes with the reviewed draft-only
-timeout option. Packaging then exposes a private phase-ordering defect:
-required artifact identity is produced only by the source test gate, although
-the draft build needs to package before certification. The private owner is
-correcting that dependency without rebuilding unchanged successful runtime
-outputs.
+The retained full local root build passes with the reviewed draft-only timeout
+option, and the private package-ordering repair is reviewed. Neither proves
+incremental performance. The current release-style run boundary cannot carry
+unpackaged outputs across a changed private identity. The owners are separating
+persistent development compilation and affected-component reuse from immutable
+release certification rather than start another full build on each edit.
 
 The private composed release, actual DEV deployment and integration checks,
 complete physical release proof, and remaining workspace cleanup are not yet
@@ -131,19 +135,27 @@ working components already make the entire process ready.
   a later draft's requested allowance does not rebuild an unchanged success.
 - The retained local DEV run passes the actual root build in 2,031,493 ms
   (33 minutes 51 seconds) under a 3,600,000 ms draft allowance. The timeout
-  repair is therefore exercised, not merely configured.
+  repair is therefore exercised, not merely configured. This is a full
+  `pnpm build`, not a measured warm incremental edit. Preparation/dependency
+  reuse and no-op cache hits do not establish incremental compilation.
   `ci`, `source-gate` and other commands reject the override and keep their
   release policy. Unset it before those commands. Keep stage duration distinct
   from overall run duration and preserve managed process-tree termination.
-- That run then fails `extension-package` because the configured plugin artifact
-  identity is absent. Its producer currently runs only in the private gate.
-  The private owner must move required artifact construction/provenance to an
-  appropriate existing producer phase while keeping certification gates and
-  identity validation intact. A private `build` regression must work without
-  a previous `patches`/gate invocation. Supported `resume patches` can recover
-  the existing run after unsetting the draft override, but is not the intended
-  permanent prerequisite for creating a draft bundle. No SSH handoff or DEV
-  integration result is established by the successful root build alone.
+- The private owner has reviewed and pushed the package-before-gate repair,
+  separating construction/sealing from certification tests. Its focused
+  regression passes without a previous gate invocation. The earlier run failed
+  before `build.json` and bundle publication, so the current API cannot adopt
+  its raw build-stage outputs under the changed private identity.
+- Preserve that failed run and its genuine evidence. Do not rewrite its
+  configuration, copy raw stage proofs, or relabel old output as a new attested
+  release. Investigate whether actual root source/dependency/toolchain inputs
+  changed, rather than treating a private commit or run identifier as sufficient
+  reason to recompile. A maintained DEV workspace/component cache may reuse
+  verified unchanged outputs without weakening release immutability.
+- The owners are coordinating supported upstream incremental/component commands
+  and the draft output contract before another full baseline build. No warm
+  plugin-edit or core-edit timing is proven yet. No SSH handoff or DEV
+  integration result is established by the successful full root build alone.
 - The selected OpenClaw source is
   `1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7` (`v2026.9.3`). The selected
   candidate Node version is `26.1.0`; upstream pnpm is `12.3.4`. Do not silently
@@ -172,6 +184,13 @@ working components already make the entire process ready.
   pretending they are certified releases or requiring the full accumulated
   gate after every edit. Relevant local unit and deployed integration checks
   must pass before the normal CI submission.
+- Prove that real ordinary warm edits, not just unchanged reruns, give feedback
+  within minutes. Use a working budget of at most five minutes from a
+  representative small edit through compilation, focused unit tests, packaging,
+  SSH installation and relevant DEV integration checks. Record cold bootstrap
+  and broad dependency/SDK changes separately; they cannot justify a full root
+  build on every ordinary edit. This performance budget is an acceptance
+  measurement, not a new process-killing timeout.
 - Keep DEV, TEST, and PROD positively disjoint in writable state, runtime
   installation, configuration, workspace, sessions, indexes, ports, processes,
   and service identity. Do not rely only on different labels.
@@ -257,6 +276,16 @@ flowchart TD
   before submitting a candidate to CI. Cover the affected installation,
   configuration, migration, restart and interaction boundaries. Reuse unchanged
   components rather than duplicate the entire CI suite on every edit.
+- Prefer maintained upstream incremental/watch/component build commands and
+  persistent caches. Identify the real source and dependent-output closure for
+  a change. Keep required type checking and stale-output detection, but do not
+  regenerate every release asset and SDK declaration for a leaf change that
+  does not require it. Do not add a general build framework.
+- Separate mutable, explicitly nonpromotable DEV compilation from frozen
+  release runs. A component cache must verify the actual source, dependencies,
+  toolchain, relevant configuration and output identity. Local metadata or a
+  new private commit alone must not force unrelated runtime compilation.
+  Clean CI builds and final source/target attestations remain independent.
 - Keep CI's fresh checkout, pinned tools, full accumulated regressions and
   independent artifact verification. A high CI-to-production pass-through rate
   is desirable, not a guarantee or permission to bypass a failure. Hosted-only
@@ -313,7 +342,7 @@ end-to-end checklist.
 | Workstream | Owner | Dependencies | Next required outcome |
 | --- | --- | --- | --- |
 | PLAN | Coordinator | Requester decisions | Versioned full scope, diagram, owners and checklist |
-| DEV | Private, shared helpers by public | Private package producer must not depend on a prior test gate | Local unit and deployed integration checks green through the documented fast command |
+| DEV | Public build strategy and private package/SSH consumer | Maintained incremental/component output contract | Measured warm plugin/core edits and deployed integration within the working budget |
 | ARM | Public and private | Public profile proven; private composition and cost boundary remain | Complete private builder proof or explicit measured fallback |
 | FLOW | Public and private | ARM profile, receipt interfaces | Automated builder-to-artifact-consumer handoff |
 | TEST | Private | Valid synthetic seed and imported bundle | Healthy deployment and intended stopped-state rollback |
@@ -375,6 +404,16 @@ not add model calls to CI.
 - Record local edit-to-integration-feedback time and failures first discovered
   in CI versus DEV. Use that evidence to improve the inner loop without
   inventing an unapproved pass-rate target or weakening release checks.
+- Benchmark cold bootstrap, a warm unchanged run, a real small plugin edit,
+  and a real small core edit separately. Record compilation, focused tests,
+  package, transfer, install, restart and integration durations. The ordinary
+  warm edit cases must meet the working five-minute end-to-end budget before
+  DEV performance is accepted. A no-op hit or a longer build timeout cannot
+  substitute for these cases.
+- Prove changed code actually reaches the running DEV instance and the relevant
+  integration assertions. Include dependency/type changes that must invalidate
+  cached outputs and a packaging-only change that must not recompile an
+  unchanged root. Do not optimize by silently testing an old binary.
 - Require actionable command-level failure evidence without exposing private
   payloads. Verify normal stage transitions need no agent intervention and an
   unchanged failure does not create an automatic retry loop.
@@ -407,10 +446,11 @@ The public owner reports retained complete-diff clearance for the measured
 hosted ARM profile, with its complete hosted gate green at the checkpoint in
 State. The same reviewer clears the draft-only build-timeout repair, its
 focused and hosted gates pass, and the resumed local root build succeeds.
-The newly exposed private package-phase correction still requires focused
-regression and retained review. The private owner reports retained review
-clearance for artifact-only diagnosis. These results do not establish an
-operational DEV instance or final private release eligibility.
+The private owner reports focused regression and retained review clearance for
+the package-phase correction and earlier artifact-only diagnosis. The maintained
+incremental/component build strategy and measured warm-edit performance are not
+yet proven. These results do not establish an operational fast DEV loop or final
+private release eligibility.
 
 This master document records agreed scope and available evidence. It does not
 grant new production, billing, deletion or external-message permissions. Owners
@@ -439,9 +479,9 @@ record in the relevant component plan, not a status assertion alone.
   separate from release TEST and PROD in every writable/process identity.
 - [ ] DEV-02 (private/public, in progress): Provide a maintained
   incremental-build/unit-test command on the development Mac and an
-  artifact-based SSH deploy to DEV. The resumed local root build passes.
-  Correct the private package prerequisite's dependency on the source gate,
-  then prove bundle creation and target handoff without bypassing the lifecycle.
+  artifact-based SSH deploy to DEV. Full root bootstrap and the package-ordering
+  repair are milestones only. Prove persistent incremental/component reuse,
+  draft bundle creation and target handoff without bypassing the lifecycle.
 - [ ] DEV-03 (private/public): Support local drafts explicitly without full
   certification and prove they cannot authorize production activation.
 - [ ] DEV-04 (private): Pass the relevant deployed integration and smoke checks,
@@ -450,8 +490,10 @@ record in the relevant component plan, not a status assertion alone.
 - [ ] DEV-05 (private): Document start, stop, deploy, inspect and reset commands;
   prove on-demand resource use and that DEV does not disturb a running TEST.
 - [ ] DEV-06 (both): Exercise the actual packaging/installation boundary locally,
-  define the pre-CI unit/integration selection, and record feedback time and
-  where defects are caught. Do not make every local edit run the full CI suite.
+  define the pre-CI unit/integration selection, and benchmark actual warm small
+  plugin and core edits against the five-minute end-to-end feedback budget.
+  Record every phase, cold/no-op cases separately, and which changed outputs
+  ran. Do not make every local edit run the full CI suite.
 
 **Hosted ARM and local fallback**
 
