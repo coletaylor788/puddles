@@ -74,10 +74,12 @@ decision, using verified included capacity or the local builder fallback.
 The complete public pipeline passes on a standard 7 GB hosted ARM runner,
 including the fresh build, accumulated regressions, offline installation and
 runtime scenarios. The ARM bundle is published and independent review is clear.
-A reviewed draft-only timeout option now allows the retained local development
-build to resume with a larger finite budget. Its actual local build, deployment
-and integration result is not yet confirmed. Hosted success and a working
-configuration option do not close that local development requirement.
+The retained local development build also passes with the reviewed draft-only
+timeout option. Packaging then exposes a private phase-ordering defect:
+required artifact identity is produced only by the source test gate, although
+the draft build needs to package before certification. The private owner is
+correcting that dependency without rebuilding unchanged successful runtime
+outputs.
 
 The private composed release, actual DEV deployment and integration checks,
 complete physical release proof, and remaining workspace cleanup are not yet
@@ -120,19 +122,28 @@ working components already make the entire process ready.
   labeled `openclaw-public-arm64-build-*` bundle.
 - The draft build timeout repair is reviewed and focused-green at
   `5945dc74b339dc6db16f2a87ae9bf94009b79f97`, tree
-  `2996dd2847b49bfbe8cce88ae39d0ab03d1751ec`; its hosted checks are pending.
+  `2996dd2847b49bfbe8cce88ae39d0ab03d1751ec`; its cumulative and CodeQL hosted
+  checks also pass.
   `E2E_DEV_BUILD_TIMEOUT_MS` accepts an integer from 1,800,000 through 7,200,000
   only for `build`. A retained failed run can use the same `E2E_RUN_DIR` and
   `node packages/e2e/bin/openclaw-test-env.mjs resume build` with the larger
   bound. The actual producing bound remains in proof/provenance, and increasing
   a later draft's requested allowance does not rebuild an unchanged success.
-- The repair addresses a first local DEV build terminated with exit 143 during
-  progressing declaration generation. No artifact handoff or target deployment
-  occurred in that failed attempt. The private owner has the reviewed repair
-  for actual resumed proof; that result is not yet recorded here.
+- The retained local DEV run passes the actual root build in 2,031,493 ms
+  (33 minutes 51 seconds) under a 3,600,000 ms draft allowance. The timeout
+  repair is therefore exercised, not merely configured.
   `ci`, `source-gate` and other commands reject the override and keep their
   release policy. Unset it before those commands. Keep stage duration distinct
   from overall run duration and preserve managed process-tree termination.
+- That run then fails `extension-package` because the configured plugin artifact
+  identity is absent. Its producer currently runs only in the private gate.
+  The private owner must move required artifact construction/provenance to an
+  appropriate existing producer phase while keeping certification gates and
+  identity validation intact. A private `build` regression must work without
+  a previous `patches`/gate invocation. Supported `resume patches` can recover
+  the existing run after unsetting the draft override, but is not the intended
+  permanent prerequisite for creating a draft bundle. No SSH handoff or DEV
+  integration result is established by the successful root build alone.
 - The selected OpenClaw source is
   `1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7` (`v2026.9.3`). The selected
   candidate Node version is `26.1.0`; upstream pnpm is `12.3.4`. Do not silently
@@ -302,7 +313,7 @@ end-to-end checklist.
 | Workstream | Owner | Dependencies | Next required outcome |
 | --- | --- | --- | --- |
 | PLAN | Coordinator | Requester decisions | Versioned full scope, diagram, owners and checklist |
-| DEV | Private, shared helpers by public | Reviewed local build policy; actual resumed proof pending | Local unit and deployed integration checks green through the documented fast command |
+| DEV | Private, shared helpers by public | Private package producer must not depend on a prior test gate | Local unit and deployed integration checks green through the documented fast command |
 | ARM | Public and private | Public profile proven; private composition and cost boundary remain | Complete private builder proof or explicit measured fallback |
 | FLOW | Public and private | ARM profile, receipt interfaces | Automated builder-to-artifact-consumer handoff |
 | TEST | Private | Valid synthetic seed and imported bundle | Healthy deployment and intended stopped-state rollback |
@@ -394,12 +405,12 @@ and any recovery error.
 
 The public owner reports retained complete-diff clearance for the measured
 hosted ARM profile, with its complete hosted gate green at the checkpoint in
-State. The same reviewer clears the draft-only build-timeout repair and its
-focused gates pass; the repair's hosted gate is pending. The earlier terminated
-local build is not successful DEV evidence, and the resumed local result still
-needs verification. The private owner reports retained review clearance for
-artifact-only diagnosis. These results do not establish an operational DEV
-instance or final private release eligibility.
+State. The same reviewer clears the draft-only build-timeout repair, its
+focused and hosted gates pass, and the resumed local root build succeeds.
+The newly exposed private package-phase correction still requires focused
+regression and retained review. The private owner reports retained review
+clearance for artifact-only diagnosis. These results do not establish an
+operational DEV instance or final private release eligibility.
 
 This master document records agreed scope and available evidence. It does not
 grant new production, billing, deletion or external-message permissions. Owners
@@ -428,9 +439,9 @@ record in the relevant component plan, not a status assertion alone.
   separate from release TEST and PROD in every writable/process identity.
 - [ ] DEV-02 (private/public, in progress): Provide a maintained
   incremental-build/unit-test command on the development Mac and an
-  artifact-based SSH deploy to DEV. The bounded draft-only timeout repair is
-  reviewed; prove the actual resumed local build and target handoff without
-  changing the hosted release policy or bypassing the lifecycle.
+  artifact-based SSH deploy to DEV. The resumed local root build passes.
+  Correct the private package prerequisite's dependency on the source gate,
+  then prove bundle creation and target handoff without bypassing the lifecycle.
 - [ ] DEV-03 (private/public): Support local drafts explicitly without full
   certification and prove they cannot authorize production activation.
 - [ ] DEV-04 (private): Pass the relevant deployed integration and smoke checks,
