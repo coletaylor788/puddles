@@ -4,9 +4,27 @@ import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { atomicJson, digest, fileDigest, jsonDigest, treeDigest } from "./native-state.mjs";
 import { runCommand } from "./process-runner.mjs";
 
+const defaultRuntimeSelectionTimeoutMs = 60_000;
+const minimumDevRuntimeSelectionTimeoutMs = 180_000;
+const maximumDevRuntimeSelectionTimeoutMs = 600_000;
+
+export function resolveRuntimeSelectionTimeoutMs(options = {}) {
+  const configured = options.devSelectionTimeoutMs;
+  if (configured === undefined) return defaultRuntimeSelectionTimeoutMs;
+  if (!Number.isSafeInteger(configured) ||
+      configured < minimumDevRuntimeSelectionTimeoutMs ||
+      configured > maximumDevRuntimeSelectionTimeoutMs) {
+    throw new Error(
+      `devSelectionTimeoutMs must be an integer between ${minimumDevRuntimeSelectionTimeoutMs} and ${maximumDevRuntimeSelectionTimeoutMs}`,
+    );
+  }
+  return configured;
+}
+
 // Materialize the production dependency graph from the installed frozen graph.
 // Resolve per package, not from the root: transitive versions and patched modules differ.
-export function materializeRuntime(source, destination) {
+export function materializeRuntime(source, destination, options = {}) {
+  const selectionTimeoutMs = resolveRuntimeSelectionTimeoutMs(options);
   if (existsSync(destination)) throw new Error("Runtime destination already exists");
   mkdirSync(destination, { recursive: true, mode: 0o700 });
   const installed = new Map([[realpathSync(source), destination]]);
@@ -51,9 +69,12 @@ export function materializeRuntime(source, destination) {
   const manifest = JSON.parse(readFileSync(join(source, "package.json"), "utf8"));
   // Let npm apply upstream's files list and exclusions, without lifecycle hooks.
   const selection = spawnSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
-    cwd: source, encoding: "utf8", timeout: 60_000, maxBuffer: 16 * 1024 * 1024,
+    cwd: source, encoding: "utf8", timeout: selectionTimeoutMs, maxBuffer: 16 * 1024 * 1024,
     env: { ...process.env, PATH: `${dirname(process.execPath)}:${process.env.PATH}`, npm_config_update_notifier: "false" },
   });
+  if (selection.error?.code === "ETIMEDOUT") {
+    throw new Error(`Upstream package file selection exceeded ${selectionTimeoutMs}ms`);
+  }
   if (selection.error || selection.status !== 0) throw new Error("Bounded upstream package file selection failed");
   const [pack] = JSON.parse(selection.stdout);
   if (!pack?.files?.length) throw new Error("Upstream selected an empty package");

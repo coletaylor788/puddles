@@ -111,6 +111,12 @@ restart it and run the relevant integration tests. Do not sync `dist-runtime/`;
 that directory is only the local source-checkout overlay and is not selected by
 upstream package installation.
 
+An initial DEV bootstrap can call
+`materializeRuntime(source, destination, { devSelectionTimeoutMs: 180_000 })`
+when npm needs longer to select the large upstream package inventory. The
+explicit DEV value must be from 180,000 through 600,000 milliseconds. Release
+packaging does not pass this option and keeps its 60,000 millisecond default.
+
 The fast path requires unchanged `package.json`, `pnpm-lock.yaml`,
 `pnpm-workspace.yaml`, Node and pnpm versions, and installed dependency bytes.
 When one changes, rerun the normal frozen dependency install and refresh the
