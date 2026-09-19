@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { hostname, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 vi.setConfig({ testTimeout: 15_000 });
@@ -18,8 +18,12 @@ vi.mock("../src/native-state.mjs", async (original) => {
   };
 });
 vi.mock("../src/process-runner.mjs", () => ({
-  runCommand: vi.fn(async (command: string, args: string[], options: { cwd?: string; env?: Record<string, string> } = {}) => {
+  runCommand: vi.fn(async (command: string, args: string[], options: { cwd?: string; env?: Record<string, string>; logPath?: string } = {}) => {
     const cwd = options.cwd!;
+    if (options.logPath) {
+      mkdirSync(dirname(options.logPath), { recursive: true });
+      writeFileSync(options.logPath, `synthetic ${command} log`);
+    }
     if (command === "git") {
       if (args[0] === "worktree" && args[1] === "add") {
         const path = args[3];
@@ -44,7 +48,7 @@ vi.mock("../src/process-runner.mjs", () => ({
         registrations.add(args[3]);
       } else if (args[0] === "worktree" && args[1] === "list") return [...registrations].map((path) => `worktree ${path}\0HEAD synthetic\0\0`).join("");
       else if (args[0] === "ls-files") return ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "source.js", "prepared"].filter((name) => existsSync(join(cwd, name))).join("\0");
-      else if (args[0] === "rev-parse") return "synthetic-identity";
+      else if (args[0] === "rev-parse") return "a".repeat(40);
       return "";
     }
     if (command === "corepack" && args[1] === "install") {
@@ -77,6 +81,8 @@ vi.mock("../src/process-runner.mjs", () => ({
       writeFileSync(join(context.workspace, "prepared-output"), "same prepared output");
     } else if (command === "fixture-installed") {
       counters.runtimeCommands++;
+    } else if (command === "fixture-fail") {
+      throw new Error("synthetic installed failure");
     } else if (command === "fixture-artifact") {
       const context = JSON.parse(readFileSync(options.env!.E2E_CONTEXT_PATH, "utf8"));
       const directory = join(context.workspace, "auxiliary");
@@ -92,11 +98,34 @@ vi.mock("../src/process-runner.mjs", () => ({
         schemaVersion: 1, path: archive, sha256: fileDigest(archive), runtimeSha256: treeDigest(expected),
         platform: process.platform, arch: process.arch, node: process.version,
       }));
+    } else if (command === "fixture-prepared-file") {
+      const context = JSON.parse(readFileSync(options.env!.E2E_CONTEXT_PATH, "utf8"));
+      const directory = join(context.workspace, "prepared-file");
+      mkdirSync(directory, { recursive: true });
+      const path = join(directory, "model.gguf");
+      writeFileSync(path, readFileSync(args[0]));
+      // @ts-expect-error JS lifecycle exports are tested at runtime.
+      const { fileDigest } = await import("../src/native-state.mjs");
+      writeFileSync(join(directory, "manifest.json"), JSON.stringify({
+        schemaVersion: 1, type: "file", path, sha256: fileDigest(path),
+      }));
+      const server = join(directory, "server");
+      rmSync(server, { recursive: true, force: true });
+      mkdirSync(server);
+      writeFileSync(join(server, "libserver.1.dylib"), readFileSync(args[0]));
+      symlinkSync("libserver.1.dylib", join(server, "libserver.dylib"));
+      // @ts-expect-error JS lifecycle exports are tested at runtime.
+      const { treeDigest } = await import("../src/native-state.mjs");
+      writeFileSync(join(directory, "server-manifest.json"), JSON.stringify({
+        schemaVersion: 1, type: "directory", path: server, sha256: treeDigest(server, { portable: true }),
+      }));
     } else if (command === "fixture-python" && args[0] === "-c") {
       return JSON.stringify({ executable: process.execPath, version: "synthetic",
         libraries: [join(process.env.E2E_RUN_DIR!, "source/node_modules")] });
     } else if (command === "corepack" && args.includes("--filesOnly")) {
       return args.slice(args.indexOf("--config") + 2).join("\n");
+    } else if (command === "tar") {
+      return execFileSync(command, args, { encoding: "utf8" });
     }
     return "synthetic-tool-version";
   }),
@@ -108,7 +137,15 @@ vi.mock("../src/native-package.mjs", () => ({
     writeFileSync(path, readFileSync(join(source, "node_modules/dependency")));
     // @ts-expect-error JS lifecycle exports are tested at runtime.
     const { fileDigest } = await import("../src/native-state.mjs");
-    return { path, sha256: fileDigest(path) };
+    return {
+      schemaVersion: 1,
+      path,
+      sha256: fileDigest(path),
+      runtimeSha256: "f".repeat(64),
+      platform: process.platform,
+      arch: process.arch,
+      node: process.version,
+    };
   },
   installRuntime: async (artifact: { path: string }, prefix: string) => {
     if (prefix.includes("/installed-additional/")) counters.additionalInstalls++;
@@ -125,11 +162,13 @@ vi.mock("../src/native-package.mjs", () => ({
     const provenancePath = join(directory, "provider-provenance.json");
     writeFileSync(path, "provider");
     writeFileSync(provenancePath, "provenance");
+    // @ts-expect-error JS lifecycle exports are tested at runtime.
+    const { fileDigest } = await import("../src/native-state.mjs");
     return {
       id: "llama-cpp-provider",
-      artifact: { path, sha256: "a".repeat(64), runtimeSha256: "b".repeat(64),
+      artifact: { path, sha256: fileDigest(path), runtimeSha256: "b".repeat(64),
         schemaVersion: 1, platform: process.platform, arch: process.arch, node: process.version },
-      provenance: { path: provenancePath, sha256: "c".repeat(64),
+      provenance: { path: provenancePath, sha256: fileDigest(provenancePath),
         schema: "puddles.openclaw-provider-artifact/v1", ...provenance,
         sourceSha256: "d".repeat(64) },
     };
@@ -140,9 +179,15 @@ vi.mock("../src/native-fixture.mjs", async (original) => ({
   runScenario: async (_installed: string, scenario: { id: string }) => ({ id: scenario.id, passed: true }),
 }));
 // @ts-expect-error JS lifecycle exports are tested at runtime.
-import { nativePipeline, regressionEnvironment, removeOwnedWorktree, safeNode } from "../src/native-pipeline.mjs";
+import { nativePipeline, nativeTargetPipeline, regressionEnvironment, removeOwnedWorktree, resolveBuildTimeoutMs, safeNode } from "../src/native-pipeline.mjs";
+// @ts-expect-error JS release modules are tested at runtime.
+import { certifyRelease, createTargetProof, importReleaseBundle } from "../src/native-release.mjs";
+// @ts-expect-error JS lifecycle exports are tested at runtime.
+import { createRehearsalTarget } from "../src/native-target.mjs";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
 import { atomicJson, jsonDigest, treeDigest } from "../src/native-state.mjs";
+// @ts-expect-error JS lifecycle exports are tested at runtime.
+import { findRetainedSourceGate, initializeArtifactPool, planArtifactCleanup } from "../src/native-retention.mjs";
 import { runCommand } from "../src/process-runner.mjs";
 
 const roots: string[] = [];
@@ -154,6 +199,14 @@ it.each(["24.16.0", "24.17.0", "26.1.0", "26.2.0", "27.0.0"])(
   "accepts upstream-supported Node %s",
   (version) => expect(safeNode(version)).toBe(true),
 );
+it("keeps release builds at 30 minutes and validates the bounded draft override", () => {
+  expect(resolveBuildTimeoutMs("ci", {})).toBe(30 * 60_000);
+  expect(resolveBuildTimeoutMs("build", { E2E_DEV_BUILD_TIMEOUT_MS: "3600000" })).toBe(60 * 60_000);
+  expect(() => resolveBuildTimeoutMs("ci", { E2E_DEV_BUILD_TIMEOUT_MS: "3600000" })).toThrow("draft build");
+  expect(() => resolveBuildTimeoutMs("build", { E2E_DEV_BUILD_TIMEOUT_MS: "1799999" })).toThrow("between");
+  expect(() => resolveBuildTimeoutMs("build", { E2E_DEV_BUILD_TIMEOUT_MS: "7200001" })).toThrow("between");
+  expect(() => resolveBuildTimeoutMs("build", { E2E_DEV_BUILD_TIMEOUT_MS: "unbounded" })).toThrow("positive integer");
+});
 function root() { const path = mkdtempSync(join(tmpdir(), "native-pipeline-test-")); roots.push(path); return path; }
 beforeEach(() => {
   Object.assign(counters, { prepare: 0, install: 0, build: 0, package: 0, additionalInstalls: 0, runtimeCommands: 0, dependency: "first", generatedCaches: false });
@@ -195,6 +248,181 @@ it("binds migration bytes to cumulative and runtime proofs without rebuilding un
   expect(second.proofs.regressions).not.toBe(first.proofs.regressions);
   expect(second.proofs.runtime).not.toBe(first.proofs.runtime);
   expect(counters.build).toBe(1);
+});
+
+it("runs automatic retention before and after a real build command without invalidating no-op proofs", async () => {
+  const { directory, run } = setup();
+  const pool = join(directory, "pool");
+  initializeArtifactPool(pool);
+  vi.stubEnv("E2E_ARTIFACT_POOL", pool);
+  vi.stubEnv("GMAIL_MCP_PYTHON", "fixture-python");
+  await nativePipeline("build", async () => {});
+  expect(readdirSync(join(pool, "objects")).filter((name) => name.startsWith("success-"))).toHaveLength(1);
+  expect(JSON.parse(readFileSync(join(pool, "references/current.json"), "utf8")).objectIds).toHaveLength(1);
+  const proofs = ["prepare", "dependencies", "build", "package"].map((name) =>
+    readFileSync(join(run, "stages", `${name}.json`), "utf8"));
+  await nativePipeline("build", async () => {});
+  expect(readdirSync(join(pool, "objects")).filter((name) => name.startsWith("success-"))).toHaveLength(1);
+  expect(["prepare", "dependencies", "build", "package"].map((name) =>
+    readFileSync(join(run, "stages", `${name}.json`), "utf8"))).toEqual(proofs);
+  expect(planArtifactCleanup(pool).remove).toEqual([]);
+});
+
+it("passes the bounded draft timeout to the real build invocation and its proof", async () => {
+  const { run } = setup();
+  vi.stubEnv("E2E_DEV_BUILD_TIMEOUT_MS", "3600000");
+  const command = vi.mocked(runCommand);
+  command.mockClear();
+  await nativePipeline("build", async () => {});
+  const build = command.mock.calls.find(([name, args]) =>
+    name === "corepack" && args[0] === "pnpm" && args[1] === "build");
+  expect(build?.[2]?.timeoutMs).toBe(3600000);
+  expect(build?.[2]?.env).not.toHaveProperty("E2E_DEV_BUILD_TIMEOUT_MS");
+  const proof = JSON.parse(readFileSync(join(run, "stages/build.json"), "utf8"));
+  expect(proof.inputs).not.toHaveProperty("executionPolicy");
+  expect(proof.result).toEqual({ built: true, timeoutMs: 3600000 });
+  vi.stubEnv("E2E_DEV_BUILD_TIMEOUT_MS", "7200000");
+  await nativePipeline("build", async () => {});
+  expect(counters.build).toBe(1);
+  expect(JSON.parse(readFileSync(join(run, "stages/build.json"), "utf8")).result)
+    .toEqual({ built: true, timeoutMs: 3600000 });
+});
+
+it("rejects an invalid draft timeout before preparing source", async () => {
+  setup();
+  vi.stubEnv("E2E_DEV_BUILD_TIMEOUT_MS", "forever");
+  await expect(nativePipeline("build", async () => {})).rejects.toThrow("positive integer");
+  expect(registrations.size).toBe(0);
+  expect(counters.build).toBe(0);
+});
+
+it("resumes a timed-out draft build with a larger bounded policy", async () => {
+  const { run } = setup();
+  const command = vi.mocked(runCommand);
+  const implementation = command.getMockImplementation()!;
+  command.mockClear();
+  command.mockImplementation(async (...args) => {
+    if (args[0] === "corepack" && args[1][0] === "pnpm" && args[1][1] === "build" &&
+        args[2]?.timeoutMs === 30 * 60_000) {
+      throw new Error("Command exceeded 1800000ms and was terminated");
+    }
+    return implementation(...args);
+  });
+  try {
+    await expect(nativePipeline("build", async () => {})).rejects.toThrow("1800000ms");
+    vi.stubEnv("E2E_DEV_BUILD_TIMEOUT_MS", "3600000");
+    vi.stubEnv("E2E_RESUME_FAILED", "1");
+    await nativePipeline("build", async () => {});
+    const buildTimeouts = command.mock.calls
+      .filter(([name, args]) => name === "corepack" && args[0] === "pnpm" && args[1] === "build")
+      .map(([, , options]) => options?.timeoutMs);
+    expect(buildTimeouts).toEqual([1800000, 3600000]);
+    const proof = JSON.parse(readFileSync(join(run, "stages/build.json"), "utf8"));
+    expect(proof.invalidation).toBe("explicit-resume");
+    expect(proof.result.timeoutMs).toBe(3600000);
+  } finally {
+    command.mockImplementation(implementation);
+  }
+});
+
+it("retains genuine source evidence for certification after disposable build state is removed", async () => {
+  const { directory, run } = setup();
+  const pool = join(directory, "pool");
+  initializeArtifactPool(pool);
+  vi.stubEnv("E2E_ARTIFACT_POOL", pool);
+  vi.stubEnv("GMAIL_MCP_PYTHON", "fixture-python");
+  const migrationPath = join(realpathSync(directory), "migration.json");
+  const migration = {
+    schemaVersion: 1,
+    configOperations: [
+      { kind: "set", path: ["memory", "search", "provider"], expected: { exists: false }, value: "first" },
+    ],
+  };
+  writeFileSync(migrationPath, JSON.stringify(migration));
+  vi.stubEnv("E2E_STATE_MIGRATION_MANIFEST", migrationPath);
+  await nativePipeline("ci", async () => {});
+
+  const build = JSON.parse(readFileSync(join(run, "build.json"), "utf8"));
+  const sourceGate = findRetainedSourceGate(pool, build.buildId);
+  expect(sourceGate).not.toBeNull();
+  const retainedSource = JSON.parse(readFileSync(sourceGate!.sourceGatePath, "utf8"));
+  const regression = JSON.parse(readFileSync(sourceGate!.regressionPath, "utf8"));
+  expect(retainedSource.stages.regressions).toBe(regression.key);
+  vi.stubEnv("E2E_SOURCE_GATE_REVISION", "changed");
+  await nativePipeline("ci", async () => {});
+  const changedSourceGate = findRetainedSourceGate(pool, build.buildId);
+  expect(changedSourceGate!.metadata.id).not.toBe(sourceGate!.metadata.id);
+  expect(counters.build).toBe(1);
+
+  const writeRecovery = (name: string, status: "healthy" | "rolled-back") => {
+    const path = join(directory, name);
+    mkdirSync(path);
+    writeFileSync(join(path, "recovery.json"), JSON.stringify({
+      schemaVersion: 1,
+      status,
+      transaction: name,
+      target: "9".repeat(64),
+      artifact: build.artifact.sha256,
+    }));
+    if (status === "rolled-back") {
+      writeFileSync(join(path, "failure.json"), JSON.stringify({ message: "injected failure" }));
+    }
+    return path;
+  };
+  const targetProof = createTargetProof(
+    build,
+    run,
+    writeRecovery("healthy", "healthy"),
+    writeRecovery("rollback", "rolled-back"),
+  );
+  migration.configOperations[0].value = "second";
+  writeFileSync(migrationPath, JSON.stringify(migration));
+  await nativePipeline("ci", async () => {});
+  const nextBuild = JSON.parse(readFileSync(join(run, "build.json"), "utf8"));
+  expect(nextBuild.buildId).not.toBe(build.buildId);
+  expect(findRetainedSourceGate(pool, build.buildId)).not.toBeNull();
+  expect(findRetainedSourceGate(pool, nextBuild.buildId)).not.toBeNull();
+  expect(counters.build).toBe(1);
+  const retainedBundle = join(
+    pool,
+    "objects",
+    `success-${build.buildId.slice(0, 48)}`,
+    "bundle.tar.gz",
+  );
+  rmSync(run, { recursive: true });
+
+  const imported = await importReleaseBundle(retainedBundle, join(directory, "imported"));
+  const recoveredSource = findRetainedSourceGate(pool, build.buildId);
+  expect(recoveredSource).not.toBeNull();
+  expect(() => certifyRelease(
+    imported.receipt,
+    JSON.parse(readFileSync(recoveredSource!.sourceGatePath, "utf8")),
+    targetProof,
+  )).not.toThrow();
+  expect(JSON.parse(readFileSync(join(pool, "references/current.json"), "utf8")).objectIds)
+    .toContain(recoveredSource!.metadata.id);
+});
+
+it("preserves the primary pipeline error when terminal retention also fails", async () => {
+  const { directory } = setup();
+  const pool = join(directory, "pool");
+  initializeArtifactPool(pool);
+  vi.stubEnv("E2E_ARTIFACT_POOL", pool);
+  vi.stubEnv("GMAIL_MCP_PYTHON", "fixture-python");
+  let error: unknown;
+  try {
+    await nativePipeline("ci", async () => {
+      mkdirSync(join(pool, "objects/unregistered"));
+      throw new Error("primary repository gate failure");
+    });
+  } catch (caught) {
+    error = caught;
+  }
+  if (!(error instanceof AggregateError)) throw error;
+  expect((error as AggregateError).errors.map((entry) => entry.message)).toEqual(expect.arrayContaining([
+    "primary repository gate failure",
+    expect.stringContaining("ownership"),
+  ]));
 });
 function extension(directory: string, name: string, phase = "package", inputs: string[] = [], outputs = true) {
   const path = join(directory, `${name}.mjs`);
@@ -446,6 +674,173 @@ it("rehearses resolved installed commands and scenarios even when extension file
   expect(JSON.stringify(proof.inputs)).not.toContain("SELECTED");
 });
 
+it("binds the explicit rehearsal target into artifact-only installed context", async () => {
+  const { directory, run } = setup();
+  const pool = join(directory, "pool");
+  initializeArtifactPool(pool);
+  vi.stubEnv("E2E_ARTIFACT_POOL", pool);
+  await nativePipeline("build", async () => {});
+  const buildPath = join(run, "build.json");
+  const build = JSON.parse(readFileSync(buildPath, "utf8"));
+  const targetRoot = join(directory, "deployment-target");
+  const installDir = join(targetRoot, "installed");
+  const stateDir = join(targetRoot, "state");
+  const backupRoot = join(targetRoot, "backups");
+  const plistPath = join(targetRoot, "gateway.plist");
+  for (const path of [installDir, stateDir, backupRoot]) mkdirSync(path, { recursive: true });
+  writeFileSync(plistPath, "fixture service");
+  const targetPath = join(targetRoot, "target.json");
+  const target = {
+    schemaVersion: 1,
+    purpose: "rehearsal",
+    isolation: {
+      schema: "puddles.openclaw-rehearsal-target/v1",
+      root: realpathSync(targetRoot),
+    },
+    host: hostname(),
+    installDir,
+    stateDir,
+    plistPath,
+    backupRoot,
+    label: "puddles.rehearsal.gateway",
+    port: 18799,
+    additionalInstalls: build.additionalArtifacts.map(({ id }: { id: string }) => ({
+      id,
+      path: `managed/${id}`,
+    })),
+    preparedFiles: [],
+  };
+  writeFileSync(targetPath, JSON.stringify(target));
+  const module = join(directory, "target-adapter.mjs");
+  writeFileSync(module, `export default {
+    schemaVersion: 1,
+    commands: [{id:"installed",phase:"installed",command:"fixture-installed",args:[],timeoutMs:1000}]
+  };`);
+  const targetRun = join(directory, "target-run");
+  vi.stubEnv("E2E_RUN_DIR", targetRun);
+  vi.stubEnv("E2E_LOCAL_EXTENSION", module);
+  const proof = await nativeTargetPipeline(buildPath, targetPath);
+  const context = JSON.parse(readFileSync(join(targetRun, "context/context.json"), "utf8"));
+  expect(proof).toMatchObject({ buildId: build.buildId, targetSha256: context.deploymentTarget.sha256 });
+  expect(context).not.toHaveProperty("sourceDir");
+  expect(context.deploymentTarget).toMatchObject({
+    path: targetPath,
+    purpose: "rehearsal",
+    isolation: target.isolation,
+    host: target.host,
+    installDir,
+    stateDir,
+    plistPath,
+    backupRoot,
+    label: target.label,
+    port: target.port,
+    additionalInstalls: target.additionalInstalls,
+    preparedFiles: [],
+    browser: null,
+    nodeMigration: null,
+    stateMigration: null,
+  });
+  expect(readdirSync(join(pool, "objects")).some((name) => name.startsWith("target-"))).toBe(true);
+  expect(readdirSync(join(pool, "objects")).some((name) => name.startsWith("log-"))).toBe(true);
+});
+
+it("retains a failed target reproduction and its diagnostics", async () => {
+  const { directory, run } = setup();
+  const pool = join(directory, "pool");
+  initializeArtifactPool(pool);
+  vi.stubEnv("E2E_ARTIFACT_POOL", pool);
+  await nativePipeline("build", async () => {});
+  const buildPath = join(run, "build.json");
+  const build = JSON.parse(readFileSync(buildPath, "utf8"));
+  const targetRoot = join(directory, "deployment-target");
+  const targetManifest = join(directory, "manifest", "target.json");
+  mkdirSync(dirname(targetManifest));
+  const seedRoot = join(directory, "target-seed");
+  for (const path of ["installed", "state"]) mkdirSync(join(seedRoot, path), { recursive: true });
+  mkdirSync(join(seedRoot, "state", "private"), { mode: 0o700 });
+  writeFileSync(join(seedRoot, "installed/previous"), "previous runtime");
+  writeFileSync(join(seedRoot, "state/private/config"), "previous state");
+  chmodSync(join(seedRoot, "state", "private"), 0o700);
+  writeFileSync(join(seedRoot, "gateway.plist"), "fixture service");
+  const seedPath = join(directory, "target-seed.json");
+  writeFileSync(seedPath, JSON.stringify({
+    schema: "puddles.openclaw-rehearsal-seed/v1",
+    installDir: join(seedRoot, "installed"),
+    stateDir: join(seedRoot, "state"),
+    plistPath: join(seedRoot, "gateway.plist"),
+  }));
+  writeFileSync(targetManifest, JSON.stringify({
+    schemaVersion: 1,
+    purpose: "rehearsal",
+    isolation: { schema: "puddles.openclaw-rehearsal-target/v1", root: targetRoot },
+    host: hostname(),
+    installDir: join(targetRoot, "installed"),
+    stateDir: join(targetRoot, "state"),
+    plistPath: join(targetRoot, "gateway.plist"),
+    backupRoot: join(targetRoot, "backups"),
+    label: "puddles.rehearsal.gateway",
+    port: 18799,
+    additionalInstalls: build.additionalArtifacts.map(({ id }: { id: string }) => ({
+      id,
+      path: `managed/${id}`,
+    })),
+    preparedFiles: [],
+  }));
+  const module = join(directory, "target-adapter.mjs");
+  writeFileSync(module, `export default {
+    schemaVersion: 1,
+    commands: [{id:"installed",phase:"installed",command:"fixture-fail",args:[],timeoutMs:1000}]
+  };`);
+  vi.stubEnv("E2E_RUN_DIR", join(directory, "target-run"));
+  vi.stubEnv("E2E_LOCAL_EXTENSION", module);
+  await expect(nativeTargetPipeline(buildPath, targetManifest, seedPath)).rejects.toThrow("synthetic installed failure");
+  expect(readFileSync(join(targetRoot, "installed/previous"), "utf8")).toBe("previous runtime");
+  expect(readFileSync(join(targetRoot, "state/private/config"), "utf8")).toBe("previous state");
+  expect(statSync(join(targetRoot, "state/private")).mode & 0o777).toBe(0o700);
+  expect(existsSync(join(targetRoot, ".puddles-rehearsal-seed.json"))).toBe(true);
+  const objects = readdirSync(join(pool, "objects"));
+  expect(objects.some((name) => name.startsWith("failure-"))).toBe(true);
+  expect(objects.some((name) => name.startsWith("log-"))).toBe(true);
+  expect(JSON.parse(readFileSync(join(pool, "references/failed-debug.json"), "utf8")).objectIds).toHaveLength(1);
+});
+
+it("refuses to create a rehearsal target with a destination outside its root", () => {
+  const directory = mkdtempSync(join(tmpdir(), "native-target-create-test-"));
+  const seedRoot = join(directory, "seed");
+  for (const path of ["installed", "state"]) mkdirSync(join(seedRoot, path), { recursive: true });
+  writeFileSync(join(seedRoot, "gateway.plist"), "fixture service");
+  const seedPath = join(directory, "seed.json");
+  writeFileSync(seedPath, JSON.stringify({
+    schema: "puddles.openclaw-rehearsal-seed/v1",
+    installDir: join(seedRoot, "installed"),
+    stateDir: join(seedRoot, "state"),
+    plistPath: join(seedRoot, "gateway.plist"),
+  }));
+  const targetRoot = join(directory, "target");
+  expect(() => createRehearsalTarget({
+    schemaVersion: 1,
+    purpose: "rehearsal",
+    isolation: { schema: "puddles.openclaw-rehearsal-target/v1", root: targetRoot },
+    installDir: join(targetRoot, "installed"),
+    stateDir: join(directory, "outside"),
+    plistPath: join(targetRoot, "gateway.plist"),
+    backupRoot: join(targetRoot, "backups"),
+  }, seedPath)).toThrow("state directory");
+  expect(existsSync(targetRoot)).toBe(false);
+  symlinkSync(seedRoot, join(seedRoot, "state", "outside-link"));
+  expect(() => createRehearsalTarget({
+    schemaVersion: 1,
+    purpose: "rehearsal",
+    isolation: { schema: "puddles.openclaw-rehearsal-target/v1", root: targetRoot },
+    installDir: join(targetRoot, "installed"),
+    stateDir: join(targetRoot, "state"),
+    plistPath: join(targetRoot, "gateway.plist"),
+    backupRoot: join(targetRoot, "backups"),
+  }, seedPath)).toThrow("link outside");
+  expect(existsSync(targetRoot)).toBe(false);
+  rmSync(directory, { recursive: true, force: true });
+});
+
 it("seals and installs additional artifacts before rehearsal and invalidates only changed artifact proofs", async () => {
   const { directory, run } = setup();
   const input = join(directory, "auxiliary-input");
@@ -471,4 +866,34 @@ it("seals and installs additional artifacts before rehearsal and invalidates onl
   expect(counters).toMatchObject({ build: 1, package: 1, additionalInstalls: 3, runtimeCommands: 2 });
   const context = JSON.parse(readFileSync(join(run, "context/context.json"), "utf8"));
   expect(readFileSync(join(context.additionalInstalledDirs.auxiliary, "installed"), "utf8")).toBe("second auxiliary bytes");
+});
+
+it("seals prepared files into their own proof and invalidates runtime rehearsal when their bytes change", async () => {
+  const { directory, run } = setup();
+  const input = join(directory, "model-input");
+  writeFileSync(input, "first model bytes");
+  const module = join(directory, "prepared-files.mjs");
+  writeFileSync(module, `export default ${JSON.stringify({
+    schemaVersion: 1, inputs: [input],
+    preparedFiles: [
+      { id: "embedding-model", manifest: "workspace/prepared-file/manifest.json" },
+      { id: "embedding-server", manifest: "workspace/prepared-file/server-manifest.json" },
+    ],
+    commands: [
+      { id: "package", phase: "package", command: "fixture-prepared-file", args: [input], timeoutMs: 1000, outputs: ["workspace/prepared-file"] },
+      { id: "installed", phase: "installed", command: "fixture-installed", args: [], timeoutMs: 1000 },
+    ],
+  })};`);
+  vi.stubEnv("E2E_LOCAL_EXTENSION", module);
+  const first = await nativePipeline("native", async () => {});
+  expect(first.preparedFiles.map(({ id }: { id: string }) => id)).toEqual(["embedding-model", "embedding-server"]);
+  expect(first.proofs["prepared-files"]).toBeDefined();
+  const proof = JSON.parse(readFileSync(join(run, "stages/prepared-files.json"), "utf8"));
+  expect(proof.result[0]).toMatchObject({ id: "embedding-model", type: "file" });
+  expect(proof.result[1]).toMatchObject({ id: "embedding-server", type: "directory" });
+  const runs = counters.runtimeCommands;
+  writeFileSync(input, "second model bytes");
+  const second = await nativePipeline("native", async () => {});
+  expect(second.preparedFiles[0].sha256).not.toBe(first.preparedFiles[0].sha256);
+  expect(counters.runtimeCommands).toBe(runs + 1);
 });

@@ -107,7 +107,7 @@ if [ "$1" = "-m" ] && [ "$2" = "pip" ] && [ "$3" = "freeze" ]; then
 fi
 if [ "$1" = "-m" ] && [ "$2" = "gmail_mcp.scripts.production_smoke" ]; then
   if [ -n "\${MOCK_CONCURRENT_CONFIG:-}" ]; then
-    /usr/bin/python3 - "$MOCK_CONCURRENT_CONFIG" "\${MOCK_CONCURRENT_MODE:-unrelated}" <<'PY'
+    python3 - "$MOCK_CONCURRENT_CONFIG" "\${MOCK_CONCURRENT_MODE:-unrelated}" <<'PY'
 import json
 import os
 from pathlib import Path

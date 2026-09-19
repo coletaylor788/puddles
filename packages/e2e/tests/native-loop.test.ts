@@ -34,7 +34,13 @@ describe("native exact-input evidence", () => {
     await stage(directory, "proof", { code: "two" }, action, outputs);
     expect(calls).toBe(3);
     await expect(stage(directory, "failed", {}, async () => { throw new Error("failure"); })).rejects.toThrow("failure");
-    await stage(directory, "failed", {}, action, outputs);
+    await expect(stage(directory, "failed", {}, action, outputs)).rejects.toThrow("explicit resume");
+    process.env.E2E_RESUME_FAILED = "1";
+    try {
+      await stage(directory, "failed", {}, action, outputs);
+    } finally {
+      delete process.env.E2E_RESUME_FAILED;
+    }
     expect(calls).toBe(4);
   });
 

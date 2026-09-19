@@ -1,13 +1,27 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   closeSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync,
-  readFileSync, readdirSync, readlinkSync, realpathSync, renameSync,
+  readFileSync, readdirSync, readlinkSync, readSync, realpathSync, renameSync,
   rmSync, writeFileSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 export const digest = (value) => createHash("sha256").update(value).digest("hex");
-export const fileDigest = (path) => digest(readFileSync(path));
+export const fileDigest = (path) => {
+  const hash = createHash("sha256");
+  const file = openSync(path, "r");
+  const buffer = Buffer.allocUnsafe(1024 * 1024);
+  try {
+    for (;;) {
+      const bytes = readSync(file, buffer, 0, buffer.length, null);
+      if (!bytes) break;
+      hash.update(buffer.subarray(0, bytes));
+    }
+  } finally {
+    closeSync(file);
+  }
+  return hash.digest("hex");
+};
 export const jsonDigest = (value) => digest(JSON.stringify(value));
 
 function artifactIdentity(artifact) {
@@ -43,14 +57,29 @@ function additionalArtifactIdentity({ id, artifact, provenance }) {
   return [id, artifactIdentity(artifact), provenanceIdentity(provenance)];
 }
 
+function preparedFileIdentity(record) {
+  if (!record || !/^[a-z][a-z0-9-]*$/.test(record.id) ||
+      !["file", "directory"].includes(record.type) ||
+      !/^[a-f0-9]{64}$/.test(record.sha256)) {
+    throw new Error("Invalid prepared file identity");
+  }
+  return [record.id, record.type, record.sha256];
+}
+
 export function verifyCandidateProofs(receiptPath, receipt) {
   const extras = receipt.additionalArtifacts ?? [];
   if (!Array.isArray(extras) || extras.some((extra) => !/^[a-z][a-z0-9-]*$/.test(extra.id)) ||
       new Set(extras.map((extra) => extra.id)).size !== extras.length) throw new Error("Invalid additional artifact identities");
   const provider = extras.find((extra) => extra.id === "llama-cpp-provider");
+  const prepared = receipt.preparedFiles ?? [];
+  if (!Array.isArray(prepared) ||
+      new Set(prepared.map((record) => preparedFileIdentity(record)[0])).size !== prepared.length) {
+    throw new Error("Invalid prepared file identities");
+  }
   const required = [
     "build",
     ...(provider ? ["provider-package"] : []),
+    ...(prepared.length ? ["prepared-files"] : []),
     "regressions",
     "runtime",
     "install",
@@ -74,6 +103,14 @@ export function verifyCandidateProofs(receiptPath, receipt) {
   }
   const bundleIdentity = (artifacts) => jsonDigest(artifacts.map(additionalArtifactIdentity));
   if (bundleIdentity(extras) !== bundleIdentity(proofs.runtime.inputs.additionalArtifacts ?? [])) throw new Error("Additional artifacts differ from runtime proof");
+  const preparedIdentity = (records) => jsonDigest(records.map(preparedFileIdentity));
+  if (preparedIdentity(prepared) !== preparedIdentity(proofs.runtime.inputs.preparedFiles ?? [])) {
+    throw new Error("Prepared files differ from runtime proof");
+  }
+  if (prepared.length &&
+      preparedIdentity(prepared) !== preparedIdentity(proofs["prepared-files"].result ?? [])) {
+    throw new Error("Prepared files differ from package proof");
+  }
   for (const [index, extra] of extras.entries()) {
     const inputs = proofs[`install-additional-${index}`].inputs;
     if (jsonDigest(additionalArtifactIdentity(extra)) !==
@@ -194,9 +231,40 @@ export function acquireLock(directory) {
   return () => rmSync(lock, { recursive: true });
 }
 
+export function nativeRunStatus(runDir) {
+  const stagesDir = join(runDir, "stages");
+  const stages = existsSync(stagesDir)
+    ? readdirSync(stagesDir).filter((name) => name.endsWith(".json")).sort().map((name) => {
+      const record = JSON.parse(readFileSync(join(stagesDir, name), "utf8"));
+      return {
+        name: record.name,
+        status: record.status,
+        key: record.key,
+        startedAt: record.startedAt,
+        finishedAt: record.finishedAt ?? null,
+        durationMs: record.durationMs ?? null,
+        invalidation: record.invalidation ?? null,
+        failure: record.failure ?? null,
+      };
+    })
+    : [];
+  const runPath = join(runDir, "run-status.json");
+  const run = existsSync(runPath) ? JSON.parse(readFileSync(runPath, "utf8")) : null;
+  return { schemaVersion: 1, run, stages };
+}
+
+export function updateNativeRunStatus(runDir, value) {
+  const path = join(runDir, "run-status.json");
+  const previous = existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : {};
+  const next = { schemaVersion: 1, ...previous, ...value, updatedAt: new Date().toISOString() };
+  atomicJson(path, next);
+  return next;
+}
+
 export async function stage(runDir, name, inputs, action, outputs = () => ({}), validate = async () => true) {
   const path = join(runDir, "stages", `${name}.json`);
   const key = jsonDigest(inputs);
+  let invalidation = "new";
   if (existsSync(path)) {
     const previous = JSON.parse(readFileSync(path, "utf8"));
     if (previous.status === "passed" && previous.key === key) {
@@ -211,18 +279,41 @@ export async function stage(runDir, name, inputs, action, outputs = () => ({}), 
         console.log(`${name}: reused`);
         return previous.result;
       }
+      invalidation = valid ? "result-invalid" : "output-changed";
+    } else if (previous.status === "failed" && previous.key === key) {
+      if (process.env.E2E_RESUME_FAILED !== "1") {
+        throw new Error(`${name} failed with unchanged inputs. Run the explicit resume command after addressing the failure.`);
+      }
+      invalidation = "explicit-resume";
+    } else if (previous.status === "running" && previous.key === key) {
+      invalidation = "interrupted";
+    } else {
+      invalidation = "inputs-changed";
     }
   }
-  const record = { schemaVersion: 1, name, inputs, key, status: "running", startedAt: new Date().toISOString() };
+  const started = Date.now();
+  const record = {
+    schemaVersion: 1, name, inputs, key, status: "running",
+    invalidation, startedAt: new Date(started).toISOString(),
+  };
   atomicJson(path, record);
   try {
     const result = await action();
-    atomicJson(path, { ...record, status: "passed", outputs: outputs(result), result, finishedAt: new Date().toISOString() });
+    const finished = Date.now();
+    atomicJson(path, {
+      ...record, status: "passed", outputs: outputs(result), result,
+      finishedAt: new Date(finished).toISOString(), durationMs: finished - started,
+    });
     console.log(`${name}: passed`);
     return result;
   } catch (error) {
     // Command output can contain local extension data. Keep diagnostics in local logs.
-    atomicJson(path, { ...record, status: "failed", finishedAt: new Date().toISOString() });
+    const finished = Date.now();
+    atomicJson(path, {
+      ...record, status: "failed", finishedAt: new Date(finished).toISOString(),
+      durationMs: finished - started,
+      failure: { code: error.code ?? null, message: String(error.message ?? error).slice(0, 1000) },
+    });
     throw error;
   }
 }

@@ -4,29 +4,93 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 // @ts-expect-error Native lifecycle exports are executable JavaScript.
 import { integrateCandidate } from "../bin/openclaw-integrate.mjs";
+// @ts-expect-error Native release modules are executable JavaScript.
+import { certifyRelease, createBuildReceipt, createSourceGate, createTargetProof, promoteRelease } from "../src/native-release.mjs";
 // @ts-expect-error Native lifecycle exports are executable JavaScript.
 import { fileDigest, jsonDigest } from "../src/native-state.mjs";
 
 const roots: string[] = [];
-afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(() => {
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+function passedStage(root: string, name: string) {
+  const inputs = { fixture: name };
+  const key = jsonDigest(inputs);
+  mkdirSync(join(root, "stages"), { recursive: true });
+  writeFileSync(join(root, "stages", `${name}.json`), JSON.stringify({
+    schemaVersion: 1, name, status: "passed", inputs, key, outputs: {},
+  }));
+  return key;
+}
+
 function setup(changeBase = false, changedTree = false) {
   const root = mkdtempSync(join(tmpdir(), "native-integrate-"));
   roots.push(root);
-  const path = join(root, "candidate.json");
+  const path = join(root, "release.json");
   const head = "a".repeat(40);
   const tree = "b".repeat(40);
   const base = "c".repeat(40);
-  const artifact = { path: "/synthetic/runtime.tar.gz", sha256: "1".repeat(64), runtimeSha256: "2".repeat(64),
-    schemaVersion: 1, platform: "darwin", arch: "arm64", node: "v22.23.2" };
-  const proofs: Record<string, string> = {};
-  mkdirSync(join(root, "stages"));
-  for (const name of ["build", "regressions", "runtime", "install"]) {
-    const inputs = name === "runtime" ? { artifact, additionalArtifacts: [] } : name === "install" ? { artifact } : { source: "synthetic" };
-    const key = jsonDigest(inputs);
-    proofs[name] = key;
-    writeFileSync(join(root, "stages", `${name}.json`), JSON.stringify({ inputs, key, status: "passed" }));
+  const archive = join(root, "runtime.tar.gz");
+  writeFileSync(archive, "runtime");
+  const artifact = {
+    path: archive,
+    sha256: fileDigest(archive),
+    runtimeSha256: "2".repeat(64),
+    schemaVersion: 1,
+    platform: process.platform,
+    arch: process.arch,
+    node: process.version,
+  };
+  const build = createBuildReceipt({
+    repository: { head, tree },
+    source: {
+      ref: "d".repeat(40),
+      sha256: "3".repeat(64),
+      buildInputsSha256: "4".repeat(64),
+      patchesSha256: "5".repeat(64),
+      extensionSha256: "none",
+    },
+    composition: { extensionSha256: "none" },
+    artifact,
+    additionalArtifacts: [],
+    preparedFiles: [],
+    tools: {
+      node: process.version,
+      nodeBinary: "6".repeat(64),
+      platform: process.platform,
+      arch: process.arch,
+      manager: "synthetic",
+      npm: "synthetic",
+    },
+    proofs: {
+      prepare: "7".repeat(64),
+      dependencies: "8".repeat(64),
+      build: "9".repeat(64),
+      package: "0".repeat(64),
+    },
+  });
+  passedStage(root, "regressions");
+  passedStage(root, "install");
+  passedStage(root, "runtime");
+  const success = join(root, "success");
+  const rollback = join(root, "rollback");
+  for (const [directory, status] of [[success, "healthy"], [rollback, "rolled-back"]] as const) {
+    mkdirSync(directory);
+    writeFileSync(join(directory, "recovery.json"), JSON.stringify({
+      schemaVersion: 1,
+      transaction: status,
+      status,
+      target: "1".repeat(64),
+      artifact: artifact.sha256,
+    }));
   }
-  writeFileSync(path, JSON.stringify({ status: "passed", accumulated: true, repository: { head, tree }, artifact, proofs }));
+  writeFileSync(join(rollback, "failure.json"), "{}");
+  const sourceGate = createSourceGate(build, root, { tests: ["synthetic"] });
+  const targetProof = createTargetProof(build, root, success, rollback);
+  const certification = certifyRelease(build, sourceGate, targetProof);
+  const release = promoteRelease(build, sourceGate, targetProof, certification);
+  writeFileSync(path, JSON.stringify(release));
   const calls: string[][] = [];
   let reads = 0;
   const run = async (command: string, args: string[]) => {
@@ -35,180 +99,81 @@ function setup(changeBase = false, changedTree = false) {
     const endpoint = args[1];
     if (endpoint.endsWith("/pulls/123")) {
       reads++;
-      return JSON.stringify({ state: "open", draft: false, mergeable: true, mergeable_state: "clean", head: { sha: head }, base: { ref: "main", sha: changeBase && reads > 1 ? "d".repeat(40) : base } });
+      return JSON.stringify({
+        state: "open",
+        draft: false,
+        mergeable: true,
+        mergeable_state: "clean",
+        head: { sha: head },
+        base: { ref: "main", sha: changeBase && reads > 1 ? "e".repeat(40) : base },
+      });
     }
-    if (endpoint.endsWith("/merge")) return JSON.stringify({ merged: true, sha: "e".repeat(40) });
-    if (endpoint.includes("/git/commits/")) return JSON.stringify({ tree: { sha: changedTree ? "f".repeat(40) : tree } });
+    if (endpoint.endsWith("/merge")) return JSON.stringify({ merged: true, sha: "f".repeat(40) });
+    if (endpoint.includes("/git/commits/")) {
+      return JSON.stringify({ tree: { sha: changedTree ? "0".repeat(40) : tree } });
+    }
     if (endpoint.includes("/compare/")) return JSON.stringify({ status: "ahead" });
     return JSON.stringify({ default_branch: "main", allow_squash_merge: true });
   };
-  return { path, root, calls, run };
+  return { path, root, calls, run, release, build, sourceGate, targetProof, certification };
 }
+
 describe("source integration before activation", () => {
-  it("binds merge to exact head and records the confirmed resulting tree", async () => {
-    const f = setup();
-    await integrateCandidate(f.path, "example/public-repo", 123, f.run);
-    expect(f.calls.find((args) => args.includes("PUT"))).toContain(`sha=${"a".repeat(40)}`);
-    expect(JSON.parse(readFileSync(join(f.root, "integration.json"), "utf8")).tree).toBe("b".repeat(40));
-    expect(f.calls.every((args) => !args.includes("deploy"))).toBe(true);
+  it("binds merge to the exact eligible head and records the resulting tree", async () => {
+    const fixture = setup();
+    await integrateCandidate(fixture.path, "example/public-repo", 123, fixture.run);
+    expect(fixture.calls.find((args) => args.includes("PUT"))).toContain(`sha=${"a".repeat(40)}`);
+    expect(JSON.parse(readFileSync(join(fixture.root, "integration.json"), "utf8")).tree).toBe("b".repeat(40));
   });
+
   it("does not merge if the base changed during eligibility checks", async () => {
-    const f = setup(true);
-    await expect(integrateCandidate(f.path, "example/public-repo", 123, f.run)).rejects.toThrow("changed");
-    expect(f.calls.some((args) => args.includes("PUT"))).toBe(false);
+    const fixture = setup(true);
+    await expect(integrateCandidate(fixture.path, "example/public-repo", 123, fixture.run)).rejects.toThrow("changed");
+    expect(fixture.calls.some((args) => args.includes("PUT"))).toBe(false);
   });
-  it("blocks activation if a race produced a different integrated tree", async () => {
-    const f = setup(false, true);
-    await expect(integrateCandidate(f.path, "example/public-repo", 123, f.run)).rejects.toThrow("activation is blocked");
+
+  it("blocks activation if integration produces a different tree", async () => {
+    const fixture = setup(false, true);
+    await expect(integrateCandidate(fixture.path, "example/public-repo", 123, fixture.run))
+      .rejects.toThrow("activation is blocked");
   });
-  it("rejects root or additional artifacts not covered by the retained proofs before integration", async () => {
-    const f = setup();
-    const receipt = JSON.parse(readFileSync(f.path, "utf8"));
-    writeFileSync(f.path, JSON.stringify({ ...receipt, artifact: { ...receipt.artifact, sha256: "3".repeat(64) } }));
-    await expect(integrateCandidate(f.path, "example/public-repo", 123, f.run)).rejects.toThrow("differs from rehearsal");
-    writeFileSync(f.path, JSON.stringify({ ...receipt, additionalArtifacts: [{ id: "auxiliary", artifact: receipt.artifact }] }));
-    await expect(integrateCandidate(f.path, "example/public-repo", 123, f.run)).rejects.toThrow("proof is missing");
-    expect(f.calls).toEqual([]);
+
+  it("rejects noneligible build and certification receipts before GitHub access", async () => {
+    const fixture = setup();
+    writeFileSync(fixture.path, JSON.stringify(fixture.build));
+    await expect(integrateCandidate(fixture.path, "example/public-repo", 123, fixture.run))
+      .rejects.toThrow("production-eligible");
+    writeFileSync(fixture.path, JSON.stringify(fixture.certification));
+    await expect(integrateCandidate(fixture.path, "example/public-repo", 123, fixture.run))
+      .rejects.toThrow("production-eligible");
+    expect(fixture.calls).toEqual([]);
   });
-  it("allows transport path changes without changing artifact identity or rewriting proof inputs", async () => {
-    const f = setup();
-    const receipt = JSON.parse(readFileSync(f.path, "utf8"));
-    receipt.artifact.path = "/transported/runtime.tar.gz";
-    writeFileSync(f.path, JSON.stringify(receipt));
-    await integrateCandidate(f.path, "example/public-repo", 123, f.run);
-    expect(f.calls.some((args) => args.includes("PUT"))).toBe(true);
+
+  it("allows transport path relocation without changing immutable release identity", async () => {
+    const fixture = setup();
+    const relocated = join(fixture.root, "transported.tar.gz");
+    writeFileSync(relocated, readFileSync(fixture.build.artifact.path));
+    fixture.release.artifact.path = relocated;
+    fixture.release.evidence.build.artifact.path = relocated;
+    writeFileSync(fixture.path, JSON.stringify(fixture.release));
+    await integrateCandidate(fixture.path, "example/public-repo", 123, fixture.run);
+    expect(fixture.calls.some((args) => args.includes("PUT"))).toBe(true);
   });
-  it("accepts a fully bound additional artifact and rejects edited proof input metadata", async () => {
-    const f = setup();
-    const receipt = JSON.parse(readFileSync(f.path, "utf8"));
-    const extra = { id: "auxiliary", artifact: { ...receipt.artifact, sha256: "3".repeat(64), runtimeSha256: "4".repeat(64) } };
-    receipt.additionalArtifacts = [extra];
-    const inputs = { id: extra.id, artifact: extra.artifact };
-    const key = jsonDigest(inputs);
-    receipt.proofs["install-additional-0"] = key;
-    writeFileSync(join(f.root, "stages/install-additional-0.json"), JSON.stringify({ key, inputs, status: "passed" }));
-    const runtimePath = join(f.root, "stages/runtime.json");
-    const runtime = JSON.parse(readFileSync(runtimePath, "utf8"));
-    runtime.inputs.additionalArtifacts = [extra];
-    runtime.key = jsonDigest(runtime.inputs);
-    receipt.proofs.runtime = runtime.key;
-    writeFileSync(runtimePath, JSON.stringify(runtime));
-    writeFileSync(f.path, JSON.stringify(receipt));
-    await integrateCandidate(f.path, "example/public-repo", 123, f.run);
-    f.calls.length = 0;
-    runtime.inputs.additionalArtifacts[0].artifact.sha256 = "5".repeat(64);
-    writeFileSync(runtimePath, JSON.stringify(runtime));
-    await expect(integrateCandidate(f.path, "example/public-repo", 123, f.run)).rejects.toThrow("proof chain");
-    expect(f.calls).toEqual([]);
-  });
-  it("binds provider provenance to installation and runtime proofs", async () => {
-    const f = setup();
-    const receipt = JSON.parse(readFileSync(f.path, "utf8"));
-    const tools = {
-      node: receipt.artifact.node,
-      nodeBinary: "5".repeat(64),
-      platform: receipt.artifact.platform,
-      arch: receipt.artifact.arch,
-      manager: "pnpm@10.31.0",
-      npm: "11.8.0",
-    };
-    const buildPath = join(f.root, "stages/build.json");
-    const build = JSON.parse(readFileSync(buildPath, "utf8"));
-    build.inputs.tools = tools;
-    build.key = jsonDigest(build.inputs);
-    receipt.proofs.build = build.key;
-    writeFileSync(buildPath, JSON.stringify(build));
-    const provenancePath = join(f.root, "provider-provenance.json");
-    const provenance = {
-      path: provenancePath,
-      sha256: "",
-      schema: "puddles.openclaw-provider-artifact/v1",
-      publicHead: "a".repeat(40),
-      sourceSha256: "6".repeat(64),
-      buildInputsSha256: receipt.proofs.build,
-      buildCommandSha256: "8".repeat(64),
-    };
-    const extra = {
-      id: "llama-cpp-provider",
-      artifact: { ...receipt.artifact, sha256: "3".repeat(64), runtimeSha256: "4".repeat(64) },
-      provenance,
-    };
-    const providerInputs = {
-      candidateInputs: "synthetic",
-      source: provenance.sourceSha256,
-      build: "7".repeat(64),
-      provenance: {
-        publicHead: provenance.publicHead,
-        buildInputsSha256: provenance.buildInputsSha256,
-        buildCommandSha256: provenance.buildCommandSha256,
-        tools,
-      },
-      packaging: "9".repeat(64),
-    };
-    writeFileSync(provenancePath, JSON.stringify({
-      schema: provenance.schema,
-      schemaVersion: 1,
-      id: extra.id,
-      package: { name: "@openclaw/llama-cpp-provider", version: "2026.9.3" },
-      publicHead: provenance.publicHead,
-      source: { sha256: provenance.sourceSha256 },
-      build: {
-        inputsSha256: provenance.buildInputsSha256,
-        commandSha256: provenance.buildCommandSha256,
-        outputSha256: providerInputs.build,
-      },
-      toolchain: tools,
-      artifact: { file: "provider.tar.gz", sha256: extra.artifact.sha256, runtimeSha256: extra.artifact.runtimeSha256 },
-    }));
-    provenance.sha256 = fileDigest(provenancePath);
-    receipt.additionalArtifacts = [extra];
-    const providerKey = jsonDigest(providerInputs);
-    receipt.proofs["provider-package"] = providerKey;
-    writeFileSync(join(f.root, "stages/provider-package.json"), JSON.stringify({
-      key: providerKey,
-      inputs: providerInputs,
-      result: extra,
-      status: "passed",
-    }));
-    const inputs = { id: extra.id, artifact: extra.artifact, provenance };
-    const key = jsonDigest(inputs);
-    receipt.proofs["install-additional-0"] = key;
-    writeFileSync(join(f.root, "stages/install-additional-0.json"), JSON.stringify({ key, inputs, status: "passed" }));
-    const runtimePath = join(f.root, "stages/runtime.json");
-    const runtime = JSON.parse(readFileSync(runtimePath, "utf8"));
-    runtime.inputs.additionalArtifacts = [extra];
-    runtime.key = jsonDigest(runtime.inputs);
-    receipt.proofs.runtime = runtime.key;
-    writeFileSync(runtimePath, JSON.stringify(runtime));
-    writeFileSync(f.path, JSON.stringify(receipt));
-    await integrateCandidate(f.path, "example/public-repo", 123, f.run);
-    const providerPath = join(f.root, "stages/provider-package.json");
-    const writeProviderProof = () => {
-      const nextKey = jsonDigest(providerInputs);
-      receipt.proofs["provider-package"] = nextKey;
-      writeFileSync(providerPath, JSON.stringify({
-        key: nextKey,
-        inputs: providerInputs,
-        result: extra,
-        status: "passed",
-      }));
-      writeFileSync(f.path, JSON.stringify(receipt));
-    };
-    providerInputs.source = "0".repeat(64);
-    writeProviderProof();
-    await expect(integrateCandidate(f.path, "example/public-repo", 123, f.run)).rejects.toThrow("provenance does not match");
-    providerInputs.source = provenance.sourceSha256;
-    providerInputs.provenance.buildCommandSha256 = "0".repeat(64);
-    writeProviderProof();
-    await expect(integrateCandidate(f.path, "example/public-repo", 123, f.run)).rejects.toThrow("provenance does not match");
-    providerInputs.provenance.buildCommandSha256 = provenance.buildCommandSha256;
-    providerInputs.provenance.tools = { ...tools, nodeBinary: "0".repeat(64) };
-    writeProviderProof();
-    await expect(integrateCandidate(f.path, "example/public-repo", 123, f.run)).rejects.toThrow("provenance does not match");
-    providerInputs.provenance.tools = tools;
-    writeProviderProof();
-    receipt.additionalArtifacts[0].provenance.sha256 = "9".repeat(64);
-    writeFileSync(f.path, JSON.stringify(receipt));
-    await expect(integrateCandidate(f.path, "example/public-repo", 123, f.run)).rejects.toThrow("Additional artifacts differ from runtime proof");
+
+  it("rejects edited source, target, certification, and artifact evidence", async () => {
+    const fixture = setup();
+    for (const mutate of [
+      () => { fixture.release.evidence.sourceGate.inventory.tests = ["edited"]; },
+      () => { fixture.release.evidence.targetProof.deployment.success.status = "rolled-back"; },
+      () => { fixture.release.evidence.certification.sourceGateSha256 = "0".repeat(64); },
+      () => { fixture.release.artifact.sha256 = "0".repeat(64); },
+    ]) {
+      const current = structuredClone(fixture.release);
+      mutate();
+      writeFileSync(fixture.path, JSON.stringify(fixture.release));
+      await expect(integrateCandidate(fixture.path, "example/public-repo", 123, fixture.run)).rejects.toThrow();
+      fixture.release = current;
+    }
+    expect(fixture.calls).toEqual([]);
   });
 });
