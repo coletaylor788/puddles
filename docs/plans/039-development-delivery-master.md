@@ -57,15 +57,17 @@ runtime scenarios. The ARM bundle is published and independent review is clear.
 Ordinary local builds now have measured results for runtime edits: about one
 minute fifteen seconds for a plugin change and one minute forty seconds for a
 small core change, including focused local tests and the runtime output build.
-The remaining DEV work is output transfer, restart and remote integration.
-Those steps are not included in the local timings. No new development receipt
-or cache framework is needed.
+DEV is still absent. Its first installation is blocked while selecting package
+files locally, before transfer. Increasing that operation's timeout to ten
+minutes has not resolved it. The public owner is diagnosing the cause rather
+than repeating unchanged attempts.
 
 The private composed release, actual DEV deployment and integration checks,
 complete physical release proof, and remaining workspace cleanup are not yet
-confirmed complete. Neither delivery change is merged. Production remains
-unchanged. The checklist below is the completion contract, not a claim that
-working components already make the entire process ready.
+confirmed complete. File selection belongs to initial setup, not the normal
+built-output sync loop. Transfer, restart and remote integration are not included
+in the local timings. Neither delivery change is merged. Production remains
+unchanged.
 
 ## Agent section
 
@@ -155,6 +157,25 @@ working components already make the entire process ready.
   remaining sync, restart and remote integration timings. Dependency, manifest,
   lockfile or toolchain changes require bootstrap/dependency refresh rather
   than this unchanged-dependency fast path.
+- Cold DEV bootstrap remains blocked in `materializeRuntime` at local
+  `npm pack --dry-run --json --ignore-scripts`. Public commit
+  `36161df8b1028f6b63cfdacbfb3c126cb038a7f6` adds a reviewed explicit
+  180,000..600,000 ms DEV bound; release packaging stays at 60,000 ms.
+  Actual root attempts exceed 180, 360 and 600 seconds. One earlier root
+  inventory completed near ten minutes with about 9,123 selected files.
+  Buffered output does not establish progress versus a stall; no leaked
+  process is reported. Normal warm edits do not invoke this operation.
+- Stop unchanged inventory retries and timeout escalation. The public owner
+  must diagnose selection versus other work performed by the npm command,
+  then measure a narrow repair on the actual candidate. Preserve authoritative
+  package selection semantics with regression and parity evidence, not naive
+  manifest globs. No full source rebuild is needed merely to investigate.
+- The private owner is finishing regressions for first-install rollback,
+  bounded startup readiness, plugin package boundaries and batched transport.
+  Test transport independently with a bounded synthetic payload where possible;
+  that is not real bootstrap proof. Resume actual DEV installation after the
+  inventory repair, then restore the runtime-changing benchmark and prove its
+  assertion remotely. The temporary baseline is not changed-behavior proof.
 - The selected OpenClaw source is
   `1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7` (`v2026.9.3`). The selected
   candidate Node version is `26.1.0`; upstream pnpm is `12.3.4`. Do not silently
@@ -483,7 +504,7 @@ record in the relevant component plan, not a status assertion alone.
 
 **Fast development instance**
 
-- [ ] DEV-01 (private, in progress): Provision and verify a distinct DEV target,
+- [ ] DEV-01 (private, blocked on cold inventory): Provision and verify a distinct DEV target,
   separate from release TEST and PROD in every writable/process identity.
 - [ ] DEV-02 (private/public, in progress): Provide a maintained
   incremental-build/unit-test command in the normal local workspaces and a
