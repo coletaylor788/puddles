@@ -54,12 +54,12 @@ evidence, unbounded local diagnostic logs and protected recovery remain safe.
 The complete public pipeline passes on a standard 7 GB hosted ARM runner,
 including the fresh build, accumulated regressions, offline installation and
 runtime scenarios. The ARM bundle is published and independent review is clear.
-The retained full local root build passes with the reviewed draft-only timeout
-option, and the private package-ordering repair is reviewed. Neither proves
-incremental performance. The owners are replacing the release-style DEV
-prerequisites with ordinary local component builds, owned-output transfer and
-remote integration testing. No new development receipt or cache framework is
-needed.
+Ordinary local builds now have measured results for real edits: about three
+and a half minutes for a plugin change and one minute forty seconds for a
+small core change, including their local tests and runtime output build.
+The remaining DEV work is output transfer, restart and remote integration.
+Those steps are not included in the local timings. No new development receipt
+or cache framework is needed.
 
 The private composed release, actual DEV deployment and integration checks,
 complete physical release proof, and remaining workspace cleanup are not yet
@@ -131,11 +131,20 @@ working components already make the entire process ready.
   release. The private owner reports corrected comparisons show the package-only
   repair leaves both candidate and root-build inputs unchanged. Its earlier
   comparison omitted public patches after a probe import failed.
-- The owners are selecting existing upstream incremental/component commands
-  and runtime output directories, then wiring ordinary owned-output transfer,
-  DEV restart and integration tests. Use compiler/package-manager cache
-  semantics, not a new cross-run attestation or generic cache protocol.
-  No warm plugin-edit or core-edit timing is proven yet.
+- The public owner reports measured real semantic edits on the persistent
+  candidate workspace. Plugin: `pnpm tsgo:extensions` 68.62 seconds, full
+  `test:extension imessage` 99.28 seconds (59 files, 1,289 tests), and
+  `build-all qaRuntime` 39.81 seconds, totaling 207.71 seconds locally.
+  Small core edit: `pnpm tsgo:core` 39.92 seconds, focused test 24.54 seconds,
+  and `qaRuntime` 36.19 seconds, totaling 100.65 seconds locally.
+  These are local segments, not end-to-end DEV results.
+- The maintained `qaRuntime` profile builds runtime output, plugin assets,
+  external plugin local output, postbuild files and stamps without release
+  declarations. Sync `dist/` for installed DEV, not source-checkout-only
+  `dist-runtime`. The private owner has the exact commands and owns the
+  remaining sync, restart and remote integration timings. Dependency, manifest,
+  lockfile or toolchain changes require bootstrap/dependency refresh rather
+  than this unchanged-dependency fast path.
 - The selected OpenClaw source is
   `1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7` (`v2026.9.3`). The selected
   candidate Node version is `26.1.0`; upstream pnpm is `12.3.4`. Do not silently
@@ -435,10 +444,11 @@ hosted ARM profile, with its complete hosted gate green at the checkpoint in
 State. The same reviewer clears the draft-only build-timeout repair, its
 focused and hosted gates pass, and the resumed local root build succeeds.
 The private owner reports focused regression and retained review clearance for
-the package-phase correction and earlier artifact-only diagnosis. The maintained
-incremental/component build strategy and measured warm-edit performance are not
-yet proven. These results do not establish an operational fast DEV loop or final
-private release eligibility.
+the package-phase correction and earlier artifact-only diagnosis. The public
+owner reports measured local build/test segments for real plugin and core edits
+using the maintained component commands. Remote deployment and integration
+timings remain outstanding. These results do not establish an operational fast
+DEV loop or final private release eligibility.
 
 This master document records agreed scope and available evidence. It does not
 grant new production, billing, deletion or external-message permissions. Owners
