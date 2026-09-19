@@ -9,15 +9,11 @@
 
 ### Design
 
-Keep the original development loop intact: make a change, build and run unit
-tests on the development host, deploy the artifact over SSH to development,
-and get the relevant integration tests green there before entering CI. CI then
-produces a release, installs that release in test, and promotes the same
-artifacts to production only after they pass.
-Development, test, and production are three separate instances. Development
-accepts frequent local drafts. Test is reserved for a frozen release. Production
-does not change during either kind of testing. Development and test can run on
-demand rather than consuming memory continuously.
+Work in the two normal local repositories. Build incrementally and run unit
+tests on the development Mac, transfer the built output over SSH to DEV on the
+mini, and run integration tests there. The mini is a remote development server,
+not another release pipeline. Repeat until the tests pass and the change is
+ready, then push it to CI. Ordinary warm edits should give feedback in minutes.
 
 The short version:
 
@@ -37,41 +33,21 @@ flowchart TD
     Test -->|Pass, merge and approve| Prod
 ```
 
-The preferred release builders are standard GitHub-hosted ARM machines with
-7 GB of RAM. Public CI validates the reusable code without private inputs.
-The private builder composes the selected public and private changes and builds
-the complete runtime once. Its private patches change the runtime, so it cannot
-simply reuse an unmodified public binary. Each builder keeps its source tests
-with the source and exports an immutable bundle with matching evidence. The
-target host imports that bundle without a source checkout or build tools.
-Actual resource measurements establish support for each builder profile;
-public success alone does not establish support for the private composition.
-A development Mac can provide the builder fallback and transfer artifacts to
-the target over the existing SSH path.
+After the push, CI does the clean build, complete checks and release packaging.
+Public CI runs independently; the private builder combines the selected public
+and private changes. The resulting release is installed without rebuilding in
+a separate TEST instance. After checks, review and source integration, the same
+release can go to PROD with the required authorization. Standard hosted ARM
+builders are preferred; the development Mac is the fallback when hosted
+capacity or the no-paid-hosting limit prevents that.
 
-The development loop keeps a persistent workspace and incremental compiler
-outputs. Ordinary warm edits should return compilation and integration feedback
-in a few minutes, not repeat a full release build. A cold bootstrap or a broad
-dependency change is measured separately. Focused unit tests and the relevant
-deployed integration tests run locally, not the entire release gate after every
-edit. Use the same packaging and installation boundaries as the release path
-without rebuilding unchanged components, so local success does not hide missing
-dependencies. CI remains the independent, reproducible clean-build check of a
-change that already works, not the first place its pieces meet.
-The release test uses the real deployment
-mechanism and proves both a healthy installation and recovery from a deliberate
-failure in isolated test state. A normal production deployment does not force
-a failure. It keeps the new release when health checks pass and restores the
-previous release when required checks fail. Source integration precedes
-production activation, and production still requires separate authorization.
-
-Ordinary scripts and CI advance the workflow. Agents diagnose defects, implement
-repairs, and coordinate decisions, rather than watch logs or retry unchanged
-failures. Retention preserves useful bundles and their complete proof records
-while reclaiming owned scratch space. Local diagnostic logs remain unbounded.
-The host's existing production state and protected recovery are not a source
-of automatic free space. Hosted private jobs must respect the no-paid-hosting
-decision, using verified included capacity or the local builder fallback.
+DEV, TEST and PROD keep separate state and services. DEV needs ordinary compiler
+caches, a small deploy command and integration tests, not release receipts,
+certification or a recovery snapshot for every edit. CI tests the complete
+deployment and rollback mechanism in TEST. PROD keeps a healthy release and
+rolls back only on a real failure. Scripts run these steps without an agent
+watching them. Owned temporary files are cleaned up while useful release
+evidence, unbounded local diagnostic logs and protected recovery remain safe.
 
 ### Status
 
@@ -80,10 +56,10 @@ including the fresh build, accumulated regressions, offline installation and
 runtime scenarios. The ARM bundle is published and independent review is clear.
 The retained full local root build passes with the reviewed draft-only timeout
 option, and the private package-ordering repair is reviewed. Neither proves
-incremental performance. The current release-style run boundary cannot carry
-unpackaged outputs across a changed private identity. The owners are separating
-persistent development compilation and affected-component reuse from immutable
-release certification rather than start another full build on each edit.
+incremental performance. The owners are replacing the release-style DEV
+prerequisites with ordinary local component builds, owned-output transfer and
+remote integration testing. No new development receipt or cache framework is
+needed.
 
 The private composed release, actual DEV deployment and integration checks,
 complete physical release proof, and remaining workspace cleanup are not yet
@@ -111,6 +87,10 @@ working components already make the entire process ready.
   manual inspection, must be green in DEV before the normal CI submission.
   A high pass-through rate from CI to production is an outcome to measure,
   not a reason to suppress an independent release check.
+- The requester clarified that DEV is a remote development server for the two
+  ordinary local workspaces. Release bundle creation, `build.json`, source
+  attestation, certification and per-edit Git identity are not prerequisites
+  for normal DEV deployment. Keep that machinery on the release path.
 - Public evidence checkpoint:
   `f547621e6b6e3c24260c8530a7b9d2371ddc7c1f`, tree
   `954b2e3e9b566ac7e350f140085dc0430a7a0022`. Hosted cumulative run
@@ -148,14 +128,14 @@ working components already make the entire process ready.
   its raw build-stage outputs under the changed private identity.
 - Preserve that failed run and its genuine evidence. Do not rewrite its
   configuration, copy raw stage proofs, or relabel old output as a new attested
-  release. Investigate whether actual root source/dependency/toolchain inputs
-  changed, rather than treating a private commit or run identifier as sufficient
-  reason to recompile. A maintained DEV workspace/component cache may reuse
-  verified unchanged outputs without weakening release immutability.
-- The owners are coordinating supported upstream incremental/component commands
-  and the draft output contract before another full baseline build. No warm
-  plugin-edit or core-edit timing is proven yet. No SSH handoff or DEV
-  integration result is established by the successful full root build alone.
+  release. The private owner reports corrected comparisons show the package-only
+  repair leaves both candidate and root-build inputs unchanged. Its earlier
+  comparison omitted public patches after a probe import failed.
+- The owners are selecting existing upstream incremental/component commands
+  and runtime output directories, then wiring ordinary owned-output transfer,
+  DEV restart and integration tests. Use compiler/package-manager cache
+  semantics, not a new cross-run attestation or generic cache protocol.
+  No warm plugin-edit or core-edit timing is proven yet.
 - The selected OpenClaw source is
   `1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7` (`v2026.9.3`). The selected
   candidate Node version is `26.1.0`; upstream pnpm is `12.3.4`. Do not silently
@@ -181,13 +161,13 @@ working components already make the entire process ready.
 
 - Deliver a usable local edit/build/unit-test/SSH-deploy/integration-test loop
   for a distinct DEV target. It must accept development drafts without
-  pretending they are certified releases or requiring the full accumulated
+  release receipts, frozen run identity, certification or the full accumulated
   gate after every edit. Relevant local unit and deployed integration checks
-  must pass before the normal CI submission.
+  must pass before normal CI submission.
 - Prove that real ordinary warm edits, not just unchanged reruns, give feedback
   within minutes. Use a working budget of at most five minutes from a
-  representative small edit through compilation, focused unit tests, packaging,
-  SSH installation and relevant DEV integration checks. Record cold bootstrap
+  representative small edit through compilation, focused unit tests, output
+  transfer, DEV restart and relevant integration checks. Record cold bootstrap
   and broad dependency/SDK changes separately; they cannot justify a full root
   build on every ordinary edit. This performance budget is an acceptance
   measurement, not a new process-killing timeout.
@@ -240,7 +220,7 @@ artifacts and genuine evidence remain reusable.
 ```mermaid
 flowchart TD
     Edit["Edit on development Mac"] --> Local["Incremental build and local unit tests"]
-    Local --> Dev["SSH draft artifact to DEV on target host"]
+    Local --> Dev["SSH built output to DEV on target host"]
     Dev --> Smoke["Relevant deployed integration tests and smoke checks"]
     Smoke --> Ready{"Local unit and deployed integration checks green?"}
     Ready -->|No| Edit
@@ -268,10 +248,14 @@ flowchart TD
 - DEV is mutable and explicitly non-production-eligible. TEST evaluates frozen
   artifacts. DEV activity must not overwrite an in-flight TEST installation or
   its evidence. Neither is the production service with a different port.
-- Reuse the existing build, import, rehearsal, activation, and SSH entrypoints.
-  Add only the minimum support needed for the fast development command.
-  Do not create a second deployment engine or use manual copying into an old
-  install as the evidence that packaging works.
+- Normal DEV uses existing local compiler/component commands and a thin SSH
+  deploy-and-test command. Reuse low-level path, transfer and service helpers
+  where useful, but do not force release import, rehearsal, certification or
+  activation receipt prerequisites onto this command.
+- Sync only required built output and runtime dependencies into positively owned
+  DEV paths. Handle removed files and dependency changes without stale code,
+  refuse production targets, and restart only the DEV service. Do not snapshot
+  full state or re-create the workspace for every edit.
 - Use focused checks while editing and a defined local integration selection
   before submitting a candidate to CI. Cover the affected installation,
   configuration, migration, restart and interaction boundaries. Reuse unchanged
@@ -281,11 +265,15 @@ flowchart TD
   a change. Keep required type checking and stale-output detection, but do not
   regenerate every release asset and SDK declaration for a leaf change that
   does not require it. Do not add a general build framework.
-- Separate mutable, explicitly nonpromotable DEV compilation from frozen
-  release runs. A component cache must verify the actual source, dependencies,
-  toolchain, relevant configuration and output identity. Local metadata or a
-  new private commit alone must not force unrelated runtime compilation.
-  Clean CI builds and final source/target attestations remain independent.
+- Separate ordinary mutable DEV compilation from frozen release runs. Let the
+  maintained compiler and package manager handle incremental invalidation;
+  do not design a new proof-based cache system for local iteration. Verify
+  changed behavior in integration tests. Clean CI builds and final
+  source/target attestations remain independent.
+- Do not claim a DEV sync proves final package completeness. CI performs the
+  clean packaging/offline-install check. When packaging, dependency or migration
+  behavior changes, include the corresponding focused local checks before CI;
+  do not impose full release packaging on every ordinary source edit.
 - Keep CI's fresh checkout, pinned tools, full accumulated regressions and
   independent artifact verification. A high CI-to-production pass-through rate
   is desirable, not a guarantee or permission to bypass a failure. Hosted-only
@@ -342,7 +330,7 @@ end-to-end checklist.
 | Workstream | Owner | Dependencies | Next required outcome |
 | --- | --- | --- | --- |
 | PLAN | Coordinator | Requester decisions | Versioned full scope, diagram, owners and checklist |
-| DEV | Public build strategy and private package/SSH consumer | Maintained incremental/component output contract | Measured warm plugin/core edits and deployed integration within the working budget |
+| DEV | Public supported build commands and private SSH/test command | Existing compiler outputs and isolated DEV service | Measured warm plugin/core edits and remote integration within the working budget |
 | ARM | Public and private | Public profile proven; private composition and cost boundary remain | Complete private builder proof or explicit measured fallback |
 | FLOW | Public and private | ARM profile, receipt interfaces | Automated builder-to-artifact-consumer handoff |
 | TEST | Private | Valid synthetic seed and imported bundle | Healthy deployment and intended stopped-state rollback |
@@ -380,10 +368,10 @@ not add model calls to CI.
   live target state. Retain its genuine source-gate attestation and regression
   proof with the bundle.
 - Build a local draft and run unit tests on the development host. Deploy the
-  packaged draft to DEV over SSH and pass the relevant integration and smoke
-  checks before the normal CI submission. Demonstrate that this draft's identity
-  still cannot authorize production. Verify DEV, TEST and PROD disjointness and
-  recording-only automated side effects.
+  built output and required runtime files to DEV over SSH and pass the relevant
+  integration and smoke checks before normal CI submission. Demonstrate that
+  the DEV command refuses production targets and cannot issue release approval.
+  Verify DEV, TEST and PROD disjointness and recording-only automated effects.
 - Import the release in a separate target layout without builder source or
   development dependencies. Verify complete runtime, prepared-file, migration,
   browser, interpreter and destination bindings.
@@ -406,7 +394,7 @@ not add model calls to CI.
   inventing an unapproved pass-rate target or weakening release checks.
 - Benchmark cold bootstrap, a warm unchanged run, a real small plugin edit,
   and a real small core edit separately. Record compilation, focused tests,
-  package, transfer, install, restart and integration durations. The ordinary
+  output staging, transfer, restart and integration durations. The ordinary
   warm edit cases must meet the working five-minute end-to-end budget before
   DEV performance is accepted. A no-op hit or a longer build timeout cannot
   substitute for these cases.
@@ -478,22 +466,22 @@ record in the relevant component plan, not a status assertion alone.
 - [ ] DEV-01 (private, in progress): Provision and verify a distinct DEV target,
   separate from release TEST and PROD in every writable/process identity.
 - [ ] DEV-02 (private/public, in progress): Provide a maintained
-  incremental-build/unit-test command on the development Mac and an
-  artifact-based SSH deploy to DEV. Full root bootstrap and the package-ordering
-  repair are milestones only. Prove persistent incremental/component reuse,
-  draft bundle creation and target handoff without bypassing the lifecycle.
-- [ ] DEV-03 (private/public): Support local drafts explicitly without full
-  certification and prove they cannot authorize production activation.
+  incremental-build/unit-test command in the normal local workspaces and a
+  thin owned-output SSH deploy to DEV. Prove ordinary compiler reuse, correct
+  runtime dependency transfer and service restart without release prerequisites.
+- [ ] DEV-03 (private/public): Accept uncommitted local development normally.
+  Prove the DEV command refuses production targets and cannot issue production
+  approval; do not require a new draft receipt or attestation protocol.
 - [ ] DEV-04 (private): Pass the relevant deployed integration and smoke checks,
   with recorded interactions and no live external writes or scheduled-message
   fallback, before submitting the normal candidate to CI.
 - [ ] DEV-05 (private): Document start, stop, deploy, inspect and reset commands;
   prove on-demand resource use and that DEV does not disturb a running TEST.
-- [ ] DEV-06 (both): Exercise the actual packaging/installation boundary locally,
-  define the pre-CI unit/integration selection, and benchmark actual warm small
-  plugin and core edits against the five-minute end-to-end feedback budget.
-  Record every phase, cold/no-op cases separately, and which changed outputs
-  ran. Do not make every local edit run the full CI suite.
+- [ ] DEV-06 (both): Define the pre-CI unit/integration selection and benchmark
+  actual warm small plugin and core edits against the five-minute end-to-end
+  feedback budget. Record every phase, cold/no-op cases separately, and which
+  changed outputs ran. Run focused packaging checks when that behavior changes,
+  not full release packaging or the full CI suite after every local edit.
 
 **Hosted ARM and local fallback**
 
