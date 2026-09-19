@@ -54,9 +54,9 @@ evidence, unbounded local diagnostic logs and protected recovery remain safe.
 The complete public pipeline passes on a standard 7 GB hosted ARM runner,
 including the fresh build, accumulated regressions, offline installation and
 runtime scenarios. The ARM bundle is published and independent review is clear.
-Ordinary local builds now have measured results for real edits: about three
-and a half minutes for a plugin change and one minute forty seconds for a
-small core change, including their local tests and runtime output build.
+Ordinary local builds now have measured results for real edits: about one
+minute fifteen seconds for a plugin change and one minute forty seconds for a
+small core change, including their focused tests and runtime output build.
 The remaining DEV work is output transfer, restart and remote integration.
 Those steps are not included in the local timings. No new development receipt
 or cache framework is needed.
@@ -132,9 +132,11 @@ working components already make the entire process ready.
   repair leaves both candidate and root-build inputs unchanged. Its earlier
   comparison omitted public patches after a probe import failed.
 - The public owner reports measured real semantic edits on the persistent
-  candidate workspace. Plugin: `pnpm tsgo:extensions` 68.62 seconds, full
-  `test:extension imessage` 99.28 seconds (59 files, 1,289 tests), and
-  `build-all qaRuntime` 39.81 seconds, totaling 207.71 seconds locally.
+  candidate workspace. Plugin: `pnpm tsgo:extensions` 16.04 seconds, focused
+  iMessage normalization test 22.71 seconds, and `build-all qaRuntime` 36.41
+  seconds, totaling 75.16 seconds locally. The edit changes emitted runtime
+  behavior by normalizing a `mailto:` handle, and the focused assertion checks
+  the changed result.
   Small core edit: `pnpm tsgo:core` 39.92 seconds, focused test 24.54 seconds,
   and `qaRuntime` 36.19 seconds, totaling 100.65 seconds locally.
   These are local segments, not end-to-end DEV results.

@@ -2,7 +2,7 @@
 
 Status: Implementation in progress
 Issue: #118
-Last updated: 2026-09-14
+Last updated: 2026-09-18
 Owner: Public OpenClaw engineering owner
 
 ## Human section
@@ -86,10 +86,11 @@ install, runtime rehearsal, and all nine scenarios with measured memory and disk
 headroom. The public ARM bundle and proof chain are green on the feature branch.
 
 The maintained runtime-only profile now proves the local part of the inner loop.
-A real plugin edit completes semantic checks, its full plugin test lane, and the
-runtime build in 208 seconds. A real small core edit completes semantic checks,
-a focused unit test, and the runtime build in 101 seconds. Private work owns the
-remaining sync, restart, and integration timing. Production remains held.
+A runtime-visible plugin edit completes semantic checks, its focused test, and
+the runtime build in 76 seconds. A real small core edit completes semantic
+checks, a focused unit test, and the runtime build in 101 seconds. Private work
+owns the remaining sync, restart, and integration timing. Production remains
+held.
 
 ## Agent section
 
@@ -388,9 +389,11 @@ remaining sync, restart, and integration timing. Production remains held.
 - Candidate tests pin the incremental core and extension typecheck commands,
   the exact `qaRuntime` output closure, declaration exclusion, and the installed
   `dist/` versus source-only `dist-runtime/` boundary.
-- A real plugin edit measured 68.62 seconds for incremental extension
-  typechecking, 99.28 seconds for 59 files and 1,289 tests, and 39.81 seconds
-  for `qaRuntime`, 207.71 seconds total.
+- A runtime-visible plugin edit measured 16.04 seconds for incremental extension
+  typechecking, 22.71 seconds for its focused test file, and 36.41 seconds for
+  `qaRuntime`, 75.16 seconds total. The edit changes iMessage normalization of a
+  `mailto:` handle and the focused assertion checks the changed result. The
+  broader iMessage lane remains available when an edit needs it.
 - A real small core edit measured 39.92 seconds for incremental core
   typechecking, 24.54 seconds for its focused unit file, and 36.19 seconds for
   `qaRuntime`, 100.65 seconds total.
@@ -473,8 +476,9 @@ remaining sync, restart, and integration timing. Production remains held.
   memory, zero swap, and at least 36.5 GB free disk. The remaining development
   blocker is the separate draft build timeout on slower local hardware.
 - 2026-09-18: The ordinary persistent checkout completed a real plugin edit in
-  207.71 seconds and a real small core edit in 100.65 seconds using incremental
-  semantic checks, relevant tests, and the maintained `qaRuntime` profile.
+  75.16 seconds and a real small core edit in 100.65 seconds using incremental
+  semantic checks, focused tests, and the maintained `qaRuntime` profile. The
+  plugin edit changes emitted runtime behavior rather than only a type surface.
 
 ### Checklist
 

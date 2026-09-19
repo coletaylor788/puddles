@@ -87,10 +87,14 @@ receipts or run the declaration-heavy release build. For a bundled plugin edit:
 
 ```bash
 corepack pnpm tsgo:extensions
-corepack pnpm test:extension <plugin-id> -- --maxWorkers=1
+corepack pnpm exec vitest run <changed-plugin-test-files...> --maxWorkers=1
 corepack pnpm exec node --import ./scripts/tsx.mjs \
   scripts/build-all.mts qaRuntime
 ```
+
+Use `corepack pnpm test:extension <plugin-id> -- --maxWorkers=1` when the edit
+needs the plugin's broader test lane. Routine edits should run the focused
+changed files before DEV integration instead of repeating every plugin test.
 
 For a small core edit, replace the first two commands with:
 
