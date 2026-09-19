@@ -47,17 +47,19 @@ test pool but serializes the heaviest mapped tests. It records process-tree
 memory, pressure, swap, disk, and duration so the supported host requirement is
 based on the real run instead of an inherited memory guess.
 
-Daily development is separate from certification. A developer can run focused
-tests and an incremental build, export a draft nonproduction bundle, and send
-it through the existing transport and rehearsal path to a dedicated development
-instance. The relevant installed and integration checks must pass there before
-the change enters ordinary CI. That loop does not require the full source gate,
-certification, or a forced rollback on every edit, and none of its evidence can
-promote a release. Final hosted ARM builds remain an independent reproducibility
-check and run the complete source proof. An independent test target then
-performs the complete installed, physical, deployment, and rollback checks.
-Promotion and production remain separate and require their existing explicit
-authorization.
+Daily development is separate from certification. A developer keeps an ordinary
+source checkout with its dependency and compiler caches. A plugin or small core
+edit runs incremental semantic checks, relevant unit tests, and the maintained
+runtime-only build. Only the built runtime output is synchronized to the
+isolated development server. That server restarts and runs the relevant
+integration checks before the change enters CI.
+
+This inner loop does not make a release bundle or receipt. Dependency, SDK, and
+other broad changes leave the fast path and refresh the full development
+runtime. CI remains an independent clean build. It generates declarations,
+packages the complete dependency graph, runs the accumulated pool, and creates
+the evidence used by test and production. Production remains separately
+authorized.
 
 A development build can use a larger bounded compilation window when the local
 machine is slower than the release builder. That exception applies only to the
@@ -83,11 +85,11 @@ completes the pinned build, full accumulated regressions, package, offline
 install, runtime rehearsal, and all nine scenarios with measured memory and disk
 headroom. The public ARM bundle and proof chain are green on the feature branch.
 
-The local development build had been blocked only by the fixed 30-minute build
-window on slower development hardware. The reviewed bounded draft-only override
-lets the retained failed build resume without changing release limits.
-Development, test, and production targets remain separate. Production remains
-held.
+The maintained runtime-only profile now proves the local part of the inner loop.
+A real plugin edit completes semantic checks, its full plugin test lane, and the
+runtime build in 208 seconds. A real small core edit completes semantic checks,
+a focused unit test, and the runtime build in 101 seconds. Private work owns the
+remaining sync, restart, and integration timing. Production remains held.
 
 ## Agent section
 
@@ -163,11 +165,11 @@ held.
   concurrency for each child command.
 - Keep the complete accumulated suite. Constrain concurrency through supported
   OpenClaw and Vitest controls, not by skipping tests or adding arbitrary heaps.
-- Preserve a fast developer path: focused tests, incremental build, draft
-  nonproduction bundle, and isolated development rehearsal. Relevant installed
-  and integration checks must pass on the development target before CI
-  submission. Draft or development evidence must never satisfy certification
-  or promotion.
+- Preserve a fast developer path in an ordinary persistent checkout. Run
+  incremental semantic checks, relevant tests, and OpenClaw's `qaRuntime`
+  profile. Synchronize `dist/` to the isolated DEV server, restart, and run
+  relevant integration checks before CI submission. Do not create release
+  receipts or certification evidence per edit.
 - Let the draft-only build command raise its compilation timeout through one
   validated bound. Reject the override for release and source-gate commands.
   Keep timeout failure terminal and preserve managed child cleanup.
@@ -218,6 +220,17 @@ held.
   immutable.
 - `openclaw-test-env.mjs build` drives prepare through package and writes
   `build.json` with `eligibility: "built-not-certified"`.
+- Ordinary plugin edits run `tsgo:extensions`, `test:extension <id>`, and
+  `build-all.mts qaRuntime`. Small core edits run `tsgo:core`, selected Vitest
+  files, and the same runtime profile.
+- `qaRuntime` owns the complete mutable runtime output closure while skipping
+  declarations, UI, and release metadata. Installed DEV receives `dist/`.
+  `dist-runtime/` stays local because it is a source-checkout overlay and is not
+  part of upstream package selection.
+- Changes to package manifests, the lockfile, workspace manifest, toolchain, or
+  installed dependencies invalidate the fast path and require a frozen install
+  plus complete DEV dependency refresh. Broad SDK and declaration edits use the
+  clean build path.
 - `openclaw-test-env.mjs source-gate BUILD_JSON` runs source-dependent
   accumulated checks on the builder and writes `puddles.openclaw-source-gate/v1`
   without changing the bundle.
@@ -318,9 +331,8 @@ held.
   that need the new split.
 - [x] Add the hosted ARM resource profile, per-command process-group
   measurements, bounded public evidence, and arm64 artifact labeling.
-- [ ] Prove the existing draft build and isolated rehearsal commands as the
-  nonpromotable development loop with selected installed integration checks on
-  the dedicated development target.
+- [ ] Prove the ordinary runtime-only build and selected integration checks on
+  the dedicated development target within the five-minute warm-edit budget.
 - [x] Add a bounded draft-only build timeout override without changing the
   release timeout.
 
@@ -373,9 +385,18 @@ held.
   or installed result from that run is accepted.
 - Existing release tests prove draft builds and rehearsal targets cannot
   certify, promote, or activate production.
-- Development-loop tests must prove selected installed and integration checks
-  run before CI submission while unchanged build and package evidence can be
-  reused.
+- Candidate tests pin the incremental core and extension typecheck commands,
+  the exact `qaRuntime` output closure, declaration exclusion, and the installed
+  `dist/` versus source-only `dist-runtime/` boundary.
+- A real plugin edit measured 68.62 seconds for incremental extension
+  typechecking, 99.28 seconds for 59 files and 1,289 tests, and 39.81 seconds
+  for `qaRuntime`, 207.71 seconds total.
+- A real small core edit measured 39.92 seconds for incremental core
+  typechecking, 24.54 seconds for its focused unit file, and 36.19 seconds for
+  `qaRuntime`, 100.65 seconds total.
+- Private validation must add sync, restart, and selected integration timing to
+  each local result and keep the warm edit-to-integration loop within five
+  minutes. The five-minute value is an acceptance measurement, not a timeout.
 - Run focused TypeScript and executable-wrapper tests while iterating.
 - Final public candidate runs:
   `node packages/e2e/bin/openclaw-test-env.mjs ci`.
@@ -451,6 +472,9 @@ held.
   `f547621`, with a 3.47 GB process-tree RSS peak, at least 49 percent free
   memory, zero swap, and at least 36.5 GB free disk. The remaining development
   blocker is the separate draft build timeout on slower local hardware.
+- 2026-09-18: The ordinary persistent checkout completed a real plugin edit in
+  207.71 seconds and a real small core edit in 100.65 seconds using incremental
+  semantic checks, relevant tests, and the maintained `qaRuntime` profile.
 
 ### Checklist
 

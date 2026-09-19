@@ -196,6 +196,9 @@
       "name": "gateway-protocol-declaration-portability",
       "tests": [
         "packages/gateway-protocol/src/schema/protocol-schema-fragment-portability.test.ts"
+      ],
+      "candidateTests": [
+        "tests/candidate.development-loop.test.ts"
       ]
     }
   ]

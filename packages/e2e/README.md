@@ -80,6 +80,41 @@ E2E_DEV_BUILD_TIMEOUT_MS=3600000 \
   node packages/e2e/bin/openclaw-test-env.mjs resume build
 ```
 
+## Development loop
+
+Ordinary edits use a persistent OpenClaw checkout. They do not create release
+receipts or run the declaration-heavy release build. For a bundled plugin edit:
+
+```bash
+corepack pnpm tsgo:extensions
+corepack pnpm test:extension <plugin-id> -- --maxWorkers=1
+corepack pnpm exec node --import ./scripts/tsx.mjs \
+  scripts/build-all.mts qaRuntime
+```
+
+For a small core edit, replace the first two commands with:
+
+```bash
+corepack pnpm tsgo:core
+corepack pnpm exec vitest run <changed-test-files...> --maxWorkers=1
+```
+
+`qaRuntime` is the installed DEV build profile. It rebuilds the unified runtime,
+plugin assets, external plugin output, bootstrap import guard, postbuild output,
+and stamps. It skips release declarations, the UI build, and release metadata.
+Sync `dist/` into the isolated DEV server's owned installed-runtime root, then
+restart it and run the relevant integration tests. Do not sync `dist-runtime/`;
+that directory is only the local source-checkout overlay and is not selected by
+upstream package installation.
+
+The fast path requires unchanged `package.json`, `pnpm-lock.yaml`,
+`pnpm-workspace.yaml`, Node and pnpm versions, and installed dependency bytes.
+When one changes, rerun the normal frozen dependency install and refresh the
+complete DEV runtime dependency tree before using the runtime-only profile.
+Broad SDK, declaration, or dependency changes can take the clean build path.
+CI still performs the fresh complete build, declarations, package, accumulated
+tests, installation, and release proofs.
+
 The gate runs every workspace build, lint, and test, the isolated Gmail Python
 pool, every mapped OpenClaw patch regression, and the cross-component candidate
 tests. It then packages the built runtime with its installed production
