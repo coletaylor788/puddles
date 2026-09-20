@@ -491,7 +491,7 @@ and the full accumulated lifecycle pass for this combined candidate.
 - Run focused TypeScript and executable-wrapper tests while iterating.
 - Final public candidate runs:
   `node packages/e2e/bin/openclaw-test-env.mjs ci`.
-- Final local run at `73c673e` reused exact unchanged prepare, dependency, and
+- Final local run at `b144f1d` reused exact unchanged prepare, dependency, and
   build proofs, then passed regressions, extension and provider packaging,
   prepared files, portable package creation, offline installation, additional
   runtime installation, installed runtime checks, and all nine scenarios.
