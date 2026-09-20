@@ -537,6 +537,15 @@ describe("current production recovery backup", () => {
     expect(existsSync(referenceRoot)).toBe(false);
   });
 
+  it("refuses retirement with a domain error when no backup is published", async () => {
+    const f = fixture();
+    const captured = await captureCurrentBackup(f.target, f.factory);
+
+    expect(() => retireCurrentBackup(f.target, captured.directory)).toThrow(
+      "A verified replacement reference is required before retirement",
+    );
+  });
+
   it("retires exactly one superseded verified recovery and leaves unrelated paths", async () => {
     const f = fixture();
     const first = await captureCurrentBackup(f.target, f.factory);

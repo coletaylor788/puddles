@@ -923,7 +923,7 @@ export function retireCurrentBackup(target, requestedDirectory) {
       manifest = verifyCurrentBackup(target, source);
     }
     const referenceRoot = referencesRoot(target);
-    const references = readdirSync(referenceRoot);
+    const references = existsSync(referenceRoot) ? readdirSync(referenceRoot) : [];
     if (!references.length) throw new Error("A verified replacement reference is required before retirement");
     for (const name of references) {
       if (!name.endsWith(".json")) throw new Error("Unknown backup reference blocks retirement");
