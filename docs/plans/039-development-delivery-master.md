@@ -59,8 +59,10 @@ historical build evidence or coupling installed services to a mutable cache.
 
 The latest public behavior passes the complete local pipeline. Earlier public
 delivery also passed on a standard hosted ARM runner; that is separate evidence.
-Backup code has public local and private isolated integration proof, but no
-replacement has been captured or restored on the mini. DEV runs there, and a
+Backup code has public local and private isolated integration proof, but these
+checks missed the transition from the actual older recovery format. Existing
+owners are correcting that gap before maintenance can proceed. No replacement
+has been captured or restored on the mini. DEV runs there, and a
 representative plugin edit completed its full loop in under three minutes.
 Core-edit remote evidence and private release/TEST proof remain incomplete.
 
@@ -77,6 +79,20 @@ resumption or merge is approved.
 
 ### State
 
+- Backup acceptance is blocked on legacy recovery compatibility. The current
+  `activation-*` recovery uses `recovery.json`, its release receipt, and
+  `latest-activation.json`; new materialization/retirement only handles
+  `backup-*` with `backup.json` and otherwise records no predecessor. Existing
+  tests retire one of two new backups, not the actual legacy recovery.
+  Existing public/private owners will add the minimal receipt-compatible
+  legacy reference bridge and representative failure/interruption regressions.
+  Validate old identity under maintained locks, preserve its full closure until
+  a new backup passes same-consumer materialization, switch authority durably,
+  then retire only that exact obsolete predecessor. Include discovery readers;
+  no fabricated receipts, parallel pointer workaround or manual deletion.
+  Tooling materialization, target/capacity planning and service approval wait
+  for this corrected path. Missing pnpm offline metadata is not a prerequisite
+  for the direct-Node backup operation.
 - The coordinator verified the latest local accumulated public receipt:
   `b144f1d7c306c8247d251cbf32eeae5841ca1da8`, tree
   `3a33ab59db0f84ae2e88eaf9a2a8e9f3772bd70e`, status passed,
