@@ -101,7 +101,14 @@ export async function nativePipeline(command, repositoryGates) {
     ? resolve(process.env.E2E_ARTIFACT_POOL)
     : null;
   const retentionReference = artifactPool ? artifactPoolRunId(runDir) : null;
-  updateNativeRunStatus(runDir, { command, status: "running", pid: process.pid, startedAt: new Date().toISOString(), failure: null });
+  updateNativeRunStatus(runDir, {
+    command,
+    status: "running",
+    pid: process.pid,
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+    failure: null,
+  });
   mkdirSync(join(runDir, "logs"), { recursive: true, mode: 0o700 });
   let sequence = 0;
   let resourceSequence = 0;
@@ -594,7 +601,14 @@ export async function nativeTargetPipeline(receiptPath, targetPath, seedPath) {
     const release = acquireArtifactPoolLock(artifactPool);
     try { return action(); } finally { release(); }
   };
-  updateNativeRunStatus(runDir, { command: "target", status: "running", pid: process.pid, startedAt: new Date().toISOString(), failure: null });
+  updateNativeRunStatus(runDir, {
+    command: "target",
+    status: "running",
+    pid: process.pid,
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+    failure: null,
+  });
   mkdirSync(join(runDir, "logs"), { recursive: true, mode: 0o700 });
   let sequence = 0;
   const run = (executable, args, options = {}) => runCommand(executable, args, {
