@@ -70,9 +70,10 @@ tooling and verify a complete, smaller replacement before retiring the old one.
 The built-in state archive is not an equivalent replacement. Small unused
 Copilot artifacts are removed, and the user's targeted Docker installer cleanup
 is verified with substantial recovered headroom and healthy services. The old
-recovery remains present. Package-manager validation is blocked by unexpected
-lockfile changes; the existing public owner is repairing that path before
-migration continues. Old package stores stay until their active consumers are
+recovery remains present. The reported package-manager defect is withdrawn:
+the failed test used an invalid workspace layout and an agent-modified lockfile.
+Private migration proof is being rerun with a physical copy of the workspace.
+Old package stores stay until their active consumers are
 migrated and verified. No production
 stop/start, paid execution or release resumption is approved. The old recovery
 is intact. Private release and TEST proof remain incomplete; neither change is
@@ -82,16 +83,16 @@ merged.
 
 ### State
 
-- A private isolated reproduction reports that pnpm 12.3.4 self-management under
-  Node 26.1.0 adds a second YAML document to a pinned repository lockfile.
-  Frozen offline validation then rejects it. Context inspection may mutate
-  inputs; earlier successful evidence may precede that mutation and is under
-  review, not automatically invalid. The existing public owner will resolve
-  supported manager policy, add manifest/lock byte-stability coverage for
-  inspection, and prove frozen/offline installation against pristine owned
-  inputs. Preserve diagnostic changes and user edits. No manual YAML stripping,
-  version upgrade, primary-checkout mutation or global cleanup is authorized.
-  This is scoped to the approved toolchain/backup work, not release resumption.
+- Correction at 2026-09-20T13:33 PDT: the reported pnpm defect is withdrawn.
+  pnpm 12.3.4 legitimately uses two YAML documents; public reproduction passes.
+  The rejected three-document lock resulted from an agent manually duplicating
+  the valid `packageManagerDependencies` prefix. The original failure was an
+  invalid symlink sibling layout: cwd realpath resolution lost the `mcp-hooks`
+  workspace. Private proof is being rerun using a physical temporary copy.
+  Cancel policy workarounds justified only by the withdrawn report. Keep only
+  independently required no-mutation checks; do not strip valid lock structure
+  or expand tooling. Migration and legacy-consumer resolution remain open.
+  Existing stores stay protected and the broader release remains paused.
 - This is the coordinator-owned end-to-end scope and completion checklist for
   issue #118. Do not replace it with the latest failure, commit, or worker
   handoff. Keep both sections current when scope or status changes.
