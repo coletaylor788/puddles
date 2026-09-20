@@ -64,13 +64,13 @@ The requester has paused the release and declined hosted spending. The
 whole-mini read-only audit now covers major storage categories and explains
 physical versus logical sizes, protected data, access limits and remedies.
 The requester has approved unused Copilot state and temporary Docker installer
-cleanup on the mini, plus a smaller replacement recovery backup. Neither has
-been executed. The cleanup handoff is corrected, and the backup investigation
-found no maintained standalone full-recovery operation. That operation, its recovery proof
-and approval for a brief production stop/start are still required. The old
-backup and references remain intact; the audit measurements are not post-cleanup
-capacity. Release resumption is not approved. Detailed machine inventory remains
-private. Private release and TEST proof remain incomplete. Neither change is merged.
+cleanup on the mini, plus a smaller replacement recovery backup. Small unused
+Copilot artifacts have been removed, but the large Docker installer tree remains
+blocked by ownership permissions. Current free space is only just above the
+existing guard, not durable headroom. The full recovery is unchanged; the built-in
+state archive is not an equivalent replacement. No production stop/start or
+release resumption is approved. Detailed measurements remain private. Private
+release and TEST proof remain incomplete. Neither change is merged.
 
 ## Agent section
 
@@ -125,12 +125,20 @@ private. Private release and TEST proof remain incomplete. Neither change is mer
   Report any required production stop/start or new privilege for a specific
   requester decision before acting. If a maintained backup-only path is missing,
   identify that gap before expanding implementation scope.
-- Actual maintenance status: no mini cleanup or replacement backup has run.
-  The audit worker is following a separate user-requested development-Mac audit;
-  that request did not cancel mini cleanup. The private deployment owner now
-  owns the approved mini cleanup independently of backup readiness. Do not
-  report a delegated instruction as executed cleanup. The fresh mini
-  capacity/service probe below is read-only, not evidence of reclaim.
+- The audit worker followed a separate user-requested development-Mac audit;
+  that did not cancel mini cleanup. The private deployment owner took over
+  mini cleanup independently of backup readiness and now reports a terminal
+  partial result: one inactive nested dependency directory and 13 closed old
+  logs were removed. Session containers, active/referenced data, authentication
+  and configuration remain protected. Actual physical reclaim and current
+  capacity are recorded in the private audit report.
+- The exact Docker staging tree remains intact because its owner differs from
+  the authorized SSH user and its parent is not writable. Fresh path, lock,
+  reference and handle checks passed, but no privilege or ownership change was
+  attempted. Obtain a narrowly scoped existing owner/admin-access decision,
+  or a user-performed removal, rather than change permissions to force deletion.
+  PROD/DEV remain healthy and no service action occurred. The old full recovery
+  and references are unchanged; there is no new backup.
 - Existing native recovery creation is activation-coupled. There is no maintained
   backup-only command or standalone verifier/reference-transition/retirement
   operation for its full recovery format. The destination-recursion fix does not exclude a legacy
@@ -160,12 +168,12 @@ private. Private release and TEST proof remain incomplete. Neither change is mer
   controls with comfortable workload headroom. Passing the minimum disk guard
   alone is not sufficient. Do not add automatic deletion policies from this
   goal without settling their exact scope.
-- A fresh read-only mini probe at approximately 12:25 PDT on 2026-09-20
+- The pre-cleanup read-only mini probe at approximately 12:25 PDT on 2026-09-20
   confirms both PROD and DEV health endpoints are live and TEST is absent.
-  Free space remains below the existing guard. No cleanup or replacement has
-  occurred, so there is no reclaimed capacity to report. Exact measurements
-  remain in the private report and must not be confused with the development
-  Mac audit.
+  showed free space below the existing guard. The later approved Copilot cleanup
+  brings free space only slightly above it. Neither observation establishes
+  durable capacity. Exact measurements remain in the private report and must
+  not be confused with the development-Mac audit.
 - Plan 038, `docs/plans/038-artifact-delivery.md`, holds the public implementation
   details on PR #117. It is not present on this document's initial base branch.
   The deployment owner keeps host-specific configuration and the private
