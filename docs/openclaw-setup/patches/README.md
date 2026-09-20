@@ -391,7 +391,8 @@ old recovery afterward. Exact legacy cleanup validates the retained receipt,
 old journal, installed runtime, service definition, obsolete pointer, and the
 exact new healthy reference under compare-and-swap. A durable journal moves
 only the old activation pointer and recovery through exact tombstones. The `current` command resolves
-the authoritative new recovery through the maintained consumer. Any
+the authoritative new recovery through the maintained consumer without
+creating reference storage when none exists. Any
 interruption or uncertainty retains recoverable bytes and fails closed. This
 path does not authorize service maintenance by itself.
 

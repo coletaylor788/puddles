@@ -527,6 +527,16 @@ describe("current production recovery backup", () => {
     expect(existsSync(join(f.target.backupRoot, "backup-references", "latest-healthy-recovery.json"))).toBe(false);
   });
 
+  it("does not create reference storage when current has no published backup", () => {
+    const f = fixture();
+    const referenceRoot = join(f.target.backupRoot, "backup-references");
+
+    expect(() => currentBackupRecovery(f.target)).toThrow(
+      "Verified replacement backup is missing",
+    );
+    expect(existsSync(referenceRoot)).toBe(false);
+  });
+
   it("retires exactly one superseded verified recovery and leaves unrelated paths", async () => {
     const f = fixture();
     const first = await captureCurrentBackup(f.target, f.factory);

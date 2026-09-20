@@ -57,8 +57,16 @@ function parseJson(path, message) {
 }
 
 function referencesRoot(target) {
-  const root = join(realpathSync(target.backupRoot), "backup-references");
-  mkdirSync(root, { recursive: true, mode: 0o700 });
+  return join(realpathSync(target.backupRoot), "backup-references");
+}
+
+function ensureReferencesRoot(target) {
+  const root = referencesRoot(target);
+  if (existsSync(root)) stat(root, true);
+  else {
+    mkdirSync(root, { mode: 0o700 });
+    syncDirectory(dirname(root));
+  }
   return root;
 }
 
@@ -663,6 +671,7 @@ export async function materializeCurrentBackup(
         previousRecovery: null,
         updatedAt: new Date().toISOString(),
       };
+      ensureReferencesRoot(target);
       atomicJson(referencePath, reference);
       journal.reference = reference;
       saveJournal(join(directory, "backup-journal.json"), journal, "referenced");

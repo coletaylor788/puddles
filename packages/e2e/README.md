@@ -553,7 +553,8 @@ of the backed-up runtime. It does not start a gateway or deliver anything.
 Only after that proof passes does it compare-and-swap
 `backup-references/latest-healthy-recovery.json`. A changed reference preserves
 both recoveries and fails closed. `current` resolves and verifies the
-authoritative new recovery through that reference.
+authoritative new recovery through that reference. Read operations never create
+the reference directory; only successful publication initializes it.
 
 `retire` removes one named direct recovery only after a different current
 recovery and its materialization proof verify. Exact cleanup of an

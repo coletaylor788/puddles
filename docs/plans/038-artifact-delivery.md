@@ -354,7 +354,8 @@ activation, or merge has occurred.
   browser identity before a compare-and-swap update of
   `backup-references/latest-healthy-recovery.json`.
 - Capture and publication do not read or inherit legacy activation state.
-- `current` resolves and verifies the authoritative new backup.
+- `current` resolves and verifies the authoritative new backup without creating
+  missing reference storage.
 - `retire` accepts one direct new backup or one separately verified activation
   recovery. Legacy cleanup moves the obsolete pointer first and recovery
   second through a compare-and-swap guarded transition of the new healthy
