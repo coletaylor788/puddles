@@ -68,8 +68,8 @@ Core-edit remote evidence and private release/TEST proof remain incomplete.
 
 Backup replacement remains the next maintenance priority, before the upgrade.
 The mini's targeted installer cleanup is verified. Both machines have been
-re-audited; one superseded host test run is a bounded cleanup candidate awaiting
-approval, while necessary proof remains protected. Package-manager migration
+re-audited; one superseded host test run has explicit cleanup approval and is
+assigned to the audit owner, while necessary proof remains protected. Package-manager migration
 code is reported complete, but offline verification lacks required metadata and
 the older checkout remains unresolved. Keep old stores and recovery until their
 replacements are verified. No production stop/start, paid execution, release
@@ -137,8 +137,9 @@ resumption or merge is approved.
   The original APFS and `df` readings agreed on free space just below the guard;
   verified cleanup measurements below supersede that capacity baseline.
   Temporary Docker installer staging was removed and verified. The latest
-  ownership checks identify one superseded host test run for later approved
-  worktree-aware removal, retaining compact diagnostics. The final proof and
+  ownership checks identify one superseded host test run, explicitly approved
+  for worktree-aware removal by the audit owner after fresh checks, retaining
+  compact diagnostics. Execution and physical reclaim are not yet confirmed. The final proof and
   its source, failed reproduction, shared store and DEV reproduction stay.
   No inspected public run tree has active processes; repeated source/install
   copies retain isolated evidence, not currently overlapping jobs. New large
