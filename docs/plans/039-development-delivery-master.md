@@ -1,6 +1,6 @@
 # Plan 039 - OpenClaw development and delivery
 
-**Status:** Release paused after whole-mini disk audit
+**Status:** Release paused; approved cleanup and recovery maintenance
 **Issue:** [#118](https://github.com/coletaylor788/puddles/issues/118)
 **Last updated:** 2026-09-20
 **Owner:** Delivery coordinator
@@ -63,12 +63,13 @@ so the affected checks must be refreshed for the latest private version.
 The requester has paused the release and declined hosted spending. The
 whole-mini read-only audit now covers major storage categories and explains
 physical versus logical sizes, protected data, access limits and remedies.
-Temporary installer staging is the strongest immediate cleanup candidate;
-package stores and workload placement are longer-term considerations. Detailed
-machine inventory remains in the private audit report. Nothing was removed or
-changed, and no remedy or release resumption is approved. Build evidence is
-preserved; private release and TEST proof remain incomplete. Neither change is
-merged. DEV and production run.
+The requester has approved unused Copilot state and temporary Docker installer
+cleanup on the mini, plus a smaller replacement recovery backup. The old
+recovery contains historical backups that are no longer in live state. Its
+replacement must be created separately and verified before the old recovery is
+retired. Production downtime and release resumption are not approved. Detailed
+machine inventory remains private. Build evidence is preserved; private release
+and TEST proof remain incomplete. Neither change is merged.
 
 ## Agent section
 
@@ -90,8 +91,8 @@ merged. DEV and production run.
   distinguish physical/logical capacity and explain unaccounted differences.
   Report inaccessible categories rather than claim complete measurement.
   Explain cleanup/retention, relocation/build placement and added-capacity
-  options with impact, risks and approval needs. No personal-content reads,
-  privilege changes, deletion, relocation or other remedy are approved.
+  options with impact, risks and approval needs. The audit itself authorizes
+  no personal-content reads, privilege changes, deletion or relocation.
   Private paths and detailed inventory remain in local evidence.
 - The audit and bounded supplement are complete as of 2026-09-20. The
   session-local report `mini-disk-audit-2026-09-20.md` contains exact capacity,
@@ -99,8 +100,30 @@ merged. DEV and production run.
   APFS and `df` agree on free space, which is just below the existing guard.
   Temporary Docker installer staging is the strongest immediate candidate,
   not production or recovery state. Allocated sizes are not guaranteed unique
-  reclaim because APFS can share extents. No cleanup or new run is authorized;
-  wait for the requester's decision rather than act on recommendations.
+  reclaim because APFS can share extents. Audit recommendations alone do not
+  authorize cleanup or a new run; subsequent narrow approvals are recorded below.
+- The requester now authorizes two mini cleanup targets: unused Copilot state
+  and the exact temporary Homebrew Docker installer staging tree identified by
+  the audit. The disk-audit owner must refresh canonical paths, ownership,
+  process/lock and live-reference checks, then measure actual APFS reclaim.
+  Preserve active/referenced state, production authentication/configuration,
+  credentials, recovery and release evidence. Do not recursively remove the
+  Copilot root, session-state root or session containers. No global cache prune,
+  installed-application removal, new privilege or service action is authorized.
+- The requester separately asks for a new smaller recovery backup to replace
+  the oversized one. The private deployment owner owns this narrow maintenance,
+  not a release. Verify the actual maintained backup-only mechanism and the
+  nested-backup correction instead of assuming pending code is installed.
+  Coordinate capacity and locks with the cleanup owner. Capture the current
+  healthy production runtime and its required state, databases, service,
+  browser and interpreter assets in a separate destination outside source state.
+  Keep the old sealed recovery intact until supported consistency and isolated,
+  non-delivering recovery checks prove the replacement usable. Then use the
+  supported reference/journal transition and retire only the exact unreferenced
+  old recovery. No hash rewriting, live restore or upgrade is authorized.
+  Report any required production stop/start or new privilege for a specific
+  requester decision before acting. If a maintained backup-only path is missing,
+  identify that gap before expanding implementation scope.
 - Plan 038, `docs/plans/038-artifact-delivery.md`, holds the public implementation
   details on PR #117. It is not present on this document's initial base branch.
   The deployment owner keeps host-specific configuration and the private
@@ -542,6 +565,11 @@ they remain needed by that recovery.
 The current release is paused by the requester. The mini audit is read-only.
 Do not resume release execution or apply a disk remedy from audit results alone;
 return the findings for the requester's decision.
+
+Subsequent permission covers only the named mini cleanup and replacement
+recovery maintenance recorded in State. Retain the old recovery until the
+replacement is verified and references are safely transitioned. This permission
+does not restart the release or authorize production downtime.
 
 Finish focused repairs with retained evidence, validate the selected ARM builder
 profile, prove the separate DEV loop and release TEST path, then integrate the
