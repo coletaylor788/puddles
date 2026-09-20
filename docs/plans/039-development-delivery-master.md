@@ -68,17 +68,35 @@ Core-edit remote evidence and private release/TEST proof remain incomplete.
 
 Backup replacement remains the next maintenance priority, before the upgrade.
 The mini's targeted installer cleanup is verified. Both machines have been
-re-audited; one superseded host test run has explicit cleanup approval and is
-assigned to the audit owner, while necessary proof remains protected. Package-manager migration
-code is reported complete, but offline verification lacks required metadata and
-the older checkout remains unresolved. Keep old stores and recovery until their
-replacements are verified. No production stop/start, paid execution, release
-resumption or merge is approved.
+re-audited; the approved superseded host test run is removed, with compact
+diagnostics and necessary proof preserved. The requester now directs actual
+package-manager consolidation across builds on both machines, safe replacement
+and retirement of the old mini recovery, then a full confirmation audit.
+Migration code is reported complete, but offline verification and older
+consumers remain unresolved. Keep old stores and recovery until replacement
+proof permits retirement. No production stop/start, paid execution, release
+resumption or broad upgrade merge is approved.
 
 ## Agent section
 
 ### State
 
+- The requester's completion scope is operational pnpm consolidation across
+  active OpenClaw/Puddles builds on host and mini, safe replacement/retirement
+  of the exact old mini recovery, then a full read-only confirmation audit of
+  both machines. Existing owners handle implementation and rollout; the audit
+  owner performs the final audit only after both milestones. Normal supported
+  dependency warming, frozen/offline installs and build-tool configuration
+  alignment are authorized. Verify actual executables, versions, stores and
+  installed-module metadata across DEV/plugin/release paths. Preserve pinned
+  historical proof and report unresolved legacy consumers, without bypassing
+  pins or editing primary checkouts. If narrow source integration is necessary,
+  identify the exact supported path rather than merging the paused upgrade.
+  After corrected backup code passes review/proof, necessary exact tooling and
+  owner-only target materialization on the mini plus read-only capacity/identity
+  planning are in scope. A specific production stop/start decision remains
+  pending. No old recovery retirement before verified new recovery and durable
+  authority transition; no unrelated cleanup or paid execution.
 - Backup acceptance is blocked on legacy recovery compatibility. The current
   `activation-*` recovery uses `recovery.json`, its release receipt, and
   `latest-activation.json`; new materialization/retirement only handles
@@ -137,9 +155,11 @@ resumption or merge is approved.
   The original APFS and `df` readings agreed on free space just below the guard;
   verified cleanup measurements below supersede that capacity baseline.
   Temporary Docker installer staging was removed and verified. The latest
-  ownership checks identify one superseded host test run, explicitly approved
-  for worktree-aware removal by the audit owner after fresh checks, retaining
-  compact diagnostics. Execution and physical reclaim are not yet confirmed. The final proof and
+  ownership checks identified one superseded host test run. Its approved
+  worktree-aware removal is complete, with compact diagnostics byte-verified,
+  other registrations and final evidence unchanged, and physical gain measured
+  across the immediate cleanup interval. A separate large pre-deletion free-space
+  change is not attributed to cleanup. Exact measurements remain private. The final proof and
   its source, failed reproduction, shared store and DEV reproduction stay.
   No inspected public run tree has active processes; repeated source/install
   copies retain isolated evidence, not currently overlapping jobs. New large
