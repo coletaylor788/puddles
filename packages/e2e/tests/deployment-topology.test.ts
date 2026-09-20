@@ -67,6 +67,44 @@ describe("runtime clone and atomic swap", () => {
       expect(existsSync(destination)).toBe(false);
     }
   });
+
+  it("excludes only direct legacy backup storage and rejects retained links into it", () => {
+    const directory = root();
+    const source = join(directory, "source");
+    mkdirSync(join(source, "deploy-snapshots"), { recursive: true });
+    mkdirSync(join(source, "nested"), { recursive: true });
+    writeFileSync(join(source, "deploy-snapshots", "old"), "legacy");
+    writeFileSync(join(source, "nested", "state"), "kept");
+    const destination = join(directory, "destination");
+    const cloned = spawnSync(
+      "python3",
+      [cloneHelper, "--exclude-direct-child=deploy-snapshots", source, destination],
+      { encoding: "utf8" },
+    );
+    expect(cloned.status, cloned.stderr).toBe(0);
+    expect(existsSync(join(destination, "deploy-snapshots"))).toBe(false);
+    expect(readFileSync(join(destination, "nested", "state"), "utf8")).toBe("kept");
+
+    const linkedDestination = join(directory, "linked-destination");
+    symlinkSync("../deploy-snapshots/old", join(source, "nested", "legacy-link"));
+    const linked = spawnSync(
+      "python3",
+      [cloneHelper, "--exclude-direct-child=deploy-snapshots", source, linkedDestination],
+      { encoding: "utf8" },
+    );
+    expect(linked.status).not.toBe(0);
+    expect(linked.stderr).toContain("runtime link targets an excluded direct child");
+    expect(existsSync(linkedDestination)).toBe(true);
+    rmSync(linkedDestination, { recursive: true, force: true });
+
+    const unsupported = spawnSync(
+      "python3",
+      [cloneHelper, "--exclude-direct-child=sessions", source, linkedDestination],
+      { encoding: "utf8" },
+    );
+    expect(unsupported.status).not.toBe(0);
+    expect(unsupported.stderr).toContain("unsupported direct-child exclusion");
+  });
 });
 
 function fixture(failures: string[] = []) {

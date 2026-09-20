@@ -478,6 +478,60 @@ is logged. Required checks default to required and fail on unavailable
 prerequisites, malformed output, nonzero exit, or timeout. No selected checks
 is an error. Public default CI does not run this host gate.
 
+## Back up the current production recovery
+
+`openclaw-backup.mjs` snapshots the current healthy production installation
+without a candidate receipt, source build, package install, or activation:
+
+```bash
+node packages/e2e/bin/openclaw-backup.mjs plan /absolute/backup-target.json
+node packages/e2e/bin/openclaw-backup.mjs capture /absolute/backup-target.json
+node packages/e2e/bin/openclaw-backup.mjs verify \
+  /absolute/backup-target.json /absolute/backups/backup-EXAMPLE
+node packages/e2e/bin/openclaw-backup.mjs materialize \
+  /absolute/backup-target.json /absolute/backups/backup-EXAMPLE \
+  /absolute/test-owned/restore-check
+node packages/e2e/bin/openclaw-backup.mjs retire \
+  /absolute/backup-target.json /absolute/backups/backup-OLD
+```
+
+The target is the normal full production deployment target with `backupNode`
+containing exact path, optional canonical `realPath`, SHA256, version, platform,
+and architecture. It also requires the single explicit exclusion
+`backupExclusions: [{ "path": "deploy-snapshots", "reason":
+"legacy-backup-storage" }]`. This is a direct child of `stateDir`, not a glob.
+The clone helper rejects other exclusions and retained links into that tree.
+The manifest records the exclusion, and verification requires the restored
+state to omit it.
+
+`plan` walks the exact included runtime, state, and service inputs. It reports
+allocated and logical bytes, entry counts, filesystem free bytes, and a
+conservative peak requirement of twice the included allocated bytes for the
+snapshot plus simultaneous isolated materialization. Capture refuses
+insufficient capacity before taking a lock or stopping the service.
+
+`capture` holds the deployment target lock and uses the same stop/join and
+clonefile operations as activation. It snapshots the installed runtime with
+dependencies, complete state, service definition, exact external interpreter,
+and current browser image identity. State capture is bounded by a seven-minute
+outage budget. Failure immediately attempts to restart the unchanged service;
+restart failure remains explicit and has no promised deadline. Capture writes
+no healthy reference.
+
+`materialize` is the required recovery consumer. It requires a fresh isolated
+destination and checks cloned bytes, configuration JSON, SQLite databases,
+service data, the retained interpreter, browser image, and an actual invocation
+of the backed-up runtime. It does not start a gateway or deliver anything.
+Only after that proof passes does it compare-and-swap
+`backup-references/latest-healthy-recovery.json`. A changed reference preserves
+both recoveries and fails closed.
+
+`retire` removes one named direct backup only after a different current
+recovery and its materialization proof verify. Referenced backups, unknown
+entries, escaped paths, and ambiguous references block deletion. A durable
+move-then-remove journal resumes an interrupted exact retirement. There is no
+age-based or broad backup pruning.
+
 ## Delivery
 
 The approved Markdown design and its issue are the human checkpoint. An

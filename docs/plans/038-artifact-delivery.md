@@ -2,7 +2,7 @@
 
 Status: Implementation in progress
 Issue: #118
-Last updated: 2026-09-19
+Last updated: 2026-09-20
 Owner: Public OpenClaw engineering owner
 
 ## Human section
@@ -78,6 +78,23 @@ target proof retention. Cleanup runs before capacity checks and after terminal
 results. Unknown or malformed state blocks deletion. Production recovery state
 and unregistered legacy directories are never adopted automatically.
 
+Current production recovery is separate from release creation. A backup-only
+operation captures the running installation without accepting a candidate
+receipt or installing new code. It validates the production target and exact
+interpreter and browser identities, stops and joins the gateway's state writers,
+clones the complete installed runtime and state, and restarts the unchanged
+service. The one legacy backup-storage child is omitted explicitly so an old
+recursive snapshot cannot make its replacement grow without bound. No general
+exclusion mechanism can omit user or runtime data.
+
+Capture alone cannot replace the healthy recovery pointer. The same recovery
+consumer first materializes the snapshot into fresh isolated paths, checks the
+runtime, configuration, databases, service definition, interpreter, browser,
+and recorded digests without delivery, then advances the pointer atomically.
+Only one superseded, unreferenced recovery can be retired. Any interruption,
+identity drift, unknown file, failed restart, or ambiguous ownership preserves
+the old recovery.
+
 ### Status
 
 The public hosted ARM profile is proven on the standard 7 GB runner. It
@@ -94,6 +111,11 @@ bootstrap API now calls the package-list selector bundled with the exact npm
 toolchain. It preserves npm's selection semantics without building a dry-run
 tarball. Release packaging keeps its synchronous 60-second `npm pack` proof
 path. Production remains held.
+
+The current-production backup path is implemented against synthetic targets and
+is in focused validation. No production access, capture, service action, release
+resumption, or retirement has occurred. Private work owns target assembly,
+capacity readiness, and any later approved maintenance.
 
 ## Agent section
 
@@ -309,6 +331,29 @@ path. Production remains held.
 - Pool cleanup writes an interruption journal, revalidates exact direct child
   roots and ownership immediately before moving them to pool-owned trash, and
   resumes only from that journal.
+- `packages/e2e/bin/openclaw-backup.mjs` exposes `plan`, `capture`, `verify`,
+  `materialize`, and `retire`. It accepts the full production target plus
+  `backupNode` and the one exact state-root-relative exclusion
+  `{ "path": "deploy-snapshots", "reason": "legacy-backup-storage" }`.
+- `packages/e2e/src/native-backup.mjs` reuses `validateTarget`,
+  `systemOperations`, the target lock, service stop/join, clonefile, digest,
+  Node, browser, and health primitives. Its narrow schemas do not contain or
+  rebind a candidate artifact or receipt.
+- `plan` applies the same exclusion walk and reports free bytes plus a
+  conservative peak requirement equal to twice the included allocated bytes,
+  covering capture and simultaneous isolated materialization. It does not use
+  the release pipeline's 25 GiB guard.
+- `capture` writes an unreferenced recovery. The outage budget is seven minutes
+  at most. A timeout or clone failure immediately attempts unchanged restart;
+  restart failure remains explicit and is not described as bounded.
+- `materialize` requires a fresh root outside install, state, service, and
+  backup paths. It runs the backed-up runtime with the exact retained
+  interpreter, parses config and service data, checks SQLite, and verifies the
+  browser identity before a compare-and-swap update of
+  `backup-references/latest-healthy-recovery.json`.
+- `retire` accepts one direct backup child. It requires another current,
+  materialized recovery, refuses every referenced or unknown path, and uses a
+  resumable move-then-remove journal. It never scans or prunes by age.
 
 ### Implementation
 
@@ -339,6 +384,8 @@ path. Production remains held.
   the dedicated development target within the five-minute warm-edit budget.
 - [x] Add a bounded draft-only build timeout override without changing the
   release timeout.
+- [ ] Finish focused and accumulated validation for backup-only current
+  production recovery.
 
 ### Validation
 
@@ -407,6 +454,10 @@ path. Production remains held.
 - Private validation must add sync, restart, and selected integration timing to
   each local result and keep the warm edit-to-integration loop within five
   minutes. The five-minute value is an acceptance measurement, not a timeout.
+- Backup tests prove exact capacity planning and exclusion, disjoint roots,
+  writer stop/join ordering, timeout restart, interrupted capture resume,
+  manifest and identity tamper rejection, actual isolated consumer checks,
+  reference compare-and-swap, exact retirement, and no broad deletion.
 - Run focused TypeScript and executable-wrapper tests while iterating.
 - Final public candidate runs:
   `node packages/e2e/bin/openclaw-test-env.mjs ci`.
@@ -445,6 +496,11 @@ path. Production remains held.
   certification, deployment proof, recovery journal, or old candidate.
 - Production rollback keeps the plan 037 recovery contract and consumes the
   exact retained release assets.
+- Backup-only maintenance remains independent of release promotion. Do not run
+  capture, service stop, materialization against production paths, pointer
+  transition, or retirement until the private owner has composed the reviewed
+  target and the coordinator has the one precise live maintenance approval.
+  On any failure, leave the existing healthy reference and recovery untouched.
 
 ### Review log
 
@@ -501,6 +557,11 @@ path. Production remains held.
 - 2026-09-19: Hosted cumulative run `35482638315` passed on the reviewed
   selector repair at `c188fcc`, including the complete public lifecycle, ARM
   bundle export and retention, and resource evidence retention.
+- 2026-09-20: The user requested a bounded replacement for recursive production
+  recovery storage while the release remains paused. The public design reuses
+  the native activation helpers but has a narrow receipt-free backup record
+  because activation journals are bound to candidate artifacts. Private
+  composition accepts the `plan|capture|verify|materialize|retire` contract.
 
 ### Checklist
 
@@ -527,4 +588,6 @@ path. Production remains held.
 - [x] Run the branch-only hosted ARM trial and inspect its resource evidence.
 - [x] Resume the retained reviewer on the complete ARM profile diff.
 - [x] Review and publish the bounded draft-only timeout repair.
+- [ ] Complete retained review and the accumulated public gate for the
+  backup-only maintenance path.
 - [ ] Hold merge and production activation for coordinator authorization.

@@ -349,6 +349,42 @@ Interrupted rollback can resume through either explicit rollback or ordinary
 recovery, without archives or caller edits to the journal. Preserved failed
 state is not overwritten on replay. A newer transaction blocks stale recovery.
 
+### Replace current recovery without activating a release
+
+Use `packages/e2e/bin/openclaw-backup.mjs` when the current healthy production
+recovery must be rotated independently of a release. Its `plan`, `capture`,
+`verify`, `materialize`, and `retire` operations use the same target validation,
+lock, service stop/join, clonefile, identity, health, and failure behavior as
+activation. They do not accept a candidate receipt or install or activate
+runtime bytes.
+
+The production target adds exact `backupNode` identity and only this exclusion:
+
+```json
+{
+  "backupExclusions": [
+    {
+      "path": "deploy-snapshots",
+      "reason": "legacy-backup-storage"
+    }
+  ]
+}
+```
+
+The path is one real direct child of `stateDir`. It removes recursive legacy
+backup storage while retaining all runtime and user data. Other names, nested
+paths, globs, symlinks, and retained links into the excluded directory fail.
+The manifest records this choice and verification requires the materialized
+state to omit it.
+
+Capture restarts the unchanged service before it returns and leaves the healthy
+pointer untouched. Materialize into a fresh test-owned destination to exercise
+the backed-up runtime, config, SQLite, service, interpreter, and browser checks
+without gateway startup or delivery. That successful consumer proof atomically
+advances the separate `latest-healthy-recovery` reference. Retire only the exact
+old unreferenced recovery afterward. Any interruption or uncertainty retains
+the old recovery. This path does not authorize service maintenance by itself.
+
 Production checks are read-only. Never validate by sending a message or running
 a cron that can deliver one. Do not use the built-in updater for this patched
 runtime; it bypasses the cumulative gate, installed rehearsal, and recovery.

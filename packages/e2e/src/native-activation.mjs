@@ -36,7 +36,7 @@ function validateNodeMigration(target) {
   if (!(major === 24 && minor >= 16 || major === 26 && minor >= 1 || major > 26)) throw new Error("Unsupported desired Node runtime");
 }
 
-function verifyNodeFile(identity) {
+export function verifyNodeFile(identity) {
   const canonical = identity.realPath ?? identity.path;
   if (!lstatSync(identity.path, { throwIfNoEntry: false })?.isFile() ||
       !lstatSync(canonical, { throwIfNoEntry: false })?.isFile() || realpathSync(canonical) !== canonical) {
@@ -251,7 +251,7 @@ shutil.copymode(source, destination)
     },
     async stop(runtime) {
       const helper = resolve(patchDir, "../../../packages/e2e/bin/openclaw-service-stop.mjs");
-      const interpreter = target.nodeMigration?.desired.path ?? process.execPath;
+      const interpreter = target.nodeMigration?.desired.path ?? target.backupNode?.path ?? process.execPath;
       let owner = "null";
       if (await loaded()) {
         const details = await run("launchctl", ["print", service], { capture: true });
@@ -270,7 +270,14 @@ shutil.copymode(source, destination)
       throw new Error("Gateway shutdown did not complete");
     },
     async start() { await run("launchctl", ["bootstrap", `gui/${process.getuid()}`, target.plistPath]); },
-    async clone(from, to) { await run("python3", [join(patchDir, "clone-runtime-tree.py"), from, to], { timeoutMs: 5 * 60_000 }); },
+    async clone(from, to, timeoutMs = 5 * 60_000, excludedDirectChild) {
+      await run("python3", [
+        join(patchDir, "clone-runtime-tree.py"),
+        ...(excludedDirectChild ? [`--exclude-direct-child=${excludedDirectChild}`] : []),
+        from,
+        to,
+      ], { timeoutMs });
+    },
     async swap(from, to) { await run("python3", [join(patchDir, "swap-runtime-trees.py"), from, to]); },
     async doctor() {
       await cli(["doctor", "--fix", "--yes"]);
