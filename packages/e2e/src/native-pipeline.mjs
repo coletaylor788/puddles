@@ -7,6 +7,11 @@ import {
   treeDigest, updateNativeRunStatus,
 } from "./native-state.mjs";
 import { fixtureEnv, isolatedContext, runScenario } from "./native-fixture.mjs";
+import {
+  inspectPnpmContext,
+  PNPM_STORE_ENV,
+  requireSharedPnpmStore,
+} from "./pnpm-toolchain.mjs";
 import { additionalArtifacts, extensionPhase, loadExtension, preparedFiles } from "./native-extension.mjs";
 import { installRuntime, packProviderRuntime, packRuntime } from "./native-package.mjs";
 import { runCommand } from "./process-runner.mjs";
@@ -186,7 +191,8 @@ export async function nativePipeline(command, repositoryGates) {
       const changes = (await git(repoRoot, ["status", "--porcelain", "--untracked-files=all"])).trim();
       if (changes) throw new Error("Commit the final candidate before the cumulative release gate");
     }
-    const manager = (await run("corepack", ["pnpm", "--version"], { capture: true })).trim();
+    const repositoryPnpm = await inspectPnpmContext(repoRoot, run);
+    const manager = repositoryPnpm.version;
     const npm = (await run("npm", ["--version"], { capture: true })).trim();
     await run("tar", ["--version"], { capture: true });
     if (command === "ci") {
@@ -259,10 +265,14 @@ export async function nativePipeline(command, repositoryGates) {
     const buildEnv = {
       PATH: `${dirname(process.execPath)}:${process.env.PATH}`, HOME: process.env.HOME,
       TMPDIR: process.env.TMPDIR, COREPACK_HOME: process.env.COREPACK_HOME,
+      [PNPM_STORE_ENV]: repositoryPnpm.configuredStoreDir,
       CI: "true", ...resourceProfile.buildEnvironment,
     };
     const buildEnvironment = jsonDigest(buildEnv);
-    tools.sourceManager = (await run("corepack", ["pnpm", "--version"], { cwd: candidate, capture: true, env: buildEnv })).trim();
+    const sourcePnpm = await inspectPnpmContext(candidate, run, buildEnv);
+    requireSharedPnpmStore(repositoryPnpm, sourcePnpm);
+    tools.sourceManager = sourcePnpm.version;
+    tools.pnpmStore = sourcePnpm.storeDir;
     const dependencies = jsonDigest({
       lock: fileDigest(join(candidate, "pnpm-lock.yaml")), workspace: fileDigest(join(candidate, "pnpm-workspace.yaml")),
       manifest: fileDigest(join(candidate, "package.json")), tools, buildEnvironment,

@@ -39,8 +39,27 @@ SQLite text and are rejected before native work begins. Node 26 no longer
 bundles Corepack, so install Corepack 0.36.0 explicitly before running the gate.
 Use a fresh `COREPACK_HOME` when upgrading from an older Corepack cache that
 records the retired pnpm CommonJS entrypoint. Upstream uses pnpm 12.3.4.
-Puddles and
-OpenClaw each use their own committed package-manager version through Corepack.
+Puddles uses the same exact pnpm 12.3.4 pin.
+
+Set `PNPM_CONFIG_STORE_DIR` to one stable absolute host-local directory before
+installing either repository or running the managed lifecycle. pnpm owns the
+versioned content-addressed child beneath that root. Do not rename an older
+store version or point installed runtime files at it. Local development,
+self-hosted runs, and every composed source checkout on one machine use the
+same value. Each hosted runner uses its own runner-local value.
+
+```bash
+export PNPM_CONFIG_STORE_DIR="$HOME/.puddles/pnpm-store"
+corepack pnpm install --frozen-lockfile
+node packages/e2e/bin/verify-pnpm-toolchain.mjs /path/to/openclaw
+```
+
+The verifier requires pnpm 12.3.4 in both working directories and requires
+`pnpm store path` to resolve to the same child beneath the configured root.
+The native pipeline repeats that check before dependency installation and binds
+the resolved store path into its build inputs. The store is only an install and
+build cache. Portable runtime archives still contain their complete dependency
+graph and never link to mutable store content.
 Preflight checks the source pin, toolchain, and host capacity before costly
 work. CI uses public source only and never needs live account credentials.
 

@@ -51,6 +51,10 @@ vi.mock("../src/process-runner.mjs", () => ({
       else if (args[0] === "rev-parse") return "a".repeat(40);
       return "";
     }
+    if (command === "corepack" && args[1] === "--version") return "12.3.4";
+    if (command === "corepack" && args[1] === "store") {
+      return join(options.env!.PNPM_CONFIG_STORE_DIR, "v11");
+    }
     if (command === "corepack" && args[1] === "install") {
       counters.install++;
       mkdirSync(join(cwd, "node_modules"), { recursive: true });
@@ -209,6 +213,7 @@ it("keeps release builds at 30 minutes and validates the bounded draft override"
 });
 function root() { const path = mkdtempSync(join(tmpdir(), "native-pipeline-test-")); roots.push(path); return path; }
 beforeEach(() => {
+  vi.stubEnv("PNPM_CONFIG_STORE_DIR", join(tmpdir(), "puddles-native-pnpm-store"));
   Object.assign(counters, { prepare: 0, install: 0, build: 0, package: 0, additionalInstalls: 0, runtimeCommands: 0, dependency: "first", generatedCaches: false });
   registrations.clear();
 });

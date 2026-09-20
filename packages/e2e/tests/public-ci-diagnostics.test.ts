@@ -116,6 +116,7 @@ it("initializes and persists the public run path at step runtime, not job contex
     E2E_LOCAL_EXTENSION: "",
     E2E_RESOURCE_MEASURE: "1",
     E2E_RESOURCE_PROFILE: "hosted-arm",
+    PNPM_CONFIG_STORE_DIR: "${{ runner.tool_cache }}/puddles-pnpm-store",
   });
   const steps = workflow.getIn(["jobs", "cumulative", "steps"]);
   if (!isSeq(steps)) throw new Error("Missing cumulative job steps");
@@ -137,6 +138,7 @@ it("initializes and persists the public run path at step runtime, not job contex
 it("wires failure-only upload to sanitized projections, never the raw run directory", () => {
   const workflow = readFileSync(resolve(import.meta.dirname, "../../../.github/workflows/integration.yml"), "utf8");
   expect(workflow).toContain('E2E_LOCAL_EXTENSION: ""');
+  expect(workflow).toContain('test "$(corepack pnpm --version)" = "12.3.4"');
   expect(workflow).toContain('export E2E_RUN_DIR="$RUNNER_TEMP/puddles-public-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"');
   expect(workflow).toContain("node packages/e2e/bin/public-ci-diagnostics.mjs init");
   expect(workflow).toContain("node packages/e2e/bin/openclaw-test-env.mjs ci");

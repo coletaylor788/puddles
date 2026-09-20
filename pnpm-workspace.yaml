@@ -2,7 +2,24 @@ packages:
   - "packages/*"
   - "openclaw-plugins/*"
 
-# Native modules with build scripts that need to be allowed to run.
-# pnpm 10+ blocks postinstall scripts by default for security.
-onlyBuiltDependencies:
-  - esbuild
+# Preserve the existing policy: only esbuild may run an install script.
+# pnpm 12 requires every discovered build to be classified explicitly.
+allowBuilds:
+  "@google/genai": false
+  esbuild: true
+  keytar: false
+  koffi: false
+  openclaw: false
+  protobufjs: false
+  tree-sitter-bash: false
+
+overrides:
+  "uuid@<14.0.0": ">=14.0.0"
+  "protobufjs@<7.5.6": ">=7.5.6"
+  "@protobufjs/utf8@<1.1.1": ">=1.1.1"
+  "hono@<4.12.18": ">=4.12.18"
+  "fast-uri@<3.1.2": ">=3.1.2"
+  "fast-xml-builder@<1.1.7": ">=1.1.7"
+  "basic-ftp@<5.3.1": ">=5.3.1"
+  "ip-address@<10.1.1": ">=10.1.1"
+  "@anthropic-ai/sdk@<0.91.1": ">=0.91.1"

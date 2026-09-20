@@ -2,7 +2,7 @@
 
 Status: Final stopped migration correction in progress; activation held
 Issue: #114
-Last updated: 2026-09-13
+Last updated: 2026-09-20
 
 ## Human section
 
@@ -44,6 +44,9 @@ the agent's own dream notes without expanding the search corpus.
 
 The release requires a newer Node runtime because older builds can truncate
 SQLite text. Development and public CI use an explicitly supported version.
+Puddles and the selected OpenClaw source use the same exact package-manager
+version and one host-local content store. The store remains a build cache; the
+portable runtime still carries its complete dependency graph.
 Plugin consumers compile against the new release rather than an older SDK.
 The existing native pipeline builds isolated source, runs the accumulated
 tests, packages dependencies, and rehearses the installed runtime with
@@ -140,6 +143,10 @@ tests, the managed installed-runtime patch gate, exact cumulative gate, and
 retained complete-diff review pass. Private must repeat the exact combined
 deployment rehearsal. Production remains untouched.
 
+The package-manager pin is now being unified with the selected source. Its
+fresh and offline frozen install compatibility is proven locally. The final
+focused, accumulated, and retained-review gates remain open.
+
 ## Agent section
 
 ### State
@@ -149,7 +156,9 @@ deployment rehearsal. Production remains untouched.
   `1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7`.
 - Selected Node: `26.1.0`. Upstream engine:
   `>=24.16.0 <25 || >=26.1.0`.
-- Upstream package manager: `pnpm@12.3.4`. Puddles keeps its own manager.
+- Unified package manager: exact `pnpm@12.3.4`. Managed Puddles and selected
+  OpenClaw commands share one absolute host-local `PNPM_CONFIG_STORE_DIR`.
+  Installed release archives remain independent of that mutable cache.
 - Implementation authorized. No design pause. No production deployment.
 - Parent confirmation is required before merging follow-up public source.
 - Replacement public engineering owner starts from clean `947f8867a19e1ebb6d1b54765693d7c5b420fc2b`.

@@ -21,6 +21,7 @@ jobs:
       E2E_LOCAL_EXTENSION: ""
       E2E_RESOURCE_MEASURE: "1"
       E2E_RESOURCE_PROFILE: hosted-arm
+      PNPM_CONFIG_STORE_DIR: ${{ runner.tool_cache }}/puddles-pnpm-store
     steps:
       - name: Check out Puddles
         uses: actions/checkout@v4
@@ -43,7 +44,11 @@ jobs:
           python-version: "3.11"
 
       - name: Enable package managers
-        run: npm install --global corepack@0.36.0 && corepack enable
+        run: |
+          npm install --global corepack@0.36.0
+          corepack enable
+          test "$(corepack pnpm --version)" = "12.3.4"
+          corepack pnpm store path --silent
 
       - name: Install Puddles dependencies
         run: pnpm install --frozen-lockfile

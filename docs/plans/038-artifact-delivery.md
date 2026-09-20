@@ -66,6 +66,12 @@ machine is slower than the release builder. That exception applies only to the
 draft artifact step. Final CI keeps the normal release limit, so local
 convenience cannot weaken production evidence.
 
+Public, private, and selected upstream builds use one exact package-manager
+version. Every active workflow on one machine also resolves one host-local
+content store. This removes duplicate dependency stores without making the
+store part of a release. Installed and transported runtimes remain complete and
+cannot depend on mutable cache links.
+
 An owner-managed artifact pool keeps disk use bounded without guessing which
 directories are safe to delete. Producers register exact assets, ownership,
 dependencies, and lifecycle references. Cleanup keeps two successful bundles
@@ -116,6 +122,11 @@ The current-production backup path is implemented against synthetic targets and
 is in focused validation. No production access, capture, service action, release
 resumption, or retirement has occurred. Private work owns target assembly,
 capacity readiness, and any later approved maintenance.
+
+The common package-manager pin is migrated to the selected source version. A
+fresh install and a frozen offline reinstall pass against one explicit local
+store. Focused pipeline and workspace tests pass. Retained review and the final
+accumulated gate are still pending for this combined candidate.
 
 ## Agent section
 
@@ -354,6 +365,17 @@ capacity readiness, and any later approved maintenance.
 - `retire` accepts one direct backup child. It requires another current,
   materialized recovery, refuses every referenced or unknown path, and uses a
   resumable move-then-remove journal. It never scans or prunes by age.
+- `packages/e2e/src/pnpm-toolchain.mjs` owns the exact pnpm `12.3.4` identity
+  and `PNPM_CONFIG_STORE_DIR` contract. The configured value must be an
+  absolute host-local root. Both Puddles and staged OpenClaw must resolve the
+  same `pnpm store path` beneath it.
+- The root package manager field uses the same integrity-bound pin as selected
+  OpenClaw. pnpm 12 settings move the existing overrides and build-script
+  policy to `pnpm-workspace.yaml`. The policy still permits only esbuild's
+  install script.
+- Hosted public CI selects one runner-local store. Native pipeline receipts bind
+  the resolved store path as a build input. Offline runtime installation stays
+  store-independent.
 
 ### Implementation
 
@@ -384,8 +406,8 @@ capacity readiness, and any later approved maintenance.
   the dedicated development target within the five-minute warm-edit budget.
 - [x] Add a bounded draft-only build timeout override without changing the
   release timeout.
-- [ ] Finish focused and accumulated validation for backup-only current
-  production recovery.
+- [x] Implement and focus-test backup-only current production recovery.
+- [x] Migrate and focus-test the unified pnpm pin and host-local store.
 
 ### Validation
 
@@ -458,6 +480,10 @@ capacity readiness, and any later approved maintenance.
   writer stop/join ordering, timeout restart, interrupted capture resume,
   manifest and identity tamper rejection, actual isolated consumer checks,
   reference compare-and-swap, exact retirement, and no broad deletion.
+- Toolchain tests reject missing or relative store roots, wrong pnpm versions,
+  escaped resolved stores, and different Puddles/OpenClaw stores.
+- pnpm 12.3.4 completed a fresh install and then
+  `install --offline --frozen-lockfile` against one explicit test-owned store.
 - Run focused TypeScript and executable-wrapper tests while iterating.
 - Final public candidate runs:
   `node packages/e2e/bin/openclaw-test-env.mjs ci`.
@@ -562,6 +588,11 @@ capacity readiness, and any later approved maintenance.
   the native activation helpers but has a narrow receipt-free backup record
   because activation journals are bound to candidate artifacts. Private
   composition accepts the `plan|capture|verify|materialize|retire` contract.
+- 2026-09-20: The user required active Puddles, private, and selected OpenClaw
+  workflows to share pnpm 12.3.4 and one content-addressed store per machine.
+  The migration keeps portable archives independent and classifies the existing
+  primary OpenClaw checkout on pnpm 11.2.2 as a legacy consumer, not a managed
+  release input.
 
 ### Checklist
 
@@ -590,4 +621,6 @@ capacity readiness, and any later approved maintenance.
 - [x] Review and publish the bounded draft-only timeout repair.
 - [ ] Complete retained review and the accumulated public gate for the
   backup-only maintenance path.
+- [ ] Complete compatibility, retained review, and accumulated gates for pnpm
+  12.3.4 and the shared host-local store.
 - [ ] Hold merge and production activation for coordinator authorization.
