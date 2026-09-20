@@ -2,7 +2,7 @@
 
 **Status:** Implementation in progress
 **Issue:** [#118](https://github.com/coletaylor788/puddles/issues/118)
-**Last updated:** 2026-09-18
+**Last updated:** 2026-09-19
 **Owner:** Delivery coordinator
 
 ## Human section
@@ -54,18 +54,20 @@ evidence, unbounded local diagnostic logs and protected recovery remain safe.
 The complete public pipeline passes on a standard 7 GB hosted ARM runner,
 including the fresh build, accumulated regressions, offline installation and
 runtime scenarios. The ARM bundle is published and independent review is clear.
-Ordinary local builds now have measured results for real edits: about one
+Ordinary local builds now have measured results for runtime edits: about one
 minute fifteen seconds for a plugin change and one minute forty seconds for a
-small core change, including their focused tests and runtime output build.
-The remaining DEV work is output transfer, restart and remote integration.
-Those steps are not included in the local timings. No new development receipt
-or cache framework is needed.
+small core change, including focused local tests and the runtime output build.
+Initial package-file selection now takes about 14 to 17 seconds after removing
+unnecessary archive creation from the DEV path. That repair is reviewed.
+Actual DEV startup and remote integration are still outstanding.
 
 The private composed release, actual DEV deployment and integration checks,
 complete physical release proof, and remaining workspace cleanup are not yet
-confirmed complete. Neither delivery change is merged. Production remains
-unchanged. The checklist below is the completion contract, not a claim that
-working components already make the entire process ready.
+confirmed complete. Release testing needs a fresh normal build with corrected
+migration test data, rather than new tooling to recover an obsolete DEV run.
+File selection belongs to initial setup, not the normal built-output sync loop.
+Transfer, restart and remote integration are not included in the local timings.
+Neither delivery change is merged. Production remains unchanged.
 
 ## Agent section
 
@@ -131,15 +133,23 @@ working components already make the entire process ready.
   release. The private owner reports corrected comparisons show the package-only
   repair leaves both candidate and root-build inputs unchanged. Its earlier
   comparison omitted public patches after a probe import failed.
-- The public owner reports measured real semantic edits on the persistent
-  candidate workspace. Plugin: `pnpm tsgo:extensions` 16.04 seconds, focused
-  iMessage normalization test 22.71 seconds, and `build-all qaRuntime` 36.41
-  seconds, totaling 75.16 seconds locally. The edit changes emitted runtime
-  behavior by normalizing a `mailto:` handle, and the focused assertion checks
-  the changed result.
+- The public owner reports a runtime-changing plugin edit on the persistent
+  candidate workspace: recognize `mailto:` in
+  `extensions/imessage/src/normalize.ts` and recursively normalize its remainder.
+  The assertion is
+  `expect(normalizeIMessageMessagingTarget("mailto:User@Example.com")).toBe("user@example.com")`.
+  Extension typechecking takes 16.04 seconds, focused `normalize.test.ts`
+  passes 8/8 in 22.71 seconds, and `qaRuntime` takes 36.41 seconds.
+  The local total is 75.16 seconds. The private owner has this assertion for
+  remote DEV verification.
   Small core edit: `pnpm tsgo:core` 39.92 seconds, focused test 24.54 seconds,
   and `qaRuntime` 36.19 seconds, totaling 100.65 seconds locally.
   These are local segments, not end-to-end DEV results.
+- The earlier 207.71-second plugin example added only an optional field in
+  `monitor/types.ts`. TypeScript erases it, so it does not prove changed emitted
+  runtime bytes. It measured typechecking, all 1,289 extension tests and runtime
+  building. The corrected example uses focused tests; these totals are not an
+  apples-to-apples speed comparison.
 - The maintained `qaRuntime` profile builds runtime output, plugin assets,
   external plugin local output, postbuild files and stamps without release
   declarations. Sync `dist/` for installed DEV, not source-checkout-only
@@ -147,15 +157,50 @@ working components already make the entire process ready.
   remaining sync, restart and remote integration timings. Dependency, manifest,
   lockfile or toolchain changes require bootstrap/dependency refresh rather
   than this unchanged-dependency fast path.
+- The cold DEV inventory bottleneck was tar creation performed by
+  `npm pack --dry-run` after file selection, not a need for a larger timeout.
+  Public repair `c188fccdf5796e469be86e8b55b011adbe784675`, tree
+  `bc7b511efbcbf10ddb55ca35c2494a59072c8c77`, uses npm's exact bundled
+  packlist/Arborist selector for DEV. Actual candidate selection takes
+  13.9 to 16.6 seconds for 10,063 files. Synthetic npm parity and byte-identical
+  bundled-dependency runtime evidence pass; retained full-diff review is clear.
+  The release path is unchanged. Private has the API and can resume actual
+  bootstrap; the complete remote loop is not yet proven.
+- The private DEV implementation has retained review clearance at `9830b25`.
+  Its contract suite reports 68 passing tests and two intentional skips.
+  An independent 80 MiB, two-batch transport check with symlink and digest
+  verification passes and its test roots are cleaned. That is not bootstrap
+  proof. Resume actual DEV installation with the inventory repair, then restore
+  the runtime-changing benchmark and prove its assertion remotely.
 - The selected OpenClaw source is
   `1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7` (`v2026.9.3`). The selected
   candidate Node version is `26.1.0`; upstream pnpm is `12.3.4`. Do not silently
   change the release or toolchain while changing the delivery topology.
-- The latest completed private physical diagnosis recorded here passes
-  retained-bundle import, offline install, and all 11 installed scenarios.
-  Its physical preflight reports
-  `Migration job is missing or its reviewed revision changed`.
-  `expectedCAS=false` and failure before shutdown are not rollback evidence.
+- Earlier private diagnosis passes retained-bundle import, offline install and
+  all 11 installed scenarios, but fails migration preflight before shutdown.
+  The corrected migration fixture now has a different manifest digest.
+  Artifact-only run `35476744042` on private `9830b25` and public `e6c9a25`
+  rejects that mismatch before import or shutdown. Neither retained successful
+  build binds the corrected manifest; neither failure proves rollback.
+- Stop artifact-only retries against those immutable receipts. The private
+  owner is adding a migration-first diagnostic regression. The public owner
+  confirms ordinary `ci` in the same maintained `E2E_RUN_DIR`, with
+  `E2E_STATE_MIGRATION_MANIFEST` pointing to the corrected file, is the supported
+  recovery path. Migration is excluded from `buildStageInputs`: matching actual
+  build inputs reuse the successful root stage while migration-bound
+  regressions, runtime proofs and receipts regenerate. A committed regression
+  verifies the root build count remains one after a manifest-byte change.
+- The only plausible surviving reuse candidate is a superseded DEV builder
+  bound to old configuration and source heads. The current private release
+  workflow has no maintained route from that producer to current TEST.
+  Coordinator decision: use a fresh normal release build under existing
+  resource and no-paid-hosting gates, rather than add a legacy-run adapter
+  solely to avoid this build. Preserve the old run and evidence. This does not
+  make ordinary DEV edits run release builds.
+- Retained bundle import cannot adopt builder stages or issue a receipt for
+  corrected migration bytes; it restores the old immutable identity and has
+  no migration body to recover. Never rewrite sealed hashes, copy stages into
+  another run, repurpose old configuration or infer missing manifest contents.
 - The missing source-gate retention defect is repaired in the public checkpoint.
   The older retained regression record alone cannot recreate its missing source
   attestation because the attestation also binds inventory and extension gate
