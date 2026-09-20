@@ -70,9 +70,10 @@ tooling and verify a complete, smaller replacement before retiring the old one.
 The built-in state archive is not an equivalent replacement. Small unused
 Copilot artifacts are removed, and the user's targeted Docker installer cleanup
 is verified with substantial recovered headroom and healthy services. The old
-recovery remains present. Host session cleanup and package-manager unification
-are separate work. Old package stores
-stay until their active consumers are migrated and verified. No production
+recovery remains present. Package-manager validation is blocked by unexpected
+lockfile changes; the existing public owner is repairing that path before
+migration continues. Old package stores stay until their active consumers are
+migrated and verified. No production
 stop/start, paid execution or release resumption is approved. The old recovery
 is intact. Private release and TEST proof remain incomplete; neither change is
 merged.
@@ -81,6 +82,16 @@ merged.
 
 ### State
 
+- A private isolated reproduction reports that pnpm 12.3.4 self-management under
+  Node 26.1.0 adds a second YAML document to a pinned repository lockfile.
+  Frozen offline validation then rejects it. Context inspection may mutate
+  inputs; earlier successful evidence may precede that mutation and is under
+  review, not automatically invalid. The existing public owner will resolve
+  supported manager policy, add manifest/lock byte-stability coverage for
+  inspection, and prove frozen/offline installation against pristine owned
+  inputs. Preserve diagnostic changes and user edits. No manual YAML stripping,
+  version upgrade, primary-checkout mutation or global cleanup is authorized.
+  This is scoped to the approved toolchain/backup work, not release resumption.
 - This is the coordinator-owned end-to-end scope and completion checklist for
   issue #118. Do not replace it with the latest failure, commit, or worker
   handoff. Keep both sections current when scope or status changes.
