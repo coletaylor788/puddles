@@ -19,11 +19,17 @@ export async function loadExtension(path) {
   }
   const commands = extension.commands ?? [];
   const healthChecks = extension.healthChecks ?? [];
+  const declaredInputs = extension.inputs ?? [];
+  const declaredInputSet = new Set(declaredInputs);
   const names = new Set();
   for (const command of [...commands, ...healthChecks]) {
     if (!/^[a-z0-9-]+$/.test(command.id) || names.has(command.id) ||
         typeof command.command !== "string" || !Array.isArray(command.args) ||
         command.args.some((arg) => typeof arg !== "string") ||
+        command.inputs !== undefined &&
+          (!Array.isArray(command.inputs) ||
+            command.inputs.some((input) => typeof input !== "string" ||
+              !declaredInputSet.has(input))) ||
         !Number.isSafeInteger(command.timeoutMs) || command.timeoutMs <= 0 || command.timeoutMs > 30 * 60_000) {
       throw new Error("Invalid bounded local command");
     }
@@ -46,9 +52,16 @@ export async function loadExtension(path) {
       ids.add(record.id);
     }
   }
-  const inputs = (extension.inputs ?? []).map(fileDigest);
+  const inputDigests = new Map(declaredInputs.map((input) => [input, fileDigest(input)]));
   const phaseHashes = Object.fromEntries(["prepare", "gate", "package", "installed"].map((phase) => [
-    phase, jsonDigest({ commands: commands.filter((command) => command.phase === phase), inputs }),
+    phase, jsonDigest({
+      commands: commands.filter((command) => command.phase === phase),
+      inputs: [...new Set(commands
+        .filter((command) => command.phase === phase)
+        .flatMap((command) => command.inputs ?? declaredInputs))]
+        .sort()
+        .map((input) => [input, inputDigests.get(input)]),
+    }),
   ]));
   return {
     ...extension, commands, healthChecks, artifacts, preparedFiles: prepared,

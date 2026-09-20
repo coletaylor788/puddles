@@ -402,6 +402,51 @@ describe("recording fixture prerequisites", () => {
     expect(first.phaseHashes.prepare).toBe(second.phaseHashes.prepare);
     expect(first.phaseHashes.prepare).toBe(installed.phaseHashes.prepare);
   });
+
+  it("binds declared local inputs only to the command phases that consume them", async () => {
+    const directory = root();
+    const prepareInput = join(directory, "prepare-input");
+    const gateInput = join(directory, "gate-input");
+    writeFileSync(prepareInput, "prepare one");
+    writeFileSync(gateInput, "gate one");
+    const module = join(directory, "extension.mjs");
+    writeFileSync(module, `export default ${JSON.stringify({
+      schemaVersion: 1,
+      inputs: [prepareInput, gateInput],
+      commands: [
+        { id: "prepare", phase: "prepare", command: "node", args: ["--version"],
+          inputs: [prepareInput], timeoutMs: 1000 },
+        { id: "gate", phase: "gate", command: "node", args: ["--version"],
+          inputs: [gateInput], timeoutMs: 1000 },
+      ],
+    })};`);
+    const first = await loadExtension(module);
+    writeFileSync(gateInput, "gate two");
+    const gateChanged = await loadExtension(module);
+    expect(gateChanged.phaseHashes.gate).not.toBe(first.phaseHashes.gate);
+    expect(gateChanged.phaseHashes.prepare).toBe(first.phaseHashes.prepare);
+
+    writeFileSync(prepareInput, "prepare two");
+    const prepareChanged = await loadExtension(module);
+    expect(prepareChanged.phaseHashes.prepare).not.toBe(first.phaseHashes.prepare);
+    expect(prepareChanged.phaseHashes.installed).toBe(first.phaseHashes.installed);
+  });
+
+  it("rejects phase input paths not declared by the extension", async () => {
+    const directory = root();
+    const input = join(directory, "input");
+    writeFileSync(input, "declared");
+    const module = join(directory, "extension.mjs");
+    writeFileSync(module, `export default ${JSON.stringify({
+      schemaVersion: 1,
+      inputs: [],
+      commands: [{
+        id: "gate", phase: "gate", command: "node", args: ["--version"],
+        inputs: [input], timeoutMs: 1000,
+      }],
+    })};`);
+    await expect(loadExtension(module)).rejects.toThrow("Invalid bounded local command");
+  });
 });
 
 describe("bounded commands", () => {

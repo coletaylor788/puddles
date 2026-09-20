@@ -72,6 +72,14 @@ content store. This removes duplicate dependency stores without making the
 store part of a release. Installed and transported runtimes remain complete and
 cannot depend on mutable cache links.
 
+Local extension commands may associate declared inputs with the phase that
+consumes them. Older declarations still treat every input as global. A
+gate-only helper change reruns the gate without discarding unchanged
+preparation, dependency, build, package, install, or runtime proofs. Source,
+lockfile, and toolchain changes still invalidate their dependent stages. The
+build receipt binds preparation and package composition; gate-only provenance
+remains in the source-gate receipt.
+
 An owner-managed artifact pool keeps disk use bounded without guessing which
 directories are safe to delete. Producers register exact assets, ownership,
 dependencies, and lifecycle references. Cleanup keeps two successful bundles
@@ -116,8 +124,10 @@ The backup path captures and publishes a complete new-format recovery without
 requiring or inheriting an older activation receipt. Exact old activation
 cleanup remains a separate guarded operation after publication. Focused review
 and the final accumulated lifecycle remain pending for this simplified
-boundary. No production capture, service action, retirement, paid job, release
-activation, or merge has occurred.
+boundary. Phase-owned private extension inputs are under focused validation so
+gate-only corrections can reuse unchanged build evidence. No production
+capture, service action, retirement, paid job, release activation, or merge has
+occurred.
 
 ## Agent section
 
@@ -638,6 +648,7 @@ activation, or merge has occurred.
 - [x] Review and publish the bounded draft-only timeout repair.
 - [ ] Complete retained review and the accumulated public gate for the final
   receipt-free backup capture and separate exact cleanup path.
+- [ ] Complete FLOW-06 phase-owned input review and affected-only reuse proof.
 - [x] Complete compatibility, retained review, and accumulated gates for pnpm
   12.3.4 and the shared host-local store.
 - [ ] Hold merge and production activation for coordinator authorization.

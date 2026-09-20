@@ -218,6 +218,14 @@ export async function nativePipeline(command, repositoryGates) {
       );
     }
     const extension = await loadExtension(process.env.E2E_LOCAL_EXTENSION);
+    const compositionExtensionSha256 = extension.hash === "none"
+      ? "none"
+      : jsonDigest({
+          prepare: extension.phaseHashes.prepare,
+          package: extension.phaseHashes.package,
+          artifacts: extension.artifacts,
+          preparedFiles: extension.preparedFiles,
+        });
     const migrationPath = process.env.E2E_STATE_MIGRATION_MANIFEST;
     const stateMigration = migrationPath ? { sha256: fileDigest(migrationPath) } : null;
     if (migrationPath) readMigrationManifest(migrationPath, stateMigration.sha256);
@@ -409,9 +417,9 @@ export async function nativePipeline(command, repositoryGates) {
         sha256: candidateInputs,
         buildInputsSha256: buildInputs,
         patchesSha256: jsonDigest(patches),
-        extensionSha256: extension.hash,
+        extensionSha256: compositionExtensionSha256,
       },
-      composition: { extensionSha256: extension.hash },
+      composition: { extensionSha256: compositionExtensionSha256 },
       artifact,
       additionalArtifacts: extras,
       preparedFiles: preparedFileRecords,
@@ -468,7 +476,7 @@ export async function nativePipeline(command, repositoryGates) {
     const runtimeScenarios = [...scenarios, ...extension.scenarios];
     const result = await stage(runDir, "runtime", {
       artifact, additionalArtifacts: extras, preparedFiles: preparedFileRecords,
-      tools, harness, extension: extension.hash, extensionOutputs,
+      tools, harness, extensionOutputs,
       installedCommands: extension.phaseHashes.installed,
       scenarios: jsonDigest(runtimeScenarios), environment: jsonDigest(fixtureEnv(context)),
       stateMigration,

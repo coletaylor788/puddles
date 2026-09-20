@@ -420,7 +420,10 @@ or fetches that module.
 
 `inputs` lists absolute files whose bytes key extension evidence. Each command
 declares `id`, `phase` (`prepare`, `gate`, `package`, or `installed`), `command`, `args`,
-optional selected `env`, and a positive `timeoutMs` no greater than 30 minutes.
+optional selected `env`, optional `inputs`, and a positive `timeoutMs` no
+greater than 30 minutes. Command inputs must also appear in the extension's
+top-level input list. They key only that command's phase. A command that omits
+`inputs` conservatively uses every top-level input for backward compatibility.
 Prepare runs before build and all regressions. Gate runs after the public
 accumulated regressions. Package runs after build and before sealing in both
 `ci` and focused `native` runs. Use it to prepare auxiliary artifacts, never
@@ -442,6 +445,11 @@ the existing dependencies and build are retained. Use the supplied `sourceDir`;
 its temporary preparation path is not a stable output location. Declare all
 helper inputs that can affect commands. Global inputs conservatively apply to
 every phase.
+
+The build receipt binds the preparation and package phase identities, artifact
+declarations, and prepared-file declarations. Gate-only inputs remain in the
+source-gate proof and do not create a new build identity for unchanged runtime
+bytes.
 
 `artifacts` contains `{ id, manifest }` entries. `manifest` is relative to the
 isolated root and names the JSON identity returned by `packRuntime`. Both the

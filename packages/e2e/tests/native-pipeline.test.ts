@@ -86,7 +86,13 @@ vi.mock("../src/process-runner.mjs", () => ({
       counters.prepare++;
       // Transactional preparation must never run over an already-patched tree.
       expect(existsSync(join(cwd, "prepared"))).toBe(false);
-      writeFileSync(join(cwd, "prepared"), "same prepared source");
+      writeFileSync(
+        join(cwd, "prepared"),
+        args[0] && existsSync(args[0]) ? readFileSync(args[0]) : "same prepared source",
+      );
+      if (args[1] && existsSync(args[1])) {
+        writeFileSync(join(cwd, "pnpm-lock.yaml"), readFileSync(args[1]));
+      }
       const context = JSON.parse(readFileSync(options.env!.E2E_CONTEXT_PATH, "utf8"));
       writeFileSync(join(context.workspace, "prepared-output"), "same prepared output");
     } else if (command === "fixture-installed") {
@@ -569,6 +575,88 @@ it("keeps source/build for later phase edits and safely reconstructs transaction
   extension(directory, "three", "installed", [helper]);
   await nativePipeline("native", async () => {});
   expect(counters).toMatchObject({ prepare: 3, install: 1, build: 1, package: 1 });
+});
+
+it("reuses gate-independent stages and invalidates changed source, lock, and toolchain inputs", async () => {
+  const { directory, run } = setup();
+  const prepareInput = join(directory, "prepare-input");
+  const lockInput = join(directory, "lock-input");
+  const gateInput = join(directory, "gate-input");
+  writeFileSync(prepareInput, "patched source one");
+  writeFileSync(lockInput, "lock one");
+  writeFileSync(gateInput, "gate one");
+  const module = join(directory, "phase-inputs.mjs");
+  writeFileSync(module, `export default ${JSON.stringify({
+    schemaVersion: 1,
+    inputs: [prepareInput, lockInput, gateInput],
+    commands: [
+      { id: "prepare", phase: "prepare", command: "fixture-prepare",
+        args: [prepareInput, lockInput], inputs: [prepareInput, lockInput],
+        timeoutMs: 1000, outputs: ["workspace/prepared-output"] },
+      { id: "gate", phase: "gate", command: "fixture-later", args: ["gate"],
+        inputs: [gateInput], timeoutMs: 1000 },
+      { id: "installed", phase: "installed", command: "fixture-installed", args: [],
+        inputs: [], timeoutMs: 1000 },
+    ],
+  })};`);
+  vi.stubEnv("E2E_LOCAL_EXTENSION", module);
+  vi.stubEnv("GMAIL_MCP_PYTHON", "fixture-python");
+  await nativePipeline("ci", async () => {});
+  const buildReceiptBefore = readFileSync(join(run, "build.json"), "utf8");
+  const unaffected = [
+    "prepare", "dependencies", "build", "extension-package", "prepared-files",
+    "provider-package", "package", "install", "runtime",
+  ];
+  const before = Object.fromEntries(unaffected.map((name) => [
+    name,
+    readFileSync(join(run, "stages", `${name}.json`), "utf8"),
+  ]));
+  const regressionBefore = readFileSync(join(run, "stages/regressions.json"), "utf8");
+
+  writeFileSync(gateInput, "gate two");
+  await nativePipeline("ci", async () => {});
+
+  expect(Object.fromEntries(unaffected.map((name) => [
+    name,
+    readFileSync(join(run, "stages", `${name}.json`), "utf8"),
+  ]))).toEqual(before);
+  expect(readFileSync(join(run, "stages/regressions.json"), "utf8"))
+    .not.toBe(regressionBefore);
+  expect(readFileSync(join(run, "build.json"), "utf8")).toBe(buildReceiptBefore);
+  expect(counters).toMatchObject({
+    prepare: 1,
+    install: 1,
+    build: 1,
+    package: 1,
+    runtimeCommands: 1,
+  });
+
+  writeFileSync(prepareInput, "patched source two");
+  await nativePipeline("ci", async () => {});
+  expect(counters).toMatchObject({
+    prepare: 2,
+    install: 2,
+    build: 2,
+    package: 2,
+  });
+
+  writeFileSync(lockInput, "lock two");
+  await nativePipeline("ci", async () => {});
+  expect(counters).toMatchObject({
+    prepare: 3,
+    install: 3,
+    build: 3,
+    package: 3,
+  });
+
+  vi.stubEnv("PNPM_CONFIG_STORE_DIR", join(directory, "different-store"));
+  await nativePipeline("ci", async () => {});
+  expect(counters).toMatchObject({
+    prepare: 3,
+    install: 4,
+    build: 4,
+    package: 4,
+  });
 });
 
 it("cannot reuse an empty-output prepare proof when source is missing or changed", async () => {
