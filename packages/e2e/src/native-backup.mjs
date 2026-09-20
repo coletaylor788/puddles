@@ -812,6 +812,7 @@ function retireLegacyActivation(target, backupRoot, source, journalPath) {
   }
   const save = (status) => {
     journal.status = status;
+    journal.updatedAt = new Date().toISOString();
     atomicJson(journalPath, journal);
   };
   const requireReference = (expected) => {
@@ -821,6 +822,14 @@ function retireLegacyActivation(target, backupRoot, source, journalPath) {
   };
   if (journal.status === "planned") {
     requireReference(journal.referenceBeforeSha256);
+    if (!existsSync(activationReference) && existsSync(activationReferenceTrash)) {
+      if (fileDigest(activationReferenceTrash) !==
+          journal.legacyRecovery.latestActivationSha256) {
+        throw new Error("Legacy activation reference changed during retirement");
+      }
+      renameSync(activationReferenceTrash, activationReference);
+      syncDirectory(backupRoot);
+    }
     const legacyRecovery = verifyCurrentActivationRecovery(
       target,
       source,
@@ -839,6 +848,11 @@ function retireLegacyActivation(target, backupRoot, source, journalPath) {
   }
   if (journal.status === "pointer-moved") {
     requireReference(journal.referenceBeforeSha256);
+    if (!existsSync(source) && existsSync(trash)) {
+      verifyActivationRecoveryContents(trash, journal.legacyRecovery);
+      renameSync(trash, source);
+      syncDirectory(backupRoot);
+    }
     if (existsSync(activationReference) ||
         fileDigest(activationReferenceTrash) !==
           journal.legacyRecovery.latestActivationSha256 ||

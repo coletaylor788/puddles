@@ -711,6 +711,49 @@ describe("current production recovery backup", () => {
       expect(existsSync(captured.directory)).toBe(true);
   });
 
+  it.each([
+      {
+        name: "pointer rename before its journal write",
+        status: "planned",
+        moveRecovery: false,
+      },
+      {
+        name: "recovery rename before its journal write",
+        status: "pointer-moved",
+        moveRecovery: true,
+      },
+  ])("repairs $name", async ({ status, moveRecovery }) => {
+      const f = fixture();
+      const legacy = legacyRecovery(f);
+      const captured = await captureCurrentBackup(f.target, f.factory);
+      const result = await materializeCurrentBackup(
+        f.target,
+        captured.directory,
+        join(root(), `legacy-prejournal-${status}`),
+        f.factory,
+      );
+      const state = legacyRetirementState(f, legacy, result.reference);
+      renameSync(state.activationReference, state.activationReferenceTrash);
+      if (moveRecovery) renameSync(state.source, state.trash);
+      state.journal.status = status;
+      writeFileSync(
+        join(f.target.backupRoot, `retire-${legacy.journal.transaction}.json`),
+        JSON.stringify(state.journal),
+      );
+
+      expect(retireCurrentBackup(f.target, legacy.directory)).toEqual({
+        transaction: legacy.journal.transaction,
+        retired: true,
+      });
+      expect(existsSync(state.source)).toBe(false);
+      expect(existsSync(state.trash)).toBe(false);
+      expect(existsSync(state.activationReference)).toBe(false);
+      expect(existsSync(state.activationReferenceTrash)).toBe(false);
+      expect(currentBackupRecovery(f.target).directory).toBe(
+        realpathSync(captured.directory),
+      );
+  });
+
   it("refuses a changed healthy reference during interrupted legacy retirement", async () => {
       const f = fixture();
       const legacy = legacyRecovery(f);
