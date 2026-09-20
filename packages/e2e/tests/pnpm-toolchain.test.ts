@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 // @ts-expect-error Native toolchain helpers are also executable without TypeScript.
@@ -51,13 +51,46 @@ describe("unified pnpm toolchain", () => {
       expect(calls).toHaveLength(2);
       expect(calls.every((call) =>
         call.args[0] === `pnpm@${PNPM_VERSION}` &&
-        call.cwd !== directory &&
+        call.cwd === tmpdir() &&
         call.env[PNPM_STORE_ENV] === configured &&
         call.env !== process.env)).toBe(true);
       expect(readFileSync(join(directory, "package.json"))).toEqual(manifestBefore);
       expect(readFileSync(join(directory, "pnpm-lock.yaml"))).toEqual(lockBefore);
     } finally {
       rmSync(directory, { recursive: true });
+    }
+  });
+
+  it("leaves project manifests and locks unchanged through the real process runner", async () => {
+    const directory = project();
+    const bin = mkdtempSync(join(tmpdir(), "pnpm-toolchain-bin-"));
+    const record = join(directory, "corepack-cwds");
+    const executable = join(bin, "corepack");
+    writeFileSync(executable, `#!/usr/bin/env node
+const fs = require("node:fs");
+fs.appendFileSync(process.env.PNPM_TEST_CWDS, process.cwd() + "\\n");
+process.stdout.write(process.argv[3] === "--version" ? "${PNPM_VERSION}\\n" : process.env.PNPM_TEST_STORE + "\\n");
+`);
+    chmodSync(executable, 0o755);
+    try {
+      const manifestBefore = readFileSync(join(directory, "package.json"));
+      const lockBefore = readFileSync(join(directory, "pnpm-lock.yaml"));
+      await inspectPnpmContext(directory, undefined, {
+        ...process.env,
+        [PNPM_STORE_ENV]: configured,
+        PATH: `${bin}:${process.env.PATH ?? ""}`,
+        PNPM_TEST_CWDS: record,
+        PNPM_TEST_STORE: resolved,
+      });
+      expect(readFileSync(record, "utf8").trim().split("\n")).toEqual([
+        realpathSync(tmpdir()),
+        realpathSync(tmpdir()),
+      ]);
+      expect(readFileSync(join(directory, "package.json"))).toEqual(manifestBefore);
+      expect(readFileSync(join(directory, "pnpm-lock.yaml"))).toEqual(lockBefore);
+    } finally {
+      rmSync(directory, { recursive: true });
+      rmSync(bin, { recursive: true });
     }
   });
 
