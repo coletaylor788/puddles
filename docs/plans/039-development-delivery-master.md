@@ -64,9 +64,10 @@ The private composed release, complete physical release proof, remaining DEV
 acceptance checks and workspace cleanup are not yet complete. The fresh local
 release run passes the root build and mapped regressions, but is blocked on
 offline dependencies and tight disk headroom. Its successful work is preserved.
-One concrete storage or bounded hosting decision is being prepared; no cleanup
-or paid execution is approved. Neither delivery change is merged. Production
-remains unchanged.
+The bounded resource review finds the only audited cleanup candidate too small
+to support the next run. One time-limited hosted attempt awaits approval, with
+its cost and billing limits documented privately. No cleanup or paid execution
+is approved. Neither delivery change is merged. Production remains unchanged.
 
 ## Agent section
 
@@ -220,14 +221,24 @@ remains unchanged.
   Refresh affected review/runtime proofs and verify actual-input reuse for the
   current maintained release run. Do not relabel old receipts or discard
   unrelated successful build evidence.
-- The development Mac now reports 26,577,392 KiB free, about 25.35 GiB,
-  only 0.35 GiB above the unchanged 25 GiB guard. No safe new build or cleanup
-  is authorized. Private hosted billing approval is absent. The coordinator
-  owns one requester decision after a bounded packet identifies either an
-  exact audited cleanup candidate or verified hosting cost, remaining allowance
-  and an enforceable cap. First distinguish remaining same-run disk needs
-  from a fresh build's peak; safe supported reuse may avoid a new resource
-  decision. No broad audit, repeated full retry or account change is authorized.
+- The private owner's bounded packet confirms the maintained run is bound to
+  immutable `e50b9bb` configuration. Private phase inputs hash all tracked
+  private inputs, so supported reuse does not survive the current `95f2451`
+  head after the reviewed `b543049` correction. Keep the successful old stages
+  as evidence, not current-head certification. No receipt transplant or
+  configuration rebinding is supported.
+- The development Mac has about 343 MiB above the unchanged 25 GiB guard.
+  Fresh-run additional disk demand is estimated at 6 to 7 GiB, with exact peak
+  unproven. The sole audited unreferenced archive could reclaim at most about
+  424 MiB, possibly less physically, and is insufficient. Do not delete it or
+  broaden cleanup. Canonical path, reference checks and billing details remain
+  in the private decision packet.
+- The coordinator owns one request to authorize a single existing hosted
+  workflow attempt with its fixed 120-minute builder timeout and no automatic
+  retry. The packet provides a runner-cost estimate, not a verified account
+  spending cap or remaining included allowance. No paid execution, account
+  change or production action is authorized until that decision. Before a
+  costly build, establish the declared shared-store/offline prerequisites.
 - Retained bundle import cannot adopt builder stages or issue a receipt for
   corrected migration bytes; it restores the old immutable identity and has
   no migration body to recover. Never rewrite sealed hashes, copy stages into
