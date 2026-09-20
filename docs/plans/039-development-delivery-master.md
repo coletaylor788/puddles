@@ -57,18 +57,17 @@ runtime scenarios. The ARM bundle is published and independent review is clear.
 Ordinary local builds now have measured results for runtime edits: about one
 minute fifteen seconds for a plugin change and one minute forty seconds for a
 small core change, including focused local tests and the runtime output build.
-DEV is still absent. Its first installation is blocked while selecting package
-files locally, before transfer. Increasing that operation's timeout to ten
-minutes has not resolved it. The public owner is diagnosing the cause rather
-than repeating unchanged attempts.
+Initial package-file selection now takes about 14 to 17 seconds after removing
+unnecessary archive creation from the DEV path. That repair is reviewed.
+Actual DEV startup and remote integration are still outstanding.
 
 The private composed release, actual DEV deployment and integration checks,
 complete physical release proof, and remaining workspace cleanup are not yet
-confirmed complete. Release testing also needs fresh evidence for corrected
-migration test data; the retained bundles bind the old data. File selection
-belongs to initial setup, not the normal built-output sync loop. Transfer,
-restart and remote integration are not included in the local timings. Neither
-delivery change is merged. Production remains unchanged.
+confirmed complete. Release testing needs a fresh normal build with corrected
+migration test data, rather than new tooling to recover an obsolete DEV run.
+File selection belongs to initial setup, not the normal built-output sync loop.
+Transfer, restart and remote integration are not included in the local timings.
+Neither delivery change is merged. Production remains unchanged.
 
 ## Agent section
 
@@ -158,24 +157,20 @@ delivery change is merged. Production remains unchanged.
   remaining sync, restart and remote integration timings. Dependency, manifest,
   lockfile or toolchain changes require bootstrap/dependency refresh rather
   than this unchanged-dependency fast path.
-- Cold DEV bootstrap remains blocked in `materializeRuntime` at local
-  `npm pack --dry-run --json --ignore-scripts`. Public commit
-  `36161df8b1028f6b63cfdacbfb3c126cb038a7f6` adds a reviewed explicit
-  180,000..600,000 ms DEV bound; release packaging stays at 60,000 ms.
-  Actual root attempts exceed 180, 360 and 600 seconds. One earlier root
-  inventory completed near ten minutes with about 9,123 selected files.
-  Buffered output does not establish progress versus a stall; no leaked
-  process is reported. Normal warm edits do not invoke this operation.
-- Stop unchanged inventory retries and timeout escalation. The public owner
-  must diagnose selection versus other work performed by the npm command,
-  then measure a narrow repair on the actual candidate. Preserve authoritative
-  package selection semantics with regression and parity evidence, not naive
-  manifest globs. No full source rebuild is needed merely to investigate.
+- The cold DEV inventory bottleneck was tar creation performed by
+  `npm pack --dry-run` after file selection, not a need for a larger timeout.
+  Public repair `c188fccdf5796e469be86e8b55b011adbe784675`, tree
+  `bc7b511efbcbf10ddb55ca35c2494a59072c8c77`, uses npm's exact bundled
+  packlist/Arborist selector for DEV. Actual candidate selection takes
+  13.9 to 16.6 seconds for 10,063 files. Synthetic npm parity and byte-identical
+  bundled-dependency runtime evidence pass; retained full-diff review is clear.
+  The release path is unchanged. Private has the API and can resume actual
+  bootstrap; the complete remote loop is not yet proven.
 - The private DEV implementation has retained review clearance at `9830b25`.
   Its contract suite reports 68 passing tests and two intentional skips.
   An independent 80 MiB, two-batch transport check with symlink and digest
   verification passes and its test roots are cleaned. That is not bootstrap
-  proof. Resume actual DEV installation after the inventory repair, then restore
+  proof. Resume actual DEV installation with the inventory repair, then restore
   the runtime-changing benchmark and prove its assertion remotely.
 - The selected OpenClaw source is
   `1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7` (`v2026.9.3`). The selected
@@ -195,12 +190,17 @@ delivery change is merged. Production remains unchanged.
   build inputs reuse the successful root stage while migration-bound
   regressions, runtime proofs and receipts regenerate. A committed regression
   verifies the root build count remains one after a manifest-byte change.
-- First establish that a matching maintained run and its outputs survive.
-  Retained bundle import cannot adopt builder stages or issue a receipt for
+- The only plausible surviving reuse candidate is a superseded DEV builder
+  bound to old configuration and source heads. The current private release
+  workflow has no maintained route from that producer to current TEST.
+  Coordinator decision: use a fresh normal release build under existing
+  resource and no-paid-hosting gates, rather than add a legacy-run adapter
+  solely to avoid this build. Preserve the old run and evidence. This does not
+  make ordinary DEV edits run release builds.
+- Retained bundle import cannot adopt builder stages or issue a receipt for
   corrected migration bytes; it restores the old immutable identity and has
-  no migration body to recover. If no matching run survives, the current API
-  requires a fresh run/build under the existing resource and cost gates.
-  Never rewrite sealed hashes or infer missing manifest contents.
+  no migration body to recover. Never rewrite sealed hashes, copy stages into
+  another run, repurpose old configuration or infer missing manifest contents.
 - The missing source-gate retention defect is repaired in the public checkpoint.
   The older retained regression record alone cannot recreate its missing source
   attestation because the attestation also binds inventory and extension gate
@@ -520,7 +520,7 @@ record in the relevant component plan, not a status assertion alone.
 
 **Fast development instance**
 
-- [ ] DEV-01 (private, blocked on cold inventory): Provision and verify a distinct DEV target,
+- [ ] DEV-01 (private, in progress): Provision and verify a distinct DEV target,
   separate from release TEST and PROD in every writable/process identity.
 - [ ] DEV-02 (private/public, in progress): Provide a maintained
   incremental-build/unit-test command in the normal local workspaces and a
