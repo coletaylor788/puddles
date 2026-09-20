@@ -100,7 +100,7 @@ merged.
   no personal-content reads, privilege changes, deletion or relocation.
   Private paths and detailed inventory remain in local evidence.
 - The audit and bounded supplement are complete as of 2026-09-20. The
-  session-local report `mini-disk-audit-2026-09-20.md` contains exact capacity,
+  session-local report `disk-space-audit.md` contains host and mini capacity,
   whole-machine categories, protected references, permission gaps and options.
   APFS and `df` agree on free space, which is just below the existing guard.
   Temporary Docker installer staging is the strongest immediate candidate,
