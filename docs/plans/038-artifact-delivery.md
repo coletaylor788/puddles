@@ -2,7 +2,7 @@
 
 Status: Implementation in progress
 Issue: #118
-Last updated: 2026-09-18
+Last updated: 2026-09-19
 Owner: Public OpenClaw engineering owner
 
 ## Human section
@@ -90,9 +90,10 @@ A runtime-visible plugin edit completes semantic checks, its focused test, and
 the runtime build in 76 seconds. A real small core edit completes semantic
 checks, a focused unit test, and the runtime build in 101 seconds. Private work
 owns the remaining bootstrap, sync, restart, and integration timing. The public
-bootstrap API now allows a bounded longer npm inventory selection on a
-development machine without changing release packaging defaults. Production
-remains held.
+bootstrap API now calls the package-list selector bundled with the exact npm
+toolchain. It preserves npm's selection semantics without building a dry-run
+tarball. Release packaging keeps its synchronous 60-second `npm pack` proof
+path. Production remains held.
 
 ## Agent section
 
@@ -391,10 +392,10 @@ remains held.
 - Candidate tests pin the incremental core and extension typecheck commands,
   the exact `qaRuntime` output closure, declaration exclusion, and the installed
   `dist/` versus source-only `dist-runtime/` boundary.
-- Package tests prove runtime materialization keeps its 60-second release
-  inventory default, accepts only an explicit 180-to-600-second DEV bound,
-  passes that bound only to npm package selection, and reports the selected
-  limit when npm times out.
+- Package tests prove runtime materialization keeps its synchronous 60-second
+  release inventory bound and gives DEV the exact selector bundled with npm.
+  A real synthetic package proves parity with `npm pack --dry-run`, including
+  ignore rules and bundled dependencies.
 - A runtime-visible plugin edit measured 16.04 seconds for incremental extension
   typechecking, 22.71 seconds for its focused test file, and 36.41 seconds for
   `qaRuntime`, 75.16 seconds total. The edit changes iMessage normalization of a
@@ -485,10 +486,13 @@ remains held.
   75.16 seconds and a real small core edit in 100.65 seconds using incremental
   semantic checks, focused tests, and the maintained `qaRuntime` profile. The
   plugin edit changes emitted runtime behavior rather than only a type surface.
-- 2026-09-18: Actual DEV bootstrap found npm inventory selection can exceed the
-  fixed 60-second release bound for the 9,123-file candidate under host load.
-  Runtime materialization now accepts a bounded explicit DEV selection window;
-  release packaging still uses 60 seconds.
+- 2026-09-19: Actual DEV bootstrap found npm inventory selection can exceed the
+  fixed 60-second release bound for the 10,063-file candidate under host load.
+  A first bounded repair then proved insufficient when selection exceeded ten
+  minutes. Inspection found `npm pack --dry-run` still builds tarball metadata
+  after selecting files. The bundled npm selector alone returns the actual
+  candidate inventory in 16.57 seconds and avoids that unnecessary bootstrap
+  work. Release packaging still uses the original 60-second command.
 
 ### Checklist
 

@@ -7,7 +7,7 @@ import { join } from "node:path";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
 import { acquireLock, atomicJson, fileDigest, stage, treeDigest } from "../src/native-state.mjs";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
-import { installRuntime, packProviderRuntime, packRuntime } from "../src/native-package.mjs";
+import { installRuntime, materializeRuntimeForDev, packProviderRuntime, packRuntime, selectRuntimePackageFiles } from "../src/native-package.mjs";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
 import { fixtureEnv, isolatedContext, runScenario } from "../src/native-fixture.mjs";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
@@ -201,8 +201,16 @@ describe("offline installed runtime", () => {
     const selection = JSON.parse(execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
       cwd: source, encoding: "utf8", timeout: 10_000,
     }));
+    expect((await selectRuntimePackageFiles(source)).sort())
+      .toEqual(selection[0].files
+        .map(({ path }: { path: string }) => path)
+        .filter((path: string) => !path.startsWith("node_modules/"))
+        .sort());
     expect(selection[0].files.some(({ path }: { path: string }) => path.startsWith("node_modules/"))).toBe(true);
     const artifact = await packRuntime(source, join(directory, "artifacts"));
+    const devRuntime = join(directory, "dev-runtime");
+    await materializeRuntimeForDev(source, devRuntime);
+    expect(treeDigest(devRuntime, { portable: true })).toBe(artifact.runtimeSha256);
     const installed = await installRuntime(artifact, join(directory, "prefix"));
     rmSync(join(source, "node_modules/required-peer"), { recursive: true });
     await expect(packRuntime(source, join(directory, "missing-peer"))).rejects.toThrow("Missing production dependency: required-peer");

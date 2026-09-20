@@ -4,10 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const spawnSync = vi.hoisted(() => vi.fn());
-vi.mock("node:child_process", () => ({ spawnSync }));
+vi.mock("node:child_process", async (importOriginal) => ({
+  ...await importOriginal<typeof import("node:child_process")>(),
+  spawnSync,
+}));
 
 // @ts-expect-error JS lifecycle exports are tested at runtime.
-import { materializeRuntime, resolveRuntimeSelectionTimeoutMs } from "../src/native-package.mjs";
+import { materializeRuntime, materializeRuntimeForDev, selectRuntimePackageFiles } from "../src/native-package.mjs";
 
 const roots: string[] = [];
 function fixture() {
@@ -29,18 +32,8 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-describe("runtime package selection timeout", () => {
-  it("keeps the release default and bounds the explicit DEV override", () => {
-    expect(resolveRuntimeSelectionTimeoutMs()).toBe(60_000);
-    expect(resolveRuntimeSelectionTimeoutMs({ devSelectionTimeoutMs: 180_000 })).toBe(180_000);
-    expect(resolveRuntimeSelectionTimeoutMs({ devSelectionTimeoutMs: 600_000 })).toBe(600_000);
-    for (const value of [179_999, 600_001, 180_000.5, "180000", null]) {
-      expect(() => resolveRuntimeSelectionTimeoutMs({ devSelectionTimeoutMs: value }))
-        .toThrow("between 180000 and 600000");
-    }
-  });
-
-  it("passes the DEV bound only to npm inventory selection", () => {
+describe("runtime package selection", () => {
+  it("keeps release materialization on its synchronous 60-second selection", () => {
     const { root, source } = fixture();
     spawnSync.mockReturnValue({
       error: undefined,
@@ -48,7 +41,7 @@ describe("runtime package selection timeout", () => {
       stdout: JSON.stringify([{ files: [{ path: "index.js" }] }]),
     });
 
-    materializeRuntime(source, join(root, "runtime"), { devSelectionTimeoutMs: 180_000 });
+    materializeRuntime(source, join(root, "runtime"));
 
     expect(spawnSync).toHaveBeenCalledOnce();
     expect(spawnSync.mock.calls[0]?.[0]).toBe("npm");
@@ -57,12 +50,12 @@ describe("runtime package selection timeout", () => {
     ]);
     expect(spawnSync.mock.calls[0]?.[2]).toMatchObject({
       cwd: source,
-      timeout: 180_000,
+      timeout: 60_000,
       maxBuffer: 16 * 1024 * 1024,
     });
   });
 
-  it("reports the selected DEV bound when npm inventory times out", () => {
+  it("reports the fixed release bound when synchronous inventory times out", () => {
     const { root, source } = fixture();
     spawnSync.mockReturnValue({
       error: Object.assign(new Error("timed out"), { code: "ETIMEDOUT" }),
@@ -70,11 +63,18 @@ describe("runtime package selection timeout", () => {
       stdout: "",
     });
 
-    expect(() => materializeRuntime(
-      source,
-      join(root, "runtime"),
-      { devSelectionTimeoutMs: 240_000 },
-    )).toThrow("selection exceeded 240000ms");
-    expect(existsSync(join(root, "runtime"))).toBe(true);
+    expect(() => materializeRuntime(source, join(root, "runtime")))
+      .toThrow("selection exceeded 60000ms");
+    expect(existsSync(join(root, "runtime"))).toBe(false);
+  });
+
+  it("uses npm's authoritative packlist before DEV materialization", async () => {
+    const { root, source } = fixture();
+
+    expect(await selectRuntimePackageFiles(source)).toContain("index.js");
+    await materializeRuntimeForDev(source, join(root, "runtime"));
+
+    expect(spawnSync).not.toHaveBeenCalled();
+    expect(existsSync(join(root, "runtime/index.js"))).toBe(true);
   });
 });
