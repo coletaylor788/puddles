@@ -370,7 +370,11 @@ export function verifyCurrentActivationRecovery(target, recoveryDir, latestPath,
     const receipt = verifyProductionRelease(
       JSON.parse(readFileSync(receiptIdentity.path, "utf8")),
     );
-    if (receipt.artifact.sha256 !== identity.artifactSha256) {
+    const journal = JSON.parse(readFileSync(join(directory, "recovery.json"), "utf8"));
+    if (receipt.artifact.sha256 !== identity.artifactSha256 ||
+        receipt.artifact.runtimeSha256 !== journal.deployedRuntimeSha256 ||
+        receipt.evidence.targetProof.deployment.success.target !==
+          identity.activationTargetSha256) {
       throw new Error("Activation release receipt differs from recovery");
     }
     if (!existsSync(latestPath)) throw new Error("Activation ownership evidence is missing");
@@ -380,7 +384,6 @@ export function verifyCurrentActivationRecovery(target, recoveryDir, latestPath,
         latest.target !== identity.activationTargetSha256) {
       throw new Error("Activation ownership evidence differs");
     }
-    const journal = JSON.parse(readFileSync(join(directory, "recovery.json"), "utf8"));
     if (treeDigest(target.installDir, { portable: true }) !== journal.deployedRuntimeSha256 ||
         fileDigest(target.plistPath) !== journal.deployedServiceSha256) {
       throw new Error("Current runtime or service differs from the activation recovery");

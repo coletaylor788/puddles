@@ -143,8 +143,8 @@ function legacyRecovery(f: ReturnType<typeof fixture>) {
   const releaseRoot = join(f.directory, "release");
   const packageRoot = join(releaseRoot, "package");
   const runtime = join(packageRoot, "runtime");
-  mkdirSync(runtime, { recursive: true });
-  writeFileSync(join(runtime, "content"), "legacy runtime");
+  mkdirSync(packageRoot, { recursive: true });
+  cpSync(f.target.installDir, runtime, { recursive: true });
   const runtimeSha256 = treeDigest(runtime, { portable: true });
   writeFileSync(join(packageRoot, "runtime-identity.json"), JSON.stringify({
     schemaVersion: 1,
@@ -255,7 +255,7 @@ function legacyRecovery(f: ReturnType<typeof fixture>) {
     snapshotReady: true,
     quiesced: false,
     transaction,
-    target: "b".repeat(64),
+    target: "9".repeat(64),
     artifact: artifact.sha256,
     deployedRuntimeSha256: treeDigest(f.target.installDir, { portable: true }),
     deployedServiceSha256: fileDigest(f.target.plistPath),
