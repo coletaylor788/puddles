@@ -413,6 +413,11 @@ path. Production remains held.
 - The retained reviewer rechecks the complete diff after focused gates.
 - Hosted public checks must pass on `macos-15` and publish the arm64
   nonproduction bundle plus bounded resource evidence.
+- Hosted cumulative run `35482638315` passes on exact public source
+  `c188fccdf5796e469be86e8b55b011adbe784675`, tree
+  `bc7b511efbcbf10ddb55ca35c2494a59072c8c77`. It completes the accumulated
+  lifecycle, exports and retains the public ARM bundle, and retains the
+  resource evidence.
 - Private owner must prove the combined ARM flow with the same commands before
   coordinator integration.
 
@@ -493,6 +498,9 @@ path. Production remains held.
   after selecting files. The bundled npm selector alone returns the actual
   candidate inventory in 16.57 seconds and avoids that unnecessary bootstrap
   work. Release packaging still uses the original 60-second command.
+- 2026-09-19: Hosted cumulative run `35482638315` passed on the reviewed
+  selector repair at `c188fcc`, including the complete public lifecycle, ARM
+  bundle export and retention, and resource evidence retention.
 
 ### Checklist
 
@@ -508,11 +516,11 @@ path. Production remains held.
 - [x] Add committed focused regressions.
 - [x] Update public workflow and documentation.
 - [x] Complete retained adversarial review with no material finding.
-- [ ] Run final cumulative validation, retained review, and hosted checks for
+- [x] Run final cumulative validation, retained review, and hosted checks for
   the source-gate retention repair.
-- [ ] Push PR #117 updates and verify conflict-free ancestry.
-- [ ] Pass exact local accumulated CI and hosted public checks.
-- [ ] Hand stable commands to private ARM consumer for combined proof.
+- [x] Push PR #117 updates and verify conflict-free ancestry.
+- [x] Pass exact local accumulated CI and hosted public checks.
+- [x] Hand stable commands to private ARM consumer for combined proof.
 - [x] Define the shared hosted ARM resource and receipt contract.
 - [x] Add focused ARM profile, measurement, artifact-label, and development
   nonpromotion regressions.

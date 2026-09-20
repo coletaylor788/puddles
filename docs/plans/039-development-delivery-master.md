@@ -164,8 +164,10 @@ Neither delivery change is merged. Production remains unchanged.
   packlist/Arborist selector for DEV. Actual candidate selection takes
   13.9 to 16.6 seconds for 10,063 files. Synthetic npm parity and byte-identical
   bundled-dependency runtime evidence pass; retained full-diff review is clear.
-  The release path is unchanged. Private has the API and can resume actual
-  bootstrap; the complete remote loop is not yet proven.
+  Hosted cumulative run `35482638315` passes on that exact source and completes
+  the accumulated lifecycle, ARM bundle export and retention, and resource
+  evidence retention. The release path is unchanged. Private has the API and
+  can resume actual bootstrap; the complete remote loop is not yet proven.
 - The private DEV implementation has retained review clearance at `9830b25`.
   Its contract suite reports 68 passing tests and two intentional skips.
   An independent 80 MiB, two-batch transport check with symlink and digest
