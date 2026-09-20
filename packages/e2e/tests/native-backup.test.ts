@@ -897,4 +897,36 @@ describe("current production recovery backup", () => {
     expect(existsSync(journalPath)).toBe(false);
     expect(existsSync(second.directory)).toBe(true);
   });
+
+  it("finishes new-format retirement when removal precedes its journal write", async () => {
+    const f = fixture();
+    const first = await captureCurrentBackup(f.target, f.factory);
+    await materializeCurrentBackup(f.target, first.directory, join(root(), "first"), f.factory);
+    const second = await captureCurrentBackup(f.target, f.factory);
+    await materializeCurrentBackup(f.target, second.directory, join(root(), "second"), f.factory);
+    const transaction = first.manifest.transaction;
+    const backupRoot = realpathSync(f.target.backupRoot);
+    const source = realpathSync(first.directory);
+    const trash = join(backupRoot, `.retiring-${transaction}`);
+    const journalPath = join(backupRoot, `retire-${transaction}.json`);
+    writeFileSync(journalPath, JSON.stringify({
+      schema: "puddles.openclaw-current-backup-retirement/v1",
+      schemaVersion: 1,
+      kind: "backup",
+      transaction,
+      manifestSha256: first.manifest.manifestSha256,
+      source,
+      trash,
+      status: "moved",
+    }));
+    renameSync(source, trash);
+    rmSync(trash, { recursive: true });
+
+    expect(retireCurrentBackup(f.target, first.directory)).toEqual({
+      transaction,
+      retired: true,
+    });
+    expect(existsSync(journalPath)).toBe(false);
+    expect(existsSync(second.directory)).toBe(true);
+  });
 });

@@ -978,8 +978,10 @@ export function retireCurrentBackup(target, requestedDirectory) {
       atomicJson(journalPath, journal);
     }
     if (journal.status === "moved") {
-      stat(journal.trash, true);
-      rmSync(journal.trash, { recursive: true });
+      if (existsSync(journal.trash)) {
+        stat(journal.trash, true);
+        rmSync(journal.trash, { recursive: true });
+      }
       journal.status = "removed";
       atomicJson(journalPath, journal);
     }
