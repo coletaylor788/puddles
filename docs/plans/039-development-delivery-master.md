@@ -1,6 +1,6 @@
 # Plan 039 - OpenClaw development and delivery
 
-**Status:** Backup and package-manager repairs in progress; release paused
+**Status:** Parallel DEV, release validation and maintenance; production gated
 **Issue:** [#118](https://github.com/coletaylor788/puddles/issues/118)
 **Last updated:** 2026-09-20
 **Owner:** Delivery coordinator
@@ -48,39 +48,73 @@ deployment and rollback mechanism in TEST. PROD keeps a healthy release and
 rolls back only on a real failure. Scripts run these steps without an agent
 watching them. Owned temporary files are cleaned up while useful release
 evidence, unbounded local diagnostic logs and protected recovery remain safe.
-Before the upgrade proceeds, the backup tooling must create a complete recovery
+Before a production upgrade, the backup tooling must create a complete recovery
 of current production without copying historical backups into it. The normal
 recovery path must prove that replacement usable before the old copy is retired.
 Active builds will use one pinned package-manager version and one shared
 package store per machine, avoiding duplicate store formats without rewriting
 historical build evidence or coupling installed services to a mutable cache.
+These maintenance tasks run alongside independent DEV and release validation,
+not ahead of every other task. Separate owners handle independent work, while
+the coordinator prevents conflicting target changes and overlapping heavy jobs
+on the same machine.
 
 ### Status
 
-The latest public behavior passes the complete local pipeline. Earlier public
-delivery also passed on a standard hosted ARM runner; that is separate evidence.
-Backup code has public local and private isolated integration proof, but these
-checks missed the transition from the actual older recovery format. Existing
-owners are correcting that gap before maintenance can proceed. No replacement
-has been captured or restored on the mini. DEV runs there, and a
-representative plugin edit completed its full loop in under three minutes.
-Core-edit remote evidence and private release/TEST proof remain incomplete.
+The requester has resumed non-production deployment work in parallel with
+maintenance. Existing owners are working on the backup correction, private
+integration, DEV core-edit proof, composed release/TEST validation and remaining
+package-store consumers. The last public local pipeline passed, but the new
+legacy-backup correction still needs its own review and affected proof. The
+plugin DEV loop is proven; core-edit remote and private release/TEST evidence
+remain open.
 
-Backup replacement remains the next maintenance priority, before the upgrade.
-The mini's targeted installer cleanup is verified. Both machines have been
-re-audited; the approved superseded host test run is removed, with compact
-diagnostics and necessary proof preserved. The requester now directs actual
-package-manager consolidation across builds on both machines, safe replacement
-and retirement of the old mini recovery, then a full confirmation audit.
-Migration code is reported complete, but offline verification and older
-consumers remain unresolved. Keep old stores and recovery until replacement
-proof permits retirement. No production stop/start, paid execution, release
-resumption or broad upgrade merge is approved.
+Isolated installs on both machines now prove the common package-manager version
+and store. Actual DEV/release tooling, older primary checkouts and store
+retirement still need resolution; test copies alone are not a completed rollout.
+The obsolete host test run is removed;
+the mini's real recovery remains protected until its replacement is proven.
+A full storage re-audit will follow the two maintenance milestones. Normal
+eligible source integration can proceed under required checks. Production
+stop/start, production activation, live restore and new paid execution remain
+separately gated.
 
 ## Agent section
 
 ### State
 
+- The requester at 14:24 resumes non-production delivery work in parallel.
+  This supersedes the earlier blanket release pause, not production or spending
+  restrictions. Reuse existing sessions: parent coordinates overall scope;
+  public owner `b6` implements public changes and the legacy backup bridge;
+  private owner `4a` owns private code, backup readiness and toolchain rollout;
+  `972` executes composed release/TEST validation and eligible integration;
+  `9eb` proves current DEV-03 through DEV-06, especially the actual core-edit
+  end-to-end loop; `de2` verifies remaining consumers, store retirement and the
+  final audit. No duplicate pipeline ownership or new workers are needed.
+  `972` coordinates one heavy build/full-pool job per machine with existing
+  resource controls, while coding and focused checks proceed independently.
+  DEV, TEST and backup owners coordinate target changes through existing locks.
+  Advance unchanged preflight and proof while dependencies stabilize; run costly
+  final builds only on coherent actual inputs. Use maintained run/artifact
+  locations and retention, not new full source/install trees in session files.
+  Resume normal push/integration when compatible proof, review and required
+  checks permit, but do not trigger unapproved paid jobs or bypass checks.
+  Local builder fallback is authorized. Report a concrete remote-check cost
+  blocker if one remains; no assumed free quota. Production remains gated.
+- The pnpm acceptance matrix confirms twelve isolated online/offline validation
+  contexts across both machines: Node `26.1.0`, Corepack `0.36.0`, pnpm
+  `12.3.4`, stable per-host `v11` stores and stable package/lock hashes.
+  Mini public/private/upstream reused/downloaded counts are `487/0`,
+  `476/0`, `1440/0`. This proves the installation contract, not completion of
+  actual DEV/release/runner entrypoint migration. Existing native tooling,
+  retained proofs and direct primary-checkout commands still reference older
+  versions/stores. No process cwd in a checkout does not make it inactive.
+  The DEV and release lanes must prove their operational entrypoints; the audit
+  owner verifies remaining consumers. Production's existing native module
+  mappings and rollback assets must not be relinked in place. Treat installed
+  runtime compatibility separately from current build migration. Retire no
+  store until its exact reference closure permits it.
 - The requester's completion scope is operational pnpm consolidation across
   active OpenClaw/Puddles builds on host and mini, safe replacement/retirement
   of the exact old mini recovery, then a full read-only confirmation audit of
@@ -90,8 +124,8 @@ resumption or broad upgrade merge is approved.
   alignment are authorized. Verify actual executables, versions, stores and
   installed-module metadata across DEV/plugin/release paths. Preserve pinned
   historical proof and report unresolved legacy consumers, without bypassing
-  pins or editing primary checkouts. If narrow source integration is necessary,
-  identify the exact supported path rather than merging the paused upgrade.
+  pins or editing primary checkouts. Use reviewed compatible source integration
+  when required; do not bypass required proof to align a primary checkout.
   After corrected backup code passes review/proof, necessary exact tooling and
   owner-only target materialization on the mini plus read-only capacity/identity
   planning are in scope. A specific production stop/start decision remains
@@ -125,18 +159,20 @@ resumption or broad upgrade merge is approved.
   The rejected three-document lock resulted from an agent manually duplicating
   the valid `packageManagerDependencies` prefix. The original failure was an
   invalid symlink sibling layout: cwd realpath resolution lost the `mcp-hooks`
-  workspace. Private migration code is now reported complete at `e7ed02d`;
-  maintained-root offline metadata for `@earendil-works/pi-tui` is missing.
+  workspace. Private migration code was reported complete at `e7ed02d`;
+  subsequent isolated frozen/offline installs pass. Operational acceptance
+  remains qualified by the consumer matrix above.
   Cancel policy workarounds justified only by the withdrawn report. Keep only
   independently required no-mutation checks; do not strip valid lock structure
   or expand tooling. Migration and legacy-consumer resolution remain open.
-  Existing stores stay protected and the broader release remains paused.
+  Existing stores stay protected; non-production execution now follows the
+  resumed parallel scope above.
 - This is the coordinator-owned end-to-end scope and completion checklist for
   issue #118. Do not replace it with the latest failure, commit, or worker
   handoff. Keep both sections current when scope or status changes.
-- The requester declined the single hosted-attempt proposal and explicitly
-  paused the current release. Only separately authorized maintenance, validation,
-  audits and narrowly approved cleanup continue. Preserve successful evidence
+- The requester declined the single paid hosted-attempt proposal. Its spending
+  restriction remains, while the later direction resumes non-production release
+  work alongside maintenance. Preserve successful evidence
   and healthy DEV/PROD. The existing audit owner has completed the requested
   whole-mini audit and subsequent read-only re-audits of both machines.
   Cover disks/APFS containers and volumes, OS/Data, applications and libraries,
@@ -178,7 +214,8 @@ resumption or broad upgrade merge is approved.
 - The requester separately asks for a new smaller recovery backup to replace
   the oversized one. The private deployment owner owns this narrow maintenance,
   not a release. The requester now explicitly directs fixing the backup script
-  so complete recovery replacement can happen before further upgrade work.
+  so complete recovery replacement can happen before production upgrade.
+  Independent DEV and release/TEST validation now continue in parallel.
   Public owns the smallest backup-only extension to existing native recovery;
   private owns current-PROD target assembly, wrapper, fixtures, capacity and
   retained review. Share the stabilized interface directly between these owners.
@@ -189,10 +226,10 @@ resumption or broad upgrade merge is approved.
   Keep the old sealed recovery intact until supported consistency and isolated,
   non-delivering recovery checks prove the replacement usable. Then use the
   supported reference/journal transition and retire only the exact unreferenced
-  old recovery. No hash rewriting, live restore or upgrade is authorized.
+  old recovery. No hash rewriting, live restore or production upgrade is authorized.
   Report any required production stop/start or new privilege for a specific
-  requester decision before acting. No new worker, parallel backup framework,
-  paid job or unrelated release activation/merge is authorized.
+  requester decision before acting. Reuse the assigned owners; no parallel
+  backup framework, unapproved paid job or production activation is authorized.
 - The audit worker followed a separate user-requested development-Mac audit;
   that did not cancel mini cleanup. The private deployment owner took over
   mini cleanup independently of backup readiness and now reports a terminal
@@ -211,10 +248,11 @@ resumption or broad upgrade merge is approved.
   Public owns the shared toolchain/store contract, private migrates its
   consumers, and the audit owner owns reference checks and eventual exact
   obsolete-store retirement. The candidate common pin is `12.3.4`, already
-  required by selected OpenClaw `1391f7c`; compatibility must be proven rather
-  than assumed. Current host Puddles installs use `10.31.0` and store format
-  `v10`; an older OpenClaw checkout uses `11.2.2` and `v11`. Both currently have
-  consumers. Format labels alone are not CLI versions or deletion evidence.
+  required by selected OpenClaw `1391f7c`; maintained contexts have now passed
+  normal/offline proof on that pin. Earlier Puddles installs used `10.31.0`
+  and store format `v10`; an older OpenClaw checkout uses `11.2.2` and `v11`.
+  Primary metadata exceptions remain under consumer review. Format labels
+  alone are not CLI versions or deletion evidence.
 - Use one resolved content-addressed store per host or CI runner, not a shared
   network store across machines. Align active manifests, Corepack/setup,
   assertions, prewarm, DEV/release commands and offline checks. Verify normal
@@ -228,8 +266,8 @@ resumption or broad upgrade merge is approved.
   inputs. The audit owner may retire only exact superseded store contents after
   validated migration and a reference handoff from the engineering owners.
   Do not expose an installed artifact to a mutable shared-store dependency.
-  No production service change, paid run or upgrade resumption follows from
-  this toolchain request.
+  No production service change or paid run follows from toolchain migration.
+  Non-production resumption comes from the separate 14:24 direction above.
 - Private backup composition `3bfa7fa` passes cross-contract checks against
   public `e330423`: real-module plan, unreferenced capture with exclusions,
   verification, fresh isolated same-consumer materialization and restored
@@ -440,9 +478,9 @@ resumption or broad upgrade merge is approved.
 - The proposed single hosted attempt had a fixed 120-minute builder timeout
   and no automatic retry. Its estimate did not establish a verified account
   spending cap or remaining included allowance. The requester declined it;
-  do not dispatch it or change account limits. A future release resumption
-  still needs the declared shared-store/offline prerequisites and explicit
-  resolution of the pause.
+  do not dispatch it or change account limits. The later non-production
+  resumption authorizes local fallback, with shared-store/offline prerequisites
+  checked before costly work; it does not approve new paid hosted execution.
 - Retained bundle import cannot adopt builder stages or issue a receipt for
   corrected migration bytes; it restores the old immutable identity and has
   no migration body to recover. Never rewrite sealed hashes, copy stages into
@@ -738,14 +776,16 @@ Existing process and dev/test work does not authorize a production upgrade.
 Do not retire recovery tooling, pinned interpreters or referenced assets while
 they remain needed by that recovery.
 
-The current release is paused by the requester. The mini audit is read-only.
-Do not resume release execution or apply a disk remedy from audit results alone;
-return the findings for the requester's decision.
+Non-production delivery work is resumed alongside backup and package-manager
+maintenance. Execute independent DEV, source/build, artifact/TEST and integration
+work in parallel where inputs and resources permit. Serialize changes to shared
+targets and heavy jobs per machine through existing controls. Audit findings
+alone still authorize no new cleanup, paid run or production action.
 
-Subsequent permission covers only the named mini cleanup and replacement
-recovery maintenance recorded in State. Retain the old recovery until the
-replacement is verified and references are safely transitioned. This permission
-does not restart the release or authorize production downtime.
+Retain the old mini recovery until its complete replacement is verified and
+references are safely transitioned. The separate maintenance request covers
+that scoped replacement, but production stop/start still needs its specific
+approval. Production upgrade and live restore remain outside the resumed scope.
 
 Finish focused repairs with retained evidence, validate the selected ARM builder
 profile, prove the separate DEV loop and release TEST path, then integrate the
@@ -909,7 +949,7 @@ record in the relevant component plan, not a status assertion alone.
   store contents and measure physical reclaim. Do not confuse manager binaries,
   package content, installed hardlinks or apparent directory sizes.
 
-**Requested backup repair before release resumes**
+**Backup repair alongside non-production delivery**
 
 - [ ] BACKUP-01 (public, in progress): Add a maintained backup-only path using
   existing native snapshot/recovery primitives, without candidate activation,
@@ -932,7 +972,8 @@ record in the relevant component plan, not a status assertion alone.
 - [ ] BACKUP-06 (private/coordinator; BACKUP-05): Retire only the superseded
   authorized recovery after successful verification and reference transition.
   Report exact retained coverage, sizes, physical reclaim, current health and
-  residual limits. Release resumption remains a separate requester decision.
+  residual limits. Non-production work proceeds in parallel; production upgrade
+  remains a separate requester decision.
 
 **Landing and operating handoff**
 
