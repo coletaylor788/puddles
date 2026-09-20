@@ -2,7 +2,7 @@
 
 **Status:** Release paused for read-only mini disk audit
 **Issue:** [#118](https://github.com/coletaylor788/puddles/issues/118)
-**Last updated:** 2026-09-19
+**Last updated:** 2026-09-20
 **Owner:** Delivery coordinator
 
 ## Human section
@@ -60,13 +60,14 @@ seconds, with no external calls. The equivalent core-change measurement is
 still local-only. That successful plugin run predates a rollback correction,
 so the affected checks must be refreshed for the latest private version.
 
-The requester has paused the release and declined hosted spending. A fresh,
-read-only disk audit of the mini will identify what occupies space, what must
-be preserved and which remedies could recover useful capacity. The earlier
-capacity packet concerns the development Mac, not the mini. No files or services
-will be changed by the audit. Successful build evidence is preserved, but the
-private release and TEST proof remain incomplete. Neither delivery change is
-merged. DEV and production remain running.
+The requester has paused the release and declined hosted spending. A full,
+read-only audit of the entire mini will explain system, application, user,
+cache and backup storage, not just release files. It will distinguish physical
+disk use from folder sizes and explain cleanup, retention, relocation and
+capacity options. Access limits and unaccounted space will be explicit. The
+earlier capacity packet concerns the development Mac, not the mini. No files
+or services will be changed. Build evidence is preserved; private release and
+TEST proof remain incomplete. Neither change is merged. DEV and production run.
 
 ## Agent section
 
@@ -79,10 +80,18 @@ merged. DEV and production remain running.
   paused the current release. Public/private owners acknowledge no new release
   builds, installs, dispatches, cleanup, service actions or merge activity.
   Preserve successful evidence and healthy DEV/PROD. The next authorized work
-  is a read-only MINI disk audit by the existing disk-audit owner, not another
-  development-Mac audit. Measure physical/logical capacity, protected references
-  and concrete remedies. No deletion, relocation or other remedy is approved
-  by this request. Private paths and detailed inventory remain in local evidence.
+  is a read-only audit of the ENTIRE MINI by the existing disk-audit owner,
+  not another development-Mac audit or a release-directory-only review.
+  Cover disks/APFS containers and volumes, OS/Data, applications and libraries,
+  accessible user-home categories, developer caches/checkouts/builds, app data,
+  containers/VMs if present, logs, backups, snapshots and purgeable space.
+  Deduplicate shared volumes, firmlinks, symlinks and shared file storage;
+  distinguish physical/logical capacity and explain unaccounted differences.
+  Report inaccessible categories rather than claim complete measurement.
+  Explain cleanup/retention, relocation/build placement and added-capacity
+  options with impact, risks and approval needs. No personal-content reads,
+  privilege changes, deletion, relocation or other remedy are approved.
+  Private paths and detailed inventory remain in local evidence.
 - Plan 038, `docs/plans/038-artifact-delivery.md`, holds the public implementation
   details on PR #117. It is not present on this document's initial base branch.
   The deployment owner keeps host-specific configuration and the private
