@@ -70,7 +70,9 @@ maintenance. Existing owners are working on the backup correction, private
 integration, DEV core-edit proof, composed release/TEST validation and remaining
 package-store consumers. Backup scope is simplified to a fresh backup of current
 healthy production, restore proof, then exact old-backup cleanup. Old-format
-compatibility is not a prerequisite. The core DEV edit-to-feedback loop passes
+compatibility is not a prerequisite. The simplified public path is implemented
+and review-clear; private readiness and remaining final gates are next.
+The core DEV edit-to-feedback loop passes
 in just over three minutes, with installed identity and lifecycle checks
 recorded. Current-input plugin and TEST coexistence evidence, plus private
 release/TEST proof, remain open.
@@ -152,6 +154,14 @@ separately gated.
   is reviewed and verified; do not wait for optional legacy support. Production
   stop/start still needs its specific approval. Private `6baebe0` makes the
   legacy receipt optional after reverting its final-binding requirement.
+- Public fresh-backup separation is retained-review clear at
+  `a4cb1e2770257d07db08cb9f5c9518fe0a826334`, tree
+  `602e1c50dd3f6785674ac187f6e13e81efb46207`: focused 26/26,
+  related 87/87 and e2e typecheck pass. New-format capture/publication does not
+  read, require or inherit legacy receipt/pointer state. Exact old cleanup is
+  separate and guarded after the new backup is authoritative. Private and
+  release owners have the tuple. This is not a new accumulated-gate receipt or
+  physical capture result; no service or cleanup action follows from it alone.
 - The coordinator verified the latest local accumulated public receipt:
   `b144f1d7c306c8247d251cbf32eeae5841ca1da8`, tree
   `3a33ab59db0f84ae2e88eaf9a2a8e9f3772bd70e`, status passed,
