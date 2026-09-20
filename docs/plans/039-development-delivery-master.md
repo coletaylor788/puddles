@@ -51,6 +51,10 @@ evidence, unbounded local diagnostic logs and protected recovery remain safe.
 Before a production upgrade, the backup tooling must create a complete recovery
 of current production without copying historical backups into it. The normal
 recovery path must prove that replacement usable before the old copy is retired.
+The new backup can use its own format. Creating it does not require converting
+the old backup or supporting the old format in the new retirement command.
+After restore proof and publication, the exact obsolete backup and its matching
+reference can be removed through separately guarded maintenance.
 Active builds will use one pinned package-manager version and one shared
 package store per machine, avoiding duplicate store formats without rewriting
 historical build evidence or coupling installed services to a mutable cache.
@@ -64,10 +68,12 @@ on the same machine.
 The requester has resumed non-production deployment work in parallel with
 maintenance. Existing owners are working on the backup correction, private
 integration, DEV core-edit proof, composed release/TEST validation and remaining
-package-store consumers. The last public local pipeline passed, but the new
-legacy-backup correction still needs its own review and affected proof. The
-plugin DEV loop is proven; core-edit remote and private release/TEST evidence
-remain open.
+package-store consumers. Backup scope is simplified to a fresh backup of current
+healthy production, restore proof, then exact old-backup cleanup. Old-format
+compatibility is not a prerequisite. The core DEV edit-to-feedback loop passes
+in just over three minutes, with installed identity and lifecycle checks
+recorded. Current-input plugin and TEST coexistence evidence, plus private
+release/TEST proof, remain open.
 
 Isolated installs on both machines now prove the common package-manager version
 and store. Actual DEV/release tooling, older primary checkouts and store
@@ -86,7 +92,7 @@ separately gated.
 - The requester at 14:24 resumes non-production delivery work in parallel.
   This supersedes the earlier blanket release pause, not production or spending
   restrictions. Reuse existing sessions: parent coordinates overall scope;
-  public owner `b6` implements public changes and the legacy backup bridge;
+  public owner `b6` implements public changes and current-format backup safety;
   private owner `4a` owns private code, backup readiness and toolchain rollout;
   `972` executes composed release/TEST validation and eligible integration;
   `9eb` proves current DEV-03 through DEV-06, especially the actual core-edit
@@ -131,20 +137,21 @@ separately gated.
   planning are in scope. A specific production stop/start decision remains
   pending. No old recovery retirement before verified new recovery and durable
   authority transition; no unrelated cleanup or paid execution.
-- Backup acceptance is blocked on legacy recovery compatibility. The current
-  `activation-*` recovery uses `recovery.json`, its release receipt, and
-  `latest-activation.json`; new materialization/retirement only handles
-  `backup-*` with `backup.json` and otherwise records no predecessor. Existing
-  tests retire one of two new backups, not the actual legacy recovery.
-  Existing public/private owners will add the minimal receipt-compatible
-  legacy reference bridge and representative failure/interruption regressions.
-  Validate old identity under maintained locks, preserve its full closure until
-  a new backup passes same-consumer materialization, switch authority durably,
-  then retire only that exact obsolete predecessor. Include discovery readers;
-  no fabricated receipts, parallel pointer workaround or manual deletion.
-  Tooling materialization, target/capacity planning and service approval wait
-  for this corrected path. Missing pnpm offline metadata is not a prerequisite
-  for the direct-Node backup operation.
+- The requester clarified that only a fresh complete backup of current healthy
+  production is required, in the new supported format. This supersedes the
+  legacy-format bridge as a prerequisite. Capture current runtime/state and
+  required assets, verify and materialize through the maintained restore
+  consumer in isolation, then durably publish the new backup. No old receipt
+  inheritance, format conversion or generic activation-format retirement API
+  is required. Keep capture consistency and hard-kill/restart safety.
+  After successful replacement proof, separately guarded maintenance may remove
+  only the exact authorized old directory and its matching obsolete reference.
+  Revalidate identity, locks, journals and remaining references; unexpected
+  references stop cleanup. Keep the old bytes until the new recovery is proven.
+  Readiness/tooling/target planning can proceed once the current-format path
+  is reviewed and verified; do not wait for optional legacy support. Production
+  stop/start still needs its specific approval. Private `6baebe0` makes the
+  legacy receipt optional after reverting its final-binding requirement.
 - The coordinator verified the latest local accumulated public receipt:
   `b144f1d7c306c8247d251cbf32eeae5841ca1da8`, tree
   `3a33ab59db0f84ae2e88eaf9a2a8e9f3772bd70e`, status passed,
@@ -396,8 +403,21 @@ separately gated.
 - The maintained `qaRuntime` profile builds runtime output, plugin assets,
   external plugin local output, postbuild files and stamps without release
   declarations. Sync `dist/` for installed DEV, not source-checkout-only
-  `dist-runtime`. The private owner has measured the plugin's complete loop;
-  the equivalent core-edit loop is still outstanding. Dependency, manifest,
+  `dist-runtime`. The plugin loop measured 174 seconds; the DEV owner now
+  reports a genuine uncommitted `normalizeE164` core edit and two test edits
+  completing edit-to-feedback in 188.03 seconds, with command wall time
+  170.95 seconds (wrapper 170: local 113,
+  staging 8, transfer 31, restart/installed integration 18). The installed
+  fixed-input assertion passed with three plugins and zero external calls.
+  Cold bootstrap measured 197.07 seconds separately after reset-join repair
+  `10018b2`; do not count it as warm-loop evidence. The final packet includes
+  exact output/PROD identities, source/patch manifests and the uncommitted diff.
+  The fixed installed input changes `+00442079460000` to `+442079460000`.
+  Unchanged-source execution takes 124.86 seconds, not a skipped-build claim;
+  stop/start take 0.83/19.12 seconds and lifecycle/status/reset checks pass.
+  Actual TEST coexistence and a current-input plugin run remain. The private
+  manifest includes four selected patches, not three.
+  Dependency, manifest,
   lockfile or toolchain changes require bootstrap/dependency refresh rather
   than this unchanged-dependency fast path.
 - The cold DEV inventory bottleneck was tar creation performed by
@@ -812,7 +832,9 @@ using the maintained component commands. Private now reports cold bootstrap
 and the runtime-changing plugin's complete remote loop at `e50b9bb`.
 Retained review then found a rollback shutdown race, corrected at `b543049`;
 affected current-head review and runtime evidence still need confirmation.
-Core-edit remote timing and remaining DEV acceptance evidence are outstanding.
+The actual core edit-to-feedback loop now passes at 188.03 seconds (command
+170.95), with identity and unchanged-source/lifecycle evidence captured.
+Current-input plugin and actual TEST coexistence evidence remain outstanding.
 These results do not establish final private release eligibility.
 
 This master document records agreed scope and available evidence. It does not
@@ -847,7 +869,7 @@ record in the relevant component plan, not a status assertion alone.
   thin owned-output SSH deploy to DEV. Prove ordinary compiler reuse, correct
   runtime dependency transfer and service restart without release prerequisites.
   The representative plugin loop at `e50b9bb` completes in 174 seconds.
-- [ ] DEV-03 (private/public): Accept uncommitted local development normally.
+- [x] DEV-03 (private/public): Accept uncommitted local development normally.
   Prove the DEV command refuses production targets and cannot issue production
   approval; do not require a new draft receipt or attestation protocol.
 - [ ] DEV-04 (private): Pass the relevant deployed integration and smoke checks,
@@ -862,8 +884,10 @@ record in the relevant component plan, not a status assertion alone.
   feedback budget. Record every phase, cold/no-op cases separately, and which
   changed outputs ran. Run focused packaging checks when that behavior changes,
   not full release packaging or the full CI suite after every local edit.
-  The plugin loop meets the budget at 174 seconds. Actual core-edit end-to-end
-  evidence is still required.
+  Historical plugin proof meets the budget at 174 seconds. Current core
+  edit-to-feedback is 188.03 seconds (command 170.95), with exact-output identity
+  and unchanged-source execution recorded. The plugin example has not been
+  rerun on current inputs; do not relabel historical proof or close this item yet.
 
 **Hosted ARM and local fallback**
 
@@ -962,9 +986,11 @@ record in the relevant component plan, not a status assertion alone.
   maintained restore consumer in isolated non-delivering destinations. Complete
   committed regressions, applicable accumulated gates and retained full-diff
   review. A valid state archive alone does not close this item.
-- [ ] BACKUP-04 (public/private; BACKUP-03): Prove atomic reference/journal
-  transition and exact reference-aware retirement, preserving old recovery
-  on any failed verification, interrupted commit or remaining reference.
+- [ ] BACKUP-04 (public/private; BACKUP-03): Prove durable new-backup publication,
+  then separately guarded cleanup of the exact authorized old directory and
+  matching obsolete reference. Preserve old recovery until replacement proof;
+  stop cleanup on unexpected references or locks. No old-format conversion or
+  generic legacy-retirement interface is required.
 - [ ] BACKUP-05 (private/coordinator; BACKUP-03/04): Establish current target and
   measured capacity readiness, then obtain one exact live maintenance approval
   for any required stop/start. Capture and verify the replacement, restart the
