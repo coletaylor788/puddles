@@ -527,12 +527,10 @@ The clone helper rejects other exclusions and retained links into that tree.
 The manifest records the exclusion, and verification requires the restored
 state to omit it.
 
-When the backup replaces an existing activation recovery, the target also
-supplies `legacyActivationReceipt: { "path": "/absolute/release.json",
-"sha256": "<64 hex>" }`. This points to the existing production release receipt.
-It is never copied or rewritten as a backup receipt. Capture verifies its full
-production evidence and assets, then binds the exact receipt, activation
-journal, and `latest-activation.json` identities before state capture.
+Capture and publication do not inspect or inherit an older activation recovery.
+They remain available when `latest-activation.json` is missing, stale, or uses
+an older format. The optional `legacyActivationReceipt` field is used only by
+the separate exact cleanup operation after a new recovery is authoritative.
 
 `plan` walks the exact included runtime, state, and service inputs. It reports
 allocated and logical bytes, entry counts, filesystem free bytes, and a
@@ -558,13 +556,13 @@ both recoveries and fails closed. `current` resolves and verifies the
 authoritative new recovery through that reference.
 
 `retire` removes one named direct recovery only after a different current
-recovery and its materialization proof verify. The first new backup may retire
-the exact legacy activation recovery captured in its predecessor token. The
-journal moves the legacy activation pointer and recovery to exact tombstones,
-then compare-and-swap clears the predecessor from the healthy reference before
-deleting either tombstone. Every interrupted stage is resumable. Referenced
-backups, changed receipts or pointers, unknown entries, escaped paths, and
-ambiguous ownership block deletion. There is no age-based or broad pruning.
+recovery and its materialization proof verify. Exact cleanup of an
+`activation-*` recovery additionally requires its retained receipt. The journal
+moves only that obsolete activation pointer and recovery through exact
+tombstones while the new healthy reference remains guarded. Every interrupted
+stage is resumable. Referenced backups, changed receipts or pointers, unknown
+entries, escaped paths, and ambiguous ownership block deletion. There is no
+conversion, age-based cleanup, or broad pruning.
 
 ## Delivery
 

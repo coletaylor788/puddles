@@ -270,7 +270,20 @@ function legacyRecovery(f: ReturnType<typeof fixture>) {
     transaction,
     target: journal.target,
   }));
-  return { directory, journal };
+  return {
+    directory,
+    journal,
+    identity: {
+      kind: "activation",
+      transaction,
+      activationTargetSha256: journal.target,
+      artifactSha256: journal.artifact,
+      journalSha256: fileDigest(join(directory, "recovery.json")),
+      receiptPath: realpathSync(receiptPath),
+      receiptSha256: fileDigest(receiptPath),
+      latestActivationSha256: fileDigest(join(f.target.backupRoot, "latest-activation.json")),
+    },
+  };
 }
 
 function legacyRetirementState(
@@ -302,7 +315,7 @@ function legacyRetirementState(
       schemaVersion: 1,
       kind: "activation",
       transaction: legacy.journal.transaction,
-      legacyRecovery: referenceBefore.previousRecovery,
+      legacyRecovery: legacy.identity,
       referenceBefore,
       referenceBeforeSha256: jsonDigest(referenceBefore),
       referenceAfter,
@@ -537,6 +550,8 @@ describe("current production recovery backup", () => {
   it("replaces and retires the exact legacy activation recovery after one materialization", async () => {
     const f = fixture();
     const legacy = legacyRecovery(f);
+    const receipt = f.target.legacyActivationReceipt;
+    f.target.legacyActivationReceipt = undefined;
     const captured = await captureCurrentBackup(f.target, f.factory);
     const materialized = await materializeCurrentBackup(
       f.target,
@@ -547,15 +562,12 @@ describe("current production recovery backup", () => {
     const unrelated = join(f.target.backupRoot, "operator-notes");
     mkdirSync(unrelated);
 
-    expect(materialized.reference.previousRecovery).toMatchObject({
-      kind: "activation",
-      transaction: legacy.journal.transaction,
-      activationTargetSha256: legacy.journal.target,
-      artifactSha256: legacy.journal.artifact,
-    });
+    expect(captured.manifest.previousRecovery).toBe(null);
+    expect(materialized.reference.previousRecovery).toBe(null);
     expect(existsSync(legacy.directory)).toBe(true);
     expect(existsSync(join(f.target.backupRoot, "latest-activation.json"))).toBe(true);
 
+    f.target.legacyActivationReceipt = receipt;
     expect(retireCurrentBackup(f.target, legacy.directory)).toEqual({
       transaction: legacy.journal.transaction,
       retired: true,
@@ -583,41 +595,53 @@ describe("current production recovery backup", () => {
     expect(rediscovered.reference).toEqual(reference);
   });
 
-  it("preserves a mismatched legacy recovery and pointer before reference commit", async () => {
+  it("publishes a new-format backup without reading a mismatched legacy pointer", async () => {
       const f = fixture();
       const legacy = legacyRecovery(f);
-      const captured = await captureCurrentBackup(f.target, f.factory);
+      f.target.legacyActivationReceipt = undefined;
       writeFileSync(join(f.target.backupRoot, "latest-activation.json"), JSON.stringify({
         transaction: legacy.journal.transaction,
         target: "d".repeat(64),
       }));
 
-      await expect(materializeCurrentBackup(
+      const captured = await captureCurrentBackup(f.target, f.factory);
+      const materialized = await materializeCurrentBackup(
         f.target,
         captured.directory,
         join(root(), "legacy-mismatch"),
         f.factory,
-      )).rejects.toThrow("Activation ownership evidence differs");
+      );
+      expect(materialized.reference.previousRecovery).toBe(null);
       expect(existsSync(legacy.directory)).toBe(true);
       expect(existsSync(join(f.target.backupRoot, "latest-activation.json"))).toBe(true);
       expect(existsSync(join(
         f.target.backupRoot,
         "backup-references",
         "latest-healthy-recovery.json",
-      ))).toBe(false);
+      ))).toBe(true);
   });
 
-  it("rejects mismatched legacy receipt and artifact identities", async () => {
+  it("rejects mismatched legacy receipt and artifact identities only during cleanup", async () => {
       const receiptFixture = fixture();
       const receiptLegacy = legacyRecovery(receiptFixture);
+      const receiptBackup = await captureCurrentBackup(
+        receiptFixture.target,
+        receiptFixture.factory,
+      );
+      await materializeCurrentBackup(
+        receiptFixture.target,
+        receiptBackup.directory,
+        join(root(), "receipt-replacement"),
+        receiptFixture.factory,
+      );
       writeFileSync(
         receiptFixture.target.legacyActivationReceipt!.path,
         JSON.stringify({ changed: true }),
       );
-      await expect(captureCurrentBackup(
+      expect(() => retireCurrentBackup(
         receiptFixture.target,
-        receiptFixture.factory,
-      )).rejects.toThrow("receipt identity is invalid");
+        receiptLegacy.directory,
+      )).toThrow("receipt identity is invalid");
       expect(existsSync(receiptLegacy.directory)).toBe(true);
       expect(existsSync(join(
         receiptFixture.target.backupRoot,
@@ -626,29 +650,59 @@ describe("current production recovery backup", () => {
 
       const artifactFixture = fixture();
       const artifactLegacy = legacyRecovery(artifactFixture);
+      const artifactBackup = await captureCurrentBackup(
+        artifactFixture.target,
+        artifactFixture.factory,
+      );
+      await materializeCurrentBackup(
+        artifactFixture.target,
+        artifactBackup.directory,
+        join(root(), "artifact-replacement"),
+        artifactFixture.factory,
+      );
       const journalPath = join(artifactLegacy.directory, "recovery.json");
       const journal = JSON.parse(readFileSync(journalPath, "utf8"));
       journal.artifact = "0".repeat(64);
       writeFileSync(journalPath, JSON.stringify(journal));
-      await expect(captureCurrentBackup(
+      expect(() => retireCurrentBackup(
         artifactFixture.target,
-        artifactFixture.factory,
-      )).rejects.toThrow("release receipt differs from recovery");
+        artifactLegacy.directory,
+      )).toThrow("release receipt differs from recovery");
       expect(existsSync(artifactLegacy.directory)).toBe(true);
 
       const runtimeFixture = fixture();
       const runtimeLegacy = legacyRecovery(runtimeFixture);
+      const runtimeBackup = await captureCurrentBackup(
+        runtimeFixture.target,
+        runtimeFixture.factory,
+      );
+      await materializeCurrentBackup(
+        runtimeFixture.target,
+        runtimeBackup.directory,
+        join(root(), "runtime-replacement"),
+        runtimeFixture.factory,
+      );
       const runtimeJournalPath = join(runtimeLegacy.directory, "recovery.json");
       const runtimeJournal = JSON.parse(readFileSync(runtimeJournalPath, "utf8"));
       runtimeJournal.deployedRuntimeSha256 = "1".repeat(64);
       writeFileSync(runtimeJournalPath, JSON.stringify(runtimeJournal));
-      await expect(captureCurrentBackup(
+      expect(() => retireCurrentBackup(
         runtimeFixture.target,
-        runtimeFixture.factory,
-      )).rejects.toThrow("release receipt differs from recovery");
+        runtimeLegacy.directory,
+      )).toThrow("release receipt differs from recovery");
 
       const targetFixture = fixture();
       const targetLegacy = legacyRecovery(targetFixture);
+      const targetBackup = await captureCurrentBackup(
+        targetFixture.target,
+        targetFixture.factory,
+      );
+      await materializeCurrentBackup(
+        targetFixture.target,
+        targetBackup.directory,
+        join(root(), "target-replacement"),
+        targetFixture.factory,
+      );
       const targetJournalPath = join(targetLegacy.directory, "recovery.json");
       const targetJournal = JSON.parse(readFileSync(targetJournalPath, "utf8"));
       targetJournal.target = "2".repeat(64);
@@ -660,10 +714,10 @@ describe("current production recovery backup", () => {
           target: targetJournal.target,
         }),
       );
-      await expect(captureCurrentBackup(
+      expect(() => retireCurrentBackup(
         targetFixture.target,
-        targetFixture.factory,
-      )).rejects.toThrow("release receipt differs from recovery");
+        targetLegacy.directory,
+      )).toThrow("release receipt differs from recovery");
   });
 
   it("refuses legacy retirement before one verified replacement exists", () => {

@@ -97,13 +97,12 @@ Capture alone cannot replace the healthy recovery pointer. The same recovery
 consumer first materializes the snapshot into fresh isolated paths, checks the
 runtime, configuration, databases, service definition, interpreter, browser,
 and recorded digests without delivery, then advances the pointer atomically.
-When the old recovery came from a release activation, capture binds its existing
-release evidence and ownership pointer before copying state. Materialization
-refuses if that predecessor changes. Retirement moves only that pointer and
-recovery into journal-owned tombstones, makes the verified backup authoritative,
-then removes the old bytes. Only one exact superseded recovery can be retired.
-Any interruption, identity drift, unknown file, failed restart, or ambiguous
-ownership preserves a usable recovery.
+Capture and publication do not inspect or inherit an older activation recovery.
+After the new backup is authoritative, a separate exact cleanup can validate
+the old release evidence and pointer, move only that pointer and recovery
+through journal-owned tombstones, and remove the old bytes. Any interruption,
+identity drift, unknown file, failed restart, or ambiguous ownership preserves
+a usable recovery.
 
 ### Status
 
@@ -113,14 +112,12 @@ The shared package-manager contract pins pnpm 12.3.4 and one explicit store per
 host. Private work owns the authorized HOST and MINI consumer migration and
 must report effective store metadata and frozen offline proofs.
 
-The backup path now bridges the actual legacy activation format to one verified
-new backup without inventing a release receipt. Its 25 focused tests and e2e
-type-check pass. The retained reviewer found two pre-journal hard-kill windows;
-both now restore the exact tombstone and retry safely. A third review finding
-covered a committed reference whose journal write was interrupted; resume now
-recognizes that exact post-state. Review recheck and the final accumulated
-lifecycle remain pending. No production capture, service action, retirement,
-paid job, release activation, or merge has occurred.
+The backup path captures and publishes a complete new-format recovery without
+requiring or inheriting an older activation receipt. Exact old activation
+cleanup remains a separate guarded operation after publication. Focused review
+and the final accumulated lifecycle remain pending for this simplified
+boundary. No production capture, service action, retirement, paid job, release
+activation, or merge has occurred.
 
 ## Agent section
 
@@ -356,13 +353,12 @@ paid job, release activation, or merge has occurred.
   interpreter, parses config and service data, checks SQLite, and verifies the
   browser identity before a compare-and-swap update of
   `backup-references/latest-healthy-recovery.json`.
-- Capture binds an existing activation predecessor through the exact production
-  receipt, activation journal, and `latest-activation.json` file before state
-  capture. Materialization requires that token unchanged.
+- Capture and publication do not read or inherit legacy activation state.
 - `current` resolves and verifies the authoritative new backup.
-- `retire` accepts one direct new backup or the exact activation predecessor.
-  Legacy retirement moves the pointer first and recovery second, then clears
-  the predecessor through compare-and-swap before removing either tombstone.
+- `retire` accepts one direct new backup or one separately verified activation
+  recovery. Legacy cleanup moves the obsolete pointer first and recovery
+  second through a compare-and-swap guarded transition of the new healthy
+  reference.
   It refuses changed, referenced, unknown, or ambiguous state and never scans
   or prunes by age.
 - `packages/e2e/src/pnpm-toolchain.mjs` owns the exact pnpm `12.3.4` identity
@@ -609,20 +605,10 @@ paid job, release activation, or merge has occurred.
   manifests and queries version and store from a neutral directory, leaving
   both lockfiles byte-identical. Public and private fresh/offline proofs pass.
   The final accumulated public lifecycle passes with nine scenarios.
-- 2026-09-20: Exact source review found that retirement covered only two
-  new-format backups. The corrected bridge binds the current activation receipt,
-  journal, and pointer at capture, refuses drift at materialization, and retires
-  that one predecessor through a resumable pointer, recovery, and reference
-  transition. Focused tests and type-check pass; retained review is pending.
-- 2026-09-20: Retained review found that a hard kill after either legacy rename
-  but before its journal write left resume stuck. Both stages now validate and
-  restore their exact tombstone before retrying. Regressions cover both windows;
-  24 focused backup tests and e2e type-check pass.
-- 2026-09-20: Retained review found the same interruption window between the
-  healthy-reference compare-and-swap and its journal update. Resume now accepts
-  only the exact journaled post-reference hash and continues removal. A focused
-  regression leaves the prior journal status after the reference write; 25
-  focused backup tests pass.
+- 2026-09-20: Backup readiness no longer depends on interpreting the old
+  activation format. Fresh capture and same-consumer publication use only the
+  current runtime, state, service, Node, browser, and new healthy reference.
+  Exact old activation cleanup is a later guarded operation.
 
 ### Checklist
 
@@ -650,7 +636,7 @@ paid job, release activation, or merge has occurred.
 - [x] Resume the retained reviewer on the complete ARM profile diff.
 - [x] Review and publish the bounded draft-only timeout repair.
 - [ ] Complete retained review and the accumulated public gate for the final
-  legacy-aware backup maintenance path.
+  receipt-free backup capture and separate exact cleanup path.
 - [x] Complete compatibility, retained review, and accumulated gates for pnpm
   12.3.4 and the shared host-local store.
 - [ ] Hold merge and production activation for coordinator authorization.
