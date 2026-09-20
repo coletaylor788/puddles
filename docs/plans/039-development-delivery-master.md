@@ -64,12 +64,13 @@ The requester has paused the release and declined hosted spending. The
 whole-mini read-only audit now covers major storage categories and explains
 physical versus logical sizes, protected data, access limits and remedies.
 The requester has approved unused Copilot state and temporary Docker installer
-cleanup on the mini, plus a smaller replacement recovery backup. The old
-recovery contains historical backups that are no longer in live state. Its
-replacement must be created separately and verified before the old recovery is
-retired. Production downtime and release resumption are not approved. Detailed
-machine inventory remains private. Build evidence is preserved; private release
-and TEST proof remain incomplete. Neither change is merged.
+cleanup on the mini, plus a smaller replacement recovery backup. Neither has
+been executed. The cleanup handoff is corrected, and the backup investigation
+found no maintained standalone full-recovery operation. That operation, its recovery proof
+and approval for a brief production stop/start are still required. The old
+backup and references remain intact; the audit measurements are not post-cleanup
+capacity. Release resumption is not approved. Detailed machine inventory remains
+private. Private release and TEST proof remain incomplete. Neither change is merged.
 
 ## Agent section
 
@@ -104,7 +105,7 @@ and TEST proof remain incomplete. Neither change is merged.
   authorize cleanup or a new run; subsequent narrow approvals are recorded below.
 - The requester now authorizes two mini cleanup targets: unused Copilot state
   and the exact temporary Homebrew Docker installer staging tree identified by
-  the audit. The disk-audit owner must refresh canonical paths, ownership,
+  the audit. The private deployment owner must refresh canonical paths, ownership,
   process/lock and live-reference checks, then measure actual APFS reclaim.
   Preserve active/referenced state, production authentication/configuration,
   credentials, recovery and release evidence. Do not recursively remove the
@@ -124,6 +125,47 @@ and TEST proof remain incomplete. Neither change is merged.
   Report any required production stop/start or new privilege for a specific
   requester decision before acting. If a maintained backup-only path is missing,
   identify that gap before expanding implementation scope.
+- Actual maintenance status: no mini cleanup or replacement backup has run.
+  The audit worker is following a separate user-requested development-Mac audit;
+  that request did not cancel mini cleanup. The private deployment owner now
+  owns the approved mini cleanup independently of backup readiness. Do not
+  report a delegated instruction as executed cleanup. The fresh mini
+  capacity/service probe below is read-only, not evidence of reclaim.
+- Existing native recovery creation is activation-coupled. There is no maintained
+  backup-only command or standalone verifier/reference-transition/retirement
+  operation for its full recovery format. The destination-recursion fix does not exclude a legacy
+  `deploy-snapshots` child. Recheck that live state lacks that child before
+  capture. The public owner is checking the smallest supported existing
+  snapshot/recovery or installed-runtime backup option. Do not assume a new
+  manifest, reference namespace and recovery mode are necessary. Any required
+  narrow implementation needs committed regressions, isolated non-delivering
+  restore evidence and retained review before live use.
+- Upstream OpenClaw `v2026.7.1` provides maintained state/config backup creation
+  and verification with SQLite live snapshots. That archive does not contain
+  installed runtime, plist, external Node or browser assets, and has no full
+  recovery consumer. It cannot replace the current native recovery alone.
+  Do not create an extra archive merely to claim progress or start a new
+  backup platform by default. Evaluate the smallest supported route, including
+  retaining current recovery until normal approved activation creates a clean
+  successor. Confirm installed command availability before any invocation.
+- Consistent capture requires the production gateway's state writers to stop.
+  The proposed single stop/start has a planned seven-minute outage budget,
+  normally expected under a minute: bounded shutdown, at most five minutes
+  for the state clone, immediate unchanged-service restart and health checks.
+  Abort capture and restart on failure; keep the old recovery/reference.
+  This bounds attempted capture, not every possible restart failure. Request
+  explicit permission before service action; no live restore or upgrade.
+- Durable storage acceptance requires measured physical reclaim, verified
+  usable recovery, understood installer-staging recurrence, and retained-data
+  controls with comfortable workload headroom. Passing the minimum disk guard
+  alone is not sufficient. Do not add automatic deletion policies from this
+  goal without settling their exact scope.
+- A fresh read-only mini probe at approximately 12:25 PDT on 2026-09-20
+  confirms both PROD and DEV health endpoints are live and TEST is absent.
+  Free space remains below the existing guard. No cleanup or replacement has
+  occurred, so there is no reclaimed capacity to report. Exact measurements
+  remain in the private report and must not be confused with the development
+  Mac audit.
 - Plan 038, `docs/plans/038-artifact-delivery.md`, holds the public implementation
   details on PR #117. It is not present on this document's initial base branch.
   The deployment owner keeps host-specific configuration and the private
