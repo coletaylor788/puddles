@@ -1,6 +1,6 @@
 # Plan 039 - OpenClaw development and delivery
 
-**Status:** Implementation in progress
+**Status:** Release paused for read-only mini disk audit
 **Issue:** [#118](https://github.com/coletaylor788/puddles/issues/118)
 **Last updated:** 2026-09-19
 **Owner:** Delivery coordinator
@@ -60,14 +60,13 @@ seconds, with no external calls. The equivalent core-change measurement is
 still local-only. That successful plugin run predates a rollback correction,
 so the affected checks must be refreshed for the latest private version.
 
-The private composed release, complete physical release proof, remaining DEV
-acceptance checks and workspace cleanup are not yet complete. The fresh local
-release run passes the root build and mapped regressions, but is blocked on
-offline dependencies and tight disk headroom. Its successful work is preserved.
-The bounded resource review finds the only audited cleanup candidate too small
-to support the next run. One time-limited hosted attempt awaits approval, with
-its cost and billing limits documented privately. No cleanup or paid execution
-is approved. Neither delivery change is merged. Production remains unchanged.
+The requester has paused the release and declined hosted spending. A fresh,
+read-only disk audit of the mini will identify what occupies space, what must
+be preserved and which remedies could recover useful capacity. The earlier
+capacity packet concerns the development Mac, not the mini. No files or services
+will be changed by the audit. Successful build evidence is preserved, but the
+private release and TEST proof remain incomplete. Neither delivery change is
+merged. DEV and production remain running.
 
 ## Agent section
 
@@ -76,6 +75,14 @@ is approved. Neither delivery change is merged. Production remains unchanged.
 - This is the coordinator-owned end-to-end scope and completion checklist for
   issue #118. Do not replace it with the latest failure, commit, or worker
   handoff. Keep both sections current when scope or status changes.
+- The requester declined the single hosted-attempt proposal and explicitly
+  paused the current release. Public/private owners acknowledge no new release
+  builds, installs, dispatches, cleanup, service actions or merge activity.
+  Preserve successful evidence and healthy DEV/PROD. The next authorized work
+  is a read-only MINI disk audit by the existing disk-audit owner, not another
+  development-Mac audit. Measure physical/logical capacity, protected references
+  and concrete remedies. No deletion, relocation or other remedy is approved
+  by this request. Private paths and detailed inventory remain in local evidence.
 - Plan 038, `docs/plans/038-artifact-delivery.md`, holds the public implementation
   details on PR #117. It is not present on this document's initial base branch.
   The deployment owner keeps host-specific configuration and the private
@@ -233,12 +240,12 @@ is approved. Neither delivery change is merged. Production remains unchanged.
   424 MiB, possibly less physically, and is insufficient. Do not delete it or
   broaden cleanup. Canonical path, reference checks and billing details remain
   in the private decision packet.
-- The coordinator owns one request to authorize a single existing hosted
-  workflow attempt with its fixed 120-minute builder timeout and no automatic
-  retry. The packet provides a runner-cost estimate, not a verified account
-  spending cap or remaining included allowance. No paid execution, account
-  change or production action is authorized until that decision. Before a
-  costly build, establish the declared shared-store/offline prerequisites.
+- The proposed single hosted attempt had a fixed 120-minute builder timeout
+  and no automatic retry. Its estimate did not establish a verified account
+  spending cap or remaining included allowance. The requester declined it;
+  do not dispatch it or change account limits. A future release resumption
+  still needs the declared shared-store/offline prerequisites and explicit
+  resolution of the pause.
 - Retained bundle import cannot adopt builder stages or issue a receipt for
   corrected migration bytes; it restores the old immutable identity and has
   no migration body to recover. Never rewrite sealed hashes, copy stages into
@@ -513,6 +520,10 @@ Keep the currently healthy production runtime and its protected recovery.
 Existing process and dev/test work does not authorize a production upgrade.
 Do not retire recovery tooling, pinned interpreters or referenced assets while
 they remain needed by that recovery.
+
+The current release is paused by the requester. The mini audit is read-only.
+Do not resume release execution or apply a disk remedy from audit results alone;
+return the findings for the requester's decision.
 
 Finish focused repairs with retained evidence, validate the selected ARM builder
 profile, prove the separate DEV loop and release TEST path, then integrate the
