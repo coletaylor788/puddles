@@ -79,10 +79,6 @@ preparation, dependency, build, package, install, or runtime proofs. Source,
 lockfile, and toolchain changes still invalidate their dependent stages. The
 build receipt binds preparation and package composition; gate-only provenance
 remains in the source-gate receipt.
-- Run status clears stale terminal fields when an invocation starts. Controlled
-source-gate failure records the original error and terminal time before the
-pipeline returns nonzero; an unexpected hard kill remains visibly
-interrupted.
 
 An owner-managed artifact pool keeps disk use bounded without guessing which
 directories are safe to delete. Producers register exact assets, ownership,
@@ -653,7 +649,6 @@ occurred.
 - [ ] Complete retained review and the accumulated public gate for the final
   receipt-free backup capture and separate exact cleanup path.
 - [ ] Complete FLOW-06 phase-owned input review and affected-only reuse proof.
-- [ ] Complete FLOW-05 terminal run-status review.
 - [x] Complete compatibility, retained review, and accumulated gates for pnpm
   12.3.4 and the shared host-local store.
 - [ ] Hold merge and production activation for coordinator authorization.

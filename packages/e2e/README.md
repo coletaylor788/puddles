@@ -305,12 +305,6 @@ When npm's file selection includes bundled dependencies, the resolved production
 graph owns those files. Packaging rejects bundled packages outside that graph.
 Required transitive peers stay required, and installation still verifies every
 archive and runtime digest without registry access.
-
-Each invocation rewrites `run-status.json` to `running` with prior terminal
-fields cleared. A controlled failure records the original error and a new
-finish time before returning nonzero. A hard kill can still leave an explicit
-interrupted `running` record for operator inspection.
-
 Packaging binds the installed dependency bytes, not only the lockfile. Regression
 proofs bind the effective environment, selected Python interpreter and installed
 test dependencies. Environment values are hashed, not written into receipts.

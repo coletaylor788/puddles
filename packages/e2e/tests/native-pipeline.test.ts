@@ -201,7 +201,7 @@ import { certifyRelease, createTargetProof, importReleaseBundle } from "../src/n
 // @ts-expect-error JS lifecycle exports are tested at runtime.
 import { createRehearsalTarget } from "../src/native-target.mjs";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
-import { atomicJson, jsonDigest, nativeRunStatus, treeDigest } from "../src/native-state.mjs";
+import { atomicJson, jsonDigest, treeDigest } from "../src/native-state.mjs";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
 import { findRetainedSourceGate, initializeArtifactPool, planArtifactCleanup } from "../src/native-retention.mjs";
 import { runCommand } from "../src/process-runner.mjs";
@@ -441,45 +441,6 @@ it("preserves the primary pipeline error when terminal retention also fails", as
     expect.stringContaining("ownership"),
   ]));
 });
-
-it("records controlled source-gate failure and clears stale terminal status", async () => {
-  const { run } = setup();
-  vi.stubEnv("GMAIL_MCP_PYTHON", "fixture-python");
-  atomicJson(join(run, "run-status.json"), {
-    schemaVersion: 1,
-    command: "ci",
-    status: "passed",
-    pid: 1,
-    startedAt: "2026-09-20T20:00:00.000Z",
-    finishedAt: "2026-09-20T20:10:00.000Z",
-    failure: null,
-  });
-  const failure = new Error("source gate fixture failed");
-  let running;
-  await expect(nativePipeline("source-gate", async () => {
-    running = nativeRunStatus(run).run;
-    throw failure;
-  })).rejects.toBe(failure);
-
-  expect(running).toMatchObject({
-    command: "source-gate",
-    status: "running",
-    pid: process.pid,
-    finishedAt: null,
-    failure: null,
-  });
-  const failed = nativeRunStatus(run).run;
-  expect(failed).toMatchObject({
-    command: "source-gate",
-    status: "failed",
-    pid: process.pid,
-    failure: { code: null, message: failure.message },
-  });
-  expect(Date.parse(failed.finishedAt)).toBeGreaterThan(
-    Date.parse(failed.startedAt),
-  );
-});
-
 function extension(directory: string, name: string, phase = "package", inputs: string[] = [], outputs = true) {
   const path = join(directory, `${name}.mjs`);
   writeFileSync(path, `export default ${JSON.stringify({
