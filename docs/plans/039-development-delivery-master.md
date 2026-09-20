@@ -2,7 +2,7 @@
 
 **Status:** Implementation in progress
 **Issue:** [#118](https://github.com/coletaylor788/puddles/issues/118)
-**Last updated:** 2026-09-18
+**Last updated:** 2026-09-19
 **Owner:** Delivery coordinator
 
 ## Human section
@@ -64,10 +64,11 @@ than repeating unchanged attempts.
 
 The private composed release, actual DEV deployment and integration checks,
 complete physical release proof, and remaining workspace cleanup are not yet
-confirmed complete. File selection belongs to initial setup, not the normal
-built-output sync loop. Transfer, restart and remote integration are not included
-in the local timings. Neither delivery change is merged. Production remains
-unchanged.
+confirmed complete. Release testing also needs fresh evidence for corrected
+migration test data; the retained bundles bind the old data. File selection
+belongs to initial setup, not the normal built-output sync loop. Transfer,
+restart and remote integration are not included in the local timings. Neither
+delivery change is merged. Production remains unchanged.
 
 ## Agent section
 
@@ -170,21 +171,36 @@ unchanged.
   then measure a narrow repair on the actual candidate. Preserve authoritative
   package selection semantics with regression and parity evidence, not naive
   manifest globs. No full source rebuild is needed merely to investigate.
-- The private owner is finishing regressions for first-install rollback,
-  bounded startup readiness, plugin package boundaries and batched transport.
-  Test transport independently with a bounded synthetic payload where possible;
-  that is not real bootstrap proof. Resume actual DEV installation after the
-  inventory repair, then restore the runtime-changing benchmark and prove its
-  assertion remotely. The temporary baseline is not changed-behavior proof.
+- The private DEV implementation has retained review clearance at `9830b25`.
+  Its contract suite reports 68 passing tests and two intentional skips.
+  An independent 80 MiB, two-batch transport check with symlink and digest
+  verification passes and its test roots are cleaned. That is not bootstrap
+  proof. Resume actual DEV installation after the inventory repair, then restore
+  the runtime-changing benchmark and prove its assertion remotely.
 - The selected OpenClaw source is
   `1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7` (`v2026.9.3`). The selected
   candidate Node version is `26.1.0`; upstream pnpm is `12.3.4`. Do not silently
   change the release or toolchain while changing the delivery topology.
-- The latest completed private physical diagnosis recorded here passes
-  retained-bundle import, offline install, and all 11 installed scenarios.
-  Its physical preflight reports
-  `Migration job is missing or its reviewed revision changed`.
-  `expectedCAS=false` and failure before shutdown are not rollback evidence.
+- Earlier private diagnosis passes retained-bundle import, offline install and
+  all 11 installed scenarios, but fails migration preflight before shutdown.
+  The corrected migration fixture now has a different manifest digest.
+  Artifact-only run `35476744042` on private `9830b25` and public `e6c9a25`
+  rejects that mismatch before import or shutdown. Neither retained successful
+  build binds the corrected manifest; neither failure proves rollback.
+- Stop artifact-only retries against those immutable receipts. The private
+  owner is adding a migration-first diagnostic regression. The public owner
+  confirms ordinary `ci` in the same maintained `E2E_RUN_DIR`, with
+  `E2E_STATE_MIGRATION_MANIFEST` pointing to the corrected file, is the supported
+  recovery path. Migration is excluded from `buildStageInputs`: matching actual
+  build inputs reuse the successful root stage while migration-bound
+  regressions, runtime proofs and receipts regenerate. A committed regression
+  verifies the root build count remains one after a manifest-byte change.
+- First establish that a matching maintained run and its outputs survive.
+  Retained bundle import cannot adopt builder stages or issue a receipt for
+  corrected migration bytes; it restores the old immutable identity and has
+  no migration body to recover. If no matching run survives, the current API
+  requires a fresh run/build under the existing resource and cost gates.
+  Never rewrite sealed hashes or infer missing manifest contents.
 - The missing source-gate retention defect is repaired in the public checkpoint.
   The older retained regression record alone cannot recreate its missing source
   attestation because the attestation also binds inventory and extension gate
