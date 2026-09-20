@@ -70,8 +70,10 @@ maintenance. Existing owners are working on the backup correction, private
 integration, DEV core-edit proof, composed release/TEST validation and remaining
 package-store consumers. Backup scope is simplified to a fresh backup of current
 healthy production, restore proof, then exact old-backup cleanup. Old-format
-compatibility is not a prerequisite. The simplified public path is implemented
-and review-clear; private readiness and remaining final gates are next.
+compatibility is not a prerequisite. Tooling and the current mini target are
+prepared, and capacity checks pass. The status-query correction is now
+review-clear; private final binding and capture gates remain before the service
+approval request. No capture has occurred.
 The core DEV edit-to-feedback loop passes
 in just over three minutes, with installed identity and lifecycle checks
 recorded. Current-input plugin and TEST coexistence evidence, plus private
@@ -162,6 +164,20 @@ separately gated.
   separate and guarded after the new backup is authoritative. Private and
   release owners have the tuple. This is not a new accumulated-gate receipt or
   physical capture result; no service or cleanup action follows from it alone.
+- Mini readiness now has an owner-only current target and reviewed tooling,
+  valid runtime/service/browser identities, passing included database checks,
+  accounted-for writers and sufficient measured capacity. Exact private
+  measurements are in the disk report. The `current` probe created an empty
+  reference directory before correctly reporting no replacement. This is fixed
+  and retained-review clear at `4151ec9992f890edd62f7254d2fa5b99548c169f`,
+  tree `1cd96841311f7f6fd1e676d7eb6349c7125aa37e`: combined 89/89
+  and e2e typecheck pass. Queries no longer create reference storage;
+  publication initializes it under lock, and unpublished retirement gives the
+  intended domain refusal. Private/release owners have the exact tuple.
+  The mini's empty directory was left untouched. Reuse unchanged readiness
+  evidence and keep final accumulated/physical proof distinct from these checks.
+  No capture, reference switch or service action occurred. The planned capture
+  timeout does not guarantee a healthy restart deadline if recovery itself fails.
 - The coordinator verified the latest local accumulated public receipt:
   `b144f1d7c306c8247d251cbf32eeae5841ca1da8`, tree
   `3a33ab59db0f84ae2e88eaf9a2a8e9f3772bd70e`, status passed,
