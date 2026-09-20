@@ -72,9 +72,9 @@ package-store consumers. Backup scope is simplified to a fresh backup of current
 healthy production, restore proof, then exact old-backup cleanup. Old-format
 compatibility is not a prerequisite. Tooling and the current mini target are
 prepared, and capacity checks pass. The status-query correction and private
-binding are review-clear. Final accumulated validation is still pending for
-this exact source, alongside one scoped service-window approval. Capture
-cannot start until both are satisfied.
+binding are review-clear. The requester approved one backup-only service window,
+conditional on final accumulated validation for this exact source. That gate
+is still pending, so capture has not started.
 The core DEV edit-to-feedback loop passes
 in just over three minutes, with installed identity and lifecycle checks
 recorded. Current-input plugin and TEST coexistence evidence, plus private
@@ -87,8 +87,8 @@ The obsolete host test run is removed;
 the mini's real recovery remains protected until its replacement is proven.
 A full storage re-audit will follow the two maintenance milestones. Normal
 eligible source integration can proceed under required checks. Production
-stop/start, production activation, live restore and new paid execution remain
-separately gated.
+activation, live restore and new paid execution remain separately gated. The
+single backup-only stop/start is approved subject to its recorded conditions.
 
 ## Agent section
 
@@ -139,8 +139,9 @@ separately gated.
   when required; do not bypass required proof to align a primary checkout.
   After corrected backup code passes review/proof, necessary exact tooling and
   owner-only target materialization on the mini plus read-only capacity/identity
-  planning are in scope. A specific production stop/start decision remains
-  pending. No old recovery retirement before verified new recovery and durable
+  planning are in scope. One backup-only production stop/start is now approved,
+  conditional on final automated gates and fresh execution checks. No old
+  recovery retirement before verified new recovery and durable
   authority transition; no unrelated cleanup or paid execution.
 - The requester clarified that only a fresh complete backup of current healthy
   production is required, in the new supported format. This supersedes the
@@ -155,7 +156,7 @@ separately gated.
   references stop cleanup. Keep the old bytes until the new recovery is proven.
   Readiness/tooling/target planning can proceed once the current-format path
   is reviewed and verified; do not wait for optional legacy support. Production
-  stop/start still needs its specific approval. Private `6baebe0` makes the
+  stop/start has conditional requester approval. Private `6baebe0` makes the
   legacy receipt optional after reverting its final-binding requirement.
 - Public fresh-backup separation is retained-review clear at
   `a4cb1e2770257d07db08cb9f5c9518fe0a826334`, tree
@@ -186,8 +187,8 @@ separately gated.
   review is clean. Exact tooling archive, target file and normalized target
   digests plus the capture command are retained privately. Capacity is ready,
   current production is healthy, no backup lock exists and only the gateway
-  opens included state writable. Request one bounded stop/capture/restart
-  permission, conditional on required final gates and refreshed execution
+  opens included state writable.   The requester approved one bounded stop/capture/restart
+  window, conditional on required final gates and refreshed execution
   checks. The private owner confirms no exact accumulated receipt yet seals
   public `4151ec` and private `82bd5e2`; the older `b144f1d` receipt
   cannot be relabelled. Identical manifests/locks and patch-suite inputs support
@@ -848,8 +849,9 @@ alone still authorize no new cleanup, paid run or production action.
 
 Retain the old mini recovery until its complete replacement is verified and
 references are safely transitioned. The separate maintenance request covers
-that scoped replacement, but production stop/start still needs its specific
-approval. Production upgrade and live restore remain outside the resumed scope.
+that scoped replacement. One backup-only stop/start is approved after required
+final gates and refreshed target/health/writer/lock checks. Production upgrade
+and live restore remain outside the resumed scope.
 
 Finish focused repairs with retained evidence, validate the selected ARM builder
 profile, prove the separate DEV loop and release TEST path, then integrate the
