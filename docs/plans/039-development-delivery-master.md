@@ -57,38 +57,42 @@ historical build evidence or coupling installed services to a mutable cache.
 
 ### Status
 
-Earlier public delivery passes the complete pipeline on a standard 7 GB ARM
-runner. The new backup path now passes isolated integration checks between
-public and private code, but its final review and accumulated gates are still
-pending. No replacement has been captured on the mini. DEV runs there and a
-representative plugin edit has completed its full loop in under three minutes;
-core-edit remote evidence and checks affected by later repairs remain open.
+The latest public behavior passes the complete local pipeline. Earlier public
+delivery also passed on a standard hosted ARM runner; that is separate evidence.
+Backup code has public local and private isolated integration proof, but no
+replacement has been captured or restored on the mini. DEV runs there, and a
+representative plugin edit completed its full loop in under three minutes.
+Core-edit remote evidence and private release/TEST proof remain incomplete.
 
-The requester has made the backup-script repair the next priority, before the
-upgrade proceeds. Public and private owners will extend the existing recovery
-tooling and verify a complete, smaller replacement before retiring the old one.
-The built-in state archive is not an equivalent replacement. Small unused
-Copilot artifacts are removed, and the user's targeted Docker installer cleanup
-is verified with substantial recovered headroom and healthy services. The old
-recovery remains present. The reported package-manager defect is withdrawn:
-the failed test used an invalid workspace layout and an agent-modified lockfile.
-Private migration proof is being rerun with a physical copy of the workspace.
-Old package stores stay until their active consumers are
-migrated and verified. No production
-stop/start, paid execution or release resumption is approved. The old recovery
-is intact. Private release and TEST proof remain incomplete; neither change is
-merged.
+Backup replacement remains the next maintenance priority, before the upgrade.
+The mini's targeted installer cleanup is verified. Both machines have been
+re-audited; one superseded host test run is a bounded cleanup candidate awaiting
+approval, while necessary proof remains protected. Package-manager migration
+code is reported complete, but offline verification lacks required metadata and
+the older checkout remains unresolved. Keep old stores and recovery until their
+replacements are verified. No production stop/start, paid execution, release
+resumption or merge is approved.
 
 ## Agent section
 
 ### State
 
+- The coordinator verified the latest local accumulated public receipt:
+  `b144f1d7c306c8247d251cbf32eeae5841ca1da8`, tree
+  `3a33ab59db0f84ae2e88eaf9a2a8e9f3772bd70e`, status passed,
+  accumulated true, nine scenarios and seven proof keys, using
+  `node packages/e2e/bin/openclaw-test-env.mjs ci`. Current
+  `616cc61c922f6d13d9a2dd6ff7d0e66451cc813b` differs only by two
+  bookkeeping lines in Plan 038. Preserve the receipt's original identity;
+  do not rerun or relabel it for prose. This supersedes the older local gate
+  record, not hosted, private, or physical backup evidence.
 - Correction at 2026-09-20T13:33 PDT: the reported pnpm defect is withdrawn.
   pnpm 12.3.4 legitimately uses two YAML documents; public reproduction passes.
   The rejected three-document lock resulted from an agent manually duplicating
   the valid `packageManagerDependencies` prefix. The original failure was an
   invalid symlink sibling layout: cwd realpath resolution lost the `mcp-hooks`
-  workspace. Private proof is being rerun using a physical temporary copy.
+  workspace. Private migration code is now reported complete at `e7ed02d`;
+  maintained-root offline metadata for `@earendil-works/pi-tui` is missing.
   Cancel policy workarounds justified only by the withdrawn report. Keep only
   independently required no-mutation checks; do not strip valid lock structure
   or expand tooling. Migration and legacy-consumer resolution remain open.
@@ -97,11 +101,10 @@ merged.
   issue #118. Do not replace it with the latest failure, commit, or worker
   handoff. Keep both sections current when scope or status changes.
 - The requester declined the single hosted-attempt proposal and explicitly
-  paused the current release. Public/private owners acknowledge no new release
-  builds, installs, dispatches, cleanup, service actions or merge activity.
-  Preserve successful evidence and healthy DEV/PROD. The authorized audit scope
-  is a read-only audit of the ENTIRE MINI by the existing disk-audit owner,
-  not another development-Mac audit or a release-directory-only review.
+  paused the current release. Only separately authorized maintenance, validation,
+  audits and narrowly approved cleanup continue. Preserve successful evidence
+  and healthy DEV/PROD. The existing audit owner has completed the requested
+  whole-mini audit and subsequent read-only re-audits of both machines.
   Cover disks/APFS containers and volumes, OS/Data, applications and libraries,
   accessible user-home categories, developer caches/checkouts/builds, app data,
   containers/VMs if present, logs, backups, snapshots and purgeable space.
@@ -117,8 +120,14 @@ merged.
   whole-machine categories, protected references, permission gaps and options.
   The original APFS and `df` readings agreed on free space just below the guard;
   verified cleanup measurements below supersede that capacity baseline.
-  Temporary Docker installer staging is the strongest immediate candidate,
-  not production or recovery state. Allocated sizes are not guaranteed unique
+  Temporary Docker installer staging was removed and verified. The latest
+  ownership checks identify one superseded host test run for later approved
+  worktree-aware removal, retaining compact diagnostics. The final proof and
+  its source, failed reproduction, shared store and DEV reproduction stay.
+  No inspected public run tree has active processes; repeated source/install
+  copies retain isolated evidence, not currently overlapping jobs. New large
+  runs must use maintained native locations/retention, not session files.
+  Exact paths and the cleanup procedure remain private. Allocated sizes are not guaranteed unique
   reclaim because APFS can share extents. Audit recommendations alone do not
   authorize cleanup or a new run; subsequent narrow approvals are recorded below.
 - The requester now authorizes two mini cleanup targets: unused Copilot state
