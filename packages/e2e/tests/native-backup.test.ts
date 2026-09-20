@@ -635,6 +635,35 @@ describe("current production recovery backup", () => {
         artifactFixture.factory,
       )).rejects.toThrow("release receipt differs from recovery");
       expect(existsSync(artifactLegacy.directory)).toBe(true);
+
+      const runtimeFixture = fixture();
+      const runtimeLegacy = legacyRecovery(runtimeFixture);
+      const runtimeJournalPath = join(runtimeLegacy.directory, "recovery.json");
+      const runtimeJournal = JSON.parse(readFileSync(runtimeJournalPath, "utf8"));
+      runtimeJournal.deployedRuntimeSha256 = "1".repeat(64);
+      writeFileSync(runtimeJournalPath, JSON.stringify(runtimeJournal));
+      await expect(captureCurrentBackup(
+        runtimeFixture.target,
+        runtimeFixture.factory,
+      )).rejects.toThrow("release receipt differs from recovery");
+
+      const targetFixture = fixture();
+      const targetLegacy = legacyRecovery(targetFixture);
+      const targetJournalPath = join(targetLegacy.directory, "recovery.json");
+      const targetJournal = JSON.parse(readFileSync(targetJournalPath, "utf8"));
+      targetJournal.target = "2".repeat(64);
+      writeFileSync(targetJournalPath, JSON.stringify(targetJournal));
+      writeFileSync(
+        join(targetFixture.target.backupRoot, "latest-activation.json"),
+        JSON.stringify({
+          transaction: targetLegacy.journal.transaction,
+          target: targetJournal.target,
+        }),
+      );
+      await expect(captureCurrentBackup(
+        targetFixture.target,
+        targetFixture.factory,
+      )).rejects.toThrow("release receipt differs from recovery");
   });
 
   it("refuses legacy retirement before one verified replacement exists", () => {
@@ -752,6 +781,46 @@ describe("current production recovery backup", () => {
       expect(currentBackupRecovery(f.target).directory).toBe(
         realpathSync(captured.directory),
       );
+  });
+
+  it("resumes when the healthy reference CAS precedes its journal write", async () => {
+    const f = fixture();
+    const legacy = legacyRecovery(f);
+    const captured = await captureCurrentBackup(f.target, f.factory);
+    const result = await materializeCurrentBackup(
+      f.target,
+      captured.directory,
+      join(root(), "legacy-prejournal-cas"),
+      f.factory,
+    );
+    const state = legacyRetirementState(f, legacy, result.reference);
+    renameSync(state.activationReference, state.activationReferenceTrash);
+    renameSync(state.source, state.trash);
+    writeFileSync(
+      join(
+        f.target.backupRoot,
+        "backup-references",
+        "latest-healthy-recovery.json",
+      ),
+      JSON.stringify(state.referenceAfter),
+    );
+    state.journal.status = "recovery-moved";
+    writeFileSync(
+      join(f.target.backupRoot, `retire-${legacy.journal.transaction}.json`),
+      JSON.stringify(state.journal),
+    );
+
+    expect(retireCurrentBackup(f.target, legacy.directory)).toEqual({
+      transaction: legacy.journal.transaction,
+      retired: true,
+    });
+    expect(existsSync(state.source)).toBe(false);
+    expect(existsSync(state.trash)).toBe(false);
+    expect(existsSync(state.activationReference)).toBe(false);
+    expect(existsSync(state.activationReferenceTrash)).toBe(false);
+    expect(currentBackupRecovery(f.target).directory).toBe(
+      realpathSync(captured.directory),
+    );
   });
 
   it("refuses a changed healthy reference during interrupted legacy retirement", async () => {

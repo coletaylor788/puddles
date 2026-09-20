@@ -865,16 +865,23 @@ function retireLegacyActivation(target, backupRoot, source, journalPath) {
     save("recovery-moved");
   }
   if (journal.status === "recovery-moved") {
-    requireReference(journal.referenceBeforeSha256);
-    if (existsSync(source) || !existsSync(trash) ||
-        existsSync(activationReference) ||
-        fileDigest(activationReferenceTrash) !==
-          journal.legacyRecovery.latestActivationSha256) {
-      throw new Error("Legacy retirement recovery state is invalid");
+    const liveReferenceToken = referenceToken(
+      readReference(currentReferencePath(target)),
+    );
+    if (liveReferenceToken === journal.referenceAfterSha256) {
+      save("unreferenced");
+    } else {
+      requireReference(journal.referenceBeforeSha256);
+      if (existsSync(source) || !existsSync(trash) ||
+          existsSync(activationReference) ||
+          fileDigest(activationReferenceTrash) !==
+            journal.legacyRecovery.latestActivationSha256) {
+        throw new Error("Legacy retirement recovery state is invalid");
+      }
+      verifyActivationRecoveryContents(trash, journal.legacyRecovery);
+      atomicJson(currentReferencePath(target), journal.referenceAfter);
+      save("unreferenced");
     }
-    verifyActivationRecoveryContents(trash, journal.legacyRecovery);
-    atomicJson(currentReferencePath(target), journal.referenceAfter);
-    save("unreferenced");
   }
   if (journal.status === "unreferenced") {
     requireReference(journal.referenceAfterSha256);

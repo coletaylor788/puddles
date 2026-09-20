@@ -114,11 +114,13 @@ host. Private work owns the authorized HOST and MINI consumer migration and
 must report effective store metadata and frozen offline proofs.
 
 The backup path now bridges the actual legacy activation format to one verified
-new backup without inventing a release receipt. Its 24 focused tests and e2e
+new backup without inventing a release receipt. Its 25 focused tests and e2e
 type-check pass. The retained reviewer found two pre-journal hard-kill windows;
-both now restore the exact tombstone and retry safely. Review recheck and the
-final accumulated lifecycle remain pending. No production capture, service
-action, retirement, paid job, release activation, or merge has occurred.
+both now restore the exact tombstone and retry safely. A third review finding
+covered a committed reference whose journal write was interrupted; resume now
+recognizes that exact post-state. Review recheck and the final accumulated
+lifecycle remain pending. No production capture, service action, retirement,
+paid job, release activation, or merge has occurred.
 
 ## Agent section
 
@@ -616,6 +618,11 @@ action, retirement, paid job, release activation, or merge has occurred.
   but before its journal write left resume stuck. Both stages now validate and
   restore their exact tombstone before retrying. Regressions cover both windows;
   24 focused backup tests and e2e type-check pass.
+- 2026-09-20: Retained review found the same interruption window between the
+  healthy-reference compare-and-swap and its journal update. Resume now accepts
+  only the exact journaled post-reference hash and continues removal. A focused
+  regression leaves the prior journal status after the reference write; 25
+  focused backup tests pass.
 
 ### Checklist
 
