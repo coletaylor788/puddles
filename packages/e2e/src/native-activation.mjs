@@ -325,6 +325,74 @@ function verifySnapshots(recoveryDir, journal) {
       treeDigest(join(recoveryDir, "candidate"), { portable: true }) !== journal.candidateSha256) throw new Error("Recovery candidate content changed");
 }
 
+export function verifyActivationRecoveryContents(recoveryDir, expected = {}) {
+    const journalPath = join(recoveryDir, "recovery.json");
+    if (!existsSync(journalPath)) throw new Error("Deployment recovery journal is missing");
+    const journal = JSON.parse(readFileSync(journalPath, "utf8"));
+    if (journal.schemaVersion !== 1 || journal.status !== "healthy" ||
+        journal.snapshotReady !== true || journal.quiesced !== false ||
+        !/^activation-[0-9]+-[0-9]+$/.test(journal.transaction ?? "") ||
+        !/^[a-f0-9]{64}$/.test(journal.target ?? "") ||
+        !/^[a-f0-9]{64}$/.test(journal.artifact ?? "") ||
+        !/^[a-f0-9]{64}$/.test(journal.deployedRuntimeSha256 ?? "") ||
+        !/^[a-f0-9]{64}$/.test(journal.deployedServiceSha256 ?? "") ||
+        expected.transaction !== undefined && journal.transaction !== expected.transaction ||
+        expected.targetSha256 !== undefined && journal.target !== expected.targetSha256 ||
+        expected.artifactSha256 !== undefined && journal.artifact !== expected.artifactSha256 ||
+        expected.journalSha256 !== undefined && fileDigest(journalPath) !== expected.journalSha256) {
+      throw new Error("Deployment recovery identity is invalid");
+    }
+    verifySnapshots(recoveryDir, journal);
+    return {
+      kind: "activation",
+      transaction: journal.transaction,
+      activationTargetSha256: journal.target,
+      artifactSha256: journal.artifact,
+      journalSha256: fileDigest(journalPath),
+    };
+}
+
+export function verifyCurrentActivationRecovery(target, recoveryDir, latestPath, receiptIdentity) {
+    validateTarget(target);
+    const root = realpathSync(target.backupRoot);
+    const directory = realpathSync(recoveryDir);
+    if (dirname(directory) !== root || basename(directory) !== basename(recoveryDir)) {
+      throw new Error("Deployment recovery is outside target backups");
+    }
+    const identity = verifyActivationRecoveryContents(directory, {
+      transaction: basename(directory),
+    });
+    if (!receiptIdentity || !isAbsolute(receiptIdentity.path ?? "") ||
+        !/^[a-f0-9]{64}$/.test(receiptIdentity.sha256 ?? "") ||
+        fileDigest(receiptIdentity.path) !== receiptIdentity.sha256) {
+      throw new Error("Activation release receipt identity is invalid");
+    }
+    const receipt = verifyProductionRelease(
+      JSON.parse(readFileSync(receiptIdentity.path, "utf8")),
+    );
+    if (receipt.artifact.sha256 !== identity.artifactSha256) {
+      throw new Error("Activation release receipt differs from recovery");
+    }
+    if (!existsSync(latestPath)) throw new Error("Activation ownership evidence is missing");
+    const latest = JSON.parse(readFileSync(latestPath, "utf8"));
+    if (Object.keys(latest).sort().join(",") !== "target,transaction" ||
+        latest.transaction !== identity.transaction ||
+        latest.target !== identity.activationTargetSha256) {
+      throw new Error("Activation ownership evidence differs");
+    }
+    const journal = JSON.parse(readFileSync(join(directory, "recovery.json"), "utf8"));
+    if (treeDigest(target.installDir, { portable: true }) !== journal.deployedRuntimeSha256 ||
+        fileDigest(target.plistPath) !== journal.deployedServiceSha256) {
+      throw new Error("Current runtime or service differs from the activation recovery");
+    }
+    return {
+      ...identity,
+      receiptPath: realpathSync(receiptIdentity.path),
+      receiptSha256: receiptIdentity.sha256,
+      latestActivationSha256: fileDigest(latestPath),
+    };
+}
+
 function preparedIdentity(record) {
   if (!record || !/^[a-z][a-z0-9-]*$/.test(record.id) ||
       !["file", "directory"].includes(record.type) ||

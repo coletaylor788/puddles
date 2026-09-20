@@ -97,38 +97,27 @@ Capture alone cannot replace the healthy recovery pointer. The same recovery
 consumer first materializes the snapshot into fresh isolated paths, checks the
 runtime, configuration, databases, service definition, interpreter, browser,
 and recorded digests without delivery, then advances the pointer atomically.
-Only one superseded, unreferenced recovery can be retired. Any interruption,
-identity drift, unknown file, failed restart, or ambiguous ownership preserves
-the old recovery.
+When the old recovery came from a release activation, capture binds its existing
+release evidence and ownership pointer before copying state. Materialization
+refuses if that predecessor changes. Retirement moves only that pointer and
+recovery into journal-owned tombstones, makes the verified backup authoritative,
+then removes the old bytes. Only one exact superseded recovery can be retired.
+Any interruption, identity drift, unknown file, failed restart, or ambiguous
+ownership preserves a usable recovery.
 
 ### Status
 
-The public hosted ARM profile is proven on the standard 7 GB runner. It
-completes the pinned build, full accumulated regressions, package, offline
-install, runtime rehearsal, and all nine scenarios with measured memory and disk
-headroom. The public ARM bundle and proof chain are green on the feature branch.
+The hosted ARM release path, runtime-only developer path, complete accumulated
+pool, installed runtime, and nine scenarios are green for the prior candidate.
+The shared package-manager contract pins pnpm 12.3.4 and one explicit store per
+host. Private work owns the authorized HOST and MINI consumer migration and
+must report effective store metadata and frozen offline proofs.
 
-The maintained runtime-only profile now proves the local part of the inner loop.
-A runtime-visible plugin edit completes semantic checks, its focused test, and
-the runtime build in 76 seconds. A real small core edit completes semantic
-checks, a focused unit test, and the runtime build in 101 seconds. Private work
-owns the remaining bootstrap, sync, restart, and integration timing. The public
-bootstrap API now calls the package-list selector bundled with the exact npm
-toolchain. It preserves npm's selection semantics without building a dry-run
-tarball. Release packaging keeps its synchronous 60-second `npm pack` proof
-path. Production remains held.
-
-The current-production backup path is implemented against synthetic targets and
-has passed the complete accumulated public lifecycle and retained review.
-Private cross-contract tests also exercise the real public module. No production
-access, capture, service action, release resumption, or retirement has occurred.
-Private work owns target assembly, capacity readiness, and any later approved
-maintenance.
-
-The common package-manager pin is migrated to the selected source version. A
-fresh install and a frozen offline reinstall pass against one explicit local
-store. Focused pipeline and workspace tests, the retained complete-diff review,
-and the full accumulated lifecycle pass for this combined candidate.
+The backup path now bridges the actual legacy activation format to one verified
+new backup without inventing a release receipt. Its 22 focused tests and e2e
+type-check pass. Retained full-diff review and the final accumulated lifecycle
+remain pending for this behavior change. No MINI access, production capture,
+service action, retirement, paid job, release activation, or merge has occurred.
 
 ## Agent section
 
@@ -364,9 +353,15 @@ and the full accumulated lifecycle pass for this combined candidate.
   interpreter, parses config and service data, checks SQLite, and verifies the
   browser identity before a compare-and-swap update of
   `backup-references/latest-healthy-recovery.json`.
-- `retire` accepts one direct backup child. It requires another current,
-  materialized recovery, refuses every referenced or unknown path, and uses a
-  resumable move-then-remove journal. It never scans or prunes by age.
+- Capture binds an existing activation predecessor through the exact production
+  receipt, activation journal, and `latest-activation.json` file before state
+  capture. Materialization requires that token unchanged.
+- `current` resolves and verifies the authoritative new backup.
+- `retire` accepts one direct new backup or the exact activation predecessor.
+  Legacy retirement moves the pointer first and recovery second, then clears
+  the predecessor through compare-and-swap before removing either tombstone.
+  It refuses changed, referenced, unknown, or ambiguous state and never scans
+  or prunes by age.
 - `packages/e2e/src/pnpm-toolchain.mjs` owns the exact pnpm `12.3.4` identity
   and `PNPM_CONFIG_STORE_DIR` contract. The configured value must be an
   absolute host-local root. Both Puddles and staged OpenClaw must resolve the
@@ -409,6 +404,8 @@ and the full accumulated lifecycle pass for this combined candidate.
 - [x] Add a bounded draft-only build timeout override without changing the
   release timeout.
 - [x] Implement and focus-test backup-only current production recovery.
+- [x] Add the exact legacy activation-to-backup reference bridge and focused
+  interruption regressions.
 - [x] Migrate and focus-test the unified pnpm pin and host-local store.
 
 ### Validation
@@ -609,6 +606,11 @@ and the full accumulated lifecycle pass for this combined candidate.
   manifests and queries version and store from a neutral directory, leaving
   both lockfiles byte-identical. Public and private fresh/offline proofs pass.
   The final accumulated public lifecycle passes with nine scenarios.
+- 2026-09-20: Exact source review found that retirement covered only two
+  new-format backups. The corrected bridge binds the current activation receipt,
+  journal, and pointer at capture, refuses drift at materialization, and retires
+  that one predecessor through a resumable pointer, recovery, and reference
+  transition. Focused tests and type-check pass; retained review is pending.
 
 ### Checklist
 
@@ -635,8 +637,8 @@ and the full accumulated lifecycle pass for this combined candidate.
 - [x] Run the branch-only hosted ARM trial and inspect its resource evidence.
 - [x] Resume the retained reviewer on the complete ARM profile diff.
 - [x] Review and publish the bounded draft-only timeout repair.
-- [x] Complete retained review and the accumulated public gate for the
-  backup-only maintenance path.
+- [ ] Complete retained review and the accumulated public gate for the final
+  legacy-aware backup maintenance path.
 - [x] Complete compatibility, retained review, and accumulated gates for pnpm
   12.3.4 and the shared host-local store.
 - [ ] Hold merge and production activation for coordinator authorization.

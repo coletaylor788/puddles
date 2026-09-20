@@ -371,6 +371,13 @@ The production target adds exact `backupNode` identity and only this exclusion:
 }
 ```
 
+If the current authoritative recovery is an activation transaction, the target
+also supplies the existing production receipt as
+`legacyActivationReceipt: { "path": "/absolute/release.json", "sha256":
+"<64 hex>" }`. Capture verifies the full receipt and its assets. It records the
+exact receipt, activation journal, and `latest-activation.json` identities
+before state capture. It does not copy, rename, or rewrite that evidence.
+
 The path is one real direct child of `stateDir`. It removes recursive legacy
 backup storage while retaining all runtime and user data. Other names, nested
 paths, globs, symlinks, and retained links into the excluded directory fail.
@@ -382,8 +389,13 @@ pointer untouched. Materialize into a fresh test-owned destination to exercise
 the backed-up runtime, config, SQLite, service, interpreter, and browser checks
 without gateway startup or delivery. That successful consumer proof atomically
 advances the separate `latest-healthy-recovery` reference. Retire only the exact
-old unreferenced recovery afterward. Any interruption or uncertainty retains
-the old recovery. This path does not authorize service maintenance by itself.
+old recovery afterward. The first new backup can retire its exact legacy
+activation predecessor. A durable journal moves the old activation pointer and
+recovery to exact tombstones, clears the predecessor through a compare-and-swap
+of the new healthy reference, then removes only those tombstones. The `current`
+command resolves the authoritative new recovery through the maintained
+consumer. Any interruption or uncertainty retains recoverable bytes and fails
+closed. This path does not authorize service maintenance by itself.
 
 Production checks are read-only. Never validate by sending a message or running
 a cron that can deliver one. Do not use the built-in updater for this patched

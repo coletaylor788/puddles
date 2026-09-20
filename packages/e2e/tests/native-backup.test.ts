@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
   cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync,
   realpathSync, renameSync, rmSync, writeFileSync,
@@ -7,9 +7,11 @@ import {
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 // @ts-expect-error Native backup lifecycle is also executable without TypeScript.
-import { captureCurrentBackup, materializeCurrentBackup, planCurrentBackup, retireCurrentBackup, verifyCurrentBackup } from "../src/native-backup.mjs";
+import { captureCurrentBackup, currentBackupRecovery, materializeCurrentBackup, planCurrentBackup, retireCurrentBackup, verifyCurrentBackup } from "../src/native-backup.mjs";
 // @ts-expect-error Native lifecycle is also executable without TypeScript.
-import { fileDigest } from "../src/native-state.mjs";
+import { fileDigest, jsonDigest, treeDigest } from "../src/native-state.mjs";
+// @ts-expect-error Native release lifecycle is also executable without TypeScript.
+import { certifyRelease, createBuildReceipt, createSourceGate, createTargetProof, promoteRelease } from "../src/native-release.mjs";
 
 const roots: string[] = [];
 function root() {
@@ -47,6 +49,8 @@ function fixture() {
     additionalInstalls: [],
     preparedFiles: [],
     backupExclusions: [{ path: "deploy-snapshots", reason: "legacy-backup-storage" }],
+    legacyActivationReceipt: undefined as
+      { path: string; sha256: string } | undefined,
     backupNode: {
       path: process.execPath,
       sha256: fileDigest(process.execPath),
@@ -132,6 +136,183 @@ function fixture() {
     setFailStop(value: boolean) { failStop = value; },
     setFailRestart(value: boolean) { failRestart = value; },
     started: () => started,
+  };
+}
+
+function legacyRecovery(f: ReturnType<typeof fixture>) {
+  const releaseRoot = join(f.directory, "release");
+  const packageRoot = join(releaseRoot, "package");
+  const runtime = join(packageRoot, "runtime");
+  mkdirSync(runtime, { recursive: true });
+  writeFileSync(join(runtime, "content"), "legacy runtime");
+  const runtimeSha256 = treeDigest(runtime, { portable: true });
+  writeFileSync(join(packageRoot, "runtime-identity.json"), JSON.stringify({
+    schemaVersion: 1,
+    platform: process.platform,
+    arch: process.arch,
+    node: process.version,
+    runtimeSha256,
+  }));
+  const artifactPath = join(releaseRoot, "runtime.tgz");
+  execFileSync("tar", [
+    "-czf", artifactPath, "-C", packageRoot, "runtime", "runtime-identity.json",
+  ]);
+  const artifact = {
+    schemaVersion: 1,
+    path: artifactPath,
+    sha256: fileDigest(artifactPath),
+    runtimeSha256,
+    platform: process.platform,
+    arch: process.arch,
+    node: process.version,
+  };
+  const build = createBuildReceipt({
+    repository: { head: "a".repeat(40), tree: "b".repeat(40) },
+    source: {
+      ref: "c".repeat(40),
+      sha256: "d".repeat(64),
+      buildInputsSha256: "e".repeat(64),
+      patchesSha256: "f".repeat(64),
+      extensionSha256: "none",
+    },
+    composition: { extensionSha256: "none" },
+    tools: {
+      node: process.version,
+      nodeBinary: fileDigest(process.execPath),
+      platform: process.platform,
+      arch: process.arch,
+      manager: "12.3.4",
+      npm: "11.8.0",
+    },
+    artifact,
+    additionalArtifacts: [],
+    preparedFiles: [],
+    proofs: {
+      prepare: "1".repeat(64),
+      dependencies: "2".repeat(64),
+      build: "3".repeat(64),
+      package: "4".repeat(64),
+    },
+  });
+  const stage = (name: string) => {
+    const inputs = { fixture: name };
+    const key = jsonDigest(inputs);
+    mkdirSync(join(releaseRoot, "stages"), { recursive: true });
+    writeFileSync(join(releaseRoot, "stages", `${name}.json`), JSON.stringify({
+      schemaVersion: 1,
+      name,
+      inputs,
+      key,
+      status: "passed",
+      outputs: {},
+    }));
+    return key;
+  };
+  stage("regressions");
+  stage("install");
+  stage("runtime");
+  const deploymentRecovery = (name: string, status: "healthy" | "rolled-back") => {
+    const recovery = join(releaseRoot, name);
+    mkdirSync(recovery);
+    writeFileSync(join(recovery, "recovery.json"), JSON.stringify({
+      schemaVersion: 1,
+      status,
+      transaction: name,
+      target: "9".repeat(64),
+      artifact: artifact.sha256,
+    }));
+    if (status === "rolled-back") {
+      writeFileSync(join(recovery, "failure.json"), JSON.stringify({ message: "fixture" }));
+    }
+    return recovery;
+  };
+  const sourceGate = createSourceGate(build, releaseRoot, { tests: ["fixture"] });
+  const targetProof = createTargetProof(
+    build,
+    releaseRoot,
+    deploymentRecovery("success", "healthy"),
+    deploymentRecovery("rollback", "rolled-back"),
+  );
+  const certification = certifyRelease(build, sourceGate, targetProof);
+  const release = promoteRelease(build, sourceGate, targetProof, certification);
+  const receiptPath = join(releaseRoot, "candidate.json");
+  writeFileSync(receiptPath, JSON.stringify(release));
+  Object.assign(f.target, {
+    legacyActivationReceipt: {
+      path: receiptPath,
+      sha256: fileDigest(receiptPath),
+    },
+  });
+  const transaction = `activation-${Date.now()}-${process.pid}`;
+  const directory = join(f.target.backupRoot, transaction);
+  mkdirSync(directory);
+  cpSync(f.target.installDir, join(directory, "package"), { recursive: true });
+  cpSync(f.target.stateDir, join(directory, "state"), { recursive: true });
+  cpSync(f.target.plistPath, join(directory, "service.plist"));
+  const journal = {
+    schemaVersion: 1,
+    status: "healthy",
+    snapshotReady: true,
+    quiesced: false,
+    transaction,
+    target: "b".repeat(64),
+    artifact: artifact.sha256,
+    deployedRuntimeSha256: treeDigest(f.target.installDir, { portable: true }),
+    deployedServiceSha256: fileDigest(f.target.plistPath),
+    snapshots: {
+      package: treeDigest(join(directory, "package")),
+      state: treeDigest(join(directory, "state")),
+      service: fileDigest(join(directory, "service.plist")),
+    },
+  };
+  writeFileSync(join(directory, "recovery.json"), JSON.stringify(journal));
+  writeFileSync(join(f.target.backupRoot, "latest-activation.json"), JSON.stringify({
+    transaction,
+    target: journal.target,
+  }));
+  return { directory, journal };
+}
+
+function legacyRetirementState(
+  f: ReturnType<typeof fixture>,
+  legacy: ReturnType<typeof legacyRecovery>,
+  referenceBefore: Record<string, unknown>,
+) {
+  const backupRoot = realpathSync(f.target.backupRoot);
+  const source = join(backupRoot, legacy.journal.transaction);
+  const trash = join(backupRoot, `.retiring-${legacy.journal.transaction}`);
+  const activationReference = join(backupRoot, "latest-activation.json");
+  const activationReferenceTrash = join(
+    backupRoot,
+    `.retiring-${legacy.journal.transaction}-latest-activation.json`,
+  );
+  const referenceAfter = {
+    ...referenceBefore,
+    previousRecovery: null,
+    updatedAt: new Date().toISOString(),
+  };
+  return {
+    source,
+    trash,
+    activationReference,
+    activationReferenceTrash,
+    referenceAfter,
+    journal: {
+      schema: "puddles.openclaw-current-backup-retirement/v1",
+      schemaVersion: 1,
+      kind: "activation",
+      transaction: legacy.journal.transaction,
+      legacyRecovery: referenceBefore.previousRecovery,
+      referenceBefore,
+      referenceBeforeSha256: jsonDigest(referenceBefore),
+      referenceAfter,
+      referenceAfterSha256: jsonDigest(referenceAfter),
+      source,
+      trash,
+      activationReference,
+      activationReferenceTrash,
+      status: "planned",
+    },
   };
 }
 
@@ -353,6 +534,217 @@ describe("current production recovery backup", () => {
     );
   });
 
+  it("replaces and retires the exact legacy activation recovery after one materialization", async () => {
+    const f = fixture();
+    const legacy = legacyRecovery(f);
+    const captured = await captureCurrentBackup(f.target, f.factory);
+    const materialized = await materializeCurrentBackup(
+      f.target,
+      captured.directory,
+      join(root(), "legacy-replacement"),
+      f.factory,
+    );
+    const unrelated = join(f.target.backupRoot, "operator-notes");
+    mkdirSync(unrelated);
+
+    expect(materialized.reference.previousRecovery).toMatchObject({
+      kind: "activation",
+      transaction: legacy.journal.transaction,
+      activationTargetSha256: legacy.journal.target,
+      artifactSha256: legacy.journal.artifact,
+    });
+    expect(existsSync(legacy.directory)).toBe(true);
+    expect(existsSync(join(f.target.backupRoot, "latest-activation.json"))).toBe(true);
+
+    expect(retireCurrentBackup(f.target, legacy.directory)).toEqual({
+      transaction: legacy.journal.transaction,
+      retired: true,
+    });
+    expect(existsSync(legacy.directory)).toBe(false);
+    expect(existsSync(join(f.target.backupRoot, "latest-activation.json"))).toBe(false);
+    expect(existsSync(captured.directory)).toBe(true);
+    expect(existsSync(unrelated)).toBe(true);
+    const reference = JSON.parse(readFileSync(
+      join(f.target.backupRoot, "backup-references", "latest-healthy-recovery.json"),
+      "utf8",
+    ));
+    expect(reference.previousRecovery).toBe(null);
+    expect(currentBackupRecovery(f.target)).toMatchObject({
+      directory: realpathSync(captured.directory),
+      reference,
+    });
+
+    const rediscovered = await materializeCurrentBackup(
+      f.target,
+      captured.directory,
+      join(root(), "legacy-replacement-recheck"),
+      f.factory,
+    );
+    expect(rediscovered.reference).toEqual(reference);
+  });
+
+  it("preserves a mismatched legacy recovery and pointer before reference commit", async () => {
+      const f = fixture();
+      const legacy = legacyRecovery(f);
+      const captured = await captureCurrentBackup(f.target, f.factory);
+      writeFileSync(join(f.target.backupRoot, "latest-activation.json"), JSON.stringify({
+        transaction: legacy.journal.transaction,
+        target: "d".repeat(64),
+      }));
+
+      await expect(materializeCurrentBackup(
+        f.target,
+        captured.directory,
+        join(root(), "legacy-mismatch"),
+        f.factory,
+      )).rejects.toThrow("Activation ownership evidence differs");
+      expect(existsSync(legacy.directory)).toBe(true);
+      expect(existsSync(join(f.target.backupRoot, "latest-activation.json"))).toBe(true);
+      expect(existsSync(join(
+        f.target.backupRoot,
+        "backup-references",
+        "latest-healthy-recovery.json",
+      ))).toBe(false);
+  });
+
+  it("rejects mismatched legacy receipt and artifact identities", async () => {
+      const receiptFixture = fixture();
+      const receiptLegacy = legacyRecovery(receiptFixture);
+      writeFileSync(
+        receiptFixture.target.legacyActivationReceipt!.path,
+        JSON.stringify({ changed: true }),
+      );
+      await expect(captureCurrentBackup(
+        receiptFixture.target,
+        receiptFixture.factory,
+      )).rejects.toThrow("receipt identity is invalid");
+      expect(existsSync(receiptLegacy.directory)).toBe(true);
+      expect(existsSync(join(
+        receiptFixture.target.backupRoot,
+        "latest-activation.json",
+      ))).toBe(true);
+
+      const artifactFixture = fixture();
+      const artifactLegacy = legacyRecovery(artifactFixture);
+      const journalPath = join(artifactLegacy.directory, "recovery.json");
+      const journal = JSON.parse(readFileSync(journalPath, "utf8"));
+      journal.artifact = "0".repeat(64);
+      writeFileSync(journalPath, JSON.stringify(journal));
+      await expect(captureCurrentBackup(
+        artifactFixture.target,
+        artifactFixture.factory,
+      )).rejects.toThrow("release receipt differs from recovery");
+      expect(existsSync(artifactLegacy.directory)).toBe(true);
+  });
+
+  it("refuses legacy retirement before one verified replacement exists", () => {
+      const f = fixture();
+      const legacy = legacyRecovery(f);
+      expect(() => retireCurrentBackup(f.target, legacy.directory)).toThrow(
+        "Verified replacement backup is missing",
+      );
+      expect(existsSync(legacy.directory)).toBe(true);
+      expect(existsSync(join(f.target.backupRoot, "latest-activation.json"))).toBe(true);
+  });
+
+  it("refuses unknown reference entries while preserving the legacy recovery", async () => {
+    const f = fixture();
+    const legacy = legacyRecovery(f);
+    const captured = await captureCurrentBackup(f.target, f.factory);
+    await materializeCurrentBackup(
+      f.target,
+      captured.directory,
+      join(root(), "legacy-unknown-reference"),
+      f.factory,
+    );
+    writeFileSync(
+      join(f.target.backupRoot, "backup-references", "operator-note"),
+      "unknown",
+    );
+
+    expect(() => retireCurrentBackup(f.target, legacy.directory)).toThrow(
+      "Unknown backup reference blocks retirement",
+    );
+    expect(existsSync(legacy.directory)).toBe(true);
+    expect(existsSync(join(f.target.backupRoot, "latest-activation.json"))).toBe(true);
+  });
+
+  it.each([
+      "pointer-moved",
+      "recovery-moved",
+      "unreferenced",
+      "recovery-removed",
+  ])("resumes legacy retirement after %s", async (status) => {
+      const f = fixture();
+      const legacy = legacyRecovery(f);
+      const captured = await captureCurrentBackup(f.target, f.factory);
+      const result = await materializeCurrentBackup(
+        f.target,
+        captured.directory,
+        join(root(), "legacy-interrupted"),
+        f.factory,
+      );
+      const referencePath = join(
+        f.target.backupRoot,
+        "backup-references",
+        "latest-healthy-recovery.json",
+      );
+      const state = legacyRetirementState(f, legacy, result.reference);
+      renameSync(state.activationReference, state.activationReferenceTrash);
+      if (status !== "pointer-moved") renameSync(state.source, state.trash);
+      if (["unreferenced", "recovery-removed"].includes(status)) {
+        writeFileSync(referencePath, JSON.stringify(state.referenceAfter));
+      }
+      if (status === "recovery-removed") rmSync(state.trash, { recursive: true });
+      state.journal.status = status;
+      writeFileSync(
+        join(f.target.backupRoot, `retire-${legacy.journal.transaction}.json`),
+        JSON.stringify(state.journal),
+      );
+
+      expect(retireCurrentBackup(f.target, legacy.directory)).toEqual({
+        transaction: legacy.journal.transaction,
+        retired: true,
+      });
+      expect(existsSync(legacy.directory)).toBe(false);
+      expect(existsSync(join(f.target.backupRoot, "latest-activation.json"))).toBe(false);
+      expect(existsSync(captured.directory)).toBe(true);
+  });
+
+  it("refuses a changed healthy reference during interrupted legacy retirement", async () => {
+      const f = fixture();
+      const legacy = legacyRecovery(f);
+      const captured = await captureCurrentBackup(f.target, f.factory);
+      const result = await materializeCurrentBackup(
+        f.target,
+        captured.directory,
+        join(root(), "legacy-reference-drift"),
+        f.factory,
+      );
+      const state = legacyRetirementState(f, legacy, result.reference);
+      renameSync(state.activationReference, state.activationReferenceTrash);
+      state.journal.status = "pointer-moved";
+      writeFileSync(
+        join(f.target.backupRoot, `retire-${legacy.journal.transaction}.json`),
+        JSON.stringify(state.journal),
+      );
+      const referencePath = join(
+        f.target.backupRoot,
+        "backup-references",
+        "latest-healthy-recovery.json",
+      );
+      writeFileSync(referencePath, JSON.stringify({
+        ...result.reference,
+        updatedAt: new Date(Date.now() + 1000).toISOString(),
+      }));
+
+      expect(() => retireCurrentBackup(f.target, legacy.directory)).toThrow(
+        "Healthy recovery reference changed during retirement",
+      );
+      expect(existsSync(state.source)).toBe(true);
+      expect(existsSync(state.activationReferenceTrash)).toBe(true);
+  });
+
   it("resumes one interrupted retirement and rejects unknown backup content", async () => {
     const f = fixture();
     const first = await captureCurrentBackup(f.target, f.factory);
@@ -374,6 +766,7 @@ describe("current production recovery backup", () => {
     writeFileSync(journalPath, JSON.stringify({
       schema: "puddles.openclaw-current-backup-retirement/v1",
       schemaVersion: 1,
+      kind: "backup",
       transaction,
       manifestSha256: first.manifest.manifestSha256,
       source,

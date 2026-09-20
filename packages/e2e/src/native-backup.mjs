@@ -5,7 +5,13 @@ import {
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { systemOperations, validateTarget, verifyNodeFile } from "./native-activation.mjs";
+import {
+  systemOperations,
+  validateTarget,
+  verifyActivationRecoveryContents,
+  verifyCurrentActivationRecovery,
+  verifyNodeFile,
+} from "./native-activation.mjs";
 import { acquireLock, atomicJson, fileDigest, inside, jsonDigest, treeDigest } from "./native-state.mjs";
 import { runCommand } from "./process-runner.mjs";
 
@@ -15,6 +21,7 @@ const materializationSchema = "puddles.openclaw-current-backup-materialization/v
 const referenceSchema = "puddles.openclaw-current-backup-reference/v1";
 const retirementSchema = "puddles.openclaw-current-backup-retirement/v1";
 const transactionPattern = /^backup-[0-9]+-[0-9]+$/;
+const activationPattern = /^activation-[0-9]+-[0-9]+$/;
 const captureTimeoutMs = 7 * 60_000;
 
 function stat(path, directory = false) {
@@ -59,6 +66,21 @@ function currentReferencePath(target) {
   return join(referencesRoot(target), "latest-healthy-recovery.json");
 }
 
+function validateLegacyRecoveryIdentity(value) {
+  if (value === null) return null;
+  if (!value || value.kind !== "activation" ||
+      !activationPattern.test(value.transaction ?? "") ||
+      !/^[a-f0-9]{64}$/.test(value.activationTargetSha256 ?? "") ||
+      !/^[a-f0-9]{64}$/.test(value.artifactSha256 ?? "") ||
+      !/^[a-f0-9]{64}$/.test(value.journalSha256 ?? "") ||
+      !isAbsolute(value.receiptPath ?? "") ||
+      !/^[a-f0-9]{64}$/.test(value.receiptSha256 ?? "") ||
+      !/^[a-f0-9]{64}$/.test(value.latestActivationSha256 ?? "")) {
+    throw new Error("Legacy recovery identity is invalid");
+  }
+  return value;
+}
+
 function validateReference(value) {
   if (value.schema !== referenceSchema || value.schemaVersion !== 1 ||
       !transactionPattern.test(value.transaction ?? "") ||
@@ -69,6 +91,7 @@ function validateReference(value) {
       !Number.isFinite(Date.parse(value.updatedAt))) {
     throw new Error("Backup reference is invalid");
   }
+  validateLegacyRecoveryIdentity(value.previousRecovery ?? null);
   return value;
 }
 
@@ -78,6 +101,36 @@ function readReference(path) {
 
 function referenceToken(reference) {
   return reference ? jsonDigest(reference) : null;
+}
+
+function legacyActivationPredecessor(target) {
+  const root = realpathSync(target.backupRoot);
+  const latestPath = join(root, "latest-activation.json");
+  if (!existsSync(latestPath)) return null;
+  const latest = parseJson(latestPath, "Activation ownership evidence is invalid");
+  if (!activationPattern.test(latest.transaction ?? "")) {
+    throw new Error("Activation ownership evidence is invalid");
+  }
+  return verifyCurrentActivationRecovery(
+    target,
+    join(root, latest.transaction),
+    latestPath,
+    target.legacyActivationReceipt,
+  );
+}
+
+function capturedPredecessor(target, reference) {
+  return reference ? null : legacyActivationPredecessor(target);
+}
+
+function verifyCapturedReferences(target, expectedReferenceToken, expectedPreviousRecovery) {
+  const current = readReference(currentReferencePath(target));
+  if (referenceToken(current) !== expectedReferenceToken ||
+      jsonDigest(capturedPredecessor(target, current)) !==
+        jsonDigest(expectedPreviousRecovery)) {
+    throw new Error("Healthy recovery reference changed after backup capture began");
+  }
+  return current;
 }
 
 function canonicalNode(identity) {
@@ -119,6 +172,12 @@ export function validateBackupTarget(target) {
   if (target.purpose !== "production") throw new Error("Current backup target must be production");
   if (target.host !== hostname()) throw new Error("Current backup target host differs");
   if (target.nodeMigration) throw new Error("Current backup uses backupNode, not a candidate Node migration");
+  if (target.legacyActivationReceipt !== undefined &&
+      (!target.legacyActivationReceipt ||
+        !isAbsolute(target.legacyActivationReceipt.path ?? "") ||
+        !/^[a-f0-9]{64}$/.test(target.legacyActivationReceipt.sha256 ?? ""))) {
+    throw new Error("Legacy activation receipt identity is invalid");
+  }
   validateBackupNode(target);
   validateBackupExclusions(target);
   return target;
@@ -338,6 +397,7 @@ export function verifyCurrentBackup(target, requestedDirectory) {
       !Number.isFinite(Date.parse(manifest.createdAt))) {
     throw new Error("Backup manifest identity is invalid");
   }
+  validateLegacyRecoveryIdentity(manifest.previousRecovery ?? null);
   if (jsonDigest(manifest.assets) !== jsonDigest({
     runtime: { path: "runtime", sha256: manifest.assets?.runtime?.sha256 },
     state: { path: "state", sha256: manifest.assets?.state?.sha256 },
@@ -384,6 +444,9 @@ export async function captureCurrentBackup(target, operationsFactory = backupOpe
   if (!requestedDirectory) mkdirSync(directory, { mode: 0o700 });
   const journalPath = join(directory, "backup-journal.json");
   const identity = journalIdentity(target, directory);
+  const initialReference = existsSync(journalPath)
+    ? null
+    : readReference(currentReferencePath(target));
   let journal = existsSync(journalPath)
     ? parseJson(journalPath, "Backup journal is invalid")
     : {
@@ -391,7 +454,8 @@ export async function captureCurrentBackup(target, operationsFactory = backupOpe
       createdAt: new Date().toISOString(),
       status: "preparing",
       serviceStopped: false,
-      referenceToken: referenceToken(readReference(currentReferencePath(target))),
+      referenceToken: referenceToken(initialReference),
+      previousRecovery: capturedPredecessor(target, initialReference),
     };
   const operations = operationsFactory(target, directory);
   try {
@@ -405,6 +469,7 @@ export async function captureCurrentBackup(target, operationsFactory = backupOpe
       throw new Error("Backup journal status is invalid");
     }
     if (journal.status === "captured") {
+      verifyCapturedReferences(target, journal.referenceToken, journal.previousRecovery ?? null);
       return { directory, manifest: verifyCurrentBackup(target, directory) };
     }
     if (journal.serviceStopped) {
@@ -479,6 +544,7 @@ export async function captureCurrentBackup(target, operationsFactory = backupOpe
     if (target.browser && await operations.currentBrowser() !== journal.browser.imageId) {
       throw new Error("Browser image changed during backup capture");
     }
+    verifyCapturedReferences(target, journal.referenceToken, journal.previousRecovery ?? null);
     const manifest = {
       schema: manifestSchema,
       schemaVersion: 1,
@@ -495,6 +561,7 @@ export async function captureCurrentBackup(target, operationsFactory = backupOpe
       exclusions: validateBackupExclusions(target),
       node: journal.node,
       browser: journal.browser,
+      previousRecovery: journal.previousRecovery ?? null,
     };
     manifest.manifestSha256 = manifestDigest(manifest);
     atomicJson(join(directory, "backup.json"), manifest);
@@ -601,6 +668,11 @@ export async function materializeCurrentBackup(
         saveJournal(join(directory, "backup-journal.json"), journal, "referenced");
         return { destination, manifest, proof, reference: previous };
       }
+      if (referenceToken(previous) !== journal.referenceToken ||
+          jsonDigest(capturedPredecessor(target, previous)) !==
+            jsonDigest(manifest.previousRecovery ?? null)) {
+        throw new Error("Healthy recovery reference changed after backup capture");
+      }
       if (referenceToken(previous) !== journal.referenceToken) {
         throw new Error("Healthy recovery reference changed during backup validation");
       }
@@ -611,6 +683,7 @@ export async function materializeCurrentBackup(
         manifestSha256: manifest.manifestSha256,
         materializationSha256: proof.proofSha256,
         previousTransaction: previous?.transaction ?? null,
+        previousRecovery: previous ? null : manifest.previousRecovery,
         updatedAt: new Date().toISOString(),
       };
       atomicJson(referencePath, reference);
@@ -626,18 +699,211 @@ export async function materializeCurrentBackup(
   }
 }
 
+function verifiedReplacement(target, backupRoot) {
+  const current = readReference(currentReferencePath(target));
+  const replacement = current && join(backupRoot, current.transaction);
+  if (!replacement || !existsSync(replacement)) {
+    throw new Error("Verified replacement backup is missing");
+  }
+  const manifest = verifyCurrentBackup(target, replacement);
+  const proof = parseJson(
+    join(replacement, "materialization.json"),
+    "Replacement materialization proof is missing",
+  );
+  if (proof.schema !== materializationSchema || proof.schemaVersion !== 1 ||
+      proof.manifestSha256 !== manifest.manifestSha256 ||
+      proof.proofSha256 !== materializationDigest(proof) ||
+      proof.proofSha256 !== current.materializationSha256) {
+    throw new Error("Replacement materialization proof is invalid");
+  }
+  return { current, replacement, manifest, proof };
+}
+
+export function currentBackupRecovery(target) {
+  validateBackupTarget(target);
+  const backupRoot = realpathSync(target.backupRoot);
+  const { current, replacement, manifest, proof } = verifiedReplacement(
+    target,
+    backupRoot,
+  );
+  return { directory: replacement, reference: current, manifest, proof };
+}
+
+function retireLegacyActivation(target, backupRoot, source, journalPath) {
+  const transaction = basename(source);
+  const trash = join(backupRoot, `.retiring-${transaction}`);
+  const activationReference = join(backupRoot, "latest-activation.json");
+  const activationReferenceTrash = join(
+    backupRoot,
+    `.retiring-${transaction}-latest-activation.json`,
+  );
+  let journal = existsSync(journalPath)
+    ? parseJson(journalPath, "Backup retirement journal is invalid")
+    : null;
+  if (journal) {
+    const fields = {
+      schema: journal.schema === retirementSchema,
+      schemaVersion: journal.schemaVersion === 1,
+      kind: journal.kind === "activation",
+      transaction: journal.transaction === transaction,
+      source: journal.source === source,
+      trash: journal.trash === trash,
+      activationReference: journal.activationReference === activationReference,
+      activationReferenceTrash:
+        journal.activationReferenceTrash === activationReferenceTrash,
+      status: [
+        "planned", "pointer-moved", "recovery-moved", "unreferenced",
+        "recovery-removed", "removed",
+      ].includes(journal.status),
+    };
+    const invalid = Object.entries(fields).find(([, valid]) => !valid)?.[0];
+    if (invalid) {
+      throw new Error(`Backup retirement journal has invalid ${invalid}`);
+    }
+    if (referenceToken(validateReference(journal.referenceBefore)) !==
+          journal.referenceBeforeSha256 ||
+        referenceToken(validateReference(journal.referenceAfter)) !==
+          journal.referenceAfterSha256) {
+      throw new Error("Backup retirement reference tokens are invalid");
+    }
+    validateLegacyRecoveryIdentity(journal.legacyRecovery);
+  } else {
+    const legacyRecovery = verifyCurrentActivationRecovery(
+      target,
+      source,
+      activationReference,
+      target.legacyActivationReceipt,
+    );
+    const { current } = verifiedReplacement(target, backupRoot);
+    if (jsonDigest(current.previousRecovery) !== jsonDigest(legacyRecovery)) {
+      throw new Error("Legacy recovery is not the verified predecessor");
+    }
+    for (const name of readdirSync(referencesRoot(target))) {
+      if (!name.endsWith(".json")) throw new Error("Unknown backup reference blocks retirement");
+      const reference = readReference(join(referencesRoot(target), name));
+      if (reference.transaction === transaction ||
+          name !== "latest-healthy-recovery.json" &&
+            reference.previousRecovery?.transaction === transaction) {
+        throw new Error("Referenced backup cannot be retired");
+      }
+    }
+    const referenceAfter = {
+      ...current,
+      previousRecovery: null,
+      updatedAt: new Date().toISOString(),
+    };
+    journal = {
+      schema: retirementSchema,
+      schemaVersion: 1,
+      kind: "activation",
+      transaction,
+      legacyRecovery,
+      referenceBefore: current,
+      referenceBeforeSha256: referenceToken(current),
+      referenceAfter,
+      referenceAfterSha256: referenceToken(referenceAfter),
+      source,
+      trash,
+      activationReference,
+      activationReferenceTrash,
+      status: "planned",
+    };
+    atomicJson(journalPath, journal);
+  }
+  const save = (status) => {
+    journal.status = status;
+    atomicJson(journalPath, journal);
+  };
+  const requireReference = (expected) => {
+    if (referenceToken(readReference(currentReferencePath(target))) !== expected) {
+      throw new Error("Healthy recovery reference changed during retirement");
+    }
+  };
+  if (journal.status === "planned") {
+    requireReference(journal.referenceBeforeSha256);
+    const legacyRecovery = verifyCurrentActivationRecovery(
+      target,
+      source,
+      activationReference,
+      target.legacyActivationReceipt,
+    );
+    if (jsonDigest(legacyRecovery) !== jsonDigest(journal.legacyRecovery)) {
+      throw new Error("Legacy recovery identity changed during retirement");
+    }
+    if (existsSync(activationReferenceTrash) || existsSync(trash)) {
+      throw new Error("Legacy retirement tombstone already exists");
+    }
+    renameSync(activationReference, activationReferenceTrash);
+    syncDirectory(backupRoot);
+    save("pointer-moved");
+  }
+  if (journal.status === "pointer-moved") {
+    requireReference(journal.referenceBeforeSha256);
+    if (existsSync(activationReference) ||
+        fileDigest(activationReferenceTrash) !==
+          journal.legacyRecovery.latestActivationSha256 ||
+        !existsSync(source) || existsSync(trash)) {
+      throw new Error("Legacy retirement pointer state is invalid");
+    }
+    verifyActivationRecoveryContents(source, journal.legacyRecovery);
+    renameSync(source, trash);
+    syncDirectory(backupRoot);
+    save("recovery-moved");
+  }
+  if (journal.status === "recovery-moved") {
+    requireReference(journal.referenceBeforeSha256);
+    if (existsSync(source) || !existsSync(trash) ||
+        existsSync(activationReference) ||
+        fileDigest(activationReferenceTrash) !==
+          journal.legacyRecovery.latestActivationSha256) {
+      throw new Error("Legacy retirement recovery state is invalid");
+    }
+    verifyActivationRecoveryContents(trash, journal.legacyRecovery);
+    atomicJson(currentReferencePath(target), journal.referenceAfter);
+    save("unreferenced");
+  }
+  if (journal.status === "unreferenced") {
+    requireReference(journal.referenceAfterSha256);
+    if (existsSync(source) || existsSync(activationReference)) {
+      throw new Error("Legacy retirement paths reappeared");
+    }
+    if (existsSync(trash)) rmSync(trash, { recursive: true });
+    save("recovery-removed");
+  }
+  if (journal.status === "recovery-removed") {
+    requireReference(journal.referenceAfterSha256);
+    if (existsSync(source) || existsSync(trash) || existsSync(activationReference)) {
+      throw new Error("Legacy retirement paths reappeared");
+    }
+    if (existsSync(activationReferenceTrash)) {
+      if (fileDigest(activationReferenceTrash) !==
+          journal.legacyRecovery.latestActivationSha256) {
+        throw new Error("Legacy activation reference changed during retirement");
+      }
+      rmSync(activationReferenceTrash);
+    }
+    save("removed");
+  }
+  rmSync(journalPath);
+  syncDirectory(backupRoot);
+  return { transaction, retired: true };
+}
+
 export function retireCurrentBackup(target, requestedDirectory) {
   validateBackupTarget(target);
   const backupRoot = realpathSync(target.backupRoot);
   const requested = resolve(requestedDirectory);
   const source = join(realpathSync(dirname(requested)), basename(requested));
-  if (dirname(source) !== backupRoot || !transactionPattern.test(basename(source))) {
+  const legacy = activationPattern.test(basename(source));
+  if (dirname(source) !== backupRoot ||
+      !transactionPattern.test(basename(source)) && !legacy) {
     throw new Error("Retirement target is outside the backup root");
   }
   const transaction = basename(source);
   const journalPath = join(backupRoot, `retire-${transaction}.json`);
   const unlock = acquireLock(target.backupRoot);
   try {
+    if (legacy) return retireLegacyActivation(target, backupRoot, source, journalPath);
     let journal;
     let manifest;
     if (existsSync(journalPath)) {
@@ -645,6 +911,7 @@ export function retireCurrentBackup(target, requestedDirectory) {
       if (journal.schema !== retirementSchema || journal.schemaVersion !== 1 ||
           journal.transaction !== transaction || journal.source !== source ||
           journal.trash !== join(backupRoot, `.retiring-${transaction}`) ||
+          (journal.kind ?? "backup") !== "backup" ||
           !["planned", "moved", "removed"].includes(journal.status)) {
         throw new Error("Backup retirement journal is invalid");
       }
@@ -661,21 +928,12 @@ export function retireCurrentBackup(target, requestedDirectory) {
         throw new Error("Referenced backup cannot be retired");
       }
     }
-    const current = readReference(currentReferencePath(target));
-    const replacement = current && join(backupRoot, current.transaction);
-    if (!replacement || !existsSync(replacement)) throw new Error("Verified replacement backup is missing");
-    const replacementManifest = verifyCurrentBackup(target, replacement);
-    const proof = parseJson(join(replacement, "materialization.json"), "Replacement materialization proof is missing");
-    if (proof.schema !== materializationSchema || proof.schemaVersion !== 1 ||
-        proof.manifestSha256 !== replacementManifest.manifestSha256 ||
-        proof.proofSha256 !== materializationDigest(proof) ||
-        proof.proofSha256 !== current.materializationSha256) {
-      throw new Error("Replacement materialization proof is invalid");
-    }
+    verifiedReplacement(target, backupRoot);
     if (!journal) {
       journal = {
         schema: retirementSchema,
         schemaVersion: 1,
+        kind: "backup",
         transaction,
         manifestSha256: manifest.manifestSha256,
         source,

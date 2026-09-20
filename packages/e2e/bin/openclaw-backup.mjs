@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   captureCurrentBackup,
+  currentBackupRecovery,
   materializeCurrentBackup,
   planCurrentBackup,
   retireCurrentBackup,
@@ -16,7 +17,8 @@ function readTarget(path) {
 function usage() {
   throw new Error(
     "Usage: openclaw-backup.mjs " +
-    "<plan TARGET_JSON | capture TARGET_JSON [BACKUP_DIR] | verify TARGET_JSON BACKUP_DIR | " +
+    "<plan TARGET_JSON | capture TARGET_JSON [BACKUP_DIR] | current TARGET_JSON | " +
+    "verify TARGET_JSON BACKUP_DIR | " +
     "materialize TARGET_JSON BACKUP_DIR DESTINATION | retire TARGET_JSON BACKUP_DIR>",
   );
 }
@@ -28,6 +30,8 @@ try {
   let result;
   if (command === "plan" && !backupPath && !destinationPath) {
     result = planCurrentBackup(target);
+  } else if (command === "current" && !backupPath && !destinationPath) {
+    result = currentBackupRecovery(target);
   } else if (command === "capture" && !destinationPath) {
     result = await captureCurrentBackup(
       target,

@@ -513,8 +513,9 @@ node packages/e2e/bin/openclaw-backup.mjs verify \
 node packages/e2e/bin/openclaw-backup.mjs materialize \
   /absolute/backup-target.json /absolute/backups/backup-EXAMPLE \
   /absolute/test-owned/restore-check
+node packages/e2e/bin/openclaw-backup.mjs current /absolute/backup-target.json
 node packages/e2e/bin/openclaw-backup.mjs retire \
-  /absolute/backup-target.json /absolute/backups/backup-OLD
+  /absolute/backup-target.json /absolute/backups/activation-OLD
 ```
 
 The target is the normal full production deployment target with `backupNode`
@@ -525,6 +526,13 @@ and architecture. It also requires the single explicit exclusion
 The clone helper rejects other exclusions and retained links into that tree.
 The manifest records the exclusion, and verification requires the restored
 state to omit it.
+
+When the backup replaces an existing activation recovery, the target also
+supplies `legacyActivationReceipt: { "path": "/absolute/release.json",
+"sha256": "<64 hex>" }`. This points to the existing production release receipt.
+It is never copied or rewritten as a backup receipt. Capture verifies its full
+production evidence and assets, then binds the exact receipt, activation
+journal, and `latest-activation.json` identities before state capture.
 
 `plan` walks the exact included runtime, state, and service inputs. It reports
 allocated and logical bytes, entry counts, filesystem free bytes, and a
@@ -546,13 +554,17 @@ service data, the retained interpreter, browser image, and an actual invocation
 of the backed-up runtime. It does not start a gateway or deliver anything.
 Only after that proof passes does it compare-and-swap
 `backup-references/latest-healthy-recovery.json`. A changed reference preserves
-both recoveries and fails closed.
+both recoveries and fails closed. `current` resolves and verifies the
+authoritative new recovery through that reference.
 
-`retire` removes one named direct backup only after a different current
-recovery and its materialization proof verify. Referenced backups, unknown
-entries, escaped paths, and ambiguous references block deletion. A durable
-move-then-remove journal resumes an interrupted exact retirement. There is no
-age-based or broad backup pruning.
+`retire` removes one named direct recovery only after a different current
+recovery and its materialization proof verify. The first new backup may retire
+the exact legacy activation recovery captured in its predecessor token. The
+journal moves the legacy activation pointer and recovery to exact tombstones,
+then compare-and-swap clears the predecessor from the healthy reference before
+deleting either tombstone. Every interrupted stage is resumable. Referenced
+backups, changed receipts or pointers, unknown entries, escaped paths, and
+ambiguous ownership block deletion. There is no age-based or broad pruning.
 
 ## Delivery
 
