@@ -53,16 +53,18 @@ export async function loadExtension(path) {
     }
   }
   const inputDigests = new Map(declaredInputs.map((input) => [input, fileDigest(input)]));
-  const phaseHashes = Object.fromEntries(["prepare", "gate", "package", "installed"].map((phase) => [
-    phase, jsonDigest({
-      commands: commands.filter((command) => command.phase === phase),
-      inputs: [...new Set(commands
-        .filter((command) => command.phase === phase)
-        .flatMap((command) => command.inputs ?? declaredInputs))]
-        .sort()
-        .map((input) => [input, inputDigests.get(input)]),
-    }),
-  ]));
+  const phaseHashes = Object.fromEntries(["prepare", "gate", "package", "installed"].map((phase) => {
+    const selectedCommands = commands.filter((command) => command.phase === phase);
+    const selectedInputs = new Set(selectedCommands.flatMap(
+      (command) => command.inputs ?? declaredInputs,
+    ));
+    return [phase, jsonDigest({
+      commands: selectedCommands,
+      inputs: declaredInputs
+        .filter((input) => selectedInputs.has(input))
+        .map((input) => inputDigests.get(input)),
+    })];
+  }));
   return {
     ...extension, commands, healthChecks, artifacts, preparedFiles: prepared,
     scenarios: extension.scenarios ?? [], phaseHashes, hash: jsonDigest(files.map(fileDigest)),

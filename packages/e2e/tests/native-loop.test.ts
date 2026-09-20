@@ -430,6 +430,22 @@ describe("recording fixture prerequisites", () => {
     const prepareChanged = await loadExtension(module);
     expect(prepareChanged.phaseHashes.prepare).not.toBe(first.phaseHashes.prepare);
     expect(prepareChanged.phaseHashes.installed).toBe(first.phaseHashes.installed);
+
+    const fallbackModule = join(directory, "fallback-extension.mjs");
+    writeFileSync(fallbackModule, `export default ${JSON.stringify({
+      schemaVersion: 1,
+      inputs: [prepareInput, gateInput],
+      commands: [
+        { id: "prepare", phase: "prepare", command: "node", args: ["--version"],
+          timeoutMs: 1000 },
+        { id: "gate", phase: "gate", command: "node", args: ["--version"],
+          inputs: [gateInput], timeoutMs: 1000 },
+      ],
+    })};`);
+    const fallback = await loadExtension(fallbackModule);
+    writeFileSync(gateInput, "gate three");
+    const fallbackChanged = await loadExtension(fallbackModule);
+    expect(fallbackChanged.phaseHashes.prepare).not.toBe(fallback.phaseHashes.prepare);
   });
 
   it("rejects phase input paths not declared by the extension", async () => {
