@@ -75,6 +75,10 @@ prepared, and capacity checks pass. The status-query correction and private
 binding are review-clear. The requester approved one backup-only service window,
 conditional on final accumulated validation for this exact source. That gate
 is still pending, so capture has not started.
+The composed release passed preparation, dependencies and root build, then
+its source gate found an unsupported package-manager option in a private helper.
+The command fix is reviewed, and the release owner is resuming through normal
+input checks while preserving valid completed work.
 The core DEV edit-to-feedback loop passes
 in just over three minutes, with installed identity and lifecycle checks
 recorded. Current-input plugin and TEST coexistence evidence, plus private
@@ -94,6 +98,19 @@ single backup-only stop/start is approved subject to its recorded conditions.
 
 ### State
 
+- The current composed release passed prepare, dependencies and build, then
+  regression/source-gate execution failed after 405 seconds because private
+  `native-overlay-command` invokes pnpm 12 with unsupported `--prod=false`.
+  Private `dfd42b0193c30f3fcde27d7f00c9a1f9adca3ee0`, tree
+  `403e3f784b69b086ab226d4b81099c32561afb65`, fixes the command
+  while retaining default full frozen installation. Its argument regression
+  passes with 39 checks and one intentional skip; retained review is clean.
+  Public binding remains `4151ec`. The release owner has the exact repair
+  and is resuming through maintained actual-input comparison.
+  Preserve valid stage outputs and the failed receipt. Do not promise reuse
+  until keys actually match or transplant/relabel old receipts. No TEST, backup
+  capture or service action occurred; conditional maintenance approval remains
+  unconsumed until the required terminal gate passes.
 - The requester at 14:24 resumes non-production delivery work in parallel.
   This supersedes the earlier blanket release pause, not production or spending
   restrictions. Reuse existing sessions: parent coordinates overall scope;
