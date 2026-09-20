@@ -68,9 +68,10 @@ The requester has made the backup-script repair the next priority, before the
 upgrade proceeds. Public and private owners will extend the existing recovery
 tooling and verify a complete, smaller replacement before retiring the old one.
 The built-in state archive is not an equivalent replacement. Small unused
-Copilot artifacts are removed; Docker installer cleanup remains blocked because
-the approved admin operation requires interactive authentication. Host session
-cleanup and package-manager unification are separate work. Old package stores
+Copilot artifacts are removed, and the user's targeted Docker installer cleanup
+is verified with substantial recovered headroom and healthy services. The old
+recovery remains present. Host session cleanup and package-manager unification
+are separate work. Old package stores
 stay until their active consumers are migrated and verified. No production
 stop/start, paid execution or release resumption is approved. The old recovery
 is intact. Private release and TEST proof remain incomplete; neither change is
@@ -102,7 +103,8 @@ merged.
 - The audit and bounded supplement are complete as of 2026-09-20. The
   session-local report `disk-space-audit.md` contains host and mini capacity,
   whole-machine categories, protected references, permission gaps and options.
-  APFS and `df` agree on free space, which is just below the existing guard.
+  The original APFS and `df` readings agreed on free space just below the guard;
+  verified cleanup measurements below supersede that capacity baseline.
   Temporary Docker installer staging is the strongest immediate candidate,
   not production or recovery state. Allocated sizes are not guaranteed unique
   reclaim because APFS can share extents. Audit recommendations alone do not
@@ -177,15 +179,13 @@ merged.
   current-reference refusal versus exact superseded retirement. This is
   isolated evidence only. Public retained review and the full gate remain
   pending; no mini capture, service action or recovery retirement has occurred.
-- The exact Docker staging tree remains intact because its owner differs from
-  the authorized SSH user and its parent is not writable. Fresh path, lock,
-  reference and handle checks passed. The requester approved existing owner/admin
-  access solely for the exact staging tree, but noninteractive sudo requires a
-  password. Deletion was not attempted. No credential handling, authentication
-  bypass, new account/login setup or ownership/permission change is authorized.
-  User-performed interactive removal remains a separate possible prerequisite.
-  PROD/DEV remain healthy and no service action occurred. The old full recovery
-  and references are unchanged; there is no new backup.
+- The requester performed the approved credentialed Docker staging deletion.
+  Bounded verification at 2026-09-20T20:25:21Z confirms the exact target absent,
+  installed Docker/VM and old recovery present, and both PROD/DEV health
+  endpoints live. Available capacity increased substantially; exact before/after
+  figures are in the private report and the interval includes ambient drift.
+  No agent handled credentials or performed a service action. No repeat
+  deletion, broader prune, backup retirement or upgrade is authorized.
 - Existing native recovery creation is activation-coupled. There is no maintained
   backup-only command or standalone verifier/reference-transition/retirement
   operation for its full recovery format. The destination-recursion fix does not
@@ -218,10 +218,10 @@ merged.
   goal without settling their exact scope.
 - The pre-cleanup read-only mini probe at approximately 12:25 PDT on 2026-09-20
   confirmed both PROD and DEV health endpoints live and TEST absent, and
-  showed free space below the existing guard. The later approved Copilot cleanup
-  brings free space only slightly above it. Neither observation establishes
-  durable capacity. Exact measurements remain in the private report and must
-  not be confused with the development-Mac audit.
+  showed free space below the existing guard. Copilot cleanup alone made little
+  difference; the later verified Docker deletion provides substantial headroom.
+  Durable capacity still depends on backup and recurring-growth controls.
+  Exact measurements remain private and distinct from the development-Mac audit.
 - Plan 038, `docs/plans/038-artifact-delivery.md`, holds the public implementation
   details on PR #117. It is not present on this document's initial base branch.
   The deployment owner keeps host-specific configuration and the private
