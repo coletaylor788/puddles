@@ -54,20 +54,17 @@ evidence, unbounded local diagnostic logs and protected recovery remain safe.
 The complete public pipeline passes on a standard 7 GB hosted ARM runner,
 including the fresh build, accumulated regressions, offline installation and
 runtime scenarios. The ARM bundle is published and independent review is clear.
-Ordinary local builds now have measured results for runtime edits: about one
-minute fifteen seconds for a plugin change and one minute forty seconds for a
-small core change, including focused local tests and the runtime output build.
-Initial package-file selection now takes about 14 to 17 seconds after removing
-unnecessary archive creation from the DEV path. That repair is reviewed.
-Actual DEV startup and remote integration are still outstanding.
+DEV now runs on the mini. A representative plugin change completes the local
+work, transfer, restart and remote behavior assertion in two minutes fifty-four
+seconds, with no external calls. The equivalent core-change measurement is
+still local-only, and the latest private changes are under retained review.
 
-The private composed release, actual DEV deployment and integration checks,
-complete physical release proof, and remaining workspace cleanup are not yet
-confirmed complete. Release testing needs a fresh normal build with corrected
-migration test data, rather than new tooling to recover an obsolete DEV run.
-File selection belongs to initial setup, not the normal built-output sync loop.
-Transfer, restart and remote integration are not included in the local timings.
-Neither delivery change is merged. Production remains unchanged.
+The private composed release, complete physical release proof, remaining DEV
+acceptance checks and workspace cleanup are not yet complete. Release testing
+needs a fresh normal build with corrected migration test data, rather than new
+tooling to recover an obsolete DEV run. The authorized local builder fallback
+is being evaluated because paid hosted execution is not approved. Neither
+delivery change is merged. Production remains unchanged.
 
 ## Agent section
 
@@ -140,8 +137,9 @@ Neither delivery change is merged. Production remains unchanged.
   `expect(normalizeIMessageMessagingTarget("mailto:User@Example.com")).toBe("user@example.com")`.
   Extension typechecking takes 16.04 seconds, focused `normalize.test.ts`
   passes 8/8 in 22.71 seconds, and `qaRuntime` takes 36.41 seconds.
-  The local total is 75.16 seconds. The private owner has this assertion for
-  remote DEV verification.
+  The local total for that earlier run is 75.16 seconds. The private owner
+  subsequently deployed and asserted this runtime edit remotely; that complete
+  loop is recorded below and uses its own measured local segment.
   Small core edit: `pnpm tsgo:core` 39.92 seconds, focused test 24.54 seconds,
   and `qaRuntime` 36.19 seconds, totaling 100.65 seconds locally.
   These are local segments, not end-to-end DEV results.
@@ -153,8 +151,8 @@ Neither delivery change is merged. Production remains unchanged.
 - The maintained `qaRuntime` profile builds runtime output, plugin assets,
   external plugin local output, postbuild files and stamps without release
   declarations. Sync `dist/` for installed DEV, not source-checkout-only
-  `dist-runtime`. The private owner has the exact commands and owns the
-  remaining sync, restart and remote integration timings. Dependency, manifest,
+  `dist-runtime`. The private owner has measured the plugin's complete loop;
+  the equivalent core-edit loop is still outstanding. Dependency, manifest,
   lockfile or toolchain changes require bootstrap/dependency refresh rather
   than this unchanged-dependency fast path.
 - The cold DEV inventory bottleneck was tar creation performed by
@@ -164,14 +162,24 @@ Neither delivery change is merged. Production remains unchanged.
   packlist/Arborist selector for DEV. Actual candidate selection takes
   13.9 to 16.6 seconds for 10,063 files. Synthetic npm parity and byte-identical
   bundled-dependency runtime evidence pass; retained full-diff review is clear.
-  The release path is unchanged. Private has the API and can resume actual
-  bootstrap; the complete remote loop is not yet proven.
+  The release path is unchanged. Private used the repair to complete actual
+  cold bootstrap and the runtime-changing plugin loop.
 - The private DEV implementation has retained review clearance at `9830b25`.
   Its contract suite reports 68 passing tests and two intentional skips.
   An independent 80 MiB, two-batch transport check with symlink and digest
   verification passes and its test roots are cleaned. That is not bootstrap
-  proof. Resume actual DEV installation with the inventory repair, then restore
-  the runtime-changing benchmark and prove its assertion remotely.
+  proof by itself.
+- The coordinator reports terminal private DEV success at pushed `e50b9bb`:
+  cold bootstrap completes and DEV runs with three configured plugins loaded.
+  The actual iMessage runtime edit is deployed and asserted in 174 seconds
+  end to end. Rounded phase times are 131 seconds local work, nine preparation,
+  11 transfer, and 22 activation plus integration; rounding accounts for the
+  difference from the reported total. Recording-only execution reports zero
+  external calls. PROD remains healthy and TEST is absent.
+- That candidate reports 72 contract passes and two intentional skips; the
+  retained reviewer is rechecking it. This proves the representative plugin
+  loop, not the core-edit end-to-end case or every DEV acceptance item.
+  Keep the earlier local-only core timing separate.
 - The selected OpenClaw source is
   `1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7` (`v2026.9.3`). The selected
   candidate Node version is `26.1.0`; upstream pnpm is `12.3.4`. Do not silently
@@ -197,6 +205,10 @@ Neither delivery change is merged. Production remains unchanged.
   resource and no-paid-hosting gates, rather than add a legacy-run adapter
   solely to avoid this build. Preserve the old run and evidence. This does not
   make ordinary DEV edits run release builds.
+- Private hosted billing approval is absent. The owner is evaluating the
+  authorized development-Mac fallback with about 29.8 GiB free against the
+  unchanged 25 GiB guard and measured peak needs. Evaluation is not a completed
+  capacity proof. No additional cleanup or capacity permission is granted.
 - Retained bundle import cannot adopt builder stages or issue a receipt for
   corrected migration bytes; it restores the old immutable identity and has
   no migration body to recover. Never rewrite sealed hashes, copy stages into
@@ -493,9 +505,11 @@ focused and hosted gates pass, and the resumed local root build succeeds.
 The private owner reports focused regression and retained review clearance for
 the package-phase correction and earlier artifact-only diagnosis. The public
 owner reports measured local build/test segments for real plugin and core edits
-using the maintained component commands. Remote deployment and integration
-timings remain outstanding. These results do not establish an operational fast
-DEV loop or final private release eligibility.
+using the maintained component commands. Private now reports cold bootstrap
+and the runtime-changing plugin's complete remote loop at `e50b9bb`, with its
+retained review recheck running. Core-edit remote timing and the remaining DEV
+acceptance evidence are outstanding. These results do not establish final
+private release eligibility.
 
 This master document records agreed scope and available evidence. It does not
 grant new production, billing, deletion or external-message permissions. Owners
@@ -522,16 +536,21 @@ record in the relevant component plan, not a status assertion alone.
 
 - [ ] DEV-01 (private, in progress): Provision and verify a distinct DEV target,
   separate from release TEST and PROD in every writable/process identity.
-- [ ] DEV-02 (private/public, in progress): Provide a maintained
+  Cold bootstrap and a running DEV are reported at `e50b9bb`; retain the
+  complete identity evidence before closing this item.
+- [x] DEV-02 (private/public): Provide a maintained
   incremental-build/unit-test command in the normal local workspaces and a
   thin owned-output SSH deploy to DEV. Prove ordinary compiler reuse, correct
   runtime dependency transfer and service restart without release prerequisites.
+  The representative plugin loop at `e50b9bb` completes in 174 seconds.
 - [ ] DEV-03 (private/public): Accept uncommitted local development normally.
   Prove the DEV command refuses production targets and cannot issue production
   approval; do not require a new draft receipt or attestation protocol.
 - [ ] DEV-04 (private): Pass the relevant deployed integration and smoke checks,
   with recorded interactions and no live external writes or scheduled-message
   fallback, before submitting the normal candidate to CI.
+  The representative plugin assertion passes with three plugins loaded and
+  zero external calls; do not infer complete integration coverage from it.
 - [ ] DEV-05 (private): Document start, stop, deploy, inspect and reset commands;
   prove on-demand resource use and that DEV does not disturb a running TEST.
 - [ ] DEV-06 (both): Define the pre-CI unit/integration selection and benchmark
@@ -539,6 +558,8 @@ record in the relevant component plan, not a status assertion alone.
   feedback budget. Record every phase, cold/no-op cases separately, and which
   changed outputs ran. Run focused packaging checks when that behavior changes,
   not full release packaging or the full CI suite after every local edit.
+  The plugin loop meets the budget at 174 seconds. Actual core-edit end-to-end
+  evidence is still required.
 
 **Hosted ARM and local fallback**
 
