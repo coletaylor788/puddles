@@ -1,6 +1,6 @@
 # Plan 039 - OpenClaw development and delivery
 
-**Status:** Release paused for read-only mini disk audit
+**Status:** Release paused after whole-mini disk audit
 **Issue:** [#118](https://github.com/coletaylor788/puddles/issues/118)
 **Last updated:** 2026-09-20
 **Owner:** Delivery coordinator
@@ -60,14 +60,15 @@ seconds, with no external calls. The equivalent core-change measurement is
 still local-only. That successful plugin run predates a rollback correction,
 so the affected checks must be refreshed for the latest private version.
 
-The requester has paused the release and declined hosted spending. A full,
-read-only audit of the entire mini will explain system, application, user,
-cache and backup storage, not just release files. It will distinguish physical
-disk use from folder sizes and explain cleanup, retention, relocation and
-capacity options. Access limits and unaccounted space will be explicit. The
-earlier capacity packet concerns the development Mac, not the mini. No files
-or services will be changed. Build evidence is preserved; private release and
-TEST proof remain incomplete. Neither change is merged. DEV and production run.
+The requester has paused the release and declined hosted spending. The
+whole-mini read-only audit now covers major storage categories and explains
+physical versus logical sizes, protected data, access limits and remedies.
+Temporary installer staging is the strongest immediate cleanup candidate;
+package stores and workload placement are longer-term considerations. Detailed
+machine inventory remains in the private audit report. Nothing was removed or
+changed, and no remedy or release resumption is approved. Build evidence is
+preserved; private release and TEST proof remain incomplete. Neither change is
+merged. DEV and production run.
 
 ## Agent section
 
@@ -79,7 +80,7 @@ TEST proof remain incomplete. Neither change is merged. DEV and production run.
 - The requester declined the single hosted-attempt proposal and explicitly
   paused the current release. Public/private owners acknowledge no new release
   builds, installs, dispatches, cleanup, service actions or merge activity.
-  Preserve successful evidence and healthy DEV/PROD. The next authorized work
+  Preserve successful evidence and healthy DEV/PROD. The authorized audit scope
   is a read-only audit of the ENTIRE MINI by the existing disk-audit owner,
   not another development-Mac audit or a release-directory-only review.
   Cover disks/APFS containers and volumes, OS/Data, applications and libraries,
@@ -92,6 +93,14 @@ TEST proof remain incomplete. Neither change is merged. DEV and production run.
   options with impact, risks and approval needs. No personal-content reads,
   privilege changes, deletion, relocation or other remedy are approved.
   Private paths and detailed inventory remain in local evidence.
+- The audit and bounded supplement are complete as of 2026-09-20. The
+  session-local report `mini-disk-audit-2026-09-20.md` contains exact capacity,
+  whole-machine categories, protected references, permission gaps and options.
+  APFS and `df` agree on free space, which is just below the existing guard.
+  Temporary Docker installer staging is the strongest immediate candidate,
+  not production or recovery state. Allocated sizes are not guaranteed unique
+  reclaim because APFS can share extents. No cleanup or new run is authorized;
+  wait for the requester's decision rather than act on recommendations.
 - Plan 038, `docs/plans/038-artifact-delivery.md`, holds the public implementation
   details on PR #117. It is not present on this document's initial base branch.
   The deployment owner keeps host-specific configuration and the private
