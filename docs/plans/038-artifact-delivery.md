@@ -119,14 +119,16 @@ tarball. Release packaging keeps its synchronous 60-second `npm pack` proof
 path. Production remains held.
 
 The current-production backup path is implemented against synthetic targets and
-is in focused validation. No production access, capture, service action, release
-resumption, or retirement has occurred. Private work owns target assembly,
-capacity readiness, and any later approved maintenance.
+has passed the complete accumulated public lifecycle and retained review.
+Private cross-contract tests also exercise the real public module. No production
+access, capture, service action, release resumption, or retirement has occurred.
+Private work owns target assembly, capacity readiness, and any later approved
+maintenance.
 
 The common package-manager pin is migrated to the selected source version. A
 fresh install and a frozen offline reinstall pass against one explicit local
-store. Focused pipeline and workspace tests pass. Retained review and the final
-accumulated gate are still pending for this combined candidate.
+store. Focused pipeline and workspace tests, the retained complete-diff review,
+and the full accumulated lifecycle pass for this combined candidate.
 
 ## Agent section
 
@@ -489,6 +491,10 @@ accumulated gate are still pending for this combined candidate.
 - Run focused TypeScript and executable-wrapper tests while iterating.
 - Final public candidate runs:
   `node packages/e2e/bin/openclaw-test-env.mjs ci`.
+- Final local run at `73c673e` reused exact unchanged prepare, dependency, and
+  build proofs, then passed regressions, extension and provider packaging,
+  prepared files, portable package creation, offline installation, additional
+  runtime installation, installed runtime checks, and all nine scenarios.
 - The retained reviewer rechecks the complete diff after focused gates.
 - Hosted public checks must pass on `macos-15` and publish the arm64
   nonproduction bundle plus bounded resource evidence.
@@ -595,6 +601,14 @@ accumulated gate are still pending for this combined candidate.
   The migration keeps portable archives independent and classifies the existing
   primary OpenClaw checkout on pnpm 11.2.2 as a legacy consumer, not a managed
   release input.
+- 2026-09-20: Retained review found one blocking hard-kill recovery gap in
+  backup capture. Explicit resume now reclaims only a dead owner's exact lock
+  after validating the stopped journal and target identity. The retained
+  reviewer verified the repair and cleared the complete current diff.
+- 2026-09-20: Exact pnpm 12.3.4 verification now reads both integrity-bound
+  manifests and queries version and store from a neutral directory, leaving
+  both lockfiles byte-identical. Public and private fresh/offline proofs pass.
+  The final accumulated public lifecycle passes with nine scenarios.
 
 ### Checklist
 
@@ -621,8 +635,8 @@ accumulated gate are still pending for this combined candidate.
 - [x] Run the branch-only hosted ARM trial and inspect its resource evidence.
 - [x] Resume the retained reviewer on the complete ARM profile diff.
 - [x] Review and publish the bounded draft-only timeout repair.
-- [ ] Complete retained review and the accumulated public gate for the
+- [x] Complete retained review and the accumulated public gate for the
   backup-only maintenance path.
-- [ ] Complete compatibility, retained review, and accumulated gates for pnpm
+- [x] Complete compatibility, retained review, and accumulated gates for pnpm
   12.3.4 and the shared host-local store.
 - [ ] Hold merge and production activation for coordinator authorization.

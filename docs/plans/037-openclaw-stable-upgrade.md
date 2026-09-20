@@ -144,8 +144,9 @@ retained complete-diff review pass. Private must repeat the exact combined
 deployment rehearsal. Production remains untouched.
 
 The package-manager pin is now being unified with the selected source. Its
-fresh and offline frozen install compatibility is proven locally. The final
-focused, accumulated, and retained-review gates remain open.
+fresh and offline frozen install compatibility is proven locally. The complete
+accumulated lifecycle and retained complete-diff review pass on the unified
+toolchain candidate. Production remains paused.
 
 ## Agent section
 
