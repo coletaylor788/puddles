@@ -206,6 +206,31 @@ function journalIdentity(target, directory) {
   };
 }
 
+function reclaimStoppedCaptureLock(target, directory) {
+  const lock = join(realpathSync(target.backupRoot), "lock");
+  if (!existsSync(lock)) return;
+  stat(lock, true);
+  const journal = parseJson(join(directory, "backup-journal.json"), "Backup journal is invalid");
+  const identity = journalIdentity(target, directory);
+  if (Object.entries(identity).some(([key, value]) => journal[key] !== value) ||
+      journal.serviceStopped !== true) {
+    throw new Error("Existing backup lock is not owned by this stopped capture");
+  }
+  const owner = parseJson(join(lock, "owner.json"), "Backup lock owner is invalid");
+  if (!Number.isSafeInteger(owner.pid) || owner.pid < 1 ||
+      !Number.isFinite(Date.parse(owner.startedAt))) {
+    throw new Error("Backup lock owner is invalid");
+  }
+  try {
+    process.kill(owner.pid, 0);
+    throw new Error("Backup capture owner is still running");
+  } catch (error) {
+    if (error.code !== "ESRCH") throw error;
+  }
+  rmSync(lock, { recursive: true });
+  syncDirectory(dirname(lock));
+}
+
 function saveJournal(path, journal, status) {
   journal.status = status;
   journal.updatedAt = new Date().toISOString();
@@ -354,6 +379,7 @@ export async function captureCurrentBackup(target, operationsFactory = backupOpe
     throw new Error("Backup capture timeout must be a positive integer no greater than seven minutes");
   }
   const directory = backupDirectory(target, requestedDirectory);
+  if (requestedDirectory) reclaimStoppedCaptureLock(target, directory);
   const unlock = acquireLock(target.backupRoot);
   if (!requestedDirectory) mkdirSync(directory, { mode: 0o700 });
   const journalPath = join(directory, "backup-journal.json");

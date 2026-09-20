@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { spawnSync } from "node:child_process";
 import {
   cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync,
   realpathSync, renameSync, rmSync, writeFileSync,
@@ -195,6 +196,12 @@ describe("current production recovery backup", () => {
       f.target.backupRoot,
       readdirSync(f.target.backupRoot).find((name) => /^backup-\d+-\d+$/.test(name))!,
     );
+    const deadOwner = spawnSync(process.execPath, ["-e", ""]).pid;
+    mkdirSync(join(f.target.backupRoot, "lock"));
+    writeFileSync(join(f.target.backupRoot, "lock", "owner.json"), JSON.stringify({
+      pid: deadOwner,
+      startedAt: new Date().toISOString(),
+    }));
     const result = await captureCurrentBackup(f.target, f.factory, directory);
     expect(result.manifest.status).toBe("captured");
     expect(f.started()).toBe(true);
