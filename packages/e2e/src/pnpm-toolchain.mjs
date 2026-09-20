@@ -1,4 +1,6 @@
-import { isAbsolute, relative, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { runCommand } from "./process-runner.mjs";
 
 export const PNPM_VERSION = "12.3.4";
@@ -31,10 +33,20 @@ export async function inspectPnpmContext(
 ) {
   const configuredStoreDir = configuredPnpmStore(env);
   const commandEnv = { ...env, [PNPM_STORE_ENV]: configuredStoreDir };
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(join(cwd, "package.json"), "utf8"));
+  } catch (error) {
+    throw new Error("Package manager manifest is invalid", { cause: error });
+  }
+  if (manifest.packageManager !== PNPM_PACKAGE_MANAGER) {
+    throw new Error(`The integrity-bound package manager must be pinned as ${PNPM_PACKAGE_MANAGER}`);
+  }
+  const command = `pnpm@${PNPM_VERSION}`;
   const version = (await execute(
     "corepack",
-    ["pnpm", "--version"],
-    { cwd, env: commandEnv, capture: true, quiet: true },
+    [command, "--version"],
+    { cwd: tmpdir(), env: commandEnv, capture: true, quiet: true },
   )).trim();
   if (version !== PNPM_VERSION) {
     throw new Error(`pnpm ${PNPM_VERSION} is required; ${version || "no version"} resolved`);
@@ -43,8 +55,8 @@ export async function inspectPnpmContext(
     configuredStoreDir,
     (await execute(
       "corepack",
-      ["pnpm", "store", "path", "--silent"],
-      { cwd, env: commandEnv, capture: true, quiet: true },
+      [command, "store", "path", "--silent"],
+      { cwd: tmpdir(), env: commandEnv, capture: true, quiet: true },
     )).trim(),
   );
   return { version, configuredStoreDir, storeDir };

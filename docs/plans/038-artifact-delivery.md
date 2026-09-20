@@ -481,7 +481,9 @@ accumulated gate are still pending for this combined candidate.
   manifest and identity tamper rejection, actual isolated consumer checks,
   reference compare-and-swap, exact retirement, and no broad deletion.
 - Toolchain tests reject missing or relative store roots, wrong pnpm versions,
-  escaped resolved stores, and different Puddles/OpenClaw stores.
+  escaped resolved stores, different Puddles/OpenClaw stores, and a missing
+  integrity-bound pin. They also prove inspection leaves both manifest and
+  lockfile bytes unchanged.
 - pnpm 12.3.4 completed a fresh install and then
   `install --offline --frozen-lockfile` against one explicit test-owned store.
 - Run focused TypeScript and executable-wrapper tests while iterating.

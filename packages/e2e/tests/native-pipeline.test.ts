@@ -30,7 +30,13 @@ vi.mock("../src/process-runner.mjs", () => ({
         if (registrations.has(path)) throw new Error("Worktree already registered");
         registrations.add(path);
         mkdirSync(path, { recursive: true });
-        for (const name of ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "source.js"]) writeFileSync(join(path, name), name);
+        writeFileSync(join(path, "package.json"), JSON.stringify({
+          packageManager:
+            "pnpm@12.3.4+sha512.961aa41fb077da3a04a441d9f8e15ebc0c96da8ef710b2eb67bf9ee7cb0610eabd48f1fd85f51cffe73846785fa0f87c56a3a872a1d893f8446741b5cce45457",
+        }));
+        for (const name of ["pnpm-lock.yaml", "pnpm-workspace.yaml", "source.js"]) {
+          writeFileSync(join(path, name), name);
+        }
         const suite = JSON.parse(readFileSync(join(import.meta.dirname, "../openclaw-patch-suite.json"), "utf8"));
         for (const patch of suite.patches) {
           for (const target of patch.tests) {
@@ -51,8 +57,8 @@ vi.mock("../src/process-runner.mjs", () => ({
       else if (args[0] === "rev-parse") return "a".repeat(40);
       return "";
     }
-    if (command === "corepack" && args[1] === "--version") return "12.3.4";
-    if (command === "corepack" && args[1] === "store") {
+    if (command === "corepack" && args[0] === "pnpm@12.3.4" && args[1] === "--version") return "12.3.4";
+    if (command === "corepack" && args[0] === "pnpm@12.3.4" && args[1] === "store") {
       return join(options.env!.PNPM_CONFIG_STORE_DIR, "v11");
     }
     if (command === "corepack" && args[1] === "install") {

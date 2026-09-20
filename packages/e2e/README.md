@@ -56,6 +56,9 @@ node packages/e2e/bin/verify-pnpm-toolchain.mjs /path/to/openclaw
 
 The verifier requires pnpm 12.3.4 in both working directories and requires
 `pnpm store path` to resolve to the same child beneath the configured root.
+It reads each integrity-bound package-manager declaration, then runs its
+version and store queries from a neutral directory so verification cannot
+rewrite either repository's manifest or lockfile.
 The native pipeline repeats that check before dependency installation and binds
 the resolved store path into its build inputs. The store is only an install and
 build cache. Portable runtime archives still contain their complete dependency
