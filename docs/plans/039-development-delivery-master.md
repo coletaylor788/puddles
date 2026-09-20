@@ -57,14 +57,16 @@ runtime scenarios. The ARM bundle is published and independent review is clear.
 DEV now runs on the mini. A representative plugin change completes the local
 work, transfer, restart and remote behavior assertion in two minutes fifty-four
 seconds, with no external calls. The equivalent core-change measurement is
-still local-only, and the latest private changes are under retained review.
+still local-only. That successful plugin run predates a rollback correction,
+so the affected checks must be refreshed for the latest private version.
 
 The private composed release, complete physical release proof, remaining DEV
-acceptance checks and workspace cleanup are not yet complete. Release testing
-needs a fresh normal build with corrected migration test data, rather than new
-tooling to recover an obsolete DEV run. The authorized local builder fallback
-is being evaluated because paid hosted execution is not approved. Neither
-delivery change is merged. Production remains unchanged.
+acceptance checks and workspace cleanup are not yet complete. The fresh local
+release run passes the root build and mapped regressions, but is blocked on
+offline dependencies and tight disk headroom. Its successful work is preserved.
+One concrete storage or bounded hosting decision is being prepared; no cleanup
+or paid execution is approved. Neither delivery change is merged. Production
+remains unchanged.
 
 ## Agent section
 
@@ -205,10 +207,27 @@ delivery change is merged. Production remains unchanged.
   resource and no-paid-hosting gates, rather than add a legacy-run adapter
   solely to avoid this build. Preserve the old run and evidence. This does not
   make ordinary DEV edits run release builds.
-- Private hosted billing approval is absent. The owner is evaluating the
-  authorized development-Mac fallback with about 29.8 GiB free against the
-  unchanged 25 GiB guard and measured peak needs. Evaluation is not a completed
-  capacity proof. No additional cleanup or capacity permission is granted.
+- The fresh authorized local release run on public `c188fcc`, private `e50b9bb`
+  and upstream `1391f7c` passes prepare, dependencies, root build and mapped
+  regressions. It then encounters missing offline keytar/copilot inputs normally
+  supplied by hosted setup. The patched store is populated, but a targeted
+  private store install encounters repeated optional download resets and
+  copilot availability is not yet verified. Preserve the completed build and
+  evidence; do not repeat a full build for prerequisite diagnosis.
+- Retained review found a DEV rollback shutdown race, corrected at `b543049`
+  with 73 contract passes and two intentional skips. The earlier `e50b9bb`
+  plugin timing remains historical evidence, not final-head certification.
+  Refresh affected review/runtime proofs and verify actual-input reuse for the
+  current maintained release run. Do not relabel old receipts or discard
+  unrelated successful build evidence.
+- The development Mac now reports 26,577,392 KiB free, about 25.35 GiB,
+  only 0.35 GiB above the unchanged 25 GiB guard. No safe new build or cleanup
+  is authorized. Private hosted billing approval is absent. The coordinator
+  owns one requester decision after a bounded packet identifies either an
+  exact audited cleanup candidate or verified hosting cost, remaining allowance
+  and an enforceable cap. First distinguish remaining same-run disk needs
+  from a fresh build's peak; safe supported reuse may avoid a new resource
+  decision. No broad audit, repeated full retry or account change is authorized.
 - Retained bundle import cannot adopt builder stages or issue a receipt for
   corrected migration bytes; it restores the old immutable identity and has
   no migration body to recover. Never rewrite sealed hashes, copy stages into
@@ -506,10 +525,11 @@ The private owner reports focused regression and retained review clearance for
 the package-phase correction and earlier artifact-only diagnosis. The public
 owner reports measured local build/test segments for real plugin and core edits
 using the maintained component commands. Private now reports cold bootstrap
-and the runtime-changing plugin's complete remote loop at `e50b9bb`, with its
-retained review recheck running. Core-edit remote timing and the remaining DEV
-acceptance evidence are outstanding. These results do not establish final
-private release eligibility.
+and the runtime-changing plugin's complete remote loop at `e50b9bb`.
+Retained review then found a rollback shutdown race, corrected at `b543049`;
+affected current-head review and runtime evidence still need confirmation.
+Core-edit remote timing and remaining DEV acceptance evidence are outstanding.
+These results do not establish final private release eligibility.
 
 This master document records agreed scope and available evidence. It does not
 grant new production, billing, deletion or external-message permissions. Owners
