@@ -1,6 +1,6 @@
 # Plan 039 - OpenClaw development and delivery
 
-**Status:** Release paused; approved cleanup and recovery maintenance
+**Status:** Backup and package-manager repairs in progress; release paused
 **Issue:** [#118](https://github.com/coletaylor788/puddles/issues/118)
 **Last updated:** 2026-09-20
 **Owner:** Delivery coordinator
@@ -48,29 +48,33 @@ deployment and rollback mechanism in TEST. PROD keeps a healthy release and
 rolls back only on a real failure. Scripts run these steps without an agent
 watching them. Owned temporary files are cleaned up while useful release
 evidence, unbounded local diagnostic logs and protected recovery remain safe.
+Before the upgrade proceeds, the backup tooling must create a complete recovery
+of current production without copying historical backups into it. The normal
+recovery path must prove that replacement usable before the old copy is retired.
+Active builds will use one pinned package-manager version and one shared
+package store per machine, avoiding duplicate store formats without rewriting
+historical build evidence or coupling installed services to a mutable cache.
 
 ### Status
 
-The complete public pipeline passes on a standard 7 GB hosted ARM runner,
-including the fresh build, accumulated regressions, offline installation and
-runtime scenarios. The ARM bundle is published and independent review is clear.
-DEV now runs on the mini. A representative plugin change completes the local
-work, transfer, restart and remote behavior assertion in two minutes fifty-four
-seconds, with no external calls. The equivalent core-change measurement is
-still local-only. That successful plugin run predates a rollback correction,
-so the affected checks must be refreshed for the latest private version.
+Earlier public delivery passes the complete pipeline on a standard 7 GB ARM
+runner. The new backup path now passes isolated integration checks between
+public and private code, but its final review and accumulated gates are still
+pending. No replacement has been captured on the mini. DEV runs there and a
+representative plugin edit has completed its full loop in under three minutes;
+core-edit remote evidence and checks affected by later repairs remain open.
 
-The requester has paused the release and declined hosted spending. The
-whole-mini read-only audit now covers major storage categories and explains
-physical versus logical sizes, protected data, access limits and remedies.
-The requester has approved unused Copilot state and temporary Docker installer
-cleanup on the mini, plus a smaller replacement recovery backup. Small unused
-Copilot artifacts have been removed, but the large Docker installer tree remains
-blocked by ownership permissions. Current free space is only just above the
-existing guard, not durable headroom. The full recovery is unchanged; the built-in
-state archive is not an equivalent replacement. No production stop/start or
-release resumption is approved. Detailed measurements remain private. Private
-release and TEST proof remain incomplete. Neither change is merged.
+The requester has made the backup-script repair the next priority, before the
+upgrade proceeds. Public and private owners will extend the existing recovery
+tooling and verify a complete, smaller replacement before retiring the old one.
+The built-in state archive is not an equivalent replacement. Small unused
+Copilot artifacts are removed; Docker installer cleanup remains blocked because
+the approved admin operation requires interactive authentication. Host session
+cleanup and package-manager unification are separate work. Old package stores
+stay until their active consumers are migrated and verified. No production
+stop/start, paid execution or release resumption is approved. The old recovery
+is intact. Private release and TEST proof remain incomplete; neither change is
+merged.
 
 ## Agent section
 
@@ -113,8 +117,12 @@ release and TEST proof remain incomplete. Neither change is merged.
   installed-application removal, new privilege or service action is authorized.
 - The requester separately asks for a new smaller recovery backup to replace
   the oversized one. The private deployment owner owns this narrow maintenance,
-  not a release. Verify the actual maintained backup-only mechanism and the
-  nested-backup correction instead of assuming pending code is installed.
+  not a release. The requester now explicitly directs fixing the backup script
+  so complete recovery replacement can happen before further upgrade work.
+  Public owns the smallest backup-only extension to existing native recovery;
+  private owns current-PROD target assembly, wrapper, fixtures, capacity and
+  retained review. Share the stabilized interface directly between these owners.
+  Code work is authorized independently of future service-stop permission.
   Coordinate capacity and locks with the cleanup owner. Capture the current
   healthy production runtime and its required state, databases, service,
   browser and interpreter assets in a separate destination outside source state.
@@ -123,8 +131,8 @@ release and TEST proof remain incomplete. Neither change is merged.
   supported reference/journal transition and retire only the exact unreferenced
   old recovery. No hash rewriting, live restore or upgrade is authorized.
   Report any required production stop/start or new privilege for a specific
-  requester decision before acting. If a maintained backup-only path is missing,
-  identify that gap before expanding implementation scope.
+  requester decision before acting. No new worker, parallel backup framework,
+  paid job or unrelated release activation/merge is authorized.
 - The audit worker followed a separate user-requested development-Mac audit;
   that did not cancel mini cleanup. The private deployment owner took over
   mini cleanup independently of backup readiness and now reports a terminal
@@ -132,30 +140,70 @@ release and TEST proof remain incomplete. Neither change is merged.
   logs were removed. Session containers, active/referenced data, authentication
   and configuration remain protected. Actual physical reclaim and current
   capacity are recorded in the private audit report.
+- The requester also authorizes deletion of proven-unneeded generated contents
+  inside development-Mac session folders, without disrupting progress. The
+  audit owner owns that host-only cleanup and checks references with active
+  engineering owners. Preserve session containers/history/databases, active
+  and paused source, unfinished work and required proof closures. Report actual
+  physical reclaim, not summed directory sizes. Approved initial batches have
+  reclaimed space without deleting session containers or required evidence.
+- The requester now directs a single pnpm version and store for active work.
+  Public owns the shared toolchain/store contract, private migrates its
+  consumers, and the audit owner owns reference checks and eventual exact
+  obsolete-store retirement. The candidate common pin is `12.3.4`, already
+  required by selected OpenClaw `1391f7c`; compatibility must be proven rather
+  than assumed. Current host Puddles installs use `10.31.0` and store format
+  `v10`; an older OpenClaw checkout uses `11.2.2` and `v11`. Both currently have
+  consumers. Format labels alone are not CLI versions or deletion evidence.
+- Use one resolved content-addressed store per host or CI runner, not a shared
+  network store across machines. Align active manifests, Corepack/setup,
+  assertions, prewarm, DEV/release commands and offline checks. Verify normal
+  frozen installs and actual module/store metadata before removing anything.
+  Never rename one store format into another, disable strict version checks,
+  change the pinned upstream release to force compatibility, or edit primary
+  checkouts. Classify older active consumers explicitly; frozen historical
+  proof/toolchain identities stay intact. The small package-manager binary
+  store is distinct from the large package-content store.
+- Coordinate installs with active builds/tests and preserve required offline
+  inputs. The audit owner may retire only exact superseded store contents after
+  validated migration and a reference handoff from the engineering owners.
+  Do not expose an installed artifact to a mutable shared-store dependency.
+  No production service change, paid run or upgrade resumption follows from
+  this toolchain request.
+- Private backup composition `3bfa7fa` passes cross-contract checks against
+  public `e330423`: real-module plan, unreferenced capture with exclusions,
+  verification, fresh isolated same-consumer materialization and restored
+  runtime execution, CAS reference publication, a second replacement, and
+  current-reference refusal versus exact superseded retirement. This is
+  isolated evidence only. Public retained review and the full gate remain
+  pending; no mini capture, service action or recovery retirement has occurred.
 - The exact Docker staging tree remains intact because its owner differs from
   the authorized SSH user and its parent is not writable. Fresh path, lock,
-  reference and handle checks passed, but no privilege or ownership change was
-  attempted. Obtain a narrowly scoped existing owner/admin-access decision,
-  or a user-performed removal, rather than change permissions to force deletion.
+  reference and handle checks passed. The requester approved existing owner/admin
+  access solely for the exact staging tree, but noninteractive sudo requires a
+  password. Deletion was not attempted. No credential handling, authentication
+  bypass, new account/login setup or ownership/permission change is authorized.
+  User-performed interactive removal remains a separate possible prerequisite.
   PROD/DEV remain healthy and no service action occurred. The old full recovery
   and references are unchanged; there is no new backup.
 - Existing native recovery creation is activation-coupled. There is no maintained
   backup-only command or standalone verifier/reference-transition/retirement
-  operation for its full recovery format. The destination-recursion fix does not exclude a legacy
-  `deploy-snapshots` child. Recheck that live state lacks that child before
-  capture. The public owner is checking the smallest supported existing
-  snapshot/recovery or installed-runtime backup option. Do not assume a new
-  manifest, reference namespace and recovery mode are necessary. Any required
-  narrow implementation needs committed regressions, isolated non-delivering
-  restore evidence and retained review before live use.
+  operation for its full recovery format. The destination-recursion fix does not
+  exclude a legacy `deploy-snapshots` child. The repair must safely exclude the
+  known historical backup trees and record that scope without dropping required
+  state. Keep destination roots disjoint. Reuse existing snapshot/recovery
+  helpers and records; introduce only distinctions necessary to capture current
+  production without a candidate activation or fabricated receipt.
+  The narrow implementation needs committed regressions, the applicable shared
+  accumulated pool, isolated non-delivering restore evidence and retained
+  full-diff review before live use.
 - Upstream OpenClaw `v2026.7.1` provides maintained state/config backup creation
   and verification with SQLite live snapshots. That archive does not contain
   installed runtime, plist, external Node or browser assets, and has no full
   recovery consumer. It cannot replace the current native recovery alone.
-  Do not create an extra archive merely to claim progress or start a new
-  backup platform by default. Evaluate the smallest supported route, including
-  retaining current recovery until normal approved activation creates a clean
-  successor. Confirm installed command availability before any invocation.
+  Do not create an extra archive merely to claim progress. The requester chose
+  a scoped full-recovery script repair instead of waiting for normal activation.
+  Keep the old recovery protected while that repair is implemented and proven.
 - Consistent capture requires the production gateway's state writers to stop.
   The proposed single stop/start has a planned seven-minute outage budget,
   normally expected under a minute: bounded shutdown, at most five minutes
@@ -169,7 +217,7 @@ release and TEST proof remain incomplete. Neither change is merged.
   alone is not sufficient. Do not add automatic deletion policies from this
   goal without settling their exact scope.
 - The pre-cleanup read-only mini probe at approximately 12:25 PDT on 2026-09-20
-  confirms both PROD and DEV health endpoints are live and TEST is absent.
+  confirmed both PROD and DEV health endpoints live and TEST absent, and
   showed free space below the existing guard. The later approved Copilot cleanup
   brings free space only slightly above it. Neither observation establishes
   durable capacity. Exact measurements remain in the private report and must
@@ -531,6 +579,8 @@ end-to-end checklist.
 | FLOW | Public and private | ARM profile, receipt interfaces | Automated builder-to-artifact-consumer handoff |
 | TEST | Private | Valid synthetic seed and imported bundle | Healthy deployment and intended stopped-state rollback |
 | STORE | Public and private | Ownership and reference records | Automatic complete evidence retention and scratch cleanup |
+| BACKUP | Public recovery primitives; private target/wrapper | User-requested script repair; capacity and live-stop approval before capture | Complete verified smaller recovery and safe retirement of exact old backup |
+| PNPM | Public pin/store contract; private consumers; audit owner retirement | Compatible exact pin and coordinated installs | One active pin/store per host with verified offline installs and no lost progress |
 | LAND | Coordinator and both owners | Required final proofs and review | Exact compatible source merged and verified |
 | PROD | Deployment owner | LAND and separate authorization | Exact-artifact activation with read-only health and recovery |
 
@@ -604,6 +654,24 @@ not add model calls to CI.
 - Preserve the same independent reviewers through meaningful changes.
   Refresh affected proofs and final gates, then verify exact remote heads,
   required checks and default-branch integration.
+- For BACKUP, regress destination recursion and explicit legacy-child exclusion,
+  retained state completeness, links/permissions and current runtime identities.
+  Prove the same recovery consumer can restore the newly produced recovery into
+  isolated non-delivering destinations, including SQLite/config compatibility.
+  Exercise snapshot failure, interruption, bounded restart attempts, reference
+  CAS failure and protected-reference retirement. Keep the old recovery valid
+  on every failed replacement. No production health guarantee may be inferred
+  from an operation timeout.
+- Measure backup-specific peak allocation and actual physical reclaim. Keep
+  shared or protected data out of reclaim estimates. A cold-build disk floor
+  does not replace a backup/verification capacity calculation; do not weaken
+  the unchanged release guard.
+- For PNPM, verify the effective executable version and resolved store from
+  each active public/private/managed-upstream working directory, plus installed
+  module metadata. Prove fresh frozen installs, explicit offline resolution,
+  configured overrides and CI setup against the chosen pin. Keep existing
+  installation/proof inputs available until successful migration. A successful
+  global version command alone does not prove project-level unification.
 
 ### Rollout and rollback
 
@@ -763,6 +831,50 @@ record in the relevant component plan, not a status assertion alone.
   moves off the target; account for retained bundles, dev/test state and recovery.
 - [ ] STORE-07 (both): Demonstrate active/pinned/protected references, interrupted
   cleanup, unbounded separate local diagnostics and no unknown-path deletion.
+
+**Unified package manager and store**
+
+- [ ] PNPM-01 (public/private, in progress): Select and validate one compatible
+  exact pin for active Puddles/private/managed OpenClaw workflows, with required
+  manifest, toolchain, lockfile and documentation changes. Preserve the upstream
+  release selection and disclose unresolved older consumers.
+- [ ] PNPM-02 (public/private; PNPM-01): Route active DEV, CI and offline prewarm
+  through one resolved package-content store per machine or runner. Regress
+  effective store/version selection without manual format conversion or guard
+  bypass. Preserve installed artifact independence from the shared store.
+- [ ] PNPM-03 (public/private; PNPM-01/02): Prove fresh frozen and offline
+  installs, applicable accumulated gates and retained review on the exact
+  candidate. Coordinate changes so current builds and backup work are not
+  disrupted; keep frozen historical records unchanged.
+- [ ] PNPM-04 (audit owner/coordinator; PNPM-03): Verify active/paused consumers
+  and offline requirements have migrated, then retire only exact superseded
+  store contents and measure physical reclaim. Do not confuse manager binaries,
+  package content, installed hardlinks or apparent directory sizes.
+
+**Requested backup repair before release resumes**
+
+- [ ] BACKUP-01 (public, in progress): Add a maintained backup-only path using
+  existing native snapshot/recovery primitives, without candidate activation,
+  fabricated receipts or a parallel backup implementation.
+- [ ] BACKUP-02 (public/private; BACKUP-01): Capture the complete current runtime
+  and required state, service, interpreter and browser assets with disjoint
+  roots and explicit legacy-backup exclusions. Regress consistency, permissions,
+  interruption and failure-to-unchanged-restart behavior.
+- [ ] BACKUP-03 (public/private; BACKUP-02): Prove new recovery through the same
+  maintained restore consumer in isolated non-delivering destinations. Complete
+  committed regressions, applicable accumulated gates and retained full-diff
+  review. A valid state archive alone does not close this item.
+- [ ] BACKUP-04 (public/private; BACKUP-03): Prove atomic reference/journal
+  transition and exact reference-aware retirement, preserving old recovery
+  on any failed verification, interrupted commit or remaining reference.
+- [ ] BACKUP-05 (private/coordinator; BACKUP-03/04): Establish current target and
+  measured capacity readiness, then obtain one exact live maintenance approval
+  for any required stop/start. Capture and verify the replacement, restart the
+  unchanged service and confirm read-only health. No upgrade or live restore.
+- [ ] BACKUP-06 (private/coordinator; BACKUP-05): Retire only the superseded
+  authorized recovery after successful verification and reference transition.
+  Report exact retained coverage, sizes, physical reclaim, current health and
+  residual limits. Release resumption remains a separate requester decision.
 
 **Landing and operating handoff**
 
