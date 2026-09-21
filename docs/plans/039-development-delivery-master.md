@@ -64,70 +64,91 @@ the coordinator prevents conflicting target changes and overlapping heavy jobs
 on the same machine. Backup must work with the currently installed release,
 without requiring APIs that arrive only with the upgrade. Public validation and
 private configuration must also agree on the test service's identity before
-deployment begins.
+deployment begins. Required checks must exercise the real candidate and fail
+explicitly when their inputs are missing, rather than silently skip.
 
 ### Status
 
-The composed release has passed its accumulated source gate and produced a
-sealed artifact. A retry reused dependencies and build output rather than
-rebuilding them. TEST then refused a mismatch between public and private service
-identities before launch. That correction is reviewed, but needs an updated
-binding and applicable proof. Backup separately reached its stop adapter and
-failed because the current production release lacks an API the adapter calls.
-Recovery checks report the same healthy production process. No new backup or
-reference exists. The public owner is repairing predecessor compatibility before
-another attempt; the existing recovery remains protected.
+The fresh backup is captured, proved through isolated restore and published,
+according to the maintenance owner. Production restarted healthy without an
+upgrade. Only guarded retirement of the exact old recovery remains in that lane.
+Release work has passing source-gate and installed-artifact checkpoints, plus
+actual dependency/build reuse. Physical rehearsal reached snapshot and rollback,
+but not the intended concurrent-change failure. Focused diagnosis found a
+required real-candidate check was silently skipped when inputs were missing.
+That check now runs and passes; the latest candidate instead fails a portable
+package identity regression. The private owner is diagnosing the retained
+failure before another supported retry.
 
 The warm core DEV loop is verified in just over three minutes, excluding cold
 setup. Actual host DEV uses the common package-manager version and store;
 isolated installs on both machines do not prove every consumer has migrated.
 Current-input plugin timing, TEST coexistence, remaining consumers, store
-retirement and the final storage audit remain open. Existing owners continue
-under the conditional backup-maintenance approval and normal non-production
-scope. Production upgrade, live restore and new paid execution remain separately
-gated.
+retirement and the final storage audit remain open. The completed backup service
+window does not authorize another stop or recapture. Existing owners continue
+non-production work and separately guarded old-recovery retirement. Production
+upgrade, live restore and new paid execution remain separately gated.
 
 ## Agent section
 
 ### State
 
-- The coordinator directly read the passing composed source-gate receipt for
-  build ID
-  `3fc7971ee5ca86457f60b6daf375ea4bd2251535590b7129e0a2c34ad05bf485`.
-  Its regression key is
-  `f00d338066322d0461e9e5cd1046b4590d1fca3e63d4aa70f2b5b483c8047896`.
-  The release owner binds it to public `8cff276`, tree
-  `3a28399640c0a51a5e4b4b1da9ea01d25b65da67`, private `edb259b`,
-  tree `7512aa33`, and upstream `1391f7c`, and reports an immutable artifact
-  handoff. Full private identities remain with the owners. This establishes
-  the source gate and reported packaging result, not TEST or deployment success.
-- TEST refuses the sealed candidate before service launch because the public
-  rehearsal validator and private target disagree on service and browser
-  identity. Public correction `6081199`, tree `a5ad556d`, is reported
-  retained-review clear. Private rebinding, affected-proof classification and
-  resealing remain required. There is no TEST process or coexistence window.
-  The DEV owner holds no slot and waits to combine current-input plugin timing
-  with an actual stable TEST window rather than repeat separate benchmarks.
-- Backup has a concrete predecessor-compatibility blocker:
-  `openclaw-service-stop.mjs:15` calls
-  `api.requireServiceProcessIdentity`, which is absent from the installed
-  OpenClaw `2026.7.1` API under Node 22. The owner reports recovery journal
-  status `restarted` with `serviceStopped=false`, unchanged healthy production
-  process identity, cleared locks and no manifest or reference. Incomplete
-  unpublished attempts remain preserved. Public owns the minimal compatible
-  stop/identity repair, a regression matching the predecessor contract and
-  retained review. Release owns its applicable gate. No further capture occurs
-  until the changed backup inputs have proof and fresh execution checks.
-  Do not weaken process ownership, patch the live installation, or turn this
-  into an old-backup-format migration.
-- The passing source gate legitimately covered the original pinned backup
-  tooling: the private owner compared public backup entrypoints, modules,
-  tests and docs between `4151ec9` and `8cff276`, and private wrapper,
-  projector and tests between `82bd5e2` and `edb259b`, with no changes.
-  That unchanged-input result does not certify the forthcoming stop repair.
-  Preserve unrelated successful evidence. Coalesce coherent TEST and backup
-  fixes before costly validation where practical; serialize MINI write windows,
-  not independent host implementation work.
+- The current release attempt on public `1e460fd` and private `f1f2252`
+  passed prepare, dependencies and build, then failed regressions with
+  237 passes, one failure and 14 skips. The first portable extraction in
+  `configured-plugin-package.test.mjs` fails `installRuntime` with
+  `Installed runtime differs from artifact identity`. The failed run is
+  retained; no new handoff is sealed. Private owns diagnosis and the regression,
+  and release resumes only through supported actual-input comparison.
+- The latest independently verified passing source checkpoint remains public
+  `1e460fd` and private `f8d0b0a`, build ID
+  `10b8997678d8ad0db63a357e53b77206f4a8b7927c0810c3e9405b6ad7896814`.
+  The coordinator verified receipt SHA-256
+  `4aa9894ea1ef2d5234c4eac0761a373ab8e35b790e6d51b8b7ab6b767642e0eb`
+  and its passing status from the same bytes. The release owner reports sealed
+  handoff SHA-256
+  `53dac991826bd1ba67e20841375bc62736feb8c899ad700a35582253ef7da9a9`.
+  Later private candidates do not inherit this result by name. Preserve this
+  checkpoint for unchanged backup-consumer inputs and other eligible reuse.
+- TEST has owner-reported passes for all 11 installed-artifact scenarios.
+  Naming and interpreter-target corrections allowed physical rehearsal to
+  reach a snapshot and automatic rollback at `builtin-config`, with no rollback
+  failure. The intended CAS assertion still did not execute: plugin-aware
+  preview rejected the injected config first. Neither an arbitrary rollback
+  nor a pre-shutdown refusal establishes the required failure case. No stable
+  TEST process or DEV coexistence proof exists. The DEV owner holds no slot and
+  waits to combine the current-input plugin benchmark with a real TEST window.
+- Focused real-candidate preview now passes both the preserved baseline and a
+  schema-valid reorder of `plugins.allow`, with different CAS bytes.
+  Private `f1f2252` forwards `OPENCLAW_SRC` and
+  `E2E_STATE_MIGRATION_MANIFEST` into the accumulated gate and fails closed when
+  these required inputs are absent. Their omission previously allowed the
+  real-candidate test to skip despite a combined-gate marker. The focused case
+  passes 1/1 with zero skips. The earlier `timeoutSeconds` mutation is withdrawn.
+  Validate the actual baseline and mutation in identical plugin context before
+  another expensive retry; do not infer real-candidate validity from mocks.
+- Backup replacement is complete through publication, as confirmed by the
+  private owner. Predecessor-compatible stop handling was reviewed in
+  `cc09f3614c7f06e971923599d9e0f2ca96ba5fd5`, tree
+  `e495315acac6a5f3fef6ccfe3c186d483ab58723`, and its applicable
+  accumulated gate passed before successful capture and healthy unchanged
+  restart. Materialization command resolution was repaired and reviewed in
+  `1e460fd1ac2f0d36ac23b3e975516daab7bdcb71`, tree
+  `652987e5a8be4a0f95eea943ceecda8d08dcd639`. It forwards caller PATH
+  without broad environment inheritance and has real-runner resolution and
+  recording-precedence coverage. Complete exact-tree tooling then successfully
+  materialized the existing capture and published its new reference.
+- The published backup has `previousRecovery:null` and its reference has
+  `previousTransaction:null`. Exact private manifest, materialization and
+  reference identities remain in the maintenance packet. The actual service
+  cycle is complete and cannot be reused for another stop or recapture.
+  Earlier incomplete attempts remain preserved. The audit/retirement owner now
+  owns only the separately authorized exact old recovery and obsolete-pointer
+  cleanup, after receiving the existing guarded procedure and fresh reference,
+  lock, journal and process checks. Private retains implementation ownership;
+  release coordinates MINI write windows. TEST/package work does not invalidate
+  this already-published backup proof. No new worker or cleanup framework is
+  required.
 - Earlier pnpm command, workspace-link, Python-selector and staged-package
   portability failures no longer block the recorded source/artifact checkpoint.
   Public and private roots install from their own frozen locks; public
@@ -155,7 +176,8 @@ gated.
   `972` executes composed release/TEST validation and eligible integration;
   `9eb` proves current DEV-03 through DEV-06, especially the actual core-edit
   end-to-end loop; `de2` verifies remaining consumers, store retirement and the
-  final audit. No duplicate pipeline ownership or new workers are needed.
+  final audit, plus the now-assigned exact legacy recovery retirement.
+  No duplicate pipeline ownership or new workers are needed.
   `972` coordinates one heavy build/full-pool job per machine with existing
   resource controls, while coding and focused checks proceed independently.
   DEV, TEST and backup owners coordinate target changes through existing locks.
@@ -244,10 +266,11 @@ gated.
   current production is healthy, no backup lock exists and only the gateway
   opens included state writable. The requester approved one bounded stop/capture/restart
   window, conditional on required final gates and refreshed execution
-  checks. The newer source gate and exact unchanged-input comparisons are
-  recorded above; neither relabels the older `b144f1d` receipt. The live
-  predecessor failure now requires corrected backup proof. Capacity, writers,
-  identity, health and locks must be refreshed before another eligible attempt.
+  checks.   The newer source gate and successful replacement are recorded above; neither
+  relabels the older `b144f1d` receipt. The predecessor repair passed its
+  applicable gate, and the approved service cycle is complete. Remaining
+  retirement requires fresh identity, health, lock and reference checks, not
+  another capture.
   Planned outage/capture budget is 420 seconds; capture failure triggers
   unchanged-service restart, but an unexpected restart incident may last longer.
 - The coordinator verified the earlier local accumulated public receipt:
@@ -789,7 +812,7 @@ end-to-end checklist.
 | FLOW | Public and private | ARM profile, receipt interfaces | Automated builder-to-artifact-consumer handoff |
 | TEST | Private | Valid synthetic seed and imported bundle | Healthy deployment and intended stopped-state rollback |
 | STORE | Public and private | Ownership and reference records | Automatic complete evidence retention and scratch cleanup |
-| BACKUP | Public recovery primitives; private target/wrapper | User-requested script repair; capacity and live-stop approval before capture | Complete verified smaller recovery and safe retirement of exact old backup |
+| BACKUP | Public primitives; private capture/proof; audit owner retirement | Published replacement proof and fresh exact legacy-reference closure | Retire only the authorized old recovery/pointer and measure actual reclaim |
 | PNPM | Public pin/store contract; private consumers; audit owner retirement | Compatible exact pin and coordinated installs | One active pin/store per host with verified offline installs and no lost progress |
 | LAND | Coordinator and both owners | Required final proofs and review | Exact compatible source merged and verified |
 | PROD | Deployment owner | LAND and separate authorization | Exact-artifact activation with read-only health and recovery |
@@ -901,9 +924,11 @@ alone still authorize no new cleanup, paid run or production action.
 
 Retain the old mini recovery until its complete replacement is verified and
 references are safely transitioned. The separate maintenance request covers
-that scoped replacement. One backup-only stop/start is approved after required
-final gates and refreshed target/health/writer/lock checks. Production upgrade
-and live restore remain outside the resumed scope.
+that scoped replacement. The approved backup-only stop/start has completed,
+and the private owner confirms isolated restore proof and publication. Remaining
+old-recovery retirement uses fresh guards and the exact authorized scope; it
+does not authorize another service cycle. Production upgrade and live restore
+remain outside the resumed scope.
 
 Finish focused repairs with retained evidence, validate the selected ARM builder
 profile, prove the separate DEV loop and release TEST path, then integrate the
@@ -935,12 +960,13 @@ The actual core edit-to-feedback loop now passes at 188.03 seconds (command
 Current-input plugin and actual TEST coexistence evidence remain outstanding.
 These results do not establish final private release eligibility.
 
-The composed source gate now passes for the checkpoint recorded in State, with
-actual dependencies/build reuse observed. The TEST naming correction is
-review-clear but not physically validated. The predecessor stop-adapter failure
-requires a new repair, regression, retained review and applicable accumulated
-proof. Preserve the same reviewers and do not treat earlier green source or
-isolated backup evidence as coverage of that demonstrated compatibility gap.
+The backup stop and materialization repairs have retained review and applicable
+accumulated proof, followed by reported physical capture, isolated restore and
+publication. The latest release repair passes the focused real-candidate preview
+but fails a separate portable-package identity regression in the accumulated
+gate. Preserve the same reviewers and successful exact-input evidence. No
+earlier green source checkpoint closes the current package or intended TEST
+rollback obligations.
 
 This master document records agreed scope and available evidence. It does not
 grant new production, billing, deletion or external-message permissions. Owners
@@ -1080,14 +1106,14 @@ record in the relevant component plan, not a status assertion alone.
 
 **Backup repair alongside non-production delivery**
 
-- [ ] BACKUP-01 (public, in progress): Add a maintained backup-only path using
+- [x] BACKUP-01 (public): Add a maintained backup-only path using
   existing native snapshot/recovery primitives, without candidate activation,
   fabricated receipts or a parallel backup implementation.
-- [ ] BACKUP-02 (public/private; BACKUP-01): Capture the complete current runtime
+- [x] BACKUP-02 (public/private; BACKUP-01): Capture the complete current runtime
   and required state, service, interpreter and browser assets with disjoint
   roots and explicit legacy-backup exclusions. Regress consistency, permissions,
   interruption and failure-to-unchanged-restart behavior.
-- [ ] BACKUP-03 (public/private; BACKUP-02): Prove new recovery through the same
+- [x] BACKUP-03 (public/private; BACKUP-02): Prove new recovery through the same
   maintained restore consumer in isolated non-delivering destinations. Complete
   committed regressions, applicable accumulated gates and retained full-diff
   review. A valid state archive alone does not close this item.
@@ -1096,11 +1122,12 @@ record in the relevant component plan, not a status assertion alone.
   matching obsolete reference. Preserve old recovery until replacement proof;
   stop cleanup on unexpected references or locks. No old-format conversion or
   generic legacy-retirement interface is required.
-- [ ] BACKUP-05 (private/coordinator; BACKUP-03/04): Establish current target and
+  New-reference publication is reported complete; exact legacy cleanup remains.
+- [x] BACKUP-05 (private/coordinator; BACKUP-02/03): Establish current target and
   measured capacity readiness, then obtain one exact live maintenance approval
   for any required stop/start. Capture and verify the replacement, restart the
   unchanged service and confirm read-only health. No upgrade or live restore.
-- [ ] BACKUP-06 (private/coordinator; BACKUP-05): Retire only the superseded
+- [ ] BACKUP-06 (audit owner/private; BACKUP-05): Retire only the superseded
   authorized recovery after successful verification and reference transition.
   Report exact retained coverage, sizes, physical reclaim, current health and
   residual limits. Non-production work proceeds in parallel; production upgrade
