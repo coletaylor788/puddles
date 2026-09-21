@@ -142,10 +142,11 @@ remains a separate guarded operation after publication. Focused recovery tests
 and retained complete-diff review are clear for the compatibility repair. The
 accumulated source gate and private binding passed. A valid backup was captured
 and verified, but isolated materialization exposed a missing executable search
-path before browser inspection. The narrow environment repair is under focused
-validation and retained review. The captured recovery remains unpublished. No
-new production capture, service action, retirement, paid job, release
-activation, or merge is authorized.
+path before browser inspection. The narrow environment repair passes focused
+validation and retained complete-diff review. Its applicable accumulated gate,
+private binding, and corrected materialization remain pending. The captured
+recovery remains unpublished. No new production capture, service action,
+retirement, paid job, release activation, or merge is authorized.
 
 ## Agent section
 
@@ -524,6 +525,9 @@ activation, or merge is authorized.
   `packages/e2e` TypeScript check pass.
 - Backup materialization tests use the real command runner with a browser CLI
   available only through the caller's selected executable search path.
+- The PATH repair passes all 29 backup tests and the `packages/e2e` TypeScript
+  check. Retained review independently reproduced child-environment command
+  resolution and cleared the complete diff at `4711737`.
 - Toolchain tests reject missing or relative store roots, wrong pnpm versions,
   escaped resolved stores, different Puddles/OpenClaw stores, and a missing
   integrity-bound pin. They also prove inspection leaves both manifest and
@@ -665,6 +669,10 @@ activation, or merge is authorized.
   real detached leader with an in-group child, confirmed join blocks until the
   group exits, and confirmed a surviving group reaches the deadline error.
   Remaining notes are fail-closed retry cases or coverage gaps, not findings.
+- 2026-09-20: A valid production backup captured and verified, then
+  materialization failed before browser inspection because the backup command
+  environment omitted the configured Docker path. The one-line PATH repair and
+  real-runner regression pass focused tests. Retained review cleared `4711737`.
 
 ### Checklist
 
@@ -695,6 +703,10 @@ activation, or merge is authorized.
   receipt-free backup capture and separate exact cleanup path.
 - [x] Complete focused validation and retained review for predecessor stop
   compatibility before another production backup attempt.
+- [x] Restore backup verification command resolution and complete retained
+  review.
+- [ ] Complete the applicable accumulated gate and private binding for the
+  backup PATH repair.
 - [ ] Complete FLOW-06 phase-owned input review and affected-only reuse proof.
 - [x] Complete compatibility, retained review, and accumulated gates for pnpm
   12.3.4 and the shared host-local store.
