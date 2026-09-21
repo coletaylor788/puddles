@@ -133,8 +133,9 @@ The backup path captures and publishes a complete new-format recovery without
 requiring or inheriting an older activation receipt. Its stop adapter now
 supports the predecessor runtime's narrower process API while keeping exact
 process-generation and stopped-group checks. Exact old activation cleanup
-remains a separate guarded operation after publication. Focused validation and
-retained review are in progress for this compatibility repair. No new
+remains a separate guarded operation after publication. Focused recovery tests
+and retained complete-diff review are clear for the compatibility repair. The
+final accumulated lifecycle and private binding remain pending. No new
 production capture, service action, retirement, paid job, release activation,
 or merge is authorized.
 
@@ -509,6 +510,10 @@ or merge is authorized.
   process-group capture, successful post-stop join, malformed ownership, and
   partial API refusal. Backup, interpreter migration, and deployment tests
   remain the focused recovery boundary.
+- On `29fa823`, the stop-adapter suite passed 9/9. The combined backup,
+  interpreter migration, deployment topology, and stop suites passed 145/145
+  before the final malformed-ownership case was added. The final stop suite and
+  `packages/e2e` TypeScript check pass.
 - Toolchain tests reject missing or relative store roots, wrong pnpm versions,
   escaped resolved stores, different Puddles/OpenClaw stores, and a missing
   integrity-bound pin. They also prove inspection leaves both manifest and
@@ -646,6 +651,10 @@ or merge is authorized.
   only process groups led by its live tree, then waits for those exact groups
   after launchd shutdown. Current runtimes keep the durable ownership-record
   path.
+- 2026-09-20: Retained review cleared `29fa823`. The reviewer also exercised a
+  real detached leader with an in-group child, confirmed join blocks until the
+  group exits, and confirmed a surviving group reaches the deadline error.
+  Remaining notes are fail-closed retry cases or coverage gaps, not findings.
 
 ### Checklist
 
@@ -674,7 +683,7 @@ or merge is authorized.
 - [x] Review and publish the bounded draft-only timeout repair.
 - [ ] Complete retained review and the accumulated public gate for the final
   receipt-free backup capture and separate exact cleanup path.
-- [ ] Complete focused validation and retained review for predecessor stop
+- [x] Complete focused validation and retained review for predecessor stop
   compatibility before another production backup attempt.
 - [ ] Complete FLOW-06 phase-owned input review and affected-only reuse proof.
 - [x] Complete compatibility, retained review, and accumulated gates for pnpm
