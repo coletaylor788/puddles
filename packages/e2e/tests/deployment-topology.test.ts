@@ -4,7 +4,7 @@ import { cpSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFi
 import { hostname, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 // @ts-expect-error Native lifecycle is also executable without TypeScript.
-import { activateNative, systemOperations, validateTarget, verifyIntegratedCandidate } from "../src/native-activation.mjs";
+import { activateNative, systemOperations, validateTarget, verifyIntegratedCandidate, verifyRehearsalTarget } from "../src/native-activation.mjs";
 // @ts-expect-error Native lifecycle is also executable without TypeScript.
 import { fileDigest, jsonDigest, treeDigest } from "../src/native-state.mjs";
 // @ts-expect-error Native lifecycle is also executable without TypeScript.
@@ -372,6 +372,35 @@ function rehearsalWrapperFixture(fault: boolean) {
 }
 
 describe("native activation and recovery transaction", () => {
+  it("accepts only maintained rehearsal and TEST service identities", () => {
+    const directory = root();
+    const targetRoot = join(directory, "test-target");
+    mkdirSync(targetRoot);
+    const target = {
+      purpose: "rehearsal",
+      isolation: {
+        schema: "puddles.openclaw-rehearsal-target/v1",
+        root: targetRoot,
+      },
+      installDir: join(targetRoot, "installed"),
+      stateDir: join(targetRoot, "state"),
+      plistPath: join(targetRoot, "gateway.plist"),
+      backupRoot: join(targetRoot, "backups"),
+      label: "puddles.test.openclaw",
+      browser: { tag: "puddles-test-openclaw:bookworm-slim" },
+    };
+
+    expect(() => verifyRehearsalTarget(target)).not.toThrow();
+    expect(() => verifyRehearsalTarget({
+      ...target,
+      label: "puddles.testing.openclaw",
+    })).toThrow("not test-owned");
+    expect(() => verifyRehearsalTarget({
+      ...target,
+      browser: { tag: "puddles-testing-openclaw:bookworm-slim" },
+    })).toThrow("not test-owned");
+  });
+
   it("installs before downtime and preserves exact snapshots, locking and local health", async () => {
     const f = fixture();
     const result = await activateNative(f.receipt, f.target, () => f.ops);

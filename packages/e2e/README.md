@@ -289,6 +289,11 @@ the public creator does not invent private configuration. It refuses an
 existing destination or paths outside the declared root. Omitting the seed
 keeps support for an already provisioned, explicit target.
 
+Rehearsal validation accepts the maintained `puddles.rehearsal.*` and
+`puddles.test.*` service families with matching `puddles-rehearsal-*` or
+`puddles-test-*` browser tags. Similar names outside those exact families remain
+invalid.
+
 Use `openclaw-release.mjs target-proof` to derive physical success and rollback
 evidence from retained stage records and deployment recovery journals. Then use
 `certify` and `promote`. Certification is still nonproduction. Promotion emits

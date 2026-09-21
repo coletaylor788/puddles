@@ -31,8 +31,9 @@ attestation bound to the bundle's build identity. The importer runs only
 archive-based checks: offline installation, installed runtime scenarios, and an
 isolated deployment rehearsal. Rehearsal uses the same staging, stopped
 migration, startup, recovery, and rollback implementation as production. It is
-allowed only for a test-owned target and cannot authorize production. A final
-release receipt is created only after the source tests, installed runtime,
+allowed only for a target inside its declared test root with a maintained
+rehearsal or TEST service and browser identity. It cannot authorize production.
+A final release receipt is created only after the source tests, installed runtime,
 physical target, successful deployment, and injected-failure rollback evidence
 all bind to the same bundle. Production activation requires that receipt and
 confirmed source integration.
