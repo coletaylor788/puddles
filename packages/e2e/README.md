@@ -547,6 +547,11 @@ the same platform process-start representation and joins only groups whose
 leaders were in the captured gateway process tree. An incomplete API, unreadable
 identity, reused group leader, or surviving group fails closed.
 
+Backup verification commands inherit the caller's executable search path.
+This lets materialization use host tools such as Docker and SQLite from their
+configured installation directories while keeping the backup-specific state
+and repair environment explicit.
+
 Capture and publication do not inspect or inherit an older activation recovery.
 They remain available when `latest-activation.json` is missing, stale, or uses
 an older format. The optional `legacyActivationReceipt` field is used only by

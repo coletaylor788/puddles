@@ -177,6 +177,7 @@ export function backupOperations(target, workDir, execute = runCommand) {
   const operations = systemOperations(target, workDir, execute);
   let sequence = 100;
   const env = {
+    PATH: process.env.PATH ?? "/usr/bin:/bin",
     HOME: process.env.HOME,
     OPENCLAW_STATE_DIR: target.stateDir,
     OPENCLAW_CONFIG_PATH: join(target.stateDir, "openclaw.json"),

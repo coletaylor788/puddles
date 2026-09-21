@@ -110,6 +110,11 @@ gateway's live process tree and waits for only those exact groups after the
 service is disabled. It never falls back to a PID-only check, guesses at an
 unowned group, or signals a reused group.
 
+Backup verification keeps its explicit state and repair environment while
+inheriting the caller's executable search path. The recovery consumer can
+therefore find the same configured host tools used by preflight instead of
+falling back to the operating system's minimal default path.
+
 Capture alone cannot replace the healthy recovery pointer. The same recovery
 consumer first materializes the snapshot into fresh isolated paths, checks the
 runtime, configuration, databases, service definition, interpreter, browser,
@@ -135,9 +140,12 @@ supports the predecessor runtime's narrower process API while keeping exact
 process-generation and stopped-group checks. Exact old activation cleanup
 remains a separate guarded operation after publication. Focused recovery tests
 and retained complete-diff review are clear for the compatibility repair. The
-final accumulated lifecycle and private binding remain pending. No new
-production capture, service action, retirement, paid job, release activation,
-or merge is authorized.
+accumulated source gate and private binding passed. A valid backup was captured
+and verified, but isolated materialization exposed a missing executable search
+path before browser inspection. The narrow environment repair is under focused
+validation and retained review. The captured recovery remains unpublished. No
+new production capture, service action, retirement, paid job, release
+activation, or merge is authorized.
 
 ## Agent section
 
@@ -514,6 +522,8 @@ or merge is authorized.
   interpreter migration, deployment topology, and stop suites passed 145/145
   before the final malformed-ownership case was added. The final stop suite and
   `packages/e2e` TypeScript check pass.
+- Backup materialization tests use the real command runner with a browser CLI
+  available only through the caller's selected executable search path.
 - Toolchain tests reject missing or relative store roots, wrong pnpm versions,
   escaped resolved stores, different Puddles/OpenClaw stores, and a missing
   integrity-bound pin. They also prove inspection leaves both manifest and

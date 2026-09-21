@@ -1,13 +1,13 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
 import {
-  cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync,
+  chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync,
   realpathSync, renameSync, rmSync, writeFileSync,
 } from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 // @ts-expect-error Native backup lifecycle is also executable without TypeScript.
-import { captureCurrentBackup, currentBackupRecovery, materializeCurrentBackup, planCurrentBackup, retireCurrentBackup, verifyCurrentBackup } from "../src/native-backup.mjs";
+import { backupOperations, captureCurrentBackup, currentBackupRecovery, materializeCurrentBackup, planCurrentBackup, retireCurrentBackup, verifyCurrentBackup } from "../src/native-backup.mjs";
 // @ts-expect-error Native lifecycle is also executable without TypeScript.
 import { fileDigest, jsonDigest, treeDigest } from "../src/native-state.mjs";
 // @ts-expect-error Native release lifecycle is also executable without TypeScript.
@@ -20,6 +20,7 @@ function root() {
   return value;
 }
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const path of roots.splice(0)) rmSync(path, { recursive: true, force: true });
 });
 
@@ -525,6 +526,30 @@ describe("current production recovery backup", () => {
       f.factory,
     )).rejects.toThrow("browser image is unavailable");
     expect(existsSync(join(f.target.backupRoot, "backup-references", "latest-healthy-recovery.json"))).toBe(false);
+  });
+
+  it("resolves browser inspection through the caller PATH during materialization", async () => {
+    const f = fixture();
+    const captured = await captureCurrentBackup(f.target, f.factory);
+    const bin = join(root(), "bin");
+    mkdirSync(bin);
+    const docker = join(bin, "docker");
+    writeFileSync(docker, "#!/bin/sh\nprintf '%s\\n' \"$5\"\n");
+    chmodSync(docker, 0o755);
+    vi.stubEnv("PATH", bin);
+
+    const restored = join(root(), "restored");
+    await materializeCurrentBackup(
+      f.target,
+      captured.directory,
+      restored,
+      (target: typeof f.target, workDir: string) => ({
+        ...f.operations,
+        inspectBrowser: backupOperations(target, workDir).inspectBrowser,
+      }),
+    );
+
+    expect(existsSync(join(restored, "materialization.json"))).toBe(true);
   });
 
   it("does not create reference storage when current has no published backup", () => {
