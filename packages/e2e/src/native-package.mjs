@@ -192,7 +192,7 @@ export async function installRuntime(artifact, prefix, run = runCommand) {
   if (entries.split("\n").filter(Boolean).some((entry) => entry.startsWith("/") || entry.split("/").includes("..") || !["runtime", "runtime-identity.json"].includes(entry.split("/")[0]))) {
     throw new Error("Invalid runtime archive path");
   }
-  await run("tar", ["-xzf", artifact.path, "-C", prefix]);
+  await run("tar", ["-xpzf", artifact.path, "-C", prefix]);
   const identity = JSON.parse(readFileSync(join(prefix, "runtime-identity.json"), "utf8"));
   if (["schemaVersion", "platform", "arch", "node", "runtimeSha256"].some((key) => identity[key] !== artifact[key])) throw new Error("Archive identity differs from its manifest");
   if (identity.platform !== process.platform || identity.arch !== process.arch || identity.node !== process.version) throw new Error("Runtime toolchain or target differs from rehearsal");

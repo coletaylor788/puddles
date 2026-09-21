@@ -25,6 +25,12 @@ workspace. The patched source also gives its large protocol schema registries
 explicit public types. This keeps declaration generation stable when a fresh
 host lays out the same pinned TypeBox dependency differently.
 
+The importer creates an owner-only installation prefix, then restores the
+permissions recorded in the portable runtime archive. Executables and ordinary
+or restrictive data files therefore keep the same modes even when the release
+wrapper uses an owner-only umask. The existing mode-sensitive runtime digest
+still rejects any extraction that differs from the sealed tree.
+
 Source tests continue to run on the builder because they need the composed
 source and development dependencies. They produce a separate immutable
 attestation bound to the bundle's build identity. The importer runs only
@@ -147,6 +153,12 @@ validation and retained complete-diff review. Its applicable accumulated gate,
 private binding, and corrected materialization remain pending. The captured
 recovery remains unpublished. No new production capture, service action,
 retirement, paid job, release activation, or merge is authorized.
+
+The latest accumulated release gate reached offline installation and exposed
+that plain archive extraction applied the wrapper's owner-only umask to sealed
+runtime entries. Permission-preserving extraction is under focused validation
+and retained review. It does not change the owner-only install prefix or relax
+the portable digest.
 
 ## Agent section
 
@@ -458,6 +470,9 @@ retirement, paid job, release activation, or merge is authorized.
   - missing, extra, corrupted, linked, traversal, wrong-platform, wrong-Node,
     wrong-toolchain, source, and proof inputs are rejected;
   - public export includes only the whitelist.
+- Offline installation tests run under umask `077` and require exact archived
+  modes for a directory, executable, ordinary file, and restrictive file. The
+  extracted tree must still match its mode-sensitive portable digest.
 - Deployment tests invoke the real `apply-and-deploy.sh` path against test-owned
   state for success and compare-and-swap drift rollback. Both use the normal
   activation transaction.

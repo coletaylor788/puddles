@@ -157,6 +157,10 @@ disabled. This includes bundled skills and normal workspace bootstrap assets.
 It installs that archive offline in a fresh prefix and executes all
 committed native scenarios. A missing test, runtime, dependency, recorder,
 scenario, or selected required health prerequisite is a failure, not a skip.
+Archive extraction preserves recorded permissions independently of the caller's
+umask. The fresh prefix remains owner-only, while executable, ordinary, and
+restrictive runtime entries must retain the modes bound by the portable runtime
+digest.
 
 Installed fixtures require the maintained bundled iMessage plugin before
 startup and disable registry package resolution. They also check that startup

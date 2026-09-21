@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 // The native lifecycle modules are also executable without the TypeScript toolchain.
@@ -136,6 +136,40 @@ describe("native exact-input evidence", () => {
 });
 
 describe("offline installed runtime", () => {
+  it("preserves archived permissions under an owner-only caller umask", async () => {
+    const directory = root();
+    const source = join(directory, "source");
+    json(join(source, "package.json"), {
+      name: "synthetic-mode-runtime",
+      version: "1.0.0",
+      files: ["bin/", "config/"],
+    });
+    mkdirSync(join(source, "bin"), { mode: 0o755 });
+    mkdirSync(join(source, "config"), { mode: 0o755 });
+    chmodSync(join(source, "bin"), 0o755);
+    chmodSync(join(source, "config"), 0o755);
+    writeFileSync(join(source, "bin", "run"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    writeFileSync(join(source, "config", "defaults.json"), "{}\n", { mode: 0o644 });
+    writeFileSync(join(source, "config", "private.json"), "{}\n", { mode: 0o600 });
+    const artifact = await packRuntime(source, join(directory, "artifact"));
+
+    const previousUmask = process.umask(0o077);
+    let installed;
+    try {
+      installed = await installRuntime(artifact, join(directory, "installed"));
+    } finally {
+      process.umask(previousUmask);
+    }
+
+    const mode = (path: string) => statSync(path).mode & 0o777;
+    expect(mode(join(installed, ".."))).toBe(0o700);
+    expect(mode(join(installed, "bin"))).toBe(0o755);
+    expect(mode(join(installed, "bin", "run"))).toBe(0o755);
+    expect(mode(join(installed, "config", "defaults.json"))).toBe(0o644);
+    expect(mode(join(installed, "config", "private.json"))).toBe(0o600);
+    expect(treeDigest(installed, { portable: true })).toBe(artifact.runtimeSha256);
+  });
+
   it("seals the patched llama.cpp provider with source and build provenance", async () => {
     const directory = root();
     const source = join(directory, "source");
