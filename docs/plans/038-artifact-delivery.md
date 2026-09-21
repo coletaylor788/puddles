@@ -158,9 +158,12 @@ retirement, paid job, release activation, or merge is authorized.
 
 The latest accumulated release gate reached offline installation and exposed
 that plain archive extraction applied the wrapper's owner-only umask to sealed
-runtime entries. Permission-preserving extraction is under focused validation
-and retained review. It does not change the owner-only install prefix or relax
-the portable digest.
+runtime entries. Both runtime installation and outer bundle import now preserve
+recorded permissions before their existing mode-sensitive checks. Cross-umask
+focused tests pass with restrictive and permissive caller environments, and
+retained complete-diff review is clear. The owner-only install prefix and
+portable digest remain unchanged. Exact private rebinding and affected
+archive-based proof regeneration are pending.
 
 ## Agent section
 
@@ -693,6 +696,12 @@ the portable digest.
   materialization failed before browser inspection because the backup command
   environment omitted the configured Docker path. The one-line PATH repair and
   real-runner regression pass focused tests. Retained review cleared `4711737`.
+- 2026-09-20: The accumulated release gate exposed caller-umask mode loss while
+  extracting the sealed runtime. Runtime installation and release-bundle import
+  now preserve archived permissions before their existing digest checks.
+  Retained review found and cleared a test-fixture defect after both regressions
+  proved permissive sealing and restrictive extraction under shell umasks `022`
+  and `077`.
 
 ### Checklist
 
@@ -725,6 +734,8 @@ the portable digest.
   compatibility before another production backup attempt.
 - [x] Restore backup verification command resolution and complete retained
   review.
+- [x] Preserve runtime and release-bundle permissions across caller umasks and
+  complete focused validation and retained review.
 - [ ] Complete the applicable accumulated gate and private binding for the
   backup PATH repair.
 - [ ] Complete FLOW-06 phase-owned input review and affected-only reuse proof.
