@@ -71,7 +71,10 @@ explicitly when their inputs are missing, rather than silently skip.
 
 The fresh backup is captured, proved through isolated restore and published,
 according to the maintenance owner. Production restarted healthy without an
-upgrade. Only guarded retirement of the exact old recovery remains in that lane.
+upgrade. Old-recovery retirement is blocked because its state and runtime trees
+no longer match the original integrity records. The unchanged verifier correctly
+refuses deletion. There is no supported automatic repair; retaining it or
+authorizing a separate destructive operation requires an explicit owner decision.
 Release work has passing source-gate and installed-artifact checkpoints, plus
 actual dependency/build reuse. Physical rehearsal reached snapshot and rollback,
 but not the intended concurrent-change failure. Focused diagnosis found a
@@ -86,7 +89,7 @@ isolated installs on both machines do not prove every consumer has migrated.
 Current-input plugin timing, TEST coexistence, remaining consumers, store
 retirement and the final storage audit remain open. The completed backup service
 window does not authorize another stop or recapture. Existing owners continue
-non-production work and separately guarded old-recovery retirement. Production
+non-production work while old-recovery retirement stays held. Production
 upgrade, live restore and new paid execution remain separately gated.
 
 ## Agent section
@@ -142,10 +145,23 @@ upgrade, live restore and new paid execution remain separately gated.
   `previousTransaction:null`. Exact private manifest, materialization and
   reference identities remain in the maintenance packet. The actual service
   cycle is complete and cannot be reused for another stop or recapture.
-  Earlier incomplete attempts remain preserved. The audit/retirement owner now
-  owns only the separately authorized exact old recovery and obsolete-pointer
-  cleanup, after receiving the existing guarded procedure and fresh reference,
-  lock, journal and process checks. Private retains implementation ownership;
+  Earlier incomplete attempts remain preserved. The audit/retirement owner
+  corrected the supplied cleanup target from the preserved production source;
+  structural equality and maintained `current` then passed. Final identity,
+  reference, lock, journal and process checks passed, but `retire` refused
+  `Recovery snapshot content changed` before writing a retirement journal.
+  The state/package digests differ; the service digest matches. Public confirmed
+  the complete `treeDigest` function is unchanged from pre-activation
+  `8cf0a92` through `1e460fd`. It ignores timestamps but binds paths, modes,
+  link targets and file bytes. This is genuine post-journal integrity drift,
+  not a digest-format defect. Only root hashes exist, so there is no supported
+  automatic repair or reliable per-entry reconstruction.
+  Both backups and pointers remain unchanged. Do not retry, repair bytes,
+  rebind expected hashes, relax the guard or delete manually. Existing authority
+  permits preservation; accepting unknown changed content loss requires a new
+  explicit owner disposition and a separately scoped destructive procedure.
+  The audit owner retains eventual maintenance ownership, with no MINI slot held.
+  Private retains implementation ownership;
   release coordinates MINI write windows. TEST/package work does not invalidate
   this already-published backup proof. No new worker or cleanup framework is
   required.
@@ -812,7 +828,7 @@ end-to-end checklist.
 | FLOW | Public and private | ARM profile, receipt interfaces | Automated builder-to-artifact-consumer handoff |
 | TEST | Private | Valid synthetic seed and imported bundle | Healthy deployment and intended stopped-state rollback |
 | STORE | Public and private | Ownership and reference records | Automatic complete evidence retention and scratch cleanup |
-| BACKUP | Public primitives; private capture/proof; audit owner retirement | Published replacement proof and fresh exact legacy-reference closure | Retire only the authorized old recovery/pointer and measure actual reclaim |
+| BACKUP | Public primitives; private capture/proof; audit owner retirement | Published replacement complete; legacy integrity mismatch needs owner disposition | Preserve old copy unless separately authorized exact disposal is established |
 | PNPM | Public pin/store contract; private consumers; audit owner retirement | Compatible exact pin and coordinated installs | One active pin/store per host with verified offline installs and no lost progress |
 | LAND | Coordinator and both owners | Required final proofs and review | Exact compatible source merged and verified |
 | PROD | Deployment owner | LAND and separate authorization | Exact-artifact activation with read-only health and recovery |
@@ -926,9 +942,11 @@ Retain the old mini recovery until its complete replacement is verified and
 references are safely transitioned. The separate maintenance request covers
 that scoped replacement. The approved backup-only stop/start has completed,
 and the private owner confirms isolated restore proof and publication. Remaining
-old-recovery retirement uses fresh guards and the exact authorized scope; it
-does not authorize another service cycle. Production upgrade and live restore
-remain outside the resumed scope.
+old-recovery retirement has now failed its integrity guard. Preserve the old
+copy and pointer unless the owner explicitly accepts disposal of the unknown
+changed trees through a separately scoped procedure. No hash rewriting or
+automatic retry is authorized. This does not authorize another service cycle.
+Production upgrade and live restore remain outside the resumed scope.
 
 Finish focused repairs with retained evidence, validate the selected ARM builder
 profile, prove the separate DEV loop and release TEST path, then integrate the
