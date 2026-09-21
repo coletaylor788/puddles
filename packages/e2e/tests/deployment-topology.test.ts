@@ -399,6 +399,10 @@ describe("native activation and recovery transaction", () => {
       ...target,
       browser: { tag: "puddles-testing-openclaw:bookworm-slim" },
     })).toThrow("not test-owned");
+    expect(() => verifyRehearsalTarget({
+      ...target,
+      browser: { tag: "puddles-rehearsal-openclaw:bookworm-slim" },
+    })).toThrow("not test-owned");
   });
 
   it("installs before downtime and preserves exact snapshots, locking and local health", async () => {

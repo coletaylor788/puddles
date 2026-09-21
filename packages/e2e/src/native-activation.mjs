@@ -490,12 +490,11 @@ export function verifyRehearsalTarget(target) {
       : resolve(realpathSync(dirname(path)), basename(path));
     if (!inside(root, absolute)) throw new Error("Rehearsal target escapes its test-owned root");
   }
-  const serviceOwned = ["puddles.rehearsal.", "puddles.test."]
-    .some((prefix) => target.label.startsWith(prefix));
-  const browserOwned = !target.browser ||
-    ["puddles-rehearsal-", "puddles-test-"]
-      .some((prefix) => target.browser.tag.startsWith(prefix));
-  if (!serviceOwned || !browserOwned) {
+  const rehearsalOwned = target.label.startsWith("puddles.rehearsal.") &&
+    (!target.browser || target.browser.tag.startsWith("puddles-rehearsal-"));
+  const testOwned = target.label.startsWith("puddles.test.") &&
+    (!target.browser || target.browser.tag.startsWith("puddles-test-"));
+  if (!rehearsalOwned && !testOwned) {
     throw new Error("Rehearsal service or browser identity is not test-owned");
   }
 }
