@@ -139,19 +139,28 @@ describe("offline installed runtime", () => {
   it("preserves archived permissions under an owner-only caller umask", async () => {
     const directory = root();
     const source = join(directory, "source");
-    json(join(source, "package.json"), {
-      name: "synthetic-mode-runtime",
-      version: "1.0.0",
-      files: ["bin/", "config/"],
-    });
-    mkdirSync(join(source, "bin"), { mode: 0o755 });
-    mkdirSync(join(source, "config"), { mode: 0o755 });
-    chmodSync(join(source, "bin"), 0o755);
-    chmodSync(join(source, "config"), 0o755);
-    writeFileSync(join(source, "bin", "run"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
-    writeFileSync(join(source, "config", "defaults.json"), "{}\n", { mode: 0o644 });
-    writeFileSync(join(source, "config", "private.json"), "{}\n", { mode: 0o600 });
-    const artifact = await packRuntime(source, join(directory, "artifact"));
+    let artifact;
+    const buildUmask = process.umask(0o022);
+    try {
+      json(join(source, "package.json"), {
+        name: "synthetic-mode-runtime",
+        version: "1.0.0",
+        files: ["bin/", "config/"],
+      });
+      mkdirSync(join(source, "bin"), { mode: 0o755 });
+      mkdirSync(join(source, "config"), { mode: 0o755 });
+      chmodSync(join(source, "bin"), 0o755);
+      chmodSync(join(source, "config"), 0o755);
+      writeFileSync(join(source, "bin", "run"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+      writeFileSync(join(source, "config", "defaults.json"), "{}\n", { mode: 0o644 });
+      writeFileSync(join(source, "config", "private.json"), "{}\n", { mode: 0o600 });
+      chmodSync(join(source, "bin", "run"), 0o755);
+      chmodSync(join(source, "config", "defaults.json"), 0o644);
+      chmodSync(join(source, "config", "private.json"), 0o600);
+      artifact = await packRuntime(source, join(directory, "artifact"));
+    } finally {
+      process.umask(buildUmask);
+    }
 
     const previousUmask = process.umask(0o077);
     let installed;

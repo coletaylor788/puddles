@@ -54,6 +54,8 @@ function build(directory: string, extensionSha256 = "none", preparedDirectory = 
     chmodSync(join(prepared, "bin"), 0o755);
     writeFileSync(join(prepared, "bin", "serve"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
     writeFileSync(join(prepared, "config.json"), "{}\n", { mode: 0o644 });
+    chmodSync(join(prepared, "bin", "serve"), 0o755);
+    chmodSync(join(prepared, "config.json"), 0o644);
   } else {
     writeFileSync(prepared, "model");
   }
@@ -128,11 +130,17 @@ function recovery(directory: string, name: string, receipt: ReturnType<typeof bu
 describe("portable OpenClaw release bundle", () => {
   it("preserves prepared directory permissions under an owner-only import umask", async () => {
     const directory = root();
-    const receipt = build(directory, "none", true);
-    const receiptPath = join(directory, "build.json");
-    writeFileSync(receiptPath, JSON.stringify(receipt));
-    const bundle = join(directory, "bundle.tar.gz");
-    await exportReleaseBundle(receiptPath, bundle, "public");
+    let bundle = "";
+    const buildUmask = process.umask(0o022);
+    try {
+      const receipt = build(directory, "none", true);
+      const receiptPath = join(directory, "build.json");
+      writeFileSync(receiptPath, JSON.stringify(receipt));
+      bundle = join(directory, "bundle.tar.gz");
+      await exportReleaseBundle(receiptPath, bundle, "public");
+    } finally {
+      process.umask(buildUmask);
+    }
 
     const previousUmask = process.umask(0o077);
     let imported;
