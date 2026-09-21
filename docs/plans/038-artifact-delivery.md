@@ -29,7 +29,9 @@ The importer creates an owner-only installation prefix, then restores the
 permissions recorded in the portable runtime archive. Executables and ordinary
 or restrictive data files therefore keep the same modes even when the release
 wrapper uses an owner-only umask. The existing mode-sensitive runtime digest
-still rejects any extraction that differs from the sealed tree.
+still rejects any extraction that differs from the sealed tree. The outer
+release-bundle importer preserves permissions as well, before it verifies
+mode-sensitive prepared directory assets.
 
 Source tests continue to run on the builder because they need the composed
 source and development dependencies. They produce a separate immutable
@@ -473,6 +475,9 @@ the portable digest.
 - Offline installation tests run under umask `077` and require exact archived
   modes for a directory, executable, ordinary file, and restrictive file. The
   extracted tree must still match its mode-sensitive portable digest.
+- Bundle import tests export a prepared directory before switching to umask
+  `077`, then require exact directory, executable, and ordinary-file modes plus
+  successful build-receipt verification after import.
 - Deployment tests invoke the real `apply-and-deploy.sh` path against test-owned
   state for success and compare-and-swap drift rollback. Both use the normal
   activation transaction.

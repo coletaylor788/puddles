@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import {
-  cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync,
+  chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -44,11 +44,19 @@ function artifact(directory: string, name: string, bytes: string) {
     node: process.version,
   };
 }
-function build(directory: string, extensionSha256 = "none") {
+function build(directory: string, extensionSha256 = "none", preparedDirectory = false) {
   const rootArtifact = artifact(directory, "root", "runtime");
   const extraArtifact = artifact(directory, "extra", "additional");
-  const prepared = join(directory, "model.gguf");
-  writeFileSync(prepared, "model");
+  const prepared = join(directory, preparedDirectory ? "embedding-server" : "model.gguf");
+  if (preparedDirectory) {
+    mkdirSync(join(prepared, "bin"), { recursive: true });
+    chmodSync(prepared, 0o755);
+    chmodSync(join(prepared, "bin"), 0o755);
+    writeFileSync(join(prepared, "bin", "serve"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    writeFileSync(join(prepared, "config.json"), "{}\n", { mode: 0o644 });
+  } else {
+    writeFileSync(prepared, "model");
+  }
   return createBuildReceipt({
     repository: { head: "a".repeat(40), tree: "b".repeat(40) },
     source: {
@@ -80,7 +88,12 @@ function build(directory: string, extensionSha256 = "none") {
         runtimeSha256: extraArtifact.runtimeSha256,
       },
     }],
-    preparedFiles: [{ id: "embedding-model", type: "file", path: prepared, sha256: fileDigest(prepared) }],
+    preparedFiles: [{
+      id: preparedDirectory ? "embedding-server" : "embedding-model",
+      type: preparedDirectory ? "directory" : "file",
+      path: prepared,
+      sha256: preparedDirectory ? treeDigest(prepared, { portable: true }) : fileDigest(prepared),
+    }],
     proofs: {
       prepare: "4".repeat(64),
       dependencies: "5".repeat(64),
@@ -113,6 +126,31 @@ function recovery(directory: string, name: string, receipt: ReturnType<typeof bu
 }
 
 describe("portable OpenClaw release bundle", () => {
+  it("preserves prepared directory permissions under an owner-only import umask", async () => {
+    const directory = root();
+    const receipt = build(directory, "none", true);
+    const receiptPath = join(directory, "build.json");
+    writeFileSync(receiptPath, JSON.stringify(receipt));
+    const bundle = join(directory, "bundle.tar.gz");
+    await exportReleaseBundle(receiptPath, bundle, "public");
+
+    const previousUmask = process.umask(0o077);
+    let imported;
+    try {
+      imported = await importReleaseBundle(bundle, join(root(), "imported"));
+    } finally {
+      process.umask(previousUmask);
+    }
+
+    const prepared = imported.receipt.preparedFiles[0].path;
+    const mode = (path: string) => statSync(path).mode & 0o777;
+    expect(mode(prepared)).toBe(0o755);
+    expect(mode(join(prepared, "bin"))).toBe(0o755);
+    expect(mode(join(prepared, "bin", "serve"))).toBe(0o755);
+    expect(mode(join(prepared, "config.json"))).toBe(0o644);
+    expect(() => verifyBuildReceipt(imported.receipt)).not.toThrow();
+  });
+
   it("imports at a fresh path without builder source or dependencies and preserves immutable identities", async () => {
     const directory = root();
     const receipt = build(directory, "a".repeat(64));

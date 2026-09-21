@@ -160,7 +160,8 @@ scenario, or selected required health prerequisite is a failure, not a skip.
 Archive extraction preserves recorded permissions independently of the caller's
 umask. The fresh prefix remains owner-only, while executable, ordinary, and
 restrictive runtime entries must retain the modes bound by the portable runtime
-digest.
+digest. Release-bundle import applies the same rule before verifying prepared
+directory assets, so transport cannot mask their executable or directory modes.
 
 Installed fixtures require the maintained bundled iMessage plugin before
 startup and disable registry package resolution. They also check that startup

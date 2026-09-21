@@ -225,7 +225,7 @@ export async function importReleaseBundle(bundlePath, destination, run = runComm
   }
   mkdirSync(destination, { recursive: true, mode: 0o700 });
   try {
-    await run("tar", ["-xzf", bundlePath, "-C", destination]);
+    await run("tar", ["-xpzf", bundlePath, "-C", destination]);
     const manifestPath = join(destination, "bundle.json");
     if (!existsSync(manifestPath)) throw new Error("Bundle manifest is missing");
     const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
