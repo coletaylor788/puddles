@@ -61,56 +61,92 @@ historical build evidence or coupling installed services to a mutable cache.
 These maintenance tasks run alongside independent DEV and release validation,
 not ahead of every other task. Separate owners handle independent work, while
 the coordinator prevents conflicting target changes and overlapping heavy jobs
-on the same machine.
+on the same machine. Backup must work with the currently installed release,
+without requiring APIs that arrive only with the upgrade. Public validation and
+private configuration must also agree on the test service's identity before
+deployment begins.
 
 ### Status
 
-The requester has resumed non-production deployment work in parallel with
-maintenance. Existing owners are working on the backup correction, private
-integration, DEV core-edit proof, composed release/TEST validation and remaining
-package-store consumers. Backup scope is simplified to a fresh backup of current
-healthy production, restore proof, then exact old-backup cleanup. Old-format
-compatibility is not a prerequisite. Tooling and the current mini target are
-prepared, and capacity checks pass. The status-query correction and private
-binding are review-clear. The requester approved one backup-only service window,
-conditional on final accumulated validation for this exact source. That gate
-is still pending, so capture has not started.
-The composed release passed preparation, dependencies and root build, then
-its source gate found an unsupported package-manager option in a private helper.
-The command fix is reviewed, and the release owner is resuming through normal
-input checks while preserving valid completed work.
-The core DEV edit-to-feedback loop passes
-in just over three minutes, with installed identity and lifecycle checks
-recorded. Current-input plugin and TEST coexistence evidence, plus private
-release/TEST proof, remain open.
+The composed release has passed its accumulated source gate and produced a
+sealed artifact. A retry reused dependencies and build output rather than
+rebuilding them. TEST then refused a mismatch between public and private service
+identities before launch. That correction is reviewed, but needs an updated
+binding and applicable proof. Backup separately reached its stop adapter and
+failed because the current production release lacks an API the adapter calls.
+Recovery checks report the same healthy production process. No new backup or
+reference exists. The public owner is repairing predecessor compatibility before
+another attempt; the existing recovery remains protected.
 
-Isolated installs on both machines now prove the common package-manager version
-and store. Actual DEV/release tooling, older primary checkouts and store
-retirement still need resolution; test copies alone are not a completed rollout.
-The obsolete host test run is removed;
-the mini's real recovery remains protected until its replacement is proven.
-A full storage re-audit will follow the two maintenance milestones. Normal
-eligible source integration can proceed under required checks. Production
-activation, live restore and new paid execution remain separately gated. The
-single backup-only stop/start is approved subject to its recorded conditions.
+The warm core DEV loop is verified in just over three minutes, excluding cold
+setup. Actual host DEV uses the common package-manager version and store;
+isolated installs on both machines do not prove every consumer has migrated.
+Current-input plugin timing, TEST coexistence, remaining consumers, store
+retirement and the final storage audit remain open. Existing owners continue
+under the conditional backup-maintenance approval and normal non-production
+scope. Production upgrade, live restore and new paid execution remain separately
+gated.
 
 ## Agent section
 
 ### State
 
-- The current composed release passed prepare, dependencies and build, then
-  regression/source-gate execution failed after 405 seconds because private
-  `native-overlay-command` invokes pnpm 12 with unsupported `--prod=false`.
-  Private `dfd42b0193c30f3fcde27d7f00c9a1f9adca3ee0`, tree
-  `403e3f784b69b086ab226d4b81099c32561afb65`, fixes the command
-  while retaining default full frozen installation. Its argument regression
-  passes with 39 checks and one intentional skip; retained review is clean.
-  Public binding remains `4151ec`. The release owner has the exact repair
-  and is resuming through maintained actual-input comparison.
-  Preserve valid stage outputs and the failed receipt. Do not promise reuse
-  until keys actually match or transplant/relabel old receipts. No TEST, backup
-  capture or service action occurred; conditional maintenance approval remains
-  unconsumed until the required terminal gate passes.
+- The coordinator directly read the passing composed source-gate receipt for
+  build ID
+  `3fc7971ee5ca86457f60b6daf375ea4bd2251535590b7129e0a2c34ad05bf485`.
+  Its regression key is
+  `f00d338066322d0461e9e5cd1046b4590d1fca3e63d4aa70f2b5b483c8047896`.
+  The release owner binds it to public `8cff276`, tree
+  `3a28399640c0a51a5e4b4b1da9ea01d25b65da67`, private `edb259b`,
+  tree `7512aa33`, and upstream `1391f7c`, and reports an immutable artifact
+  handoff. Full private identities remain with the owners. This establishes
+  the source gate and reported packaging result, not TEST or deployment success.
+- TEST refuses the sealed candidate before service launch because the public
+  rehearsal validator and private target disagree on service and browser
+  identity. Public correction `6081199`, tree `a5ad556d`, is reported
+  retained-review clear. Private rebinding, affected-proof classification and
+  resealing remain required. There is no TEST process or coexistence window.
+  The DEV owner holds no slot and waits to combine current-input plugin timing
+  with an actual stable TEST window rather than repeat separate benchmarks.
+- Backup has a concrete predecessor-compatibility blocker:
+  `openclaw-service-stop.mjs:15` calls
+  `api.requireServiceProcessIdentity`, which is absent from the installed
+  OpenClaw `2026.7.1` API under Node 22. The owner reports recovery journal
+  status `restarted` with `serviceStopped=false`, unchanged healthy production
+  process identity, cleared locks and no manifest or reference. Incomplete
+  unpublished attempts remain preserved. Public owns the minimal compatible
+  stop/identity repair, a regression matching the predecessor contract and
+  retained review. Release owns its applicable gate. No further capture occurs
+  until the changed backup inputs have proof and fresh execution checks.
+  Do not weaken process ownership, patch the live installation, or turn this
+  into an old-backup-format migration.
+- The passing source gate legitimately covered the original pinned backup
+  tooling: the private owner compared public backup entrypoints, modules,
+  tests and docs between `4151ec9` and `8cff276`, and private wrapper,
+  projector and tests between `82bd5e2` and `edb259b`, with no changes.
+  That unchanged-input result does not certify the forthcoming stop repair.
+  Preserve unrelated successful evidence. Coalesce coherent TEST and backup
+  fixes before costly validation where practical; serialize MINI write windows,
+  not independent host implementation work.
+- Earlier pnpm command, workspace-link, Python-selector and staged-package
+  portability failures no longer block the recorded source/artifact checkpoint.
+  Public and private roots install from their own frozen locks; public
+  `mcp-hooks` and secure plugins build before private consumers. Focused
+  real-layout/offline/build regressions and retained review accompanied those
+  repairs. A retry actually reused dependencies and build output, with prepare
+  passing and formerly blocked Python checks executing. This is observed reuse,
+  not a projected saving. Complete FLOW-06 acceptance still needs the final
+  applicable evidence, including negative invalidation.
+  Public support was retained-review clear at
+  `2fd1f27d4e964c26160c99fb60871ce362f17067`, tree
+  `3a28399640c0a51a5e4b4b1da9ea01d25b65da67`, with 74 related
+  checks and typecheck passing. Causes were undifferentiated extension inputs
+  in prepare and transaction-specific recording-bin PATH in dependencies/build.
+  The correction supports phase-owned command inputs, narrows build identity
+  to prepare/package composition and preserves digest-only key compatibility.
+  `8cff276` has the same reviewed tree. The suspected terminal-status defect was
+  withdrawn after reconciliation found the proper failed terminal record.
+  No speculative status change remains.
 - The requester at 14:24 resumes non-production delivery work in parallel.
   This supersedes the earlier blanket release pause, not production or spending
   restrictions. Reuse existing sessions: parent coordinates overall scope;
@@ -135,7 +171,8 @@ single backup-only stop/start is approved subject to its recorded conditions.
   `12.3.4`, stable per-host `v11` stores and stable package/lock hashes.
   Mini public/private/upstream reused/downloaded counts are `487/0`,
   `476/0`, `1440/0`. This proves the installation contract, not completion of
-  actual DEV/release/runner entrypoint migration. Existing native tooling,
+  every DEV/release/runner entrypoint migration. Actual HOST DEV now has
+  maintained pnpm/store and installed-module proof. Existing older tooling,
   retained proofs and direct primary-checkout commands still reference older
   versions/stores. No process cwd in a checkout does not make it inactive.
   The DEV and release lanes must prove their operational entrypoints; the audit
@@ -195,7 +232,8 @@ single backup-only stop/start is approved subject to its recorded conditions.
   intended domain refusal. Private/release owners have the exact tuple.
   The mini's empty directory was left untouched. Reuse unchanged readiness
   evidence and keep final accumulated/physical proof distinct from these checks.
-  No capture, reference switch or service action occurred. The planned capture
+  This readiness checkpoint did not itself authorize capture or prove a
+  reference switch. The planned capture
   timeout does not guarantee a healthy restart deadline if recovery itself fails.
 - Corrected mini readiness is terminal at private
   `82bd5e24043e96293d6f89527e04faebc1dcbcf5`, tree
@@ -204,21 +242,19 @@ single backup-only stop/start is approved subject to its recorded conditions.
   review is clean. Exact tooling archive, target file and normalized target
   digests plus the capture command are retained privately. Capacity is ready,
   current production is healthy, no backup lock exists and only the gateway
-  opens included state writable.   The requester approved one bounded stop/capture/restart
+  opens included state writable. The requester approved one bounded stop/capture/restart
   window, conditional on required final gates and refreshed execution
-  checks. The private owner confirms no exact accumulated receipt yet seals
-  public `4151ec` and private `82bd5e2`; the older `b144f1d` receipt
-  cannot be relabelled. Identical manifests/locks and patch-suite inputs support
-  bounded dependency/input reuse, while changed backup and activation-verifier
-  code still needs the accumulated gate. The release owner has resumed that
-  work with fresh source contexts and the unchanged input archive.
+  checks. The newer source gate and exact unchanged-input comparisons are
+  recorded above; neither relabels the older `b144f1d` receipt. The live
+  predecessor failure now requires corrected backup proof. Capacity, writers,
+  identity, health and locks must be refreshed before another eligible attempt.
   Planned outage/capture budget is 420 seconds; capture failure triggers
   unchanged-service restart, but an unexpected restart incident may last longer.
-- The coordinator verified the latest local accumulated public receipt:
+- The coordinator verified the earlier local accumulated public receipt:
   `b144f1d7c306c8247d251cbf32eeae5841ca1da8`, tree
   `3a33ab59db0f84ae2e88eaf9a2a8e9f3772bd70e`, status passed,
   accumulated true, nine scenarios and seven proof keys, using
-  `node packages/e2e/bin/openclaw-test-env.mjs ci`. Current
+  `node packages/e2e/bin/openclaw-test-env.mjs ci`. The later
   `616cc61c922f6d13d9a2dd6ff7d0e66451cc813b` differs only by two
   bookkeeping lines in Plan 038. Preserve the receipt's original identity;
   do not rerun or relabel it for prose. This supersedes the older local gate
@@ -341,9 +377,8 @@ single backup-only stop/start is approved subject to its recorded conditions.
   public `e330423`: real-module plan, unreferenced capture with exclusions,
   verification, fresh isolated same-consumer materialization and restored
   runtime execution, CAS reference publication, a second replacement, and
-  current-reference refusal versus exact superseded retirement. This is
-  isolated evidence only. Public retained review and the full gate remain
-  pending; no mini capture, service action or recovery retirement has occurred.
+  current-reference refusal versus exact superseded retirement.   This is earlier isolated evidence only. It does not cover the newly observed
+  predecessor stop failure or establish physical capture and retirement.
 - The requester performed the approved credentialed Docker staging deletion.
   Bounded verification at 2026-09-20T20:25:21Z confirms the exact target absent,
   installed Docker/VM and old recovery present, and both PROD/DEV health
@@ -351,10 +386,9 @@ single backup-only stop/start is approved subject to its recorded conditions.
   figures are in the private report and the interval includes ambient drift.
   No agent handled credentials or performed a service action. No repeat
   deletion, broader prune, backup retirement or upgrade is authorized.
-- Existing native recovery creation is activation-coupled. There is no maintained
-  backup-only command or standalone verifier/reference-transition/retirement
-  operation for its full recovery format. The destination-recursion fix does not
-  exclude a legacy `deploy-snapshots` child. The repair must safely exclude the
+- The original native recovery creation was activation-coupled. The backup-only
+  implementation adds verification and guarded reference/retirement operations
+  without candidate activation. It must safely exclude the
   known historical backup trees and record that scope without dropping required
   state. Keep destination roots disjoint. Reuse existing snapshot/recovery
   helpers and records; introduce only distinctions necessary to capture current
@@ -551,12 +585,10 @@ single backup-only stop/start is approved subject to its recorded conditions.
   head after the reviewed `b543049` correction. Keep the successful old stages
   as evidence, not current-head certification. No receipt transplant or
   configuration rebinding is supported.
-- The development Mac has about 343 MiB above the unchanged 25 GiB guard.
-  Fresh-run additional disk demand is estimated at 6 to 7 GiB, with exact peak
-  unproven. The sole audited unreferenced archive could reclaim at most about
-  424 MiB, possibly less physically, and is insufficient. Do not delete it or
-  broaden cleanup. Canonical path, reference checks and billing details remain
-  in the private decision packet.
+- The earlier local fallback was blocked by capacity. Approved cleanup has
+  since provided headroom, and the maintained builder has produced the source
+  gate and artifact checkpoint above. Fresh capacity checks still govern each
+  costly stage; detailed measurements and reference checks remain private.
 - The proposed single hosted attempt had a fixed 120-minute builder timeout
   and no automatic retry. Its estimate did not establish a verified account
   spending cap or remaining included allowance. The requester declined it;
@@ -834,6 +866,9 @@ not add model calls to CI.
   required checks and default-branch integration.
 - For BACKUP, regress destination recursion and explicit legacy-child exclusion,
   retained state completeness, links/permissions and current runtime identities.
+  Exercise the stop adapter against the actual predecessor API contract, not
+  only the upgraded runtime or a mock exposing new helpers. Missing capabilities
+  must fail explicitly without bypassing process-identity checks.
   Prove the same recovery consumer can restore the newly produced recovery into
   isolated non-delivering destinations, including SQLite/config compatibility.
   Exercise snapshot failure, interruption, bounded restart attempts, reference
@@ -899,6 +934,13 @@ The actual core edit-to-feedback loop now passes at 188.03 seconds (command
 170.95), with identity and unchanged-source/lifecycle evidence captured.
 Current-input plugin and actual TEST coexistence evidence remain outstanding.
 These results do not establish final private release eligibility.
+
+The composed source gate now passes for the checkpoint recorded in State, with
+actual dependencies/build reuse observed. The TEST naming correction is
+review-clear but not physically validated. The predecessor stop-adapter failure
+requires a new repair, regression, retained review and applicable accumulated
+proof. Preserve the same reviewers and do not treat earlier green source or
+isolated backup evidence as coverage of that demonstrated compatibility gap.
 
 This master document records agreed scope and available evidence. It does not
 grant new production, billing, deletion or external-message permissions. Owners
