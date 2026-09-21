@@ -540,6 +540,13 @@ The clone helper rejects other exclusions and retained links into that tree.
 The manifest records the exclusion, and verification requires the restored
 state to omit it.
 
+Before shutdown, the stop adapter captures the gateway's exact PID, process
+start identity, and owned process groups. Current runtimes use their installed
+ownership-record API. A predecessor runtime with neither lifecycle export uses
+the same platform process-start representation and joins only groups whose
+leaders were in the captured gateway process tree. An incomplete API, unreadable
+identity, reused group leader, or surviving group fails closed.
+
 Capture and publication do not inspect or inherit an older activation recovery.
 They remain available when `latest-activation.json` is missing, stale, or uses
 an older format. The optional `legacyActivationReceipt` field is used only by

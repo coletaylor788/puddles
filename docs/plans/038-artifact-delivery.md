@@ -102,6 +102,14 @@ service. The one legacy backup-storage child is omitted explicitly so an old
 recursive snapshot cannot make its replacement grow without bound. No general
 exclusion mechanism can omit user or runtime data.
 
+The stop adapter works across the current and predecessor installed runtime
+interfaces. It captures the exact gateway process generation before shutdown.
+Current runtimes join their durable ownership records. The predecessor has no
+lifecycle exports, so the adapter also records process groups led by the
+gateway's live process tree and waits for only those exact groups after the
+service is disabled. It never falls back to a PID-only check, guesses at an
+unowned group, or signals a reused group.
+
 Capture alone cannot replace the healthy recovery pointer. The same recovery
 consumer first materializes the snapshot into fresh isolated paths, checks the
 runtime, configuration, databases, service definition, interpreter, browser,
@@ -122,13 +130,13 @@ host. Private work owns the authorized HOST and MINI consumer migration and
 must report effective store metadata and frozen offline proofs.
 
 The backup path captures and publishes a complete new-format recovery without
-requiring or inheriting an older activation receipt. Exact old activation
-cleanup remains a separate guarded operation after publication. Focused review
-and the final accumulated lifecycle remain pending for this simplified
-boundary. Phase-owned private extension inputs are under focused validation so
-gate-only corrections can reuse unchanged build evidence. No production
-capture, service action, retirement, paid job, release activation, or merge has
-occurred.
+requiring or inheriting an older activation receipt. Its stop adapter now
+supports the predecessor runtime's narrower process API while keeping exact
+process-generation and stopped-group checks. Exact old activation cleanup
+remains a separate guarded operation after publication. Focused validation and
+retained review are in progress for this compatibility repair. No new
+production capture, service action, retirement, paid job, release activation,
+or merge is authorized.
 
 ## Agent section
 
@@ -359,6 +367,12 @@ occurred.
 - `capture` writes an unreferenced recovery. The outage budget is seven minutes
   at most. A timeout or clone failure immediately attempts unchanged restart;
   restart failure remains explicit and is not described as bounded.
+- The stop adapter uses installed stopped-group joining when both lifecycle
+  exports exist. The known predecessor contract has neither export, so its
+  compatibility path captures exact Darwin or Linux process-start identities
+  for the gateway and each process group led by its live descendant tree, then
+  waits for those groups to exit after launchd shutdown. A partial lifecycle API
+  is rejected before shutdown.
 - `materialize` requires a fresh root outside install, state, service, and
   backup paths. It runs the backed-up runtime with the exact retained
   interpreter, parses config and service data, checks SQLite, and verifies the
@@ -490,6 +504,11 @@ occurred.
   writer stop/join ordering, timeout restart, interrupted capture resume,
   manifest and identity tamper rejection, actual isolated consumer checks,
   reference compare-and-swap, exact retirement, and no broad deletion.
+- Stop-adapter tests cover the current installed lifecycle API, the actual
+  predecessor shape with neither lifecycle export, exact process-start and
+  process-group capture, successful post-stop join, malformed ownership, and
+  partial API refusal. Backup, interpreter migration, and deployment tests
+  remain the focused recovery boundary.
 - Toolchain tests reject missing or relative store roots, wrong pnpm versions,
   escaped resolved stores, different Puddles/OpenClaw stores, and a missing
   integrity-bound pin. They also prove inspection leaves both manifest and
@@ -621,6 +640,12 @@ occurred.
   activation format. Fresh capture and same-consumer publication use only the
   current runtime, state, service, Node, browser, and new healthy reference.
   Exact old activation cleanup is a later guarded operation.
+- 2026-09-20: The first authorized current-runtime capture exposed that the
+  predecessor process SDK has neither lifecycle export used by the new stop
+  adapter. The compatibility branch now captures the gateway generation and
+  only process groups led by its live tree, then waits for those exact groups
+  after launchd shutdown. Current runtimes keep the durable ownership-record
+  path.
 
 ### Checklist
 
@@ -649,6 +674,8 @@ occurred.
 - [x] Review and publish the bounded draft-only timeout repair.
 - [ ] Complete retained review and the accumulated public gate for the final
   receipt-free backup capture and separate exact cleanup path.
+- [ ] Complete focused validation and retained review for predecessor stop
+  compatibility before another production backup attempt.
 - [ ] Complete FLOW-06 phase-owned input review and affected-only reuse proof.
 - [x] Complete compatibility, retained review, and accumulated gates for pnpm
   12.3.4 and the shared host-local store.
