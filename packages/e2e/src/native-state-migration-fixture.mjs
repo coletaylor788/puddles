@@ -6,7 +6,7 @@ import { runCommand } from "./process-runner.mjs";
 
 export async function rehearseStateMigration(installedDir, sourceDir, runDir) {
   const results = [];
-  for (const mode of ["root", "include", "conflict", "legacy"]) {
+  for (const mode of ["root", "include", "conflict", "legacy", "legacy-config"]) {
     const root = realpathSync(mkdtempSync(join(runDir, `fixture-state-migration-${mode}-`)));
     const context = isolatedContext(root);
     await runCommand(process.execPath, [

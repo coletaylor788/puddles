@@ -1,12 +1,22 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { atomicJson, digest, fileDigest, jsonDigest, treeDigest } from "./native-state.mjs";
 import { runCommand } from "./process-runner.mjs";
 
+const releaseRuntimeSelectionTimeoutMs = 60_000;
+const runtimeSelectionOutputBytes = 16 * 1024 * 1024;
+
+function parseRuntimeSelection(stdout) {
+  const [pack] = JSON.parse(stdout);
+  if (!pack?.files?.length) throw new Error("Upstream selected an empty package");
+  return pack;
+}
+
 // Materialize the production dependency graph from the installed frozen graph.
 // Resolve per package, not from the root: transitive versions and patched modules differ.
-export function materializeRuntime(source, destination) {
+function materializeSelectedRuntime(source, destination, pack) {
   if (existsSync(destination)) throw new Error("Runtime destination already exists");
   mkdirSync(destination, { recursive: true, mode: 0o700 });
   const installed = new Map([[realpathSync(source), destination]]);
@@ -49,14 +59,6 @@ export function materializeRuntime(source, destination) {
     return to;
   }
   const manifest = JSON.parse(readFileSync(join(source, "package.json"), "utf8"));
-  // Let npm apply upstream's files list and exclusions, without lifecycle hooks.
-  const selection = spawnSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
-    cwd: source, encoding: "utf8", timeout: 60_000, maxBuffer: 16 * 1024 * 1024,
-    env: { ...process.env, PATH: `${dirname(process.execPath)}:${process.env.PATH}`, npm_config_update_notifier: "false" },
-  });
-  if (selection.error || selection.status !== 0) throw new Error("Bounded upstream package file selection failed");
-  const [pack] = JSON.parse(selection.stdout);
-  if (!pack?.files?.length) throw new Error("Upstream selected an empty package");
   // Copy exactly the production graph by resolving from the root package.
   for (const name of Object.keys({ ...manifest.dependencies, ...manifest.optionalDependencies })) {
     const from = join(source, "node_modules", name);
@@ -92,6 +94,34 @@ export function materializeRuntime(source, destination) {
   delete manifest.devDependencies;
   atomicJson(join(destination, "package.json"), manifest);
   treeDigest(destination, { portable: true });
+}
+
+export function materializeRuntime(source, destination) {
+  // Let npm apply upstream's files list and exclusions, without lifecycle hooks.
+  const selection = spawnSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
+    cwd: source, encoding: "utf8", timeout: releaseRuntimeSelectionTimeoutMs,
+    maxBuffer: runtimeSelectionOutputBytes,
+    env: { ...process.env, PATH: `${dirname(process.execPath)}:${process.env.PATH}`, npm_config_update_notifier: "false" },
+  });
+  if (selection.error?.code === "ETIMEDOUT") {
+    throw new Error(`Upstream package file selection exceeded ${releaseRuntimeSelectionTimeoutMs}ms`);
+  }
+  if (selection.error || selection.status !== 0) throw new Error("Bounded upstream package file selection failed");
+  materializeSelectedRuntime(source, destination, parseRuntimeSelection(selection.stdout));
+}
+
+export async function selectRuntimePackageFiles(source) {
+  const npmCli = realpathSync(join(dirname(process.execPath), process.platform === "win32" ? "npm.cmd" : "npm"));
+  const npmRequire = createRequire(npmCli);
+  const Arborist = npmRequire("@npmcli/arborist");
+  const packlist = npmRequire("npm-packlist");
+  const tree = await new Arborist({ path: source }).loadActual();
+  return packlist(tree, { path: source });
+}
+
+export async function materializeRuntimeForDev(source, destination) {
+  const files = await selectRuntimePackageFiles(source);
+  materializeSelectedRuntime(source, destination, { files: files.map((path) => ({ path })) });
 }
 
 export async function packRuntime(source, directory, run = runCommand) {
@@ -162,7 +192,7 @@ export async function installRuntime(artifact, prefix, run = runCommand) {
   if (entries.split("\n").filter(Boolean).some((entry) => entry.startsWith("/") || entry.split("/").includes("..") || !["runtime", "runtime-identity.json"].includes(entry.split("/")[0]))) {
     throw new Error("Invalid runtime archive path");
   }
-  await run("tar", ["-xzf", artifact.path, "-C", prefix]);
+  await run("tar", ["-xpzf", artifact.path, "-C", prefix]);
   const identity = JSON.parse(readFileSync(join(prefix, "runtime-identity.json"), "utf8"));
   if (["schemaVersion", "platform", "arch", "node", "runtimeSha256"].some((key) => identity[key] !== artifact[key])) throw new Error("Archive identity differs from its manifest");
   if (identity.platform !== process.platform || identity.arch !== process.arch || identity.node !== process.version) throw new Error("Runtime toolchain or target differs from rehearsal");

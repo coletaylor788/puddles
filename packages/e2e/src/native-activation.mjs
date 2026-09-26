@@ -4,7 +4,9 @@ import { hostname } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
-import { acquireLock, atomicJson, fileDigest, inside, jsonDigest, treeDigest, verifyCandidateProofs } from "./native-state.mjs";
+import { acquireLock, atomicJson, fileDigest, inside, jsonDigest, treeDigest } from "./native-state.mjs";
+import { verifyBuildReceipt, verifyProductionRelease } from "./native-release.mjs";
+import { acquireArtifactPoolLock } from "./native-retention.mjs";
 import { installRuntime } from "./native-package.mjs";
 import { runCommand } from "./process-runner.mjs";
 import { readMigrationManifest } from "./native-state-migration.mjs";
@@ -34,7 +36,7 @@ function validateNodeMigration(target) {
   if (!(major === 24 && minor >= 16 || major === 26 && minor >= 1 || major > 26)) throw new Error("Unsupported desired Node runtime");
 }
 
-function verifyNodeFile(identity) {
+export function verifyNodeFile(identity) {
   const canonical = identity.realPath ?? identity.path;
   if (!lstatSync(identity.path, { throwIfNoEntry: false })?.isFile() ||
       !lstatSync(canonical, { throwIfNoEntry: false })?.isFile() || realpathSync(canonical) !== canonical) {
@@ -74,20 +76,37 @@ function durableServiceCopy(from, to) {
   }
 }
 
-function additionalInstallPath(target, path) {
+function stateChildPath(target, path, directoryOnly = false) {
   if (typeof path !== "string" || !path || isAbsolute(path) ||
       path.split("/").some((part) => !part || part === "." || part === "..")) {
-    throw new Error("Additional install path must be a child of target state");
+    throw new Error("Managed deployment path must be a child of target state");
   }
   let current = target.stateDir;
-  for (const part of path.split("/")) {
+  const parts = path.split("/");
+  for (const [index, part] of parts.entries()) {
     current = join(current, part);
     const stat = lstatSync(current, { throwIfNoEntry: false });
-    if (stat && (stat.isSymbolicLink() || !stat.isDirectory())) {
-      throw new Error("Additional install path must use real state directories");
+    if (stat && (stat.isSymbolicLink() ||
+        index < parts.length - 1 && !stat.isDirectory() ||
+        directoryOnly && index === parts.length - 1 && !stat.isDirectory())) {
+      throw new Error("Managed deployment path must use real state entries");
     }
   }
   return current;
+}
+
+function additionalInstallPath(target, path) {
+  return stateChildPath(target, path, true);
+}
+
+function preparedFileDigest(record, path = record.path) {
+  const stat = lstatSync(path, { throwIfNoEntry: false });
+  if (!stat || stat.isSymbolicLink() ||
+      record.type === "file" && !stat.isFile() ||
+      record.type === "directory" && !stat.isDirectory()) {
+    throw new Error("Prepared file type differs from candidate");
+  }
+  return record.type === "file" ? fileDigest(path) : treeDigest(path, { portable: true });
 }
 
 export function validateTarget(target) {
@@ -117,6 +136,7 @@ export function validateTarget(target) {
     if (roots.some((root, other) => other !== index && (inside(root, roots[index]) || inside(roots[index], root)))) throw new Error("Deployment roots must be disjoint");
   }
   if (!Array.isArray(target.additionalInstalls ?? [])) throw new Error("Invalid additional install list");
+  if (!Array.isArray(target.preparedFiles ?? [])) throw new Error("Invalid prepared file list");
   const ids = new Set();
   const destinations = [];
   for (const install of target.additionalInstalls ?? []) {
@@ -124,6 +144,18 @@ export function validateTarget(target) {
     ids.add(install.id);
     const destination = additionalInstallPath(target, install.path);
     if (destinations.some((path) => inside(path, destination) || inside(destination, path))) throw new Error("Additional installs must be disjoint");
+    destinations.push(destination);
+  }
+  const preparedIds = new Set();
+  for (const prepared of target.preparedFiles ?? []) {
+    if (!/^[a-z][a-z0-9-]*$/.test(prepared.id) || preparedIds.has(prepared.id)) {
+      throw new Error("Invalid prepared file identity");
+    }
+    preparedIds.add(prepared.id);
+    const destination = stateChildPath(target, prepared.path);
+    if (destinations.some((path) => inside(path, destination) || inside(destination, path))) {
+      throw new Error("Managed deployment paths must be disjoint");
+    }
     destinations.push(destination);
   }
 }
@@ -207,9 +239,19 @@ shutil.copymode(source, destination)
       return null;
     },
     async install(artifact, prefix) { return installRuntime(artifact, prefix, run); },
+    async stagePrepared(record, destination) {
+      mkdirSync(dirname(destination), { recursive: true, mode: 0o700 });
+      cpSync(record.path, destination, {
+        recursive: record.type === "directory", errorOnExist: true, force: false, verbatimSymlinks: true,
+      });
+    },
+    async move(from, to) {
+      mkdirSync(dirname(to), { recursive: true, mode: 0o700 });
+      renameSync(from, to);
+    },
     async stop(runtime) {
       const helper = resolve(patchDir, "../../../packages/e2e/bin/openclaw-service-stop.mjs");
-      const interpreter = target.nodeMigration?.desired.path ?? process.execPath;
+      const interpreter = target.nodeMigration?.desired.path ?? target.backupNode?.path ?? process.execPath;
       let owner = "null";
       if (await loaded()) {
         const details = await run("launchctl", ["print", service], { capture: true });
@@ -228,23 +270,33 @@ shutil.copymode(source, destination)
       throw new Error("Gateway shutdown did not complete");
     },
     async start() { await run("launchctl", ["bootstrap", `gui/${process.getuid()}`, target.plistPath]); },
-    async clone(from, to) { await run("python3", [join(patchDir, "clone-runtime-tree.py"), from, to], { timeoutMs: 5 * 60_000 }); },
+    async clone(from, to, timeoutMs = 5 * 60_000, excludedDirectChild) {
+      await run("python3", [
+        join(patchDir, "clone-runtime-tree.py"),
+        ...(excludedDirectChild ? [`--exclude-direct-child=${excludedDirectChild}`] : []),
+        from,
+        to,
+      ], { timeoutMs });
+    },
     async swap(from, to) { await run("python3", [join(patchDir, "swap-runtime-trees.py"), from, to]); },
     async doctor() {
       await cli(["doctor", "--fix", "--yes"]);
       if (await loaded()) throw new Error("Doctor activated the externally managed gateway");
     },
-    async stateMigration(phase, runtime, manifestPath, sha256) {
-      await run(target.nodeMigration?.desired.path ?? process.execPath, [
+    async stateMigration(phase, runtime, manifestPath, sha256, expectedBuiltIn) {
+      const output = await run(target.nodeMigration?.desired.path ?? process.execPath, [
         resolve(patchDir, "../../../packages/e2e/bin/openclaw-state-migrate.mjs"),
         phase, runtime, realpathSync(target.stateDir), manifestPath, sha256,
+        ...(expectedBuiltIn ? [JSON.stringify(expectedBuiltIn)] : []),
       ], {
+        ...(phase === "preflight" || phase === "builtin-config" ? { capture: true } : {}),
         env: {
           ...env, OPENCLAW_STATE_DIR: realpathSync(target.stateDir),
           OPENCLAW_CONFIG_PATH: join(realpathSync(target.stateDir), "openclaw.json"),
           XDG_CACHE_HOME: join(recoveryDir, "read-cache"),
         },
       });
+      return output ? JSON.parse(output) : undefined;
     },
     async browser(imageId, runtime, interpreter) {
       if (!target.browser) return;
@@ -271,6 +323,100 @@ function verifySnapshots(recoveryDir, journal) {
   }
   if (journal.candidateSha256 &&
       treeDigest(join(recoveryDir, "candidate"), { portable: true }) !== journal.candidateSha256) throw new Error("Recovery candidate content changed");
+}
+
+export function verifyActivationRecoveryContents(recoveryDir, expected = {}) {
+    const journalPath = join(recoveryDir, "recovery.json");
+    if (!existsSync(journalPath)) throw new Error("Deployment recovery journal is missing");
+    const journal = JSON.parse(readFileSync(journalPath, "utf8"));
+    if (journal.schemaVersion !== 1 || journal.status !== "healthy" ||
+        journal.snapshotReady !== true || journal.quiesced !== false ||
+        !/^activation-[0-9]+-[0-9]+$/.test(journal.transaction ?? "") ||
+        !/^[a-f0-9]{64}$/.test(journal.target ?? "") ||
+        !/^[a-f0-9]{64}$/.test(journal.artifact ?? "") ||
+        !/^[a-f0-9]{64}$/.test(journal.deployedRuntimeSha256 ?? "") ||
+        !/^[a-f0-9]{64}$/.test(journal.deployedServiceSha256 ?? "") ||
+        expected.transaction !== undefined && journal.transaction !== expected.transaction ||
+        expected.targetSha256 !== undefined && journal.target !== expected.targetSha256 ||
+        expected.artifactSha256 !== undefined && journal.artifact !== expected.artifactSha256 ||
+        expected.journalSha256 !== undefined && fileDigest(journalPath) !== expected.journalSha256) {
+      throw new Error("Deployment recovery identity is invalid");
+    }
+    verifySnapshots(recoveryDir, journal);
+    return {
+      kind: "activation",
+      transaction: journal.transaction,
+      activationTargetSha256: journal.target,
+      artifactSha256: journal.artifact,
+      journalSha256: fileDigest(journalPath),
+    };
+}
+
+export function verifyCurrentActivationRecovery(target, recoveryDir, latestPath, receiptIdentity) {
+    validateTarget(target);
+    const root = realpathSync(target.backupRoot);
+    const directory = realpathSync(recoveryDir);
+    if (dirname(directory) !== root || basename(directory) !== basename(recoveryDir)) {
+      throw new Error("Deployment recovery is outside target backups");
+    }
+    const identity = verifyActivationRecoveryContents(directory, {
+      transaction: basename(directory),
+    });
+    if (!receiptIdentity || !isAbsolute(receiptIdentity.path ?? "") ||
+        !/^[a-f0-9]{64}$/.test(receiptIdentity.sha256 ?? "") ||
+        fileDigest(receiptIdentity.path) !== receiptIdentity.sha256) {
+      throw new Error("Activation release receipt identity is invalid");
+    }
+    const receipt = verifyProductionRelease(
+      JSON.parse(readFileSync(receiptIdentity.path, "utf8")),
+    );
+    const journal = JSON.parse(readFileSync(join(directory, "recovery.json"), "utf8"));
+    if (receipt.artifact.sha256 !== identity.artifactSha256 ||
+        receipt.artifact.runtimeSha256 !== journal.deployedRuntimeSha256 ||
+        receipt.evidence.targetProof.deployment.success.target !==
+          identity.activationTargetSha256) {
+      throw new Error("Activation release receipt differs from recovery");
+    }
+    if (!existsSync(latestPath)) throw new Error("Activation ownership evidence is missing");
+    const latest = JSON.parse(readFileSync(latestPath, "utf8"));
+    if (Object.keys(latest).sort().join(",") !== "target,transaction" ||
+        latest.transaction !== identity.transaction ||
+        latest.target !== identity.activationTargetSha256) {
+      throw new Error("Activation ownership evidence differs");
+    }
+    if (treeDigest(target.installDir, { portable: true }) !== journal.deployedRuntimeSha256 ||
+        fileDigest(target.plistPath) !== journal.deployedServiceSha256) {
+      throw new Error("Current runtime or service differs from the activation recovery");
+    }
+    return {
+      ...identity,
+      receiptPath: realpathSync(receiptIdentity.path),
+      receiptSha256: receiptIdentity.sha256,
+      latestActivationSha256: fileDigest(latestPath),
+    };
+}
+
+function preparedIdentity(record) {
+  if (!record || !/^[a-z][a-z0-9-]*$/.test(record.id) ||
+      !["file", "directory"].includes(record.type) ||
+      !/^[a-f0-9]{64}$/.test(record.sha256)) {
+    throw new Error("Invalid prepared file identity");
+  }
+  return { id: record.id, type: record.type, sha256: record.sha256 };
+}
+
+function verifyPreparedSnapshot(target, recoveryDir, journal, prepared) {
+  for (const prior of journal.preparedDestinations ?? []) {
+    const record = prepared.find((item) => item.id === prior.id);
+    const path = join(recoveryDir, "state", prior.path);
+    if (!prior.existed) {
+      if (existsSync(path)) throw new Error("Prepared file appeared while snapshotting");
+      continue;
+    }
+    if (prior.type !== record.type || preparedFileDigest(record, path) !== prior.sha256) {
+      throw new Error("Prepared file changed while snapshotting");
+    }
+  }
 }
 
 async function restore(target, recoveryDir, journal, operations) {
@@ -328,12 +474,43 @@ async function restore(target, recoveryDir, journal, operations) {
   }
   await operations.start();
   await operations.health(journal.nodeMigration?.expected.realPath ?? journal.nodeMigration?.expected.path);
+  if (journal.preparedStagingRoot) rmSync(journal.preparedStagingRoot, { recursive: true, force: true });
 }
 
-export async function activateNative(receipt, target, operationsFactory = systemOperations, recoverDir, action = "recover") {
+export function verifyRehearsalTarget(target) {
+  if (target.purpose !== "rehearsal") throw new Error("Rehearsal target purpose must be rehearsal");
+  if (target.isolation?.schema !== "puddles.openclaw-rehearsal-target/v1") {
+    throw new Error("Rehearsal target isolation schema is invalid");
+  }
+  if (typeof target.isolation.root !== "string") throw new Error("Rehearsal target isolation root is required");
+  const root = realpathSync(target.isolation.root);
+  for (const path of [target.installDir, target.stateDir, target.plistPath, target.backupRoot]) {
+    const absolute = existsSync(path)
+      ? realpathSync(path)
+      : resolve(realpathSync(dirname(path)), basename(path));
+    if (!inside(root, absolute)) throw new Error("Rehearsal target escapes its test-owned root");
+  }
+  const rehearsalOwned = target.label.startsWith("puddles.rehearsal.") &&
+    (!target.browser || target.browser.tag.startsWith("puddles-rehearsal-"));
+  const testOwned = target.label.startsWith("puddles.test.") &&
+    (!target.browser || target.browser.tag.startsWith("puddles-test-"));
+  if (!rehearsalOwned && !testOwned) {
+    throw new Error("Rehearsal service or browser identity is not test-owned");
+  }
+}
+
+export async function activateNative(receipt, target, operationsFactory = systemOperations, recoverDir, action = "recover", mode = "legacy") {
   if (!["recover", "rollback"].includes(action) || action === "rollback" && !recoverDir) throw new Error("Explicit rollback requires its recovery directory");
   validateTarget(target);
-  if (receipt.status !== "passed" || receipt.accumulated !== true || !receipt.scenarios) throw new Error("A complete accumulated rehearsal is required before activation");
+  if (mode === "rehearsal") {
+    verifyBuildReceipt(receipt);
+    verifyRehearsalTarget(target);
+  } else if (mode === "production") {
+    verifyProductionRelease(receipt, { verifyAssets: !recoverDir });
+    if (target.purpose !== "production") throw new Error("Production activation requires a production target");
+  } else if (receipt.status !== "passed" || receipt.accumulated !== true || !receipt.scenarios) {
+    throw new Error("A complete accumulated rehearsal is required before activation");
+  }
   if ((receipt.stateMigration?.sha256 ?? null) !== (target.stateMigration?.sha256 ?? null)) {
     throw new Error("State migration differs from the rehearsed candidate");
   }
@@ -344,20 +521,40 @@ export async function activateNative(receipt, target, operationsFactory = system
       extras.some((extra) => !target.additionalInstalls.some((install) => install.id === extra.id))) {
     throw new Error("Target must map every rehearsed additional artifact exactly once");
   }
+  const prepared = receipt.preparedFiles ?? [];
+  if (!Array.isArray(prepared) ||
+      new Set(prepared.map((record) => preparedIdentity(record).id)).size !== prepared.length ||
+      prepared.length !== (target.preparedFiles ?? []).length ||
+      prepared.some((record) => !target.preparedFiles.some((mapping) => mapping.id === record.id))) {
+    throw new Error("Target must map every rehearsed prepared file exactly once");
+  }
   const extraIdentity = extras.map(({ id, artifact, provenance }) => ({
     id,
     sha256: artifact.sha256,
     runtimeSha256: artifact.runtimeSha256,
     ...(provenance ? { provenanceSha256: provenance.sha256 } : {}),
   }));
+  const preparedFileIdentity = prepared.map(preparedIdentity);
   if (!recoverDir) {
     for (const artifact of [receipt.artifact, ...extras.map((extra) => extra.artifact)]) {
       if (fileDigest(artifact.path) !== artifact.sha256) throw new Error("Rehearsed artifact changed");
     }
+    for (const record of prepared) {
+      if (preparedFileDigest(record) !== record.sha256) throw new Error("Rehearsed prepared file changed");
+    }
   }
   const recoveryDir = recoverDir ? realpathSync(recoverDir) : join(realpathSync(target.backupRoot), `activation-${Date.now()}-${process.pid}`);
   if (dirname(recoveryDir) !== realpathSync(target.backupRoot)) throw new Error("Recovery directory is outside target backups");
-  const unlock = acquireLock(target.backupRoot);
+  const poolUnlock = !recoverDir && process.env.E2E_ARTIFACT_POOL
+    ? acquireArtifactPoolLock(resolve(process.env.E2E_ARTIFACT_POOL))
+    : null;
+  let unlock;
+  try {
+    unlock = acquireLock(target.backupRoot);
+  } catch (error) {
+    poolUnlock?.();
+    throw error;
+  }
   mkdirSync(recoveryDir, { recursive: true, mode: 0o700 });
   const operations = operationsFactory(target, recoveryDir);
   const journalPath = join(recoveryDir, "recovery.json");
@@ -366,6 +563,7 @@ export async function activateNative(receipt, target, operationsFactory = system
     schemaVersion: 1, target: jsonDigest(target), artifact: receipt.artifact.sha256,
     transaction: basename(recoveryDir),
     additionalArtifacts: extraIdentity,
+    preparedFiles: preparedFileIdentity,
     status: "preflight", snapshotReady: false, browserChanged: false, quiesced: false,
   };
   let signal;
@@ -386,11 +584,22 @@ export async function activateNative(receipt, target, operationsFactory = system
       if (treeDigest(additionalInstallPath(target, install.path), { portable: true }) !== expected) throw new Error("Additional deployed runtime differs from rehearsal");
     }
   };
+  const verifyPrepared = () => {
+    for (const mapping of target.preparedFiles ?? []) {
+      const record = prepared.find((item) => item.id === mapping.id);
+      if (preparedFileDigest(record, stateChildPath(target, mapping.path)) !== record.sha256) {
+        throw new Error("Prepared deployed file differs from rehearsal");
+      }
+    }
+  };
   try {
     if (recoverDir) {
       journal = JSON.parse(readFileSync(journalPath, "utf8"));
       if (journal.target !== jsonDigest(target) || journal.artifact !== receipt.artifact.sha256 ||
-          jsonDigest(journal.additionalArtifacts ?? []) !== jsonDigest(extraIdentity)) throw new Error("Recovery identity differs from original target or artifact");
+          jsonDigest(journal.additionalArtifacts ?? []) !== jsonDigest(extraIdentity) ||
+          jsonDigest(journal.preparedFiles ?? []) !== jsonDigest(preparedFileIdentity)) {
+        throw new Error("Recovery identity differs from original target or artifact");
+      }
       if ((journal.quiesced || journal.snapshotReady) && (target.nodeMigration || journal.nodeMigration)) {
         const migration = journal.nodeMigration;
         if (!migration || jsonDigest({ argumentIndex: migration.argumentIndex, expected: migration.expected, desired: migration.desired }) !==
@@ -406,6 +615,7 @@ export async function activateNative(receipt, target, operationsFactory = system
               treeDigest(target.installDir, { portable: true }) !== journal.deployedRuntimeSha256 ||
               fileDigest(target.plistPath) !== journal.deployedServiceSha256) throw new Error("Deployed runtime or service differs from recorded activation");
           verifyAdditional();
+          verifyPrepared();
           if (target.browser && await operations.currentBrowser() !== target.browser.imageId) throw new Error("Deployed browser differs from recorded activation");
           verifySnapshots(recoveryDir, journal);
           recoveryIdentityVerified = true;
@@ -417,7 +627,11 @@ export async function activateNative(receipt, target, operationsFactory = system
         }
       } else {
         if (["healthy", "rolled-back"].includes(journal.status)) return { status: journal.status, recoveryDir };
-        if (!journal.quiesced) return { status: journal.status, recoveryDir };
+        if (!journal.quiesced) {
+          if (journal.preparedStagingRoot) rmSync(journal.preparedStagingRoot, { recursive: true, force: true });
+          save("failed-before-shutdown");
+          return { status: journal.status, recoveryDir };
+        }
         if (journal.transaction) verifyLatest();
       }
       recoveryIdentityVerified = true;
@@ -450,7 +664,11 @@ export async function activateNative(receipt, target, operationsFactory = system
       readMigrationManifest(manifestPath, target.stateMigration.sha256);
       journal.stateMigration = { sha256: target.stateMigration.sha256, phase: "preflight" };
       save("preflight");
-      await operations.stateMigration("preflight", installed, manifestPath, target.stateMigration.sha256);
+      journal.stateMigration.builtIn = await operations.stateMigration(
+        "preflight", installed, manifestPath, target.stateMigration.sha256,
+      );
+      if (!journal.stateMigration.builtIn) throw new Error("Stopped migration preflight evidence is missing");
+      save("preflight");
       checkpoint();
     }
     const stagedExtras = {};
@@ -460,6 +678,36 @@ export async function activateNative(receipt, target, operationsFactory = system
       stagedExtras[id] = staged;
       checkpoint();
     }
+    const preparedStagingRoot = join(dirname(target.stateDir), `.puddles-prepared-${journal.transaction}`);
+    if (existsSync(preparedStagingRoot)) throw new Error("Prepared file staging path already exists");
+    mkdirSync(preparedStagingRoot, { mode: 0o700 });
+    journal.preparedStagingRoot = preparedStagingRoot;
+    journal.preparedDestinations = [];
+    save("preflight");
+    for (const record of prepared) {
+      const mapping = target.preparedFiles.find((item) => item.id === record.id);
+      const destination = stateChildPath(target, mapping.path);
+      const existing = lstatSync(destination, { throwIfNoEntry: false });
+      if (existing?.isSymbolicLink()) throw new Error("Prepared file destination cannot be a symlink");
+      if (existing && (record.type === "file" && !existing.isFile() ||
+          record.type === "directory" && !existing.isDirectory())) {
+        throw new Error("Prepared file destination type differs from candidate");
+      }
+      journal.preparedDestinations.push({
+        id: record.id, path: mapping.path, existed: Boolean(existing),
+        ...(existing ? {
+          type: existing.isFile() ? "file" : existing.isDirectory() ? "directory" : "other",
+          sha256: preparedFileDigest(record, destination),
+        } : {}),
+      });
+      const staged = join(preparedStagingRoot, record.id);
+      await operations.stagePrepared(record, staged);
+      if (preparedFileDigest(record, staged) !== record.sha256) {
+        throw new Error("Prepared staged file differs from rehearsal");
+      }
+      checkpoint();
+    }
+    save("preflight");
     await operations.clone(installed, join(recoveryDir, "candidate"));
     journal.candidateSha256 = treeDigest(join(recoveryDir, "candidate"), { portable: true });
     checkpoint();
@@ -479,6 +727,7 @@ export async function activateNative(receipt, target, operationsFactory = system
     await operations.stop(join(recoveryDir, "candidate"));
     checkpoint();
     await operations.clone(target.stateDir, join(recoveryDir, "state"));
+    verifyPreparedSnapshot(target, recoveryDir, journal, prepared);
     journal.snapshots = {
       state: treeDigest(join(recoveryDir, "state")),
       package: treeDigest(join(recoveryDir, "package")),
@@ -496,10 +745,41 @@ export async function activateNative(receipt, target, operationsFactory = system
       checkpoint();
     }
     verifyAdditional();
+    for (const mapping of target.preparedFiles ?? []) {
+      const record = prepared.find((item) => item.id === mapping.id);
+      const destination = stateChildPath(target, mapping.path);
+      const staged = join(preparedStagingRoot, mapping.id);
+      if (existsSync(destination)) {
+        const current = lstatSync(destination);
+        if (current.isSymbolicLink() ||
+            record.type === "file" && !current.isFile() ||
+            record.type === "directory" && !current.isDirectory()) {
+          throw new Error("Prepared file destination type changed before replacement");
+        }
+        await operations.swap(destination, staged);
+      } else {
+        await operations.move(staged, destination);
+      }
+      checkpoint();
+    }
+    verifyPrepared();
     if (journal.stateMigration) {
       journal.stateMigration.phase = "schema";
       save("migrating-schema");
       await operations.stateMigration("schema", target.installDir, join(recoveryDir, "state-migration.json"), journal.stateMigration.sha256);
+      checkpoint();
+      journal.stateMigration.phase = "builtin-config";
+      save("migrating-builtin-config");
+      journal.stateMigration.builtInResult = await operations.stateMigration(
+        "builtin-config",
+        target.installDir,
+        join(recoveryDir, "state-migration.json"),
+        journal.stateMigration.sha256,
+        journal.stateMigration.builtIn,
+      );
+      if (!journal.stateMigration.builtInResult) {
+        throw new Error("Stopped built-in migration evidence is missing");
+      }
       checkpoint();
       journal.stateMigration.phase = "config";
       save("migrating-config");
@@ -515,6 +795,7 @@ export async function activateNative(receipt, target, operationsFactory = system
       save("migrated");
     }
     verifyAdditional();
+    verifyPrepared();
     checkpoint();
     if (journal.nodeMigration) {
       verifyNodeFile(journal.nodeMigration.expected);
@@ -533,10 +814,12 @@ export async function activateNative(receipt, target, operationsFactory = system
     await operations.start();
     await operations.health();
     verifyAdditional();
+    verifyPrepared();
     if (treeDigest(target.installDir, { portable: true }) !== journal.deployedRuntimeSha256) throw new Error("Deployed runtime changed during activation");
     journal.deployedServiceSha256 = fileDigest(target.plistPath);
     if (journal.nodeMigration && journal.deployedServiceSha256 !== journal.nodeMigration.migratedServiceSha256) throw new Error("Deployed interpreter service changed");
     checkpoint();
+    rmSync(preparedStagingRoot, { recursive: true, force: true });
     journal.quiesced = false;
     save("healthy");
     return { status: "healthy", recoveryDir };
@@ -559,12 +842,14 @@ export async function activateNative(receipt, target, operationsFactory = system
         throw new AggregateError([error, rollbackError], `Activation and rollback failed. Recover from ${recoveryDir}`);
       }
     } else {
+      if (journal.preparedStagingRoot) rmSync(journal.preparedStagingRoot, { recursive: true, force: true });
       save("failed-before-shutdown");
     }
     throw new Error(`Activation failed; recovery state: ${recoveryDir}`, { cause: error });
   } finally {
     for (const [name, handler] of handlers) process.removeListener(name, handler);
     unlock();
+    poolUnlock?.();
   }
 }
 
@@ -573,7 +858,7 @@ export async function verifyIntegratedCandidate(receiptPath, target) {
   if (!receipt.repository?.tree || !target.integration?.repository || !target.integration?.ref) throw new Error("Exact source integration evidence is required");
   const tree = (await runCommand("git", ["-C", target.integration.repository, "rev-parse", `${target.integration.ref}^{tree}`], { capture: true, quiet: true })).trim();
   if (tree !== receipt.repository.tree) throw new Error("Integrated source is not the rehearsed candidate");
-  verifyCandidateProofs(receiptPath, receipt);
+  verifyProductionRelease(receipt);
   if (target.nodeMigration) {
     const proof = JSON.parse(readFileSync(join(dirname(receiptPath), "stages", "runtime.json"), "utf8"));
     if (["node", "nodeBinary", "platform", "arch"].some((key) => proof.inputs.tools?.[key] !== receipt.tools?.[key])) {

@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { closeSync, openSync, writeSync } from "node:fs";
+import { startCommandResourceMonitor } from "./native-resources.mjs";
 
 let activeCommand;
 let handlingSignal = false;
@@ -68,9 +69,21 @@ export async function runCommand(command, args, options = {}) {
     child.once("error", resolve);
   });
   activeCommand = { child, done };
+  const stopResourceMonitor = options.resourcePath && child.pid
+    ? startCommandResourceMonitor({
+        path: options.resourcePath,
+        rootPid: child.pid,
+        diskPath: options.resourceDiskPath ?? options.cwd ?? process.cwd(),
+        profile: options.resourceProfile,
+        label: options.resourceLabel ?? command,
+      })
+    : undefined;
 
+  let result;
+  let commandError;
+  let resourceError;
   try {
-    return await new Promise((resolve, reject) => {
+    result = await new Promise((resolve, reject) => {
       child.once("error", (error) => reject(options.quiet ? new Error("Command could not start", { cause: error }) : error));
       child.once("close", (code, signal) => {
         if (outputExceeded) {
@@ -90,14 +103,24 @@ export async function runCommand(command, args, options = {}) {
         reject(new Error(`${options.quiet ? "Command" : command} exited with ${detail}${suffix}`));
       });
     });
+  } catch (error) {
+    commandError = error;
   } finally {
     clearTimeout(timer);
     clearTimeout(killTimer);
+    try { stopResourceMonitor?.(); }
+    catch (error) { resourceError = error; }
     if (log !== undefined) closeSync(log);
     if (activeCommand?.child === child) {
       activeCommand = undefined;
     }
   }
+  if (commandError && resourceError) {
+    throw new AggregateError([commandError, resourceError], "Command and resource measurement failed");
+  }
+  if (commandError) throw commandError;
+  if (resourceError) throw resourceError;
+  return result;
 }
 
 export async function stopActiveCommand(signal, graceMs = 10_000) {

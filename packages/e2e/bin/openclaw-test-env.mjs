@@ -3,10 +3,11 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { nativePipeline } from "../src/native-pipeline.mjs";
+import { nativePipeline, nativeTargetPipeline } from "../src/native-pipeline.mjs";
 import { cleanupNativeFixtures, isolatedContext, runScenario } from "../src/native-fixture.mjs";
 import { extensionPhase, loadExtension } from "../src/native-extension.mjs";
 import { installSignalHandlers, isHandlingSignal } from "../src/process-runner.mjs";
+import { nativeRunStatus } from "../src/native-state.mjs";
 import scenarios from "../scenarios/imessage.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -25,8 +26,27 @@ async function repositoryGates(run) {
 installSignalHandlers({ cleanup: cleanupNativeFixtures });
 try {
   const command = process.argv[2];
-  if (["ci", "patches", "native"].includes(command)) {
+  if (["ci", "patches", "native", "build", "source-gate"].includes(command)) {
     await nativePipeline(command, repositoryGates);
+  } else if (command === "target") {
+    const receipt = process.argv[3];
+    const target = process.argv[4];
+    const seed = process.argv[5];
+    if (!receipt || !target || process.argv[6]) {
+      throw new Error("Usage: openclaw-test-env.mjs target IMPORTED_BUILD_JSON TARGET_JSON [TARGET_SEED_JSON]");
+    }
+    await nativeTargetPipeline(resolve(receipt), resolve(target), seed ? resolve(seed) : undefined);
+  } else if (command === "resume") {
+    const resumed = process.argv[3];
+    if (!["ci", "patches", "native", "build", "source-gate"].includes(resumed)) {
+      throw new Error("Usage: openclaw-test-env.mjs resume <ci|patches|native|build|source-gate>");
+    }
+    process.env.E2E_RESUME_FAILED = "1";
+    await nativePipeline(resumed, repositoryGates);
+  } else if (command === "status") {
+    const runDir = process.env.E2E_RUN_DIR;
+    if (!runDir) throw new Error("E2E_RUN_DIR is required for status");
+    console.log(JSON.stringify(nativeRunStatus(resolve(runDir)), null, 2));
   } else if (command === "scenarios") {
     const installed = process.env.OPENCLAW_CANDIDATE_DIR;
     if (!installed) throw new Error("OPENCLAW_CANDIDATE_DIR must name an installed candidate");
@@ -46,7 +66,7 @@ try {
       console.log(JSON.stringify({ checks: results.length, passed: results.every((result) => Object.values(result).every(Boolean)) }));
     } finally { rmSync(root, { recursive: true }); }
   } else {
-    throw new Error("Usage: openclaw-test-env.mjs <ci|patches|native|scenarios|host-health>");
+    throw new Error("Usage: openclaw-test-env.mjs <ci|patches|native|build|source-gate|target|resume|status|scenarios|host-health>");
   }
 } catch (error) {
   if (!isHandlingSignal()) {

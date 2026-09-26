@@ -6,11 +6,11 @@ import { fixtureEnv } from "./native-fixture.mjs";
 import { runCommand } from "./process-runner.mjs";
 
 export async function loadExtension(path) {
-  if (!path) return { schemaVersion: 1, commands: [], scenarios: [], healthChecks: [], artifacts: [], hash: "none", phaseHashes: {} };
+  if (!path) return { schemaVersion: 1, commands: [], scenarios: [], healthChecks: [], artifacts: [], preparedFiles: [], hash: "none", phaseHashes: {} };
   if (!isAbsolute(path) || !existsSync(path)) throw new Error("Local extension requires an existing absolute module path");
   const extension = (await import(pathToFileURL(realpathSync(path)).href)).default;
   if (extension?.schemaVersion !== 1) throw new Error("Unsupported local extension version");
-  for (const key of ["commands", "scenarios", "healthChecks", "inputs", "artifacts"]) {
+  for (const key of ["commands", "scenarios", "healthChecks", "inputs", "artifacts", "preparedFiles"]) {
     if (!Array.isArray(extension[key] ?? [])) throw new Error("Invalid local extension list");
   }
   const files = [path, ...(extension.inputs ?? [])];
@@ -19,11 +19,17 @@ export async function loadExtension(path) {
   }
   const commands = extension.commands ?? [];
   const healthChecks = extension.healthChecks ?? [];
+  const declaredInputs = extension.inputs ?? [];
+  const declaredInputSet = new Set(declaredInputs);
   const names = new Set();
   for (const command of [...commands, ...healthChecks]) {
     if (!/^[a-z0-9-]+$/.test(command.id) || names.has(command.id) ||
         typeof command.command !== "string" || !Array.isArray(command.args) ||
         command.args.some((arg) => typeof arg !== "string") ||
+        command.inputs !== undefined &&
+          (!Array.isArray(command.inputs) ||
+            command.inputs.some((input) => typeof input !== "string" ||
+              !declaredInputSet.has(input))) ||
         !Number.isSafeInteger(command.timeoutMs) || command.timeoutMs <= 0 || command.timeoutMs > 30 * 60_000) {
       throw new Error("Invalid bounded local command");
     }
@@ -34,41 +40,60 @@ export async function loadExtension(path) {
   }
   if (commands.some((command) => !["prepare", "gate", "package", "installed"].includes(command.phase))) throw new Error("Unknown local command phase");
   const artifacts = extension.artifacts ?? [];
-  const artifactIds = new Set();
-  for (const artifact of artifacts) {
-    if (!/^[a-z][a-z0-9-]*$/.test(artifact.id) || artifactIds.has(artifact.id) ||
-        typeof artifact.manifest !== "string" || !artifact.manifest ||
-        isAbsolute(artifact.manifest) || artifact.manifest.split("/").includes("..")) {
-      throw new Error("Invalid named local artifact");
+  const prepared = extension.preparedFiles ?? [];
+  for (const [kind, records] of [["artifact", artifacts], ["prepared file", prepared]]) {
+    const ids = new Set();
+    for (const record of records) {
+      if (!/^[a-z][a-z0-9-]*$/.test(record.id) || ids.has(record.id) ||
+          typeof record.manifest !== "string" || !record.manifest ||
+          isAbsolute(record.manifest) || record.manifest.split("/").includes("..")) {
+        throw new Error(`Invalid named local ${kind}`);
+      }
+      ids.add(record.id);
     }
-    artifactIds.add(artifact.id);
   }
-  const inputs = (extension.inputs ?? []).map(fileDigest);
-  const phaseHashes = Object.fromEntries(["prepare", "gate", "package", "installed"].map((phase) => [
-    phase, jsonDigest({ commands: commands.filter((command) => command.phase === phase), inputs }),
-  ]));
-  return { ...extension, commands, healthChecks, artifacts, scenarios: extension.scenarios ?? [], phaseHashes, hash: jsonDigest(files.map(fileDigest)) };
+  const inputDigests = new Map(declaredInputs.map((input) => [input, fileDigest(input)]));
+  const phaseHashes = Object.fromEntries(["prepare", "gate", "package", "installed"].map((phase) => {
+    const selectedCommands = commands.filter((command) => command.phase === phase);
+    const selectedInputs = new Set(selectedCommands.flatMap(
+      (command) => command.inputs ?? declaredInputs,
+    ));
+    return [phase, jsonDigest({
+      commands: selectedCommands,
+      inputs: declaredInputs
+        .filter((input) => selectedInputs.has(input))
+        .map((input) => inputDigests.get(input)),
+    })];
+  }));
+  return {
+    ...extension, commands, healthChecks, artifacts, preparedFiles: prepared,
+    scenarios: extension.scenarios ?? [], phaseHashes, hash: jsonDigest(files.map(fileDigest)),
+  };
 }
 
-export function additionalArtifacts(extension, context, outputs) {
+function packageOutputVerifier(context, outputs) {
   const verified = new Set();
-  const verifyOutput = (path) => {
+  return (path) => {
     if (typeof path !== "string" || !isAbsolute(path) || !existsSync(path) ||
         !inside(realpathSync(context.root), realpathSync(path))) {
-      throw new Error("Additional artifact must remain inside isolated state");
+      throw new Error("Local package output must remain inside isolated state");
     }
     for (const [output, expected] of Object.entries(outputs)) {
       if (typeof expected !== "string" || !existsSync(output)) continue;
       const directory = lstatSync(output).isDirectory();
       if (output !== path && !(directory && inside(realpathSync(output), realpathSync(path)))) continue;
       if (!verified.has(output)) {
-        if ((directory ? treeDigest(output) : fileDigest(output)) !== expected) throw new Error("Additional artifact package output changed");
+        if ((directory ? treeDigest(output) : fileDigest(output)) !== expected) throw new Error("Local package output changed");
         verified.add(output);
       }
       return;
     }
-    throw new Error("Additional artifact requires a declared package output");
+    throw new Error("Local package selection requires a declared package output");
   };
+}
+
+export function additionalArtifacts(extension, context, outputs) {
+  const verifyOutput = packageOutputVerifier(context, outputs);
   return extension.artifacts.map(({ id, manifest }) => {
     const path = resolve(context.root, manifest);
     verifyOutput(path);
@@ -82,6 +107,32 @@ export function additionalArtifacts(extension, context, outputs) {
     if (fileDigest(value.path) !== value.sha256) throw new Error("Additional archive differs from its manifest");
     const artifact = Object.fromEntries(["path", "sha256", "runtimeSha256", "schemaVersion", "platform", "arch", "node"].map((key) => [key, value[key]]));
     return { id, artifact };
+  });
+}
+
+export function preparedFiles(extension, context, outputs) {
+  const verifyOutput = packageOutputVerifier(context, outputs);
+  return extension.preparedFiles.map(({ id, manifest }) => {
+    const manifestPath = resolve(context.root, manifest);
+    verifyOutput(manifestPath);
+    const value = JSON.parse(readFileSync(manifestPath, "utf8"));
+    if (value.schemaVersion !== 1 || !["file", "directory"].includes(value.type) ||
+        typeof value.path !== "string" || !isAbsolute(value.path) ||
+        !/^[a-f0-9]{64}$/.test(value.sha256)) {
+      throw new Error("Invalid prepared file manifest");
+    }
+    verifyOutput(value.path);
+    const stat = lstatSync(value.path);
+    if (stat.isSymbolicLink() ||
+        value.type === "file" && !stat.isFile() ||
+        value.type === "directory" && !stat.isDirectory()) {
+      throw new Error("Prepared file type differs from its manifest");
+    }
+    const sha256 = value.type === "file"
+      ? fileDigest(value.path)
+      : treeDigest(value.path, { portable: true });
+    if (sha256 !== value.sha256) throw new Error("Prepared file differs from its manifest");
+    return { id, type: value.type, path: value.path, sha256 };
   });
 }
 

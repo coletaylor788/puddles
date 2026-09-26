@@ -86,16 +86,18 @@ describe("OpenClaw cumulative patch suite", () => {
     expect(match?.[1]).toBe(suite.openclawRef);
   });
 
-  it("selects a standard macOS runner above the native memory floor with time for the whole gate", () => {
+  it("selects the standard macOS ARM runner with the measured low-memory profile", () => {
     const workflow = readFileSync(join(repoRoot, ".github/workflows/integration.yml"), "utf8");
     const runner = readFileSync(join(packageDir, "src/native-pipeline.mjs"), "utf8");
-    expect(workflow).toMatch(/runs-on:\s*macos-15-intel\b/);
-    const memoryFloor = runner.match(/totalmem\(\) < (\d+) \* 1024 \*\* 3/);
-    expect(memoryFloor).not.toBeNull();
-    expect(14 * 1_000_000_000).toBeGreaterThan(Number(memoryFloor![1]) * 1024 ** 3);
+    expect(workflow).toMatch(/runs-on:\s*macos-15\b/);
+    expect(workflow).toContain("E2E_RESOURCE_PROFILE: hosted-arm");
+    expect(workflow).toContain('E2E_RESOURCE_MEASURE: "1"');
+    expect(runner).toContain("resolveResourceProfile()");
+    expect(runner).not.toMatch(/\[[^\]]*"E2E_RESOURCE_PROFILE"[^\]]*\]/);
+    expect(runner).toMatch(/\[[^\]]*"E2E_RESOURCE_MEASURE"[^\]]*\]/);
+    expect(runner).toMatch(/stage\(runDir,\s*"regressions",\s*\{[^}]*buildEnvironment/s);
     const timeout = Number(workflow.match(/timeout-minutes:\s*(\d+)/)?.[1]);
-    // Dependency installation and compilation alone allow 15 + 30 minutes.
-    expect(timeout).toBeGreaterThan(45);
+    expect(timeout).toBeGreaterThan(90);
     expect(timeout).toBeLessThanOrEqual(360);
     expect(workflow).toContain("node packages/e2e/bin/openclaw-test-env.mjs ci");
   });
