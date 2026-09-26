@@ -10,8 +10,11 @@ The config snapshot reader normally records config health in SQLite. A release
 preflight must not do that. The patch forwards its existing optional `observe`
 settings through the public reader. `observe: false` disables health recording.
 Preflight also selects `pluginValidation: "core-only"` to avoid reading the
-installed plugin index. Full plugin validation remains in the stopped config
-write. Cron partition resolution can request the existing
+installed plugin index. It previews only state-free core migrations. After
+shutdown, the same helper runs the complete maintained plugin doctor contracts
+and requires full validation before writing. This retires plugin-owned keys
+without hardcoding private plugin policy or deleting unknown keys. Cron
+partition resolution can request the existing
 `artifactPreservingReadOnly` path, which inspects a private SQLite snapshot
 instead of creating WAL or SHM files beside an older database. Existing callers
 retain their current default behavior.
@@ -23,18 +26,48 @@ checks. It never loads the mutating cron API or replaces a whole cron store.
 Job revision tokens come from the maintained storage codec, not a second hash
 of a partly normalized job.
 
+Live preflight validates the manifest identity, operation shape, file and
+include ownership, state-free core migration, cron partitions, and selected job
+revision. It does not evaluate selected config value preconditions against the
+pre-plugin config. Those exact compare-and-swap checks run in the stopped config
+transaction, immediately after complete maintained normalization and before any
+selected mutation. This allows a reviewed parent-object operation to target the
+canonical post-migration plugin object without weakening its final precondition.
+
 An older SQLite schema can prevent even a config write because the writer
-records metadata. After the stopped-state snapshot, the helper calls the
-already public schema-only repair operation. It then changes config before
-ordinary doctor and checks the job's fresh revision afterward. The schema step
-does not compile memory or start a gateway, scheduler, plugin hook, or model.
-Private policy remains in the selected local manifest.
+records metadata. Legacy config can also fail current validation before a
+selected write runs. After the stopped-state snapshot, the helper repairs the
+schema, previews the maintained legacy config migrations, and binds the
+migration semantics, cron partition paths, and selected job revision to
+preflight evidence. The stopped phase reads fresh cron row fingerprints and
+the complete effective job set, then uses those values for its atomic copy.
+Normal job runtime updates during pre-downtime staging therefore do not force
+rollback after shutdown. It copies the complete
+effective job set from a retired `cron.store` partition to the post-migration
+partition before persisting the normalized config. Both partitions have
+compare-and-swap fingerprints. The selected job revision and the semantic job
+set must remain unchanged.
+
+The stopped config repair calls the same core and plugin migration contracts,
+plugin validation, include ownership, metadata stamping, and config writer used
+by doctor. It rejects
+partial validation instead of persisting a half-migrated file. It also
+canonicalizes a legacy markerless multi-agent roster and stamps explicit
+ownership before private compare-and-swap writes. It does not select a default
+agent or grant access to an unowned surface. Private selected
+config writes run next, followed by ordinary doctor and the revision-bound cron
+write. None of the bounded pre-doctor steps compile memory or start a gateway,
+scheduler, plugin hook, or model. Private policy remains in the selected local
+manifest.
 
 The patch targets stable source
 `1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7`. Its registered SDK tests use real
 SQLite, including the maintained compressed 2026.7.1-2 fixture. They cover
-readonly absent-state behavior, old-schema ordering, reviewed revision
-preservation, conflicts, and concurrent unrelated jobs and runtime updates.
+readonly absent-state behavior, old-schema ordering, legacy config repair,
+markerless multi-agent ownership, Active Memory QMD retirement, Canvas host
+setting retirement, a parent-object config precondition based on that normalized
+plugin state, cron partition migration, reviewed revision preservation,
+conflicts, and concurrent unrelated config, job, and runtime updates.
 The accumulated pool also runs the public executor against the built SDK and
 the offline installed artifact. It checks config ownership, retained secret
 references and tilde paths, unchanged preflight state, and denied network

@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 // The native lifecycle modules are also executable without the TypeScript toolchain.
 // @ts-expect-error JS lifecycle exports are tested at runtime.
 import { acquireLock, atomicJson, fileDigest, stage, treeDigest } from "../src/native-state.mjs";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
-import { installRuntime, packProviderRuntime, packRuntime } from "../src/native-package.mjs";
+import { installRuntime, materializeRuntimeForDev, packProviderRuntime, packRuntime, selectRuntimePackageFiles } from "../src/native-package.mjs";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
 import { fixtureEnv, isolatedContext, runScenario } from "../src/native-fixture.mjs";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
@@ -34,7 +34,13 @@ describe("native exact-input evidence", () => {
     await stage(directory, "proof", { code: "two" }, action, outputs);
     expect(calls).toBe(3);
     await expect(stage(directory, "failed", {}, async () => { throw new Error("failure"); })).rejects.toThrow("failure");
-    await stage(directory, "failed", {}, action, outputs);
+    await expect(stage(directory, "failed", {}, action, outputs)).rejects.toThrow("explicit resume");
+    process.env.E2E_RESUME_FAILED = "1";
+    try {
+      await stage(directory, "failed", {}, action, outputs);
+    } finally {
+      delete process.env.E2E_RESUME_FAILED;
+    }
     expect(calls).toBe(4);
   });
 
@@ -130,6 +136,49 @@ describe("native exact-input evidence", () => {
 });
 
 describe("offline installed runtime", () => {
+  it("preserves archived permissions under an owner-only caller umask", async () => {
+    const directory = root();
+    const source = join(directory, "source");
+    let artifact;
+    const buildUmask = process.umask(0o022);
+    try {
+      json(join(source, "package.json"), {
+        name: "synthetic-mode-runtime",
+        version: "1.0.0",
+        files: ["bin/", "config/"],
+      });
+      mkdirSync(join(source, "bin"), { mode: 0o755 });
+      mkdirSync(join(source, "config"), { mode: 0o755 });
+      chmodSync(join(source, "bin"), 0o755);
+      chmodSync(join(source, "config"), 0o755);
+      writeFileSync(join(source, "bin", "run"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+      writeFileSync(join(source, "config", "defaults.json"), "{}\n", { mode: 0o644 });
+      writeFileSync(join(source, "config", "private.json"), "{}\n", { mode: 0o600 });
+      chmodSync(join(source, "bin", "run"), 0o755);
+      chmodSync(join(source, "config", "defaults.json"), 0o644);
+      chmodSync(join(source, "config", "private.json"), 0o600);
+      artifact = await packRuntime(source, join(directory, "artifact"));
+    } finally {
+      process.umask(buildUmask);
+    }
+
+    const previousUmask = process.umask(0o077);
+    let installed;
+    try {
+      installed = await installRuntime(artifact, join(directory, "installed"));
+    } finally {
+      process.umask(previousUmask);
+    }
+
+    const mode = (path: string) => statSync(path).mode & 0o777;
+    expect(mode(join(installed, ".."))).toBe(0o700);
+    expect(mode(join(installed, "bin"))).toBe(0o755);
+    expect(mode(join(installed, "bin", "run"))).toBe(0o755);
+    expect(mode(join(installed, "config", "defaults.json"))).toBe(0o644);
+    expect(mode(join(installed, "config", "private.json"))).toBe(0o600);
+    expect(treeDigest(installed, { portable: true })).toBe(artifact.runtimeSha256);
+  });
+
   it("seals the patched llama.cpp provider with source and build provenance", async () => {
     const directory = root();
     const source = join(directory, "source");
@@ -195,8 +244,16 @@ describe("offline installed runtime", () => {
     const selection = JSON.parse(execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
       cwd: source, encoding: "utf8", timeout: 10_000,
     }));
+    expect((await selectRuntimePackageFiles(source)).sort())
+      .toEqual(selection[0].files
+        .map(({ path }: { path: string }) => path)
+        .filter((path: string) => !path.startsWith("node_modules/"))
+        .sort());
     expect(selection[0].files.some(({ path }: { path: string }) => path.startsWith("node_modules/"))).toBe(true);
     const artifact = await packRuntime(source, join(directory, "artifacts"));
+    const devRuntime = join(directory, "dev-runtime");
+    await materializeRuntimeForDev(source, devRuntime);
+    expect(treeDigest(devRuntime, { portable: true })).toBe(artifact.runtimeSha256);
     const installed = await installRuntime(artifact, join(directory, "prefix"));
     rmSync(join(source, "node_modules/required-peer"), { recursive: true });
     await expect(packRuntime(source, join(directory, "missing-peer"))).rejects.toThrow("Missing production dependency: required-peer");
@@ -387,6 +444,67 @@ describe("recording fixture prerequisites", () => {
     expect(first.phaseHashes.package).not.toBe(second.phaseHashes.package);
     expect(first.phaseHashes.prepare).toBe(second.phaseHashes.prepare);
     expect(first.phaseHashes.prepare).toBe(installed.phaseHashes.prepare);
+  });
+
+  it("binds declared local inputs only to the command phases that consume them", async () => {
+    const directory = root();
+    const prepareInput = join(directory, "prepare-input");
+    const gateInput = join(directory, "gate-input");
+    writeFileSync(prepareInput, "prepare one");
+    writeFileSync(gateInput, "gate one");
+    const module = join(directory, "extension.mjs");
+    writeFileSync(module, `export default ${JSON.stringify({
+      schemaVersion: 1,
+      inputs: [prepareInput, gateInput],
+      commands: [
+        { id: "prepare", phase: "prepare", command: "node", args: ["--version"],
+          inputs: [prepareInput], timeoutMs: 1000 },
+        { id: "gate", phase: "gate", command: "node", args: ["--version"],
+          inputs: [gateInput], timeoutMs: 1000 },
+      ],
+    })};`);
+    const first = await loadExtension(module);
+    writeFileSync(gateInput, "gate two");
+    const gateChanged = await loadExtension(module);
+    expect(gateChanged.phaseHashes.gate).not.toBe(first.phaseHashes.gate);
+    expect(gateChanged.phaseHashes.prepare).toBe(first.phaseHashes.prepare);
+
+    writeFileSync(prepareInput, "prepare two");
+    const prepareChanged = await loadExtension(module);
+    expect(prepareChanged.phaseHashes.prepare).not.toBe(first.phaseHashes.prepare);
+    expect(prepareChanged.phaseHashes.installed).toBe(first.phaseHashes.installed);
+
+    const fallbackModule = join(directory, "fallback-extension.mjs");
+    writeFileSync(fallbackModule, `export default ${JSON.stringify({
+      schemaVersion: 1,
+      inputs: [prepareInput, gateInput],
+      commands: [
+        { id: "prepare", phase: "prepare", command: "node", args: ["--version"],
+          timeoutMs: 1000 },
+        { id: "gate", phase: "gate", command: "node", args: ["--version"],
+          inputs: [gateInput], timeoutMs: 1000 },
+      ],
+    })};`);
+    const fallback = await loadExtension(fallbackModule);
+    writeFileSync(gateInput, "gate three");
+    const fallbackChanged = await loadExtension(fallbackModule);
+    expect(fallbackChanged.phaseHashes.prepare).not.toBe(fallback.phaseHashes.prepare);
+  });
+
+  it("rejects phase input paths not declared by the extension", async () => {
+    const directory = root();
+    const input = join(directory, "input");
+    writeFileSync(input, "declared");
+    const module = join(directory, "extension.mjs");
+    writeFileSync(module, `export default ${JSON.stringify({
+      schemaVersion: 1,
+      inputs: [],
+      commands: [{
+        id: "gate", phase: "gate", command: "node", args: ["--version"],
+        inputs: [input], timeoutMs: 1000,
+      }],
+    })};`);
+    await expect(loadExtension(module)).rejects.toThrow("Invalid bounded local command");
   });
 });
 

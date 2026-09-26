@@ -106,11 +106,16 @@ def clone_directory(
     destination: Path,
     hard_links: dict[tuple[int, int], Path],
     copy_state: ctypes.c_void_p,
+    excluded_roots: tuple[Path, ...] = (),
+    root: Path | None = None,
 ) -> None:
     destination.mkdir(mode=0o700)
+    root = root or source
     with os.scandir(source) as entries:
         for entry in entries:
             source_entry = Path(entry.path)
+            if source == root and source_entry in excluded_roots:
+                continue
             destination_entry = destination / entry.name
             entry_stat = entry.stat(follow_symlinks=False)
             mode = entry_stat.st_mode
@@ -121,8 +126,15 @@ def clone_directory(
                     destination_entry,
                     hard_links,
                     copy_state,
+                    excluded_roots,
+                    root,
                 )
             elif stat.S_ISLNK(mode):
+                resolved = source_entry.resolve(strict=False)
+                if any(resolved == excluded or excluded in resolved.parents for excluded in excluded_roots):
+                    raise OSError(
+                        f"runtime link targets an excluded direct child: {source_entry}"
+                    )
                 destination_entry.symlink_to(os.readlink(source_entry))
                 copy_metadata(source_entry, destination_entry, copy_state)
             elif stat.S_ISREG(mode):
@@ -157,7 +169,11 @@ def destination_aliases_source(source: Path, destination: Path) -> bool:
         current = current.parent
 
 
-def resolve_clone_paths(source_arg: str, destination_arg: str) -> tuple[Path, Path]:
+def resolve_clone_paths(
+    source_arg: str,
+    destination_arg: str,
+    excluded_names: tuple[str, ...] = (),
+) -> tuple[Path, Path, tuple[Path, ...]]:
     source_input = Path(source_arg)
     if source_input.is_symlink():
         raise OSError(f"runtime source must not be a symlink: {source_input}")
@@ -175,25 +191,55 @@ def resolve_clone_paths(source_arg: str, destination_arg: str) -> tuple[Path, Pa
         )
     if destination.exists() or destination.is_symlink():
         raise FileExistsError(destination)
-    return source, destination
+    excluded_roots: list[Path] = []
+    for name in excluded_names:
+        if (
+            not name
+            or name in {".", ".."}
+            or "/" in name
+            or "\\" in name
+            or name != "deploy-snapshots"
+        ):
+            raise OSError(f"unsupported direct-child exclusion: {name}")
+        excluded = source / name
+        if excluded.is_symlink() or (excluded.exists() and not excluded.is_dir()):
+            raise OSError(f"excluded direct child must be a real directory: {excluded}")
+        excluded_roots.append(excluded)
+    return source, destination, tuple(excluded_roots)
 
 
 def main() -> int:
     if len(sys.argv) == 4 and sys.argv[1] == "--validate-destination":
         resolve_clone_paths(sys.argv[2], sys.argv[3])
         return 0
-    if len(sys.argv) != 3:
+    excluded_names: tuple[str, ...] = ()
+    args = sys.argv[1:]
+    if args and args[0].startswith("--exclude-direct-child="):
+        excluded_names = (args.pop(0).split("=", 1)[1],)
+    if len(args) != 2:
         print(
-            "usage: clone-runtime-tree.py [--validate-destination] SOURCE DESTINATION",
+            "usage: clone-runtime-tree.py [--exclude-direct-child=deploy-snapshots] "
+            "[--validate-destination] SOURCE DESTINATION",
             file=sys.stderr,
         )
         return 2
 
-    source, destination = resolve_clone_paths(sys.argv[1], sys.argv[2])
+    source, destination, excluded_roots = resolve_clone_paths(
+        args[0],
+        args[1],
+        excluded_names,
+    )
 
     copy_state = allocate_copy_state()
     try:
-        clone_directory(source, destination, {}, copy_state)
+        clone_directory(
+            source,
+            destination,
+            {},
+            copy_state,
+            excluded_roots,
+            source,
+        )
     finally:
         COPYFILE_STATE_FREE(copy_state)
     return 0

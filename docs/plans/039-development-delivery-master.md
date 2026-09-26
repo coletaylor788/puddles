@@ -174,10 +174,9 @@ development. Production upgrade and new paid execution remain separately gated.
   remain intact. The executor's read-only production check returned HTTP 200
   with unchanged PID. No source/browser build, physical activation, promotion,
   paid execution or production action occurred.
-- A proposed generic target-input retention object remains paused as
-  uncommitted optional work in the public owner's workspace. It is not part of
-  the merged behavior or a requirement for the accepted replay. Preserve it
-  separately if retiring that workspace; do not describe it as landed.
+- A proposed generic target-input retention object was paused and not landed.
+  It is not part of the merged behavior or a requirement for the accepted
+  replay. New feature work must not treat that proposal as an active dependency.
 
 ### Scope and acceptance criteria
 
