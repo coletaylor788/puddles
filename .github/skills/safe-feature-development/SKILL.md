@@ -3,7 +3,7 @@ name: safe-feature-development
 description: "Take Puddles features from an explicitly approved design through fast local and DEV iteration, independent review, cumulative release checks, TEST rehearsal, landing, production deployment, and rollback. Use when designing or implementing a feature or behavior change."
 metadata:
   author: Cole Taylor
-  version: "3.0.0"
+  version: "3.1.0"
 ---
 
 # Safe Feature Development
@@ -16,6 +16,43 @@ Use this workflow for feature implementation, behavior changes, migrations,
 runtime configuration, plugins, integrations, and deployment automation. Follow
 more specific repository instructions as additional constraints. Never weaken a
 global safety or publication boundary.
+
+## Documentation-only path
+
+Classify the diff before starting validation. Changes limited to human-facing
+documentation, plans, repository instructions, or development skill guidance
+use this short path instead of the feature lifecycle and completion gate below.
+A concrete request for those edits supplies their design. Do not create a new
+implementation plan, tracking issue, regression test, or reviewer just to change
+documentation. Developing a feature design still requires approval before its
+implementation, even though writing the design is documentation work.
+
+Review the diff for accuracy and consistency. Check affected links, symlinks,
+formatting, and skill frontmatter, and run only existing focused documentation
+checks that apply. Do not install or build the application merely to validate
+prose. A separate adversarial reviewer is optional for a substantive policy or
+architecture change, not a routine documentation requirement.
+
+Do not run the cumulative pool, create release receipts, build runtime or browser
+artifacts, start DEV or TEST, rehearse activation or rollback, deploy production,
+or run production health checks for documentation-only changes. Preserve the
+normal branch and PR workflow and verify the documents landed. Completion means
+the requested edits and relevant document checks are done, not that an unchanged
+runtime has passed the feature release gate.
+
+Use the workflow's documentation path filters. Do not manually dispatch runtime
+CI for a documentation-only change. If an overly broad workflow still starts a
+non-required runtime job for that exact docs-only revision, cancel it and record
+why; do not wait for it as validation. Never cancel unrelated runs or bypass a
+required repository check. Fixing workflow triggers is a separate configuration
+change and should have focused tests of the filtering behavior.
+
+Classify by effect, not file extension. Executable code, patches, tests, build or
+CI configuration, dependencies, runtime-consumed prompts or templates, and mixed
+code/documentation diffs are not documentation-only. Validate those changes
+against their actual effects. A trigger-only CI change needs parsed workflow and
+path-selection tests; it does not need an OpenClaw build or deployment when
+runtime inputs are unchanged. Keep required code checks intact for code changes.
 
 ## How to write
 
@@ -89,12 +126,6 @@ already-approved work moving. Minor implementation details, equivalent helper
 choices, routine fixes, review remediation, and CI repairs do not need renewed
 approval unless they create such a deviation. Do not turn review, merge, or
 deployment into routine requester handoffs.
-
-For instruction or documentation maintenance with no runtime behavior change,
-validate the affected documents, links, and existing contract checks. Do not
-build or deploy an unchanged runtime merely to update guidance. A concrete
-request specifying the desired instruction edits supplies their design; it
-does not authorize implementing a feature that those instructions describe.
 
 ## Workspace ownership
 

@@ -56,6 +56,14 @@ and rollback. Its Puddles lifecycle section is the daily entrypoint;
 `packages/e2e/README.md` supplies the commands. Plan 039 records the delivery
 infrastructure and its historical acceptance, not additional approval gates.
 
+Documentation-only changes use the skill's short documentation path, not the
+feature lifecycle. Check the changed documents and relevant links or contracts;
+do not run the cumulative pool, start DEV or TEST, or build, rehearse, or deploy
+unchanged runtime artifacts. Routine documentation edits need no independent
+reviewer or new regression. CI trigger-only changes need focused workflow and
+path-selection tests. These exceptions do not waive behavior tests for code,
+runtime configuration or prompts, dependencies, patches, or mixed changes.
+
 Root `AGENTS.md` is a tracked relative symlink to this file. Commit the link
 with instruction changes so fresh clones and worktrees discover the same rules.
 Do not maintain a second copy or rely on an unmerged local branch.
