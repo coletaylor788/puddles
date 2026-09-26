@@ -48,8 +48,9 @@ and lifecycle instructions are implemented. Focused regressions pass and the
 retained reviewer has no remaining findings. The mini record and guarded DEV
 tools are installed. Owned controllers were checked for all three environments;
 the existing runtimes stayed running. Public cumulative CI and landing remain
-outstanding. Development and review skills now prohibit prose regression tests;
-the separate documentation cleanup task owns removal of existing doc tests.
+outstanding. Development and review skills now prohibit prose regression tests.
+The separate documentation cleanup landed in PR 123, and this branch is rebased
+onto it with those deletions preserved.
 
 ## Agent section
 
@@ -230,7 +231,9 @@ the separate documentation cleanup task owns removal of existing doc tests.
   baseline changes, DEV attempt identity, queued takeover after recovery,
   reverted older batches, missing commit attribution, and artifact provenance.
   Final complete-diff review is clean. Private contract CI passes. Public
-  cumulative CI remains in progress.
+  cumulative CI built successfully, then reported 422 passing tests and three
+  failures in the old documentation assertions. PR 123 removed those tests;
+  the rebased candidate requires a fresh cumulative run.
 - Implementation tests must cover simultaneous enqueue and claim, idempotent
   retries, FIFO among ready agents, cancellation, lost notifications, heartbeat
   versus progress, interrupted updates, and stale-owner recovery without theft.
