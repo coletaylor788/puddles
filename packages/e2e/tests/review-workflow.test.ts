@@ -64,9 +64,11 @@ describe("native engineering ownership and retained review", () => {
   });
 
   it("keeps the approved design checkpoint without routine requester handoffs", () => {
-    expect(instructions).toMatch(/Pause at design only when the requester explicitly asks/i);
-    expect(workflow).toMatch(/Pause before implementation only when the requester explicitly asks/i);
-    expect(workflow).toMatch(/Otherwise, do not\s+add a human approval gate/i);
+    expect(instructions).toMatch(/obtain explicit approval to\s+implement it before implementation begins/i);
+    expect(workflow).toMatch(/obtain explicit approval to implement that design/i);
+    expect(workflow).toMatch(/approval already given for the current design remains valid/i);
+    expect(workflow).toMatch(/without another production approval/i);
+    expect(workflow).toMatch(/escalate only major or high-impact deviations from the\s+approved design/i);
     expect(workflow).toMatch(/approved implementation request as authorization/i);
     expect(workflow).toMatch(/controlling instruction may explicitly stop or\s+limit/i);
     expect(workflow).toMatch(/requester's final validation\s+and external task-completion decision/i);
