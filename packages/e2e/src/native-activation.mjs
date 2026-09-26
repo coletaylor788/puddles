@@ -565,7 +565,7 @@ export async function activateNative(receipt, target, operationsFactory = system
   let journal = {
     schemaVersion: 1, target: jsonDigest(target), artifact: receipt.artifact.sha256,
     transaction: basename(recoveryDir),
-    ...(ownership ? { coordination: { requestId: ownership.owner.requestId, baseline: ownership.owner.baseline } } : {}),
+    ...(ownership ? { coordination: { requestId: ownership.owner.requestId, attemptId: ownership.owner.attemptId, baseline: ownership.owner.baseline } } : {}),
     additionalArtifacts: extraIdentity,
     preparedFiles: preparedFileIdentity,
     status: "preflight", snapshotReady: false, browserChanged: false, quiesced: false,

@@ -36,7 +36,7 @@ function setup() {
     const build = createBuildReceipt({ repository: batch.sources[0], source: { head: batch.sources[0].head }, tools: {}, proofs: {},
       artifact: { schemaVersion: 1, path: archive, sha256: fileDigest(archive), runtimeSha256: "a".repeat(64),
         platform: process.platform, arch: process.arch, node: process.version } });
-    const success = { target: "b".repeat(64), artifact: build.artifact.sha256, status: "healthy", transaction: "test-success", journalSha256: "c".repeat(64), coordination: { requestId: ticket.requestId, baseline: readCoordination(path).environments.TEST.owner.baseline } };
+    const success = { target: "b".repeat(64), artifact: build.artifact.sha256, status: "healthy", transaction: "test-success", journalSha256: "c".repeat(64), coordination: { requestId: ticket.requestId, attemptId: readCoordination(path).environments.TEST.owner.attemptId, baseline: readCoordination(path).environments.TEST.owner.baseline } };
     const rollback = { ...success, status: "rolled-back", transaction: "test-rollback" };
     const proof = { schema: "puddles.openclaw-target-proof/v1", schemaVersion: 1, buildId: build.buildId, status: "passed",
       stages: { install: "d".repeat(64), runtime: "e".repeat(64), "deployment-success": jsonDigest(success), "deployment-rollback": jsonDigest(rollback) },

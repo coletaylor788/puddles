@@ -244,7 +244,7 @@ export function coordinate(path, operation, input) {
         }
       }
       environment.queue = environment.queue.filter((item) => item !== ticket);
-      environment.owner = { ...ticket, phase: "claimed", acquiredAt: now, heartbeatAt: now, progressAt: now,
+      environment.owner = { ...ticket, attemptId: randomUUID(), phase: "claimed", acquiredAt: now, heartbeatAt: now, progressAt: now,
         expectedCompletion: input.expectedCompletion ?? null, process: null,
         baseline: state.lastHealthy?.transaction ?? null };
       return environment.owner;
@@ -290,7 +290,7 @@ export function coordinate(path, operation, input) {
       assertBatchArtifact({ batch, environment: "TEST" }, testedBuild);
       batch.status = "tested"; batch.buildId = testedBuild.buildId; batch.proof = input.proof; batch.updatedAt = now;
       for (const record of Object.values(targetProof.deployment)) requireValue(
-        record.coordination?.requestId === current.requestId && record.coordination?.baseline === current.baseline,
+        record.coordination?.attemptId === current.attemptId && record.coordination?.baseline === current.baseline,
         "TEST proof belongs to a different attempt or production baseline; rerun physical rehearsal");
       batch.testBaseline = current.baseline;
       for (const record of batch.reverts) state.disqualified[record.commit].revert = record.revert;

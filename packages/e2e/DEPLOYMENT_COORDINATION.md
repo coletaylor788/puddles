@@ -124,7 +124,9 @@ consumer, installed scenarios, deliberate failure, rollback, and healthy
 activation proofs. Certify and promote through the normal receipt commands.
 Record success with `tested`, the TEST lease fields, `build` (the retained
 build JSON path), and `proof` (the retained target-proof JSON path). The helper
-validates their identity and the batch source. Release TEST and queue for PROD.
+validates their identity, batch source, and the actual TEST attempt and
+production baseline recorded by the activation journals. An older proof cannot
+be republished under a fresh claim. Release TEST and queue for PROD.
 The same artifacts must reach PROD. If production changed since TEST acquired
 its slot, repeat the affected TEST rehearsal against the new baseline before
 claiming PROD. Superseded or disqualified batches cannot promote.
