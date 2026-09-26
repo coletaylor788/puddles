@@ -9,6 +9,13 @@
 
 ### Design
 
+For new feature work, the current repository development skill owns approval
+policy. Agree on the design and get explicit approval before implementation.
+That approval covers delivery through production. Reopen review only for major
+or high-impact design deviations. The separate production holds recorded in
+this plan describe its original delivery task, not an extra gate for future
+approved features.
+
 Build and test locally, transfer built output to a separate DEV instance, and
 check the changed behavior there. Ordinary edits do not need release receipts,
 frozen source or the complete release suite. Dependency changes use a separate
@@ -20,13 +27,13 @@ flowchart TD
     Dev["Transfer output to DEV and check behavior"]
     CI["Clean release build and accumulated checks"]
     Test["Install exact artifacts in TEST"]
-    Prod["Separately approved production upgrade"]
+    Prod["Production upgrade within approved design"]
     Local --> Dev
     Dev -->|Fix and retry| Local
     Dev -->|Ready| CI
     CI --> Test
     Test -->|Failure| Local
-    Test -->|Pass, merge and approve| Prod
+    Test -->|Pass and merge| Prod
 ```
 
 Scripts own normal release stages, saved results and retries. Agents fix
@@ -37,8 +44,8 @@ must not silently inherit evidence for different inputs.
 
 DEV, TEST and PROD have separate writable state, ports, processes and runtime
 paths. Tests use recorded external effects and synthetic content. Production
-health checks are read-only. A successful test promotion is not permission to
-upgrade production. Public hosted CI is independent; the private composition
+health checks are read-only. Technical promotion gates remain required after
+design approval. Public hosted CI is independent; the private composition
 uses the authorized local builder when hosted cost cannot be established.
 
 The backup captures current production without recursively including historical
@@ -64,12 +71,18 @@ disposal of the integrity-drifted old copy; that exact cleanup is complete.
 Maintained DEV, release and TEST consumers use the shared pinned package store,
 and the final two-machine audit is complete. Optional host build-evidence
 retention work remains separate from delivery. The process is ready for feature
-development. Production upgrade and new paid execution remain separately gated.
+development. This closeout did not upgrade production. Future features follow
+the current skill's design approval policy; new paid execution remains gated.
 
 ## Agent section
 
 ### State
 
+- Current workflow policy is maintained in
+  `.github/skills/safe-feature-development/SKILL.md`: explicit design approval,
+  fast DEV iteration, and autonomous delivery through production. Major or
+  high-impact design deviations reopen human review. Historical no-production
+  limits below apply to this delivery closeout, not subsequent feature tasks.
 - Public #117 merged as `042b73281b63bfc64df1f66d8779603a31380ca2`.
   Private `coletaylor788/puddles-private#39` merged as
   `75aa7a761b7644cd038d31544a11dc5b93b3d6a4`. The coordinator directly
@@ -208,8 +221,7 @@ flowchart TD
     Install --> Rehearse["Scenarios, activation and rollback"]
     Rehearse --> Proof["Target proof and certification"]
     Proof --> Merge["Reviewed source integration"]
-    Merge --> Approval["Separate production authorization"]
-    Approval --> Production["Exact artifact activation"]
+    Merge --> Production["Exact artifact activation within approved design"]
     Rehearse -->|Failure| Repair["Focused repair and input-based invalidation"]
     Repair --> Builder
 ```
@@ -265,7 +277,7 @@ The private wrapper at `docs/openclaw-setup/patches/apply-and-deploy.sh` accepts
 environment inputs and no positional arguments. Set absolute
 `OPENCLAW_CANDIDATE_RECEIPT`, `OPENCLAW_DEPLOY_TARGET` and
 `PUDDLES_NATIVE_ROOT`; select `OPENCLAW_DEPLOY_ACTION=rehearse` for rehearsal.
-Activation remains separately authorized. Recovery/rollback also require
+Design approval covers in-scope activation for new features. Recovery/rollback require
 absolute `OPENCLAW_RECOVERY_DIR`. For approved remote execution, set
 `MINI_HOST`, absolute `PUDDLES_REMOTE_ROOT` and absolute `PUDDLES_REMOTE_NODE`.
 Unset `MINI_HOST` means local execution.
@@ -311,8 +323,8 @@ unchanged runtime code merely to attach a new commit name.
 
 DEV and TEST are accepted for feature development. Start DEV on demand through
 the maintained command. TEST is temporary and cleaned after release rehearsal.
-Production remains on the existing release; activation requires separate
-authorization and the configured exact-artifact deployment wrapper.
+This task left production on the existing release. New approved features use
+the configured exact-artifact deployment wrapper without a second approval.
 
 Backup replacement and explicitly approved old-copy disposal are finished.
 No repeat capture, service cycle or additional deletion is authorized. Optional
@@ -402,6 +414,6 @@ block the accepted daily DEV/release flow.
 - [x] LAND-03: Verify both default-branch identities and passing post-merge checks.
 - [x] LAND-04: Supply supported daily commands and documented operating limits.
 - [x] LAND-05: Publish final reconciled result and close the tracking issue.
-- [ ] PROD-01: Separate future production authorization required.
+- [ ] PROD-01: Production was outside this delivery closeout; future features use the current skill's approval policy.
 - [ ] PROD-02: Future exact-artifact activation and read-only health checks.
 - [ ] PROD-03: Future production result/recovery record; no upgrade claimed here.

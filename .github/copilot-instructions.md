@@ -49,9 +49,23 @@ the exact plan and issue formats.
 ## Development lifecycle
 
 For every feature or behavior change, invoke and follow the repository-local
-`safe-feature-development` skill. It covers the whole lifecycle: research,
-planning, local implementation, validation in the test environment, independent
-adversarial review, promotion, production validation, and rollback.
+[`safe-feature-development`](skills/safe-feature-development/SKILL.md) skill.
+It covers design approval, the fast local and DEV loop, independent review,
+the accumulated release gate, TEST rehearsal, landing, production validation,
+and rollback. Its Puddles lifecycle section is the daily entrypoint;
+`packages/e2e/README.md` supplies the commands. Plan 039 records the delivery
+infrastructure and its historical acceptance, not additional approval gates.
+
+Root `AGENTS.md` is a tracked relative symlink to this file. Commit the link
+with instruction changes so fresh clones and worktrees discover the same rules.
+Do not maintain a second copy or rely on an unmerged local branch.
+
+Before editing another repository, create its own feature branch and worktree
+from a freshly fetched base. An existing public worktree does not isolate a
+companion repository's primary checkout. Follow the skill's paired-worktree
+setup, read that checkout's instructions, and verify dependency and tooling
+paths select the intended pair. Do not switch or edit a primary checkout unless
+the requester explicitly asks for that maintenance operation.
 
 Component instructions may add requirements but must not weaken that workflow,
 publication boundaries, test isolation, or secret handling.
@@ -87,11 +101,21 @@ commits, pushes, pull requests, review remediation, remote checks, deployment,
 rollback, merge, and verification. A controlling instruction may explicitly
 limit those actions, and repository permissions and protections always apply.
 
-Pause at design only when the requester explicitly asks to review, approve, or
-iterate on the design. After that approval, or when no design checkpoint was
-requested, continue autonomously through landing. Do not hand routine
-agent-owned pull-request review or merge work to the requester. Return the
-landed result for the requester's final validation and task-completion decision.
+Always develop the design with the requester and obtain explicit approval to
+implement it before implementation begins. Asking to design or implement a
+feature is not by itself approval of an unseen design. Approval already given
+for the current design remains valid. After approval, continue autonomously
+through landing and production deployment within that scope; production does
+not need a second approval. Technical release and rollback gates still apply.
+
+If implementation reveals a major or high-impact conflict with the approved
+design, record the blocker, evidence, impact, and proposed decision in the plan,
+update the issue status, and request human review and approval before proceeding
+with the affected work. Continue independent work that remains within the
+approved design. Resolve minor details and routine implementation choices
+without another approval. Do not hand routine review, CI, merge, or deployment
+work to the requester. Return the landed result for their final validation and
+task-completion decision.
 
 ## Sources of truth
 
