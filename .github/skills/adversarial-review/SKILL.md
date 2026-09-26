@@ -3,10 +3,21 @@ name: adversarial-review
 description: Independently challenge a completed feature for hidden defects, unsafe assumptions, regressions, and incomplete requirements. Use for the mandatory post-implementation review of every feature.
 metadata:
   author: Cole Taylor
-  version: "1.5.0"
+  version: "1.6.0"
 ---
 
 # Adversarial Review
+
+Routine documentation, plan, repository-instruction, and development-skill edits
+do not require this review or the full feature validation loop. Follow the
+documentation-only path in `safe-feature-development`. When explicitly asked to
+review documentation or a substantive policy change, check accuracy, consistency,
+and relevant links or contracts. Do not demand runtime regression tests, DEV or
+TEST, release receipts, deployment, or rollback evidence for unchanged runtime
+behavior. Runtime-consumed prompts, configuration, executable examples used by
+automation, and mixed code/documentation changes still need applicable behavior
+validation. A CI trigger-only change needs focused filter tests, not runtime
+rehearsal.
 
 Review the complete feature diff and all new files as a skeptical engineer who
 did not implement the change. Do not limit review to the latest fix. Read the
@@ -93,4 +104,4 @@ integration happens before activation, outside the live rollback transaction.
 1. Prefer solving features via well established extension patterns such as plugins, MCP tools, etc.
 2. If a patch to OpenClaw is required, give extra scrutiny and hold the patch to the bar "this would be accepted and checked-in to OpenClaw itself". Be very careful to ensure it doesn't cause unintended consequences or behavior, doesn't re-invent things, etc. This code base is large and requires extensive research to validate.
 3. If a patch to OpenClaw, ensure patch is fully docmented for repeat application in the repo
-4. Everything must have integration tests. I can't test this is not acceptable. Mock dependencies, built test harnesses, etc. The integration test suite being complete and thorough is absolutely critical to avoiding regressions.
+4. Runtime behavior changes must have integration tests, using mocks or harnesses where needed. Preserve complete cumulative coverage. Documentation-only changes use focused document checks; CI trigger-only changes use focused workflow and path-selection tests.
