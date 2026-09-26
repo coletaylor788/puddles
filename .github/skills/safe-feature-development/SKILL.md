@@ -1,6 +1,6 @@
 ---
 name: safe-feature-development
-description: "Take Puddles features from an explicitly approved design through fast local and DEV iteration, independent review, cumulative release checks, TEST rehearsal, landing, production deployment, and rollback. Use when designing or implementing a feature or behavior change."
+description: "Take Puddles features from an explicitly approved design through fast local and DEV iteration, independent review, cumulative release checks, landing, merged TEST rehearsal, production deployment, and rollback. Use when designing or implementing a feature or behavior change."
 metadata:
   author: Cole Taylor
   version: "3.1.0"
@@ -46,6 +46,15 @@ non-required runtime job for that exact docs-only revision, cancel it and record
 why; do not wait for it as validation. Never cancel unrelated runs or bypass a
 required repository check. Fixing workflow triggers is a separate configuration
 change and should have focused tests of the filtering behavior.
+
+Do not create or extend regression tests that read documentation, plans,
+`AGENTS.md`, repository instructions, or development skills to assert their
+wording, headings, section order, or prose content. This also applies when
+those files change alongside executable code. Review the guidance directly
+and use existing link, formatting, or frontmatter validators when relevant.
+Development skills and agent instructions are guidance, not product runtime
+prompts. Executable scripts shipped with a skill still need tests for their
+actual behavior; adding a script does not justify tests of the skill's prose.
 
 Classify by effect, not file extension. Executable code, patches, tests, build or
 CI configuration, dependencies, runtime-consumed prompts or templates, and mixed

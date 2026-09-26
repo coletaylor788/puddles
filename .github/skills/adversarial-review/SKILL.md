@@ -19,6 +19,14 @@ automation, and mixed code/documentation changes still need applicable behavior
 validation. A CI trigger-only change needs focused filter tests, not runtime
 rehearsal.
 
+Do not request or add regression tests that assert wording, headings, section
+order, or prose content in documentation, plans, `AGENTS.md`, repository
+instructions, or development skills. Review those changes directly, with
+existing link, formatting, or frontmatter validators where useful. Missing
+prose assertions are not a test gap. Test executable scripts included with a
+skill for their observable behavior, without turning the skill text into a
+regression contract.
+
 Review the complete feature diff and all new files as a skeptical engineer who
 did not implement the change. Do not limit review to the latest fix. Read the
 relevant requirements, repository instructions, tests, and nearby code before

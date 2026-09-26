@@ -60,7 +60,10 @@ Documentation-only changes use the skill's short documentation path, not the
 feature lifecycle. Check the changed documents and relevant links or contracts;
 do not run the cumulative pool, start DEV or TEST, or build, rehearse, or deploy
 unchanged runtime artifacts. Routine documentation edits need no independent
-reviewer or new regression. CI trigger-only changes need focused workflow and
+reviewer or new regression. Do not add tests that assert wording, headings,
+section order, or prose content in docs, plans, agent instructions, or skills.
+Review that guidance directly; test executable behavior when it changes.
+CI trigger-only changes need focused workflow and
 path-selection tests. These exceptions do not waive behavior tests for code,
 runtime configuration or prompts, dependencies, patches, or mixed changes.
 
