@@ -1,6 +1,6 @@
 # Plan 039 - OpenClaw development and delivery
 
-**Status:** Implementations merged and green; final artifact replay pending
+**Status:** Implementations merged and green; retained target prerequisite missing
 **Issue:** [#118](https://github.com/coletaylor788/puddles/issues/118)
 **Last updated:** 2026-09-26
 **Owner:** Delivery coordinator
@@ -55,9 +55,10 @@ job retained its ARM bundle and resource records. The final release candidate
 passed installation, all scenarios, deliberate failure and rollback, healthy
 activation, coexistence, certification and cleanup. DEV warm core and plugin
 feedback passed in about three minutes eight seconds and three minutes
-thirty-nine seconds, with cold setup recorded separately. One remaining
-retention check must replay artifact import and certification after disposable
-test state is removed.
+thirty-nine seconds, with cold setup recorded separately. The final retention
+check cannot replay import and certification: the browser archive required by
+the saved rehearsal target was not found. The owner is tracing the retention
+gap before any additional build or rehearsal.
 
 The new backup is proved and published. The requester explicitly authorized
 disposal of the integrity-drifted old copy; that exact cleanup is complete.
@@ -133,11 +134,24 @@ execution remain separately gated.
   cleanup. Shared persistent dependency stores remain protected; a pinned
   manager and capacity preflight are not a numerical cache-size bound.
 - Failure reproduction, fresh import, certification and TEST cleanup passed.
-  STORE-03 still needs a replay after disposable TEST state removal. The
-  release coordinator assigned a bounded artifact-only replay to the retained
-  public owner after the private owner's session became unavailable. It must
-  not rebuild source, mutate production, delete existing proof or invent
-  producer receipts. A missing prerequisite is reported before a costly repeat.
+  The later STORE-03 replay stopped before execution at maintained preflight.
+  The immutable target's original Node path and browser archive are absent.
+  Matching Node bytes exist elsewhere, but no matching browser archive or image
+  was found in the sealed tuple, retained run, shared inputs, bootstrap archives,
+  artifact roots or loaded images. No import, certification, target activation
+  or production action occurred. Fresh scratch was removed; protected evidence
+  remains unchanged.
+- Required browser SHA is
+  `d81f0c9727bb1c0c9d8d6efa201eb54411c35cb396306cbaec8599cff8d07b7b`;
+  required Node SHA is
+  `6bd6a7170425df3bd684be028f04294503abbc40f5508e34e87b2606f1405534`.
+  Terminal packet digest is
+  `db7ff072d0d4dc4458d3bca4fef2a29fe48eaee12a06b8e35e8c7ca29d1f8660`.
+  The parent directly read the packet. The same owner must identify whether
+  target input capture, retention closure or cleanup lost the prerequisite,
+  then scope the minimum regression and repair. Do not silently waive replay,
+  rewrite hashes or repeat the full source build. Any necessary browser rebuild
+  or physical repeat needs its exact scope and resource limits established first.
 
 ### Scope and acceptance criteria
 
@@ -215,6 +229,29 @@ receipt. `status`, `start`, `stop`, `reset` and `bootstrap` handle lifecycle and
 dependency refresh. Keep machine-specific environment values in private local
 configuration and evidence, not this public plan.
 
+Private release builder is `node scripts/run-private-openclaw-release.mjs`;
+artifact-only consumer is
+`node scripts/run-private-openclaw-artifact-consumer.mjs`. Both require their
+documented reviewed environment. The private
+`.github/workflows/private-openclaw-release.yml` is manual/callable, not an
+automatic production deploy.
+
+The private wrapper at `docs/openclaw-setup/patches/apply-and-deploy.sh` accepts
+environment inputs and no positional arguments. Set absolute
+`OPENCLAW_CANDIDATE_RECEIPT`, `OPENCLAW_DEPLOY_TARGET` and
+`PUDDLES_NATIVE_ROOT`; select `OPENCLAW_DEPLOY_ACTION=rehearse` for rehearsal.
+Activation remains separately authorized. Recovery/rollback also require
+absolute `OPENCLAW_RECOVERY_DIR`. For approved remote execution, set
+`MINI_HOST`, absolute `PUDDLES_REMOTE_ROOT` and absolute `PUDDLES_REMOTE_NODE`.
+Unset `MINI_HOST` means local execution.
+
+Private main retires the old production build/snapshot writer. The wrapper
+delegates once to public `openclaw-activate.mjs` or `openclaw-rehearse.mjs`;
+legacy arguments fail before commands or snapshots. The retained
+`native-deployment-wrapper.test.mjs` regression rejects old snapshot helpers,
+package installs, pnpm and git-worktree operations in that wrapper. A normal
+release rebuild is never hidden inside the stopped-service transaction.
+
 ### Validation
 
 - Required accumulated command:
@@ -243,8 +280,9 @@ configuration and evidence, not this public plan.
 
 The implementation PRs are merged and post-merge checks pass on verified
 default-branch identities. Artifact replay after disposable TEST state removal
-is the remaining acceptance gate. Do not rebuild unchanged runtime code merely
-to attach a new commit name.
+is blocked on missing retained browser input. This does not erase earlier TEST
+success, but it prevents claiming complete replayability. Do not rebuild
+unchanged runtime code merely to attach a new commit name.
 
 DEV and TEST are accepted for feature development. Start DEV on demand through
 the maintained command. TEST is temporary and cleaned after release rehearsal.
@@ -307,7 +345,8 @@ block the accepted daily DEV/release flow.
 - [x] STORE-01: Implement owned artifact pool and protected retention.
 - [x] STORE-02: Retain source-gate/regression sidecars through collection.
 - [ ] STORE-03: Prove complete failure reproduction and reimport/certification
-  after disposable state is removed in the final flow.
+  after disposable state is removed in the final flow. Blocked before replay:
+  required browser archive is absent. Retention diagnosis remains assigned.
 - [x] STORE-04: Hosted Actions retained the bundle and resource evidence and
   completed ephemeral checkout/scratch teardown. Persistent HOST runs are
   excluded and no cleanup of them is claimed.
