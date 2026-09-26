@@ -1,8 +1,8 @@
 # OpenClaw artifact delivery
 
-Status: Implementation in progress
+Status: Complete; merged and verified
 Issue: #118
-Last updated: 2026-09-20
+Last updated: 2026-09-26
 Owner: Public OpenClaw engineering owner
 
 ## Human section
@@ -19,7 +19,9 @@ The bundle contains only a strict list of release files and normalized identity
 records. It does not contain the builder checkout, dependency workspace,
 configuration, credentials, logs, or private extension inputs. A consumer can
 import it at a different path or on another host and verify the same source,
-toolchain, archive, provider, prepared-file, and browser identities. Installed
+toolchain, archive, provider, and prepared-file identities. Separately supplied
+target prerequisites, including the rehearsal browser archive and interpreter,
+must remain available at their recorded paths on the target host. Installed
 checks use these verified records instead of reaching back into the build
 workspace. The patched source also gives its large protocol schema registries
 explicit public types. This keeps declaration generation stable when a fresh
@@ -136,34 +138,20 @@ a usable recovery.
 
 ### Status
 
-The hosted ARM release path, runtime-only developer path, complete accumulated
-pool, installed runtime, and nine scenarios are green for the prior candidate.
-The shared package-manager contract pins pnpm 12.3.4 and one explicit store per
-host. Private work owns the authorized HOST and MINI consumer migration and
-must report effective store metadata and frozen offline proofs.
+Public and private implementation changes are merged and their post-merge
+checks pass. The full composed release passed offline installation, all eleven
+scenarios, physical success and injected-failure rollback, coexistence and
+cleanup. Warm DEV core and plugin feedback measured about three minutes eight
+seconds and three minutes thirty-nine seconds. Fresh artifact replay and
+certification also pass after disposable test state removal, using the genuine
+retained physical proof without another activation.
 
-The backup path captures and publishes a complete new-format recovery without
-requiring or inheriting an older activation receipt. Its stop adapter now
-supports the predecessor runtime's narrower process API while keeping exact
-process-generation and stopped-group checks. Exact old activation cleanup
-remains a separate guarded operation after publication. Focused recovery tests
-and retained complete-diff review are clear for the compatibility repair. The
-accumulated source gate and private binding passed. A valid backup was captured
-and verified, but isolated materialization exposed a missing executable search
-path before browser inspection. The narrow environment repair passes focused
-validation and retained complete-diff review. Its applicable accumulated gate,
-private binding, and corrected materialization remain pending. The captured
-recovery remains unpublished. No new production capture, service action,
-retirement, paid job, release activation, or merge is authorized.
-
-The latest accumulated release gate reached offline installation and exposed
-that plain archive extraction applied the wrapper's owner-only umask to sealed
-runtime entries. Both runtime installation and outer bundle import now preserve
-recorded permissions before their existing mode-sensitive checks. Cross-umask
-focused tests pass with restrictive and permissive caller environments, and
-retained complete-diff review is clear. The owner-only install prefix and
-portable digest remain unchanged. Exact private rebinding and affected
-archive-based proof regeneration are pending.
+Maintained DEV, release and TEST consumers use the pinned shared package store.
+The current-state backup passed isolated restore and publication; separately
+approved disposal of the old copy and the final audit are complete. Protected
+manual and production store dependencies remain explicit exceptions. Feature
+development is ready. Production upgrade and new paid execution remain
+separately gated.
 
 ## Agent section
 
@@ -173,18 +161,31 @@ archive-based proof regeneration are pending.
 - Canonical cross-repository scope and completion checklist:
   [plan 039](039-development-delivery-master.md). This plan keeps only the
   public implementation detail for that delivery flow.
-- Follow-up pull request: #117, based on `main`.
-- Current public branch includes the reviewed stopped migration and deployment
-  correction from plan 037. Those behaviors remain prerequisites.
-- Implementation is authorized without a design pause.
-- This session is the sole public coding owner. No coding worker may be added.
-- Retain reviewer `2da2a59c-534c-4e28-b63a-bbc02fbb1b2b` for the complete
-  current diff.
+- Public #117 merged as `042b73281b63bfc64df1f66d8779603a31380ca2`;
+  private `coletaylor788/puddles-private#39` merged as
+  `75aa7a761b7644cd038d31544a11dc5b93b3d6a4`. Public post-merge
+  Integration `36266234464` and CodeQL `36266233422`, and private contract
+  `36261272335`, passed.
+- The original public engineering owner retained independent review through
+  the migration, packaging, backup, toolchain and workflow repairs. No new
+  implementation or approval checkpoint is pending.
 - Private composition, target values, self-hosted ARM workflow, and production
   activation stay outside the public repository.
 - Public hosted output is an arm64 nonproduction bundle from the standard
-  `macos-15` runner. The branch trial must prove the full lifecycle before this
-  replaces the frozen `348eed7` baseline.
+  `macos-15` runner. The full hosted lifecycle passed. The composed private
+  release used the authorized local builder fallback, not a paid hosted run.
+- Physical runtime evidence belongs to public `251eff2` and private `74e1389`.
+  Later workflow-only commits have separate remote checks. Do not relabel
+  runtime receipts with later commit identities.
+- Final fresh-pool replay passed root and six additional installs, runtime and
+  eleven recording-only scenarios. Certification reused genuine source and
+  physical proof and reproduced digest
+  `cbc7f795cb5fe05602fc3764acd1b2a851af2cfd65ea71e65c6fea03bdf47f02`.
+  Fresh temporary target and payloads are cleaned up; production stayed healthy.
+- Stage keys include absolute import/context paths, so fresh replay keys need
+  not equal historical keys. Normal certification verifies imported assets
+  and retained attestations without rewriting either set of stage keys.
+  External target paths must be checked on their bound host.
 
 ### Scope and acceptance criteria
 
@@ -352,11 +353,11 @@ archive-based proof regeneration are pending.
 - `E2E_RESOURCE_MEASURE=1` belongs only to the top-level hosted run. It is
   removed from child environments so nested pipeline regressions inherit the
   host profile without recursively running the sampler.
-- The existing `build` and bundle export commands form the draft developer
-  producer. The existing rehearsal action forms the development consumer.
-  Private code owns target provisioning and SSH transport. No new public
-  deployment path is needed. The development consumer runs selected integration
-  checks through the installed artifact boundary before ordinary CI.
+- Ordinary DEV uses incremental checks and the runtime-only build in a mutable
+  source checkout. Private `scripts/openclaw-development-loop.sh` transfers
+  built output and runs selected installed assertions. It does not require
+  bundle export, rehearsal or certification for each edit. The `build` and
+  bundle commands remain available for release work, not as DEV prerequisites.
 - `E2E_DEV_BUILD_TIMEOUT_MS` is accepted only by `build`, defaults to the
   release budget when unset, and may range from 1,800,000 through 7,200,000
   milliseconds. Its resolved value is bound to the build proof and provider
@@ -451,7 +452,7 @@ archive-based proof regeneration are pending.
   that need the new split.
 - [x] Add the hosted ARM resource profile, per-command process-group
   measurements, bounded public evidence, and arm64 artifact labeling.
-- [ ] Prove the ordinary runtime-only build and selected integration checks on
+- [x] Prove the ordinary runtime-only build and selected integration checks on
   the dedicated development target within the five-minute warm-edit budget.
 - [x] Add a bounded draft-only build timeout override without changing the
   release timeout.
@@ -530,9 +531,10 @@ archive-based proof regeneration are pending.
 - A real small core edit measured 39.92 seconds for incremental core
   typechecking, 24.54 seconds for its focused unit file, and 36.19 seconds for
   `qaRuntime`, 100.65 seconds total.
-- Private validation must add sync, restart, and selected integration timing to
-  each local result and keep the warm edit-to-integration loop within five
-  minutes. The five-minute value is an acceptance measurement, not a timeout.
+- Final private DEV validation includes sync, restart and installed assertions:
+  core edit-to-feedback is 188.03 seconds and plugin is 218.753 seconds.
+  Cold cache setup and dependency refresh are separate measurements. The
+  five-minute value is an acceptance measurement, not a timeout.
 - Backup tests prove exact capacity planning and exclusion, disjoint roots,
   writer stop/join ordering, timeout restart, interrupted capture resume,
   manifest and identity tamper rejection, actual isolated consumer checks,
@@ -572,24 +574,21 @@ archive-based proof regeneration are pending.
   `bc7b511efbcbf10ddb55ca35c2494a59072c8c77`. It completes the accumulated
   lifecycle, exports and retains the public ARM bundle, and retains the
   resource evidence.
-- Private owner must prove the combined ARM flow with the same commands before
-  coordinator integration.
+- The private owner completed the composed ARM source and physical target
+  lifecycle before coordinator integration. Plan 039 records the exact runtime
+  identities, coexistence qualification and final artifact-only replay.
 
 ### Rollout and rollback
 
-- Push coherent commits to PR #117 so public checks overlap implementation.
-- Do not merge or activate production from this session. Coordinator session
-  `972af1c7-a25d-46c6-8e49-cf5250d74b8b` owns the integration decision.
-- Public and private final builders use hosted ARM with the same resource
-  profile and receipt contract. Public workflows never consume private input.
-- The dedicated development instance may consume a draft bundle through the
-  existing reviewed transport and rehearsal path. Relevant installed and
-  integration checks pass there before ordinary CI submission. The independent
-  test target consumes the final hosted bundle. Neither can authorize
+- Public #117 and private #39 are merged with green post-merge checks.
+- Public release builds run on hosted ARM. The private composed release uses
+  the authorized local builder fallback under the same artifact contract.
+  Public workflows never consume private input.
+- Daily DEV transfers built runtime output without a release receipt. Release
+  TEST consumes a sealed bundle without source rebuilding. Neither authorizes
   production.
-- If hosted ARM cannot complete within measured capacity, the approved fallback
-  builds on a development Mac and transfers the sealed bundle to the
-  development instance only. It does not change production.
+- Local fallback builds on the development Mac and transfers sealed artifacts
+  to TEST. Production activation remains a separate authorized transaction.
 - A failed build or certification leaves terminal local evidence and no eligible
   receipt.
 - A failed rehearsal uses the existing activation recovery journal and restores
@@ -599,13 +598,15 @@ archive-based proof regeneration are pending.
   certification, deployment proof, recovery journal, or old candidate.
 - Production rollback keeps the plan 037 recovery contract and consumes the
   exact retained release assets.
-- Backup-only maintenance remains independent of release promotion. Do not run
-  capture, service stop, materialization against production paths, pointer
-  transition, or retirement until the private owner has composed the reviewed
-  target and the coordinator has the one precise live maintenance approval.
-  On any failure, leave the existing healthy reference and recovery untouched.
+- The authorized backup-only maintenance and exact old-copy disposal are
+  complete. No repeat capture, production stop, live restore or additional
+  deletion is authorized by this closeout. Preserve the current healthy backup.
 
 ### Review log
+
+The entries below record implementation history, not current blockers.
+Retained review and applicable cumulative gates are complete. Plan 039 is the
+canonical final operating state; production upgrade remains separately gated.
 
 - 2026-09-14: Retrospective owner and coordinator accepted the single public
   owner and script-owned lifecycle.
@@ -728,7 +729,7 @@ archive-based proof regeneration are pending.
 - [x] Run the branch-only hosted ARM trial and inspect its resource evidence.
 - [x] Resume the retained reviewer on the complete ARM profile diff.
 - [x] Review and publish the bounded draft-only timeout repair.
-- [ ] Complete retained review and the accumulated public gate for the final
+- [x] Complete retained review and the accumulated public gate for the final
   receipt-free backup capture and separate exact cleanup path.
 - [x] Complete focused validation and retained review for predecessor stop
   compatibility before another production backup attempt.
@@ -736,9 +737,11 @@ archive-based proof regeneration are pending.
   review.
 - [x] Preserve runtime and release-bundle permissions across caller umasks and
   complete focused validation and retained review.
-- [ ] Complete the applicable accumulated gate and private binding for the
+- [x] Complete the applicable accumulated gate and private binding for the
   backup PATH repair.
-- [ ] Complete FLOW-06 phase-owned input review and affected-only reuse proof.
+- [x] Complete FLOW-06 phase-owned input review and affected-only reuse proof.
 - [x] Complete compatibility, retained review, and accumulated gates for pnpm
   12.3.4 and the shared host-local store.
-- [ ] Hold merge and production activation for coordinator authorization.
+- [x] Complete coordinated integration and post-merge verification.
+- [ ] Production activation remains outside this completed delivery change
+  until separately authorized.

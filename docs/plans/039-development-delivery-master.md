@@ -1,633 +1,407 @@
 # Plan 039 - OpenClaw development and delivery
 
-**Status:** Implementation in progress
+**Status:** Complete; merged, verified and ready for feature development
 **Issue:** [#118](https://github.com/coletaylor788/puddles/issues/118)
-**Last updated:** 2026-09-19
+**Last updated:** 2026-09-26
 **Owner:** Delivery coordinator
 
 ## Human section
 
 ### Design
 
-Work in the two normal local repositories. Build incrementally and run unit
-tests on the development Mac, transfer the built output over SSH to DEV on the
-mini, and run integration tests there. The mini is a remote development server,
-not another release pipeline. Repeat until the tests pass and the change is
-ready, then push it to CI. Ordinary warm edits should give feedback in minutes.
-
-The short version:
+Build and test locally, transfer built output to a separate DEV instance, and
+check the changed behavior there. Ordinary edits do not need release receipts,
+frozen source or the complete release suite. Dependency changes use a separate
+refresh step. Warm edits should give feedback within five minutes.
 
 ```mermaid
 flowchart TD
-    Local["Code, build and unit test locally"]
-    Dev["Deploy to DEV and run integration tests"]
-    CI["CI builds and checks a release"]
-    Test["Install and validate that release in TEST"]
-    Prod["Deploy the same release to PROD"]
-
+    Local["Edit, incremental build and focused tests"]
+    Dev["Transfer output to DEV and check behavior"]
+    CI["Clean release build and accumulated checks"]
+    Test["Install exact artifacts in TEST"]
+    Prod["Separately approved production upgrade"]
     Local --> Dev
     Dev -->|Fix and retry| Local
-    Dev -->|Green| CI
-    CI -->|Pass| Test
-    Test -->|Fix and retry| Local
+    Dev -->|Ready| CI
+    CI --> Test
+    Test -->|Failure| Local
     Test -->|Pass, merge and approve| Prod
 ```
 
-After the push, CI does the clean build, complete checks and release packaging.
-Public CI runs independently; the private builder combines the selected public
-and private changes. The resulting release is installed without rebuilding in
-a separate TEST instance. After checks, review and source integration, the same
-release can go to PROD with the required authorization. Standard hosted ARM
-builders are preferred; the development Mac is the fallback when hosted
-capacity or the no-paid-hosting limit prevents that.
+Scripts own normal release stages, saved results and retries. Agents fix
+concrete failures rather than supervise each command. The builder produces
+immutable artifacts; TEST installs them without rebuilding. Reuse successful
+work only when its real inputs still match. A changed test, target or workflow
+must not silently inherit evidence for different inputs.
 
-DEV, TEST and PROD keep separate state and services. DEV needs ordinary compiler
-caches, a small deploy command and integration tests, not release receipts,
-certification or a recovery snapshot for every edit. CI tests the complete
-deployment and rollback mechanism in TEST. PROD keeps a healthy release and
-rolls back only on a real failure. Scripts run these steps without an agent
-watching them. Owned temporary files are cleaned up while useful release
-evidence, unbounded local diagnostic logs and protected recovery remain safe.
+DEV, TEST and PROD have separate writable state, ports, processes and runtime
+paths. Tests use recorded external effects and synthetic content. Production
+health checks are read-only. A successful test promotion is not permission to
+upgrade production. Public hosted CI is independent; the private composition
+uses the authorized local builder when hosted cost cannot be established.
+
+The backup captures current production without recursively including historical
+backups. Prove it through isolated restore and publish its reference before
+disposing of the old copy. An integrity mismatch must remain visible, not be
+fixed by rewriting a recorded hash. Actual maintained build consumers share a
+pinned package manager and per-machine content store. Older manual and live
+runtime dependencies stay protected until separately migrated.
 
 ### Status
 
-The complete public pipeline passes on a standard 7 GB hosted ARM runner,
-including the fresh build, accumulated regressions, offline installation and
-runtime scenarios. The ARM bundle is published and independent review is clear.
-Ordinary local builds now have measured results for runtime edits: about one
-minute fifteen seconds for a plugin change and one minute forty seconds for a
-small core change, including focused local tests and the runtime output build.
-Initial package-file selection now takes about 14 to 17 seconds after removing
-unnecessary archive creation from the DEV path. That repair is reviewed.
-Actual DEV startup and remote integration are still outstanding.
+Both implementation PRs are merged and their post-merge checks pass. The public
+job retained its ARM bundle and resource records. The final release candidate
+passed installation, all scenarios, deliberate failure and rollback, healthy
+activation, coexistence, certification and cleanup. DEV warm core and plugin
+feedback passed in about three minutes eight seconds and three minutes
+thirty-nine seconds, with cold setup recorded separately. Final artifact replay
+and certification pass on the mini after disposable test state removal. The
+fresh test state is cleaned up and production remains healthy and unchanged.
 
-The private composed release, actual DEV deployment and integration checks,
-complete physical release proof, and remaining workspace cleanup are not yet
-confirmed complete. Release testing needs a fresh normal build with corrected
-migration test data, rather than new tooling to recover an obsolete DEV run.
-File selection belongs to initial setup, not the normal built-output sync loop.
-Transfer, restart and remote integration are not included in the local timings.
-Neither delivery change is merged. Production remains unchanged.
+The new backup is proved and published. The requester explicitly authorized
+disposal of the integrity-drifted old copy; that exact cleanup is complete.
+Maintained DEV, release and TEST consumers use the shared pinned package store,
+and the final two-machine audit is complete. Optional host build-evidence
+retention work remains separate from delivery. The process is ready for feature
+development. Production upgrade and new paid execution remain separately gated.
 
 ## Agent section
 
 ### State
 
-- This is the coordinator-owned end-to-end scope and completion checklist for
-  issue #118. Do not replace it with the latest failure, commit, or worker
-  handoff. Keep both sections current when scope or status changes.
-- Plan 038, `docs/plans/038-artifact-delivery.md`, holds the public implementation
-  details on PR #117. It is not present on this document's initial base branch.
-  The deployment owner keeps host-specific configuration and the private
-  implementation plan in the private repository.
-- Plan 036 explains the existing native pipeline. Plan 037 holds the current
-  OpenClaw upgrade requirements. Their applicable migration, integration, and
-  rollback obligations remain in force.
-- The original request included the fast local development instance from the
-  start. It is not a future enhancement or another name for the release test.
-- The requester clarified that deployed integration tests, not only smoke or
-  manual inspection, must be green in DEV before the normal CI submission.
-  A high pass-through rate from CI to production is an outcome to measure,
-  not a reason to suppress an independent release check.
-- The requester clarified that DEV is a remote development server for the two
-  ordinary local workspaces. Release bundle creation, `build.json`, source
-  attestation, certification and per-edit Git identity are not prerequisites
-  for normal DEV deployment. Keep that machinery on the release path.
-- Public evidence checkpoint:
-  `f547621e6b6e3c24260c8530a7b9d2371ddc7c1f`, tree
-  `954b2e3e9b566ac7e350f140085dc0430a7a0022`. Hosted cumulative run
-  `35316103588` passes prepare, dependencies, the pinned root build, full
-  regressions, packaging, offline installation, runtime and nine scenarios
-  in about 27 minutes. CodeQL passes and the retained reviewer clears the
-  complete diff. This is actual hosted ARM evidence, not a lowered guard alone.
-- That run uses `macos-15`, 7,516,192,768 bytes of RAM and three CPUs.
-  The owner reports resource-v2 measurements over 107 commands:
-  3,467,526,144 bytes peak recursive/process-group-union RSS, at least 49 percent
-  free memory, zero swap, and at least 36,548,571,136 bytes free disk.
-  The run publishes `public-native-resources-35316103588-1` and a correctly
-  labeled `openclaw-public-arm64-build-*` bundle.
-- The draft build timeout repair is reviewed and focused-green at
-  `5945dc74b339dc6db16f2a87ae9bf94009b79f97`, tree
-  `2996dd2847b49bfbe8cce88ae39d0ab03d1751ec`; its cumulative and CodeQL hosted
-  checks also pass.
-  `E2E_DEV_BUILD_TIMEOUT_MS` accepts an integer from 1,800,000 through 7,200,000
-  only for `build`. A retained failed run can use the same `E2E_RUN_DIR` and
-  `node packages/e2e/bin/openclaw-test-env.mjs resume build` with the larger
-  bound. The actual producing bound remains in proof/provenance, and increasing
-  a later draft's requested allowance does not rebuild an unchanged success.
-- The retained local DEV run passes the actual root build in 2,031,493 ms
-  (33 minutes 51 seconds) under a 3,600,000 ms draft allowance. The timeout
-  repair is therefore exercised, not merely configured. This is a full
-  `pnpm build`, not a measured warm incremental edit. Preparation/dependency
-  reuse and no-op cache hits do not establish incremental compilation.
-  `ci`, `source-gate` and other commands reject the override and keep their
-  release policy. Unset it before those commands. Keep stage duration distinct
-  from overall run duration and preserve managed process-tree termination.
-- The private owner has reviewed and pushed the package-before-gate repair,
-  separating construction/sealing from certification tests. Its focused
-  regression passes without a previous gate invocation. The earlier run failed
-  before `build.json` and bundle publication, so the current API cannot adopt
-  its raw build-stage outputs under the changed private identity.
-- Preserve that failed run and its genuine evidence. Do not rewrite its
-  configuration, copy raw stage proofs, or relabel old output as a new attested
-  release. The private owner reports corrected comparisons show the package-only
-  repair leaves both candidate and root-build inputs unchanged. Its earlier
-  comparison omitted public patches after a probe import failed.
-- The public owner reports a runtime-changing plugin edit on the persistent
-  candidate workspace: recognize `mailto:` in
-  `extensions/imessage/src/normalize.ts` and recursively normalize its remainder.
-  The assertion is
-  `expect(normalizeIMessageMessagingTarget("mailto:User@Example.com")).toBe("user@example.com")`.
-  Extension typechecking takes 16.04 seconds, focused `normalize.test.ts`
-  passes 8/8 in 22.71 seconds, and `qaRuntime` takes 36.41 seconds.
-  The local total is 75.16 seconds. The private owner has this assertion for
-  remote DEV verification.
-  Small core edit: `pnpm tsgo:core` 39.92 seconds, focused test 24.54 seconds,
-  and `qaRuntime` 36.19 seconds, totaling 100.65 seconds locally.
-  These are local segments, not end-to-end DEV results.
-- The earlier 207.71-second plugin example added only an optional field in
-  `monitor/types.ts`. TypeScript erases it, so it does not prove changed emitted
-  runtime bytes. It measured typechecking, all 1,289 extension tests and runtime
-  building. The corrected example uses focused tests; these totals are not an
-  apples-to-apples speed comparison.
-- The maintained `qaRuntime` profile builds runtime output, plugin assets,
-  external plugin local output, postbuild files and stamps without release
-  declarations. Sync `dist/` for installed DEV, not source-checkout-only
-  `dist-runtime`. The private owner has the exact commands and owns the
-  remaining sync, restart and remote integration timings. Dependency, manifest,
-  lockfile or toolchain changes require bootstrap/dependency refresh rather
-  than this unchanged-dependency fast path.
-- The cold DEV inventory bottleneck was tar creation performed by
-  `npm pack --dry-run` after file selection, not a need for a larger timeout.
-  Public repair `c188fccdf5796e469be86e8b55b011adbe784675`, tree
-  `bc7b511efbcbf10ddb55ca35c2494a59072c8c77`, uses npm's exact bundled
-  packlist/Arborist selector for DEV. Actual candidate selection takes
-  13.9 to 16.6 seconds for 10,063 files. Synthetic npm parity and byte-identical
-  bundled-dependency runtime evidence pass; retained full-diff review is clear.
-  Hosted cumulative run `35482638315` passes on that exact source and completes
-  the accumulated lifecycle, ARM bundle export and retention, and resource
-  evidence retention. The release path is unchanged. Private has the API and
-  can resume actual bootstrap; the complete remote loop is not yet proven.
-- The private DEV implementation has retained review clearance at `9830b25`.
-  Its contract suite reports 68 passing tests and two intentional skips.
-  An independent 80 MiB, two-batch transport check with symlink and digest
-  verification passes and its test roots are cleaned. That is not bootstrap
-  proof. Resume actual DEV installation with the inventory repair, then restore
-  the runtime-changing benchmark and prove its assertion remotely.
-- The selected OpenClaw source is
-  `1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7` (`v2026.9.3`). The selected
-  candidate Node version is `26.1.0`; upstream pnpm is `12.3.4`. Do not silently
-  change the release or toolchain while changing the delivery topology.
-- Earlier private diagnosis passes retained-bundle import, offline install and
-  all 11 installed scenarios, but fails migration preflight before shutdown.
-  The corrected migration fixture now has a different manifest digest.
-  Artifact-only run `35476744042` on private `9830b25` and public `e6c9a25`
-  rejects that mismatch before import or shutdown. Neither retained successful
-  build binds the corrected manifest; neither failure proves rollback.
-- Stop artifact-only retries against those immutable receipts. The private
-  owner is adding a migration-first diagnostic regression. The public owner
-  confirms ordinary `ci` in the same maintained `E2E_RUN_DIR`, with
-  `E2E_STATE_MIGRATION_MANIFEST` pointing to the corrected file, is the supported
-  recovery path. Migration is excluded from `buildStageInputs`: matching actual
-  build inputs reuse the successful root stage while migration-bound
-  regressions, runtime proofs and receipts regenerate. A committed regression
-  verifies the root build count remains one after a manifest-byte change.
-- The only plausible surviving reuse candidate is a superseded DEV builder
-  bound to old configuration and source heads. The current private release
-  workflow has no maintained route from that producer to current TEST.
-  Coordinator decision: use a fresh normal release build under existing
-  resource and no-paid-hosting gates, rather than add a legacy-run adapter
-  solely to avoid this build. Preserve the old run and evidence. This does not
-  make ordinary DEV edits run release builds.
-- Retained bundle import cannot adopt builder stages or issue a receipt for
-  corrected migration bytes; it restores the old immutable identity and has
-  no migration body to recover. Never rewrite sealed hashes, copy stages into
-  another run, repurpose old configuration or infer missing manifest contents.
-- The missing source-gate retention defect is repaired in the public checkpoint.
-  The older retained regression record alone cannot recreate its missing source
-  attestation because the attestation also binds inventory and extension gate
-  identity. Refresh the required source gate without rebuilding unchanged
-  runtime inputs.
-- Approved historical cleanup is complete. It does not authorize new deletion
-  of global caches, unknown fixtures, application sessions, or recovery state.
-- The public owner owns shared code and public CI. The private owner owns
-  composition, concrete targets, the development command, and private CI.
-  The coordinator owns this checklist and exact cross-repository integration.
-  Keep the existing engineering owners and retained reviewers.
+- Public #117 merged as `042b73281b63bfc64df1f66d8779603a31380ca2`.
+  Private `coletaylor788/puddles-private#39` merged as
+  `75aa7a761b7644cd038d31544a11dc5b93b3d6a4`. The coordinator directly
+  verified both main SHAs. Private post-merge run `36261272335` and public
+  CodeQL run `36266233422` passed. Public Integration `36266234464` passed,
+  including cumulative checks, ARM bundle export/retention, resource retention
+  and post-job cleanup.
+- Final physical runtime proof belongs to public
+  `251eff260df41bdc50e70337ece9da17dcefd116`, private
+  `74e1389ecf8f1747b3f45f84c109c2655fb91cf6`, and upstream
+  `1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7`. Its build ID is
+  `bb5c4422fbb62c7716aa3041353e8547e9ab8908a8089f7c6904ad16231eb1c6`.
+  Later workflow-only changes need their own workflow checks, not relabelled
+  runtime receipts. The release owner owns exact input equivalence.
+- The release owner reports the complete MINI consumer passed artifact import,
+  six additional installs, installed runtime, all 11 scenarios, deliberate CAS
+  failure and rollback, healthy activation, target proof, certification,
+  production-eligible promotion, final rollback and TEST cleanup.
+- Integrated coexistence was captured at `2026-09-21T14:06:06.152Z`.
+  The DEV owner verified the snapshot digest
+  `22e269f9ef4d2a5aeefe161bdef7f09cd53933e5b8ffe66c0e019e8125a91c6b`.
+  It proves actual concurrent listeners, PIDs, HTTP 200 and path separation.
+  TEST service identity uses `recording-launchctl`, not host launchd
+  registration. It does not claim a DEV redeploy during an active TEST workload.
+- Final DEV packet proves plugin edit-to-feedback `218.753` seconds
+  (`211.10` command seconds), 1,290 tests in 59 files, changed installed
+  `mailto:` normalization, three configured plugins and zero external calls.
+  Retained core edit-to-feedback is `188.03` seconds (`170.95` command).
+  The coordinator directly read the final packet. Owned benchmark changes and
+  deployed baseline were restored; no production changes occurred.
+- Cold extension cache priming took `121.16` seconds. A stale dependency
+  identity correctly refused activation; baseline bootstrap then took
+  `176.60` seconds. Neither is counted as warm success. A longer deadline,
+  no-op build or erased TypeScript edit is not a substitute for changed output.
+- The audit owner verified actual maintained HOST DEV/release metadata and
+  frozen MINI consumer proof for pnpm `12.3.4` and the maintained store's `v11`
+  format. Primary/manual repositories and production native-module mappings
+  still use protected legacy installations. No old store is proven disposable.
+- Backup capture, isolated materialization and publication completed with
+  `previousRecovery:null` and a new reference with `previousTransaction:null`.
+  Exact private identities remain in the maintenance packet. The owner
+  reverified the replacement before and after September 26 old-copy disposal.
+- The original retirement command correctly refused drifted legacy state and
+  package hashes. Public verified the digest algorithm was unchanged since
+  before capture. After the requester explicitly accepted disposal, the audit
+  owner used a separately scoped, locked one-off procedure. Original receipt,
+  pointer, journal and integrity diagnosis were preserved. Only the exact old
+  recovery and obsolete pointer were removed; no digests were rewritten.
+- Disposal reclaimed `18,897,031,168` bytes, not the larger allocated directory
+  size. Final audit snapshots show roughly 25.06 GiB free on HOST and 75.59 GiB
+  on MINI. HOST has substantial retained agent/build evidence. Permission gaps
+  and APFS sharing prevent treating directory sums as unique physical usage.
+  No new broad cleanup is authorized.
+- User approval permits free/included Actions under existing billing controls.
+  Do not enable overages, add payment methods or buy runners. A quota rejection
+  is a reported blocker, not permission to change billing. Production upgrade
+  is outside this delivery closeout.
+- Retention reconciliation distinguishes managed automation from historical
+  host accumulation. Hosted Actions scratch is ephemeral, and artifacts are
+  retained before job teardown. Persistent HOST runs do not inherit that
+  cleanup. Shared persistent dependency stores remain protected; a pinned
+  manager and capacity preflight are not a numerical cache-size bound.
+- Failure reproduction, fresh import, certification and TEST cleanup passed.
+  The later STORE-03 preflight incorrectly checked MINI-bound absolute paths
+  on HOST. The reported missing-prerequisite result is withdrawn. Read-only
+  MINI verification found the exact browser archive and desired Node at their
+  stable target-recorded paths; TEST root is absent. Original cleanup removed
+  TEST and derived consumer payloads, not those stable prerequisites.
+- Required browser SHA is
+  `d81f0c9727bb1c0c9d8d6efa201eb54411c35cb396306cbaec8599cff8d07b7b`;
+  required Node SHA is
+  `6bd6a7170425df3bd684be028f04294503abbc40f5508e34e87b2606f1405534`.
+  The withdrawn wrong-host terminal packet digest is
+  `db7ff072d0d4dc4458d3bca4fef2a29fe48eaee12a06b8e35e8c7ca29d1f8660`.
+  The browser is a real prebuilt Linux/arm64 image; the recording Docker adapter
+  prevents external mutations during TEST while preserving archive checks.
+  The pool never registered or deleted the stable external target assets.
+  Their absence from a pool object is not evidence of destructive cleanup.
+- The release coordinator completed fresh-pool import, target-only execution
+  and certification on MINI using existing exact artifacts, seed, target,
+  source gate and physical target proof, with a 25 GiB reserve.
+  Fresh import, root and six additional installs, runtime and all
+  11 recording-only scenarios passed. Build, target, adapter, seed and all 85
+  adapter-input hashes match the retained evidence.
+- Fresh stage keys differ because artifact/provenance and command/fixture
+  environment paths name the fresh run. Do not rewrite keys or pretend these
+  are identical stage executions. The maintained `certifyRelease` command
+  verifies imported build assets and genuine retained source/physical proof;
+  it does not compare fresh-run stage keys with historical keys. Requiring that
+  comparison was an unnecessary coordinator gate and has been removed.
+  Certification reuses the original physical proof unchanged, while the fresh
+  target-only replay remains distinct evidence. It is not a second physical
+  activation. The unchanged certification command passed with the original
+  certification digest
+  `cbc7f795cb5fe05602fc3764acd1b2a851af2cfd65ea71e65c6fea03bdf47f02`.
+  Eligibility remains `certified-not-production`.
+- Final STORE-03 packet digest is
+  `512df52fdc4b1d444b2f5f94bdd86998bd90b3caf9a2601ce27739c0a18965b4`,
+  independently checked by the coordinator on MINI. Fresh TEST root, imported
+  payload, installed payloads and fresh pool are absent. Compact stage receipts,
+  installed proof, logs and certification remain. Original protected inputs
+  remain intact. The executor's read-only production check returned HTTP 200
+  with unchanged PID. No source/browser build, physical activation, promotion,
+  paid execution or production action occurred.
+- A proposed generic target-input retention object was paused and not landed.
+  It is not part of the merged behavior or a requirement for the accepted
+  replay. New feature work must not treat that proposal as an active dependency.
 
 ### Scope and acceptance criteria
 
-- Deliver a usable local edit/build/unit-test/SSH-deploy/integration-test loop
-  for a distinct DEV target. It must accept development drafts without
-  release receipts, frozen run identity, certification or the full accumulated
-  gate after every edit. Relevant local unit and deployed integration checks
-  must pass before normal CI submission.
-- Prove that real ordinary warm edits, not just unchanged reruns, give feedback
-  within minutes. Use a working budget of at most five minutes from a
-  representative small edit through compilation, focused unit tests, output
-  transfer, DEV restart and relevant integration checks. Record cold bootstrap
-  and broad dependency/SDK changes separately; they cannot justify a full root
-  build on every ordinary edit. This performance budget is an acceptance
-  measurement, not a new process-killing timeout.
-- Keep DEV, TEST, and PROD positively disjoint in writable state, runtime
-  installation, configuration, workspace, sessions, indexes, ports, processes,
-  and service identity. Do not rely only on different labels.
-- Validate public and private release builds on real standard 7 GB macOS ARM
-  runners, or record the measured blocker and operate the authorized builder
-  fallback. Do not claim that the requested hosted profile works if only the
-  fallback works.
-- Preserve the entire accumulated regression pool. Lower resource use with
-  supported concurrency and workspace reuse, not missing tests or fabricated
-  proof records.
-- Separate release building from target installation. The normal target
-  consumer must need neither an OpenClaw checkout nor compiler/dependency
-  installation. Build bundles must be useful for diagnosis before certification.
-- Bind the composed source, toolchain, platform, runtime archives, additional
-  runtimes, prepared assets, migration, browser, destination mappings, test
-  inventory, and required target evidence through the maintained receipt types.
-- Keep public CI independent and credential-free. Keep private source, bundles,
-  configuration, raw diagnostics, and local migration inputs out of public
-  artifacts. Hosted builds must not depend on the target host's live home.
-- Use explicit recording adapters for automated external writes and synthetic
-  content for assertions. Required unavailable read-only host checks fail
-  explicitly. No live-message fallback is allowed.
-- Prove installation and the real deployment transaction on TEST, including
-  startup, post-snapshot configuration failure, automatic recovery, and
-  preservation of the intended effective job set.
-- Keep the newest two successful bundles with required proof closure and one
-  failed reproduction, plus all active, paused, pinned, deployed, recovery, and
-  debug dependencies. Keep ordinary local diagnostic logs without expiry or
-  byte caps, separate from full homes, databases, recordings, and workspaces.
-- Reclaim only explicitly owned disposable state. Cover source checkouts and
-  scratch space as well as the artifact pool. Preserve required evidence before
-  deleting its producer state, and measure actual free space rather than assume
-  directory footprint equals physical reclaim.
-- Scripts drive and resume normal stages to a durable terminal result. A
-  failure stops with actionable diagnostics. Agents repair defects rather than
-  advance each stage, poll unchanged jobs, or rerun unchanged failures.
-- Integrate the reviewed compatible source and verify the default-branch result.
-  Process completion must not stop at green local tests or open pull requests.
-  Actual production activation remains a distinct authorized operation.
+- Deliver normal mutable local development with incremental compilation,
+  relevant tests, SSH transfer and installed DEV assertions. Keep warm core
+  and plugin edits below 300 seconds; record cold preparation separately.
+- Keep DEV, TEST and PROD disjoint in writable state and process identity.
+  No automated real messages or external writes without recording adapters.
+- Preserve the cumulative public/package/patch/scenario pool. Required
+  real-candidate checks fail explicitly when inputs are absent.
+- Build once, install exact complete artifacts offline, and prove healthy
+  activation plus the intended post-snapshot mismatch and rollback.
+- Support exact-input reuse without copying or rewriting producer receipts.
+  Scripts advance normal stages and preserve actionable terminal failures.
+- Complete current-state backup replacement, actual maintained pnpm consumer
+  verification and the final audit. Do not delete legitimate manual/runtime
+  stores just to claim a single directory remains.
+- Land reviewed compatible source and verify post-merge behavior. Report
+  remaining retention limitations honestly; no unapproved production upgrade.
 
 ### Architecture and decisions
 
-The following diagram is the target workflow, not a claim that every path is
-already operational. Failures return to the relevant focused loop. Unchanged
-artifacts and genuine evidence remain reusable.
-
 ```mermaid
 flowchart TD
-    Edit["Edit on development Mac"] --> Local["Incremental build and local unit tests"]
-    Local --> Dev["SSH built output to DEV on target host"]
-    Dev --> Smoke["Relevant deployed integration tests and smoke checks"]
-    Smoke --> Ready{"Local unit and deployed integration checks green?"}
-    Ready -->|No| Edit
-    Ready -->|Yes| Push["Push exact candidate refs and update PRs"]
-
-    Push --> Public["Public ARM CI: public build and regression gates"]
-    Push --> Private["Private ARM builder: composed runtime and source gates"]
-    Fallback["Development Mac builder fallback"] -.-> Private
-    Private --> Bundle["Immutable ARM bundle and source evidence"]
-    Bundle --> Test["TEST: artifact-only install, scenarios, deployment and rollback regression"]
-
-    Public --> Gates{"Checks, review and release proofs pass?"}
-    Test --> Gates
-    Gates -->|No| Diagnose["Diagnose failed stage and reuse valid evidence"]
-    Diagnose --> Edit
-    Gates -->|Yes| Integrate["Integrate exact source, certify and promote"]
-    Integrate --> Authorize["Separate production authorization"]
-    Authorize --> Prod["PROD installs the tested artifacts without rebuilding"]
-    Prod --> Health{"Required read-only health checks pass?"}
-    Health -->|Yes| Keep["Keep new release running"]
-    Health -->|No| Restore["Restore previous runtime and state"]
-    Restore --> Diagnose
+    Edit["Mutable local developer source"] --> Dev["Build, transfer and assert in DEV"]
+    Dev --> Builder["Public hosted or private local builder"]
+    Builder --> Bundle["Immutable artifacts and source evidence"]
+    Bundle --> Install["Offline TEST installation"]
+    Install --> Rehearse["Scenarios, activation and rollback"]
+    Rehearse --> Proof["Target proof and certification"]
+    Proof --> Merge["Reviewed source integration"]
+    Merge --> Approval["Separate production authorization"]
+    Approval --> Production["Exact artifact activation"]
+    Rehearse -->|Failure| Repair["Focused repair and input-based invalidation"]
+    Repair --> Builder
 ```
 
-- DEV is mutable and explicitly non-production-eligible. TEST evaluates frozen
-  artifacts. DEV activity must not overwrite an in-flight TEST installation or
-  its evidence. Neither is the production service with a different port.
-- Normal DEV uses existing local compiler/component commands and a thin SSH
-  deploy-and-test command. Reuse low-level path, transfer and service helpers
-  where useful, but do not force release import, rehearsal, certification or
-  activation receipt prerequisites onto this command.
-- Sync only required built output and runtime dependencies into positively owned
-  DEV paths. Handle removed files and dependency changes without stale code,
-  refuse production targets, and restart only the DEV service. Do not snapshot
-  full state or re-create the workspace for every edit.
-- Use focused checks while editing and a defined local integration selection
-  before submitting a candidate to CI. Cover the affected installation,
-  configuration, migration, restart and interaction boundaries. Reuse unchanged
-  components rather than duplicate the entire CI suite on every edit.
-- Prefer maintained upstream incremental/watch/component build commands and
-  persistent caches. Identify the real source and dependent-output closure for
-  a change. Keep required type checking and stale-output detection, but do not
-  regenerate every release asset and SDK declaration for a leaf change that
-  does not require it. Do not add a general build framework.
-- Separate ordinary mutable DEV compilation from frozen release runs. Let the
-  maintained compiler and package manager handle incremental invalidation;
-  do not design a new proof-based cache system for local iteration. Verify
-  changed behavior in integration tests. Clean CI builds and final
-  source/target attestations remain independent.
-- Do not claim a DEV sync proves final package completeness. CI performs the
-  clean packaging/offline-install check. When packaging, dependency or migration
-  behavior changes, include the corresponding focused local checks before CI;
-  do not impose full release packaging on every ordinary source edit.
-- Keep CI's fresh checkout, pinned tools, full accumulated regressions and
-  independent artifact verification. A high CI-to-production pass-through rate
-  is desirable, not a guarantee or permission to bypass a failure. Hosted-only
-  behavior, such as the actual 7 GB runner profile, may require a bounded hosted
-  experiment; distinguish that experiment from release certification.
-- The hosted target profile is macOS ARM with 7 GB advertised RAM. The previous
-  Intel choice followed a hardcoded 8 GiB total-memory preflight, not a recorded
-  out-of-memory measurement. The measured `hosted-arm` profile requires macOS
-  arm64 and at least 6 GiB reported RAM, uses the pinned compiler's host-aware
-  memory budget instead of forcing an 8 GiB Node heap, and runs mapped
-  OpenClaw tests with one worker. Its complete hosted run establishes public
-  support. Continue measuring the private composition rather than assume it
-  has the same resource footprint.
-- Do not confuse a Node heap limit with total process-tree memory. Record
-  supported worker/concurrency choices and bind relevant environment inputs
-  into proof reuse.
-- The private builder still applies its root patches before building. Moving
-  public CI to ARM does not make its unmodified root archive interchangeable
-  with the composed private release.
-- Prefer an outbound artifact download by the existing private target runner.
-  Do not expose a new inbound service or distribute target SSH credentials to
-  public CI. The local builder fallback uses the reviewed SSH path and an
-  explicit nonproduction target.
-- Hosted private builds use only verified included allowance with enforceable
-  no-overage controls unless the requester changes the cost decision. Do not
-  move private inputs into public CI to avoid billing.
-- Public obsolete PR checks may cancel. Deployment transactions must not share
-  that cancellation policy. Serialize target mutation using maintained locks.
-- Rehearsal must first satisfy normal migration preconditions. Inject only the
-  intended configuration mismatch for the failure case. Rejection before
-  shutdown does not prove stopped-state recovery.
-- Production rollback is conditional on an actual deployment or required
-  post-deployment health failure. Deliberate failure remains a TEST regression,
-  not a step that undoes every healthy production deployment.
-- Keep capacity policy stage-specific and evidence-based. A historical
-  free-space measurement is not a new minimum. A lower-memory builder trial
-  does not authorize reducing unrelated disk or production safety checks.
-- Keep build deadlines bounded and specific to the execution profile. The
-  successful hosted deadline is not evidence that the same deadline fits a
-  shared development host. Validate any local override, preserve termination
-  and failure diagnostics, and prove the actual local build and integration
-  loop rather than only accepting a configuration value.
-- Global package caches, unknown legacy fixtures, and sealed production
-  recovery directories remain outside automatic collection. Dedicated external
-  storage is a possible later capacity choice, not an approved purchase or a
-  prerequisite added to this plan.
+- Use maintained compiler commands for DEV, not release-proof machinery.
+  A lock/dependency change requires refresh rather than stale runtime transfer.
+- The selected upstream remains `1391f7c`; build tooling is Node `26.1.0`,
+  Corepack `0.36.0`, pnpm `12.3.4`. Private patches modify the root runtime,
+  so an unmodified public archive is not the composed private build.
+- Public hosted ARM is measured. Private deterministic build uses the
+  authorized local fallback; private Linux contract CI is not evidence of a
+  private hosted ARM build. TEST is a real native process with isolated
+  writable state, not a security sandbox.
+- Phase-owned command inputs and stable environment identities prevent a
+  gate-only edit from unnecessarily invalidating the root build. Artifact
+  permission preservation must work under restrictive umasks.
+- Target paths must refer to the destination, not builder placeholders.
+  Validate baseline and mutation with the installed plugin context. A
+  schema-invalid mutation is not proof of the intended CAS failure.
+- Retain two useful successful bundles, a failed reproduction and all pinned,
+  active and recovery dependencies. Host historical evidence cleanup requires
+  explicit ownership/reference classification; zero open handles is insufficient.
 
 ### Implementation
 
-Stable checklist IDs below identify completion obligations. Component plans
-hold code-level detail and link back to these IDs rather than create a competing
-end-to-end checklist.
+Existing owners remain responsible; no new handoff chain is needed.
 
-| Workstream | Owner | Dependencies | Next required outcome |
-| --- | --- | --- | --- |
-| PLAN | Coordinator | Requester decisions | Versioned full scope, diagram, owners and checklist |
-| DEV | Public supported build commands and private SSH/test command | Existing compiler outputs and isolated DEV service | Measured warm plugin/core edits and remote integration within the working budget |
-| ARM | Public and private | Public profile proven; private composition and cost boundary remain | Complete private builder proof or explicit measured fallback |
-| FLOW | Public and private | ARM profile, receipt interfaces | Automated builder-to-artifact-consumer handoff |
-| TEST | Private | Valid synthetic seed and imported bundle | Healthy deployment and intended stopped-state rollback |
-| STORE | Public and private | Ownership and reference records | Automatic complete evidence retention and scratch cleanup |
-| LAND | Coordinator and both owners | Required final proofs and review | Exact compatible source merged and verified |
-| PROD | Deployment owner | LAND and separate authorization | Exact-artifact activation with read-only health and recovery |
+| Area | Owner | Delivery surface |
+| --- | --- | --- |
+| Public pipeline and hosted CI | Public implementation owner | `packages/e2e/`, `.github/workflows/integration.yml`, Plan 038 |
+| Private composition and targets | Private implementation owner | Private Plan 037 and release/development scripts |
+| Release, TEST and integration | Release coordinator | Exact source/artifact/target evidence and PR landing |
+| DEV acceptance | Retained DEV owner | Final core/plugin packets and command handoff |
+| Consumer closure and audit | Retained audit owner | Actual metadata, disposal evidence and private audit |
+| Overall record | Parent coordinator | This plan and #118 |
 
-Public implementation surfaces include
-`packages/e2e/bin/openclaw-test-env.mjs`,
-`packages/e2e/bin/openclaw-release-bundle.mjs`,
-`packages/e2e/bin/openclaw-release.mjs`,
-`packages/e2e/bin/openclaw-rehearse.mjs`,
-`packages/e2e/bin/openclaw-artifact-retention.mjs`, and
-`.github/workflows/integration.yml`. Private target definitions, artifact
-transport, CI composition, and wrapper details stay in the private plan.
+Public entrypoint is `packages/e2e/bin/openclaw-test-env.mjs`; documented
+contracts and commands are in `packages/e2e/README.md`. Private daily entrypoint
+is `scripts/openclaw-development-loop.sh`. Its `deploy core` and `deploy plugin`
+commands need prepared composed source and the pinned environment, not a release
+receipt. `status`, `start`, `stop`, `reset` and `bootstrap` handle lifecycle and
+dependency refresh. Keep machine-specific environment values in private local
+configuration and evidence, not this public plan.
 
-Record the actual verified developer command, its relevant unit/integration
-test selection, and operating instructions in component documentation when DEV
-is proven. A diagram or unexecuted command example does not close that item.
-Keep shell automation responsible for command execution and durable state; do
-not add model calls to CI.
+Private release builder is `node scripts/run-private-openclaw-release.mjs`;
+artifact-only consumer is
+`node scripts/run-private-openclaw-artifact-consumer.mjs`. Both require their
+documented reviewed environment. The private
+`.github/workflows/private-openclaw-release.yml` is manual/callable, not an
+automatic production deploy.
+
+The private wrapper at `docs/openclaw-setup/patches/apply-and-deploy.sh` accepts
+environment inputs and no positional arguments. Set absolute
+`OPENCLAW_CANDIDATE_RECEIPT`, `OPENCLAW_DEPLOY_TARGET` and
+`PUDDLES_NATIVE_ROOT`; select `OPENCLAW_DEPLOY_ACTION=rehearse` for rehearsal.
+Activation remains separately authorized. Recovery/rollback also require
+absolute `OPENCLAW_RECOVERY_DIR`. For approved remote execution, set
+`MINI_HOST`, absolute `PUDDLES_REMOTE_ROOT` and absolute `PUDDLES_REMOTE_NODE`.
+Unset `MINI_HOST` means local execution.
+
+Private main retires the old production build/snapshot writer. The wrapper
+delegates once to public `openclaw-activate.mjs` or `openclaw-rehearse.mjs`;
+legacy arguments fail before commands or snapshots. The retained
+`native-deployment-wrapper.test.mjs` regression rejects old snapshot helpers,
+package installs, pnpm and git-worktree operations in that wrapper. A normal
+release rebuild is never hidden inside the stopped-service transaction.
 
 ### Validation
 
-- During repair, run the smallest regression that exercises the failing
-  boundary. A package-level build is not a substitute for a failing root
-  declaration build. A preflight rejection is not a rollback test.
-- Use `node packages/e2e/bin/openclaw-test-env.mjs ci` for the final accumulated
-  lifecycle on the exact candidate and selected profile. Do not remove prior
-  package, patch, or runtime targets to make a smaller runner pass.
-- Demonstrate the public profile on an actual 7 GB hosted ARM runner. Capture
-  peak process-tree memory, pressure, free-disk minimum, durations, architecture,
-  toolchain, selected concurrency and terminal outcome.
-- Run the private combined build on its selected builder with no dependency on
-  live target state. Retain its genuine source-gate attestation and regression
-  proof with the bundle.
-- Build a local draft and run unit tests on the development host. Deploy the
-  built output and required runtime files to DEV over SSH and pass the relevant
-  integration and smoke checks before normal CI submission. Demonstrate that
-  the DEV command refuses production targets and cannot issue release approval.
-  Verify DEV, TEST and PROD disjointness and recording-only automated effects.
-- Import the release in a separate target layout without builder source or
-  development dependencies. Verify complete runtime, prepared-file, migration,
-  browser, interpreter and destination bindings.
-- Repair and test the synthetic fixture's job/revision mismatch without
-  weakening migration guards. Then prove both healthy deployment and a
-  configuration failure after snapshot followed by actual automatic recovery.
-- Delete disposable producer state in an owned regression fixture, re-import
-  its retained bundle, recover the genuine source evidence, and certify against
-  matching unchanged target evidence. Check two retained builds and collection
-  of superseded gates and an evicted third build.
-- Exercise cleanup through actual producer and terminal hooks, including
-  failures and interrupted cleanup. Keep active/pinned references, diagnostics,
-  protected recovery and unknown paths intact.
-- Demonstrate a repeated unchanged run reusing expensive successful stages.
-  Record stage invalidation reasons for source, tests, tooling, environment,
-  artifact or target changes. Documentation-only changes must not invent a
-  reason to rebuild unchanged runtime bytes.
-- Record local edit-to-integration-feedback time and failures first discovered
-  in CI versus DEV. Use that evidence to improve the inner loop without
-  inventing an unapproved pass-rate target or weakening release checks.
-- Benchmark cold bootstrap, a warm unchanged run, a real small plugin edit,
-  and a real small core edit separately. Record compilation, focused tests,
-  output staging, transfer, restart and integration durations. The ordinary
-  warm edit cases must meet the working five-minute end-to-end budget before
-  DEV performance is accepted. A no-op hit or a longer build timeout cannot
-  substitute for these cases.
-- Prove changed code actually reaches the running DEV instance and the relevant
-  integration assertions. Include dependency/type changes that must invalidate
-  cached outputs and a packaging-only change that must not recompile an
-  unchanged root. Do not optimize by silently testing an old binary.
-- Require actionable command-level failure evidence without exposing private
-  payloads. Verify normal stage transitions need no agent intervention and an
-  unchanged failure does not create an automatic retry loop.
-- Preserve the same independent reviewers through meaningful changes.
-  Refresh affected proofs and final gates, then verify exact remote heads,
-  required checks and default-branch integration.
+- Required accumulated command:
+  `node packages/e2e/bin/openclaw-test-env.mjs ci`.
+  Use focused regressions while repairing; run applicable final accumulated
+  checks on the coherent candidate. Preserve old regression targets.
+- Public hosted proof includes runs `35316103588` and `35482638315`;
+  exact pre-merge Integration `36264365344` passed on `6a66dab`.
+  Private pre-merge contract run `36261202704` passed on `4996f269`.
+- Runtime/TEST proof remains bound to `251eff2`/`74e1389`. Release
+  promotion eligibility is not a production activation. Final TEST cleanup
+  removes its listener and target while preserving compact proof.
+- Final DEV plugin proof demonstrates emitted behavior before and after the
+  edit, real transfer and installed assertion. Core and plugin baselines are
+  restored afterward. Timing phases are qualified, not summed into false
+  precision.
+- Backup proof uses the maintained restore consumer in separate non-delivering
+  destinations. September 26 disposal preserved fresh replacement identity,
+  production health and all package stores.
+- Final consumer audit distinguishes actual commands and installed metadata
+  from isolated install tests. Legacy primary/runtime exceptions remain
+  explicit. Final filesystem audit records denied paths, sparse allocations,
+  shared storage and bounded-scan limits.
 
 ### Rollout and rollback
 
-Keep the currently healthy production runtime and its protected recovery.
-Existing process and dev/test work does not authorize a production upgrade.
-Do not retire recovery tooling, pinned interpreters or referenced assets while
-they remain needed by that recovery.
+The implementation PRs are merged and post-merge checks pass on verified
+default-branch identities. Artifact replay after disposable TEST state removal
+passed on the MINI-bound target with exact stable external inputs. Certification
+reused genuine retained physical proof, not a second activation. Do not rebuild
+unchanged runtime code merely to attach a new commit name.
 
-Finish focused repairs with retained evidence, validate the selected ARM builder
-profile, prove the separate DEV loop and release TEST path, then integrate the
-reviewed compatible source. A fallback must be documented as a fallback, not
-reported as successful hosted ARM support.
+DEV and TEST are accepted for feature development. Start DEV on demand through
+the maintained command. TEST is temporary and cleaned after release rehearsal.
+Production remains on the existing release; activation requires separate
+authorization and the configured exact-artifact deployment wrapper.
 
-After separate production authorization, consume the exact promoted artifacts
-through the maintained wrapper. Prepare recovery before destructive work. Do
-not build, fetch dependencies or merge source while the service is stopped.
-Check health without sending messages. On failure, restore the recorded old
-state/runtime/service and verify health, preserving both the original error
-and any recovery error.
+Backup replacement and explicitly approved old-copy disposal are finished.
+No repeat capture, service cycle or additional deletion is authorized. Optional
+host retention cleanup is a follow-up, not part of making feature development
+usable. A future large local build must still pass its capacity preflight.
 
 ### Review log
 
-The public owner reports retained complete-diff clearance for the measured
-hosted ARM profile, with its complete hosted gate green at the checkpoint in
-State. The same reviewer clears the draft-only build-timeout repair, its
-focused and hosted gates pass, and the resumed local root build succeeds.
-The private owner reports focused regression and retained review clearance for
-the package-phase correction and earlier artifact-only diagnosis. The public
-owner reports measured local build/test segments for real plugin and core edits
-using the maintained component commands. Remote deployment and integration
-timings remain outstanding. These results do not establish an operational fast
-DEV loop or final private release eligibility.
+Public and private owners retained independent reviewers through the concrete
+runtime, packaging, target and workflow repairs. The final runtime candidate
+passed the accumulated and physical TEST lifecycle. Workflow-only fixes have
+their own remote checks and do not fabricate a new runtime proof identity.
 
-This master document records agreed scope and available evidence. It does not
-grant new production, billing, deletion or external-message permissions. Owners
-must update the appropriate evidence and checklist together after meaningful
-changes. Do not launch a fresh reviewer merely to repeat bookkeeping.
+The coordinator directly verified merged PR/main identities, green post-merge
+checks, the final DEV packet and the terminal replay packet digest. Physical
+release, backup and cleanup results are attributed to the owning executors and
+their preserved records. Wrong-host and unnecessary raw-key comparisons were
+withdrawn, not turned into product changes or silently bypassed checks.
 
 ### Checklist
 
-A checked item establishes only the named milestone. It does not mean the
-entire feature is merged or deployed. Open items keep their owner and dependency
-visible. Close them with a concrete command, receipt, test result or integration
-record in the relevant component plan, not a status assertion alone.
+Stable IDs are preserved. Checked means the named obligation is established,
+not that a production upgrade occurred. Explicit retention follow-ups do not
+block the accepted daily DEV/release flow.
 
-**Scope and durable tracking**
-
-- [x] PLAN-01 (coordinator): Persist the original local DEV -> CI -> TEST -> PROD
-  intent, full diagram, decisions, owners and this checklist.
-- [ ] PLAN-02 (coordinator, in progress): Publish this plan, make issue #118
-  point to it, and link the component plans without duplicate master checklists.
-- [ ] PLAN-03 (coordinator): Reconcile every remaining item with component
-  evidence before declaring the process upgrade complete.
-
-**Fast development instance**
-
-- [ ] DEV-01 (private, in progress): Provision and verify a distinct DEV target,
-  separate from release TEST and PROD in every writable/process identity.
-- [ ] DEV-02 (private/public, in progress): Provide a maintained
-  incremental-build/unit-test command in the normal local workspaces and a
-  thin owned-output SSH deploy to DEV. Prove ordinary compiler reuse, correct
-  runtime dependency transfer and service restart without release prerequisites.
-- [ ] DEV-03 (private/public): Accept uncommitted local development normally.
-  Prove the DEV command refuses production targets and cannot issue production
-  approval; do not require a new draft receipt or attestation protocol.
-- [ ] DEV-04 (private): Pass the relevant deployed integration and smoke checks,
-  with recorded interactions and no live external writes or scheduled-message
-  fallback, before submitting the normal candidate to CI.
-- [ ] DEV-05 (private): Document start, stop, deploy, inspect and reset commands;
-  prove on-demand resource use and that DEV does not disturb a running TEST.
-- [ ] DEV-06 (both): Define the pre-CI unit/integration selection and benchmark
-  actual warm small plugin and core edits against the five-minute end-to-end
-  feedback budget. Record every phase, cold/no-op cases separately, and which
-  changed outputs ran. Run focused packaging checks when that behavior changes,
-  not full release packaging or the full CI suite after every local edit.
-
-**Hosted ARM and local fallback**
-
-- [x] ARM-01 (public): Measure the real root build and cumulative pipeline on a
-  standard 7 GB hosted ARM machine, including child processes. Run
-  `35316103588` supplies the resource evidence recorded in State.
-- [x] ARM-02 (public): Implement the documented resource/concurrency profile
-  with profile, nested-test propagation and resource-accounting regressions.
-  The measured full run and retained review clear this public profile.
-- [x] ARM-03 (public; ARM-01/02): Pass the full hosted ARM public gate and publish
-  correctly labeled ARM artifacts on the feature branch. The default-branch
-  switch remains part of LAND-02/03, not an already completed merge.
-- [ ] ARM-04 (private): Verify included hosted capacity and no-overage controls,
-  or record why the authorized local builder fallback is required.
-- [ ] ARM-05 (private; ARM-02/04): Build the exact composed release and run all
-  required source gates on the selected builder without live target inputs.
-- [ ] ARM-06 (private/public): Demonstrate the development-Mac builder fallback,
-  its own capacity preflight, and sealed-artifact transfer without target builds.
-
-**Artifact flow and unattended operation**
-
-- [x] FLOW-01 (public): Implement separate build, source-gate, bundle transport,
-  target proof, certification and promotion contracts on the feature branch.
-- [x] FLOW-02 (private): Demonstrate retained-bundle import, offline installation
-  and all installed scenarios without another OpenClaw source build.
-- [ ] FLOW-03 (private; ARM-05): Split builder and target-consumer jobs. The
-  target downloads and verifies a private bundle without source dependencies.
-- [ ] FLOW-04 (private/public): Prove complete runtime/asset/target bindings and
-  preservation of immutable proof inputs during transport.
-- [ ] FLOW-05 (both): Demonstrate one command/job advancing normal stages, durable
-  status and actionable failures without model-driven stage advancement.
-- [ ] FLOW-06 (both): Demonstrate no-op reuse and affected-only repair; preserve
-  the latest useful bundle when a later source or target gate fails.
-- [ ] FLOW-07 (private): Verify explicit trusted release triggers, least
-  permissions, no public/fork PR execution on the target, and safe concurrency.
-
-**Physical release proof**
-
-- [ ] TEST-01 (private, in progress): Correct the synthetic migration job and
-  revision mismatch, with a focused regression and unchanged safety guards.
-- [ ] TEST-02 (private; TEST-01): Prove a healthy complete deployment through the
-  real wrapper on the isolated TEST target.
-- [ ] TEST-03 (private; TEST-01): Reach the intended post-snapshot configuration
-  mismatch and prove automatic restoration and old-instance health.
-- [ ] TEST-04 (private/public): Bind fresh required source-gate evidence and the
-  exact installed/physical results to the final bundle and target inputs.
-- [ ] TEST-05 (private): Demonstrate target-only diagnosis/retry without rebuilding
-  unchanged artifacts and with safe reset/cleanup of owned TEST resources.
-
-**Retention and capacity**
-
-- [x] STORE-01 (public): Implement the owned pool, reference closure, dry-run/apply
-  cleanup and lifecycle hooks, keeping two successes and one failed reproduction.
-- [x] STORE-02 (public): Prove retention of genuine source-gate/regression
-  sidecars per retained build, including superseded and evicted-build collection.
-- [ ] STORE-03 (private/public): Prove complete failure reproduction and
-  re-import/certification after disposable state is removed in the final flow.
-- [ ] STORE-04 (private): Automatically reclaim owned Actions checkouts and
-  scratch state after preserving evidence, not only objects inside the pool.
-- [ ] STORE-05 (private/public): Bound CI-owned dependency cache growth and
-  preflight the upcoming stage before costly setup. Do not prune global caches.
-- [ ] STORE-06 (both): Measure steady-state and peak capacity after the builder
-  moves off the target; account for retained bundles, dev/test state and recovery.
-- [ ] STORE-07 (both): Demonstrate active/pinned/protected references, interrupted
-  cleanup, unbounded separate local diagnostics and no unknown-path deletion.
-
-**Landing and operating handoff**
-
-- [ ] LAND-01 (both): Complete retained full-diff review, committed regressions,
-  exact accumulated gates and required hosted checks for the final new profile.
-- [ ] LAND-02 (coordinator; DEV/ARM/FLOW/TEST/STORE): Verify exact compatible
-  public/private heads and merge the eligible changes, including legacy-writer
-  retirement. Do not stop at open pull requests.
-- [ ] LAND-03 (coordinator): Verify default-branch contents and post-landing
-  workflow behavior. Any runtime-input change requires affected proofs to refresh.
-- [ ] LAND-04 (both/coordinator): Publish the working developer commands, release
-  command, evidence locations, retry/cleanup procedure and clear remaining limits.
-- [ ] LAND-05 (coordinator): Reconcile this checklist and issue status, then
-  return the landed process for the requester's final validation.
-
-**Separately gated production operation**
-
-- [ ] PROD-01 (deployment owner, blocked on separate authorization): Confirm
-  production target, promoted exact artifacts and protected recovery prerequisites.
-- [ ] PROD-02 (deployment owner; PROD-01): Activate without rebuilding and verify
-  read-only health. Keep a healthy release; roll back only on a real failure.
-- [ ] PROD-03 (deployment owner): Record the resulting release/recovery identity.
-  Do not prune the previous protected recovery without its separate retention
-  decision. Process completion must explicitly report production as still held
-  when this authorization has not been given.
+- [x] PLAN-01: Persist scope, diagrams, owners and acceptance criteria.
+- [x] PLAN-02: Publish this plan and link #118 and component plans.
+- [x] PLAN-03: Reconcile final evidence, explicit operating limits and closeout.
+- [x] DEV-01: Separate DEV from TEST/PROD writable and process identities.
+- [x] DEV-02: Maintain incremental local build/test and SSH DEV deployment.
+- [x] DEV-03: Accept uncommitted edits and refuse production targets.
+- [x] DEV-04: Assert changed installed behavior with recording-only effects.
+- [x] DEV-05: Document lifecycle; verify concurrent service/path isolation.
+  Coexistence does not claim a DEV redeploy during an active TEST workload.
+- [x] DEV-06: Warm core 188.03s and plugin 218.753s; cold work separate.
+- [x] ARM-01: Measure public standard hosted ARM capacity.
+- [x] ARM-02: Regress resource and concurrency profile.
+- [x] ARM-03: Pass hosted public build and accumulated checks.
+- [x] ARM-04: Record authorized private local fallback and cost boundary.
+- [x] ARM-05: Build exact private composition and pass source gates.
+- [x] ARM-06: Transfer sealed local-builder output without target builds.
+- [x] FLOW-01: Separate build, source, target, certification and promotion.
+- [x] FLOW-02: Import retained bundle and install offline.
+- [x] FLOW-03: Split producer and target consumer execution.
+- [x] FLOW-04: Bind runtime, extra artifacts, assets and target evidence.
+- [x] FLOW-05: Execute scripted normal stages to durable terminal results.
+- [x] FLOW-06: Prove actual stage reuse and affected-input invalidation.
+- [x] FLOW-07: Verify trusted triggers and safe concurrency. Public PR/main and
+  private contract PR/main triggers ran; physical release is manual/callable,
+  serialized and never auto-cancelled. No public/fork PR runs on the target.
+- [x] TEST-01: Correct migration fixtures without weakening validation.
+- [x] TEST-02: Pass healthy real-wrapper activation on TEST.
+- [x] TEST-03: Prove intended post-snapshot CAS failure and rollback.
+- [x] TEST-04: Bind source and physical target proofs to promotion.
+- [x] TEST-05: Diagnose target-only failures and clean owned TEST state.
+- [x] STORE-01: Implement owned artifact pool and protected retention.
+- [x] STORE-02: Retain source-gate/regression sidecars through collection.
+- [x] STORE-03: Prove failure reproduction and fresh reimport/certification
+  after disposable state removal. Target-only replay passes all 11 scenarios;
+  certification reuses genuine retained physical proof without rewriting keys.
+- [x] STORE-04: Hosted Actions retained the bundle and resource evidence and
+  completed ephemeral checkout/scratch teardown. Persistent HOST runs are
+  excluded and no cleanup of them is claimed.
+- [x] STORE-05: Hosted caches are runner-local and end with ephemeral jobs;
+  maintained flows pin manager/store selection and preflight costly stages.
+  Persistent shared stores have no claimed size cap and must not be pruned.
+- [x] STORE-06: Hosted peak records and final HOST/MINI steady-state measurements
+  cover retained bundles, DEV/TEST state and recovery. APFS and permission
+  limits prevent a unique reclaim total; no unmeasured local peak is claimed.
+- [x] STORE-07: Regressions and retained evidence cover protected references,
+  interrupted activation/cleanup, separate local diagnostics and unknown-path
+  refusal. Classifying seven older HOST runs remains a separate optional task,
+  not an assertion that historical host accumulation has been collected.
+- [x] PNPM-01: Pin maintained public/private/upstream build workflows.
+- [x] PNPM-02: Verify actual maintained consumers use per-machine shared stores.
+- [x] PNPM-03: Pass frozen/offline installs and applicable final build gates.
+- [x] PNPM-04: Classify consumers and protected exceptions before retirement.
+  No store is currently proven disposable; no store deletion is claimed.
+- [x] BACKUP-01: Provide maintained backup-only recovery.
+- [x] BACKUP-02: Capture complete current runtime and required state/assets.
+- [x] BACKUP-03: Prove isolated restore through maintained consumer.
+- [x] BACKUP-04: Publish replacement before exact old-copy cleanup.
+- [x] BACKUP-05: Complete approved capture/unchanged-restart and health checks.
+- [x] BACKUP-06: Complete separately authorized drifted-copy disposal with evidence.
+- [x] LAND-01: Retained review, regressions and exact pre-merge checks pass.
+- [x] LAND-02: Merge public #117 and private #39.
+- [x] LAND-03: Verify both default-branch identities and passing post-merge checks.
+- [x] LAND-04: Supply supported daily commands and documented operating limits.
+- [x] LAND-05: Publish final reconciled result and close the tracking issue.
+- [ ] PROD-01: Separate future production authorization required.
+- [ ] PROD-02: Future exact-artifact activation and read-only health checks.
+- [ ] PROD-03: Future production result/recovery record; no upgrade claimed here.
