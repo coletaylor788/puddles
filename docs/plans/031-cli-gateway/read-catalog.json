@@ -1,0 +1,963 @@
+{
+  "transactions": [
+    {
+      "name": "transaction",
+      "arguments": [
+        "transactionId"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "OBJECT",
+        "name": "Transaction",
+        "ofType": null
+      }
+    },
+    {
+      "name": "transactions",
+      "arguments": [
+        "accountIds",
+        "after",
+        "categories",
+        "eqAmount",
+        "excludeIgnoredFrom",
+        "excludeTransactionCategoryIds",
+        "first",
+        "gteAmount",
+        "gteDate",
+        "importId",
+        "ltAmount",
+        "ltDate",
+        "metaCategory",
+        "order",
+        "query",
+        "reviewStatuses",
+        "serviceIds",
+        "subscriptionIds",
+        "transactionCategoryIds",
+        "transactionFilterType",
+        "transactionIds",
+        "transactionTagIds",
+        "useAbsoluteAmount"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "OBJECT",
+          "name": "TransactionConnection",
+          "ofType": null
+        }
+      }
+    },
+    {
+      "name": "transactionsCount",
+      "arguments": [
+        "accountIds",
+        "categories",
+        "eqAmount",
+        "excludeIgnoredFrom",
+        "excludeTransactionCategoryIds",
+        "gteAmount",
+        "gteDate",
+        "importId",
+        "ltAmount",
+        "ltDate",
+        "metaCategory",
+        "query",
+        "reviewStatuses",
+        "serviceIds",
+        "subscriptionIds",
+        "transactionCategoryIds",
+        "transactionFilterType",
+        "transactionIds",
+        "transactionTagIds",
+        "useAbsoluteAmount"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "SCALAR",
+          "name": "Any"
+        }
+      }
+    },
+    {
+      "name": "transactionAmountSum",
+      "arguments": [
+        "accountIds",
+        "categoryIds",
+        "eqAmount",
+        "excludeIgnoredFrom",
+        "gteAmount",
+        "gteDate",
+        "ltAmount",
+        "ltDate",
+        "query",
+        "reviewStatuses",
+        "serviceIds",
+        "transactionTagIds",
+        "type"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "SCALAR",
+          "name": "Any"
+        }
+      }
+    },
+    {
+      "name": "transactionHistory",
+      "arguments": [
+        "accountIds",
+        "excludeIgnoredFrom",
+        "excludeTransactionCategoryIds",
+        "gteDate",
+        "interval",
+        "ltDate",
+        "metaCategory",
+        "serviceIds",
+        "transactionCategoryIds",
+        "transactionTagIds"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "LIST",
+          "ofType": {
+            "kind": "NON_NULL",
+            "ofType": {
+              "kind": "OBJECT",
+              "name": "TransactionHistory",
+              "ofType": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "transactionsTimeline",
+      "arguments": [
+        "accountIds"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "OBJECT",
+        "name": "TransactionsTimeline",
+        "ofType": null
+      }
+    },
+    {
+      "name": "feeTransactions",
+      "arguments": [
+        "gteDate",
+        "limit",
+        "ltDate"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "LIST",
+          "ofType": {
+            "kind": "NON_NULL",
+            "ofType": {
+              "kind": "OBJECT",
+              "name": "Transaction",
+              "ofType": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "largestNonSubscriptionTransactions",
+      "arguments": [
+        "excludeCategoryIconKeys",
+        "gteDate",
+        "limit",
+        "ltDate"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "LIST",
+          "ofType": {
+            "kind": "NON_NULL",
+            "ofType": {
+              "kind": "OBJECT",
+              "name": "Transaction",
+              "ofType": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "frequentNonSubscriptionTransactions",
+      "arguments": [
+        "gteDate",
+        "limit",
+        "ltDate",
+        "minCount",
+        "prevGteDate",
+        "prevLtDate",
+        "transactionCategoryNodeId"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "LIST",
+          "ofType": {
+            "kind": "NON_NULL",
+            "ofType": {
+              "kind": "OBJECT",
+              "name": "FrequentNonSubscriptionTransaction",
+              "ofType": null
+            }
+          }
+        }
+      }
+    }
+  ],
+  "categories_rules_tags": [
+    {
+      "name": "transactionCategories",
+      "arguments": [
+        "first",
+        "includeOther",
+        "order",
+        "usedGteDate",
+        "usedLtDate"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "LIST",
+          "ofType": {
+            "kind": "NON_NULL",
+            "ofType": {
+              "kind": "OBJECT",
+              "name": "TransactionCategory",
+              "ofType": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "transactionCategoryByIconKey",
+      "arguments": [
+        "iconKey"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "OBJECT",
+          "name": "TransactionCategory",
+          "ofType": null
+        }
+      }
+    },
+    {
+      "name": "transactionMetaCategory",
+      "arguments": [
+        "metaCategoryName"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "OBJECT",
+          "name": "TransactionMetaCategoryData",
+          "ofType": null
+        }
+      }
+    },
+    {
+      "name": "transactionRules",
+      "arguments": [
+        "after",
+        "before",
+        "first",
+        "ids",
+        "last"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "OBJECT",
+          "name": "TransactionRuleConnection",
+          "ofType": null
+        }
+      }
+    },
+    {
+      "name": "transactionTags",
+      "arguments": [
+        "after",
+        "before",
+        "excludedSyntheticTagTypes",
+        "first",
+        "gteDate",
+        "last",
+        "ltDate",
+        "sortBy",
+        "status",
+        "transactionTagContains",
+        "usedGteDate",
+        "usedLtDate"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "OBJECT",
+          "name": "TransactionTagConnection",
+          "ofType": null
+        }
+      }
+    },
+    {
+      "name": "transactionTag",
+      "arguments": [
+        "id"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "INTERFACE",
+          "name": "TransactionTagNode",
+          "ofType": null
+        }
+      }
+    },
+    {
+      "name": "syntheticTransactionTags",
+      "arguments": [
+        "after",
+        "before",
+        "first",
+        "last",
+        "status"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "OBJECT",
+          "name": "SyntheticTransactionTagConnection",
+          "ofType": null
+        }
+      }
+    }
+  ],
+  "accounts_balances_connections": [
+    {
+      "name": "account",
+      "arguments": [
+        "accountId"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "OBJECT",
+        "name": "Account",
+        "ofType": null
+      }
+    },
+    {
+      "name": "accounts",
+      "arguments": [
+        "accountsToInclude",
+        "achAvailable",
+        "achEligible",
+        "achPurpose",
+        "after",
+        "before",
+        "categories",
+        "customType",
+        "enabled",
+        "excludeAccountsWithoutTransactions",
+        "excludeClosureMarkedAccounts",
+        "first",
+        "includeACHOnlyAccounts",
+        "includeDisabledWithPreservedTransactionHistory",
+        "last",
+        "source",
+        "type"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "OBJECT",
+          "name": "AccountConnection",
+          "ofType": null
+        }
+      }
+    },
+    {
+      "name": "accountBalanceSum",
+      "arguments": [
+        "accountsToInclude",
+        "category",
+        "customType",
+        "includePending"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "SCALAR",
+        "name": "Any"
+      }
+    },
+    {
+      "name": "masterAccount",
+      "arguments": [
+        "masterAccountId"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "OBJECT",
+        "name": "MasterAccount",
+        "ofType": null
+      }
+    },
+    {
+      "name": "masterAccounts",
+      "arguments": [
+        "after",
+        "attributes",
+        "before",
+        "first",
+        "last"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "OBJECT",
+          "name": "MasterAccountConnection",
+          "ofType": null
+        }
+      }
+    },
+    {
+      "name": "incomeAccounts",
+      "arguments": [],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "LIST",
+          "ofType": {
+            "kind": "NON_NULL",
+            "ofType": {
+              "kind": "OBJECT",
+              "name": "Account",
+              "ofType": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "liabilities",
+      "arguments": [],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "OBJECT",
+          "name": "Liabilities",
+          "ofType": null
+        }
+      }
+    }
+  ],
+  "spending_income_budgets": [
+    {
+      "name": "budgetPlan",
+      "arguments": [
+        "createCurrentPlan",
+        "month",
+        "mostRecent"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "OBJECT",
+        "name": "BudgetPlan",
+        "ofType": null
+      }
+    },
+    {
+      "name": "firstBudgetPlan",
+      "arguments": [],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "OBJECT",
+        "name": "BudgetPlan",
+        "ofType": null
+      }
+    },
+    {
+      "name": "spendingSummary",
+      "arguments": [
+        "category",
+        "gteDate",
+        "ltDate",
+        "metaCategory",
+        "transactionCategoryId"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "OBJECT",
+        "name": "SpendingSummary",
+        "ofType": null
+      }
+    },
+    {
+      "name": "spendingByCategories",
+      "arguments": [
+        "excludeBudgetIgnoredTransactions",
+        "gteDate",
+        "includeSubscriptions",
+        "ltDate",
+        "searchFilter",
+        "sortBy"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "LIST",
+          "ofType": {
+            "kind": "NON_NULL",
+            "ofType": {
+              "kind": "OBJECT",
+              "name": "SpendingByCategory",
+              "ofType": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "spendingByServices",
+      "arguments": [
+        "after",
+        "first",
+        "gteDate",
+        "ltDate",
+        "removeZeroAmounts",
+        "searchTerm",
+        "sortBy"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "OBJECT",
+          "name": "SpendingByServiceConnection",
+          "ofType": null
+        }
+      }
+    },
+    {
+      "name": "spendingByTransactionTags",
+      "arguments": [
+        "excludedSyntheticTagTypes",
+        "gteDate",
+        "ltDate",
+        "sortBy",
+        "status",
+        "transactionTagContains",
+        "transactionTagStatuses",
+        "usedGteDate",
+        "usedLtDate"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "LIST",
+          "ofType": {
+            "kind": "NON_NULL",
+            "ofType": {
+              "kind": "OBJECT",
+              "name": "SpendingByTransactionTag",
+              "ofType": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "spendingHistory",
+      "arguments": [
+        "accountIds",
+        "excludeIgnoredFrom",
+        "excludeTransactionCategoryIds",
+        "gteDate",
+        "interval",
+        "ltDate",
+        "metaCategory",
+        "serviceIds",
+        "transactionCategoryIds",
+        "transactionTagIds"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "LIST",
+          "ofType": {
+            "kind": "NON_NULL",
+            "ofType": {
+              "kind": "OBJECT",
+              "name": "TransactionHistory",
+              "ofType": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "dailySpendingForMonth",
+      "arguments": [
+        "accountIds",
+        "feedEventTypes",
+        "mode",
+        "timestamp"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "LIST",
+          "ofType": {
+            "kind": "OBJECT",
+            "name": "DailySpendItem",
+            "ofType": null
+          }
+        }
+      }
+    },
+    {
+      "name": "lastMonthSpend",
+      "arguments": [],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "OBJECT",
+        "name": "LastMonthSpendType",
+        "ofType": null
+      }
+    },
+    {
+      "name": "spendProjection",
+      "arguments": [],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "LIST",
+          "ofType": {
+            "kind": "NON_NULL",
+            "ofType": {
+              "kind": "OBJECT",
+              "name": "SpendProjection",
+              "ofType": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "spendTrajectory",
+      "arguments": [],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "OBJECT",
+        "name": "SpendTrajectory",
+        "ofType": null
+      }
+    }
+  ],
+  "recurring": [
+    {
+      "name": "subscription",
+      "arguments": [
+        "id",
+        "subscriptionId"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "OBJECT",
+        "name": "Subscription",
+        "ofType": null
+      }
+    },
+    {
+      "name": "subscriptions",
+      "arguments": [
+        "accountNodeIds",
+        "active",
+        "after",
+        "before",
+        "billpayLinkInitiated",
+        "billsharkEligible",
+        "filterPayrollMode",
+        "first",
+        "forceIncludeMerchantBlocked",
+        "hasBillsharkBill",
+        "includeUnknownForSubscriptionServiceTypes",
+        "last",
+        "order",
+        "query",
+        "serviceTypes",
+        "visible"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "OBJECT",
+          "name": "SubscriptionConnection",
+          "ofType": null
+        }
+      }
+    },
+    {
+      "name": "subscriptionCalendarItems",
+      "arguments": [
+        "endDate",
+        "excludeNegativeCharges",
+        "first",
+        "limitFuture",
+        "limitPast",
+        "startDate"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "LIST",
+          "ofType": {
+            "kind": "NON_NULL",
+            "ofType": {
+              "kind": "OBJECT",
+              "name": "SubscriptionCalendarItem",
+              "ofType": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "subscriptionsMonthlyCostCents",
+      "arguments": [],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "SCALAR",
+          "name": "Any"
+        }
+      }
+    },
+    {
+      "name": "upcomingSubscriptionCharges",
+      "arguments": [
+        "gteDate",
+        "isPaydayView",
+        "ltDate"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "OBJECT",
+          "name": "UpcomingSubscriptionCharges",
+          "ofType": null
+        }
+      }
+    },
+    {
+      "name": "upcomingSubscriptions",
+      "arguments": [
+        "endDate"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "LIST",
+        "ofType": {
+          "kind": "OBJECT",
+          "name": "Subscription",
+          "ofType": null
+        }
+      }
+    },
+    {
+      "name": "billsMonthlyCostCents",
+      "arguments": [],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "SCALAR",
+          "name": "Any"
+        }
+      }
+    },
+    {
+      "name": "billsDueCount",
+      "arguments": [],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "SCALAR",
+          "name": "Any"
+        }
+      }
+    }
+  ],
+  "net_worth_debt": [
+    {
+      "name": "netWorth",
+      "arguments": [],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "OBJECT",
+          "name": "NetWorth",
+          "ofType": null
+        }
+      }
+    },
+    {
+      "name": "debt",
+      "arguments": [],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "OBJECT",
+          "name": "Debt",
+          "ofType": null
+        }
+      }
+    },
+    {
+      "name": "debtPaydown",
+      "arguments": [],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "OBJECT",
+          "name": "DebtPaydown",
+          "ofType": null
+        }
+      }
+    },
+    {
+      "name": "debtPaydownHistoricalProgress",
+      "arguments": [],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "LIST",
+        "ofType": {
+          "kind": "NON_NULL",
+          "ofType": {
+            "kind": "OBJECT",
+            "name": "DebtPaydownHistoricalProgressMonth",
+            "ofType": null
+          }
+        }
+      }
+    },
+    {
+      "name": "debtPaydownMonthlyDetails",
+      "arguments": [
+        "month"
+      ],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "OBJECT",
+        "name": "DebtPaydownMonthlyDetails",
+        "ofType": null
+      }
+    }
+  ],
+  "goals_credit": [
+    {
+      "name": "financialGoalFeature",
+      "arguments": [],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "OBJECT",
+          "name": "FinancialGoalFeature",
+          "ofType": null
+        }
+      }
+    },
+    {
+      "name": "creditReport",
+      "arguments": [],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "OBJECT",
+        "name": "CreditReport",
+        "ofType": null
+      }
+    },
+    {
+      "name": "creditScoreEligibility",
+      "arguments": [],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "SCALAR",
+          "name": "Any"
+        }
+      }
+    }
+  ],
+  "capabilities": [
+    {
+      "name": "featureEntitlements",
+      "arguments": [],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "NON_NULL",
+        "ofType": {
+          "kind": "OBJECT",
+          "name": "FeatureEntitlements",
+          "ofType": null
+        }
+      }
+    },
+    {
+      "name": "timezone",
+      "arguments": [],
+      "source": "bundled reduced schema; not independently permission-tested",
+      "type": {
+        "kind": "SCALAR",
+        "name": "Any"
+      }
+    }
+  ]
+}

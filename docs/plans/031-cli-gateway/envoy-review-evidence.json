@@ -1,0 +1,212 @@
+{
+  "review_date": "2026-09-26",
+  "repository": "https://github.com/envoyproxy/envoy",
+  "release": {
+    "tag_name": "v1.39.1",
+    "target_commitish": "b579d07d3ad7ee11d32b105e91a5a39ad24718d7",
+    "published_at": "2026-08-27T01:18:49Z",
+    "html_url": "https://github.com/envoyproxy/envoy/releases/tag/v1.39.1"
+  },
+  "review_type": "Focused static source, upstream test inspection, packaging and official adoption review; no runtime execution or complete dependency audit",
+  "runtime_test_status": "Not run; Docker daemon socket absent",
+  "signature_verification_status": "PGP-signed checksum document retrieved; signature not cryptographically verified; no binary downloaded",
+  "image": {
+    "tag": "envoyproxy/envoy:distroless-v1.39.1",
+    "index_digest": "sha256:eb2c01c13125d1629637cb4e4cce7207009fb7cc2c8027f9742758549d15b6f4",
+    "platform_manifests": [
+      {
+        "mediaType": "application/vnd.oci.image.manifest.v1+json",
+        "digest": "sha256:9c9ca6bef1e4e355b00b4657cbe123baf3b4a78613cb949b6cbabaab897a6c28",
+        "size": 3507,
+        "platform": {
+          "architecture": "amd64",
+          "os": "linux"
+        }
+      },
+      {
+        "mediaType": "application/vnd.oci.image.manifest.v1+json",
+        "digest": "sha256:62649e9cb5073a995b57d888f98382927ad15e91c53affac92a8a48a365027db",
+        "size": 3507,
+        "platform": {
+          "architecture": "arm64",
+          "os": "linux"
+        }
+      }
+    ],
+    "arm64_config": {
+      "User": "65532",
+      "Entrypoint": [
+        "/usr/local/bin/envoy"
+      ],
+      "Cmd": [
+        "-c",
+        "/etc/envoy/envoy.yaml"
+      ]
+    }
+  },
+  "release_assets": [
+    {
+      "name": "checksums.txt.asc",
+      "digest": "sha256:0287169e0111a883a7971824137c9467a9b854021d44da856f1a888f536143ce",
+      "url": "https://github.com/envoyproxy/envoy/releases/download/v1.39.1/checksums.txt.asc"
+    },
+    {
+      "name": "debs.tar.gz",
+      "digest": "sha256:90ccf6ccf08a7516ddfa163408e77deae8b88f92af8e358d326ee29ee1cda3a2",
+      "url": "https://github.com/envoyproxy/envoy/releases/download/v1.39.1/debs.tar.gz"
+    },
+    {
+      "name": "envoy-1.39.1-linux-aarch_64",
+      "digest": "sha256:8565ad0af4b1d1d3c986e5165c027add3073579182f398dd7f4d728d25e9ec62",
+      "url": "https://github.com/envoyproxy/envoy/releases/download/v1.39.1/envoy-1.39.1-linux-aarch_64"
+    },
+    {
+      "name": "envoy-1.39.1-linux-x86_64",
+      "digest": "sha256:002c6e1c69ed0fa0ea381887247cadadfaec9481375fa8d8d2b1731eeabf40b8",
+      "url": "https://github.com/envoyproxy/envoy/releases/download/v1.39.1/envoy-1.39.1-linux-x86_64"
+    },
+    {
+      "name": "envoy-contrib-1.39.1-linux-aarch_64",
+      "digest": "sha256:ce8887f0ec0e4769354f4a8dd8339ed0c1f489871ac9b8e196d3e8572184fa14",
+      "url": "https://github.com/envoyproxy/envoy/releases/download/v1.39.1/envoy-contrib-1.39.1-linux-aarch_64"
+    },
+    {
+      "name": "envoy-contrib-1.39.1-linux-x86_64",
+      "digest": "sha256:3405ced6147ab5ab9a25491a6c8110bb5e5f958d2936225918576f4b6f380354",
+      "url": "https://github.com/envoyproxy/envoy/releases/download/v1.39.1/envoy-contrib-1.39.1-linux-x86_64"
+    }
+  ],
+  "referenced_source_files": [
+    {
+      "path": ".github/workflows/_publish_release.yml",
+      "sha256": "d8793313c3499ac2ecfc5b28dbe3e24a994a3752dff8a95ce212a5219330086c"
+    },
+    {
+      "path": "LICENSE",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "path": "SECURITY.md",
+      "sha256": "36e840cd4c42f8b88188d6f9b00ee31464190c6af6fc004b219b98cee0397cd5"
+    },
+    {
+      "path": "api/envoy/extensions/transport_sockets/tls/v3/tls.proto",
+      "sha256": "5123dcf931bea502b102225d4551a474c23853cc35a2eae7e6f11e56fa64e2f5"
+    },
+    {
+      "path": "configs/envoyproxy_io_proxy.yaml",
+      "sha256": "af814045ead8391340ac542a01fd33347a9b6fb42c05a73cb288325f6b05438e"
+    },
+    {
+      "path": "distribution/docker/Dockerfile-envoy",
+      "sha256": "f556f4dc06f348eba213029f342d2026f5a80f3c035cda8931ef48c8221ed60d"
+    },
+    {
+      "path": "distribution/docker/build.sh",
+      "sha256": "fb264a0750d4ded1a4b49d1edbdbbfdcdf32b23cafbeff6d6d91715367664e6b"
+    },
+    {
+      "path": "docs/root/intro/arch_overview/security/threat_model.rst",
+      "sha256": "252e3d20d78dab94afda7eed5f335eac929b96c4465a559604685edc21200b2d"
+    },
+    {
+      "path": "docs/root/start/install.rst",
+      "sha256": "8e3d7ac16f0471b62034b09c434ccae6e4498a1d3909396e4554da5df634e092"
+    },
+    {
+      "path": "source/common/http/conn_manager_impl.cc",
+      "sha256": "647961a254458a34ca241bb71335d86548323a762999c960c5cc244ad4858e89"
+    },
+    {
+      "path": "source/common/protobuf/utility.cc",
+      "sha256": "c0273dbabe9d812b4e6bcc36ad034205b07ac624705ff0d2e4df459dc5e6506f"
+    },
+    {
+      "path": "source/common/router/router.cc",
+      "sha256": "0c15fd8dc43a1c5748bb4aebdc6d3d6468424a5b5f8e4838450035f2c8571592"
+    },
+    {
+      "path": "source/common/tls/cert_validator/default_validator.cc",
+      "sha256": "bd80402b2fb9bfc7a9f9962eeddaf98f6a763d2bbe2f914881c6530a94a6acb4"
+    },
+    {
+      "path": "source/common/upstream/cluster_manager_impl.cc",
+      "sha256": "4ce02815b1ad3d37e9c50c8a9492651e7ade0921372f17be5b58dc61a1ab5bbd"
+    },
+    {
+      "path": "source/extensions/common/tap/tap_config_base.cc",
+      "sha256": "c6138933bf8b5776106bcc587f4d50c91d5c829586570f2882eff6f9b31576b7"
+    },
+    {
+      "path": "source/extensions/extensions_metadata.yaml",
+      "sha256": "943ea29f56de37fecb7f05d2f5760e4b97fa10af605ddc4ac5d158fdba3d0720"
+    },
+    {
+      "path": "source/extensions/filters/common/ext_proc/grpc_client_impl.h",
+      "sha256": "b6273ddc7debb9b825587b242a5eaa291d20170f7137e02dc3343da14cf7c7d4"
+    },
+    {
+      "path": "source/extensions/filters/common/mutation_rules/mutation_rules.cc",
+      "sha256": "d53a08668b3c8e8e1d071829155387e8f4ebaf41246763e7b9d691746fd86f15"
+    },
+    {
+      "path": "source/extensions/filters/http/ext_proc/ext_proc.cc",
+      "sha256": "6fd8246ddc634f9da1397fb8db2ad0db78850a55ac811821140d4e136917f821"
+    },
+    {
+      "path": "source/extensions/filters/http/ext_proc/processor_state.cc",
+      "sha256": "7ebb52f2bafc000e6480a22df38c0c2dcf5a6fd9163b99a76b092716d3782335"
+    },
+    {
+      "path": "source/extensions/filters/network/http_connection_manager/config.cc",
+      "sha256": "ebdd335fb81b52c8ae5162f813851636c2c491d8b4add910bd503a6ef82dc6bf"
+    },
+    {
+      "path": "source/extensions/tracers/datadog/tracer.cc",
+      "sha256": "5a336256e5d443ab62f62e2415afe36da1d5d703d55c9a648031eaf7e974e0c3"
+    },
+    {
+      "path": "source/extensions/tracers/opentelemetry/opentelemetry_tracer_impl.cc",
+      "sha256": "cbc79049b2b261529f2faf7e3721d990d042507149ee378200e1b6bd3fb92db7"
+    },
+    {
+      "path": "source/server/admin/admin.cc",
+      "sha256": "c0a6fe37b993362488bdd27cf3435183822fbd54634325dd442b43e151629e9a"
+    },
+    {
+      "path": "source/server/configuration_impl.cc",
+      "sha256": "d8b663dcaeaa4382834bf2c005b8607146779c8544de027731122ee26a354e44"
+    },
+    {
+      "path": "test/extensions/filters/http/ext_proc/ext_proc_integration_common.cc",
+      "sha256": "614bba1310c86a47d5bb095e38a5590e9e61b5275af4cc0449d8f0079f79520c"
+    },
+    {
+      "path": "test/extensions/filters/http/ext_proc/ext_proc_integration_test.cc",
+      "sha256": "f95c017337c162d16b27d95752e1457a7b2bd315b2ae5aa332599a3808bd7460"
+    },
+    {
+      "path": "test/extensions/filters/http/ext_proc/filter_test.cc",
+      "sha256": "81bc92539d55328d90c926813572feaa709f044118177f2f35b4ae98fcdcf90f"
+    }
+  ],
+  "adoption_sources": [
+    "https://www.cncf.io/projects/envoy/",
+    "https://istio.io/latest/docs/ops/deployment/architecture/",
+    "https://cloud.google.com/load-balancing/docs/https"
+  ],
+  "findings": [
+    "Successful ext_proc gRPC close continues processing without inspection",
+    "Upstream TLS validation requires explicit configuration",
+    "Debug output can include injected credentials",
+    "Default image config routes to www.envoyproxy.io and enables admin",
+    "Rejected header mutations default to ignore"
+  ],
+  "advisory_catalog": {
+    "source": "https://api.github.com/repos/envoyproxy/envoy/security-advisories",
+    "unique_advisories_retrieved": 100,
+    "newest_publication": "2026-08-26T14:03:19Z",
+    "pagination_complete": false,
+    "scope": "Retrieved public advisory records; page requests did not establish an exhaustive catalog. Reviewed release-related and relevant summaries, not a full per-advisory exploit assessment."
+  }
+}
