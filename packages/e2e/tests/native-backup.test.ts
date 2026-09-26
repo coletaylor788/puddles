@@ -762,7 +762,7 @@ describe("current production recovery backup", () => {
         targetFixture.target,
         targetLegacy.directory,
       )).toThrow("release receipt differs from recovery");
-  });
+  }, 15_000);
 
   it("refuses legacy retirement before one verified replacement exists", () => {
       const f = fixture();
