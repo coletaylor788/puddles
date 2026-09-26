@@ -45,8 +45,11 @@ same queue and communication protocol.
 
 The queue, merged batch ownership, CI artifact consumers, premerge admission,
 and lifecycle instructions are implemented. Focused regressions pass and the
-retained reviewer is checking the remaining provenance and recovery cases.
-The mini record is not installed yet. Broader CI and rollout remain outstanding.
+retained reviewer has no remaining findings. The mini record and guarded DEV
+tools are installed. Owned controllers were checked for all three environments;
+the existing runtimes stayed running. Public cumulative CI and landing remain
+outstanding. Development and review skills now prohibit prose regression tests;
+the separate documentation cleanup task owns removal of existing doc tests.
 
 ## Agent section
 
@@ -215,17 +218,19 @@ The mini record is not installed yet. Broader CI and rollout remain outstanding.
 
 ### Validation
 
-- Focused public coordination/integration: 21 tests passed before final provenance
-  additions. Private CI contract: 62 passed, two native-context checks deferred
-  to the complete lifecycle. TypeScript check passed. Both private workflows
-  parse successfully as YAML.
+- Focused public coordination, release, integration, deployment, and pipeline
+  checks: 125 tests passed. Private contract: 80 passed, three native-context
+  checks deferred to the complete lifecycle. TypeScript check passed. Both
+  private workflows and both edited skill frontmatter blocks parse as YAML.
 - Broad local e2e testing exposed missing built plugin prerequisites, a host
-  resource sampling failure, and the known approval assertion fixed by PR 123.
+  resource sampling failure, and stale documentation assertions removed by
+  the separate cleanup task in PR 123.
   The exact cumulative gate runs in CI with its documented prerequisites.
 - Retained review found and drove fixes for heartbeat contention, production
   baseline changes, DEV attempt identity, queued takeover after recovery,
   reverted older batches, missing commit attribution, and artifact provenance.
-  Final complete-diff review and CI remain pending.
+  Final complete-diff review is clean. Private contract CI passes. Public
+  cumulative CI remains in progress.
 - Implementation tests must cover simultaneous enqueue and claim, idempotent
   retries, FIFO among ready agents, cancellation, lost notifications, heartbeat
   versus progress, interrupted updates, and stale-owner recovery without theft.
@@ -240,6 +245,17 @@ The mini record is not installed yet. Broader CI and rollout remain outstanding.
 
 ### Rollout and rollback
 
+- The shared record is initialized on the mini with DEV, TEST, and PROD ports
+  verified from the installed configuration. All slots are released and all
+  queues are empty after the owned-controller checks. Guarded DEV tooling is
+  installed with the previous tools retained for rollback. An unowned DEV
+  mutation was rejected before changing the running instance. Existing DEV and
+  production process identities remained unchanged. Active peer tasks received
+  the record location and instruction to use owned deployment controllers.
+- This rollout installs coordination tooling. It does not promote a new
+  OpenClaw runtime or claim a successful application release batch. The first
+  application batch must establish its real production baseline and complete
+  the merged artifact rehearsal before promotion.
 - Bootstrap the coordinator during an agreed idle period. Inspect all active
   deployments and transaction locks first; record active ownership rather than
   assuming a missing queue means the mini is free.
@@ -254,10 +270,11 @@ The mini record is not installed yet. Broader CI and rollout remain outstanding.
 
 ### Review log
 
-- Initial review identifies existing merge receipt coupling and local DEV
-  builds as implementation gaps. Queue fairness, missed messages, stale owners,
-  overlapping merged features, production order, and migration baselines are
-  included in the proposed design. Runtime enforcement remains unimplemented.
+- The retained reviewer checked the complete public and private diffs through
+  remediation. Final review has no actionable findings. Regression coverage
+  includes ownership contention, proof reuse across attempts, changed production
+  baselines, retired batch tokens, reverted queued batches, and exact public
+  and private source provenance.
 
 ### Checklist
 
@@ -265,6 +282,7 @@ The mini record is not installed yet. Broader CI and rollout remain outstanding.
 - [x] Specify the proposed sequence, shared record, ownership, and recovery.
 - [x] Obtain approval of this design and the clarified batch owner responsibilities.
 - [x] Create the implementation tracking issue.
-- [ ] Implement and review coordination, merge admission, and CI artifact flow.
-- [ ] Pass accumulated regression and physical rehearsal gates.
-- [ ] Roll out all clients, initialize the mini record, and verify production.
+- [x] Implement and review coordination, merge admission, and CI artifact flow.
+- [ ] Pass accumulated CI and land the reviewed changes in both repositories.
+- [x] Install guarded DEV tools, initialize the mini record, and verify owned
+  controllers without changing the existing production runtime.

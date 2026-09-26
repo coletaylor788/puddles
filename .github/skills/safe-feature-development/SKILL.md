@@ -103,7 +103,7 @@ boundaries without duplicating the pipeline or its completed proofs.
 The owner keeps the requested code, focused tests, committed regression, related
 documentation, and retained adversarial review coherent. Iterate with the fast
 local and DEV loop below. When ready for release, run the full accumulated
-gate, rehearse the installed runtime, integrate eligible exact source, then
+gate, integrate eligible exact source, rehearse the merged batch, then
 activate exact artifacts with read-only health checks and rollback. Never change
 sealed artifacts in place. A correction creates a new candidate and invalidates
 only proofs whose actual inputs changed.
