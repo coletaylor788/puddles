@@ -8,6 +8,8 @@ import { integrateCandidate } from "../bin/openclaw-integrate.mjs";
 import { certifyRelease, createBuildReceipt, createSourceGate, createTargetProof, promoteRelease } from "../src/native-release.mjs";
 // @ts-expect-error Native lifecycle exports are executable JavaScript.
 import { fileDigest, jsonDigest } from "../src/native-state.mjs";
+// @ts-expect-error Executable lifecycle module.
+import { createMergeEligibility } from "../src/merge-eligibility.mjs";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -119,6 +121,24 @@ function setup(changeBase = false, changedTree = false) {
 }
 
 describe("source integration before activation", () => {
+  it("merges after DEV and cumulative CI without a physical TEST receipt", async () => {
+    const fixture = setup();
+    const receipt = createMergeEligibility(fixture.build, fixture.sourceGate, {
+      schema: "puddles.dev-validation/v1", status: "passed", head: fixture.build.repository.head,
+      tree: fixture.build.repository.tree, owner: "feature-owner", evidence: "/retained/dev-proof.json",
+    });
+    writeFileSync(fixture.path, JSON.stringify(receipt));
+    await integrateCandidate(fixture.path, "example/public-repo", 123, fixture.run);
+    expect(fixture.calls.some((args) => args.includes("PUT"))).toBe(true);
+  });
+
+  it("rejects DEV proof for a different head before merge", () => {
+    const fixture = setup();
+    expect(() => createMergeEligibility(fixture.build, fixture.sourceGate, {
+      schema: "puddles.dev-validation/v1", status: "passed", head: "0".repeat(40),
+      tree: fixture.build.repository.tree, owner: "owner", evidence: "proof",
+    })).toThrow("exact reviewed source");
+  });
   it("binds merge to the exact eligible head and records the resulting tree", async () => {
     const fixture = setup();
     await integrateCandidate(fixture.path, "example/public-repo", 123, fixture.run);

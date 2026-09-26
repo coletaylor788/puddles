@@ -79,6 +79,7 @@ function extraIdentity(record) {
 function buildIdentity(receipt) {
   return {
     source: receipt.source,
+    ...(receipt.sourceRepositories ? { sourceRepositories: receipt.sourceRepositories } : {}),
     tools: receipt.tools,
     artifact: artifactIdentity(receipt.artifact),
     additionalArtifacts: (receipt.additionalArtifacts ?? []).map(extraIdentity),
@@ -309,7 +310,7 @@ function verifyStageAttestation(attestation, schema, buildId, required) {
   return attestation;
 }
 
-function verifyTargetProof(targetProof, buildId) {
+export function verifyTargetProof(targetProof, buildId) {
   verifyStageAttestation(
     targetProof,
     targetProofSchema,
@@ -359,6 +360,10 @@ export function createSourceGate(build, runDir, inventory) {
   return verifyStageAttestation(receipt, sourceGateSchema, build.buildId, ["regressions"]);
 }
 
+export function verifySourceGate(sourceGate, buildId) {
+  return verifyStageAttestation(sourceGate, sourceGateSchema, buildId, ["regressions"]);
+}
+
 function deploymentJournal(build, recoveryDir, expected) {
   const path = join(recoveryDir, "recovery.json");
   if (!existsSync(path)) throw new Error("Deployment recovery journal is missing");
@@ -377,6 +382,7 @@ function deploymentJournal(build, recoveryDir, expected) {
     artifact: journal.artifact,
     status: journal.status,
     journalSha256: fileDigest(path),
+    ...(journal.coordination ? { coordination: journal.coordination } : {}),
   };
 }
 
@@ -429,6 +435,7 @@ export function promoteRelease(build, sourceGate, targetProof, certification, { 
     buildId: build.buildId,
     certificationSha256: jsonDigest(certification),
     repository: build.repository,
+    ...(build.sourceRepositories ? { sourceRepositories: build.sourceRepositories } : {}),
     source: build.source,
     tools: build.tools,
     artifact: build.artifact,

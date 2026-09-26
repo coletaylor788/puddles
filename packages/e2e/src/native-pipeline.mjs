@@ -1,6 +1,6 @@
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, statfsSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   acquireLock, atomicJson, externalDirectory, fileDigest, jsonDigest, stage,
@@ -410,8 +410,17 @@ export async function nativePipeline(command, repositoryGates) {
       const path = join(runDir, "stages", `${name}.json`);
       if (existsSync(path)) buildProofs[name] = JSON.parse(readFileSync(path, "utf8")).key;
     }
+    const sourceRepositories = [{ id: "public", ...repository }];
+    for (const entry of extension.repositories ?? []) {
+      if (!/^[a-z][a-z0-9-]*$/.test(entry.id) || sourceRepositories.some(({ id }) => id === entry.id) || !isAbsolute(entry.root ?? "")) {
+        throw new Error("Extension repository requires a unique id and absolute checkout root");
+      }
+      sourceRepositories.push({ id: entry.id,
+        head: (await git(entry.root, ["rev-parse", "HEAD"])).trim(),
+        tree: (await git(entry.root, ["rev-parse", "HEAD^{tree}"])).trim() });
+    }
     const buildReceipt = createBuildReceipt({
-      repository,
+      repository, sourceRepositories,
       source: {
         ref: suite.openclawRef,
         sha256: candidateInputs,
@@ -561,6 +570,8 @@ export async function nativeTargetPipeline(receiptPath, targetPath, seedPath) {
   }
   if (!targetPath) throw new Error("Artifact target requires an explicit rehearsal target");
   const target = JSON.parse(readFileSync(targetPath, "utf8"));
+  const { assertBatchArtifact, assertDeploymentOwnership } = await import("./deploy-coordination.mjs");
+  assertBatchArtifact(assertDeploymentOwnership(target, "TEST"), receipt);
   createRehearsalTarget(target, seedPath);
   validateTarget(target);
   verifyRehearsalTarget(target);

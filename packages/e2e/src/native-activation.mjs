@@ -10,6 +10,7 @@ import { acquireArtifactPoolLock } from "./native-retention.mjs";
 import { installRuntime } from "./native-package.mjs";
 import { runCommand } from "./process-runner.mjs";
 import { readMigrationManifest } from "./native-state-migration.mjs";
+import { assertBatchArtifact, assertDeploymentOwnership } from "./deploy-coordination.mjs";
 
 const patchDir = resolve(dirname(fileURLToPath(import.meta.url)), "../../../docs/openclaw-setup/patches");
 
@@ -500,6 +501,8 @@ export function verifyRehearsalTarget(target) {
 }
 
 export async function activateNative(receipt, target, operationsFactory = systemOperations, recoverDir, action = "recover", mode = "legacy") {
+  const ownership = assertDeploymentOwnership(target, target.purpose === "rehearsal" ? "TEST" : "PROD");
+  if (!recoverDir) assertBatchArtifact(ownership, receipt);
   if (!["recover", "rollback"].includes(action) || action === "rollback" && !recoverDir) throw new Error("Explicit rollback requires its recovery directory");
   validateTarget(target);
   if (mode === "rehearsal") {
@@ -562,6 +565,7 @@ export async function activateNative(receipt, target, operationsFactory = system
   let journal = {
     schemaVersion: 1, target: jsonDigest(target), artifact: receipt.artifact.sha256,
     transaction: basename(recoveryDir),
+    ...(ownership ? { coordination: { requestId: ownership.owner.requestId, baseline: ownership.owner.baseline } } : {}),
     additionalArtifacts: extraIdentity,
     preparedFiles: preparedFileIdentity,
     status: "preflight", snapshotReady: false, browserChanged: false, quiesced: false,
@@ -858,6 +862,14 @@ export async function verifyIntegratedCandidate(receiptPath, target) {
   if (!receipt.repository?.tree || !target.integration?.repository || !target.integration?.ref) throw new Error("Exact source integration evidence is required");
   const tree = (await runCommand("git", ["-C", target.integration.repository, "rev-parse", `${target.integration.ref}^{tree}`], { capture: true, quiet: true })).trim();
   if (tree !== receipt.repository.tree) throw new Error("Integrated source is not the rehearsed candidate");
+  if (target.integration.mergedHead) {
+    const head = target.integration.mergedHead;
+    if (!/^[a-f0-9]{40}$/.test(head) || target.integration.ref !== head || receipt.repository.head !== head) {
+      throw new Error("Activation must select the immutable merged batch revision");
+    }
+    await runCommand("git", ["-C", target.integration.repository, "merge-base", "--is-ancestor", head,
+      target.integration.defaultRef ?? "origin/main"], { capture: true, quiet: true });
+  }
   verifyProductionRelease(receipt);
   if (target.nodeMigration) {
     const proof = JSON.parse(readFileSync(join(dirname(receiptPath), "stages", "runtime.json"), "utf8"));

@@ -104,50 +104,19 @@ E2E_DEV_BUILD_TIMEOUT_MS=3600000 \
 
 ## Development loop
 
-Ordinary edits use a persistent OpenClaw checkout. They do not create release
-receipts or run the declaration-heavy release build. For a bundled plugin edit:
+Use task-owned worktrees on the development machine for edits, type checks,
+and focused unit tests. Build deployable artifacts in CI. Follow
+[shared deployment coordination](DEPLOYMENT_COORDINATION.md) before mutating
+DEV, TEST, or PROD. Each has a ready queue, explicit owner, heartbeat, and peer
+messages on the mini. CI jobs and isolated fixtures use no deployment slot.
 
-```bash
-corepack pnpm tsgo:extensions
-corepack pnpm exec vitest run <changed-plugin-test-files...> --maxWorkers=1
-corepack pnpm exec node --import ./scripts/tsx.mjs \
-  scripts/build-all.mts qaRuntime
-```
-
-Use `corepack pnpm test:extension <plugin-id> -- --maxWorkers=1` when the edit
-needs the plugin's broader test lane. Routine edits should run the focused
-changed files before DEV integration instead of repeating every plugin test.
-
-For a small core edit, replace the first two commands with:
-
-```bash
-corepack pnpm tsgo:core
-corepack pnpm exec vitest run <changed-test-files...> --maxWorkers=1
-```
-
-`qaRuntime` is the installed DEV build profile. It rebuilds the unified runtime,
-plugin assets, external plugin output, bootstrap import guard, postbuild output,
-and stamps. It skips release declarations, the UI build, and release metadata.
-Sync `dist/` into the isolated DEV server's owned installed-runtime root, then
-restart it and run the relevant integration tests. Do not sync `dist-runtime/`;
-that directory is only the local source-checkout overlay and is not selected by
-upstream package installation.
-
-An initial DEV bootstrap calls
-`await materializeRuntimeForDev(source, destination)`. It calls the exact
-`npm-packlist` and Arborist versions bundled with the selected npm toolchain,
-then materializes only that returned inventory. This keeps npm's files,
-ignore-rule, and bundled-dependency semantics without making a dry-run tarball.
-Release packaging uses `materializeRuntime` and keeps its synchronous 60-second
-`npm pack --dry-run` proof path.
-
-The fast path requires unchanged `package.json`, `pnpm-lock.yaml`,
-`pnpm-workspace.yaml`, Node and pnpm versions, and installed dependency bytes.
-When one changes, rerun the normal frozen dependency install and refresh the
-complete DEV runtime dependency tree before using the runtime-only profile.
-Broad SDK, declaration, or dependency changes can take the clean build path.
-CI still performs the fresh complete build, declarations, package, accumulated
-tests, installation, and release proofs.
+Validate the CI-built feature artifact in DEV, then merge after review and the
+full accumulated CI gate. The agent initiating TEST owns the batch of merged
+commits, selects latest main, and builds those merged bits in CI. It carries
+that exact batch through TEST and PROD. On a regression it merges the required
+revert, alerts the feature owner, and resumes from TEST with corrected main.
+The feature owner repairs separately. Do not use a branch artifact for TEST or
+PROD or silently replace an already tested batch with newer main.
 
 The gate runs every workspace build, lint, and test, the isolated Gmail Python
 pool, every mapped OpenClaw patch regression, and the cross-component candidate
@@ -275,7 +244,8 @@ OPENCLAW_CANDIDATE_DIR=/path/to/native-run/installed/runtime \
 
 `build.json` is immutable package evidence with
 `eligibility: "built-not-certified"`. It is useful input for target testing,
-but it cannot integrate or activate production. `source-gate` records the
+but it alone cannot integrate or activate production. Premerge eligibility
+combines it with the source gate and DEV proof; physical TEST follows merge. `source-gate` records the
 builder-only test inventory. The target command verifies the imported
 platform, Node binary identity, local migration file, and every additional and
 prepared-file mapping before giving installed hooks a digest-bound
@@ -302,8 +272,7 @@ invalid.
 Use `openclaw-release.mjs target-proof` to derive physical success and rollback
 evidence from retained stage records and deployment recovery journals. Then use
 `certify` and `promote`. Certification is still nonproduction. Promotion emits
-the only production release receipt. Production integration and activation
-reject a build receipt, a target proof, or a certification used alone.
+the only production release receipt. Production activation rejects a build receipt, a target proof, or a certification used alone.
 
 The external run directory holds concise stage records, protected logs, a
 detached source worktree, build outputs, artifact digests, and installation

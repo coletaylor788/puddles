@@ -51,7 +51,7 @@ the exact plan and issue formats.
 For every feature or behavior change, invoke and follow the repository-local
 [`safe-feature-development`](skills/safe-feature-development/SKILL.md) skill.
 It covers design approval, the fast local and DEV loop, independent review,
-the accumulated release gate, TEST rehearsal, landing, production validation,
+the accumulated release gate, landing, merged TEST rehearsal, production validation,
 and rollback. Its Puddles lifecycle section is the daily entrypoint;
 `packages/e2e/README.md` supplies the commands. Plan 039 records the delivery
 infrastructure and its historical acceptance, not additional approval gates.
@@ -90,12 +90,36 @@ and deployment gates still apply.
 
 ## Worker ownership and checkpoints
 
-The parent orchestrator owns worker creation and routing. One engineering owner
-takes an approved design through the deterministic native pipeline. Scripts own
-commands and durable run state. The owner repairs defects with committed
-regressions and resumes the run instead of creating a handoff chain. A parent
-may assign separate implementation and release workers, but the pipeline and
-its evidence remain the same.
+Assume other agents are working on the same components. Local development and
+focused tests belong in each task's own worktree on this machine. Check current
+plans, PRs, and available task status for overlap. Coordinate shared interfaces
+and dependencies with their owners; do not edit their worktrees, stop their
+processes, or clean their state. Independent CI runs do not reserve a shared
+deployment environment.
+
+Build deployable artifacts in CI. Use the mini's shared record at
+`$HOME/.puddles/deploy-coordination/slots.json` for DEV, TEST, and PROD.
+Follow [deployment coordination](../packages/e2e/DEPLOYMENT_COORDINATION.md)
+for atomic claims, ready queues, owner identity, heartbeat, direct messages,
+and recovery. Every mutation of a shared environment needs its slot, including
+DEV start, stop, reset, and validation. Release before waiting for another slot.
+Keep the existing target transaction locks as well.
+
+Merge reviewed, CI-green source after DEV validation and before TEST. The agent
+that initiates TEST registers itself as the owner of the whole batch of merged
+commits. All included feature agents coordinate with that owner. It pins latest
+main, builds those merged bits in CI, and carries the exact batch through TEST
+and PROD. It retains responsibility while waiting, monitors failures, merges
+necessary reverts, alerts the responsible feature agent to fix its change, and
+continues from TEST with newly selected main after the revert. Do not wait for
+the feature repair or promote an old branch artifact. A production baseline
+change requires a fresh affected TEST rehearsal. Notify the next ready slot
+owner and included feature owners through their recorded contacts.
+
+The parent orchestrator owns worker creation and routing. Scripts own commands
+and durable run state. An owner may explicitly transfer a batch with recorded
+acknowledgment and recovery evidence; it never abandons an active slot. Routine
+CI, merge, delivery, revert, and peer coordination remain agent-owned work.
 
 Keep one independent reviewer through remediation. Review the complete current
 behavior diff after meaningful changes. Do not require a terminal fresh reviewer

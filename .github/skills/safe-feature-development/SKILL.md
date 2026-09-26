@@ -303,10 +303,9 @@ investigating instead of asking.
 3. **Implement through the fast local and DEV loop**
    - The implementer iterates locally using the repository's established
      development workflow and runs focused tests that cover the changed
-     behavior. Use the Puddles daily workflow below: incremental build,
-     focused tests, transfer changed output to DEV, and installed behavior
-     assertions. DEV accepts mutable drafts without release receipts or frozen
-     source. Do not run the full release pipeline for each ordinary edit.
+     behavior. Use the Puddles daily workflow below: focused tests in isolated local worktrees, CI builds, queued artifact
+     deployment to DEV, and installed behavior assertions. DEV validation binds
+     the selected branch commit and CI artifact. Do not run the full release pipeline for each ordinary edit.
    - Use mocks or fakes for local testing and iteration when exercising a live
      dependency is unnecessary.
    - Route external writes and delivery in tests through deny-by-default mocks
@@ -359,44 +358,45 @@ investigating instead of asking.
      diff recheck. Updating status or recording evidence does not restart review
      or rebuild unchanged code. Commit ids do not belong in the issue.
 
-5. **Validate and rehearse the final candidate**
-   - Run `node packages/e2e/bin/openclaw-test-env.mjs ci`. Every changed final
-     candidate runs the entire accumulated public package, patch, and scenario
-     pool. Preserve all earlier regression targets and prove their collection.
-   - Preflight the toolchain, pinned source, resources, and configured target
-     before costly work. Commands are bounded and have protected local logs.
-   - Boot a real installed OpenClaw with separate writable configuration,
-     state, sessions, indexes, workspace, ports, and PIDs on the trusted native
-     host. This is not a security sandbox or a VM. Use normal supported startup
-     and shared host services where appropriate, without modifying the live
-     instance. Harness-only filesystem restrictions are optional, not release
-     requirements.
-   - Inject incoming iMessage protocol events through the real integration.
-     Script the model, record every delivery, and require explicit recording
-     adapters for external mutations. Missing adapters fail setup; there is no
-     live fallback. Use deterministic read fixtures for content assertions.
-   - Separately selected host health checks are bounded and read-only. They
-     check availability, authentication, and protocol, never personal content.
-     Required unavailable checks fail. Public CI needs no live credentials.
-   - Package all runtime dependencies and prove installation in a fresh prefix
-     without registry resolution. Rehearse that exact installed artifact.
-     Prebuild any browser artifact before the gateway is stopped.
-   - Cache only successful exact-input evidence. Include tests, environment,
-     toolchain, build inputs, and output digests. A package correction reruns
-     installation and runtime proofs, not unchanged source tests. Transport and
-     documentation-only retries do not rebuild unchanged runtime code.
-
-6. **Integrate eligible exact source**
+5. **Validate and integrate eligible exact source**
+   - Run `node packages/e2e/bin/openclaw-test-env.mjs ci` in CI against the
+     reviewed final candidate. Preserve the entire accumulated regression pool.
+     Use the configured builder and its exact source-gate evidence. Builds and
+     isolated CI fixtures do not reserve a shared mini environment.
    - Push the reviewed candidate and create or update a non-draft pull request.
-     Include the committed regressions, retained review, and cumulative command.
-   - Resolve actionable review, checks, and conflicts as agent-owned work.
-     Immediately before integration, verify the exact head and base, required
-     checks and review, and mergeability. Integrate using the configured method.
-   - Verify the expected exact source landed before activation. If integration
-     changes runtime inputs, rerun the affected gates and reseal before deploying.
-     No GitHub merge occurs inside the live production rollback transaction.
-   - Honor an explicit implementation-only handoff. Do not merge or deploy when
-     the parent assigned those responsibilities to another worker.
+     Include committed regressions, retained review, and the cumulative command.
+   - Bind premerge eligibility to that CI build, source gate, and matching DEV
+     validation. Resolve review, checks, and conflicts as agent-owned work.
+     Recheck exact head, base, required checks, and mergeability before merging.
+   - Merge between DEV and TEST. Verify the expected source landed. Honor an
+     explicit implementation-only handoff when another owner is assigned release.
+
+6. **Own and rehearse the merged batch**
+   - The agent initiating TEST registers itself as owner of every included
+     merged commit, with each feature owner's routable contact. Included agents
+     coordinate with it. Fetch latest main, pin the batch, and obtain its exact
+     CI-built artifacts. Do not use a feature branch from TEST onwards.
+   - Queue for TEST and hold its slot through installed scenarios, healthy
+     activation, deliberate failure, rollback, and cleanup. Keep writable state,
+     configuration, sessions, indexes, ports, and PIDs separate from DEV and PROD.
+   - Use complete immutable archives without dependency fetch or rebuild on the
+     target. Require recording adapters for writes and delivery. Selected host
+     checks are bounded and read-only. Missing required checks fail.
+   - Certify and promote through the existing receipt chain. Record successful
+     TEST with its exact artifact and production baseline. Release TEST before
+     waiting for PROD; retain batch ownership and monitor progress.
+   - On failure, preserve evidence and hold promotion. Identify the responsible
+     commit before reverting it on current main through a normal reviewed merge.
+     Include dependent changes when needed. Alert its feature owner to repair
+     with a regression in that owner's worktree and re-enter DEV.
+   - Select corrected latest main as a successor batch, build in CI, and resume
+     from TEST without waiting for the feature repair. Do not reset main, silently
+     discard unrelated work, or promote an older artifact containing bad code.
+     Infrastructure failures need diagnosis and retry rather than blind reverts.
+   - Reuse successful evidence only when its actual source, tests, environment,
+     toolchain, and artifacts still match. Rehearse again if PROD's baseline
+     changed before acquiring PROD. Request a concrete decision if attribution
+     or a data migration makes the necessary revert unsafe.
 
 7. **Activate exact artifacts**
    - Use the configured deployment wrapper. Check explicit target identity and
@@ -448,6 +448,18 @@ Feature work is complete only when:
 
 ## Puddles lifecycle
 
+Assume concurrent feature owners, including owners changing the same component.
+Use task-owned local worktrees for edits and focused tests. Check plans, PRs,
+and available task status, and coordinate overlapping interfaces and dependent
+changes directly with the owners. Never reserve the entire development loop
+while waiting for CI or a shared environment.
+
+Follow [deployment coordination](../../../packages/e2e/DEPLOYMENT_COORDINATION.md)
+for the mini's atomic lock file, DEV/TEST/PROD ready queues, initiating batch
+owner, and peer messages. Read it before using any shared environment. A
+heartbeat is not a transferable lease: inspect and contact an overdue owner,
+then use recorded recovery only after its controller and children stop.
+
 Read [the managed runner documentation](../../../packages/e2e/README.md)
 for current commands and [the deployment guide](../../../docs/openclaw-setup/patches/README.md)
 for artifact, target, recovery, and rollback contracts. These paths are relative
@@ -458,98 +470,51 @@ new features following this skill.
 
 ### Daily development
 
-For Puddles packages and servers, use their documented incremental build and
-focused tests. For OpenClaw changes, use a persistent, task-owned development
-checkout with the intended public patches and any explicitly selected local
-composition. Keep source edits mutable during this loop. DEV is a separate
-installed instance, with its own runtime, writable state, configuration,
-sessions, indexes, workspace, service, ports, processes, and logs. Start it on
-demand through the maintained lifecycle. Never substitute PROD for DEV.
+All local edits, type checks, and focused unit tests run in task-owned worktrees
+on the development machine, including composed OpenClaw source. Promote source
+edits into maintained patches before merging. Use repository-pinned toolchains
+and the host-local pnpm store. Keep output and writable state separate per task.
 
-Use the repository-pinned toolchain and one stable host-local pnpm store across
-maintained build consumers. The current delivery baseline uses Node 26.1.0,
-Corepack 0.36.0, and pnpm 12.3.4. Verify pins against the current manifests and
-`verify-pnpm-toolchain.mjs`; do not copy obsolete versions from old plans.
-Set `PNPM_CONFIG_STORE_DIR` consistently. Runtime archives contain complete
-dependencies and must not depend on mutable store links. Existing manual and
-production installations remain protected until separately migrated.
+Build deployable artifacts in CI, then queue for DEV when the selected artifact
+is ready. Use the maintained artifact consumer and controller. Validate the
+changed installed behavior using recording adapters and save proof of the
+exact branch head and tree. Release DEV after cleanup and message the next
+ready owner. DEV start, stop, reset, and diagnostics that mutate it also need
+its slot. CI builds run independently while DEV is occupied.
 
-From the prepared OpenClaw source checkout, a small core edit uses:
+### Merged TEST and production
 
-```bash
-corepack pnpm tsgo:core
-corepack pnpm exec vitest run <changed-test-files...> --maxWorkers=1
-corepack pnpm exec node --import ./scripts/tsx.mjs scripts/build-all.mts qaRuntime
-```
+After review, the complete accumulated CI gate, and DEV validation, merge the
+feature. The initiating TEST owner selects latest merged main, registers the
+batch and included commit owners, and obtains its immutable CI artifacts.
+TEST and PROD consume that merged batch. An included feature agent stays
+available for diagnosis and repair and coordinates with the registered owner.
+The owner monitors through production, including while waiting for a slot.
 
-For bundled plugin edits, use `tsgo:extensions` and the changed plugin tests.
-Use `corepack pnpm test:extension <plugin-id> -- --maxWorkers=1` when the
-maintained wrapper or broader plugin lane requires it. `qaRuntime` builds the
-installed DEV runtime without release declarations, UI build, or release
-metadata. Transfer `dist/` to the owned installed DEV runtime, restart only DEV,
-and assert the changed installed behavior with recording adapters. Do not
-transfer `dist-runtime/`, which is a source-checkout overlay. Prefer a configured
-companion repository's maintained wrapper for build, transfer, restart,
-assertions, recovery, and lifecycle actions; read its current instructions.
+Use the normal artifact, certification, recovery, and read-only health gates.
+Design approval already authorizes production within scope. Do not ask again
+at promotion. Acquire each environment through the queue, preserve target
+locks, and record recovery before destructive work. No build, dependency fetch,
+or merge occurs while production is stopped. PROD receives the exact successful
+TEST artifact, and any changed production baseline requires renewed TEST proof.
 
-Bootstrap materializes the complete DEV runtime once. The fast path requires
-unchanged manifests, lockfile, workspace definition, Node/pnpm versions,
-installed dependencies, and the composition identities checked by the wrapper.
-When those change, perform the documented frozen install and dependency refresh.
-If the existing DEV instance must be replaced, reset only that owned instance,
-verify it is absent, then bootstrap again. Do not bypass stale-input refusals.
-Broad SDK or declaration changes may require a clean build. Measure warm
-edit-to-installed-feedback separately from cold setup; the target is under
-five minutes, not a reason to skip tests or weaken timeouts.
+On a confirmed regression the batch owner merges the necessary revert, alerts
+the responsible feature agent, and resumes from TEST using corrected latest
+main. The feature agent repairs separately and re-enters DEV. Preserve a
+promotion hold for an uncertain failure and ask for a concrete decision only
+when autonomous diagnosis or safe revert cannot resolve it. Alert the next
+ready owner after releasing a slot; poll durable notifications so a missed
+message cannot strand a queued task. Record explicit ownership transfer if the
+owner cannot continue. Never abandon a batch after merge.
 
-### Release and TEST
-
-When the reviewed candidate is ready, run
-`node packages/e2e/bin/openclaw-test-env.mjs ci` as the cumulative gate. This is
-the full release lifecycle, not the daily edit command. Preserve all accumulated
-package, patch, and scenario regressions. Preflight pinned inputs, toolchain,
-resources, and the selected target before expensive work. Use the configured
-public hosted builder or authorized composed local builder. New paid execution
-or billing changes are outside ordinary implementation authorization.
-
-Build complete immutable artifacts once. Export the bundle and source-gate
-evidence, then import into TEST without a builder checkout, dependency fetch,
-or rebuild. A composed runtime needs the exact composed artifacts, not a public
-archive relabeled as equivalent. Verify the target OS, CPU, Node identity,
-additional artifacts, browser assets, and migration inputs on the target host.
-TEST has separate writable state and process identities from DEV and PROD.
-Run the installed scenarios, deliberate failure, rollback, and healthy
-activation proofs. Certify and promote using maintained commands. A build
-receipt or certification alone is not production eligibility.
-
-Integrate the reviewed exact source and verify landing before activating the
-eligible exact artifacts. Design approval already authorizes production
-deployment within the approved scope; do not ask again at promotion. Keep
-technical eligibility, target locks, snapshots, read-only production health,
-and automatic rollback. Do not rebuild, fetch dependencies, or merge while
-production is stopped. Prebuild browser assets. On failure, repair with a
-committed regression and refresh only evidence invalidated by actual inputs.
-
-Use durable run state and resume failed runs through the maintained commands.
-Cache successful evidence only when source, tests, environment, toolchain,
-workflow, build inputs, and output identities still match. Never edit hashes
-or receipts to hide drift. Clean up test-owned processes and disposable TEST
-state while preserving compact evidence and protected artifacts. Use the
-owner-managed retention pool where configured; retain the newest two successful
-bundles, a failed reproduction, and every active, pinned, deployed, or recovery
-dependency. Do not adopt or delete unrelated historical directories or stores.
-Backup replacement must prove isolated restore and publish the new reference
-before retiring the old recovery. Do not repeat Plan 039's one-off maintenance
-as a prerequisite for ordinary feature work.
-
-The same owner fixes release failures with committed regressions and resumes.
-Do not create a new handoff chain or discard successful exact-input evidence.
-Optional local extensions compose additional gates and scenarios. The public
-repository must operate independently and never fetch or require another
-repository's resources, credentials, configuration, identities, or output.
+Retain compact proofs, the failed reproduction, and all active or deployed
+recovery dependencies. Clean only owned disposable state through the maintained
+retention helpers. Public CI remains independent of private repositories,
+credentials, and configuration. Optional private composition follows its own
+paired-worktree instructions and binds both merged repository heads.
 
 For OpenClaw source patch deployment, follow
 `docs/openclaw-setup/patches/README.md` and use
-`docs/openclaw-setup/patches/apply-and-deploy.sh`. An unset `MINI_HOST` means
-local deployment on the target Mac mini. Set it only for an intentional,
-approved remote deployment.
+`docs/openclaw-setup/patches/apply-and-deploy.sh` inside the mini controller.
+An unset `MINI_HOST` means local deployment on the target Mac mini. Set it only
+for an intentional, approved remote deployment.
