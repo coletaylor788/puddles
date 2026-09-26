@@ -5,7 +5,8 @@ OpenClaw plugins live here. Each subfolder is a self-contained plugin that
 
 The secure service plugins consume [`packages/mcp-hooks`](../packages/mcp-hooks/) to wrap
 MCP tools and OpenClaw providers with security checks (egress leak detection,
-ingress prompt-injection detection, secret redaction, send approval flows).
+ingress prompt-injection detection, secret redaction, and Contacts-based
+recipient restrictions).
 
 `scoped-memory` instead provides tools restricted to the calling agent's own
 Markdown notes. It uses the existing OpenClaw memory manager, not MCP hooks.
@@ -28,9 +29,9 @@ The maintained plugins are:
 
 | Plugin | Plan | Purpose |
 |---|---|---|
-| `secure-gmail` | [010](../docs/plans/010-secure-gmail-plugin.md) | Wraps Gmail MCP tools with egress + ingress hooks |
-| `secure-apple-calendar` | [017](../docs/plans/017-secure-apple-calendar.md) | Wraps apple-pim's calendar MCP tool with ingress + egress hooks |
-| `scoped-memory` | [037](../docs/plans/037-openclaw-stable-upgrade.md) | Reads only the trusted calling agent's own Markdown notes |
+| `secure-gmail` | [010](../docs/plans/completed/010-secure-gmail-plugin.md) | Filters Gmail MCP results with ingress hooks |
+| `secure-apple-calendar` | [017](../docs/plans/completed/017-secure-apple-calendar.md) | Wraps apple-pim's calendar MCP tool with ingress + egress hooks |
+| `scoped-memory` | [037](../docs/plans/completed/037-openclaw-stable-upgrade.md) | Reads only the trusted calling agent's own Markdown notes |
 
 ## Prerequisites
 

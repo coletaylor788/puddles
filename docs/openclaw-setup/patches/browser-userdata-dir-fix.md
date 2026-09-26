@@ -78,7 +78,7 @@ openclaw config set 'agents.list[N].sandbox.browser.binds' \
   '["/host/path/to/profile:/profile:rw"]' --strict-json
 ```
 
-See [`docs/plans/023-durable-browser-agent-login.md`](../../plans/023-durable-browser-agent-login.md)
+See [`docs/plans/completed/023-durable-browser-agent-login.md`](../../plans/completed/023-durable-browser-agent-login.md)
 for the end-to-end setup that uses this.
 
 ## The proper upstream fix (Option B)

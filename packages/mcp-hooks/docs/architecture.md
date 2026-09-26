@@ -1,7 +1,7 @@
 # mcp-hooks Architecture
 
 Reference for working in this package. The high-level design rationale lives in
-[`docs/plans/009-mcp-security-hooks.md`](../../../docs/plans/009-mcp-security-hooks.md);
+[`docs/plans/completed/009-mcp-security-hooks.md`](../../../docs/plans/completed/009-mcp-security-hooks.md);
 this document is the living "what's actually here" companion.
 
 ---
