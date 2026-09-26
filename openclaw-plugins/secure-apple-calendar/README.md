@@ -57,7 +57,7 @@ to await an LLM call, so they can't live there. Wrapping the registered
 tool's `execute()` is the only place where async work can run between the
 MCP call and the result the agent sees on its next turn.
 
-See [Plan 010](../../docs/plans/010-secure-gmail-plugin.md) for the full
+See [Plan 010](../../docs/plans/completed/010-secure-gmail-plugin.md) for the full
 architecture rationale (the same constraint shaped secure-gmail).
 
 ## Threat model notes

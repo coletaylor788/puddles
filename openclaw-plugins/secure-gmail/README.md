@@ -30,9 +30,10 @@ If any hook returns `block`, the agent receives a sentinel message instead of
 the raw content. If all hooks return `allow` the original MCP result passes
 through unchanged.
 
-> **v1 scope:** ingress hooks only. gmail-mcp does not yet expose a
-> `send_email` tool, so egress hooks (LeakGuard / ContactsEgressGuard) are not wired.
-> When `send_email` lands they'll be added — see Plan 014.
+The deployed Gmail scope is ingress filtering. The bridge exposes no
+`send_email` tool and has no interactive send-approval workflow. Contacts-based
+recipient checks are implemented by the Calendar plugin, as documented in
+[plan 018](../../docs/plans/018-contacts-as-trust.md).
 
 ## Why ingress runs inside `execute()` (not via `tool_result_persist`)
 
@@ -42,7 +43,7 @@ OpenClaw's `tool_result_persist` and `before_message_write` lifecycle hooks are
 each registered tool's `execute()` is the only place where async work can run
 between the MCP call and the result the agent sees on its next turn.
 
-See [Plan 010](../../docs/plans/010-secure-gmail-plugin.md) for the full
+See [Plan 010](../../docs/plans/completed/010-secure-gmail-plugin.md) for the full
 architecture rationale.
 
 ## Install in OpenClaw

@@ -12,7 +12,7 @@ const safeWorkflow = readFileSync(
   "utf8",
 );
 const planContract = readFileSync(
-  resolve(repoRoot, "docs/plans/034-plan-and-issue-writing-contract.md"),
+  resolve(repoRoot, "docs/plans/completed/034-plan-and-issue-writing-contract.md"),
   "utf8",
 );
 

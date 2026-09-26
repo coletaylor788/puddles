@@ -84,7 +84,7 @@ puddles/
 ├── scripts/
 │   └── mac-mini/           # Host scripts for the Mac Mini server
 ├── docs/
-│   ├── plans/              # Cross-cutting implementation plans
+│   ├── plans/              # Pending plans; completed work in completed/
 │   └── openclaw-setup/     # Mac Mini setup guides
 └── .github/
     └── copilot-instructions.md  # Development guidelines
