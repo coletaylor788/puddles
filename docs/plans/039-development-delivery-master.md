@@ -1,6 +1,6 @@
 # Plan 039 - OpenClaw development and delivery
 
-**Status:** Implementations merged; public post-merge integration pending
+**Status:** Implementations merged and green; final artifact replay pending
 **Issue:** [#118](https://github.com/coletaylor788/puddles/issues/118)
 **Last updated:** 2026-09-26
 **Owner:** Delivery coordinator
@@ -50,12 +50,14 @@ runtime dependencies stay protected until separately migrated.
 
 ### Status
 
-Both implementation PRs are merged. The private post-merge check passes; the
-public post-merge integration run is still running. The final release candidate
+Both implementation PRs are merged and their post-merge checks pass. The public
+job retained its ARM bundle and resource records. The final release candidate
 passed installation, all scenarios, deliberate failure and rollback, healthy
 activation, coexistence, certification and cleanup. DEV warm core and plugin
 feedback passed in about three minutes eight seconds and three minutes
-thirty-nine seconds, with cold setup recorded separately.
+thirty-nine seconds, with cold setup recorded separately. One remaining
+retention check must replay artifact import and certification after disposable
+test state is removed.
 
 The new backup is proved and published. The requester explicitly authorized
 disposal of the integrity-drifted old copy; that exact cleanup is complete.
@@ -72,7 +74,9 @@ execution remain separately gated.
   Private `coletaylor788/puddles-private#39` merged as
   `75aa7a761b7644cd038d31544a11dc5b93b3d6a4`. The coordinator directly
   verified both main SHAs. Private post-merge run `36261272335` and public
-  CodeQL run `36266233422` passed. Public Integration `36266234464` is pending.
+  CodeQL run `36266233422` passed. Public Integration `36266234464` passed,
+  including cumulative checks, ARM bundle export/retention, resource retention
+  and post-job cleanup.
 - Final physical runtime proof belongs to public
   `251eff260df41bdc50e70337ece9da17dcefd116`, private
   `74e1389ecf8f1747b3f45f84c109c2655fb91cf6`, and upstream
@@ -123,6 +127,17 @@ execution remain separately gated.
   Do not enable overages, add payment methods or buy runners. A quota rejection
   is a reported blocker, not permission to change billing. Production upgrade
   is outside this delivery closeout.
+- Retention reconciliation distinguishes managed automation from historical
+  host accumulation. Hosted Actions scratch is ephemeral, and artifacts are
+  retained before job teardown. Persistent HOST runs do not inherit that
+  cleanup. Shared persistent dependency stores remain protected; a pinned
+  manager and capacity preflight are not a numerical cache-size bound.
+- Failure reproduction, fresh import, certification and TEST cleanup passed.
+  STORE-03 still needs a replay after disposable TEST state removal. The
+  release coordinator assigned a bounded artifact-only replay to the retained
+  public owner after the private owner's session became unavailable. It must
+  not rebuild source, mutate production, delete existing proof or invent
+  producer receipts. A missing prerequisite is reported before a costly repeat.
 
 ### Scope and acceptance criteria
 
@@ -226,9 +241,10 @@ configuration and evidence, not this public plan.
 
 ### Rollout and rollback
 
-The implementation PRs are merged; public post-merge integration is the current
-landing gate. Verify exact default-branch identities and workflow results.
-Do not rebuild unchanged runtime code merely to attach a new commit name.
+The implementation PRs are merged and post-merge checks pass on verified
+default-branch identities. Artifact replay after disposable TEST state removal
+is the remaining acceptance gate. Do not rebuild unchanged runtime code merely
+to attach a new commit name.
 
 DEV and TEST are accepted for feature development. Start DEV on demand through
 the maintained command. TEST is temporary and cleaned after release rehearsal.
@@ -280,7 +296,9 @@ block the accepted daily DEV/release flow.
 - [x] FLOW-04: Bind runtime, extra artifacts, assets and target evidence.
 - [x] FLOW-05: Execute scripted normal stages to durable terminal results.
 - [x] FLOW-06: Prove actual stage reuse and affected-input invalidation.
-- [ ] FLOW-07: Reconcile final trusted-trigger and concurrency evidence.
+- [x] FLOW-07: Verify trusted triggers and safe concurrency. Public PR/main and
+  private contract PR/main triggers ran; physical release is manual/callable,
+  serialized and never auto-cancelled. No public/fork PR runs on the target.
 - [x] TEST-01: Correct migration fixtures without weakening validation.
 - [x] TEST-02: Pass healthy real-wrapper activation on TEST.
 - [x] TEST-03: Prove intended post-snapshot CAS failure and rollback.
@@ -290,14 +308,19 @@ block the accepted daily DEV/release flow.
 - [x] STORE-02: Retain source-gate/regression sidecars through collection.
 - [ ] STORE-03: Prove complete failure reproduction and reimport/certification
   after disposable state is removed in the final flow.
-- [ ] STORE-04: Automatically reclaim owned Actions checkouts and scratch state
-  after preserving evidence, not just objects inside the artifact pool.
-- [ ] STORE-05: Bound CI-owned dependency caches and preflight the upcoming
-  costly stage without pruning global caches.
-- [ ] STORE-06: Measure steady-state and peak capacity after moving the builder,
-  including retained bundles, DEV/TEST state and recovery.
-- [ ] STORE-07: Prove active/pinned/protected references, interrupted cleanup,
-  separate local diagnostics and rejection of unknown cleanup paths.
+- [x] STORE-04: Hosted Actions retained the bundle and resource evidence and
+  completed ephemeral checkout/scratch teardown. Persistent HOST runs are
+  excluded and no cleanup of them is claimed.
+- [x] STORE-05: Hosted caches are runner-local and end with ephemeral jobs;
+  maintained flows pin manager/store selection and preflight costly stages.
+  Persistent shared stores have no claimed size cap and must not be pruned.
+- [x] STORE-06: Hosted peak records and final HOST/MINI steady-state measurements
+  cover retained bundles, DEV/TEST state and recovery. APFS and permission
+  limits prevent a unique reclaim total; no unmeasured local peak is claimed.
+- [x] STORE-07: Regressions and retained evidence cover protected references,
+  interrupted activation/cleanup, separate local diagnostics and unknown-path
+  refusal. Classifying seven older HOST runs remains a separate optional task,
+  not an assertion that historical host accumulation has been collected.
 - [x] PNPM-01: Pin maintained public/private/upstream build workflows.
 - [x] PNPM-02: Verify actual maintained consumers use per-machine shared stores.
 - [x] PNPM-03: Pass frozen/offline installs and applicable final build gates.
@@ -311,7 +334,7 @@ block the accepted daily DEV/release flow.
 - [x] BACKUP-06: Complete separately authorized drifted-copy disposal with evidence.
 - [x] LAND-01: Retained review, regressions and exact pre-merge checks pass.
 - [x] LAND-02: Merge public #117 and private #39.
-- [ ] LAND-03: Finish public post-merge Integration; private checks pass.
+- [x] LAND-03: Verify both default-branch identities and passing post-merge checks.
 - [x] LAND-04: Supply supported daily commands and documented operating limits.
 - [ ] LAND-05: Publish final reconciled result and close the tracking issue.
 - [ ] PROD-01: Separate future production authorization required.
