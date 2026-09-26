@@ -1,16 +1,16 @@
 ---
 name: safe-feature-development
-description: "Implement features safely from research through test-environment integration, full-diff architecture audit, configured promotion, production integration validation, and automatic rollback. Use whenever an agent is asked to implement a feature or behavior change."
-compatibility: "Requires the target repository's existing build, test, deployment, and rollback tools. Uses repository-provided test and production lifecycles when available."
+description: "Take Puddles features from an explicitly approved design through fast local and DEV iteration, independent review, cumulative release checks, TEST rehearsal, landing, production deployment, and rollback. Use when designing or implementing a feature or behavior change."
 metadata:
   author: Cole Taylor
-  version: "2.1.0"
+  version: "3.0.0"
 ---
 
 # Safe Feature Development
 
 Track feature development in a repository plan. The plan holds the detail. Its
 issue is a short prose summary and status that links to the plan.
+Use the repository's existing build, test, deployment, and rollback tools.
 
 Use this workflow for feature implementation, behavior changes, migrations,
 runtime configuration, plugins, integrations, and deployment automation. Follow
@@ -55,7 +55,8 @@ may explicitly separate implementation and release responsibilities. Honor those
 boundaries without duplicating the pipeline or its completed proofs.
 
 The owner keeps the requested code, focused tests, committed regression, related
-documentation, and retained adversarial review coherent. Run the full accumulated
+documentation, and retained adversarial review coherent. Iterate with the fast
+local and DEV loop below. When ready for release, run the full accumulated
 gate, rehearse the installed runtime, integrate eligible exact source, then
 activate exact artifacts with read-only health checks and rollback. Never change
 sealed artifacts in place. A correction creates a new candidate and invalidates
@@ -68,12 +69,60 @@ and review remediation, validation, deployment, rollback, merge, and
 post-landing verification. A controlling instruction may explicitly stop or
 limit those actions, and repository permissions and protections always apply.
 
-Pause before implementation only when the requester explicitly asks to review,
-approve, or iterate on the design. Record the current design in the plan and
-wait at that checkpoint. After approval, or when no design checkpoint was
-requested, continue autonomously through landing. Do not turn pull-request review
-or merge into a routine requester handoff. Return the landed result for the
-requester's final validation and task-completion decision.
+Always research and develop the design with the requester before implementation.
+Record it in the plan and obtain explicit approval to implement that design.
+A request to design or implement a feature does not approve an unseen design.
+An explicit approval already given for the current design remains valid; do not
+ask for it again. After approval, continue through landing and production
+deployment within that scope without another production approval. Required
+checks, exact-artifact eligibility, target identity, and rollback still apply.
+An explicit implementation-only or no-production scope remains binding.
+
+During implementation, escalate only major or high-impact deviations from the
+approved design. Examples include changing user-visible requirements, replacing
+the agreed architecture, crossing a data or access boundary, introducing a
+destructive migration, or materially changing cost or operational risk. Record
+the conflict, evidence, impact, proposed resolution, and blocked work in the
+plan, update the issue status, and obtain human review and approval of the
+revised design before proceeding with that affected work. Keep independent,
+already-approved work moving. Minor implementation details, equivalent helper
+choices, routine fixes, review remediation, and CI repairs do not need renewed
+approval unless they create such a deviation. Do not turn review, merge, or
+deployment into routine requester handoffs.
+
+For instruction or documentation maintenance with no runtime behavior change,
+validate the affected documents, links, and existing contract checks. Do not
+build or deploy an unchanged runtime merely to update guidance. A concrete
+request specifying the desired instruction edits supplies their design; it
+does not authorize implementing a feature that those instructions describe.
+
+## Workspace ownership
+
+Before editing, inspect the assigned checkout's branch, status, and base. Use a
+feature branch in an isolated worktree. Read its root and nested instructions.
+Root `AGENTS.md` must remain a tracked relative symlink to
+`.github/copilot-instructions.md`, not a separate copy.
+
+When work spans repositories, fetch each required repository and create a
+separate feature branch and worktree from its appropriate current base. Reuse
+an already assigned feature worktree. Preserve primary checkouts and unrelated
+dirty work; do not reset, stash, or switch them to make room. Updating a primary
+checkout is a separate maintenance operation only when explicitly requested.
+
+Place companion worktrees under a task-owned parent with the sibling names
+expected by their workspace manifests. If the assigned public worktree cannot
+move, a task-owned sibling link may point to that exact worktree. Verify the
+resolved path before installing dependencies. Never let a relative workspace
+dependency resolve to the public primary checkout by accident. Record the
+selected roots, branches, and base revisions in the appropriate plan; keep
+private identities out of public records. Point local composition and DEV
+configuration at those roots and the intended persistent upstream development
+source. Do not rewrite tracked manifests to accommodate a temporary layout.
+
+Companion repository worktrees belong to the same task; they do not require
+creating a new user-facing task. Read the companion's instructions and lifecycle
+documentation before editing it. Public code and public CI remain independently
+runnable and must never discover or require an optional private repository.
 
 ## Keep the solution proportional
 
@@ -212,24 +261,30 @@ investigating instead of asking.
    - Detail, evidence, commands, commit ids, validation transcripts, and
      chronology live in the plan, never in the issue.
    - Issue comments follow the same rule: short prose status only.
-   - Settle any material design ambiguity before implementation. Do not stop
-     after planning when implementation was already requested and the design is
-     approved.
-   - If the requester explicitly asked to review, approve, or iterate on the
-     design, pause here with the plan current and ask the exact unresolved
-     design question using the requester-help contract above. Otherwise, do not
-     add a human approval gate.
+   - Settle material design ambiguity and always obtain explicit approval to
+     implement the current design. Keep the plan current and present the exact
+     decision for review using the requester-help contract above. If that
+     approval is already present, proceed without asking again.
+   - Reopen this checkpoint only for a major or high-impact design deviation.
+     Record the blocker and proposed revision before asking. Minor choices
+     remain the implementation owner's responsibility.
 
-3. **Implement and freeze the feature candidate**
+3. **Implement through the fast local and DEV loop**
    - The implementer iterates locally using the repository's established
      development workflow and runs focused tests that cover the changed
-     behavior.
+     behavior. Use the Puddles daily workflow below: incremental build,
+     focused tests, transfer changed output to DEV, and installed behavior
+     assertions. DEV accepts mutable drafts without release receipts or frozen
+     source. Do not run the full release pipeline for each ordinary edit.
    - Use mocks or fakes for local testing and iteration when exercising a live
      dependency is unnecessary.
    - Route external writes and delivery in tests through deny-by-default mocks
      or recording adapters. Unknown mutations must return explicit errors, and
      automated tests must not deliver real messages.
    - Add or update tests and directly relevant documentation with the code.
+   - Promote upstream source edits into maintained repository patches before
+     release. An edit left only in the persistent OpenClaw checkout is not a
+     delivered feature. Register its regression targets in the shared pool.
 
 4. **Audit and freeze the feature candidate**
    - Before freezing the candidate, the implementer launches a fresh independent
@@ -362,10 +417,99 @@ Feature work is complete only when:
 
 ## Puddles lifecycle
 
-When `packages/e2e/bin/openclaw-test-env.mjs` exists on the active branch, use
-its `ci` command as the configured managed lifecycle. Run focused tests while
-iterating. Follow the safety
-model and commands in `packages/e2e/README.md`.
+Read [the managed runner documentation](../../../packages/e2e/README.md)
+for current commands and [the deployment guide](../../../docs/openclaw-setup/patches/README.md)
+for artifact, target, recovery, and rollback contracts. These paths are relative
+to the repository root when invoking commands; the links resolve from this
+skill directory. Plan 039 records the infrastructure's acceptance history.
+Its one-off production and cleanup restrictions do not add approval gates to
+new features following this skill.
+
+### Daily development
+
+For Puddles packages and servers, use their documented incremental build and
+focused tests. For OpenClaw changes, use a persistent, task-owned development
+checkout with the intended public patches and any explicitly selected local
+composition. Keep source edits mutable during this loop. DEV is a separate
+installed instance, with its own runtime, writable state, configuration,
+sessions, indexes, workspace, service, ports, processes, and logs. Start it on
+demand through the maintained lifecycle. Never substitute PROD for DEV.
+
+Use the repository-pinned toolchain and one stable host-local pnpm store across
+maintained build consumers. The current delivery baseline uses Node 26.1.0,
+Corepack 0.36.0, and pnpm 12.3.4. Verify pins against the current manifests and
+`verify-pnpm-toolchain.mjs`; do not copy obsolete versions from old plans.
+Set `PNPM_CONFIG_STORE_DIR` consistently. Runtime archives contain complete
+dependencies and must not depend on mutable store links. Existing manual and
+production installations remain protected until separately migrated.
+
+From the prepared OpenClaw source checkout, a small core edit uses:
+
+```bash
+corepack pnpm tsgo:core
+corepack pnpm exec vitest run <changed-test-files...> --maxWorkers=1
+corepack pnpm exec node --import ./scripts/tsx.mjs scripts/build-all.mts qaRuntime
+```
+
+For bundled plugin edits, use `tsgo:extensions` and the changed plugin tests.
+Use `corepack pnpm test:extension <plugin-id> -- --maxWorkers=1` when the
+maintained wrapper or broader plugin lane requires it. `qaRuntime` builds the
+installed DEV runtime without release declarations, UI build, or release
+metadata. Transfer `dist/` to the owned installed DEV runtime, restart only DEV,
+and assert the changed installed behavior with recording adapters. Do not
+transfer `dist-runtime/`, which is a source-checkout overlay. Prefer a configured
+companion repository's maintained wrapper for build, transfer, restart,
+assertions, recovery, and lifecycle actions; read its current instructions.
+
+Bootstrap materializes the complete DEV runtime once. The fast path requires
+unchanged manifests, lockfile, workspace definition, Node/pnpm versions,
+installed dependencies, and the composition identities checked by the wrapper.
+When those change, perform the documented frozen install and dependency refresh.
+If the existing DEV instance must be replaced, reset only that owned instance,
+verify it is absent, then bootstrap again. Do not bypass stale-input refusals.
+Broad SDK or declaration changes may require a clean build. Measure warm
+edit-to-installed-feedback separately from cold setup; the target is under
+five minutes, not a reason to skip tests or weaken timeouts.
+
+### Release and TEST
+
+When the reviewed candidate is ready, run
+`node packages/e2e/bin/openclaw-test-env.mjs ci` as the cumulative gate. This is
+the full release lifecycle, not the daily edit command. Preserve all accumulated
+package, patch, and scenario regressions. Preflight pinned inputs, toolchain,
+resources, and the selected target before expensive work. Use the configured
+public hosted builder or authorized composed local builder. New paid execution
+or billing changes are outside ordinary implementation authorization.
+
+Build complete immutable artifacts once. Export the bundle and source-gate
+evidence, then import into TEST without a builder checkout, dependency fetch,
+or rebuild. A composed runtime needs the exact composed artifacts, not a public
+archive relabeled as equivalent. Verify the target OS, CPU, Node identity,
+additional artifacts, browser assets, and migration inputs on the target host.
+TEST has separate writable state and process identities from DEV and PROD.
+Run the installed scenarios, deliberate failure, rollback, and healthy
+activation proofs. Certify and promote using maintained commands. A build
+receipt or certification alone is not production eligibility.
+
+Integrate the reviewed exact source and verify landing before activating the
+eligible exact artifacts. Design approval already authorizes production
+deployment within the approved scope; do not ask again at promotion. Keep
+technical eligibility, target locks, snapshots, read-only production health,
+and automatic rollback. Do not rebuild, fetch dependencies, or merge while
+production is stopped. Prebuild browser assets. On failure, repair with a
+committed regression and refresh only evidence invalidated by actual inputs.
+
+Use durable run state and resume failed runs through the maintained commands.
+Cache successful evidence only when source, tests, environment, toolchain,
+workflow, build inputs, and output identities still match. Never edit hashes
+or receipts to hide drift. Clean up test-owned processes and disposable TEST
+state while preserving compact evidence and protected artifacts. Use the
+owner-managed retention pool where configured; retain the newest two successful
+bundles, a failed reproduction, and every active, pinned, deployed, or recovery
+dependency. Do not adopt or delete unrelated historical directories or stores.
+Backup replacement must prove isolated restore and publish the new reference
+before retiring the old recovery. Do not repeat Plan 039's one-off maintenance
+as a prerequisite for ordinary feature work.
 
 The same owner fixes release failures with committed regressions and resumes.
 Do not create a new handoff chain or discard successful exact-input evidence.

@@ -114,7 +114,12 @@ the `openclaw-plugins/*` workspace glob.
 
 ## Development
 
-See [.github/copilot-instructions.md](./.github/copilot-instructions.md) for development guidelines.
+Start with [AGENTS.md](./AGENTS.md), a tracked symlink to the shared
+[development instructions](./.github/copilot-instructions.md). The
+[safe feature development skill](./.github/skills/safe-feature-development/SKILL.md)
+defines design approval, isolated worktrees, the fast local and DEV loop,
+independent review, and delivery through production. The
+[managed runner guide](./packages/e2e/README.md) supplies current commands.
 
 ## License
 
