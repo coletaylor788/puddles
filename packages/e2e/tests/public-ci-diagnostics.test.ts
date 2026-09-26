@@ -166,7 +166,7 @@ it("exports bounded public resource evidence without command arguments or paths"
   writeFileSync(join(run, "resources/0.json"), JSON.stringify({
     schema: "puddles.native-command-resources/v2",
     profile: "hosted-arm",
-    label: "corepack pnpm",
+    label: "corepack pnpm@12.3.4",
     startedAt: "2026-09-15T00:00:00.000Z",
     finishedAt: "2026-09-15T00:00:01.000Z",
     durationMs: 1000,
@@ -182,6 +182,7 @@ it("exports bounded public resource evidence without command arguments or paths"
   }));
   const result = collectPublicResources(f.env);
   expect(result.records).toHaveLength(1);
+  expect(result.records[0].label).toBe("corepack pnpm@12.3.4");
   expect(result.summary).toContain("4500000000 bytes");
   expect(readdirSync(result.output).sort()).toEqual(["commands.json", "summary.md"]);
   expect(readFileSync(join(result.output, "commands.json"), "utf8")).not.toContain(f.root);

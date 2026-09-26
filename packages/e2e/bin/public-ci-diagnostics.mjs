@@ -161,7 +161,7 @@ export function collectPublicResources(env = process.env) {
       const record = json(join(directory, name));
       if (record.schema !== "puddles.native-command-resources/v2" ||
           !["default", "hosted-arm"].includes(record.profile) ||
-          !/^[A-Za-z0-9._-]+(?: [A-Za-z0-9._:-]+)?$/.test(record.label) ||
+          !/^[A-Za-z0-9._-]+(?: [A-Za-z0-9._:@-]+)?$/.test(record.label) ||
           record.host?.platform !== "darwin" ||
           !["arm64", "x64"].includes(record.host?.arch)) {
         throw new Error("Invalid public resource record");
