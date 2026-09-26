@@ -116,20 +116,30 @@ it("initializes and persists the public run path at step runtime, not job contex
     E2E_LOCAL_EXTENSION: "",
     E2E_RESOURCE_MEASURE: "1",
     E2E_RESOURCE_PROFILE: "hosted-arm",
-    PNPM_CONFIG_STORE_DIR: "${{ runner.tool_cache }}/puddles-pnpm-store",
   });
   const steps = workflow.getIn(["jobs", "cumulative", "steps"]);
   if (!isSeq(steps)) throw new Error("Missing cumulative job steps");
+  const storeConfiguration = steps.items.find((step) => isMap(step) && step.get("name") === "Configure package manager store");
+  if (!isMap(storeConfiguration)) throw new Error("Missing package manager store configuration step");
+  const storeBody = storeConfiguration.get("run");
+  if (typeof storeBody !== "string") throw new Error("Missing package manager store configuration script");
+  const environmentFile = join(f.root, "job-environment");
+  await runCommand("bash", ["-e", "-c", storeBody], {
+    cwd: repository, env: { ...process.env, RUNNER_TOOL_CACHE: "/runner/tool-cache", GITHUB_ENV: environmentFile },
+    quiet: true,
+  });
+  expect(readFileSync(environmentFile, "utf8")).toBe("PNPM_CONFIG_STORE_DIR=/runner/tool-cache/puddles-pnpm-store\n");
   const initialization = steps.items.find((step) => isMap(step) && step.get("name") === "Initialize public run evidence");
   if (!isMap(initialization)) throw new Error("Missing public initialization step");
   const body = initialization.get("run");
   if (typeof body !== "string") throw new Error("Missing public initialization script");
-  const environmentFile = join(f.root, "job-environment");
   await runCommand("bash", ["-e", "-c", body], {
     cwd: repository, env: { ...process.env, ...f.env, E2E_RUN_DIR: "/invalid-inherited-run", GITHUB_ENV: environmentFile },
     quiet: true,
   });
-  expect(readFileSync(environmentFile, "utf8")).toBe(`E2E_RUN_DIR=${f.env.E2E_RUN_DIR}\n`);
+  expect(readFileSync(environmentFile, "utf8")).toBe(
+    `PNPM_CONFIG_STORE_DIR=/runner/tool-cache/puddles-pnpm-store\nE2E_RUN_DIR=${f.env.E2E_RUN_DIR}\n`,
+  );
   expect(JSON.parse(readFileSync(join(f.env.E2E_RUN_DIR, "public-ci.json"), "utf8"))).toEqual({
     scope: "public-ci", run: f.env.GITHUB_RUN_ID, attempt: f.env.GITHUB_RUN_ATTEMPT,
   });
