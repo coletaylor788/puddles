@@ -1,0 +1,67 @@
+name: CodeQL
+
+on:
+  pull_request:
+    # Only human-facing docs; runtime prompts, patches, and CI changes still run.
+    paths-ignore:
+      - "**/README.md"
+      - "AGENTS.md"
+      - ".github/copilot-instructions.md"
+      - ".github/skills/**/*.md"
+      - "docs/plans/**/*.md"
+      - "docs/openclaw-setup/*.md"
+      - "docs/openclaw-setup/patches/*.md"
+      - "docs/openclaw-setup/apple-pim/*.md"
+      - "packages/*/docs/**/*.md"
+      - "servers/*/docs/**/*.md"
+      - "servers/*/brainstorming/**/*.md"
+  push:
+    branches: [main]
+    # Only human-facing docs; runtime prompts, patches, and CI changes still run.
+    paths-ignore:
+      - "**/README.md"
+      - "AGENTS.md"
+      - ".github/copilot-instructions.md"
+      - ".github/skills/**/*.md"
+      - "docs/plans/**/*.md"
+      - "docs/openclaw-setup/*.md"
+      - "docs/openclaw-setup/patches/*.md"
+      - "docs/openclaw-setup/apple-pim/*.md"
+      - "packages/*/docs/**/*.md"
+      - "servers/*/docs/**/*.md"
+      - "servers/*/brainstorming/**/*.md"
+  schedule:
+    - cron: "27 8 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [actions, javascript-typescript, python]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+      - name: Analyze
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}

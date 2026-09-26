@@ -2,8 +2,34 @@ name: Integration
 
 on:
   pull_request:
+    # Only human-facing docs; runtime prompts, patches, and CI changes still run.
+    paths-ignore:
+      - "**/README.md"
+      - "AGENTS.md"
+      - ".github/copilot-instructions.md"
+      - ".github/skills/**/*.md"
+      - "docs/plans/**/*.md"
+      - "docs/openclaw-setup/*.md"
+      - "docs/openclaw-setup/patches/*.md"
+      - "docs/openclaw-setup/apple-pim/*.md"
+      - "packages/*/docs/**/*.md"
+      - "servers/*/docs/**/*.md"
+      - "servers/*/brainstorming/**/*.md"
   push:
     branches: [main]
+    # Only human-facing docs; runtime prompts, patches, and CI changes still run.
+    paths-ignore:
+      - "**/README.md"
+      - "AGENTS.md"
+      - ".github/copilot-instructions.md"
+      - ".github/skills/**/*.md"
+      - "docs/plans/**/*.md"
+      - "docs/openclaw-setup/*.md"
+      - "docs/openclaw-setup/patches/*.md"
+      - "docs/openclaw-setup/apple-pim/*.md"
+      - "packages/*/docs/**/*.md"
+      - "servers/*/docs/**/*.md"
+      - "servers/*/brainstorming/**/*.md"
 
 permissions:
   contents: read
