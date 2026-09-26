@@ -14,13 +14,13 @@ The writing contract favors familiar words, short sentences and enough architect
 
 ### Status
 
-The contract is implemented in the repository instructions, feature workflow and committed regressions. The current instructions also explain unfamiliar OpenClaw concepts and keep independent review with one reviewer. This documentation change is complete; no gateway deployment is required.
+The contract is implemented in the repository instructions and feature workflow. The current instructions also explain unfamiliar OpenClaw concepts and keep independent review with one reviewer. This documentation change is complete; no gateway deployment is required.
 
 ## Agent section
 
 ### State
 
-Complete. Current canonical documents and their structural tests contain the delivered contract.
+Complete. Current canonical documents contain the delivered contract. Documentation wording and format are reviewed directly, without automated prose assertions.
 
 ### Scope and acceptance criteria
 
@@ -35,8 +35,7 @@ Complete. Current canonical documents and their structural tests contain the del
 
 - `.github/copilot-instructions.md` summarizes the writing rules.
 - `.github/skills/safe-feature-development/SKILL.md` owns the exact format and issue template.
-- `packages/e2e/tests/plan-and-issue-writing-contract.test.ts` checks these documents and this plan.
-- `packages/e2e/tests/review-workflow.test.ts` covers related ownership and explanation rules.
+- Documentation and skill text are reviewed directly. Tests of their wording and plan formatting were removed at the requester's direction.
 - Retained review has superseded the former fresh terminal-review requirement. Review records remain outside the candidate diff when needed.
 
 ### Implementation
@@ -45,11 +44,11 @@ The issue ledger was replaced by Summary and Status. Human design and Agent deta
 
 ### Validation
 
-The original implementation record reports the full managed lifecycle and 13 focused contract/review tests passing, plus clean independent review. The hygiene audit re-read the current format and regression sources. Historical test totals are not current suite counts or a newly executed gate.
+The original implementation record reports the full managed lifecycle and 13 focused contract/review tests passing, plus clean independent review. The hygiene audit re-read the current format. The requester subsequently removed automated documentation and skill assertions because they coupled CI to prose. Historical test totals are not current suite counts or a newly executed gate.
 
 ### Rollout and rollback
 
-Normal source integration delivers this guidance. A rollback reverts the instructions and matching regressions together; no runtime or data restoration applies.
+Normal source integration delivers this guidance. A rollback reverts the instructions; no runtime or data restoration applies.
 
 ### Review log
 
@@ -59,5 +58,5 @@ Original review fixed obsolete test wording, review-record placement and publica
 
 - [x] Implement exact plan and issue formats.
 - [x] Add writing and architecture-explanation guidance.
-- [x] Add shared-pool contract regressions.
+- [x] Remove automated prose assertions and retain the documented writing guidance.
 - [x] Keep this completed plan consistent with current instructions.

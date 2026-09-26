@@ -34,7 +34,7 @@ Complete. The original fresh-reviewer-per-round rule was replaced by the retaine
 - `.github/copilot-instructions.md` is the concise entry point.
 - `.github/skills/safe-feature-development/SKILL.md` owns orchestration.
 - `.github/skills/adversarial-review/SKILL.md` owns substantive criteria and reporting.
-- `packages/e2e/tests/review-workflow.test.ts` checks the current instruction contract.
+- Review guidance is checked directly; automated assertions of instruction and skill wording were removed at the requester's direction.
 
 ### Implementation
 
@@ -42,11 +42,11 @@ The repository instructions require the feature skill. Both skills exist in curr
 
 ### Validation
 
-The audit read both skills, repository instructions and the shared regression. The original plan records successful metadata, reference, whitespace and independent-review checks. Historical test execution is not presented as a new run. No runtime deployment applies.
+The audit read both skills and repository instructions. Automated prose assertions were subsequently removed at the requester's direction. The original plan records successful metadata, reference, whitespace and independent-review checks. Historical test execution is not presented as a new run. No runtime deployment applies.
 
 ### Rollout and rollback
 
-The merged repository guidance governs new work. Rollback is a reviewed documentation and contract-test revert, with no production state migration.
+The merged repository guidance governs new work. Rollback is a reviewed documentation revert, with no production state migration.
 
 ### Review log
 
