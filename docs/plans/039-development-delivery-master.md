@@ -1,6 +1,6 @@
 # Plan 039 - OpenClaw development and delivery
 
-**Status:** Implementations merged and green; correct-host artifact replay underway
+**Status:** Complete; merged, verified and ready for feature development
 **Issue:** [#118](https://github.com/coletaylor788/puddles/issues/118)
 **Last updated:** 2026-09-26
 **Owner:** Delivery coordinator
@@ -55,17 +55,16 @@ job retained its ARM bundle and resource records. The final release candidate
 passed installation, all scenarios, deliberate failure and rollback, healthy
 activation, coexistence, certification and cleanup. DEV warm core and plugin
 feedback passed in about three minutes eight seconds and three minutes
-thirty-nine seconds, with cold setup recorded separately. The final retention
-check is replaying import and certification on the mini. A reported missing
-browser archive was a wrong-host check; the exact archive and interpreter remain
-available on the target machine. No additional build is needed.
+thirty-nine seconds, with cold setup recorded separately. Final artifact replay
+and certification pass on the mini after disposable test state removal. The
+fresh test state is cleaned up and production remains healthy and unchanged.
 
 The new backup is proved and published. The requester explicitly authorized
 disposal of the integrity-drifted old copy; that exact cleanup is complete.
 Maintained DEV, release and TEST consumers use the shared pinned package store,
 and the final two-machine audit is complete. Optional host build-evidence
-retention work remains separate from delivery. Production upgrade and new paid
-execution remain separately gated.
+retention work remains separate from delivery. The process is ready for feature
+development. Production upgrade and new paid execution remain separately gated.
 
 ## Agent section
 
@@ -149,13 +148,36 @@ execution remain separately gated.
   prevents external mutations during TEST while preserving archive checks.
   The pool never registered or deleted the stable external target assets.
   Their absence from a pool object is not evidence of destructive cleanup.
-- The release coordinator alone is authorized to perform fresh-pool import,
-  target-only 11-scenario execution and certification on MINI using existing
-  exact artifacts, seed, target, source gate and physical target proof, with a
-  25 GiB reserve. Compare genuine proof keys; do not rewrite or reseal them.
-  No source/browser build, full physical release, paid execution or production
-  action is included. A proposed new generic target-input retention object is
-  paused as uncommitted optional work, not a prerequisite to this replay.
+- The release coordinator completed fresh-pool import, target-only execution
+  and certification on MINI using existing exact artifacts, seed, target,
+  source gate and physical target proof, with a 25 GiB reserve.
+  Fresh import, root and six additional installs, runtime and all
+  11 recording-only scenarios passed. Build, target, adapter, seed and all 85
+  adapter-input hashes match the retained evidence.
+- Fresh stage keys differ because artifact/provenance and command/fixture
+  environment paths name the fresh run. Do not rewrite keys or pretend these
+  are identical stage executions. The maintained `certifyRelease` command
+  verifies imported build assets and genuine retained source/physical proof;
+  it does not compare fresh-run stage keys with historical keys. Requiring that
+  comparison was an unnecessary coordinator gate and has been removed.
+  Certification reuses the original physical proof unchanged, while the fresh
+  target-only replay remains distinct evidence. It is not a second physical
+  activation. The unchanged certification command passed with the original
+  certification digest
+  `cbc7f795cb5fe05602fc3764acd1b2a851af2cfd65ea71e65c6fea03bdf47f02`.
+  Eligibility remains `certified-not-production`.
+- Final STORE-03 packet digest is
+  `512df52fdc4b1d444b2f5f94bdd86998bd90b3caf9a2601ce27739c0a18965b4`,
+  independently checked by the coordinator on MINI. Fresh TEST root, imported
+  payload, installed payloads and fresh pool are absent. Compact stage receipts,
+  installed proof, logs and certification remain. Original protected inputs
+  remain intact. The executor's read-only production check returned HTTP 200
+  with unchanged PID. No source/browser build, physical activation, promotion,
+  paid execution or production action occurred.
+- A proposed generic target-input retention object remains paused as
+  uncommitted optional work in the public owner's workspace. It is not part of
+  the merged behavior or a requirement for the accepted replay. Preserve it
+  separately if retiring that workspace; do not describe it as landed.
 
 ### Scope and acceptance criteria
 
@@ -284,9 +306,9 @@ release rebuild is never hidden inside the stopped-service transaction.
 
 The implementation PRs are merged and post-merge checks pass on verified
 default-branch identities. Artifact replay after disposable TEST state removal
-must run on the MINI-bound target, not HOST. Its exact stable external inputs
-are available. Do not rebuild unchanged runtime code merely to attach a new
-commit name.
+passed on the MINI-bound target with exact stable external inputs. Certification
+reused genuine retained physical proof, not a second activation. Do not rebuild
+unchanged runtime code merely to attach a new commit name.
 
 DEV and TEST are accepted for feature development. Start DEV on demand through
 the maintained command. TEST is temporary and cleaned after release rehearsal.
@@ -305,10 +327,11 @@ runtime, packaging, target and workflow repairs. The final runtime candidate
 passed the accumulated and physical TEST lifecycle. Workflow-only fixes have
 their own remote checks and do not fabricate a new runtime proof identity.
 
-The coordinator directly verified merged PR/main identities and available
-post-merge checks, and read the final DEV packet. Physical release and backup
-results are attributed to the owning executors and their preserved records.
-Remaining retention obligations below are not silently marked passed.
+The coordinator directly verified merged PR/main identities, green post-merge
+checks, the final DEV packet and the terminal replay packet digest. Physical
+release, backup and cleanup results are attributed to the owning executors and
+their preserved records. Wrong-host and unnecessary raw-key comparisons were
+withdrawn, not turned into product changes or silently bypassed checks.
 
 ### Checklist
 
@@ -318,7 +341,7 @@ block the accepted daily DEV/release flow.
 
 - [x] PLAN-01: Persist scope, diagrams, owners and acceptance criteria.
 - [x] PLAN-02: Publish this plan and link #118 and component plans.
-- [ ] PLAN-03: Finish final evidence reconciliation and closeout.
+- [x] PLAN-03: Reconcile final evidence, explicit operating limits and closeout.
 - [x] DEV-01: Separate DEV from TEST/PROD writable and process identities.
 - [x] DEV-02: Maintain incremental local build/test and SSH DEV deployment.
 - [x] DEV-03: Accept uncommitted edits and refuse production targets.
@@ -348,9 +371,9 @@ block the accepted daily DEV/release flow.
 - [x] TEST-05: Diagnose target-only failures and clean owned TEST state.
 - [x] STORE-01: Implement owned artifact pool and protected retention.
 - [x] STORE-02: Retain source-gate/regression sidecars through collection.
-- [ ] STORE-03: Prove complete failure reproduction and reimport/certification
-  after disposable state is removed in the final flow. Correct-host target-only
-  replay is assigned; the wrong-host missing-browser diagnosis is withdrawn.
+- [x] STORE-03: Prove failure reproduction and fresh reimport/certification
+  after disposable state removal. Target-only replay passes all 11 scenarios;
+  certification reuses genuine retained physical proof without rewriting keys.
 - [x] STORE-04: Hosted Actions retained the bundle and resource evidence and
   completed ephemeral checkout/scratch teardown. Persistent HOST runs are
   excluded and no cleanup of them is claimed.
@@ -379,7 +402,7 @@ block the accepted daily DEV/release flow.
 - [x] LAND-02: Merge public #117 and private #39.
 - [x] LAND-03: Verify both default-branch identities and passing post-merge checks.
 - [x] LAND-04: Supply supported daily commands and documented operating limits.
-- [ ] LAND-05: Publish final reconciled result and close the tracking issue.
+- [x] LAND-05: Publish final reconciled result and close the tracking issue.
 - [ ] PROD-01: Separate future production authorization required.
 - [ ] PROD-02: Future exact-artifact activation and read-only health checks.
 - [ ] PROD-03: Future production result/recovery record; no upgrade claimed here.
