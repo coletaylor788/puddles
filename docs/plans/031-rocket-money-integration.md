@@ -20,7 +20,7 @@ flowchart TB
         Validate["3. Validate request<br/>and authorize scope"]
         Auth["4. Obtain private auth"]
         Execute["5. Call provider over HTTPS<br/>Inspect full response"]
-        Release["6. Verify writes<br/>Release allowed result"]
+        Release["6. Confirm changes<br/>Return results"]
     end
     Reader["Isolated reader"]
     Main["Main agent"]
@@ -94,28 +94,39 @@ Only the shared executor sends provider requests, using fixed registered HTTPS d
 
 Credentials and cookie rotations remain private. Operational logs contain only generated IDs, approved operation classes, status, duration, and safe error codes. Raw bodies, query strings, auth headers, and debug dumps are excluded. Active backend code, policy, and credentials live outside agent-writable paths. Independent host egress controls remain an implementation decision to prove.
 
-#### 6. Verify writes and release allowed result
+#### 6. Confirm changes and return results
 
-| Caller | Permitted result |
+There are two return paths, using Puddles' existing separation between the main assistant and its restricted reader:
+
+| Example request | What comes back |
 |---|---|
-| Isolated reader | Inspected native financial or weather data, still treated as external content. |
-| Main agent with write authority | Bounded receipt containing request ID, operation kind, outcome, and any explicitly permitted source IDs. |
+| “Find my September Venmo reimbursements.” | The restricted reader receives the native transaction data. It helps the main assistant answer without putting raw merchant text or notes directly into main's context. |
+| “Move this reimbursement to September 30.” | The service changes the date, reads it back, and returns a small confirmation: request ID, date-update operation, and verified status. |
 
-Read access does not grant writes. A writer's private preflight and read-back calls do not expose a general read endpoint. Merchant names, notes, weather text, and raw provider errors stay out of main's receipts.
+The reader can inspect data but cannot change it. The main assistant can make a separately authorized update, but that access does not also let it fetch arbitrary raw account data. The service's private check after an update stays inside the service.
 
-Before a write, assign a stable request ID, check expected state, and record intent in a private journal. After execution, read back the changed fields. A timeout, disconnect, failed inspection, or crash after dispatch may leave an unknown outcome. Reconcile it by request ID; never blindly repeat or roll back the mutation. Reusing an ID with changed content is rejected. Batches retain per-item outcomes and are not atomic.
+**If an update times out:** Rocket Money may already have applied it. The service records each attempt under a stable request ID before sending it. It then uses that record and a fresh read to check the outcome, instead of blindly sending the change again. Until resolved, the answer is “outcome unknown,” not “failed” or “done.” A batch reports each item's result separately; some can succeed while others fail.
 
-#### Adding another provider
+#### How the next CLI fits
 
-The shared service owns transport, execution order, credential custody, and result release. Each installed provider supplies native request validation, an auth driver, request construction, response inspection, and any write verification. Small fixed APIs can use protected definitions; complex browser and GraphQL behavior belongs in code.
+Rocket Money and weather use the same host service. The reusable part receives sandbox requests, manages private credentials, makes HTTPS calls, and returns checked results. Each provider adds an adapter that defines:
 
-Provider modules are trusted deployed code. Requests cannot install modules or select code paths. Prove extension with a test provider added without modifying the executor. All production CLIs, skills, service code, and deployment definitions stay in Puddles.
+- Which destinations and operations are allowed.
+- How to authenticate and renew access.
+- How to build native requests and check the returned data.
+- How to confirm changes, if that provider permits any.
+
+For a simple API, the adapter can mostly be protected settings. Rocket Money needs code for its GraphQL rules and browser session. Adding the next CLI should mean adding its adapter and skill, not changing the shared request pipeline. We will prove that with a test provider.
+
+Adapters are installed by the operator as trusted code; an agent request cannot install one or change its permissions. All of this stays in the Puddles repo.
 
 ### Status
 
 The design is recorded for later implementation. No gateway runtime is installed and no financial writes have been performed. The first milestone is a scoped socket bridge and executor tested with synthetic credentials. Weather can proceed while Rocket Money's unattended auth is being proven.
 
-Open checks are Mini transport/permissions, headless renewal and reboot prerequisites, free-account coverage, the budget effect of date changes, weather provider selection, and host egress enforcement. These are implementation gates, not verified capabilities.
+Before calling this usable, we still need to prove the Mini connection and permissions, unattended Rocket Money login, free-account access, and whether moving a date changes the intended budget month. We also need to select the weather API and verify the host's network restrictions.
+
+The sections below are the implementation reference: exact contracts, build order, validation, and deployment notes. They do not add more stages to the request flow.
 
 ## Agent section
 
