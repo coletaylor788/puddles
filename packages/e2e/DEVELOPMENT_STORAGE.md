@@ -41,12 +41,14 @@ versioned store. Migrate an active task at an owned dependency refresh. Do not
 move or prune the store under a running install.
 
 Keep one ready DEV payload per task plus an in-flight replacement. Hold the old
-payload until transfer, installation, and installed checks acknowledge it.
+payload until transfer, installation, and installed checks acknowledge it,
+or the controller explicitly supersedes it while it is idle.
 Reuse output compatibility checks; never share writable build output across tasks.
 The companion prepare/draft controller serializes these operations. A completed
 preparation can explicitly supersede an idle ready payload. A successful draft
 installation retires its local payload and transfer lists. It preserves manifests
-and results, retains failed output under the failed-attempt policy, and refuses
+and results. Raw draft logs use compressed retention in the configured artifact
+pool or the task’s `draft-controller/log-pool`. It retains failed output under the failed-attempt policy, and refuses
 unknown legacy payloads until their owner migrates them. An interrupted operation
 keeps its hold and pending record for owner recovery.
 

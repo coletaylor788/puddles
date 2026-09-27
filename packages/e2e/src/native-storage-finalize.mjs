@@ -8,14 +8,14 @@ import {
   assertTerminalNativeStorage, initializeStorage, registerScratch, sealScratch, applyStorageCleanup,
 } from "./native-storage.mjs";
 
-export function retainCompletedOperationLog(root, log, owner) {
+export function retainCompletedOperationLog(root, log, owner, poolPath) {
   root = realpathSync(root);
   if (!/^logs\/[a-zA-Z0-9._-]+\.log$/.test(log)) throw new Error("Invalid operation log path");
   const source = join(root, log);
   if (!lstatSync(source).isFile() || realpathSync(source) !== source) throw new Error("Operation log must be a regular owned file");
   const digest = fileDigest(source);
   const staging = join(root, `.log-archive-${randomUUID()}`);
-  const pool = process.env.E2E_ARTIFACT_POOL ?? join(root, "draft-controller/log-pool");
+  const pool = poolPath ?? process.env.E2E_ARTIFACT_POOL ?? join(root, "draft-controller/log-pool");
   initializeArtifactPool(pool);
   mkdirSync(join(staging, "logs"), { recursive: true, mode: 0o700 });
   try {

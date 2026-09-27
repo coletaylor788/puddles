@@ -160,7 +160,7 @@ it("archives completed draft logs once and expires their compressed diagnostics"
   for (let attempt = 0; attempt < 3; attempt++) {
     const log = `logs/prepare-${attempt}.log`;
     writeFileSync(join(root, log), `attempt ${attempt}: ${"diagnostic".repeat(10000)}`);
-    const reference = retainCompletedOperationLog(root, log, "task");
+    const reference = retainCompletedOperationLog(root, log, "task", join(root, "draft-controller/log-pool"));
     expect(existsSync(join(root, log))).toBe(false);
     expect(JSON.parse(readFileSync(join(root, `${log}.reference.json`), "utf8"))).toEqual(reference);
     expect(existsSync(join(reference.pool, "objects", reference.objectId, "logs.tar.gz"))).toBe(true);

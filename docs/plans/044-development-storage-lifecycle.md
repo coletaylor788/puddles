@@ -236,15 +236,17 @@ Approved implementation order:
 
 ### Validation
 
-The complete e2e package passed 417 tests after review remediation. The final
-lock-order correction passed all 38 pipeline tests, including two new
-regressions for task cleanup contention and builder lock contention. Companion
-release-tool checks passed 37 tests with two environment-gated skips. Review found
-interrupted cleanup, terminal log references, retry protection, and the local
-release hook needed correction. Fixes and regressions are in the candidate;
-retained re-review, including the lock-order correction, found no remaining
-significant findings. Public CI is pending. The companion contract CI passed;
-its composed ARM job requires confirmation of included private hosted minutes.
+After integration with the merged OpenClaw upgrade, the complete e2e package
+passed 434 tests and its TypeScript check passed. The companion contract command
+passed 115 tests with eight environment-gated skips. Paired draft and release
+checks passed 49 tests with five environment-gated skips. These include repeated
+operations using the real shared storage cleaner, compressed log expiry, task
+lock contention, joined-child capacity release, and portable bundle reuse.
+
+The retained reviewer rechecked both complete diffs and reported no remaining
+significant findings. Final public CI is pending. The companion composed ARM job
+requires confirmation of included private hosted minutes. Existing task roots
+remain protected until their owners apply the merged migration commands.
 
 
 Investigation performed read-only directory measurements, run-status and
@@ -288,6 +290,6 @@ significant findings. Final CI and composed execution remain validation gates.
 - [x] Write the proposed ownership, retention, and cleanup behavior.
 - [x] Approve the design and proposed retention defaults.
 - [x] Implement in isolated public and companion worktrees.
-- [ ] Validate concurrency, recovery, evidence portability, and bounded growth.
+- [x] Validate concurrency, recovery, evidence portability, and bounded growth.
 - [ ] Complete retained review and the required release lifecycle.
 - [ ] Adopt and retire eligible historical storage with recorded evidence.
