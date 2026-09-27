@@ -3,7 +3,7 @@ name: adversarial-review
 description: Independently challenge a completed feature for hidden defects, unsafe assumptions, regressions, and incomplete requirements. Use for the mandatory post-implementation review of every feature.
 metadata:
   author: Cole Taylor
-  version: "1.6.0"
+  version: "1.7.0"
 ---
 
 # Adversarial Review
@@ -106,6 +106,14 @@ does not require a terminal fresh reviewer. Inspect whether cached proofs bind
 the actual source, test, environment, toolchain, build, and artifact inputs.
 Reject a mock-only proxy for the installed real runtime. Check that source
 integration happens before activation, outside the live rollback transaction.
+
+Distinguish local DEV drafts from final validation. Incremental local builds
+and mutable source are expected during iteration; do not require a CI artifact
+or full accumulated suite between ordinary fixes. Check that affected installed
+behavior is exercised early and that stale outputs are not reused. Final merge
+eligibility still needs the complete CI gate and DEV proof for that exact CI
+artifact. Draft evidence must not qualify for merge, TEST, or PROD. Preserve
+slot ownership, isolation, recording adapters, and rollback in both DEV modes.
 
 ## Project-specific concerns
 
