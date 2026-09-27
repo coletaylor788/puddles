@@ -53,7 +53,6 @@ flowchart TB
 | Server | Agent runtime and data from remote access | SSH requires an approved key, server account, and Tailscale access. | Control agents, stored data, and service access |
 | Sandbox | Agent tools from the trusted host | Agents get only granted tools and files. Credentials stay outside the sandbox. | Execute code outside the sandbox |
 | Keychain | Host tools from stored credentials | Tools use an approved, stable credential reader. Secrets never enter agent context. | Use exposed credentials |
-| Context labels | Personal, household, friends, and public | Lower-trust contexts cannot access higher-trust resources. Sharing outward requires human approval enforced by code. | Read or leak higher-trust data |
 
 These limits assume the other boundaries still hold.
 
