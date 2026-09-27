@@ -325,8 +325,8 @@ To add a new hook:
 
 1. Implement `EgressHook` or `IngressHook` in `src/egress/` or `src/ingress/`.
 2. Define its classification prompt(s) as module-level constants.
-3. Fail open on LLM errors (catch JSON.parse and request failures, return
-   `{ action: "allow" }`).
+3. Fail closed on classification errors. Block the operation and report the
+   failure; never treat a failed check as permission to proceed.
 4. Export from `src/index.ts`.
 5. Add a unit test file alongside, stubbing `LLMClient.classify`.
 6. Add adapter-specific integration coverage in the adapter's own package

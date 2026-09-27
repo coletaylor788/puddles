@@ -5,45 +5,38 @@ description: "Review recent Puddles development loops and improve their skills, 
 
 # Development Loop Manager
 
+## Principles
+
+- Security first; never cut security corners for speed or convenience.
+- Keep it simple (KISS); simplify to reduce edge cases and brittleness.
+- Protect production and preserve rollback.
+- Support parallel contributors and automated, hands-off CI/CD.
+
 ## Priorities
 
-- Put security first; never cut security corners for speed or convenience.
-- Protect production and preserve rollback.
-- Catch issues in local builds and tight DEV loops.
-- Support multiple contributors developing and merging to main in parallel.
-- Make CI/CD automated and hands-off; agents monitor and react to issues rather
-  than ushering routine stages through.
-- Reduce redundant builds, checks, retries, and handoffs.
-- Limit disk growth on the development machine and OpenClaw server.
-- Reduce avoidable design-approval interruptions.
-- Keep skills concise and consistent.
-- Confirm improvements help later loops.
+Catch up on recent changes and others' work before proposing fixes. Build on
+existing improvements. Start with these areas; investigate as the evidence leads.
 
-## Inspect recent loops
-
-Use these focus areas to start; choose how deeply to investigate each and follow
-the evidence into related issues.
-
-- Others also improve the loop. Catch up on recent changes and work in progress
-  before revisiting findings or proposing fixes. Build on existing improvements;
-  avoid duplicating or undoing them.
-- Look for weakened access controls, exposed secrets, unsafe handling of untrusted
-  input, and bypassed security checks.
-- Investigate every failure beyond DEV, including CI, TEST, and PROD. Identify
-  what could have caught or prevented it earlier.
-- Look for recurring delays, local/CI differences, and missed integration checks.
-  Treat routine CI/CD steps needing agent intervention as automation gaps.
-- Look for unnecessary serialization or interference between parallel contributors.
-  Keep coordination scoped to shared resources and actual dependencies.
-- Check package-store reuse, incremental builds, and completed scratch left behind
-  on either host, including outside the artifact pool.
-- Review returns for design approval. Fix only obvious general guidance gaps;
-  new information sometimes requires approval, and no process change is needed.
+- Security gaps: weakened controls, exposed secrets, and unsafe untrusted input.
+  Use the [security architecture](../../../docs/openclaw-setup/security-architecture.md)
+  for trust rings, boundaries, and known gaps.
+- Late failures: investigate every CI, TEST, or PROD failure for earlier detection
+  in local builds and tight DEV loops.
+- Automation gaps: routine CI/CD needing an agent to usher it through.
+  Agents should monitor and react to issues.
+- Parallel work: unnecessary serialization or interference. Coordinate only
+  shared resources and actual dependencies.
+- Feedback cost: slow or repeated builds, checks, retries, handoffs, and local/CI
+  differences that delay finding issues.
+- Disk growth: package-store reuse, incremental builds, and completed scratch
+  on both the development machine and OpenClaw server.
+- Approval blockers: fix obvious general guidance gaps behind design reapproval.
+  New information sometimes needs approval; do not force a process fix.
 
 ## Address findings
 
 - Update the guiding skill, script, check, or process so later features benefit.
-  Prefer a small reusable correction; do not manufacture fixes or new rules.
+  Prefer simplification over another mechanism; do not manufacture fixes or rules.
 - Follow [safe-feature-development](../safe-feature-development/SKILL.md) for
   approval, validation, and landing. Preserve security controls, release gates,
   and test isolation.
