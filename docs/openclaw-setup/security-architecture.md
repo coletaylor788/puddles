@@ -190,16 +190,18 @@ flowchart TB
       copy, never credentials or ongoing access. Summaries and saved copies
       retain the source restrictions.
 2. **Required handling**
-   1. **Personal:** authenticated owner only.
-   2. **Household:** household resources only.
-   3. **Friends:** only resources shared with that friend or group.
-   4. **Public:** run injection and secret guards; read through the reader agent;
-      never initiate turns or follow-ups.
 
-**SMS is public:** its sender cannot be verified as more trusted. Email, calendar
-entries, and web pages are also public sources. Classify every input path,
-including tools, memory, and delegated results. Public does not mean publishable;
-account, recipient, and task scope still apply.
+   | Label | Sources | Required handling |
+   |---|---|---|
+   | Personal | <ul><li>Verified owner input</li><li>Owner-only records</li></ul> | Authenticated owner only. |
+   | Household | <ul><li>Verified household input</li><li>Household-only records</li></ul> | Household resources only. |
+   | Friends | <ul><li>Verified friend input</li><li>Records shared with that friend or group</li></ul> | Only resources shared with that friend or group. |
+   | Public | <ul><li>SMS and other texts</li><li>Email</li><li>Calendar entries</li><li>Web pages</li></ul> | Run injection and secret guards. Read through the reader agent. Never initiate turns or follow-ups. |
+
+SMS senders cannot be verified as more trusted. A familiar sender does not
+upgrade a public source. Tools, memory, and delegated results retain their
+source labels. Public does not mean publishable; account, recipient, and task
+scope still apply.
 
 ### Runtime flow
 
