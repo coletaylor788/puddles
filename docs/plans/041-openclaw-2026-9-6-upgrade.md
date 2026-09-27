@@ -1,6 +1,6 @@
 # Upgrade maintained OpenClaw support to 2026.9.6
 
-**Status:** Proposed, awaiting approval to implement
+**Status:** Approved for implementation
 **Issue:** [#114](https://github.com/coletaylor788/puddles/issues/114)
 **Last updated:** 2026-09-26
 
@@ -16,7 +16,7 @@ OpenClaw includes the migration for its changed conversation storage. Our existi
 
 ### Status
 
-The compatibility review is complete enough to propose the upgrade. The new version needs compatibility changes to our patches and the integration with upstream migration. The memory timing decision is approved. Implementation of the overall upgrade has not started and awaits approval.
+The compatibility review is complete enough to propose the upgrade. The new version needs compatibility changes to our patches and the integration with upstream migration. The requester approved the complete design. Implementation is starting through the process on main.
 
 ## Agent section
 
@@ -103,13 +103,13 @@ Follow the shared process on main without a plan-specific rollout sequence. The 
 
 - Source re-vet identified schema/toolchain drift and changed search, discovery, messaging and concurrency defaults. Independent proposal review's messaging-policy omission was resolved.
 - Requester directs a fresh restart through main's process. Both plans reference that process and retain only upgrade requirements, decisions and evidence obligations.
-- Requester approved sub-second warm search as the validation target, separate cold/recall measurements and no upgrade-specific timeout increase. History conversion is upstream-owned; our requirement is integration and validation. Overall implementation approval remains pending.
+- Requester approved sub-second warm search as the validation target, separate cold/recall measurements and no upgrade-specific timeout increase. History conversion is upstream-owned; our requirement is integration and validation. The requester approved the complete design on 2026-09-26.
 
 ### Checklist
 
 - [x] Verify target and audit all maintained public patches.
 - [x] Define upgrade-specific compatibility, migration and preservation requirements.
 - [x] Align with current main and remove duplicated execution procedures.
-- [ ] Obtain design approval.
+- [x] Obtain design approval.
 - [ ] Deliver target compatibility, migration and regression coverage.
 - [ ] Satisfy the shared process's completion gate for this upgrade.
