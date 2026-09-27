@@ -20,17 +20,13 @@ flowchart TB
         Validate["3. Validate request<br/>and authorize scope"]
         Auth["4. Obtain private auth"]
         Execute["5. Call provider over HTTPS<br/>Inspect full response"]
-        Release["6. Confirm changes<br/>Return results"]
+        Release["6. Return checked response<br/>to the calling CLI"]
     end
-    Reader["Isolated reader"]
-    Main["Main agent"]
     CLI -->|"Native request"| Bridge
     Bridge -->|"Fixed listener"| Validate
     Validate -->|"Allowed"| Auth
     Auth -->|"Private session"| Execute
     Execute -->|"Inspected result"| Release
-    Release -->|"Read data"| Reader
-    Release -->|"Write receipt"| Main
 ```
 
 #### 1. CLI builds a native request
@@ -94,18 +90,13 @@ Only the shared executor sends provider requests, using fixed registered HTTPS d
 
 Credentials and cookie rotations remain private. Operational logs contain only generated IDs, approved operation classes, status, duration, and safe error codes. Raw bodies, query strings, auth headers, and debug dumps are excluded. Active backend code, policy, and credentials live outside agent-writable paths. Independent host egress controls remain an implementation decision to prove.
 
-#### 6. Confirm changes and return results
+#### 6. Return the response to the calling CLI
 
-There are two return paths, using Puddles' existing separation between the main assistant and its restricted reader:
+The handler returns the checked response on the same connection that carried the request. For an allowed read, that is the provider's native response with credential-bearing data excluded. It does not start agents, send messages, or choose another recipient.
 
-| Example request | What comes back |
-|---|---|
-| “Find my September Venmo reimbursements.” | The restricted reader receives the native transaction data. It helps the main assistant answer without putting raw merchant text or notes directly into main's context. |
-| “Move this reimbursement to September 30.” | The service changes the date, reads it back, and returns a small confirmation: request ID, date-update operation, and verified status. |
+Puddles decides which agent may use each CLI capability. Its existing reader/main separation is caller configuration, not another step in the handler. The host still enforces the provisioned scope: read access returns permitted native data; main's write access returns only a small operation receipt. That response restriction prevents write access from becoming a raw-data read bypass.
 
-The reader can inspect data but cannot change it. The main assistant can make a separately authorized update, but that access does not also let it fetch arbitrary raw account data. The service's private check after an update stays inside the service.
-
-**If an update times out:** Rocket Money may already have applied it. The service records each attempt under a stable request ID before sending it. It then uses that record and a fresh read to check the outcome, instead of blindly sending the change again. Until resolved, the answer is “outcome unknown,” not “failed” or “done.” A batch reports each item's result separately; some can succeed while others fail.
+**Rocket Money update behavior:** its adapter also reads back the changed fields and records the result under a stable request ID. If an update times out, it checks whether the change happened rather than blindly sending it again. Until resolved, the outcome is unknown. These checks are specific to the two allowed financial updates; a weather handler does not need them. Exact write and receipt contracts are in the appendix.
 
 #### How the next CLI fits
 
