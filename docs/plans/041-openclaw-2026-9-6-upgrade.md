@@ -2,7 +2,7 @@
 
 **Status:** Approved for implementation
 **Issue:** [#114](https://github.com/coletaylor788/puddles/issues/114)
-**Last updated:** 2026-09-26
+**Last updated:** 2026-09-27
 
 ## Human section
 
@@ -33,7 +33,9 @@ Upstream Doctor owns conversion to the new conversation storage. Our deployment 
 
 ### Status
 
-The patch audit and compatibility ports are implemented. Upstream replaces three runtime fixes, and discovery needs only its remaining registry correction. The public clean build passes. The composed build passes the first declaration repair, then exposes five more inferred exports that need portable types. Both sets now pass local type checks and declaration generation. The rebuilt JavaScript and managed package are unchanged. Type assertions now compile directly under the cumulative runner. Incremental DEV packaging uses the same file selection as full packaging. Both repairs pass focused checks and review; installed validation remains pending. A migration fixture mismatch found by the accumulated tests is corrected and all six cases pass locally. The combined local DEV draft passes, including migration, rollback and local embeddings. Final CI, exact CI-artifact DEV validation and merged delivery remain pending; production is unchanged.
+The patch audit and compatibility ports are implemented. Three local runtime fixes are removed, and the discovery patch retains only its registry correction. The latest local DEV draft passes all upgrade assertions, including history conversion, rollback and local embeddings. Warm searches take about 25–27 milliseconds without a timeout increase.
+
+Final validation is in progress. The declaration-build repair passes type checks, independent review and the clean local build. Exact CI-artifact DEV validation and merged TEST/production delivery remain pending. Production is unchanged.
 
 ## Agent section
 
@@ -42,7 +44,7 @@ The patch audit and compatibility ports are implemented. Upstream replaces three
 - Target verified 2026-09-26: `v2026.9.6`, source commit `eb377ac59e6c9fd6c7705028034812becf00271b`; GitHub stable and npm latest agree.
 - Existing source pin: `1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7` (`v2026.9.3`). Reuse landed compatibility code; [completed Plan 037](completed/037-openclaw-stable-upgrade.md) remains historical evidence.
 - Implementation branch: `codex/openclaw-2026-9-6`, based on main `2437225ebcde955a5c73ea1bc8dd04947ef7fb93`, with process update `73985a748b5acce182adbc8a7bbd61dbef4190e9` merged. The current main process and design structure apply.
-- Restart means a new candidate and run under main's process, not continuation of the paused release or reconstruction of its receipts. Preserve existing recovery assets and unrelated owners' state. The compatibility ports, focused tests and combined local DEV draft pass. DEV is healthy and its slot is released. The added declaration repair preserves rebuilt JavaScript and package hashes. Direct compiler execution and consistent incremental package selection pass focused checks and review. Affected installed validation and the final release gates remain pending; production is unchanged.
+- Restart means a new candidate and run under main's process, not continuation of the paused release or reconstruction of its receipts. Preserve existing recovery assets and unrelated owners' state. The compatibility ports, focused tests and combined local DEV draft pass. DEV is healthy and its slot is released. Direct compiler execution and consistent incremental package selection pass focused checks, retained review and installed DEV validation. The further declaration annotation passes type checks, retained review and the clean local build before the final release gates; production is unchanged.
 
 ### Scope and acceptance criteria
 
@@ -91,7 +93,7 @@ The audit below distinguishes upstream fixes from behavior we still add. Regress
 | `active-memory-cold-recall` | Runtime fix removed | Pristine 9.6 completes both slow-provider cases and trigger-timeout continuation. Retain tests for cold continuation and the unchanged configured recall limit. |
 | `active-memory-fixture-cleanup` | Test fixture only | Join delayed provider cleanup so the retained cold-recall tests release their own resources. |
 | `gateway-protocol-declaration-portability` | Runtime workaround removed | Upstream's typed protocol registry replaces the deleted fragments. Retain registry identity/type coverage without replacement runtime annotations. |
-| `core-declaration-portability` | New build repair under validation | Explicit types preserve ten affected Bash-tool, SQLite, prepared-session and plugin-schema exports. Bidirectional type checks pass before and after annotation, and all six declaration partitions pass locally with CI settings and caches disabled. CI has not yet proved the added repair; its failure remains locally unreproduced. |
+| `core-declaration-portability` | New build repair under validation | Explicit types preserve eleven affected Bash-tool, SQLite, prepared-session and plugin-schema exports. Bidirectional checks pass before and after annotation. The clean full build, including all declaration partitions, passes with caches disabled. Retained review is clear; final CI proof remains required. |
 
 ### Implementation
 
@@ -111,7 +113,13 @@ The shared process supplies review and cumulative/installed/physical gates. This
 - Upstream Doctor conversion from the legacy generation through its prerequisite migrations to schema 23, WAL data, histories, ownership, archives, selected config/job drift rejection and interrupted rollback with the predecessor runtime.
 - Browser profile reuse and mount isolation; DEV/PROD availability while TEST exercises the changed runtime.
 
-Focused repository checks pass: 55 migration/toolchain/diagnostic tests and 37 native-pipeline tests. The pipeline uses the maintained upstream test entrypoint and verifies every registered test is collected. The unpatched fs-safe 0.18.1 regression reproduces failure with a persistent guard; the current protocol registry passes its retained identity regression. Public CI `36289950656` passes its clean build and mapped patch tests, then fails three candidate migration assertions because upstream now writes the preserved implicit primary model. The same failure reproduces locally. The corrected fixture checks that exact preserved default, authored model/fallback values, workspace paths and all existing migration assertions. All six candidate migration cases and the e2e typecheck pass locally. Asynchronous fixture execution also keeps the runner responsive during the longer suite. The composed CI build separately fails with TS2883 on five inferred exports. The new declaration patch names their existing public types and runs the maintained test compiler over the affected graph. Independent review confirms nullable joins and conditional columns are preserved. Its local baseline does not reproduce the emit failure. The subsequent composed build passes the repaired partition, then reports TS2883 for five additional exports. Both unannotated and annotated type checks pass, preserving the existing public shapes. All six annotated declaration partitions pass locally with CI settings and caches disabled. Dependency versions and group selection match the retained CI logs, but the original emit failure remains locally unreproduced. Retained review clears the added annotations. All 10,510 rebuilt JavaScript files and the managed package hash match the prior build. The declaration regression now compiles directly under the existing bounded cumulative runner, avoiding a nested compiler inside Vitest. Executable regressions cover dispatch, missing projects and compiler failure. Incremental DEV packaging uses the full materializer's npm file selection and copy behavior. Local payload and composed output match fresh materialization exactly. These repairs pass focused checks and retained review. Affected installed validation remains before final CI. The composed local DEV draft passes four integration scenarios, managed discovery and imports, all 33 upgrade cases and the official local embedding fixture. The actual predecessor restarts and reads restored history after schema 23 rollback. Warm search on the target takes 25–27 milliseconds; model restart and cleanup pass. Retained independent review clears the current behavior. The draft is development evidence only. Final accumulated CI, exact CI-artifact DEV validation and merged TEST/production delivery remain pending. No prior 2026.9.3 receipt counts as proof for this target.
+Focused repository checks cover migration, default preservation, toolchain selection, diagnostics and cumulative test dispatch. The migration fixture checks Doctor's exact normalized output, including implicit primary models, authored model/fallback values and workspace paths. All six candidate migration cases and the e2e typecheck pass locally.
+
+The declaration patch preserves existing exported type shapes, including nullable joins and conditional columns. Its first ten annotations pass bidirectional type checks and all six declaration partitions locally. A further agent-session export requires an explicit return type; unannotated and annotated checks pass. The clean full-build sequence passes in 396 seconds with caches disabled, including all unified and plugin SDK declaration partitions. A local direct declaration build alone does not establish parity with the final CI build.
+
+The declaration regression compiles directly under the cumulative runner's existing deadline. Executable tests cover dispatch, missing projects and compiler failure. Incremental DEV packaging uses the full materializer's npm file selection and copy behavior. Prepared and freshly materialized payloads match. These repairs pass focused checks and retained review.
+
+The latest combined local DEV draft passes four wrapper scenarios, managed discovery and cold imports, all 33 upgrade cases and the official local embedding fixture with zero skips. The actual predecessor restarts and reads restored history after schema 23 rollback. Warm searches take 25–27 milliseconds. Model restart, normal shutdown and forced-loss cleanup pass; DEV is healthy and its slot is released. This is development evidence only. Final accumulated CI, exact CI-artifact DEV validation and merged TEST/production delivery remain pending. No prior 2026.9.3 receipt counts as proof for this target.
 
 ### Rollout and rollback
 
