@@ -199,10 +199,17 @@ index 0fbbae9dc..11cdcbbf9 100644
  
    it("honors an agent's unsandboxed override of the inherited mode", () => {
 diff --git a/src/skills/workshop/tool-policy-diagnostic.ts b/src/skills/workshop/tool-policy-diagnostic.ts
-index 639942d43..8aa5cd590 100644
+index 639942d43..e6495d0fe 100644
 --- a/src/skills/workshop/tool-policy-diagnostic.ts
 +++ b/src/skills/workshop/tool-policy-diagnostic.ts
-@@ -14,7 +14,6 @@ import type { AnyAgentTool } from "../../agents/tools/common.js";
+@@ -7,14 +7,12 @@ import {
+ import { applyFinalEffectiveToolPolicy } from "../../agents/embedded-agent-runner/effective-tool-policy.js";
+ import { resolveDefaultModelForAgent } from "../../agents/model-selection.js";
+ import { resolveProviderToolPolicyEntry } from "../../agents/provider-tool-policy.js";
+-import { resolveSandboxConfigForAgent } from "../../agents/sandbox/config.js";
+ import { isToolAllowedByPolicyName } from "../../agents/tool-policy-match.js";
+ import type { ToolPolicyFilterEvent } from "../../agents/tool-policy-pipeline.js";
+ import type { AnyAgentTool } from "../../agents/tools/common.js";
  import type { OpenClawConfig } from "../../config/types.openclaw.js";
  import type { AgentToolsConfig } from "../../config/types.tools.js";
  import { normalizeAgentId } from "../../routing/session-key.js";
@@ -210,7 +217,7 @@ index 639942d43..8aa5cd590 100644
  
  const SKILL_WORKSHOP_TOOL_NAME = "skill_workshop";
  
-@@ -237,24 +236,6 @@ export function detectSkillWorkshopToolPolicyDiagnostic(params: {
+@@ -237,24 +235,6 @@ export function detectSkillWorkshopToolPolicyDiagnostic(params: {
    }
    const agentId = normalizeAgentId(params.agentId ?? resolveDefaultAgentId(params.config));
    const prefix = `Skill Workshop is active, but ${JSON.stringify(SKILL_WORKSHOP_TOOL_NAME)} is hidden for agent ${JSON.stringify(agentId)}:`;
