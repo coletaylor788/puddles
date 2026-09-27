@@ -2,7 +2,7 @@
 
 **Status:** Implementation and validation in progress; merge held
 **Issue:** [#132](https://github.com/coletaylor788/puddles/issues/132)
-**Last updated:** 2026-09-26
+**Last updated:** 2026-09-27
 
 ## Human section
 
@@ -129,7 +129,7 @@ Implementation and synthetic DEV validation are approved. Merging remains held u
 
 ### State
 
-Implementation branch: `codex/communication-watcher-dev`, based on freshly fetched main and integrated with upgrade candidate `2a063ce3bd828471acf3ff63d97ddc7780b31ae8`. No merge, auto-merge, TEST, or PROD is authorized. Coordinate shared DEV ownership with the OpenClaw upgrade owner using the deployment slot controller. The [appendix](033-communication-awareness-appendix.md) retains source evidence and implementation detail. Diagrams and tables above are the review surface. The starting behavior list ships in `openclaw-plugins/communication-watcher/instructions/`. The configuration builder defaults to `0m`; explicit `enableHeartbeat: true` selects `30m`. Native `write` and `sessions_send` stay denied permanently. Instructions use `communication_memory_save` and `communication_report`. The relay privately constructs the fixed-main native capability through the public SDK; it does not modify host routing or model grants. Synthetic draft DEV passed under the shared controller. The previous DEV instance was restored, cleanup verified, and the slot released. No final CI artifact has been validated in DEV yet.
+Implementation branch: `codex/communication-watcher-dev`, based on freshly fetched main and integrated with upgrade candidate `a05bb40f0ad3ade665237255d1c1415bf4a140dc`. No merge, auto-merge, TEST, or PROD is authorized. Coordinate shared DEV ownership with the OpenClaw upgrade owner using the deployment slot controller. The [appendix](033-communication-awareness-appendix.md) retains source evidence and implementation detail. Diagrams and tables above are the review surface. The starting behavior list ships in `openclaw-plugins/communication-watcher/instructions/`. The configuration builder defaults to `0m`; explicit `enableHeartbeat: true` selects `30m`. Native `write` and `sessions_send` stay denied permanently. Instructions use `communication_memory_save` and `communication_report`. The relay privately constructs the fixed-main native capability through the public SDK; it does not modify host routing or model grants. Synthetic draft DEV passed under the shared controller. The previous DEV instance was restored, cleanup verified, and the slot released. No final CI artifact has been validated in DEV yet.
 
 ### Scope and acceptance criteria
 
@@ -162,7 +162,7 @@ Use OpenClaw’s built-in memory, with tracking, handoff, and recovery guidance 
 
 ### Validation
 
-The final integrated candidate includes the reviewed declaration portability repair and runs its compiler check directly before the cumulative Vitest suite. Retained review is clean. The preceding public run [36297681651](https://github.com/coletaylor788/puddles/actions/runs/36297681651) built successfully but was canceled during regressions when superseded by these repairs; it provides no completed source gate. Full CI and exact-artifact DEV are being rerun for the frozen pair.
+The final integrated candidate includes the reviewed declaration portability repair, including the agent-session export, and runs its compiler check directly before the cumulative Vitest suite. The affected patch registration and watcher package selection passes 11 checks after this last annotation. Retained review is clean. The preceding public run [36297681651](https://github.com/coletaylor788/puddles/actions/runs/36297681651) built successfully but was canceled during regressions when superseded by these repairs; it provides no completed source gate. Full CI and exact-artifact DEV are being rerun for the frozen pair.
 
 Cumulative CI [run 36289879924](https://github.com/coletaylor788/puddles/actions/runs/36289879924) passed for `d424f1bcb37bab61825ea4feed57c6a76444db53` and exported the ARM build bundle. This proves the pre-upgrade candidate; it does not replace the combined upgrade gate or installed DEV proof. Combined run [36291638597](https://github.com/coletaylor788/puddles/actions/runs/36291638597) built successfully and passed native watcher memory and full heartbeat/action/recovery checks. It failed the upgrade-owned state-migration assertions and the watcher interruption fixture before SIGTERM: a native reply had not arrived within its arbitrary ten-second observation window. The first sanitized failure logs are retained locally. The corrected fixture observes each native reply phase within its thirty-second budget and explicitly interrupts a pending main reply; all three stock 9.6 cases pass locally (72 seconds), and retained review is clean. A local composed attempt overlapped the owner’s ongoing build and failed before startup while `@openclaw/ai/dist/diagnostics.mjs` was being replaced. This is not evidence of a packaging defect. The completed portable payload passes all three native watcher cases (63.5 seconds). No watcher behavior ran in the overlapping-build attempt. The reviewed upgrade migration-fixture correction is integrated locally from `7476bf1ac9fde592adde83226737be571f3f5ca2`.
 
