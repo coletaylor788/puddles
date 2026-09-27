@@ -25,7 +25,7 @@ flowchart TB
         end
     end
 
-    Developers -->|"SSH / account authentication and Tailscale ACLs"| Host
+    Developers -->|"SSH / public-key auth + Tailscale ACLs"| Host
     Sender <-->|"iMessage / channel identity"| Channel
     Channel <-->|"RPC over stdio / host-owned child process"| Gateway
     Gateway <-->|"Docker exec / host daemon permissions"| Tools
@@ -81,7 +81,7 @@ flowchart TB
         end
     end
 
-    Developers -->|"SSH / account authentication and ACLs"| Login
+    Developers -->|"SSH / public-key auth + Tailscale ACLs"| Login
     Login --> Admin
     Admin -->|"OS permissions"| Gateway
     Gateway -->|"Scoped tools and mounts"| Sandboxes
@@ -92,6 +92,9 @@ flowchart TB
   communicate. Keep management off public listeners. The host guide also records
   underlying VLAN hardening. Neither layer replaces sandbox network policy or
   restricts every internet destination a host process can reach.
+- **SSH:** use public-key authentication. The [SSH setup](01-setting-up-your-mac-mini.md#7-ssh-with-secure-enclave-keys-touch-id)
+  documents Secure Enclave-backed keys on the development host. Keep private
+  keys outside agent context; Tailscale ACLs separately govern network access.
 - **Accounts:** administrators own system changes. Autonomous services have no
   sudo, but gateway plugins and adapters still hold the service account's host
   authority. An agent sandbox must not inherit that authority.
