@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statfsSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statfsSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 // @ts-expect-error Executable JavaScript module.
@@ -95,6 +95,23 @@ describe("development storage ownership", () => {
     rmSync(join(root, "proof.json"));
     expect(() => sealScratch(root, "task", "attempt")).toThrow();
     expect(planStorageCleanup(root).keep[0].reason).toBe("active");
+  });
+
+  it("preserves restricted directory and file modes when sealing evidence", () => {
+    const root = fixture();
+    mkdirSync(join(root, "stages", "nested"), { recursive: true });
+    chmodSync(join(root, "stages"), 0o700);
+    chmodSync(join(root, "stages", "nested"), 0o750);
+    writeFileSync(join(root, "stages", "nested", "proof.json"), '{"passed":true}');
+    chmodSync(join(root, "stages", "nested", "proof.json"), 0o640);
+    mkdirSync(join(root, "payload"));
+    writeFileSync(join(root, "payload", "generated"), "bytes");
+    registerScratch(root, "task", { id: "payload", path: "payload", purpose: "completed TEST", evidence: ["stages"] });
+    const digest = treeDigest(join(root, "stages"), { portable: true });
+    const sealed = sealScratch(root, "task", "payload");
+    expect(treeDigest(join(root, sealed.retainedEvidence[0].path), { portable: true })).toBe(digest);
+    expect(applyStorageCleanup(root, "task").removed).toEqual(["payload"]);
+    expect(treeDigest(join(root, "stages"), { portable: true })).toBe(digest);
   });
 
   it("resumes interrupted deletion only from the recorded inode and preserved evidence", () => {

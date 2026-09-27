@@ -1,5 +1,5 @@
 import {
-  cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync,
+  chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync,
   realpathSync, renameSync, rmSync, statfsSync,
 } from "node:fs";
 import { hostname } from "node:os";
@@ -172,6 +172,16 @@ function evidenceIdentity(path) {
   return lstatSync(path).isDirectory() ? treeDigest(path, { portable: true }) : fileDigest(path);
 }
 
+function preserveEvidenceModes(source, destination) {
+  const stat = lstatSync(source);
+  // Never chmod through a copied link. Its target is validated by the digest.
+  if (stat.isSymbolicLink()) return;
+  if (stat.isDirectory()) {
+    for (const name of readdirSync(source)) preserveEvidenceModes(join(source, name), join(destination, name));
+  }
+  chmodSync(destination, stat.mode & 0o777);
+}
+
 export function sealScratch(root, owner, entryId) {
   return mutate(root, owner, record => {
     assertQuiescent(root, record);
@@ -189,7 +199,8 @@ export function sealScratch(root, owner, entryId) {
       const sha256 = evidenceIdentity(source);
       const destination = join(evidenceRoot, String(index));
       cpSync(source, destination, { recursive: lstatSync(source).isDirectory(), verbatimSymlinks: true });
-      if (evidenceIdentity(destination) !== sha256) throw new Error("Evidence copy verification failed");
+      preserveEvidenceModes(source, destination);
+      if (evidenceIdentity(destination) !== sha256) throw new Error(`Evidence copy verification failed: ${name}`);
       evidence.push({ source: name, path: relative(root, destination), sha256 });
     }
     } catch (error) {
