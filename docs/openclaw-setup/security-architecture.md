@@ -182,23 +182,19 @@ flowchart TB
 
 #### Required rules
 
-1. **Context flow**
-   1. By default, content flows only from less trusted to more trusted.
-      Household cannot access personal content, for example. The receiving
-      context takes the least-trusted input label and must not expose existing
-      higher-trust data.
-   2. Sharing toward a less-trusted label requires human approval enforced by
-      code for the exact content and destination. Approval releases only that
-      copy, never credentials or ongoing access. Summaries and saved copies
-      retain the source restrictions.
-2. **Required handling**
+1. Content flows only from less trusted to more trusted. Household cannot access
+   personal content. The receiving context takes the least-trusted label;
+   block flow that would expose existing higher-trust data.
+2. Sharing in the other direction requires human approval enforced by code for
+   the exact content and destination. Approval releases only that copy, never
+   credentials or ongoing access. Copies retain their source restrictions.
 
-   | Label | Sources | Required handling |
-   |---|---|---|
-   | Personal | Verified owner input, owner-only records | |
-   | Household | Verified household input, household records | |
-   | Friends | Verified friend input, records shared with that friend or group | |
-   | Public | SMS, email, calendar entries, web pages | Run guards. Read through the reader agent. No turns or follow-ups. |
+| Label | Sources | Required handling |
+|---|---|---|
+| Personal | Verified owner input, owner-only records |​ |
+| Household | Verified household input, household records |​ |
+| Friends | Verified friend input, records shared with that friend or group |​ |
+| Public | SMS, email, calendar entries, web pages | Run guards. Read through the reader agent. No turns or follow-ups. |
 
 SMS senders cannot be verified as more trusted. A familiar sender does not
 upgrade a public source. Tools, memory, and delegated results retain their
