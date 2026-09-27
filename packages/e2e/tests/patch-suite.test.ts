@@ -9,6 +9,7 @@ type PatchEntry = {
   name: string;
   tests: string[];
   candidateTests?: string[];
+  typechecks?: string[];
 };
 
 type PatchSuite = {
@@ -42,6 +43,13 @@ function changedTests(patchName: string): string[] {
   );
 }
 
+function changedTypecheckProjects(patchName: string): string[] {
+  const patch = readFileSync(join(patchDir, `${patchName}.patch`), "utf8");
+  return [...patch.matchAll(/^diff --git a\/(test\/tsconfig\/.+\.json) b\/\1$/gm)].map(
+    (match) => match[1],
+  );
+}
+
 describe("OpenClaw cumulative patch suite", () => {
   it("covers every deployed patch in deployment order", () => {
     expect(suite.patches.map((patch) => patch.name)).toEqual(deploymentPatchNames());
@@ -50,7 +58,8 @@ describe("OpenClaw cumulative patch suite", () => {
   it("keeps at least one committed regression target for every patch", () => {
     for (const patch of suite.patches) {
       const allTests = [...patch.tests, ...(patch.candidateTests ?? [])];
-      expect(allTests, patch.name).not.toHaveLength(0);
+      const allRegressions = [...allTests, ...(patch.typechecks ?? [])];
+      expect(allRegressions, patch.name).not.toHaveLength(0);
       expect(new Set(patch.tests).size, patch.name).toBe(patch.tests.length);
       expect(new Set(allTests).size, patch.name).toBe(allTests.length);
       for (const test of allTests) {
@@ -59,6 +68,12 @@ describe("OpenClaw cumulative patch suite", () => {
       for (const test of patch.candidateTests ?? []) {
         expect(() => readFileSync(join(packageDir, test), "utf8"), `${patch.name}: ${test}`).not.toThrow();
       }
+      expect(new Set(patch.typechecks ?? []).size, patch.name).toBe(
+        patch.typechecks?.length ?? 0,
+      );
+      for (const project of patch.typechecks ?? []) {
+        expect(project, `${patch.name}: ${project}`).toMatch(/^test\/tsconfig\/.+\.json$/);
+      }
     }
   });
 
@@ -66,6 +81,9 @@ describe("OpenClaw cumulative patch suite", () => {
     for (const patch of suite.patches) {
       expect(patch.tests, patch.name).toEqual(
         expect.arrayContaining(changedTests(patch.name)),
+      );
+      expect(patch.typechecks ?? [], patch.name).toEqual(
+        expect.arrayContaining(changedTypecheckProjects(patch.name)),
       );
     }
   });
@@ -135,6 +153,13 @@ describe("OpenClaw cumulative patch suite", () => {
     expect(runner).toContain("Mapped regression was not collected");
     expect(runner).toContain("...scenarios, ...extension.scenarios");
     expect(readFileSync(join(packageDir, "scenarios/imessage.mjs"), "utf8")).toContain("no-output");
+  });
+
+  it("registers the declaration portability compiler project", () => {
+    const portability = suite.patches.find((patch) => patch.name === "core-declaration-portability");
+    expect(portability?.typechecks).toEqual([
+      "test/tsconfig/tsconfig.core.test.declaration-portability.json",
+    ]);
   });
 
   it("uses an upstream-supported SQLite-safe Node runtime and explicit Corepack in CI", () => {

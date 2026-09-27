@@ -43,6 +43,10 @@ vi.mock("../src/process-runner.mjs", () => ({
             mkdirSync(dirname(join(path, target)), { recursive: true });
             writeFileSync(join(path, target), "synthetic mapped test");
           }
+          for (const project of patch.typechecks ?? []) {
+            mkdirSync(dirname(join(path, project)), { recursive: true });
+            writeFileSync(join(path, project), "{}");
+          }
         }
       } else if (args[0] === "worktree" && args[1] === "remove") {
         rmSync(args[3], { recursive: true, force: true });
@@ -270,6 +274,75 @@ it("runs every mapped regression through the upstream test entrypoint", async ()
         args.includes(`test/vitest/vitest.${suite.testProjects[target]}.config.ts`) &&
         args.includes(target))).toBe(true);
     }
+  }
+  for (const project of new Set<string>(
+    suite.patches.flatMap((patch: { typechecks?: string[] }) => patch.typechecks ?? []),
+  )) {
+    expect(
+      calls.some(
+        ([command, args]) =>
+          command === "node" &&
+          args[0] === "scripts/run-tsgo.mjs" &&
+          args[1] === "-p" &&
+          args[2] === project &&
+          args[3] === "--incremental",
+      ),
+    ).toBe(true);
+  }
+});
+
+it("fails before Vitest when a mapped typecheck project is absent", async () => {
+  setup();
+  vi.stubEnv("GMAIL_MCP_PYTHON", "fixture-python");
+  const command = vi.mocked(runCommand);
+  const implementation = command.getMockImplementation()!;
+  command.mockClear();
+  command.mockImplementation(async (...args) => {
+    const result = await implementation(...args);
+    if (args[0] === "git" && args[1][0] === "worktree" && args[1][1] === "add") {
+      rmSync(
+        join(args[1][3], "test/tsconfig/tsconfig.core.test.declaration-portability.json"),
+      );
+    }
+    return result;
+  });
+  try {
+    await expect(nativePipeline("ci", async () => {})).rejects.toThrow(
+      "Mapped OpenClaw typecheck project missing",
+    );
+    expect(
+      command.mock.calls.some(
+        ([name, args]) => name === "node" && args[0] === "scripts/run-vitest.mjs",
+      ),
+    ).toBe(false);
+  } finally {
+    command.mockImplementation(implementation);
+  }
+});
+
+it("propagates a mapped typecheck failure before Vitest", async () => {
+  setup();
+  vi.stubEnv("GMAIL_MCP_PYTHON", "fixture-python");
+  const command = vi.mocked(runCommand);
+  const implementation = command.getMockImplementation()!;
+  command.mockClear();
+  command.mockImplementation(async (...args) => {
+    if (args[0] === "node" && args[1][0] === "scripts/run-tsgo.mjs") {
+      throw new Error("synthetic typecheck failure");
+    }
+    return implementation(...args);
+  });
+  try {
+    await expect(nativePipeline("ci", async () => {})).rejects.toThrow(
+      "synthetic typecheck failure",
+    );
+    expect(
+      command.mock.calls.some(
+        ([name, args]) => name === "node" && args[0] === "scripts/run-vitest.mjs",
+      ),
+    ).toBe(false);
+  } finally {
+    command.mockImplementation(implementation);
   }
 });
 
