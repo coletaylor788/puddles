@@ -33,7 +33,7 @@ Upstream Doctor owns conversion to the new conversation storage. Our deployment 
 
 ### Status
 
-The patch audit and compatibility ports are implemented. Upstream replaces three runtime fixes, and discovery needs only its remaining registry correction. The clean CI build passes. A migration fixture mismatch found by the accumulated tests is corrected and all six cases pass locally. Installed DEV validation and the final cumulative gate remain pending; production is unchanged.
+The patch audit and compatibility ports are implemented. Upstream replaces three runtime fixes, and discovery needs only its remaining registry correction. The public CI build passes. A separate declaration failure in the composed build has a narrow type-annotation repair under validation. A migration fixture mismatch found by the accumulated tests is corrected and all six cases pass locally. Installed DEV validation and the final cumulative gate remain pending; production is unchanged.
 
 ## Agent section
 
@@ -91,6 +91,7 @@ The audit below distinguishes upstream fixes from behavior we still add. Regress
 | `active-memory-cold-recall` | Runtime fix removed | Pristine 9.6 completes both slow-provider cases and trigger-timeout continuation. Retain tests for cold continuation and the unchanged configured recall limit. |
 | `active-memory-fixture-cleanup` | Test fixture only | Join delayed provider cleanup so the retained cold-recall tests release their own resources. |
 | `gateway-protocol-declaration-portability` | Runtime workaround removed | Upstream's typed protocol registry replaces the deleted fragments. Retain registry identity/type coverage without replacement runtime annotations. |
+| `core-declaration-portability` | New build repair under validation | Explicit types preserve five existing Bash-tool and SQLite query exports. Exact type checks pass against unannotated source. Composed CI declaration emission must verify the repair; local baseline builds did not reproduce its TS2883 failure. |
 
 ### Implementation
 
@@ -110,7 +111,7 @@ The shared process supplies review and cumulative/installed/physical gates. This
 - Upstream Doctor conversion from the legacy generation through its prerequisite migrations to schema 23, WAL data, histories, ownership, archives, selected config/job drift rejection and interrupted rollback with the predecessor runtime.
 - Browser profile reuse and mount isolation; DEV/PROD availability while TEST exercises the changed runtime.
 
-Focused repository checks pass: 55 migration/toolchain/diagnostic tests and 37 native-pipeline tests. The pipeline uses the maintained upstream test entrypoint and verifies every registered test is collected. The unpatched fs-safe 0.18.1 regression reproduces failure with a persistent guard; the current protocol registry passes its retained identity regression. Public CI `36289950656` passes its clean build and mapped patch tests, then fails three candidate migration assertions because upstream now writes the preserved implicit primary model. The same failure reproduces locally. The corrected fixture checks that exact preserved default, authored model/fallback values, workspace paths and all existing migration assertions. All six candidate migration cases and the e2e typecheck pass locally. Asynchronous fixture execution also keeps the runner responsive during the longer suite. Installed and delivery proofs, and the final cumulative run, remain pending. No prior 2026.9.3 receipt counts as proof for this target.
+Focused repository checks pass: 55 migration/toolchain/diagnostic tests and 37 native-pipeline tests. The pipeline uses the maintained upstream test entrypoint and verifies every registered test is collected. The unpatched fs-safe 0.18.1 regression reproduces failure with a persistent guard; the current protocol registry passes its retained identity regression. Public CI `36289950656` passes its clean build and mapped patch tests, then fails three candidate migration assertions because upstream now writes the preserved implicit primary model. The same failure reproduces locally. The corrected fixture checks that exact preserved default, authored model/fallback values, workspace paths and all existing migration assertions. All six candidate migration cases and the e2e typecheck pass locally. Asynchronous fixture execution also keeps the runner responsive during the longer suite. The composed CI build separately fails with TS2883 on five inferred exports. The new declaration patch names their existing public types and runs the maintained test compiler over the affected graph. Independent review confirms nullable joins and conditional columns are preserved. Its local baseline does not reproduce the emit failure, so exact CI declaration emission remains required. Installed and delivery proofs, and the final cumulative run, remain pending. No prior 2026.9.3 receipt counts as proof for this target.
 
 ### Rollout and rollback
 

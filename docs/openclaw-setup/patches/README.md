@@ -32,6 +32,7 @@ activated gateway. Keep the previous interpreter available for rollback.
 | `managed-local-service-lifecycle.patch` | Join gateway-owned service groups before stopped-state changes |
 | `gateway-memory-warmup.patch` | Prepare and retain managed local embeddings before readiness |
 | `gateway-protocol-declaration-portability.patch` | Regression tests for upstream protocol registry identity and types |
+| `core-declaration-portability.patch` | Name portable Bash tool and SQLite session declaration exports |
 
 Each patch has a neighboring document explaining its behavior and history.
 Register new patches and every applicable test in the cumulative manifest at
