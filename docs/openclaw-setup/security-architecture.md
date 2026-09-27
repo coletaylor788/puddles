@@ -52,34 +52,23 @@ flowchart TB
 | Machine | Development host from server | SSH requires an approved key, host account, and Tailscale access. | Control the affected OS account, including its files, credentials, and agent controls. Does not automatically grant root or access to another machine. |
 | Sandbox | Agent tools from the trusted host | Agents get only granted tools and files. Credentials stay outside the sandbox. | Use host capabilities exposed by the escape, potentially including credentials. Does not automatically grant root or control of other machines. |
 | Keychain | Host tools from stored credentials | Tools use an approved, stable credential reader. Secrets never enter agent context. | Use stolen credentials directly, bypassing agent tool limits. Service access remains limited to the credentials' granted permissions. |
-| Context rings | Personal, household, friends, and public | Lower rings cannot read higher rings. Sharing outward requires human approval enforced by code. | Read or leak data across rings. Does not by itself grant host execution or Keychain access. |
+| Context labels | Personal, household, friends, and public | Lower-trust contexts cannot access higher-trust resources. Sharing outward requires human approval enforced by code. | Read or leak data across labels. Does not by itself grant host execution or Keychain access. |
 
 These limits assume the other boundaries still hold.
 
-The operator, OS, gateway, reviewed adapters, and delivery tooling form the
-trusted base. Host compromise is outside the agent sandbox's protection.
-Required controls and [known gaps](#appendix-known-gaps-and-validation-limits)
-are distinguished below; this is not a live configuration audit. Upstream code
-links pin the OpenClaw 2026.9.3 source reviewed for this document. The
-[patch manifest](../../packages/e2e/openclaw-patch-suite.json) selects the current
-build revision; recheck version-specific claims when upgrading.
-
 ## Host and network architecture
 
-Tailscale provides the network boundary around the managed machines. Inside it,
-the [host setup](01-setting-up-your-mac-mini.md) separates administrator and
-service accounts and encrypts the server disk. The diagram shows the intended
-topology, not a fresh audit of live configuration.
+The [host setup](01-setting-up-your-mac-mini.md) separates administration from
+autonomous services. SSH logs directly into the chosen account.
 
 ```mermaid
 flowchart TB
-    External["External services"]
-    subgraph Tailnet["Tailscale: no ports exposed outside"]
+    subgraph Tailnet["Tailscale"]
         subgraph DevMachine["Development host machine"]
             Developers["Agentic developers"]
         end
         subgraph Machine["Server machine: encrypted disk"]
-            Login["Administrative access"]
+            direction LR
             Admin["Administrator account"]
             subgraph Service["Standard service account: no sudo"]
                 Gateway["Gateway and trusted tools and adapters"]
@@ -90,171 +79,137 @@ flowchart TB
         end
     end
 
-    Developers -->|"SSH / public-key auth + Tailscale ACLs"| Login
-    Login --> Admin
-    Admin -->|"OS permissions"| Gateway
+    Developers -->|"SSH / public-key auth + Tailscale ACLs"| Admin
+    Developers -->|"SSH / public-key auth + Tailscale ACLs"| Service
     Gateway -->|"Scoped tools and mounts"| Sandboxes
     Gateway <-->|"Local exec / host permissions"| CredentialReader
     CredentialReader <-->|"Keychain API / approved executable identity"| Keychain
-    Gateway <-->|"HTTPS / service credentials"| External
 ```
 
-- **Network:** expose no inbound ports outside Tailscale. Authenticate member
-  devices and limit communication with ACLs. Keep local IPC on loopback or pipes.
-  Outbound service connections remain allowed; Tailscale does not replace
-  sandbox network policy.
-- **SSH:** use public-key authentication. The [SSH setup](01-setting-up-your-mac-mini.md#7-ssh-with-secure-enclave-keys-touch-id)
-  documents Secure Enclave-backed keys on the development host. Keep private
-  keys outside agent context; Tailscale ACLs separately govern network access.
-- **Accounts:** administrators own system changes. Autonomous services have no
-  sudo, but gateway plugins and adapters still hold the service account's host
-  authority. An agent sandbox must not inherit that authority.
-- **Execution:** the gateway orchestrates inference and tools on the host.
-  “Sandboxed agent” describes confined tool execution and filesystem access;
-  plugins, model calls, and the gateway do not all run inside Docker.
-- **Storage and recovery:** disk encryption protects a powered-off machine, not
-  secrets from an already-unlocked host process. Protect recovery material and
-  account for the documented disk-unlock and user-login steps after reboot.
-- **Maintenance:** keep the OS and dependencies updated, validating runtime
-  changes through delivery gates. Verify effective accounts, listeners, ACLs,
-  and mounts before claiming the installed system matches this architecture.
+- **Network:** keep local IPC on loopback or pipes. Outbound service connections
+  remain allowed; Tailscale does not replace sandbox network policy.
+- **SSH keys:** the [SSH setup](01-setting-up-your-mac-mini.md#7-ssh-with-secure-enclave-keys-touch-id)
+  uses Secure Enclave-backed keys on the development host.
+- **Accounts:** administrators own system changes. Gateway plugins and adapters
+  hold the standard account's host authority. Only agent tool execution is
+  sandboxed; gateway orchestration and model calls run on the host.
+- **Disk:** encryption protects a powered-off machine, not an unlocked process.
+  Protect recovery material and retain the disk-unlock and user-login steps
+  needed after reboot.
 
 ## Build system architecture
 
+Build and release code runs on trusted hosts. DEV and TEST isolate production
+state and effects; they are not security sandboxes against their host.
+
 ```mermaid
 flowchart TB
-    Work["Agentic developers in parallel owned worktrees"] --> Local["Focused checks and incremental build"]
-    Local --> Draft["Isolated draft DEV"]
-    Draft --> Review["Independent review"]
-    Review --> CI["Full CI and immutable feature artifact"]
-    CI --> Exact["Exact-artifact DEV"]
-    Exact --> Merge["Merge eligible source"]
-    Merge --> Batch["CI build of selected merged main"]
-    Batch --> Test["TEST: install, scenarios, rollback"]
-    Test --> Prod["PROD: same artifact and read-only health"]
-    Recovery["Retained healthy recovery state"] -->|"Restore on failure"| Prod
+    subgraph GitHub["GitHub: outside Tailscale"]
+        Repo["Source, PR review, and merge"]
+        subgraph Runner["Hosted CI runner machine"]
+            CI["Public cumulative tests, fixture runtime, and packaging"]
+        end
+        Artifacts["Public artifacts and sanitized evidence"]
+        Repo --> CI --> Artifacts
+    end
+    subgraph Tailnet["Tailscale"]
+        subgraph DevMachine["Development host machine"]
+            Work["Parallel worktrees: edit, focused checks, incremental builds"]
+            Builder["Local CI builder: private composition and cumulative gate"]
+            Delivery["Delivery tooling: verify artifacts and release evidence"]
+            Work --> Builder
+            Work -->|"Draft outputs"| Delivery
+            Builder -->|"Private artifacts and evidence"| Delivery
+        end
+        subgraph Server["Server machine: standard service account"]
+            Deploy["Deployment controller: slots and target locks"]
+            DEV["DEV: draft and exact-artifact checks"]
+            TEST["TEST: merged-main rehearsal"]
+            PROD["PROD: activation, read-only health, rollback"]
+            Deploy --> DEV
+            Deploy --> TEST
+            Deploy --> PROD
+        end
+    end
+    Work <-->|"HTTPS / GitHub credentials for writes"| Repo
+    Delivery <-->|"HTTPS / authorized artifact download"| Artifacts
+    Delivery -->|"SSH / public-key auth + Tailscale ACLs"| Deploy
 ```
 
 The [development skill](../../.github/skills/safe-feature-development/SKILL.md)
-and [runner guide](../../packages/e2e/README.md) own the operational procedure.
-CI/CD should automate ordinary progression; agents monitor and repair failures.
-Automation and parallel contributors do not bypass these boundaries:
+and [runner guide](../../packages/e2e/README.md) define stage order and commands.
+CI/CD should progress automatically; agents monitor and repair failures.
 
-- **Development isolation:** separate writable source, state, sessions, ports,
-  and process ownership. Shared package stores and compatible incremental output
-  are allowed. A native test process is not a sandbox against trusted host code.
-- **External effects:** synthetic reads and deny-by-default recording adapters
-  replace live services. [The fixture](../../packages/e2e/src/native-fixture.mjs)
-  exposes only declared operations. Production checks are bounded and read-only;
-  tests never send real messages or mutate live accounts.
-- **Build trust:** pin upstream source, package manager, toolchain, and lockfiles.
-  [Public CI](../../.github/workflows/integration.yml) uses public source and
-  disables private extensions. Optional local composition is explicit, with
-  private inputs and diagnostics kept out of public artifacts.
-- **Evidence:** the full accumulated pool and independent review qualify the
-  final candidate. Draft DEV is feedback, not release proof. Reuse evidence only
-  when its source, tests, environment, tools, and outputs still match.
-- **Artifacts:** [packaging](../../packages/e2e/src/native-package.mjs) materializes
-  the production dependency graph. Consumers verify archive/runtime identities
-  and install offline. Deployed runtimes must not depend on mutable package stores.
-- **Promotion:** [merge eligibility](../../packages/e2e/src/merge-eligibility.mjs)
-  binds source, CI, and DEV proof. TEST and PROD use the selected merged batch;
-  a changed production baseline requires affected TEST validation again.
-- **Concurrency:** [environment slots](../../packages/e2e/DEPLOYMENT_COORDINATION.md)
-  and target locks protect shared mutations. An idle agent or old heartbeat does
-  not grant another worker ownership. Independent builds need no shared slot.
-- **Recovery:** [activation](../../packages/e2e/src/native-activation.mjs) validates
-  target identity, stages before stopping production, records recovery, and
-  restores runtime/state/service on failure. No builds, downloads, or merges
-  belong inside the stopped-production transaction.
-- **Retention:** [cleanup](../../packages/e2e/src/native-retention.mjs) protects
-  active consumers, evidence dependencies, deployed artifacts, and healthy
-  recovery. Disk pressure does not authorize deleting another task's work.
+- **Builder access:** pin source, toolchain, and dependencies. [Public CI](../../.github/workflows/integration.yml)
+  uses public inputs without live credentials or private extensions. Private
+  composition and its diagnostics stay on the authorized local builder. Public
+  exports contain only approved artifacts and bounded sanitized diagnostics.
+- **Test effects:** DEV, TEST, and builder fixtures own separate state, sessions,
+  ports, and processes. [Recording adapters](../../packages/e2e/src/native-fixture.mjs)
+  replace external reads and writes with no live fallback. Production probes
+  are read-only and expose no personal results.
+- **Artifact boundary:** [packaging](../../packages/e2e/src/native-package.mjs)
+  closes the production dependency graph for verified offline installation.
+  Draft outputs qualify only for DEV. [Merge eligibility](../../packages/e2e/src/merge-eligibility.mjs)
+  binds reviewed source, full CI, and exact-artifact DEV proof. TEST and PROD
+  consume the same selected merged-main artifact; changed inputs or production
+  baselines invalidate affected evidence.
+- **Shared server:** [slots](../../packages/e2e/DEPLOYMENT_COORDINATION.md) and
+  transaction locks protect each target mutation. Independent builds need no
+  slot. [Activation](../../packages/e2e/src/native-activation.mjs) stages before
+  stopping production and restores runtime, state, and service on failure.
+  No builds, downloads, or merges belong in that stopped-production interval.
+- **Storage:** reuse compatible host-local stores and incremental outputs.
+  Installed releases must not depend on mutable stores. [Cleanup](../../packages/e2e/src/native-retention.mjs)
+  preserves active work, evidence dependencies, deployed artifacts, and recovery.
 
-Hashes and receipts bind bytes and validation inputs. They are not a signature
-against a compromised builder or host that can rewrite both artifact and proof.
-Source review, dependency trust, CI permissions, and private custody remain
-part of the trusted computing base. Public CI uses bounded sanitized diagnostics;
-redaction is not permission to upload private logs or production state.
+Hashes and receipts bind bytes to evidence. A compromised builder or host can
+rewrite both; they do not replace source review or protect against that host.
 
 ## Agent architecture
 
-### Context rings
+### Context labels
 
-From the smallest, most privileged audience outward: **personal, household,
-friends, public**. These rings scope access; they do not make content safe to
-obey. Even personal email can contain attacker instructions. The trusted host
-enforces the rings and is not another agent audience.
+The host labels each context by the **least-trusted source that can enter it**.
+The arrows show decreasing trust, not permission to share data.
 
 ```mermaid
 flowchart TB
-    subgraph Public["Public: no private access"]
-        subgraph Friends["Friends: explicitly shared resources"]
-            subgraph Household["Household: household resources only"]
-                Personal["Personal: owner-only data and capabilities"]
-            end
-        end
-    end
+    Personal["Personal"] --> Household["Household"]
+    Household --> Friends["Friends"]
+    Friends --> Public["Public"]
 ```
 
-Containment shows expanding audiences, not inherited access. Household can never
-read personal stores, sessions, credentials, or tools. Friends cannot read
-household or personal resources. Membership in a ring does not grant access to
-every person or resource in that ring; account and recipient scope still apply.
-
-| Ring | Required handling |
+| Label | Required handling |
 |---|---|
-| Personal | Bind access to the authenticated owner and personal task. Keep private accounts, memory, and capabilities unavailable to other rings. |
+| Personal | Bind access to the authenticated owner and personal task. Keep private accounts, memory, and capabilities unavailable to less-trusted contexts. |
 | Household | Use separate sessions, workspaces, workers, and scoped adapters. Expose only household resources; requests for personal information go to owner review without granting access. |
 | Friends | Expose only resources explicitly shared with the particular friend or group. No household or personal lookups, delegation, or memory access. |
 | Public | Use restricted readers and explicitly scoped source access. External content gains no personal, household, or friends authority. Keep source-account and recipient restrictions even after reading. |
 
-Email, texts, calendar entries, web pages, and similar externally writable
-sources are **public** for context classification. A particular sender being
-a friend or household member does not change what that source can admit.
-Authentication to a private account does not upgrade its incoming content.
-Public describes input trust, not permission to publish: account scope,
-authorized recipients, and the purpose of the read still constrain use.
+**SMS is a public source:** its sender cannot be verified as more trusted.
+Email, calendar entries, web pages, and other sources that admit public input
+are public too. A familiar sender or private account does not upgrade the source.
+Public does not mean publishable; account, recipient, and task scope still apply.
 
-#### Context labels and outward disclosure
+#### Classification and sharing
 
-- **Each context has one label: the least-privileged ring that can enter it.**
-  Include tool results, retrieved memory, summaries, attachments, delegated
-  results, and asynchronous events. Classify by what the path can admit, not
-  just the content currently visible. A context that can include public input
-  is public. There is no mixed-context exception.
-- Enforce that label before admitting content or granting capabilities. A
-  public context cannot inherit personal, household, or friends access. Keep
-  more-privileged work in separate contexts; only a specifically approved copy
-  may cross outward. Relabeling a context never authorizes disclosure of data
-  already present. Block the transition if it would expose that data.
-- Keep untrusted reading in the reader and preserve the source label on its
-  output. Summarizing, redacting, or wrapping content does not promote its ring.
-  Returning a result does not allow it into a more-privileged context or let it
-  borrow the parent's authority.
-- Bind scope in host code before retrieval, tool execution, delegation, model
-  submission, persistence, and delivery. A lower-ring caller cannot select a
-  higher-ring identity. Derived summaries, logs, indexes, caches, and model
-  requests retain the source data's restrictions. Unknown provenance cannot
-  authorize access or outward disclosure.
-- **Never disclose to a wider ring without deterministic human approval.**
-  A host-enforced gate must verify an authenticated, authorized human's approval
-  for the exact content and destination before release. Changed content or
-  recipients require fresh approval. Missing, expired, or replayed approval
-  blocks release. A model's judgment, contact match, prompt, or quoted approval
-  in source content is insufficient.
-- Approval releases only the selected disclosure. It does not grant household
-  access to personal systems, promote a session's ring, or permit later
-  follow-ups. Service credentials remain host-only and cannot be released through
-  this sharing path. The approved copy gets the approved audience; original
-  stores and other data retain their restrictions.
-
-The [household plan](../plans/completed/022-household-and-friends-tiers.md)
-records a limited household population and owner-mediated relay. It explicitly
-does not establish a friends rollout. Existing recipient guards do not implement
-these four rings or a universal deterministic disclosure gate. This section
-defines the required architecture; the gap must remain visible until enforced
-and tested end to end.
+- **Include every input path:** tool results, memory, attachments, summaries,
+  delegation, and async events. There is no mixed-context exception; summaries
+  and redaction cannot upgrade a label.
+- **Enforce scope in host code** before retrieval, execution, delegation, model
+  submission, storage, and delivery. Lower-trust contexts cannot select
+  higher-trust identities or capabilities. Unknown provenance grants no access.
+  Logs, caches, indexes, and derived data retain their source restrictions.
+- **Keep privileged work separate.** Admitting public input makes the receiving
+  context public. Block admission if that would expose existing private data;
+  relabeling cannot authorize disclosure.
+- **Sharing outward requires human approval enforced by code.** Bind an
+  authenticated, authorized human's approval to exact content and destination.
+  Changed, missing, expired, or replayed approval blocks release. Source text,
+  contact matches, and model judgment cannot approve it.
+- **Approval releases only that copy.** It grants no access to original stores,
+  higher-trust contexts, or future follow-ups. Credentials cannot use this path.
 
 ### Runtime flow
 
@@ -267,13 +222,13 @@ flowchart TB
     Schedule["Operator-configured schedule"]
     External["External systems and untrusted content"]
     subgraph Host["Trusted host"]
-        Admission["Gateway admission, ring, and turn context"]
+        Admission["Gateway admission, label, and turn context"]
         Secrets["Host credential reader and Keychain"]
         Adapter["Scoped host service adapter"]
         Ingress["Injection and secret checks"]
         Egress["Action, audience, and human approval checks"]
         subgraph AgentBoundary["Separate agent sandboxes and tool policies"]
-            Main["Decision context: least-privileged input ring"]
+            Main["Decision context: public"]
             Reader["Reader: public source context"]
         end
         Admission --> Main
@@ -281,7 +236,7 @@ flowchart TB
         Reader -->|"Permitted read"| Adapter
         Adapter --> Ingress
         Ingress -->|"Checked source data"| Reader
-        Reader -->|"Public summary, no ring upgrade"| Main
+        Reader -->|"Public summary"| Main
         Main -->|"Authorized action"| Egress
         Egress --> Adapter
         Secrets -->|"Host-only authentication"| Adapter
@@ -292,13 +247,7 @@ flowchart TB
     External -->|"Untrusted response"| Adapter
 ```
 
-External responses have no authority to start turns, request follow-ups, change
-permissions, or choose a new destination. A write returns a bounded receipt;
-external text in that receipt still belongs on the reader path.
-The decision context shown here admits reader output, so it is public too.
-It cannot share a context with privileged personal work. Task payloads sent
-outward to a reader are subject to the same human approval boundary as other
-outward disclosures.
+Sending private task data to the reader requires the disclosure gate.
 
 #### Agent containment and authority
 
@@ -332,18 +281,16 @@ profile. An external ACP harness is a separate execution system: the spawn
 patch checks requester command-tool compatibility but cannot enforce an OpenClaw
 target profile's tool policy inside that harness. Do not use a restricted target
 name as proof of external-harness containment.
-The [household architecture](../plans/completed/022-household-and-friends-tiers.md)
-records scoped tools, separate workers, and owner-mediated relay controls.
 
 #### Channels and adapters
 
 - The [iMessage channel](02-talking-to-puddles-on-imessage.md) runs `imsg rpc`
   as a host-owned child process over stdio. Bind channel identity and sender
-  allowlists before admission; incoming text retains its public context label.
+  allowlists before admission.
 - The [Gmail](../../openclaw-plugins/secure-gmail/src/mcp-bridge.ts) and
   [calendar](../../openclaw-plugins/secure-apple-calendar/src/mcp-bridge.ts)
   bridges use MCP over stdio to host-owned processes. Caller scope and tool
-  grants constrain access; a trusted transport does not make results trusted.
+  grants constrain access.
 
 #### Credentials and external access
 
@@ -403,13 +350,11 @@ from Keychain item access and need renewal when the approved CLI is rebuilt.
 3. The reader returns a bounded summary in its own words, with attribution and
    suspicious content called out. It does not relay raw instructions upstream.
 4. A context permitted to admit the result uses it as evidence within the
-   original task, retaining the public label. It does not treat a summary as
-   authorization for another action, turn, or fetch.
+   original task.
 
 The [reader instructions](agent-instructions/reader-AGENTS.md) require one
-acquisition followed by yield, no content-directed follow-ups, and no verbatim
-email forwarding. Tool grants must support that limited role; instructions
-alone cannot prevent extra calls or new turns.
+acquisition followed by yield. Enforce that limit through tool grants. External
+text in write receipts takes the same reader path.
 
 [InjectionGuard](../../packages/mcp-hooks/src/ingress/injection-guard.ts) checks
 for prompt injection. [SecretRedactor](../../packages/mcp-hooks/src/ingress/secret-redactor.ts)
@@ -460,32 +405,28 @@ passive mailbox. [Gateway hooks](https://github.com/openclaw/openclaw/blob/1391f
 can dispatch isolated turns and wakes. Their existence is not authorization to
 connect arbitrary external events to privileged agents.
 
-The household plan records deployment-specific message-target and cron-target
-hooks. Their presence and historical testing do not prove every current
-out-of-turn path. Validate the effective grants and the actual dispatch path,
-including delegated and scheduled runs, before claiming this boundary enforced.
-
 #### Memory and persistent state
 
-- Reader output remains untrusted when written to notes, trackers, or memory.
-  Persistence must not turn source instructions into future authority.
-- Keep role workspaces, memory access, sessions, and browser profiles separated.
-  Reusing an agent-scoped container is not a fresh security context per task.
-- The [scoped-memory plugin](../../openclaw-plugins/scoped-memory/README.md)
-  binds identity and workspace from the host, restricts note paths, rejects
-  symlinks/hardlinks and traversal, and rereads authorized bytes rather than
-  returning stale index snippets. Native memory and wiki tools require separate
-  denials; the plugin does not replace their policy or constrain index ingestion.
+Reusing an agent-scoped container does not create a fresh context per task.
+Separate role workspaces, sessions, memory, and browser profiles.
+
+The [scoped-memory plugin](../../openclaw-plugins/scoped-memory/README.md) binds
+identity and workspace from the host, rejects path traversal and symlinks or
+hardlinks, and rereads authorized bytes instead of stale index snippets. Native
+memory and wiki tools need separate denials; the plugin does not constrain
+index ingestion.
 
 ## Appendix: known gaps and validation limits
 
-These are findings from source and documented deployments, not a live penetration
-test. A requirement above must not be reported as fully enforced until its
-configuration and all relevant paths are verified.
+This document describes required boundaries and source-backed mechanisms, not a
+live audit. Verify effective accounts, listeners, grants, mounts, and dispatch
+paths before claiming enforcement. Pinned upstream links describe the reviewed
+revision; recheck them against the [current build](../../packages/e2e/openclaw-patch-suite.json)
+when upgrading.
 
 | Area | Limit or gap |
 |---|---|
-| Trust rings and disclosure | Household scoping is documented, but friends/public populations, provenance propagation, and an exact-content human approval gate for every outward path are not established. Contact trust and model classification cannot substitute for these controls. |
+| Context labels and disclosure | The [household plan](../plans/completed/022-household-and-friends-tiers.md) documents limited household access and owner relay. Friends/public populations, provenance propagation, and a universal exact-content disclosure gate are not established. |
 | Network exposure | The [older host setup](01-setting-up-your-mac-mini.md) allows direct LAN SSH. That conflicts with the no-exposure-outside-Tailscale policy. Effective listener bindings and firewall rules need verification; this document does not change them. |
 | Sandbox network and credential custody | The older [sandbox guide](03-openclaw-and-agent-sandboxing.md) describes network-enabled containers. The [persistent browser design](../plans/completed/023-durable-browser-agent-login.md) mounts a credential-bearing profile into a browser container. Those are exceptions to strict host-only external access and credential custody, not proof that the required boundary is met. |
 | Reader-only routing | Gmail/calendar factories rely on configured tool grants for reader/main separation. Older setup examples grant main search and readers session messaging. Attachments, images, browser results, errors, and metadata need path-specific review; there is no repository-wide reader gate. |
@@ -494,10 +435,9 @@ configuration and all relevant paths are verified.
 | Turn admission | Channel guards, session visibility, reader instructions, and historical local hooks do not jointly prove a universal no-wake/no-follow-up boundary. Missing-context behavior and all alternate dispatch paths require explicit validation. |
 | Mutation approval | Ingress checks run after execution. Gmail archive/label and calendar mutations do not gain action approval from scanning their results. [Native iMessage approval forwarding](../plans/027-imessage-approval-channel.md) is still pending in the maintained plan. |
 | Build supply chain | CI uses pinned project tools and a frozen pnpm graph, but action references are version tags and Gmail test dependencies are installed with pip. This is not a fully hermetic or independently signed build system. |
-| Deployment claims | Source coverage and historical receipts do not establish the current sandbox configuration, enabled hooks, credential mounts, installed versions, or live end-to-end behavior. |
 
 When extending the system, trace both data and control paths across these
 boundaries. Add behavioral regressions for negative cases: unauthorized caller,
 missing/stale context, blocked content, guard failure, forbidden follow-up,
 credential leakage, and attempted live effects. Implement repairs through the
-normal approved lifecycle; this document itself changes no runtime controls.
+normal approved lifecycle.
