@@ -565,10 +565,10 @@ index b93fc081e..85f7ddead 100644
          // Not an error: the session already waits for these children through
 diff --git a/src/agents/tools/yield-descendant-gather.test.ts b/src/agents/tools/yield-descendant-gather.test.ts
 new file mode 100644
-index 000000000..bfa134eb1
+index 000000000..84d0bed1d
 --- /dev/null
 +++ b/src/agents/tools/yield-descendant-gather.test.ts
-@@ -0,0 +1,107 @@
+@@ -0,0 +1,110 @@
 +import { beforeEach, describe, expect, it, vi } from "vitest";
 +import { gatherYieldDescendants } from "../yield-descendant-gather.js";
 +import { isYieldGathered, isYieldGathering } from "./yield-gather-state.js";
@@ -590,6 +590,7 @@ index 000000000..bfa134eb1
 +    requesterSessionKey: "agent:main:main",
 +    requesterAgentId: "main",
 +    requesterTurnRunId: "current-turn",
++    expectsCompletionMessage: true,
 +    createdAt: 100,
 +    execution: { endedAt: undefined as number | undefined },
 +    ...overrides,
@@ -616,6 +617,8 @@ index 000000000..bfa134eb1
 +      run({ requesterTurnRunId: "old-turn" }),
 +      run({ requesterAgentId: "different-agent" }),
 +      run({ collect: true }),
++      run({ expectsCompletionMessage: false }),
++      run({ expectsCompletionMessage: undefined }),
 +    ];
 +    mocks.list.mockReturnValue([nested, owned, ...excluded]);
 +    mocks.wait.mockImplementation(async ({ initialPendingRunIds, getPendingRunIds }) => {
@@ -805,10 +808,10 @@ index 000000000..8e23ff829
 +}
 diff --git a/src/agents/yield-descendant-gather.ts b/src/agents/yield-descendant-gather.ts
 new file mode 100644
-index 000000000..0615c772e
+index 000000000..dfc79ff7b
 --- /dev/null
 +++ b/src/agents/yield-descendant-gather.ts
-@@ -0,0 +1,107 @@
+@@ -0,0 +1,108 @@
 +import { readDescendantSubagentFallbackReply } from "../cron/isolated-agent/subagent-followup.js";
 +import { waitForAgentRunsToDrain } from "./run-wait.js";
 +import { listDescendantRunsForRequester } from "./subagents/registry/subagent-registry-read.js";
@@ -848,6 +851,7 @@ index 000000000..0615c772e
 +        if (
 +          !entry.childSessionKey ||
 +          entry.collect ||
++          entry.expectsCompletionMessage !== true ||
 +          !allowed.has(entry.requesterSessionKey) ||
 +          selected.includes(entry)
 +        )

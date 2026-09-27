@@ -272,7 +272,7 @@ index a7f30e618..b88290a3c 100644
  /** Host-injected acquisition hook that cannot supply process configuration. */
  export type AcquireConfiguredProviderLocalService = (
 diff --git a/src/agents/provider-local-service.ts b/src/agents/provider-local-service.ts
-index d608c2d28..0b85ff49b 100644
+index 5a568429a..bdae74cab 100644
 --- a/src/agents/provider-local-service.ts
 +++ b/src/agents/provider-local-service.ts
 @@ -196,7 +196,7 @@ async function acquireProviderLocalService(

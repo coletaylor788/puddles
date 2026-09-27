@@ -21,7 +21,9 @@ The ordinary `sandbox list` command is unchanged.
 
 The patch adds focused OpenClaw tests for normal-container and browser discovery
 rejections. Both assert that the error propagates and no removal is attempted. Additional
-cases prove that the unselected registry is not queried. The tests are registered in `packages/e2e/openclaw-patch-suite.json` and run by:
+cases prove that the unselected registry is not queried. Both selection cases
+fail against unpatched 9.6 and pass with the two retained discovery conditions.
+The tests are registered in `packages/e2e/openclaw-patch-suite.json` and run by:
 
 ```bash
 node packages/e2e/bin/openclaw-test-env.mjs ci

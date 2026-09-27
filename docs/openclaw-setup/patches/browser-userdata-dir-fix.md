@@ -22,7 +22,10 @@ entrypoint with the browser image and recreates the browser sandbox through
 The cumulative test in `packages/e2e/tests/candidate.browser-entrypoint.test.ts`
 executes the candidate entrypoint with fake Xvfb, Chromium, and CDP probes. It
 checks the configured profile argument and removal of all three stale files
-without launching a real browser or touching a live profile. Run it through
+without launching a real browser or touching a live profile. The same fixture
+fails against the unpatched 9.6 entrypoint because Chromium receives the home
+profile instead of the configured path. It passes with the maintained patch.
+Run it through
 the shared candidate lifecycle:
 
 ```bash

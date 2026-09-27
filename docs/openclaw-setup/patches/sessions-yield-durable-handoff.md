@@ -12,6 +12,11 @@ returns. The registry worker commits the whole gathered batch before ownership a
 in memory. A changed completion or persistence failure leaves the original
 records available for recovery. The process-local map remains only a fast path.
 
+Upstream 9.6 already persists subagent completions through its registry worker.
+It does not record ownership of Puddles' blocking gather result. The remaining
+patch adds that correlation through the existing asynchronous worker API; it
+does not replace upstream persistence or add a second database writer.
+
 Announcement recovery reads the durable handoff when the fast path is absent.
 It acknowledges the completion only after finding the exact successful
 `sessions_yield` tool result with the matching gathered run ID in the requester

@@ -4,6 +4,10 @@ OpenClaw's `skill_workshop` tool writes proposed skill changes through the
 gateway. It does not write through a sandbox's filesystem mount. Sandboxed
 agents still need this tool because their direct skill mounts are read-only.
 
+OpenClaw 2026.9.6 still rejects ordinary sandboxed callers in the shared
+`src/skills/workshop/tool-availability.ts` owner. This is a retained Puddles
+authoring policy change, not an upstream crash fix.
+
 The patch removes the sandbox-specific construction gate from tool assembly
 and its matching unavailable-tool diagnostics. It keeps the required configuration check, normal
 tool policy, proposal review rules, and the configured workshop factory.

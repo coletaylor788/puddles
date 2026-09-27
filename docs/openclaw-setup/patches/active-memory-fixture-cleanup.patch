@@ -1,5 +1,5 @@
 diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/index.test.ts
-index 91168464c..61f674fa3 100644
+index 456ea6553..7d542cde2 100644
 --- a/extensions/active-memory/index.test.ts
 +++ b/extensions/active-memory/index.test.ts
 @@ -460,6 +460,16 @@ describe("active-memory plugin", () => {
@@ -19,7 +19,7 @@ index 91168464c..61f674fa3 100644
    const makeMemoryToolAllowlistError = (
      reason: string,
      sources = "runtime toolsAllow: memory_search, memory_get",
-@@ -4920,6 +4930,7 @@ describe("active-memory plugin", () => {
+@@ -4921,6 +4931,7 @@ describe("active-memory plugin", () => {
        registerPluginConfig({ timeoutMs, setupGraceTimeoutMs, logging: true });
        const providerReady = createDeferred<void>();
        let readinessTimer: ReturnType<typeof setTimeout> | undefined;
@@ -27,7 +27,7 @@ index 91168464c..61f674fa3 100644
        hoisted.getActiveMemorySearchManager.mockImplementationOnce(async () => {
          readinessTimer = setTimeout(() => providerReady.resolve(), readyAfterMs);
          await providerReady.promise;
-@@ -4962,7 +4973,18 @@ describe("active-memory plugin", () => {
+@@ -4963,7 +4974,18 @@ describe("active-memory plugin", () => {
        } finally {
          clearTimeout(readinessTimer);
          providerReady.resolve();
@@ -46,7 +46,7 @@ index 91168464c..61f674fa3 100644
      },
    );
  
-@@ -5056,28 +5078,55 @@ describe("active-memory plugin", () => {
+@@ -5057,28 +5079,55 @@ describe("active-memory plugin", () => {
      seedSession(sessionKey, "s-terminal-unavailable-then-diagnostic", 0);
      const warning = "Memory search is unavailable due to an embedding/provider error.";
      const action = "Check the embedding provider configuration, then retry memory_search.";

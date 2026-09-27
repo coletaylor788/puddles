@@ -21,7 +21,7 @@ flowchart LR
 
 #### Host and integrations
 
-Port the maintained patches and plugins to the newer host. Preserve messaging, tool access, concurrency and agent ownership. Keep each regression when an upstream fix replaces a local patch. Delivery uses the process on main; this plan adds only upgrade requirements.
+Port the maintained patches and plugins to the newer host. Preserve messaging, tool access, concurrency and agent ownership. Upstream now replaces the silent-reply fix, protocol declaration workaround and cold-memory recall fix. Their patches retain only regression tests. The discovery patch also drops its original error-handling fix; a separate registry-selection correction remains. Keep the other fixes only where source comparison or baseline tests show a remaining need. Delivery uses the process on main; this plan adds only upgrade requirements.
 
 #### Local memory
 
@@ -70,27 +70,27 @@ Upgrade-specific decisions follow.
 - **Browser and plugins:** use the target's browser inputs and supported SDK exports. Preserve browser profiles, sandbox mounts and generated iMessage configuration metadata. Doctor/startup must preserve the sealed installed package bytes.
 - **Release selection:** [2026.9.6](https://github.com/openclaw/openclaw/releases/tag/v2026.9.6) is pinned for approval. Any later target needs a reviewed delta. Its upstream CI/soak waivers do not replace the repository's required validation. The separately rebuilt macOS desktop app is outside this host upgrade.
 
-Each check below used `git apply --check` independently against pristine tagged source. Failures can include missing predecessor patches; passes establish textual compatibility only. Semantic disposition remains implementation work.
+The audit below distinguishes upstream fixes from behavior we still add. Regression-only patches carry tests into the cumulative suite; they do not modify the runtime. A passing patch application is not evidence that a fix is needed.
 
-| Maintained patch | Clean-tag check | Proposed disposition after approval |
+| Maintained patch | Current disposition | Evidence or remaining work |
 | --- | --- | --- |
-| `managed-local-service-lifecycle` | Fails | Reconcile new service ownership code; retain graceful and forced-death guarantees. |
-| `gateway-memory-warmup` | Fails | Port readiness/residency only where upstream lacks equivalent behavior. |
-| `file-lock-stale-reclaim-guard` | Fails | Audit fs-safe 0.18.1 against the old 0.8.5 patch; retain contention and killed-owner regressions. |
-| `sessions-yield-block-and-gather` | Fails | Reconcile current yield/replay flow; keep requester-bound blocking and gathering. |
-| `sessions-yield-durable-handoff` | Fails | Rebase after gather work; acknowledge only durably persisted tool results. |
-| `subagent-cross-agent-spawn-fix` | Fails | Recheck current spawn/visibility policies; preserve explicit target and inherited restrictions. |
-| `skill-workshop-sandbox-fix` | Fails | Reconcile current workshop permissions without broadening access. |
-| `imessage-message-part-coalescing` | Fails | Port monitor hooks and regenerate channel metadata from current source. |
-| `sandbox-discovery-failure-fix` | Fails | Retain explicit failure behavior; check current upstream equivalent. |
-| `browser-userdata-dir-fix` | Pass | Retain provisionally; prove installed profile and singleton behavior. |
-| `builtin-memory-migration` | Pass | Retain provisionally; reprove source isolation and current Doctor migration. |
-| `silent-reply-completion-evidence` | Fails | Reconcile incomplete-turn recovery and restart replay; preserve intentional silence. |
-| `stopped-state-migration-sdk` | Fails | Reconcile the wrapper around upstream repair APIs and schema/cron partition behavior; keep upstream responsible for conversion. |
-| `scoped-container-temp-root` | Fails | Reconcile current mount mapping; keep test-owned staging and production locking. |
-| `active-memory-cold-recall` | Fails | Reconcile concurrent recall and changed budgets; preserve explicit recall cap. |
-| `active-memory-fixture-cleanup` | Fails | Keep cleanup assertions in the current fixtures; do not omit old coverage. |
-| `gateway-protocol-declaration-portability` | Fails | Old fragment files are gone; prefer upstream composer and port portability regression, adding a fix only if reproduced. |
+| `managed-local-service-lifecycle` | Narrow retained integration | Use upstream clean-stop, lease recovery and relay cleanup. Keep POSIX relay ownership and gateway-loss integration absent upstream. |
+| `gateway-memory-warmup` | Retained behavior | Upstream lacks opt-in gateway warmup, the lifetime service lease, two-vector readiness and embedding-only residency. Remove the old extra search timeout. |
+| `file-lock-stale-reclaim-guard` | Retained bug fix | Unpatched fs-safe 0.18.1 fails the persistent-guard regression. Patched dependency passes both lock regressions. Preserve the new upstream root-scoped path. |
+| `sessions-yield-block-and-gather` | Retained behavior | Keep requester-bound gathering and blocking. Use current upstream handoff ownership and preserve explicit message waits. |
+| `sessions-yield-durable-handoff` | Retained integration | Use upstream asynchronous storage and acknowledge only committed tool results, including failure and restart. |
+| `subagent-cross-agent-spawn-fix` | Narrow retained behavior | Upstream supplies explicit-target schema support. Keep default explicit targeting for scheduled callers and conditional inheritance of child restrictions. |
+| `skill-workshop-sandbox-fix` | Retained access policy | Upstream deliberately requires a library capability in its shared tool gate. Preserve the approved sandbox workshop behavior through that gate. |
+| `imessage-message-part-coalescing` | Retained feature | Upstream text debounce does not replace selective text, link and media grouping. Current monitor tests pass 64 cases. |
+| `sandbox-discovery-failure-fix` | Original bug fix removed; two lines retained | Upstream already propagates discovery errors. Two selected-registry regressions fail on pristine 9.6 and pass with the remaining change. |
+| `browser-userdata-dir-fix` | Retained bug fix | The same profile fixture fails on the pristine entrypoint, which still hardcodes the profile directory, and passes with the patch. |
+| `builtin-memory-migration` | Regression only | No runtime converter or retired search-backend override remains. Upstream Doctor owns migration. |
+| `silent-reply-completion-evidence` | Runtime fix removed | Upstream supplies completion evidence and intentional-silence handling. Retain 57 passing regressions. |
+| `stopped-state-migration-sdk` | Retained SDK integration | Expose current upstream repair and cron APIs to the stopped deployment flow. Keep conversion in Doctor; preserve explicit legacy ownership. |
+| `scoped-container-temp-root` | Retained isolation behavior | Three selected-root and invalid-root regressions fail on pristine upstream and pass with the patch. |
+| `active-memory-cold-recall` | Runtime fix removed | Pristine 9.6 completes both slow-provider cases and trigger-timeout continuation. Retain tests for cold continuation and the unchanged configured recall limit. |
+| `active-memory-fixture-cleanup` | Test fixture only | Join delayed provider cleanup so the retained cold-recall tests release their own resources. |
+| `gateway-protocol-declaration-portability` | Runtime workaround removed | Upstream's typed protocol registry replaces the deleted fragments. Retain registry identity/type coverage without replacement runtime annotations. |
 
 ### Implementation
 

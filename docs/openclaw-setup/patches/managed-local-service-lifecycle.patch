@@ -245,7 +245,7 @@ index 01e27fc60..cf90a7ef7 100644
            expect(hasManagedProviderLocalServices()).toBe(true);
          } finally {
 diff --git a/src/agents/provider-local-service.ts b/src/agents/provider-local-service.ts
-index aff04bbff..d608c2d28 100644
+index aff04bbff..5a568429a 100644
 --- a/src/agents/provider-local-service.ts
 +++ b/src/agents/provider-local-service.ts
 @@ -7,14 +7,20 @@ import {
@@ -376,7 +376,7 @@ index aff04bbff..d608c2d28 100644
 +      },
 +    });
 +    managed.relay = relay;
-+    managed.extinction = relay.waitForExtinction();
++    managed.extinction = relay.waitForExtinction().then(() => {});
 +    void managed.extinction.catch(() => {});
 +    relay.onStdout((chunk) => {
 +      if (diagnostics.readyAt === undefined) captureStdout(chunk);

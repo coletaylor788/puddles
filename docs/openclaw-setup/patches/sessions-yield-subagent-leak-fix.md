@@ -6,6 +6,11 @@ as the tool response. The requester can then synthesize one answer. Without
 this path, child completion can fall back to a raw channel reply after the
 requester has yielded.
 
+Unpatched 9.6 has a pause and completion-claim path, but no blocking descendant
+gather callback in `src/agents/tools/sessions-yield-tool.ts`. This remains a
+Puddles tool behavior change. The upstream message wait, claim result, and
+unobserved async-result guard are retained.
+
 Gathering includes only announced descendants owned by the current requester
 agent and turn. Collector runs keep their explicit wait path. An explicit
 `waitFor: "message"` goes to the upstream pause owner without gathering. The
