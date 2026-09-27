@@ -48,11 +48,12 @@ flowchart TB
 
 | Boundary | Separates | Rule | Compromise enables |
 |---|---|---|---|
-| Tailscale | Managed machines from outside networks | No ports exposed outside Tailscale. | Reach private network services. SSH and application authentication still apply. |
-| Machine | Development host from server | SSH requires an approved key, host account, and Tailscale access. | Control the affected OS account, including its files, credentials, and agent controls. Does not automatically grant root or access to another machine. |
-| Sandbox | Agent tools from the trusted host | Agents get only granted tools and files. Credentials stay outside the sandbox. | Use host capabilities exposed by the escape, potentially including credentials. Does not automatically grant root or control of other machines. |
-| Keychain | Host tools from stored credentials | Tools use an approved, stable credential reader. Secrets never enter agent context. | Use stolen credentials directly, bypassing agent tool limits. Service access remains limited to the credentials' granted permissions. |
-| Context labels | Personal, household, friends, and public | Lower-trust contexts cannot access higher-trust resources. Sharing outward requires human approval enforced by code. | Read or leak data across labels. Does not by itself grant host execution or Keychain access. |
+| Tailscale | Managed machines from outside networks | No ports exposed outside Tailscale. | Access SSH and VNC ports |
+| Host | Development files and tools from remote access | Access requires an authorized host account. | Read or change source, builds, and development data |
+| Server | Agent runtime and data from remote access | SSH requires an approved key, server account, and Tailscale access. | Control agents, stored data, and service access |
+| Sandbox | Agent tools from the trusted host | Agents get only granted tools and files. Credentials stay outside the sandbox. | Execute code outside the sandbox |
+| Keychain | Host tools from stored credentials | Tools use an approved, stable credential reader. Secrets never enter agent context. | Use exposed credentials |
+| Context labels | Personal, household, friends, and public | Lower-trust contexts cannot access higher-trust resources. Sharing outward requires human approval enforced by code. | Read or leak higher-trust data |
 
 These limits assume the other boundaries still hold.
 
