@@ -35,7 +35,7 @@ Upstream Doctor owns conversion to the new conversation storage. Our deployment 
 
 The patch audit and compatibility ports are implemented. Three local runtime fixes are removed, and the discovery patch retains only its registry correction. The latest local DEV draft passes all upgrade assertions, including history conversion, rollback and local embeddings. Warm searches take about 25–27 milliseconds without a timeout increase.
 
-Final validation is in progress. The declaration-build repair passes type checks, independent review and the clean local build. Exact CI-artifact DEV validation and merged TEST/production delivery remain pending. Production is unchanged.
+Final validation is in progress. Composed CI exposed another inferred type that the declaration compiler cannot publish. Its explicit type preserves the existing API and passes type checks and independent review. The repaired build and final release gates remain pending. Production is unchanged.
 
 ## Agent section
 
@@ -44,7 +44,7 @@ Final validation is in progress. The declaration-build repair passes type checks
 - Target verified 2026-09-26: `v2026.9.6`, source commit `eb377ac59e6c9fd6c7705028034812becf00271b`; GitHub stable and npm latest agree.
 - Existing source pin: `1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7` (`v2026.9.3`). Reuse landed compatibility code; [completed Plan 037](completed/037-openclaw-stable-upgrade.md) remains historical evidence.
 - Implementation branch: `codex/openclaw-2026-9-6`, based on main `2437225ebcde955a5c73ea1bc8dd04947ef7fb93`, with process update `73985a748b5acce182adbc8a7bbd61dbef4190e9` merged. The current main process and design structure apply.
-- Restart means a new candidate and run under main's process, not continuation of the paused release or reconstruction of its receipts. Preserve existing recovery assets and unrelated owners' state. The compatibility ports, focused tests and combined local DEV draft pass. DEV is healthy and its slot is released. Direct compiler execution and consistent incremental package selection pass focused checks, retained review and installed DEV validation. The further declaration annotation passes type checks, retained review and the clean local build before the final release gates; production is unchanged.
+- Restart means a new candidate and run under main's process, not continuation of the paused release or reconstruction of its receipts. Preserve existing recovery assets and unrelated owners' state. The compatibility ports, focused tests and combined local DEV draft pass. DEV is healthy and its slot is released. Direct compiler execution and consistent incremental package selection pass focused checks, retained review and installed DEV validation. The declaration repair now covers the prepared session and its client tools; type checks and retained review pass. Final build and release gates remain pending; production is unchanged.
 
 ### Scope and acceptance criteria
 
@@ -93,7 +93,7 @@ The audit below distinguishes upstream fixes from behavior we still add. Regress
 | `active-memory-cold-recall` | Runtime fix removed | Pristine 9.6 completes both slow-provider cases and trigger-timeout continuation. Retain tests for cold continuation and the unchanged configured recall limit. |
 | `active-memory-fixture-cleanup` | Test fixture only | Join delayed provider cleanup so the retained cold-recall tests release their own resources. |
 | `gateway-protocol-declaration-portability` | Runtime workaround removed | Upstream's typed protocol registry replaces the deleted fragments. Retain registry identity/type coverage without replacement runtime annotations. |
-| `core-declaration-portability` | New build repair under validation | Explicit types preserve eleven affected Bash-tool, SQLite, prepared-session and plugin-schema exports. Bidirectional checks pass before and after annotation. The clean full build, including all declaration partitions, passes with caches disabled. Retained review is clear; final CI proof remains required. |
+| `core-declaration-portability` | New build repair under validation | Explicit types preserve twelve affected Bash-tool, SQLite, prepared-session, client-tool and plugin-schema exports. Bidirectional checks pass before and after annotation. Retained review is clear; final CI declaration proof remains required. |
 
 ### Implementation
 
@@ -115,7 +115,7 @@ The shared process supplies review and cumulative/installed/physical gates. This
 
 Focused repository checks cover migration, default preservation, toolchain selection, diagnostics and cumulative test dispatch. The migration fixture checks Doctor's exact normalized output, including implicit primary models, authored model/fallback values and workspace paths. All six candidate migration cases and the e2e typecheck pass locally.
 
-The declaration patch preserves existing exported type shapes, including nullable joins and conditional columns. Its first ten annotations pass bidirectional type checks and all six declaration partitions locally. A further agent-session export requires an explicit return type; unannotated and annotated checks pass. The clean full-build sequence passes in 396 seconds with caches disabled, including all unified and plugin SDK declaration partitions. A local direct declaration build alone does not establish parity with the final CI build.
+The declaration patch preserves existing exported type shapes, including nullable joins, conditional columns and prepared session tools. All twelve annotations pass bidirectional checks against the unannotated types and retained review. Composed CI exposed the client-tools export after the session annotation. A fresh reconstruction of that exact failed candidate, with a fresh install and enabled cache, passes every declaration group locally. Source, dependency versions and build selections match; the local pass does not explain or override the CI failure. The repaired candidate must pass the complete CI build.
 
 The declaration regression compiles directly under the cumulative runner's existing deadline. Executable tests cover dispatch, missing projects and compiler failure. Incremental DEV packaging uses the full materializer's npm file selection and copy behavior. Prepared and freshly materialized payloads match. These repairs pass focused checks and retained review.
 

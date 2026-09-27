@@ -6,7 +6,7 @@ embedded-attempt preparation, and the plugin install schema. The failure
 appeared in the private cumulative CI build, even though the same public source
 completed a clean local declaration build.
 
-This patch gives the eleven affected exports explicit public types. The types
+This patch gives the twelve affected exports explicit public types. The types
 match the unannotated source, including the nullable retained-window row from
 the canonical-session left join, the conditional query result columns, the
 embedded runtime resources, and the permissive plugin install record schema.

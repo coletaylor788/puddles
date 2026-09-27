@@ -54,16 +54,71 @@ index ebeedec4..0b154fbd 100644
    const {
      cronCreatorToolAllowlist,
      cronCreatorToolAllowlistCaptureRef,
+diff --git a/src/agents/embedded-agent-runner/run/attempt-client-tools.ts b/src/agents/embedded-agent-runner/run/attempt-client-tools.ts
+index 904ac459..d9391c35 100644
+--- a/src/agents/embedded-agent-runner/run/attempt-client-tools.ts
++++ b/src/agents/embedded-agent-runner/run/attempt-client-tools.ts
+@@ -13,6 +13,7 @@ import { isCodeModeExecTool } from "../../code-mode-control-tools.js";
+ import { addClientToolsToCodeModeCatalog } from "../../code-mode.js";
+ import { isCoreToolResultMediaTrustedName } from "../../embedded-agent-tool-media.js";
+ import type { AgentTool } from "../../runtime/index.js";
++import type { ToolDefinition } from "../../sessions/index.js";
+ import {
+   createToolDefinitionFromAgentTool,
+   wrapToolDefinition,
+@@ -33,6 +34,21 @@ import {
+ import { splitSdkTools } from "../tool-split.js";
+ import type { EmbeddedAttemptClientToolCallSlot, EmbeddedRunAttemptParams } from "./types.js";
+ 
++export type PreparedEmbeddedAttemptClientTools = {
++  allCustomTools: ToolDefinition[];
++  builtinToolNames: Set<string>;
++  clientToolCallSlots: EmbeddedAttemptClientToolCallSlot[];
++  clientToolDefs: ToolDefinition[];
++  codeModeExecToolNames: Set<string>;
++  coreBuiltinToolNames: Set<string>;
++  refreshTools: () => void;
++  replaySafeToolNames: Set<string>;
++  replaySafeTools: Set<AgentTool>;
++  sessionToolAllowlist: string[];
++  sideEffectToolOwners: Map<string, string>;
++  trustedLocalMediaToolNames: Set<string>;
++};
++
+ export function prepareEmbeddedAttemptClientTools(params: {
+   attempt: EmbeddedRunAttemptParams;
+   catalogToolHookContext: Parameters<typeof splitSdkTools>[0]["toolHookContext"];
+@@ -48,7 +64,7 @@ export function prepareEmbeddedAttemptClientTools(params: {
+   uncompactedEffectiveTools: AgentTool[];
+   clientTools: EmbeddedRunAttemptParams["clientTools"];
+   getToolAbortSignal?: () => AbortSignal;
+-}) {
++}): PreparedEmbeddedAttemptClientTools {
+   // Reserve synchronously so parallel client-tool batches preserve assistant source order.
+   const clientToolCallSlots: EmbeddedAttemptClientToolCallSlot[] = [];
+   const clientToolCallSlotIndexes = new Map<string, number>();
 diff --git a/src/agents/embedded-agent-runner/run/attempt-session-prepare.ts b/src/agents/embedded-agent-runner/run/attempt-session-prepare.ts
-index 8743416e..db1572c6 100644
+index 8743416e..b3954896 100644
 --- a/src/agents/embedded-agent-runner/run/attempt-session-prepare.ts
 +++ b/src/agents/embedded-agent-runner/run/attempt-session-prepare.ts
-@@ -80,6 +80,21 @@ type ClientToolPreparation = Omit<
+@@ -42,7 +42,10 @@ import { buildEmbeddedExtensionFactories } from "../extensions.js";
+ import { log } from "../logger.js";
+ import { createEmbeddedAgentResourceLoader } from "../resource-loader.js";
+ import { applySystemPromptToSession } from "../system-prompt.js";
+-import { prepareEmbeddedAttemptClientTools } from "./attempt-client-tools.js";
++import {
++  prepareEmbeddedAttemptClientTools,
++  type PreparedEmbeddedAttemptClientTools,
++} from "./attempt-client-tools.js";
+ import type { AttemptContextEngine } from "./attempt-context-engine-helpers.js";
+ import { resolveAttemptTranscriptPolicy } from "./attempt-history.js";
+ import { normalizeMessagesForLlmBoundary } from "./attempt-llm-boundary.js";
+@@ -80,6 +83,21 @@ type ClientToolPreparation = Omit<
  
  type AttemptSessionManager = ReturnType<typeof guardSessionManager>;
  
 +type PreparedEmbeddedAttemptAgentSession = Omit<
-+  ReturnType<typeof prepareEmbeddedAttemptClientTools>,
++  PreparedEmbeddedAttemptClientTools,
 +  "sessionToolAllowlist"
 +> & {
 +  activeSession: AgentSession;
@@ -80,7 +135,7 @@ index 8743416e..db1572c6 100644
  /** Prepares resource loading, client tools, and the active agent session. */
  export async function prepareEmbeddedAttemptAgentSession(input: {
    attempt: EmbeddedRunAttemptParams;
-@@ -98,7 +113,7 @@ export async function prepareEmbeddedAttemptAgentSession(input: {
+@@ -98,7 +116,7 @@ export async function prepareEmbeddedAttemptAgentSession(input: {
    transcriptLifecycle: EmbeddedAttemptTranscriptLifecycle;
    sessionManager: AttemptSessionManager;
    prepareInitialUserTurnReplay?: InitialUserTurnReplayPreparation;
@@ -320,7 +375,7 @@ new file mode 100644
 index 00000000..8857d2da
 --- /dev/null
 +++ b/src/config/sessions/session-declaration-portability.test.ts
-@@ -0,0 +1,236 @@
+@@ -0,0 +1,262 @@
 +import type { Kysely, Nullable, SelectQueryBuilder } from "kysely";
 +import { expectTypeOf, it } from "vitest";
 +import type { createBundleLspToolRuntime } from "../../agents/agent-bundle-lsp-runtime.js";
@@ -345,12 +400,14 @@ index 00000000..8857d2da
 +import type { prepareEmbeddedAttemptTransport } from "../../agents/embedded-agent-runner/run/attempt-stream-settle.js";
 +import type { prepareEmbeddedAttemptTrajectory } from "../../agents/embedded-agent-runner/run/attempt-trajectory.js";
 +import type {
++  EmbeddedAttemptClientToolCallSlot,
 +  EmbeddedRunAttemptParams,
 +  EmbeddedRunAttemptResult,
 +} from "../../agents/embedded-agent-runner/run/types.js";
 +import type { getEmbeddedSessionPromptState } from "../../agents/embedded-agent-runner/session-prompt-state.js";
 +import type { normalizeAgentRuntimeTools } from "../../agents/runtime-plan/tools.js";
-+import type { AgentSession } from "../../agents/sessions/index.js";
++import type { AgentTool } from "../../agents/runtime/index.js";
++import type { AgentSession, ToolDefinition } from "../../agents/sessions/index.js";
 +import type { AgentToolWithMeta, AnyAgentTool } from "../../agents/tools/common.js";
 +import type { githubPublicationDatabase } from "../../gateway/github-publication-store.js";
 +import type { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
@@ -424,6 +481,20 @@ index 00000000..8857d2da
 +};
 +
 +type PreparedSessionManager = Awaited<ReturnType<typeof prepareEmbeddedAttemptSessionManager>>;
++type PreparedEmbeddedAttemptClientTools = {
++  allCustomTools: ToolDefinition[];
++  builtinToolNames: Set<string>;
++  clientToolCallSlots: EmbeddedAttemptClientToolCallSlot[];
++  clientToolDefs: ToolDefinition[];
++  codeModeExecToolNames: Set<string>;
++  coreBuiltinToolNames: Set<string>;
++  refreshTools: () => void;
++  replaySafeToolNames: Set<string>;
++  replaySafeTools: Set<AgentTool>;
++  sessionToolAllowlist: string[];
++  sideEffectToolOwners: Map<string, string>;
++  trustedLocalMediaToolNames: Set<string>;
++};
 +type PreparedEmbeddedAttemptAgentSession = Omit<
 +  ReturnType<typeof prepareEmbeddedAttemptClientTools>,
 +  "sessionToolAllowlist"
@@ -536,6 +607,16 @@ index 00000000..8857d2da
 +  >;
 +  expectTypeOf<BundleToolsMatchesAnnotation>().toEqualTypeOf<true>();
 +  expectTypeOf<AnnotationMatchesBundleTools>().toEqualTypeOf<true>();
++
++  type InferredClientTools = ReturnType<typeof prepareEmbeddedAttemptClientTools>;
++  type ClientToolsMatchesAnnotation = AssertTrue<
++    IsAssignable<InferredClientTools, PreparedEmbeddedAttemptClientTools>
++  >;
++  type AnnotationMatchesClientTools = AssertTrue<
++    IsAssignable<PreparedEmbeddedAttemptClientTools, InferredClientTools>
++  >;
++  expectTypeOf<ClientToolsMatchesAnnotation>().toEqualTypeOf<true>();
++  expectTypeOf<AnnotationMatchesClientTools>().toEqualTypeOf<true>();
 +
 +  type InferredAgentSession = Awaited<ReturnType<typeof prepareEmbeddedAttemptAgentSession>>;
 +  type AgentSessionMatchesAnnotation = AssertTrue<
