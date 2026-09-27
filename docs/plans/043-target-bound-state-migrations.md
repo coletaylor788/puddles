@@ -61,7 +61,7 @@ Transport the genuine interpreter-check evidence with the release so production 
 
 The approved implementation seals separate target manifests, validates the common generator and transports the production manifest and genuine interpreter evidence. Shared scripts, instructions and the skill cover future releases. Stable environment settings remain in the companion repository.
 
-Focused regressions and retained review pass. A live DEV failure restores its exact configuration, service, runtime and ownership record, and health passes. The final cumulative CI, exact-artifact DEV and merged TEST/PROD gates remain. Production is unchanged.
+Focused regressions and retained review pass, including recovery compatibility for existing releases. A live DEV failure restores its exact configuration, service, runtime and ownership record, and health passes. The final cumulative CI, exact-artifact DEV and merged TEST/PROD gates remain. Production is unchanged.
 
 ## Agent section
 
@@ -95,6 +95,7 @@ Focused regressions and retained review pass. A live DEV failure restores its ex
 - Obtain the production input through bounded read-only selection on the trusted host. Validate it before packaging and again before production mutation. Do not export full live state to CI.
 - The current generator preserves whole agent and memory-plugin subtrees. Reject secret-bearing exported content rather than silently redacting values that the migration would preserve. This constrains the protected input until the existing generator can safely select smaller fields.
 - Existing releases retain their existing single-manifest verification behavior. Do not reinterpret old receipts as paired-target proof. The upgrade requires a newly sealed candidate after the repair.
+- Recovery retains the original target-proof check for existing releases. Paired releases select the current target's sealed binding and require the recovery journal to match it. Cleanup metadata does not replace either check with a hash of the current target file.
 - `verifyIntegratedCandidate` uses the genuine runtime stage transported in the target proof. The target pipeline measures the executing Node binary, and certification checks the build and measured toolchain identity. Legacy receipts keep their previous evidence lookup.
 
 ### Implementation
@@ -115,6 +116,9 @@ checks. Handoff import preserves both bindings and the production manifest.
 A live DEV injected behavior failure restores exact config, service, runtime link
 and ownership marker; maintained health passes and the slot is released.
 These checks do not replace final cumulative CI or merged target rehearsal.
+Recovery and release regressions pass 43 tests, including legacy cleanup metadata
+and paired journals with matching, missing or wrong-role bindings. Target topology
+passes 62 tests with normal host permissions, and the TypeScript check passes.
 
 
 - Reproduce the current synthetic-manifest/production-target rejection.
@@ -138,6 +142,7 @@ Use the shared lifecycle documented in the current [skill](../../.github/skills/
 - Add DEV regressions for authored-setting preservation and configuration rollback. Keep DEV separate from release migration selection.
 - Retained review identified missing fixture dependencies, copied instead of measured interpreter evidence, and credential headers in selected export. All three are fixed with regressions. Recheck finds no additional material defect. Complete paired release validation remains in the normal lifecycle.
 - Actual DEV rollback validation passes. The source gate, imported target, TEST success/rollback and certification still require the final candidate's end-to-end run.
+- A recovery compatibility check exposed an incorrect full-target hash comparison after cleanup metadata was added. Restore the legacy proof check and require the sealed journal binding for paired releases. The retained reviewer reports no material findings; the four added regressions and affected suites pass. Replace the superseded CI candidate.
 
 ### Checklist
 

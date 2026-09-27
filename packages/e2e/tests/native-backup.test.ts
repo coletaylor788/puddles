@@ -13,6 +13,11 @@ import { fileDigest, jsonDigest, treeDigest } from "../src/native-state.mjs";
 // @ts-expect-error Native release lifecycle is also executable without TypeScript.
 import { certifyRelease, createBuildReceipt, createSourceGate, createTargetProof, promoteRelease } from "../src/native-release.mjs";
 
+// @ts-expect-error Executable target migration contract.
+import { migrationTargetIdentity } from "../src/native-migration-bindings.mjs";
+// @ts-expect-error Executable activation recovery contract.
+import { verifyCurrentActivationRecovery } from "../src/native-activation.mjs";
+
 const roots: string[] = [];
 function root() {
   const value = mkdtempSync(join(tmpdir(), "native-backup-test-"));
@@ -140,7 +145,7 @@ function fixture() {
   };
 }
 
-function legacyRecovery(f: ReturnType<typeof fixture>) {
+function legacyRecovery(f: ReturnType<typeof fixture>, paired = false) {
   const releaseRoot = join(f.directory, "release");
   const packageRoot = join(releaseRoot, "package");
   const runtime = join(packageRoot, "runtime");
@@ -167,7 +172,19 @@ function legacyRecovery(f: ReturnType<typeof fixture>) {
     arch: process.arch,
     node: process.version,
   };
+  const stateMigrations = paired ? {
+    schema: "puddles.target-state-migrations/v1",
+    generator: { repositoryId: "overlay", inputsSha256: "1".repeat(64) },
+    policy: { id: "fixture/v1", sha256: "2".repeat(64) },
+    bindings: [
+      { role: "rehearsal", targetSha256: "3".repeat(64), inputsSha256: "4".repeat(64), manifestSha256: "5".repeat(64) },
+      { role: "production", targetSha256: jsonDigest(migrationTargetIdentity(f.target)), inputsSha256: "6".repeat(64), manifestSha256: "7".repeat(64) },
+    ],
+  } : undefined;
+  if (paired) Object.assign(f.target, { stateMigration: { manifestPath: join(releaseRoot, "production.json"), sha256: "7".repeat(64) } });
   const build = createBuildReceipt({
+    ...(stateMigrations ? { stateMigrations, stateMigration: { sha256: "5".repeat(64) },
+      sourceRepositories: [{ id: "overlay", head: "a".repeat(40), tree: "b".repeat(40) }] } : {}),
     repository: { head: "a".repeat(40), tree: "b".repeat(40) },
     source: {
       ref: "c".repeat(40),
@@ -196,7 +213,7 @@ function legacyRecovery(f: ReturnType<typeof fixture>) {
     },
   });
   const stage = (name: string) => {
-    const inputs = { fixture: name };
+    const inputs = paired ? { fixture: name, tools: build.tools, buildId: build.buildId, stateMigrations } : { fixture: name };
     const key = jsonDigest(inputs);
     mkdirSync(join(releaseRoot, "stages"), { recursive: true });
     writeFileSync(join(releaseRoot, "stages", `${name}.json`), JSON.stringify({
@@ -219,6 +236,7 @@ function legacyRecovery(f: ReturnType<typeof fixture>) {
       schemaVersion: 1,
       status,
       transaction: name,
+      ...(stateMigrations ? { migrationBinding: stateMigrations.bindings[0] } : {}),
       target: "9".repeat(64),
       artifact: artifact.sha256,
     }));
@@ -256,7 +274,8 @@ function legacyRecovery(f: ReturnType<typeof fixture>) {
     snapshotReady: true,
     quiesced: false,
     transaction,
-    target: "9".repeat(64),
+    ...(stateMigrations ? { migrationBinding: stateMigrations.bindings[1] } : {}),
+    target: (paired ? "8" : "9").repeat(64),
     artifact: artifact.sha256,
     deployedRuntimeSha256: treeDigest(f.target.installDir, { portable: true }),
     deployedServiceSha256: fileDigest(f.target.plistPath),
@@ -1026,5 +1045,26 @@ describe("current production recovery backup", () => {
     });
     expect(existsSync(journalPath)).toBe(false);
     expect(existsSync(second.directory)).toBe(true);
+  });
+});
+
+describe("activation recovery target compatibility", () => {
+  it.each([false, true])("accepts retained recovery after cleanup metadata changes (paired=%s)", (paired) => {
+    const f = fixture();
+    const saved = legacyRecovery(f, paired);
+    expect(jsonDigest(f.target)).not.toBe(saved.identity.activationTargetSha256);
+    expect(verifyCurrentActivationRecovery(f.target, saved.directory,
+      join(f.target.backupRoot, "latest-activation.json"), f.target.legacyActivationReceipt)).toMatchObject(saved.identity);
+  });
+  it.each(["missing", "wrong-role"])("rejects %s paired production recovery bindings", (fault) => {
+    const f = fixture();
+    const saved = legacyRecovery(f, true);
+    const path = join(saved.directory, "recovery.json");
+    const journal = JSON.parse(readFileSync(path, "utf8"));
+    if (fault === "missing") delete journal.migrationBinding;
+    else journal.migrationBinding.role = "rehearsal";
+    writeFileSync(path, JSON.stringify(journal));
+    expect(() => verifyCurrentActivationRecovery(f.target, saved.directory,
+      join(f.target.backupRoot, "latest-activation.json"), f.target.legacyActivationReceipt)).toThrow(/migration binding differs/);
   });
 });

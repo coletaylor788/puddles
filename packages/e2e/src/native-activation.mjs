@@ -375,8 +375,14 @@ export function verifyCurrentActivationRecovery(target, recoveryDir, latestPath,
     const journal = JSON.parse(readFileSync(join(directory, "recovery.json"), "utf8"));
     if (receipt.artifact.sha256 !== identity.artifactSha256 ||
         receipt.artifact.runtimeSha256 !== journal.deployedRuntimeSha256 ||
-        jsonDigest(target) !== identity.activationTargetSha256) {
+        (!receipt.stateMigrations && receipt.evidence.targetProof.deployment.success.target !== identity.activationTargetSha256)) {
       throw new Error("Activation release receipt differs from recovery");
+    }
+    if (receipt.stateMigrations) {
+      const binding = selectTargetMigration(receipt, target);
+      if (jsonDigest(journal.migrationBinding ?? null) !== jsonDigest(binding)) {
+        throw new Error("Activation migration binding differs from recovery");
+      }
     }
     if (!existsSync(latestPath)) throw new Error("Activation ownership evidence is missing");
     const latest = JSON.parse(readFileSync(latestPath, "utf8"));
