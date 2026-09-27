@@ -20,7 +20,9 @@ description: "Review recent Puddles development loops and improve their skills, 
 Use these focus areas to start; choose how deeply to investigate each and follow
 the evidence into related issues.
 
-- Review new work and unresolved findings since the last pass.
+- Others also improve the loop. Catch up on recent changes and work in progress
+  before revisiting findings or proposing fixes. Build on existing improvements;
+  avoid duplicating or undoing them.
 - Investigate every failure beyond DEV, including CI, TEST, and PROD. Identify
   what could have caught or prevented it earlier.
 - Look for recurring delays, local/CI differences, and missed integration checks.
