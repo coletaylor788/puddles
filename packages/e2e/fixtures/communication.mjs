@@ -10,6 +10,14 @@ import { pathToFileURL } from 'node:url';
 import { runCommand, installSignalHandlers } from '../src/process-runner.mjs';
 import { isolatedContext, fixtureEnv, registerNativeFixture, cleanupNativeFixtures } from '../src/native-fixture.mjs';
 
+// Container names are shortened by OpenClaw. Ownership comes from the unique
+// fixture workspace mount, never from a requested name prefix.
+export function ownedCommunicationContainers(entries, root) {
+  return entries.filter(entry => entry.Config?.Labels?.['openclaw.sandbox'] === '1' &&
+    entry.Mounts?.some(mount => ['/workspace', '/agent'].includes(mount.Destination) &&
+      mount.Type === 'bind' && mount.Source.startsWith(`${root}/`)));
+}
+
 /** Real gateway and tool execution, with scripted models and recording-only account adapters. */
 export async function communicationFixture(installedDir, pluginDir, root, options = {}) {
   mkdirSync(root, { recursive: true, mode: 0o700 }); root = realpathSync(root);
@@ -17,11 +25,15 @@ export async function communicationFixture(installedDir, pluginDir, root, option
   const { configure, SYSTEM_FILES } = await import(pathToFileURL(join(realpathSync(pluginDir), "scripts/configure.mjs")).href);
   const context = isolatedContext(root);
   const containerPrefix = `communication-fixture-${createHash("sha256").update(root).digest("hex").slice(0, 10)}-`;
-  const docker = args => runCommand("docker", args, { capture: true, quiet: true, timeoutMs: 30000 });
-  const containers = async () => (await docker(["ps", "-a", "--filter", `name=${containerPrefix}`, "--format", "{{.Names}}"])).trim().split("\n").filter(name => name.startsWith(containerPrefix));
+  const docker = args => runCommand("docker", args, { capture: true, timeoutMs: 30000 });
+  const containers = async () => {
+    const ids = (await docker(['ps', '-a', '--filter', 'label=openclaw.sandbox=1', '--format', '{{.ID}}'])).trim().split('\n').filter(Boolean);
+    if (!ids.length) return [];
+    return ownedCommunicationContainers(JSON.parse(await docker(['inspect', ...ids])), root);
+  };
   const checkMounts = async () => {
-    const names = await containers();
-    const entries = JSON.parse(await docker(["inspect", ...names]));
+    const entries = await containers();
+    writeFileSync(join(root, "docker-mounts.json"), JSON.stringify(entries));
     const entry = entries.find(e => e.Mounts.some(m => m.Source === join(workspace, "AGENTS.md")));
     assert.ok(entry, "watcher Docker container exists");
     for (const file of SYSTEM_FILES) assert.equal(entry.Mounts.find(m => m.Destination === `/workspace/${file}`)?.RW, false, `${file} is read-only`);
@@ -121,7 +133,11 @@ export async function communicationFixture(installedDir, pluginDir, root, option
     writeFileSync(join(root, 'model-requests.json'), JSON.stringify(requests, null, 2));
     await stop(); if (log !== undefined) { closeSync(log); log = undefined; }
     server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
-    if (options.docker) { const names = await containers(); if (names.length) await docker(['rm', '-f', ...names]); }
+    if (options.docker) {
+      const entries = await containers();
+      if (entries.length) await docker(['rm', '-f', ...entries.map(entry => entry.Id)]);
+      assert.equal((await containers()).length, 0, 'all fixture containers are removed');
+    }
     writeFileSync(join(root, 'cleanup.json'), JSON.stringify({ gatewayStopped: true, containersRemoved: true }));
   })();
   const unregister = registerNativeFixture(cleanup);
