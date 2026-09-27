@@ -195,9 +195,9 @@ flowchart TB
 
    | Label | Sources | Required handling |
    |---|---|---|
-   | Personal | Verified owner input, owner-only records | |
-   | Household | Verified household input, household records | |
-   | Friends | Verified friend input, records shared with that friend or group | |
+   | Personal | Verified owner input, owner-only records |​ |
+   | Household | Verified household input, household records |​ |
+   | Friends | Verified friend input, records shared with that friend or group |​ |
    | Public | SMS, email, calendar entries, web pages | Run guards. Read through the reader agent. No turns or follow-ups. |
 
 SMS senders cannot be verified as more trusted. A familiar sender does not
