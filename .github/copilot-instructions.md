@@ -106,7 +106,13 @@ and dependencies with their owners; do not edit their worktrees, stop their
 processes, or clean their state. Independent CI runs do not reserve a shared
 deployment environment.
 
-Build deployable artifacts in CI. Use the mini's shared record at
+Build ordinary DEV drafts locally and incrementally. Reuse compatible prepared
+source, dependencies, and build outputs; run focused installed checks before
+repeating. CI is not a prerequisite for each DEV edit. After review and local
+DEV success, build the final candidate and run the full accumulated gate in CI,
+then validate that exact CI artifact in DEV before merging. Draft evidence does
+not qualify for merge or promotion. TEST and PROD use immutable CI artifacts.
+Use the mini's shared record at
 `$HOME/.puddles/deploy-coordination/slots.json` for DEV, TEST, and PROD.
 Follow [deployment coordination](../packages/e2e/DEPLOYMENT_COORDINATION.md)
 for atomic claims, ready queues, owner identity, heartbeat, direct messages,

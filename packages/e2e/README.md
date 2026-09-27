@@ -105,14 +105,32 @@ E2E_DEV_BUILD_TIMEOUT_MS=3600000 \
 ## Development loop
 
 Use task-owned worktrees on the development machine for edits, type checks,
-and focused unit tests. Build deployable artifacts in CI. Follow
+focused tests, and incremental local DEV builds. Reuse compatible prepared
+source, dependencies, and compiler outputs. Deploy the affected draft outputs
+through the maintained DEV wrapper and run installed behavior assertions. Do
+not wait for CI or run the full release pipeline between ordinary fixes. Run
+relevant packaging, declaration, import, migration, and fixture checks locally
+as those paths change, using the same checks as CI where applicable. Keep cold
+bootstrap separate from the warm edit/build/deploy/check loop. The
+[daily development skill](../../.github/skills/safe-feature-development/SKILL.md#daily-development)
+defines cache reuse, timing, diagnostics, and the draft/final distinction.
+
+Use the configured DEV wrapper's documented local-build mode. The managed
+`build` and `native` commands below are broader draft tools, not a promise of
+incremental DEV transfer. A CI-only wrapper needs a tooling repair before it
+can provide that fast path; do not invent flags or bypass its controller.
+Follow
 [shared deployment coordination](DEPLOYMENT_COORDINATION.md) before mutating
 DEV, TEST, or PROD. Each has a ready queue, explicit owner, heartbeat, and peer
 messages on the mini. CI jobs and isolated fixtures use no deployment slot.
 
-Validate the CI-built feature artifact in DEV, then merge after review and the
-full accumulated CI gate. The agent initiating TEST owns the batch of merged
-commits, selects latest main, and builds those merged bits in CI. It carries
+Prepare drafts before acquiring DEV and release after installed checks and
+cleanup. Do not hold the slot while editing, building, or waiting for CI.
+
+Once local DEV checks and review pass, run the full accumulated gate in CI and
+validate that exact CI-built feature artifact in DEV. Only this final proof,
+not mutable draft evidence, qualifies for merge. The agent initiating TEST owns
+the batch of merged commits, selects latest main, and builds those bits in CI. It carries
 that exact batch through TEST and PROD. On a regression it merges the required
 revert, alerts the feature owner, and resumes from TEST with corrected main.
 The feature owner repairs separately. Do not use a branch artifact for TEST or
