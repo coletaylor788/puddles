@@ -178,9 +178,9 @@ Source and usage: [host package](../../packages/cli-gateway/README.md), [plugin]
 
 Recorded research established Rocket Money's source contracts and browser silent recovery, not standalone/headless renewal or successful mutations. See [evidence](031-cli-gateway/technical-appendix.md#research-evidence), [read catalog](031-cli-gateway/read-catalog.json), and [recorded probes](031-cli-gateway/research-evidence.json). Apple PIM source and weather evidence are in the appendix.
 
-Local validation: 86 Python tests pass (policy, curl escapes, account locks, write replay/uncertainty, browser driver, OAuth rotation, config boundaries, race-safe skills, and a real extension CLI process). Nine plugin tests pass, including real Python subprocess execution. A credential-free live request through the weather CLI to wttr.in returns the native London forecast with curl exit 0. Python lint and the full workspace build/typecheck pass. The broader workspace test run encounters sandbox process-inspection, resource-measurement, and package-cache failures; this is not a green cumulative gate. Authlib emits one upstream deprecation warning for its supported httpx compatibility path.
+Local validation: 86 Python tests pass (policy, curl escapes, account locks, write replay/uncertainty, browser driver, OAuth rotation, config boundaries, race-safe skills, and a real extension CLI process). Nine plugin tests pass, including real Python subprocess execution. A credential-free live request through the weather CLI to wttr.in returns the native London forecast with curl exit 0. Python lint and the full workspace build/typecheck pass. The broader suite initially hit sandbox restrictions. Its host rerun passes 680 tests with two fixture timeouts; both affected files pass separately (36 tests). This is not a clean single-run cumulative gate. Authlib emits one upstream deprecation warning for its supported httpx compatibility path.
 
-The cumulative command is `node packages/e2e/bin/openclaw-test-env.mjs ci`; CI installs and runs the Python package as part of that pool. The local cumulative attempt stops during source prerequisite validation (git exit 128); it is not a passed gate. CI and post-upgrade installed-runtime checks remain outstanding. The [runtime cases](031-cli-gateway/technical-appendix.md#runtime-validation-cases) remain acceptance criteria; mocked auth does not establish unattended host renewal or free-account writes.
+The cumulative command is `node packages/e2e/bin/openclaw-test-env.mjs ci`; CI installs and runs the Python package as part of that pool. The local cumulative attempt stops because its pinned OpenClaw commit is absent from the local upstream checkout (git exit 128). GitHub cumulative CI is running for PR #131. CI and post-upgrade installed-runtime checks remain outstanding. The [runtime cases](031-cli-gateway/technical-appendix.md#runtime-validation-cases) remain acceptance criteria; mocked auth does not establish unattended host renewal or free-account writes.
 
 ### Rollout and rollback
 
@@ -197,10 +197,14 @@ The [Envoy review](031-cli-gateway/envoy-security-review.md), [decision record](
 - [x] Record shared CLI-backed tools, per-agent permissions, native responses, and narrow financial updates.
 - [x] Inspect the Mini's Apple PIM tool registration/runner and installed weather URLs.
 - [x] Preserve exact Rocket Money contracts and historical research.
-- [ ] Prove tool allow/deny, trusted identity, direct subprocess execution, and revocation without sandbox bypass.
-- [ ] Verify native weather requests, safe file handling, and bounded artifacts.
+- [x] Test tool allow/deny, trusted identity, direct subprocess execution, and revocation.
+- [ ] Verify installed OpenClaw sandbox isolation after the upgrade.
+- [x] Verify native weather requests, file/target policy, bounded output, and one live public request.
 - [ ] Verify host credential custody, silent renewal, rotation, and restart/reboot behavior.
-- [ ] Deliver Rocket Money reads, category/date writes, and the budget-date workflow.
-- [ ] Prove denial, auth isolation, native returns, replay handling, and uncertain-write recovery.
-- [ ] Deliver exact main/household grants, skill/help discovery, editable triage rules, and confirmation-driven rule updates.
-- [ ] Deliver protected installation, extension starter, and operator recovery instructions.
+- [x] Implement native reads and constrained category/date writes with synthetic before/after verification.
+- [ ] Verify real free-account reads/writes and the budget-date workflow.
+- [x] Test denial, session isolation, native returns, persistent replay protection, and uncertain-write status.
+- [x] Deliver main/household config, skill/help discovery, editable triage rules, and confirmation guidance.
+- [ ] Exercise the installed skill triage scenarios after the upgrade.
+- [x] Deliver guarded config/skill preparation, a tested extension entry point, and operator recovery instructions.
+- [ ] Complete cumulative CI and release/host acceptance before requesting merge approval.

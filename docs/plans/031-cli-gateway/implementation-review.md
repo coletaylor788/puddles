@@ -18,8 +18,9 @@ also pass, including an actual plugin-to-Python CLI invocation. Full workspace
 build and type checks pass.
 
 Limits: this is static and synthetic-test evidence. Cumulative CI is not yet a
-passed gate. The local broader suite encounters resource measurement and upstream
-package-selection failures. Installed OpenClaw isolation must be rechecked after
+passed gate. The host rerun of the broader suite passes 680 tests with two fixture timeouts;
+both affected files pass separately (36 tests). The local cumulative runner lacks
+its pinned upstream commit. GitHub cumulative CI remains pending. Installed OpenClaw isolation must be rechecked after
 the upgrade. Managed-browser silent login/restart/reboot, real free-account
 contracts, and date changes' budget effects remain unverified. No live financial
 write was made, no production configuration changed, and this review does not
