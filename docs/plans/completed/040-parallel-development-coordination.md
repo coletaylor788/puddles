@@ -1,6 +1,6 @@
 # Plan 040 - Parallel development and deployment coordination
 
-**Status:** Approved; implementation in progress
+**Status:** Complete; coordination tooling installed and source landed
 **Issue:** [#124](https://github.com/coletaylor788/puddles/issues/124)
 **Last updated:** 2026-09-26
 **Owner:** Development workflow owner
@@ -44,13 +44,18 @@ failures and reverts, and continues with corrected merged source. DEV uses the
 same queue and communication protocol.
 
 The queue, merged batch ownership, CI artifact consumers, premerge admission,
-and lifecycle instructions are implemented. Focused regressions pass and the
-retained reviewer has no remaining findings. The mini record and guarded DEV
-tools are installed. Owned controllers were checked for all three environments;
-the existing runtimes stayed running. Public cumulative CI and landing remain
-outstanding. Development and review skills now prohibit prose regression tests.
-The separate documentation cleanup landed in PR 123, and this branch is rebased
-onto it with those deletions preserved.
+and lifecycle instructions are delivered in PR 125 and the companion repository
+change. The exact reviewed trees landed in both repositories. The accumulated
+public CI gate passed, focused checks passed, and retained review is clean.
+The mini record and guarded DEV tools are installed. Owned controllers were
+checked for all three environments without changing the existing runtimes.
+Development and review skills prohibit prose regression tests, and the separate
+cleanup's documentation-test deletions remain intact.
+
+This completion covers the coordination implementation and tooling rollout.
+It does not claim a new OpenClaw runtime deployment or a successful application
+release batch. A future application batch must complete the merged-artifact
+TEST and production gates described below.
 
 ## Agent section
 
@@ -230,10 +235,13 @@ onto it with those deletions preserved.
 - Retained review found and drove fixes for heartbeat contention, production
   baseline changes, DEV attempt identity, queued takeover after recovery,
   reverted older batches, missing commit attribution, and artifact provenance.
-  Final complete-diff review is clean. Private contract CI passes. Public
-  cumulative CI built successfully, then reported 422 passing tests and three
-  failures in the old documentation assertions. PR 123 removed those tests;
-  the rebased candidate requires a fresh cumulative run.
+  Final complete-diff review is clean. Private contract CI passes. The final
+  public cumulative run [36280399936](https://github.com/coletaylor788/puddles/actions/runs/36280399936)
+  passed on candidate `639495479f22f5bae321367ed61dbf045ce0f8b1`, including the
+  cleanup from PR 123. All CodeQL checks passed. Public PR 125 landed as
+  `2abed1eec11aa67044177fb74b758552ddaacd38`; its tree exactly matches that
+  candidate. The companion repository's landed tree also exactly matches its
+  reviewed and tested candidate.
 - Implementation tests must cover simultaneous enqueue and claim, idempotent
   retries, FIFO among ready agents, cancellation, lost notifications, heartbeat
   versus progress, interrupted updates, and stale-owner recovery without theft.
@@ -286,6 +294,6 @@ onto it with those deletions preserved.
 - [x] Obtain approval of this design and the clarified batch owner responsibilities.
 - [x] Create the implementation tracking issue.
 - [x] Implement and review coordination, merge admission, and CI artifact flow.
-- [ ] Pass accumulated CI and land the reviewed changes in both repositories.
+- [x] Pass accumulated CI and land the reviewed changes in both repositories.
 - [x] Install guarded DEV tools, initialize the mini record, and verify owned
   controllers without changing the existing production runtime.
