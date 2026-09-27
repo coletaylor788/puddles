@@ -1,0 +1,65 @@
+{
+  "id": "communication-watcher",
+  "name": "Communication watcher",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "watcherAgent": {
+        "type": "string",
+        "minLength": 1
+      },
+      "readerAgent": {
+        "type": "string",
+        "minLength": 1
+      },
+      "mainSession": {
+        "type": "string",
+        "minLength": 1
+      },
+      "listId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "reminderCli": {
+        "type": "string",
+        "minLength": 1
+      },
+      "calendarCli": {
+        "type": "string",
+        "minLength": 1
+      },
+      "calendarId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "configDir": {
+        "type": "string",
+        "minLength": 1
+      },
+      "profile": {
+        "type": "string",
+        "minLength": 1
+      },
+      "llmProvider": {
+        "type": "string",
+        "minLength": 1
+      },
+      "llmProviderOptions": {
+        "type": "object"
+      }
+    },
+    "required": [
+      "watcherAgent",
+      "readerAgent",
+      "mainSession",
+      "listId",
+      "reminderCli",
+      "calendarCli",
+      "calendarId",
+      "configDir",
+      "profile",
+      "llmProvider"
+    ]
+  }
+}

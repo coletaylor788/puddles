@@ -1,0 +1,32 @@
+{
+  "name": "communication-watcher",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Guarded Reminders intake and tools for a scheduled communication watcher",
+  "type": "module",
+  "main": "dist/plugin.js",
+  "types": "dist/plugin.d.ts",
+  "scripts": {
+    "build": "tsc --emitDeclarationOnly && esbuild src/plugin.ts --bundle --platform=node --format=esm --target=node24 --outfile=dist/plugin.js --external:openclaw --banner:js='import { createRequire as createBundleRequire } from \"node:module\"; const require = createBundleRequire(import.meta.url);' && node scripts/write-dist-manifest.mjs",
+    "test": "vitest run",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "mcp-hooks": "workspace:*"
+  },
+  "peerDependencies": {
+    "openclaw": "*"
+  },
+  "openclaw": {
+    "extensions": [
+      "./dist/plugin.js"
+    ]
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.25.0",
+    "openclaw": "2026.9.3",
+    "typescript": "^5.0.0",
+    "vitest": "^3.0.0"
+  }
+}
