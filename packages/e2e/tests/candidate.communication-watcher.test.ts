@@ -129,10 +129,11 @@ it("runs real heartbeat intake, guarded actions, native handoff, and restart rec
   expect(result).toMatchObject({ passed: true, heartbeatCycles: 4, nativeProvenance: true, recoveryWithoutDuplicate: true });
 }, 180_000);
 
-it("cleans its detached gateway on controller interruption", () => {
+it("cleans its detached gateway when interrupted during a pending main reply", () => {
   const root = join(realpathSync(repo), `.communication-interrupt-${randomUUID()}`); roots.push(root);
   const child = spawnSync(process.execPath, [join(repo, "packages/e2e/fixtures/communication.mjs"), candidate!, join(repo, "openclaw-plugins/communication-watcher/dist"), root, "--interrupt"], { encoding: "utf8", timeout: 90000, maxBuffer: 2 * 1024 * 1024 });
   expect(child.status, `${child.stdout}\n${child.stderr}`).toBe(143);
+  expect(JSON.parse(readFileSync(join(root, "main-reply.json"), "utf8"))).toEqual({ pending: true });
   expect(JSON.parse(readFileSync(join(root, "cleanup.json"), "utf8"))).toEqual({ gatewayStopped: true, containersRemoved: true });
   const { pid } = JSON.parse(readFileSync(join(root, "gateway-pid.json"), "utf8"));
   expect(() => process.kill(pid, 0)).toThrow();

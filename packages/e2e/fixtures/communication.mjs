@@ -86,7 +86,15 @@ export async function communicationFixture(installedDir, pluginDir, root, option
         mainCalls++;
         assert.match(JSON.stringify(request.messages), /agent:communication-watcher:/);
         if (!last) tools = [call('communication_memory_read', { path })];
-        else { assert.match(parseResult(last).text, /fixture-event/); text = supportsDetachedReplies ? 'Please clarify the tentative status.' : 'REPLY_SKIP'; }
+        else {
+          assert.match(parseResult(last).text, /fixture-event/);
+          if (options.interrupt) {
+            writeFileSync(join(root, 'main-reply.json'), JSON.stringify({ pending: true }));
+            await delay(20_000);
+            writeFileSync(join(root, 'main-reply.json'), JSON.stringify({ pending: false }));
+          }
+          text = supportsDetachedReplies ? 'Please clarify the tentative status.' : 'REPLY_SKIP';
+        }
       }
       const message = { role: 'assistant', content: tools ? null : text };
       if (tools) message.tool_calls = tools.map((tool, index) => ({ index, id: `fixture_${requests.length}_${index}`, type: 'function', function: { name: tool.name, arguments: JSON.stringify(tool.args) } }));
@@ -178,14 +186,29 @@ export async function communicationFixture(installedDir, pluginDir, root, option
     };
     await start(); await delay(1000); assert.equal(requests.length, 0, 'source arrival must not wake an agent');
     await heartbeat();
-    for (let i = 0; i < 100 && (supportsDetachedReplies ? followups < 1 : mainCalls < 2); i++) await delay(100);
+    // Detached sends give each native reply up to 30 seconds. Observe completion
+    // within that budget; the interruption proof instead stops an active reply.
+    const waitForReply = async (ready, stage) => {
+      const deadline = Date.now() + 30_000;
+      while (!ready() && Date.now() < deadline && !modelError) await delay(100);
+      if (modelError) throw modelError;
+      assert.ok(ready(), `Native ${stage} did not settle: ${JSON.stringify({ mainCalls, followups, announcements })}\n${readFileSync(join(root, 'gateway.log'), 'utf8').slice(-8000)}`);
+    };
+    await waitForReply(() => mainCalls >= 2, 'main reply');
+    if (options.interrupt) {
+      assert.deepEqual(JSON.parse(readFileSync(join(root, 'main-reply.json'), 'utf8')), { pending: true });
+      process.kill(process.pid, 'SIGTERM'); await new Promise(() => {});
+    }
+    if (supportsDetachedReplies) {
+      await waitForReply(() => followups >= 1, 'watcher follow-up');
+      await waitForReply(() => announcements >= 1, 'silent announcement');
+    }
     assert.equal(mainCalls, 2, 'main reads the guarded handoff');
     assert.equal(followups, supportsDetachedReplies ? 1 : 0, 'native follow-up ends without another intake sweep');
     const state = JSON.parse(readFileSync(statePath, 'utf8'));
     assert.deepEqual(state.items.map(i => i.isCompleted), [false, true, true]); assert.equal(state.events.length, 1);
     assert.match(state.events[0].title, /^Tentative: /);
     if (options.docker) await checkMounts();
-    if (options.interrupt) { process.kill(process.pid, 'SIGTERM'); await new Promise(() => {}); }
     const oldTicket = receipts[0].ticket;
     assert.equal((await invoke('write', { path: 'AGENTS.md', content: 'escape' })).httpStatus, 404);
     assert.equal((await invoke('sessions_send', { sessionKey: 'agent:main:main', message: 'raw escape' })).httpStatus, 404);
