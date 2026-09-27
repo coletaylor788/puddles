@@ -14,6 +14,7 @@ import {
 } from "./native-activation.mjs";
 import { acquireLock, atomicJson, fileDigest, inside, jsonDigest, treeDigest } from "./native-state.mjs";
 import { runCommand } from "./process-runner.mjs";
+import { assertDeploymentOwnership } from "./deploy-coordination.mjs";
 
 const manifestSchema = "puddles.openclaw-current-backup/v1";
 const journalSchema = "puddles.openclaw-current-backup-journal/v1";
@@ -421,6 +422,7 @@ export function verifyCurrentBackup(target, requestedDirectory) {
 }
 
 export async function captureCurrentBackup(target, operationsFactory = backupOperations, requestedDirectory, options = {}) {
+  assertDeploymentOwnership(target, "PROD");
   validateBackupTarget(target);
   const capacity = planCurrentBackup(target);
   if (!capacity.ready) {
@@ -591,6 +593,7 @@ export async function materializeCurrentBackup(
   requestedDestination,
   operationsFactory = backupOperations,
 ) {
+  assertDeploymentOwnership(target, "PROD");
   const manifest = verifyCurrentBackup(target, requestedDirectory);
   const directory = realpathSync(requestedDirectory);
   const destination = isolatedRoot(target, requestedDestination);
@@ -894,6 +897,7 @@ function retireLegacyActivation(target, backupRoot, source, journalPath) {
 }
 
 export function retireCurrentBackup(target, requestedDirectory) {
+  assertDeploymentOwnership(target, "PROD");
   validateBackupTarget(target);
   const backupRoot = realpathSync(target.backupRoot);
   const requested = resolve(requestedDirectory);

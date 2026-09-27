@@ -98,23 +98,26 @@ the Docker archive manifest and rejects production-tag collisions before load,
 then records the prior production image ID before importing candidate layers.
 No browser build happens during downtime.
 
-## Integrate, then activate
+## Merge, test merged main, then activate
 
-The engineering owner integrates eligible exact source after the accumulated
-gate and installed rehearsal. Before touching the live runtime, the activation
-command confirms that the selected integrated Git tree equals the candidate
-tree and that the retained proof chain still matches. A pull-request merge is
-never part of the live rollback transaction.
+Follow [deployment coordination](../../../packages/e2e/DEPLOYMENT_COORDINATION.md).
+Merge after the accumulated CI gate, independent review, and DEV validation.
+Create `merge-eligibility.json` from the exact build, source gate, and DEV proof,
+then pass it to `openclaw-integrate.mjs`. The helper verifies the head, base,
+remote eligibility, and resulting tree before any physical TEST or live change.
 
-```bash
-node packages/e2e/bin/openclaw-integrate.mjs \
-  /path/to/release/release.json example/public-repo 123
-```
+The initiating TEST owner registers the batch of current merged main commits
+and each feature owner. Build those heads in CI and rehearse the immutable
+artifacts in the owned TEST slot. The normal certification and promotion
+commands still produce the required production receipt. Acquire PROD through
+its queue and consume the exact TEST artifact. A changed production baseline
+requires renewed affected TEST proof. No merge occurs inside live rollback.
 
-This separate bounded command checks the exact candidate head, current base,
-required remote eligibility, and resulting Git tree. A remote race blocks
-activation rather than rolling back a healthy running gateway. Fetch the
-integrated ref into the target's reviewed tooling checkout before activation.
+Fetch main into the target's reviewed tooling worktree. Set `integration.ref`
+and `integration.mergedHead` to the pinned merged commit, and `defaultRef` to
+`origin/main`. Activation checks exact head and tree and main ancestry. On TEST
+failure, the batch owner merges the necessary revert, messages the feature
+owner to fix it, and repeats from TEST with corrected latest main.
 
 Create a local target JSON file, outside the repository. This synthetic example
 shows the required fields. Set real paths and host identity locally.
@@ -132,7 +135,12 @@ shows the required fields. Set real paths and host identity locally.
   "preparedFiles": [
     { "id": "embedding-model", "path": "managed/models/model.gguf" }
   ],
-  "integration": { "repository": "/path/to/puddles", "ref": "origin/main" }
+  "integration": {
+    "repository": "/path/to/puddles",
+    "ref": "<selected merged SHA>",
+    "mergedHead": "<selected merged SHA>",
+    "defaultRef": "origin/main"
+  }
 }
 ```
 

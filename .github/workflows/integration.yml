@@ -50,6 +50,8 @@ jobs:
     steps:
       - name: Check out Puddles
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Check out pinned OpenClaw source
         uses: actions/checkout@v4
@@ -109,7 +111,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: openclaw-public-arm64-build-${{ github.sha }}
-          path: ${{ runner.temp }}/openclaw-public-arm64-build.tar.gz
+          path: |
+            ${{ runner.temp }}/openclaw-public-arm64-build.tar.gz
+            ${{ env.E2E_RUN_DIR }}/source-gate.json
           retention-days: 7
           if-no-files-found: error
 

@@ -40,8 +40,11 @@ if [ -n "${MINI_HOST:-}" ]; then
     echo "PUDDLES_REMOTE_NODE must be an absolute executable path" >&2
     exit 1
   fi
-  remote_args=()
-  if [ -n "${PUDDLES_REMOTE_PATH:-}" ]; then remote_args+=(env "PATH=$PUDDLES_REMOTE_PATH"); fi
+  remote_args=(env)
+  for name in PUDDLES_DEPLOY_REQUEST_ID PUDDLES_DEPLOY_TOKEN PUDDLES_DEPLOY_COORDINATION; do
+    if [ -n "${!name:-}" ]; then remote_args+=("$name=${!name}"); fi
+  done
+  if [ -n "${PUDDLES_REMOTE_PATH:-}" ]; then remote_args+=("PATH=$PUDDLES_REMOTE_PATH"); fi
   entrypoint="openclaw-activate.mjs"
   if [ "${OPENCLAW_DEPLOY_ACTION:-activate}" = rehearse ]; then entrypoint="openclaw-rehearse.mjs"; fi
   remote_args+=("$remote_node" "$PUDDLES_REMOTE_ROOT/packages/e2e/bin/$entrypoint" \
