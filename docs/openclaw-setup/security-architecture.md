@@ -388,6 +388,7 @@ when upgrading.
 
 | Area | Limit or gap |
 |---|---|
+| Context labels | The [household plan](../plans/completed/022-household-and-friends-tiers.md) covers limited household access and owner relay. Friends/public populations, provenance propagation, and universal exact-content approval are not established. |
 | Network | [Older setup](01-setting-up-your-mac-mini.md) allows LAN SSH, violating the Tailscale-only rule. Verify listeners and firewall rules; this document changes neither. |
 | Sandbox and credentials | The [sandbox guide](03-openclaw-and-agent-sandboxing.md) allows container networking. The [browser design](../plans/completed/023-durable-browser-agent-login.md) mounts a credential-bearing profile. Both deviate from host-only external access and credential custody. |
 | Reader routing | Gmail/calendar depend on configured grants. Older examples give main search and readers session messaging. No universal reader gate exists; review attachments, images, browser results, errors, and metadata separately. |
