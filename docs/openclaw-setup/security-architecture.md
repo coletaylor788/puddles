@@ -51,10 +51,10 @@ flowchart TB
 | Boundary | Separates | Rule | Compromise enables |
 |---|---|---|---|
 | Tailscale | Managed machines from outside networks | No ports exposed outside Tailscale. | Access SSH and VNC ports |
-| Host | Development files and tools from remote access | Access requires an authorized host account. | Read or change source, builds, and development data |
-| Server | Agent runtime and data from remote access | SSH requires an approved key, server account, and Tailscale access. | Control agents, stored data, and service access |
+| Host | Development files and tools from remote access | Access requires an authorized host account. | Personal iCloud, server via SSH, source/build tampering |
+| Server | Agent runtime and data from remote access | SSH requires an approved key, server account, and Tailscale access. | Puddles iCloud, connected account secrets, all OpenClaw data and usage |
 | Sandbox | Agent tools from the trusted host | Agents get only granted tools and files. Credentials stay outside the sandbox. | Agent’s granted tools and accessible session history, memory, and workspaces |
-| Keychain | Host tools from stored credentials | Tools use an approved, stable credential reader. Secrets never enter agent context. | Use exposed credentials |
+| Server Keychain | Host tools from stored credentials | Tools use an approved, stable credential reader. Secrets never enter agent context. | Connected account secrets |
 
 These limits assume the other boundaries still hold.
 
@@ -90,8 +90,7 @@ flowchart TB
 
 - **Network:** keep local IPC on loopback or pipes. Outbound service connections
   remain allowed; Tailscale does not replace sandbox network policy.
-- **SSH keys:** the [SSH setup](01-setting-up-your-mac-mini.md#7-ssh-with-secure-enclave-keys-touch-id)
-  uses Secure Enclave-backed keys on the development host.
+- **SSH keys:** approved public keys authenticate access. Touch ID is not required.
 - **Accounts:** administrators own system changes. Gateway plugins and adapters
   hold the standard account's host authority. Only agent tool execution is
   sandboxed; gateway orchestration and model calls run on the host.
