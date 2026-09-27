@@ -1,23 +1,26 @@
 diff --git a/src/commands/doctor/legacy-config-repair.ts b/src/commands/doctor/legacy-config-repair.ts
-index 8d00d51bd3f..f76d568b3e3 100644
+index e043fd79e..2c6b2acd7 100644
 --- a/src/commands/doctor/legacy-config-repair.ts
 +++ b/src/commands/doctor/legacy-config-repair.ts
-@@ -1,13 +1,133 @@
- // Update-channel config repair for legacy config files before normal command startup.
--import { readConfigFileSnapshot, replaceConfigFile } from "../../config/config.js";
+@@ -1,6 +1,14 @@
 +import { isDeepStrictEqual } from "node:util";
 +import { listAgentEntries, readAgentRosterProperty } from "../../agents/agent-scope-config.js";
+ // Update-channel config repair for legacy config files before normal command startup.
+-import { readConfigFileSnapshot, replaceConfigFile } from "../../config/config.js";
 +import {
 +  readConfigFileSnapshot,
 +  readConfigFileSnapshotForWrite,
 +  replaceConfigFile,
 +} from "../../config/config.js";
- import type { ConfigWriteOptions } from "../../config/io.js";
 +import { stampConfigWriteMetadata } from "../../config/io.meta.js";
+ import type { ConfigWriteOptions } from "../../config/io.types.js";
 +import { migratePersistedImplicitMainRoster } from "../../config/legacy.roster.js";
- import { configWriteTargetsIncludeBoundary } from "../../config/mutate.js";
-+import type { OpenClawConfig } from "../../config/types.js";
+ import { resolveConfigIncludeWriteBoundary } from "../../config/mutate.js";
+ import type { OpenClawConfig } from "../../config/types.openclaw.js";
  import { validateConfigObjectRawWithPlugins } from "../../config/validation.js";
+@@ -9,10 +17,122 @@ import {
+   restoreDoctorConfigEnvRefs,
+ } from "./shared/config-flow-steps.js";
  import { containsAuthoredInclude } from "./shared/include-migration-ownership.js";
 +import { applyLegacyDoctorMigrations } from "./shared/legacy-config-compat.js";
 +import { findDoctorLegacyConfigIssues } from "./shared/legacy-config-issues.js";
@@ -34,14 +37,14 @@ index 8d00d51bd3f..f76d568b3e3 100644
 +  changes: string[];
 +} | null {
 +  const hasAuthoredIncludes = containsAuthoredInclude(configSnapshot.parsed);
-+  const migrated = applyLegacyDoctorMigrations(
-+    configSnapshot.sourceConfig,
-+    {
++  const migrated = applyLegacyDoctorMigrations(configSnapshot.sourceConfig, {
++    sourceConfigBeforeMigrations: configSnapshot.sourceConfigBeforeMigrations,
++    context: {
 +      authoredRaw: configSnapshot.parsed,
 +      resolvedRaw: configSnapshot.sourceConfig,
 +    },
-+    { pluginContracts: options?.pluginContracts === true },
-+  );
++    pluginContracts: options?.pluginContracts === true,
++  });
 +  const readTimeChanged = !isDeepStrictEqual(
 +    configSnapshot.sourceConfigBeforeMigrations ??
 +      (hasAuthoredIncludes ? configSnapshot.sourceConfig : configSnapshot.parsed),
@@ -85,7 +88,7 @@ index 8d00d51bd3f..f76d568b3e3 100644
 +  }
 +  if (
 +    hasAuthoredIncludes &&
-+    !configWriteTargetsIncludeBoundary({ snapshot: configSnapshot, nextConfig })
++    !resolveConfigIncludeWriteBoundary({ snapshot: configSnapshot, nextConfig })
 +  ) {
 +    throw new Error("Legacy config migration crosses authored include ownership");
 +  }
@@ -98,10 +101,7 @@ index 8d00d51bd3f..f76d568b3e3 100644
 +      configSnapshot.sourceConfig,
 +    ),
 +    changes: stampsExplicitOwnership
-+      ? [
-+          ...migrated.changes,
-+          "Stamped the multi-agent roster for explicit per-surface ownership.",
-+        ]
++      ? [...migrated.changes, "Stamped the multi-agent roster for explicit per-surface ownership."]
 +      : migrated.changes,
 +  };
 +}
@@ -115,10 +115,14 @@ index 8d00d51bd3f..f76d568b3e3 100644
 +    return { snapshot: params.configSnapshot, repaired: false, changes: [] };
 +  }
 +  await replaceConfigFile({
-+    sourceConfig: preview.sourceConfig,
++    sourceConfig: restoreDoctorConfigEnvRefs(
++      preview.sourceConfig,
++      prepareDoctorConfigReferenceSource(params.configSnapshot),
++    ),
 +    baseHash: params.configSnapshot.hash,
 +    writeOptions: {
 +      ...params.configWriteOptions,
++      expectedConfigPath: params.configSnapshot.path,
 +      auditOrigin: "doctor",
 +      allowConfigSizeDrop: true,
 +      skipOutputLogs: true,
@@ -134,231 +138,176 @@ index 8d00d51bd3f..f76d568b3e3 100644
 +  return { snapshot, repaired: true, changes: preview.changes };
 +}
 +
- /** Migrate a legacy config snapshot during update, unless validation blocks it. */
- export async function repairLegacyConfigForUpdateChannel(params: {
-   configSnapshot: ConfigSnapshot;
+ export type LegacyConfigUpdatePlan = {
+   snapshot: ConfigSnapshot;
+   config: OpenClawConfig;
+diff --git a/src/commands/doctor/stopped-config-repair.test.ts b/src/commands/doctor/stopped-config-repair.test.ts
+new file mode 100644
+index 000000000..93f940517
+--- /dev/null
++++ b/src/commands/doctor/stopped-config-repair.test.ts
+@@ -0,0 +1,105 @@
++import fs from "node:fs/promises";
++import { describe, expect, it } from "vitest";
++import { readConfigFileSnapshotForWrite } from "../../plugin-sdk/config-mutation.js";
++import {
++  previewLegacyConfigRepair,
++  repairLegacyConfigForStoppedState,
++} from "../../plugin-sdk/doctor-repair-runtime.js";
++import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
++
++describe("stopped legacy config repair SDK", () => {
++  it("previews and persists read-time and doctor migrations through the maintained writer", async () => {
++    await withOpenClawTestState({ label: "stopped-config-repair" }, async (state) => {
++      await fs.writeFile(
++        state.statePath("openclaw.json"),
++        JSON.stringify({
++          cron: { store: state.statePath("cron", "legacy-jobs.json") },
++          memory: { backend: "qmd" },
++          plugins: {
++            entries: {
++              "active-memory": { config: { qmd: { enabled: true } } },
++              canvas: {
++                config: {
++                  host: {
++                    enabled: true,
++                    root: state.statePath("legacy-canvas"),
++                    liveReload: true,
++                  },
++                },
++              },
++            },
++          },
++          meta: { lastTouchedAt: "2025-01-01T00:00:00.000Z" },
++        }),
++      );
++      const { snapshot } = await readConfigFileSnapshotForWrite({
++        observe: false,
++        pluginValidation: "core-only",
++      });
++      const preview = previewLegacyConfigRepair(snapshot);
++      expect(preview).not.toBeNull();
++      expect(preview?.expectedConfig).not.toHaveProperty("cron.store");
++      expect(preview?.expectedConfig).not.toHaveProperty("memory.backend");
++      expect(preview?.expectedConfig).not.toHaveProperty("meta.lastTouchedAt");
++      expect(preview?.expectedConfig).toHaveProperty("plugins.entries.active-memory.config.qmd");
++      expect(preview?.expectedConfig).toHaveProperty("plugins.entries.canvas.config.host.root");
++
++      const fullPreview = previewLegacyConfigRepair(snapshot, { pluginContracts: true });
++      expect(fullPreview?.expectedConfig).not.toHaveProperty(
++        "plugins.entries.active-memory.config.qmd",
++      );
++      expect(fullPreview?.expectedConfig).not.toHaveProperty(
++        "plugins.entries.canvas.config.host.root",
++      );
++      expect(fullPreview?.expectedConfig).not.toHaveProperty(
++        "plugins.entries.canvas.config.host.liveReload",
++      );
++      expect(fullPreview?.expectedConfig).toHaveProperty(
++        "plugins.entries.canvas.config.host.enabled",
++        true,
++      );
++
++      const result = await repairLegacyConfigForStoppedState({
++        configSnapshot: snapshot,
++        configWriteOptions: { skipRuntimeSnapshotRefresh: true, skipOutputLogs: true },
++      });
++      expect(result.repaired).toBe(true);
++      expect(result.snapshot.valid).toBe(true);
++      expect(result.snapshot.sourceConfig).toEqual(fullPreview?.expectedConfig);
++    });
++  });
++
++  it("persists explicit ownership for a markerless legacy multi-agent roster", async () => {
++    await withOpenClawTestState({ label: "stopped-config-roster" }, async (state) => {
++      await fs.writeFile(
++        state.statePath("openclaw.json"),
++        JSON.stringify({
++          agents: {
++            list: Array.from({ length: 2 }, (_, index) => ({
++              id: `agent-${index + 1}`,
++            })),
++          },
++        }),
++      );
++      const { snapshot } = await readConfigFileSnapshotForWrite({
++        observe: false,
++        pluginValidation: "core-only",
++      });
++      const preview = previewLegacyConfigRepair(snapshot);
++      expect(preview?.sourceConfig.agents?.ownership).toBe("explicit");
++      expect(Object.keys(preview?.sourceConfig.agents?.entries ?? {})).toHaveLength(2);
++      expect(
++        Object.values(preview?.sourceConfig.agents?.entries ?? {}).some(
++          (entry) => entry.default === true,
++        ),
++      ).toBe(false);
++
++      const result = await repairLegacyConfigForStoppedState({
++        configSnapshot: snapshot,
++        configWriteOptions: { skipRuntimeSnapshotRefresh: true, skipOutputLogs: true },
++      });
++      expect(result.snapshot.valid).toBe(true);
++      expect(result.snapshot.sourceConfig).toEqual(preview?.expectedConfig);
++    });
++  });
++});
 diff --git a/src/config/io.runtime.ts b/src/config/io.runtime.ts
-index 7616394119c..07a06d2eb24 100644
+index 73f97e9c6..c35188e1f 100644
 --- a/src/config/io.runtime.ts
 +++ b/src/config/io.runtime.ts
-@@ -239,10 +239,20 @@ export async function readConfigFileSnapshotForRuntimeTransaction(
+@@ -383,13 +383,19 @@ export async function readConfigFileSnapshotForRuntimeTransaction(
    }).readConfigFileSnapshot();
  }
  
 -export async function readConfigFileSnapshotForWrite(options?: {
 -  skipPluginValidation?: boolean;
+-  observe?: boolean;
 -}): Promise<ReadConfigFileSnapshotForWriteResult> {
--  const readOptions = options?.skipPluginValidation ? { pluginValidation: "skip" as const } : {};
 +export async function readConfigFileSnapshotForWrite(
 +  options?: Pick<
 +    ConfigSnapshotReadOptions,
 +    "skipPluginValidation" | "pluginValidation" | "observe"
 +  >,
 +): Promise<ReadConfigFileSnapshotForWriteResult> {
-+  const readOptions = {
+   const readOptions = {
+-    ...(options?.skipPluginValidation ? { pluginValidation: "skip" as const } : {}),
+-    ...(options?.observe === false ? { observe: false } : {}),
 +    ...(options?.pluginValidation
 +      ? { pluginValidation: options.pluginValidation }
 +      : options?.skipPluginValidation
 +        ? { pluginValidation: "skip" as const }
 +        : {}),
 +    ...(options?.observe !== undefined ? { observe: options.observe } : {}),
-+  };
+   };
    for (let attempt = 0; attempt < 3; attempt += 1) {
      try {
-       const processIo = createConfigIO(readOptions);
-diff --git a/src/cron/store.ts b/src/cron/store.ts
-index 7b8243e3bef..8bd8f43b134 100644
---- a/src/cron/store.ts
-+++ b/src/cron/store.ts
-@@ -6,7 +6,7 @@ import { isDeepStrictEqual } from "node:util";
- import { asRecord } from "@openclaw/normalization-core/record-coerce";
- import { expandHomePrefix } from "../infra/home-dir.js";
- import { pruneMapToMaxSize } from "../infra/map-size.js";
--import { openNodeSqliteDatabase } from "../infra/node-sqlite.js";
-+import { withExistingOpenClawStateDatabaseArtifactPreservingReadOnly } from "../state/openclaw-state-db-readonly.js";
- import { tableExists } from "../state/openclaw-state-db-schema-helpers.js";
- import {
-   openOpenClawStateDatabase,
-@@ -82,8 +82,12 @@ function resolveDefaultCronStorePath(env: NodeJS.ProcessEnv): string {
- }
- 
- /** Resolves the cron jobs store path, expanding home-relative user input. */
--export function resolveCronJobsStorePath(storePath?: string, env: NodeJS.ProcessEnv = process.env) {
--  const selected = storePath?.trim() || readCronStoreStatePath(env);
-+export function resolveCronJobsStorePath(
-+  storePath?: string,
-+  env: NodeJS.ProcessEnv = process.env,
-+  behavior: { artifactPreservingReadOnly?: boolean } = {},
-+) {
-+  const selected = storePath?.trim() || readCronStoreStatePath(env, behavior);
-   if (selected) {
-     const raw = selected.trim();
-     if (raw.startsWith("~")) {
-@@ -98,9 +102,10 @@ export function resolveCronJobsStorePath(storePath?: string, env: NodeJS.Process
- export function resolveCronJobsStorePathFromConfig(
-   cfg: { cron?: unknown },
-   env: NodeJS.ProcessEnv = process.env,
-+  behavior: { artifactPreservingReadOnly?: boolean } = {},
- ): string {
-   const store = (cfg.cron as { store?: unknown } | undefined)?.store;
--  return resolveCronJobsStorePath(typeof store === "string" ? store : undefined, env);
-+  return resolveCronJobsStorePath(typeof store === "string" ? store : undefined, env, behavior);
- }
- 
- /** Loads cron jobs plus config/runtime sidecars from the SQLite-backed store. */
-@@ -241,25 +246,28 @@ export async function loadCronJobsStoreWithConfigJobsReadOnly(
- ): Promise<LoadedCronStore> {
-   const statePath = resolveOpenClawStateSqlitePath(env);
-   if (!fs.existsSync(statePath)) {
--    return emptyLoadedCronStore();
--  }
--  const resolvedStorePath = path.resolve(storePath);
--  const storeKey = cronStoreKey(resolvedStorePath);
--  const db = openNodeSqliteDatabase(statePath, { readOnly: true });
--  try {
--    if (!tableExists(db, "cron_jobs")) {
--      return emptyLoadedCronStore();
--    }
--    const rows = loadCronRows(db, storeKey);
--    if (rows.length > 0) {
--      const loaded = loadedCronStoreFromRows(rows);
--      loadCronRuntimeAuthorities({ db, storeKey, jobs: loaded.store.jobs });
--      return loaded;
--    }
--    return emptyLoadedCronStore();
--  } finally {
--    db.close();
-+    return { ...emptyLoadedCronStore(), jobsFingerprint: fingerprintCronJobRows([]) };
-   }
-+  return (
-+    withExistingOpenClawStateDatabaseArtifactPreservingReadOnly(
-+      ({ db }) => {
-+        const resolvedStorePath = path.resolve(storePath);
-+        const storeKey = cronStoreKey(resolvedStorePath);
-+        if (!tableExists(db, "cron_jobs")) {
-+          return { ...emptyLoadedCronStore(), jobsFingerprint: fingerprintCronJobRows([]) };
-+        }
-+        const rows = loadCronRows(db, storeKey);
-+        const jobsFingerprint = fingerprintCronJobRows(rows);
-+        if (rows.length > 0) {
-+          const loaded = loadedCronStoreFromRows(rows);
-+          loadCronRuntimeAuthorities({ db, storeKey, jobs: loaded.store.jobs });
-+          return { ...loaded, jobsFingerprint };
-+        }
-+        return { ...emptyLoadedCronStore(), jobsFingerprint };
-+      },
-+      { env },
-+    ) ?? { ...emptyLoadedCronStore(), jobsFingerprint: fingerprintCronJobRows([]) }
-+  );
- }
- 
- /** Loads only the persisted cron job store payload. */
-@@ -492,6 +500,49 @@ export async function saveCronJobsStore(
-   noteCronJobsStoreCommit(storeKey);
- }
- 
-+/** Converts config-backed rows to canonical rows without changing their effective jobs. */
-+export async function materializeCronConfigJobsForMigration(
-+  sourceStorePath: string,
-+  targetStorePath: string,
-+  expectedSourceJobsFingerprint: string,
-+  expectedTargetJobsFingerprint: string,
-+): Promise<{ before: CronStoreFile; after: CronStoreFile; materialized: number }> {
-+  const source = await loadCronJobsStoreWithConfigJobsReadOnly(sourceStorePath);
-+  if (source.jobsFingerprint !== expectedSourceJobsFingerprint) {
-+    throw new CronJobsStoreChangedError(path.resolve(sourceStorePath));
-+  }
-+  const samePartition =
-+    cronStoreKey(path.resolve(sourceStorePath)) === cronStoreKey(path.resolve(targetStorePath));
-+  const target = samePartition
-+    ? source
-+    : await loadCronJobsStoreWithConfigJobsReadOnly(targetStorePath);
-+  if (target.jobsFingerprint !== expectedTargetJobsFingerprint) {
-+    throw new CronJobsStoreChangedError(path.resolve(targetStorePath));
-+  }
-+  if (source.invalidConfigRows.length > 0 || target.invalidConfigRows.length > 0) {
-+    throw new Error("Cron config rows must be valid before materialization");
-+  }
-+  if (!samePartition) {
-+    await saveCronJobsStore(targetStorePath, source.store, {
-+      preserveRuntimeState: true,
-+      transactionHooks: {
-+        beforeWrite(db) {
-+          assertCronJobsStoreUnchanged(db, sourceStorePath, expectedSourceJobsFingerprint);
-+          if (!samePartition) {
-+            assertCronJobsStoreUnchanged(db, targetStorePath, expectedTargetJobsFingerprint);
-+          }
-+        },
-+      },
-+    });
-+  }
-+  const after = await loadCronJobsStoreWithConfigJobsReadOnly(targetStorePath);
-+  return {
-+    before: source.store,
-+    after: after.store,
-+    materialized: samePartition ? 0 : source.store.jobs.length,
-+  };
-+}
-+
- /** Atomically acquire doctor migration metadata and replace cron rows only for the winner. */
- export async function saveCronJobsStoreWithMetadata(
-   storePath: string,
-diff --git a/src/cron/store/config-state.ts b/src/cron/store/config-state.ts
-index 1bcdcec6bc9..b35f88388e5 100644
---- a/src/cron/store/config-state.ts
-+++ b/src/cron/store/config-state.ts
-@@ -1,7 +1,10 @@
- // Cron store selection preserves the retired configured partition through shared SQLite state.
- import { readConfigMachineState } from "../../state/config-machine-state.js";
- 
--export function readCronStoreStatePath(env: NodeJS.ProcessEnv = process.env): string | undefined {
--  const value = readConfigMachineState<unknown>("cron.store", { env });
-+export function readCronStoreStatePath(
-+  env: NodeJS.ProcessEnv = process.env,
-+  behavior: { artifactPreservingReadOnly?: boolean } = {},
-+): string | undefined {
-+  const value = readConfigMachineState<unknown>("cron.store", { env }, behavior);
-   return typeof value === "string" && value.trim() ? value.trim() : undefined;
- }
-diff --git a/src/plugin-sdk/config-mutation.ts b/src/plugin-sdk/config-mutation.ts
-index 3caf4de38f6..3182fe9d76b 100644
---- a/src/plugin-sdk/config-mutation.ts
-+++ b/src/plugin-sdk/config-mutation.ts
-@@ -3,6 +3,8 @@
-  */
- export { logConfigUpdated } from "../config/logging.js";
- export { readConfigFileSnapshotForWrite } from "../config/io.js";
-+export { resolveIncludeWriteBoundary } from "../config/include-write-boundary.js";
- export { mutateConfigFile, replaceConfigFile } from "../config/mutate.js";
- export type { ConfigWriteAfterWrite } from "../config/runtime-snapshot.js";
-+export { previewLegacyConfigRepair } from "../commands/doctor/legacy-config-repair.js";
- export { updateConfig } from "../commands/models/shared.js";
-diff --git a/src/plugin-sdk/cron-store-runtime.test.ts b/src/plugin-sdk/cron-store-runtime.test.ts
+diff --git a/src/cron/stopped-state-sdk.test.ts b/src/cron/stopped-state-sdk.test.ts
 new file mode 100644
-index 00000000000..8ff1a5dc0d5
+index 000000000..9bd5e121f
 --- /dev/null
-+++ b/src/plugin-sdk/cron-store-runtime.test.ts
-@@ -0,0 +1,226 @@
++++ b/src/cron/stopped-state-sdk.test.ts
+@@ -0,0 +1,265 @@
 +import fs from "node:fs/promises";
 +import { DatabaseSync } from "node:sqlite";
 +import { gunzipSync } from "node:zlib";
 +import { describe, expect, it } from "vitest";
-+import type { CronStoredJob } from "../cron/types.js";
-+import { repairOpenClawStateDatabaseSchema } from "../state/openclaw-state-db.js";
-+import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 +import {
 +  mutateConfigFile,
 +  previewLegacyConfigRepair,
 +  readConfigFileSnapshotForWrite,
-+} from "./config-mutation.js";
++} from "../plugin-sdk/config-mutation.js";
 +import {
 +  loadCronJobsStoreWithConfigJobsReadOnly,
 +  materializeCronConfigJobsForMigration,
 +  resolveCronJobConfigRevision,
 +  resolveCronJobsStorePathFromConfig,
 +  saveCronJobsStoreChanges,
-+} from "./cron-store-runtime.js";
-+import { resolveOpenClawStateSqlitePath } from "./state-paths.js";
++} from "../plugin-sdk/cron-store-runtime.js";
++import { resolveOpenClawStateSqlitePath } from "../plugin-sdk/state-paths.js";
++import { repairOpenClawStateDatabaseSchema } from "../state/openclaw-state-db.js";
++import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
++import type { CronStoredJob } from "./types.js";
 +
 +function job(id: string): CronStoredJob {
 +  return {
@@ -429,11 +378,14 @@ index 00000000000..8ff1a5dc0d5
 +      expect(snapshot.snapshot.sourceConfig.memory?.search?.provider).toBe("none");
 +      previewLegacyConfigRepair(snapshot.snapshot);
 +      expect(
-+        resolveCronJobsStorePathFromConfig({}, state.env, { artifactPreservingReadOnly: true }),
++        resolveCronJobsStorePathFromConfig({}, state.env, state.env, {
++          artifactPreservingReadOnly: true,
++        }),
 +      ).toBe(targetStorePath);
 +      expect(
 +        resolveCronJobsStorePathFromConfig(
 +          snapshot.snapshot.sourceConfigBeforeMigrations ?? {},
++          state.env,
 +          state.env,
 +          { artifactPreservingReadOnly: true },
 +        ),
@@ -443,15 +395,21 @@ index 00000000000..8ff1a5dc0d5
 +      const readOnlyHistorical = await loadCronJobsStoreWithConfigJobsReadOnly(
 +        storePath,
 +        state.env,
++        { artifactPreservingReadOnly: true, includeJobsFingerprint: true },
 +      );
 +      expect(readOnlyHistorical.store.jobs).toHaveLength(1);
 +      expect(await fs.readdir(state.statePath("state"))).toEqual(beforeFiles);
 +      expect(repairOpenClawStateDatabaseSchema({ env: state.env }).warnings).toEqual([]);
-+      const beforeMaterialize = await loadCronJobsStoreWithConfigJobsReadOnly(storePath, state.env);
++      const beforeMaterialize = await loadCronJobsStoreWithConfigJobsReadOnly(
++        storePath,
++        state.env,
++        { artifactPreservingReadOnly: true, includeJobsFingerprint: true },
++      );
 +      expect(beforeMaterialize.configJobs).toHaveLength(1);
 +      const targetBefore = await loadCronJobsStoreWithConfigJobsReadOnly(
 +        targetStorePath,
 +        state.env,
++        { artifactPreservingReadOnly: true, includeJobsFingerprint: true },
 +      );
 +      const materialized = await materializeCronConfigJobsForMigration(
 +        storePath,
@@ -462,7 +420,12 @@ index 00000000000..8ff1a5dc0d5
 +      expect(materialized.materialized).toBe(1);
 +      expect(materialized.after).toEqual(materialized.before);
 +      expect(
-+        (await loadCronJobsStoreWithConfigJobsReadOnly(targetStorePath, state.env)).store.jobs,
++        (
++          await loadCronJobsStoreWithConfigJobsReadOnly(targetStorePath, state.env, {
++            artifactPreservingReadOnly: true,
++            includeJobsFingerprint: true,
++          })
++        ).store.jobs,
 +      ).toEqual(beforeMaterialize.store.jobs);
 +      await fs.writeFile(
 +        state.statePath("openclaw.json"),
@@ -480,8 +443,12 @@ index 00000000000..8ff1a5dc0d5
 +        },
 +      });
 +      expect(repairOpenClawStateDatabaseSchema({ env: state.env }).warnings).toEqual([]);
-+      const loaded = (await loadCronJobsStoreWithConfigJobsReadOnly(targetStorePath, state.env))
-+        .store;
++      const loaded = (
++        await loadCronJobsStoreWithConfigJobsReadOnly(targetStorePath, state.env, {
++          artifactPreservingReadOnly: true,
++          includeJobsFingerprint: true,
++        })
++      ).store;
 +      const migrated = loaded.jobs.find((entry) => entry.id === selected.id)!;
 +      expect(resolveCronJobConfigRevision(migrated)).toBe(expectedRevision);
 +      const next = structuredClone(loaded);
@@ -490,9 +457,12 @@ index 00000000000..8ff1a5dc0d5
 +      changed.failureAlert = false;
 +      await saveCronJobsStoreChanges(targetStorePath, loaded, next);
 +      expect(
-+        (await loadCronJobsStoreWithConfigJobsReadOnly(targetStorePath, state.env)).store.jobs.find(
-+          (entry) => entry.id === selected.id,
-+        ),
++        (
++          await loadCronJobsStoreWithConfigJobsReadOnly(targetStorePath, state.env, {
++            artifactPreservingReadOnly: true,
++            includeJobsFingerprint: true,
++          })
++        ).store.jobs.find((entry) => entry.id === selected.id),
 +      ).toMatchObject({
 +        name: selected.name,
 +        schedule: selected.schedule,
@@ -507,7 +477,10 @@ index 00000000000..8ff1a5dc0d5
 +    await withOpenClawTestState({ label: "cron-sdk-readonly" }, async (state) => {
 +      const before = await fs.readdir(state.statePath(), { recursive: true });
 +      const storePath = resolveCronJobsStorePathFromConfig({}, state.env);
-+      const loaded = await loadCronJobsStoreWithConfigJobsReadOnly(storePath, state.env);
++      const loaded = await loadCronJobsStoreWithConfigJobsReadOnly(storePath, state.env, {
++        artifactPreservingReadOnly: true,
++        includeJobsFingerprint: true,
++      });
 +      expect(loaded.store.jobs).toEqual([]);
 +      expect(await fs.readdir(state.statePath(), { recursive: true })).toEqual(before);
 +    });
@@ -518,7 +491,12 @@ index 00000000000..8ff1a5dc0d5
 +      const storePath = resolveCronJobsStorePathFromConfig({}, state.env);
 +      const initial = { version: 1 as const, jobs: [job("selected"), job("other")] };
 +      await saveCronJobsStoreChanges(storePath, { version: 1, jobs: [] }, initial);
-+      const previous = (await loadCronJobsStoreWithConfigJobsReadOnly(storePath, state.env)).store;
++      const previous = (
++        await loadCronJobsStoreWithConfigJobsReadOnly(storePath, state.env, {
++          artifactPreservingReadOnly: true,
++          includeJobsFingerprint: true,
++        })
++      ).store;
 +      const concurrent = structuredClone(previous);
 +      concurrent.jobs[0]!.state.lastRunAtMs = 50;
 +      concurrent.jobs[1]!.name = "Changed by another writer";
@@ -550,7 +528,12 @@ index 00000000000..8ff1a5dc0d5
 +        { version: 1, jobs: [] },
 +        { version: 1, jobs: [job("selected")] },
 +      );
-+      const previous = (await loadCronJobsStoreWithConfigJobsReadOnly(storePath, state.env)).store;
++      const previous = (
++        await loadCronJobsStoreWithConfigJobsReadOnly(storePath, state.env, {
++          artifactPreservingReadOnly: true,
++          includeJobsFingerprint: true,
++        })
++      ).store;
 +      const concurrent = structuredClone(previous);
 +      concurrent.jobs[0]!.payload = { kind: "agentTurn", message: "Changed by another writer" };
 +      await saveCronJobsStoreChanges(storePath, previous, concurrent);
@@ -559,14 +542,248 @@ index 00000000000..8ff1a5dc0d5
 +      await expect(saveCronJobsStoreChanges(storePath, previous, next)).rejects.toThrow(
 +        "changed after it was read",
 +      );
-+      const current = (await loadCronJobsStoreWithConfigJobsReadOnly(storePath, state.env)).store;
++      const current = (
++        await loadCronJobsStoreWithConfigJobsReadOnly(storePath, state.env, {
++          artifactPreservingReadOnly: true,
++          includeJobsFingerprint: true,
++        })
++      ).store;
 +      expect(current.jobs[0]!.payload).toEqual(concurrent.jobs[0]!.payload);
 +      expect(current.jobs[0]!.delivery?.mode).toBe("announce");
 +    });
 +  });
 +});
+diff --git a/src/cron/store.ts b/src/cron/store.ts
+index e9f5fcc2d..810218067 100644
+--- a/src/cron/store.ts
++++ b/src/cron/store.ts
+@@ -19,6 +19,7 @@ import {
+   deleteCronQuarantinedJobsFromDatabase,
+   saveCronQuarantinedJobs,
+ } from "./store/quarantine.js";
++import { loadCronJobsStoreWithConfigJobsReadOnly } from "./store/read-only.js";
+ import {
+   assertCronStoreCanPersist,
+   deleteStaleCronJobFamilyRows,
+@@ -335,6 +336,58 @@ export async function saveCronJobsStore(
+   await saveCronJobsStoreWithRevision(storePath, store, opts);
+ }
+ 
++/** Converts config-backed rows to canonical rows without changing their effective jobs. */
++export async function materializeCronConfigJobsForMigration(
++  sourceStorePath: string,
++  targetStorePath: string,
++  expectedSourceJobsFingerprint: string,
++  expectedTargetJobsFingerprint: string,
++): Promise<{ before: CronStoreFile; after: CronStoreFile; materialized: number }> {
++  const source = await loadCronJobsStoreWithConfigJobsReadOnly(sourceStorePath, process.env, {
++    artifactPreservingReadOnly: true,
++    includeJobsFingerprint: true,
++  });
++  if (source.jobsFingerprint !== expectedSourceJobsFingerprint) {
++    throw new CronJobsStoreChangedError(path.resolve(sourceStorePath));
++  }
++  const samePartition =
++    cronStoreKey(path.resolve(sourceStorePath)) === cronStoreKey(path.resolve(targetStorePath));
++  const target = samePartition
++    ? source
++    : await loadCronJobsStoreWithConfigJobsReadOnly(targetStorePath, process.env, {
++        artifactPreservingReadOnly: true,
++        includeJobsFingerprint: true,
++      });
++  if (target.jobsFingerprint !== expectedTargetJobsFingerprint) {
++    throw new CronJobsStoreChangedError(path.resolve(targetStorePath));
++  }
++  if (source.invalidConfigRows.length > 0 || target.invalidConfigRows.length > 0) {
++    throw new Error("Cron config rows must be valid before materialization");
++  }
++  if (!samePartition) {
++    await saveCronJobsStore(targetStorePath, source.store, {
++      preserveRuntimeState: true,
++      transactionHooks: {
++        beforeWrite(db) {
++          assertCronJobsStoreUnchanged(db, sourceStorePath, expectedSourceJobsFingerprint);
++          if (!samePartition) {
++            assertCronJobsStoreUnchanged(db, targetStorePath, expectedTargetJobsFingerprint);
++          }
++        },
++      },
++    });
++  }
++  const after = await loadCronJobsStoreWithConfigJobsReadOnly(targetStorePath, process.env, {
++    artifactPreservingReadOnly: true,
++    includeJobsFingerprint: true,
++  });
++  return {
++    before: source.store,
++    after: after.store,
++    materialized: samePartition ? 0 : source.store.jobs.length,
++  };
++}
++
+ /** Atomically acquire doctor migration metadata and replace cron rows only for the winner. */
+ export async function saveCronJobsStoreWithMetadata(
+   storePath: string,
+diff --git a/src/cron/store/config-state.ts b/src/cron/store/config-state.ts
+index 1bcdcec6b..b35f88388 100644
+--- a/src/cron/store/config-state.ts
++++ b/src/cron/store/config-state.ts
+@@ -1,7 +1,10 @@
+ // Cron store selection preserves the retired configured partition through shared SQLite state.
+ import { readConfigMachineState } from "../../state/config-machine-state.js";
+ 
+-export function readCronStoreStatePath(env: NodeJS.ProcessEnv = process.env): string | undefined {
+-  const value = readConfigMachineState<unknown>("cron.store", { env });
++export function readCronStoreStatePath(
++  env: NodeJS.ProcessEnv = process.env,
++  behavior: { artifactPreservingReadOnly?: boolean } = {},
++): string | undefined {
++  const value = readConfigMachineState<unknown>("cron.store", { env }, behavior);
+   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+ }
+diff --git a/src/cron/store/paths.ts b/src/cron/store/paths.ts
+index 445557e80..97fb478a8 100644
+--- a/src/cron/store/paths.ts
++++ b/src/cron/store/paths.ts
+@@ -17,8 +17,9 @@ export function resolveCronJobsStorePath(
+   storePath?: string,
+   env: NodeJS.ProcessEnv = process.env,
+   stateEnv: NodeJS.ProcessEnv = env,
++  behavior: { artifactPreservingReadOnly?: boolean } = {},
+ ) {
+-  const selected = storePath?.trim() || readCronStoreStatePath(stateEnv);
++  const selected = storePath?.trim() || readCronStoreStatePath(stateEnv, behavior);
+   if (selected) {
+     const raw = selected.trim();
+     if (raw.startsWith("~")) {
+@@ -34,7 +35,13 @@ export function resolveCronJobsStorePathFromConfig(
+   cfg: { cron?: unknown },
+   env: NodeJS.ProcessEnv = process.env,
+   stateEnv: NodeJS.ProcessEnv = env,
++  behavior: { artifactPreservingReadOnly?: boolean } = {},
+ ): string {
+   const store = asOptionalRecord(cfg.cron)?.store;
+-  return resolveCronJobsStorePath(typeof store === "string" ? store : undefined, env, stateEnv);
++  return resolveCronJobsStorePath(
++    typeof store === "string" ? store : undefined,
++    env,
++    stateEnv,
++    behavior,
++  );
+ }
+diff --git a/src/cron/store/read-only.ts b/src/cron/store/read-only.ts
+index 0a829caee..0561ea7a0 100644
+--- a/src/cron/store/read-only.ts
++++ b/src/cron/store/read-only.ts
+@@ -31,6 +31,7 @@ import { resolveOpenClawStateSqlitePath } from "../../state/openclaw-state-db.pa
+ import { cronStoreKey } from "./key.js";
+ import { restoreCronLoadError } from "./load-error.js";
+ import type { CronReadOnlyRequest, CronReadOnlyResult } from "./read-only.types.js";
++import { fingerprintCronJobRows } from "./row-codec.js";
+ import type { LoadedCronStore } from "./types.js";
+ 
+ function emptyLoadedCronStore(): LoadedCronStore {
+@@ -47,13 +48,19 @@ function emptyLoadedCronStore(): LoadedCronStore {
+ export async function loadCronJobsStoreWithConfigJobsReadOnly(
+   storePath: string,
+   env: NodeJS.ProcessEnv = process.env,
++  options: { artifactPreservingReadOnly?: boolean; includeJobsFingerprint?: boolean } = {},
+ ): Promise<LoadedCronStore> {
++  const empty = () => ({
++    ...emptyLoadedCronStore(),
++    ...(options.includeJobsFingerprint ? { jobsFingerprint: fingerprintCronJobRows([]) } : {}),
++  });
+   const statePath = resolveOpenClawStateSqlitePath(env);
+   if (!fs.existsSync(statePath)) {
+-    return emptyLoadedCronStore();
++    return empty();
+   }
+   const storeKey = cronStoreKey(storePath);
+-  const preserveArtifacts = isArtifactPreservingStateRead();
++  const preserveArtifacts =
++    options.artifactPreservingReadOnly === true || isArtifactPreservingStateRead();
+   const assertExcluded = hasStateDatabaseSourceExclusion(statePath)
+     ? prepareStateDatabaseSourceExclusion(statePath)
+     : undefined;
+@@ -128,7 +135,7 @@ export async function loadCronJobsStoreWithConfigJobsReadOnly(
+   };
+   const unregister = registerOpenClawStateDatabaseAsyncResource(resource);
+   const run = async () => {
+-    let loaded = emptyLoadedCronStore();
++    let loaded = empty();
+     try {
+       maintenance?.own(resource, "shared-resources", () => resource.close());
+       // Only the native exclusion owner can prepare its already-drained source.
+@@ -158,6 +165,7 @@ export async function loadCronJobsStoreWithConfigJobsReadOnly(
+         {
+           location,
+           storeKey,
++          includeJobsFingerprint: options.includeJobsFingerprint,
+           stagingRoot,
+           coordinatorRuntime,
+         },
+diff --git a/src/cron/store/read-only.types.ts b/src/cron/store/read-only.types.ts
+index b30309606..b980a45c3 100644
+--- a/src/cron/store/read-only.types.ts
++++ b/src/cron/store/read-only.types.ts
+@@ -5,6 +5,7 @@ import type { LoadedCronStore } from "./types.js";
+ export type CronReadOnlyRequest = {
+   location: string;
+   storeKey: string;
++  includeJobsFingerprint?: boolean;
+   stagingRoot?: string;
+   coordinatorRuntime: StateDatabaseCoordinatorRuntime;
+ };
+diff --git a/src/cron/store/read-only.worker.ts b/src/cron/store/read-only.worker.ts
+index eeb6ffc88..0631ab40c 100644
+--- a/src/cron/store/read-only.worker.ts
++++ b/src/cron/store/read-only.worker.ts
+@@ -8,6 +8,7 @@ import { tableExists } from "../../state/openclaw-state-db-schema-helpers.js";
+ import { serializeCronLoadError } from "./load-error.js";
+ import { loadCronStoreFromDatabase } from "./load.kernel.js";
+ import type { CronReadOnlyResult } from "./read-only.types.js";
++import { fingerprintCronJobRows, loadCronRows } from "./row-codec.js";
+ 
+ serveWorkerTasks(async (input, _channel, control): Promise<CronReadOnlyResult> => {
+   try {
+@@ -15,6 +16,8 @@ serveWorkerTasks(async (input, _channel, control): Promise<CronReadOnlyResult> =
+       !isRecord(input) ||
+       typeof input.location !== "string" ||
+       typeof input.storeKey !== "string" ||
++      (input.includeJobsFingerprint !== undefined &&
++        typeof input.includeJobsFingerprint !== "boolean") ||
+       (input.stagingRoot !== undefined && typeof input.stagingRoot !== "string") ||
+       !isRecord(input.coordinatorRuntime) ||
+       typeof input.coordinatorRuntime.directory !== "string" ||
+@@ -44,7 +47,12 @@ serveWorkerTasks(async (input, _channel, control): Promise<CronReadOnlyResult> =
+           return {
+             ok: true,
+             loaded: tableExists(db, "cron_jobs")
+-              ? loadCronStoreFromDatabase(db, storeKey)
++              ? {
++                  ...loadCronStoreFromDatabase(db, storeKey),
++                  ...(input.includeJobsFingerprint
++                    ? { jobsFingerprint: fingerprintCronJobRows(loadCronRows(db, storeKey)) }
++                    : {}),
++                }
+               : undefined,
+           } satisfies CronReadOnlyResult;
+         } finally {
+diff --git a/src/plugin-sdk/config-mutation.ts b/src/plugin-sdk/config-mutation.ts
+index 3caf4de38..3182fe9d7 100644
+--- a/src/plugin-sdk/config-mutation.ts
++++ b/src/plugin-sdk/config-mutation.ts
+@@ -3,6 +3,8 @@
+  */
+ export { logConfigUpdated } from "../config/logging.js";
+ export { readConfigFileSnapshotForWrite } from "../config/io.js";
++export { resolveIncludeWriteBoundary } from "../config/include-write-boundary.js";
+ export { mutateConfigFile, replaceConfigFile } from "../config/mutate.js";
+ export type { ConfigWriteAfterWrite } from "../config/runtime-snapshot.js";
++export { previewLegacyConfigRepair } from "../commands/doctor/legacy-config-repair.js";
+ export { updateConfig } from "../commands/models/shared.js";
 diff --git a/src/plugin-sdk/cron-store-runtime.ts b/src/plugin-sdk/cron-store-runtime.ts
-index 859dfbfb73b..56d65fa6bdb 100644
+index 859dfbfb7..56d65fa6b 100644
 --- a/src/plugin-sdk/cron-store-runtime.ts
 +++ b/src/plugin-sdk/cron-store-runtime.ts
 @@ -2,3 +2,10 @@
@@ -580,121 +797,8 @@ index 859dfbfb73b..56d65fa6bdb 100644
 +  saveCronJobsStoreChanges,
 +} from "../cron/store.js";
 +export { resolveCronJobConfigRevision } from "../cron/config-revision.js";
-diff --git a/src/plugin-sdk/doctor-repair-runtime.test.ts b/src/plugin-sdk/doctor-repair-runtime.test.ts
-new file mode 100644
-index 00000000000..e4a555f86f5
---- /dev/null
-+++ b/src/plugin-sdk/doctor-repair-runtime.test.ts
-@@ -0,0 +1,107 @@
-+import fs from "node:fs/promises";
-+import { describe, expect, it } from "vitest";
-+import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
-+import { readConfigFileSnapshotForWrite } from "./config-mutation.js";
-+import {
-+  previewLegacyConfigRepair,
-+  repairLegacyConfigForStoppedState,
-+} from "./doctor-repair-runtime.js";
-+
-+describe("stopped legacy config repair SDK", () => {
-+  it("previews and persists read-time and doctor migrations through the maintained writer", async () => {
-+    await withOpenClawTestState({ label: "stopped-config-repair" }, async (state) => {
-+      await fs.writeFile(
-+        state.statePath("openclaw.json"),
-+        JSON.stringify({
-+          cron: { store: state.statePath("cron", "legacy-jobs.json") },
-+          memory: { backend: "qmd" },
-+          plugins: {
-+            entries: {
-+              "active-memory": { config: { qmd: { enabled: true } } },
-+              canvas: {
-+                config: {
-+                  host: {
-+                    enabled: true,
-+                    root: state.statePath("legacy-canvas"),
-+                    liveReload: true,
-+                  },
-+                },
-+              },
-+            },
-+          },
-+          meta: { lastTouchedAt: "2025-01-01T00:00:00.000Z" },
-+        }),
-+      );
-+      const { snapshot } = await readConfigFileSnapshotForWrite({
-+        observe: false,
-+        pluginValidation: "core-only",
-+      });
-+      const preview = previewLegacyConfigRepair(snapshot);
-+      expect(preview).not.toBeNull();
-+      expect(preview?.expectedConfig).not.toHaveProperty("cron.store");
-+      expect(preview?.expectedConfig).not.toHaveProperty("memory.backend");
-+      expect(preview?.expectedConfig).not.toHaveProperty("meta.lastTouchedAt");
-+      expect(preview?.expectedConfig).toHaveProperty(
-+        "plugins.entries.active-memory.config.qmd",
-+      );
-+      expect(preview?.expectedConfig).toHaveProperty("plugins.entries.canvas.config.host.root");
-+
-+      const fullPreview = previewLegacyConfigRepair(snapshot, { pluginContracts: true });
-+      expect(fullPreview?.expectedConfig).not.toHaveProperty(
-+        "plugins.entries.active-memory.config.qmd",
-+      );
-+      expect(fullPreview?.expectedConfig).not.toHaveProperty(
-+        "plugins.entries.canvas.config.host.root",
-+      );
-+      expect(fullPreview?.expectedConfig).not.toHaveProperty(
-+        "plugins.entries.canvas.config.host.liveReload",
-+      );
-+      expect(fullPreview?.expectedConfig).toHaveProperty(
-+        "plugins.entries.canvas.config.host.enabled",
-+        true,
-+      );
-+
-+      const result = await repairLegacyConfigForStoppedState({
-+        configSnapshot: snapshot,
-+        configWriteOptions: { skipRuntimeSnapshotRefresh: true, skipOutputLogs: true },
-+      });
-+      expect(result.repaired).toBe(true);
-+      expect(result.snapshot.valid).toBe(true);
-+      expect(result.snapshot.sourceConfig).toEqual(fullPreview?.expectedConfig);
-+    });
-+  });
-+
-+  it("persists explicit ownership for a markerless legacy multi-agent roster", async () => {
-+    await withOpenClawTestState({ label: "stopped-config-roster" }, async (state) => {
-+      await fs.writeFile(
-+        state.statePath("openclaw.json"),
-+        JSON.stringify({
-+          agents: {
-+            list: Array.from({ length: 8 }, (_, index) => ({
-+              id: `agent-${index + 1}`,
-+            })),
-+          },
-+        }),
-+      );
-+      const { snapshot } = await readConfigFileSnapshotForWrite({
-+        observe: false,
-+        pluginValidation: "core-only",
-+      });
-+      const preview = previewLegacyConfigRepair(snapshot);
-+      expect(preview?.sourceConfig.agents?.ownership).toBe("explicit");
-+      expect(Object.keys(preview?.sourceConfig.agents?.entries ?? {})).toHaveLength(8);
-+      expect(
-+        Object.values(preview?.sourceConfig.agents?.entries ?? {}).some(
-+          (entry) => entry.default === true,
-+        ),
-+      ).toBe(false);
-+
-+      const result = await repairLegacyConfigForStoppedState({
-+        configSnapshot: snapshot,
-+        configWriteOptions: { skipRuntimeSnapshotRefresh: true, skipOutputLogs: true },
-+      });
-+      expect(result.snapshot.valid).toBe(true);
-+      expect(result.snapshot.sourceConfig).toEqual(preview?.expectedConfig);
-+    });
-+  });
-+});
 diff --git a/src/plugin-sdk/doctor-repair-runtime.ts b/src/plugin-sdk/doctor-repair-runtime.ts
-index ffb1a88d822..af2528f2376 100644
+index ffb1a88d8..af2528f23 100644
 --- a/src/plugin-sdk/doctor-repair-runtime.ts
 +++ b/src/plugin-sdk/doctor-repair-runtime.ts
 @@ -18,4 +18,8 @@ export {
@@ -707,11 +811,11 @@ index ffb1a88d822..af2528f2376 100644
 +} from "../commands/doctor/legacy-config-repair.js";
  export type { OpenClawStateDatabaseSchemaMigration } from "../state/openclaw-state-db.js";
 diff --git a/src/plugin-sdk/state-paths.ts b/src/plugin-sdk/state-paths.ts
-index a2337a042f0..4dac071c0ea 100644
+index e00b9b2cc..4faa88815 100644
 --- a/src/plugin-sdk/state-paths.ts
 +++ b/src/plugin-sdk/state-paths.ts
 @@ -2,3 +2,4 @@
  
- export { resolveOAuthDir, resolveStateDir, STATE_DIR } from "../config/paths.js";
+ export { resolveConfigPath, resolveOAuthDir, resolveStateDir, STATE_DIR } from "../config/paths.js";
  export { resolveRequiredHomeDir } from "../infra/home-dir.js";
 +export { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";

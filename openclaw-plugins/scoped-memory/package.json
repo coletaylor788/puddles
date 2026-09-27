@@ -11,12 +11,12 @@
     "test": "vitest run",
     "lint": "tsc --noEmit"
   },
-  "peerDependencies": { "openclaw": ">=2026.9.3" },
+  "peerDependencies": { "openclaw": ">=2026.9.6" },
   "openclaw": { "extensions": ["./dist/plugin.js"] },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "esbuild": "^0.25.0",
-    "openclaw": "2026.9.3",
+    "openclaw": "2026.9.6",
     "typescript": "^5.0.0",
     "vitest": "^3.0.0"
   }

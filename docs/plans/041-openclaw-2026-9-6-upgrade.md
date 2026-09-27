@@ -8,15 +8,32 @@
 
 ### Design
 
-Bring our existing OpenClaw setup onto stable 2026.9.6. The goal is for the same agents and integrations to keep working on the newer host. We already have compatibility work from the previous attempt. We will keep what is still needed and remove local fixes where upstream now provides the same behavior.
+Bring the existing agents and integrations onto stable OpenClaw 2026.9.6. Keep the behavior we rely on and remove local fixes where upstream now supplies it.
 
-The main change is memory search. The newer host no longer supports the old search backend, so it will rebuild search from the existing notes using a local embedding model. Notes stay local, and each agent keeps its existing access. Search results may rank differently. With the model and index ready, searches should finish in under a second. We will measure that separately from model startup and index building. The upgrade does not require a longer search timeout.
+```mermaid
+flowchart LR
+    A[Existing runtime and data] -->|Snapshot matching runtime and state| B[Stopped migration]
+    B -->|Upstream Doctor converts history and config| C[OpenClaw 2026.9.6]
+    N[Existing notes] -->|Local embeddings rebuild search| M[Resident memory service]
+    M -->|Same agent access rules| C
+    C -->|Migration or readiness failure| R[Restore matching runtime and state]
+```
 
-OpenClaw includes the migration for its changed conversation storage. Our existing deployment flow will use that migration and verify that history survives. A failed upgrade must restore the old application together with its matching data. We will restart delivery through the current repository process. Success means the new version is running with the same messaging behavior and access boundaries, working local memory, and a verified way back.
+#### Host and integrations
+
+Port the maintained patches and plugins to the newer host. Preserve messaging, tool access, concurrency and agent ownership. Keep each regression when an upstream fix replaces a local patch. Delivery uses the process on main; this plan adds only upgrade requirements.
+
+#### Local memory
+
+The newer host replaces the retired search backend with local embeddings over the existing notes. Notes stay local and each agent keeps its access. Search ranking may change. With the model and index ready, searches should finish in under a second. Measure model startup, index building and automatic recall separately. The upgrade does not increase the upstream search timeout.
+
+#### Conversation history and recovery
+
+Upstream Doctor owns conversion to the new conversation storage. Our deployment integration invokes it and verifies history, ownership, schedules and archive references. The old application cannot read the new format. Recovery therefore restores the matching application and complete stopped-state snapshot together.
 
 ### Status
 
-The compatibility review is complete enough to propose the upgrade. The new version needs compatibility changes to our patches and the integration with upstream migration. The requester approved the complete design. Implementation is starting through the process on main.
+The design is approved and compatibility implementation is underway. Focused tests cover the ported patches and preserved defaults. Combined validation, independent review and delivery through main’s process remain pending.
 
 ## Agent section
 
@@ -24,8 +41,8 @@ The compatibility review is complete enough to propose the upgrade. The new vers
 
 - Target verified 2026-09-26: `v2026.9.6`, source commit `eb377ac59e6c9fd6c7705028034812becf00271b`; GitHub stable and npm latest agree.
 - Existing source pin: `1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7` (`v2026.9.3`). Reuse landed compatibility code; [completed Plan 037](completed/037-openclaw-stable-upgrade.md) remains historical evidence.
-- Process alignment checked against freshly fetched main `3b9b73a560072b1b473c8c3214ca8d9b5c2c79c1`. Documentation branch: `codex/upgrade-memory-history-clarity`, based on main `d7ebefe040356a672ed5b93d9d125d01f882d709`.
-- Restart means a new candidate and run under main's process, not continuation of the paused release or reconstruction of its receipts. Preserve existing recovery assets and unrelated owners' state. No 2026.9.6 code port or runtime execution has begun.
+- Implementation branch: `codex/openclaw-2026-9-6`, based on main `2437225ebcde955a5c73ea1bc8dd04947ef7fb93`. The current main process and design structure apply.
+- Restart means a new candidate and run under main's process, not continuation of the paused release or reconstruction of its receipts. Preserve existing recovery assets and unrelated owners' state. Ports and isolated focused tests are underway. No deployment slot has been claimed and production is unchanged.
 
 ### Scope and acceptance criteria
 
@@ -93,7 +110,7 @@ The shared process supplies review and cumulative/installed/physical gates. This
 - Upstream Doctor conversion from the legacy generation through its prerequisite migrations to schema 23, WAL data, histories, ownership, archives, selected config/job drift rejection and interrupted rollback with the predecessor runtime.
 - Browser profile reuse and mount isolation; DEV/PROD availability while TEST exercises the changed runtime.
 
-Research and patch checks are complete. Runtime validation is pending. No prior 2026.9.3 receipt counts as proof for this target. Documentation checks apply to this proposal revision only.
+Focused repository checks pass: 55 migration/toolchain/diagnostic tests and 37 native-pipeline tests. The pipeline uses the maintained upstream test entrypoint and verifies every registered test is collected. The unpatched fs-safe 0.18.1 regression reproduces failure with a persistent guard; the current protocol registry passes its retained identity regression. Combined source, installed and delivery proofs remain pending. No prior 2026.9.3 receipt counts as proof for this target.
 
 ### Rollout and rollback
 

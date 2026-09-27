@@ -148,7 +148,7 @@ it("initializes and persists the public run path at step runtime, not job contex
 it("wires failure-only upload to sanitized projections, never the raw run directory", () => {
   const workflow = readFileSync(resolve(import.meta.dirname, "../../../.github/workflows/integration.yml"), "utf8");
   expect(workflow).toContain('E2E_LOCAL_EXTENSION: ""');
-  expect(workflow).toContain('test "$(corepack pnpm --version)" = "12.3.4"');
+  expect(workflow).toContain('test "$(corepack pnpm --version)" = "12.4.0"');
   expect(workflow).toContain('export E2E_RUN_DIR="$RUNNER_TEMP/puddles-public-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"');
   expect(workflow).toContain("node packages/e2e/bin/public-ci-diagnostics.mjs init");
   expect(workflow).toContain("node packages/e2e/bin/openclaw-test-env.mjs ci");
@@ -166,7 +166,7 @@ it("exports bounded public resource evidence without command arguments or paths"
   writeFileSync(join(run, "resources/0.json"), JSON.stringify({
     schema: "puddles.native-command-resources/v2",
     profile: "hosted-arm",
-    label: "corepack pnpm@12.3.4",
+    label: "corepack pnpm@12.4.0",
     startedAt: "2026-09-15T00:00:00.000Z",
     finishedAt: "2026-09-15T00:00:01.000Z",
     durationMs: 1000,
@@ -182,7 +182,7 @@ it("exports bounded public resource evidence without command arguments or paths"
   }));
   const result = collectPublicResources(f.env);
   expect(result.records).toHaveLength(1);
-  expect(result.records[0].label).toBe("corepack pnpm@12.3.4");
+  expect(result.records[0].label).toBe("corepack pnpm@12.4.0");
   expect(result.summary).toContain("4500000000 bytes");
   expect(readdirSync(result.output).sort()).toEqual(["commands.json", "summary.md"]);
   expect(readFileSync(join(result.output, "commands.json"), "utf8")).not.toContain(f.root);

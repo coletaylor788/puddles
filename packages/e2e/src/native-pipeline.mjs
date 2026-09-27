@@ -326,11 +326,11 @@ export async function nativePipeline(command, repositoryGates) {
         }
         for (const [project, targets] of groups) {
           const workerArgs = resourceProfile.testWorkers ? ["--maxWorkers", String(resourceProfile.testWorkers)] : [];
-          const collected = await run("corepack", ["pnpm", "exec", "vitest", "list", "--filesOnly", "--config", `test/vitest/vitest.${project}.config.ts`, ...workerArgs, ...targets], { cwd: candidate, env: buildEnv, capture: true, logPath: join(runDir, "logs", `${sequence++}.log`) });
+          const collected = await run("node", ["scripts/run-vitest.mjs", "list", "--filesOnly", "--config", `test/vitest/vitest.${project}.config.ts`, ...workerArgs, ...targets], { cwd: candidate, env: buildEnv, capture: true, logPath: join(runDir, "logs", `${sequence++}.log`) });
           for (const target of targets) {
             if (!collected.split("\n").some((line) => line.trim() === target || line.trim().endsWith(`/${target}`) || line.trim().endsWith(` ${target}`))) throw new Error(`Mapped regression was not collected: ${target} in ${project}`);
           }
-          await run("corepack", ["pnpm", "exec", "vitest", "run", "--config", `test/vitest/vitest.${project}.config.ts`, ...workerArgs, ...targets], { cwd: candidate, env: buildEnv });
+          await run("node", ["scripts/run-vitest.mjs", "run", "--config", `test/vitest/vitest.${project}.config.ts`, ...workerArgs, ...targets], { cwd: candidate, env: buildEnv });
         }
         const candidateTests = [...new Set(suite.patches.flatMap((patch) => patch.candidateTests ?? []))];
         const candidateWorkerArgs = resourceProfile.testWorkers ? ["--maxWorkers", String(resourceProfile.testWorkers)] : [];

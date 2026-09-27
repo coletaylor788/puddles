@@ -226,7 +226,7 @@ export async function executeStateMigration(
   });
   assertSelection();
   for (const source of [snapshot.sourceConfigBeforeMigrations, snapshot.sourceConfig].filter(record)) {
-    statePath(stateDir, sdk.resolveCronJobsStorePathFromConfig(source, process.env, { artifactPreservingReadOnly: true }));
+    statePath(stateDir, sdk.resolveCronJobsStorePathFromConfig(source, process.env, process.env, { artifactPreservingReadOnly: true }));
   }
   const builtInPlan = async () => {
     const preview = sdk.previewLegacyConfigRepair(snapshot, {
@@ -242,6 +242,7 @@ export async function executeStateMigration(
       sdk.resolveCronJobsStorePathFromConfig(
         snapshot.sourceConfigBeforeMigrations ?? snapshot.sourceConfig,
         process.env,
+        process.env,
         { artifactPreservingReadOnly: true },
       ),
     );
@@ -250,13 +251,14 @@ export async function executeStateMigration(
       sdk.resolveCronJobsStorePathFromConfig(
         expectedConfig,
         process.env,
+        process.env,
         { artifactPreservingReadOnly: true },
       ),
     );
-    const loaded = await sdk.loadCronJobsStoreWithConfigJobsReadOnly(sourceStorePath, process.env);
+    const loaded = await sdk.loadCronJobsStoreWithConfigJobsReadOnly(sourceStorePath, process.env, { artifactPreservingReadOnly: true, includeJobsFingerprint: true });
     const targetLoaded = sourceStorePath === targetStorePath
       ? loaded
-      : await sdk.loadCronJobsStoreWithConfigJobsReadOnly(targetStorePath, process.env);
+      : await sdk.loadCronJobsStoreWithConfigJobsReadOnly(targetStorePath, process.env, { artifactPreservingReadOnly: true, includeJobsFingerprint: true });
     if (loaded.invalidConfigRows?.length || targetLoaded.invalidConfigRows?.length) {
       throw new Error("Stopped migration cannot preserve invalid cron config rows");
     }
@@ -342,13 +344,14 @@ export async function executeStateMigration(
       sdk.resolveCronJobsStorePathFromConfig(
         repaired.snapshot.sourceConfig,
         process.env,
+        process.env,
         { artifactPreservingReadOnly: true },
       ),
     );
     if (canonicalValueDigest(postStorePath) !== plan.cron.targetStoreSha256) {
       throw new Error("Built-in stopped config migration selected an unexpected cron store");
     }
-    const reloaded = await sdk.loadCronJobsStoreWithConfigJobsReadOnly(postStorePath, process.env);
+    const reloaded = await sdk.loadCronJobsStoreWithConfigJobsReadOnly(postStorePath, process.env, { artifactPreservingReadOnly: true, includeJobsFingerprint: true });
     if (canonicalValueDigest(reloaded.store.jobs) !== plan.jobsSha256) {
       throw new Error("Built-in stopped config migration lost effective cron jobs");
     }
@@ -377,8 +380,8 @@ export async function executeStateMigration(
   }
   if (phase === "cron" && manifest.cronOperation) {
     configBoundary(snapshot, [], stateDir, sdk);
-    const storePath = statePath(stateDir, sdk.resolveCronJobsStorePathFromConfig(snapshot.sourceConfig, process.env, { artifactPreservingReadOnly: true }));
-    const loaded = await sdk.loadCronJobsStoreWithConfigJobsReadOnly(storePath, process.env);
+    const storePath = statePath(stateDir, sdk.resolveCronJobsStorePathFromConfig(snapshot.sourceConfig, process.env, process.env, { artifactPreservingReadOnly: true }));
+    const loaded = await sdk.loadCronJobsStoreWithConfigJobsReadOnly(storePath, process.env, { artifactPreservingReadOnly: true, includeJobsFingerprint: true });
     const matches = loaded.store.jobs.filter((job) => job.id === manifest.cronOperation.jobId);
     if (matches.length !== 1 || loaded.invalidConfigRows?.some((row) => row.id === manifest.cronOperation.jobId) ||
         sdk.resolveCronJobConfigRevision(matches[0]) !== manifest.cronOperation.expectedRevision) {

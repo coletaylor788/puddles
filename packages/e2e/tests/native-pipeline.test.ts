@@ -32,7 +32,7 @@ vi.mock("../src/process-runner.mjs", () => ({
         mkdirSync(path, { recursive: true });
         writeFileSync(join(path, "package.json"), JSON.stringify({
           packageManager:
-            "pnpm@12.3.4+sha512.961aa41fb077da3a04a441d9f8e15ebc0c96da8ef710b2eb67bf9ee7cb0610eabd48f1fd85f51cffe73846785fa0f87c56a3a872a1d893f8446741b5cce45457",
+            "pnpm@12.4.0+sha512.37536c26ed40ab4134b6511e09f6b27f3ebb45687468f2406ca3805279a4e5ca158c1931350ad9774d6ab2108d71b3dbaeb39943159294375e4d053e8e05685c",
         }));
         for (const name of ["pnpm-lock.yaml", "pnpm-workspace.yaml", "source.js"]) {
           writeFileSync(join(path, name), name);
@@ -57,8 +57,8 @@ vi.mock("../src/process-runner.mjs", () => ({
       else if (args[0] === "rev-parse") return "a".repeat(40);
       return "";
     }
-    if (command === "corepack" && args[0] === "pnpm@12.3.4" && args[1] === "--version") return "12.3.4";
-    if (command === "corepack" && args[0] === "pnpm@12.3.4" && args[1] === "store") {
+    if (command === "corepack" && args[0] === "pnpm@12.4.0" && args[1] === "--version") return "12.4.0";
+    if (command === "corepack" && args[0] === "pnpm@12.4.0" && args[1] === "store") {
       return join(options.env!.PNPM_CONFIG_STORE_DIR, "v11");
     }
     if (command === "corepack" && args[1] === "install") {
@@ -138,7 +138,7 @@ vi.mock("../src/process-runner.mjs", () => ({
     } else if (command === "fixture-python" && args[0] === "-c") {
       return JSON.stringify({ executable: process.execPath, version: "synthetic",
         libraries: [join(process.env.E2E_RUN_DIR!, "source/node_modules")] });
-    } else if (command === "corepack" && args.includes("--filesOnly")) {
+    } else if (command === "node" && args[0] === "scripts/run-vitest.mjs" && args.includes("--filesOnly")) {
       return args.slice(args.indexOf("--config") + 2).join("\n");
     } else if (command === "tar") {
       return execFileSync(command, args, { encoding: "utf8" });
@@ -244,6 +244,24 @@ function setup() {
   vi.stubEnv("E2E_STATE_MIGRATION_MANIFEST", "");
   return { directory, run };
 }
+
+it("runs every mapped regression through the upstream test entrypoint", async () => {
+  setup();
+  vi.stubEnv("GMAIL_MCP_PYTHON", "fixture-python");
+  const { runCommand } = await import("../src/process-runner.mjs");
+  vi.mocked(runCommand).mockClear();
+  await nativePipeline("ci", async () => {});
+  const suite = JSON.parse(readFileSync(join(import.meta.dirname, "../openclaw-patch-suite.json"), "utf8"));
+  const calls = vi.mocked(runCommand).mock.calls;
+  for (const target of new Set<string>(suite.patches.flatMap((patch: { tests: string[] }) => patch.tests))) {
+    for (const action of ["list", "run"]) {
+      expect(calls.some(([command, args]) => command === "node" &&
+        args[0] === "scripts/run-vitest.mjs" && args[1] === action &&
+        args.includes(`test/vitest/vitest.${suite.testProjects[target]}.config.ts`) &&
+        args.includes(target))).toBe(true);
+    }
+  }
+});
 
 it("binds migration bytes to cumulative and runtime proofs without rebuilding unchanged source", async () => {
   const { directory, run } = setup();

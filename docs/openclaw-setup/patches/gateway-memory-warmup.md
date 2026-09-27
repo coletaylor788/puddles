@@ -1,8 +1,8 @@
 # Prepare managed local memory before gateway readiness
 
 OpenClaw normally creates an embedding provider on the first memory request.
-The selected local model can take longer to load than the ordinary 15-second
-memory request budget. This patch adds the explicit
+The selected local model can take longer to load than a warm search should take.
+This patch adds the explicit
 `memory.search.local.warmupOnGatewayStart` option. When enabled, gateway startup
 uses one 90-second allowance to create the configured local provider and verify
 two real, finite, nonzero, distinct vectors before channels start.
@@ -11,8 +11,10 @@ The warmup accepts only registered local transports. Every selected provider
 must acquire its own gateway-owned local-service lease. It keeps those leases
 and providers open for the gateway lifetime.
 Shutdown aborts unfinished preparation, closes providers, and releases leases.
-A restart must acquire and prepare the service again. The ordinary memory
-request budget and Active Memory's separate 30-second setup cap are unchanged.
+A restart must acquire and prepare the service again. Upstream's 30-second
+search failure cutoff and Active Memory's separate
+30-second setup cap are unchanged. Warm search with the model and index ready
+has a separate under-one-second validation target.
 
 Managed llama.cpp preparation sets `sleep-idle-seconds = -1` only in the
 embedding model's preset section. Global and chat preset values are preserved.
@@ -27,3 +29,7 @@ Regressions cover explicit opt-in, per-agent opt-out, disabled memory, one
 shared deadline, vector validation, startup ordering, restart acquisition,
 lease cleanup, managed transport confinement, and embedding-only native
 residency.
+
+The 2026.9.6 port uses the current memory schema and the gateway's existing
+sidecar lifetime owner. Provider acquisition still forwards readiness phases
+to the search deadline owner. The startup warmup does not extend that deadline.

@@ -1,6 +1,6 @@
 # Scoped container environment staging
 
-OpenClaw v2026.9.3 stages Docker and Podman environment values in a private
+OpenClaw v2026.9.6 stages Docker and Podman environment values in a private
 short-lived file. Its default prefers a shared OpenClaw temporary root even
 when a caller isolates its ordinary temporary directory.
 

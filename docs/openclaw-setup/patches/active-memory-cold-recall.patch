@@ -1,8 +1,8 @@
 diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/index.test.ts
-index e5e479f7c75..d2682b11d42 100644
+index 9dd571d63..91168464c 100644
 --- a/extensions/active-memory/index.test.ts
 +++ b/extensions/active-memory/index.test.ts
-@@ -4709,6 +4709,62 @@ describe("active-memory plugin", () => {
+@@ -4910,6 +4910,62 @@ describe("active-memory plugin", () => {
      expect(runEmbeddedAgent).not.toHaveBeenCalled();
    });
  
@@ -63,13 +63,13 @@ index e5e479f7c75..d2682b11d42 100644
 +  );
 +
    it("preserves recall settlement time after near-limit preflight latency", async () => {
-     vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+     vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
      testing.setMinimumTimeoutMsForTests(1);
 diff --git a/extensions/active-memory/index.ts b/extensions/active-memory/index.ts
-index cb691aaa6e7..241f3c595d3 100644
+index f8a16e89d..2673ee400 100644
 --- a/extensions/active-memory/index.ts
 +++ b/extensions/active-memory/index.ts
-@@ -254,6 +254,7 @@ export default definePluginEntry({
+@@ -270,6 +270,7 @@ export default definePluginEntry({
            HOOK_TIMEOUT_RECOVERY_GRACE_MS;
          const deadlineController = new AbortController();
          const hookDeadline = createActiveMemoryHookDeadline();
@@ -77,7 +77,7 @@ index cb691aaa6e7..241f3c595d3 100644
          const armHookDeadline = (timeoutMs: number, phase: "preflight" | "recall") => {
            hookDeadline.arm(timeoutMs, () => {
              deadlineController.abort(
-@@ -264,6 +265,12 @@ export default definePluginEntry({
+@@ -280,6 +281,12 @@ export default definePluginEntry({
              );
            });
          };
@@ -90,7 +90,7 @@ index cb691aaa6e7..241f3c595d3 100644
          armHookDeadline(HOOK_TIMEOUT_RECOVERY_GRACE_MS, "preflight");
          const handlerPromise = (async () => {
            try {
-@@ -347,6 +354,36 @@ export default definePluginEntry({
+@@ -384,6 +391,36 @@ export default definePluginEntry({
                channelId: destinationContext.channelId,
              });
              const activeMemoryConfigured = isEnabledForAgent(invocationConfig, effectiveAgentId);
@@ -127,33 +127,45 @@ index cb691aaa6e7..241f3c595d3 100644
              let laneOne: { context?: string; hasStrongHit: boolean; injectedCount: number } = {
                hasStrongHit: false,
                injectedCount: 0,
-@@ -360,13 +397,24 @@ export default definePluginEntry({
+@@ -397,13 +434,23 @@ export default definePluginEntry({
                chatIdAllowed
              ) {
                toolAuthority.assertActive();
++              const triggerPreflightRemainingMs = hookDeadline.remainingMs();
 +              if (
 +                invocationConfig.mode === "always" &&
 +                (activeMemoryAllowed || productRecallAllowed)
 +              ) {
-+                // Lexical lookup can initialize a cold provider. Required recall
-+                // shares its existing budget rather than losing to preflight.
++                // Cold provider preparation shares the required recall's existing allowance.
 +                armRecallDeadline();
 +              }
-               laneOne = await resolveTriggerRecall({
-                 cfg: liveConfig,
-                 agentId: effectiveAgentId,
-                 query: searchQuery,
-                 message: event.prompt,
-                 activeProjectKeys: ctx.activeProjectKeys,
--                signal: AbortSignal.timeout(HOOK_TIMEOUT_RECOVERY_GRACE_MS),
-+                signal: AbortSignal.any([
-+                  deadlineController.signal,
-+                  AbortSignal.timeout(HOOK_TIMEOUT_RECOVERY_GRACE_MS),
-+                ]),
-                 runId: ctx.runId,
-                 authorityFingerprint: toolAuthority.fingerprint,
-               }).catch((error: unknown) => {
-@@ -383,36 +431,6 @@ export default definePluginEntry({
+               // Lane one is optional and runs inside the preflight deadline.
+               // Its own timeout is what is left of that budget, less enough
+               // to fall through to model recall before the watchdog fires.
+               // Without that headroom it is skipped outright: even a zero
+               // delay timer is asynchronous and can lose to the watchdog.
+-              const triggerLookupTimeoutMs =
+-                hookDeadline.remainingMs() - TRIGGER_LOOKUP_SETTLE_RESERVE_MS;
++              const triggerLookupTimeoutMs = Math.min(
++                HOOK_TIMEOUT_RECOVERY_GRACE_MS,
++                triggerPreflightRemainingMs - TRIGGER_LOOKUP_SETTLE_RESERVE_MS,
++              );
+               if (triggerLookupTimeoutMs > 0) {
+                 laneOne = await resolveTriggerRecall({
+                   cfg: liveConfig,
+@@ -411,7 +458,10 @@ export default definePluginEntry({
+                   query: searchQuery,
+                   message: currentUserMessage,
+                   activeProjectKeys: ctx.activeProjectKeys,
+-                  signal: AbortSignal.timeout(triggerLookupTimeoutMs),
++                  signal: AbortSignal.any([
++                    deadlineController.signal,
++                    AbortSignal.timeout(triggerLookupTimeoutMs),
++                  ]),
+                   runId: ctx.runId,
+                   requestKey,
+                   authorityFingerprint: toolAuthority.fingerprint,
+@@ -434,36 +484,6 @@ export default definePluginEntry({
                }
              }
              const laneOneContext = laneOne.context;
@@ -188,9 +200,9 @@ index cb691aaa6e7..241f3c595d3 100644
 -              );
 -            }
              if (!activeMemoryAllowed && !productRecallAllowed) {
+               logRecallSkipped("destination-not-allowed");
                await persistPluginStatusLines({
-                 api,
-@@ -443,18 +461,28 @@ export default definePluginEntry({
+@@ -498,18 +518,28 @@ export default definePluginEntry({
                      corpus: activeMemoryAllowed ? "configured" : "sessions",
                    }
                  : undefined;
@@ -213,7 +225,7 @@ index cb691aaa6e7..241f3c595d3 100644
 +                    ),
 +            };
              const query = buildQuery({
-               latestUserMessage: event.prompt,
+               latestUserMessage: currentUserMessage,
                recentTurns,
                config: recallConfig,
              });

@@ -1,6 +1,6 @@
 # Bounded cold recall
 
-This patch applies to OpenClaw v2026.9.3. Active Memory runs a small optional
+This patch applies to OpenClaw v2026.9.6. Active Memory runs a small optional
 trigger lookup before its required recall in `always` mode. The lookup is
 lexical, but the memory manager still checks and initializes a required
 embedding provider. A cold local provider can therefore exhaust the outer
@@ -24,3 +24,8 @@ prewarming before integration.
 
 Rollback restores the previous runtime archive through the deployment wrapper.
 The patch does not change configuration or stored memory.
+
+The port retains upstream's reserve for settling the optional lookup before
+the preflight deadline. Required recall starts its existing allowance early;
+the optional lookup still gets at most 1500 milliseconds and observes owner
+cancellation. Current user-message selection and request ownership stay intact.

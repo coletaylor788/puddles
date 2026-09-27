@@ -10,7 +10,7 @@ config writers to proceed.
 
 ## Patch
 
-OpenClaw 2026.9.3 uses `@openclaw/fs-safe` 0.8.5. Upstream now serializes stale
+OpenClaw 2026.9.6 uses `@openclaw/fs-safe` 0.18.1. Upstream now serializes stale
 reclaimers with a sibling directory. That prevents overlapping writers, but a
 killed reclaimer leaves the directory behind. It also treats the persistent
 guard files from the earlier Puddles patch as permanent contention.
@@ -20,7 +20,9 @@ It uses nonblocking `O_EXLOCK`, so normal retry limits still apply. The kernel
 releases ownership after process death without deleting the persistent file.
 Both synchronous and asynchronous locks use the same guard, and process cleanup
 closes held descriptors. Symlink and non-file guards fail explicitly. Other
-platforms keep upstream behavior.
+platforms keep upstream behavior. The new root-scoped lock path retains its
+upstream ownership tokens and containment checks; the kernel guard applies to
+the existing raw-path locks used by configuration writes.
 
 The source patch registers the dependency patch and its lockfile hash. The
 original multi-process regression still pauses one stale reclaimer and proves
