@@ -44,15 +44,15 @@ flowchart TB
     Gateway <-->|"HTTPS / provider credentials"| Models
 ```
 
-### Trust boundaries from the model
+### What the boundaries protect
 
-| Boundary | Required handling |
-|---|---|
-| Network | Expose no inbound ports outside Tailscale, including on the LAN. Authenticate SSH inside it and restrict access with ACLs. Outbound connections to messaging, service APIs, and model providers keep their own authentication. |
-| Machine | Authenticate the host account for administration and deployment. Keep service credentials on the server. Authenticate remote services and authorize data sent to model providers. Delivery still requires artifact validation and release gates. |
-| Sandbox | Confine agent tools, workspaces, and mounts. Keep host credentials and the Docker control socket outside the sandbox. The gateway and adapters enforce access from the host. |
-| Host processes | Local IPC uses host-owned processes. Bind sender, caller, task, and resource scope separately from transport authentication. Keychain checks the approved credential reader's executable identity; agent processes receive no credential grant. |
-| Agent contexts | Isolate contexts by their least-privileged input ring. Reader output cannot promote itself or start follow-ups. Outward disclosure requires deterministic human approval. |
+| Boundary | Separates | Rule |
+|---|---|---|
+| Tailscale | Managed machines from outside networks | No ports exposed outside Tailscale. |
+| Machine | Development host from server | SSH requires an approved key, host account, and Tailscale access. |
+| Sandbox | Agent tools from the trusted host | Agents get only granted tools and files. Credentials stay outside the sandbox. |
+| Keychain | Host tools from stored credentials | Tools use an approved, stable credential reader. Secrets never enter agent context. |
+| Context rings | Personal, household, friends, and public | Lower rings cannot read higher rings. Sharing outward requires human approval enforced by code. |
 
 The operator, OS, gateway, reviewed adapters, and delivery tooling form the
 trusted base. Host compromise is outside the agent sandbox's protection.
