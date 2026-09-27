@@ -316,6 +316,14 @@ export async function nativePipeline(command, repositoryGates) {
       await stage(runDir, "regressions", { candidateInputs, repoInputs, installedDependencies, tools, harness, execution, prepareOutputs, extension: extension.phaseHashes.gate, command, stateMigration, buildEnvironment }, async () => {
         if (command === "ci" || command === "source-gate") await repositoryGates(run);
         await run("corepack", ["pnpm", "prompt:snapshots:check"], { cwd: candidate, env: buildEnv });
+        const typechecks = [...new Set(suite.patches.flatMap((patch) => patch.typechecks ?? []))];
+        for (const project of typechecks) {
+          if (!existsSync(join(candidate, project))) throw new Error("Mapped OpenClaw typecheck project missing");
+          await run("node", ["scripts/run-tsgo.mjs", "-p", project, "--incremental"], {
+            cwd: candidate,
+            env: buildEnv,
+          });
+        }
         const tests = [...new Set(suite.patches.flatMap((patch) => patch.tests))];
         const groups = new Map();
         for (const test of tests) {

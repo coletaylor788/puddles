@@ -282,12 +282,10 @@ index db7bf861..b329e3b0 100644
    ensureGitHubPublicationSchema(openOpenClawStateDatabase().db);
 diff --git a/src/config/sessions/session-declaration-portability.test.ts b/src/config/sessions/session-declaration-portability.test.ts
 new file mode 100644
-index 00000000..4af49877
+index 00000000..8857d2da
 --- /dev/null
 +++ b/src/config/sessions/session-declaration-portability.test.ts
-@@ -0,0 +1,230 @@
-+import { execFile } from "node:child_process";
-+import { promisify } from "node:util";
+@@ -0,0 +1,208 @@
 +import type { Kysely, Nullable, SelectQueryBuilder } from "kysely";
 +import { expectTypeOf, it } from "vitest";
 +import type { createBundleLspToolRuntime } from "../../agents/agent-bundle-lsp-runtime.js";
@@ -418,8 +416,6 @@ index 00000000..4af49877
 +    ? { database: Database; output: Output; tables: Tables }
 +    : never;
 +
-+const execFileAsync = promisify(execFile);
-+
 +type CanonicalSessionValidationBaseRow = {
 +  current_session_id: string;
 +  entry_valid: number;
@@ -498,21 +494,16 @@ index 00000000..4af49877
 +  expectTypeOf<SessionRuntimeMatchesAnnotation>().toEqualTypeOf<true>();
 +  expectTypeOf<AnnotationMatchesSessionRuntime>().toEqualTypeOf<true>();
 +});
-+
-+it("typechecks the portable declaration exports with the maintained test compiler", async () => {
-+  await execFileAsync(
-+    process.execPath,
-+    [
-+      "scripts/run-tsgo.mjs",
-+      "-p",
-+      "test/tsconfig/tsconfig.core.test.agents-sessions.json",
-+      "--incremental",
-+    ],
-+    {
-+      cwd: process.cwd(),
-+      env: process.env,
-+      maxBuffer: 4 * 1024 * 1024,
-+      timeout: 120_000,
-+    },
-+  );
-+}, 130_000);
+diff --git a/test/tsconfig/tsconfig.core.test.declaration-portability.json b/test/tsconfig/tsconfig.core.test.declaration-portability.json
+new file mode 100644
+index 00000000..ec1d06db
+--- /dev/null
++++ b/test/tsconfig/tsconfig.core.test.declaration-portability.json
+@@ -0,0 +1,7 @@
++{
++  "extends": "./tsconfig.core.test.shard.json",
++  "compilerOptions": {
++    "tsBuildInfoFile": "../../.artifacts/tsgo-cache/core-test-declaration-portability.tsbuildinfo"
++  },
++  "include": ["../../src/config/sessions/session-declaration-portability.test.ts"]
++}

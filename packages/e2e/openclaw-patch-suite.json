@@ -222,6 +222,9 @@
       "name": "core-declaration-portability",
       "tests": [
         "src/config/sessions/session-declaration-portability.test.ts"
+      ],
+      "typechecks": [
+        "test/tsconfig/tsconfig.core.test.declaration-portability.json"
       ]
     }
   ]
