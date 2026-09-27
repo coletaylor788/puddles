@@ -1,12 +1,13 @@
 ---
 name: development-loop-manager
-description: "Review recent Puddles development loops and improve their skills, scripts, and process. Focus on release safety, early feedback, wasted work, disk growth, and avoidable approval blockers."
+description: "Review recent Puddles development loops and improve their skills, scripts, and process. Put security first while improving release safety, early feedback, efficiency, and disk use."
 ---
 
 # Development Loop Manager
 
 ## Priorities
 
+- Put security first; never cut security corners for speed or convenience.
 - Protect production and preserve rollback.
 - Catch issues in local builds and tight DEV loops.
 - Support multiple contributors developing and merging to main in parallel.
@@ -26,6 +27,8 @@ the evidence into related issues.
 - Others also improve the loop. Catch up on recent changes and work in progress
   before revisiting findings or proposing fixes. Build on existing improvements;
   avoid duplicating or undoing them.
+- Look for weakened access controls, exposed secrets, unsafe handling of untrusted
+  input, and bypassed security checks.
 - Investigate every failure beyond DEV, including CI, TEST, and PROD. Identify
   what could have caught or prevented it earlier.
 - Look for recurring delays, local/CI differences, and missed integration checks.
@@ -42,7 +45,8 @@ the evidence into related issues.
 - Update the guiding skill, script, check, or process so later features benefit.
   Prefer a small reusable correction; do not manufacture fixes or new rules.
 - Follow [safe-feature-development](../safe-feature-development/SKILL.md) for
-  approval, validation, and landing. Preserve release gates and test isolation.
+  approval, validation, and landing. Preserve security controls, release gates,
+  and test isolation.
 - Use the [runner guide](../../../packages/e2e/README.md) and
   [coordination rules](../../../packages/e2e/DEPLOYMENT_COORDINATION.md) for reuse
   and cleanup. Protect other owners' work, retained evidence, and rollback state.
