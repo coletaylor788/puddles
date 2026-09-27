@@ -159,10 +159,13 @@ flowchart TB
 
 | Label | Sources | Required handling |
 |---|---|---|
-| Personal | Verified owner input, owner-only records |​ |
-| Household | Verified household input, household records |​ |
-| Friends | Verified friend input, records shared with that friend or group |​ |
-| Public | SMS, email, calendar entries, web pages | Run guards. Read through the reader agent. No turns or follow-ups. |
+| Personal | iMessage from Cole | Context rules apply. |
+| Household | iMessage from allowlisted household contacts | Context rules apply. |
+| Friends | iMessage from allowlisted friends | Context rules apply. |
+| Public | Other iMessage senders, SMS, email, calendar entries, web pages | Run guards. Read through the reader agent. No turns or follow-ups. |
+
+The host verifies the iMessage sender and checks the relevant allowlist before
+assigning a label.
 
 ### Runtime flow
 
