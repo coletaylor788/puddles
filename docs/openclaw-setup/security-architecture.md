@@ -1,5 +1,11 @@
 # Puddles security architecture
 
+**Governing principles**
+
+- No ports exposed outside Tailscale. Authenticated SSH inside Tailscale is allowed.
+- Any deviation requires explicit human approval before implementation. Update
+  this document to reflect the approved change.
+
 ## Overall threat model
 
 The host is trusted; agent tool execution is sandboxed. Each connection below
@@ -11,14 +17,16 @@ flowchart TB
     APIs["Service APIs"]
     Models["Model providers"]
 
-    subgraph Tailnet["Tailscale network boundary"]
+    subgraph Tailnet["Tailscale: no ports exposed outside"]
         subgraph DevMachine["Development host machine"]
             Developers["Agentic developers"]
         end
         subgraph Host["Server machine: trusted host"]
-            Channel["imsg channel process"]
+            Channel["iMessage channel"]
             Gateway["OpenClaw gateway and plugins"]
-            Services["Host adapters and credentials"]
+            Services["Trusted tools and adapters"]
+            CredentialReader["Stable credential reader"]
+            Keychain["macOS Keychain: credentials"]
             subgraph Sandbox["Agent tool sandbox"]
                 Tools["Tools and workspace"]
             end
@@ -30,32 +38,29 @@ flowchart TB
     Channel <-->|"RPC over stdio / host-owned child process"| Gateway
     Gateway <-->|"Docker exec / host daemon permissions"| Tools
     Gateway <-->|"MCP over stdio / host-owned child process"| Services
+    Services <-->|"Local exec and pipes / host permissions"| CredentialReader
+    CredentialReader <-->|"Keychain API / approved executable identity"| Keychain
     Services <-->|"HTTPS / service OAuth or API credentials"| APIs
     Gateway <-->|"HTTPS / provider credentials"| Models
 ```
-
-The [direct iMessage channel](02-talking-to-puddles-on-imessage.md) uses an
-`imsg rpc` child process. The legacy BlueBubbles alternative uses loopback HTTP
-and an API password. The [Gmail](../../openclaw-plugins/secure-gmail/src/mcp-bridge.ts)
-and [calendar](../../openclaw-plugins/secure-apple-calendar/src/mcp-bridge.ts)
-adapters use stdio. Local pipes and Docker access rely on host permissions.
 
 ### Trust boundaries from the model
 
 | Boundary | Required handling |
 |---|---|
-| Network | Tailscale encloses the managed machines and authenticates member devices. ACLs restrict communication inside it. External messaging, service APIs, and model providers remain outside; their connections need their own authentication. |
+| Network | Expose no inbound ports outside Tailscale, including on the LAN. Authenticate SSH inside it and restrict access with ACLs. Outbound connections to messaging, service APIs, and model providers keep their own authentication. |
 | Machine | Authenticate the host account for administration and deployment. Keep service credentials on the server. Authenticate remote services and authorize data sent to model providers. Delivery still requires artifact validation and release gates. |
 | Sandbox | Confine agent tools, workspaces, and mounts. Keep host credentials and the Docker control socket outside the sandbox. The gateway and adapters enforce access from the host. |
-| Host processes | Direct messaging RPC and stdio MCP use host-owned child processes; legacy BlueBubbles uses an HTTP API password. Bind sender, caller, task, and resource scope separately from transport authentication. |
+| Host processes | Local IPC uses host-owned processes. Bind sender, caller, task, and resource scope separately from transport authentication. Keychain checks the approved credential reader's executable identity; agent processes receive no credential grant. |
 | Agent contexts | Isolate contexts by their least-privileged input ring. Reader output cannot promote itself or start follow-ups. Outward disclosure requires deterministic human approval. |
 
 The operator, OS, gateway, reviewed adapters, and delivery tooling form the
 trusted base. Host compromise is outside the agent sandbox's protection.
 Required controls and [known gaps](#appendix-known-gaps-and-validation-limits)
-are distinguished below; this is not a live configuration audit. Upstream
-references use the release pinned in the
-[patch manifest](../../packages/e2e/openclaw-patch-suite.json), OpenClaw 2026.9.3.
+are distinguished below; this is not a live configuration audit. Upstream code
+links pin the OpenClaw 2026.9.3 source reviewed for this document. The
+[patch manifest](../../packages/e2e/openclaw-patch-suite.json) selects the current
+build revision; recheck version-specific claims when upgrading.
 
 ## Host and network architecture
 
@@ -67,7 +72,7 @@ topology, not a fresh audit of live configuration.
 ```mermaid
 flowchart TB
     External["External services"]
-    subgraph Tailnet["Tailscale network boundary"]
+    subgraph Tailnet["Tailscale: no ports exposed outside"]
         subgraph DevMachine["Development host machine"]
             Developers["Agentic developers"]
         end
@@ -75,7 +80,9 @@ flowchart TB
             Login["Administrative access"]
             Admin["Administrator account"]
             subgraph Service["Standard service account: no sudo"]
-                Gateway["Gateway, adapters, credentials"]
+                Gateway["Gateway and trusted tools and adapters"]
+                CredentialReader["Stable credential reader"]
+                Keychain["macOS Keychain: credentials"]
                 Sandboxes["Agent tool sandboxes"]
             end
         end
@@ -85,13 +92,15 @@ flowchart TB
     Login --> Admin
     Admin -->|"OS permissions"| Gateway
     Gateway -->|"Scoped tools and mounts"| Sandboxes
+    Gateway <-->|"Local exec / host permissions"| CredentialReader
+    CredentialReader <-->|"Keychain API / approved executable identity"| Keychain
     Gateway <-->|"HTTPS / service credentials"| External
 ```
 
-- **Network:** Tailscale authenticates devices; ACLs limit which machines can
-  communicate. Keep management off public listeners. The host guide also records
-  underlying VLAN hardening. Neither layer replaces sandbox network policy or
-  restricts every internet destination a host process can reach.
+- **Network:** expose no inbound ports outside Tailscale. Authenticate member
+  devices and limit communication with ACLs. Keep local IPC on loopback or pipes.
+  Outbound service connections remain allowed; Tailscale does not replace
+  sandbox network policy.
 - **SSH:** use public-key authentication. The [SSH setup](01-setting-up-your-mac-mini.md#7-ssh-with-secure-enclave-keys-touch-id)
   documents Secure Enclave-backed keys on the development host. Keep private
   keys outside agent context; Tailscale ACLs separately govern network access.
@@ -257,7 +266,7 @@ flowchart TB
     External["External systems and untrusted content"]
     subgraph Host["Trusted host"]
         Admission["Gateway admission, ring, and turn context"]
-        Secrets["Private credentials and session state"]
+        Secrets["Host credential reader and Keychain"]
         Adapter["Scoped host service adapter"]
         Ingress["Injection and secret checks"]
         Egress["Action, audience, and human approval checks"]
@@ -324,6 +333,16 @@ name as proof of external-harness containment.
 The [household architecture](../plans/completed/022-household-and-friends-tiers.md)
 records scoped tools, separate workers, and owner-mediated relay controls.
 
+#### Channels and adapters
+
+- The [iMessage channel](02-talking-to-puddles-on-imessage.md) runs `imsg rpc`
+  as a host-owned child process over stdio. Bind channel identity and sender
+  allowlists before admission; incoming text retains its public context label.
+- The [Gmail](../../openclaw-plugins/secure-gmail/src/mcp-bridge.ts) and
+  [calendar](../../openclaw-plugins/secure-apple-calendar/src/mcp-bridge.ts)
+  bridges use MCP over stdio to host-owned processes. Caller scope and tool
+  grants constrain access; a trusted transport does not make results trusted.
+
 #### Credentials and external access
 
 - Keep API keys, OAuth tokens, gateway credentials, browser cookies, and refresh
@@ -345,6 +364,33 @@ Calendar uses a host MCP bridge and per-agent account visibility through
 [its configured scope](../../openclaw-plugins/secure-apple-calendar/README.md).
 The proposed [provider service](../plans/031-rocket-money-integration.md) applies
 this pattern to additional CLIs; it is not a deployed universal access broker.
+
+##### Stable credential identity
+
+The [Gmail Keychain backend](../../servers/gmail-mcp/src/gmail_mcp/keychain.py)
+invokes `/usr/bin/security`, an Apple-signed executable, instead of granting the
+changing Python interpreter access to the item. Node-based host consumers can
+use the same pattern. Keychain approves the executable identity, not a PID or
+the identity of the interpreter that spawned it.
+
+- New Gmail items trust `/usr/bin/security`; credential refresh preserves the
+  existing item ACL. Reads and writes have a five-second timeout. Credentials
+  return only to the trusted host consumer, never the agent tool result.
+- Interpreter upgrades leave that credential reader unchanged. The local
+  executable's signing requirement is `com.apple.security` anchored to Apple;
+  live item ACLs and the unlocked login Keychain still need verification.
+- This is a same-user host trust boundary. Other code running as that user can
+  invoke the approved reader too; executable identity is not per-agent isolation.
+- The [custom signed helper](https://github.com/coletaylor788/puddles/pull/29)
+  is a separate, unmerged implementation. It keeps the exact approved binary
+  unchanged and reads allowlisted items; replacing that binary requires human
+  reapproval even when its signing requirement matches. Do not assume every
+  consumer has migrated to it.
+
+[Apple-PIM's launcher](apple-pim/README.md) solves the related macOS privacy
+permission problem by making the native CLI its own responsible process, so
+Node upgrades do not change the granted identity. Those TCC grants are separate
+from Keychain item access and need renewal when the approved CLI is rebuilt.
 
 #### Untrusted content and the reader
 
@@ -438,7 +484,8 @@ configuration and all relevant paths are verified.
 | Area | Limit or gap |
 |---|---|
 | Trust rings and disclosure | Household scoping is documented, but friends/public populations, provenance propagation, and an exact-content human approval gate for every outward path are not established. Contact trust and model classification cannot substitute for these controls. |
-| Network and credential custody | The older [sandbox guide](03-openclaw-and-agent-sandboxing.md) describes network-enabled containers. The [persistent browser design](../plans/completed/023-durable-browser-agent-login.md) mounts a credential-bearing profile into a browser container. Those are exceptions to strict host-only external access and credential custody, not proof that the required boundary is met. |
+| Network exposure | The [older host setup](01-setting-up-your-mac-mini.md) allows direct LAN SSH. That conflicts with the no-exposure-outside-Tailscale policy. Effective listener bindings and firewall rules need verification; this document does not change them. |
+| Sandbox network and credential custody | The older [sandbox guide](03-openclaw-and-agent-sandboxing.md) describes network-enabled containers. The [persistent browser design](../plans/completed/023-durable-browser-agent-login.md) mounts a credential-bearing profile into a browser container. Those are exceptions to strict host-only external access and credential custody, not proof that the required boundary is met. |
 | Reader-only routing | Gmail/calendar factories rely on configured tool grants for reader/main separation. Older setup examples grant main search and readers session messaging. Attachments, images, browser results, errors, and metadata need path-specific review; there is no repository-wide reader gate. |
 | Raw result retention | Both [Gmail](../../openclaw-plugins/secure-gmail/src/wrap-tool.ts) and [calendar](../../openclaw-plugins/secure-apple-calendar/src/wrap-tool.ts) retain `details.original` after redaction. That keeps raw data available to result persistence/consumers even when visible text is redacted. Do not treat the returned object as sanitized. |
 | Classifier contracts | Guards block recognized provider/parse errors, but [boolean classification](../../packages/mcp-hooks/src/classify.ts) coerces `detected` instead of validating a strict response schema. Parseable malformed objects can escape the intended fail-closed contract. Model decisions also remain probabilistic. |
