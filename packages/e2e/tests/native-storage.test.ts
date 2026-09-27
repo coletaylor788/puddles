@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, statfsSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statfsSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 // @ts-expect-error Executable JavaScript module.
 import { initializeStorage, registerScratch, storageHold, sealScratch, planStorageCleanup, applyStorageCleanup, reserveStorage, releaseStorage } from "../src/native-storage.mjs";
 // @ts-expect-error Executable JavaScript module.
-import { finalizeScratch, finalizeFailedNativeBuild } from "../src/native-storage-finalize.mjs";
+import { finalizeScratch, finalizeFailedNativeBuild, retainCompletedOperationLog } from "../src/native-storage-finalize.mjs";
 // @ts-expect-error Executable JavaScript module.
 import { treeDigest } from "../src/native-state.mjs";
 
@@ -151,4 +151,24 @@ it("bounds failed local builder attempts as groups while preserving source and r
     expect(existsSync(join(build, "source", ".git"))).toBe(true);
     expect(existsSync(join(build, "run-status.json"))).toBe(true);
   }
+});
+
+
+it("archives completed draft logs once and expires their compressed diagnostics", async () => {
+  const root = fixture();
+  mkdirSync(join(root, "logs"));
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const log = `logs/prepare-${attempt}.log`;
+    writeFileSync(join(root, log), `attempt ${attempt}: ${"diagnostic".repeat(10000)}`);
+    const reference = retainCompletedOperationLog(root, log, "task");
+    expect(existsSync(join(root, log))).toBe(false);
+    expect(JSON.parse(readFileSync(join(root, `${log}.reference.json`), "utf8"))).toEqual(reference);
+    expect(existsSync(join(reference.pool, "objects", reference.objectId, "logs.tar.gz"))).toBe(true);
+  }
+  expect(readdirSync(join(root, "logs")).every(name => name.endsWith(".reference.json"))).toBe(true);
+  // @ts-expect-error Executable JavaScript module.
+  const { applyArtifactCleanup } = await import("../src/native-retention.mjs");
+  const pool = join(root, "draft-controller/log-pool");
+  applyArtifactCleanup(pool, new Date(Date.now() + 31 * 86400000));
+  expect(readdirSync(join(pool, "objects"))).toEqual([]);
 });

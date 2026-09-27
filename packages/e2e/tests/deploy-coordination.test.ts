@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir, hostname } from "node:os";
 import { join } from "node:path";
@@ -49,6 +49,23 @@ function setup() {
 }
 
 describe("shared deployment queue and merged batch ownership", () => {
+  it("isolates unit targets from inherited host slots while enforcing explicit records", () => {
+    const f = setup();
+    const target = { host: hostname(), port: 18000 };
+    try {
+      vi.stubEnv("PUDDLES_DEPLOY_COORDINATION", f.path);
+      expect(() => assertDeploymentOwnership(target, "PROD")).toThrow("registered deployment environment");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(assertDeploymentOwnership(target, "PROD")).toBeNull();
+    expect(process.env.PUDDLES_DEPLOY_REQUEST_ID).toBe("");
+    expect(process.env.PUDDLES_DEPLOY_TOKEN).toBe("");
+    const registered = { ...target, coordination: { path: f.path } };
+    expect(() => assertDeploymentOwnership(registered, "PROD")).toThrow("registered deployment environment");
+    expect(() => assertDeploymentOwnership(registered, "DEV")).toThrow("another request");
+  });
+
   it("enforces FIFO, idempotent signup, and atomic ownership before notification", () => {
     const f = setup(); const a = f.enqueue("a"); const b = f.enqueue("b");
     expect(f.enqueue("a").token).toBe(a.token);

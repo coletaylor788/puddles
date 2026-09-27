@@ -43,6 +43,12 @@ move or prune the store under a running install.
 Keep one ready DEV payload per task plus an in-flight replacement. Hold the old
 payload until transfer, installation, and installed checks acknowledge it.
 Reuse output compatibility checks; never share writable build output across tasks.
+The companion prepare/draft controller serializes these operations. A completed
+preparation can explicitly supersede an idle ready payload. A successful draft
+installation retires its local payload and transfer lists. It preserves manifests
+and results, retains failed output under the failed-attempt policy, and refuses
+unknown legacy payloads until their owner migrates them. An interrupted operation
+keeps its hold and pending record for owner recovery.
 
 ## 2. Reserve capacity before a build
 

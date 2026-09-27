@@ -32,6 +32,9 @@ const agents = mode === "legacy-config"
       ...(index === 0 ? { workspace: "~/synthetic-workspace" } : {}),
     })) }
   : { ownership: "explicit", entries: { fixture: { workspace: "~/synthetic-workspace" } } };
+if (mode === "authored-model") {
+  agents.defaults = { model: { primary: "fixture/authored", fallbacks: ["fixture/synthetic"] } };
+}
 const original = {
   agents,
   memory: mode === "include" ? { $include: "memory.json" } : memory,
@@ -59,7 +62,10 @@ const original = {
   models: { providers: { fixture: {
     baseUrl: "http://127.0.0.1:9/v1", api: "openai-completions",
     apiKey: { source: "env", provider: "default", id: "FIXTURE_KEY" },
-    models: [{ id: "synthetic", name: "Synthetic" }],
+    models: [
+      { id: "synthetic", name: "Synthetic" },
+      ...(mode === "authored-model" ? [{ id: "authored", name: "Authored" }] : []),
+    ],
   } } },
 };
 writeFileSync(configPath, JSON.stringify(original));
@@ -131,7 +137,7 @@ if (mode === "legacy") {
   assert.equal(treeDigest(stateDir), digestBefore, "config snapshot must not mutate target state");
   configSdk.previewLegacyConfigRepair(snapshot);
   assert.equal(treeDigest(stateDir), digestBefore, "config preview must not mutate target state");
-  await sdk.loadCronJobsStoreWithConfigJobsReadOnly(storePath, process.env);
+  await sdk.loadCronJobsStoreWithConfigJobsReadOnly(storePath, process.env, { artifactPreservingReadOnly: true });
   assert.equal(treeDigest(stateDir), digestBefore, "cron snapshot must not mutate target state");
 }
 const expectedBuiltIn = await executeStateMigration({ ...options, phase: "preflight" });
@@ -153,7 +159,12 @@ if (mode === "legacy-config") {
   assert.equal(written.plugins.entries["active-memory"].enabled, true);
   assert.deepEqual(written.plugins.entries.canvas.config.host, { enabled: true });
 } else {
-  assert.deepEqual(written.agents, original.agents, "authored tilde paths must survive");
+  // Doctor preserves the old implicit primary when separating utility models.
+  // Include-owned writes leave the root roster alone; an authored model stays exact.
+  const expectedAgents = ["include", "authored-model"].includes(mode)
+    ? original.agents
+    : { ...original.agents, defaults: { model: { primary: "fixture/synthetic" } } };
+  assert.deepEqual(written.agents, expectedAgents, "authored agents and the prior model choice must survive");
 }
 assert.deepEqual(written.models, original.models, "authored secret references must survive");
 if (mode === "include") {

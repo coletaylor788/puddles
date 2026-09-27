@@ -1,0 +1,653 @@
+diff --git a/src/agents/bash-tools.exec-run.ts b/src/agents/bash-tools.exec-run.ts
+index 61190f3a..bed5804e 100644
+--- a/src/agents/bash-tools.exec-run.ts
++++ b/src/agents/bash-tools.exec-run.ts
+@@ -739,4 +739,4 @@ export function createExecTool(
+ }
+ 
+ /** Default exec tool instance used by agent tool registries. */
+-export const execTool = createExecTool();
++export const execTool: AgentToolWithMeta<typeof execSchema, ExecToolDetails> = createExecTool();
+diff --git a/src/agents/bash-tools.process.ts b/src/agents/bash-tools.process.ts
+index 87d3e425..a553ba76 100644
+--- a/src/agents/bash-tools.process.ts
++++ b/src/agents/bash-tools.process.ts
+@@ -677,4 +677,4 @@ export function createProcessTool(
+ }
+ 
+ /** Shared process-control tool instance used by the default Bash tool barrel. */
+-export const processTool = createProcessTool();
++export const processTool: AgentToolWithMeta<typeof processSchema, unknown> = createProcessTool();
+diff --git a/src/agents/embedded-agent-runner/run/attempt-bundle-tools.ts b/src/agents/embedded-agent-runner/run/attempt-bundle-tools.ts
+index ebeedec4..0b154fbd 100644
+--- a/src/agents/embedded-agent-runner/run/attempt-bundle-tools.ts
++++ b/src/agents/embedded-agent-runner/run/attempt-bundle-tools.ts
+@@ -15,6 +15,7 @@ import { createRuntimeToolMatcher } from "../../tool-policy-match.js";
+ import { replaceWithEffectiveToolAllowlist } from "../../tool-policy.js";
+ import { filterRuntimeCompatibleTools } from "../../tool-schema-projection.js";
+ import { logRuntimeToolSchemaQuarantine } from "../../tool-schema-quarantine.js";
++import type { AnyAgentTool } from "../../tools/common.js";
+ import { captureFinalEffectiveCronCreatorToolAllowlist } from "../../tools/cron-tool.js";
+ import { applyFinalEffectiveToolPolicy } from "../effective-tool-policy.js";
+ import { log } from "../logger.js";
+@@ -29,13 +30,22 @@ import type { EmbeddedRunAttemptParams } from "./types.js";
+ 
+ type PreparedToolBase = Awaited<ReturnType<typeof prepareEmbeddedAttemptToolBase>>;
+ 
++type PreparedEmbeddedAttemptBundleTools = {
++  bundleLspRuntime: Awaited<ReturnType<typeof createBundleLspToolRuntime>> | undefined;
++  bundleMcpRuntime: Awaited<ReturnType<typeof materializeBundleMcpToolsForRun>> | undefined;
++  clientTools: EmbeddedRunAttemptParams["clientTools"];
++  tools: ReturnType<typeof normalizeAgentRuntimeTools>;
++  uncompactedEffectiveTools: AnyAgentTool[];
++  refreshTools: () => void;
++};
++
+ export async function prepareEmbeddedAttemptBundleTools(params: {
+   agentDir: string;
+   attempt: EmbeddedRunAttemptParams;
+   setup: EmbeddedAttemptSetup;
+   isRawModelRun: boolean;
+   preparedToolBase: PreparedToolBase;
+-}) {
++}): Promise<PreparedEmbeddedAttemptBundleTools> {
+   const {
+     cronCreatorToolAllowlist,
+     cronCreatorToolAllowlistCaptureRef,
+diff --git a/src/agents/embedded-agent-runner/run/attempt-client-tools.ts b/src/agents/embedded-agent-runner/run/attempt-client-tools.ts
+index 904ac459..d9391c35 100644
+--- a/src/agents/embedded-agent-runner/run/attempt-client-tools.ts
++++ b/src/agents/embedded-agent-runner/run/attempt-client-tools.ts
+@@ -13,6 +13,7 @@ import { isCodeModeExecTool } from "../../code-mode-control-tools.js";
+ import { addClientToolsToCodeModeCatalog } from "../../code-mode.js";
+ import { isCoreToolResultMediaTrustedName } from "../../embedded-agent-tool-media.js";
+ import type { AgentTool } from "../../runtime/index.js";
++import type { ToolDefinition } from "../../sessions/index.js";
+ import {
+   createToolDefinitionFromAgentTool,
+   wrapToolDefinition,
+@@ -33,6 +34,21 @@ import {
+ import { splitSdkTools } from "../tool-split.js";
+ import type { EmbeddedAttemptClientToolCallSlot, EmbeddedRunAttemptParams } from "./types.js";
+ 
++export type PreparedEmbeddedAttemptClientTools = {
++  allCustomTools: ToolDefinition[];
++  builtinToolNames: Set<string>;
++  clientToolCallSlots: EmbeddedAttemptClientToolCallSlot[];
++  clientToolDefs: ToolDefinition[];
++  codeModeExecToolNames: Set<string>;
++  coreBuiltinToolNames: Set<string>;
++  refreshTools: () => void;
++  replaySafeToolNames: Set<string>;
++  replaySafeTools: Set<AgentTool>;
++  sessionToolAllowlist: string[];
++  sideEffectToolOwners: Map<string, string>;
++  trustedLocalMediaToolNames: Set<string>;
++};
++
+ export function prepareEmbeddedAttemptClientTools(params: {
+   attempt: EmbeddedRunAttemptParams;
+   catalogToolHookContext: Parameters<typeof splitSdkTools>[0]["toolHookContext"];
+@@ -48,7 +64,7 @@ export function prepareEmbeddedAttemptClientTools(params: {
+   uncompactedEffectiveTools: AgentTool[];
+   clientTools: EmbeddedRunAttemptParams["clientTools"];
+   getToolAbortSignal?: () => AbortSignal;
+-}) {
++}): PreparedEmbeddedAttemptClientTools {
+   // Reserve synchronously so parallel client-tool batches preserve assistant source order.
+   const clientToolCallSlots: EmbeddedAttemptClientToolCallSlot[] = [];
+   const clientToolCallSlotIndexes = new Map<string, number>();
+diff --git a/src/agents/embedded-agent-runner/run/attempt-session-prepare.ts b/src/agents/embedded-agent-runner/run/attempt-session-prepare.ts
+index 8743416e..b3954896 100644
+--- a/src/agents/embedded-agent-runner/run/attempt-session-prepare.ts
++++ b/src/agents/embedded-agent-runner/run/attempt-session-prepare.ts
+@@ -42,7 +42,10 @@ import { buildEmbeddedExtensionFactories } from "../extensions.js";
+ import { log } from "../logger.js";
+ import { createEmbeddedAgentResourceLoader } from "../resource-loader.js";
+ import { applySystemPromptToSession } from "../system-prompt.js";
+-import { prepareEmbeddedAttemptClientTools } from "./attempt-client-tools.js";
++import {
++  prepareEmbeddedAttemptClientTools,
++  type PreparedEmbeddedAttemptClientTools,
++} from "./attempt-client-tools.js";
+ import type { AttemptContextEngine } from "./attempt-context-engine-helpers.js";
+ import { resolveAttemptTranscriptPolicy } from "./attempt-history.js";
+ import { normalizeMessagesForLlmBoundary } from "./attempt-llm-boundary.js";
+@@ -80,6 +83,21 @@ type ClientToolPreparation = Omit<
+ 
+ type AttemptSessionManager = ReturnType<typeof guardSessionManager>;
+ 
++type PreparedEmbeddedAttemptAgentSession = Omit<
++  PreparedEmbeddedAttemptClientTools,
++  "sessionToolAllowlist"
++> & {
++  activeSession: AgentSession;
++  hasDeliveredSourceReply: () => boolean;
++  hookRunner: ReturnType<typeof getGlobalHookRunner>;
++  markSourceReplyDelivered: () => void;
++  setActiveSessionSystemPrompt: (nextSystemPrompt: string) => string;
++  setPermissionPromptPreparation: (
++    prepare?: () => Promise<(prompt: string) => string>,
++  ) => void;
++  settingsManager: ReturnType<typeof createPreparedEmbeddedAgentSettingsManager>;
++};
++
+ /** Prepares resource loading, client tools, and the active agent session. */
+ export async function prepareEmbeddedAttemptAgentSession(input: {
+   attempt: EmbeddedRunAttemptParams;
+@@ -98,7 +116,7 @@ export async function prepareEmbeddedAttemptAgentSession(input: {
+   transcriptLifecycle: EmbeddedAttemptTranscriptLifecycle;
+   sessionManager: AttemptSessionManager;
+   prepareInitialUserTurnReplay?: InitialUserTurnReplayPreparation;
+-}) {
++}): Promise<PreparedEmbeddedAttemptAgentSession> {
+   const { attempt } = input;
+   const settingsManager = createPreparedEmbeddedAgentSettingsManager({
+     cwd: input.effectiveCwd,
+diff --git a/src/agents/embedded-agent-runner/run/attempt-session-runtime-prepare.ts b/src/agents/embedded-agent-runner/run/attempt-session-runtime-prepare.ts
+index eed42c0a..c2a5a87a 100644
+--- a/src/agents/embedded-agent-runner/run/attempt-session-runtime-prepare.ts
++++ b/src/agents/embedded-agent-runner/run/attempt-session-runtime-prepare.ts
+@@ -39,6 +39,26 @@ type EmbeddedAttemptSessionRuntimeState = {
+   systemPromptText: string;
+ };
+ 
++type PreparedSessionManager = Awaited<ReturnType<typeof prepareEmbeddedAttemptSessionManager>>;
++
++type PreparedEmbeddedAttemptSessionRuntime = {
++  agentSession: Awaited<ReturnType<typeof prepareEmbeddedAttemptAgentSession>>;
++  anthropicPayloadLogger: ReturnType<typeof createAnthropicPayloadLogger>;
++  boundary: Awaited<ReturnType<typeof prepareEmbeddedAttemptSessionBoundary>>;
++  cacheTrace: ReturnType<typeof createCacheTrace>;
++  contextGuards: ReturnType<typeof installEmbeddedAttemptContextGuards>;
++  isOpenAIResponsesApi: PreparedSessionManager["isOpenAIResponsesApi"];
++  preparedUserTurnMessage: PreparedSessionManager["preparedUserTurnMessage"];
++  sessionManager: PreparedSessionManager["sessionManager"];
++  sessionPromptState: ReturnType<typeof getEmbeddedSessionPromptState>;
++  settleTracker: SessionSettleTracker;
++  state: EmbeddedAttemptSessionRuntimeState;
++  toolResultPromptProjectionState: ReturnType<typeof getEmbeddedSessionPromptState>["toolResults"];
++  trajectoryRecorder: Awaited<ReturnType<typeof prepareEmbeddedAttemptTrajectory>>;
++  transcriptPolicy: PreparedSessionManager["transcriptPolicy"];
++  transport: Awaited<ReturnType<typeof prepareEmbeddedAttemptTransport>>;
++};
++
+ export async function prepareEmbeddedAttemptSessionRuntime(input: {
+   attempt: EmbeddedRunAttemptParams;
+   activeContextEngine?: AttemptContextEngine;
+@@ -58,7 +78,7 @@ export async function prepareEmbeddedAttemptSessionRuntime(input: {
+     abortActiveSession: SessionSettleTracker["abortActiveSession"];
+     activeSession: AgentSession;
+   }) => void;
+-}) {
++}): Promise<PreparedEmbeddedAttemptSessionRuntime> {
+   const { attempt, resources, runAbortSignal, sessionLock, toolBase } = input;
+   const {
+     agentCoreThinkingLevel,
+diff --git a/src/config/plugin-install-record-map.ts b/src/config/plugin-install-record-map.ts
+index 1490f682..e00ccf9a 100644
+--- a/src/config/plugin-install-record-map.ts
++++ b/src/config/plugin-install-record-map.ts
+@@ -2,7 +2,9 @@ import { isRecord } from "@openclaw/normalization-core/record-coerce";
+ import type { PluginInstallRecord } from "./types.plugins.js";
+ import { StrictPluginInstallRecordSchema } from "./zod-schema.installs.js";
+ 
+-export const PluginInstallRecordSchema = StrictPluginInstallRecordSchema.passthrough();
++export const PluginInstallRecordSchema: ReturnType<
++  typeof StrictPluginInstallRecordSchema.passthrough
++> = StrictPluginInstallRecordSchema.passthrough();
+ 
+ const NORMALIZED_STRING_FIELDS = [
+   "spec",
+diff --git a/src/config/sessions/session-accessor.sqlite-read.ts b/src/config/sessions/session-accessor.sqlite-read.ts
+index c700a0d4..648a0e6f 100644
+--- a/src/config/sessions/session-accessor.sqlite-read.ts
++++ b/src/config/sessions/session-accessor.sqlite-read.ts
+@@ -1,4 +1,5 @@
+ import { isRecord } from "@openclaw/normalization-core/record-coerce";
++import type { SelectQueryBuilder } from "kysely";
+ import {
+   executeSqliteQuerySync,
+   executeSqliteQueryTakeFirstSync,
+@@ -31,6 +32,7 @@ import {
+   getSessionKysely,
+   resolveSqliteTranscriptReadScope,
+   toDatabaseOptions,
++  type SessionSqliteDatabase,
+   type SessionSqliteTargetResolutionCache,
+   type ResolvedTranscriptReadScope,
+ } from "./session-accessor.sqlite-scope.js";
+@@ -341,7 +343,7 @@ export function prepareTranscriptEventReadQuery(
+     beforeEventSeq?: number;
+     maxEventBytes?: number;
+   } = {},
+-) {
++): SelectQueryBuilder<SessionSqliteDatabase, "transcript_events", Partial<Omit<unknown, never>>> {
+   const { beforeEventSeq, maxEventBytes } = options;
+   const db = getSessionKysely(database.db);
+   if (maxEventBytes !== undefined && Number.isFinite(maxEventBytes) && maxEventBytes >= 0) {
+diff --git a/src/config/sessions/session-accessor.sqlite-scope.ts b/src/config/sessions/session-accessor.sqlite-scope.ts
+index 3a0527ac..ff07eae2 100644
+--- a/src/config/sessions/session-accessor.sqlite-scope.ts
++++ b/src/config/sessions/session-accessor.sqlite-scope.ts
+@@ -4,6 +4,7 @@ import { channel } from "node:diagnostics_channel";
+ import { performance } from "node:perf_hooks";
+ import { isMainThread, threadId } from "node:worker_threads";
+ import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
++import type { Kysely } from "kysely";
+ import { formatErrorMessageWithCode } from "../../infra/errors.js";
+ import { getNodeSqliteKysely } from "../../infra/kysely-sync.js";
+ import { withSqliteReaderOwner } from "../../infra/sqlite-reader-lifecycle.js";
+@@ -50,7 +51,7 @@ import {
+ import { normalizeStoreSessionKey } from "./store-entry.js";
+ import type { InternalSessionEntry, SessionEntry } from "./types.js";
+ 
+-type SessionSqliteDatabase = Pick<
++export type SessionSqliteDatabase = Pick<
+   OpenClawAgentKyselyDatabase,
+   | "acp_parent_stream_events"
+   | "board_tabs"
+@@ -128,7 +129,9 @@ export function transcriptWriteScopeIsCurrent(
+   );
+ }
+ 
+-export function getSessionKysely(database: import("node:sqlite").DatabaseSync) {
++export function getSessionKysely(
++  database: import("node:sqlite").DatabaseSync,
++): Kysely<SessionSqliteDatabase> {
+   return getNodeSqliteKysely<SessionSqliteDatabase>(database);
+ }
+ 
+diff --git a/src/config/sessions/session-canonical-key.ts b/src/config/sessions/session-canonical-key.ts
+index 3466f61a..ced8216e 100644
+--- a/src/config/sessions/session-canonical-key.ts
++++ b/src/config/sessions/session-canonical-key.ts
+@@ -1,4 +1,5 @@
+ import type { DatabaseSync } from "node:sqlite";
++import type { Nullable, SelectQueryBuilder } from "kysely";
+ import { registerNodeSqliteDisposeCallback } from "../../infra/kysely-sync-cache-state.js";
+ import {
+   executeSqliteQuerySync,
+@@ -33,7 +34,10 @@ import {
+   hasOpenClawAgentCanonicalValidation,
+   markOpenClawAgentCanonicalValidation,
+ } from "../../state/openclaw-agent-db-validation-cache.js";
+-import type { DB as OpenClawAgentKyselyDatabase } from "../../state/openclaw-agent-db.generated.js";
++import type {
++  DB as OpenClawAgentKyselyDatabase,
++  SessionWindows,
++} from "../../state/openclaw-agent-db.generated.js";
+ import {
+   hasSqliteSessionOwnerColumns,
+   projectSqliteSessionOwner,
+@@ -57,6 +61,34 @@ type CanonicalSessionDatabase = Pick<
+   | "session_windows"
+   | "session_canonical_validation_pending"
+ >;
++
++type CanonicalSessionValidationBaseRow = {
++  current_session_id: string;
++  entry_valid: number;
++  fork_source_session_key: string | null;
++  parent_session_key: string | null;
++  retained_window_id: string | null;
++  session_key: string;
++  spawned_by: string | null;
++};
++
++type CanonicalSessionValidationRow = CanonicalSessionValidationBaseRow & {
++  entry_json: string;
++} & Partial<
++    Omit<{ updated_at: number }, keyof (CanonicalSessionValidationBaseRow & { entry_json: string })>
++  > &
++  Partial<
++    Omit<
++      {
++        owner_actor_id: string | null;
++        owner_actor_type: string | null;
++        owner_assigned_at: number | null;
++        owner_assigned_by_id: string | null;
++        owner_assigned_by_type: string | null;
++      },
++      keyof (CanonicalSessionValidationBaseRow & { entry_json: string; updated_at: number })
++    >
++  >;
+ const mainKeyReaders = new WeakMap<DatabaseSync, () => { main_key: string } | undefined>();
+ 
+ type ReaderAdmission = {
+@@ -395,7 +427,11 @@ export function assertCanonicalSessionKeyWriteMatchesDatabase(
+ export function canonicalSessionValidationQuery(
+   database: { db: DatabaseSync },
+   options: { fullEntries?: boolean; metadata?: boolean } = {},
+-) {
++): SelectQueryBuilder<
++  CanonicalSessionDatabase & { retained_window: Nullable<SessionWindows> },
++  "session_nodes" | "retained_window",
++  CanonicalSessionValidationRow
++> {
+   return (
+     getNodeSqliteKysely<CanonicalSessionDatabase>(database.db)
+       .selectFrom("session_nodes")
+diff --git a/src/config/sessions/session-sharing-store.kernel.ts b/src/config/sessions/session-sharing-store.kernel.ts
+index 0dccd553..0c5bf086 100644
+--- a/src/config/sessions/session-sharing-store.kernel.ts
++++ b/src/config/sessions/session-sharing-store.kernel.ts
+@@ -1,3 +1,4 @@
++import type { Kysely } from "kysely";
+ import {
+   executeSqliteQuerySync,
+   executeSqliteQueryTakeFirstSync,
+@@ -32,7 +33,9 @@ export function listSessionMembersInDatabase(
+ 
+ type SessionMemberDatabase = Pick<OpenClawAgentKyselyDatabase, "session_members">;
+ 
+-export function getSessionMemberKysely(database: Pick<OpenClawAgentDatabase, "db">) {
++export function getSessionMemberKysely(
++  database: Pick<OpenClawAgentDatabase, "db">,
++): Kysely<SessionMemberDatabase> {
+   return getNodeSqliteKysely<SessionMemberDatabase>(database.db);
+ }
+ 
+diff --git a/src/gateway/github-publication-store.ts b/src/gateway/github-publication-store.ts
+index db7bf861..b329e3b0 100644
+--- a/src/gateway/github-publication-store.ts
++++ b/src/gateway/github-publication-store.ts
+@@ -1,4 +1,5 @@
+ import { createHash } from "node:crypto";
++import type { Kysely } from "kysely";
+ import type { SessionGitHubPublicationResult } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
+ import type { PreparedGitHubPublicationIdentity } from "../agents/github-tool-identity.js";
+ import type { SessionEntry } from "../config/sessions/types.js";
+@@ -65,8 +66,9 @@ function publicationFailureCode(value: string): PublicationFailureCode {
+   return PUBLICATION_FAILURE_CODES.has(value) ? (value as PublicationFailureCode) : "unavailable";
+ }
+ 
+-export const githubPublicationDatabase = (db: Parameters<typeof getNodeSqliteKysely>[0]) =>
+-  getNodeSqliteKysely<GitHubPublicationDatabase>(db);
++export const githubPublicationDatabase = (
++  db: Parameters<typeof getNodeSqliteKysely>[0],
++): Kysely<GitHubPublicationDatabase> => getNodeSqliteKysely<GitHubPublicationDatabase>(db);
+ 
+ export function ensureGitHubPublicationStore(): void {
+   ensureGitHubPublicationSchema(openOpenClawStateDatabase().db);
+diff --git a/src/config/sessions/session-declaration-portability.test.ts b/src/config/sessions/session-declaration-portability.test.ts
+new file mode 100644
+index 00000000..8857d2da
+--- /dev/null
++++ b/src/config/sessions/session-declaration-portability.test.ts
+@@ -0,0 +1,262 @@
++import type { Kysely, Nullable, SelectQueryBuilder } from "kysely";
++import { expectTypeOf, it } from "vitest";
++import type { createBundleLspToolRuntime } from "../../agents/agent-bundle-lsp-runtime.js";
++import type { materializeBundleMcpToolsForRun } from "../../agents/agent-bundle-mcp-tools.js";
++import type { createPreparedEmbeddedAgentSettingsManager } from "../../agents/agent-project-settings.js";
++import type { createAnthropicPayloadLogger } from "../../agents/anthropic-payload-log.js";
++import type { execTool } from "../../agents/bash-tools.exec-run.js";
++import type { ExecToolDetails } from "../../agents/bash-tools.exec-types.js";
++import type { processTool } from "../../agents/bash-tools.process.js";
++import { execSchema, processSchema } from "../../agents/bash-tools.schemas.js";
++import type { createCacheTrace } from "../../agents/cache-trace.js";
++import type { prepareEmbeddedAttemptClientTools } from "../../agents/embedded-agent-runner/run/attempt-client-tools.js";
++import type { prepareEmbeddedAttemptBundleTools } from "../../agents/embedded-agent-runner/run/attempt-bundle-tools.js";
++import type {
++  prepareEmbeddedAttemptAgentSession,
++  prepareEmbeddedAttemptSessionBoundary,
++  prepareEmbeddedAttemptSessionManager,
++} from "../../agents/embedded-agent-runner/run/attempt-session-prepare.js";
++import type { prepareEmbeddedAttemptSessionRuntime } from "../../agents/embedded-agent-runner/run/attempt-session-runtime-prepare.js";
++import type { createEmbeddedAttemptSessionSettleTracker } from "../../agents/embedded-agent-runner/run/attempt-session-settle.js";
++import type { installEmbeddedAttemptContextGuards } from "../../agents/embedded-agent-runner/run/attempt-setup.js";
++import type { prepareEmbeddedAttemptTransport } from "../../agents/embedded-agent-runner/run/attempt-stream-settle.js";
++import type { prepareEmbeddedAttemptTrajectory } from "../../agents/embedded-agent-runner/run/attempt-trajectory.js";
++import type {
++  EmbeddedAttemptClientToolCallSlot,
++  EmbeddedRunAttemptParams,
++  EmbeddedRunAttemptResult,
++} from "../../agents/embedded-agent-runner/run/types.js";
++import type { getEmbeddedSessionPromptState } from "../../agents/embedded-agent-runner/session-prompt-state.js";
++import type { normalizeAgentRuntimeTools } from "../../agents/runtime-plan/tools.js";
++import type { AgentTool } from "../../agents/runtime/index.js";
++import type { AgentSession, ToolDefinition } from "../../agents/sessions/index.js";
++import type { AgentToolWithMeta, AnyAgentTool } from "../../agents/tools/common.js";
++import type { githubPublicationDatabase } from "../../gateway/github-publication-store.js";
++import type { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
++import type {
++  DB as OpenClawAgentKyselyDatabase,
++  SessionWindows,
++} from "../../state/openclaw-agent-db.generated.js";
++import type { DB as OpenClawStateKyselyDatabase } from "../../state/openclaw-state-db.generated.js";
++import type { PluginInstallRecordSchema } from "../plugin-install-record-map.js";
++import { StrictPluginInstallRecordSchema } from "../zod-schema.installs.js";
++import type { prepareTranscriptEventReadQuery } from "./session-accessor.sqlite-read.js";
++import type { getSessionKysely } from "./session-accessor.sqlite-scope.js";
++import type { canonicalSessionValidationQuery } from "./session-canonical-key.js";
++import type { getSessionMemberKysely } from "./session-sharing-store.kernel.js";
++
++type CanonicalSessionDatabase = Pick<
++  OpenClawAgentKyselyDatabase,
++  | "schema_meta"
++  | "session_key_contract"
++  | "session_nodes"
++  | "session_windows"
++  | "session_canonical_validation_pending"
++>;
++
++type SessionSqliteDatabase = Pick<
++  OpenClawAgentKyselyDatabase,
++  | "acp_parent_stream_events"
++  | "board_tabs"
++  | "board_widgets"
++  | "conversation_deliveries"
++  | "conversations"
++  | "heartbeat_outcomes"
++  | "session_conversations"
++  | "session_goal_operations"
++  | "session_members"
++  | "session_nodes"
++  | "session_participants"
++  | "session_pending_inputs"
++  | "session_input_completions"
++  | "session_progress_cards"
++  | "session_suggestions"
++  | "session_transcript_archives"
++  | "session_transcript_cold_archives"
++  | "session_transcript_active_events"
++  | "session_transcript_index_state"
++  | "session_windows"
++  | "transcript_rewrite_watermarks"
++  | "trajectory_runtime_events"
++  | "transcript_event_identities"
++  | "transcript_events"
++> & {
++  sqlite_schema: { name: string | null; type: string };
++};
++
++type SessionMemberDatabase = Pick<OpenClawAgentKyselyDatabase, "session_members">;
++
++type GitHubPublicationDatabase = Pick<
++  OpenClawStateKyselyDatabase,
++  | "github_publication_requests"
++  | "github_publication_session_lifecycles"
++  | "worker_session_placements"
++>;
++
++type PreparedEmbeddedAttemptBundleTools = {
++  bundleLspRuntime: Awaited<ReturnType<typeof createBundleLspToolRuntime>> | undefined;
++  bundleMcpRuntime: Awaited<ReturnType<typeof materializeBundleMcpToolsForRun>> | undefined;
++  clientTools: EmbeddedRunAttemptParams["clientTools"];
++  tools: ReturnType<typeof normalizeAgentRuntimeTools>;
++  uncompactedEffectiveTools: AnyAgentTool[];
++  refreshTools: () => void;
++};
++
++type PreparedSessionManager = Awaited<ReturnType<typeof prepareEmbeddedAttemptSessionManager>>;
++type PreparedEmbeddedAttemptClientTools = {
++  allCustomTools: ToolDefinition[];
++  builtinToolNames: Set<string>;
++  clientToolCallSlots: EmbeddedAttemptClientToolCallSlot[];
++  clientToolDefs: ToolDefinition[];
++  codeModeExecToolNames: Set<string>;
++  coreBuiltinToolNames: Set<string>;
++  refreshTools: () => void;
++  replaySafeToolNames: Set<string>;
++  replaySafeTools: Set<AgentTool>;
++  sessionToolAllowlist: string[];
++  sideEffectToolOwners: Map<string, string>;
++  trustedLocalMediaToolNames: Set<string>;
++};
++type PreparedEmbeddedAttemptAgentSession = Omit<
++  ReturnType<typeof prepareEmbeddedAttemptClientTools>,
++  "sessionToolAllowlist"
++> & {
++  activeSession: AgentSession;
++  hasDeliveredSourceReply: () => boolean;
++  hookRunner: ReturnType<typeof getGlobalHookRunner>;
++  markSourceReplyDelivered: () => void;
++  setActiveSessionSystemPrompt: (nextSystemPrompt: string) => string;
++  setPermissionPromptPreparation: (
++    prepare?: () => Promise<(prompt: string) => string>,
++  ) => void;
++  settingsManager: ReturnType<typeof createPreparedEmbeddedAgentSettingsManager>;
++};
++type PreparedEmbeddedAttemptSessionRuntime = {
++  agentSession: PreparedEmbeddedAttemptAgentSession;
++  anthropicPayloadLogger: ReturnType<typeof createAnthropicPayloadLogger>;
++  boundary: Awaited<ReturnType<typeof prepareEmbeddedAttemptSessionBoundary>>;
++  cacheTrace: ReturnType<typeof createCacheTrace>;
++  contextGuards: ReturnType<typeof installEmbeddedAttemptContextGuards>;
++  isOpenAIResponsesApi: PreparedSessionManager["isOpenAIResponsesApi"];
++  preparedUserTurnMessage: PreparedSessionManager["preparedUserTurnMessage"];
++  sessionManager: PreparedSessionManager["sessionManager"];
++  sessionPromptState: ReturnType<typeof getEmbeddedSessionPromptState>;
++  settleTracker: ReturnType<typeof createEmbeddedAttemptSessionSettleTracker>;
++  state: {
++    currentTurnImageFailureCount: number;
++    prePromptMessageCount: number;
++    promptCache: EmbeddedRunAttemptResult["promptCache"];
++    systemPromptText: string;
++  };
++  toolResultPromptProjectionState: ReturnType<typeof getEmbeddedSessionPromptState>["toolResults"];
++  trajectoryRecorder: Awaited<ReturnType<typeof prepareEmbeddedAttemptTrajectory>>;
++  transcriptPolicy: PreparedSessionManager["transcriptPolicy"];
++  transport: Awaited<ReturnType<typeof prepareEmbeddedAttemptTransport>>;
++};
++
++type IsAssignable<Source, Target> = [Source] extends [Target] ? true : false;
++type AssertTrue<Check extends true> = Check;
++
++type QueryShape<T> =
++  T extends SelectQueryBuilder<infer Database, infer Tables, infer Output>
++    ? { database: Database; output: Output; tables: Tables }
++    : never;
++
++type CanonicalSessionValidationBaseRow = {
++  current_session_id: string;
++  entry_valid: number;
++  fork_source_session_key: string | null;
++  parent_session_key: string | null;
++  retained_window_id: string | null;
++  session_key: string;
++  spawned_by: string | null;
++};
++
++type CanonicalSessionValidationRow = CanonicalSessionValidationBaseRow & {
++  entry_json: string;
++} & Partial<
++    Omit<{ updated_at: number }, keyof (CanonicalSessionValidationBaseRow & { entry_json: string })>
++  > &
++  Partial<
++    Omit<
++      {
++        owner_actor_id: string | null;
++        owner_actor_type: string | null;
++        owner_assigned_at: number | null;
++        owner_assigned_by_id: string | null;
++        owner_assigned_by_type: string | null;
++      },
++      keyof (CanonicalSessionValidationBaseRow & { entry_json: string; updated_at: number })
++    >
++  >;
++
++it("keeps explicit portable annotations equal to the inferred public types", () => {
++  expectTypeOf<typeof execTool>().toEqualTypeOf<
++    AgentToolWithMeta<typeof execSchema, ExecToolDetails>
++  >();
++  expectTypeOf<typeof processTool>().toEqualTypeOf<
++    AgentToolWithMeta<typeof processSchema, unknown>
++  >();
++  expectTypeOf<ReturnType<typeof getSessionKysely>>().toEqualTypeOf<
++    Kysely<SessionSqliteDatabase>
++  >();
++  type TranscriptQuery = QueryShape<ReturnType<typeof prepareTranscriptEventReadQuery>>;
++  expectTypeOf<TranscriptQuery["database"]>().toEqualTypeOf<SessionSqliteDatabase>();
++  expectTypeOf<TranscriptQuery["tables"]>().toEqualTypeOf<"transcript_events">();
++  expectTypeOf<TranscriptQuery["output"]>().toEqualTypeOf<Partial<Omit<unknown, never>>>();
++
++  type CanonicalQuery = QueryShape<ReturnType<typeof canonicalSessionValidationQuery>>;
++  expectTypeOf<CanonicalQuery["database"]>().toEqualTypeOf<
++    CanonicalSessionDatabase & { retained_window: Nullable<SessionWindows> }
++  >();
++  expectTypeOf<CanonicalQuery["tables"]>().toEqualTypeOf<"session_nodes" | "retained_window">();
++  expectTypeOf<CanonicalQuery["output"]>().toEqualTypeOf<CanonicalSessionValidationRow>();
++  expectTypeOf<ReturnType<typeof getSessionMemberKysely>>().toEqualTypeOf<
++    Kysely<SessionMemberDatabase>
++  >();
++  expectTypeOf<ReturnType<typeof githubPublicationDatabase>>().toEqualTypeOf<
++    Kysely<GitHubPublicationDatabase>
++  >();
++  expectTypeOf<typeof PluginInstallRecordSchema>().toEqualTypeOf<
++    ReturnType<typeof StrictPluginInstallRecordSchema.passthrough>
++  >();
++  type InferredBundleTools = Awaited<ReturnType<typeof prepareEmbeddedAttemptBundleTools>>;
++  type BundleToolsMatchesAnnotation = AssertTrue<
++    IsAssignable<InferredBundleTools, PreparedEmbeddedAttemptBundleTools>
++  >;
++  type AnnotationMatchesBundleTools = AssertTrue<
++    IsAssignable<PreparedEmbeddedAttemptBundleTools, InferredBundleTools>
++  >;
++  expectTypeOf<BundleToolsMatchesAnnotation>().toEqualTypeOf<true>();
++  expectTypeOf<AnnotationMatchesBundleTools>().toEqualTypeOf<true>();
++
++  type InferredClientTools = ReturnType<typeof prepareEmbeddedAttemptClientTools>;
++  type ClientToolsMatchesAnnotation = AssertTrue<
++    IsAssignable<InferredClientTools, PreparedEmbeddedAttemptClientTools>
++  >;
++  type AnnotationMatchesClientTools = AssertTrue<
++    IsAssignable<PreparedEmbeddedAttemptClientTools, InferredClientTools>
++  >;
++  expectTypeOf<ClientToolsMatchesAnnotation>().toEqualTypeOf<true>();
++  expectTypeOf<AnnotationMatchesClientTools>().toEqualTypeOf<true>();
++
++  type InferredAgentSession = Awaited<ReturnType<typeof prepareEmbeddedAttemptAgentSession>>;
++  type AgentSessionMatchesAnnotation = AssertTrue<
++    IsAssignable<InferredAgentSession, PreparedEmbeddedAttemptAgentSession>
++  >;
++  type AnnotationMatchesAgentSession = AssertTrue<
++    IsAssignable<PreparedEmbeddedAttemptAgentSession, InferredAgentSession>
++  >;
++  expectTypeOf<AgentSessionMatchesAnnotation>().toEqualTypeOf<true>();
++  expectTypeOf<AnnotationMatchesAgentSession>().toEqualTypeOf<true>();
++
++  type InferredSessionRuntime = Awaited<ReturnType<typeof prepareEmbeddedAttemptSessionRuntime>>;
++  type SessionRuntimeMatchesAnnotation = AssertTrue<
++    IsAssignable<InferredSessionRuntime, PreparedEmbeddedAttemptSessionRuntime>
++  >;
++  type AnnotationMatchesSessionRuntime = AssertTrue<
++    IsAssignable<PreparedEmbeddedAttemptSessionRuntime, InferredSessionRuntime>
++  >;
++  expectTypeOf<SessionRuntimeMatchesAnnotation>().toEqualTypeOf<true>();
++  expectTypeOf<AnnotationMatchesSessionRuntime>().toEqualTypeOf<true>();
++});
+diff --git a/test/tsconfig/tsconfig.core.test.declaration-portability.json b/test/tsconfig/tsconfig.core.test.declaration-portability.json
+new file mode 100644
+index 00000000..ec1d06db
+--- /dev/null
++++ b/test/tsconfig/tsconfig.core.test.declaration-portability.json
+@@ -0,0 +1,7 @@
++{
++  "extends": "./tsconfig.core.test.shard.json",
++  "compilerOptions": {
++    "tsBuildInfoFile": "../../.artifacts/tsgo-cache/core-test-declaration-portability.tsbuildinfo"
++  },
++  "include": ["../../src/config/sessions/session-declaration-portability.test.ts"]
++}

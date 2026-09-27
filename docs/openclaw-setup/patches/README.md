@@ -5,8 +5,8 @@ runner applies them in a detached worktree, builds the real runtime, runs the
 cumulative regressions, and rehearses the installed package. It never modifies
 the configured source checkout or patches installed distribution chunks.
 
-The selected stable release is OpenClaw 2026.9.3 at
-`1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7`. It requires Node 24.16.0 or later
+The selected stable release is OpenClaw 2026.9.6 at
+`eb377ac59e6c9fd6c7705028034812becf00271b`. It requires Node 24.16.0 or later
 on 24.x, or Node 26.1.0 or later. Earlier runtimes can truncate SQLite text.
 Use the same exact Node binary for packaging, installed rehearsal, and the
 activated gateway. Keep the previous interpreter available for rollback.
@@ -21,17 +21,19 @@ activated gateway. Keep the previous interpreter available for rollback.
 | `subagent-cross-agent-spawn-fix.patch` | Explicit targeting and inherited tools |
 | `skill-workshop-sandbox-fix.patch` | Skill workshop in sandboxed agents |
 | `imessage-message-part-coalescing.patch` | Selective text, link, and image coalescing |
-| `sandbox-discovery-failure-fix.patch` | Surface sandbox discovery failures |
+| `imessage-group-inbound-policy.patch` | Honor configured unmentioned group events in iMessage |
+| `sandbox-discovery-failure-fix.patch` | Select the configured registry; upstream supplies discovery error propagation |
 | `browser-userdata-dir-fix.patch` | Browser data directory and singleton cleanup |
-| `builtin-memory-migration.patch` | Retired QMD migration and per-agent source isolation coverage |
-| `silent-reply-completion-evidence.patch` | Preserve current-attempt silent reply evidence after delivery filtering |
+| `builtin-memory-migration.patch` | Regression tests for upstream memory migration and per-agent source isolation |
+| `silent-reply-completion-evidence.patch` | Regression tests for upstream silent-reply completion evidence |
 | `stopped-state-migration-sdk.patch` | Expose maintained stopped config repair, cron partition migration, and targeted writes |
 | `scoped-container-temp-root.patch` | Carry explicit private staging through sandbox and browser creation |
-| `active-memory-cold-recall.patch` | Preserve required recall within one shared cold-setup budget |
+| `active-memory-cold-recall.patch` | Regression tests for upstream cold recall and the configured recall limit |
 | `active-memory-fixture-cleanup.patch` | Join delayed recall fixtures before replacing shared test state |
 | `managed-local-service-lifecycle.patch` | Join gateway-owned service groups before stopped-state changes |
 | `gateway-memory-warmup.patch` | Prepare and retain managed local embeddings before readiness |
-| `gateway-protocol-declaration-portability.patch` | Keep protocol registry declarations portable across fresh installs |
+| `gateway-protocol-declaration-portability.patch` | Regression tests for upstream protocol registry identity and types |
+| `core-declaration-portability.patch` | Name portable core declaration exports for tools, sessions, databases, and plugin records |
 
 Each patch has a neighboring document explaining its behavior and history.
 Register new patches and every applicable test in the cumulative manifest at
@@ -187,6 +189,28 @@ For a stopped-state migration, add `stateMigration` to the local target with
 `E2E_STATE_MIGRATION_MANIFEST` during the combined cumulative rehearsal.
 Its digest is bound to the regression and installed-runtime proofs. Activation
 rejects a different manifest or a candidate that did not include it.
+
+When environment values differ, prepare a paired binding before CI seals the
+build. `E2E_STATE_MIGRATION_BINDINGS` names a JSON file with schema
+`puddles.target-state-migrations/v1`, a `generator` (`repositoryId` and
+`inputsSha256`), a `policy` (`id` and `sha256`), and two `bindings`. Each binding
+has `role` (`rehearsal` or `production`), `targetSha256`, `inputsSha256` and
+`manifestSha256`. Use `migrationTargetIdentity` from
+`packages/e2e/src/native-migration-bindings.mjs` for the target projection.
+Transport filenames and integration checkout paths do not change that identity.
+
+The explicitly selected extension owns the maintained generator and validates
+both outputs against their sealed input records. Public CI uses synthetic
+fixtures independently. Keep owner-specific input records and generated files
+in protected companion artifacts. Stable non-secret descriptors can be committed
+in that private repository; credentials and captured live baselines cannot.
+
+The build, source gate and TEST proof carry the pair through certification.
+Production requires its exact role, target and manifest digest, then performs
+the existing expected-value checks. Changed input needs refreshed evidence;
+editing the digest after TEST is unsupported. Old releases keep their original
+single-manifest behavior. The target proof also retains the genuine runtime
+stage, including interpreter identity, for portable production verification.
 
 The manifest contains `schemaVersion: 1`, `configOperations`, and an optional
 `cronOperation`. Config operations have `kind` (`set` or `unset`), a nonempty

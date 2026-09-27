@@ -57,7 +57,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: openclaw/openclaw
-          ref: 1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7
+          ref: eb377ac59e6c9fd6c7705028034812becf00271b
           path: .openclaw-source
 
       - name: Set up Node
@@ -77,7 +77,7 @@ jobs:
         run: |
           npm install --global corepack@0.36.0
           corepack enable
-          test "$(corepack pnpm --version)" = "12.3.4"
+          test "$(corepack pnpm --version)" = "12.4.0"
           corepack pnpm store path --silent
 
       - name: Install Puddles dependencies

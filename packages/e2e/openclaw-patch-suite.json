@@ -1,5 +1,5 @@
 {
-  "openclawRef": "1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7",
+  "openclawRef": "eb377ac59e6c9fd6c7705028034812becf00271b",
   "testProjects": {
     "src/agents/provider-local-service.test.ts": "agents-core",
     "src/agents/provider-local-service.shutdown.test.ts": "agents-core",
@@ -11,12 +11,10 @@
     "src/agents/sandbox/docker-backend.test.ts": "agents-support",
     "src/agents/sandbox/docker.config-hash-recreate.test.ts": "agents-support",
     "src/agents/sandbox/browser.create.test.ts": "agents-support",
-    "extensions/active-memory/index.test.ts": "extension-active-memory",
+    "extensions/active-memory/index.test.ts": "extension-database-workers",
     "extensions/active-memory/trigger-recall.test.ts": "extension-active-memory",
     "extensions/active-memory/config.test.ts": "extension-active-memory",
     "extensions/active-memory/escalation.test.ts": "extension-active-memory",
-    "src/plugin-sdk/cron-store-runtime.test.ts": "plugin-sdk",
-    "src/plugin-sdk/doctor-repair-runtime.test.ts": "plugin-sdk",
     "src/cron/store.test.ts": "cron",
     "src/agents/embedded-agent-runner/run/terminal-resolution.test.ts": "agents-embedded-agent-run",
     "src/plugin-sdk/file-lock.stale-contention.test.ts": "plugin-sdk",
@@ -29,10 +27,10 @@
     "src/agents/subagents/registry/subagent-registry.store.sqlite.test.ts": "agents-support",
     "src/cron/isolated-agent/subagent-followup.test.ts": "cron",
     "src/agents/subagents/spawn/acp-spawn.test.ts": "agents-support",
-    "src/agents/subagents/spawn/subagent-spawn.test.ts": "agents-support",
+    "src/agents/subagents/spawn/subagent-spawn.test.ts": "infra",
     "src/agents/tools/sessions-spawn-tool.test.ts": "agents-tools",
-    "src/agents/tools/skill-workshop-tool.test.ts": "agents-tools",
-    "extensions/imessage/src/monitor.last-route.test.ts": "extension-imessage",
+    "src/agents/tools/skill-workshop-tool.test.ts": "infra",
+    "extensions/imessage/src/monitor.last-route.test.ts": "extension-database-workers",
     "extensions/imessage/src/monitor/coalesce.test.ts": "extension-imessage",
     "extensions/imessage/src/config-schema.test.ts": "extension-imessage",
     "extensions/imessage/src/monitor/parse-notification.coalescing.test.ts": "extension-imessage",
@@ -43,12 +41,25 @@
     "packages/memory-host-sdk/src/host/backend-config.test.ts": "unit-fast-isolated",
     "src/commands/doctor/shared/legacy-config-migrations.memory-isolation.test.ts": "commands",
     "src/commands/doctor/shared/legacy-config-migrations.runtime.retired.memory-qmd.test.ts": "unit-fast",
-    "src/gateway/server-memory-warmup.test.ts": "gateway",
-    "src/gateway/server-startup-post-attach.test.ts": "gateway",
+    "src/gateway/server-memory-warmup.test.ts": "gateway-server",
+    "src/gateway/server-startup-post-attach.test.ts": "gateway-server",
     "src/plugins/openai-compatible-embedding-provider.test.ts": "plugins",
     "extensions/llama-cpp/index.test.ts": "extensions",
     "extensions/llama-cpp/src/managed-server.test.ts": "extensions",
-    "packages/gateway-protocol/src/schema/protocol-schema-fragment-portability.test.ts": "gateway-client"
+    "packages/gateway-protocol/src/schema/protocol-schema-fragment-portability.test.ts": "gateway-client",
+    "src/cron/stopped-state-sdk.test.ts": "cron",
+    "src/commands/doctor/stopped-config-repair.test.ts": "commands",
+    "src/agents/tools/skill-workshop-tool.availability.test.ts": "agents-tools",
+    "src/skills/workshop/tool-policy-diagnostic.test.ts": "unit-fast",
+    "src/agents/tool-allowlist-guard.test.ts": "unit-fast",
+    "src/agents/subagents/registry/subagent-registry-yield-gather.test.ts": "agents-support",
+    "src/state/openclaw-agent-db.storage-migration.test.ts": "infra",
+    "src/commands/doctor-agent-memory-schema.test.ts": "commands",
+    "src/process/supervisor/service-child-ownership.bundle.test.ts": "process",
+    "src/infra/windows-process-start.test.ts": "infra",
+    "src/config/sessions/session-declaration-portability.test.ts": "runtime-config",
+    "extensions/imessage/src/monitor/inbound-processing.route.test.ts": "extension-imessage",
+    "src/channels/inbound-event/classification.test.ts": "unit-fast"
   },
   "patches": [
     {
@@ -58,7 +69,9 @@
         "src/agents/provider-local-service.shutdown.test.ts",
         "src/process/supervisor/service-child-ownership.test.ts",
         "src/process/supervisor/service-child-relay-host.test.ts",
-        "src/process/supervisor/adapters/child.service-lifecycle.test.ts"
+        "src/process/supervisor/adapters/child.service-lifecycle.test.ts",
+        "src/process/supervisor/service-child-ownership.bundle.test.ts",
+        "src/infra/windows-process-start.test.ts"
       ]
     },
     {
@@ -97,7 +110,8 @@
       "tests": [
         "src/agents/tools/yield-descendant-gather.test.ts",
         "src/agents/subagents/announce/subagent-announce-delivery.test.ts",
-        "src/agents/subagents/registry/subagent-registry.store.sqlite.test.ts"
+        "src/agents/subagents/registry/subagent-registry.store.sqlite.test.ts",
+        "src/agents/subagents/registry/subagent-registry-yield-gather.test.ts"
       ]
     },
     {
@@ -111,7 +125,10 @@
     {
       "name": "skill-workshop-sandbox-fix",
       "tests": [
-        "src/agents/tools/skill-workshop-tool.test.ts"
+        "src/agents/tools/skill-workshop-tool.test.ts",
+        "src/agents/tools/skill-workshop-tool.availability.test.ts",
+        "src/skills/workshop/tool-policy-diagnostic.test.ts",
+        "src/agents/tool-allowlist-guard.test.ts"
       ]
     },
     {
@@ -124,6 +141,13 @@
         "extensions/imessage/src/monitor/ingress.test.ts",
         "src/config/dead-config-keys.test.ts",
         "src/commands/doctor/shared/legacy-config-migrations.runtime.retired.test.ts"
+      ]
+    },
+    {
+      "name": "imessage-group-inbound-policy",
+      "tests": [
+        "extensions/imessage/src/monitor/inbound-processing.route.test.ts",
+        "src/channels/inbound-event/classification.test.ts"
       ]
     },
     {
@@ -159,9 +183,11 @@
     {
       "name": "stopped-state-migration-sdk",
       "tests": [
-        "src/plugin-sdk/cron-store-runtime.test.ts",
-        "src/plugin-sdk/doctor-repair-runtime.test.ts",
-        "src/cron/store.test.ts"
+        "src/cron/stopped-state-sdk.test.ts",
+        "src/commands/doctor/stopped-config-repair.test.ts",
+        "src/cron/store.test.ts",
+        "src/state/openclaw-agent-db.storage-migration.test.ts",
+        "src/commands/doctor-agent-memory-schema.test.ts"
       ],
       "candidateTests": [
         "tests/candidate.state-migration.test.ts"
@@ -199,6 +225,15 @@
       ],
       "candidateTests": [
         "tests/candidate.development-loop.test.ts"
+      ]
+    },
+    {
+      "name": "core-declaration-portability",
+      "tests": [
+        "src/config/sessions/session-declaration-portability.test.ts"
+      ],
+      "typechecks": [
+        "test/tsconfig/tsconfig.core.test.declaration-portability.json"
       ]
     }
   ]

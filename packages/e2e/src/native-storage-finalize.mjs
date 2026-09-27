@@ -1,12 +1,41 @@
-import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { join, relative } from "node:path";
-import { acquireArtifactPoolLock, artifactPoolRunId, protectRunArtifacts, registerDiagnosticLogs } from "./native-retention.mjs";
+import { acquireArtifactPoolLock, applyArtifactCleanup, artifactPoolRunId, completeRetentionRun, initializeArtifactPool, protectRunArtifacts, registerDiagnosticLogs } from "./native-retention.mjs";
 import { randomUUID } from "node:crypto";
 import { atomicJson, fileDigest, inside, jsonDigest } from "./native-state.mjs";
 import { importReleaseBundle, verifySourceGate } from "./native-release.mjs";
 import {
   assertTerminalNativeStorage, initializeStorage, registerScratch, sealScratch, applyStorageCleanup,
 } from "./native-storage.mjs";
+
+export function retainCompletedOperationLog(root, log, owner) {
+  root = realpathSync(root);
+  if (!/^logs\/[a-zA-Z0-9._-]+\.log$/.test(log)) throw new Error("Invalid operation log path");
+  const source = join(root, log);
+  if (!lstatSync(source).isFile() || realpathSync(source) !== source) throw new Error("Operation log must be a regular owned file");
+  const digest = fileDigest(source);
+  const staging = join(root, `.log-archive-${randomUUID()}`);
+  const pool = process.env.E2E_ARTIFACT_POOL ?? join(root, "draft-controller/log-pool");
+  initializeArtifactPool(pool);
+  mkdirSync(join(staging, "logs"), { recursive: true, mode: 0o700 });
+  try {
+    copyFileSync(source, join(staging, "logs/operation.log"));
+    const release = acquireArtifactPoolLock(pool);
+    let logs;
+    try {
+      logs = registerDiagnosticLogs(pool, staging);
+      const id = artifactPoolRunId(staging);
+      protectRunArtifacts(pool, { id, kind: "paused", objectIds: [logs.id] });
+      completeRetentionRun(pool, id, owner);
+      applyArtifactCleanup(pool);
+    } finally { release(); }
+    if (fileDigest(source) !== digest) throw new Error("Operation log changed during archival");
+    const reference = { pool, objectId: logs.id, sha256: digest };
+    atomicJson(`${source}.reference.json`, reference);
+    rmSync(source);
+    return reference;
+  } finally { rmSync(staging, { recursive: true, force: true }); }
+}
 
 function retainBuildLogs(root) {
   if (!existsSync(join(root, "logs")) || !process.env.E2E_ARTIFACT_POOL) return [];

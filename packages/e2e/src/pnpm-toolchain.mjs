@@ -3,9 +3,9 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { runCommand } from "./process-runner.mjs";
 
-export const PNPM_VERSION = "12.3.4";
+export const PNPM_VERSION = "12.4.0";
 export const PNPM_PACKAGE_MANAGER =
-  "pnpm@12.3.4+sha512.961aa41fb077da3a04a441d9f8e15ebc0c96da8ef710b2eb67bf9ee7cb0610eabd48f1fd85f51cffe73846785fa0f87c56a3a872a1d893f8446741b5cce45457";
+  "pnpm@12.4.0+sha512.37536c26ed40ab4134b6511e09f6b27f3ebb45687468f2406ca3805279a4e5ca158c1931350ad9774d6ab2108d71b3dbaeb39943159294375e4d053e8e05685c";
 export const PNPM_STORE_ENV = "PNPM_CONFIG_STORE_DIR";
 
 export function configuredPnpmStore(env = process.env) {

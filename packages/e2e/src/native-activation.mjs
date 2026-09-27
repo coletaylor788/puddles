@@ -1,3 +1,4 @@
+import { selectTargetMigration } from "./native-migration-bindings.mjs";
 import { accessSync, closeSync, constants, cpSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, rmSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
@@ -374,9 +375,14 @@ export function verifyCurrentActivationRecovery(target, recoveryDir, latestPath,
     const journal = JSON.parse(readFileSync(join(directory, "recovery.json"), "utf8"));
     if (receipt.artifact.sha256 !== identity.artifactSha256 ||
         receipt.artifact.runtimeSha256 !== journal.deployedRuntimeSha256 ||
-        receipt.evidence.targetProof.deployment.success.target !==
-          identity.activationTargetSha256) {
+        (!receipt.stateMigrations && receipt.evidence.targetProof.deployment.success.target !== identity.activationTargetSha256)) {
       throw new Error("Activation release receipt differs from recovery");
+    }
+    if (receipt.stateMigrations) {
+      const binding = selectTargetMigration(receipt, target);
+      if (jsonDigest(journal.migrationBinding ?? null) !== jsonDigest(binding)) {
+        throw new Error("Activation migration binding differs from recovery");
+      }
     }
     if (!existsSync(latestPath)) throw new Error("Activation ownership evidence is missing");
     const latest = JSON.parse(readFileSync(latestPath, "utf8"));
@@ -514,9 +520,7 @@ export async function activateNative(receipt, target, operationsFactory = system
   } else if (receipt.status !== "passed" || receipt.accumulated !== true || !receipt.scenarios) {
     throw new Error("A complete accumulated rehearsal is required before activation");
   }
-  if ((receipt.stateMigration?.sha256 ?? null) !== (target.stateMigration?.sha256 ?? null)) {
-    throw new Error("State migration differs from the rehearsed candidate");
-  }
+  const migrationBinding = selectTargetMigration(receipt, target);
   const extras = receipt.additionalArtifacts ?? [];
   if (!Array.isArray(extras) || extras.some((extra) => !/^[a-z][a-z0-9-]*$/.test(extra.id) || !extra.artifact?.runtimeSha256) ||
       new Set(extras.map((extra) => extra.id)).size !== extras.length ||
@@ -565,6 +569,7 @@ export async function activateNative(receipt, target, operationsFactory = system
   let journal = {
     schemaVersion: 1, target: jsonDigest(target), artifact: receipt.artifact.sha256,
     transaction: basename(recoveryDir),
+    ...(migrationBinding ? { migrationBinding } : {}),
     ...(ownership ? { coordination: { requestId: ownership.owner.requestId, attemptId: ownership.owner.attemptId, baseline: ownership.owner.baseline } } : {}),
     additionalArtifacts: extraIdentity,
     preparedFiles: preparedFileIdentity,
@@ -872,7 +877,12 @@ export async function verifyIntegratedCandidate(receiptPath, target) {
   }
   verifyProductionRelease(receipt);
   if (target.nodeMigration) {
-    const proof = JSON.parse(readFileSync(join(dirname(receiptPath), "stages", "runtime.json"), "utf8"));
+    const proof = receipt.evidence.targetProof.runtimeEvidence ??
+      JSON.parse(readFileSync(join(dirname(receiptPath), "stages", "runtime.json"), "utf8"));
+    if (proof.name !== "runtime" || proof.status !== "passed" ||
+        proof.key !== jsonDigest(proof.inputs) || proof.key !== receipt.evidence.targetProof.stages.runtime) {
+      throw new Error("Candidate runtime evidence differs from certified rehearsal");
+    }
     if (["node", "nodeBinary", "platform", "arch"].some((key) => proof.inputs.tools?.[key] !== receipt.tools?.[key])) {
       throw new Error("Candidate Node toolchain differs from rehearsal proof");
     }
