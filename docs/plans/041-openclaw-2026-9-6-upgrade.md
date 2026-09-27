@@ -10,13 +10,13 @@
 
 Bring our existing OpenClaw setup onto stable 2026.9.6. The goal is for the same agents and integrations to keep working on the newer host. We already have compatibility work from the previous attempt. We will keep what is still needed and remove local fixes where upstream now provides the same behavior.
 
-The main change is memory search. The newer host no longer supports the old search backend, so it will rebuild search from the existing notes using a local embedding model. Notes stay local, and each agent keeps its existing access. Search results may rank differently. We propose increasing the search budget from fifteen to thirty seconds; the model loads when the host starts and stays ready while it runs.
+The main change is memory search. The newer host no longer supports the old search backend, so it will rebuild search from the existing notes using a local embedding model. Notes stay local, and each agent keeps its existing access. Search results may rank differently. With the model and index ready, searches should finish in under a second. We will measure that separately from model startup and index building. The upgrade does not require a longer search timeout.
 
-The upgrade also changes how conversations are stored. Existing history must survive the move, and a failed upgrade must restore the old application together with its matching data. We will restart delivery through the current repository process. Success means the new version is running with the same messaging behavior and access boundaries, working local memory, and a verified way back.
+OpenClaw includes the migration for its changed conversation storage. Our existing deployment flow will use that migration and verify that history survives. A failed upgrade must restore the old application together with its matching data. We will restart delivery through the current repository process. Success means the new version is running with the same messaging behavior and access boundaries, working local memory, and a verified way back.
 
 ### Status
 
-The compatibility review is complete enough to propose the upgrade. The new version needs changes to our patches and migration support. Implementation has not started and awaits approval.
+The compatibility review is complete enough to propose the upgrade. The new version needs compatibility changes to our patches and the integration with upstream migration. The memory timing decision is approved. Implementation of the overall upgrade has not started and awaits approval.
 
 ## Agent section
 
@@ -24,7 +24,7 @@ The compatibility review is complete enough to propose the upgrade. The new vers
 
 - Target verified 2026-09-26: `v2026.9.6`, source commit `eb377ac59e6c9fd6c7705028034812becf00271b`; GitHub stable and npm latest agree.
 - Existing source pin: `1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7` (`v2026.9.3`). Reuse landed compatibility code; [completed Plan 037](completed/037-openclaw-stable-upgrade.md) remains historical evidence.
-- Process alignment checked against freshly fetched main `3b9b73a560072b1b473c8c3214ca8d9b5c2c79c1`. Documentation branch: `codex/upgrade-plan-main-process`.
+- Process alignment checked against freshly fetched main `3b9b73a560072b1b473c8c3214ca8d9b5c2c79c1`. Documentation branch: `codex/upgrade-memory-history-clarity`, based on main `d7ebefe040356a672ed5b93d9d125d01f882d709`.
 - Restart means a new candidate and run under main's process, not continuation of the paused release or reconstruction of its receipts. Preserve existing recovery assets and unrelated owners' state. No 2026.9.6 code port or runtime execution has begun.
 
 ### Scope and acceptance criteria
@@ -32,7 +32,7 @@ The compatibility review is complete enough to propose the upgrade. The new vers
 - Compatible host, SDK consumers, configured plugins, browser and native dependencies on the exact target. Update all affected version, package-manager, manifest, lockfile and workflow pins consistently.
 - Every maintained behavior in the patch table remains covered, including when upstream replaces a local patch. Moved test paths/projects must retain their assertions in the cumulative pool.
 - Local embeddings produce real vectors before readiness, remain resident and stop with their owning gateway, including forced loss and on-demand startup. Preserve restricted memory, disabled agents and session-indexing opt-in.
-- Migrate legacy state directly to schema 23 without losing retained histories, reset boundaries, ownership, scheduled jobs, journal-only committed data or archive references.
+- Use upstream migration to upgrade legacy state to schema 23, including prerequisite migrations, without losing retained histories, reset boundaries, ownership, scheduled jobs, journal-only committed data or archive references.
 - Preserve effective tool exposure, messaging policy and concurrency. Keep explicit settings and inheritance intact.
 - Installed plugin discovery, Doctor repair, tool factories and deferred imports work from the portable artifacts without ancestor checkouts or registry fallback.
 - Failed migration, failed readiness and interruption restore the complete old state with its matching runtime, interpreter and browser.
@@ -44,8 +44,8 @@ The current [safe-feature-development skill](../../.github/skills/safe-feature-d
 Upgrade-specific decisions follow.
 
 - **Toolchain:** keep Node `26.1.0` and Corepack `0.36.0`; adopt the tag's integrity-bound pnpm `12.4.0` instead of `12.3.4`. The [tagged manifest](https://github.com/openclaw/openclaw/blob/v2026.9.6/package.json) still accepts Node `>=24.16.0 <25 || >=26.1.0`. Revalidate native modules against the selected interpreter.
-- **Database:** `src/state/openclaw-agent-db-contract.ts` declares schema 23. The [schema contract](https://github.com/openclaw/openclaw/blob/v2026.9.6/docs/reference/database-schemas/agent-schema-history.md) changes transcript bodies and vectors. Reconcile the maintained stopped-migration APIs with explicit Doctor repair and current core/plugin normalization. Exact selected writes must compare against the normalized configuration. Do not replace that transaction with ad hoc SQL or whole-config writes.
-- **Memory timing:** adopt `30_000` from `extensions/memory-core/src/memory/search-deadline.ts`. Preparation may precede that budget, so measure cold/warm wall time separately. Retain the ninety-second startup allowance and explicit thirty-second automatic-recall cap without spending cold setup time twice.
+- **Database:** OpenClaw ships the schema 23 converter and prerequisite migrations in its maintained Doctor repair path. The [schema contract](https://github.com/openclaw/openclaw/blob/v2026.9.6/docs/reference/database-schemas/agent-schema-history.md) describes transcript compression that preserves the original JSON and binary vector storage. The existing deployment flow already calls `doctor --fix` after stopping writers and taking its snapshot. Reconcile only changed integration APIs and current core/plugin normalization; no custom history converter is proposed. Exact selected writes must compare against the normalized configuration. Do not replace upstream migration with ad hoc SQL or whole-config writes.
+- **Memory timing:** requester approved removing a timeout increase as an upgrade requirement. Target under one second for warm local search with the model resident and index ready, including query embedding, lookup and permitted result retrieval. This is a target to validate, not an existing benchmark. Leave upstream's `30_000` failure cutoff in `extensions/memory-core/src/memory/search-deadline.ts` unchanged; it is not the latency target and needs no new override. Measure startup, index building, queueing, warm search and automatic recall separately. Retain the existing ninety-second startup allowance and explicit thirty-second automatic-recall cap. Automatic recall may include an additional model call; embedding speed alone does not measure that flow.
 - **Tool discovery:** preserve authored `tools.toolSearch`; set it to `false` only when absent in migrated configuration, retaining direct schemas. Do not change upstream defaults for fresh installations.
 - **Messaging:** 9.5 enables `tools.message.crossContext.allowAcrossProviders` when unset. Preserve authored global/per-agent settings and inheritance; materialize the old denied default only where implicit. Preserve within-provider policy and legacy normalization. These controls govern bound-conversation actions, not arbitrary shell or unbound CLI access.
 - **Concurrency:** preserve authored limits; where `agents.defaults.maxConcurrent` is absent, carry forward the predecessor's effective value instead of adopting the new CPU-scaled default. Keep separate subagent and cron limits.
@@ -69,7 +69,7 @@ Each check below used `git apply --check` independently against pristine tagged 
 | `browser-userdata-dir-fix` | Pass | Retain provisionally; prove installed profile and singleton behavior. |
 | `builtin-memory-migration` | Pass | Retain provisionally; reprove source isolation and current Doctor migration. |
 | `silent-reply-completion-evidence` | Fails | Reconcile incomplete-turn recovery and restart replay; preserve intentional silence. |
-| `stopped-state-migration-sdk` | Fails | Port supported stopped APIs and schema/cron partition behavior before migration. |
+| `stopped-state-migration-sdk` | Fails | Reconcile the wrapper around upstream repair APIs and schema/cron partition behavior; keep upstream responsible for conversion. |
 | `scoped-container-temp-root` | Fails | Reconcile current mount mapping; keep test-owned staging and production locking. |
 | `active-memory-cold-recall` | Fails | Reconcile concurrent recall and changed budgets; preserve explicit recall cap. |
 | `active-memory-fixture-cleanup` | Fails | Keep cleanup assertions in the current fixtures; do not omit old coverage. |
@@ -79,7 +79,7 @@ Each check below used `git apply --check` independently against pristine tagged 
 
 - Reconcile the patch table against current upstream behavior, then port required fixes and cumulative regression registrations. Audit fs-safe 0.18.1 instead of carrying forward the old 0.8.5 dependency patch blindly. Prefer the new protocol composer to recreating deleted fragments.
 - Align target, SDK and toolchain pins; adapt configured plugin packaging, generated metadata and browser inputs.
-- Adapt stopped migration to schema 23 and the explicitly preserved defaults. Extend existing fixtures for current schema, timing and package contracts.
+- Adapt the existing integration with upstream stopped repair only where its APIs changed; preserve the selected defaults. Extend existing fixtures to verify upstream conversion, warm search latency and package contracts.
 - Execute these changes through the process linked above, starting from current main. General process work belongs in its shared owner, not in this upgrade plan.
 
 ### Validation
@@ -88,9 +88,9 @@ The shared process supplies review and cumulative/installed/physical gates. This
 
 - Each patch behavior, including durable completion ownership, intentional silence, message-part coalescing, explicit child targeting and killed-lock-owner recovery.
 - Real installed plugin discovery, Doctor/startup, cold imports, portable dependency closure and unchanged package digests.
-- Actual local vectors and recall; cold/warm timing, residency, shutdown and forced-death cleanup; allowed and denied memory/delegation flows.
+- Actual local vectors and recall; measure representative warm searches against the under-one-second target and investigate misses rather than extending timeouts. Record startup/indexing and automatic recall separately. Verify residency, shutdown, forced-death cleanup and allowed/denied memory and delegation flows.
 - Tool-discovery preservation, cross-provider allowed/denied cases with inheritance, and unchanged effective concurrency.
-- Legacy-to-23 migration, WAL data, histories, ownership, archives, selected config/job drift rejection and interrupted rollback with the predecessor runtime.
+- Upstream Doctor conversion from the legacy generation through its prerequisite migrations to schema 23, WAL data, histories, ownership, archives, selected config/job drift rejection and interrupted rollback with the predecessor runtime.
 - Browser profile reuse and mount isolation; DEV/PROD availability while TEST exercises the changed runtime.
 
 Research and patch checks are complete. Runtime validation is pending. No prior 2026.9.3 receipt counts as proof for this target. Documentation checks apply to this proposal revision only.
@@ -102,7 +102,8 @@ Follow the shared process on main without a plan-specific rollout sequence. The 
 ### Review log
 
 - Source re-vet identified schema/toolchain drift and changed search, discovery, messaging and concurrency defaults. Independent proposal review's messaging-policy omission was resolved.
-- Requester directs a fresh restart through main's process. Both plans now reference that process and retain only upgrade requirements, decisions and evidence obligations. Implementation approval remains pending.
+- Requester directs a fresh restart through main's process. Both plans reference that process and retain only upgrade requirements, decisions and evidence obligations.
+- Requester approved sub-second warm search as the validation target, separate cold/recall measurements and no upgrade-specific timeout increase. History conversion is upstream-owned; our requirement is integration and validation. Overall implementation approval remains pending.
 
 ### Checklist
 
