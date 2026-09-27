@@ -5,9 +5,19 @@ description: "Review recent Puddles development loops and improve their guiding 
 
 # Development Loop Manager
 
-Improve later development loops using evidence from recent ones. Prioritize
-production safety, early defect detection, fast local feedback, and disk use
-on both the development machine and OpenClaw server.
+Improve later development loops using evidence from recent ones.
+
+## Priorities
+
+- **Protect production:** prevent regressions and preserve validation and rollback.
+- **Catch issues earlier:** move detection into local builds and tight DEV loops.
+- **Reduce wasted work:** reuse builds and dependencies; avoid redundant checks,
+  retries, and handoffs.
+- **Control disk growth:** clean completed work safely on both hosts.
+- **Reduce avoidable approval blockers:** fix obvious guidance gaps while accepting
+  necessary design decisions.
+- **Keep skills concise:** consolidate, resolve conflicts, and remove obsolete guidance.
+- **Verify improvements:** confirm changes help subsequent loops.
 
 ## Inspect
 
