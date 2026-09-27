@@ -1,6 +1,6 @@
 # Bind state migrations to their deployment targets
 
-**Status:** Proposed; implementation needs approval
+**Status:** Approved; implementation in progress
 **Issue:** Tracked as a release blocker in [#114](https://github.com/coletaylor788/puddles/issues/114)
 **Last updated:** 2026-09-27
 
@@ -8,7 +8,7 @@
 
 ### Design
 
-The current release builder prepares configuration changes for a synthetic TEST environment. Those changes contain TEST paths, service settings and scheduled-job preconditions. Production activation requires the identical migration digest, so that release cannot safely upgrade production. The proposed repair gives one release explicit migration bindings for TEST and production.
+The current release builder prepares configuration changes for a synthetic TEST environment. Those changes contain TEST paths, service settings and scheduled-job preconditions. Production activation requires the identical migration digest, so that release cannot safely upgrade production. The repair gives one release explicit migration bindings for TEST and production.
 
 ```mermaid
 flowchart LR
@@ -34,6 +34,17 @@ The generator accepts a fixed set of target inputs. It constructs the upgrade's 
 
 Keep private target details in protected companion inputs and artifacts. Capture only values needed for the selected changes. Credentials, message contents and conversation history do not belong in this handoff.
 
+#### DEV and configuration ownership
+
+DEV keeps its own configuration and recording adapters. Bundle refresh preserves
+its authored settings. A failed refresh restores the prior configuration with
+the runtime. DEV does not apply either sealed TEST or production manifest, and
+its proof does not claim migration rehearsal.
+
+Stable environment descriptors can be committed to the companion repository.
+Captured configuration baselines and job revisions remain per-release inputs.
+Public code contains only reusable contracts and synthetic examples.
+
 #### Seal before rehearsal
 
 The CI build records both manifest digests, their target roles and the identity of the common migration policy and generator. The source gate verifies those bindings. TEST proves execution of its exact manifest with the exact runtime and packages. Certification carries that proof and both predeclared bindings into the production release.
@@ -48,15 +59,17 @@ Transport the genuine interpreter-check evidence with the release so production 
 
 ### Status
 
-Independent audit and retained review confirm the current handoff cannot serve both targets. This proposal changes the meaning of release certification and needs explicit approval before implementation. The already-approved upgrade's CI and DEV work continues; production is unchanged.
+The approved implementation seals separate target manifests, validates the common generator and transports the production manifest and genuine interpreter evidence. Shared scripts, instructions and the skill cover future releases. Stable environment settings remain in the companion repository.
+
+Focused regressions and retained review pass. A live DEV failure restores its exact configuration, service, runtime and ownership record, and health passes. The final cumulative CI, exact-artifact DEV and merged TEST/PROD gates remain. Production is unchanged.
 
 ## Agent section
 
 ### State
 
 - Public upgrade Plan 041 and companion Plan 037 depend on this shared-process repair for delivery. Keep their designs limited to upgrade requirements.
-- Inspected main-aligned public head `9da9a3d26d9e32fdb4b7e59dc737e84eac973eef` and companion tooling at its paired candidate.
-- No implementation, receipt edits, TEST claim or production mutation is authorized by this proposal alone.
+- Current pair includes public main process revision `73985a748b5acce182adbc8a7bbd61dbef4190e9` and the corresponding companion process update.
+- The requester approved implementation, including durable process, skill and script updates for future releases. Non-secret environment configuration may be committed only to the companion repository. Secrets remain outside repositories.
 
 ### Scope and acceptance criteria
 
@@ -70,30 +83,39 @@ Independent audit and retained review confirm the current handoff cannot serve b
 
 ### Architecture and decisions
 
-- `run-private-openclaw-hosted-builder.mjs` currently always creates a synthetic target and uses its migration for the source gate. `preparePrivateReleaseConfig` overwrites any template migration with that selection.
+- Both companion release builders now use the same preparation helper. They preserve the synthetic target migration and seal the production migration beside it before the source gate.
 - `prepare-private-rehearsal-target.mjs` emits literal TEST paths, provider endpoint and synthetic cron preconditions. `validatePreparedModelBinding` requires the model destination to match that TEST target.
-- Public `native-activation.mjs` requires receipt and target migration digests to match. `native-state-migration.mjs` applies literal values with exact expected-field and job-revision checks. There is no target relocation mechanism.
+- Public `native-activation.mjs` selects the role and destination binding before applying the matching manifest. `native-state-migration.mjs` applies literal values with exact expected-field and job-revision checks. There is no target relocation mechanism.
 - Introduce a versioned release binding for the generated TEST and production manifests and their common policy/generator. Keep the literal manifest engine unchanged. Update the maintained builder, handoff, source gate, target proof, certification and activation together.
-- Define and validate target-specific parameters in the maintained generator. Before implementation, settle the concrete schema in retained review so unrelated operations cannot be hidden behind a shared policy identity.
-- Proposed receipt field: `stateMigrations`, with schema `puddles.target-state-migrations/v1`, generator repository/source digest, fixed policy identity/digest, and exactly two bindings. Each binding contains `role` (`rehearsal` or `production`), `targetSha256`, `inputsSha256` and `manifestSha256`. Bind target identity to role, host, service label/port and install/state/plist/backup/prepared-file destinations. Exclude transport filenames. Retain independent interpreter, browser, artifact and integration checks.
+- Define and validate target-specific parameters in the maintained generator. The reviewed concrete schema rejects unrelated operations behind a shared policy identity.
+- Implemented receipt field: `stateMigrations`, with schema `puddles.target-state-migrations/v1`, generator repository/source digest, fixed policy identity/digest, and exactly two bindings. Each binding contains `role` (`rehearsal` or `production`), `targetSha256`, `inputsSha256` and `manifestSha256`. Bind target identity to role, host, service label/port and install/state/plist/backup/prepared-file destinations. Exclude transport filenames. Retain independent interpreter, browser, artifact and integration checks.
 - The fixed companion generator accepts agent roles/workspaces, plugin destinations/load paths, model/server/preset paths, local service port, selected configuration baseline with authored/default distinctions, selected job identity/profile/revision, and predecessor effective concurrency. It must not accept arbitrary operations, provider configuration, service arguments, model-policy changes or callbacks.
 - Reuse `previewLegacyConfigRepair`, `captureMemoryMigrationBaseline`, `prepareMemoryIsolationManifest`, `prepareConfiguredPluginBindings` and existing canonical digest/manifest/job-revision helpers. The source gate reruns the same sealed generator over both sealed input records and compares exact outputs. Do not establish equivalence by normalizing paths or matching labels.
 - Capture the selected cron revision through the existing SDK on the trusted host. Pass its opaque revision and validated execution profile, without message text. Add a narrow captured-revision input to the generator; retain production compare-and-swap checks.
 - Obtain the production input through bounded read-only selection on the trusted host. Validate it before packaging and again before production mutation. Do not export full live state to CI.
 - The current generator preserves whole agent and memory-plugin subtrees. Reject secret-bearing exported content rather than silently redacting values that the migration would preserve. This constrains the protected input until the existing generator can safely select smaller fields.
 - Existing releases retain their existing single-manifest verification behavior. Do not reinterpret old receipts as paired-target proof. The upgrade requires a newly sealed candidate after the repair.
-- `verifyIntegratedCandidate` currently expects `stages/runtime.json` beside the release, while the artifact consumer retains it under `target/stages/runtime.json`. Use the genuine sealed target evidence or transport that exact file through the maintained handoff.
+- `verifyIntegratedCandidate` uses the genuine runtime stage transported in the target proof. The target pipeline measures the executing Node binary, and certification checks the build and measured toolchain identity. Legacy receipts keep their previous evidence lookup.
 
 ### Implementation
 
-- Obtain approval for this shared-process change.
-- Specify and review the versioned binding and generator parameter contract with synthetic positive and negative examples.
-- Extend maintained production-input preparation and CI packaging without changing public publication boundaries.
-- Extend build, source-gate, target-proof, certification and production verification to preserve and select the prebound target manifest.
-- Repair interpreter-evidence transport in the maintained consumer or verifier.
-- Contribute regressions to the accumulated pool, retain the same independent reviewer, and use main's ordinary local/DEV/CI/merge/TEST/PROD lifecycle.
+- `packages/e2e/src/native-migration-bindings.mjs` defines the versioned envelope, destination identity and role selection. Build identity, regression evidence, activation journals and certification retain it.
+- Companion capture exports the selected authored configuration and opaque scheduled-job revision. One fixed generator produces both manifests. Source validation regenerates each exact output.
+- Both builders use that generator; immutable handoff imports the already sealed production manifest and materializes its target with a new local manifest filename.
+- Target runtime evidence measures the actual interpreter and travels with the release. Missing, changed or mismatched evidence is rejected.
+- DEV stops before snapshotting state and service configuration. It preserves authored settings, overlays explicit adapters and restores state with the old runtime after failure.
+- Shared instructions, lifecycle skill and component guides document the process. Companion configuration records contain no secrets.
 
 ### Validation
+
+Focused public release, pipeline, state and interpreter suites pass 135 tests.
+The private contract suite passes 100 tests with seven existing unselected
+SDK/runtime cases. The actual public/private interface suite passes all selected
+checks. Handoff import preserves both bindings and the production manifest.
+A live DEV injected behavior failure restores exact config, service, runtime link
+and ownership marker; maintained health passes and the slot is released.
+These checks do not replace final cumulative CI or merged target rehearsal.
+
 
 - Reproduce the current synthetic-manifest/production-target rejection.
 - Prove matching policy and distinct target bindings pass with synthetic baselines; prove unrelated operations, altered bindings and wrong-role manifests fail.
@@ -112,14 +134,16 @@ Use the shared lifecycle documented in the current [skill](../../.github/skills/
 - Independent release-input audit confirms the mismatch in the builder, migration engine, target model binding and activation guard.
 - Retained reviewer confirms there is no supported invocation-only solution. Editing receipt digests or applying TEST literals in production would invalidate the existing guarantees.
 - Historical Plan 039 evidence ends after synthetic TEST/promotion. The previously deployed release has no state-migration binding, so it does not prove this handoff.
-- Approval is required because the proposed paired-target contract changes release provenance. This is not a request for another routine deployment approval.
-- Independent schema audit recommends one fixed generator over two sealed input records. It identifies narrow cron-revision input support and secret-bearing subtree rejection as implementation requirements. Retained review of the concrete contract is clear. No runtime changes have been made.
+- Approval received because the paired-target contract changes release provenance. No further routine deployment approval is required.
+- Add DEV regressions for authored-setting preservation and configuration rollback. Keep DEV separate from release migration selection.
+- Retained review identified missing fixture dependencies, copied instead of measured interpreter evidence, and credential headers in selected export. All three are fixed with regressions. Recheck finds no additional material defect. Complete paired release validation remains in the normal lifecycle.
+- Actual DEV rollback validation passes. The source gate, imported target, TEST success/rollback and certification still require the final candidate's end-to-end run.
 
 ### Checklist
 
 - [x] Confirm the current failure and search for a supported existing path.
 - [x] Prepare a concrete shared-process proposal.
-- [ ] Obtain design approval.
-- [ ] Implement and review the target binding contract and interpreter evidence handoff.
+- [x] Obtain design approval.
+- [x] Implement and review the target binding contract and interpreter evidence handoff.
 - [ ] Pass the accumulated and exact-artifact lifecycle gates.
 - [ ] Deliver and verify the upgrade through the repaired shared process.

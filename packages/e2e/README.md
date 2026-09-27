@@ -193,7 +193,14 @@ binds its bytes to regression and runtime evidence, and provides
 selected local extension. It never applies that manifest to a live target.
 The extension must prove its private values against isolated state. Public CI
 leaves this option unset and runs the committed synthetic migration fixtures.
-Activation requires the same digest in its local target. See the
+Legacy single-manifest releases require the same digest in their local target.
+For target-specific migrations, also supply `E2E_STATE_MIGRATION_BINDINGS` with
+schema `puddles.target-state-migrations/v1`. The maintained extension validates
+and reproduces both manifests; its `stateMigrations` export must match that
+selection. Regression evidence and the immutable build bind the generator,
+policy and both inputs. TEST and production each select the binding for their
+role and target identity. DEV uses its own configuration and never selects a
+release migration. See the
 [deployment guide](../../docs/openclaw-setup/patches/README.md) for the narrow
 manifest and recovery contract.
 

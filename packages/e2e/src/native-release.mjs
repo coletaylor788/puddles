@@ -1,3 +1,4 @@
+import { validateMigrationBindings } from "./native-migration-bindings.mjs";
 import {
   cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync,
   realpathSync, rmSync,
@@ -86,6 +87,7 @@ function buildIdentity(receipt) {
     preparedFiles: (receipt.preparedFiles ?? []).map(preparedIdentity),
     proofs: receipt.proofs,
     stateMigration: receipt.stateMigration ?? null,
+    ...(receipt.stateMigrations ? { stateMigrations: validateMigrationBindings(receipt.stateMigrations) } : {}),
   };
 }
 
@@ -108,6 +110,13 @@ export function verifyBuildReceipt(receipt, { verifyAssets = true } = {}) {
       !receipt.source || !receipt.tools || !receipt.proofs ||
       receipt.buildId !== jsonDigest(buildIdentity(receipt))) {
     throw new Error("Invalid immutable build receipt");
+  }
+  if (receipt.stateMigrations) {
+    const bindings = validateMigrationBindings(receipt.stateMigrations);
+    if (!receipt.sourceRepositories?.some(({ id }) => id === bindings.generator.repositoryId) ||
+        receipt.stateMigration?.sha256 !== bindings.bindings.find(({ role }) => role === "rehearsal").manifestSha256) {
+      throw new Error("Migration generator or rehearsal differs from the sealed build");
+    }
   }
   const ids = (receipt.additionalArtifacts ?? []).map((record) => extraIdentity(record).id);
   const preparedIds = (receipt.preparedFiles ?? []).map((record) => preparedIdentity(record).id);
@@ -310,6 +319,18 @@ function verifyStageAttestation(attestation, schema, buildId, required) {
   return attestation;
 }
 
+export function verifyRuntimeToolchain(expected, observed = {
+  node: process.version, nodeBinary: fileDigest(process.execPath),
+  platform: process.platform, arch: process.arch,
+}) {
+  for (const field of ["node", "nodeBinary", "platform", "arch"]) {
+    if (!expected?.[field] || observed[field] !== expected[field]) {
+      throw new Error(`Executing runtime toolchain differs: ${field}`);
+    }
+  }
+  return { ...expected, ...observed };
+}
+
 export function verifyTargetProof(targetProof, buildId) {
   verifyStageAttestation(
     targetProof,
@@ -332,6 +353,13 @@ export function verifyTargetProof(targetProof, buildId) {
       targetProof.stages["deployment-rollback"] !== jsonDigest(rollback)) {
     throw new Error("Target proof deployment evidence differs");
   }
+  if (targetProof.runtimeEvidence) {
+    const proof = targetProof.runtimeEvidence;
+    if (proof.name !== "runtime" || proof.status !== "passed" ||
+        proof.key !== jsonDigest(proof.inputs) || proof.key !== targetProof.stages.runtime) {
+      throw new Error("Retained runtime evidence differs from target proof");
+    }
+  }
   return targetProof;
 }
 
@@ -349,6 +377,9 @@ function passedStage(runDir, name) {
 export function createSourceGate(build, runDir, inventory) {
   verifyBuildReceipt(build);
   const regression = passedStage(runDir, "regressions");
+  if (build.stateMigrations && jsonDigest(regression.inputs.stateMigrations) !== jsonDigest(build.stateMigrations)) {
+    throw new Error("Source gate did not validate the sealed migration bindings");
+  }
   const receipt = {
     schema: sourceGateSchema,
     schemaVersion: 1,
@@ -356,6 +387,7 @@ export function createSourceGate(build, runDir, inventory) {
     buildId: build.buildId,
     stages: { regressions: regression.key },
     inventory,
+    ...(build.stateMigrations ? { stateMigrationsSha256: jsonDigest(build.stateMigrations) } : {}),
   };
   return verifyStageAttestation(receipt, sourceGateSchema, build.buildId, ["regressions"]);
 }
@@ -382,6 +414,7 @@ function deploymentJournal(build, recoveryDir, expected) {
     artifact: journal.artifact,
     status: journal.status,
     journalSha256: fileDigest(path),
+    ...(journal.migrationBinding ? { migrationBinding: journal.migrationBinding } : {}),
     ...(journal.coordination ? { coordination: journal.coordination } : {}),
   };
 }
@@ -405,6 +438,7 @@ export function createTargetProof(build, runDir, successRecoveryDir, rollbackRec
       "deployment-rollback": jsonDigest(rollback),
     },
     deployment: { success, rollback },
+    runtimeEvidence: runtime,
   };
   return verifyStageAttestation(receipt, targetProofSchema, build.buildId, ["install", "runtime", "deployment-success", "deployment-rollback"]);
 }
@@ -413,6 +447,19 @@ export function certifyRelease(build, sourceGate, targetProof, { verifyAssets = 
   verifyBuildReceipt(build, { verifyAssets });
   verifyStageAttestation(sourceGate, sourceGateSchema, build.buildId, ["regressions"]);
   verifyTargetProof(targetProof, build.buildId);
+  if (build.stateMigrations) {
+    if (targetProof.runtimeEvidence?.inputs?.buildId !== build.buildId ||
+        !targetProof.runtimeEvidence.inputs.tools) {
+      throw new Error("Retained runtime evidence does not identify this build");
+    }
+    verifyRuntimeToolchain(build.tools, targetProof.runtimeEvidence.inputs.tools);
+    const binding = build.stateMigrations.bindings.find(({ role }) => role === "rehearsal");
+    if (sourceGate.stateMigrationsSha256 !== jsonDigest(build.stateMigrations) ||
+        [targetProof.deployment.success, targetProof.deployment.rollback].some((record) =>
+          jsonDigest(record.migrationBinding ?? null) !== jsonDigest(binding))) {
+      throw new Error("Release migration bindings lack source or target proof");
+    }
+  }
   return {
     schema: certificationSchema,
     schemaVersion: 1,
@@ -442,6 +489,7 @@ export function promoteRelease(build, sourceGate, targetProof, certification, { 
     additionalArtifacts: build.additionalArtifacts ?? [],
     preparedFiles: build.preparedFiles ?? [],
     stateMigration: build.stateMigration ?? null,
+    ...(build.stateMigrations ? { stateMigrations: build.stateMigrations } : {}),
     evidence: { build, sourceGate, targetProof, certification },
   };
 }

@@ -94,6 +94,10 @@ export function verifyCandidateProofs(receiptPath, receipt) {
         proof.key !== jsonDigest(proof.inputs)) throw new Error("Candidate proof chain does not match");
     proofs[name] = proof;
   }
+  if (["regressions", "runtime"].some((name) =>
+    jsonDigest(proofs[name].inputs.stateMigrations ?? null) !== jsonDigest(receipt.stateMigrations ?? null))) {
+    throw new Error("Target migration bindings differ from candidate proofs");
+  }
   const rootIdentity = jsonDigest(artifactIdentity(receipt.artifact));
   if (["regressions", "runtime"].some((name) => jsonDigest(proofs[name].inputs.stateMigration ?? null) !== jsonDigest(receipt.stateMigration ?? null))) {
     throw new Error("State migration differs from candidate proofs");

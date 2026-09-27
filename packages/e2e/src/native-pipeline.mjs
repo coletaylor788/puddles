@@ -1,3 +1,4 @@
+import { selectTargetMigration, validateMigrationBindings } from "./native-migration-bindings.mjs";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, statfsSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
@@ -19,7 +20,7 @@ import scenarios from "../scenarios/imessage.mjs";
 import { readMigrationManifest } from "./native-state-migration.mjs";
 import { createRehearsalTarget, rehearsalTargetSeed } from "./native-target.mjs";
 import { rehearseStateMigration } from "./native-state-migration-fixture.mjs";
-import { createBuildReceipt, createSourceGate, verifyBuildReceipt } from "./native-release.mjs";
+import { createBuildReceipt, createSourceGate, verifyBuildReceipt, verifyRuntimeToolchain } from "./native-release.mjs";
 import { exportReleaseBundle } from "./native-release.mjs";
 import { validateTarget, verifyRehearsalTarget } from "./native-activation.mjs";
 import {
@@ -227,6 +228,12 @@ export async function nativePipeline(command, repositoryGates) {
           preparedFiles: extension.preparedFiles,
         });
     const migrationPath = process.env.E2E_STATE_MIGRATION_MANIFEST;
+    const bindingsPath = process.env.E2E_STATE_MIGRATION_BINDINGS;
+    const stateMigrations = bindingsPath
+      ? validateMigrationBindings(JSON.parse(readFileSync(bindingsPath, "utf8"))) : null;
+    if (stateMigrations && (extension.hash === "none" || jsonDigest(extension.stateMigrations) !== jsonDigest(stateMigrations))) {
+      throw new Error("Target migrations require an explicit maintained generator extension");
+    }
     const stateMigration = migrationPath ? { sha256: fileDigest(migrationPath) } : null;
     if (migrationPath) readMigrationManifest(migrationPath, stateMigration.sha256);
     const context = isolatedContext(join(runDir, "context"));
@@ -313,7 +320,7 @@ export async function nativePipeline(command, repositoryGates) {
         environment: jsonDigest(Object.entries(process.env).sort(([a], [b]) => a.localeCompare(b))),
         dependencies: treeDigest(join(repoRoot, "node_modules"), repositoryDependencyOptions),
       };
-      await stage(runDir, "regressions", { candidateInputs, repoInputs, installedDependencies, tools, harness, execution, prepareOutputs, extension: extension.phaseHashes.gate, command, stateMigration, buildEnvironment }, async () => {
+      await stage(runDir, "regressions", { candidateInputs, repoInputs, installedDependencies, tools, harness, execution, prepareOutputs, extension: extension.phaseHashes.gate, command, stateMigration, stateMigrations, buildEnvironment }, async () => {
         if (command === "ci" || command === "source-gate") await repositoryGates(run);
         await run("corepack", ["pnpm", "prompt:snapshots:check"], { cwd: candidate, env: buildEnv });
         const typechecks = [...new Set(suite.patches.flatMap((patch) => patch.typechecks ?? []))];
@@ -443,6 +450,7 @@ export async function nativePipeline(command, repositoryGates) {
       tools,
       proofs: buildProofs,
       ...(stateMigration ? { stateMigration } : {}),
+      ...(stateMigrations ? { stateMigrations } : {}),
     });
     atomicJson(join(runDir, "build.json"), buildReceipt);
     if (command === "build") {
@@ -496,7 +504,7 @@ export async function nativePipeline(command, repositoryGates) {
       tools, harness, extensionOutputs,
       installedCommands: extension.phaseHashes.installed,
       scenarios: jsonDigest(runtimeScenarios), environment: jsonDigest(fixtureEnv(context)),
-      stateMigration,
+      stateMigration, stateMigrations,
     }, async () => {
       const outputs = await extensionPhase(extension, "installed", context);
       const migrationFixtures = await rehearseStateMigration(installedDir, candidate, runDir);
@@ -524,6 +532,7 @@ export async function nativePipeline(command, repositoryGates) {
       additionalArtifacts: extras, preparedFiles: preparedFileRecords,
       scenarios: result.scenarios.length, tools, proofs,
       ...(stateMigration ? { stateMigration } : {}),
+      ...(stateMigrations ? { stateMigrations } : {}),
     };
     atomicJson(join(runDir, "candidate.json"), receipt);
     if (command === "ci") {
@@ -571,6 +580,7 @@ export async function nativePipeline(command, repositoryGates) {
 
 export async function nativeTargetPipeline(receiptPath, targetPath, seedPath) {
   const receipt = verifyBuildReceipt(JSON.parse(readFileSync(receiptPath, "utf8")));
+  const targetTools = verifyRuntimeToolchain(receipt.tools);
   if (receipt.artifact.platform !== process.platform ||
       receipt.artifact.arch !== process.arch ||
       receipt.artifact.node !== process.version) {
@@ -580,13 +590,11 @@ export async function nativeTargetPipeline(receiptPath, targetPath, seedPath) {
   const target = JSON.parse(readFileSync(targetPath, "utf8"));
   const { assertBatchArtifact, assertDeploymentOwnership } = await import("./deploy-coordination.mjs");
   assertBatchArtifact(assertDeploymentOwnership(target, "TEST"), receipt);
+  selectTargetMigration(receipt, target);
   createRehearsalTarget(target, seedPath);
   validateTarget(target);
   verifyRehearsalTarget(target);
   const seed = rehearsalTargetSeed(target);
-  if ((receipt.stateMigration?.sha256 ?? null) !== (target.stateMigration?.sha256 ?? null)) {
-    throw new Error("Target migration differs from the imported build");
-  }
   if (target.stateMigration) {
     readMigrationManifest(target.stateMigration.manifestPath, target.stateMigration.sha256);
   }
@@ -645,7 +653,7 @@ export async function nativeTargetPipeline(receiptPath, targetPath, seedPath) {
     context.adapter = { sha256: extension.hash };
     context.source = receipt.source;
     context.repository = receipt.repository;
-    context.toolchain = receipt.tools;
+    context.toolchain = targetTools;
     context.artifact = receipt.artifact;
     context.additionalArtifacts = receipt.additionalArtifacts ?? [];
     context.preparedFiles = receipt.preparedFiles ?? [];
@@ -677,9 +685,10 @@ export async function nativeTargetPipeline(receiptPath, targetPath, seedPath) {
     const prefix = join(runDir, "installed");
     const installedDir = await stage(runDir, "install", {
       buildId: receipt.buildId,
+      tools: targetTools,
       targetSha256,
       artifact: receipt.artifact,
-      tools: receipt.tools,
+      tools: targetTools,
       installer,
     }, async () => {
       if (existsSync(prefix)) rmSync(prefix, { recursive: true });
@@ -701,7 +710,7 @@ export async function nativeTargetPipeline(receiptPath, targetPath, seedPath) {
         id: record.id,
         artifact: record.artifact,
         provenance: record.provenance ?? null,
-        tools: receipt.tools,
+        tools: targetTools,
         installer,
       }, async () => {
         if (existsSync(prefix)) rmSync(prefix, { recursive: true });
@@ -712,6 +721,7 @@ export async function nativeTargetPipeline(receiptPath, targetPath, seedPath) {
     const runtimeScenarios = [...scenarios, ...extension.scenarios];
     const runtime = await stage(runDir, "runtime", {
       buildId: receipt.buildId,
+      tools: targetTools,
       targetSha256,
       artifact: receipt.artifact,
       additionalArtifacts: receipt.additionalArtifacts ?? [],
@@ -750,6 +760,7 @@ export async function nativeTargetPipeline(receiptPath, targetPath, seedPath) {
       schemaVersion: 1,
       status: "passed",
       buildId: receipt.buildId,
+      tools: targetTools,
       targetSha256,
       stages,
       scenarios: runtime.scenarios.length,

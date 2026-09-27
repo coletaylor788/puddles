@@ -190,6 +190,28 @@ For a stopped-state migration, add `stateMigration` to the local target with
 Its digest is bound to the regression and installed-runtime proofs. Activation
 rejects a different manifest or a candidate that did not include it.
 
+When environment values differ, prepare a paired binding before CI seals the
+build. `E2E_STATE_MIGRATION_BINDINGS` names a JSON file with schema
+`puddles.target-state-migrations/v1`, a `generator` (`repositoryId` and
+`inputsSha256`), a `policy` (`id` and `sha256`), and two `bindings`. Each binding
+has `role` (`rehearsal` or `production`), `targetSha256`, `inputsSha256` and
+`manifestSha256`. Use `migrationTargetIdentity` from
+`packages/e2e/src/native-migration-bindings.mjs` for the target projection.
+Transport filenames and integration checkout paths do not change that identity.
+
+The explicitly selected extension owns the maintained generator and validates
+both outputs against their sealed input records. Public CI uses synthetic
+fixtures independently. Keep owner-specific input records and generated files
+in protected companion artifacts. Stable non-secret descriptors can be committed
+in that private repository; credentials and captured live baselines cannot.
+
+The build, source gate and TEST proof carry the pair through certification.
+Production requires its exact role, target and manifest digest, then performs
+the existing expected-value checks. Changed input needs refreshed evidence;
+editing the digest after TEST is unsupported. Old releases keep their original
+single-manifest behavior. The target proof also retains the genuine runtime
+stage, including interpreter identity, for portable production verification.
+
 The manifest contains `schemaVersion: 1`, `configOperations`, and an optional
 `cronOperation`. Config operations have `kind` (`set` or `unset`), a nonempty
 array of string path segments, and `expected`. An absent leaf uses

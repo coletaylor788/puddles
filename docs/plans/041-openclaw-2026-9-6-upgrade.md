@@ -1,6 +1,6 @@
 # Upgrade maintained OpenClaw support to 2026.9.6
 
-**Status:** Implementation active; release handoff design needs approval
+**Status:** Implementation active; approved release handoff repair in progress
 **Issue:** [#114](https://github.com/coletaylor788/puddles/issues/114)
 **Last updated:** 2026-09-27
 
@@ -35,13 +35,13 @@ Upstream Doctor owns conversion to the new conversation storage. Our deployment 
 
 The patch audit and compatibility work pass focused checks, retained review and local DEV. Three public runtime fixes are removed because upstream covers them. All nine native messaging scenarios pass, and warm local searches take about 25–27 milliseconds without a timeout increase. Public and combined accumulated CI pass. Their exact artifact also passes DEV: all nine messaging scenarios, 33 upgrade assertions and real local embeddings. The corrected DEV smoke expectation still needs inclusion in the next final candidate CI.
 
-Production delivery is blocked by a gap in the shared process: the builder seals a synthetic TEST migration whose paths and job preconditions cannot be used in production. Separate target bindings need a reviewed release contract. The proposed shared-process repair requires approval before implementation. Production is unchanged.
+Production delivery is blocked by a gap in the shared process: the builder seals a synthetic TEST migration whose paths and job preconditions cannot be used in production. The requester approved separate target bindings and reusable process, skill and script updates. The bindings, handoff and DEV configuration recovery are implemented. Focused regressions, retained review and a live DEV rollback check pass. Final cumulative CI and the merged release lifecycle remain. Production is unchanged.
 
 ## Agent section
 
 ### State
 
-- Release blocker: [target-bound migration proposal](043-target-bound-state-migrations.md) records the shared-process gap and proposed decision. CI/DEV for the approved upgrade continue independently; do not alter release-proof semantics or promote the synthetic TEST migration before approval.
+- Release blocker: [target-bound migration proposal](043-target-bound-state-migrations.md) records the approved shared-process repair. Implement and validate its target bindings before the final candidate proceeds through the ordinary release lifecycle.
 
 - Target verified 2026-09-26: `v2026.9.6`, source commit `eb377ac59e6c9fd6c7705028034812becf00271b`; GitHub stable and npm latest agree.
 - Existing source pin: `1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7` (`v2026.9.3`). Reuse landed compatibility code; [completed Plan 037](completed/037-openclaw-stable-upgrade.md) remains historical evidence.
@@ -132,13 +132,13 @@ The latest combined local DEV draft passes four wrapper scenarios, managed disco
 
 ### Rollout and rollback
 
-The current builder binds a literal TEST-only migration, while activation requires the same migration digest in production. The required upgrade cannot cross that handoff. Follow the [target-bound migration proposal](043-target-bound-state-migrations.md) once approved and landed in the shared process; do not add an upgrade-specific bypass. Retain the real interpreter proof during handoff as well.
+The current builder binds a literal TEST-only migration, while activation requires the same migration digest in production. The required upgrade cannot cross that handoff. Follow the [target-bound migration proposal](043-target-bound-state-migrations.md) through implementation and landing in the shared process; do not add an upgrade-specific bypass. Retain the real interpreter proof during handoff as well.
 
 Follow the shared process on main without a plan-specific rollout sequence. The upgrade-specific recovery requirement is a current, verified, complete stopped-state snapshot, including journals and transcript archives, paired with the old runtime, interpreter, service, packages and browser. Schema 23 cannot be downgraded by reinstalling an older package or changing schema markers. A later restore can lose post-snapshot work; preserve the failed new state. Existing backups remain protected but do not substitute for the new run's current production baseline.
 
 ### Review log
 
-- Independent release-input audit and retained review confirm that the synthetic TEST manifest cannot serve production. No supported target relocation or paired-manifest contract exists. The proposed repair changes release provenance and needs explicit design approval; existing upgrade approval remains valid for unaffected work.
+- Independent release-input audit and retained review confirm that the synthetic TEST manifest cannot serve production. No supported target relocation or paired-manifest contract exists. The requester approved the release-provenance repair, including separate DEV configuration and durable process updates.
 
 - Source re-vet identified schema/toolchain drift and changed search, discovery, messaging and concurrency defaults. Independent proposal review's messaging-policy omission was resolved.
 - Requester directs a fresh restart through main's process. Both plans reference that process and retain only upgrade requirements, decisions and evidence obligations.
