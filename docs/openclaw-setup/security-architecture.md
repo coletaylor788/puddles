@@ -195,10 +195,16 @@ flowchart TB
 
    | Label | Sources | Required handling |
    |---|---|---|
-   | Personal | <ul><li>Verified owner input</li><li>Owner-only records</li></ul> | Authenticated owner only. |
-   | Household | <ul><li>Verified household input</li><li>Household-only records</li></ul> | Household resources only. |
-   | Friends | <ul><li>Verified friend input</li><li>Records shared with that friend or group</li></ul> | Only resources shared with that friend or group. |
-   | Public | <ul><li>SMS and other texts</li><li>Email</li><li>Calendar entries</li><li>Web pages</li></ul> | Run injection and secret guards. Read through the reader agent. Never initiate turns or follow-ups. |
+   | Personal | • Verified owner input | |
+   | | • Owner-only records | |
+   | Household | • Verified household input | |
+   | | • Household-only records | |
+   | Friends | • Verified friend input | |
+   | | • Records shared with that friend or group | |
+   | Public | • SMS and other texts | Run injection and secret guards. Read through the reader agent. Never initiate turns or follow-ups. |
+   | | • Email | |
+   | | • Calendar entries | |
+   | | • Web pages | |
 
 SMS senders cannot be verified as more trusted. A familiar sender does not
 upgrade a public source. Tools, memory, and delegated results retain their
