@@ -17,6 +17,9 @@ description: "Review recent Puddles development loops and improve their skills, 
 
 ## Inspect recent loops
 
+Use these focus areas to start; choose how deeply to investigate each and follow
+the evidence into related issues.
+
 - Review new work and unresolved findings since the last pass.
 - Investigate every failure beyond DEV, including CI, TEST, and PROD. Identify
   what could have caught or prevented it earlier.
@@ -45,7 +48,7 @@ description: "Review recent Puddles development loops and improve their skills, 
 - State what to do, what matters, and how to address it.
 - Assume the agent knows ordinary investigation and engineering techniques.
 - Prefer short action bullets. Use prose only when it makes guidance clearer.
-- Give decision criteria without prescribing every step or possible case.
+- Name focus areas and decision criteria; leave room to investigate as evidence leads.
 - Rewrite, reorganize, and consolidate instead of bolting on more instructions.
 - Resolve conflicts and remove repetition or obsolete rules across related guidance.
 - Link the source of truth rather than duplicating it.
