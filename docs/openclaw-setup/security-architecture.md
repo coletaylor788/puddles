@@ -3,6 +3,8 @@
 **Governing principles**
 
 - No ports exposed outside Tailscale. Authenticated SSH inside Tailscale is allowed.
+- No personal iCloud accounts or data on the server. System Integrity Protection
+  (SIP) is disabled; use only the dedicated Puddles iCloud account.
 - Any deviation requires explicit human approval before implementation. Update
   this document to reflect the approved change.
 
