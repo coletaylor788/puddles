@@ -21,17 +21,17 @@ activated gateway. Keep the previous interpreter available for rollback.
 | `subagent-cross-agent-spawn-fix.patch` | Explicit targeting and inherited tools |
 | `skill-workshop-sandbox-fix.patch` | Skill workshop in sandboxed agents |
 | `imessage-message-part-coalescing.patch` | Selective text, link, and image coalescing |
-| `sandbox-discovery-failure-fix.patch` | Surface sandbox discovery failures |
+| `sandbox-discovery-failure-fix.patch` | Select the configured registry; upstream supplies discovery error propagation |
 | `browser-userdata-dir-fix.patch` | Browser data directory and singleton cleanup |
-| `builtin-memory-migration.patch` | Retired QMD migration and per-agent source isolation coverage |
-| `silent-reply-completion-evidence.patch` | Preserve current-attempt silent reply evidence after delivery filtering |
+| `builtin-memory-migration.patch` | Regression tests for upstream memory migration and per-agent source isolation |
+| `silent-reply-completion-evidence.patch` | Regression tests for upstream silent-reply completion evidence |
 | `stopped-state-migration-sdk.patch` | Expose maintained stopped config repair, cron partition migration, and targeted writes |
 | `scoped-container-temp-root.patch` | Carry explicit private staging through sandbox and browser creation |
-| `active-memory-cold-recall.patch` | Preserve required recall within one shared cold-setup budget |
+| `active-memory-cold-recall.patch` | Regression tests for upstream cold recall and the configured recall limit |
 | `active-memory-fixture-cleanup.patch` | Join delayed recall fixtures before replacing shared test state |
 | `managed-local-service-lifecycle.patch` | Join gateway-owned service groups before stopped-state changes |
 | `gateway-memory-warmup.patch` | Prepare and retain managed local embeddings before readiness |
-| `gateway-protocol-declaration-portability.patch` | Keep protocol registry declarations portable across fresh installs |
+| `gateway-protocol-declaration-portability.patch` | Regression tests for upstream protocol registry identity and types |
 
 Each patch has a neighboring document explaining its behavior and history.
 Register new patches and every applicable test in the cumulative manifest at

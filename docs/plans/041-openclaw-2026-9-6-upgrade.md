@@ -33,7 +33,7 @@ Upstream Doctor owns conversion to the new conversation storage. Our deployment 
 
 ### Status
 
-The design is approved and compatibility implementation is underway. Focused tests cover the ported patches and preserved defaults. Combined validation, independent review and delivery through main’s process remain pending.
+The patch audit and compatibility ports are implemented. Upstream replaces three runtime fixes, and discovery needs only its remaining registry correction. The clean CI build passes. A migration fixture mismatch found by the accumulated tests is corrected and all six cases pass locally. Installed DEV validation and the final cumulative gate remain pending; production is unchanged.
 
 ## Agent section
 
@@ -41,7 +41,7 @@ The design is approved and compatibility implementation is underway. Focused tes
 
 - Target verified 2026-09-26: `v2026.9.6`, source commit `eb377ac59e6c9fd6c7705028034812becf00271b`; GitHub stable and npm latest agree.
 - Existing source pin: `1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7` (`v2026.9.3`). Reuse landed compatibility code; [completed Plan 037](completed/037-openclaw-stable-upgrade.md) remains historical evidence.
-- Implementation branch: `codex/openclaw-2026-9-6`, based on main `2437225ebcde955a5c73ea1bc8dd04947ef7fb93`. The current main process and design structure apply.
+- Implementation branch: `codex/openclaw-2026-9-6`, based on main `2437225ebcde955a5c73ea1bc8dd04947ef7fb93`, with process update `73985a748b5acce182adbc8a7bbd61dbef4190e9` merged. The current main process and design structure apply.
 - Restart means a new candidate and run under main's process, not continuation of the paused release or reconstruction of its receipts. Preserve existing recovery assets and unrelated owners' state. Ports and isolated focused tests are underway. No deployment slot has been claimed and production is unchanged.
 
 ### Scope and acceptance criteria
@@ -110,7 +110,7 @@ The shared process supplies review and cumulative/installed/physical gates. This
 - Upstream Doctor conversion from the legacy generation through its prerequisite migrations to schema 23, WAL data, histories, ownership, archives, selected config/job drift rejection and interrupted rollback with the predecessor runtime.
 - Browser profile reuse and mount isolation; DEV/PROD availability while TEST exercises the changed runtime.
 
-Focused repository checks pass: 55 migration/toolchain/diagnostic tests and 37 native-pipeline tests. The pipeline uses the maintained upstream test entrypoint and verifies every registered test is collected. The unpatched fs-safe 0.18.1 regression reproduces failure with a persistent guard; the current protocol registry passes its retained identity regression. Combined source, installed and delivery proofs remain pending. No prior 2026.9.3 receipt counts as proof for this target.
+Focused repository checks pass: 55 migration/toolchain/diagnostic tests and 37 native-pipeline tests. The pipeline uses the maintained upstream test entrypoint and verifies every registered test is collected. The unpatched fs-safe 0.18.1 regression reproduces failure with a persistent guard; the current protocol registry passes its retained identity regression. Public CI `36289950656` passes its clean build and mapped patch tests, then fails three candidate migration assertions because upstream now writes the preserved implicit primary model. The same failure reproduces locally. The corrected fixture checks that exact preserved default, authored model/fallback values, workspace paths and all existing migration assertions. All six candidate migration cases and the e2e typecheck pass locally. Asynchronous fixture execution also keeps the runner responsive during the longer suite. Installed and delivery proofs, and the final cumulative run, remain pending. No prior 2026.9.3 receipt counts as proof for this target.
 
 ### Rollout and rollback
 
@@ -121,6 +121,7 @@ Follow the shared process on main without a plan-specific rollout sequence. The 
 - Source re-vet identified schema/toolchain drift and changed search, discovery, messaging and concurrency defaults. Independent proposal review's messaging-policy omission was resolved.
 - Requester directs a fresh restart through main's process. Both plans reference that process and retain only upgrade requirements, decisions and evidence obligations.
 - Requester approved sub-second warm search as the validation target, separate cold/recall measurements and no upgrade-specific timeout increase. History conversion is upstream-owned; our requirement is integration and validation. The requester approved the complete design on 2026-09-26.
+- Retained review clears the patch audit, worker bundle correction and candidate migration fixture repair. Main's approved local incremental DEV process applies; installed DEV and final cumulative evidence are still required.
 
 ### Checklist
 
