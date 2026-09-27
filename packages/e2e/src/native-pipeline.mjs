@@ -23,11 +23,12 @@ import { createBuildReceipt, createSourceGate, verifyBuildReceipt } from "./nati
 import { exportReleaseBundle } from "./native-release.mjs";
 import { validateTarget, verifyRehearsalTarget } from "./native-activation.mjs";
 import {
-  acquireArtifactPoolLock, applyArtifactCleanup, artifactPoolRunId,
+  protectRunArtifacts, acquireArtifactPoolLock, applyArtifactCleanup, artifactPoolRunId,
   findRetainedSourceGate, findSuccessfulBuild, registerDiagnosticLogs, registerFailedReproduction,
   registerSourceGate, registerSuccessfulBuild,
   registerRetainedObject, removeRetentionReference, retentionSpaceSummary, setRetentionReference,
 } from "./native-retention.mjs";
+import { reserveStorage, releaseStorage } from "./native-storage.mjs";
 import { resolveResourceProfile } from "./native-resources.mjs";
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -97,6 +98,9 @@ export async function nativePipeline(command, repositoryGates) {
   const runDir = externalDirectory(process.env.E2E_RUN_DIR ?? mkdtempSync(join(tmpdir(), "puddles-native-")), [repoRoot, source]);
   const unlock = acquireLock(runDir);
   let resourceProfile;
+  let reservation;
+  let taskUnlock;
+  const capacityRoot = resolve(process.env.E2E_CAPACITY_ROOT ?? join(homedir(), ".puddles", "development-capacity"));
   const artifactPool = process.env.E2E_ARTIFACT_POOL
     ? resolve(process.env.E2E_ARTIFACT_POOL)
     : null;
@@ -146,8 +150,9 @@ export async function nativePipeline(command, repositoryGates) {
           ...(sourceGate ? [sourceGate.metadata.id] : []),
         ],
       });
-      registerDiagnosticLogs(artifactPool, runDir);
-      removeRetentionReference(artifactPool, retentionReference);
+      const logs = registerDiagnosticLogs(artifactPool, runDir);
+      protectRunArtifacts(artifactPool, { id: retentionReference, kind: "paused",
+        objectIds: [retained.metadata.id, ...(sourceGate ? [sourceGate.metadata.id] : []), ...(logs ? [logs.id] : [])] });
       applyArtifactCleanup(artifactPool);
       return true;
     });
@@ -167,18 +172,26 @@ export async function nativePipeline(command, repositoryGates) {
       if (retainsSourceGate) {
         registerSourceGate(artifactPool, runDir, buildReceipt.buildId);
       }
-      registerDiagnosticLogs(artifactPool, runDir);
-      removeRetentionReference(artifactPool, retentionReference);
+      const logs = registerDiagnosticLogs(artifactPool, runDir);
+      const retained = findSuccessfulBuild(artifactPool, buildReceipt.buildId);
+      const gate = findRetainedSourceGate(artifactPool, buildReceipt.buildId);
+      protectRunArtifacts(artifactPool, { id: retentionReference, kind: "paused",
+        objectIds: [retained.metadata.id, ...(gate ? [gate.metadata.id] : []), ...(logs ? [logs.id] : [])] });
       applyArtifactCleanup(artifactPool);
     });
   };
   try {
+    if (process.env.PUDDLES_STORAGE_ROOT) {
+      const taskRoot = resolve(process.env.PUDDLES_STORAGE_ROOT);
+      if (taskRoot === runDir || !runDir.startsWith(`${taskRoot}/`)) throw new Error("Builder is outside its task storage root");
+      taskUnlock = acquireLock(taskRoot);
+    }
     resourceProfile = resolveResourceProfile();
     const buildTimeoutMs = resolveBuildTimeoutMs(command);
     if (artifactPool) {
       withRetentionLock(() => {
         applyArtifactCleanup(artifactPool);
-        setRetentionReference(artifactPool, {
+        protectRunArtifacts(artifactPool, {
           id: retentionReference,
           kind: "active",
           objectIds: [],
@@ -192,6 +205,7 @@ export async function nativePipeline(command, repositoryGates) {
       if (changes) throw new Error("Commit the final candidate before the cumulative release gate");
     }
     const repositoryPnpm = await inspectPnpmContext(repoRoot, run);
+    childEnvironment[PNPM_STORE_ENV] = repositoryPnpm.configuredStoreDir;
     const manager = repositoryPnpm.version;
     const npm = (await run("npm", ["--version"], { capture: true })).trim();
     await run("tar", ["--version"], { capture: true });
@@ -207,6 +221,13 @@ export async function nativePipeline(command, repositoryGates) {
     if (!Number.isSafeInteger(requiredDisk) || requiredDisk < 0) {
       throw new Error("E2E_REQUIRED_FREE_BYTES must be a nonnegative integer");
     }
+    mkdirSync(capacityRoot, { recursive: true, mode: 0o700 });
+    if (lstatSync(capacityRoot).dev !== lstatSync(runDir).dev) {
+      throw new Error("Capacity record and build must be on the same filesystem");
+    }
+    const incrementalBytes = Number(process.env.E2E_BUILD_RESERVATION_BYTES ?? 8 * 1024 ** 3);
+    reservation = reserveStorage(capacityRoot, artifactPoolRunId(runDir), incrementalBytes, requiredDisk);
+    atomicJson(join(runDir, "capacity.json"), { root: capacityRoot, ...reservation });
     const disk = statfsSync(runDir);
     if (disk.bavail * disk.bsize < requiredDisk) {
       const retention = artifactPool ? withRetentionLock(() =>
@@ -546,9 +567,10 @@ export async function nativePipeline(command, repositoryGates) {
     if (artifactPool) {
       try {
         withRetentionLock(() => {
-          registerFailedReproduction(artifactPool, runDir);
-          registerDiagnosticLogs(artifactPool, runDir);
-          removeRetentionReference(artifactPool, retentionReference);
+          const failure = registerFailedReproduction(artifactPool, runDir);
+          const logs = registerDiagnosticLogs(artifactPool, runDir);
+          protectRunArtifacts(artifactPool, { id: retentionReference, kind: "failed-debug",
+            objectIds: [failure.id, ...(logs ? [logs.id] : [])] });
           applyArtifactCleanup(artifactPool);
         });
       } catch (cleanupError) {
@@ -557,7 +579,8 @@ export async function nativePipeline(command, repositoryGates) {
     }
     throw error;
   } finally {
-    unlock();
+    try { if (reservation) releaseStorage(capacityRoot, reservation.token); }
+    finally { try { taskUnlock?.(); } finally { unlock(); } }
   }
 }
 
@@ -621,7 +644,7 @@ export async function nativeTargetPipeline(receiptPath, targetPath, seedPath) {
         applyArtifactCleanup(artifactPool);
         const build = findSuccessfulBuild(artifactPool, receipt.buildId);
         if (!build) throw new Error("Artifact target requires its imported build in the artifact pool");
-        setRetentionReference(artifactPool, {
+        protectRunArtifacts(artifactPool, {
           id: retentionReference,
           kind: "active",
           objectIds: [build.metadata.id],
@@ -774,8 +797,9 @@ export async function nativeTargetPipeline(receiptPath, targetPath, seedPath) {
           kind: "current",
           objectIds: [build.metadata.id, retained.id],
         });
-        registerDiagnosticLogs(artifactPool, runDir);
-        removeRetentionReference(artifactPool, retentionReference);
+        const logs = registerDiagnosticLogs(artifactPool, runDir);
+        protectRunArtifacts(artifactPool, { id: retentionReference, kind: "paused",
+          objectIds: [build.metadata.id, retained.id, ...(logs ? [logs.id] : [])] });
         applyArtifactCleanup(artifactPool);
       });
     }
@@ -793,15 +817,16 @@ export async function nativeTargetPipeline(receiptPath, targetPath, seedPath) {
       try {
         withRetentionLock(() => {
           const build = findSuccessfulBuild(artifactPool, receipt.buildId);
-          registerFailedReproduction(
+          const failure = registerFailedReproduction(
             artifactPool,
             runDir,
             new Date(),
             build ? [build.metadata.id] : [],
             seed ? [{ source: seed.path, path: "target-seed.json" }] : [],
           );
-          registerDiagnosticLogs(artifactPool, runDir);
-          removeRetentionReference(artifactPool, retentionReference);
+          const logs = registerDiagnosticLogs(artifactPool, runDir);
+          protectRunArtifacts(artifactPool, { id: retentionReference, kind: "failed-debug",
+            objectIds: [failure.id, ...(logs ? [logs.id] : [])] });
           applyArtifactCleanup(artifactPool);
         });
       } catch (cleanupError) {

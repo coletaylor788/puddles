@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { runCommand } from "./process-runner.mjs";
@@ -9,7 +9,15 @@ export const PNPM_PACKAGE_MANAGER =
 export const PNPM_STORE_ENV = "PNPM_CONFIG_STORE_DIR";
 
 export function configuredPnpmStore(env = process.env) {
-  const requested = env[PNPM_STORE_ENV];
+  const configPath = env.PUDDLES_DEVELOPMENT_CONFIG ?? (env.HOME ? join(env.HOME, ".puddles", "development.json") : null);
+  const config = configPath && existsSync(configPath) ? JSON.parse(readFileSync(configPath, "utf8")) : null;
+  if (env.PUDDLES_DEVELOPMENT_CONFIG && !config) throw new Error("Development host configuration is missing");
+  const selected = config?.pnpmStore;
+  if (config && (!selected || !isAbsolute(selected))) throw new Error("Host pnpmStore must be absolute");
+  const requested = env[PNPM_STORE_ENV] ?? selected;
+  if (selected && requested && resolve(selected) !== resolve(requested)) {
+    throw new Error("PNPM_CONFIG_STORE_DIR differs from the maintained host store; finish active work before migrating it");
+  }
   if (!requested || !isAbsolute(requested)) {
     throw new Error(`${PNPM_STORE_ENV} must name one absolute host-local pnpm store root`);
   }

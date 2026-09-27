@@ -214,6 +214,27 @@ describe("portable OpenClaw release bundle", () => {
 });
 
 describe("release proof chain", () => {
+  it("can certify from a portable bundle after disposable builder output is finalized", async () => {
+    // @ts-expect-error Executable storage finalizer.
+    const { finalizeNativeBuild } = await import("../src/native-storage-finalize.mjs");
+    const directory = root();
+    const artifacts = join(directory, "artifacts"); mkdirSync(artifacts);
+    const receipt = build(artifacts);
+    stage(directory, "regressions");
+    stage(directory, "install"); stage(directory, "runtime");
+    const source = createSourceGate(receipt, directory, {});
+    const target = createTargetProof(receipt, directory,
+      recovery(directory, "healthy", receipt, "healthy"), recovery(directory, "rollback", receipt, "rolled-back"));
+    writeFileSync(join(directory, "build.json"), JSON.stringify(receipt));
+    writeFileSync(join(directory, "source-gate.json"), JSON.stringify(source));
+    writeFileSync(join(directory, "run-status.json"), JSON.stringify({ status: "passed" }));
+    const bundle = join(directory, "retained.tar.gz");
+    await exportReleaseBundle(join(directory, "build.json"), bundle);
+    await finalizeNativeBuild(directory, "fixture", bundle, fileDigest(bundle));
+    const imported = await importReleaseBundle(bundle, join(directory, "consumer"));
+    expect(certifyRelease(imported.receipt, source, target).eligibility).toBe("certified-not-production");
+    expect(() => verifyBuildReceipt(receipt)).toThrow("archive differs");
+  });
   it("derives source and deployment evidence from retained stages and journals", () => {
     const directory = root();
     const receipt = build(directory);

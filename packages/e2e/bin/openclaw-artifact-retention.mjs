@@ -2,6 +2,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
+  completeRetentionRun,
   acquireArtifactPoolLock,
   applyArtifactCleanup,
   findSuccessfulBuild,
@@ -24,7 +25,7 @@ function usage() {
   throw new Error(
     "Usage: openclaw-artifact-retention.mjs " +
     "<init POOL | dry-run POOL | apply POOL | status POOL REQUIRED_BYTES | find-build POOL BUILD_ID | " +
-    "register POOL SPEC_JSON | success POOL RUN_DIR BUNDLE BUILD_ID | " +
+    "complete-run POOL RUN_REFERENCE OWNER | register POOL SPEC_JSON | success POOL RUN_DIR BUNDLE BUILD_ID | " +
     "failure POOL RUN_DIR | logs POOL RUN_DIR | reference POOL SPEC_JSON | unreference POOL ID>",
   );
 }
@@ -37,9 +38,10 @@ try {
   if (command === "init" && !args.length) {
     console.log(initializeArtifactPool(pool));
   } else {
-    unlock = acquireArtifactPoolLock(pool);
+    if (!["dry-run", "status", "find-build"].includes(command)) unlock = acquireArtifactPoolLock(pool);
     let result;
     if (command === "dry-run" && !args.length) result = planArtifactCleanup(pool);
+    else if (command === "complete-run" && args.length === 2) result = completeRetentionRun(pool, args[0], args[1]);
     else if (command === "apply" && !args.length) result = applyArtifactCleanup(pool);
     else if (command === "status" && args.length === 1) {
       const required = Number(args[0]);

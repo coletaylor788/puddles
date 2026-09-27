@@ -235,6 +235,8 @@ afterEach(() => {
 });
 function setup() {
   const directory = root();
+  vi.stubEnv("E2E_CAPACITY_ROOT", join(realpathSync(directory), "capacity"));
+  vi.stubEnv("E2E_BUILD_RESERVATION_BYTES", "0");
   const source = join(directory, "upstream");
   mkdirSync(join(source, ".git"), { recursive: true });
   const run = join(directory, "run");

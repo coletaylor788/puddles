@@ -526,7 +526,13 @@ new features following this skill.
 All local edits, type checks, and focused unit tests run in task-owned worktrees
 on the development machine, including composed OpenClaw source. Promote source
 edits into maintained patches before merging. Use repository-pinned toolchains
-and the host-local pnpm store. Keep output and writable state separate per task.
+and the maintained host pnpm store. Keep one persistent mutable OpenClaw build
+workspace per task, with separate writable output. Reuse compatible run paths.
+Give temporary comparisons and payloads an owner and a retirement condition.
+Keep one ready payload plus an in-flight replacement. After the last consumer
+finishes, use [storage finalization](../../../packages/e2e/DEVELOPMENT_STORAGE.md)
+to preserve evidence and retire generated children. Keep queued artifact
+references until handoff completes. Age or a missing PID never authorizes cleanup.
 
 Use a local incremental build for ordinary DEV iteration. Reuse the task's
 prepared source, installed dependencies, and compatible compiler outputs. Build

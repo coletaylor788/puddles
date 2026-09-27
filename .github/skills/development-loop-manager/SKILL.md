@@ -53,7 +53,11 @@ Use the [runner guide](../../../packages/e2e/README.md) and
 and cleanup. Verify ownership, consumers, evidence, and recovery dependencies
 before removing anything. Use supported tools and required locks or slots.
 Protect active/paused work and rollback state. Age, an idle chat, or a missing
-PID does not authorize deletion. Unsupported cleanup needs a tooling proposal.
+PID does not authorize deletion. Use the [storage lifecycle](../../../packages/e2e/DEVELOPMENT_STORAGE.md) for
+read-only previews and owner-confirmed finalization. Check that repeated attempts
+return to one mutable build and one ready payload per task. After a storage fix
+merges, notify affected owners to apply it to their own completed work and report
+actual reclaimed space. Unsupported cleanup needs a tooling proposal.
 
 ## Keep skills short and clear
 
