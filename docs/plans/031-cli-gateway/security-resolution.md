@@ -2,7 +2,7 @@
 
 **Status:** direction accepted for the design rework, September 26, 2026; runtime implementation pending.
 
-The current specification is [Plan 031](../031-rocket-money-integration.md). This file records the decision, not a second implementation contract. Its earlier proposal has been consolidated into the plan's execution, authentication, transport, API, and acceptance sections.
+The current specification is [Plan 031](../031-rocket-money-integration.md) and its [technical appendix](technical-appendix.md). This file records the decision, not a second implementation contract.
 
 ## Decision
 
@@ -16,12 +16,12 @@ Logging and dependency risks remain: use protected explicit settings, allowliste
 
 ## Current specification
 
-- [Execution sequence and library boundaries](../031-rocket-money-integration.md#a-architecture-and-execution-boundary).
-- [Credential custody and renewal](../031-rocket-money-integration.md#b-credential-and-authentication-lifecycle).
-- [Delivery phases and acceptance gates](../031-rocket-money-integration.md#e-delivery-phases-and-acceptance-gates).
-- [Provider extension contract](../031-rocket-money-integration.md#h-provider-interface-and-extension-contract).
-- [SSH provisioning, scope separation, and recovery](../031-rocket-money-integration.md#i-sandbox-to-host-connection).
-- [Native CLI/local API and error outcomes](../031-rocket-money-integration.md#k-local-api-cli-and-error-contract).
+- [Execution sequence and library boundaries](technical-appendix.md#executor-contract-and-limits).
+- [Credential custody and renewal](technical-appendix.md#authentication-contract).
+- [Delivery phases and acceptance gates](../031-rocket-money-integration.md#implementation).
+- [Provider extension contract](technical-appendix.md#provider-extension-contract).
+- [SSH provisioning, scope separation, and recovery](technical-appendix.md#socket-transport-and-caller-scope).
+- [Native CLI/local API and error outcomes](technical-appendix.md#local-api-and-cli-contract).
 
 ## Checklist
 
