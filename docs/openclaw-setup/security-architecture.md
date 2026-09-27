@@ -105,36 +105,21 @@ state and effects; they are not security sandboxes against their host.
 
 ```mermaid
 flowchart TB
-    subgraph GitHub["GitHub: outside Tailscale"]
-        Repo["Source, PR review, and merge"]
-        subgraph Runner["Hosted CI runner machine"]
-            CI["Public cumulative tests, fixture runtime, and packaging"]
-        end
-        Artifacts["Public artifacts and sanitized evidence"]
-        Repo --> CI --> Artifacts
+    subgraph GitHub["GitHub: source and artifacts"]
+        CI["Public CI builds"]
     end
     subgraph Tailnet["Tailscale"]
-        subgraph DevMachine["Development host machine"]
-            Work["Parallel worktrees: edit, focused checks, incremental builds"]
-            Builder["Local CI builder: private composition and cumulative gate"]
-            Delivery["Delivery tooling: verify artifacts and release evidence"]
-            Work --> Builder
-            Work -->|"Draft outputs"| Delivery
-            Builder -->|"Private artifacts and evidence"| Delivery
+        subgraph Host["Development host"]
+            Builds["Local draft and CI builds"]
         end
-        subgraph Server["Server machine: standard service account"]
-            Deploy["Deployment controller: slots and target locks"]
-            DEV["DEV: draft and exact-artifact checks"]
-            TEST["TEST: merged-main rehearsal"]
-            PROD["PROD: activation, read-only health, rollback"]
-            Deploy --> DEV
-            Deploy --> TEST
-            Deploy --> PROD
+        subgraph Server["Server: deployment slots"]
+            DEV["DEV"]
+            TEST["TEST"]
+            PROD["PROD"]
         end
     end
-    Work <-->|"HTTPS / GitHub credentials for writes"| Repo
-    Delivery <-->|"HTTPS / authorized artifact download"| Artifacts
-    Delivery -->|"SSH / public-key auth + Tailscale ACLs"| Deploy
+    Host <-->|"HTTPS: source and artifacts"| GitHub
+    Host -->|"SSH: deployment"| Server
 ```
 
 The [development skill](../../.github/skills/safe-feature-development/SKILL.md)
@@ -142,7 +127,7 @@ and [runner guide](../../packages/e2e/README.md) define stage order and commands
 CI/CD should progress automatically; agents monitor and repair failures.
 
 - **Builder access:** pin source, toolchain, and dependencies. [Public CI](../../.github/workflows/integration.yml)
-  uses public inputs without live credentials or private extensions. Private
+  uses public inputs without live credentials or local extensions. Local
   composition and its diagnostics stay on the authorized local builder. Public
   exports contain only approved artifacts and bounded sanitized diagnostics.
 - **Test effects:** DEV, TEST, and builder fixtures own separate state, sessions,
@@ -232,7 +217,7 @@ flowchart TB
     External -->|"Untrusted response"| Adapter
 ```
 
-Sending private task data to the reader requires the disclosure gate.
+Sending higher-trust task data to the reader requires the disclosure gate.
 
 #### Agent containment and authority
 
@@ -276,7 +261,7 @@ Implementation details:
 - Keep keys, OAuth tokens, gateway credentials, browser cookies, and refresh
   state outside agent workspaces, mounts, environments, and tool results.
 - Host services resolve credentials through SecretRef, Keychain, or a configured
-  private backend. Never include values in source, logs, fixtures, artifacts,
+  credential backend. Never include values in source, logs, fixtures, artifacts,
   or public diagnostics.
 - Scope adapters to specific services, accounts, and operations. Credentials
   authenticate service access; they do not approve agent actions.
