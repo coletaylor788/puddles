@@ -1,30 +1,34 @@
 # Security architecture decision: provider-owned execution
 
-**Status:** direction accepted for the design rework, September 26, 2026; runtime implementation pending.
+**Status:** Design updated September 26, 2026; implementation deferred.
 
 The current specification is [Plan 031](../031-rocket-money-integration.md) and its [technical appendix](technical-appendix.md). This file records the decision, not a second implementation contract.
 
 ## Decision
 
-Replace Envoy/`ext_proc` with a native provider application that owns validation, private authentication, HTTPS execution, response inspection, and release. Reuse Starlette/Uvicorn, HTTPX, OpenSSH, Keychain/keyring, Authlib, Playwright, and maintained GraphQL parsing libraries. No upstream forks.
+Use Apple PIM-style CLI-backed OpenClaw tools with shared host installation and per-agent tool grants. A private host service owns request validation, credential custody, and execution. Reuse the public OpenClaw plugin API, Starlette/Uvicorn, HTTPX, stock curl, Keychain/keyring, Authlib, Playwright, and maintained GraphQL parsing libraries. No upstream forks.
 
-The [Envoy audit](envoy-security-review.md) found that successful early processor closure can skip further inspection. Keeping execution in the provider service removes that particular split in authority. It does not prove the future application bug-free or protect against compromise of trusted provider code.
+The [Envoy audit](envoy-security-review.md) found that successful early processor closure can skip further inspection. Owning validation and execution in the same application removes that split in authority. Validation failure cannot fall through to a generic proxy. This does not certify future code or protect against a compromised trusted host plugin.
 
-The same change removes private mTLS certificate management. Public provider HTTPS still verifies server certificates and hostnames. A host-initiated restricted SSH reverse forward connects scoped Linux sockets to fixed macOS sockets using dedicated unattended keys and pinned relay identity. No new inbound SSH listener on the Mini is required.
+The existing OpenClaw tool channel carries agent requests to host tool handlers. One private Unix socket connects the shared CLI clients to the credential service. Per-agent images, sandbox socket mounts, SSH relays, SOCKS routing, and private TLS certificates are unnecessary for this tool model. Public HTTPS still validates certificates and hostnames.
 
-Logging and dependency risks remain: use protected explicit settings, allowlisted operational logs, no raw access/debug dumps, artifact verification, and independent network controls. The relay remains trusted transport, while the host service owns provider credentials.
+The host connection is restricted to the trusted OpenClaw identity. Caller identity comes from tool factory context and protected configuration, never model arguments. Grant checks occur at dispatch and inside the service. Direct host execution or socket access would bypass this boundary and cannot be exposed to these agents.
+
+Weather uses native curl arguments behind a fixed runner, with explicit destination, filesystem, configuration, environment, and resource restrictions. A separate unprivileged worker identity keeps curl away from the credential service's private state. Exact argument support and safe workspace transfers must be tested before readiness is claimed.
+
+Return native bodies with separate execution status. Rocket Money cookie/auth headers remain private; no general response scanner or special agent receipt is added. Disable raw access/debug dumps and protect logs, state, code, and configuration. Standard provider errors remain source responses; uncertain writes require reconciliation, never blind replay.
 
 ## Current specification
 
-- [Execution sequence and library boundaries](technical-appendix.md#executor-contract-and-limits).
-- [Credential custody and renewal](technical-appendix.md#authentication-contract).
-- [Delivery phases and acceptance gates](../031-rocket-money-integration.md#implementation).
+- [Tool dispatch and private transport](technical-appendix.md#tool-dispatch-and-local-transport).
+- [Installation and per-agent permissions](technical-appendix.md#agent-installation-and-access).
+- [Weather curl boundaries](technical-appendix.md#weather-curl-contract).
+- [Managed execution](technical-appendix.md#managed-executor-and-limits) and [credential renewal](technical-appendix.md#authentication-contract).
 - [Provider extension contract](technical-appendix.md#provider-extension-contract).
-- [SSH provisioning, scope separation, and recovery](technical-appendix.md#socket-transport-and-caller-scope).
-- [Native CLI/local API and error outcomes](technical-appendix.md#local-api-and-cli-contract).
+- [Delivery and acceptance gates](../031-rocket-money-integration.md#implementation).
 
 ## Checklist
 
-- [x] Record the user's selected design direction and consolidate its requirements in Plan 031.
+- [x] Record the selected tool model and consolidate requirements in Plan 031.
 - [x] Preserve the original source audit and API evidence.
-- [ ] Complete the implementation and runtime acceptance checklist in Plan 031 before claiming deployment readiness.
+- [ ] Complete Plan 031's runtime acceptance checklist before claiming deployment readiness.
