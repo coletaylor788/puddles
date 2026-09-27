@@ -57,7 +57,7 @@ export default [
   {
     id: "model-error",
     steps: [{ incoming: [{ text: "Exercise a model failure." }], responses: [{ error: "Synthetic model failure" }], expect: {
-      sends: ["fixture/fixture-model request failed (request format rejected, HTTP 400)."],
+      sends: ["LLM request failed: provider rejected the request schema or tool payload."],
       sendsExclude: ["Synthetic model failure"],
     } }],
   },

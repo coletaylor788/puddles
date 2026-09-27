@@ -226,7 +226,8 @@ export async function runScenario(installedDir, scenario, options = {}) {
         ...(scenario.chatType === "group" ? { groupChat: { mentionPatterns: ["@fixture-agent"], unmentionedInbound: "room_event" } } : {}),
       },
       plugins: { allow: ["imessage", "puddles-recording-tools"], load: { paths: [plugin] }, entries: { imessage: { enabled: true }, "puddles-recording-tools": { enabled: true } } },
-      tools: { allow: Object.keys(scenario.adapters ?? {}), deny: ["exec", "process", "browser", "web_fetch", "web_search", "cron", "sessions_spawn", "nodes"] },
+      // Scripted model responses call recording tools directly, without discovery.
+      tools: { toolSearch: false, allow: Object.keys(scenario.adapters ?? {}), deny: ["exec", "process", "browser", "web_fetch", "web_search", "cron", "sessions_spawn", "nodes"] },
       session: { dmScope: "per-channel-peer" },
     });
     if (scenario.expectBundledSkills) {

@@ -21,6 +21,7 @@ activated gateway. Keep the previous interpreter available for rollback.
 | `subagent-cross-agent-spawn-fix.patch` | Explicit targeting and inherited tools |
 | `skill-workshop-sandbox-fix.patch` | Skill workshop in sandboxed agents |
 | `imessage-message-part-coalescing.patch` | Selective text, link, and image coalescing |
+| `imessage-group-inbound-policy.patch` | Honor configured unmentioned group events in iMessage |
 | `sandbox-discovery-failure-fix.patch` | Select the configured registry; upstream supplies discovery error propagation |
 | `browser-userdata-dir-fix.patch` | Browser data directory and singleton cleanup |
 | `builtin-memory-migration.patch` | Regression tests for upstream memory migration and per-agent source isolation |

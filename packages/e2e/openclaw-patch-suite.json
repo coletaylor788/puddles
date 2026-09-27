@@ -57,7 +57,9 @@
     "src/commands/doctor-agent-memory-schema.test.ts": "commands",
     "src/process/supervisor/service-child-ownership.bundle.test.ts": "process",
     "src/infra/windows-process-start.test.ts": "infra",
-    "src/config/sessions/session-declaration-portability.test.ts": "runtime-config"
+    "src/config/sessions/session-declaration-portability.test.ts": "runtime-config",
+    "extensions/imessage/src/monitor/inbound-processing.route.test.ts": "extension-imessage",
+    "src/channels/inbound-event/classification.test.ts": "unit-fast"
   },
   "patches": [
     {
@@ -139,6 +141,13 @@
         "extensions/imessage/src/monitor/ingress.test.ts",
         "src/config/dead-config-keys.test.ts",
         "src/commands/doctor/shared/legacy-config-migrations.runtime.retired.test.ts"
+      ]
+    },
+    {
+      "name": "imessage-group-inbound-policy",
+      "tests": [
+        "extensions/imessage/src/monitor/inbound-processing.route.test.ts",
+        "src/channels/inbound-event/classification.test.ts"
       ]
     },
     {
