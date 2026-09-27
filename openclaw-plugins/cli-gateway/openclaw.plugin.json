@@ -1,0 +1,16 @@
+{
+  "id": "cli-gateway",
+  "name": "Puddles CLI integrations",
+  "version": "0.1.0",
+  "description": "Native Rocket Money GraphQL and weather curl through protected host applications.",
+  "contracts": {"tools": ["rocket_money_read", "rocket_money_write", "weather_curl"]},
+  "configSchema": {
+    "type": "object", "additionalProperties": false,
+    "required": ["cliPath", "configPath", "invocationStateDir"],
+    "properties": {
+      "cliPath": {"type": "string"},
+      "configPath": {"type": "string"},
+      "invocationStateDir": {"type": "string"}
+    }
+  }
+}

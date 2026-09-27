@@ -1,7 +1,7 @@
 # Plan 031: CLI gateway for Rocket Money and weather
 
-**Status:** Design recorded; implementation deferred
-**Issue:** None
+**Status:** Implementation approved; PR preparation in progress; merge blocked by requester
+**Issue:** [#135](https://github.com/coletaylor788/puddles/issues/135)
 **Last updated:** 2026-09-26
 
 ## Human section
@@ -128,7 +128,9 @@ Registration and adapters are trusted operator-installed configuration/code. Age
 
 ### Status
 
-The design is recorded for later implementation; no new runtime is installed and no financial writes have been performed. The Mini's installed Apple PIM source confirms factory-registered tools spawning shared CLIs. Its weather skill confirms wttr.in and wttr.is.
+The plugin, host CLIs, auth helpers, request policies, configuration generator, and skills are implemented on the feature branch. Local tests use synthetic credentials and include actual plugin-to-CLI execution. Independent security review found installation boundary issues; fixes and regression tests are included.
+
+The PR remains blocked from merge by Cole's instruction. After the OpenClaw upgrade, rebase and verify installed tool isolation, managed-browser silent renewal, and the free-account transaction/budget behavior. Nothing is installed on the Mini and no real financial writes have been performed.
 
 Remaining checks are the new plugin's permission enforcement, safe native curl execution, unattended Rocket Money auth, free-account coverage, and budget behavior after date changes. The sections below are the implementation reference, not more request-flow stages.
 
@@ -136,7 +138,7 @@ Remaining checks are the new plugin's permission enforcement, safe native curl e
 
 ### State
 
-The current revision uses Apple PIM-style CLI-backed tools and per-agent tool grants. It removes a separate service/socket, per-agent image distribution, sandbox SSH relays, special main-agent receipts, generic response inspection, and the proposed weather API wrapper. Main receives all three tools; household receives weather only. The Rocket Money skill and editable main-memory triage rules are specified below. Implementation remains deferred. The original Envoy review is retained as historical evidence.
+The current revision uses Apple PIM-style CLI-backed tools and per-agent tool grants. It removes a separate service/socket, per-agent image distribution, sandbox SSH relays, special main-agent receipts, generic response inspection, and the proposed weather API wrapper. Main receives all three tools; household receives weather only. The Rocket Money skill and editable main-memory triage rules are specified below. Implementation is underway against this branch's OpenClaw baseline. Do not merge, enable auto-merge, or deploy to production. Rebase and revalidate after the concurrent upgrade, then obtain Cole's approval before merging. The original Envoy review remains historical evidence.
 
 ### Scope and acceptance criteria
 
@@ -162,6 +164,8 @@ The [technical appendix](031-cli-gateway/technical-appendix.md) holds exact cont
 
 ### Implementation
 
+Source and usage: [host package](../../packages/cli-gateway/README.md), [plugin](../../openclaw-plugins/cli-gateway/README.md), [setup](../../scripts/mac-mini/cli-gateway/README.md), [Rocket Money skill](../../clis/rocket-money/skills/rocket-money/SKILL.md). Shared entry points use one stdin contract rather than the appendix's earlier proposed subcommands. Native GraphQL remains unchanged. Source-backed `node(id: $id)` reads verify writes; no atomic provider compare-and-set is proven. Journal directories stop accepting new IDs at 10,000 entries and do not automatically expire duplicate protection.
+
 | Phase | Deliverable | Gate |
 |---|---|---|
 | 1. Tool integration | Shared plugin/CLIs, stdin/stdout invocation, fake adapters | Per-agent allow/deny, missing identity denied, no direct sandbox bypass, no image changes. |
@@ -174,13 +178,17 @@ The [technical appendix](031-cli-gateway/technical-appendix.md) holds exact cont
 
 Recorded research established Rocket Money's source contracts and browser silent recovery, not standalone/headless renewal or successful mutations. See [evidence](031-cli-gateway/technical-appendix.md#research-evidence), [read catalog](031-cli-gateway/read-catalog.json), and [recorded probes](031-cli-gateway/research-evidence.json). Apple PIM source and weather evidence are in the appendix.
 
-Implementation must cover the [runtime cases](031-cli-gateway/technical-appendix.md#runtime-validation-cases). Use synthetic credentials and recording adapters for automated writes. This design revision needs direct contract/link review and applicable documentation checks, not runtime deployment or prose regression tests.
+Local validation: 86 Python tests pass (policy, curl escapes, account locks, write replay/uncertainty, browser driver, OAuth rotation, config boundaries, race-safe skills, and a real extension CLI process). Nine plugin tests pass, including real Python subprocess execution. A credential-free live request through the weather CLI to wttr.in returns the native London forecast with curl exit 0. Python lint and the full workspace build/typecheck pass. The broader workspace test run encounters sandbox process-inspection, resource-measurement, and package-cache failures; this is not a green cumulative gate. Authlib emits one upstream deprecation warning for its supported httpx compatibility path.
+
+The cumulative command is `node packages/e2e/bin/openclaw-test-env.mjs ci`; CI installs and runs the Python package as part of that pool. The local cumulative attempt stops during source prerequisite validation (git exit 128); it is not a passed gate. CI and post-upgrade installed-runtime checks remain outstanding. The [runtime cases](031-cli-gateway/technical-appendix.md#runtime-validation-cases) remain acceptance criteria; mocked auth does not establish unattended host renewal or free-account writes.
 
 ### Rollout and rollback
 
-No runtime rollout is part of this task. Future implementation follows the [development workflow](../../.github/skills/safe-feature-development/SKILL.md) and [deployment coordination](../../packages/e2e/DEPLOYMENT_COORDINATION.md). Prove tool permissions and request policy before adding live credentials. Revoke an agent's grant in protected configuration and reject subsequent dispatches, including from existing sessions. Already-dispatched writes may still finish. Financial recovery uses recorded intent and read-back, not automatic replay or rollback.
+The current authorization stops at a ready PR. No merge or production rollout is permitted without fresh approval after the upgrade and rebase. Implementation follows the [development workflow](../../.github/skills/safe-feature-development/SKILL.md) and [deployment coordination](../../packages/e2e/DEPLOYMENT_COORDINATION.md). Prove tool permissions and request policy before adding live credentials. Revoke an agent's grant in protected configuration and reject subsequent dispatches, including from existing sessions. Already-dispatched writes may still finish. Financial recovery uses recorded intent and read-back, not automatic replay or rollback.
 
 ### Review log
+
+Independent implementation review identified exposed host mounts/code, unsafe in-place skill copying, and an extension test that bypassed CLI parsing. Remediation protects active code/auth paths, anchors staged skill installation to no-follow directory descriptors, and loads trusted installed entry points through the actual CLI parser. Synthetic regressions cover each finding. Final retained review independently reran all 86 Python tests and found no remaining concrete material defects. See [implementation review](031-cli-gateway/implementation-review.md). Host acceptance remains deferred until the upgrade.
 
 The [Envoy review](031-cli-gateway/envoy-security-review.md), [decision record](031-cli-gateway/security-resolution.md), and [alternatives](031-cli-gateway/technical-appendix.md#alternatives-and-source-references) retain the prior investigation. The current design follows the requester's Apple PIM tool model: shared installation, per-agent grants, native GraphQL/curl, and body-only returns. Credential custody and the two financial write limits remain.
 

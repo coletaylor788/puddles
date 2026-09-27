@@ -137,11 +137,11 @@ Production endpoint: `https://client-api.rocketmoney.com/graphql`.
 
 ### Native CLI interface
 
-Proposed syntax, not installed:
+Implemented host invocation (not installed on the Mini):
 
 ```sh
-rmoney graphql --document query.graphql --variables variables.json --operation-name Explore
-rmoney auth status
+printf '%s' '{"mode":"status"}' | /absolute/install/.venv/bin/rmoney \
+  --config /absolute/install/policy.json --agent main --tool rocket_money_read
 ```
 
 The HTTP payload retains `query`, `variables`, and `operationName`. Accepted GraphQL documents are forwarded unchanged. Preserve source IDs, aliases, fragments, nulls, and the `{data, errors, extensions}` envelope; return the native body without forwarding upstream headers, and distinguish gateway failures from source responses.
@@ -223,28 +223,28 @@ V1 excludes remote changes to amounts, names, notes, flags, tags, ignore/tax sta
 
 ## CLI contract
 
-The plugin launches a fixed executable with an allowlisted subcommand and trusted invocation metadata. Model-controlled native requests arrive on stdin. No local HTTP API or request headers are needed.
+The plugin launches the fixed `puddles-cli` executable with `--config`, `--agent`, `--tool`, and a stable `--request-id` for writes. Model-controlled native requests arrive on stdin. `rmoney` and `puddles-weather` are aliases using this same parser; they do not define another command language.
 
-| CLI operation | Input | Output |
+| Stdin mode | Input | Output |
 |---|---|---|
-| `rmoney graphql` | Native `{query, variables, operationName}` | Native GraphQL body for reads or the two allowed mutations, subject to the tool grant. |
-| `rmoney batch` | Bounded array of native envelopes | Ordered native per-item results and separate execution/coverage metadata. |
-| `rmoney auth status` | None | Auth/availability status, no session export. |
-| `rmoney operation status <request-id>` | Recorded request ID | Verification outcome within the caller's account/grant. |
-| Weather CLI | Native curl argv plus optional stdin body | Native response body or binary artifact, with separate exit status. |
-
-Operator usage can include document/variables files:
+| `graphql` | Native envelope under `request`; separate `expected` for writes | Native GraphQL response body. |
+| `batch` | Native `requests` array; corresponding `expected` array for writes | Ordered per-item responses and separate coverage metadata. |
+| `status` | Mode only | Local auth state, no session export. |
+| `operation_status` | Recorded `requestId` | Caller-scoped verification outcome and batch item IDs. |
+| `paginate` | Native envelope, connection path, cursor variable, page budget | Native pages plus explicit coverage. |
+| `curl` | Native curl `argv` plus optional `stdin` body | UTF-8 body or base64 bytes, with exit status. |
+| `help` / `catalog` | Mode only | Offline syntax help / exact reviewed read policy. |
 
 ```sh
-rmoney graphql --document query.graphql --variables variables.json --operation-name Explore
-rmoney batch --requests requests.json
-rmoney auth status
-rmoney operation status <request-id>
+printf '%s' '{"mode":"help"}' | /absolute/install/.venv/bin/rmoney \
+  --config /absolute/install/policy.json --agent main --tool rocket_money_read
 ```
+
+Use the [skill query reference](../../../clis/rocket-money/skills/rocket-money/references/queries.md) for complete native examples. Operator invocations supply a persistent UUID with `--request-id` before writes; the plugin persists it automatically.
 
 Agent tools must transfer explicit workspace inputs safely and pass their contents to stdin; they do not pass arbitrary host file paths. The wrapper constructs trusted caller/tool controls separately from the native request. Exact subprocess argument encoding is an implementation detail; reject unknown controls, and never let request fields override executable, account, identity, or grants.
 
-The wrapper persists a UUID before launching a write and passes it to the CLI as execution metadata. Reuse it across uncertain failures. A stable batch ID and item index determine each item ID. IDs do not grant authority; changed content with the same ID is rejected. Operator CLI usage creates/persists an ID before dispatch too. Expected-value controls refer to source fields and remain separate from GraphQL variables.
+The wrapper persists a UUID before launching a write and passes it to the CLI as execution metadata. Reuse it across uncertain failures. A stable batch ID and item index determine each item ID. IDs do not grant authority; changed content with the same ID is rejected. Operator CLI callers must create and persist an ID before dispatch too. Expected-value controls refer to source fields and remain separate from GraphQL variables.
 
 Stdout contains native source results. Bounded structured stderr and exit status describe local execution failures without mixing diagnostics into provider JSON. Codes include `POLICY_DENIED`, `INVALID_REQUEST`, `AUTH_REQUIRED`, `UNAVAILABLE`, `LIMIT_EXCEEDED`, `UPSTREAM_ERROR`, and `OUTCOME_UNKNOWN`. No raw exceptions, auth headers, cookies, or private body excerpts in diagnostics. Provider GraphQL error bodies remain native stdout responses.
 
@@ -357,14 +357,14 @@ Adding a provider requires its registration, implementation, CLI/skill, tool gra
 
 ## Package layout
 
-Proposed locations, all within Puddles:
+Implemented locations, all within Puddles:
 
 ```text
 openclaw-plugins/cli-gateway/  Named tools, trusted context, CLI invocation
 packages/cli-gateway/         Shared policy, auth, locks, journal and execution
-clis/rocket-money/            rmoney application, native operations, adapter and skill
-clis/weather/                Weather application, curl runner policy and skill
-scripts/mac-mini/cli-gateway/ Shared host install, private state and operator setup
+clis/rocket-money/            Rocket Money skill and native-operation references
+clis/weather/                Weather skill; both executors live in packages/cli-gateway
+scripts/mac-mini/cli-gateway/ Config/skill preparation, seed rules and operator setup guide
 ```
 
 The weather application validates native curl arguments and launches the fixed binary; stock curl performs the HTTP request. It does not implement weather forecasts. Deploy protected host artifacts from reviewed source. Skills and bounded request/output files may enter agent workspaces; credentials, browser profiles, protected configuration, and active executables may not. Python and TypeScript packages may coexist; final paths follow current repository conventions.

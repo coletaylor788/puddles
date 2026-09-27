@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "puddles-cli-gateway"
+version = "0.1.0"
+description = "Tool-invoked host applications for Rocket Money and weather"
+requires-python = ">=3.11"
+dependencies = ["httpx==0.28.1", "graphql-core==3.2.6", "keyring==25.7.0", "Authlib==1.8.0", "playwright==1.63.0"]
+
+[project.optional-dependencies]
+dev = ["pytest==8.4.2", "ruff==0.13.1"]
+
+[project.scripts]
+puddles-cli = "puddles_cli.cli:main"
+rmoney = "puddles_cli.cli:rmoney_main"
+puddles-weather = "puddles_cli.cli:weather_main"
+
+[tool.setuptools.package-data]
+puddles_cli = ["resources/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
