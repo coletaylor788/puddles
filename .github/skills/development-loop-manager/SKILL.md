@@ -9,6 +9,7 @@ description: "Review recent Puddles development loops and improve their skills, 
 
 - Protect production and preserve rollback.
 - Catch issues in local builds and tight DEV loops.
+- Support multiple contributors developing and merging to main in parallel.
 - Make CI/CD automated and hands-off; agents monitor and react to issues rather
   than ushering routine stages through.
 - Reduce redundant builds, checks, retries, and handoffs.
@@ -29,6 +30,8 @@ the evidence into related issues.
   what could have caught or prevented it earlier.
 - Look for recurring delays, local/CI differences, and missed integration checks.
   Treat routine CI/CD steps needing agent intervention as automation gaps.
+- Look for unnecessary serialization or interference between parallel contributors.
+  Keep coordination scoped to shared resources and actual dependencies.
 - Check package-store reuse, incremental builds, and completed scratch left behind
   on either host, including outside the artifact pool.
 - Review returns for design approval. Fix only obvious general guidance gaps;
