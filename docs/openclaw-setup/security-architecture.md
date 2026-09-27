@@ -183,12 +183,12 @@ flowchart TB
 
 #### Required rules
 
-1. Content flows only from less trusted to more trusted. Household cannot access
-   personal content. The receiving context takes the least-trusted label;
-   block flow that would expose existing higher-trust data.
-2. Sharing in the other direction requires human approval enforced by code for
-   the exact content and destination. Approval releases only that copy, never
-   credentials or ongoing access. Copies retain their source restrictions.
+1. Content always adopts the least-trusted label.
+2. Content MUST only flow from less trusted to more trusted. Household cannot access
+   personal content.
+3. Sharing toward a less-trusted label MUST have code-enforced human approval
+   for the exact content and destination. Release only that copy, never credentials
+   or ongoing access. Copies retain their source restrictions.
 
 | Label | Sources | Required handling |
 |---|---|---|
@@ -197,15 +197,9 @@ flowchart TB
 | Friends | Verified friend input, records shared with that friend or group |​ |
 | Public | SMS, email, calendar entries, web pages | Run guards. Read through the reader agent. No turns or follow-ups. |
 
-SMS senders cannot be verified as more trusted. A familiar sender does not
-upgrade a public source. Tools, memory, and delegated results retain their
-source labels. Public does not mean publishable; account, recipient, and task
-scope still apply.
-
 ### Runtime flow
 
-This diagram shows the required flow. Legacy exceptions and incomplete coverage
-are listed under [Known gaps](#appendix-known-gaps-and-validation-limits).
+Required flow; see [known gaps](#appendix-known-gaps-and-validation-limits) for missing controls.
 
 ```mermaid
 flowchart TB
@@ -242,193 +236,169 @@ Sending private task data to the reader requires the disclosure gate.
 
 #### Agent containment and authority
 
-- Keep main, reader, and limited-user roles in separate scopes. Do not expose
-  host exec, gateway administration, credential files, Docker control, or broad
-  host mounts through their tool policies.
-- Use a narrow host adapter when a task needs a host capability. A plugin runs
-  with host authority, so its argument validation and caller binding matter as
-  much as the sandbox.
-- Derive identity, workspace, account scope, and allowed destinations from trusted
-  runtime context. Caller-supplied IDs and paths cannot grant authority.
-- Keep authenticated owner access distinct from household or other limited
-  roles. Contacts membership establishes recipient trust, not operator identity
-  or permission to perform an action.
-- Treat `debug` with sandbox disabled as an explicit operator administration
-  exception. It must not be reachable through ordinary channels or delegation
-  from lower-trust agents.
+- Separate main, reader, and limited-user scopes. Deny host exec, gateway admin,
+  credential files, Docker control, and broad host mounts.
+- Expose host capabilities through narrow adapters. Host plugins must validate
+  arguments and bind the caller's identity.
+- Derive identity, workspace, account, and destinations from trusted runtime
+  context. Caller-supplied IDs and paths grant no authority.
+- Authenticate the owner separately from limited users. A contact match grants
+  neither operator identity nor action approval.
+- Unsandboxed `debug` is for explicit operator administration only. Block access
+  from ordinary channels and lower-trust delegation.
 
-The pinned upstream [sandbox configuration](https://github.com/openclaw/openclaw/blob/1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7/src/agents/sandbox/config.ts)
-defaults ordinary Docker tools to no network, a read-only root, and dropped
-capabilities. [Container creation](https://github.com/openclaw/openclaw/blob/1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7/src/agents/sandbox/docker.ts)
-also sets no-new-privileges. Effective configuration can differ, and browser
-containers have separate networking and mounts. Inspect the selected runtime;
-neither the word “Docker” nor an old setup example proves confinement.
+Implementation details:
 
-Native cross-agent delegation selects the configured target's tool policy. The
-[maintained spawn patch](patches/subagent-cross-agent-spawn-fix.md) preserves
-specialized reader access and explicit target selection; same-agent children
-retain inherited restrictions. It is not permission to select a privileged
-profile. An external ACP harness is a separate execution system: the spawn
-patch checks requester command-tool compatibility but cannot enforce an OpenClaw
-target profile's tool policy inside that harness. Do not use a restricted target
-name as proof of external-harness containment.
+- **Docker:** pinned [defaults](https://github.com/openclaw/openclaw/blob/1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7/src/agents/sandbox/config.ts)
+  disable network, use a read-only root, and drop capabilities.
+  [Container creation](https://github.com/openclaw/openclaw/blob/1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7/src/agents/sandbox/docker.ts)
+  sets no-new-privileges. Verify effective settings; browser containers have
+  separate networks and mounts.
+- **Native delegation:** the [spawn patch](patches/subagent-cross-agent-spawn-fix.md)
+  selects the target's tool policy, preserving reader access. Same-agent children
+  inherit restrictions. Target selection cannot grant a privileged profile.
+- **External ACP harnesses:** these run agents outside OpenClaw's execution
+  system. The patch checks requester command-tool compatibility but cannot
+  enforce the target's tool policy inside the harness.
 
 #### Channels and adapters
 
-- The [iMessage channel](02-talking-to-puddles-on-imessage.md) runs `imsg rpc`
-  as a host-owned child process over stdio. Bind channel identity and sender
-  allowlists before admission.
-- The [Gmail](../../openclaw-plugins/secure-gmail/src/mcp-bridge.ts) and
-  [calendar](../../openclaw-plugins/secure-apple-calendar/src/mcp-bridge.ts)
-  bridges use MCP over stdio to host-owned processes. Caller scope and tool
-  grants constrain access.
+- **[iMessage](02-talking-to-puddles-on-imessage.md):** `imsg rpc` runs as a
+  host-owned child over stdio. Check channel identity and sender allowlists
+  before admission.
+- **[Gmail](../../openclaw-plugins/secure-gmail/src/mcp-bridge.ts) and
+  [calendar](../../openclaw-plugins/secure-apple-calendar/src/mcp-bridge.ts):**
+  host-owned MCP processes communicate over stdio. Enforce caller scope and
+  tool grants.
 
 #### Credentials and external access
 
-- Keep API keys, OAuth tokens, gateway credentials, browser cookies, and refresh
-  state outside agent workspaces, mounts, environment variables, and tool results.
-- Resolve credentials in host services through SecretRef, Keychain, or another
-  explicitly configured private backend. Do not put values in source, logs,
-  fixtures, artifacts, or public diagnostics.
-- Bind each adapter to its allowed service, account, and operations. A credential
-  proves service access; it does not authorize every action the agent proposes.
-- Treat authenticated browser profiles as credentials, even if the model never
-  sees the password. Human login does not make subsequent page content trusted.
+- Keep keys, OAuth tokens, gateway credentials, browser cookies, and refresh
+  state outside agent workspaces, mounts, environments, and tool results.
+- Host services resolve credentials through SecretRef, Keychain, or a configured
+  private backend. Never include values in source, logs, fixtures, artifacts,
+  or public diagnostics.
+- Scope adapters to specific services, accounts, and operations. Credentials
+  authenticate service access; they do not approve agent actions.
+- Treat logged-in browser profiles as credentials. Login does not make page
+  content trusted.
 
-The [Gmail server](../../servers/gmail-mcp/README.md) runs outside the agent
-sandbox and obtains its OAuth token through its
-[host authentication layer](../../servers/gmail-mcp/src/gmail_mcp/auth.py).
-The plugin excludes OAuth bootstrap and send tools. Its OAuth grant is broader
-than its exposed tool set, so both custody and tool restrictions matter.
-Calendar uses a host MCP bridge and per-agent account visibility through
-[its configured scope](../../openclaw-plugins/secure-apple-calendar/README.md).
-The proposed [provider service](../plans/031-rocket-money-integration.md) applies
-this pattern to additional CLIs; it is not a deployed universal access broker.
+Current integrations:
+
+- **[Gmail](../../servers/gmail-mcp/README.md):** the host server obtains OAuth
+  through its [authentication layer](../../servers/gmail-mcp/src/gmail_mcp/auth.py).
+  The plugin excludes bootstrap and send tools; the OAuth grant is broader.
+- **[Calendar](../../openclaw-plugins/secure-apple-calendar/README.md):** the host
+  MCP bridge limits account visibility per agent.
+- **[Provider service](../plans/031-rocket-money-integration.md):** proposed CLI
+  integration, not a deployed universal broker.
 
 ##### Stable credential identity
 
-The [Gmail Keychain backend](../../servers/gmail-mcp/src/gmail_mcp/keychain.py)
-invokes `/usr/bin/security`, an Apple-signed executable, instead of granting the
-changing Python interpreter access to the item. Node-based host consumers can
-use the same pattern. Keychain approves the executable identity, not a PID or
-the identity of the interpreter that spawned it.
+Keychain approves the reader executable, not its PID or parent interpreter.
 
-- New Gmail items trust `/usr/bin/security`; credential refresh preserves the
-  existing item ACL. Reads and writes have a five-second timeout. Credentials
-  return only to the trusted host consumer, never the agent tool result.
-- Interpreter upgrades leave that credential reader unchanged. The local
-  executable's signing requirement is `com.apple.security` anchored to Apple;
-  live item ACLs and the unlocked login Keychain still need verification.
-- This is a same-user host trust boundary. Other code running as that user can
-  invoke the approved reader too; executable identity is not per-agent isolation.
-- The [custom signed helper](https://github.com/coletaylor788/puddles/pull/29)
-  is a separate, unmerged implementation. It keeps the exact approved binary
-  unchanged and reads allowlisted items; replacing that binary requires human
-  reapproval even when its signing requirement matches. Do not assume every
-  consumer has migrated to it.
-
-[Apple-PIM's launcher](apple-pim/README.md) solves the related macOS privacy
-permission problem by making the native CLI its own responsible process, so
-Node upgrades do not change the granted identity. Those TCC grants are separate
-from Keychain item access and need renewal when the approved CLI is rebuilt.
+- **[Gmail](../../servers/gmail-mcp/src/gmail_mcp/keychain.py):** Python invokes
+  Apple-signed `/usr/bin/security`. Node consumers can do the same. New items
+  trust that executable; refresh preserves existing ACLs. Reads and writes time
+  out after five seconds. Secrets return only to the host consumer.
+- **Stable identity:** interpreter upgrades leave the reader unchanged. Its
+  signing requirement is `com.apple.security`, anchored to Apple. Verify live
+  item ACLs and the unlocked login Keychain.
+- **Limit:** any code under the same OS user can invoke the reader. Executable
+  identity does not isolate agents from each other.
+- **[Custom helper](https://github.com/coletaylor788/puddles/pull/29):** unmerged.
+  Reads allowlisted items through an exact approved binary. Replacing the binary
+  needs human reapproval, even with the same signing requirement. Migration is
+  not universal.
+- **[Apple-PIM](apple-pim/README.md):** its native launcher owns macOS privacy
+  (TCC) grants independently of Node. Rebuilding the CLI requires renewed grants.
+  TCC and Keychain permissions are separate.
 
 #### Untrusted content and the reader
 
-1. The parent supplies the reading task and scope. Source content cannot expand it.
-2. The host adapter acquires data and applies the relevant ingress checks before
-   releasing it to the reader. Include external text in errors, metadata,
-   attachments, search results, and other non-body fields.
-3. The reader returns a bounded summary in its own words, with attribution and
-   suspicious content called out. It does not relay raw instructions upstream.
-4. A context permitted to admit the result uses it as evidence within the
-   original task.
+1. The parent sets the task and scope. Source content cannot expand them.
+2. The host adapter checks all external fields before release: body, errors,
+   metadata, attachments, search results, and write receipts.
+3. The reader returns a bounded, attributed summary in its own words. Flag
+   suspicious content; never relay raw instructions.
+4. The receiving context uses the result only as evidence for the original task.
 
-The [reader instructions](agent-instructions/reader-AGENTS.md) require one
-acquisition followed by yield. Enforce that limit through tool grants. External
-text in write receipts takes the same reader path.
+The [reader](agent-instructions/reader-AGENTS.md) gets one acquisition, then
+returns. Enforce this through tool grants.
 
-[InjectionGuard](../../packages/mcp-hooks/src/ingress/injection-guard.ts) checks
-for prompt injection. [SecretRedactor](../../packages/mcp-hooks/src/ingress/secret-redactor.ts)
-combines pattern matching and classification. Their source-specific prefilters
-must include every attacker-controlled field. Semantic classifiers can miss
-attacks; an allow result never upgrades content into trusted instructions.
+- **[InjectionGuard](../../packages/mcp-hooks/src/ingress/injection-guard.ts):**
+  detects prompt injection.
+- **[SecretRedactor](../../packages/mcp-hooks/src/ingress/secret-redactor.ts):**
+  combines patterns and model classification.
+- **Coverage:** prefilters must include every attacker-controlled field.
+  Classifiers can miss attacks; passing a guard never grants authority.
+- **Execution:** Gmail/calendar wrappers await guards before releasing results.
+  Injection and redaction run in parallel, so the injection provider may receive
+  unredacted secrets. It must be approved to process that data.
+- **Outbound checks:** supplement action authorization; they do not replace it.
 
-The Gmail and calendar wrappers await guards inside tool execution. This is the
-release boundary, not an asynchronous audit after delivery. The guard provider
-itself sees scan input: the wrappers run injection and redaction checks in
-parallel, so input to the injection classifier can contain unredacted secrets.
-That provider must be an approved processor for the data. Outbound controls
-likewise supplement authorization rather than replace it.
-
-| Current path | Implemented coverage |
+| Path | Implemented coverage |
 |---|---|
-| [Gmail](../../openclaw-plugins/secure-gmail/src/plugin.ts) | Injection and secret checks for `list_emails` and `get_email`. Attachment bytes are read separately. Archive and label tools are mutations, not approval-gated by ingress checks. |
-| [Calendar](../../openclaw-plugins/secure-apple-calendar/src/action-map.ts) | Read/write tool separation; ingress on events/get/search; recipient and content checks on writes with attendees. Metadata and other mutations have different coverage. |
-| [Egress library](../../packages/mcp-hooks/README.md) | LeakGuard checks non-send content. ContactsEgressGuard checks destinations and, when configured, sensitive content. Consumers must wire them into their actual paths. |
-| [OpenClaw external-content wrapper](https://github.com/openclaw/openclaw/blob/1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7/src/security/external-content.ts) | Source markers, token sanitization, and warnings. These do not constitute reader routing, authorization, or a universal blocking classifier. |
+| [Gmail](../../openclaw-plugins/secure-gmail/src/plugin.ts) | Injection and secret checks on `list_emails` and `get_email`. Attachments are read separately. Ingress guards do not approve archive/label mutations. |
+| [Calendar](../../openclaw-plugins/secure-apple-calendar/src/action-map.ts) | Separate read/write tools. Ingress checks on events/get/search. Recipient/content checks on writes with attendees. Metadata and other mutations have different coverage. |
+| [Egress library](../../packages/mcp-hooks/README.md) | LeakGuard checks non-send content. ContactsEgressGuard checks recipients and optional sensitive content. Each consumer must wire these checks into its paths. |
+| [External-content wrapper](https://github.com/openclaw/openclaw/blob/1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7/src/security/external-content.ts) | Source markers, token sanitization, and warnings only. No reader routing, authorization, or universal blocking classifier. |
 
 #### Turns, follow-ups, and out-of-turn context
 
-Treat starting work as a separate capability from reading or returning data.
+- Start turns only for authorized human requests, configured schedules, or
+  trusted continuations of admitted work.
+- Untrusted content and readers MUST NOT start turns or follow-ups. Returning
+  a result cannot wake another session or start a conversation.
+- Bind async results and actions to the original principal, role, session/task,
+  and destination. Reject stale or mismatched context. Missing context grants
+  no broader authority.
+- Deny ingestion roles cron, spawn, session messaging, webhook wake, and delivery
+  tools except a narrowly enforced result-return path. Dispatchers must reject
+  source-selected sessions, recipients, and tool requests.
+- Check destinations for scheduled and background delivery. Content checks,
+  destination checks, and turn permission are separate controls.
 
-- Only an authorized human request, configured schedule, or trusted continuation
-  of already-admitted work may cause the corresponding agent turn.
-- Untrusted source content and the reader acting on it must never initiate a
-  turn or invoke follow-ups. Returning the result of the parent's existing task
-  is not permission to wake another session or start a conversation.
-- Bind asynchronous results and actions to their originating principal, role,
-  session/task, and permitted destination. Reject stale or mismatched context;
-  absence of an active conversation does not grant broader authority.
-- Keep cron, spawn, session messaging, webhook wake, and delivery capabilities
-  unavailable to ingestion roles unless a narrowly enforced return path requires
-  them. Do not pass source-selected session keys, recipients, or tool requests
-  through a trusted dispatcher.
-- Apply destination checks to scheduled and background delivery too. A content
-  guard, a channel target guard, and permission to start a turn are distinct checks.
+Current dispatch paths:
 
-The pinned [cross-context outbound policy](https://github.com/openclaw/openclaw/blob/1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7/src/infra/outbound/outbound-policy.ts)
-guards selected message actions using bound channel context and configuration.
-It returns without a context check when no current target is bound. It therefore
-does not establish a universal out-of-turn denial. The
-[session-send tool](https://github.com/openclaw/openclaw/blob/1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7/src/agents/tools/sessions-send-tool.ts)
-can start runs and follow-up flows after its access checks; it is not merely a
-passive mailbox. [Gateway hooks](https://github.com/openclaw/openclaw/blob/1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7/src/gateway/server/hooks.ts)
-can dispatch isolated turns and wakes. Their existence is not authorization to
-connect arbitrary external events to privileged agents.
+- **[Outbound policy](https://github.com/openclaw/openclaw/blob/1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7/src/infra/outbound/outbound-policy.ts):**
+  checks selected message actions against channel context and configuration.
+  Skips the context check when no target is bound; not a universal out-of-turn gate.
+- **[Session send](https://github.com/openclaw/openclaw/blob/1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7/src/agents/tools/sessions-send-tool.ts):**
+  can start runs and follow-ups after access checks.
+- **[Gateway hooks](https://github.com/openclaw/openclaw/blob/1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7/src/gateway/server/hooks.ts):**
+  can start isolated turns and wakes. This does not authorize arbitrary external
+  events to reach privileged agents.
 
 #### Memory and persistent state
 
-Reusing an agent-scoped container does not create a fresh context per task.
-Separate role workspaces, sessions, memory, and browser profiles.
-
-The [scoped-memory plugin](../../openclaw-plugins/scoped-memory/README.md) binds
-identity and workspace from the host, rejects path traversal and symlinks or
-hardlinks, and rereads authorized bytes instead of stale index snippets. Native
-memory and wiki tools need separate denials; the plugin does not constrain
-index ingestion.
+- Separate role workspaces, sessions, memory, and browser profiles. A reused
+  container is not a fresh context per task.
+- **[Scoped memory](../../openclaw-plugins/scoped-memory/README.md):** binds host
+  identity and workspace, rejects traversal and symlinks/hardlinks, and rereads
+  authorized bytes instead of stale index snippets.
+- **Limits:** native memory and wiki tools need separate denials. Scoped memory
+  does not control index ingestion.
 
 ## Appendix: known gaps and validation limits
 
-This document describes required boundaries and source-backed mechanisms, not a
-live audit. Verify effective accounts, listeners, grants, mounts, and dispatch
-paths before claiming enforcement. Pinned upstream links describe the reviewed
-revision; recheck them against the [current build](../../packages/e2e/openclaw-patch-suite.json)
+This is a source review, not a live audit. Verify effective accounts, listeners,
+permissions, mounts, and dispatch paths before claiming enforcement. Recheck
+pinned upstream references against the [current build](../../packages/e2e/openclaw-patch-suite.json)
 when upgrading.
 
 | Area | Limit or gap |
 |---|---|
-| Context labels and disclosure | The [household plan](../plans/completed/022-household-and-friends-tiers.md) documents limited household access and owner relay. Friends/public populations, provenance propagation, and a universal exact-content disclosure gate are not established. |
-| Network exposure | The [older host setup](01-setting-up-your-mac-mini.md) allows direct LAN SSH. That conflicts with the no-exposure-outside-Tailscale policy. Effective listener bindings and firewall rules need verification; this document does not change them. |
-| Sandbox network and credential custody | The older [sandbox guide](03-openclaw-and-agent-sandboxing.md) describes network-enabled containers. The [persistent browser design](../plans/completed/023-durable-browser-agent-login.md) mounts a credential-bearing profile into a browser container. Those are exceptions to strict host-only external access and credential custody, not proof that the required boundary is met. |
-| Reader-only routing | Gmail/calendar factories rely on configured tool grants for reader/main separation. Older setup examples grant main search and readers session messaging. Attachments, images, browser results, errors, and metadata need path-specific review; there is no repository-wide reader gate. |
-| Raw result retention | Both [Gmail](../../openclaw-plugins/secure-gmail/src/wrap-tool.ts) and [calendar](../../openclaw-plugins/secure-apple-calendar/src/wrap-tool.ts) retain `details.original` after redaction. That keeps raw data available to result persistence/consumers even when visible text is redacted. Do not treat the returned object as sanitized. |
-| Classifier contracts | Guards block recognized provider/parse errors, but [boolean classification](../../packages/mcp-hooks/src/classify.ts) coerces `detected` instead of validating a strict response schema. Parseable malformed objects can escape the intended fail-closed contract. Model decisions also remain probabilistic. |
-| Turn admission | Channel guards, session visibility, reader instructions, and historical local hooks do not jointly prove a universal no-wake/no-follow-up boundary. Missing-context behavior and all alternate dispatch paths require explicit validation. |
-| Mutation approval | Ingress checks run after execution. Gmail archive/label and calendar mutations do not gain action approval from scanning their results. [Native iMessage approval forwarding](../plans/027-imessage-approval-channel.md) is still pending in the maintained plan. |
-| Build supply chain | CI uses pinned project tools and a frozen pnpm graph, but action references are version tags and Gmail test dependencies are installed with pip. This is not a fully hermetic or independently signed build system. |
+| Context labels | The [household plan](../plans/completed/022-household-and-friends-tiers.md) covers limited household access and owner relay. Friends/public populations, provenance propagation, and universal exact-content approval are not established. |
+| Network | [Older setup](01-setting-up-your-mac-mini.md) allows LAN SSH, violating the Tailscale-only rule. Verify listeners and firewall rules; this document changes neither. |
+| Sandbox and credentials | The [sandbox guide](03-openclaw-and-agent-sandboxing.md) allows container networking. The [browser design](../plans/completed/023-durable-browser-agent-login.md) mounts a credential-bearing profile. Both deviate from host-only external access and credential custody. |
+| Reader routing | Gmail/calendar depend on configured grants. Older examples give main search and readers session messaging. No universal reader gate exists; review attachments, images, browser results, errors, and metadata separately. |
+| Raw results | [Gmail](../../openclaw-plugins/secure-gmail/src/wrap-tool.ts) and [calendar](../../openclaw-plugins/secure-apple-calendar/src/wrap-tool.ts) retain unredacted `details.original`. Persistence and consumers can still access raw data. |
+| Classifiers | Guards block recognized provider/parse errors. [Classification](../../packages/mcp-hooks/src/classify.ts) coerces `detected` without strict schema validation, so parseable malformed responses can pass. Model decisions remain probabilistic. |
+| Turn admission | Guards, session visibility, reader instructions, and historical hooks do not prove universal turn/follow-up denial. Validate missing-context behavior and alternate dispatch paths. |
+| Mutations | Ingress runs after execution; scanning cannot approve Gmail archive/label or calendar mutations. [iMessage approval forwarding](../plans/027-imessage-approval-channel.md) remains pending. |
+| Build supply chain | Project tools and pnpm dependencies are pinned, but Actions use version tags and Gmail tests install through pip. Builds are not fully hermetic or independently signed. |
 
-When extending the system, trace both data and control paths across these
-boundaries. Add behavioral regressions for negative cases: unauthorized caller,
-missing/stale context, blocked content, guard failure, forbidden follow-up,
-credential leakage, and attempted live effects. Implement repairs through the
-normal approved lifecycle.
+For changes, trace data and control across boundaries. Test unauthorized callers,
+missing/stale context, blocked content, guard failures, forbidden follow-ups,
+credential leaks, and live effects. Use the approved development lifecycle.
