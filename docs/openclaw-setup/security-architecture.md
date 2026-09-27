@@ -53,7 +53,7 @@ flowchart TB
 | Tailscale | Managed machines from outside networks | No ports exposed outside Tailscale. | Access SSH and VNC ports |
 | Host | Development files and tools from remote access | Access requires an authorized host account. | Read or change source, builds, and development data |
 | Server | Agent runtime and data from remote access | SSH requires an approved key, server account, and Tailscale access. | Control agents, stored data, and service access |
-| Sandbox | Agent tools from the trusted host | Agents get only granted tools and files. Credentials stay outside the sandbox. | Execute code outside the sandbox |
+| Sandbox | Agent tools from the trusted host | Agents get only granted tools and files. Credentials stay outside the sandbox. | Agent’s granted tools and accessible session history, memory, and workspaces |
 | Keychain | Host tools from stored credentials | Tools use an approved, stable credential reader. Secrets never enter agent context. | Use exposed credentials |
 
 These limits assume the other boundaries still hold.
