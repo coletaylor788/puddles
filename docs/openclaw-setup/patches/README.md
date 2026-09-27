@@ -101,7 +101,10 @@ No browser build happens during downtime.
 ## Merge, test merged main, then activate
 
 Follow [deployment coordination](../../../packages/e2e/DEPLOYMENT_COORDINATION.md).
-Merge after the accumulated CI gate, independent review, and DEV validation.
+Iterate with local incremental builds and focused installed checks in owned
+DEV. Mutable drafts need no CI receipt and cannot qualify for promotion. After
+independent review, run the accumulated CI gate and validate that exact CI-built
+candidate in DEV before merging. Keep final proof separate from draft results.
 Create `merge-eligibility.json` from the exact build, source gate, and DEV proof,
 then pass it to `openclaw-integrate.mjs`. The helper verifies the head, base,
 remote eligibility, and resulting tree before any physical TEST or live change.
