@@ -6,6 +6,9 @@ These are reference docs you can follow with no prior context — at every step 
 
 ## Guides
 
+Start with the [security architecture](./security-architecture.md) for trust
+rings, required boundaries, current controls, and known gaps.
+
 1. **[Setting up your Mac Mini](./01-setting-up-your-mac-mini.md)** — go from a factory Mac Mini to a securely hardened, headless, server. Stop here and you have an always-on home server even if you never install OpenClaw.
 2. **[Talking to Puddles on iMessage](./02-talking-to-puddles-on-imessage.md)** — wire the Mini to iMessage via BlueBubbles, get the gateway running as a LaunchDaemon, and add a 15-minute self-heal loop.
 3. **[OpenClaw and agent sandboxing](./03-openclaw-and-agent-sandboxing.md)** — install OpenClaw, split Puddles into four agents (`main`, `debug`, `reader`, `browser-agent`), drop the riskier ones inside Docker sandboxes, harden each `AGENTS.md` for adversarial input, and put every credential behind a `SecretRef`.
