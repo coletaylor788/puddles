@@ -122,35 +122,17 @@ flowchart TB
     Host -->|"SSH: deployment"| Server
 ```
 
-The [development skill](../../.github/skills/safe-feature-development/SKILL.md)
-and [runner guide](../../packages/e2e/README.md) define stage order and commands.
-CI/CD should progress automatically; agents monitor and repair failures.
+- **Build trust:** source, dependencies, and build scripts run with the builder's
+  permissions. Use reviewed, pinned inputs.
+- **Credentials:** CI gets no production credentials. Keep account data and
+  secrets out of build logs and artifacts.
+- **Test isolation:** build tests, DEV, and TEST use separate state and processes.
+  External calls use recording adapters. Tests cannot change PROD or live accounts.
+- **Production artifacts:** deploy reviewed artifacts that passed release checks.
+  TEST and PROD use the same verified bytes, independent of mutable build stores.
 
-- **Builder access:** pin source, toolchain, and dependencies. [Public CI](../../.github/workflows/integration.yml)
-  uses public inputs without live credentials or local extensions. Local
-  composition and its diagnostics stay on the authorized local builder. Public
-  exports contain only approved artifacts and bounded sanitized diagnostics.
-- **Test effects:** DEV, TEST, and builder fixtures own separate state, sessions,
-  ports, and processes. [Recording adapters](../../packages/e2e/src/native-fixture.mjs)
-  replace external reads and writes with no live fallback. Production probes
-  are read-only and expose no personal results.
-- **Artifact boundary:** [packaging](../../packages/e2e/src/native-package.mjs)
-  closes the production dependency graph for verified offline installation.
-  Draft outputs qualify only for DEV. [Merge eligibility](../../packages/e2e/src/merge-eligibility.mjs)
-  binds reviewed source, full CI, and exact-artifact DEV proof. TEST and PROD
-  consume the same selected merged-main artifact; changed inputs or production
-  baselines invalidate affected evidence.
-- **Shared server:** [slots](../../packages/e2e/DEPLOYMENT_COORDINATION.md) and
-  transaction locks protect each target mutation. Independent builds need no
-  slot. [Activation](../../packages/e2e/src/native-activation.mjs) stages before
-  stopping production and restores runtime, state, and service on failure.
-  No builds, downloads, or merges belong in that stopped-production interval.
-- **Storage:** reuse compatible host-local stores and incremental outputs.
-  Installed releases must not depend on mutable stores. [Cleanup](../../packages/e2e/src/native-retention.mjs)
-  preserves active work, evidence dependencies, deployed artifacts, and recovery.
-
-Hashes and receipts bind bytes to evidence. A compromised builder or host can
-rewrite both; they do not replace source review or protect against that host.
+Artifact hashes detect changed bytes; they do not protect against a compromised
+builder.
 
 ## Agent architecture
 
