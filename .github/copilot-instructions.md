@@ -155,9 +155,11 @@ for the current design remains valid. After approval, continue autonomously
 through landing and production deployment within that scope; production does
 not need a second approval. Technical release and rollback gates still apply.
 
-If implementation reveals a major or high-impact conflict with the approved
-design, record the blocker, evidence, impact, and proposed decision in the plan,
-update the issue status, and request human review and approval before proceeding
+If implementation deviates from the
+[security architecture](../docs/openclaw-setup/security-architecture.md) or reveals
+a major or high-impact conflict with the approved design, record the blocker,
+evidence, impact, and proposed decision in the plan. Update the issue status
+and request human review and approval before proceeding
 with the affected work. Continue independent work that remains within the
 approved design. Resolve minor details and routine implementation choices
 without another approval. Do not hand routine review, CI, merge, or deployment

@@ -168,9 +168,10 @@ deployment within that scope without another production approval. Required
 checks, exact-artifact eligibility, target identity, and rollback still apply.
 An explicit implementation-only or no-production scope remains binding.
 
-During implementation, escalate only major or high-impact deviations from the
-approved design. Examples include changing user-visible requirements, replacing
-the agreed architecture, crossing a data or access boundary, introducing a
+During implementation, escalate every security architecture deviation and any
+other major or high-impact deviation from the approved design. Examples include
+changing user-visible requirements, replacing the agreed architecture, crossing
+a data or access boundary, introducing a
 destructive migration, or materially changing cost or operational risk. Record
 the conflict, evidence, impact, proposed resolution, and blocked work in the
 plan, update the issue status, and obtain human review and approval of the
@@ -275,8 +276,9 @@ investigating instead of asking.
 ## Required loop
 
 1. **Research**
-   - Read repository instructions, current plans, component documentation, and
-     the affected runtime topology before editing.
+   - Read repository instructions, the
+     [security architecture](../../../docs/openclaw-setup/security-architecture.md),
+     current plans, component documentation, and affected runtime topology.
    - Trace existing behavior, trust boundaries, helpers, tests, deployment
      surfaces, and rollback mechanisms. Reuse existing patterns.
    - Identify production state, credentials, delivery channels, external
@@ -285,6 +287,10 @@ investigating instead of asking.
      boundary. Do not infer host confinement from the word "isolated."
 
 2. **Plan**
+   - Align the design with the security architecture. Identify any proposed
+     deviation or exception, explain its impact, and obtain explicit human
+     approval for it before affected implementation. General feature approval
+     does not waive this gate. After approval, update the architecture to match.
    - For significant work, create or update the repository's expected plan
      artifact. After one H1 title, include a compact metadata block containing
      only `Status`, `Issue`, `Last updated`, and optionally `Owner`.
@@ -345,9 +351,10 @@ investigating instead of asking.
      implement the current design. Keep the plan current and present the exact
      decision for review using the requester-help contract above. If that
      approval is already present, proceed without asking again.
-   - Reopen this checkpoint only for a major or high-impact design deviation.
-     Record the blocker and proposed revision before asking. Minor choices
-     remain the implementation owner's responsibility.
+   - Reopen this checkpoint for any security architecture deviation or other
+     major or high-impact design deviation. Record the blocker and proposed
+     revision before asking. Minor choices within the architecture remain the
+     implementation owner's responsibility.
 
 3. **Implement through the fast local and DEV loop**
    - The implementer iterates locally using the repository's established

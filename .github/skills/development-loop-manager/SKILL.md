@@ -19,7 +19,7 @@ and tooling that guide future work. Make each loop safer, faster, and simpler.
 
 - Security gaps: weakened controls, exposed secrets, and unsafe untrusted input.
   Use the [security architecture](../../../docs/openclaw-setup/security-architecture.md)
-  for trust rings, boundaries, and known gaps.
+  for context labels, boundaries, and required controls.
 - Late failures: investigate every CI, TEST, or PROD failure for earlier detection
   in local builds and tight DEV loops.
 - Automation gaps: routine CI/CD needing an agent to usher it through.
