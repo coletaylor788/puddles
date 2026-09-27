@@ -43,7 +43,15 @@ Apple PIM registers named tools whose handlers spawn installed CLIs. Use that pa
 
 OpenClaw's tool policy decides which tools each agent can call. A tool factory captures the runtime's trusted agent identity; protected configuration supplies its account and grants. The wrapper checks the grant again on execution. Agent arguments and writable skills cannot select an identity, account, binary, or permission profile.
 
-For example, a weather agent can receive only `weather_curl`, a finance reader only `rocket_money_read`, and an authorized finance agent both Rocket Money tools. Those are configuration examples, not changes to current agent assignments. Skills explain usage; they do not grant access.
+Configure the new tools exactly as follows. These are planned assignments; this design change does not alter the running agents.
+
+| Agent | Tools | Skills |
+|---|---|---|
+| `main` | `rocket_money_read`, `rocket_money_write`, `weather_curl` | Rocket Money and weather |
+| `household` | `weather_curl` | Weather |
+| Every other agent | None of these tools | No new integration skills |
+
+Skills explain usage; they do not grant access. Main receives raw financial responses directly. Household receives neither finance tools nor main's finance rules.
 
 The existing OpenClaw tool channel carries calls out of sandboxed agents. The plugin directly launches the shared CLI through a fixed executable and argument array, passes the request on stdin, and collects stdout and exit status. That CLI is the application that validates and executes the request. No separate service, socket, HTTP listener, or relay is needed. Tool invocation is the only supported agent access path. Agent command execution stays in network-disabled sandboxes, with no host credentials, Docker socket, or host-execution escape. Copying or recreating a CLI inside the sandbox therefore grants no access. General host execution would break this guarantee and must be denied for these agents.
 
@@ -93,6 +101,25 @@ For the two financial updates, the adapter additionally records intent under a s
 
 Active code, configuration, keys, and browser state remain outside agent-writable paths. Routine logs exclude bodies, query strings, cookies, auth headers, and debug dumps. External-content handling belongs to Puddles' existing agent workflow.
 
+#### Rocket Money guidance and triage
+
+Follow Apple PIM's guidance pattern: descriptive tool schemas, a bundled skill with examples, and tool-accessible help/schema discovery. The Rocket Money skill belongs to `main`. It explains native GraphQL queries, filters, pagination/batches, the two updates, CLI syntax, and how tools invoke that CLI. Agents always use the authorized tools; CLI examples do not grant shell access to the host.
+
+The skill must read **`memory/finance/rocket-money-rules.md` in main's workspace** at the start of each triage. Cole can edit that file over time. It holds categorization rules and confirmed clarifications, separate from code and tool permissions. Installation seeds missing rules once and never overwrites later edits.
+
+Triage reviews transactions, their merchant identities, and existing categories; applies only an explicit matching rule; verifies each update; and reports changes, unresolved items, and incomplete query coverage. **Never infer a recategorization.** Missing, conflicting, or ambiguous rules mean leave the item unchanged, ask Cole, and record the confirmed decision with its intended scope so later triage can handle it autonomously.
+
+**Date changes:** only change a date when the transaction title clearly states that the transaction is for a different calendar month than its current transaction date. Move it to the **first day of the stated month**. Do not infer this from merchant, amount, recurring patterns, or budget convenience. Ambiguous month/year means ask Cole. If it already falls in the stated month, leave its date unchanged.
+
+Seed categorization rules:
+
+| Merchant | Purchase amount (USD) | Action |
+|---|---|---|
+| Costco or Walmart | Up to and including $200 | Use the existing Groceries category. |
+| Costco or Walmart | Over $200 | Leave the category unchanged pending Cole's manual verification. |
+
+Use the verified purchase amount and currency, not an assumed API sign convention. Unclear merchant matches, refunds, or non-USD amounts need clarification. Detailed skill sections, examples, and rules-file maintenance are in the [appendix](031-cli-gateway/technical-appendix.md#rocket-money-skill-and-triage-rules).
+
 #### Adding another integration
 
 Add a named tool, CLI/skill, and provider registration. The provider supplies either a constrained native CLI runner or a managed HTTP adapter, along with its request policy and optional auth driver. A shared library supplies credential handling, process-safe state, and execution limits to each CLI. Assign its tool to agents through the same permission mechanism.
@@ -109,11 +136,13 @@ Remaining checks are the new plugin's permission enforcement, safe native curl e
 
 ### State
 
-The current revision uses Apple PIM-style CLI-backed tools and per-agent tool grants. It removes a separate service/socket, per-agent image distribution, sandbox SSH relays, special main-agent receipts, generic response inspection, and the proposed weather API wrapper. Implementation remains deferred. The original Envoy review is retained as historical evidence.
+The current revision uses Apple PIM-style CLI-backed tools and per-agent tool grants. It removes a separate service/socket, per-agent image distribution, sandbox SSH relays, special main-agent receipts, generic response inspection, and the proposed weather API wrapper. Main receives all three tools; household receives weather only. The Rocket Money skill and editable main-memory triage rules are specified below. Implementation remains deferred. The original Envoy review is retained as historical evidence.
 
 ### Scope and acceptance criteria
 
-- Deliver `rmoney` and its skill with native GraphQL, broad reviewed reads, and exactly category/date updates.
+- Deliver `rmoney` and the main-only skill with native GraphQL, broad reviewed reads, and exactly category/date updates. Include tool-accessible help and reviewed native-operation references.
+- Grant all three tools to `main`, weather only to `household`, and none to other agents.
+- Deliver the explicit title-month date rule and rules-driven triage flow. Seed Costco/Walmart thresholds in main memory without overwriting user edits; ask Cole about unresolved items and preserve confirmed decisions.
 - Reuse the installed weather skill with stock curl and its native URLs/formats. No weather wrapper schema or new provider selection.
 - Install shared host clients once; register named tools with per-agent grants and protected account bindings. No per-agent images or direct sandbox gateway access.
 - Keep Rocket Money credentials host-only. Weather uses no injected auth or TLS interception.
@@ -128,6 +157,7 @@ The [technical appendix](031-cli-gateway/technical-appendix.md) holds exact cont
 - [Weather curl contract](031-cli-gateway/technical-appendix.md#weather-curl-contract): installed-skill evidence, native curl arguments, file boundaries, and transfer limits.
 - [Managed executor and limits](031-cli-gateway/technical-appendix.md#managed-executor-and-limits) and [authentication](031-cli-gateway/technical-appendix.md#authentication-contract).
 - [Rocket Money API contracts](031-cli-gateway/technical-appendix.md#rocket-money-api-contracts) and [CLI contract](031-cli-gateway/technical-appendix.md#cli-contract).
+- [Skill and triage rules](031-cli-gateway/technical-appendix.md#rocket-money-skill-and-triage-rules): usage discovery, editable memory, date conditions, and seed rules.
 - [Extension contract](031-cli-gateway/technical-appendix.md#provider-extension-contract) and [package layout](031-cli-gateway/technical-appendix.md#package-layout).
 
 ### Implementation
@@ -138,7 +168,7 @@ The [technical appendix](031-cli-gateway/technical-appendix.md) holds exact cont
 | 2. Weather and executor | Native curl runner plus managed API lifecycle | Allowed curl requests and workspace artifacts; file/target escapes denied; GraphQL rejection before execution; body-only results. |
 | 3. Authentication | Keychain and private managed Chromium | Setup, cookie rotation, idle/expiry renewal, cross-process locks, restart and reboot prerequisites. |
 | 4. Rocket Money | Reviewed reads and the two constrained updates | Free-account coverage and separately authorized reversible budget/category verification. |
-| 5. Distribution | Protected host install, skills, extension starter | Permission changes and revocation, recovery docs, extension without dispatch changes. |
+| 5. Distribution | Protected host install, skills, extension starter | Main/household grants, skill/help discovery, persistent user rules, triage scenarios, recovery docs, extension without dispatch changes. |
 
 ### Validation
 
@@ -164,4 +194,5 @@ The [Envoy review](031-cli-gateway/envoy-security-review.md), [decision record](
 - [ ] Verify host credential custody, silent renewal, rotation, and restart/reboot behavior.
 - [ ] Deliver Rocket Money reads, category/date writes, and the budget-date workflow.
 - [ ] Prove denial, auth isolation, native returns, replay handling, and uncertain-write recovery.
+- [ ] Deliver exact main/household grants, skill/help discovery, editable triage rules, and confirmation-driven rule updates.
 - [ ] Deliver protected installation, extension starter, and operator recovery instructions.
