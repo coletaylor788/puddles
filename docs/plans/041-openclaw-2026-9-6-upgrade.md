@@ -1,6 +1,6 @@
 # Upgrade maintained OpenClaw support to 2026.9.6
 
-**Status:** Approved for implementation
+**Status:** Implementation active; release handoff design needs approval
 **Issue:** [#114](https://github.com/coletaylor788/puddles/issues/114)
 **Last updated:** 2026-09-27
 
@@ -33,13 +33,15 @@ Upstream Doctor owns conversion to the new conversation storage. Our deployment 
 
 ### Status
 
-The patch audit and compatibility ports are implemented. Three local runtime fixes are removed, and the discovery patch retains only its registry correction. The latest local DEV draft passes all upgrade assertions, including history conversion, rollback and local embeddings. Warm searches take about 25–27 milliseconds without a timeout increase.
+The patch audit and compatibility work pass focused checks, retained review and local DEV. Three public runtime fixes are removed because upstream covers them. All nine native messaging scenarios pass, and warm local searches take about 25–27 milliseconds without a timeout increase. Public and combined accumulated CI pass. Their exact artifact also passes DEV: all nine messaging scenarios, 33 upgrade assertions and real local embeddings. The corrected DEV smoke expectation still needs inclusion in the next final candidate CI.
 
-The public CI build, accumulated regressions, packaging and installation pass. Its scripted write fixture now requests direct tool schemas explicitly because the new default puts the tool behind discovery. The exact recorded-write assertion is unchanged. Native checks also expose an upstream iMessage classification regression: unmentioned group messages incorrectly require answers. The repair passes focused regressions, review and all nine native messaging scenarios. Final accumulated CI and release gates remain pending. Production is unchanged.
+Production delivery is blocked by a gap in the shared process: the builder seals a synthetic TEST migration whose paths and job preconditions cannot be used in production. Separate target bindings need a reviewed release contract. The proposed shared-process repair requires approval before implementation. Production is unchanged.
 
 ## Agent section
 
 ### State
+
+- Release blocker: [target-bound migration proposal](043-target-bound-state-migrations.md) records the shared-process gap and proposed decision. CI/DEV for the approved upgrade continue independently; do not alter release-proof semantics or promote the synthetic TEST migration before approval.
 
 - Target verified 2026-09-26: `v2026.9.6`, source commit `eb377ac59e6c9fd6c7705028034812becf00271b`; GitHub stable and npm latest agree.
 - Existing source pin: `1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7` (`v2026.9.3`). Reuse landed compatibility code; [completed Plan 037](completed/037-openclaw-stable-upgrade.md) remains historical evidence.
@@ -105,6 +107,10 @@ The audit below distinguishes upstream fixes from behavior we still add. Regress
 
 ### Validation
 
+The exact CI artifact reached DEV, where the wrapper rejected a stale smoke expectation: current iMessage normalization preserves `mailto:`. Maintained rollback restored healthy DEV and removed the failed candidate. The wrapper now expects `mailto:user@example.com`; a committed regression compares its generated expectation with the real selected runtime. The new test fails before the correction and passes after it. Forty local contract tests pass with four conditional checks unselected; retained review is clear. The unchanged CI artifact passes DEV with the corrected tooling: wrapper checks, managed discovery and cold imports, all nine native messaging scenarios, all 33 upgrade assertions and the real local embedding test. Every selected test runs with zero skips. Predecessor history readback and final artifact digests pass. DEV health and fixture cleanup pass; its slot is released. Normal CI for the tooling correction passes, and the next final candidate CI must also cover that revision.
+
+Composed CI run 36308790357 passes the full build and entire regression stage. Packaging then fails because the fixture environment forces npm offline while upstream now packages optional dependencies for all supported platforms. The private package command now permits dependency fetching only during artifact creation. The actual extension runner reproduces an empty-cache failure before the repair and passes after it; prepare, gate, installed and TEST-consumer commands still reject uncached requests. All 13 focused checks pass. A real package rebuild from an empty cache matches all five reviewed artifact hashes. Retained review is clear. Corrected composed CI run 36310537122 passes the full build, entire regression stage, packaging and immutable handoff. Public CI run 36308607527 passes the complete cumulative lifecycle.
+
 The shared process supplies review and cumulative/installed/physical gates. This upgrade must contribute or retain the following assertions within those gates, using synthetic data and recording adapters.
 
 - Each patch behavior, including durable completion ownership, intentional silence, message-part coalescing, explicit child targeting and killed-lock-owner recovery.
@@ -126,9 +132,13 @@ The latest combined local DEV draft passes four wrapper scenarios, managed disco
 
 ### Rollout and rollback
 
+The current builder binds a literal TEST-only migration, while activation requires the same migration digest in production. The required upgrade cannot cross that handoff. Follow the [target-bound migration proposal](043-target-bound-state-migrations.md) once approved and landed in the shared process; do not add an upgrade-specific bypass. Retain the real interpreter proof during handoff as well.
+
 Follow the shared process on main without a plan-specific rollout sequence. The upgrade-specific recovery requirement is a current, verified, complete stopped-state snapshot, including journals and transcript archives, paired with the old runtime, interpreter, service, packages and browser. Schema 23 cannot be downgraded by reinstalling an older package or changing schema markers. A later restore can lose post-snapshot work; preserve the failed new state. Existing backups remain protected but do not substitute for the new run's current production baseline.
 
 ### Review log
+
+- Independent release-input audit and retained review confirm that the synthetic TEST manifest cannot serve production. No supported target relocation or paired-manifest contract exists. The proposed repair changes release provenance and needs explicit design approval; existing upgrade approval remains valid for unaffected work.
 
 - Source re-vet identified schema/toolchain drift and changed search, discovery, messaging and concurrency defaults. Independent proposal review's messaging-policy omission was resolved.
 - Requester directs a fresh restart through main's process. Both plans reference that process and retain only upgrade requirements, decisions and evidence obligations.
