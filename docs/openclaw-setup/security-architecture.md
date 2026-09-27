@@ -180,6 +180,8 @@ flowchart TB
     Friends --> Public["Public"]
 ```
 
+#### Required rules
+
 1. **Context flow**
    1. By default, content flows only from less trusted to more trusted.
       Household cannot access personal content, for example. The receiving
