@@ -9,6 +9,8 @@ description: "Review recent Puddles development loops and improve their skills, 
 
 - Protect production and preserve rollback.
 - Catch issues in local builds and tight DEV loops.
+- Make CI/CD automated and hands-off; agents monitor and react to issues rather
+  than ushering routine stages through.
 - Reduce redundant builds, checks, retries, and handoffs.
 - Limit disk growth on the development machine and OpenClaw server.
 - Reduce avoidable design-approval interruptions.
@@ -26,6 +28,7 @@ the evidence into related issues.
 - Investigate every failure beyond DEV, including CI, TEST, and PROD. Identify
   what could have caught or prevented it earlier.
 - Look for recurring delays, local/CI differences, and missed integration checks.
+  Treat routine CI/CD steps needing agent intervention as automation gaps.
 - Check package-store reuse, incremental builds, and completed scratch left behind
   on either host, including outside the artifact pool.
 - Review returns for design approval. Fix only obvious general guidance gaps;
