@@ -5,6 +5,9 @@ description: "Review recent Puddles development loops and improve their skills, 
 
 # Development Loop Manager
 
+Investigate recent Puddles development loops and improve the skills, scripts,
+and tooling that guide future work. Make each loop safer, faster, and simpler.
+
 ## Principles
 
 - Security first; never cut security corners for speed or convenience.
