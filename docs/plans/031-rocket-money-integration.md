@@ -45,7 +45,7 @@ OpenClaw's tool policy decides which tools each agent can call. A tool factory c
 
 For example, a weather agent can receive only `weather_curl`, a finance reader only `rocket_money_read`, and an authorized finance agent both Rocket Money tools. Those are configuration examples, not changes to current agent assignments. Skills explain usage; they do not grant access.
 
-The existing OpenClaw tool channel carries calls out of sandboxed agents. The plugin invokes the shared CLI through a fixed executable and argument array. One private Unix socket connects it to the host service under its separate credential-owning identity. There is no additional Linux relay, SSH bridge, SOCKS proxy, or sandbox socket mount. Agents must not have general host execution or direct access to that private socket, which would bypass the named tools.
+The existing OpenClaw tool channel carries calls out of sandboxed agents. The plugin invokes the shared CLI through a fixed executable and argument array. One private Unix socket connects it to the host service under its separate credential-owning identity. There is no additional Linux relay, SSH bridge, SOCKS proxy, or sandbox socket mount. Tool invocation is the only supported agent access path. Agent command execution stays in network-disabled sandboxes, with no host socket, host credentials, Docker socket, or host-execution escape. Copying or recreating a CLI inside the sandbox therefore grants no access. General host execution would break this guarantee and must be denied for these agents.
 
 #### 3. Host request policy and execution
 
