@@ -190,6 +190,16 @@ vi.mock("../src/native-package.mjs", () => ({
     };
   },
 }));
+vi.mock("../src/communication-package.mjs", () => ({
+  packageCommunication: async (_repo: string, runDir: string) => {
+    const path = join(runDir, "communication-artifact");
+    writeFileSync(path, "synthetic watcher");
+    // @ts-expect-error JS lifecycle exports are tested at runtime.
+    const { fileDigest } = await import("../src/native-state.mjs");
+    return { id: "communication-watcher", artifact: { path, sha256: fileDigest(path), runtimeSha256: "c".repeat(64), schemaVersion: 1, platform: process.platform, arch: process.arch, node: process.version } };
+  },
+}));
+vi.mock("../fixtures/communication.mjs", () => ({ communicationFixture: async () => ({ passed: true }) }));
 vi.mock("../src/native-fixture.mjs", async (original) => ({
   ...await original<object>(),
   runScenario: async (_installed: string, scenario: { id: string }) => ({ id: scenario.id, passed: true }),
@@ -956,13 +966,13 @@ it("seals and installs additional artifacts before rehearsal and invalidates onl
   vi.stubEnv("E2E_LOCAL_EXTENSION", module);
   const first = await nativePipeline("native", async () => {});
   await nativePipeline("native", async () => {});
-  expect(first.additionalArtifacts.map(({ id }: { id: string }) => id)).toEqual(["llama-cpp-provider", "auxiliary"]);
+  expect(first.additionalArtifacts.map(({ id }: { id: string }) => id)).toEqual(["llama-cpp-provider", "communication-watcher", "auxiliary"]);
   expect(first.proofs["install-additional-1"]).toBeDefined();
-  expect(counters).toMatchObject({ build: 1, package: 1, additionalInstalls: 2, runtimeCommands: 1 });
+  expect(counters).toMatchObject({ build: 1, package: 1, additionalInstalls: 3, runtimeCommands: 1 });
   writeFileSync(input, "second auxiliary bytes");
   const second = await nativePipeline("native", async () => {});
-  expect(second.additionalArtifacts[1].artifact.sha256).not.toBe(first.additionalArtifacts[1].artifact.sha256);
-  expect(counters).toMatchObject({ build: 1, package: 1, additionalInstalls: 3, runtimeCommands: 2 });
+  expect(second.additionalArtifacts[2].artifact.sha256).not.toBe(first.additionalArtifacts[2].artifact.sha256);
+  expect(counters).toMatchObject({ build: 1, package: 1, additionalInstalls: 4, runtimeCommands: 2 });
   const context = JSON.parse(readFileSync(join(run, "context/context.json"), "utf8"));
   expect(readFileSync(join(context.additionalInstalledDirs.auxiliary, "installed"), "utf8")).toBe("second auxiliary bytes");
 });

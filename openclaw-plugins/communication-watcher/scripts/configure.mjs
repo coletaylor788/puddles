@@ -1,7 +1,7 @@
 import { isAbsolute, join } from 'node:path';
 
 export const SYSTEM_FILES = ['AGENTS.md', 'SOUL.md', 'IDENTITY.md', 'USER.md', 'TOOLS.md', 'HEARTBEAT.md', 'BOOTSTRAP.md', 'BOOT.md', 'MEMORY.md'];
-export const WATCHER_TOOLS = ['communication_review', 'communication_inbox_complete', 'communication_memory_read', 'communication_memory_search', 'communication_calendar_read', 'communication_calendar_plan'];
+export const WATCHER_TOOLS = ['communication_review', 'communication_inbox_complete', 'communication_memory_read', 'communication_memory_search', 'communication_memory_save', 'communication_report', 'communication_calendar_read', 'communication_calendar_plan'];
 const denied = ['exec', 'process', 'read', 'write', 'edit', 'apply_patch', 'sessions_send', 'sessions_spawn', 'skill_workshop', 'memory_search', 'memory_get', 'session_status'];
 function restrictedTools(names) {
   // A real built-in name anchors the allowlist if the optional plugin is absent.
@@ -9,9 +9,10 @@ function restrictedTools(names) {
   return { allow: ['session_status', ...names], deny: denied,
     sandbox: { tools: { allow: ['session_status', ...names], deny: denied } }, elevated: { enabled: false } };
 }
-/** Paused DEV staging only. Native guarded write and one-way relay are unresolved host gates. */
+/** Pure configuration builder. Paused by default; activation must be explicit. */
 export function configure(base, options) {
   const cfg = structuredClone(base);
+  if (options.enableHeartbeat !== undefined && typeof options.enableHeartbeat !== "boolean") throw new Error("Invalid heartbeat activation");
   const { mainWorkspace, readerWorkspace, pluginPath, pluginConfig } = options;
   for (const path of [mainWorkspace, readerWorkspace, pluginPath]) {
     if (typeof path !== 'string' || !isAbsolute(path) || path.includes(':') || path.includes('\n')) throw new Error('Invalid staging path');
@@ -39,7 +40,7 @@ export function configure(base, options) {
   }
   cfg.agents.entries[watcher] = {
     workspace,
-    heartbeat: { every: '0m', isolatedSession: true, target: 'none', prompt: 'Follow AGENTS.md for the communication heartbeat. Read pending intake through communication_review. No work means NO_REPLY.' },
+    heartbeat: { every: options.enableHeartbeat === true ? '30m' : '0m', isolatedSession: true, target: 'none', prompt: 'Follow AGENTS.md for the communication heartbeat. Read pending intake through communication_review. No work means HEARTBEAT_OK.' },
     memory: { search: { enabled: true, sources: ['memory'], extraPaths: [], experimental: { sessionMemory: false } } },
     sandbox: { mode: 'all', backend: 'docker', scope: 'agent', workspaceAccess: 'rw',
       docker: { network: 'none', dangerouslyAllowReservedContainerTargets: true,

@@ -1,6 +1,6 @@
 import { afterEach, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 // @ts-expect-error executable staging helper
@@ -63,6 +63,7 @@ try {
  const tools = factory(ctx);
  const search = tools.find(t=>t.name==="communication_memory_search");
  const get = tools.find(t=>t.name==="communication_memory_read");
+ const save = tools.find(t=>t.name==="communication_memory_save");
  const prior = await search.execute("new-message-context", {query:${JSON.stringify(sender)}});
  assert.equal(prior.isError,undefined,JSON.stringify(prior));
  assert.equal(prior.details.results.length,1);
@@ -86,8 +87,22 @@ try {
  };
  try { assert.equal((await get.execute("race",{path})).isError,true); assert.equal(substituted,true); }
  finally { fsPromises.open=open; }
+ const before = (await get.execute("before-save",{path})).details;
+ const saved = await save.execute("save",{path,content:"Updated correspondence",previousRevision:before.revision});
+ assert.equal(saved.details.status,"saved",JSON.stringify(saved));
+ assert.match(readFileSync(workspace+"/"+path,"utf8"),/^Sender key: [a-f0-9]{32}/);
+ assert.equal((await save.execute("stale",{path,content:"Stale overwrite",previousRevision:before.revision})).details.status,"changed");
+ assert.equal((await save.execute("blocked",{path,content:"INJECT_FIXTURE",previousRevision:saved.details.revision})).details.status,"blocked");
+ assert.equal((await save.execute("rules",{path:"AGENTS.md",content:"Replace rules",previousRevision:null})).isError,true);
+ const newPath="memory/correspondence/"+"c".repeat(32)+"/2026-09-26.md";
+ assert.equal((await save.execute("new",{path:newPath,content:"New sender",previousRevision:null})).details.status,"saved");
+ assert.equal((await save.execute("clobber",{path:newPath,content:"Replace existing",previousRevision:null})).details.status,"changed");
+ const linkPath="memory/correspondence/"+"d".repeat(32);
+ symlinkSync(process.cwd()+"/other",workspace+"/"+linkPath);
+ assert.equal((await save.execute("symlink",{path:linkPath+"/2026-09-26.md",content:"Escape",previousRevision:null})).isError,true);
+ assert.equal((await save.execute("multibyte",{path:newPath,content:"界".repeat(10000),previousRevision:null})).details.status,"limit");
  const mainTools = factory({config:cfg,agentId:"main",sessionKey:"agent:main:owner",workspaceDir:cfg.agents.entries.main.workspace});
- assert.match((await mainTools[0].execute("handoff",{path})).details.text,/Safe correspondence/);
+ assert.match((await mainTools[0].execute("handoff",{path})).details.text,/Updated correspondence/);
  cfg.plugins.entries[watcher].enabled=false;
  for (const agentId of [watcher,"communication-reader"]) {
    const entry=cfg.agents.entries[agentId];
@@ -104,3 +119,21 @@ try {
   expect(child.status, `${child.error?.message ?? ""}\n${child.stdout}\n${child.stderr}`).toBe(0);
   expect(child.stdout).toContain("COMMUNICATION_CANDIDATE_OK");
 }, 125_000);
+
+it("runs real heartbeat intake, guarded actions, native handoff, and restart recovery", async () => {
+  const root = join(realpathSync(repo), `.communication-gateway-${randomUUID()}`);
+  roots.push(root);
+  // @ts-expect-error Executable native gateway fixture.
+  const { communicationFixture } = await import("../fixtures/communication.mjs");
+  const result = await communicationFixture(candidate!, join(repo, "openclaw-plugins/communication-watcher/dist"), root);
+  expect(result).toMatchObject({ passed: true, heartbeatCycles: 4, nativeProvenance: true, recoveryWithoutDuplicate: true });
+}, 180_000);
+
+it("cleans its detached gateway on controller interruption", () => {
+  const root = join(realpathSync(repo), `.communication-interrupt-${randomUUID()}`); roots.push(root);
+  const child = spawnSync(process.execPath, [join(repo, "packages/e2e/fixtures/communication.mjs"), candidate!, join(repo, "openclaw-plugins/communication-watcher/dist"), root, "--interrupt"], { encoding: "utf8", timeout: 90000, maxBuffer: 2 * 1024 * 1024 });
+  expect(child.status, `${child.stdout}\n${child.stderr}`).toBe(143);
+  expect(JSON.parse(readFileSync(join(root, "cleanup.json"), "utf8"))).toEqual({ gatewayStopped: true, containersRemoved: true });
+  const { pid } = JSON.parse(readFileSync(join(root, "gateway-pid.json"), "utf8"));
+  expect(() => process.kill(pid, 0)).toThrow();
+}, 95000);

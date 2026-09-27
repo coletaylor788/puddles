@@ -1,6 +1,6 @@
 # Plan 033 - Communication watcher
 
-**Status:** Implementation candidate; activation blocked; merge held
+**Status:** Implementation and validation in progress; merge held
 **Issue:** [#132](https://github.com/coletaylor788/puddles/issues/132)
 **Last updated:** 2026-09-26
 
@@ -121,7 +121,7 @@ The next heartbeat uses the updated rules. No update message or self-editing tur
 
 ### Status
 
-The guarded intake, completion, calendar tools, correspondence lookup, and agent instructions are implemented on a topic branch. Focused tests and a native OpenClaw SDK fixture pass. The design now follows Gmail’s pattern: guards live inside the exposed tools, including correspondence saves and reports through normal OpenClaw messaging. Bounded main/watcher replies are allowed. The candidate stays paused until the remaining wrappers and the complete DEV demonstration are finished.
+The guarded reader, completion, calendar, correspondence read/search/save, and native main-report tools are implemented on the topic branch. The full synthetic gateway flow passes, including heartbeat intake, restart recovery without duplicate actions, and cleanup after interruption. The configuration stays paused by default. Remaining work is the cumulative CI build, installed DEV mounts, and native follow-ups on the upgraded runtime.
 
 Implementation and synthetic DEV validation are approved. Merging remains held until the OpenClaw upgrade finishes and Cole releases the hold. No real forwarding, TEST, or PROD is enabled. Locked-phone forwarding, actual sandbox mounts, and next-heartbeat rule updates still need validation.
 
@@ -129,7 +129,7 @@ Implementation and synthetic DEV validation are approved. Merging remains held u
 
 ### State
 
-Implementation branch: `codex/communication-watcher-dev`, based on freshly fetched main. No merge, auto-merge, TEST, or PROD is authorized. Coordinate shared DEV ownership with the OpenClaw upgrade owner using the deployment slot controller. The [appendix](033-communication-awareness-appendix.md) retains source evidence and implementation detail. Diagrams and tables above are the review surface. The starting behavior list ships in `openclaw-plugins/communication-watcher/instructions/`. The pure staging helper emits a paused configuration and explicitly denies native `write` and `sessions_send` until the guarded replacements are implemented and validated. The shipped instruction templates still describe the initial candidate and must be aligned with those tools during implementation. No DEV lease or deployment has been performed.
+Implementation branch: `codex/communication-watcher-dev`, based on freshly fetched main. No merge, auto-merge, TEST, or PROD is authorized. Coordinate shared DEV ownership with the OpenClaw upgrade owner using the deployment slot controller. The [appendix](033-communication-awareness-appendix.md) retains source evidence and implementation detail. Diagrams and tables above are the review surface. The starting behavior list ships in `openclaw-plugins/communication-watcher/instructions/`. The configuration builder defaults to `0m`; explicit `enableHeartbeat: true` selects `30m`. Native `write` and `sessions_send` stay denied permanently. Instructions use `communication_memory_save` and `communication_report`. The relay privately constructs the fixed-main native capability through the public SDK; it does not modify host routing or model grants. No DEV lease or deployment has been performed.
 
 ### Scope and acceptance criteria
 
@@ -162,7 +162,7 @@ Use OpenClaw’s built-in memory, with tracking, handoff, and recovery guidance 
 
 ### Validation
 
-Local evidence: all 37 focused runtime tests pass, covering guard order, verdict schemas, source scope, completion receipts, calendar scope, CLI isolation, serialized reader cleanup and tool guards. Type checking and the plugin build pass. The built bundle passes stock OpenClaw 2026.9.3 `config validate`. `candidate.communication-watcher.test.ts` passes against that version's actual public SDK: prior sender correspondence is found in the built-in index, unrelated paths are excluded, current file content is checked, a replaced ancestor is rejected, main uses the guarded note reader, and disabling the plugin leaves no native tool fallback. This is a local SDK fixture, not an installed DEV proof or an LLM efficacy evaluation.
+Local evidence: all 42 focused runtime tests pass, covering guard order, verdict schemas, source scope, completion receipts, calendar scope, CLI isolation, serialized reader cleanup and tool guards. Type checking and the plugin build pass. The built bundle passes stock OpenClaw 2026.9.3 `config validate`. `candidate.communication-watcher.test.ts` passes against that version's actual public SDK: prior sender correspondence is found in the built-in index, unrelated paths are excluded, current file content is checked, a replaced ancestor is rejected, main uses the guarded note reader, and disabling the plugin leaves no native tool fallback. A real local gateway fixture also passes four heartbeat cycles: guarded intake, tentative calendar action, memory save, native main report, failed completion, restart recovery without duplicate action/report, guarded history, reader cleanup, and next-heartbeat rule refresh. Packaging/orchestration regressions pass (37 tests). These fixtures do not establish locked-phone behavior, Docker mounts, or LLM classifier efficacy.
 
 Prove heartbeat wake-up, quiet empty runs, routine action, ignore, quarantine, handoff, approval/decline, new evidence, and restart recovery. Verify forwarded arrivals cannot trigger turns and existing agents keep their heartbeat schedules. Exercise bounded main/watcher replies: native origin remains visible, replies do not restart intake, and main-owned work or unchanged alerts are not repeated. Disable the plugin and verify no raw read/write/send fallback is exposed. Verify watcher instruction writes fail through every available tool, memory writes still work, and main can edit the behavior file. Confirm the next heartbeat loads the new rule without a watcher update turn; forwarded content must not authorize main to edit policy. Exercise every source/history/memory path, errors, metadata, and automatic recall against the defense matrix. Use synthetic data and recorded external writes. Missing recall must lead to checking the saved note or provider result before repeating an action.
 
@@ -174,7 +174,7 @@ Only synthetic DEV installation and validation are authorized. Do not merge or a
 
 The retained independent reviewer identified oversized-item queue blocking, incorrect concurrent-reader release, rejection of normal reasoning-plus-text answers, absent sandbox tool grants, missing optional main-tool grants, and sender lookup relying on unindexed paths. Those are corrected with runtime regressions. Notes now include a searchable sender key; look up that key separately from a new message ID. Failed transcript cleanup also blocks the next reader until cleanup succeeds. A final review accepted the paused candidate with no remaining actionable code findings; full activation and DEV gates remain open.
 
-The earlier review treated native peer replies as an activation blocker. That interpretation is withdrawn: the heartbeat controls intake, while bounded follow-ups with main are allowed. The remaining implementation work is to replace hook-only native write/send access with plugin-owned guarded tools, following Gmail. The handoff must retain OpenClaw source provenance and a fixed main destination through a supported interface. Verify the wrapper and routing prerequisites in DEV rather than assuming they exist. Keep raw tools denied and the candidate paused until these checks pass. No competing OpenClaw patch is authorized during the upgrade; the discarded system-event notification proposal is not part of this design.
+The retained reviewer accepts the guarded save/report implementation without actionable findings. Native peer replies are allowed; the heartbeat controls intake. The public SDK preserves the actual source session and supports a private fixed-main backend route while raw tools stay denied. Stock 2026.9.3's detached reply can fail with expired caller authority; 2026.9.6 includes continuation handling, which still needs an installed proof. No competing core patch is included. Packaging now follows the existing additional-artifact chain, with source/dependency bindings and an installed fixture; consumers must map the new artifact without activating it. Review corrections bind the shared TypeScript configuration to the package cache, load configuration from the packaged plugin, and register fixture cleanup with the existing signal handler. All three native candidate cases pass, including SIGTERM cleanup. Recording-fixture completions run sequentially and assert each outcome.
 
 Reminders is now the selected bus: automation adds sender, timestamp, and body; unchecked items are pending; the watcher completes them after handling. This replaces timestamp tracking and the Telegram reference diagram. Sender/date memory records consequential correspondence, actions, and handoffs. Main now owns direct instruction edits; watcher instruction files are read-only and there is no self-edit relay. The nested workspace and expandable behaviors remain.
 
@@ -193,7 +193,8 @@ Reminders is now the selected bus: automation adds sender, timestamp, and body; 
 - [ ] Refine calendar details, importance examples, reporting, follow-up, and closure.
 - [ ] Validate read-only instruction mounts, blocked host-tool bypasses, writable memory, and main edits taking effect on the next heartbeat.
 - [x] Define source tools, scopes, and initial agent instructions for watcher, reader, and main.
-- [ ] Replace hook-only write/send access with guarded plugin tools; verify native handoff origin, bounded replies, fixed routing, and missing-plugin behavior.
+- [x] Replace hook-only write/send access with guarded plugin tools; verify initial native handoff origin, fixed routing, and missing-plugin behavior.
+- [ ] Validate bounded native replies against the upgraded runtime.
 - [ ] Set calendar scope, any quiet-hour window, quotas, and retention.
 - [ ] Wire and validate watcher heartbeat isolation, prompt, quiet completion, and main-only reports.
 - [ ] Validate phone delivery and filtering.

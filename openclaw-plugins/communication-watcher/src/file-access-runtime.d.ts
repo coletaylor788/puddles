@@ -4,7 +4,8 @@ declare module "openclaw/plugin-sdk/file-access-runtime" {
     rootDir: string,
     defaults?: { symlinks: "reject"; hardlinks: "reject" },
   ): Promise<{
-    read(relativePath: string): Promise<{
+    write(relativePath: string, data: string, options?: { mkdir?: boolean }): Promise<void>;
+    read(relativePath: string, options?: { maxBytes?: number }): Promise<{
       buffer: Buffer;
       stat: import("node:fs").Stats;
     }>;

@@ -3,13 +3,14 @@ import { readerAnswer } from "./reader.js";
 import { randomUUID } from "node:crypto";
 import { loadLLMProvider, type LLMClient } from "mcp-hooks";
 import type { AnyAgentTool, OpenClawPluginApi, OpenClawPluginToolContext } from "openclaw/plugin-sdk/core";
+import { Relay } from "./relay.js";
 import { Calendar } from "./calendar.js";
-import { notePath, readNote, safeNote, searchNotes } from "./memory.js";
+import { notePath, readNote, saveNote, searchNotes } from "./memory.js";
 import { Inbox } from "./inbox.js";
 import { cli, reminders } from "./backend.js";
 import { BoundaryError, guardedText, id, keys, object, string } from "./guards.js";
 
-const toolNames = ["communication_review", "communication_inbox_read", "communication_inbox_complete", "communication_memory_read", "communication_memory_search", "communication_calendar_read", "communication_calendar_plan"];
+const toolNames = ["communication_review", "communication_inbox_read", "communication_inbox_complete", "communication_memory_read", "communication_memory_search", "communication_memory_save", "communication_report", "communication_calendar_read", "communication_calendar_plan"];
 const parameters = (properties: Record<string, unknown>, required: string[] = []) => ({ type: "object", additionalProperties: false, properties, required }) as AnyAgentTool["parameters"];
 function result(value: unknown) { return { content: [{ type: "text" as const, text: JSON.stringify(value) }], details: value }; }
 function failure(error: unknown) { return { ...result({ status: error instanceof BoundaryError ? error.code : "unavailable" }), isError: true }; }
@@ -32,11 +33,9 @@ export default {
       return (await providerPromise).classify(content, prompt, options);
     } };
     const guard = guardedText(llm);
+    const relay = new Relay(main, guard);
     const inbox = new Inbox(reminders(cli(string(config.reminderCli), string(config.configDir), string(config.profile)), listId), listId, guard);
     const calendar = new Calendar(cli(string(config.calendarCli), string(config.configDir), string(config.profile)), id(config.calendarId), guard);
-    let watcherWorkspace: string | undefined;
-    let reportWindow = 0;
-    let reports = 0;
     let cleanupPending: string | undefined;
     let reviewing = false;
 
@@ -61,13 +60,24 @@ export default {
       }];
       if (ctx.agentId !== watcher) return [];
       if (!ctx.workspaceDir) return [];
-      watcherWorkspace = ctx.workspaceDir;
       const workspace = ctx.workspaceDir;
       const wrap = (name: string, description: string, schema: AnyAgentTool["parameters"], run: (args: unknown) => Promise<unknown>): AnyAgentTool => ({
         name, label: name, description, parameters: schema,
         async execute(_call, args) { try { return result(await run(args)); } catch (e) { return failure(e); } },
       });
       return [
+        {
+          name: "communication_report", label: "Report correspondence to main",
+          description: "Notify the fixed main session about a saved note. Accepted means queued for main, not delivered to the owner. No other recipient or sending mode is available.",
+          parameters: parameters({ path: { type: "string" }, category: { type: "string", enum: ["action-report", "decision-request"] }, summary: { type: "string", maxLength: 2000 } }, ["path", "category", "summary"]),
+          async execute(call, args, signal) {
+            try {
+              const current = ctx.getRuntimeConfig ? ctx.getRuntimeConfig() : ctx.runtimeConfig ?? ctx.config ?? api.config;
+              if (!current) throw new BoundaryError("unavailable");
+              return result(await relay.report(ctx, current, call, args, signal));
+            } catch (e) { return failure(e); }
+          },
+        },
         wrap("communication_memory_read", "Read a checked correspondence note from this agent's native memory.", parameters({ path: { type: "string" } }, ["path"]), async input => {
           const args = object(input); keys(args, ["path"]); return readNote(workspace, notePath(args.path), guard);
         }),
@@ -76,6 +86,10 @@ export default {
           const current = ctx.getRuntimeConfig ? ctx.getRuntimeConfig() : ctx.runtimeConfig ?? ctx.config ?? api.config;
           if (!current) throw new BoundaryError("unavailable");
           return searchNotes(current, watcher, workspace, session, await guard(string(args.query, 2000)), guard);
+        }),
+        wrap("communication_memory_save", "Save checked correspondence in native memory. Supply the last read revision, or null for a new note. Preserve other exchanges; main owns escalated work.", parameters({ path: { type: "string" }, content: { type: "string", maxLength: 15800 }, previousRevision: { type: ["string", "null"] } }, ["path", "content", "previousRevision"]), async input => {
+          const args = object(input); keys(args, ["path", "content", "previousRevision"]);
+          return saveNote(workspace, notePath(args.path), string(args.content, 15800), args.previousRevision === null ? null : string(args.previousRevision, 64), guard);
         }),
         wrap("communication_calendar_read", "Read the fixed personal calendar through content checks.", parameters({ id: { type: "string" }, from: { type: "string" }, to: { type: "string" } }), args => calendar.read(args)),
         wrap("communication_calendar_plan", "Create an agreed plan or a clearly tentative proposal. Confirm an existing watcher placeholder. No invitations, deletions, or other calendars.", parameters({ sourceId: { type: "string" }, title: { type: "string" }, start: { type: "string" }, end: { type: "string" }, notes: { type: "string" }, location: { type: "string" }, tentative: { type: "boolean" }, placeholderId: { type: "string" } }, ["sourceId", "title", "start", "end", "notes", "tentative"]), async args => { inbox.authorizeSource(session, id(object(args).sourceId)); return calendar.plan(args); }),
@@ -131,34 +145,13 @@ export default {
       }];
     }, { names: toolNames, optional: true });
 
-    // Native sessions_send supplies actual source provenance. Keep the route fixed and guard its payload.
+    // Effective policy denies raw alternatives. This hook is defense in depth, not the guard boundary.
     api.on("before_tool_call", async (event, ctx) => {
       if (ctx.agentId !== watcher && ctx.agentId !== reader) return;
-      try {
-        if (!ctx.sessionKey?.startsWith(`agent:${ctx.agentId}:`)) throw new BoundaryError("denied");
-        if (ctx.agentId === reader) {
-          if (event.toolName !== "communication_inbox_read") throw new BoundaryError("denied");
-          return;
-        }
-        if (event.toolName === "write") {
-          keys(event.params, ["path", "content"]);
-          const path = notePath(string(event.params.path).replace(/^\/workspace\//, ""));
-          if (!watcherWorkspace) throw new BoundaryError("denied");
-          safeNote(watcherWorkspace, path, true);
-          const content = await guard(string(event.params.content, 15800));
-          // Native FTS does not index file paths. Keep the sender key searchable in the ordinary note.
-          return { params: { path, content: `Sender key: ${path.split("/")[2]}\n${content}` } };
-        }
-        if (event.toolName === "sessions_send") {
-          keys(event.params, ["sessionKey", "message", "timeoutSeconds"]);
-          if (event.params.sessionKey !== main) throw new BoundaryError("denied");
-          if (Date.now() - reportWindow >= 30 * 60_000) { reportWindow = Date.now(); reports = 0; }
-          if (++reports > 3) throw new BoundaryError("limit");
-          const message = await guard(string(event.params.message, 8000));
-          return { params: { sessionKey: main, message, timeoutSeconds: 0 } };
-        }
-        if (!toolNames.includes(event.toolName)) throw new BoundaryError("denied");
-      } catch { return { block: true, blockReason: "Communication boundary denied this operation" }; }
+      if (!ctx.sessionKey?.startsWith(`agent:${ctx.agentId}:`) ||
+          (ctx.agentId === reader ? event.toolName !== "communication_inbox_read" : !toolNames.includes(event.toolName))) {
+        return { block: true, blockReason: "Communication boundary denied this operation" };
+      }
     });
   },
 };

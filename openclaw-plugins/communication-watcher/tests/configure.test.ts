@@ -28,3 +28,9 @@ it('preserves inherited main heartbeat and rejects replacement or unnormalized a
   expect(() => configure({ agents: { list: [] } }, options)).toThrow('Normalize');
   expect(() => configure({ agents: { entries: { 'communication-watcher': {} } } }, options)).toThrow('replace');
 });
+
+it('requires explicit activation and uses the approved 30-minute cadence', () => {
+  const base = { agents: { entries: { main: { workspace: '/fixture/main' } } } };
+  expect(configure(base, { ...options, enableHeartbeat: true }).agents.entries['communication-watcher'].heartbeat.every).toBe('30m');
+  expect(() => configure(base, { ...options, enableHeartbeat: 'true' })).toThrow('activation');
+});

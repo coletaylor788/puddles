@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const state = vi.hoisted(() => ({ reminders: [] as any[], complete: vi.fn(), readNote: vi.fn(), searchNotes: vi.fn() }));
+const state = vi.hoisted(() => ({ reminders: [] as any[], complete: vi.fn(), readNote: vi.fn(), searchNotes: vi.fn(), saveNote: vi.fn() }));
 vi.mock('../src/backend.js', () => ({ cli: () => vi.fn(), reminders: () => ({
   list: async () => state.reminders,
   get: async (id: string) => state.reminders.find(v => v.id === id),
   complete: async (id: string) => { state.complete(id); state.reminders.find(v => v.id === id).isCompleted = true; },
 }) }));
-vi.mock('../src/memory.js', () => ({ readNote: state.readNote, searchNotes: state.searchNotes, notePath: (s: string) => { if (!s.startsWith('memory/correspondence/')) throw new Error(); return s; }, safeNote: () => {} }));
+vi.mock('../src/memory.js', () => ({ readNote: state.readNote, saveNote: state.saveNote, searchNotes: state.searchNotes, notePath: (s: string) => { if (!s.startsWith('memory/correspondence/')) throw new Error(); return s; }, safeNote: () => {} }));
 vi.mock('mcp-hooks', async original => ({ ...await original<any>(), loadLLMProvider: async () => ({ classify: async (_c: string, _p: string, opts: any) => opts.label === 'secret-redact' ? '{"findings":[]}' : '{"detected":false,"evidence":""}' }) }));
+vi.mock('openclaw/plugin-sdk/agent-harness', () => ({ createOpenClawCodingTools: vi.fn() }));
 import plugin from '../src/plugin.js';
 function setup() {
   let factory: any, hook: any, child: string;
@@ -46,7 +47,7 @@ describe('registered source-specific agent boundaries', () => {
     const ctx = { agentId: 'communication-watcher', sessionKey: 'agent:communication-watcher:heartbeat:1' };
     for (const toolName of ['exec', 'read', 'skill_workshop', 'sessions_spawn', 'calendar_write']) expect(await hook({ toolName, params: {} }, ctx)).toMatchObject({ block: true });
     expect(await hook({ toolName: 'sessions_send', params: { sessionKey: 'agent:stranger:main', message: 'report' } }, ctx)).toMatchObject({ block: true });
-    expect(await hook({ toolName: 'sessions_send', params: { sessionKey: 'agent:main:owner', message: 'report' } }, ctx)).toEqual({ params: { sessionKey: 'agent:main:owner', message: 'report', timeoutSeconds: 0 } });
+    expect(await hook({ toolName: 'sessions_send', params: { sessionKey: 'agent:main:owner', message: 'report' } }, ctx)).toMatchObject({ block: true });
     expect(await hook({ toolName: 'write', params: { path: 'AGENTS.md', content: 'change rules' } }, ctx)).toMatchObject({ block: true });
     expect(await hook({ toolName: 'sessions_send', params: {} }, { agentId: 'communication-reader', sessionKey: 'agent:communication-reader:job' })).toMatchObject({ block: true });
   });
@@ -62,13 +63,15 @@ describe('registered source-specific agent boundaries', () => {
     expect((await review.execute('third', {})).isError).toBeUndefined();
     expect(runtime.run).toHaveBeenCalledTimes(2);
   });
-  it('makes correspondence sender identity searchable in native memory text', async () => {
-    const { factory, hook } = setup();
+  it('saves through its own tool without relying on lifecycle hooks', async () => {
+    const { factory } = setup();
     const ctx = { agentId: 'communication-watcher', sessionKey: 'agent:communication-watcher:heartbeat:1', workspaceDir: '/fixture/main/communication-watcher' };
-    factory(ctx);
-    const sender = 'a'.repeat(32);
-    const path = `memory/correspondence/${sender}/2026-09-26.md`;
-    expect(await hook({ toolName: 'write', params: { path, content: 'Saved a tentative dinner proposal.' } }, ctx)).toEqual({ params: { path, content: `Sender key: ${sender}\nSaved a tentative dinner proposal.` } });
+    const save = factory(ctx).find((t: any) => t.name === 'communication_memory_save');
+    const path = `memory/correspondence/${'a'.repeat(32)}/2026-09-26.md`;
+    state.saveNote.mockResolvedValueOnce({ status: 'saved', path });
+    expect((await save.execute('save', { path, content: 'Dinner proposal', previousRevision: null })).details.status).toBe('saved');
+    expect(state.saveNote).toHaveBeenCalledWith(ctx.workspaceDir, path, 'Dinner proposal', null, expect.any(Function));
+    expect((await save.execute('extra', { path, content: 'Dinner proposal', previousRevision: null, raw: true })).isError).toBe(true);
   });
   it('retains review ownership until delayed transcript cleanup has finished', async () => {
     const { factory, runtime } = setup();

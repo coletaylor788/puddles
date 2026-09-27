@@ -1,3 +1,5 @@
+import { packageCommunication } from "./communication-package.mjs";
+import { communicationFixture } from "../fixtures/communication.mjs";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, statfsSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
@@ -356,8 +358,8 @@ export async function nativePipeline(command, repositoryGates) {
         record.type === "file" ? record.sha256 : { sha256: record.sha256, options: { portable: true } },
       ])));
     context.preparedFiles = preparedFileRecords;
-    if (extensionArtifacts.some(({ id }) => id === "llama-cpp-provider")) {
-      throw new Error("The patched llama.cpp provider is owned by the public candidate");
+    if (extensionArtifacts.some(({ id }) => ["llama-cpp-provider", "communication-watcher"].includes(id))) {
+      throw new Error("Public runtime artifacts cannot be replaced by a local extension");
     }
     const publicHead = (await git(repoRoot, ["rev-parse", "HEAD"])).trim();
     const providerDirectory = join(artifacts, "llama-cpp-provider");
@@ -397,7 +399,8 @@ export async function nativePipeline(command, repositoryGates) {
         runtimeSha256: record.artifact.runtimeSha256,
       },
     }));
-    const extras = [provider, ...attestedExtensionArtifacts];
+    const communication = await packageCommunication(repoRoot, runDir, tools, treeDigest(join(repoRoot, "node_modules"), repositoryDependencyOptions), buildEnv, run);
+    const extras = [provider, communication, ...attestedExtensionArtifacts];
     context.additionalArtifacts = extras;
     const artifact = await stage(runDir, "package", { candidateInputs, installedDependencies, build: treeDigest(join(candidate, "dist")), tools, packaging: fileDigest(join(packageDir, "src", "native-package.mjs")) }, () => packRuntime(candidate, artifacts, run), (result) => ({ [result.path]: result.sha256 }));
     context.artifact = artifact;
@@ -406,7 +409,7 @@ export async function nativePipeline(command, repositoryGates) {
       tree: (await git(repoRoot, ["rev-parse", "HEAD^{tree}"])).trim(),
     };
     const buildProofs = {};
-    for (const name of ["prepare", "dependencies", "build", "extension-package", "provider-package", "prepared-files", "package"]) {
+    for (const name of ["prepare", "dependencies", "build", "extension-package", "provider-package", "communication-package", "prepared-files", "package"]) {
       const path = join(runDir, "stages", `${name}.json`);
       if (existsSync(path)) buildProofs[name] = JSON.parse(readFileSync(path, "utf8")).key;
     }
@@ -491,6 +494,9 @@ export async function nativePipeline(command, repositoryGates) {
       stateMigration,
     }, async () => {
       const outputs = await extensionPhase(extension, "installed", context);
+      const communicationRoot = join(runDir, "communication-fixture");
+      rmSync(communicationRoot, { recursive: true, force: true });
+      const communicationResult = await communicationFixture(installedDir, context.additionalInstalledDirs["communication-watcher"], communicationRoot);
       const migrationFixtures = await rehearseStateMigration(installedDir, candidate, runDir);
       const results = [];
       for (const scenario of runtimeScenarios) {
@@ -500,12 +506,12 @@ export async function nativePipeline(command, repositoryGates) {
       for (const [id, directory] of Object.entries(context.additionalInstalledDirs)) {
         if (additionalBefore[id] !== treeDigest(directory, { portable: true })) throw new Error("Rehearsal changed an additional installed artifact");
       }
-      return { scenarios: results, migrationFixtures, outputs };
+      return { scenarios: results, communicationResult, migrationFixtures, outputs };
     }, (result) => result.outputs);
     if (command === "ci" && (await git(repoRoot, ["status", "--porcelain", "--untracked-files=all"])).trim()) throw new Error("Candidate changed during cumulative validation");
     if (migrationPath) readMigrationManifest(migrationPath, stateMigration.sha256);
     const proofs = {};
-    for (const name of ["build", "provider-package", "prepared-files", "regressions", "runtime", "install", ...extraProofs]) {
+    for (const name of ["build", "provider-package", "communication-package", "prepared-files", "regressions", "runtime", "install", ...extraProofs]) {
       const path = join(runDir, "stages", `${name}.json`);
       if (existsSync(path)) proofs[name] = JSON.parse(readFileSync(path, "utf8")).key;
     }
