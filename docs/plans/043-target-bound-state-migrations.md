@@ -61,7 +61,7 @@ Transport the genuine interpreter-check evidence with the release so production 
 
 The approved implementation seals separate target manifests, validates the common generator and transports the production manifest and genuine interpreter evidence. Shared scripts, instructions and the skill cover future releases. Stable environment settings remain in the companion repository.
 
-Focused regressions and retained review pass, including recovery compatibility for existing releases. A live DEV failure restores its exact configuration, service, runtime and ownership record, and health passes. The final cumulative CI, exact-artifact DEV and merged TEST/PROD gates remain. Production is unchanged.
+Focused regressions and independent review pass, including recovery compatibility for existing releases and separation of caller release settings from synthetic test fixtures. A live DEV failure restores its exact configuration, service, runtime and ownership record, and health passes. The final cumulative CI, exact-artifact DEV and merged TEST/PROD gates remain. Production is unchanged.
 
 ## Agent section
 
@@ -119,6 +119,13 @@ These checks do not replace final cumulative CI or merged target rehearsal.
 Recovery and release regressions pass 43 tests, including legacy cleanup metadata
 and paired journals with matching, missing or wrong-role bindings. Target topology
 passes 62 tests with normal host permissions, and the TypeScript check passes.
+Composed CI passes the full build, then exposes inherited release bindings in
+synthetic pipeline tests. Their setup now clears that setting alongside the
+existing migration manifest. All 40 pipeline tests pass with an intentionally
+conflicting caller binding. The actual release guard is unchanged.
+The full e2e run under that caller binding passes 408 of 411 tests. The remaining
+three use the local system's older Python; their complete five-test file passes
+with CI's Python 3.11. Final CI still runs the complete accumulated gate.
 
 
 - Reproduce the current synthetic-manifest/production-target rejection.
@@ -143,6 +150,7 @@ Use the shared lifecycle documented in the current [skill](../../.github/skills/
 - Retained review identified missing fixture dependencies, copied instead of measured interpreter evidence, and credential headers in selected export. All three are fixed with regressions. Recheck finds no additional material defect. Complete paired release validation remains in the normal lifecycle.
 - Actual DEV rollback validation passes. The source gate, imported target, TEST success/rollback and certification still require the final candidate's end-to-end run.
 - A recovery compatibility check exposed an incorrect full-target hash comparison after cleanup metadata was added. Restore the legacy proof check and require the sealed journal binding for paired releases. The retained reviewer reports no material findings; the four added regressions and affected suites pass. Replace the superseded CI candidate.
+- The retained reviewer became unavailable through repeated tool errors. Its replacement reviews the complete current pair, identifies a credential-export gap in authored environment maps, and clears the repaired boundary with regressions. Typed non-secret settings and unresolved references remain supported. The replacement also clears the synthetic pipeline fixture correction after the composed CI reproduction.
 
 ### Checklist
 

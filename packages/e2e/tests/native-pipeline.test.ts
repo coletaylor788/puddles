@@ -246,8 +246,17 @@ function setup() {
   vi.stubEnv("E2E_RUN_DIR", run);
   vi.stubEnv("E2E_LOCAL_EXTENSION", "");
   vi.stubEnv("E2E_STATE_MIGRATION_MANIFEST", "");
+  vi.stubEnv("E2E_STATE_MIGRATION_BINDINGS", "");
   return { directory, run };
 }
+
+it("keeps a caller's release migration bindings out of synthetic pipelines", async () => {
+  vi.stubEnv("E2E_STATE_MIGRATION_BINDINGS", "/synthetic/caller-release-bindings.json");
+  setup();
+  vi.stubEnv("GMAIL_MCP_PYTHON", "fixture-python");
+  const receipt = await nativePipeline("build", async () => {});
+  expect(receipt.stateMigrations).toBeUndefined();
+});
 
 it("runs every mapped regression through the upstream test entrypoint", async () => {
   setup();
