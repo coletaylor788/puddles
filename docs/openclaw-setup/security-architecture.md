@@ -46,13 +46,15 @@ flowchart TB
 
 ### What the boundaries protect
 
-| Boundary | Separates | Rule |
-|---|---|---|
-| Tailscale | Managed machines from outside networks | No ports exposed outside Tailscale. |
-| Machine | Development host from server | SSH requires an approved key, host account, and Tailscale access. |
-| Sandbox | Agent tools from the trusted host | Agents get only granted tools and files. Credentials stay outside the sandbox. |
-| Keychain | Host tools from stored credentials | Tools use an approved, stable credential reader. Secrets never enter agent context. |
-| Context rings | Personal, household, friends, and public | Lower rings cannot read higher rings. Sharing outward requires human approval enforced by code. |
+| Boundary | Separates | Rule | Compromise enables |
+|---|---|---|---|
+| Tailscale | Managed machines from outside networks | No ports exposed outside Tailscale. | Reach private network services. SSH and application authentication still apply. |
+| Machine | Development host from server | SSH requires an approved key, host account, and Tailscale access. | Control the affected OS account, including its files, credentials, and agent controls. Does not automatically grant root or access to another machine. |
+| Sandbox | Agent tools from the trusted host | Agents get only granted tools and files. Credentials stay outside the sandbox. | Use host capabilities exposed by the escape, potentially including credentials. Does not automatically grant root or control of other machines. |
+| Keychain | Host tools from stored credentials | Tools use an approved, stable credential reader. Secrets never enter agent context. | Use stolen credentials directly, bypassing agent tool limits. Service access remains limited to the credentials' granted permissions. |
+| Context rings | Personal, household, friends, and public | Lower rings cannot read higher rings. Sharing outward requires human approval enforced by code. | Read or leak data across rings. Does not by itself grant host execution or Keychain access. |
+
+These limits assume the other boundaries still hold.
 
 The operator, OS, gateway, reviewed adapters, and delivery tooling form the
 trusted base. Host compromise is outside the agent sandbox's protection.
