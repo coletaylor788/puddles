@@ -165,6 +165,13 @@ the builder handoff, the controller finalizes builder output before proceeding
 to physical rehearsal. A joined source-gate failure registers generated output
 as one failed attempt group. Imports and recovery remain with their consumers.
 
+Before reusing a failed builder, the producer holds both task and builder locks.
+It verifies the previous sealed files and evidence, then withdraws that
+generation's deletion authority while keeping its evidence. The next terminal
+failure registers the current files as a fresh generation. An unfinished evidence
+export, pending deletion, changed sealed files, or consumer hold blocks reuse
+until the owner resolves it.
+
 ## 5. Migrate old directories
 
 The task owner inventories its own paths and establishes active processes,

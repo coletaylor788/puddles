@@ -29,7 +29,7 @@ import {
   registerSourceGate, registerSuccessfulBuild,
   registerRetainedObject, removeRetentionReference, retentionSpaceSummary, setRetentionReference,
 } from "./native-retention.mjs";
-import { reserveStorage, releaseStorage } from "./native-storage.mjs";
+import { reserveStorage, releaseStorage, resumeFailedScratch } from "./native-storage.mjs";
 import { resolveResourceProfile } from "./native-resources.mjs";
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -98,14 +98,17 @@ export async function nativePipeline(command, repositoryGates) {
   if (!existsSync(join(source, ".git"))) throw new Error("OPENCLAW_SRC must be a source checkout");
   const runDir = externalDirectory(process.env.E2E_RUN_DIR ?? mkdtempSync(join(tmpdir(), "puddles-native-")), [repoRoot, source]);
   let taskUnlock;
+  let taskRoot;
   if (process.env.PUDDLES_STORAGE_ROOT) {
-    const taskRoot = realpathSync(process.env.PUDDLES_STORAGE_ROOT);
+    taskRoot = realpathSync(process.env.PUDDLES_STORAGE_ROOT);
     if (taskRoot === runDir || !runDir.startsWith(`${taskRoot}/`)) throw new Error("Builder is outside its task storage root");
     taskUnlock = acquireLock(taskRoot);
   }
   let unlock;
-  try { unlock = acquireLock(runDir); }
-  catch (error) { taskUnlock?.(); throw error; }
+  try {
+    unlock = acquireLock(runDir);
+    if (taskRoot) resumeFailedScratch(taskRoot, process.env.PUDDLES_STORAGE_OWNER, runDir);
+  } catch (error) { unlock?.(); taskUnlock?.(); throw error; }
   let resourceProfile;
   let reservation;
   const capacityRoot = resolve(process.env.E2E_CAPACITY_ROOT ?? join(homedir(), ".puddles", "development-capacity"));

@@ -56,7 +56,7 @@ export function finalizeScratch(root, owner, paths, evidence) {
   root = realpathSync(root);
   const record = initializeStorage(root, owner);
   for (const path of paths) {
-    const previous = record.entries.findLast(entry => entry.path === path && entry.status !== "removed");
+    const previous = record.entries.findLast(entry => entry.path === path && !["removed", "superseded"].includes(entry.status));
     if (!previous && !existsSync(join(root, path))) continue;
     const entry = previous ?? registerScratch(root, owner, {
       id: `scratch-${randomUUID()}`, path, evidence, purpose: "Completed controller scratch",
@@ -116,7 +116,7 @@ export function finalizeFailedNativeBuild(root, owner, buildRoot) {
   for (const name of [...logs, "context", "artifacts", "installed", "installed-additional", "source/node_modules", "source/dist"]) {
     const path = relative(root, join(buildRoot, name));
     if (!existsSync(join(root, path))) continue;
-    const prior = record.entries.findLast(entry => entry.path === path && entry.status !== "removed");
+    const prior = record.entries.findLast(entry => entry.path === path && !["removed", "superseded"].includes(entry.status));
     const entry = prior ?? registerScratch(root, owner, {
       id: `scratch-${randomUUID()}`, group, kind: "failed", path, evidence,
       purpose: "Terminal local builder failure; source and compact reproduction remain",

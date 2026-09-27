@@ -10,6 +10,7 @@ import { acquireLock, atomicJson, fileDigest, inside, jsonDigest, treeDigest } f
 const schema = "puddles.development-storage/v1";
 const idPattern = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
 const recordName = "storage.json";
+const retired = entry => ["removed", "superseded"].includes(entry.status);
 
 function id(value) {
   if (!idPattern.test(value ?? "")) throw new Error("Storage owner and entry IDs must be simple names");
@@ -101,7 +102,7 @@ export function registerScratch(root, owner, { id: entryId, path, evidence = [],
   return mutate(root, owner, record => {
     const absolute = child(root, path);
     if (!existsSync(absolute)) throw new Error("Scratch path is missing");
-    if (record.entries.some(entry => entry.id === entryId || entry.status !== "removed" && (
+    if (record.entries.some(entry => entry.id === entryId || !retired(entry) && (
         inside(child(root, entry.path), absolute) || inside(absolute, child(root, entry.path))))) {
       throw new Error("Scratch entry overlaps a registered entry");
     }
@@ -221,6 +222,38 @@ function verifySealed(root, entry, path = child(root, entry.path)) {
   if (!entry.retainedEvidence?.length) throw new Error("No retained evidence");
 }
 
+// The producer calls this with both locks held, before touching status or outputs.
+// Old evidence remains, but its deletion authority must not follow a new build.
+export function resumeFailedScratch(root, owner, buildRoot) {
+  canonical(root);
+  canonical(buildRoot);
+  if (root === buildRoot || !inside(root, buildRoot)) throw new Error("Retry must be inside its task storage root");
+  for (const path of [root, buildRoot]) {
+    if (JSON.parse(readFileSync(join(path, "lock", "owner.json"), "utf8")).pid !== process.pid) {
+      throw new Error("Retry requires its producer locks");
+    }
+  }
+  if (!existsSync(join(root, recordName))) return;
+  const record = read(root);
+  if (record.owner !== owner) throw new Error("Storage owner differs");
+  assertQuiescent(root, record);
+  assertQuiescent(buildRoot, { holds: [] });
+  const prefix = relative(root, buildRoot);
+  const entries = record.entries.filter(entry => !retired(entry) && (
+    entry.path === prefix || entry.path.startsWith(`${prefix}/`) || prefix.startsWith(`${entry.path}/`)));
+  for (const entry of entries) {
+    if (!entry.path.startsWith(`${prefix}/`) || entry.kind !== "failed" ||
+        entry.status !== "sealed") throw new Error("Retry overlaps protected scratch; finish owner finalization first");
+    verifySealed(root, entry);
+  }
+  for (const entry of entries) {
+    entry.supersededStatus = entry.status;
+    entry.status = "superseded";
+    entry.supersededAt = new Date().toISOString();
+  }
+  atomicJson(join(root, recordName), record);
+}
+
 function retainedFailure(record, entry, now) {
   if (entry.kind !== "failed" || entry.status !== "sealed") return false;
   const newest = record.entries.filter(value => value.kind === "failed" && value.status === "sealed")
@@ -237,7 +270,7 @@ export function planStorageCleanup(root, now = new Date()) {
   const remove = [];
   const keep = [];
   for (const entry of record.entries) {
-    if (entry.status === "removed") continue;
+    if (retired(entry)) continue;
     if (entry.status !== "sealed" || blocked.length || retainedFailure(record, entry, now)) {
       keep.push({ id: entry.id, path: entry.path, reason: entry.status === "sealed" ? blocked.join(", ") : entry.status });
       continue;
