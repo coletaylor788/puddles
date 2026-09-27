@@ -8,17 +8,17 @@
 
 ### Design
 
-Give Puddles Rocket Money and weather access through **CLI-backed OpenClaw tools**, following Apple PIM's shared installation model. Install the clients once on the Mini. Per-agent tool permissions control access; sandbox images stay unchanged. Credentials and endpoint policy live in one protected host service. All new code and skills stay in Puddles, with no upstream forks.
+Give Puddles Rocket Money and weather access through **CLI-backed OpenClaw tools**, following Apple PIM's shared installation model. Install the clients once on the Mini. Per-agent tool permissions control access; sandbox images stay unchanged. The host CLI application owns credentials, endpoint policy, and HTTP execution. All new code and skills stay in Puddles, with no upstream forks.
 
 ```mermaid
 flowchart TB
     Agent["1. Agent calls named tool"]
     Tool["2. OpenClaw checks access<br/>Plugin invokes shared CLI"]
-    Host["3. Private host service<br/>Validate request"]
+    Host["3. CLI application<br/>Validate + load private auth"]
     API["Rocket Money: auth + HTTPX<br/>Weather: stock curl"]
     Result["4. Native response body<br/>back to calling agent"]
     Agent --> Tool
-    Tool -->|"One host-local connection"| Host
+    Tool -->|"Spawn with stdin/stdout"| Host
     Host --> API
     API --> Result
 ```
@@ -45,7 +45,7 @@ OpenClaw's tool policy decides which tools each agent can call. A tool factory c
 
 For example, a weather agent can receive only `weather_curl`, a finance reader only `rocket_money_read`, and an authorized finance agent both Rocket Money tools. Those are configuration examples, not changes to current agent assignments. Skills explain usage; they do not grant access.
 
-The existing OpenClaw tool channel carries calls out of sandboxed agents. The plugin invokes the shared CLI through a fixed executable and argument array. One private Unix socket connects it to the host service under its separate credential-owning identity. There is no additional Linux relay, SSH bridge, SOCKS proxy, or sandbox socket mount. Tool invocation is the only supported agent access path. Agent command execution stays in network-disabled sandboxes, with no host socket, host credentials, Docker socket, or host-execution escape. Copying or recreating a CLI inside the sandbox therefore grants no access. General host execution would break this guarantee and must be denied for these agents.
+The existing OpenClaw tool channel carries calls out of sandboxed agents. The plugin directly launches the shared CLI through a fixed executable and argument array, passes the request on stdin, and collects stdout and exit status. That CLI is the application that validates and executes the request. No separate service, socket, HTTP listener, or relay is needed. Tool invocation is the only supported agent access path. Agent command execution stays in network-disabled sandboxes, with no host credentials, Docker socket, or host-execution escape. Copying or recreating a CLI inside the sandbox therefore grants no access. General host execution would break this guarantee and must be denied for these agents.
 
 #### 3. Host request policy and execution
 
@@ -54,7 +54,7 @@ The existing OpenClaw tool channel carries calls out of sandboxed agents. The pl
 | Weather | A fixed stock curl binary after destination and argument validation. Allow the two weather HTTPS origins only, with verified TLS and bounded transfers. |
 | Rocket Money | HTTPX sends accepted native GraphQL after validation and private authentication. Allow reviewed reads and exactly the two approved mutations. |
 
-The host service uses Starlette/Uvicorn for local requests. The plugin supplies caller identity and tool scope over the protected local connection. The service independently checks protected grants and the complete request; request labels alone never authorize a mutation. The connection is trusted only from the OpenClaw host identity, not from sandbox callers.
+The plugin supplies trusted caller identity and tool scope when launching the CLI. The CLI checks protected grants and the complete request before using credentials or making a network call. It runs under the trusted OpenClaw host account; that account and its installed plugins remain trusted. Credentials stay in its Keychain and private host files outside agent mounts. This removes the separate credential-service identity as well as the server plumbing.
 
 For Rocket Money, validate effective GraphQL fields, variables, aliases, fragments, and arguments; even read-looking queries can create state. Weather validates every destination and curl option, including options that could change a target or read local files. Validation failure never falls through to forwarding or arbitrary command execution.
 
@@ -64,9 +64,9 @@ For Rocket Money, validate effective GraphQL fields, variables, aliases, fragmen
 |---|---|
 | API keys for future managed adapters | macOS Keychain through Python keyring's explicit macOS backend. No plaintext fallback. |
 | Standard OAuth | Keychain for tokens; Authlib performs supported refresh and persists rotations. |
-| Rocket Money browser session | Playwright-managed Chromium under a dedicated macOS service identity. Its private profile lives outside Git and agent mounts. |
+| Rocket Money browser session | Playwright-managed Chromium under the trusted host account. Its private profile lives outside Git and agent mounts. |
 
-The whole Chromium profile stays in private host files, not Keychain. Browser cookies and API cookie rotations share one coordinated account session. The model never receives credentials, browser storage, or debugger access.
+The Chromium profile stays in private host files; Keychain holds API keys and OAuth tokens. Each CLI invocation can exit after its request because auth state persists separately. A per-account lock coordinates renewal, cookie updates, and writes across CLI processes. The model never receives credentials, browser storage, or debugger access.
 
 ```mermaid
 flowchart TB
@@ -79,25 +79,25 @@ flowchart TB
     Repair -->|"Sign in again"| Setup
 ```
 
-Initial setup uses a visible browser in the service account's GUI session. Normal maintenance should be headless, with no scheduled manual login. Silent recovery was observed in the existing browser; managed Chromium renewal and cookie lifetime remain unverified. FileVault unlock and service-account login after reboot are separate prerequisites. Revocation or mandatory MFA can still require operator repair.
+Initial setup uses a visible browser in the host account's GUI session. Normal maintenance should be headless, with no scheduled manual login. Silent recovery was observed in the existing browser; managed Chromium renewal and cookie lifetime remain unverified. FileVault unlock and host-account login after reboot are separate prerequisites. Revocation or mandatory MFA can still require operator repair.
 
 #### 4. Return the native response
 
-The response goes back through the CLI and tool to the same calling agent. The gateway does not dispatch agents, summarize results, or convert financial responses into special main-agent receipts.
+The response goes back through the CLI and tool to the same calling agent. The CLI does not dispatch agents, summarize results, or convert financial responses into special main-agent receipts.
 
 **Weather:** return curl's native response body and separate exit status. Binary output becomes a tool artifact. Do not add response headers or a weather schema; explicit public-header requests can retain curl's native behavior. Apply transfer limits without semantic content inspection.
 
-**Rocket Money:** return the native GraphQL response. Keep upstream auth and cookie headers private, process cookie rotation inside the session manager, and bound response size. Do not add a general semantic filter or injection scanner here. Native provider errors remain provider errors; gateway failures use separate transport errors. Request validation excludes credential-exporting fields before they can be queried.
+**Rocket Money:** return the native GraphQL response. Keep upstream auth and cookie headers private, process cookie rotation inside the session manager, and bound response size. Do not add a general semantic filter or injection scanner here. Native provider errors remain provider errors; local failures use separate CLI diagnostics and exit status. Request validation excludes credential-exporting fields before they can be queried.
 
 For the two financial updates, the adapter additionally records intent under a stable request ID and reads back the changed fields. If execution times out, the result may be unknown. Check status before repeating the operation; do not blindly replay it. Verification status is separate from the native GraphQL result. Batches report each outcome independently.
 
-Active code, configuration, keys, and browser state remain outside agent-writable paths. Routine logs exclude bodies, query strings, cookies, auth headers, and debug dumps. External-content handling belongs to Puddles' existing agent workflow, not this transport service.
+Active code, configuration, keys, and browser state remain outside agent-writable paths. Routine logs exclude bodies, query strings, cookies, auth headers, and debug dumps. External-content handling belongs to Puddles' existing agent workflow.
 
 #### Adding another integration
 
-Add a named tool, CLI/skill, and provider registration. The provider supplies either a constrained native CLI runner or a managed HTTP adapter, along with its request policy and optional auth driver. The shared service owns credential custody, local transport, and operational limits. Assign its tool to agents through the same permission mechanism.
+Add a named tool, CLI/skill, and provider registration. The provider supplies either a constrained native CLI runner or a managed HTTP adapter, along with its request policy and optional auth driver. A shared library supplies credential handling, process-safe state, and execution limits to each CLI. Assign its tool to agents through the same permission mechanism.
 
-Registration and adapters are trusted operator-installed configuration/code. Agent requests cannot install them or change their permissions. Prove extension with a test provider added without modifying the shared transport.
+Registration and adapters are trusted operator-installed configuration/code. Agent requests cannot install them or change their permissions. Prove extension with a test provider added without modifying the shared execution framework.
 
 ### Status
 
@@ -109,7 +109,7 @@ Remaining checks are the new plugin's permission enforcement, safe native curl e
 
 ### State
 
-The current revision uses Apple PIM-style CLI-backed tools and per-agent tool grants. It removes per-agent image distribution, sandbox sockets/SSH relays, special main-agent receipts, generic response inspection, and the proposed weather API wrapper. Implementation remains deferred. The original Envoy review is retained as historical evidence.
+The current revision uses Apple PIM-style CLI-backed tools and per-agent tool grants. It removes a separate service/socket, per-agent image distribution, sandbox SSH relays, special main-agent receipts, generic response inspection, and the proposed weather API wrapper. Implementation remains deferred. The original Envoy review is retained as historical evidence.
 
 ### Scope and acceptance criteria
 
@@ -118,25 +118,25 @@ The current revision uses Apple PIM-style CLI-backed tools and per-agent tool gr
 - Install shared host clients once; register named tools with per-agent grants and protected account bindings. No per-agent images or direct sandbox gateway access.
 - Keep Rocket Money credentials host-only. Weather uses no injected auth or TLS interception.
 - Deny unregistered destinations, host file/config escapes, and bypasses of tool or GraphQL policy. Preserve native responses and explicit partial/uncertain outcomes.
-- Add a test provider through protected registration without forks or shared-transport changes.
+- Add a test provider through protected registration without forks or shared-execution changes.
 
 ### Architecture and decisions
 
 The [technical appendix](031-cli-gateway/technical-appendix.md) holds exact contracts:
 
-- [Tool dispatch and local transport](031-cli-gateway/technical-appendix.md#tool-dispatch-and-local-transport) and [installation/access](031-cli-gateway/technical-appendix.md#agent-installation-and-access): shared clients, trusted caller context, and per-agent grants.
+- [Tool dispatch and process lifecycle](031-cli-gateway/technical-appendix.md#tool-dispatch-and-process-lifecycle) and [installation/access](031-cli-gateway/technical-appendix.md#agent-installation-and-access): shared clients, trusted caller context, and per-agent grants.
 - [Weather curl contract](031-cli-gateway/technical-appendix.md#weather-curl-contract): installed-skill evidence, native curl arguments, file boundaries, and transfer limits.
 - [Managed executor and limits](031-cli-gateway/technical-appendix.md#managed-executor-and-limits) and [authentication](031-cli-gateway/technical-appendix.md#authentication-contract).
-- [Rocket Money API contracts](031-cli-gateway/technical-appendix.md#rocket-money-api-contracts) and [local API/CLI contract](031-cli-gateway/technical-appendix.md#local-api-and-cli-contract).
+- [Rocket Money API contracts](031-cli-gateway/technical-appendix.md#rocket-money-api-contracts) and [CLI contract](031-cli-gateway/technical-appendix.md#cli-contract).
 - [Extension contract](031-cli-gateway/technical-appendix.md#provider-extension-contract) and [package layout](031-cli-gateway/technical-appendix.md#package-layout).
 
 ### Implementation
 
 | Phase | Deliverable | Gate |
 |---|---|---|
-| 1. Tool integration | Shared plugin/CLIs, private local socket, fake adapters | Per-agent allow/deny, missing identity denied, no direct sandbox bypass, no image changes. |
+| 1. Tool integration | Shared plugin/CLIs, stdin/stdout invocation, fake adapters | Per-agent allow/deny, missing identity denied, no direct sandbox bypass, no image changes. |
 | 2. Weather and executor | Native curl runner plus managed API lifecycle | Allowed curl requests and workspace artifacts; file/target escapes denied; GraphQL rejection before execution; body-only results. |
-| 3. Authentication | Keychain and private managed Chromium | Setup, cookie rotation, idle/expiry renewal, concurrency, restart and reboot prerequisites. |
+| 3. Authentication | Keychain and private managed Chromium | Setup, cookie rotation, idle/expiry renewal, cross-process locks, restart and reboot prerequisites. |
 | 4. Rocket Money | Reviewed reads and the two constrained updates | Free-account coverage and separately authorized reversible budget/category verification. |
 | 5. Distribution | Protected host install, skills, extension starter | Permission changes and revocation, recovery docs, extension without dispatch changes. |
 
@@ -159,7 +159,7 @@ The [Envoy review](031-cli-gateway/envoy-security-review.md), [decision record](
 - [x] Record shared CLI-backed tools, per-agent permissions, native responses, and narrow financial updates.
 - [x] Inspect the Mini's Apple PIM tool registration/runner and installed weather URLs.
 - [x] Preserve exact Rocket Money contracts and historical research.
-- [ ] Prove tool allow/deny, trusted identity, private transport, and revocation without sandbox bypass.
+- [ ] Prove tool allow/deny, trusted identity, direct subprocess execution, and revocation without sandbox bypass.
 - [ ] Verify native weather requests, safe file handling, and bounded artifacts.
 - [ ] Verify host credential custody, silent renewal, rotation, and restart/reboot behavior.
 - [ ] Deliver Rocket Money reads, category/date writes, and the budget-date workflow.
