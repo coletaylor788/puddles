@@ -1,6 +1,6 @@
 # Offline state migration through maintained SDK helpers
 
-OpenClaw 2026.9.3 already has a readonly cron snapshot reader and a targeted
+OpenClaw 2026.9.6 already has a readonly cron snapshot reader and a targeted
 writer that checks the selected job's configuration revision. Its public SDK
 exposes only the older mutating loader and whole-store writer. This patch
 exports the existing narrow helpers instead of adding another storage path.
@@ -17,7 +17,9 @@ without hardcoding private plugin policy or deleting unknown keys. Cron
 partition resolution can request the existing
 `artifactPreservingReadOnly` path, which inspects a private SQLite snapshot
 instead of creating WAL or SHM files beside an older database. Existing callers
-retain their current default behavior.
+retain their current default behavior. The 2026.9.6 reader delegates to the
+maintained database worker. Migration callers explicitly request raw-row
+fingerprints for the stopped copy checks; ordinary readers do not compute them.
 
 The public native helper accepts a versioned manifest with checked config
 leaves and, optionally, one job whose final and failure delivery must be
@@ -61,7 +63,7 @@ scheduler, plugin hook, or model. Private policy remains in the selected local
 manifest.
 
 The patch targets stable source
-`1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7`. Its registered SDK tests use real
+`eb377ac59e6c9fd6c7705028034812becf00271b`. Its registered SDK tests use real
 SQLite, including the maintained compressed 2026.7.1-2 fixture. They cover
 readonly absent-state behavior, old-schema ordering, legacy config repair,
 markerless multi-agent ownership, Active Memory QMD retirement, Canvas host

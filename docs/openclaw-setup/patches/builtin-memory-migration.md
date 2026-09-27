@@ -1,12 +1,12 @@
 # Builtin memory migration
 
-OpenClaw 2026.9.3 removes the QMD backend. There is no QMD transport caller left
+OpenClaw 2026.9.6 uses the builtin memory backend and no longer supports QMD. There is no QMD transport caller left
 to receive the maintained per-agent mcporter override. This test-only patch
 replaces that override with migration and source-isolation regressions. It keeps
 the backend configuration test target and adds doctor migration coverage to the
-shared pool.
+shared pool. The patch does not change Doctor itself.
 
-Doctor moves old `memorySearch` configuration to `memory.search`, preserves
+The upstream Doctor migration moves old `memorySearch` configuration to `memory.search`, preserves
 per-agent collections as per-agent extra paths, and carries explicit transcript
 indexing opt-in forward. The regressions keep disabled search disabled, retain
 explicit local embeddings with `fallback: "none"`, and preserve explicit
@@ -25,5 +25,4 @@ Do not claim ranking equivalence. Select and stage the local embedding model
 before activation, and do not permit remote fallback.
 
 Run the managed cumulative gate described in `packages/e2e/README.md`. Keep
-retired QMD directories through the rollback window. This upgrade does not opt
-into cleanup or production deployment.
+retired QMD directories through the rollback window. Deleting retired data is outside this upgrade.

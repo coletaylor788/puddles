@@ -182,7 +182,7 @@ function legacyRecovery(f: ReturnType<typeof fixture>) {
       nodeBinary: fileDigest(process.execPath),
       platform: process.platform,
       arch: process.arch,
-      manager: "12.3.4",
+      manager: "12.4.0",
       npm: "11.8.0",
     },
     artifact,

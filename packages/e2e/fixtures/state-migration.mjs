@@ -131,7 +131,7 @@ if (mode === "legacy") {
   assert.equal(treeDigest(stateDir), digestBefore, "config snapshot must not mutate target state");
   configSdk.previewLegacyConfigRepair(snapshot);
   assert.equal(treeDigest(stateDir), digestBefore, "config preview must not mutate target state");
-  await sdk.loadCronJobsStoreWithConfigJobsReadOnly(storePath, process.env);
+  await sdk.loadCronJobsStoreWithConfigJobsReadOnly(storePath, process.env, { artifactPreservingReadOnly: true });
   assert.equal(treeDigest(stateDir), digestBefore, "cron snapshot must not mutate target state");
 }
 const expectedBuiltIn = await executeStateMigration({ ...options, phase: "preflight" });

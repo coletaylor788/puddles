@@ -1,26 +1,27 @@
-# Bounded cold recall
+# Cold recall regressions
 
-This patch applies to OpenClaw v2026.9.3. Active Memory runs a small optional
-trigger lookup before its required recall in `always` mode. The lookup is
-lexical, but the memory manager still checks and initializes a required
-embedding provider. A cold local provider can therefore exhaust the outer
-preflight timer before required recall gets its configured setup allowance.
+This is a test-only patch for OpenClaw v2026.9.6. Its upstream implementation
+already fixes the old cold-recall failure. Active Memory reserves enough time
+for optional trigger lookup to settle before the preflight watchdog fires, then
+continues required recall. The previous runtime override is removed.
 
-For eligible `always` recall, start the existing recall deadline before the
-trigger lookup and never restart it. Deduct elapsed trigger setup from the
-configured setup grace before starting deep recall. The model timeout stays
-unchanged. Policy and session checks still have 1500 milliseconds. The optional
-lookup keeps its own 1500-millisecond cap and also observes the owning deadline.
-Other modes, destination checks, tool authority, and recall sources do not
-change. No fallback provider or new timeout setting is added.
+A negative-control run with the unmodified 2026.9.6 plugin recalled a provider
+that became ready after 1850 milliseconds. It also passed the upstream trigger
+timeout, exhausted-preflight, and recall-settlement regressions. The old patch's
+remaining difference was stricter accounting across preflight and recall. That
+behavior is not required for this upgrade.
 
-The patch changes the bundled Active Memory plugin, not a separately installed
-provider. Rebuild and package the normal runtime. The cumulative suite runs the
-plugin's index, trigger, config, and escalation tests. The added delayed-provider
-cases reproduce the original preflight failure, require recall within the
-shared allowance, and require an explicit timeout when that allowance expires.
-The release owner must also run the installed cold-provider fixture without
-prewarming before integration.
+The retained regressions verify successful cold continuation and failure when
+the configured recall allowance is exhausted. They check that required recall
+receives its configured model timeout and setup grace unchanged. The optional
+preflight remains separately bounded by upstream. No production timeout,
+configuration, provider fallback, source selection, or stored memory changes.
 
-Rollback restores the previous runtime archive through the deployment wrapper.
-The patch does not change configuration or stored memory.
+The cumulative suite retains the plugin's index, trigger, config, and escalation
+tests. Its index test runs in the database-worker project. The fixture cleanup
+patch joins delayed synthetic work before the next test replaces shared state.
+Installed cold-provider validation still runs without prewarming, as described
+in the upgrade plan.
+
+Rollback removes this test patch from the source build. Runtime behavior is
+already the upstream implementation.

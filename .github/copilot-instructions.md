@@ -27,8 +27,10 @@ request descriptions, and commit messages.
 - Never use an em dash. Use a period, a comma, or parentheses instead.
 - Do not stack nouns into long technical phrases. Break the idea into separate
   sentences.
-- Human facing parts are real paragraphs, not bullet lists. Lists are fine in
-  the plan's Agent section, where they track concrete items.
+- Write designs as structured technical documents: a short problem statement,
+  an overview diagram for multi-stage flows, then brief sections about each
+  stage or component. Use tables and short lists when they help comparison.
+  Issues and status updates keep their compact prose format.
 - Skip filler words like leverage, utilize, holistic, robust, comprehensive,
   seamless, and ensure-that padding. Just describe the thing.
 - Do not narrate the process or list everything you did. Say where things stand
@@ -44,7 +46,11 @@ request descriptions, and commit messages.
   first, then stop. Do not add unrelated internals or a general tutorial.
 
 `safe-feature-development` carries the full version of these rules along with
-the exact plan and issue formats.
+the exact plan and issue formats. The Human section is the design review
+surface, with headings, diagrams, and enough detail to assess the architecture.
+Do not impose a fixed paragraph cap or move the useful design into the Agent
+section just to keep the Human section short. Apply this guidance when creating
+or substantively revising designs; unrelated historical plans need no rewrite.
 
 ## Development lifecycle
 

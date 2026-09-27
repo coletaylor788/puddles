@@ -33,13 +33,13 @@ E2E_RUN_DIR=/path/outside/checkouts/native-run \
   node packages/e2e/bin/openclaw-test-env.mjs ci
 ```
 
-The pinned OpenClaw 2026.9.3 requires Node 24.16.0 or later on 24.x, or
+The pinned OpenClaw 2026.9.6 requires Node 24.16.0 or later on 24.x, or
 26.1.0 or later. Public CI uses Node 26.1.0. Earlier Node releases can truncate
 SQLite text and are rejected before native work begins. Node 26 no longer
 bundles Corepack, so install Corepack 0.36.0 explicitly before running the gate.
 Use a fresh `COREPACK_HOME` when upgrading from an older Corepack cache that
-records the retired pnpm CommonJS entrypoint. Upstream uses pnpm 12.3.4.
-Puddles uses the same exact pnpm 12.3.4 pin.
+records the retired pnpm CommonJS entrypoint. Upstream uses pnpm 12.4.0.
+Puddles uses the same exact pnpm 12.4.0 pin.
 
 Set `PNPM_CONFIG_STORE_DIR` to one stable absolute host-local directory before
 installing either repository or running the managed lifecycle. pnpm owns the
@@ -54,7 +54,7 @@ corepack pnpm install --frozen-lockfile
 node packages/e2e/bin/verify-pnpm-toolchain.mjs /path/to/openclaw
 ```
 
-The verifier requires pnpm 12.3.4 in both working directories and requires
+The verifier requires pnpm 12.4.0 in both working directories and requires
 `pnpm store path` to resolve to the same child beneath the configured root.
 It reads each integrity-bound package-manager declaration, then runs its
 version and store queries from a neutral directory so verification cannot

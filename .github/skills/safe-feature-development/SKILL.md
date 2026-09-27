@@ -3,7 +3,7 @@ name: safe-feature-development
 description: "Take Puddles features from an explicitly approved design through fast local and DEV iteration, independent review, cumulative release checks, landing, merged TEST rehearsal, production deployment, and rollback. Use when designing or implementing a feature or behavior change."
 metadata:
   author: Cole Taylor
-  version: "3.1.0"
+  version: "3.2.0"
 ---
 
 # Safe Feature Development
@@ -74,8 +74,10 @@ request descriptions, and commit messages.
 - Never use an em dash. Use a period, a comma, or parentheses instead.
 - Do not stack nouns into long technical phrases. Break the idea into separate
   sentences.
-- Human facing parts are real paragraphs, not bullet lists. Lists are fine in
-  the plan's Agent section, where they track concrete items.
+- Write designs as structured technical documents. Use headings, diagrams,
+  tables, and short lists when they make the architecture easier to scan.
+  Explain decisions in brief paragraphs. Issues and status updates keep the
+  compact prose format defined below.
 - Skip filler words like leverage, utilize, holistic, robust, comprehensive,
   seamless, and ensure-that padding. Just describe the thing.
 - Do not narrate the process or list everything you did. Say where things stand
@@ -90,6 +92,48 @@ request descriptions, and commit messages.
 - Match the depth to the current decision. Give enough context to reason about
   the change without reading the source first, then stop. Do not add unrelated
   internals or a general tutorial.
+
+### Design structure
+
+The Human section is the design review surface. A reader should be able to see
+the system's shape, follow its flow, and assess its important decisions there.
+Do not compress the architecture into a prose synopsis and put the useful
+explanation only in the Agent section.
+
+Start `### Design` with a short statement of the problem and proposed outcome.
+For a design with several components or stages, follow it with an overview
+diagram before explaining the parts. Prefer Mermaid flowcharts for data or
+control flow and sequence diagrams for exchanges and ownership handoffs. Name
+the actors and label arrows so readers can distinguish triggers, requests,
+returned data, and actions. Keep the overview small; use a second diagram only
+when it explains a distinct interaction or state transition.
+
+Follow the overview with `####` subsections named for the actual stages,
+components, or decisions, in the order a reader encounters them in the flow.
+Briefly explain each part's job, inputs and outputs, and consequential behavior.
+Put state ownership, trust boundaries, failure handling, or human decisions
+beside the stage where they matter. Use a compact table when responsibilities,
+boundaries, or behavior choices are easier to compare that way. Explain why an
+important choice was made without recounting the investigation.
+
+Use the same names in diagrams, tables, and prose. Technical names and a small
+number of concrete identifiers are welcome when they help someone understand
+or configure the design; explain unfamiliar concepts on first use. Keep source
+navigation, command transcripts, commit IDs, exhaustive configuration, and
+validation evidence in the Agent section or a linked appendix.
+
+Scale this structure to the design. A small change may need only a brief
+explanation; a multi-stage system needs room for its architecture. There is no
+fixed paragraph cap or mandatory subsection inventory. Concision comes from
+removing repetition and irrelevant detail, not hiding decisions. Do not repeat
+every diagram arrow in prose or describe the same responsibility in several
+places. Keep open decisions and unverified assumptions visibly distinct from
+settled behavior, close to the affected part.
+
+When creating or substantively revising a design, apply this structure to its
+current content. Check that the diagram matches the stage descriptions and
+that the Human section supports review without reading the implementation
+ledger. Do not reformat unrelated or historical plans just to make them match.
 
 ## Ownership and checkpoints
 
@@ -247,28 +291,24 @@ investigating instead of asking.
    - After the title and metadata, the plan must contain exactly two top-level
      sections in this order:
      1. `## Human section`, with exactly `### Design` and `### Status`, in that
-        order.
+        order. Design may contain `####` subsections and deeper headings.
      2. `## Agent section`, with exactly `### State`,
         `### Scope and acceptance criteria`, `### Architecture and decisions`,
         `### Implementation`, `### Validation`, `### Rollout and rollback`,
         `### Review log`, and `### Checklist`, in that order.
-   - `### Design` explains the problem and how the solution works. Give enough
-     detail that someone can understand the architecture: what the pieces are,
-     how they fit together, and what the important choices were and why. It must
-     not contain file paths, function names, class names, command names, commit
-     SHAs, line numbers, or any other code pointer. Write normal paragraphs, the
-     way you would say it out loud. A few paragraphs at most. When OpenClaw is
-     involved, do not rely on its internal names as shorthand. Explain the
-     relevant part's job, its place in the request or runtime flow, and why it
-     matters to this design.
+   - `### Design` follows the Design structure guidance above: problem and
+     outcome, a flow overview where useful, then brief details about the stages
+     and important decisions. Keep the architecture visible in this section.
+     When OpenClaw is involved, explain the relevant part's job and place in
+     the flow rather than relying on internal names as shorthand.
    - `### Status` says where the work stands, readable at a glance. What is
      done, what is next, what is blocking. Two short paragraphs at most. Present
      tense, no chronology.
-   - The `Agent section` is where code pointers, file paths, commands, commit
-     ids, and evidence belong. Keep it complete and consistent with the
-     `Human section`.
+   - The `Agent section` holds implementation pointers, exact commands, commit
+     ids, and evidence. Add operational detail without duplicating the Human
+     section's architecture explanation. Keep both sections consistent.
    - Do not add another top-level section, an append-only status log, or a
-     second copy of the design narrative elsewhere in the plan.
+     second copy of the design explanation elsewhere in the plan.
    - On every substantive change, re-read and rewrite both sections so the plan
      reads as one coherent current design and current operational state.
      Requirements, decisions, steps, evidence, risks, and checklist state all

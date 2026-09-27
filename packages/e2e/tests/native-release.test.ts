@@ -74,7 +74,7 @@ function build(directory: string, extensionSha256 = "none", preparedDirectory = 
       nodeBinary: "1".repeat(64),
       platform: process.platform,
       arch: process.arch,
-      manager: "12.3.4",
+      manager: "12.4.0",
       npm: "11.8.0",
     },
     artifact: rootArtifact,
