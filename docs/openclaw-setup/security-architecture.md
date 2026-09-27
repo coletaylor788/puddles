@@ -185,6 +185,28 @@ turn permissions, or human approval.
 The host verifies the iMessage sender and checks the relevant allowlist before
 assigning a label.
 
+### Resource access
+
+Source labels describe content trust. This table defines who may access each
+resource. A Public label on calendar content does not make the calendar public.
+
+| Resource | Accessible by |
+|---|---|
+| Calendars: Personal, Work, US Holidays | Personal |
+| Reminder list: Shared Shopping List | Personal, Household |
+| Other reminder lists | Personal |
+| Personal workspace and memory | Personal |
+| Household workspace and memory | Personal, Household |
+| Friends workspace and memory | Personal, the owning friend or group |
+
+Access applies to the requesting tier; delegated readers inherit its resource
+limits. Access does not grant every write operation or change content labels.
+Unlisted resources default to Personal.
+
+Calendar and reminder names reflect configured scopes. Workspace and memory
+access above is required policy, not verified enforcement. Friends is not
+deployed; see [known gaps](#appendix-known-gaps-and-validation-limits).
+
 ### Runtime flow
 
 Required flow; see [known gaps](#appendix-known-gaps-and-validation-limits) for missing controls.
@@ -367,7 +389,8 @@ Current dispatch paths:
 
 ## Appendix: known gaps and validation limits
 
-This is a source review, not a live audit. Verify effective accounts, listeners,
+This combines source review with selected live configuration checks, not a full
+security audit. Verify effective accounts, listeners,
 permissions, mounts, and dispatch paths before claiming enforcement. Recheck
 pinned upstream references against the [current build](../../packages/e2e/openclaw-patch-suite.json)
 when upgrading.
@@ -375,6 +398,7 @@ when upgrading.
 | Area | Limit or gap |
 |---|---|
 | Context labels | The [household plan](../plans/completed/022-household-and-friends-tiers.md) covers limited household access and owner relay. Friends/public populations, provenance propagation, and universal exact-content approval are not established. |
+| Resource access | Household reminder scoping accepts caller-supplied `configDir` overrides. Scoped memory is not enabled; native memory access remains unverified. Validate these boundaries and Personal access to lower-tier workspaces before claiming enforcement. |
 | Network | [Older setup](01-setting-up-your-mac-mini.md) allows LAN SSH, violating the Tailscale-only rule. Verify listeners and firewall rules; this document changes neither. |
 | Sandbox and credentials | The [sandbox guide](03-openclaw-and-agent-sandboxing.md) allows container networking. The [browser design](../plans/completed/023-durable-browser-agent-login.md) mounts a credential-bearing profile. Both deviate from host-only external access and credential custody. |
 | Reader routing | Gmail/calendar depend on configured grants. Older examples give main search and readers session messaging. No universal reader gate exists; review attachments, images, browser results, errors, and metadata separately. |
