@@ -180,36 +180,26 @@ flowchart TB
     Friends --> Public["Public"]
 ```
 
-| Label | Required handling |
-|---|---|
-| Personal | Bind access to the authenticated owner and personal task. Keep private accounts, memory, and capabilities unavailable to less-trusted contexts. |
-| Household | Use separate sessions, workspaces, workers, and scoped adapters. Expose only household resources; requests for personal information go to owner review without granting access. |
-| Friends | Expose only resources explicitly shared with the particular friend or group. No household or personal lookups, delegation, or memory access. |
-| Public | Use restricted readers and explicitly scoped source access. External content gains no personal, household, or friends authority. Keep source-account and recipient restrictions even after reading. |
+1. **Context flow**
+   1. By default, content flows only from less trusted to more trusted.
+      Household cannot access personal content, for example. The receiving
+      context takes the least-trusted input label and must not expose existing
+      higher-trust data.
+   2. Sharing toward a less-trusted label requires human approval enforced by
+      code for the exact content and destination. Approval releases only that
+      copy, never credentials or ongoing access. Summaries and saved copies
+      retain the source restrictions.
+2. **Required handling**
+   1. **Personal:** authenticated owner only.
+   2. **Household:** household resources only.
+   3. **Friends:** only resources shared with that friend or group.
+   4. **Public:** run injection and secret guards; read through the reader agent;
+      never initiate turns or follow-ups.
 
-**SMS is a public source:** its sender cannot be verified as more trusted.
-Email, calendar entries, web pages, and other sources that admit public input
-are public too. A familiar sender or private account does not upgrade the source.
-Public does not mean publishable; account, recipient, and task scope still apply.
-
-#### Classification and sharing
-
-- **Include every input path:** tool results, memory, attachments, summaries,
-  delegation, and async events. There is no mixed-context exception; summaries
-  and redaction cannot upgrade a label.
-- **Enforce scope in host code** before retrieval, execution, delegation, model
-  submission, storage, and delivery. Lower-trust contexts cannot select
-  higher-trust identities or capabilities. Unknown provenance grants no access.
-  Logs, caches, indexes, and derived data retain their source restrictions.
-- **Keep privileged work separate.** Admitting public input makes the receiving
-  context public. Block admission if that would expose existing private data;
-  relabeling cannot authorize disclosure.
-- **Sharing outward requires human approval enforced by code.** Bind an
-  authenticated, authorized human's approval to exact content and destination.
-  Changed, missing, expired, or replayed approval blocks release. Source text,
-  contact matches, and model judgment cannot approve it.
-- **Approval releases only that copy.** It grants no access to original stores,
-  higher-trust contexts, or future follow-ups. Credentials cannot use this path.
+**SMS is public:** its sender cannot be verified as more trusted. Email, calendar
+entries, and web pages are also public sources. Classify every input path,
+including tools, memory, and delegated results. Public does not mean publishable;
+account, recipient, and task scope still apply.
 
 ### Runtime flow
 
