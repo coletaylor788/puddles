@@ -1,6 +1,6 @@
 # Bound development storage and retire completed runs
 
-**Status:** Approved by the requester. Implementation and validation in progress.
+**Status:** Storage tooling merged. Owner cleanup and parallel merge follow-up in progress.
 **Issue:** [145](https://github.com/coletaylor788/puddles/issues/145)
 **Last updated:** 2026-09-27
 
@@ -150,7 +150,10 @@ idle or its PR merged.
 
 Report storage separately for reusable workspaces, shared caches, temporary
 stages, retained artifacts, evidence, and recovery. Track peak incremental
-allocation for each stage and the bytes left after finalization.
+allocation for each stage and the bytes left after finalization. Cover both the
+developer machine and the deployment host. Record the owner-agreed free-space
+target for each host in the rollout inventory and measure progress against it;
+merging the tooling does not by itself complete disk recovery.
 
 Capacity checks must account for all concurrent local builders. Reserve each
 stage's measured additional requirement under a host lock, plus the existing
@@ -163,6 +166,20 @@ can make them larger than uniquely reclaimable storage. Report actual free
 space before and after cleanup separately. Do not promise that deleting a
 directory returns its entire reported size.
 
+#### 7. Keep feature validation parallel
+
+A feature owns its exact source, CI artifact, and DEV proof. Main stays open
+while those checks run. New commits on main do not change that feature's
+inputs and do not require other owners to stop merging. The merge guard checks
+the feature identity and current server mergeability, then records the actual
+combined commit separately. Conflicts or edits to the feature need the affected
+checks again.
+
+The combined commit is not production eligible. The batch owner selects latest
+main, builds it in CI, and validates that exact artifact in TEST before PROD.
+This separate gate catches interactions between independently validated features.
+Existing production receipts keep their strict artifact and tree identity.
+
 ### Status
 
 Source and local disk inspection support the proposal. The current development
@@ -172,14 +189,20 @@ the registry prevent that guidance from bounding disk use.
 
 The requester approved implementation, merge, and notification of other task
 owners. The storage controller, retention changes, terminal CI and DEV hooks,
-and daily skills are being implemented in an isolated public/private pair.
-Existing task directories have not been cleaned by this work.
+and daily skills are implemented in an isolated public/private pair. Composed
+CI, public CI, and exact-artifact DEV passed. Public PR 146 and companion PR 52
+are merged. Six task owners received the merged revisions and cleanup guide.
+Completed scratch from this validation has been retired with sealed evidence;
+other owners retain control of their task directories. The parallel merge
+correction has passed independent review and the full local e2e suite.
 
 ## Agent section
 
 ### State
 
-Implementation is active in isolated public and companion worktrees.
+Storage implementation, final validation, and paired landing are complete.
+Owner-led cleanup remains. The parallel merge correction
+is a separate reviewed follow-up with its own committed regressions.
 Machine-specific inventory and ownership observations belong in the local audit,
 not public plans or CI artifacts.
 
@@ -195,6 +218,8 @@ not public plans or CI artifacts.
 - Full accumulated CI and exact-artifact deployment proofs retain their current
   requirements. No draft is promoted on the strength of cached evidence alone.
 - Legacy paths are inventoried and explicitly adopted before cleanup eligibility.
+- Owner-led cleanup covers developer and deployment hosts, with measured progress
+  toward each host's recorded operating headroom.
 
 ### Architecture and decisions
 
@@ -222,6 +247,15 @@ The artifact retention CLI's current `dry-run` calls cleanup recovery and takes
 a lock. A new inventory preview must be genuinely read-only and must not replay
 deletion journals. A preview does not confer later deletion authority.
 
+The requester rejected a temporary main-merge deferral during final storage
+validation. The guard had applied the legacy production receipt's current-base
+and identical-tree requirements to feature merge eligibility. Correct that
+feature path: verify the frozen head and tree before merging, refresh clean
+mergeability when main advances, and record the combined result as requiring
+merged-batch validation. Keep legacy production receipt checks unchanged.
+Regressions cover diverged branches, moving main, conflicting or changed heads,
+wrong trees, blocked checks, and the exact-head merge API condition.
+
 ### Implementation
 
 Approved implementation order:
@@ -236,17 +270,28 @@ Approved implementation order:
 
 ### Validation
 
-After integration with the merged OpenClaw upgrade, the complete e2e package
-passed 434 tests and its TypeScript check passed. The companion contract command
-passed 115 tests with eight environment-gated skips. Paired draft and release
-checks passed 49 tests with five environment-gated skips. These include repeated
-operations using the real shared storage cleaner, compressed log expiry, task
-lock contention, joined-child capacity release, and portable bundle reuse.
+The storage candidate passed all 440 e2e tests and TypeScript checks. Companion
+contract checks passed 118 tests with seven environment-gated skips. Composed
+CI run 36357322660 passed using the supported self-hosted builder. Public CI
+run 36357219224 passed, including finalization after portable artifact upload.
+Public merge: `6d89d81d8305febd4ecf1c0c8b85c631bc07fea7`.
+The combined tree requires separate batch CI and TEST before production.
 
-The retained reviewer rechecked both complete diffs and reported no remaining
-significant findings. Final public CI is pending. The companion composed ARM job
-requires confirmation of included private hosted minutes. Existing task roots
-remain protected until their owners apply the merged migration commands.
+The exact composed artifact passed four maintained DEV wrapper scenarios,
+nine native messaging scenarios, 33 installed upgrade tests, a real local
+embedding-provider check, and the installed SDK normalization regression.
+Build identity: `21d5371689161cf5b71324d0e3b80ec686edf083fbbf77772ff65c67b17be184`.
+The wrapper sealed retained evidence and removed its temporary imports. The
+DEV slot and builder capacity reservation were released after consumers joined.
+Builder finalization recovered 2.47 GiB of actual filesystem space; DEV wrapper
+finalization recovered 1.65 GiB. Subsequent owner cleanup of this validation's
+completed scratch recovered another 2.61 GiB. These are observed free-space
+changes, not logical directory totals.
+
+The retained reviewer cleared both storage diffs and the complete parallel
+merge correction. The correction passed all 18 integration tests, all 450 e2e
+tests across 28 files, and TypeScript checks. Its remote gate remains pending.
+Existing task roots stay protected until their owners apply the merged commands.
 
 
 Investigation performed read-only directory measurements, run-status and
@@ -282,7 +327,9 @@ before any deletion begins.
 
 Requester approved implementation and landing. The retained independent reviewer
 rechecked the complete paired diff after remediation and reported no remaining
-significant findings. Final CI and composed execution remain validation gates.
+significant findings. Composed CI, public CI, and exact-artifact DEV passed. Storage tooling is merged.
+The same reviewer cleared the parallel merge correction, including reuse of
+the unchanged storage eligibility receipt with the corrected integration tool.
 
 ### Checklist
 

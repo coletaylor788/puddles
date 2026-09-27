@@ -108,10 +108,20 @@ node packages/e2e/bin/openclaw-integrate.mjs \
   /run/merge-eligibility.json example/public-repo 123
 ```
 
-The helper rechecks exact head, base, remote checks, and mergeability. Resolve
-merge conflicts in your worktree and repeat the affected checks. A merge that
-changes the candidate tree needs fresh eligibility. Documentation-only changes
-keep the documented short path and do not deploy unchanged runtime artifacts.
+The helper binds the eligible feature head and tree, then rechecks the default
+target, remote checks, and clean mergeability. Other features may advance main
+throughout CI and DEV. Do not ask their owners to delay commits or merges, or
+rebuild an unchanged feature merely because main moved. Base movement causes a
+fresh mergeability check. The merge request still pins the exact feature head.
+
+Resolve conflicts in the feature worktree and repeat checks affected by the
+changed feature. After a clean merge, record both the validated feature identity
+and the resulting merged identity. The result requires merged-batch validation;
+feature evidence does not certify the combined tree or permit its activation.
+The TEST owner selects latest main and builds and validates that exact batch.
+Legacy production receipts retain their exact integrated-tree requirement.
+Documentation-only changes keep the short path and do not deploy unchanged
+runtime artifacts.
 
 Before TEST, use `openclaw-select-batch.mjs SPEC_JSON OUTPUT_JSON` in the tooling
 worktree to fetch each repository's main and pin its current merged head and

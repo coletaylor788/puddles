@@ -95,6 +95,7 @@ function setup(changeBase = false, changedTree = false) {
   writeFileSync(path, JSON.stringify(release));
   const calls: string[][] = [];
   let reads = 0;
+  const remote = { featureTree: tree, comparisonStatus: "ahead", mergeError: false, pull: {} as Record<string, unknown> };
   const run = async (command: string, args: string[]) => {
     expect(command).toBe("gh");
     calls.push(args);
@@ -108,16 +109,27 @@ function setup(changeBase = false, changedTree = false) {
         mergeable_state: "clean",
         head: { sha: head },
         base: { ref: "main", sha: changeBase && reads > 1 ? "e".repeat(40) : base },
+        ...remote.pull,
       });
     }
-    if (endpoint.endsWith("/merge")) return JSON.stringify({ merged: true, sha: "f".repeat(40) });
-    if (endpoint.includes("/git/commits/")) {
-      return JSON.stringify({ tree: { sha: changedTree ? "0".repeat(40) : tree } });
+    if (endpoint.endsWith("/merge")) {
+      if (remote.mergeError) throw new Error("Head branch was modified");
+      return JSON.stringify({ merged: true, sha: "f".repeat(40) });
     }
-    if (endpoint.includes("/compare/")) return JSON.stringify({ status: "ahead" });
+    if (endpoint.includes("/git/commits/")) {
+      return JSON.stringify({ tree: { sha: endpoint.endsWith(`/${head}`) ? remote.featureTree : changedTree ? "0".repeat(40) : tree } });
+    }
+    if (endpoint.includes("/compare/")) return JSON.stringify({ status: remote.comparisonStatus });
     return JSON.stringify({ default_branch: "main", allow_squash_merge: true });
   };
-  return { path, root, calls, run, release, build, sourceGate, targetProof, certification };
+  return { path, root, calls, run, remote, release, build, sourceGate, targetProof, certification };
+}
+
+function featureEligibility(fixture: ReturnType<typeof setup>) {
+  writeFileSync(fixture.path, JSON.stringify(createMergeEligibility(fixture.build, fixture.sourceGate, {
+    schema: "puddles.dev-validation/v1", status: "passed", head: fixture.build.repository.head,
+    tree: fixture.build.repository.tree, owner: "feature-owner", evidence: "/retained/dev-proof.json",
+  })));
 }
 
 describe("source integration before activation", () => {
@@ -130,6 +142,57 @@ describe("source integration before activation", () => {
     writeFileSync(fixture.path, JSON.stringify(receipt));
     await integrateCandidate(fixture.path, "example/public-repo", 123, fixture.run);
     expect(fixture.calls.some((args) => args.includes("PUT"))).toBe(true);
+  });
+
+  it("merges a clean diverged feature and records the combined tree for later batch validation", async () => {
+    const fixture = setup(false, true);
+    fixture.remote.comparisonStatus = "diverged";
+    featureEligibility(fixture);
+    const result = await integrateCandidate(fixture.path, "example/public-repo", 123, fixture.run);
+    expect(result).toMatchObject({ schemaVersion: 2, kind: "feature-merge", productionEligible: false,
+      requiresMergedBatchValidation: true, validatedFeature: { head: "a".repeat(40), tree: "b".repeat(40) },
+      observedBase: "c".repeat(40), commit: "f".repeat(40), tree: "0".repeat(40) });
+    expect(fixture.calls.some(args => args[1].includes("/compare/"))).toBe(false);
+    expect(fixture.calls.find(args => args.includes("PUT"))).toContain(`sha=${"a".repeat(40)}`);
+  });
+
+  it("refreshes base-only movement without invalidating the feature evidence", async () => {
+    const fixture = setup(true, true);
+    featureEligibility(fixture);
+    const result = await integrateCandidate(fixture.path, "example/public-repo", 123, fixture.run);
+    expect(result.observedBase).toBe("e".repeat(40));
+    expect(fixture.calls.filter(args => args[1].endsWith("/pulls/123"))).toHaveLength(3);
+    expect(result.requiresMergedBatchValidation).toBe(true);
+  });
+
+  it("rejects a feature tree that differs from the frozen receipt before merging", async () => {
+    const fixture = setup();
+    featureEligibility(fixture);
+    fixture.remote.featureTree = "0".repeat(40);
+    await expect(integrateCandidate(fixture.path, "example/public-repo", 123, fixture.run))
+      .rejects.toThrow("Feature tree differs");
+    expect(fixture.calls.some(args => args.includes("PUT"))).toBe(false);
+  });
+
+  it.each([
+    { head: { sha: "0".repeat(40) } }, { mergeable: false }, { mergeable_state: "blocked" },
+    { draft: true }, { state: "closed" }, { base: { ref: "other", sha: "c".repeat(40) } },
+  ])("refuses changed or ineligible feature metadata %j", async (pull) => {
+    const fixture = setup();
+    featureEligibility(fixture);
+    fixture.remote.pull = pull;
+    await expect(integrateCandidate(fixture.path, "example/public-repo", 123, fixture.run)).rejects.toThrow();
+    expect(fixture.calls.some(args => args.includes("PUT"))).toBe(false);
+  });
+
+  it("keeps the exact-head API condition authoritative for a last-moment head race", async () => {
+    const fixture = setup();
+    featureEligibility(fixture);
+    fixture.remote.mergeError = true;
+    await expect(integrateCandidate(fixture.path, "example/public-repo", 123, fixture.run))
+      .rejects.toThrow("Head branch was modified");
+    expect(fixture.calls.find(args => args.includes("PUT"))).toContain(`sha=${"a".repeat(40)}`);
+    expect(() => readFileSync(join(fixture.root, "integration.json"))).toThrow();
   });
 
   it("rejects DEV proof for a different head before merge", () => {

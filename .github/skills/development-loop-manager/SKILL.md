@@ -25,7 +25,8 @@ and tooling that guide future work. Make each loop safer, faster, and simpler.
 - Automation gaps: routine CI/CD needing an agent to usher it through.
   Agents should monitor and react to issues.
 - Parallel work: unnecessary serialization or interference. Coordinate only
-  shared resources and actual dependencies.
+  shared resources and actual dependencies. Keep main open while feature gates
+  run; validate the combined result through the separate merged-batch gate.
 - Feedback cost: slow or repeated builds, checks, retries, handoffs, and local/CI
   differences that delay finding issues.
 - Disk growth: package-store reuse, incremental builds, and completed scratch

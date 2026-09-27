@@ -427,7 +427,10 @@ investigating instead of asking.
      installed assertions. Bind premerge eligibility to its CI build, source
      gate, and matching final DEV proof. Local draft evidence cannot substitute
      for this proof. Resolve review, checks, and conflicts as agent-owned work.
-     Recheck exact head, base, required checks, and mergeability before merging.
+     Recheck the exact feature head and tree, required checks, default target,
+     and clean mergeability before merging. Other features may advance main;
+     refresh mergeability without invalidating unchanged feature evidence.
+     Conflicts or edits to the feature require the affected checks again.
    - Merge between DEV and TEST. Verify the expected source landed. Honor an
      explicit implementation-only handoff when another owner is assigned release.
 
@@ -512,7 +515,9 @@ Assume concurrent feature owners, including owners changing the same component.
 Use task-owned local worktrees for edits and focused tests. Check plans, PRs,
 and available task status, and coordinate overlapping interfaces and dependent
 changes directly with the owners. Never reserve the entire development loop
-while waiting for CI or a shared environment.
+while waiting for CI or a shared environment. Keep main open to other owners'
+commits and merges. A feature's CI and DEV bind its exact head; the separate
+merged-batch gate validates the resulting combination before TEST and PROD.
 
 Follow [deployment coordination](../../../packages/e2e/DEPLOYMENT_COORDINATION.md)
 for the mini's atomic lock file, DEV/TEST/PROD ready queues, initiating batch
