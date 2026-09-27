@@ -14,9 +14,6 @@ description: "Review recent Puddles development loops and improve their skills, 
 
 ## Priorities
 
-Catch up on recent changes and others' work before proposing fixes. Build on
-existing improvements. Start with these areas; investigate as the evidence leads.
-
 - Security gaps: weakened controls, exposed secrets, and unsafe untrusted input.
   Use the [security architecture](../../../docs/openclaw-setup/security-architecture.md)
   for trust rings, boundaries, and known gaps.
@@ -33,20 +30,27 @@ existing improvements. Start with these areas; investigate as the evidence leads
 - Approval blockers: fix obvious general guidance gaps behind design reapproval.
   New information sometimes needs approval; do not force a process fix.
 
-## Address findings
+## Workflow
 
-- Update the guiding skill, script, check, or process so later features benefit.
+### Investigate
+
+- Catch up on recent changes and others' work; build on existing improvements.
+- Inspect recent loops against the priorities. Follow the evidence to the cause
+  and the guidance or tooling that can prevent recurrence.
+- Identify demonstrated gaps. If a late failure could not reasonably be caught
+  earlier, explain why and look for a practical way to reduce its impact.
+
+### Improve
+
+- Fix the guiding skill, script, check, or process so later features benefit.
   Prefer simplification over another mechanism; do not manufacture fixes or rules.
 - Follow [safe-feature-development](../safe-feature-development/SKILL.md) for
-  approval, validation, and landing. Preserve security controls, release gates,
-  and test isolation.
+  approval, validation, and landing. Preserve security controls and release gates.
 - Use the [runner guide](../../../packages/e2e/README.md) and
   [coordination rules](../../../packages/e2e/DEPLOYMENT_COORDINATION.md) for reuse
   and cleanup. Protect other owners' work, retained evidence, and rollback state.
-- Keep a compact record of findings, changes, open actions, and the last review.
-  Revisit later loops to distinguish a landed fix from a measured improvement.
-- Explain when a late failure could not reasonably be caught earlier. Reduce
-  its impact where practical; do not weaken checks or approval requirements.
+- Record findings, changes, open actions, and the last review briefly. Check later
+  loops to confirm the improvement helped; revise it if it did not.
 
 ## Write skills for an agent
 
