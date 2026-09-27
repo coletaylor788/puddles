@@ -160,9 +160,11 @@ flowchart TB
 | Label | Sources | Required handling |
 |---|---|---|
 | Personal | iMessage from Cole | Context rules apply. |
-| Household | iMessage from allowlisted household contacts | Context rules apply. |
+| Household | iMessage from allowlisted household contacts, shared household reminders | Context rules apply. |
 | Friends | iMessage from allowlisted friends | Context rules apply. |
-| Public | Other iMessage senders, SMS, email, calendar entries, web pages | InjectionGuard, SecretRedactor, LeakGuard, ContactsEgressGuard as applicable. Reader/browser agent only. No turns or follow-ups. |
+| Public | Other iMessage senders, SMS, email, calendar entries, web/search/browser results | InjectionGuard, SecretRedactor, LeakGuard, ContactsEgressGuard as applicable. Reader/browser agent only. No turns or follow-ups. |
+
+Household reminder lists must limit contributors to Cole and household members.
 
 Guards run inside tools at the relevant boundary:
 
