@@ -3,11 +3,14 @@
 Develop and run focused tests in task-owned worktrees on the development
 machine. Assume another agent may be changing the same files or interfaces.
 Check active plans, PRs, and task status before changing shared contracts. Tell
-those owners about dependencies and overlapping edits. Builds run in CI and
-consume no environment slot. DEV, TEST, and PROD are shared mini resources.
+those owners about dependencies and overlapping edits. Local incremental DEV
+builds and final CI builds consume no environment slot. DEV, TEST, and PROD are
+shared mini resources.
 
-The order is local tests, CI build, queued DEV validation, review and the
-accumulated CI gate, merge, queued TEST of merged main, then queued PROD.
+Iterate with focused local tests, incremental local builds, and queued DEV
+draft checks. After local DEV success and retained review, run the accumulated
+CI gate, validate its exact artifact in DEV, merge, then queue for TEST of the
+CI-built merged main batch and PROD. CI is not in the ordinary edit loop.
 The feature owner monitors its merge until a batch owner acknowledges it. The
 agent that initiates TEST registers itself as owner of the whole merged batch.
 Other included feature owners coordinate with that owner and do not start
@@ -81,8 +84,16 @@ Keep the slot through rollback and recovery. Do not release on a timer.
 
 ## Merging and selecting TEST
 
-DEV installs the exact selected CI bundle and checks the changed behavior with
-recording adapters. Save a `puddles.dev-validation/v1` record with `status:
+Ordinary DEV drafts may come from local incremental builds and mutable source.
+Use the maintained DEV wrapper and the same slot controller, target locks,
+isolated state, recording adapters, and rollback. Prepare before claiming DEV;
+release after checks and cleanup, before more editing or waiting for CI. Keep
+draft results separate from final eligibility; they must not produce a passing
+release-valid `puddles.dev-validation/v1` record.
+
+For final premerge validation, DEV installs the exact selected CI bundle and
+checks the changed behavior with recording adapters. Save a
+`puddles.dev-validation/v1` record with `status:
 "passed"`, exact public `head` and `tree`, `owner`, and retained `evidence`.
 A configured companion wrapper produces this record after its installed checks.
 Include any feature-specific assertions in the retained evidence.

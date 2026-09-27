@@ -3,7 +3,7 @@ name: safe-feature-development
 description: "Take Puddles features from an explicitly approved design through fast local and DEV iteration, independent review, cumulative release checks, landing, merged TEST rehearsal, production deployment, and rollback. Use when designing or implementing a feature or behavior change."
 metadata:
   author: Cole Taylor
-  version: "3.2.0"
+  version: "3.3.0"
 ---
 
 # Safe Feature Development
@@ -352,9 +352,11 @@ investigating instead of asking.
 3. **Implement through the fast local and DEV loop**
    - The implementer iterates locally using the repository's established
      development workflow and runs focused tests that cover the changed
-     behavior. Use the Puddles daily workflow below: focused tests in isolated local worktrees, CI builds, queued artifact
-     deployment to DEV, and installed behavior assertions. DEV validation binds
-     the selected branch commit and CI artifact. Do not run the full release pipeline for each ordinary edit.
+     behavior. Use the Puddles daily workflow below: focused local tests,
+     incremental local builds, queued draft deployment to DEV, and installed
+     behavior assertions. Mutable drafts need no CI build or release receipt.
+     Reserve the full accumulated CI gate and exact CI-artifact DEV proof for
+     the reviewed final candidate, not each ordinary edit.
    - Use mocks or fakes for local testing and iteration when exercising a live
      dependency is unnecessary.
    - Route external writes and delivery in tests through deny-by-default mocks
@@ -414,8 +416,10 @@ investigating instead of asking.
      isolated CI fixtures do not reserve a shared mini environment.
    - Push the reviewed candidate and create or update a non-draft pull request.
      Include committed regressions, retained review, and the cumulative command.
-   - Bind premerge eligibility to that CI build, source gate, and matching DEV
-     validation. Resolve review, checks, and conflicts as agent-owned work.
+   - Install that exact CI-built candidate in DEV and repeat the applicable
+     installed assertions. Bind premerge eligibility to its CI build, source
+     gate, and matching final DEV proof. Local draft evidence cannot substitute
+     for this proof. Resolve review, checks, and conflicts as agent-owned work.
      Recheck exact head, base, required checks, and mergeability before merging.
    - Merge between DEV and TEST. Verify the expected source landed. Honor an
      explicit implementation-only handoff when another owner is assigned release.
@@ -524,12 +528,47 @@ on the development machine, including composed OpenClaw source. Promote source
 edits into maintained patches before merging. Use repository-pinned toolchains
 and the host-local pnpm store. Keep output and writable state separate per task.
 
-Build deployable artifacts in CI, then queue for DEV when the selected artifact
-is ready. Use the maintained artifact consumer and controller. Validate the
-changed installed behavior using recording adapters and save proof of the
-exact branch head and tree. Release DEV after cleanup and message the next
-ready owner. DEV start, stop, reset, and diagnostics that mutate it also need
-its slot. CI builds run independently while DEV is occupied.
+Use a local incremental build for ordinary DEV iteration. Reuse the task's
+prepared source, installed dependencies, and compatible compiler outputs. Build
+and transfer only the affected runtime or plugin outputs through the maintained
+DEV wrapper. Mutable source is allowed; a commit, CI run, complete regression
+pool, or release receipt is not a prerequisite for trying a fix in DEV. Cold
+bootstrap is for missing or incompatible runtime/dependency/toolchain inputs,
+not every source edit. Check compatibility and rebuild affected outputs rather
+than bypassing stale-input checks or shipping stale files.
+
+Run the relevant type checks, unit regressions, and installed behavior assertions
+before repeating. Bring packaging, declaration generation, dependency loading,
+migrations, and recording-fixture checks into this loop when those paths change.
+Use the same maintained checks and pinned tools as CI where applicable. A
+locally passing unit suite alone is not proof of an installed runtime. Reproduce
+CI failures with the smallest relevant local command, add a regression, and
+rerun affected checks before another final CI attempt.
+
+Prepare the draft before queueing for DEV. Use the slot controller for every
+shared mutation, including start, stop, reset, activation, and installed checks.
+Keep target locks, isolated writable state, recording adapters, atomic swaps,
+and recovery. Release after the bounded check and cleanup, then message the next
+ready owner. Do not hold DEV while coding, building, reviewing, or waiting for
+CI. Local builds and isolated fixtures need no shared environment slot.
+
+Retain the failing command, exit status, and useful logs. Record build, transfer,
+startup, and test time separately from queue time and cold preparation. Aim for
+warm feedback within five minutes where practical; a slower loop is a reason to
+inspect its bottleneck, not skip checks or impose a new release gate.
+
+After retained review and local DEV success, freeze the candidate and run the
+complete accumulated gate in CI. Install that exact CI artifact in DEV and save
+the final proof bound to its source and build. Draft checks are development
+evidence only and must not produce a passing release-valid DEV proof. CI remains
+an independent clean-build and regression check, even when local parity makes
+it uneventful. TEST and PROD remain immutable CI-artifact consumers.
+
+If a maintained wrapper only accepts CI bundles, treat that as a tooling gap to
+repair within the approved scope, not a reason to restore CI to every edit.
+Report the limitation until the supported local path exists. Do not bypass
+ownership or receipt checks, invent a command, or claim the local path works
+from documentation alone.
 
 ### Merged TEST and production
 
