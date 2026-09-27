@@ -236,6 +236,20 @@ read fixtures support assertions. Separately selected host health checks are
 read-only, bounded, and expose no personal results. Required unavailable host
 checks fail. Public CI never needs live credentials or another repository.
 
+## Environment configuration
+
+DEV, TEST and PROD each own their configuration. Refreshing DEV preserves
+its authored settings and restores its prior state with its runtime on failure.
+Fixture adapters remain explicit. DEV does not apply a release's TEST or PROD
+migration. Stable non-secret target settings belong in the companion repository;
+credentials stay outside both repositories, and public examples stay synthetic.
+
+For a release with target-specific migrations, use the maintained generator to
+seal both inputs and literal manifests before building. TEST runs its own bound
+manifest. PROD selects its presealed manifest and checks fresh selected state.
+Follow the skill and runner guide for source validation, evidence transport and
+rollback. Do not attach a new manifest to an already certified build.
+
 ## OpenClaw deployment topology
 
 When deployment is in scope, use

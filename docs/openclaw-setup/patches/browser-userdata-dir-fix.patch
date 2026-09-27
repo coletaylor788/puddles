@@ -1,5 +1,5 @@
 diff --git a/scripts/sandbox-browser-entrypoint.sh b/scripts/sandbox-browser-entrypoint.sh
-index ed8c60057d..e5bc49e5af 100755
+index ed8c60057..e5bc49e5a 100755
 --- a/scripts/sandbox-browser-entrypoint.sh
 +++ b/scripts/sandbox-browser-entrypoint.sh
 @@ -90,6 +90,12 @@ trap 'cleanup 143' TERM

@@ -1,6 +1,6 @@
 # Selective iMessage message-part coalescing
 
-**Status:** Ported to OpenClaw 2026.9.3 with recording fixtures.
+**Status:** Ported to OpenClaw 2026.9.6 with recording fixtures.
 
 ## Symptom
 
@@ -15,10 +15,13 @@ Without coalescing, the first row starts an agent turn before the payload
 arrives. The reply therefore lacks the link or image, and the payload starts a
 second turn after the fact.
 
-Upstream removed split-message coalescing in this release. The maintained patch
-restores the opt-in setting, notification metadata, and selective grouping on
-top of the new durable inbound queue. It does not restore the retired replay
-guard or replace the release's GUID and media representations.
+OpenClaw 2026.9.6 keeps a generic text-only debounce in
+`monitor/monitor-provider.ts`, but its retired-config migration explicitly
+deletes `coalesceSameSenderDms`. That debounce does not provide the selective
+text, link, and media grouping described here. This patch retains a Puddles
+feature: it restores the opt-in setting, notification metadata, and selective
+grouping on top of the new durable inbound queue. It keeps the release's GUID,
+media, and recovery owners.
 
 The patch also keeps iMessage in the built runtime and npm file selection.
 Stable otherwise downloads the official external plugin, which does not contain
@@ -161,7 +164,7 @@ The patch adds regression coverage for:
 - invalid conversation anchors failing open instead of sharing a coalescing key;
 - the existing merge caps, reply context, cursor, and GUID tracking.
 
-The coalescer and monitor suites retain 99 cases on this release. Configuration,
+The coalescer and monitor suites retain the existing scenarios. Configuration,
 notification parsing, and durable ingress coverage are also registered in the
 accumulated pool.
 

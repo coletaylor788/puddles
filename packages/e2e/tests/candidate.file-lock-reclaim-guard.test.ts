@@ -27,8 +27,12 @@ describe("materialized fs-safe stale reclaim guard", () => {
     );
     expect(kernelGuard).toContain("DARWIN_O_EXLOCK = 32");
     expect(kernelGuard).toContain("fs.constants.O_NONBLOCK");
-    expect(sidecarLock).toContain("tryAcquireSidecarReclaimGuard");
+    const reclaim = readFileSync(
+      join(candidate, "node_modules/@openclaw/fs-safe/dist/sidecar-lock-reclaim.js"), "utf8",
+    );
+    expect(reclaim).toContain("tryAcquireKernelReclaimGuard");
+    expect(reclaim).toContain("releaseKernelReclaimGuard");
     expect(sidecarLock).toContain("sidecarReclaimGuardExists(reclaimGuardPath)");
-    expect(sidecarLock).toContain("releaseSidecarReclaimGuard(context.reclaimGuards, reclaimGuardPath)");
+    expect(sidecarLock).toContain("reclaimGuard.release()");
   });
 });

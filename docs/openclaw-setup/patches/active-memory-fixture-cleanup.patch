@@ -1,8 +1,8 @@
 diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/index.test.ts
-index d2682b1..a51d6c5 100644
+index 456ea6553..7d542cde2 100644
 --- a/extensions/active-memory/index.test.ts
 +++ b/extensions/active-memory/index.test.ts
-@@ -470,6 +470,16 @@ describe("active-memory plugin", () => {
+@@ -460,6 +460,16 @@ describe("active-memory plugin", () => {
        );
      });
    };
@@ -19,7 +19,7 @@ index d2682b1..a51d6c5 100644
    const makeMemoryToolAllowlistError = (
      reason: string,
      sources = "runtime toolsAllow: memory_search, memory_get",
-@@ -4719,6 +4729,7 @@ describe("active-memory plugin", () => {
+@@ -4921,6 +4931,7 @@ describe("active-memory plugin", () => {
        registerPluginConfig({ timeoutMs, setupGraceTimeoutMs, logging: true });
        const providerReady = createDeferred<void>();
        let readinessTimer: ReturnType<typeof setTimeout> | undefined;
@@ -27,7 +27,7 @@ index d2682b1..a51d6c5 100644
        hoisted.getActiveMemorySearchManager.mockImplementationOnce(async () => {
          readinessTimer = setTimeout(() => providerReady.resolve(), readyAfterMs);
          await providerReady.promise;
-@@ -4761,7 +4772,18 @@ describe("active-memory plugin", () => {
+@@ -4963,7 +4974,18 @@ describe("active-memory plugin", () => {
        } finally {
          clearTimeout(readinessTimer);
          providerReady.resolve();
@@ -46,11 +46,21 @@ index d2682b1..a51d6c5 100644
      },
    );
  
-@@ -4855,7 +4877,19 @@ describe("active-memory plugin", () => {
+@@ -5057,28 +5079,55 @@ describe("active-memory plugin", () => {
      seedSession(sessionKey, "s-terminal-unavailable-then-diagnostic", 0);
      const warning = "Memory search is unavailable due to an embedding/provider error.";
      const action = "Check the embedding provider configuration, then retry memory_search.";
 -    runEmbeddedAgent.mockImplementationOnce(async (params: { sessionFile: string }) => {
+-      await writeTranscriptJsonl(params.sessionFile, [
+-        {
+-          message: {
+-            role: "toolResult",
+-            toolName: "memory_search",
+-            details: {
+-              disabled: true,
+-              warning,
+-              action,
+-              error: "embedding request failed",
 +    const pendingRecall = await trackRecallRun();
 +    const cleanupStarted = createDeferred<void>();
 +    const releaseCleanup = createDeferred<void>();
@@ -63,19 +73,32 @@ index d2682b1..a51d6c5 100644
 +      await releaseCleanup.promise;
 +      return await cleanup(params);
 +    });
-+    runEmbeddedAgent.mockImplementationOnce(async (params: { sessionFile: string; abortSignal?: AbortSignal }) => {
-       await writeTranscriptJsonl(params.sessionFile, [
-         {
-           message: {
-@@ -4870,13 +4904,26 @@ describe("active-memory plugin", () => {
++    runEmbeddedAgent.mockImplementationOnce(
++      async (params: { sessionFile: string; abortSignal?: AbortSignal }) => {
++        await writeTranscriptJsonl(params.sessionFile, [
++          {
++            message: {
++              role: "toolResult",
++              toolName: "memory_search",
++              details: {
++                disabled: true,
++                warning,
++                action,
++                error: "embedding request failed",
++              },
+             },
            },
-         },
-       ]);
-+      await waitForAbort(params.abortSignal).catch((error: unknown) => {
-+        expect(String(error)).toContain("active-memory terminal memory search result");
-+      });
-       return { payloads: [{ text: "User usually orders tonkotsu ramen." }] };
-     });
+-        },
+-      ]);
+-      return { payloads: [{ text: "User usually orders tonkotsu ramen." }] };
+-    });
++        ]);
++        await waitForAbort(params.abortSignal).catch((error: unknown) => {
++          expect(String(error)).toContain("active-memory terminal memory search result");
++        });
++        return { payloads: [{ text: "User usually orders tonkotsu ramen." }] };
++      },
++    );
  
 -    const result = await runPromptBuild(
 +    const resultPromise = runPromptBuild(

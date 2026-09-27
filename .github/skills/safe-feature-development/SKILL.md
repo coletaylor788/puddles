@@ -3,7 +3,7 @@ name: safe-feature-development
 description: "Take Puddles features from an explicitly approved design through fast local and DEV iteration, independent review, cumulative release checks, landing, merged TEST rehearsal, production deployment, and rollback. Use when designing or implementing a feature or behavior change."
 metadata:
   author: Cole Taylor
-  version: "3.3.0"
+  version: "3.4.0"
 ---
 
 # Safe Feature Development
@@ -569,6 +569,32 @@ repair within the approved scope, not a reason to restore CI to every edit.
 Report the limitation until the supported local path exists. Do not bypass
 ownership or receipt checks, invent a command, or claim the local path works
 from documentation alone.
+
+### Environment configuration and migrations
+
+DEV, TEST and production each own their configuration, writable state and service
+bindings. Preserve authored DEV settings during artifact refresh. Stop its
+writers before changing configuration, snapshot state and service settings, and
+restore those with the prior runtime if activation fails. Recording adapters
+remain explicit fixture-owned settings. DEV proof never claims TEST or
+production migration execution.
+
+For a release that changes configuration, prepare the TEST and production
+manifests with the same maintained generator before sealing the build. Use the
+synthetic TEST baseline and a bounded read-only production baseline. Bind the
+generator, policy, target identities, input digests and both manifest digests to
+the release. The source gate must reproduce both outputs from the sealed inputs.
+TEST executes its own manifest; production selects its prebound manifest and
+rechecks selected values and job revisions before mutation. Refresh affected
+evidence when those inputs drift. Never rewrite a manifest or relabel a prior
+single-manifest receipt after certification.
+
+Stable non-secret environment configuration may be versioned in the optional
+private companion repository. Keep credentials outside both repositories, and
+keep owner-specific configuration out of public code, CI and artifacts. Keep
+captured baselines and job revisions separate from stable configuration. Carry
+the genuine runtime proof through certification so interpreter validation does
+not depend on a builder's directory layout.
 
 ### Merged TEST and production
 
