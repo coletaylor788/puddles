@@ -13,7 +13,7 @@ flowchart TB
 
     subgraph Tailnet["Tailscale network boundary"]
         subgraph DevMachine["Development host machine"]
-            Operator["Operator and deployment tools"]
+            Developers["Agentic developers"]
         end
         subgraph Host["Server machine: trusted host"]
             Channel["imsg channel process"]
@@ -25,7 +25,7 @@ flowchart TB
         end
     end
 
-    Operator -->|"SSH / account authentication and Tailscale ACLs"| Host
+    Developers -->|"SSH / account authentication and Tailscale ACLs"| Host
     Sender <-->|"iMessage / channel identity"| Channel
     Channel <-->|"RPC over stdio / host-owned child process"| Gateway
     Gateway <-->|"Docker exec / host daemon permissions"| Tools
@@ -68,7 +68,9 @@ topology, not a fresh audit of live configuration.
 flowchart TB
     External["External services"]
     subgraph Tailnet["Tailscale network boundary"]
-        AdminDevice["Development host machine"]
+        subgraph DevMachine["Development host machine"]
+            Developers["Agentic developers"]
+        end
         subgraph Machine["Server machine: encrypted disk"]
             Login["Administrative access"]
             Admin["Administrator account"]
@@ -79,7 +81,7 @@ flowchart TB
         end
     end
 
-    AdminDevice -->|"SSH / account authentication and ACLs"| Login
+    Developers -->|"SSH / account authentication and ACLs"| Login
     Login --> Admin
     Admin -->|"OS permissions"| Gateway
     Gateway -->|"Scoped tools and mounts"| Sandboxes
@@ -107,7 +109,7 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    Work["Parallel owned worktrees"] --> Local["Focused checks and incremental build"]
+    Work["Agentic developers in parallel owned worktrees"] --> Local["Focused checks and incremental build"]
     Local --> Draft["Isolated draft DEV"]
     Draft --> Review["Independent review"]
     Review --> CI["Full CI and immutable feature artifact"]
