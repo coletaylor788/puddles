@@ -247,6 +247,29 @@ function setup() {
   return { directory, run };
 }
 
+it("waits for the task cleanup lock before changing builder state", async () => {
+  const { directory, run } = setup();
+  vi.stubEnv("PUDDLES_STORAGE_ROOT", directory);
+  mkdirSync(run);
+  mkdirSync(join(directory, "lock"));
+  const previous = JSON.stringify({ status: "failed", failure: "preserved" });
+  writeFileSync(join(run, "run-status.json"), previous);
+  await expect(nativePipeline("build", async () => {})).rejects.toThrow();
+  expect(readFileSync(join(run, "run-status.json"), "utf8")).toBe(previous);
+  expect(existsSync(join(run, "logs"))).toBe(false);
+  expect(existsSync(join(run, "lock"))).toBe(false);
+  expect(counters.prepare).toBe(0);
+});
+
+it("releases the task lock when another process owns the builder", async () => {
+  const { directory, run } = setup();
+  vi.stubEnv("PUDDLES_STORAGE_ROOT", directory);
+  mkdirSync(join(run, "lock"), { recursive: true });
+  await expect(nativePipeline("build", async () => {})).rejects.toThrow();
+  expect(existsSync(join(directory, "lock"))).toBe(false);
+  expect(existsSync(join(run, "run-status.json"))).toBe(false);
+});
+
 it("binds migration bytes to cumulative and runtime proofs without rebuilding unchanged source", async () => {
   const { directory, run } = setup();
   const path = join(realpathSync(directory), "migration.json");

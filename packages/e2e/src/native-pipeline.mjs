@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, statfsSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, rmSync, statfsSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -96,17 +96,22 @@ export async function nativePipeline(command, repositoryGates) {
   const source = resolve(process.env.OPENCLAW_SRC ?? join(homedir(), "git", "openclaw"));
   if (!existsSync(join(source, ".git"))) throw new Error("OPENCLAW_SRC must be a source checkout");
   const runDir = externalDirectory(process.env.E2E_RUN_DIR ?? mkdtempSync(join(tmpdir(), "puddles-native-")), [repoRoot, source]);
-  const unlock = acquireLock(runDir);
+  let taskUnlock;
+  if (process.env.PUDDLES_STORAGE_ROOT) {
+    const taskRoot = realpathSync(process.env.PUDDLES_STORAGE_ROOT);
+    if (taskRoot === runDir || !runDir.startsWith(`${taskRoot}/`)) throw new Error("Builder is outside its task storage root");
+    taskUnlock = acquireLock(taskRoot);
+  }
+  let unlock;
+  try { unlock = acquireLock(runDir); }
+  catch (error) { taskUnlock?.(); throw error; }
   let resourceProfile;
   let reservation;
-  let taskUnlock;
   const capacityRoot = resolve(process.env.E2E_CAPACITY_ROOT ?? join(homedir(), ".puddles", "development-capacity"));
   const artifactPool = process.env.E2E_ARTIFACT_POOL
     ? resolve(process.env.E2E_ARTIFACT_POOL)
     : null;
   const retentionReference = artifactPool ? artifactPoolRunId(runDir) : null;
-  updateNativeRunStatus(runDir, { command, status: "running", pid: process.pid, startedAt: new Date().toISOString(), failure: null });
-  mkdirSync(join(runDir, "logs"), { recursive: true, mode: 0o700 });
   let sequence = 0;
   let resourceSequence = 0;
   const childEnvironment = { ...process.env };
@@ -181,11 +186,8 @@ export async function nativePipeline(command, repositoryGates) {
     });
   };
   try {
-    if (process.env.PUDDLES_STORAGE_ROOT) {
-      const taskRoot = resolve(process.env.PUDDLES_STORAGE_ROOT);
-      if (taskRoot === runDir || !runDir.startsWith(`${taskRoot}/`)) throw new Error("Builder is outside its task storage root");
-      taskUnlock = acquireLock(taskRoot);
-    }
+    updateNativeRunStatus(runDir, { command, status: "running", pid: process.pid, startedAt: new Date().toISOString(), failure: null });
+    mkdirSync(join(runDir, "logs"), { recursive: true, mode: 0o700 });
     resourceProfile = resolveResourceProfile();
     const buildTimeoutMs = resolveBuildTimeoutMs(command);
     if (artifactPool) {

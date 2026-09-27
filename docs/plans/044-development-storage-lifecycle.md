@@ -236,12 +236,15 @@ Approved implementation order:
 
 ### Validation
 
-Focused ownership, retention, and pipeline regressions pass (71 tests). The
-complete e2e package passed 413 tests before review remediation. Companion
-release-tool checks passed 37 tests with one platform-gated skip. Review found
+The complete e2e package passed 417 tests after review remediation. The final
+lock-order correction passed all 38 pipeline tests, including two new
+regressions for task cleanup contention and builder lock contention. Companion
+release-tool checks passed 37 tests with two environment-gated skips. Review found
 interrupted cleanup, terminal log references, retry protection, and the local
 release hook needed correction. Fixes and regressions are in the candidate;
-retained re-review found no remaining significant findings. Final CI is pending.
+retained re-review, including the lock-order correction, found no remaining
+significant findings. Public CI is pending. The companion contract CI passed;
+its composed ARM job requires confirmation of included private hosted minutes.
 
 
 Investigation performed read-only directory measurements, run-status and
