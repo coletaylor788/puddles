@@ -54,7 +54,9 @@
     "src/agents/tool-allowlist-guard.test.ts": "unit-fast",
     "src/agents/subagents/registry/subagent-registry-yield-gather.test.ts": "agents-support",
     "src/state/openclaw-agent-db.storage-migration.test.ts": "infra",
-    "src/commands/doctor-agent-memory-schema.test.ts": "commands"
+    "src/commands/doctor-agent-memory-schema.test.ts": "commands",
+    "src/process/supervisor/service-child-ownership.bundle.test.ts": "process",
+    "src/infra/windows-process-start.test.ts": "infra"
   },
   "patches": [
     {
@@ -64,7 +66,9 @@
         "src/agents/provider-local-service.shutdown.test.ts",
         "src/process/supervisor/service-child-ownership.test.ts",
         "src/process/supervisor/service-child-relay-host.test.ts",
-        "src/process/supervisor/adapters/child.service-lifecycle.test.ts"
+        "src/process/supervisor/adapters/child.service-lifecycle.test.ts",
+        "src/process/supervisor/service-child-ownership.bundle.test.ts",
+        "src/infra/windows-process-start.test.ts"
       ]
     },
     {

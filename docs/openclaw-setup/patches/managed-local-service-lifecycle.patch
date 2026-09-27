@@ -500,6 +500,27 @@ index aff04bbff..5a568429a 100644
  function installExitHandler() {
    if (exitHandlerInstalled) {
      return;
+diff --git a/src/infra/windows-process-start.ts b/src/infra/windows-process-start.ts
+index d55becfca..5e27013e6 100644
+--- a/src/infra/windows-process-start.ts
++++ b/src/infra/windows-process-start.ts
+@@ -44,10 +44,12 @@ function loadNativeProcessStartTime(): (pid: number) => number | null {
+ 
+ function readNativeProcessStartTime(pid: number): number | null {
+   // Sealed updater helpers must remain independent of the replaced installation's native modules.
+-  if (
+-    process.platform !== "win32" ||
+-    (typeof SEALED_RUNTIME_BUILD === "boolean" && SEALED_RUNTIME_BUILD)
+-  ) {
++  // Keep the compile-time branch separate so sealed bundles can remove the
++  // native loader without first evaluating a runtime platform property.
++  if (typeof SEALED_RUNTIME_BUILD === "boolean" && SEALED_RUNTIME_BUILD) {
++    return null;
++  }
++  if (process.platform !== "win32") {
+     return null;
+   }
+   try {
 diff --git a/src/plugin-sdk/process-runtime.ts b/src/plugin-sdk/process-runtime.ts
 index 527d9a189..379404145 100644
 --- a/src/plugin-sdk/process-runtime.ts
@@ -533,6 +554,50 @@ index 3025c7453..defc66c1e 100644
        command = spawn(start.command, start.args, {
          cwd: start.cwd,
          env: start.env,
+diff --git a/src/process/supervisor/service-child-ownership.bundle.test.ts b/src/process/supervisor/service-child-ownership.bundle.test.ts
+new file mode 100644
+index 000000000..3862298f1
+--- /dev/null
++++ b/src/process/supervisor/service-child-ownership.bundle.test.ts
+@@ -0,0 +1,38 @@
++import { mkdtempSync, rmSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { build } from "tsdown";
++import { expect, it } from "vitest";
++import { collectWorkerDeployArtifactErrors } from "../../../scripts/check-cli-bootstrap-imports.mts";
++import configs from "../../../tsdown.config.ts";
++
++it("keeps the ownership-aware standalone anchor free of native runtime imports", async () => {
++  const config = configs.find(
++    (candidate) =>
++      typeof candidate.entry === "object" &&
++      !Array.isArray(candidate.entry) &&
++      candidate.entry?.["worker/service-child-group-anchor"],
++  );
++  expect(config).toBeDefined();
++  const root = mkdtempSync(join(tmpdir(), "openclaw-owned-anchor-bundle-"));
++  try {
++    // Compile only this fixture graph with its real packaging options. Nothing
++    // from this temporary output is a release or installation artifact.
++    const { bundles } = await build({
++      ...config,
++      config: false,
++      outDir: join(root, "dist"),
++      dts: false,
++      logLevel: "silent",
++    });
++    for (const bundle of bundles) await bundle[Symbol.asyncDispose]();
++    expect(
++      collectWorkerDeployArtifactErrors({
++        rootDir: root,
++        workerDeployEntrypoints: ["dist/worker/service-child-group-anchor.mjs"],
++      }),
++    ).toEqual([]);
++  } finally {
++    rmSync(root, { recursive: true, force: true });
++  }
++}, 30_000);
 diff --git a/src/process/supervisor/service-child-ownership.test.ts b/src/process/supervisor/service-child-ownership.test.ts
 new file mode 100644
 index 000000000..87b0e035f

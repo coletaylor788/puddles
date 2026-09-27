@@ -125,7 +125,7 @@ describe("OpenClaw cumulative patch suite", () => {
     expect(manifest.testProjects["src/agents/tools/yield-gather-state.test.ts"]).toBe("unit-fast");
     expect(manifest.testProjects["packages/memory-host-sdk/src/host/backend-config.test.ts"]).toBe("unit-fast-isolated");
     expect(manifest.testProjects["src/agents/subagents/spawn/acp-spawn.test.ts"]).toBe("agents-support");
-    expect(manifest.testProjects["src/agents/subagents/spawn/subagent-spawn.test.ts"]).toBe("agents-support");
+    expect(manifest.testProjects["src/agents/subagents/spawn/subagent-spawn.test.ts"]).toBe("infra");
     expect(manifest.testProjects["src/config/dead-config-keys.test.ts"]).toBe("runtime-config");
     for (const test of suite.patches.flatMap((patch) => patch.tests)) {
       expect(manifest.testProjects[test], test).toMatch(/^[a-z-]+$/);
