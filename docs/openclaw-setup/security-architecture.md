@@ -162,7 +162,22 @@ flowchart TB
 | Personal | iMessage from Cole | Context rules apply. |
 | Household | iMessage from allowlisted household contacts | Context rules apply. |
 | Friends | iMessage from allowlisted friends | Context rules apply. |
-| Public | Other iMessage senders, SMS, email, calendar entries, web pages | Run guards. Read through the reader agent. No turns or follow-ups. |
+| Public | Other iMessage senders, SMS, email, calendar entries, web pages | InjectionGuard, SecretRedactor, LeakGuard, ContactsEgressGuard as applicable. Reader/browser agent only. No turns or follow-ups. |
+
+Guards run inside tools at the relevant boundary:
+
+- **[InjectionGuard](../../packages/mcp-hooks/src/ingress/injection-guard.ts):**
+  check external content for prompt injection before returning it.
+- **[SecretRedactor](../../packages/mcp-hooks/src/ingress/secret-redactor.ts):**
+  redact secrets from tool results before returning them.
+- **[LeakGuard](../../packages/mcp-hooks/src/egress/leak-guard.ts):** before
+  non-send calls such as web searches, check outgoing data for secrets,
+  sensitive information, and PII.
+- **[ContactsEgressGuard](../../packages/mcp-hooks/src/egress/contacts-egress-guard.ts):**
+  before sends or invitations, check recipients and configured content rules.
+
+Outbound guards apply at every label. They do not replace context rules,
+turn permissions, or human approval.
 
 The host verifies the iMessage sender and checks the relevant allowlist before
 assigning a label.
@@ -296,10 +311,7 @@ Keychain approves the reader executable, not its PID or parent interpreter.
 The [reader](agent-instructions/reader-AGENTS.md) gets one acquisition, then
 returns. Enforce this through tool grants.
 
-- **[InjectionGuard](../../packages/mcp-hooks/src/ingress/injection-guard.ts):**
-  detects prompt injection.
-- **[SecretRedactor](../../packages/mcp-hooks/src/ingress/secret-redactor.ts):**
-  combines patterns and model classification.
+- **Secret redaction:** combines patterns and model classification.
 - **Coverage:** prefilters must include every attacker-controlled field.
   Classifiers can miss attacks; passing a guard never grants authority.
 - **Execution:** Gmail/calendar wrappers await guards before releasing results.
