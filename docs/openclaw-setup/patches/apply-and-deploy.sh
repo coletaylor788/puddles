@@ -31,6 +31,7 @@ PATCHES=(
   active-memory-cold-recall
   active-memory-fixture-cleanup
   gateway-protocol-declaration-portability
+  core-declaration-portability
 )
 
 if [ -n "${MINI_HOST:-}" ]; then

@@ -56,7 +56,8 @@
     "src/state/openclaw-agent-db.storage-migration.test.ts": "infra",
     "src/commands/doctor-agent-memory-schema.test.ts": "commands",
     "src/process/supervisor/service-child-ownership.bundle.test.ts": "process",
-    "src/infra/windows-process-start.test.ts": "infra"
+    "src/infra/windows-process-start.test.ts": "infra",
+    "src/config/sessions/session-declaration-portability.test.ts": "runtime-config"
   },
   "patches": [
     {
@@ -215,6 +216,12 @@
       ],
       "candidateTests": [
         "tests/candidate.development-loop.test.ts"
+      ]
+    },
+    {
+      "name": "core-declaration-portability",
+      "tests": [
+        "src/config/sessions/session-declaration-portability.test.ts"
       ]
     }
   ]
