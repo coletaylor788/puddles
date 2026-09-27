@@ -180,6 +180,8 @@ flowchart TB
     Friends --> Public["Public"]
 ```
 
+#### Required rules
+
 1. **Context flow**
    1. By default, content flows only from less trusted to more trusted.
       Household cannot access personal content, for example. The receiving
@@ -190,16 +192,18 @@ flowchart TB
       copy, never credentials or ongoing access. Summaries and saved copies
       retain the source restrictions.
 2. **Required handling**
-   1. **Personal:** authenticated owner only.
-   2. **Household:** household resources only.
-   3. **Friends:** only resources shared with that friend or group.
-   4. **Public:** run injection and secret guards; read through the reader agent;
-      never initiate turns or follow-ups.
 
-**SMS is public:** its sender cannot be verified as more trusted. Email, calendar
-entries, and web pages are also public sources. Classify every input path,
-including tools, memory, and delegated results. Public does not mean publishable;
-account, recipient, and task scope still apply.
+   | Label | Sources | Required handling |
+   |---|---|---|
+   | Personal | Verified owner input, owner-only records | |
+   | Household | Verified household input, household records | |
+   | Friends | Verified friend input, records shared with that friend or group | |
+   | Public | SMS, email, calendar entries, web pages | Run guards. Read through the reader agent. No turns or follow-ups. |
+
+SMS senders cannot be verified as more trusted. A familiar sender does not
+upgrade a public source. Tools, memory, and delegated results retain their
+source labels. Public does not mean publishable; account, recipient, and task
+scope still apply.
 
 ### Runtime flow
 
