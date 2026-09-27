@@ -110,7 +110,7 @@ flowchart TB
     end
     subgraph Tailnet["Tailscale"]
         subgraph Host["Development host"]
-            Builds["Local drafts and private CI builds"]
+            Builds["Local draft and CI builds"]
         end
         subgraph Server["Server: deployment slots"]
             DEV["DEV"]
@@ -127,7 +127,7 @@ and [runner guide](../../packages/e2e/README.md) define stage order and commands
 CI/CD should progress automatically; agents monitor and repair failures.
 
 - **Builder access:** pin source, toolchain, and dependencies. [Public CI](../../.github/workflows/integration.yml)
-  uses public inputs without live credentials or private extensions. Private
+  uses public inputs without live credentials or local extensions. Local
   composition and its diagnostics stay on the authorized local builder. Public
   exports contain only approved artifacts and bounded sanitized diagnostics.
 - **Test effects:** DEV, TEST, and builder fixtures own separate state, sessions,
@@ -217,7 +217,7 @@ flowchart TB
     External -->|"Untrusted response"| Adapter
 ```
 
-Sending private task data to the reader requires the disclosure gate.
+Sending higher-trust task data to the reader requires the disclosure gate.
 
 #### Agent containment and authority
 
@@ -261,7 +261,7 @@ Implementation details:
 - Keep keys, OAuth tokens, gateway credentials, browser cookies, and refresh
   state outside agent workspaces, mounts, environments, and tool results.
 - Host services resolve credentials through SecretRef, Keychain, or a configured
-  private backend. Never include values in source, logs, fixtures, artifacts,
+  credential backend. Never include values in source, logs, fixtures, artifacts,
   or public diagnostics.
 - Scope adapters to specific services, accounts, and operations. Credentials
   authenticate service access; they do not approve agent actions.
