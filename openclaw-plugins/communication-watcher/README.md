@@ -68,6 +68,6 @@ Under the maintained DEV slot controller, run `node packages/e2e/bin/communicati
 
 ## Activation prerequisites
 
-Stock OpenClaw 2026.9.3 delivers the initial native handoff but can reject its delayed reply after caller authority expires. The 2026.9.6 source adds detached continuation handling. The fixture records whether it validated that newer reply path; upgrade-candidate validation remains required. No competing core patch or special notification mechanism is included.
+Stock OpenClaw 2026.9.3 delivers the initial native handoff but can reject its delayed reply after caller authority expires. Stock 2026.9.6 passes the native reply and silent announcement fixture. The fixture records whether it validated that newer reply path; the exact composed CI artifact still needs installed DEV validation. No competing core patch or special notification mechanism is included.
 
 Keep real forwarding paused until locked-phone behavior, account/list/calendar scope, installed mounts, and the upgrade's native reply path pass. The merge hold remains in force; no TEST or production activation is part of this task.

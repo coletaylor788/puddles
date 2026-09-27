@@ -36,7 +36,7 @@ export async function communicationFixture(installedDir, pluginDir, root, option
   const sender = createHash('sha256').update('+15555550123').digest('hex').slice(0, 32);
   const path = `memory/correspondence/${sender}/2026-09-26.md`;
   const mainWorkspace = join(root, 'main'), readerWorkspace = join(root, 'reader'), workspace = join(mainWorkspace, 'communication-watcher');
-  let child, log, modelError, cycle = 0, step = 0, readerCalls = 0, mainCalls = 0, followups = 0;
+  let child, log, modelError, cycle = 0, step = 0, readerCalls = 0, mainCalls = 0, followups = 0, announcements = 0;
   const call = (name, args) => ({ name, args });
   const server = createServer(async (req, res) => {
     try {
@@ -47,7 +47,10 @@ export async function communicationFixture(installedDir, pluginDir, root, option
       const last = request.messages.filter(m => m.role === 'tool').at(-1);
       const parseResult = m => JSON.parse(typeof m.content === 'string' ? m.content : m.content.map(p => p.text ?? '').join(''));
       let text = 'REPLY_SKIP', tools;
-      if (offered.includes('communication_inbox_read')) {
+      const userMessage = request.messages.filter(m => m.role === 'user' && !JSON.stringify(m.content).includes('BEGIN_OPENCLAW_INTERNAL_CONTEXT')).at(-1);
+      if (JSON.stringify(userMessage?.content).includes('Agent-to-agent announce step.')) {
+        announcements++; text = 'ANNOUNCE_SKIP';
+      } else if (offered.includes('communication_inbox_read')) {
         readerCalls++;
         if (!last) tools = [call('communication_inbox_read', cycle === 3 ? { mode: 'history' } : {})];
         else { const data = parseResult(last); assert.ok(Array.isArray(data.items), JSON.stringify(data)); text = data.items.length ? 'Dinner was proposed by a known contact. Other items are routine or blocked.' : 'No pending messages.'; }
@@ -95,7 +98,7 @@ export async function communicationFixture(installedDir, pluginDir, root, option
         res.write(`data: ${JSON.stringify({ ...base, object: 'chat.completion.chunk', choices: [{ index: 0, delta: {}, finish_reason: finish }] })}\n\n`);
         res.end('data: [DONE]\n\n');
       } else res.end(JSON.stringify({ ...base, choices: [{ index: 0, message, finish_reason: finish }] }));
-    } catch (error) { modelError = error; res.writeHead(500); res.end('Unscripted fixture request'); }
+    } catch (error) { modelError = error; res.writeHead(400); res.end('Unscripted fixture request'); }
   });
   const stop = async () => {
     if (!child?.pid) return;
@@ -139,6 +142,7 @@ export async function communicationFixture(installedDir, pluginDir, root, option
     const cfg = configure({
       gateway: { mode: 'local', port, bind: 'loopback', auth: { mode: 'token', token: 'synthetic-communication-token' }, controlUi: { enabled: false } },
       logging: { file: join(root, 'openclaw.log') }, update: { checkOnStart: false }, cron: { enabled: false }, browser: { enabled: false },
+      ...(supportsDetachedReplies ? { tools: { toolSearch: false } } : {}),
       agents: { ownership: 'explicit', defaults: { model: { primary: 'fixture/fixture-model' }, compaction: { mode: 'default' }, heartbeat: { every: '0m' } }, entries: { main: { workspace: mainWorkspace, tools: { allow: ['communication_memory_read', 'fixture_heartbeat'] } } } },
       models: { mode: 'replace', providers: { fixture: { api: 'openai-completions', baseUrl: `http://127.0.0.1:${server.address().port}/v1`, apiKey: 'synthetic', models: [{ id: 'fixture-model', name: 'Fixture', contextWindow: 128000, maxTokens: 4096, reasoning: false, input: ['text'], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }] } } },
       plugins: { allow: ['communication-watcher', 'communication-fixture'], slots: { memory: 'none' }, load: { paths: [driver] } },
@@ -208,6 +212,7 @@ export async function communicationFixture(installedDir, pluginDir, root, option
     const calls = readFileSync(join(pim, 'calls.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
     assert.equal(calls.filter(c => c[0] === 'create').length, 1, 'recovery does not repeat calendar creation');
     assert.equal(mainCalls, 2, 'recovery does not repeat main reports');
+    assert.equal(announcements, supportsDetachedReplies ? 1 : 0, 'native final announcement stays silent');
     assert.equal(readerCalls, 8, 'one bounded reader job per heartbeat');
     const readerFiles = readdirSync(join(context.stateDir, 'agents/communication-reader/sessions')).filter(p => p.endsWith('.jsonl'));
     assert.deepEqual(readerFiles, [], 'reader transcripts are deleted');
