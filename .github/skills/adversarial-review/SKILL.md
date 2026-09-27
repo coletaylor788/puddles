@@ -51,7 +51,19 @@ into actionable remediation-loop findings. Before reporting, verify that the
 concern is not speculative, duplicative, already resolved, or unrelated to the
 current change.
 
-Use the agreed trust model, not a stricter one invented during review. Native
+Read the [security architecture](../../../docs/openclaw-setup/security-architecture.md)
+and check the complete change and affected paths against its boundaries,
+principles, and rules.
+
+- Block review clearance for any deviation or exception, regardless of finding
+  severity. Require explicit human approval for that specific deviation;
+  general feature approval or accepted residual risk is not enough.
+- After approval, require the architecture to reflect the approved change before
+  clearing review. Otherwise, require the implementation to align.
+- Review architecture edits against the previously approved version. Editing
+  the document does not itself authorize a deviation.
+
+Use that trust model, not a stricter one invented during review. Native
 rehearsal runs trusted code on a trusted host. Its isolation protects production
 uptime and writable state; it is not an adversarial host security boundary.
 Normal host filesystem access, shared dependencies, and existing coordination
