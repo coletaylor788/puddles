@@ -1,6 +1,6 @@
 # Upgrade maintained OpenClaw support to 2026.9.6
 
-**Status:** Production restored to 2026.7.1; approved migration repair in progress
+**Status:** Released to healthy production on 2026.9.6; ready for requester validation
 **Issue:** [#114](https://github.com/coletaylor788/puddles/issues/114)
 **Last updated:** 2026-09-28
 
@@ -35,7 +35,7 @@ Upstream Doctor owns conversion to the new conversation storage. Our deployment 
 
 Doctor imports retained conversation files into the new database. The deployment controller gave it the same one-minute limit as service commands. A production upgrade reached that limit while importing history. The config edit had finished, but the journal still reported the config phase.
 
-Give Doctor a 20-minute limit and record its phase before starting it. The gateway stays stopped during that command; preparation, verification and any rollback add time beyond this limit. An isolated synthetic indexing workload took about 13 minutes across an interrupted attempt and its continuation. Require a fresh, uninterrupted run of the exact release artifact under the limit, with full content and database integrity checks, before production. Keep service checks and memory search limits unchanged. A timeout still restores the saved runtime, state and external skill directories. Fast regressions cover the timeout contract and rollback; the larger installed measurement is a selected release check, not added work in every CI run.
+Give Doctor a 20-minute limit and record its phase before starting it. The gateway stays stopped during that command; preparation, verification and any rollback add time beyond this limit. The exact release artifact completed a fresh, uninterrupted synthetic migration in 14 minutes 37 seconds. All history content, ownership and database integrity checks passed. Future releases with comparable migration work must measure representative volume before production. Keep service checks and memory search limits unchanged. A timeout still restores the saved runtime, state and external skill directories. Fast regressions cover the timeout contract and rollback; the larger installed measurement is a selected release check, not added work in every CI run.
 
 #### Legacy skill proposal ownership decision
 
@@ -60,11 +60,17 @@ SQLite inspection must leave the original state untouched. Even a read-only SQLi
 
 ### Status
 
-The replacement candidate passed CI, exact-artifact DEV and TEST. Production Doctor exceeded the controller's one-minute command limit while importing retained history. Automatic rollback completed. Read-only checks verify the original runtime, configuration, service, interpreter, external skill paths and three unchanged ownership records. Production is healthy on 2026.7.1. The repair gives Doctor a 20-minute limit and records its phase. Synthetic migration preserved all history and passed database integrity checks, but its interrupted timing does not certify the new limit. A fresh exact-artifact volume rehearsal is required before production.
+Production is healthy on 2026.9.6. The three approved legacy records now belong to `main`; their skills, drafts and rollback contents are preserved. All eight agent databases use schema 23. The same CI artifact passed DEV, TEST activation and rollback, the full-volume history rehearsal, and production activation. The verified recovery snapshot remains available. The upgrade is ready for requester validation.
 
 ## Agent section
 
 ### State
+
+- Released public `cf4930115306f9655d8890153a163c68271c5c91` through composed CI `36482565849`, build `04e7da87ee01589135ef8bd1004742b5f47662d52c4ed32cd125d8036eed0c41`. Exact DEV passed four wrapper checks, nine messaging scenarios, 35 installed checks and the real local embedding test. Fresh uninterrupted Doctor migration took 876,810 ms under the 1,200,000 ms limit. All 5,445 synthetic histories and 168,172 events passed full content, ownership and integrity checks; the runtime digest remained unchanged.
+- TEST passed all 11 runtime scenarios, injected activation failure and rollback, healthy activation, certification and final rollback. Its owned target was removed. Production transaction `activation-1790633653886-65893` completed successfully. Read-only checks verify version 2026.9.6, Node 26.1.0, health, recovery identity, all eight primary database schemas at 23, and exact preservation of the three approved proposals, skills, drafts and rollback contents with only the approved owner assignment. No verification messages were sent. Retain the production recovery snapshot.
+- Source and process changes are landed. The following attempts are historical evidence, not the current release state.
+
+#### Earlier attempts
 
 - Public PR #184 landed as `36ac7dc638728042d5109b790eeb1a8e8b29d5ef`. Composed CI `36470496541` with companion `f6db8a0e42b232ad5eb0c3c2bf8a1419149d61a5` passed. Exact DEV passed four wrapper checks, nine messaging scenarios, 35 installed checks and real embeddings without skips. TEST passed runtime, injected rollback, healthy activation, certification and final rollback. Production transaction `activation-1790626048764-8221` failed in Doctor after the config operation completed. The controller killed the command at 60 seconds. Automatic rollback and a separate read-only proof verify the original runtime, configuration, service, interpreter, twelve external paths and all three original proposal, draft, rollback and applied-skill hashes. PROD and DEV health pass; PROD is released. Batch `52b1b98afaaf305822e0d21260bf914091538d04d4d1a6d61a1504f34100e876` is failed. Retain its recovery and failed migrated state.
 - Branch `codex/doctor-migration-budget` adds a Doctor-only 20-minute limit, a durable Doctor phase, and fast regressions for ordinary command limits and timeout rollback. The synthetic indexing stress test exceeded a provisional ten-minute limit, then completed in a 189.841-second continuation. All synthetic history content, schema versions, foreign keys and database integrity checks passed. This interrupted result is diagnostic only. A fresh uninterrupted exact-artifact rehearsal must pass within 20 minutes before PROD. The longer bound is a routine correction to the approved stopped migration; data handling and rollback are unchanged. Existing small history fixtures prove correctness but do not represent migration scale. Use the maintained lifecycle for the repaired candidate.
@@ -167,7 +173,7 @@ Public CI run 36304553773 passes the build, complete accumulated regressions, pa
 
 The declaration regression compiles directly under the cumulative runner's existing deadline. Executable tests cover dispatch, missing projects and compiler failure. Incremental DEV packaging uses the full materializer's npm file selection and copy behavior. Prepared and freshly materialized payloads match. These repairs pass focused checks and retained review.
 
-The latest combined local DEV draft passes four wrapper scenarios, managed discovery and cold imports, all 33 upgrade cases and the official local embedding fixture with zero skips. The actual predecessor restarts and reads restored history after schema 23 rollback. Warm searches take 25–27 milliseconds. Model restart, normal shutdown and forced-loss cleanup pass; DEV is healthy and its slot is released. This is development evidence only. The replacement release evidence above now supplies accumulated CI, exact-artifact DEV and TEST; production activation failed on legacy proposal ownership and production is restored to healthy 2026.7.1. No prior 2026.9.3 receipt counts as proof for this target.
+The latest combined local DEV draft passes four wrapper scenarios, managed discovery and cold imports, all 33 upgrade cases and the official local embedding fixture with zero skips. The actual predecessor restarts and reads restored history after schema 23 rollback. Warm searches take 25–27 milliseconds. Model restart, normal shutdown and forced-loss cleanup pass; DEV is healthy and its slot is released. This is development evidence only. At that checkpoint, the earlier replacement had passed CI, DEV and TEST but failed production activation on legacy proposal ownership. The current release evidence is recorded in State above. No prior 2026.9.3 receipt counts as proof for this target.
 
 ### Rollout and rollback
 
@@ -177,7 +183,7 @@ Follow the shared process on main without a plan-specific rollout sequence. The 
 
 ### Review log
 
-- Retained review clears the Doctor-only 20-minute bound, phase reporting, fast budget and timeout-rollback regressions, and volume guidance. The larger allowance is a routine correction within the approved stopped migration. Fresh uninterrupted exact-artifact volume proof remains required before production.
+- Retained review clears the Doctor-only 20-minute bound, phase reporting, fast budget and timeout-rollback regressions, and volume guidance. The larger allowance is a routine correction within the approved stopped migration. The fresh uninterrupted exact-artifact volume proof passed before production.
 
 - Independent release-input audit and retained review confirm that the synthetic TEST manifest cannot serve production. No supported target relocation or paired-manifest contract exists. The requester approved the release-provenance repair, including separate DEV configuration and durable process updates.
 
@@ -192,5 +198,5 @@ Follow the shared process on main without a plan-specific rollout sequence. The 
 - [x] Define upgrade-specific compatibility, migration and preservation requirements.
 - [x] Align with current main and remove duplicated execution procedures.
 - [x] Obtain design approval.
-- [ ] Deliver target compatibility, migration and regression coverage.
-- [ ] Satisfy the shared process's completion gate for this upgrade.
+- [x] Deliver target compatibility, migration and regression coverage.
+- [x] Satisfy the shared process's completion gate for this upgrade.
