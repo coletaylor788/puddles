@@ -1,8 +1,8 @@
 # Keep DEV, TEST and production configuration aligned
 
-**Status:** Approved; implementation and validation in progress
+**Status:** Implemented; release blocked by separate legacy proposal ownership
 **Issue:** [#114](https://github.com/coletaylor788/puddles/issues/114)
-**Last updated:** 2026-09-27
+**Last updated:** 2026-09-28
 
 ## Human section
 
@@ -129,14 +129,13 @@ still apply before mutation.
 ### Status
 
 The design is approved. Shared configuration generation and full predecessor and
-candidate comparisons are implemented. The shared-configuration DEV draft and
-retained review passed. Final cumulative CI, exact-artifact DEV validation and
-merged release checks remain open.
+candidate comparisons are implemented. Retained review, accumulated composed CI and exact-artifact DEV and TEST passed. Production activation is blocked by separate legacy proposal ownership described in Plan 041. [Plan 041](041-openclaw-2026-9-6-upgrade.md) records the selected release.
 
 ## Agent section
 
 ### State
 
+- Composed CI `36388360634` and exact-artifact DEV and TEST passed with build `95ecfc7531da895b85439f51c667efea20794eaf3956db7465ba869a9bb5463a`. Production activation reached Doctor and failed on legacy proposal ownership; production is restored to healthy 2026.7.1. Full predecessor and candidate comparisons remained enabled throughout.
 - Extend the target bindings from [Plan 043](043-target-bound-state-migrations.md).
   Preserve its generator, sealed manifests and evidence transport.
 - Public rendering and validation live in
@@ -246,7 +245,7 @@ credential references in SDK snapshots, and a missing final check when no cron
 operation exists. Later review tightened service argument bindings, sealed the
 full environment values, and checked plugin-copy modes and rollback. All findings
 are corrected. The retained reviewer cleared the paired implementation and test
-worker cache reuse; final CI and exact-artifact validation remain required.
+worker cache reuse. The replacement subsequently passed final CI and exact-artifact DEV and TEST; production activation failed on separate legacy proposal ownership.
 
 ### Checklist
 

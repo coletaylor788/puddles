@@ -1,8 +1,8 @@
 # Bind state migrations to their deployment targets
 
-**Status:** Binding contract implemented; configuration parity approved separately
+**Status:** Implemented; release blocked by separate legacy proposal ownership
 **Issue:** Tracked as a release blocker in [#114](https://github.com/coletaylor788/puddles/issues/114)
-**Last updated:** 2026-09-27
+**Last updated:** 2026-09-28
 
 ## Human section
 
@@ -59,6 +59,8 @@ Transport the genuine interpreter-check evidence with the release so production 
 
 ### Status
 
+The replacement upgrade passed accumulated CI and exact-artifact DEV and TEST with separate sealed target manifests and full configuration parity. Production activation is blocked by separate legacy proposal ownership described in Plan 041. [Plan 041](041-openclaw-2026-9-6-upgrade.md) records the selected release.
+
 The approved implementation seals separate target manifests, validates the common generator and transports the production manifest and genuine interpreter evidence. Shared scripts, instructions and the skill cover future releases. Stable environment settings remain in the companion repository.
 
 Separate target bindings do not prove that the environments share all application
@@ -70,6 +72,7 @@ the migration bindings and evidence transport established here.
 
 ### State
 
+- Composed CI `36388360634` and exact-artifact DEV and TEST passed with build `95ecfc7531da895b85439f51c667efea20794eaf3956db7465ba869a9bb5463a`. Production activation reached Doctor and failed on legacy proposal ownership; production is restored to healthy 2026.7.1. Plan 041 holds the final release record.
 - The binding implementation is landed. Plan 045 adds full environment parity.
   A passing migration generator alone does not establish that parity.
 - Public upgrade Plan 041 and companion Plan 037 depend on this shared-process repair for delivery. Keep their designs limited to upgrade requirements.

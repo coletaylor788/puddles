@@ -1,8 +1,8 @@
 # Upgrade maintained OpenClaw support to 2026.9.6
 
-**Status:** Implementation active; TEST rollback repair in progress
+**Status:** Production restored to 2026.7.1; migration repair awaits ownership decision
 **Issue:** [#114](https://github.com/coletaylor788/puddles/issues/114)
-**Last updated:** 2026-09-27
+**Last updated:** 2026-09-28
 
 ## Human section
 
@@ -35,19 +35,37 @@ Upstream Doctor owns conversion to the new conversation storage. Our deployment 
 
 The patch audit and compatibility work passed review, accumulated CI and exact-artifact DEV. Three public runtime fixes are removed because upstream covers them. All nine native messaging scenarios, 34 upgrade assertions and real local embeddings pass. Measured warm local searches take about 25–27 milliseconds without a timeout increase.
 
-The approved [configuration parity work](045-environment-configuration-parity.md) and [target-bound migrations](043-target-bound-state-migrations.md) are implemented. The current candidate passed accumulated CI and exact-artifact DEV. TEST passed migration and activation, then exposed a rollback error: browser cleanup used the new CLI after restoring the old configuration. Corrected recovery tooling restored TEST using the verified predecessor. Its runtime, configuration and service match the retained snapshots; TEST is stopped and its port is idle. Production remains on the predecessor; this candidate cannot advance.
+The shared configuration and target-bound migrations passed accumulated CI, DEV and TEST. Production Doctor then refused three legacy skill proposals with ambiguous ownership. Recovery restored healthy 2026.7.1, including six external skill directories Doctor had moved. Production and DEV health checks pass, and both slots are released. The failed candidate cannot advance.
+
+#### Legacy skill proposal ownership decision
+
+Three applied Skill Workshop records came from the old CLI without owning-agent metadata. Their target skills exactly match the applied drafts, and their rollback records are retained. Multiple agents share the workspace, so the new host cannot infer a unique owner. Doctor refuses migration. Configuration parity does not cover this state, and TEST omitted this legacy shape.
+
+Proposed correction, pending approval:
+
+1. Assign the three records to Main. Add only missing ownership after checking exact metadata and applied-content digests. Preserve skills, drafts, applied status and rollback records.
+2. Check ownership before shutting down production. Refuse ambiguous records without changing them.
+3. Bind and snapshot the exact external skill directories Doctor can move. Restore them on failure without overwriting unrelated changes.
+4. Rehearse with isolated state and mapped workspace copies. Add a committed regression for ambiguous ownership and external directory rollback, then run the corrected release through the shared process.
+
+During the failed attempt, Doctor moved six external skill directories before refusing the ownerless records. Automatic rollback restored the runtime and state, and reviewed recovery restored all six original directories from the retained failed state. Contents and permissions matched; the copies remain available. The new regression must fail when only the state directory is rolled back.
+
+The repository workflow requires approval for a consequential ownership decision. The shared workspace and old CLI metadata do not establish which agent owns these records.
 
 ## Agent section
 
 ### State
 
+- Current blocker: production transaction `activation-1790582039867-96594` failed in Doctor's Skill Workshop sidecar migration. Exactly three applied legacy records lack `origin`; 35 other applied records retain origin metadata. The three drafts validate and their current skill files match the upstream rendered drafts. Their retained rollback files do not by themselves indicate unfinished writes. The proposed explicit Main ownership binding requires requester approval; the three proposal records have not been changed. The six directories moved by Doctor have been restored from verified retained copies. Before retrying, add read-only ownership preflight, bound external workspace snapshots, and synthetic shared-workspace migration and rollback regressions. PRODUCTION recovery proof verifies the predecessor runtime, configuration, service, interpreter and six restored skill directories; both health endpoints pass and the PROD lease is released.
+- Replacement public `6373b52e63e6b98d54f43a475f884d4961055bc7` and companion `0573b06fe945844d8117bf53da7afa85fea2eecd` passed composed CI `36388360634`, attempt 3. Build `95ecfc7531da895b85439f51c667efea20794eaf3956db7465ba869a9bb5463a` passed exact-artifact DEV and TEST. DEV ran four wrapper checks, nine messaging scenarios, 34 upgrade assertions and the real embedding test without skips. TEST passed 11 scenarios, injected activation failure and rollback, healthy activation, certification and final rollback. Its owned target is removed and its port is idle. Production activation failed in upstream Doctor on three ownerless legacy skill proposals; production is restored to healthy 2026.7.1.
+- The supplemental real 2026.7.1 CLI check passed both sandbox command forms with synthetic legacy configuration under the bound Node 22 interpreter. The candidate specifically rejected that configuration. Runtime and configuration hashes stayed unchanged and no Docker operation ran. This proves command compatibility without existing containers.
 - Shared target migrations and full configuration parity are implemented. Selected public `3eab63f419b7ecba9c2971d376fa1b2c9555f1ab` and companion `0573b06fe945844d8117bf53da7afa85fea2eecd` passed composed CI `36382703756` and exact-artifact DEV. TEST migration and activation passed, but final rollback failed when the candidate CLI parsed restored predecessor configuration. Maintained recovery succeeded with the unchanged target and receipt. The predecessor package snapshot remained unchanged; restored runtime, service and configuration match it, and TEST is stopped with port 18799 idle. This candidate is disqualified; the source repair requires a newly selected candidate through the shared process.
-- Browser restoration now uses the hash-verified `recovery/package` and the expected canonical Node interpreter. Candidate and predecessor digests, latest transaction checks, locks and slot ownership remain enforced. Browser recovery rejects incomplete predecessor snapshots. Focused validation passes 110 tests across topology and interpreter recovery, including legacy config pairing and interrupted replay. Typechecking and retained independent review pass. The actual installed predecessor CLI accepted restored legacy configuration under recording adapters during recovery.
+- Browser restoration now uses the hash-verified `recovery/package` and the expected canonical Node interpreter. Candidate and predecessor digests, latest transaction checks, locks and slot ownership remain enforced. Browser recovery rejects incomplete predecessor snapshots. Focused validation passes 110 tests across topology and interpreter recovery, including legacy config pairing and interrupted replay. Typechecking and retained independent review pass. The deployment fixture uses a synthetic predecessor CLI. This recovery proves snapshot selection and restoration, not actual predecessor CLI parsing. Separate installed tests use the real predecessor runtime to prove restored history readback.
 
 - Target verified 2026-09-26: `v2026.9.6`, source commit `eb377ac59e6c9fd6c7705028034812becf00271b`; GitHub stable and npm latest agree.
 - Existing source pin: `1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7` (`v2026.9.3`). Reuse landed compatibility code; [completed Plan 037](completed/037-openclaw-stable-upgrade.md) remains historical evidence.
 - Implementation branch: `codex/openclaw-2026-9-6`, based on main `2437225ebcde955a5c73ea1bc8dd04947ef7fb93`, with process update `73985a748b5acce182adbc8a7bbd61dbef4190e9` merged. The current main process and design structure apply.
-- Restart means a new candidate and run under main's process, not continuation of the paused release or reconstruction of its receipts. Preserve existing recovery assets and unrelated owners' state. The compatibility ports, focused tests and combined local DEV draft pass. DEV is healthy and its slot is released. Direct compiler execution and consistent incremental package selection pass focused checks, retained review and installed DEV validation. The declaration repair covers the prepared session and its client tools; type checks, retained review and the complete composed CI build pass. Unit coordination isolation passes 191 focused tests with a deliberately conflicting inherited record and lease, e2e typechecking and retained review. Final cumulative and release gates remain pending; production is unchanged.
+- Restart means a new candidate and run under main's process, not continuation of the paused release or reconstruction of its receipts. Preserve existing recovery assets and unrelated owners' state. The compatibility ports, focused tests and combined local DEV draft pass. DEV is healthy and its slot is released. Direct compiler execution and consistent incremental package selection pass focused checks, retained review and installed DEV validation. The declaration repair covers the prepared session and its client tools; type checks, retained review and the complete composed CI build pass. Unit coordination isolation passes 191 focused tests with a deliberately conflicting inherited record and lease, e2e typechecking and retained review. That draft was intermediate evidence. The replacement release evidence above supersedes it.
 
 ### Scope and acceptance criteria
 
@@ -129,11 +147,11 @@ Public CI run 36304553773 passes the build, complete accumulated regressions, pa
 
 The declaration regression compiles directly under the cumulative runner's existing deadline. Executable tests cover dispatch, missing projects and compiler failure. Incremental DEV packaging uses the full materializer's npm file selection and copy behavior. Prepared and freshly materialized payloads match. These repairs pass focused checks and retained review.
 
-The latest combined local DEV draft passes four wrapper scenarios, managed discovery and cold imports, all 33 upgrade cases and the official local embedding fixture with zero skips. The actual predecessor restarts and reads restored history after schema 23 rollback. Warm searches take 25–27 milliseconds. Model restart, normal shutdown and forced-loss cleanup pass; DEV is healthy and its slot is released. This is development evidence only. Final accumulated CI, exact CI-artifact DEV validation and merged TEST/production delivery remain pending. No prior 2026.9.3 receipt counts as proof for this target.
+The latest combined local DEV draft passes four wrapper scenarios, managed discovery and cold imports, all 33 upgrade cases and the official local embedding fixture with zero skips. The actual predecessor restarts and reads restored history after schema 23 rollback. Warm searches take 25–27 milliseconds. Model restart, normal shutdown and forced-loss cleanup pass; DEV is healthy and its slot is released. This is development evidence only. The replacement release evidence above now supplies accumulated CI, exact-artifact DEV and TEST; production activation failed on legacy proposal ownership and production is restored to healthy 2026.7.1. No prior 2026.9.3 receipt counts as proof for this target.
 
 ### Rollout and rollback
 
-The builder seals the separate TEST and PROD inputs and literal manifests before CI. Each environment selects its bound migration and full configuration checks. Follow the maintained process on main for selection and promotion; later unrelated merges do not invalidate an already selected candidate. Retain the real interpreter proof during handoff. The failed rollback candidate cannot be promoted even though its earlier migration and activation proofs passed.
+The builder seals the separate TEST and PROD inputs and literal manifests before CI. Each environment selects its bound migration and full configuration checks. Follow the maintained process on main for selection and promotion; later unrelated merges do not invalidate an already selected candidate. Retain the real interpreter proof during handoff. The failed rollback candidate cannot be promoted even though its earlier migration and activation proofs passed. Its replacement starts again at accumulated CI and DEV.
 
 Follow the shared process on main without a plan-specific rollout sequence. The upgrade-specific recovery requirement is a current, verified, complete stopped-state snapshot, including journals and transcript archives, paired with the old runtime, interpreter, service, packages and browser. Schema 23 cannot be downgraded by reinstalling an older package or changing schema markers. A later restore can lose post-snapshot work; preserve the failed new state. Existing backups remain protected but do not substitute for the new run's current production baseline.
 
