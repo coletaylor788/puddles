@@ -1,6 +1,6 @@
 # Upgrade maintained OpenClaw support to 2026.9.6
 
-**Status:** Implementation active; approved release handoff repair in progress
+**Status:** Implementation active; TEST rollback repair in progress
 **Issue:** [#114](https://github.com/coletaylor788/puddles/issues/114)
 **Last updated:** 2026-09-27
 
@@ -29,23 +29,20 @@ The newer host replaces the retired search backend with local embeddings over th
 
 #### Conversation history and recovery
 
-Upstream Doctor owns conversion to the new conversation storage. Our deployment integration invokes it and verifies history, ownership, schedules and archive references. The old application cannot read the new format. Recovery therefore restores the matching application and complete stopped-state snapshot together.
+Upstream Doctor owns conversion to the new conversation storage. Our deployment integration invokes it and verifies history, ownership, schedules and archive references. The old application cannot read the new format. Recovery therefore restores the matching application and complete stopped-state snapshot together. Browser cleanup must also run through the verified old application and its interpreter, because the restored configuration can contain fields the new application rejects. An interrupted rollback repeats from the same verified snapshots.
 
 ### Status
 
-The patch audit and compatibility work passed review, accumulated CI and exact-artifact DEV. Three public runtime fixes are removed because upstream covers them. All nine native messaging scenarios, 33 upgrade assertions and real local embeddings pass. Measured warm local searches take about 25–27 milliseconds without a timeout increase.
+The patch audit and compatibility work passed review, accumulated CI and exact-artifact DEV. Three public runtime fixes are removed because upstream covers them. All nine native messaging scenarios, 34 upgrade assertions and real local embeddings pass. Measured warm local searches take about 25–27 milliseconds without a timeout increase.
 
-Release validation also requires the approved
-[configuration parity work](045-environment-configuration-parity.md). That shared
-process change is tracked separately from this upgrade's requirements.
+The approved [configuration parity work](045-environment-configuration-parity.md) and [target-bound migrations](043-target-bound-state-migrations.md) are implemented. The current candidate passed accumulated CI and exact-artifact DEV. TEST passed migration and activation, then exposed a rollback error: browser cleanup used the new CLI after restoring the old configuration. Corrected recovery tooling restored TEST using the verified predecessor. Its runtime, configuration and service match the retained snapshots; TEST is stopped and its port is idle. Production remains on the predecessor; this candidate cannot advance.
 
 ## Agent section
 
 ### State
 
-- The approved [configuration parity work](045-environment-configuration-parity.md)
-  is being implemented. Its complete environment checks must pass before this
-  upgrade can advance through the maintained release process.
+- Shared target migrations and full configuration parity are implemented. Selected public `3eab63f419b7ecba9c2971d376fa1b2c9555f1ab` and companion `0573b06fe945844d8117bf53da7afa85fea2eecd` passed composed CI `36382703756` and exact-artifact DEV. TEST migration and activation passed, but final rollback failed when the candidate CLI parsed restored predecessor configuration. Maintained recovery succeeded with the unchanged target and receipt. The predecessor package snapshot remained unchanged; restored runtime, service and configuration match it, and TEST is stopped with port 18799 idle. This candidate is disqualified; the source repair requires a newly selected candidate through the shared process.
+- Browser restoration now uses the hash-verified `recovery/package` and the expected canonical Node interpreter. Candidate and predecessor digests, latest transaction checks, locks and slot ownership remain enforced. Browser recovery rejects incomplete predecessor snapshots. Focused validation passes 110 tests across topology and interpreter recovery, including legacy config pairing and interrupted replay. Typechecking and retained independent review pass. The actual installed predecessor CLI accepted restored legacy configuration under recording adapters during recovery.
 
 - Target verified 2026-09-26: `v2026.9.6`, source commit `eb377ac59e6c9fd6c7705028034812becf00271b`; GitHub stable and npm latest agree.
 - Existing source pin: `1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7` (`v2026.9.3`). Reuse landed compatibility code; [completed Plan 037](completed/037-openclaw-stable-upgrade.md) remains historical evidence.
@@ -136,7 +133,7 @@ The latest combined local DEV draft passes four wrapper scenarios, managed disco
 
 ### Rollout and rollback
 
-The current builder binds a literal TEST-only migration, while activation requires the same migration digest in production. The required upgrade cannot cross that handoff. Follow the [target-bound migration proposal](043-target-bound-state-migrations.md) through implementation and landing in the shared process; do not add an upgrade-specific bypass. Retain the real interpreter proof during handoff as well.
+The builder seals the separate TEST and PROD inputs and literal manifests before CI. Each environment selects its bound migration and full configuration checks. Follow the maintained process on main for selection and promotion; later unrelated merges do not invalidate an already selected candidate. Retain the real interpreter proof during handoff. The failed rollback candidate cannot be promoted even though its earlier migration and activation proofs passed.
 
 Follow the shared process on main without a plan-specific rollout sequence. The upgrade-specific recovery requirement is a current, verified, complete stopped-state snapshot, including journals and transcript archives, paired with the old runtime, interpreter, service, packages and browser. Schema 23 cannot be downgraded by reinstalling an older package or changing schema markers. A later restore can lose post-snapshot work; preserve the failed new state. Existing backups remain protected but do not substitute for the new run's current production baseline.
 

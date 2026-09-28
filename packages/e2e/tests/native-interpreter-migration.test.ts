@@ -356,7 +356,7 @@ describe("reversible configured Node interpreter migration", () => {
     expect(JSON.parse(readFileSync(join(f.recovery(), "failure.json"), "utf8")).message).toBe(`synthetic ${failure} failure`);
   });
 
-  it.each(["recover", "rollback"])("recovers interrupted explicit rollback using old health and retained candidate sandbox Node (%s)", async (action) => {
+  it.each(["recover", "rollback"])("recovers interrupted explicit rollback using predecessor health and sandbox Node (%s)", async (action) => {
     const f = fixture();
     const activated = await f.activate();
     const before = f.calls.length;
@@ -371,7 +371,7 @@ describe("reversible configured Node interpreter migration", () => {
     const replay = f.calls.slice(replayStart);
     const sandbox = replay.filter(({ args }) => args.includes("sandbox"));
     expect(sandbox).toHaveLength(2);
-    expect(sandbox.every(({ command, args }) => command === f.desired.path && args[0] === join(activated.recoveryDir, "candidate/openclaw.mjs"))).toBe(true);
+    expect(sandbox.every(({ command, args }) => command === f.expected.path && args[0] === join(activated.recoveryDir, "package/openclaw.mjs"))).toBe(true);
     expect(replay.find(({ args }) => args.includes("health"))?.command).toBe(f.expected.path);
     expect(readFileSync(join(activated.recoveryDir, "failed-service.plist"))).toEqual(failedService);
     expect(readFileSync(f.target.plistPath)).toEqual(f.original);
@@ -405,10 +405,15 @@ describe("reversible configured Node interpreter migration", () => {
     const journal = JSON.parse(readFileSync(join(activated.recoveryDir, "recovery.json"), "utf8"));
     expect(journal.nodeMigration.expected.path).toBe(f.expected.path);
     expect(journal.nodeMigration.expected.realPath).toBe(f.expected.realPath);
+    const rollbackStart = f.calls.length;
     expect((await f.activate(activated.recoveryDir, "rollback")).status).toBe("rolled-back");
     expect(readFileSync(f.target.plistPath)).toEqual(f.original);
     expect(plist(f.target.plistPath).ProgramArguments[4]).toBe(f.expected.path);
     expect(realpathSync(f.expected.path)).toBe(f.expected.realPath);
+    const sandbox = f.calls.slice(rollbackStart).filter(({ args }) => args.includes("sandbox"));
+    expect(sandbox).toHaveLength(2);
+    expect(sandbox.every(({ command, args }) => command === f.expected.realPath &&
+      args[0] === join(activated.recoveryDir, "package/openclaw.mjs"))).toBe(true);
     expect(f.calls.filter(({ args }) => args.includes("health")).at(-1)?.command).toBe(f.expected.realPath);
   });
 

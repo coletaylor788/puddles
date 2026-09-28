@@ -177,10 +177,16 @@ function fixture(failures: string[] = []) {
       writeFileSync(join(target.stateDir, "config"), "migrated");
       writeFileSync(join(target.stateDir, "new-state"), "new");
     },
-    async browser(image: string, runtime = target.installDir) {
+    async browser(image: string, runtime = target.installDir, interpreter?: string) {
       check(image === "previous-browser" ? "browser-restore" : "browser");
       expect(started).toBe(false);
-      expect(readFileSync(join(runtime, "package"), "utf8")).toBe("candidate");
+      const restoring = image === "previous-browser";
+      expect(readFileSync(join(runtime, "package"), "utf8")).toBe(restoring ? "previous" : "candidate");
+      expect(readFileSync(join(target.stateDir, "config"), "utf8")).toBe(restoring ? "original" : "migrated");
+      if (restoring) {
+        expect(runtime).not.toBe(target.installDir);
+        expect(interpreter).toBe(process.execPath);
+      }
       browser = image;
     },
     async currentBrowser() { check("browser-identity"); return browser; },
@@ -568,7 +574,22 @@ describe("native activation and recovery transaction", () => {
     expect(f.running()).toBe(true);
   });
 
-  it("uses an immutable candidate CLI when recovery resumes after the old package was restored", async () => {
+  it("rejects browser recovery without a complete predecessor snapshot before stopping", async () => {
+    const f = fixture(["health", "browser-restore"]);
+    await expect(activateNative(f.receipt, f.target, () => f.ops)).rejects.toThrow("Activation and rollback failed");
+    const recovery = join(f.target.backupRoot, readdirSync(f.target.backupRoot).find((name) => name.startsWith("activation-"))!);
+    const path = join(recovery, "recovery.json");
+    const journal = JSON.parse(readFileSync(path, "utf8"));
+    journal.snapshotReady = false;
+    writeFileSync(path, JSON.stringify(journal));
+    f.calls.length = 0;
+    await expect(activateNative(f.receipt, f.target, () => f.ops, recovery)).rejects.toThrow("Activation and rollback failed");
+    expect(JSON.parse(readFileSync(join(recovery, "rollback-failure.json"), "utf8")).message).toContain("verified predecessor snapshot");
+    expect(f.calls).not.toContain("stop");
+    expect(f.running()).toBe(false);
+  });
+
+  it("uses the immutable predecessor CLI with restored legacy config when rollback resumes", async () => {
     const f = fixture(["health"]);
     const start = f.ops.start;
     let starts = 0;
