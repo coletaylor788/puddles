@@ -9,7 +9,9 @@ metadata:
 # Safe Feature Development
 
 Track feature development in a repository plan. The plan holds the detail. Its
-issue is a short prose summary and status that links to the plan.
+issue is a short prose summary and status that links to the plan. An initial
+finding without a design may link source evidence instead; add its plan when
+the implementation is designed.
 Use the repository's existing build, test, deployment, and rollback tools.
 
 Use this workflow for feature implementation, behavior changes, migrations,
@@ -159,7 +161,13 @@ and review remediation, validation, deployment, rollback, merge, and
 post-landing verification. A controlling instruction may explicitly stop or
 limit those actions, and repository permissions and protections always apply.
 
-Always research and develop the design with the requester before implementation.
+The [development-loop-manager](../development-loop-manager/SKILL.md) defines
+preauthorized maintenance scope when invoked. Within that scope, record the
+design and proceed without another design approval; all review and release
+checks still apply. The design-approval checkpoints below apply outside it.
+
+Always research and develop the design with the requester before implementation
+outside that preauthorized maintenance scope.
 Record it in the plan and obtain explicit approval to implement that design.
 A request to design or implement a feature does not approve an unseen design.
 An explicit approval already given for the current design remains valid; do not
