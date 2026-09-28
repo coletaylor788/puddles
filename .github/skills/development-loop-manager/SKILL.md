@@ -37,7 +37,8 @@ and tooling that guide future work. Make each loop safer, faster, and simpler.
 
 ### Investigate
 
-- Catch up on recent changes and others' work; build on existing improvements.
+- Catch up on the last review, recent changes, and others' work. Build on existing
+  improvements.
 - Inspect recent loops against the priorities. Follow the evidence to the cause
   and the guidance or tooling that can prevent recurrence.
 - Identify demonstrated gaps. If a late failure could not reasonably be caught
@@ -45,20 +46,27 @@ and tooling that guide future work. Make each loop safer, faster, and simpler.
 
 ### Improve
 
-- Fix the guiding skill, script, check, or process so later features benefit.
-  Prefer simplification over another mechanism; do not manufacture fixes or rules.
+- Invocation authorizes dev-loop fixes through validation and landing without
+  separate design approval. Preserve product behavior, the security architecture,
+  and release gates. Get approval for changes outside those bounds or material
+  increases in cost or operational risk; continue independent work.
+- Fix the guiding skill, script, check, or process. Prefer simplification over
+  another mechanism; do not manufacture fixes or duplicate an active owner's work.
 - Follow [safe-feature-development](../safe-feature-development/SKILL.md) for
-  approval, validation, and landing. Preserve security controls and release gates.
+  review, validation, and landing. Autonomy does not waive checks or permissions.
+- File product bugs and other findings outside the loop in the owning repository.
+  Reuse existing issues; include evidence and a clear next step. Filing does not
+  authorize product implementation. Keep sensitive details out of public issues.
 - Use the [runner guide](../../../packages/e2e/README.md) and
   [coordination rules](../../../packages/e2e/DEPLOYMENT_COORDINATION.md) for reuse
   and cleanup. Protect other owners' work, retained evidence, and rollback state.
 - Use the [storage lifecycle](../../../packages/e2e/DEVELOPMENT_STORAGE.md) for
   read-only previews and owner-confirmed cleanup. Keep one mutable build and one
   ready payload per task. Age, an idle chat, or a missing PID is not ownership.
-- After storage tooling merges, notify affected owners to apply it to their own
-  completed work and report actual reclaimed space.
-- Record findings, changes, open actions, and the last review briefly. Check later
-  loops to confirm the improvement helped; revise it if it did not.
+- Account for every actionable finding: fixed with evidence, owned by existing work, linked
+  to an issue, or awaiting a specific human decision. Record the review date.
+- Check later loops for adoption and results, including actual reclaimed space.
+  Revise improvements that did not help.
 
 ## Write skills for an agent
 

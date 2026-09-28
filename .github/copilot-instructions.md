@@ -148,8 +148,12 @@ commits, pushes, pull requests, review remediation, remote checks, deployment,
 rollback, merge, and verification. A controlling instruction may explicitly
 limit those actions, and repository permissions and protections always apply.
 
-Always develop the design with the requester and obtain explicit approval to
-implement it before implementation begins. Asking to design or implement a
+Invoking [development-loop-manager](skills/development-loop-manager/SKILL.md)
+preauthorizes maintenance within that skill's scope. Keep its review and release
+checks; do not request separate design approval for work inside those bounds.
+
+Outside that scope, develop the design with the requester and obtain explicit
+approval before implementation begins. Asking to design or implement a
 feature is not by itself approval of an unseen design. Approval already given
 for the current design remains valid. After approval, continue autonomously
 through landing and production deployment within that scope; production does
@@ -184,7 +188,8 @@ Every new or substantively updated repository plan must use the two-part
 `Human section` and `Agent section` format defined by
 `safe-feature-development`. Rewrite both parts together whenever the plan
 changes so they stay in sync. The plan holds the detail. Its issue is a plan
-link plus two short prose sections, `Summary` and `Status`, and nothing else.
+link plus two short prose sections, `Summary` and `Status`. An initial finding
+without a design may link source evidence instead; add its plan when designed.
 
 ## Publication safety
 
