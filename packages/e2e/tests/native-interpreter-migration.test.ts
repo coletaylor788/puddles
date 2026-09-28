@@ -92,6 +92,10 @@ function fixture(wrapper = true, migration = true, binary = false, oldAlias = fa
         return "";
       }
       if (!args[0].endsWith("openclaw.mjs")) throw new Error("Unexpected fixture Node command");
+      if (args[1] === "doctor" && failures.includes("doctor-timeout")) {
+        failures.splice(failures.indexOf("doctor-timeout"), 1);
+        throw new Error(`Command exceeded ${options.timeoutMs}ms and was terminated`);
+      }
       if (migration) {
         const oldRuntime = readFileSync(args[0], "utf8") === "old runtime";
         expect(command).toBe(oldRuntime ? expected.realPath ?? expected.path : desired.path);
@@ -134,7 +138,12 @@ function fixture(wrapper = true, migration = true, binary = false, oldAlias = fa
         check(to.includes("restore-package") ? "restore-package" : "swap");
         renameSync(from, `${from}.exchange`); renameSync(to, from); renameSync(`${from}.exchange`, to);
       },
-      async doctor() { check("doctor"); await native.doctor(); },
+      async doctor() {
+        const journal = JSON.parse(readFileSync(join(recovery, "recovery.json"), "utf8"));
+        expect(journal.status).toBe("migrating-doctor");
+        if (journal.stateMigration) expect(journal.stateMigration.phase).toBe("doctor");
+        check("doctor"); await native.doctor();
+      },
       async stateMigration(phase: string, runtime: string, manifestPath: string, sha256: string, expectedBuiltIn?: object) {
         check(`migration:${phase}`);
         expect(readFileSync(join(runtime, "openclaw.mjs"), "utf8")).toBe("candidate runtime");
@@ -207,6 +216,34 @@ describe("stopped-state migration inside interpreter rollback", () => {
     expect(f.events).not.toContain("swap");
   });
 
+  it("gives Doctor a migration allowance while keeping service commands short", async () => {
+    const f = fixture();
+    await f.activate();
+    const doctors = f.calls.filter((call) => call.args[1] === "doctor");
+    expect(doctors).toHaveLength(1);
+    expect(doctors[0].options.timeoutMs).toBe(20 * 60_000);
+    const serviceCalls = f.calls.filter((call) => call.command === "launchctl" || call.args[1] === "gateway" && call.args[2] === "health");
+    expect(serviceCalls.some((call) => call.args[1] === "gateway" && call.args[2] === "health")).toBe(true);
+    expect(serviceCalls.some((call) => call.command === "launchctl")).toBe(true);
+    expect(serviceCalls.every((call) => call.options.timeoutMs === 60_000)).toBe(true);
+  });
+
+  it("restores the predecessor after the bounded Doctor command times out", async () => {
+    const f = fixture();
+    stateMigration(f);
+    f.failures.push("doctor-timeout");
+    await expect(f.activate()).rejects.toThrow("Activation failed");
+    const recovery = f.recovery();
+    expect(JSON.parse(readFileSync(join(recovery, "failure.json"), "utf8")).message)
+      .toBe("Command exceeded 1200000ms and was terminated");
+    expect(JSON.parse(readFileSync(join(recovery, "recovery.json"), "utf8")))
+      .toMatchObject({ status: "rolled-back", quiesced: false, stateMigration: { phase: "doctor" } });
+    expect(readFileSync(join(f.target.stateDir, "config"), "utf8")).toBe("old state");
+    expect(readFileSync(f.target.plistPath)).toEqual(f.original);
+    expect(readFileSync(join(f.target.installDir, "openclaw.mjs"), "utf8")).toBe("old runtime");
+    expect(f.events).not.toContain("migration:cron");
+  });
+
   it("checks the manifest before stop, then mutates config before doctor and cron before start", async () => {
     const f = fixture();
     const migration = stateMigration(f);
@@ -240,6 +277,9 @@ describe("stopped-state migration inside interpreter rollback", () => {
     expect(readFileSync(f.target.plistPath)).toEqual(f.original);
     expect(readFileSync(join(f.target.installDir, "openclaw.mjs"), "utf8")).toBe("old runtime");
     expect(JSON.parse(readFileSync(join(f.recovery(), "failure.json"), "utf8")).message).toBe(`synthetic ${failure} failure`);
+    if (failure === "doctor") {
+      expect(JSON.parse(readFileSync(join(f.recovery(), "recovery.json"), "utf8")).stateMigration.phase).toBe("doctor");
+    }
   });
 
   it("retains recovery after a partial config migration and interrupted rollback", async () => {

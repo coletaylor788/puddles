@@ -626,6 +626,9 @@ must use isolated workspace references before Doctor runs. Include the failing
 legacy shape in TEST; configuration parity alone does not cover it. Ownership
 repairs need an explicit owner decision, exact content preconditions and retained
 original metadata. Apply an already approved decision without another prompt.
+For history-format upgrades, measure synthetic migration volume and index
+cardinality before production. Small correctness fixtures do not establish
+a safe downtime allowance. Keep large measurements out of routine CI.
 
 ### Release ownership and cleanup
 

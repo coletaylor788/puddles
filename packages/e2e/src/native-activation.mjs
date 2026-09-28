@@ -178,9 +178,10 @@ export function systemOperations(target, recoveryDir, execute = runCommand) {
     logPath: join(recoveryDir, `command-${counter++}.log`), ...options,
   });
   const service = `gui/${process.getuid()}/${target.label}`;
-  const cli = (args, runtime = target.installDir, interpreter = target.nodeMigration?.desired.path ?? process.execPath) =>
+  const cli = (args, runtime = target.installDir, interpreter = target.nodeMigration?.desired.path ?? process.execPath, options = {}) =>
     run(interpreter, [join(runtime, "openclaw.mjs"), ...args], {
       env: { ...env, PATH: `${dirname(interpreter)}:${process.env.PATH ?? "/usr/bin:/bin"}` },
+      ...options,
     });
   const currentBrowser = async () => target.browser
     ? (await run("docker", ["image", "inspect", "--format", "{{.Id}}", target.browser.tag], { capture: true })).trim()
@@ -288,7 +289,8 @@ shutil.copymode(source, destination)
     },
     async swap(from, to) { await run("python3", [join(patchDir, "swap-runtime-trees.py"), from, to]); },
     async doctor() {
-      await cli(["doctor", "--fix", "--yes"]);
+      // Importing retained history scales with data volume, unlike service commands.
+      await cli(["doctor", "--fix", "--yes"], undefined, undefined, { timeoutMs: 20 * 60_000 });
       if (await loaded()) throw new Error("Doctor activated the externally managed gateway");
     },
     async stateMigration(phase, runtime, manifestPath, sha256, expectedBuiltIn) {
@@ -812,6 +814,8 @@ export async function activateNative(receipt, target, operationsFactory = system
       checkpoint();
     }
     applyWorkshopOwnerRepairs(target);
+    if (journal.stateMigration) journal.stateMigration.phase = "doctor";
+    save("migrating-doctor");
     await operations.doctor();
     if (journal.stateMigration) {
       journal.stateMigration.phase = "cron";
