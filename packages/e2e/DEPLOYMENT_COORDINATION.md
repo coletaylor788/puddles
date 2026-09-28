@@ -163,7 +163,7 @@ merged public commit, with `integration.defaultRef` set to freshly fetched
 still on main. Do not point activation at the feature branch or substitute the
 newest unchecked main for an already tested batch.
 
-## Failure, reverts, and communication
+## Failure, corrections, and communication
 
 The batch owner identifies failures, preserves evidence, and records
 `batch-fail` with `batchId`, `batchToken`, `agent`, `evidence`, and, once known,
@@ -171,23 +171,27 @@ The batch owner identifies failures, preserves evidence, and records
 containing those failed commits. Distinguish source regressions from target or
 infrastructure failures before reverting. Keep PROD healthy while investigating.
 
-For a confirmed source regression, the batch owner creates and merges a normal
-revert on current main, including dependent changes that cannot stand alone.
-Never reset or force-push main. Recheck the reverting candidate and required CI.
-Message the responsible feature agent with its commit, failure evidence, revert,
-and repair request. That agent fixes its change with a regression in its own
-worktree and re-enters the DEV and merge loop. Do not wait for that repair to
-continue delivering unrelated work.
+For a confirmed source regression, merge a reviewed fix or revert on current
+main, with a committed regression and required repository checks. Prefer a
+revert when a repair would delay unrelated delivery. Never reset or force-push
+main. Notify the responsible feature owner with the cause and correction.
 
-Fetch current main again and select a successor batch. Include `predecessor`,
-`previousToken`, `revertEvidence`, and `reverts: [{"commit": "bad SHA", "revert":
-"merged revert SHA"}]` in the selection spec. The same initiating owner owns
-the corrected batch, even if it now contains additional merged work. Build it
-in CI and repeat from DEV through TEST. A successful corrected TEST clears its failed
-predecessors' promotion holds, while older artifacts containing reverted code
-remain disqualified. If attribution is uncertain or a revert would cause data
-loss or cross-feature breakage, preserve the hold and request the concrete
-human decision while continuing independent work.
+Select a successor with `predecessor` and `previousToken`. A fix uses
+`repairEvidence` and `repairs: [{"commit": "bad SHA", "repair": "merged fix SHA"}]`.
+A revert uses `revertEvidence` and
+`reverts: [{"commit": "bad SHA", "revert": "merged revert SHA"}]`. Both may appear
+for different failed commits. Each correction must be a different merged commit
+in the same repository. Preserve existing correction mappings; do not label a
+fix as a revert or omit known failure attribution to bypass disqualification.
+Infrastructure failures still hold the failed batch even without a responsible
+source commit.
+
+The successor owner builds selected merged source once and starts validation at
+DEV. Successful TEST clears predecessor promotion holds and records the proven
+correction. Older batches remain disqualified, and later batches containing the
+bad commit must also include its correction. If attribution is uncertain,
+preserve the failure evidence while investigating. Escalate only a concrete
+decision outside the approved scope, such as data loss or cross-feature breakage.
 
 Owners actively monitor their slot, CI, batch, and notification records until
 healthy production or a verified recovery and explicit ownership handoff.
