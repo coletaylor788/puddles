@@ -240,17 +240,18 @@ checks fail. Public CI never needs live credentials or another repository.
 
 ## Environment configuration
 
-DEV, TEST and PROD each own their configuration. Refreshing DEV preserves
-its authored settings and restores its prior state with its runtime on failure.
-Fixture adapters remain explicit. DEV does not apply a release's TEST or PROD
-migration. Stable non-secret target settings belong in the companion repository;
-credentials stay outside both repositories, and public examples stay synthetic.
+DEV, TEST and PROD each own their generated configuration and writable state.
+Use one reviewed non-secret behavioral base in the companion repository, with
+exact environment bindings for paths, ports, identities and recording fixtures.
+Credentials stay outside both repositories. Public examples remain synthetic.
 
-For a release with target-specific migrations, use the maintained generator to
-seal both inputs and literal manifests before building. TEST runs its own bound
-manifest. PROD selects its presealed manifest and checks fresh selected state.
-Follow the skill and runner guide for source validation, evidence transport and
-rollback. Do not attach a new manifest to an already certified build.
+Preserve DEV experiments on refresh; require explicit reconciliation or a
+reviewed change before release validation. Snapshot and restore configuration
+with its runtime. DEV does not apply TEST or PROD migrations. Rehearsal retains
+the predecessor's authored legacy shape with declared TEST bindings, then checks
+the complete migrated candidate. Bind both expectations before building and
+reject drift at the relevant release stage. Follow the skill and runner guide
+for SDK normalization, sealed manifests, evidence and rollback.
 
 ## OpenClaw deployment topology
 

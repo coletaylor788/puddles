@@ -314,6 +314,11 @@ it("runs every mapped regression through the upstream test entrypoint", async ()
   await nativePipeline("ci", async () => {});
   const suite = JSON.parse(readFileSync(join(import.meta.dirname, "../openclaw-patch-suite.json"), "utf8"));
   const calls = vi.mocked(runCommand).mock.calls;
+  for (const [name, args, options] of calls) {
+    if (name === "node" && args[0] === "scripts/run-vitest.mjs") {
+      expect(options?.env?.OPENCLAW_VITEST_WORKER_CACHE).toBe("1");
+    }
+  }
   for (const target of new Set<string>(suite.patches.flatMap((patch: { tests: string[] }) => patch.tests))) {
     for (const action of ["list", "run"]) {
       expect(calls.some(([command, args]) => command === "node" &&
@@ -396,7 +401,7 @@ it("propagates a mapped typecheck failure before Vitest", async () => {
 it("binds migration bytes to cumulative and runtime proofs without rebuilding unchanged source", async () => {
   const { directory, run } = setup();
   const path = join(realpathSync(directory), "migration.json");
-  const manifest = { schemaVersion: 1, configOperations: [
+  const manifest = { schemaVersion: 1, configuration: { schemaVersion: 1, baseSha256: "a".repeat(64), bindingsSha256: "b".repeat(64), predecessorSha256: "c".repeat(64), candidateSha256: "d".repeat(64) }, configOperations: [
     { kind: "set", path: ["memory", "search", "provider"], expected: { exists: false }, value: "local" },
   ] };
   writeFileSync(path, JSON.stringify(manifest));
@@ -406,6 +411,7 @@ it("binds migration bytes to cumulative and runtime proofs without rebuilding un
   for (const name of ["regressions", "runtime"]) {
     expect(JSON.parse(readFileSync(join(run, `stages/${name}.json`), "utf8")).inputs.stateMigration).toEqual(first.stateMigration);
   }
+  expect(first.stateMigration.configuration).toEqual(manifest.configuration);
   manifest.configOperations[0].value = "none";
   writeFileSync(path, JSON.stringify(manifest));
   const second = await nativePipeline("ci", async () => {});

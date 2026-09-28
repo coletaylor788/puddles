@@ -3,7 +3,9 @@ import { linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, s
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 // @ts-expect-error Native lifecycle helpers execute directly as JavaScript.
-import { canonicalValueDigest, executeStateMigration, silenceCronJob, validateMigrationManifest } from "../src/native-state-migration.mjs";
+import { canonicalValueDigest, configDraft, executeStateMigration, silenceCronJob, validateMigrationManifest } from "../src/native-state-migration.mjs";
+// @ts-expect-error Executable release module.
+import { configurationDigest } from "../src/environment-configuration.mjs";
 // @ts-expect-error Native lifecycle helpers execute directly as JavaScript.
 import { fileDigest } from "../src/native-state.mjs";
 
@@ -87,6 +89,29 @@ function fixture() {
 }
 
 describe("digest-bound stopped-state operations", () => {
+  it("binds the full predecessor, including unrelated settings, without resolving credentials", async () => {
+    const f = fixture();
+    const authored = structuredClone(f.snapshot.parsed);
+    Object.assign(authored, { gateway: { auth: { token: "${SYNTHETIC_TOKEN}" } }, tools: { profile: "minimal" } });
+    f.snapshot.parsed = authored;
+    Object.assign(f.snapshot.sourceConfig, { gateway: { auth: { token: "resolved-value-must-not-be-compared" } } });
+    Object.assign(f.manifest, { configuration: { schemaVersion: 1, baseSha256: "a".repeat(64), bindingsSha256: "b".repeat(64),
+      predecessorSha256: configurationDigest(authored), candidateSha256: configurationDigest(configDraft(authored, f.manifest.configOperations)) } });
+    await expect(f.run("preflight")).resolves.toBeDefined();
+    Object.assign(f.snapshot.parsed, { tools: { profile: "full" } });
+    await expect(f.run("preflight")).rejects.toThrow(/parity failed for predecessor/);
+    expect(f.sdk.mutateConfigFile).not.toHaveBeenCalled();
+  });
+
+  it("checks the final configuration even without a cron operation", async () => {
+    const f = fixture();
+    Object.assign(f.manifest, { configuration: { schemaVersion: 1, baseSha256: "a".repeat(64), bindingsSha256: "b".repeat(64),
+      predecessorSha256: configurationDigest(f.snapshot.parsed), candidateSha256: configurationDigest(configDraft(f.snapshot.parsed, f.manifest.configOperations)) } });
+    Reflect.deleteProperty(f.manifest, "cronOperation");
+    await expect(f.run("cron")).rejects.toThrow(/parity failed for migrated candidate/);
+    f.snapshot.parsed = configDraft(f.snapshot.parsed, f.manifest.configOperations);
+    await expect(f.run("cron")).resolves.toBeUndefined();
+  });
   it("shares deterministic JSON value digests without accepting non-JSON values", () => {
     expect(canonicalValueDigest({ b: 2, a: [1, false] })).toBe(canonicalValueDigest({ a: [1, false], b: 2 }));
     expect(canonicalValueDigest("1")).not.toBe(canonicalValueDigest(1));
