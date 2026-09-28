@@ -69,6 +69,7 @@ it("runs repository checks on feature events and builds a release only on a main
   expect(workflow.on.workflow_dispatch).toBeNull();
   expect(workflow.jobs.repository.if).toBe("github.event_name != 'workflow_dispatch'");
   expect(workflow.jobs.cumulative.if).toBe("github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)");
+  expect(workflow.jobs.repository.env.E2E_RESOURCE_PROFILE).toBe("hosted-arm");
   const steps = workflow.jobs.repository.steps;
   const commands = steps.map((step: any) => step.run ?? "").join("\n");
   expect(commands).toContain("corepack pnpm build\ncorepack pnpm lint\ncorepack pnpm test");

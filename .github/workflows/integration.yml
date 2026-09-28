@@ -50,6 +50,7 @@ jobs:
     timeout-minutes: 30
     env:
       E2E_LOCAL_EXTENSION: ""
+      E2E_RESOURCE_PROFILE: hosted-arm
     steps:
       - name: Check out Puddles
         uses: actions/checkout@v4
