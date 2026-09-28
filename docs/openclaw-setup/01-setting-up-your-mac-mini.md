@@ -2,14 +2,18 @@
 
 This is the first guide in my journey building Puddles, my personal AI agent, on a Mac Mini. By the end of it you'll have a hardened, headless server you can manage from your phone or laptop — the foundation everything else gets built on top of.
 
+Follow the [security architecture](security-architecture.md) throughout setup.
+Bootstrap and recover at the physical console when Tailscale is unavailable.
+Do not open a LAN management path to work around it.
+
 The work here isn't strictly OpenClaw-specific. If you stop after this guide and never install an agent, you still end up with a securely run always-on home server you can use for anything. Worth doing on its own.
 
 A few things you'll come away with:
 
 - A Mac Mini that runs **without a monitor, keyboard, or mouse**
 - **Two accounts** with clean separation: an admin you almost never log into, and a "service" account that runs everything
-- An **encrypted disk** (FileVault) you can unlock remotely after a power outage from your phone or laptop in about three taps
-- **SSH gated by Touch ID** on your other Apple devices, with no exportable private keys anywhere
+- An **encrypted disk** (FileVault), with physical access for recovery when Tailscale is unavailable
+- **Key-authenticated SSH** over Tailscale; Touch ID is an optional key policy
 - **Tailscale** for zero-config secure access from anywhere in the world
 - Network isolation on its own VLAN
 - **Automated weekly software updates** for installed packages
@@ -30,12 +34,12 @@ Security is the throughline. A lot of the choices below go beyond the out-of-the
 4. [Initial macOS install and accounts](#4-initial-macos-install-and-accounts)
 5. [Network: VLAN, ethernet, hostname](#5-network-vlan-ethernet-hostname)
 6. [Sharing services and lock screen](#6-sharing-services-and-lock-screen)
-7. [SSH with Secure Enclave keys (Touch ID)](#7-ssh-with-secure-enclave-keys-touch-id)
+7. [SSH keys](#7-ssh-keys)
 8. [Tailscale](#8-tailscale)
 9. [Homebrew and base tools](#9-homebrew-and-base-tools)
 10. [FileVault and the two-step unlock model](#10-filevault-and-the-two-step-unlock-model)
-11. [One-command unlock from your MacBook](#11-one-command-unlock-from-your-macbook)
-12. [One-tap unlock from your iPhone](#12-one-tap-unlock-from-your-iphone)
+11. [Recovery from your MacBook](#11-recovery-from-your-macbook)
+12. [Recovery from your phone](#12-recovery-from-your-phone)
 13. [Automated weekly Homebrew updates](#13-automated-weekly-homebrew-updates)
 14. [iCloud backup convention](#14-icloud-backup-convention)
 15. [Verifying everything works](#15-verifying-everything-works)
@@ -57,12 +61,12 @@ Security is the throughline. A lot of the choices below go beyond the out-of-the
 
 - **Physical theft** — encrypted disk, owner-credential-required recovery
 - **Lateral movement from other devices on the home network** — VLAN isolation
-- **Internet attackers** — no inbound ports forwarded; everything through Tailscale
+- **Network attackers**: no management ports reachable outside Tailscale, including on the LAN
 - **The agent itself getting compromised** (e.g. via prompt injection) — separate identity, standard user
 
 ### Compromises
 
-- **A frictionless reboot.** FileVault is on, which means a power outage requires a quick unlock dance instead of a clean auto-login. Worth the tradeoff.
+- **Unattended recovery.** If FileVault prevents Tailscale from starting, someone must unlock the disk at the physical console.
 
 ### Key design choices and their reasons
 
@@ -80,7 +84,7 @@ Security is the throughline. A lot of the choices below go beyond the out-of-the
 
 Two principles drive everything inside the box:
 
-- **Account isolation.** An admin account owns system-level changes (Homebrew, `sudo`, network/sharing toggles). A separate standard account (`puddles`) runs all the actual workloads — agent processes, background services, anything autonomous. The agent account **cannot `sudo`**. If it's ever compromised, the blast radius is one user's home directory, not the whole machine.
+- **Account isolation.** An admin account owns system-level changes (Homebrew, `sudo`, network/sharing toggles). A separate standard account (`puddles`) runs all the actual workloads — agent processes, background services, anything autonomous. The agent account **cannot `sudo`**. This limits account privileges; it does not replace agent sandboxing or prevent access to resources granted to that account.
 - **Encryption at rest.** Disk is FileVault-encrypted to protect data against physical theft.
 
 ```
@@ -111,86 +115,43 @@ Two principles drive everything inside the box:
 
 ### Network architecture
 
-The network is the first layer of defense, designed around these principles:
+- Permit management only through Tailscale, with approved accounts and keys.
+- Block access to server services from the internet, LAN, and other VLANs.
+  VLAN isolation alone does not protect against devices on the same VLAN.
+- Keep the server from initiating connections to personal devices.
+- Use the physical console for bootstrap and recovery when Tailscale is unavailable.
 
-- **No ingress from the internet.** Tailscale provides remote access without any port forwarding.
-- **Recoverable from anywhere after an unexpected restart.** A planned second path (Tailscale on the UDM itself) covers the window before FileVault is unlocked, when the Mini's own Tailscale daemon hasn't started yet.
-- **Agent isolated from the rest of the internal network.** Inbound from Trusted VLAN is restricted to SSH only; outbound from the Agent VLAN to anything else is dropped.
-
-```
-                       ┌─────────────────────────┐
-                       │       My devices        │
-                       │       (anywhere)        │
-                       │     MacBook  iPhone     │
-                       └──────┬─────────────┬────┘
-                              │             │
-                  via         │             │  Planned: Tailscale in UDM
-                  Tailscale   │             │  
-                              │             │
-   ┌──────────────────────────┘             │
-   │                                        │
-   │                                        ▼
-   │          ╔════════════════════════════════════════════════════════╗
-   │          ║                     HOME NETWORK                       ║
-   │          ║                                                        ║
-   │          ║                ┌──────────────────┐                    ║
-   │          ║                │  UDM (gateway)   │                    ║
-   │          ║                └────────┬─────────┘                    ║
-   │          ║                         │                              ║
-   │          ║         ┌───────────────┼─────────────────┐            ║
-   │          ║         ▼               ▼                 ▼            ║
-   │          ║   ┌─────────┐       ┌──────────┐       ┌──────────┐    ║
-   │          ║   │ Trusted │  22   │  Agent   │       │  Other   │    ║
-   │          ║   │  VLAN   │   ✓   │  VLAN    │   ✗   │  VLANs   │    ║
-   │          ║   │         │─────► │          │─────► │ (IoT,    │    ║
-   │          ║   │         │◄───── │ Mac Mini │◄───── │  guest)  │    ║
-   │          ║   │         │   ✗   │          │   ✗   │          │    ║
-   │          ║   └─────────┘       └────┬─────┘       └──────────┘    ║
-   │          ║                          │                             ║
-   │          ║                          │                             ║
-   │          ║                          │                             ║
-   │          ║                          ▼                             ║
-   │          ╚══════════════════════════╪═════════════════════════════╝
-   │                                     │
-   │                                     ▼
-   │                      ┌─────────────────────────────┐
-   └─────────────────────►│          Tailscale          │
-                          └─────────────────────────────┘
-```
-
-#### Two paths in
-
-Because Tailscale doesn't run until FileVault is unlocked, after an unexpected reboot you need a **second path** to reach the box on the LAN:
-
-| Path                                       | When to use                         | Works pre-FileVault-unlock? |
-| ------------------------------------------ | ----------------------------------- | --------------------------- |
-| Tailscale → `<mac-mini-tailnet-name>`      | Day-to-day management from anywhere | ❌                           |
-| Trusted VLAN → Mini's reserved LAN IP      | Unlocking after power loss, at home | ✅                           |
-| Tailscale VPN into the UDM → Mini's LAN IP | Unlocking after power loss, away    | ✅  (planned)                |
+See the [architecture diagram](security-architecture.md#host-and-network-architecture)
+for the network and account boundaries.
 
 ---
 
 ## 3. What you need before starting
 
 **On the Mac Mini:**
-- macOS 26 (Tahoe) or newer — this guide depends on Tahoe's pre-login SSH unlock feature
+
+- A supported macOS release
+- A monitor and keyboard for initial setup and recovery
 - Wired ethernet
 
 **On your other gear:**
-- A MacBook on the same LAN you'll use for setup
-- An iPhone (we'll use Termius, free tier)
+
+- A MacBook authorized to manage the server over Tailscale
+- An optional phone with an authorized Tailscale and SSH client
 - A UniFi Dream Machine (or any router that supports VLANs — instructions are UDM-specific but adapt easily)
 - A password manager you trust (this guide assumes Apple Passwords for the FileVault recovery key — anything works)
 
-**Two Apple IDs ready:**
+**A dedicated Apple ID ready:**
+
 - One for **puddles** (the agent account) — we'll sign into iCloud with this. This is not the same as your own apple id.
 - The admin (**cole**) intentionally does NOT use an Apple ID
 
 **Names used throughout this guide** (substitute your own):
+
 - Admin user: **cole**
 - Service user: **puddles**
 - Hostname: `<mac-mini>` — pick something short, lowercase, and memorable; the same name will become the device's tailnet name
-- LAN IP: `<mini-lan-ip>` — whatever you reserve in your router's DHCP for the Mini
+- Tailnet name: `<mac-mini>`; SSH aliases must resolve to its Tailscale address
 - VLAN for the Mini: I'll just call it **Agent VLAN** in this guide. Name it whatever you like in your UniFi controller.
 
 ---
@@ -203,7 +164,9 @@ Because Tailscale doesn't run until FileVault is unlocked, after an unexpected r
 4. After reaching the desktop, open **System Settings → Users & Groups** and create a second user **`puddles`**, type **Standard** (not Administrator). Strong password.
 5. Run software updates: **System Settings → General → Software Update**. Apply everything, reboot, repeat until clean.
 
-**Why no Apple ID on cole:** if puddles is ever compromised and the attacker pivots to root, there's no Keychain or iCloud account on the admin account to exfiltrate.
+**Why no Apple ID on cole:** keep personal iCloud data off the server. An admin
+account can still have local Keychain entries; no iCloud sign-in does not mean
+it has no secrets.
 
 ---
 
@@ -213,10 +176,12 @@ Because Tailscale doesn't run until FileVault is unlocked, after an unexpected r
 
 1. Create a new isolated VLAN for the Mini (call it whatever you want; this guide refers to it as the **Agent VLAN**). Pick a subnet that doesn't overlap your other VLANs.
 2. Add a **firewall rule**: traffic from the Agent VLAN → all other VLANs = **Drop**. (Default-deny outbound from the agent network.)
-3. Add a **firewall rule**: traffic from your Trusted VLAN → Agent VLAN, allow TCP `22` (SSH). That's the only inter-VLAN port you need — VNC for the FileVault unlock is invoked locally on the Mini against `localhost`, and Tailscale traffic rides its own encrypted overlay (it doesn't traverse the inter-VLAN firewall path).
-4. Add a **firewall rule** *below* the SSH allow (rule order matters in UniFi — first match wins): traffic from any other VLAN → Agent VLAN = **Drop**. This catches everything that isn't the Trusted-VLAN-to-SSH carve-out above. Without this rule, IoT and guest devices can reach the Mini on every other port by default.
-5. Plug the Mac Mini into a switch port assigned to the Agent VLAN.
-6. Wait for the Mini to get an IP, then create a **DHCP reservation** for it. Note the reserved IP — you'll use it as `<mini-lan-ip>` throughout the rest of the guide.
+3. Block inbound connections from all other VLANs. Do not add a Trusted VLAN SSH exception or port forwarding.
+4. Plug the Mini into the Agent VLAN and reserve its DHCP address for inventory.
+5. Before enabling sharing services, configure host filtering to permit them only
+   through Tailscale. Check same-VLAN access too; router rules cannot block that
+   path. This guide does not supply deployment-specific host firewall rules.
+   Keep services off until those restrictions are configured and verified.
 
 ### On the Mac Mini (logged in as cole)
 
@@ -230,20 +195,24 @@ sudo scutil --set ComputerName "$HOST"
 ```
 
 In **System Settings → Network**:
+
 - Turn **WiFi off** entirely (click the WiFi entry → toggle off → also uncheck "Ask to join networks"). Ethernet only.
 
-Why WiFi off: pre-login SSH unlock (the headline FileVault feature in §10) doesn't work over WiFi — the WiFi password lives in a keychain that isn't unlocked until you're logged in. And it cuts attack surface in half.
+Use ethernet to avoid an additional network interface to configure and secure.
 
 ---
 
 ## 6. Sharing services and lock screen
 
-In **System Settings → General → Sharing**, enable:
-- ✅ **Screen Sharing**
-- ✅ **Remote Login** (SSH) — set to "Only these users" → cole, puddles
+After Tailscale and the network restrictions in §5 are ready, configure
+**System Settings → General → Sharing**:
+
+- **Screen Sharing**: enable only if needed, restricted to authorized users and Tailscale access
+- **Remote Login** (SSH): set to "Only these users" → cole, puddles; require approved SSH keys
 - ❌ Everything else (File Sharing, Media Sharing, Printer Sharing, Remote Management, Internet Sharing) — leave off
 
 In **System Settings → Lock Screen**:
+
 - Require password after screen saver: **Immediately**
 - Start Screen Saver when inactive: 5 min
 - Turn display off when inactive: 10 min
@@ -252,15 +221,21 @@ In **System Settings → Lock Screen**:
 Yes, lock the screen even though no one's looking at it. Background services run regardless of lock state, and the lock protects the physical box if someone walks up.
 
 In **System Settings → Energy**:
+
 - Prevent automatic sleeping when display is off: **on**
 - Start up automatically after power failure: **on**
 - Wake for network access: **on** (enables Wake-on-LAN over ethernet)
 
 ---
 
-## 7. SSH with Secure Enclave keys (Touch ID)
+## 7. SSH keys
 
-It is useful to enable coding agents to run commands via SSH on your mac mini. To avoid exposing any credentials to the context and session logs of your agents, you can setup secure enclave keys so the agent can issue SSH commands and you just have to touch your fingerprint (no key exposed to agent).
+Use approved keys for the account each developer needs. Keep key material out of
+agent context and logs. Touch ID is optional, not an SSH requirement; choose a
+key policy compatible with unattended development.
+
+The following Secure Enclave example requires Touch ID on each use. Install the
+public key at the physical console during bootstrap. Test it after §8.
 
 On each Mac you want to SSH **from** (your MacBook, etc.):
 
@@ -280,10 +255,10 @@ echo 'export SSH_SK_PROVIDER=/usr/lib/ssh-keychain.dylib' >> ~/.zshrc
 export SSH_SK_PROVIDER=/usr/lib/ssh-keychain.dylib
 ```
 
-Copy `~/.ssh/id_ecdsa_sk_rk.pub` and on the **Mac Mini**, add it to **both accounts'** `~/.ssh/authorized_keys`:
+Copy `~/.ssh/id_ecdsa_sk_rk.pub` and on the **Mac Mini**, add it to **authorized accounts'** `~/.ssh/authorized_keys`:
 
 ```bash
-# Run as cole, then again as puddles (or scp + sudo into puddles' homedir)
+# Run locally as each account that this key is authorized to access
 mkdir -p ~/.ssh && chmod 700 ~/.ssh
 echo 'sk-ecdsa-sha2-nistp256@openssh.com AAAA...your-pub-key...' >> ~/.ssh/authorized_keys
 chmod 600 ~/.ssh/authorized_keys
@@ -292,11 +267,12 @@ chmod 600 ~/.ssh/authorized_keys
 Test from your MacBook — Touch ID prompt should pop up:
 
 ```bash
-ssh cole@<mini-lan-ip>
-ssh puddles@<mini-lan-ip>
+ssh cole@<mac-mini>
+ssh puddles@<mac-mini>
 ```
 
-The same key works on both accounts. The private key never leaves the Secure Enclave; even root on your MacBook can't dump it.
+Use the Tailscale name or address, not a LAN hostname. Grant admin access only
+when needed; standard-account access does not require an admin key grant.
 
 ---
 
@@ -304,7 +280,7 @@ The same key works on both accounts. The private key never leaves the Secure Enc
 
 Tailscale gives you encrypted access to the Mini from anywhere, no port forwarding, no DDNS.
 
-### Install (as cole, via SSH)
+### Install (as cole, at the physical console)
 
 ```bash
 # Homebrew first — see §9 if you haven't done that yet, but it's fine to do this now
@@ -315,44 +291,36 @@ brew install tailscale
 # WITH sudo, it creates a system LaunchDaemon that runs at boot.
 sudo brew services start tailscale
 
-# Bring up Tailscale and enable Tailscale SSH
-sudo tailscale up --ssh
+# Bring up Tailscale. SSH uses macOS Remote Login and the keys from §7.
+sudo tailscale up
 ```
 
 Open the printed URL on your laptop, authenticate, and:
+
 - **Tag the device** as `tag:agent`
 - **Disable key expiry** for this device (default 180-day expiry will silently disconnect a server)
 
 ### ACL policy
 
-In the Tailscale admin console, set ACLs so the agent device can be **reached by** your personal devices but **cannot reach them back**:
+In the Tailscale admin console:
 
-```jsonc
-{
-  "grants": [
-    {"src": ["autogroup:member"], "dst": ["autogroup:self"], "ip": ["*"]},
-    {"src": ["autogroup:member"], "dst": ["tag:agent"],     "ip": ["*"]},
-  ],
-  "ssh": [
-    {"action": "check", "src": ["autogroup:member"], "dst": ["autogroup:self"], "users": ["autogroup:nonroot", "root"]},
-    {"action": "check", "src": ["autogroup:member"], "dst": ["tag:agent"],      "users": ["autogroup:nonroot", "root"]},
-  ],
-  "tagOwners": {"tag:agent": ["autogroup:admin"]},
-}
-```
+- Allow authorized management devices to reach the server's SSH port (`22`).
+- Allow Screen Sharing (`5900`) only if needed and only from authorized devices.
+- Do not grant the server access to personal devices.
+- Review existing grants too. A broader grant can defeat these restrictions.
 
-The asymmetry — agent has no outbound grant — is the whole point. If puddles is compromised, the attacker can't pivot through Tailscale to your laptop.
+Tailscale grants control tailnet access; they do not restrict the server's LAN
+listeners. Verify both controls before treating remote setup as complete.
 
-Test from elsewhere:
 ```bash
-ssh puddles@<mac-mini>   # works from any tailnet device (use whatever you named the device on Tailscale)
+ssh puddles@<mac-mini>   # Tailscale name, approved key and account
 ```
 
 ---
 
 ## 9. Homebrew and base tools
 
-As **cole** (admin), via SSH:
+As **cole** (admin), at the physical console during bootstrap or over Tailscale afterward:
 
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
@@ -372,7 +340,7 @@ export PATH="/opt/homebrew/opt/node@22/bin:$PATH"
 
 ### Enable FileVault
 
-On the Mini (you'll need physical/VNC access for this, since it requires interactive prompts as both users):
+At the physical console, or through authorized Screen Sharing over Tailscale:
 
 1. **System Settings → Privacy & Security → FileVault → Turn On**
 2. When prompted, enable BOTH `cole` and `puddles` as FileVault users (both must be secure-token holders).
@@ -385,112 +353,33 @@ sudo fdesetup list
 # Should show both cole and puddles
 ```
 
-### What happens after a reboot — read this carefully
+### After a reboot
 
-This is the part of headless macOS that is tricky. After a reboot, FileVault halts the boot process at a pre-login stub. Two distinct things have to happen before the box is "really" running:
+1. Unlock FileVault at the physical console if Tailscale is unavailable.
+2. Log into the service account's GUI session so its LaunchAgents and Messages
+   can start. Use the console, or authorized Screen Sharing after Tailscale is up.
+3. Confirm the expected services are running before leaving the machine unattended.
 
-**Step 1 — Disk unlock (FileVault).** SSH to the Mini. The connection itself triggers the FileVault unlock — the disk decrypts and boot continues.
-
-After step 1, you have:
-- ✅ Disk decrypted
-- ✅ macOS booted
-- ✅ **System LaunchDaemons running** (Tailscale, sshd, the brew autoupdate timer)
-- ❌ **No user logged in** — the box is parked at the loginwindow
-- ❌ **Per-user LaunchAgents NOT running** (Messages.app, anything needing the Apple ID Keychain, the agent itself once it's installed)
-
-**Step 2 — GUI login.** A VNC client connects to the loginwindow and types puddles' password into the password field. NOW puddles' user session exists, his LaunchAgents fire, and the system is fully operational.
-
-### Why auto-login isn't an option
-
-On Apple Silicon, **GUI auto-login is impossible while FileVault is on**. Both the System Settings GUI and `sysadminctl -autologin set` refuse with: *"Automatic login is disabled because FileVault is enabled"*. This isn't a bug; it's by design.
-
-This matters more than it looks. The GUI login step (§11/§12) isn't just cosmetic — anything that runs as a per-user LaunchAgent or needs the user's GUI session to exist is dead until puddles is logged in. **BlueBubbles**, the iMessage bridge a later guide installs, is a hard example: it depends on Messages.app actually running in puddles' GUI session, which only happens after a real loginwindow login. So the unlock automation in §11/§12 isn't optional polish — it's what makes anything GUI-bound work after a reboot.
-
-### Why not use auto-login?
-
-With auto-login on, anyone who physically steals the device could plug it in and boot directly into `puddles` account, accessing much of the data the agent can access.
-
-### Pre-login SSH gotchas
-
-- It only accepts **password** auth. Your beautiful Secure Enclave SSH keys do NOT work for the unlock step — only for normal SSH after boot. Verified empirically.
-- It only works over **wired ethernet**. WiFi passwords live in a keychain that isn't unlocked yet.
-- Both `cole` and `puddles` passwords work for the SSH disk unlock step. For the GUI login step in §11/§12, always use puddles so puddles' LaunchAgents fire.
+Keep FileVault enabled. A UPS can reduce unexpected restarts, but does not replace
+an available recovery method.
 
 ---
 
-## 11. One-command unlock from your MacBook
+## 11. Recovery from your MacBook
 
-This repo ships a script that does both unlock steps from your MacBook with a single password prompt.
-
-### One-time setup on your MacBook
-
-```bash
-git clone <this-repo> ~/git/puddles
-cd ~/git/puddles
-
-# Install vncdotool to the SYSTEM python3 (not Homebrew python — the script
-# pins /usr/bin/python3 because that's what's guaranteed to exist)
-/usr/bin/python3 -m pip install --user vncdotool
-```
-
-### Per-reboot UX
-
-```bash
-~/git/puddles/scripts/mac-mini/unlock.sh
-# → "Enter puddles' macOS password:"
-# → ~30 seconds later: "Done. puddles logged in."
-```
-
-The script:
-1. SSHes to the FV pre-boot stub via `expect`, sends the password to unlock the disk. Aborts cleanly on bad password / timeout / permission denied (no marching on against a still-locked disk).
-2. Waits for the real sshd to come back online.
-3. Connects to the Mini's VNC at `<mini-lan-ip>:5900` using **Apple ARD authentication** (Diffie-Hellman scheme 30 — macOS Screen Sharing offers ARD first in the auth list, before plain VNC).
-4. Sleeps 8 seconds (the loginwindow needs about that long after VNC connect before the password field is reliably focused).
-5. Types puddles' password character-by-character at 0.08s/char, presses Enter.
-6. Disconnects. The GUI session persists for the entire uptime — subsequent VNC reconnects go straight to puddles' desktop.
-
-The password is read once with `read -rs` (no echo), passed to subprocesses via env var (`$PW`), and never written to disk or shell history.
+Once Tailscale is available, connect using the approved key and tailnet name.
+If it is unavailable, use physical recovery from §10. Do not fall back to LAN
+SSH or direct VNC. The legacy `scripts/mac-mini/unlock.sh` LAN recovery flow is
+not part of this architecture; do not use it as a setup step.
 
 ---
 
-## 12. One-tap unlock from your iPhone
+## 12. Recovery from your phone
 
-Same architecture, different host: the Mini SSHes into **itself** to drive its own loginwindow. The phone just needs SSH.
-
-### One-time install on the Mini
-
-```bash
-# As puddles (via SSH)
-git clone <this-repo> ~/git/puddles
-python3 -m pip install --user vncdotool
-
-# As cole (sudo required to install to /usr/local/bin)
-sudo mkdir -p /usr/local/bin
-sudo install -m 0755 ~/git/puddles/scripts/mac-mini/unlock-self.sh /usr/local/bin/unlock-self.sh
-```
-
-> **Note:** `/usr/local/bin/` doesn't exist on Apple Silicon macOS by default. The `mkdir -p` is required.
-
-### One-time setup on your iPhone (Termius free tier)
-
-1. Save a host: `puddles@<mac-mini>` (your tailnet name), password stored in Termius.
-2. Create a Snippet named "Unlock Mini":
-   - Body: `unlock-self.sh`
-
-### What to do if the Mini reboots unexpectedly
-
-1. Open Termius → tap the saved host. Termius transparently sends the password to the FV pre-boot SSH stub, the disk unlocks, and Termius connects.
-2. Tap the snippet "Unlock Mini".
-3. Tap "Password", then "Enter" when the script prompts.
-4. Wait for script to run.
-
-### Why this works
-
-Once FileVault is unlocked, the Mini's sshd is fully running and accepts normal logins regardless of GUI state. The `unlock-self.sh` script connects to **`localhost::5900`** via Apple ARD auth and injects keystrokes into its own loginwindow. macOS doesn't care that the VNC keystroke source is the same machine.
-
-### A note on UPS
-
-Adding a UPS should protect against most unexpected restarts. Though being able to re-enable your agent when traveling or on the go is an important backup.
+Use an authorized Tailscale client and SSH key after the server is reachable.
+A phone connection cannot replace physical FileVault recovery when the server's
+Tailscale service has not started. Any alternate recovery design needs explicit
+human approval under the security architecture.
 
 ---
 
@@ -541,7 +430,8 @@ Most modern tools support `--data-dir`, `XDG_DATA_HOME`, or an env var to redire
 
 ### Sign puddles into iCloud
 
-You'll need a GUI session for this — VNC in as puddles (do step 1 of §11/§12, then VNC in).
+Use the service account's GUI session, locally or through authorized Screen
+Sharing over Tailscale. Never sign a personal iCloud account into this server.
 
 In **System Settings**:
 
@@ -561,7 +451,7 @@ In **System Settings**:
 3. **"Saved to this Mac" section** at the bottom: leave everything OFF — we want all of it in iCloud.
 4. **iCloud Drive → ⓘ → "Optimize Mac Storage"** — toggle **OFF**.
 
-**Why turn off Optimize Mac Storage:** when ON, macOS evicts the actual file contents and leaves tiny `.icloud` placeholder stubs in their place. Containers (and any non-Finder process) reading those paths get the stub, not the file. Turning it off keeps every iCloud Drive file fully present on disk so the agent containers can read `~/Documents/puddles/soul.md` and friends without surprises. (You have ~1 TB free; this is a fine tradeoff.)
+**Why turn off Optimize Mac Storage:** when ON, macOS evicts the actual file contents and leaves tiny `.icloud` placeholder stubs in their place. Containers (and any non-Finder process) reading those paths get the stub, not the file. Turning it off keeps every iCloud Drive file fully present on disk so the agent containers can read `~/Documents/puddles/soul.md` and friends without surprises. Check available disk space before enabling additional synced data.
 
 After flipping these, give it a few minutes. `~/Documents` and `~/Desktop` get moved into the iCloud container automatically. Verify:
 
@@ -579,14 +469,9 @@ That's it. From here on, any project that lives at `~/Documents/<project>/` is a
 Run through this checklist. Every line should pass.
 
 ```bash
-# From your MacBook on the home LAN
-ssh puddles@<mini-lan-ip> 'whoami && hostname'
-# → puddles
-# → <your-hostname>
-
 # From your MacBook over Tailscale (or your phone, anywhere in the world)
 ssh puddles@<mac-mini> 'whoami'
-# → puddles  (Touch ID prompt should fire)
+# → puddles (Touch ID only if the chosen key requires it)
 
 # From the Mini, as cole
 sudo fdesetup list
@@ -605,13 +490,19 @@ ls -la /Users/puddles/Documents
 # → Drive ON, Desktop & Documents ON, Messages in iCloud ON, Optimize Mac Storage OFF
 ```
 
-The big test: **reboot the Mini** (`sudo shutdown -r now`), then unlock it from your iPhone using §12. It should take about a minute and three taps and end with you SSH'd into a fully-up puddles session.
+Also confirm SSH and Screen Sharing are unreachable outside Tailscale, including
+from the same LAN. An unauthorized tailnet device must not reach them either.
+
+Before relying on unattended operation, rehearse a reboot with someone at the
+physical console. Confirm FileVault recovery, Tailscale access, and the service
+account's GUI session. Schedule this around any running workloads.
 
 ---
 
 ## 16. Where to go next
 
-You now have a hardened, headless, remotely-recoverable Mac Mini. From here:
+With the access restrictions and recovery checks complete, the Mini is ready for
+headless operation. From here:
 
 - **Stop here** if you just wanted a home server. It's already useful — you can run any service that fits on macOS.
 - **Continue to guide 02** to install OpenClaw and connect your first integrations.
@@ -624,16 +515,8 @@ The next guide (when written) assumes the state you have right now: two accounts
 
 These are all the obstacles I hit getting a secure Mac server running, here's to hoping you don't have to.
 
-1. **Must use Ethernet** — pre-login SSH unlock requires ethernet. Period.
-2. **Pre-login SSH is password-only** — Touch ID / Secure Enclave keys do NOT work for the unlock step. They work fine for normal SSH after boot.
-3. **Per-user LaunchAgents do NOT run after pre-login SSH unlock alone.** You need an actual GUI login (the VNC step) for them to fire.
-4. **Tailscale: use `sudo brew services start`, NOT plain `brew services start`.** Without sudo it's a per-user agent and won't run on a headless server.
-5. **Tailscale: disable key expiry** for this device. Default 180 days will silently disconnect you.
-6. **Secure Enclave SSH keys are ECDSA P-256, not Ed25519.** Apple's bundled OpenSSH doesn't support `ed25519-sk`.
-7. **Loginwindow needs ~8 seconds after VNC connect** before the password field is reliably focused. Type too fast and keystrokes drop silently.
-8. **macOS Screen Sharing offers Apple ARD auth (DH scheme 30) first in the auth list.** Generic VNC clients need a `username=` for it to work.
-9. **`/usr/local/bin/` doesn't exist on Apple Silicon by default.** `sudo mkdir -p /usr/local/bin` first.
-10. **Homebrew is owned by whoever installed it** (`/opt/homebrew` writable only by cole, since cole is admin). Auto-upgrade jobs MUST run as that user.
-11. **UniFi inter-VLAN port lists are quirky.** Safer to use one rule per port (or a port group with each port listed individually) than a comma-separated list or a range.
-12. **Lock screen ON, even though headless.** Background services run regardless of lock state; the lock just protects the physical box.
-13. **Never paste passwords into AI assistant sessions.** Yeah, it's inconvenient, but these sessions are not designed or secured the same way secret managers are. Execute your own SSH commands for sudo operations and use secure enclave for SSH the agent can execute.
+- Per-user LaunchAgents need a GUI login, not just an SSH session.
+- Start Tailscale as a system service so it does not depend on an admin GUI login.
+- Homebrew updates must run as the account that owns its installation.
+- Never paste passwords or SSH key material into agent sessions.
+- Keep recovery credentials available to the human performing physical recovery.
