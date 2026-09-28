@@ -12,8 +12,11 @@ and tooling that guide future work. Make each loop safer, faster, and simpler.
 
 - Security first; never cut security corners for speed or convenience.
 - Keep it simple (KISS); simplify to reduce edge cases and brittleness.
-- Protect production and preserve rollback.
-- Support parallel contributors and automated, hands-off CI/CD.
+- Keep production healthy and retain one verified production recovery copy.
+- Keep feature work and source merges parallel. One release owner pins merged
+  source, builds once in CI, and promotes the same artifact DEV -> TEST -> PROD.
+  Later main commits do not invalidate that candidate.
+- Scripts own bounded execution, recovery, and cleanup even if an agent vanishes.
 
 ## Priorities
 
@@ -61,9 +64,17 @@ and tooling that guide future work. Make each loop safer, faster, and simpler.
 - Use the [runner guide](../../../packages/e2e/README.md) and
   [coordination rules](../../../packages/e2e/DEPLOYMENT_COORDINATION.md) for reuse
   and cleanup. Protect other owners' work, retained evidence, and rollback state.
-- Use the [storage lifecycle](../../../packages/e2e/DEVELOPMENT_STORAGE.md) for
-  read-only previews and owner-confirmed cleanup. Keep one mutable build and one
-  ready payload per task. Age, an idle chat, or a missing PID is not ownership.
+- Use the [storage lifecycle](../../../packages/e2e/DEVELOPMENT_STORAGE.md).
+  Keep one mutable build per task, a shared host package store, current candidate,
+  current PROD, and one PROD recovery copy. TEST is disposable, including its
+  completed rollback snapshots. Keep small results instead of full workspaces.
+- Notify workers after changes merge and have them clean completed runs promptly.
+  Authorized coordinators can clean abandoned generated data after checking live
+  consumers and source/recovery preservation, even if a failed worker cannot
+  reply. Age or a missing PID alone is insufficient.
+- Remove obsolete gates across skills and scripts together. Required repository
+  checks remain enforced; report any executable mismatch until its owner fixes it.
+  Do not add manual hash rituals or duplicate release builds as a workaround.
 - Account for every actionable finding: fixed with evidence, owned by existing work, linked
   to an issue, or awaiting a specific human decision. Record the review date.
 - Check later loops for adoption and results, including actual reclaimed space.

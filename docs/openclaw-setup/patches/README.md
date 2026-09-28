@@ -100,29 +100,32 @@ the Docker archive manifest and rejects production-tag collisions before load,
 then records the prior production image ID before importing candidate layers.
 No browser build happens during downtime.
 
-## Merge, test merged main, then activate
+## Build once, then promote DEV, TEST, and PROD
 
 Follow [deployment coordination](../../../packages/e2e/DEPLOYMENT_COORDINATION.md).
 Iterate with local incremental builds and focused installed checks in owned
-DEV. Mutable drafts need no CI receipt and cannot qualify for promotion. After
-independent review, run the accumulated CI gate and validate that exact CI-built
-candidate in DEV before merging. Keep final proof separate from draft results.
-Create `merge-eligibility.json` from the exact build, source gate, and DEV proof,
-then pass it to `openclaw-integrate.mjs`. The helper verifies the head, base,
-remote eligibility, and resulting tree before any physical TEST or live change.
+DEV. Merge reviewed source after focused and required repository checks. Mutable
+drafts support development; they do not qualify for production promotion.
 
-The initiating TEST owner registers the batch of current merged main commits
-and each feature owner. Build those heads in CI and rehearse the immutable
-artifacts in the owned TEST slot. The normal certification and promotion
-commands still produce the required production receipt. Acquire PROD through
-its queue and consume the exact TEST artifact. A changed production baseline
-requires renewed affected TEST proof. No merge occurs inside live rollback.
+One release owner pins selected merged public and optional companion heads and
+runs cumulative CI once. Deploy the same resulting artifact to DEV, then TEST,
+then PROD. Environment configuration and writable state stay separate. Main can
+advance while that candidate is being validated; newer commits belong to the
+next candidate. Use existing certification and promotion commands for the
+production receipt. No build, dependency fetch, or merge occurs during downtime.
 
 Fetch main into the target's reviewed tooling worktree. Set `integration.ref`
 and `integration.mergedHead` to the pinned merged commit, and `defaultRef` to
-`origin/main`. Activation checks exact head and tree and main ancestry. On TEST
-failure, the batch owner merges the necessary revert, messages the feature
-owner to fix it, and repeats from TEST with corrected latest main.
+`origin/main`. Activation checks that selected source is on main. A changed
+production baseline requires the affected TEST rehearsal again. Reuse the
+artifact only while its sealed migration and configuration inputs remain valid.
+Changed sealed inputs, a source fix, or a revert produce a replacement candidate
+that starts again at DEV.
+
+Keep current PROD and one verified PROD recovery copy. TEST is disposable;
+remove temporary rollback snapshots after testing. Keep compact results and
+finalize completed staging. The coordination and storage guides distinguish
+available commands from controller changes still needed for this workflow.
 
 Create a local target JSON file, outside the repository. This synthetic example
 shows the required fields. Set real paths and host identity locally.

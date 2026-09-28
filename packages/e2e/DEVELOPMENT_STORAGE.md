@@ -6,16 +6,30 @@ packages, installed runtimes, and extracted bundles still consume space.
 Completed attempts must retire those copies.
 
 ```mermaid
-flowchart LR
-    Store[Host pnpm store] --> Build[Task build workspace]
-    Build --> Draft[One ready draft]
-    Build --> CI[Clean final CI attempt]
-    CI --> Bundle[Verified portable bundle and proofs]
-    Bundle --> Consumer[DEV or release consumer]
-    Consumer --> Finish[Acknowledge final consumer]
-    Finish --> Evidence[Retain evidence and references]
-    Evidence --> Cleanup[Finalize declared generated children]
+flowchart TD
+    Work[Parallel task workspaces] --> Merge[Reviewed source merges]
+    Store[Shared host package store] --> Work
+    Merge --> CI[One CI build of selected merged source]
+    CI --> DEV[DEV]
+    DEV --> TEST[TEST]
+    TEST --> PROD[PROD]
+    PROD --> Backup[One verified PROD recovery copy]
+    TEST --> Clean[Remove completed staging and test snapshots]
+    CI --> Clean
 ```
+
+The storage target is active task workspaces, the release candidate in promotion,
+current PROD, and one verified PROD recovery copy. Store each immutable artifact
+once where practical; installations may need a separate extraction while active.
+DEV and TEST have separate writable state, configuration, ports, and processes.
+TEST has no retained backup. Rollback-test snapshots exist only during the check.
+Keep compact logs and stage results after removing generated copies. A failed
+workspace stays only while an active investigation needs it.
+
+Some merged helpers still have older retention defaults, described below. Their
+owner must align those defaults and terminal hooks; do not claim automatic
+cleanup from this policy alone. Preserve live consumers and real production
+recovery while retiring completed runs through supported commands.
 
 ## 1. Reuse and configure
 
@@ -98,13 +112,17 @@ node packages/e2e/bin/openclaw-artifact-retention.mjs dry-run "$E2E_ARTIFACT_POO
 node packages/e2e/bin/openclaw-artifact-retention.mjs apply "$E2E_ARTIFACT_POOL"
 ```
 
-The pool keeps two recent successful bundles and all referenced dependency
-closures. New diagnostic logs are compressed. Explicitly completed logs have a
-30-day limit and a 1 GiB budget per completed owner, newest first. Protected logs
-and legacy logs without completion records remain. Compact proofs and production
-recovery do not count against the log budget. A failed reproduction is not a
-complete production backup. Retire recovery only with existing activation and
-backup tools.
+The current pool implementation keeps two recent successful bundles plus
+referenced dependencies. This is a compatibility default to replace with the
+active candidate, deployed artifact, and one PROD recovery dependency set.
+Complete obsolete run references so finished attempts do not remain protected.
+Do not delete pool objects behind its registry to work around the default.
+
+New diagnostic logs are compressed. The current limit is 30 days and 1 GiB per
+completed owner; compact stage results survive separately. Prefer small useful
+logs to retaining a workspace. Retire older PROD recovery only with the existing
+activation and backup tools after its replacement is verified. Synthetic TEST
+recovery is disposable test data, not an additional production backup.
 
 ## 4. Finalize task-owned scratch
 
@@ -133,12 +151,12 @@ Example `scratch.json`:
 {"id":"old-payload","path":"payloads/attempt-1","purpose":"Acknowledged DEV transfer","evidence":["proofs/attempt-1.json"]}
 ```
 
-Use `kind: "failed"` for an owner-confirmed terminal failed workspace. After
-sealing, the newest unpinned failed entry in that task root stays for seven
-days. Entries in the same failed attempt group stay together. Older sealed
-failures can be removed. Hold a root while debug work needs
-it. Active or unsealed entries never expire. Use one ownership root per task
-for this bound; do not create a new task root for each attempt.
+The current `kind: "failed"` mode retains the newest sealed failure for seven
+days. That default still needs alignment: preserve the failed command, useful
+logs, and inputs, then remove generated output once no active debugging consumer
+needs it. Use the producer's terminal cleanup for completed fixtures; do not
+mislabel state to evade a guard. Active debug holds remain protected. Keep one
+ownership root per task instead of a new root for every attempt.
 
 Registration is the owner's assertion that a path is generated scratch.
 Sealing asserts that all writers and consumers have finished. The cleaner
@@ -178,9 +196,23 @@ The task owner inventories its own paths and establishes active processes,
 queued consumers, unique source, portable artifacts, and recovery dependencies.
 Then it adopts only reviewed generated children using the commands above.
 Do not adopt an entire development root or infer ownership from a name or date.
-Do not edit or clean another worker's checkout. A merged PR or idle chat does
-not make a worktree free. Keep uncertain paths and record the owner/action.
+Do not edit another worker's source or remove active work. An authorized
+coordinator may clean abandoned generated output after notifying the owner and
+checking process identity, slots, consumers, source preservation, and production
+recovery. A failed worker's missing reply does not block verified safe cleanup.
+A merged PR, idle chat, or missing PID alone is insufficient. Keep genuinely
+uncertain paths and report the exact missing fact.
 
 After a merged tooling update, each affected worker applies it to its own
-completed attempts and reports the exact paths, retained evidence, and actual
-free-space delta. No background job automatically deletes legacy directories.
+completed attempts and reports exact paths and retained evidence. Report actual
+filesystem space before and after cleanup separately from logical directory
+sizes. No background job automatically deletes legacy directories. Do not wait for an unrelated release to finish before cleaning
+already completed attempts.
+
+Completed TEST runs must stop their own processes and remove generated runtimes,
+state, imports, and temporary rollback snapshots. Preserve small results outside
+those paths first. Recovery markers in synthetic fixtures need the producer's
+cleanup path, not generic deletion of journals or a new backup-retirement system.
+Controllers must perform this on success and failure after children exit, and
+reconcile interrupted cleanup on restart. Until those hooks are aligned, the
+assigned owner performs this terminal cleanup explicitly.

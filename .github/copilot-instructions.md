@@ -102,39 +102,47 @@ and deployment gates still apply.
 Assume other agents are working on the same components. Local development and
 focused tests belong in each task's own worktree on this machine. Check current
 plans, PRs, and available task status for overlap. Coordinate shared interfaces
-and dependencies with their owners; do not edit their worktrees, stop their
-processes, or clean their state. Independent CI runs do not reserve a shared
-deployment environment.
+and dependencies with their owners. Preserve their source and active processes.
+Authorized cleanup of abandoned generated data follows the storage guide below;
+a missing worker reply alone does not prevent it. Independent CI runs do not
+reserve a shared deployment environment.
 
-Build ordinary DEV drafts locally and incrementally. Reuse compatible prepared
-source, dependencies, and build outputs; run focused installed checks before
-repeating. CI is not a prerequisite for each DEV edit. After review and local
-DEV success, build the final candidate and run the full accumulated gate in CI,
-then validate that exact CI artifact in DEV before merging. Draft evidence does
-not qualify for merge or promotion. TEST and PROD use immutable CI artifacts.
+Build ordinary DEV drafts locally and incrementally. Each task reuses one
+mutable build workspace and the host package store. Parallel workers use their
+own writable output, state, ports, and processes. Merge reviewed features after
+focused checks, applicable local DEV checks, and required repository checks.
+Source merge does not require a separate full release build or certify PROD.
+
+One release owner selects merged commits, pins the public and optional companion
+heads, and runs the accumulated CI gate once for that candidate. Promote the
+same immutable artifact through DEV, TEST, and PROD. Environment configuration
+and writable state remain separate from the artifact. Later main commits join
+the next candidate; they do not invalidate the one being promoted. Never hold
+main or unrelated feature work while a release builds or waits.
+
 Use the mini's shared record at
-`$HOME/.puddles/deploy-coordination/slots.json` for DEV, TEST, and PROD.
-Follow [deployment coordination](../packages/e2e/DEPLOYMENT_COORDINATION.md)
-for atomic claims, ready queues, owner identity, heartbeat, direct messages,
-and recovery. Every mutation of a shared environment needs its slot, including
-DEV start, stop, reset, and validation. Release before waiting for another slot.
-Keep the existing target transaction locks as well.
+`$HOME/.puddles/deploy-coordination/slots.json` for shared DEV, TEST, and PROD.
+Follow [deployment coordination](../packages/e2e/DEPLOYMENT_COORDINATION.md).
+Claim only for environment mutation and installed checks, including cleanup and
+recovery. Build and review before claiming; release before waiting for another
+slot. Keep the existing target transaction locks.
 
-Merge reviewed, CI-green source after DEV validation and before TEST. The agent
-that initiates TEST registers itself as the owner of the whole batch of merged
-commits. All included feature agents coordinate with that owner. It pins latest
-main, builds those merged bits in CI, and carries the exact batch through TEST
-and PROD. It retains responsibility while waiting, monitors failures, merges
-necessary reverts, alerts the responsible feature agent to fix its change, and
-continues from TEST with newly selected main after the revert. Do not wait for
-the feature repair or promote an old branch artifact. A production baseline
-change requires a fresh affected TEST rehearsal. Notify the next ready slot
-owner and included feature owners through their recorded contacts.
+The release owner handles a failed candidate with a prompt fix or revert and
+builds a replacement from corrected merged source. Keep healthy PROD running.
+A replacement artifact starts again at DEV. A production baseline change
+requires the affected TEST rehearsal again. Reuse the artifact only while its
+sealed configuration and migration inputs remain valid; changed sealed inputs
+require a replacement candidate. Scripts own bounded execution,
+rollback, interrupted-run recovery, and cleanup; an absent agent must not leave
+production stopped indefinitely. The parent orchestrator routes workers, and
+an owner records a handoff when transferring a release.
 
-The parent orchestrator owns worker creation and routing. Scripts own commands
-and durable run state. An owner may explicitly transfer a batch with recorded
-acknowledgment and recovery evidence; it never abandons an active slot. Routine
-CI, merge, delivery, revert, and peer coordination remain agent-owned work.
+Retain active workspaces, the candidate in promotion, current PROD, and one
+verified PROD recovery copy. TEST is disposable. Remove its temporary rollback
+snapshots after checks finish. Retain small logs and results separately from
+completed builds, imports, and fixtures. Keep a failed workspace only while an
+active investigation needs it. See [development storage](../packages/e2e/DEVELOPMENT_STORAGE.md)
+for safe cleanup and the remaining tooling transition.
 
 Keep one independent reviewer through remediation. Review the complete current
 behavior diff after meaningful changes. Do not require a terminal fresh reviewer
@@ -205,12 +213,12 @@ without a design may link source evidence instead; add its plan when designed.
 
 Every feature, behavior change, and bug fix must contribute a committed
 regression to the shared test pool. Run focused tests while iterating, then the
-entire accumulated pool against the exact final candidate before integration:
+entire accumulated pool once against the pinned release candidate before promotion:
 
 - Use `packages/e2e/` for cross-component, deployment, and OpenClaw patch
   integration coverage. Keep focused package tests beside their implementation
   as well.
-- The engineering owner runs
+- The release owner runs
   `node packages/e2e/bin/openclaw-test-env.mjs ci`. This is the required managed
   lifecycle whenever that runner exists on the active branch.
 - OpenClaw source patches must add or update tests in the patch and register
@@ -220,9 +228,10 @@ entire accumulated pool against the exact final candidate before integration:
 - Tests embedded only inside a `.patch` are insufficient unless the shared
   runner exposes and executes them. Temporary session mocks or uncommitted
   checks do not count.
-- The pull request must visibly contain the committed test artifact and report
-  the exact shared-pool command. Do not declare a behavior change complete when
-  only unit tests or only the newly added test passed.
+- The feature pull request contains the committed regression and focused results.
+  The release record reports the shared-pool command and result. Source may merge
+  before this release gate; do not call it released until its candidate passes
+  the accumulated pool and the applicable environment checks.
 - Live production checks must remain read-only and must never deliver messages.
   Route all write and delivery behavior through deny-by-default recording
   mocks.
