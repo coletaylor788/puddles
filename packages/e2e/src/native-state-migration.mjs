@@ -319,8 +319,11 @@ export async function executeStateMigration(
     );
     const plan = await builtInPlan();
     if (manifest.workshopMigration) {
+      // Sealed operations bind the complete stopped repair, including plugin
+      // normalization. Keep the core-only plan above for stable drift checks.
+      const candidatePreview = sdk.previewLegacyConfigRepair(snapshot, { pluginContracts: true });
       assertWorkshopConfiguration(manifest.workshopMigration,
-        configDraft(plan.preview?.expectedConfig ?? snapshot.sourceConfig, manifest.configOperations), stateDir, sdk.resolveAgentWorkspaceDir);
+        configDraft(candidatePreview?.expectedConfig ?? snapshot.sourceConfig, manifest.configOperations), stateDir, sdk.resolveAgentWorkspaceDir);
       inspectWorkshopMigration({ stateDir, workshopMigration: manifest.workshopMigration },
         [...plan.loaded.store.jobs, ...plan.targetLoaded.store.jobs]);
     }
