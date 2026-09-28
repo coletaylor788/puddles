@@ -202,8 +202,15 @@ post-migration partition, persists legacy config and multi-agent ownership
 normalization, then checks every selected config value and applies those writes
 in one source-writer transaction. This stopped compare lets a manifest target
 the canonical post-plugin object without comparing it to obsolete live input.
-Ordinary doctor and the selected cron write follow. The tests cover sole include
-ownership, plugin-owned retired settings, parent-object config preconditions,
+Doctor and the selected cron write follow. The controller records Doctor as its
+own migration phase so failures cannot be mistaken for a config operation.
+Doctor has a 20-minute limit while ordinary service commands retain one minute.
+The gateway remains stopped during migration; other activation steps and rollback
+add time beyond that limit. Before production, validate the allowance for
+large legacy history with an uninterrupted isolated synthetic workload that represents
+both retained file volume and session-index cardinality. Keep the volume
+measurement separate from the fast cumulative timeout and rollback regressions.
+The tests cover sole include ownership, plugin-owned retired settings, parent-object config preconditions,
 job revision conflicts, retired `cron.store` paths, unrelated live-staging
 state, each failure stage, and interrupted
 rollback with the retained interpreter. The historical fixture comes from the
