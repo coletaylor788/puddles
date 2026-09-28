@@ -428,6 +428,7 @@ function verifyPreparedSnapshot(target, recoveryDir, journal, prepared) {
 
 async function restore(target, recoveryDir, journal, operations) {
   verifySnapshots(recoveryDir, journal);
+  if (journal.browserChanged && !journal.snapshotReady) throw new Error("Browser recovery requires a verified predecessor snapshot");
   if (journal.nodeMigration) {
     verifyNodeFile(journal.nodeMigration.expected);
     verifyNodeFile(journal.nodeMigration.desired);
@@ -461,12 +462,14 @@ async function restore(target, recoveryDir, journal, operations) {
     if (treeDigest(target.stateDir) !== journal.snapshots.state ||
         fileDigest(target.plistPath) !== journal.snapshots.service) throw new Error("Restored state or service differs from snapshot");
   }
-  // Recovery can run after the old package was already restored. Never resolve
-  // sandbox discovery through the mutable production install path.
+  // The restored configuration belongs to the predecessor. Use its verified
+  // snapshot and interpreter even when an interrupted swap left another runtime
+  // at the mutable install path.
   if (journal.browserChanged) {
     const candidate = join(recoveryDir, "candidate");
     if (treeDigest(candidate, { portable: true }) !== journal.candidateSha256) throw new Error("Recovery candidate content changed");
-    await operations.browser(journal.previousBrowser, candidate, journal.nodeMigration?.desired.path);
+    await operations.browser(journal.previousBrowser, join(recoveryDir, "package"),
+      journal.nodeMigration?.expected.realPath ?? journal.nodeMigration?.expected.path ?? process.execPath);
   }
   if (journal.snapshotReady) {
     const replacement = join(recoveryDir, "restore-package");
