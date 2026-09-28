@@ -233,7 +233,11 @@ it("keeps release builds at 30 minutes and validates the bounded draft override"
 });
 function root() { const path = mkdtempSync(join(tmpdir(), "native-pipeline-test-")); roots.push(path); return path; }
 beforeEach(() => {
-  vi.stubEnv("PNPM_CONFIG_STORE_DIR", join(tmpdir(), "puddles-native-pnpm-store"));
+  const store = join(tmpdir(), "puddles-native-pnpm-store");
+  const config = join(root(), "development.json");
+  writeFileSync(config, JSON.stringify({ pnpmStore: store }));
+  vi.stubEnv("PUDDLES_DEVELOPMENT_CONFIG", config);
+  vi.stubEnv("PNPM_CONFIG_STORE_DIR", store);
   Object.assign(counters, { prepare: 0, install: 0, build: 0, package: 0, additionalInstalls: 0, runtimeCommands: 0, dependency: "first", generatedCaches: false });
   registrations.clear();
 });
@@ -255,6 +259,16 @@ function setup() {
   vi.stubEnv("E2E_STATE_MIGRATION_BINDINGS", "");
   return { directory, run };
 }
+
+it("rejects store drift before building when the host configuration is pinned", async () => {
+  const { directory } = setup();
+  const config = process.env.PUDDLES_DEVELOPMENT_CONFIG!;
+  const before = readFileSync(config);
+  vi.stubEnv("PNPM_CONFIG_STORE_DIR", join(directory, "competing-store"));
+  await expect(nativePipeline("ci", async () => {})).rejects.toThrow("differs from the maintained host store");
+  expect(counters).toMatchObject({ prepare: 0, install: 0, build: 0, package: 0 });
+  expect(readFileSync(config)).toEqual(before);
+});
 
 it("waits for the task cleanup lock before changing builder state", async () => {
   const { directory, run } = setup();
@@ -314,6 +328,11 @@ it("runs every mapped regression through the upstream test entrypoint", async ()
   await nativePipeline("ci", async () => {});
   const suite = JSON.parse(readFileSync(join(import.meta.dirname, "../openclaw-patch-suite.json"), "utf8"));
   const calls = vi.mocked(runCommand).mock.calls;
+  for (const [name, args, options] of calls) {
+    if (name === "node" && args[0] === "scripts/run-vitest.mjs") {
+      expect(options?.env?.OPENCLAW_VITEST_WORKER_CACHE).toBe("1");
+    }
+  }
   for (const target of new Set<string>(suite.patches.flatMap((patch: { tests: string[] }) => patch.tests))) {
     for (const action of ["list", "run"]) {
       expect(calls.some(([command, args]) => command === "node" &&
@@ -396,7 +415,7 @@ it("propagates a mapped typecheck failure before Vitest", async () => {
 it("binds migration bytes to cumulative and runtime proofs without rebuilding unchanged source", async () => {
   const { directory, run } = setup();
   const path = join(realpathSync(directory), "migration.json");
-  const manifest = { schemaVersion: 1, configOperations: [
+  const manifest = { schemaVersion: 1, configuration: { schemaVersion: 1, baseSha256: "a".repeat(64), bindingsSha256: "b".repeat(64), predecessorSha256: "c".repeat(64), candidateSha256: "d".repeat(64) }, configOperations: [
     { kind: "set", path: ["memory", "search", "provider"], expected: { exists: false }, value: "local" },
   ] };
   writeFileSync(path, JSON.stringify(manifest));
@@ -406,6 +425,7 @@ it("binds migration bytes to cumulative and runtime proofs without rebuilding un
   for (const name of ["regressions", "runtime"]) {
     expect(JSON.parse(readFileSync(join(run, `stages/${name}.json`), "utf8")).inputs.stateMigration).toEqual(first.stateMigration);
   }
+  expect(first.stateMigration.configuration).toEqual(manifest.configuration);
   manifest.configOperations[0].value = "none";
   writeFileSync(path, JSON.stringify(manifest));
   const second = await nativePipeline("ci", async () => {});
@@ -797,7 +817,9 @@ it("reuses gate-independent stages and invalidates changed source, lock, and too
     package: 3,
   });
 
-  vi.stubEnv("PNPM_CONFIG_STORE_DIR", join(directory, "different-store"));
+  const changedStore = join(directory, "different-store");
+  writeFileSync(process.env.PUDDLES_DEVELOPMENT_CONFIG!, JSON.stringify({ pnpmStore: changedStore }));
+  vi.stubEnv("PNPM_CONFIG_STORE_DIR", changedStore);
   await nativePipeline("ci", async () => {});
   expect(counters).toMatchObject({
     prepare: 3,

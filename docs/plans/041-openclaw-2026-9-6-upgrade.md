@@ -33,15 +33,19 @@ Upstream Doctor owns conversion to the new conversation storage. Our deployment 
 
 ### Status
 
-The patch audit and compatibility work pass focused checks, retained review and local DEV. Three public runtime fixes are removed because upstream covers them. All nine native messaging scenarios pass, and warm local searches take about 25–27 milliseconds without a timeout increase. Public and combined accumulated CI pass. Their exact artifact also passes DEV: all nine messaging scenarios, 33 upgrade assertions and real local embeddings. The corrected DEV smoke expectation still needs inclusion in the next final candidate CI.
+The patch audit and compatibility work passed review, accumulated CI and exact-artifact DEV. Three public runtime fixes are removed because upstream covers them. All nine native messaging scenarios, 33 upgrade assertions and real local embeddings pass. Measured warm local searches take about 25–27 milliseconds without a timeout increase.
 
-Production delivery is blocked by a gap in the shared process: the builder seals a synthetic TEST migration whose paths and job preconditions cannot be used in production. The requester approved separate target bindings and reusable process, skill and script updates. The bindings, handoff and DEV configuration recovery are implemented. Focused regressions, retained review and a live DEV rollback check pass. Final cumulative CI and the merged release lifecycle remain. Production is unchanged.
+Release validation also requires the approved
+[configuration parity work](045-environment-configuration-parity.md). That shared
+process change is tracked separately from this upgrade's requirements.
 
 ## Agent section
 
 ### State
 
-- Release blocker: [target-bound migration proposal](043-target-bound-state-migrations.md) records the approved shared-process repair. Implement and validate its target bindings before the final candidate proceeds through the ordinary release lifecycle.
+- The approved [configuration parity work](045-environment-configuration-parity.md)
+  is being implemented. Its complete environment checks must pass before this
+  upgrade can advance through the maintained release process.
 
 - Target verified 2026-09-26: `v2026.9.6`, source commit `eb377ac59e6c9fd6c7705028034812becf00271b`; GitHub stable and npm latest agree.
 - Existing source pin: `1391f7cd2d40ab5bbcf2f5f831d3a64f520e72d7` (`v2026.9.3`). Reuse landed compatibility code; [completed Plan 037](completed/037-openclaw-stable-upgrade.md) remains historical evidence.

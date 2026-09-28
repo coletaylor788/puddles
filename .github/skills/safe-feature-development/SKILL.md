@@ -593,29 +593,30 @@ from documentation alone.
 
 ### Environment configuration and migrations
 
-DEV, TEST and production each own their configuration, writable state and service
-bindings. Preserve authored DEV settings during artifact refresh. Stop its
-writers before changing configuration, snapshot state and service settings, and
-restore those with the prior runtime if activation fails. Recording adapters
-remain explicit fixture-owned settings. DEV proof never claims TEST or
-production migration execution.
+DEV, TEST and production each own their generated configuration, writable state
+and service bindings. Their application settings come from one reviewed
+non-secret base in the companion repository. Differences name exact leaves for
+ports, paths, service identities, credential references and recording adapters.
+Do not exclude entire plugin, model, agent or permission sections.
 
-For a release that changes configuration, prepare the TEST and production
-manifests with the same maintained generator before sealing the build. Use the
-synthetic TEST baseline and a bounded read-only production baseline. Bind the
-generator, policy, target identities, input digests and both manifest digests to
-the release. The source gate must reproduce both outputs from the sealed inputs.
-TEST executes its own manifest; production selects its prebound manifest and
-rechecks selected values and job revisions before mutation. Refresh affected
-evidence when those inputs drift. Never rewrite a manifest or relabel a prior
-single-manifest receipt after certification.
+Preserve DEV experiments during ordinary refresh. Release validation rejects
+local drift until it is reviewed or explicitly reconciled. Stop writers and
+snapshot configuration, state and service settings before reconciliation;
+restore them with the previous runtime on failure. DEV uses its own generated
+candidate configuration and never applies a TEST or production migration.
 
-Stable non-secret environment configuration may be versioned in the optional
-private companion repository. Keep credentials outside both repositories, and
-keep owner-specific configuration out of public code, CI and artifacts. Keep
-captured baselines and job revisions separate from stable configuration. Carry
-the genuine runtime proof through certification so interpreter validation does
-not depend on a builder's directory layout.
+Capture the predecessor's authored configuration without expanding credential
+references. Preserve deprecated fields and absent settings in the TEST seed;
+remap only declared bindings. Synthetic history and external effects stay behind
+recording adapters. Use complete SDK core and plugin normalization to derive the
+candidate, not to erase the predecessor input before rehearsal.
+
+Seal the base, bindings and complete predecessor and candidate expectations in
+the existing migration inputs and manifests before building. Check predecessor
+parity before mutation and candidate parity after the complete migration. Source
+validation reproduces the manifests. Drift requires fresh affected evidence;
+never attach a new manifest to a certified build. Credentials stay outside both
+repositories. Owner settings and captured baselines stay out of public output.
 
 ### Merged TEST and production
 

@@ -73,6 +73,8 @@ describe("unified pnpm toolchain", () => {
 
   it("leaves project manifests and locks unchanged through the real process runner", async () => {
     const directory = project();
+    const config = join(directory, "development.json");
+    writeFileSync(config, JSON.stringify({ pnpmStore: configured }));
     const bin = mkdtempSync(join(tmpdir(), "pnpm-toolchain-bin-"));
     const record = join(directory, "corepack-cwds");
     const executable = join(bin, "corepack");
@@ -87,6 +89,7 @@ process.stdout.write(process.argv[3] === "--version" ? "${PNPM_VERSION}\\n" : pr
       const lockBefore = readFileSync(join(directory, "pnpm-lock.yaml"));
       await inspectPnpmContext(directory, undefined, {
         ...process.env,
+        PUDDLES_DEVELOPMENT_CONFIG: config,
         [PNPM_STORE_ENV]: configured,
         PATH: `${bin}:${process.env.PATH ?? ""}`,
         PNPM_TEST_CWDS: record,

@@ -204,6 +204,23 @@ release migration. See the
 [deployment guide](../../docs/openclaw-setup/patches/README.md) for the narrow
 manifest and recovery contract.
 
+Full configuration parity uses `environment-configuration.mjs`. Render from a
+reviewed base and exact JSON-pointer leaf bindings, then compare the entire
+authored result. Diagnostics report changed paths without values. Only named
+runtime timestamps are ignored; missing fields and explicit defaults differ.
+Whole plugin, model and permission subtrees cannot be environment overrides.
+
+A target manifest may carry `configuration` with `schemaVersion: 1` and
+`baseSha256`, `bindingsSha256`, `predecessorSha256`, `candidateSha256`. The executor
+checks the authored predecessor before mutation and the complete candidate after
+core/plugin migration, config operations and doctor. The final comparison runs
+even when the release has no cron operation. Capture parsed authored JSON rather
+than SDK snapshots with expanded credentials. Included configuration is rejected
+until its complete ownership can be represented. Optional companion preparation
+must seal these identities before building, preserve legacy input shape in TEST,
+and validate DEV against its own generated candidate. Public CI uses synthetic
+fixtures and remains independent of companion settings.
+
 Public CI initializes a fresh run directory for each hosted attempt and
 explicitly disables local extensions. On failure, it retains a seven-day
 artifact with bounded, sanitized command and known public fixture logs, plus
@@ -610,3 +627,9 @@ shared store selection, capacity reservations, artifact references, terminal
 cleanup, and migration of old scratch. A successful source gate alone does not
 mean its files are disposable. The outer controller must finish artifact export
 and all consumers first.
+
+Mapped upstream test groups use OpenClaw's verified worker cache within the
+prepared candidate. This avoids recompiling the same test worker programs for
+each group. The wrapper still verifies inputs and outputs, owns child cleanup,
+and executes every mapped regression. This setting is part of regression proof
+identity and does not replace final candidate validation.

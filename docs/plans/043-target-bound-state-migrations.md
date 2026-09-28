@@ -1,6 +1,6 @@
 # Bind state migrations to their deployment targets
 
-**Status:** Approved; implementation in progress
+**Status:** Binding contract implemented; configuration parity approved separately
 **Issue:** Tracked as a release blocker in [#114](https://github.com/coletaylor788/puddles/issues/114)
 **Last updated:** 2026-09-27
 
@@ -61,12 +61,17 @@ Transport the genuine interpreter-check evidence with the release so production 
 
 The approved implementation seals separate target manifests, validates the common generator and transports the production manifest and genuine interpreter evidence. Shared scripts, instructions and the skill cover future releases. Stable environment settings remain in the companion repository.
 
-Focused regressions and independent review pass, including recovery compatibility for existing releases and separation of caller release settings from synthetic test fixtures. A live DEV failure restores its exact configuration, service, runtime and ownership record, and health passes. The final cumulative CI, exact-artifact DEV and merged TEST/PROD gates remain. Production is unchanged.
+Separate target bindings do not prove that the environments share all application
+settings. The approved [Plan 045](045-environment-configuration-parity.md) extends
+this contract with a shared base and full configuration comparisons. Preserve
+the migration bindings and evidence transport established here.
 
 ## Agent section
 
 ### State
 
+- The binding implementation is landed. Plan 045 adds full environment parity.
+  A passing migration generator alone does not establish that parity.
 - Public upgrade Plan 041 and companion Plan 037 depend on this shared-process repair for delivery. Keep their designs limited to upgrade requirements.
 - Current pair includes public main process revision `73985a748b5acce182adbc8a7bbd61dbef4190e9` and the corresponding companion process update.
 - The requester approved implementation, including durable process, skill and script updates for future releases. Non-secret environment configuration may be committed only to the companion repository. Secrets remain outside repositories.

@@ -261,7 +261,10 @@ export async function nativePipeline(command, repositoryGates) {
       throw new Error("Target migrations require an explicit maintained generator extension");
     }
     const stateMigration = migrationPath ? { sha256: fileDigest(migrationPath) } : null;
-    if (migrationPath) readMigrationManifest(migrationPath, stateMigration.sha256);
+    if (migrationPath) {
+      const manifest = readMigrationManifest(migrationPath, stateMigration.sha256);
+      if (manifest.configuration) stateMigration.configuration = manifest.configuration;
+    }
     const context = isolatedContext(join(runDir, "context"));
     if (migrationPath) context.stateMigration = { manifestPath: migrationPath, ...stateMigration };
     const candidate = join(runDir, "source");
@@ -306,6 +309,7 @@ export async function nativePipeline(command, repositoryGates) {
     const buildEnv = {
       PATH: `${dirname(process.execPath)}:${process.env.PATH}`, HOME: process.env.HOME,
       TMPDIR: process.env.TMPDIR, COREPACK_HOME: process.env.COREPACK_HOME,
+      PUDDLES_DEVELOPMENT_CONFIG: process.env.PUDDLES_DEVELOPMENT_CONFIG,
       [PNPM_STORE_ENV]: repositoryPnpm.configuredStoreDir,
       CI: "true", ...resourceProfile.buildEnvironment,
     };
@@ -346,7 +350,8 @@ export async function nativePipeline(command, repositoryGates) {
         environment: jsonDigest(Object.entries(process.env).sort(([a], [b]) => a.localeCompare(b))),
         dependencies: treeDigest(join(repoRoot, "node_modules"), repositoryDependencyOptions),
       };
-      await stage(runDir, "regressions", { candidateInputs, repoInputs, installedDependencies, tools, harness, execution, prepareOutputs, extension: extension.phaseHashes.gate, command, stateMigration, stateMigrations, buildEnvironment }, async () => {
+      const mappedTestEnv = { ...buildEnv, OPENCLAW_VITEST_WORKER_CACHE: "1" };
+      await stage(runDir, "regressions", { candidateInputs, repoInputs, installedDependencies, tools, harness, execution, prepareOutputs, extension: extension.phaseHashes.gate, command, stateMigration, stateMigrations, buildEnvironment, mappedTestEnvironment: jsonDigest(mappedTestEnv) }, async () => {
         if (command === "ci" || command === "source-gate") await repositoryGates(run);
         await run("corepack", ["pnpm", "prompt:snapshots:check"], { cwd: candidate, env: buildEnv });
         const typechecks = [...new Set(suite.patches.flatMap((patch) => patch.typechecks ?? []))];
@@ -367,11 +372,11 @@ export async function nativePipeline(command, repositoryGates) {
         }
         for (const [project, targets] of groups) {
           const workerArgs = resourceProfile.testWorkers ? ["--maxWorkers", String(resourceProfile.testWorkers)] : [];
-          const collected = await run("node", ["scripts/run-vitest.mjs", "list", "--filesOnly", "--config", `test/vitest/vitest.${project}.config.ts`, ...workerArgs, ...targets], { cwd: candidate, env: buildEnv, capture: true, logPath: join(runDir, "logs", `${sequence++}.log`) });
+          const collected = await run("node", ["scripts/run-vitest.mjs", "list", "--filesOnly", "--config", `test/vitest/vitest.${project}.config.ts`, ...workerArgs, ...targets], { cwd: candidate, env: mappedTestEnv, capture: true, logPath: join(runDir, "logs", `${sequence++}.log`) });
           for (const target of targets) {
             if (!collected.split("\n").some((line) => line.trim() === target || line.trim().endsWith(`/${target}`) || line.trim().endsWith(` ${target}`))) throw new Error(`Mapped regression was not collected: ${target} in ${project}`);
           }
-          await run("node", ["scripts/run-vitest.mjs", "run", "--config", `test/vitest/vitest.${project}.config.ts`, ...workerArgs, ...targets], { cwd: candidate, env: buildEnv });
+          await run("node", ["scripts/run-vitest.mjs", "run", "--config", `test/vitest/vitest.${project}.config.ts`, ...workerArgs, ...targets], { cwd: candidate, env: mappedTestEnv });
         }
         const candidateTests = [...new Set(suite.patches.flatMap((patch) => patch.candidateTests ?? []))];
         const candidateWorkerArgs = resourceProfile.testWorkers ? ["--maxWorkers", String(resourceProfile.testWorkers)] : [];

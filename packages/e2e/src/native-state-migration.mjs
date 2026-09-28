@@ -3,6 +3,7 @@ import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { digest, fileDigest, inside } from "./native-state.mjs";
+import { assertConfigurationDigest, authoredConfiguration } from "./environment-configuration.mjs";
 
 const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const prefix = (parent, child) => parent.length <= child.length && parent.every((part, index) => part === child[index]);
@@ -44,7 +45,7 @@ function migrationProjection(before, after, path = []) {
 }
 
 export function validateMigrationManifest(manifest) {
-  keys(manifest, ["schemaVersion", "configOperations", "cronOperation"], ["schemaVersion", "configOperations"]);
+  keys(manifest, ["schemaVersion", "configOperations", "cronOperation", "configuration"], ["schemaVersion", "configOperations"]);
   if (manifest.schemaVersion !== 1 || !Array.isArray(manifest.configOperations) ||
       manifest.configOperations.length > 64 || (!manifest.configOperations.length && !manifest.cronOperation)) {
     throw new Error("Invalid migration version or operation count");
@@ -77,6 +78,13 @@ export function validateMigrationManifest(manifest) {
       throw new Error("Invalid one-job migration");
     }
   }
+  if (manifest.configuration !== undefined) {
+    keys(manifest.configuration, ["schemaVersion", "baseSha256", "bindingsSha256", "predecessorSha256", "candidateSha256"]);
+    if (manifest.configuration.schemaVersion !== 1 ||
+        Object.entries(manifest.configuration).some(([key, value]) => key !== "schemaVersion" && !hexDigest(value))) {
+      throw new Error("Invalid configuration parity identities");
+    }
+  }
   return manifest;
 }
 
@@ -107,7 +115,7 @@ function statePath(stateDir, path, required = false) {
   return resolve(path);
 }
 
-function configDraft(source, operations) {
+export function configDraft(source, operations) {
   const draft = structuredClone(source);
   for (const operation of operations) {
     let parent = source;
@@ -297,6 +305,11 @@ export async function executeStateMigration(
     };
   };
   if (phase === "preflight") {
+    if (manifest.configuration) assertConfigurationDigest(
+      authoredConfiguration(snapshot),
+      manifest.configuration.predecessorSha256,
+      "predecessor",
+    );
     const plan = await builtInPlan();
     configBoundary(
       snapshot,
@@ -314,6 +327,11 @@ export async function executeStateMigration(
     assertSelection();
   }
   if (phase === "builtin-config") {
+    if (manifest.configuration) assertConfigurationDigest(
+      authoredConfiguration(snapshot),
+      manifest.configuration.predecessorSha256,
+      "stopped predecessor",
+    );
     const plan = await builtInPlan();
     if (!record(expectedBuiltIn) ||
         canonicalValueDigest({ config: plan.config, cron: plan.cron }) !==
@@ -371,12 +389,17 @@ export async function executeStateMigration(
       writeOptions: { skipRuntimeSnapshotRefresh: true, skipOutputLogs: true },
       mutate(draft, context) {
         assertSelection();
-        const next = configBoundary(context.snapshot, manifest.configOperations, stateDir, sdk);
+        const next = configBoundary(context.snapshot, manifest.configOperations, stateDir, sdk,
+          manifest.configuration ? authoredConfiguration(context.snapshot) : context.snapshot.sourceConfig);
+        if (manifest.configuration) assertConfigurationDigest(next, manifest.configuration.candidateSha256, "candidate");
         for (const key of Object.keys(draft)) delete draft[key];
         Object.assign(draft, next);
       },
     });
     assertSelection();
+  }
+  if (phase === "cron" && manifest.configuration) {
+    assertConfigurationDigest(authoredConfiguration(snapshot), manifest.configuration.candidateSha256, "migrated candidate");
   }
   if (phase === "cron" && manifest.cronOperation) {
     configBoundary(snapshot, [], stateDir, sdk);
