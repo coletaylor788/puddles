@@ -4,6 +4,7 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { digest, fileDigest, inside } from "./native-state.mjs";
 import { assertConfigurationDigest, authoredConfiguration } from "./environment-configuration.mjs";
+import { assertWorkshopConfiguration, inspectWorkshopMigration, validateWorkshopBinding } from "./native-workshop-migration.mjs";
 
 const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const prefix = (parent, child) => parent.length <= child.length && parent.every((part, index) => part === child[index]);
@@ -45,7 +46,7 @@ function migrationProjection(before, after, path = []) {
 }
 
 export function validateMigrationManifest(manifest) {
-  keys(manifest, ["schemaVersion", "configOperations", "cronOperation", "configuration"], ["schemaVersion", "configOperations"]);
+  keys(manifest, ["schemaVersion", "configOperations", "cronOperation", "configuration", "workshopMigration"], ["schemaVersion", "configOperations"]);
   if (manifest.schemaVersion !== 1 || !Array.isArray(manifest.configOperations) ||
       manifest.configOperations.length > 64 || (!manifest.configOperations.length && !manifest.cronOperation)) {
     throw new Error("Invalid migration version or operation count");
@@ -84,6 +85,9 @@ export function validateMigrationManifest(manifest) {
         Object.entries(manifest.configuration).some(([key, value]) => key !== "schemaVersion" && !hexDigest(value))) {
       throw new Error("Invalid configuration parity identities");
     }
+  }
+  if (manifest.workshopMigration !== undefined && (!record(manifest.workshopMigration) || manifest.workshopMigration.schemaVersion !== 1)) {
+    throw new Error("Invalid Workshop migration manifest");
   }
   return manifest;
 }
@@ -192,10 +196,11 @@ export function silenceCronJob(job) {
   return { ...structuredClone(job), delivery, failureAlert: false };
 }
 
-async function loadSdk(runtime, phase) {
+async function loadSdk(runtime, phase, workshop) {
   const require = createRequire(join(runtime, "package.json"));
   const sdk = {};
   const names = ["config-mutation", "cron-store-runtime", "state-paths"];
+  if (workshop) names.push("health");
   if (["schema", "builtin-config"].includes(phase)) names.push("doctor-repair-runtime");
   for (const name of names) {
     const path = require.resolve(`openclaw/plugin-sdk/${name}`);
@@ -215,7 +220,8 @@ export async function executeStateMigration(
     throw new Error("Migration requires an explicit canonical stopped-state target");
   }
   const manifest = readMigrationManifest(manifestPath, sha256);
-  const sdk = await sdkLoader(runtime, phase);
+  if (manifest.workshopMigration) validateWorkshopBinding({ stateDir, workshopMigration: manifest.workshopMigration });
+  const sdk = await sdkLoader(runtime, phase, Boolean(manifest.workshopMigration));
   const assertSelection = () => {
     if (sdk.resolveStateDir(process.env) !== stateDir || process.env.OPENCLAW_CONFIG_PATH !== join(stateDir, "openclaw.json")) {
       throw new Error("Migration state selection changed");
@@ -233,6 +239,7 @@ export async function executeStateMigration(
     observe: false, pluginValidation: ["preflight", "schema"].includes(phase) ? "core-only" : "full",
   });
   assertSelection();
+  assertWorkshopConfiguration(manifest.workshopMigration, snapshot.sourceConfig, stateDir, sdk.resolveAgentWorkspaceDir);
   for (const source of [snapshot.sourceConfigBeforeMigrations, snapshot.sourceConfig].filter(record)) {
     statePath(stateDir, sdk.resolveCronJobsStorePathFromConfig(source, process.env, process.env, { artifactPreservingReadOnly: true }));
   }
@@ -311,6 +318,12 @@ export async function executeStateMigration(
       "predecessor",
     );
     const plan = await builtInPlan();
+    if (manifest.workshopMigration) {
+      assertWorkshopConfiguration(manifest.workshopMigration,
+        configDraft(plan.preview?.expectedConfig ?? snapshot.sourceConfig, manifest.configOperations), stateDir, sdk.resolveAgentWorkspaceDir);
+      inspectWorkshopMigration({ stateDir, workshopMigration: manifest.workshopMigration },
+        [...plan.loaded.store.jobs, ...plan.targetLoaded.store.jobs]);
+    }
     configBoundary(
       snapshot,
       manifest.configOperations,
@@ -333,6 +346,8 @@ export async function executeStateMigration(
       "stopped predecessor",
     );
     const plan = await builtInPlan();
+    if (manifest.workshopMigration) inspectWorkshopMigration({ stateDir, workshopMigration: manifest.workshopMigration },
+      [...plan.loaded.store.jobs, ...plan.targetLoaded.store.jobs]);
     if (!record(expectedBuiltIn) ||
         canonicalValueDigest({ config: plan.config, cron: plan.cron }) !==
           canonicalValueDigest(expectedBuiltIn)) {

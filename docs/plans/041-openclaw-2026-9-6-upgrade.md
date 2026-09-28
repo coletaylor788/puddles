@@ -1,6 +1,6 @@
 # Upgrade maintained OpenClaw support to 2026.9.6
 
-**Status:** Production restored to 2026.7.1; migration repair awaits ownership decision
+**Status:** Production restored to 2026.7.1; approved migration repair in progress
 **Issue:** [#114](https://github.com/coletaylor788/puddles/issues/114)
 **Last updated:** 2026-09-28
 
@@ -41,22 +41,25 @@ The shared configuration and target-bound migrations passed accumulated CI, DEV 
 
 Three applied Skill Workshop records came from the old CLI without owning-agent metadata. Their target skills exactly match the applied drafts, and their rollback records are retained. Multiple agents share the workspace, so the new host cannot infer a unique owner. Doctor refuses migration. Configuration parity does not cover this state, and TEST omitted this legacy shape.
 
-Proposed correction, pending approval:
+Approved correction:
 
 1. Assign the three records to Main. Add only missing ownership after checking exact metadata and applied-content digests. Preserve skills, drafts, applied status and rollback records.
-2. Check ownership before shutting down production. Refuse ambiguous records without changing them.
+2. Check ownership before shutting down production. Read both legacy metadata files and records already imported into SQLite. Refuse ambiguous records without changing them.
 3. Bind and snapshot the exact external skill directories Doctor can move. Restore them on failure without overwriting unrelated changes.
 4. Rehearse with isolated state and mapped workspace copies. Add a committed regression for ambiguous ownership and external directory rollback, then run the corrected release through the shared process.
 
 During the failed attempt, Doctor moved six external skill directories before refusing the ownerless records. Automatic rollback restored the runtime and state, and reviewed recovery restored all six original directories from the retained failed state. Contents and permissions matched; the copies remain available. The new regression must fail when only the state directory is rolled back.
 
-The repository workflow requires approval for a consequential ownership decision. The shared workspace and old CLI metadata do not establish which agent owns these records.
+The requester approved assigning these three records to Main on September 28. The repair runs after the stopped snapshot and before Doctor, with exact metadata, draft, rollback and skill-content preconditions. No ownership is inferred from the shared workspace.
+
+The migration binds each agent's workspace and skill destination to the configuration Doctor will use. It checks scheduled jobs for references to skills that will move. It refuses interrupted skill writes, legacy collection backups and destinations outside the saved state until those cases have their own rehearsal. TEST includes completed CLI updates without owners. A separate real Doctor regression uses an external workspace and proves that rollback restores its moved skill.
 
 ## Agent section
 
 ### State
 
-- Current blocker: production transaction `activation-1790582039867-96594` failed in Doctor's Skill Workshop sidecar migration. Exactly three applied legacy records lack `origin`; 35 other applied records retain origin metadata. The three drafts validate and their current skill files match the upstream rendered drafts. Their retained rollback files do not by themselves indicate unfinished writes. The proposed explicit Main ownership binding requires requester approval; the three proposal records have not been changed. The six directories moved by Doctor have been restored from verified retained copies. Before retrying, add read-only ownership preflight, bound external workspace snapshots, and synthetic shared-workspace migration and rollback regressions. PRODUCTION recovery proof verifies the predecessor runtime, configuration, service, interpreter and six restored skill directories; both health endpoints pass and the PROD lease is released.
+- Approved repair source and retained independent review are complete. Focused checks pass: 57 Workshop/state tests, both activation/rollback regressions, interpreter/topology coverage and typechecking. The actual source Doctor reproduces the old ambiguity and verifies the repair. A supplemental installed Doctor test proves the maintained activation automatically restores external skills and original ownership after a later health failure. Package installation and service control are recorded in that supplemental fixture; exact-artifact DEV and physical TEST remain required. Private fixture retirement passes all 27 checks. No production proposal has been modified.
+- Current blocker: production transaction `activation-1790582039867-96594` failed in Doctor's Skill Workshop sidecar migration. Exactly three applied legacy records lack `origin`; 35 other applied records retain origin metadata. The three drafts validate and their current skill files match the upstream rendered drafts. Their retained rollback files do not by themselves indicate unfinished writes. The requester approved the explicit Main ownership binding. Implementation is in progress; the three production records have not yet been changed. The six directories moved by Doctor have been restored from verified retained copies. Before retrying, add read-only ownership preflight, bound external workspace snapshots, and synthetic shared-workspace migration and rollback regressions. PRODUCTION recovery proof verifies the predecessor runtime, configuration, service, interpreter and six restored skill directories; both health endpoints pass and the PROD lease is released.
 - Replacement public `6373b52e63e6b98d54f43a475f884d4961055bc7` and companion `0573b06fe945844d8117bf53da7afa85fea2eecd` passed composed CI `36388360634`, attempt 3. Build `95ecfc7531da895b85439f51c667efea20794eaf3956db7465ba869a9bb5463a` passed exact-artifact DEV and TEST. DEV ran four wrapper checks, nine messaging scenarios, 34 upgrade assertions and the real embedding test without skips. TEST passed 11 scenarios, injected activation failure and rollback, healthy activation, certification and final rollback. Its owned target is removed and its port is idle. Production activation failed in upstream Doctor on three ownerless legacy skill proposals; production is restored to healthy 2026.7.1.
 - The supplemental real 2026.7.1 CLI check passed both sandbox command forms with synthetic legacy configuration under the bound Node 22 interpreter. The candidate specifically rejected that configuration. Runtime and configuration hashes stayed unchanged and no Docker operation ran. This proves command compatibility without existing containers.
 - Shared target migrations and full configuration parity are implemented. Selected public `3eab63f419b7ecba9c2971d376fa1b2c9555f1ab` and companion `0573b06fe945844d8117bf53da7afa85fea2eecd` passed composed CI `36382703756` and exact-artifact DEV. TEST migration and activation passed, but final rollback failed when the candidate CLI parsed restored predecessor configuration. Maintained recovery succeeded with the unchanged target and receipt. The predecessor package snapshot remained unchanged; restored runtime, service and configuration match it, and TEST is stopped with port 18799 idle. This candidate is disqualified; the source repair requires a newly selected candidate through the shared process.
@@ -78,6 +81,10 @@ The repository workflow requires approval for a consequential ownership decision
 - Failed migration, failed readiness and interruption restore the complete old state with its matching runtime, interpreter and browser.
 
 ### Architecture and decisions
+
+- Workshop recovery is part of the activation transaction. Seal agent paths and approved metadata/content hashes in both the target identity and migration manifest. Validate the effective predecessor and candidate config, inspect ownership before shutdown, then repeat inventory after writers stop. Snapshot original state and each referenced external directory before any metadata repair or Doctor migration. Retained original metadata makes ownership repair reversible.
+- Recovery verifies external snapshots and existing destinations before restoring absent directories with exclusive publication. A changed external directory is a recovery conflict, never permission to overwrite it. Already restored matching directories are safe to reuse after interruption. Bind sources and destinations; reject unsupported collection backups, pending apply recovery and external agent directories before shutdown.
+- Fast validation covers ambiguous ownership, hash drift, SQLite-only records, decoded scheduled-job references, external rollback, interruption, configuration path mismatch and the actual upstream Doctor migration. Physical TEST seeds three synthetic completed updates and a completed create. Keep the final cumulative gate and exact artifact progression unchanged.
 
 The current [safe-feature-development skill](../../.github/skills/safe-feature-development/SKILL.md) owns the entire development and release process. The [runner guide](../../packages/e2e/README.md), [deployment coordination](../../packages/e2e/DEPLOYMENT_COORDINATION.md) and [patch guide](../openclaw-setup/patches/README.md) supply its commands and contracts. Read their current main versions when restarting. This plan adds no alternate builder, gate, handoff, slot, review, merge or deployment procedure. Previous upgrade runbooks and Plan 039's historical execution details are not restart instructions.
 

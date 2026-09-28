@@ -102,6 +102,25 @@ E2E_DEV_BUILD_TIMEOUT_MS=3600000 \
   node packages/e2e/bin/openclaw-test-env.mjs resume build
 ```
 
+## Workshop migration recovery
+
+When Doctor can change files outside `stateDir`, declare their agent/workspace
+boundaries in `workshopMigration` on the target and sealed migration manifest.
+The activation preflight checks the actual config, legacy sidecars, SQLite
+proposal rows and scheduled-job references before shutdown. It repeats the
+inventory after stopping writers and snapshots referenced external skill
+directories along with state. Approved ownership repairs require exact proposal,
+draft, rollback and applied-skill hashes. They run after the snapshot, before
+Doctor. Rollback restores absent external directories with exclusive publication
+and refuses to overwrite changed content.
+
+Collection backups, pending interrupted applies and agent destinations outside
+state require separate supported recovery before deployment. Rehearsal paths
+must stay under its owned root. Use synthetic legacy records and mapped copies;
+a copied database that still names live workspaces is unsafe to run through
+Doctor. `candidate.workshop-migration.test.ts` exercises the actual Doctor
+migration with shared ownership and an external workspace.
+
 ## Development loop
 
 Use task-owned worktrees on the development machine for edits, type checks,
