@@ -127,14 +127,18 @@ messages on the mini. CI jobs and isolated fixtures use no deployment slot.
 Prepare drafts before acquiring DEV and release after installed checks and
 cleanup. Do not hold the slot while editing, building, or waiting for CI.
 
-Once local DEV checks and review pass, run the full accumulated gate in CI and
-validate that exact CI-built feature artifact in DEV. Only this final proof,
-not mutable draft evidence, qualifies for merge. The agent initiating TEST owns
-the batch of merged commits, selects latest main, and builds those bits in CI. It carries
-that exact batch through TEST and PROD. On a regression it merges the required
-revert, alerts the feature owner, and resumes from TEST with corrected main.
-The feature owner repairs separately. Do not use a branch artifact for TEST or
-PROD or silently replace an already tested batch with newer main.
+After focused checks, applicable local DEV checks, retained review, and required
+repository checks, merge the feature. One release owner pins selected merged
+heads and runs the full accumulated CI gate once. Promote that same artifact
+through DEV, TEST, and PROD. Main remains open; later commits join the next
+candidate. Source merge is distinct from release certification.
+
+A failed candidate leaves healthy PROD in place. Fix or revert the responsible
+source, then build a replacement and start it at DEV. Retry an infrastructure
+failure with the existing artifact when its inputs remain valid. Do not rebuild
+between environments or silently replace a tested candidate with newer main.
+The [coordination guide](DEPLOYMENT_COORDINATION.md) describes existing commands
+and the transition from older premerge receipt tooling.
 
 The gate runs every workspace build, lint, and test, the isolated Gmail Python
 pool, every mapped OpenClaw patch regression, and the cross-component candidate
@@ -286,8 +290,9 @@ OPENCLAW_CANDIDATE_DIR=/path/to/native-run/installed/runtime \
 
 `build.json` is immutable package evidence with
 `eligibility: "built-not-certified"`. It is useful input for target testing,
-but it alone cannot integrate or activate production. Premerge eligibility
-combines it with the source gate and DEV proof; physical TEST follows merge. `source-gate` records the
+but it alone cannot activate production. Source merges use review and required
+repository checks; release eligibility requires CI and artifact checks through
+DEV and TEST. `source-gate` records the
 builder-only test inventory. The target command verifies the imported
 platform, Node binary identity, local migration file, and every additional and
 prepared-file mapping before giving installed hooks a digest-bound
@@ -367,10 +372,13 @@ Running a changed source gate for unchanged build bytes creates a new sidecar
 instead of overwriting or reusing the older attestation.
 Initialize, inspect, and apply it with
 `openclaw-artifact-retention.mjs init|dry-run|apply`. Producers register exact
-owned objects and references. Cleanup keeps the newest two successful build
-bundles with their package proofs, the newest failed reproduction, every local
-diagnostic log, and the dependency closure of current, pinned, active, paused,
-failed-debug, deployed, and latest-healthy-recovery references. Protected
+owned objects and references. The current compatibility defaults keep the newest
+two successful bundles and one failed reproduction, plus dependencies referenced
+by current, pinned, active, paused, failed-debug, deployed, and recovery owners.
+Completed-owner diagnostic logs are compressed and bounded to 30 days and 1 GiB
+per owner; protected or unclassified legacy logs remain. See
+[development storage](DEVELOPMENT_STORAGE.md) for the approved retention target
+and the remaining executable alignment. Protected
 objects do not consume the ordinary two-build or one-failure quota.
 
 The pool never adopts a directory by its name or timestamp. Missing ownership,
@@ -379,7 +387,7 @@ the canonical direct child and ownership digest, rejects links and escapes,
 and moves the exact object through pool-owned trash with a resumable journal.
 Unregistered legacy directories, production recovery state, Copilot sessions,
 worktrees, package-manager caches, containers, and global caches stay outside
-this policy. Local diagnostic logs have no age or byte limit. Full homes,
+this policy. Completed logs follow the limits above. Full homes,
 databases, runtime state, and recordings are not diagnostic logs.
 
 `E2E_REQUIRED_FREE_BYTES` may raise the default 8 GiB preflight to a measured

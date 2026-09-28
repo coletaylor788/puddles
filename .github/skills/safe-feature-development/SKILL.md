@@ -1,9 +1,9 @@
 ---
 name: safe-feature-development
-description: "Take Puddles features from an explicitly approved design through fast local and DEV iteration, independent review, cumulative release checks, landing, merged TEST rehearsal, production deployment, and rollback. Use when designing or implementing a feature or behavior change."
+description: "Take Puddles features from an explicitly approved design through fast local and DEV iteration, independent review, parallel source merges, one CI build promoted through DEV, TEST, and PROD, and rollback. Use when designing or implementing a feature or behavior change."
 metadata:
   author: Cole Taylor
-  version: "3.4.0"
+  version: "4.0.0"
 ---
 
 # Safe Feature Development
@@ -148,9 +148,10 @@ boundaries without duplicating the pipeline or its completed proofs.
 
 The owner keeps the requested code, focused tests, committed regression, related
 documentation, and retained adversarial review coherent. Iterate with the fast
-local and DEV loop below. When ready for release, run the full accumulated
-gate, integrate eligible exact source, rehearse the merged batch, then
-activate exact artifacts with read-only health checks and rollback. Never change
+local and DEV loop below. Merge reviewed source after focused and required
+repository checks. One release owner builds selected merged source in CI and
+promotes that artifact through DEV, TEST, and PROD, with read-only production
+health checks and rollback. Never change
 sealed artifacts in place. A correction creates a new candidate and invalidates
 only proofs whose actual inputs changed.
 
@@ -370,8 +371,8 @@ investigating instead of asking.
      behavior. Use the Puddles daily workflow below: focused local tests,
      incremental local builds, queued draft deployment to DEV, and installed
      behavior assertions. Mutable drafts need no CI build or release receipt.
-     Reserve the full accumulated CI gate and exact CI-artifact DEV proof for
-     the reviewed final candidate, not each ordinary edit.
+     The release owner runs the full accumulated CI gate once on the selected
+     merged candidate. Individual features need no separate full release build.
    - Use mocks or fakes for local testing and iteration when exercising a live
      dependency is unnecessary.
    - Route external writes and delivery in tests through deny-by-default mocks
@@ -424,50 +425,46 @@ investigating instead of asking.
      diff recheck. Updating status or recording evidence does not restart review
      or rebuild unchanged code. Commit ids do not belong in the issue.
 
-5. **Validate and integrate eligible exact source**
-   - Run `node packages/e2e/bin/openclaw-test-env.mjs ci` in CI against the
-     reviewed final candidate. Preserve the entire accumulated regression pool.
-     Use the configured builder and its exact source-gate evidence. Builds and
-     isolated CI fixtures do not reserve a shared mini environment.
-   - Push the reviewed candidate and create or update a non-draft pull request.
-     Include committed regressions, retained review, and the cumulative command.
-   - Install that exact CI-built candidate in DEV and repeat the applicable
-     installed assertions. Bind premerge eligibility to its CI build, source
-     gate, and matching final DEV proof. Local draft evidence cannot substitute
-     for this proof. Resolve review, checks, and conflicts as agent-owned work.
-     Recheck the exact feature head and tree, required checks, default target,
-     and clean mergeability before merging. Other features may advance main;
-     refresh mergeability without invalidating unchanged feature evidence.
-     Conflicts or edits to the feature require the affected checks again.
-   - Merge between DEV and TEST. Verify the expected source landed. Honor an
-     explicit implementation-only handoff when another owner is assigned release.
+5. **Merge reviewed source in parallel**
+   - Push the reviewed feature and create or update its pull request with the
+     committed regression, focused results, and retained review. Run applicable
+     local DEV checks and satisfy required repository checks.
+   - Resolve actual conflicts and repeat affected checks. Merge without waiting
+     for unrelated features or a release slot. Do not require a full release
+     build and exact CI-artifact DEV proof per feature before source merge.
+   - Verify the source landed and tell the release owner. Source merge is not
+     permission to deploy an unchecked artifact. Stay available for diagnosis.
 
-6. **Own and rehearse the merged batch**
-   - The agent initiating TEST registers itself as owner of every included
-     merged commit, with each feature owner's routable contact. Included agents
-     coordinate with it. Fetch latest main, pin the batch, and obtain its exact
-     CI-built artifacts. Do not use a feature branch from TEST onwards.
-   - Queue for TEST and hold its slot through installed scenarios, healthy
-     activation, deliberate failure, rollback, and cleanup. Keep writable state,
-     configuration, sessions, indexes, ports, and PIDs separate from DEV and PROD.
-   - Use complete immutable archives without dependency fetch or rebuild on the
-     target. Require recording adapters for writes and delivery. Selected host
-     checks are bounded and read-only. Missing required checks fail.
-   - Certify and promote through the existing receipt chain. Record successful
-     TEST with its exact artifact and production baseline. Release TEST before
-     waiting for PROD; retain batch ownership and monitor progress.
-   - On failure, preserve evidence and hold promotion. Identify the responsible
-     commit before reverting it on current main through a normal reviewed merge.
-     Include dependent changes when needed. Alert its feature owner to repair
-     with a regression in that owner's worktree and re-enter DEV.
-   - Select corrected latest main as a successor batch, build in CI, and resume
-     from TEST without waiting for the feature repair. Do not reset main, silently
-     discard unrelated work, or promote an older artifact containing bad code.
-     Infrastructure failures need diagnosis and retry rather than blind reverts.
-   - Reuse successful evidence only when its actual source, tests, environment,
-     toolchain, and artifacts still match. Rehearse again if PROD's baseline
-     changed before acquiring PROD. Request a concrete decision if attribution
-     or a data migration makes the necessary revert unsafe.
+6. **Build once and promote the release candidate**
+   - One release owner selects merged source and records included feature owners.
+     Pin public and optional companion heads. Run
+     `node packages/e2e/bin/openclaw-test-env.mjs ci` once for that candidate,
+     preserving the full accumulated regression pool. Builds hold no shared
+     environment slot. Main remains open throughout.
+   - Install the resulting immutable artifact in DEV and check it. Promote those
+     same bytes to TEST for installed scenarios and affected migration/rollback
+     checks, then to PROD. Do not rebuild or repackage between environments.
+     A later main commit belongs to the next candidate and does not invalidate
+     the selected release. Record source, artifact ID, and stage results;
+     scripts perform integrity checks without manual whole-workspace hashing.
+   - Claim an environment only for its deployment, checks, cleanup, and recovery.
+     Keep writable state, configuration, sessions, ports, and PIDs separate.
+     Environment settings and credentials stay outside the deployable artifact.
+     External writes use recording adapters; live health checks are read-only.
+   - Preserve healthy PROD on build, DEV, or TEST failure. Diagnose promptly,
+     fix or revert the responsible source through a reviewed merge, and build a
+     replacement. The new artifact starts at DEV. Infrastructure retries reuse
+     the same artifact when its inputs remain valid. Do not block other workers
+     while a feature owner repairs a reverted change.
+   - Release TEST before waiting for PROD. If the production baseline changed,
+     repeat the affected TEST rehearsal. Reuse the artifact only when sealed
+     configuration and migration inputs remain valid; otherwise build a
+     replacement and start at DEV. Keep one verified PROD recovery copy. TEST rollback snapshots are temporary
+     test data and are removed after their checks finish.
+   - Scripts must bound execution and recover from interrupted deployment without
+     depending on an agent response. The owner monitors failures and records a
+     handoff if another owner takes over. Report unsupported automation honestly;
+     repair the existing controller rather than inventing another workflow.
 
 7. **Activate exact artifacts**
    - Use the configured deployment wrapper. Check explicit target identity and
@@ -484,8 +481,10 @@ investigating instead of asking.
    - On failure, restore the recorded package, runtime, service, and browser
      snapshots, restart, and recheck health. Return nonzero and preserve the
      original failure; surface rollback and cleanup failures separately.
-   - Keep recovery state across interruption. Repair with a committed regression
-     and resume the same run, reusing proofs whose actual inputs still match.
+   - Keep recovery state across interruption. Restore a healthy service before
+     waiting for an agent. Repair with a committed regression and reuse unaffected
+     results. Replace the single PROD recovery copy only after its successor is
+     verified. Finalize completed staging and test snapshots automatically.
 
 9. **Close out**
    - Confirm exact source integration and required post-landing checks. Report
@@ -508,11 +507,10 @@ Feature work is complete only when:
   production was explicitly out of scope and promotion and rollback were proven
   in fixtures, or no configured promotion lifecycle exists and that limitation
   was reported;
-- when the repository uses pull requests, the same reviewed candidate
-  that completed applicable promotion and production validation is remotely
-  green, required review is resolved, the pull request is merged, and the
-  expected default-branch result is verified, unless a controlling instruction
-  or concrete policy or permission blocker explicitly prevents landing; and
+- the reviewed source is merged with required checks and review satisfied, and
+  the release record identifies the candidate containing it. Feature owners may
+  hand off to the acknowledged release owner without running another pipeline;
+  distinguish source landed from released in status reports; and
 - the final tracker report accurately states the landed result, validation,
   residual risks, and any explicit landing blocker for the requester's final
   validation and task-completion decision.
@@ -523,9 +521,7 @@ Assume concurrent feature owners, including owners changing the same component.
 Use task-owned local worktrees for edits and focused tests. Check plans, PRs,
 and available task status, and coordinate overlapping interfaces and dependent
 changes directly with the owners. Never reserve the entire development loop
-while waiting for CI or a shared environment. Keep main open to other owners'
-commits and merges. A feature's CI and DEV bind its exact head; the separate
-merged-batch gate validates the resulting combination before TEST and PROD.
+while waiting for CI or a shared environment.
 
 Follow [deployment coordination](../../../packages/e2e/DEPLOYMENT_COORDINATION.md)
 for the mini's atomic lock file, DEV/TEST/PROD ready queues, initiating batch
@@ -583,12 +579,11 @@ startup, and test time separately from queue time and cold preparation. Aim for
 warm feedback within five minutes where practical; a slower loop is a reason to
 inspect its bottleneck, not skip checks or impose a new release gate.
 
-After retained review and local DEV success, freeze the candidate and run the
-complete accumulated gate in CI. Install that exact CI artifact in DEV and save
-the final proof bound to its source and build. Draft checks are development
-evidence only and must not produce a passing release-valid DEV proof. CI remains
-an independent clean-build and regression check, even when local parity makes
-it uneventful. TEST and PROD remain immutable CI-artifact consumers.
+After retained review, applicable local DEV success, and required repository
+checks, merge the feature. The release owner performs the accumulated CI build
+on selected merged source. Its artifact passes DEV, TEST, and PROD unchanged.
+Draft checks support development and source merge; they do not certify release.
+Do not rebuild a candidate just because another feature merged while it ran.
 
 If a maintained wrapper only accepts CI bundles, treat that as a tooling gap to
 repair within the approved scope, not a reason to restore CI to every edit.
@@ -623,36 +618,35 @@ validation reproduces the manifests. Drift requires fresh affected evidence;
 never attach a new manifest to a certified build. Credentials stay outside both
 repositories. Owner settings and captured baselines stay out of public output.
 
-### Merged TEST and production
+### Release ownership and cleanup
 
-After review, the complete accumulated CI gate, and DEV validation, merge the
-feature. The initiating TEST owner selects latest merged main, registers the
-batch and included commit owners, and obtains its immutable CI artifacts.
-TEST and PROD consume that merged batch. An included feature agent stays
-available for diagnosis and repair and coordinates with the registered owner.
-The owner monitors through production, including while waiting for a slot.
+Feature owners work in parallel. One release owner carries each pinned candidate
+through CI, DEV, TEST, and PROD; included feature agents help diagnose failures.
+The owner does not reserve main, other tasks' builds, or an environment while
+waiting. Use the maintained artifact, certification, deployment, and recovery
+commands. Design approval already authorizes production within scope.
 
-Use the normal artifact, certification, recovery, and read-only health gates.
-Design approval already authorizes production within scope. Do not ask again
-at promotion. Acquire each environment through the queue, preserve target
-locks, and record recovery before destructive work. No build, dependency fetch,
-or merge occurs while production is stopped. PROD receives the exact successful
-TEST artifact, and any changed production baseline requires renewed TEST proof.
+Keep one reusable mutable build per active task and the shared host package
+store. Retain the candidate being promoted, current PROD, and one verified PROD
+recovery copy. Remove completed or superseded build staging, imported runtimes,
+and fixtures after their consumers stop. TEST has no retained backup; temporary
+rollback-test snapshots disappear when the check finishes. Preserve small logs,
+source/artifact identities, and stage results separately. A failed workspace
+needs an active debugging reason to remain.
 
-On a confirmed regression the batch owner merges the necessary revert, alerts
-the responsible feature agent, and resumes from TEST using corrected latest
-main. The feature agent repairs separately and re-enters DEV. Preserve a
-promotion hold for an uncertain failure and ask for a concrete decision only
-when autonomous diagnosis or safe revert cannot resolve it. Alert the next
-ready owner after releasing a slot; poll durable notifications so a missed
-message cannot strand a queued task. Record explicit ownership transfer if the
-owner cannot continue. Never abandon a batch after merge.
+Notify affected workers to apply merged tooling and clean their completed runs.
+A coordinator authorized to clean abandoned generated data may proceed after
+checking ownership, live processes, slots, source preservation, and production
+recovery references. An unresponsive worker does not itself block that cleanup.
+Uncertain ownership or a live consumer still requires investigation. Never edit
+another worker's source or stop its active work to recover space.
 
-Retain compact proofs, the failed reproduction, and all active or deployed
-recovery dependencies. Clean only owned disposable state through the maintained
-retention helpers. Public CI remains independent of private repositories,
-credentials, and configuration. Optional private composition follows its own
-paired-worktree instructions and binds both merged repository heads.
+Use [storage lifecycle](../../../packages/e2e/DEVELOPMENT_STORAGE.md) for existing
+commands and known gaps. If a helper still requires obsolete premerge receipts,
+repeated builds, or TEST backup retention, fix that helper through the assigned
+owner. Do not forge evidence, silently bypass a guard, or claim automation exists
+because the guidance now requires it. Preserve valid work during the transition.
+Public CI remains independent of private repositories and credentials.
 
 For OpenClaw source patch deployment, follow
 `docs/openclaw-setup/patches/README.md` and use

@@ -3,7 +3,7 @@ name: adversarial-review
 description: Independently challenge a completed feature for hidden defects, unsafe assumptions, regressions, and incomplete requirements. Use for the mandatory post-implementation review of every feature.
 metadata:
   author: Cole Taylor
-  version: "1.7.0"
+  version: "1.8.0"
 ---
 
 # Adversarial Review
@@ -122,10 +122,13 @@ integration happens before activation, outside the live rollback transaction.
 Distinguish local DEV drafts from final validation. Incremental local builds
 and mutable source are expected during iteration; do not require a CI artifact
 or full accumulated suite between ordinary fixes. Check that affected installed
-behavior is exercised early and that stale outputs are not reused. Final merge
-eligibility still needs the complete CI gate and DEV proof for that exact CI
-artifact. Draft evidence must not qualify for merge, TEST, or PROD. Preserve
-slot ownership, isolation, recording adapters, and rollback in both DEV modes.
+behavior is exercised early and that stale outputs are not reused. Reviewed
+features may merge after focused and required repository checks. One release
+owner runs the full accumulated CI gate on selected merged source and promotes
+that artifact through DEV, TEST, and PROD. Draft checks do not certify release.
+Check that later main commits do not force another build of the active candidate.
+Preserve slot ownership, isolation, recording adapters, and production recovery.
+TEST rollback snapshots are temporary and must be cleaned after their checks.
 
 ## Project-specific concerns
 

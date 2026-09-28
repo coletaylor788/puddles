@@ -1,6 +1,6 @@
-# Bound development storage and retire completed runs
+# Parallel development with one release build and bounded storage
 
-**Status:** Storage tooling merged. Owner cleanup and parallel merge follow-up in progress.
+**Status:** Approved. Core storage cleanup is merged; simplified guidance and controller alignment are in progress.
 **Issue:** [145](https://github.com/coletaylor788/puddles/issues/145)
 **Last updated:** 2026-09-27
 
@@ -8,335 +8,205 @@
 
 ### Design
 
-The development loop retains complete source trees, installed dependencies,
-packaging workspaces, extracted releases, and draft payloads after their useful
-life. Artifact retention manages registered release objects, but it does not
-retire the workspaces that produced them. A new run directory therefore adds
-storage even when its packages came from a shared cache.
+Completed builds kept source copies, installed dependencies, extracted releases,
+and test snapshots. A shared package cache reduced downloads but did not remove
+those generated copies. Requiring a full feature release before merge and another
+build after merge added work and delayed cleanup.
 
-Give each active task one persistent OpenClaw build workspace, with its paired
-repository worktrees and one configured host package store. Keep release
-evidence separately. Make retiring completed scratch work a scripted lifecycle
-step, with explicit protection for active work and recovery.
+Keep feature development parallel. Give each task one reusable build workspace
+and a shared host package store. Merge reviewed changes after focused checks and
+required repository checks. One release owner builds selected merged source once
+in CI and promotes the same artifact through DEV, TEST, and PROD.
 
 ```mermaid
-flowchart LR
-    C[Shared package store] --> W[One mutable build workspace per task]
-    W --> D[Prepared draft and isolated DEV checks]
-    W --> F[Reviewed source through full CI gate]
-    F --> A[Immutable artifact and evidence]
-    A --> T[Exact artifact DEV, merged TEST and PROD]
-    D --> X[Finalize completed scratch]
-    F --> X
-    T --> X
-    R[Task ownership and recovery references] --> X
-    X --> E[Keep evidence and referenced artifacts]
-    X --> G[Remove unreferenced generated files]
+flowchart TD
+    Tasks[Parallel task workspaces] --> Checks[Focused checks and review]
+    Cache[Shared host package store] --> Tasks
+    Checks --> Main[Merge source]
+    Main --> Pin[Release owner selects merged commits]
+    Pin --> CI[One cumulative CI build]
+    CI --> DEV[DEV checks]
+    DEV --> TEST[TEST checks]
+    TEST --> PROD[PROD and read-only health]
+    PROD --> Recovery[One verified PROD recovery copy]
+    TEST --> Cleanup[Remove completed generated copies]
+    CI --> Cleanup
 ```
 
-#### 1. Allocate and reuse the task workspace
+#### Parallel work and release ownership
 
-The task records its public and optional companion worktrees, persistent
-OpenClaw source, build output, scratch root, and package store. Subsequent edits
-reuse those paths and the existing input fingerprints. Changed lockfiles,
-patches, toolchains, or build inputs invalidate the affected outputs.
+Workers edit, build, and test in their own worktrees. Writable build output,
+configuration, state, ports, and processes remain separate. Compatible prepared
+source and compiler output are reused. All install contexts select the maintained
+host package store.
 
-Use Git worktrees from a shared upstream repository for clean comparisons.
-An additional source checkout must have a named purpose, an owner, and a
-retirement condition. Keep it while it supports a live investigation; remove
-its generated output when the comparison closes. Commit or otherwise preserve
-unique source before retiring the checkout. Do not share mutable build outputs
-or a writable node_modules tree between tasks.
+The release owner pins public and optional companion commits before CI. Later
+main commits belong to the next candidate and do not invalidate the active one.
+Shared environment slots cover deployment, installed checks, cleanup, and
+recovery. Editing, building, reviewing, and waiting hold no slot or main lock.
 
-One build workspace is the steady-state target. A clean release builder and a
-fresh installed runtime still coexist temporarily because the release gate
-must prove that the packaged application works independently of the developer
-checkout. The merged batch also needs its own CI artifact. These are bounded
-release stages with terminal cleanup.
+#### One artifact through the environments
 
-#### 2. Use one package store on each host
+CI runs the accumulated regression pool and produces the deployable artifact.
+DEV checks it, TEST rehearses it, and PROD receives the same bytes. Environment
+configuration, credentials, and writable state stay outside the artifact.
+Promotion does not rebuild, fetch dependencies, or repackage it. If a production
+baseline changes, repeat affected TEST checks. The current migration tooling seals
+some environment inputs with the build; if those inputs change, create a
+replacement candidate and start it at DEV. Never rewrite an existing artifact.
 
-Resolve the host store from one maintained configuration and pass it to every
-public, companion, upstream, and scratch install. The existing verifier should
-check the actual resolved store in all these contexts. Keep pnpm's versioned
-subdirectories and separate native outputs by platform and toolchain.
+Keep source and artifact identity plus compact stage results. Scripts perform
+integrity checks. Agents should not assemble repeated workspace hash inventories
+or add another evidence framework. Review, committed regressions, production
+state isolation, and recording adapters for test writes remain required.
 
-A shared store avoids repeated package acquisition. Each workspace still has
-its own dependency layout, generated files, and build output. The release
-packager also materializes a portable dependency graph, which must remain
-independent of the developer's package store.
+#### Failure and recovery
 
-Do not build a new dependency cache. Use pnpm's supported storage and import
-behavior. Record copy versus shared allocation where it can be measured. A
-store migration happens at an owned dependency refresh; existing active
-installs continue to use their recorded store until then. Prune an old store
-only through a separate, quiescent maintenance step after all consumers move.
+A failed build, DEV check, or TEST rehearsal leaves healthy PROD running. The
+release owner diagnoses the failure and promptly fixes or reverts the responsible
+source. A replacement build starts at DEV. Infrastructure retries reuse valid
+artifacts and results. Other feature workers keep moving.
 
-#### 3. Bound draft preparation and release scratch
+A failed production activation restores its previous healthy runtime and state.
+Scripts must bound execution and recover interrupted operations without waiting
+indefinitely for an agent. Keep one verified PROD recovery copy. Verify its
+replacement before retiring the old copy. Necessary overlap during that
+replacement is temporary.
 
-Keep one ready draft payload per task. A second payload may exist while it is
-being prepared or consumed. Preparation, transfer, installation, and cleanup
-share an ownership record so a newer preparation cannot delete a payload that
-DEV is using. When consumption or supersession is acknowledged, retain its
-manifest and results and delete the generated payload and transfer lists.
+#### Storage and cleanup
 
-Reuse the same compatible local run for retries. Preserve immutable records of
-each attempt and its inputs. A source change invalidates the affected proof;
-a retry never inherits a pass from different inputs. Hosted CI attempts may
-still start fresh. Their outer controller finalizes the attempt after uploads
-and artifact consumers have acknowledged the handoff.
-
-Packaging and validation may need separate mutable directories. Keep those
-directories only while the corresponding stage or consumer needs them. Reuse
-a prepared stack only when its dependency and output fingerprints prove it is
-compatible; do not merge independent validation stages simply to reduce disk
-use. Prefer shared Git objects and existing filesystem cloning helpers for
-necessary copies, while preserving isolation of writes.
-
-#### 4. Retain evidence and rollback material explicitly
-
-Extend the existing artifact retention machinery. Store each immutable release
-bundle once under its content identity, and give each active task or merged
-batch its own reference. Do not depend on the single global `current` pointer
-to represent every task waiting for DEV or TEST.
-
-| Material | Proposed retention |
+| Material | Retention |
 | --- | --- |
-| Source, patches, unique local edits | Preserve in Git or a verified local snapshot before retiring a checkout. |
-| Release evidence | Keep source and toolchain identities, build and archive hashes, full gate results, installed checks, migration/target identities, review disposition, activation and rollback results. Compact evidence survives workspace removal. |
-| Immutable bundles | Keep the current two newest successful builds plus every build referenced by an active, queued, paused, deployed, recovery, or explicit debug owner. Reuse the existing dependency closure. |
-| Build, package, extracted install, transfer and fixture directories | Delete after their last consumer finishes and retained evidence is verified. Keep the task's single mutable development workspace while the task needs it. |
-| Failed runs | Keep the exact command, error, inputs, logs, and a reproducible fixture. Pin a full workspace only while investigation needs it. Default: one unpinned full failed workspace per task for up to seven days after owner-confirmed termination. |
-| Raw diagnostic logs | Default: compress and retain for 30 days, with a 1 GiB budget per completed task. Keep compact release evidence and explicitly pinned failure logs outside this rolling limit. |
-| Production recovery | Preserve the complete authoritative recovery, prior runtime/interpreter, state, configuration, service definitions, and other recorded assets. Retire an old recovery only with the existing backup/activation tools after replacement recovery verifies. |
+| Active task source and build | One reusable mutable build per task; preserve unique edits. |
+| Package cache | One maintained store per host, pruned only without active installs. |
+| Release artifacts | Candidate in promotion, current PROD, and the one PROD recovery dependency set. |
+| DEV and TEST | Active instance only; completed staging and superseded installs are disposable. |
+| TEST rollback snapshots | Temporary for the check; remove after completion. |
+| Failed workspace | Retain only while an active investigation needs it. |
+| Evidence | Small logs, source/artifact IDs, results, and production recovery records. |
 
-A build bundle alone does not restore production state. Production recovery
-does not become ordinary scratch because a release succeeded. Likewise,
-copied receipts may still refer to paths needed by certification or recovery.
-Verify the complete consumer dependency chain before deleting those paths;
-preserve immutable receipts and use the existing import/rebinding contracts.
-
-#### 5. Finalize safely without relying on an agent reminder
-
-Extend existing run status and locking with task identity, host, exact owned
-paths, process identity, child/consumer references, and terminal cleanup state.
-Use named artifact references for queued and paused work. Deployment slots
-continue to protect shared DEV, TEST, and PROD; local builders need their own
-run ownership because they normally hold no deployment slot.
-
-Finalization runs on success and failure, after owned children have joined and
-any required rollback has completed. Its sequence is:
-
-1. Acquire the same run lock used by producers. Confirm terminal ownership,
-   consumer completion, and absence of active deployment or recovery references.
-2. Preserve and verify the evidence and artifacts required by their consumers.
-3. Generate an exact-path deletion plan. Reject unknown ownership, dirty source,
-   unexpected symlinks, changed identities, and paths outside the declared root.
-4. Revalidate while holding the lock, then use the existing journal pattern to
-   remove only declared generated children. Record completion and space change.
-
-Cleanup failure leaves `cleanup-pending` state and is retried by the next
-controller entrypoint. A killed process cannot run a finalizer, so startup also
-reconciles interrupted attempts. Expired heartbeats and old timestamps trigger
-investigation; they never authorize deletion by themselves. Uncertain or
-unavailable ownership checks preserve the path.
-
-Agent-managed worktrees use the app's archive facility when retired. Disposable
-runner worktrees use their recorded Git owner and the existing worktree cleanup
-helper. Never recursively delete a task directory merely because its chat is
-idle or its PR merged.
-
-#### 6. Account for disk before allocating more
-
-Report storage separately for reusable workspaces, shared caches, temporary
-stages, retained artifacts, evidence, and recovery. Track peak incremental
-allocation for each stage and the bytes left after finalization. Cover both the
-developer machine and the deployment host. Record the owner-agreed free-space
-target for each host in the rollout inventory and measure progress against it;
-merging the tooling does not by itself complete disk recovery.
-
-Capacity checks must account for all concurrent local builders. Reserve each
-stage's measured additional requirement under a host lock, plus the existing
-free-space floor. Serialize a large build when the host cannot fit another
-reservation. This prevents several jobs from independently passing the same
-free-space check and then exhausting the disk together.
-
-Directory totals are accounting estimates. Shared files and filesystem clones
-can make them larger than uniquely reclaimable storage. Report actual free
-space before and after cleanup separately. Do not promise that deleting a
-directory returns its entire reported size.
-
-#### 7. Keep feature validation parallel
-
-A feature owns its exact source, CI artifact, and DEV proof. Main stays open
-while those checks run. New commits on main do not change that feature's
-inputs and do not require other owners to stop merging. The merge guard checks
-the feature identity and current server mergeability, then records the actual
-combined commit separately. Conflicts or edits to the feature need the affected
-checks again.
-
-The combined commit is not production eligible. The batch owner selects latest
-main, builds it in CI, and validates that exact artifact in TEST before PROD.
-This separate gate catches interactions between independently validated features.
-Existing production receipts keep their strict artifact and tree identity.
+Cleanup runs after producers and consumers stop, on success and failure, and
+resumes after interruption. Never remove an active build, unique source, or real
+production recovery to meet a disk target. Notify owners before coordinated
+legacy cleanup. An unresponsive worker does not prevent authorized cleanup when
+fresh process, slot, and consumer checks establish that generated data is unused.
+Unknown ownership still requires investigation. Use the app archive operation
+for managed worktrees so their source remains recoverable.
 
 ### Status
 
-Source and local disk inspection support the proposal. The current development
-guidance already calls for persistent source and a shared store. Missing
-terminal cleanup, unmanaged duplicate workspaces, and artifact copies outside
-the registry prevent that guidance from bounding disk use.
+The original storage controller and shared-store fixes are merged. Completed
+legacy builders, dependency trees, fixture copies, and migration fixtures have
+been cleaned. Current guidance now adopts the requester-approved parallel flow,
+one release build, disposable TEST, and one PROD recovery copy.
 
-The requester approved implementation, merge, and notification of other task
-owners. The storage controller, retention changes, terminal CI and DEV hooks,
-and daily skills are implemented in an isolated public/private pair. Composed
-CI, public CI, and exact-artifact DEV passed. Public PR 146 and companion PR 52
-are merged. Six task owners received the merged revisions and cleanup guide.
-Completed scratch from this validation has been retired with sealed evidence;
-other owners retain control of their task directories. The parallel merge
-correction has passed independent review and the full local e2e suite.
+The development-loop manager owns remaining executable and companion alignment.
+The active release owner owns historical TEST cleanup and current release
+promotion. Existing guards and retention defaults are documented as transition
+gaps until their code lands; this plan does not claim they already changed.
 
 ## Agent section
 
 ### State
 
-Storage implementation, final validation, and paired landing are complete.
-Owner-led cleanup remains. The parallel merge correction
-is a separate reviewed follow-up with its own committed regressions.
-Machine-specific inventory and ownership observations belong in the local audit,
-not public plans or CI artifacts.
+Public guidance is maintained in the repository instructions, both development
+skills, the e2e runner/coordination/storage guides, and the deployment guide.
+Machine-specific paths, disk inventories, and private repository identities stay
+in local records. Original public storage implementation landed in PR 146.
+Source merge and release completion must be reported separately.
 
 ### Scope and acceptance criteria
 
-- One persistent mutable OpenClaw build workspace per active task by default.
-- One configured host package store, verified in every install context.
-- Prepared payloads, clean comparison workspaces, release builders, imports,
-  package stacks, and fixture copies have explicit owners and retirement rules.
-- The number of completed attempts does not cause unbounded retained scratch.
-- Compact evidence remains usable after generated source/install paths vanish.
-- Current, queued, paused, deployed, debug, and recovery consumers remain safe.
-- Full accumulated CI and exact-artifact deployment proofs retain their current
-  requirements. No draft is promoted on the strength of cached evidence alone.
-- Legacy paths are inventoried and explicitly adopted before cleanup eligibility.
-- Owner-led cleanup covers developer and deployment hosts, with measured progress
-  toward each host's recorded operating headroom.
+- Parallel feature merges after focused checks, review, and required repo checks.
+- One reusable mutable build per task and one configured host package store.
+- One cumulative CI build of selected merged source, promoted DEV -> TEST -> PROD.
+- Main advancement does not invalidate the pinned release or stop other workers.
+- Automatic bounded deployment recovery and terminal cleanup.
+- One PROD recovery copy; no retained TEST backup or completed test snapshots.
+- Compact evidence remains usable without completed build and install trees.
+- Cleanup preserves live consumers, unique source, secrets, and real recovery.
 
 ### Architecture and decisions
 
-Relevant public components:
+Reuse existing components rather than add another controller:
 
-- `packages/e2e/src/native-pipeline.mjs`: persistent per-run source and stage
-  reuse; the terminal `finally` releases the lock without retiring the run tree.
-- `packages/e2e/src/native-retention.mjs`: registered objects, references,
-  dependency closure, copy-on-registration, and journaled deletion. Its policy
-  currently retains all diagnostic logs without a size or age limit.
-- `packages/e2e/src/native-package.mjs`: independent materialization of the
-  production dependency graph followed by archives and installed copies.
-- `packages/e2e/src/native-state.mjs`: run identity, stage records, and locks.
-- `packages/e2e/src/worktree-cleanup.mjs`: cleanup for runner-owned worktrees.
-- `packages/e2e/src/pnpm-toolchain.mjs`: resolved shared-store validation.
-- `packages/e2e/DEPLOYMENT_COORDINATION.md`: shared environment ownership.
-- `packages/e2e/README.md`: retention boundaries and backup contracts.
+- `native-pipeline.mjs`, `native-state.mjs`, and `native-storage.mjs` own
+  native run lifecycle and generated scratch.
+- `native-retention.mjs` owns registered artifacts and dependency references.
+- `pnpm-toolchain.mjs` verifies the configured host store.
+- Deployment coordination owns shared environment slots and batch ownership.
+- Existing activation and backup tools own real PROD recovery.
+- Companion producers own their build, import, migration, and DEV fixture cleanup.
 
-Companion adapters must register their scratch children and invoke the generic
-finalization contract. Public code must remain independently runnable without
-discovering or requiring a companion repository. Do not edit another task's
-worktree to implement this design.
-
-The artifact retention CLI's current `dry-run` calls cleanup recovery and takes
-a lock. A new inventory preview must be genuinely read-only and must not replay
-deletion journals. A preview does not confer later deletion authority.
-
-The requester rejected a temporary main-merge deferral during final storage
-validation. The guard had applied the legacy production receipt's current-base
-and identical-tree requirements to feature merge eligibility. Correct that
-feature path: verify the frozen head and tree before merging, refresh clean
-mergeability when main advances, and record the combined result as requiring
-merged-batch validation. Keep legacy production receipt checks unchanged.
-Regressions cover diverged branches, moving main, conflicting or changed heads,
-wrong trees, blocked checks, and the exact-head merge API condition.
+The current artifact pool still retains two recent successful builds and the
+scratch controller keeps the newest sealed failure for seven days. The current
+slot runner leaves terminal slots occupied for owner inspection. Those defaults
+need executable alignment with the approved policy. Generic scratch cleanup
+refuses recovery markers; completed synthetic fixtures need producer cleanup,
+not removal of journals to defeat that refusal.
 
 ### Implementation
 
-Approved implementation order:
+The public guidance owner updates and lands this documentation. The development
+loop manager aligns source merge helpers, CI triggers, retention defaults,
+terminal cleanup, interrupted recovery, and companion guidance. The release owner
+adopts the new flow without relabeling a branch artifact as different merged
+source, then promotes one selected candidate and cleans its completed work.
 
-1. Add storage inventory, task/run ownership, and a read-only deletion preview.
-2. Add evidence sealing and terminal scratch finalization to the existing
-   runner and retention code. Integrate companion hooks in an isolated pair.
-3. Bound prepared draft payloads and make shared-store selection uniform.
-4. Add capacity reservations and stage/cleanup size reporting.
-5. Update the daily-loop guide and skill, then adopt eligible legacy paths
-   using an exact-path migration inventory.
+Required checks remain enforced while CI triggers are revised. Do not dispatch
+another runtime build to validate documentation. Notify feature owners after the
+guidance lands, and have them use merged tooling to finalize completed attempts.
+Legacy cleanup proceeds independently of unrelated active release validation.
 
 ### Validation
 
-The storage candidate passed all 440 e2e tests and TypeScript checks. Companion
-contract checks passed 118 tests with seven environment-gated skips. Composed
-CI run 36357322660 passed using the supported self-hosted builder. Public CI
-run 36357219224 passed, including finalization after portable artifact upload.
-Public merge: `6d89d81d8305febd4ecf1c0c8b85c631bc07fea7`.
-The combined tree requires separate batch CI and TEST before production.
+Original storage validation passed 440 e2e tests, TypeScript checks, public CI
+36357219224, and composed CI 36357322660. Its artifact passed installed DEV
+checks, including 33 upgrade cases. Public PR 146 and the parallel merge helper
+follow-up PR 168 are merged. Those historical results do not validate the new
+controller work assigned here.
 
-The exact composed artifact passed four maintained DEV wrapper scenarios,
-nine native messaging scenarios, 33 installed upgrade tests, a real local
-embedding-provider check, and the installed SDK normalization regression.
-Build identity: `21d5371689161cf5b71324d0e3b80ec686edf083fbbf77772ff65c67b17be184`.
-The wrapper sealed retained evidence and removed its temporary imports. The
-DEV slot and builder capacity reservation were released after consumers joined.
-Builder finalization recovered 2.47 GiB of actual filesystem space; DEV wrapper
-finalization recovered 1.65 GiB. Subsequent owner cleanup of this validation's
-completed scratch recovered another 2.61 GiB. These are observed free-space
-changes, not logical directory totals.
+For this guidance change, review consistency, relative links, skill metadata,
+and the root AGENTS.md symlink. No runtime builds or deployments are needed.
+Executable changes need focused behavior regressions and retained review. Their
+selected release candidate runs the cumulative pool once, then installed checks
+against the same artifact across environments.
 
-The retained reviewer cleared both storage diffs and the complete parallel
-merge correction. The correction passed all 18 integration tests, all 450 e2e
-tests across 28 files, and TypeScript checks. Its remote gate remains pending.
-Existing task roots stay protected until their owners apply the merged commands.
-
-
-Investigation performed read-only directory measurements, run-status and
-retention metadata inspection, source inspection, and task/process snapshots.
-The implementation now has focused ownership, retention, capacity, and portable-evidence regressions. Full validation results are recorded below.
-
-Implementation regressions cover active producers and child processes,
-queued and paused consumers, two tasks sharing one artifact, unknown/stale
-ownership, failed retention export, interrupted deletion, symlink/path changes,
-dirty source, protected recovery, store mismatch, and concurrent capacity
-reservations. Prove a retained bundle and evidence chain can still support
-certification after disposable source and install paths are removed.
-
-Run repeated successful and failed fixture attempts and assert that scratch
-returns to its declared steady state. Measure real disk deltas separately from
-logical directory sizes. Add the regression to the shared pool, use focused
-checks during development, and complete the normal accumulated release gate
-for the implemented behavior change.
+Demonstrate parallel source merges during a release, identical artifacts across
+DEV/TEST/PROD, no indefinite stopped PROD after controller interruption, and
+removal of terminal generated copies. Measure actual free-space changes
+separately from logical directory sizes. Preserve live and queued consumers.
 
 ### Rollout and rollback
 
-Start with read-only inventory for legacy storage. Enable automatic finalization
-for newly registered runs after fixture validation. Migrate old paths only
-after tracing ownership, source preservation, exact artifact consumers, and
-recovery references. Protect active task roots during the migration.
+Land guidance and communicate the policy and known tooling gaps together. Active
+owners keep valid evidence and finish or transfer current operations. Source-only
+merges do not confer production eligibility. Repair obsolete helper requirements
+through their owner without fabricating receipts or bypassing production guards.
 
-Roll back the controller behavior if needed. Deleted rebuildable scratch can
-be regenerated from preserved inputs; undeclared source and recovery material
-must never enter the deletion set. Keep completed evidence in durable storage
-before any deletion begins.
+Notify owners and inspect exact legacy paths before cleanup. Preserve source,
+compact results, active artifacts, and the verified PROD recovery set. Rebuildable
+scratch can be regenerated from inputs. If a cleanup hook fails, retain enough
+state to retry without deleting unknown or live paths.
 
 ### Review log
 
-Requester approved implementation and landing. The retained independent reviewer
-rechecked the complete paired diff after remediation and reported no remaining
-significant findings. Composed CI, public CI, and exact-artifact DEV passed. Storage tooling is merged.
-The same reviewer cleared the parallel merge correction, including reuse of
-the unchanged storage eligibility receipt with the corrected integration tool.
+The requester explicitly approved the simplified design and implementation,
+landing, worker notification, and cleanup. This replaces the earlier policy of
+separate full premerge and postmerge release builds and retained TEST snapshots.
+The retained reviewer cleared the nine-document diff after corrections for
+sealed migration input drift and bounded log retention. Relative links, skill
+metadata, the AGENTS.md symlink, and diff whitespace were checked directly.
+The optional skill validator could not run because PyYAML is unavailable.
+The documentation path does not require another runtime validation cycle.
 
 ### Checklist
 
-- [x] Inspect existing lifecycle, retention boundaries, and local accumulation.
-- [x] Write the proposed ownership, retention, and cleanup behavior.
-- [x] Approve the design and proposed retention defaults.
-- [x] Implement in isolated public and companion worktrees.
-- [x] Validate concurrency, recovery, evidence portability, and bounded growth.
-- [ ] Complete retained review and the required release lifecycle.
-- [ ] Adopt and retire eligible historical storage with recorded evidence.
+- [x] Investigate why shared caching did not bound generated copies.
+- [x] Merge original storage controller and shared-store fixes.
+- [x] Clean eligible historical builders, dependencies, and completed fixtures.
+- [x] Obtain approval for the simpler parallel development and release flow.
+- [x] Rewrite public skills and process guidance together.
+- [ ] Land guidance and notify affected workers to align and clean up.
+- [ ] Complete executable and companion alignment through assigned owners.
+- [ ] Confirm terminal cleanup and report actual disk recovery.
