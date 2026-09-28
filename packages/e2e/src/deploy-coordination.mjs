@@ -136,27 +136,37 @@ export function coordinate(path, operation, input) {
       }
       const batch = { id, owner: input.agent, token: randomUUID(), sources: input.sources, status: "selected",
         createdAt: now, updatedAt: now, attempts: [], buildId: null, proof: null, predecessor: input.predecessor ?? null,
-        reverts: input.reverts ?? [], invalidatedBy: [] };
+        reverts: input.reverts ?? [], repairs: input.repairs ?? [], invalidatedBy: [] };
+      const correctionEvidence = input.repairEvidence ?? input.revertEvidence;
+      requireValue(Array.isArray(batch.reverts) && Array.isArray(batch.repairs), "Corrections must be lists");
+      const corrections = [
+        ...batch.reverts.map(({ commit, revert }) => ({ commit, revision: revert, kind: "revert" })),
+        ...batch.repairs.map(({ commit, repair }) => ({ commit, revision: repair, kind: "repair" })),
+      ];
+      requireValue(new Set(corrections.map(({ commit }) => commit)).size === corrections.length, "Name one correction per failed commit");
+      if (batch.repairs.length) requireValue(nonempty(correctionEvidence), "A repair requires recorded evidence");
       if (batch.predecessor) {
         const previous = batchOwned(state, batch.predecessor, input.agent, input.previousToken);
-        requireValue(previous.status === "failed" && nonempty(input.revertEvidence), "Retry needs a failed batch and recorded repair or revert evidence");
+        requireValue(previous.status === "failed" && nonempty(correctionEvidence), "Retry needs a failed batch and recorded repair or revert evidence");
         previous.successor = id;
-        previous.revertEvidence = input.revertEvidence;
+        if (input.repairEvidence) previous.repairEvidence = input.repairEvidence;
+        if (input.revertEvidence) previous.revertEvidence = input.revertEvidence;
       }
       for (const [bad, failure] of Object.entries(state.disqualified)) {
         const source = batch.sources.find((source) => source.id === failure.repository);
         if (!source?.commits.some((commit) => commit.sha === bad)) continue;
-        const revert = batch.reverts.find((record) => record.commit === bad)?.revert ?? failure.revert;
-        if (!sha(revert) || !source.commits.some((commit) => commit.sha === revert)) batch.invalidatedBy.push(bad);
+        const correction = corrections.find((record) => record.commit === bad)?.revision ?? failure.repair ?? failure.revert;
+        if (!sha(correction) || !source.commits.some((commit) => commit.sha === correction)) batch.invalidatedBy.push(bad);
       }
-      for (const record of batch.reverts) {
+      for (const record of corrections) {
         const failure = state.disqualified[record.commit];
         const source = batch.sources.find((source) => source.id === failure?.repository);
-        requireValue(failure && sha(record.revert) && source?.commits.some((commit) => commit.sha === record.revert),
-          "A correction must identify the merged revert in the new batch");
+        requireValue(failure && sha(record.revision) && record.revision !== record.commit &&
+          source?.commits.some((commit) => commit.sha === record.revision),
+          "A correction must identify a different merged commit in the same repository");
         const original = state.batches[failure.batchId].sources.flatMap((source) => source.commits).find((commit) => commit.sha === record.commit);
-        notice(state, original.agent, "repair-reverted-change", { batchId: id, owner: input.agent,
-          commit: record.commit, revert: record.revert, evidence: input.revertEvidence });
+        notice(state, original.agent, record.kind === "repair" ? "change-repaired" : "repair-reverted-change", { batchId: id, owner: input.agent,
+          commit: record.commit, [record.kind]: record.revision, evidence: correctionEvidence });
       }
       state.batches[id] = batch;
       const participants = new Map(input.sources.flatMap((source) => source.commits.map((commit) => [commit.agent.id, commit.agent])));
@@ -294,6 +304,7 @@ export function coordinate(path, operation, input) {
         "TEST proof belongs to a different attempt or production baseline; rerun physical rehearsal");
       batch.testBaseline = current.baseline;
       for (const record of batch.reverts) state.disqualified[record.commit].revert = record.revert;
+      for (const record of batch.repairs ?? []) state.disqualified[record.commit].repair = record.repair;
       for (let predecessor = batch.predecessor; predecessor; predecessor = state.batches[predecessor]?.predecessor) {
         delete state.promotionHolds[predecessor];
       }

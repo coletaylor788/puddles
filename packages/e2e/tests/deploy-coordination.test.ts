@@ -112,17 +112,25 @@ describe("shared deployment queue and merged batch ownership", () => {
     expect(readCoordination(f.path).batches[batch.id].owner.id).toBe(alice.id);
   });
 
-  it("holds promotion on failure, alerts the commit owner, and continues with corrected main", () => {
+  it.each(["revert", "repair"])("holds promotion through a reviewed %s until corrected TEST passes", (kind) => {
     const f = setup(); const batch = f.op("batch", { agent: alice, sources: sources() });
     f.op("batch-fail", { batchId: batch.id, batchToken: batch.token, agent: alice,
       evidence: "recorded failing assertion", responsible: ["d".repeat(40)], revertEvidence: "revert PR" });
     expect(readCoordination(f.path).notifications.at(-1)).toMatchObject({ recipient: bob, kind: "batch-regression" });
     const repaired = f.op("batch", { agent: alice, sources: sources("e".repeat(40)), predecessor: batch.id,
-      previousToken: batch.token, revertEvidence: "merged revert and new main", reverts: [{ commit: "d".repeat(40), revert: "e".repeat(40) }] });
+      previousToken: batch.token, [kind + "Evidence"]: "reviewed correction merged",
+      [kind + "s"]: [{ commit: "d".repeat(40), [kind]: "e".repeat(40) }] });
+    expect(readCoordination(f.path).promotionHolds[batch.id]).toBeTruthy();
+    expect(readCoordination(f.path).disqualified["d".repeat(40)][kind]).toBeUndefined();
+    expect(readCoordination(f.path).notifications.some((n: any) => n.kind === (kind === "repair" ? "change-repaired" : "repair-reverted-change") && n.detail[kind] === "e".repeat(40))).toBe(true);
+    const early = f.enqueue("early-prod", "PROD", { batchId: repaired.id, batchToken: repaired.token });
+    expect(() => f.op("claim", { ...f.lease(early, "PROD"), expectedHealthy: null })).toThrow("promotion is on hold");
+    f.op("cancel", f.lease(early, "PROD"));
     const ticket = f.enqueue("a", "TEST", { batchId: repaired.id, batchToken: repaired.token });
     f.op("claim", f.lease(ticket, "TEST"));
     f.tested(ticket, repaired);
     expect(readCoordination(f.path).promotionHolds).toEqual({});
+    expect(readCoordination(f.path).disqualified["d".repeat(40)][kind]).toBe("e".repeat(40));
     f.op("release", { ...f.lease(ticket, "TEST"), result: "passed", cleanupEvidence: "cleaned" });
     const prod = f.enqueue("prod", "PROD", { batchId: repaired.id, batchToken: repaired.token });
     expect(() => f.op("claim", { ...f.lease(prod, "PROD"), expectedHealthy: "stale" })).toThrow("baseline changed");
@@ -202,18 +210,63 @@ describe("shared deployment queue and merged batch ownership", () => {
       proof: join(f.root, `${batch.id}-proof.json`) })).toThrow("different attempt or production baseline");
   });
 
-  it("keeps older batches with a reverted change disqualified after corrected main passes", () => {
+  it.each(["revert", "repair"])("keeps older batches disqualified after a %s passes TEST", (kind) => {
     const f = setup(); const older = f.op("batch", { agent: alice, sources: sources() });
     const t = f.enqueue("a", "TEST", { batchId: older.id, batchToken: older.token }); f.op("claim", f.lease(t, "TEST"));
     f.tested(t, older); f.op("release", { ...f.lease(t, "TEST"), result: "passed", cleanupEvidence: "clean" });
     const newer = f.op("batch", { agent: alice, sources: sources("f".repeat(40)) });
     f.op("batch-fail", { batchId: newer.id, batchToken: newer.token, agent: alice, evidence: "failure", responsible: ["d".repeat(40)] });
     const corrected = f.op("batch", { agent: alice, sources: sources("e".repeat(40)), predecessor: newer.id, previousToken: newer.token,
-      revertEvidence: "merged revert", reverts: [{ commit: "d".repeat(40), revert: "e".repeat(40) }] });
+      [kind + "Evidence"]: "reviewed correction merged",
+      [kind + "s"]: [{ commit: "d".repeat(40), [kind]: "e".repeat(40) }] });
     const next = f.enqueue("next", "TEST", { batchId: corrected.id, batchToken: corrected.token }); f.op("claim", f.lease(next, "TEST"));
     f.tested(next, corrected); f.op("release", { ...f.lease(next, "TEST"), result: "passed", cleanupEvidence: "clean" });
     const p = f.enqueue("prod", "PROD", { batchId: older.id, batchToken: older.token });
     expect(() => f.op("claim", { ...f.lease(p, "PROD"), expectedHealthy: null })).toThrow("disqualified");
+    const laterSources = sources("1".repeat(40));
+    laterSources[0].commits.push({ sha: "e".repeat(40), agent: alice });
+    const later = f.op("batch", { agent: alice, sources: laterSources });
+    expect(later.invalidatedBy).toEqual([]);
+    expect(f.op("batch", { agent: alice, sources: sources("2".repeat(40)) }).invalidatedBy).toEqual(["d".repeat(40)]);
+  });
+
+
+  it("rejects missing, self, unknown, cross-repository and ambiguous repairs without clearing holds", () => {
+    const f = setup();
+    const failed = f.op("batch", { agent: alice, sources: sources() });
+    const bad = "d".repeat(40);
+    const repair = "e".repeat(40);
+    f.op("batch-fail", { batchId: failed.id, batchToken: failed.token, agent: alice,
+      evidence: "configuration integration regression", responsible: [bad] });
+    const candidate = { agent: alice, sources: sources(repair), predecessor: failed.id,
+      previousToken: failed.token, repairEvidence: "reviewed merged fix", repairs: [{ commit: bad, repair }] };
+    expect(() => f.op("batch", { ...candidate, repairEvidence: "" })).toThrow("recorded evidence");
+    for (const record of [
+      { commit: bad, repair: bad },
+      { commit: bad, repair: "9".repeat(40) },
+      { commit: "8".repeat(40), repair },
+    ]) expect(() => f.op("batch", { ...candidate, repairs: [record] })).toThrow("different merged commit");
+    expect(() => f.op("batch", { ...candidate, reverts: [{ commit: bad, revert: repair }] })).toThrow("one correction");
+    expect(() => f.op("batch", { ...candidate, sources: [sources("f".repeat(40))[0],
+      { ...sources(repair)[0], id: "companion" }] })).toThrow("same repository");
+    const current = readCoordination(f.path);
+    expect(current.promotionHolds[failed.id]).toBeTruthy();
+    expect(current.batches[failed.id].successor).toBeUndefined();
+    expect(current.disqualified[bad].repair).toBeUndefined();
+  });
+
+  it("carries explicit repair attribution through merged batch selection", async () => {
+    const f = setup();
+    const repair = "e".repeat(40);
+    const repairs = [{ commit: "d".repeat(40), repair }];
+    const responses = ["", repair, "b".repeat(40), "", repair];
+    const selected = await snapshotMergedBatch({ agent: alice, predecessor: "failed-batch",
+      previousToken: "owner-token", repairEvidence: "reviewed fix and regression", repairs,
+      repositories: [{ id: "public", root: f.root, base: "c".repeat(40), owners: { [repair]: alice } }] },
+      async () => responses.shift());
+    expect(selected).toMatchObject({ repairs, repairEvidence: "reviewed fix and regression",
+      predecessor: "failed-batch", previousToken: "owner-token", reverts: [] });
+    expect(selected.sources[0].head).toBe(repair);
   });
 
   it("requires retained TEST proof and explicit attribution for every merged commit", async () => {

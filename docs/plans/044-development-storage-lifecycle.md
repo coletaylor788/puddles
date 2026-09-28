@@ -101,6 +101,10 @@ been cleaned. Guidance is merged and affected workers have been notified. It
 adopts the requester-approved parallel flow,
 one release build, disposable TEST, and one PROD recovery copy.
 
+Source correction accounting now distinguishes reviewed fixes from reverts.
+Both retain failure attribution and require successor validation; a repair does
+not need a fabricated revert.
+
 The development-loop manager owns remaining executable and companion alignment.
 The active release owner owns historical TEST cleanup and current release
 promotion. Existing guards and retention defaults are documented as transition
@@ -138,6 +142,12 @@ Reuse existing components rather than add another controller:
 - Deployment coordination owns shared environment slots and batch ownership.
 - Existing activation and backup tools own real PROD recovery.
 - Companion producers own their build, import, migration, and DEV fixture cleanup.
+
+The existing coordinator accepts explicit repair links alongside legacy revert
+links. Each correction must be a different merged commit in the failed source
+repository. TEST success records the correction; old batches remain disqualified.
+The merged-source selector preserves these fields. Focused regressions cover
+repair/revert compatibility, attribution, failed inputs, and promotion holds.
 
 Public CI now separates ordinary repository checks from explicitly dispatched
 release builds. Source merging uses GitHub directly with the reviewed head and

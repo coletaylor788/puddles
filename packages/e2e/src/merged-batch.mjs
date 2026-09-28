@@ -30,5 +30,7 @@ export async function snapshotMergedBatch(spec, run = runCommand) {
     sources.push({ id: repository.id, head, tree, base: repository.base, commits });
   }
   return { agent: spec.agent, sources,
-    ...(spec.predecessor ? { predecessor: spec.predecessor, previousToken: spec.previousToken, revertEvidence: spec.revertEvidence, reverts: spec.reverts ?? [] } : {}) };
+    ...(spec.predecessor ? { predecessor: spec.predecessor, previousToken: spec.previousToken,
+      revertEvidence: spec.revertEvidence, reverts: spec.reverts ?? [],
+      repairEvidence: spec.repairEvidence, repairs: spec.repairs ?? [] } : {}) };
 }
