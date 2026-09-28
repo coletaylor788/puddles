@@ -208,6 +208,10 @@ import { createRehearsalTarget } from "../src/native-target.mjs";
 import { atomicJson, jsonDigest, treeDigest } from "../src/native-state.mjs";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
 import { findRetainedSourceGate, initializeArtifactPool, planArtifactCleanup } from "../src/native-retention.mjs";
+// @ts-expect-error JS storage modules are tested at runtime.
+import { initializeStorage } from "../src/native-storage.mjs";
+// @ts-expect-error JS storage modules are tested at runtime.
+import { finalizeFailedNativeBuild } from "../src/native-storage-finalize.mjs";
 import { runCommand } from "../src/process-runner.mjs";
 
 const roots: string[] = [];
@@ -239,6 +243,8 @@ afterEach(() => {
 });
 function setup() {
   const directory = root();
+  vi.stubEnv("E2E_CAPACITY_ROOT", join(realpathSync(directory), "capacity"));
+  vi.stubEnv("E2E_BUILD_RESERVATION_BYTES", "0");
   const source = join(directory, "upstream");
   mkdirSync(join(source, ".git"), { recursive: true });
   const run = join(directory, "run");
@@ -249,6 +255,48 @@ function setup() {
   vi.stubEnv("E2E_STATE_MIGRATION_BINDINGS", "");
   return { directory, run };
 }
+
+it("waits for the task cleanup lock before changing builder state", async () => {
+  const { directory, run } = setup();
+  vi.stubEnv("PUDDLES_STORAGE_ROOT", directory);
+  mkdirSync(run);
+  mkdirSync(join(directory, "lock"));
+  const previous = JSON.stringify({ status: "failed", failure: "preserved" });
+  writeFileSync(join(run, "run-status.json"), previous);
+  await expect(nativePipeline("build", async () => {})).rejects.toThrow();
+  expect(readFileSync(join(run, "run-status.json"), "utf8")).toBe(previous);
+  expect(existsSync(join(run, "logs"))).toBe(false);
+  expect(existsSync(join(run, "lock"))).toBe(false);
+  expect(counters.prepare).toBe(0);
+});
+
+it("releases the task lock when another process owns the builder", async () => {
+  const { directory, run } = setup();
+  vi.stubEnv("PUDDLES_STORAGE_ROOT", directory);
+  mkdirSync(join(run, "lock"), { recursive: true });
+  await expect(nativePipeline("build", async () => {})).rejects.toThrow();
+  expect(existsSync(join(directory, "lock"))).toBe(false);
+  expect(existsSync(join(run, "run-status.json"))).toBe(false);
+});
+
+it("withdraws failed scratch deletion authority before an incremental builder retry", async () => {
+  const directory = realpathSync(setup().directory);
+  const run = join(directory, "run");
+  vi.stubEnv("E2E_RUN_DIR", run);
+  vi.stubEnv("PUDDLES_STORAGE_ROOT", directory);
+  vi.stubEnv("PUDDLES_STORAGE_OWNER", "task");
+  initializeStorage(directory, "task");
+  mkdirSync(join(run, "context"), { recursive: true });
+  writeFileSync(join(run, "context", "prior-output"), "failed generation");
+  writeFileSync(join(run, "run-status.json"), JSON.stringify({ status: "failed" }));
+  finalizeFailedNativeBuild(directory, "task", run);
+  await nativePipeline("build", async () => {});
+  const entries = JSON.parse(readFileSync(join(directory, "storage.json"), "utf8")).entries;
+  expect(entries[0].status).toBe("superseded");
+  expect(existsSync(join(directory, entries[0].retainedEvidence[0].path))).toBe(true);
+  expect(existsSync(join(directory, "lock"))).toBe(false);
+  expect(existsSync(join(run, "lock"))).toBe(false);
+});
 
 it("keeps a caller's release migration bindings out of synthetic pipelines", async () => {
   vi.stubEnv("E2E_STATE_MIGRATION_BINDINGS", "/synthetic/caller-release-bindings.json");

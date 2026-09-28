@@ -107,6 +107,7 @@ jobs:
             public
 
       - name: Retain public ARM build bundle
+        id: build-upload
         if: success()
         uses: actions/upload-artifact@v4
         with:
@@ -144,3 +145,11 @@ jobs:
           path: ${{ runner.temp }}/puddles-public-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
           retention-days: 7
           if-no-files-found: error
+
+      - name: Finalize acknowledged builder scratch
+        if: success() && steps.build-upload.outcome == 'success'
+        run: |
+          bundle="$RUNNER_TEMP/openclaw-public-arm64-build.tar.gz"
+          digest="$(shasum -a 256 "$bundle" | cut -d ' ' -f 1)"
+          node packages/e2e/bin/openclaw-storage.mjs finalize-build \
+            "$E2E_RUN_DIR" "ci-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" "$bundle" "$digest"

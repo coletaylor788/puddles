@@ -52,6 +52,11 @@ and tooling that guide future work. Make each loop safer, faster, and simpler.
 - Use the [runner guide](../../../packages/e2e/README.md) and
   [coordination rules](../../../packages/e2e/DEPLOYMENT_COORDINATION.md) for reuse
   and cleanup. Protect other owners' work, retained evidence, and rollback state.
+- Use the [storage lifecycle](../../../packages/e2e/DEVELOPMENT_STORAGE.md) for
+  read-only previews and owner-confirmed cleanup. Keep one mutable build and one
+  ready payload per task. Age, an idle chat, or a missing PID is not ownership.
+- After storage tooling merges, notify affected owners to apply it to their own
+  completed work and report actual reclaimed space.
 - Record findings, changes, open actions, and the last review briefly. Check later
   loops to confirm the improvement helped; revise it if it did not.
 

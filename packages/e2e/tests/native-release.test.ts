@@ -1,14 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import {
-  chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync,
+  chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 // @ts-expect-error Native release modules are executable JavaScript.
 import { certifyRelease, createBuildReceipt, createSourceGate, createTargetProof, exportReleaseBundle, importReleaseBundle, promoteRelease, verifyBuildReceipt, verifyRuntimeToolchain } from "../src/native-release.mjs";
 // @ts-expect-error Native lifecycle modules are executable JavaScript.
-import { fileDigest, jsonDigest, treeDigest } from "../src/native-state.mjs";
+import { acquireLock, fileDigest, jsonDigest, treeDigest } from "../src/native-state.mjs";
+// @ts-expect-error Native storage modules are executable JavaScript.
+import { initializeStorage, resumeFailedScratch, planStorageCleanup } from "../src/native-storage.mjs";
+// @ts-expect-error Native storage modules are executable JavaScript.
+import { finalizeFailedNativeBuild, finalizeNativeBuild } from "../src/native-storage-finalize.mjs";
 // @ts-expect-error Native retention modules are executable JavaScript.
 import { initializeArtifactPool } from "../src/native-retention.mjs";
 
@@ -218,6 +222,65 @@ describe("portable OpenClaw release bundle", () => {
 });
 
 describe("release proof chain", () => {
+  it("finalizes a successful retry without leaving stale failed ownership for the next build", async () => {
+    const task = realpathSync(root());
+    const directory = join(task, "builder");
+    const artifacts = join(directory, "artifacts");
+    mkdirSync(artifacts, { recursive: true });
+    initializeStorage(task, "task");
+    writeFileSync(join(artifacts, "failed"), "old output");
+    writeFileSync(join(directory, "run-status.json"), JSON.stringify({ status: "failed" }));
+    finalizeFailedNativeBuild(task, "task", directory);
+    const old = JSON.parse(readFileSync(join(task, "storage.json"), "utf8")).entries[0];
+    const taskUnlock = acquireLock(task);
+    const buildUnlock = acquireLock(directory);
+    try {
+      resumeFailedScratch(task, "task", directory);
+      rmSync(artifacts, { recursive: true });
+      mkdirSync(artifacts);
+    } finally { buildUnlock(); taskUnlock(); }
+    const receipt = build(artifacts);
+    stage(directory, "regressions");
+    const source = createSourceGate(receipt, directory, {});
+    writeFileSync(join(directory, "build.json"), JSON.stringify(receipt));
+    writeFileSync(join(directory, "source-gate.json"), JSON.stringify(source));
+    writeFileSync(join(directory, "run-status.json"), JSON.stringify({ status: "passed" }));
+    const bundle = join(directory, "retained.tar.gz");
+    await exportReleaseBundle(join(directory, "build.json"), bundle);
+    await finalizeNativeBuild(directory, "builder-owner", bundle, fileDigest(bundle));
+    expect(planStorageCleanup(task).keep).toEqual([]);
+    mkdirSync(artifacts);
+    writeFileSync(join(artifacts, "new-failure"), "new output");
+    writeFileSync(join(directory, "run-status.json"), JSON.stringify({ status: "failed" }));
+    finalizeFailedNativeBuild(task, "task", directory);
+    const entries = JSON.parse(readFileSync(join(task, "storage.json"), "utf8")).entries;
+    expect(entries[0].status).toBe("superseded");
+    expect(entries[1].id).not.toBe(old.id);
+    expect(entries[1].status).toBe("sealed");
+    expect(readFileSync(join(task, old.retainedEvidence[0].path), "utf8")).toContain("failed");
+  });
+
+  it("can certify from a portable bundle after disposable builder output is finalized", async () => {
+    // @ts-expect-error Executable storage finalizer.
+    const { finalizeNativeBuild } = await import("../src/native-storage-finalize.mjs");
+    const directory = root();
+    const artifacts = join(directory, "artifacts"); mkdirSync(artifacts);
+    const receipt = build(artifacts);
+    stage(directory, "regressions");
+    stage(directory, "install"); stage(directory, "runtime");
+    const source = createSourceGate(receipt, directory, {});
+    const target = createTargetProof(receipt, directory,
+      recovery(directory, "healthy", receipt, "healthy"), recovery(directory, "rollback", receipt, "rolled-back"));
+    writeFileSync(join(directory, "build.json"), JSON.stringify(receipt));
+    writeFileSync(join(directory, "source-gate.json"), JSON.stringify(source));
+    writeFileSync(join(directory, "run-status.json"), JSON.stringify({ status: "passed" }));
+    const bundle = join(directory, "retained.tar.gz");
+    await exportReleaseBundle(join(directory, "build.json"), bundle);
+    await finalizeNativeBuild(directory, "fixture", bundle, fileDigest(bundle));
+    const imported = await importReleaseBundle(bundle, join(directory, "consumer"));
+    expect(certifyRelease(imported.receipt, source, target).eligibility).toBe("certified-not-production");
+    expect(() => verifyBuildReceipt(receipt)).toThrow("archive differs");
+  });
   it("derives source and deployment evidence from retained stages and journals", () => {
     const directory = root();
     const receipt = build(directory);

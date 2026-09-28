@@ -601,3 +601,12 @@ Activation uses the rehearsed archive and the existing runtime clone mechanism.
 It never builds, fetches dependencies, or merges a pull request while the
 gateway is stopped. See the [deployment guide](../../docs/openclaw-setup/patches/README.md)
 for explicit target configuration and recovery.
+
+
+## Development storage lifecycle
+
+Use [development storage](DEVELOPMENT_STORAGE.md) for the single-workspace loop,
+shared store selection, capacity reservations, artifact references, terminal
+cleanup, and migration of old scratch. A successful source gate alone does not
+mean its files are disposable. The outer controller must finish artifact export
+and all consumers first.

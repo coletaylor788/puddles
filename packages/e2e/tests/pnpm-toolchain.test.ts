@@ -18,6 +18,16 @@ describe("unified pnpm toolchain", () => {
     return directory;
   };
 
+  it("selects the maintained host store and rejects a competing per-task store", () => {
+    const directory = project();
+    try {
+      const config = join(directory, "development.json");
+      writeFileSync(config, JSON.stringify({ pnpmStore: configured }));
+      expect(configuredPnpmStore({ PUDDLES_DEVELOPMENT_CONFIG: config })).toBe(configured);
+      expect(() => configuredPnpmStore({ PUDDLES_DEVELOPMENT_CONFIG: config, PNPM_CONFIG_STORE_DIR: "/other" })).toThrow("differs");
+    } finally { rmSync(directory, { recursive: true }); }
+  });
+
   it("requires one absolute configured store root", () => {
     expect(() => configuredPnpmStore({})).toThrow(PNPM_STORE_ENV);
     expect(() => configuredPnpmStore({ [PNPM_STORE_ENV]: "relative" })).toThrow("absolute");
