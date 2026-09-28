@@ -1,6 +1,7 @@
 // Doctor can move workspace skills outside stateDir. Inventory those surfaces
 // before shutdown, then repeat at the stopped snapshot boundary.
-import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { atomicJson, fileDigest, inside, jsonDigest, treeDigest } from "./native-state.mjs";
@@ -84,13 +85,46 @@ export function validateWorkshopBinding(target) {
   }
 }
 
+function databaseFiles(databasePath) {
+  return ["", "-wal", "-shm", "-journal"].map((suffix) => {
+    const path = `${databasePath}${suffix}`;
+    const stat = lstatSync(path, { bigint: true, throwIfNoEntry: false });
+    if (!stat) return { suffix, identity: null, sha256: null };
+    if (!stat.isFile()) throw new Error("Workshop database inspection requires ordinary files");
+    // A hot rollback journal needs recovery by its owning runtime. Never omit
+    // it and silently inspect an incomplete database.
+    if (suffix === "-journal") throw new Error("Workshop database has a rollback journal; resolve it with the owning runtime before retrying");
+    return { suffix, identity: [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].map(String), sha256: fileDigest(path) };
+  });
+}
+
+function inspectDatabaseCopy(databasePath, inspect) {
+  // SQLite readOnly still creates or changes WAL/SHM beside its input. Copy
+  // stable database bytes and committed WAL frames before opening SQLite.
+  const before = databaseFiles(databasePath);
+  const root = mkdtempSync(join(tmpdir(), "workshop-inspect-"));
+  try {
+    chmodSync(root, 0o700);
+    const copy = join(root, "openclaw.sqlite");
+    for (const entry of before) {
+      // SHM is coordination state. SQLite rebuilds it only in the private copy.
+      if (entry.identity === null || entry.suffix === "-shm") continue;
+      copyFileSync(`${databasePath}${entry.suffix}`, `${copy}${entry.suffix}`);
+      chmodSync(`${copy}${entry.suffix}`, 0o600);
+      if (fileDigest(`${copy}${entry.suffix}`) !== entry.sha256) throw new Error("Workshop database changed while copying; retry inspection");
+    }
+    if (jsonDigest(databaseFiles(databasePath)) !== jsonDigest(before)) throw new Error("Workshop database changed while copying; retry inspection");
+    const db = new DatabaseSync(copy, { readOnly: true });
+    try { return inspect(db); } finally { db.close(); }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}
+
 function storedRecords(stateDir) {
   const records = [];
   const cron = [];
   const databasePath = join(stateDir, "state/openclaw.sqlite");
   if (existsSync(databasePath)) {
-    const db = new DatabaseSync(databasePath, { readOnly: true });
-    try {
+    inspectDatabaseCopy(databasePath, (db) => {
       db.exec("BEGIN");
       const tables = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map((row) => row.name));
       const rollbacks = new Map(tables.has("skill_workshop_proposal_rollbacks")
@@ -103,7 +137,7 @@ function storedRecords(stateDir) {
       }
       if (rollbacks.size) throw new Error("Workshop has orphaned SQLite rollback records");
       if (tables.has("cron_jobs")) cron.push(...db.prepare("SELECT job_json FROM cron_jobs").all().map((row) => JSON.parse(row.job_json)));
-    } finally { db.close(); }
+    });
   }
   const root = join(stateDir, "skill-workshop/proposals");
   for (const id of entries(root)) {

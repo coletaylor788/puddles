@@ -77,18 +77,57 @@ describe("Workshop migration boundaries", () => {
     expect(() => inspectWorkshopMigration(f.target)).toThrow("interrupted apply");
   });
 
-  it("inventories imported SQLite records with no sidecars and rejects cron references", () => {
+  it("leaves a closed WAL database byte-for-byte unchanged without a Workshop binding", () => {
+    const f = fixture();
+    rmSync(join(f.stateDir, "skill-workshop"), { recursive: true });
+    delete f.target.workshopMigration;
+    mkdirSync(join(f.stateDir, "state"));
+    const path = join(f.stateDir, "state/openclaw.sqlite");
+    const db = new DatabaseSync(path);
+    db.exec("PRAGMA journal_mode=WAL; CREATE TABLE synthetic_history (body TEXT); INSERT INTO synthetic_history VALUES ('retained')");
+    db.close();
+    expect(existsSync(`${path}-wal`)).toBe(false);
+    expect(existsSync(`${path}-shm`)).toBe(false);
+    const before = treeDigest(f.stateDir);
+    expect(inspectWorkshopMigration(f.target)).toBe(null);
+    expect(treeDigest(f.stateDir)).toBe(before);
+  });
+
+  it.each(["", "pending rollback"])("refuses rollback journals without changing source state (%j)", (journal) => {
+    const f = fixture();
+    mkdirSync(join(f.stateDir, "state"));
+    const path = join(f.stateDir, "state/openclaw.sqlite");
+    const db = new DatabaseSync(path);
+    db.exec("CREATE TABLE synthetic_history (body TEXT)");
+    db.close();
+    writeFileSync(`${path}-journal`, journal);
+    const before = treeDigest(f.stateDir);
+    expect(() => inspectWorkshopMigration(f.target)).toThrow("rollback journal");
+    expect(treeDigest(f.stateDir)).toBe(before);
+  });
+
+  it("reads committed WAL-only Workshop and cron records without changing source state", () => {
     const f = fixture();
     const created = seedWorkshopProposal({ stateDir: f.stateDir, workspace: f.workspace, name: "created", kind: "create", owner: "main" });
     rmSync(join(f.stateDir, "skill-workshop"), { recursive: true });
     mkdirSync(join(f.stateDir, "state"));
     const db = new DatabaseSync(join(f.stateDir, "state/openclaw.sqlite"));
-    db.exec("CREATE TABLE skill_workshop_proposals (proposal_id TEXT, record_json TEXT, owner_agent_id TEXT); CREATE TABLE cron_jobs (job_json TEXT)");
-    db.prepare("INSERT INTO skill_workshop_proposals VALUES (?,?,?)").run(created.record.id, JSON.stringify(created.record), "main");
-    expect(inspectWorkshopMigration(f.target).external.map((entry: any) => entry.path)).toEqual([created.record.target.skillDir]);
-    db.prepare("INSERT INTO cron_jobs VALUES (?)").run(JSON.stringify({ payload: { message: `Run ${created.record.target.skillDir}/task.sh` } }).replaceAll("/", "\\u002f"));
-    expect(() => inspectWorkshopMigration(f.target)).toThrow("Scheduled job references");
-    db.close();
+    db.exec("PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; CREATE TABLE skill_workshop_proposals (proposal_id TEXT, record_json TEXT, owner_agent_id TEXT); CREATE TABLE cron_jobs (job_json TEXT)");
+    db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+    const mainBefore = readFileSync(join(f.stateDir, "state/openclaw.sqlite"));
+    try {
+      db.prepare("INSERT INTO skill_workshop_proposals VALUES (?,?,?)").run(created.record.id, JSON.stringify(created.record), "main");
+      const before = treeDigest(f.stateDir);
+      expect(inspectWorkshopMigration(f.target).external.map((entry: any) => entry.path)).toEqual([created.record.target.skillDir]);
+      expect(treeDigest(f.stateDir)).toBe(before);
+      expect(() => inspectWorkshopMigration({ ...f.target, workshopMigration: undefined })).toThrow("sealed agent");
+      expect(treeDigest(f.stateDir)).toBe(before);
+      db.prepare("INSERT INTO cron_jobs VALUES (?)").run(JSON.stringify({ payload: { message: `Run ${created.record.target.skillDir}/task.sh` } }).replaceAll("/", "\\u002f"));
+      const withCron = treeDigest(f.stateDir);
+      expect(() => inspectWorkshopMigration(f.target)).toThrow("Scheduled job references");
+      expect(treeDigest(f.stateDir)).toBe(withCron);
+      expect(readFileSync(join(f.stateDir, "state/openclaw.sqlite"))).toEqual(mainBefore);
+    } finally { db.close(); }
   });
 
   it("checks effective config paths and the SDK-selected alternate cron store", () => {
