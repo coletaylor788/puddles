@@ -60,7 +60,7 @@ function fixture() {
     resolveIncludeWriteBoundary: vi.fn((): null | { includePath: string } => null),
     readConfigFileSnapshotForWrite: vi.fn(async () => ({ snapshot })),
     repairOpenClawStateDatabaseSchema: vi.fn(() => ({ changes: [], warnings: [] as string[] })),
-    previewLegacyConfigRepair: vi.fn((_snapshot): {
+    previewLegacyConfigRepair: vi.fn((_snapshot, _options?: { pluginContracts?: boolean }): {
       sourceConfig: SourceConfig;
       expectedConfig: SourceConfig;
       changes: string[];
@@ -92,6 +92,33 @@ function fixture() {
 }
 
 describe("Workshop boundaries through the configured SDK", () => {
+  it.each([false, true])("checks the plugin-normalized candidate before shutdown (path drift: %s)", async (drift) => {
+    const f = fixture();
+    rmSync(f.database);
+    new DatabaseSync(f.database).close();
+    const workspace = join(f.root, "workspace");
+    const agentDir = join(f.stateDir, "agents/main/agent");
+    seedWorkshopProposal({ stateDir: f.stateDir, workspace, kind: "create", owner: "main" });
+    Object.assign(f.snapshot.sourceConfig, { agents: { entries: { main: { workspace, agentDir } } } });
+    Object.assign(f.manifest, { workshopMigration: { schemaVersion: 1, agents: [{ id: "main", workspace, agentDir }], ownerRepairs: [] } });
+    const normalized = structuredClone(f.snapshot.sourceConfig);
+    normalized.plugins.entries.fixture.config.selected = "normalized";
+    if (drift) (normalized as any).agents.entries.main.agentDir = join(f.root, "external-agent");
+    f.manifest.configOperations[0].expected.sha256 = canonicalValueDigest("normalized");
+    f.sdk.previewLegacyConfigRepair.mockImplementation((_snapshot, options) => options?.pluginContracts
+      ? { sourceConfig: f.snapshot.sourceConfig, expectedConfig: normalized, changes: ["Normalize plugin settings"] }
+      : null);
+    const before = readFileSync(f.configPath);
+    if (drift) await expect(f.run("preflight")).rejects.toThrow("Doctor configuration");
+    else {
+      const result = await f.run("preflight");
+      expect(result.config.required).toBe(false);
+    }
+    expect(f.sdk.mutateConfigFile).not.toHaveBeenCalled();
+    expect(f.sdk.repairLegacyConfigForStoppedState).not.toHaveBeenCalled();
+    expect(readFileSync(f.configPath)).toEqual(before);
+  });
+
   it.each(["current-path", "candidate-path", "alternate-cron"])("rejects %s before shutdown", async (mode) => {
     const f = fixture();
     rmSync(f.database);
