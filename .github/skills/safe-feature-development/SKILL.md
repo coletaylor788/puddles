@@ -618,6 +618,15 @@ validation reproduces the manifests. Drift requires fresh affected evidence;
 never attach a new manifest to a certified build. Credentials stay outside both
 repositories. Owner settings and captured baselines stay out of public output.
 
+Inventory legacy state shapes as well as configuration. Before a Doctor upgrade,
+check ownership and enumerate filesystem changes outside the state snapshot.
+Bind affected source and destination paths, snapshot them and rehearse their
+rollback through the maintained activation helper. A copied state directory
+must use isolated workspace references before Doctor runs. Include the failing
+legacy shape in TEST; configuration parity alone does not cover it. Ownership
+repairs need an explicit owner decision, exact content preconditions and retained
+original metadata. Apply an already approved decision without another prompt.
+
 ### Release ownership and cleanup
 
 Feature owners work in parallel. One release owner carries each pinned candidate

@@ -11,6 +11,8 @@ import { fileDigest, jsonDigest, treeDigest } from "../src/native-state.mjs";
 import { createBuildReceipt } from "../src/native-release.mjs";
 // @ts-expect-error Native retention is also executable without TypeScript.
 import { acquireArtifactPoolLock, initializeArtifactPool } from "../src/native-retention.mjs";
+// @ts-expect-error Executable shared synthetic fixture.
+import { seedWorkshopProposal } from "../fixtures/workshop-migration.mjs";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cloneHelper = join(repoRoot, "docs/openclaw-setup/patches/clone-runtime-tree.py");
@@ -378,6 +380,41 @@ function rehearsalWrapperFixture(fault: boolean) {
 }
 
 describe("native activation and recovery transaction", () => {
+  it.each(["ambiguous", "failed-health"])("guards and restores Workshop state through the activation transaction (%s)", async (mode) => {
+    const f = fixture(mode === "failed-health" ? ["health"] : []);
+    const workspace = join(f.directory, "external-workspace");
+    const update = seedWorkshopProposal({ stateDir: f.target.stateDir, workspace });
+    const created = seedWorkshopProposal({ stateDir: f.target.stateDir, workspace, name: "created", kind: "create", owner: "main" });
+    const binding = { schemaVersion: 1, agents: ["main", "reader"].map((id) => ({ id, workspace, agentDir: join(f.target.stateDir, "agents", id, "agent") })),
+      ownerRepairs: mode === "ambiguous" ? [] : [update.repair] };
+    const manifestPath = join(f.directory, "migration.json");
+    writeFileSync(manifestPath, JSON.stringify({ schemaVersion: 1, workshopMigration: binding,
+      configOperations: [{ kind: "set", path: ["fixture"], expected: { exists: false }, value: true }] }));
+    const stateMigration = { manifestPath: realpathSync(manifestPath), sha256: fileDigest(manifestPath) };
+    const target = { ...f.target, workshopMigration: binding, stateMigration };
+    const receipt = { ...f.receipt, stateMigration: { sha256: stateMigration.sha256 } };
+    const prior = [treeDigest(target.stateDir), treeDigest(workspace)];
+    const operations = { ...f.ops,
+      async stateMigration(phase: string) { return phase === "preflight" || phase === "builtin-config" ? { synthetic: true } : undefined; },
+      async doctor() {
+        await f.ops.doctor();
+        expect(JSON.parse(readFileSync(join(update.directory, "proposal.json"), "utf8")).origin).toEqual({ agentId: "main" });
+        const destination = join(target.stateDir, "agents/main/agent/workshop-skills/created");
+        mkdirSync(dirname(destination), { recursive: true });
+        renameSync(created.record.target.skillDir, destination);
+      },
+      async publishExclusive(from: string, to: string) {
+        execFileSync("python3", [join(repoRoot, "docs/openclaw-setup/patches/publish-runtime-tree.py"), from, to], { stdio: "pipe" });
+      },
+    };
+    await expect(activateNative(receipt, target, () => operations)).rejects.toThrow("Activation failed");
+    const recovery = readdirSync(target.backupRoot).find((name) => name.startsWith("activation-"))!;
+    expect(JSON.parse(readFileSync(join(target.backupRoot, recovery, "failure.json"), "utf8")).message).toContain(mode === "ambiguous" ? "explicit configured ownership" : "synthetic health failure");
+    expect([treeDigest(target.stateDir), treeDigest(workspace)]).toEqual(prior);
+    expect(f.running()).toBe(true);
+    if (mode === "ambiguous") expect(f.calls).not.toContain("stop");
+    else expect(f.calls).toContain("doctor");
+  });
   it("accepts only maintained rehearsal and TEST service identities", () => {
     const directory = root();
     const targetRoot = join(directory, "test-target");

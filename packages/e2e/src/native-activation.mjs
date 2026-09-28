@@ -12,6 +12,7 @@ import { installRuntime } from "./native-package.mjs";
 import { runCommand } from "./process-runner.mjs";
 import { readMigrationManifest } from "./native-state-migration.mjs";
 import { assertBatchArtifact, assertDeploymentOwnership } from "./deploy-coordination.mjs";
+import { applyWorkshopOwnerRepairs, inspectWorkshopMigration, restoreWorkshopSnapshots, snapshotWorkshopMigration, validateWorkshopBinding, verifyWorkshopSnapshots } from "./native-workshop-migration.mjs";
 
 const patchDir = resolve(dirname(fileURLToPath(import.meta.url)), "../../../docs/openclaw-setup/patches");
 
@@ -123,6 +124,8 @@ export function validateTarget(target) {
   }
   if (!lstatSync(target.plistPath).isFile()) throw new Error("Gateway service definition is missing");
   validateNodeMigration(target);
+  validateWorkshopBinding(target);
+  if (target.workshopMigration && !target.stateMigration) throw new Error("Workshop migration requires a sealed config migration");
   if (target.stateMigration) {
     const migration = target.stateMigration;
     if (Object.keys(migration).some((key) => !["manifestPath", "sha256"].includes(key)) ||
@@ -251,6 +254,9 @@ shutil.copymode(source, destination)
       mkdirSync(dirname(to), { recursive: true, mode: 0o700 });
       renameSync(from, to);
     },
+    async publishExclusive(from, to) {
+      await run("python3", [join(patchDir, "publish-runtime-tree.py"), from, to]);
+    },
     async stop(runtime) {
       const helper = resolve(patchDir, "../../../packages/e2e/bin/openclaw-service-stop.mjs");
       const interpreter = target.nodeMigration?.desired.path ?? target.backupNode?.path ?? process.execPath;
@@ -319,6 +325,7 @@ shutil.copymode(source, destination)
 
 function verifySnapshots(recoveryDir, journal) {
   if (journal.snapshotReady) {
+    verifyWorkshopSnapshots(recoveryDir, journal.workshopSnapshot);
     if (treeDigest(join(recoveryDir, "state")) !== journal.snapshots.state ||
         treeDigest(join(recoveryDir, "package")) !== journal.snapshots.package ||
         fileDigest(join(recoveryDir, "service.plist")) !== journal.snapshots.service) throw new Error("Recovery snapshot content changed");
@@ -461,6 +468,7 @@ async function restore(target, recoveryDir, journal, operations) {
     else cpSync(join(recoveryDir, "service.plist"), target.plistPath);
     if (treeDigest(target.stateDir) !== journal.snapshots.state ||
         fileDigest(target.plistPath) !== journal.snapshots.service) throw new Error("Restored state or service differs from snapshot");
+    await restoreWorkshopSnapshots(recoveryDir, journal.workshopSnapshot, operations);
   }
   // The restored configuration belongs to the predecessor. Use its verified
   // snapshot and interpreter even when an interrupted swap left another runtime
@@ -665,12 +673,16 @@ export async function activateNative(receipt, target, operationsFactory = system
       save("preflight");
     }
     journal.previousBrowser = await operations.preflight();
+    const workshopPreflight = inspectWorkshopMigration(target);
     const prefix = join(dirname(target.installDir), `.puddles-install-${Date.now()}-${process.pid}`);
     journal.prefix = prefix;
     const installed = await operations.install(receipt.artifact, prefix);
     journal.deployedRuntimeSha256 = treeDigest(installed, { portable: true });
     if (target.stateMigration) {
-      readMigrationManifest(target.stateMigration.manifestPath, target.stateMigration.sha256);
+      const manifest = readMigrationManifest(target.stateMigration.manifestPath, target.stateMigration.sha256);
+      if (jsonDigest(manifest.workshopMigration ?? null) !== jsonDigest(target.workshopMigration ?? null)) {
+        throw new Error("Workshop paths or ownership repairs differ from the sealed manifest");
+      }
       const manifestPath = join(recoveryDir, "state-migration.json");
       durableServiceCopy(target.stateMigration.manifestPath, manifestPath);
       readMigrationManifest(manifestPath, target.stateMigration.sha256);
@@ -740,6 +752,7 @@ export async function activateNative(receipt, target, operationsFactory = system
     checkpoint();
     await operations.clone(target.stateDir, join(recoveryDir, "state"));
     verifyPreparedSnapshot(target, recoveryDir, journal, prepared);
+    journal.workshopSnapshot = await snapshotWorkshopMigration(target, recoveryDir, workshopPreflight, operations);
     journal.snapshots = {
       state: treeDigest(join(recoveryDir, "state")),
       package: treeDigest(join(recoveryDir, "package")),
@@ -798,6 +811,7 @@ export async function activateNative(receipt, target, operationsFactory = system
       await operations.stateMigration("config", target.installDir, join(recoveryDir, "state-migration.json"), journal.stateMigration.sha256);
       checkpoint();
     }
+    applyWorkshopOwnerRepairs(target);
     await operations.doctor();
     if (journal.stateMigration) {
       journal.stateMigration.phase = "cron";

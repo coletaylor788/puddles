@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 // @ts-expect-error Native lifecycle helpers execute directly as JavaScript.
 import { canonicalValueDigest, configDraft, executeStateMigration, silenceCronJob, validateMigrationManifest } from "../src/native-state-migration.mjs";
@@ -8,6 +9,8 @@ import { canonicalValueDigest, configDraft, executeStateMigration, silenceCronJo
 import { configurationDigest } from "../src/environment-configuration.mjs";
 // @ts-expect-error Native lifecycle helpers execute directly as JavaScript.
 import { fileDigest } from "../src/native-state.mjs";
+// @ts-expect-error Executable shared fixture.
+import { seedWorkshopProposal } from "../fixtures/workshop-migration.mjs";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -87,6 +90,28 @@ function fixture() {
   const run = (phase: string) => executeStateMigration({ phase, ...selected() }, async () => sdk);
   return { root, stateDir, configPath, database, manifest, manifestPath, selected, snapshot, sdk, run, job };
 }
+
+describe("Workshop boundaries through the configured SDK", () => {
+  it.each(["current-path", "candidate-path", "alternate-cron"])("rejects %s before shutdown", async (mode) => {
+    const f = fixture();
+    rmSync(f.database);
+    new DatabaseSync(f.database).close();
+    const workspace = join(f.root, "workspace");
+    const proposal = seedWorkshopProposal({ stateDir: f.stateDir, workspace, kind: "create", owner: "main" });
+    const agentDir = join(f.stateDir, "agents/main/agent");
+    Object.assign(f.snapshot.sourceConfig, { agents: { entries: { main: { workspace, agentDir } } } });
+    Object.assign(f.manifest, { workshopMigration: { schemaVersion: 1, agents: [{ id: "main", workspace, agentDir }], ownerRepairs: [] } });
+    if (mode === "current-path") (f.snapshot.sourceConfig as any).agents.entries.main.agentDir = join(f.root, "external-agent");
+    if (mode === "candidate-path") f.manifest.configOperations.push({ kind: "set", path: ["agents", "entries", "main", "agentDir"],
+      expected: { exists: true, sha256: canonicalValueDigest(agentDir) }, value: join(f.root, "external-agent") });
+    if (mode === "alternate-cron") {
+      f.snapshot.sourceConfig.cron = { store: join(f.stateDir, "selected-jobs.json") };
+      f.job.payload.message = `Run ${proposal.record.target.skillDir}/task.sh`;
+    }
+    await expect(f.run("preflight")).rejects.toThrow(mode === "alternate-cron" ? "Scheduled job references" : "Doctor configuration");
+    expect(f.sdk.mutateConfigFile).not.toHaveBeenCalled();
+  });
+});
 
 describe("digest-bound stopped-state operations", () => {
   it("binds the full predecessor, including unrelated settings, without resolving credentials", async () => {

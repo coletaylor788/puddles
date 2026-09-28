@@ -1,5 +1,6 @@
 import { isAbsolute } from "node:path";
 import { jsonDigest } from "./native-state.mjs";
+import { validateWorkshopBinding } from "./native-workshop-migration.mjs";
 
 const hash = (value) => typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
 function keys(value, names) {
@@ -10,6 +11,7 @@ function keys(value, names) {
 // This identity describes the environment being changed, not the location of
 // a transported receipt, manifest, or integration checkout.
 export function migrationTargetIdentity(target) {
+  validateWorkshopBinding(target);
   if (!["rehearsal", "production"].includes(target.purpose) ||
       target.privateRole === "development" || !target.host || !target.label ||
       !Number.isInteger(target.port) || target.port < 1 || target.port > 65535 ||
@@ -24,6 +26,7 @@ export function migrationTargetIdentity(target) {
       .sort((a, b) => a.id.localeCompare(b.id)),
     preparedFiles: [...(target.preparedFiles ?? [])].map(({ id, path }) => ({ id, path }))
       .sort((a, b) => a.id.localeCompare(b.id)),
+    ...(target.workshopMigration ? { workshopMigration: target.workshopMigration } : {}),
   };
 }
 

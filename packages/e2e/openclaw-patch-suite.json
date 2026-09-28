@@ -190,7 +190,8 @@
         "src/commands/doctor-agent-memory-schema.test.ts"
       ],
       "candidateTests": [
-        "tests/candidate.state-migration.test.ts"
+        "tests/candidate.state-migration.test.ts",
+        "tests/candidate.workshop-migration.test.ts"
       ]
     },
     {
