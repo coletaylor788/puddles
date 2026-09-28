@@ -110,10 +110,15 @@ premerge CI/source-gate/DEV receipts. That older workflow is not a requirement t
 run a separate full release per feature. Use normal repository source merging
 with required checks, for example `gh pr merge --match-head-commit HEAD PR`
 with `HEAD` replaced by the reviewed commit. Use the repository's merge method.
-The maintained source-only helper may replace this once available. Do
-not fabricate old receipts. Keep certification and activation guards for PROD.
-The assigned controller owner must align remaining helpers and CI triggers;
-documentation does not by itself change their executable behavior.
+No additional merge helper or release receipt is needed. Keep the older commands
+for in-flight callers; never fabricate their receipts. Certification and
+activation guards still apply to PROD.
+
+Public PR and main-push CI runs repository checks without building OpenClaw.
+The release owner can dispatch `integration.yml` on the default branch for a
+public cumulative build. That dispatch pins its event commit even if main moves.
+An explicitly selected composed builder runs the same cumulative gate locally;
+do not dispatch a second public runtime build for that same release.
 
 For in-flight work, reuse valid checks and artifacts. An already built artifact
 may continue only if it represents the selected merged candidate; never relabel

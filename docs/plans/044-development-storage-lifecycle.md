@@ -1,6 +1,6 @@
 # Parallel development with one release build and bounded storage
 
-**Status:** Approved. Core storage cleanup is merged; simplified guidance and controller alignment are in progress.
+**Status:** Approved. Core storage cleanup and simplified guidance are merged; controller alignment is in progress.
 **Issue:** [145](https://github.com/coletaylor788/puddles/issues/145)
 **Last updated:** 2026-09-27
 
@@ -97,7 +97,8 @@ for managed worktrees so their source remains recoverable.
 
 The original storage controller and shared-store fixes are merged. Completed
 legacy builders, dependency trees, fixture copies, and migration fixtures have
-been cleaned. Current guidance now adopts the requester-approved parallel flow,
+been cleaned. Guidance is merged and affected workers have been notified. It
+adopts the requester-approved parallel flow,
 one release build, disposable TEST, and one PROD recovery copy.
 
 The development-loop manager owns remaining executable and companion alignment.
@@ -137,6 +138,10 @@ Reuse existing components rather than add another controller:
 - Deployment coordination owns shared environment slots and batch ownership.
 - Existing activation and backup tools own real PROD recovery.
 - Companion producers own their build, import, migration, and DEV fixture cleanup.
+
+Public CI now separates ordinary repository checks from explicitly dispatched
+release builds. Source merging uses GitHub directly with the reviewed head and
+required checks; older receipt commands remain compatibility paths.
 
 The current artifact pool still retains two recent successful builds and the
 scratch controller keeps the newest sealed failure for seven days. The current
@@ -207,6 +212,6 @@ The documentation path does not require another runtime validation cycle.
 - [x] Clean eligible historical builders, dependencies, and completed fixtures.
 - [x] Obtain approval for the simpler parallel development and release flow.
 - [x] Rewrite public skills and process guidance together.
-- [ ] Land guidance and notify affected workers to align and clean up.
+- [x] Land guidance and notify affected workers to align and clean up.
 - [ ] Complete executable and companion alignment through assigned owners.
 - [ ] Confirm terminal cleanup and report actual disk recovery.

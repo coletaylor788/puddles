@@ -26,6 +26,7 @@ describe.each(["integration", "codeql"])("%s automatic CI path selection", (name
         "docs/openclaw-setup/01-setting-up-your-mac-mini.md",
         "docs/openclaw-setup/patches/example.md",
         "packages/e2e/README.md", "packages/mcp-hooks/docs/architecture.md",
+        "packages/e2e/DEVELOPMENT_STORAGE.md", "packages/e2e/DEPLOYMENT_COORDINATION.md",
         "servers/gmail-mcp/docs/tools.md", "openclaw-plugins/scoped-memory/README.md",
       ])).toBe(false);
     });
@@ -60,4 +61,22 @@ it("keeps CodeQL coverage, weekly scans, and uploads after replacing default set
   const analyze = workflow.jobs.analyze.steps.find((step: any) => step.uses?.startsWith("github/codeql-action/analyze@"));
   expect(analyze).toBeTruthy();
   expect(analyze.with.upload).not.toBe(false);
+});
+
+
+it("runs repository checks on feature events and builds a release only on a main dispatch", () => {
+  const workflow = parseDocument(readFileSync(resolve(repoRoot, ".github/workflows/integration.yml"), "utf8")).toJS();
+  expect(workflow.on.workflow_dispatch).toBeNull();
+  expect(workflow.jobs.repository.if).toBe("github.event_name != 'workflow_dispatch'");
+  expect(workflow.jobs.cumulative.if).toBe("github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)");
+  const steps = workflow.jobs.repository.steps;
+  const commands = steps.map((step: any) => step.run ?? "").join("\n");
+  expect(commands).toContain("corepack pnpm build\ncorepack pnpm lint\ncorepack pnpm test");
+  expect(commands).toContain("python -m pytest tests/ --ignore=tests/integration -q");
+  expect(commands).toContain("python -m ruff check src/ tests/");
+  expect(steps.some((step: any) => step.with?.repository)).toBe(false);
+  expect(commands).not.toContain("openclaw-test-env.mjs ci");
+  expect(workflow.jobs.cumulative.steps.find((step: any) => step.name === "Check out Puddles").with.ref)
+    .toBe("${{ github.event.pull_request.head.sha || github.sha }}");
+  expect(workflow.jobs.cumulative.steps.some((step: any) => step.run === "node packages/e2e/bin/openclaw-test-env.mjs ci")).toBe(true);
 });
