@@ -3,8 +3,8 @@
 This is the first guide in my journey building Puddles, my personal AI agent, on a Mac Mini. By the end of it you'll have a hardened, headless server you can manage from your phone or laptop — the foundation everything else gets built on top of.
 
 Follow the [security architecture](security-architecture.md) throughout setup.
-Bootstrap and recover at the physical console when Tailscale is unavailable.
-Do not open a LAN management path to work around it.
+Approved development hosts may use key-based SSH over LAN or Tailscale.
+Use the physical console when neither approved access path is available.
 
 The work here isn't strictly OpenClaw-specific. If you stop after this guide and never install an agent, you still end up with a securely run always-on home server you can use for anything. Worth doing on its own.
 
@@ -12,8 +12,8 @@ A few things you'll come away with:
 
 - A Mac Mini that runs **without a monitor, keyboard, or mouse**
 - **Two accounts** with clean separation: an admin you almost never log into, and a "service" account that runs everything
-- An **encrypted disk** (FileVault), with physical access for recovery when Tailscale is unavailable
-- **Key-authenticated SSH** over Tailscale; Touch ID is an optional key policy
+- An **encrypted disk** (FileVault), with physical access for recovery when key-based SSH is unavailable
+- **Key-authenticated SSH** over LAN or Tailscale; Touch ID is optional
 - **Tailscale** for zero-config secure access from anywhere in the world
 - Network isolation on its own VLAN
 - **Automated weekly software updates** for installed packages
@@ -61,12 +61,12 @@ Security is the throughline. A lot of the choices below go beyond the out-of-the
 
 - **Physical theft** — encrypted disk, owner-credential-required recovery
 - **Lateral movement from other devices on the home network** — VLAN isolation
-- **Network attackers**: no management ports reachable outside Tailscale, including on the LAN
+- **Network attackers**: services stay behind Tailscale, except key-based SSH from approved development hosts on the LAN
 - **The agent itself getting compromised** (e.g. via prompt injection) — separate identity, standard user
 
 ### Compromises
 
-- **Unattended recovery.** If FileVault prevents Tailscale from starting, someone must unlock the disk at the physical console.
+- **Unattended recovery.** If FileVault prevents normal key-based SSH from starting, someone must unlock the disk at the physical console.
 
 ### Key design choices and their reasons
 
@@ -115,11 +115,11 @@ Two principles drive everything inside the box:
 
 ### Network architecture
 
-- Permit management only through Tailscale, with approved accounts and keys.
-- Block access to server services from the internet, LAN, and other VLANs.
-  VLAN isolation alone does not protect against devices on the same VLAN.
+- Permit key-based SSH from approved development hosts over LAN or Tailscale.
+- Keep other services behind Tailscale. Block inbound internet access and unapproved
+  LAN access. VLAN isolation alone does not protect against same-VLAN devices.
 - Keep the server from initiating connections to personal devices.
-- Use the physical console for bootstrap and recovery when Tailscale is unavailable.
+- Use the physical console when neither approved SSH path is available.
 
 See the [architecture diagram](security-architecture.md#host-and-network-architecture)
 for the network and account boundaries.
@@ -151,7 +151,7 @@ for the network and account boundaries.
 - Admin user: **cole**
 - Service user: **puddles**
 - Hostname: `<mac-mini>` — pick something short, lowercase, and memorable; the same name will become the device's tailnet name
-- Tailnet name: `<mac-mini>`; SSH aliases must resolve to its Tailscale address
+- SSH target: `<mac-mini>`; use an alias for either its LAN or Tailscale address
 - VLAN for the Mini: I'll just call it **Agent VLAN** in this guide. Name it whatever you like in your UniFi controller.
 
 ---
@@ -176,12 +176,13 @@ it has no secrets.
 
 1. Create a new isolated VLAN for the Mini (call it whatever you want; this guide refers to it as the **Agent VLAN**). Pick a subnet that doesn't overlap your other VLANs.
 2. Add a **firewall rule**: traffic from the Agent VLAN → all other VLANs = **Drop**. (Default-deny outbound from the agent network.)
-3. Block inbound connections from all other VLANs. Do not add a Trusted VLAN SSH exception or port forwarding.
+3. Allow TCP `22` only from approved development hosts for direct LAN SSH.
+   Block other inbound connections between VLANs. Do not forward internet ports.
 4. Plug the Mini into the Agent VLAN and reserve its DHCP address for inventory.
-5. Before enabling sharing services, configure host filtering to permit them only
-   through Tailscale. Check same-VLAN access too; router rules cannot block that
-   path. This guide does not supply deployment-specific host firewall rules.
-   Keep services off until those restrictions are configured and verified.
+5. Configure host filtering for Tailscale access and the approved LAN SSH sources.
+   Check same-VLAN access too; router rules cannot block that path. This guide
+   does not supply deployment-specific host firewall rules. Keep each service
+   off until its access restrictions are configured and verified.
 
 ### On the Mac Mini (logged in as cole)
 
@@ -204,7 +205,7 @@ Use ethernet to avoid an additional network interface to configure and secure.
 
 ## 6. Sharing services and lock screen
 
-After Tailscale and the network restrictions in §5 are ready, configure
+After the relevant network restrictions in §5 are ready, configure
 **System Settings → General → Sharing**:
 
 - **Screen Sharing**: enable only if needed, restricted to authorized users and Tailscale access
@@ -230,9 +231,10 @@ In **System Settings → Energy**:
 
 ## 7. SSH keys
 
-Use approved keys for the account each developer needs. Keep key material out of
-agent context and logs. Touch ID is optional, not an SSH requirement; choose a
-key policy compatible with unattended development.
+For unattended development, use direct SSH with an approved key and no
+interactive reauthentication. Keep host-key verification enabled and key
+material out of agent context and logs. Grant only the accounts needed.
+Touch ID is optional; keys that require it are for interactive use.
 
 The following Secure Enclave example requires Touch ID on each use. Install the
 public key at the physical console during bootstrap. Test it after §8.
@@ -271,7 +273,7 @@ ssh cole@<mac-mini>
 ssh puddles@<mac-mini>
 ```
 
-Use the Tailscale name or address, not a LAN hostname. Grant admin access only
+Use the LAN or Tailscale SSH alias for the approved route. Grant admin access only
 when needed; standard-account access does not require an admin key grant.
 
 ---
@@ -280,7 +282,7 @@ when needed; standard-account access does not require an admin key grant.
 
 Tailscale gives you encrypted access to the Mini from anywhere, no port forwarding, no DDNS.
 
-### Install (as cole, at the physical console)
+### Install (as cole, locally or through approved LAN SSH)
 
 ```bash
 # Homebrew first — see §9 if you haven't done that yet, but it's fine to do this now
@@ -309,8 +311,9 @@ In the Tailscale admin console:
 - Do not grant the server access to personal devices.
 - Review existing grants too. A broader grant can defeat these restrictions.
 
-Tailscale grants control tailnet access; they do not restrict the server's LAN
-listeners. Verify both controls before treating remote setup as complete.
+Tailscale grants control tailnet access. Host and network filtering restrict
+LAN SSH to approved development hosts and block other LAN services. Verify
+both paths before treating remote setup as complete.
 
 ```bash
 ssh puddles@<mac-mini>   # Tailscale name, approved key and account
@@ -320,7 +323,7 @@ ssh puddles@<mac-mini>   # Tailscale name, approved key and account
 
 ## 9. Homebrew and base tools
 
-As **cole** (admin), at the physical console during bootstrap or over Tailscale afterward:
+As **cole** (admin), at the physical console or through approved key-based SSH:
 
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
@@ -355,7 +358,7 @@ sudo fdesetup list
 
 ### After a reboot
 
-1. Unlock FileVault at the physical console if Tailscale is unavailable.
+1. Unlock FileVault at the physical console if normal key-based SSH is unavailable.
 2. Log into the service account's GUI session so its LaunchAgents and Messages
    can start. Use the console, or authorized Screen Sharing after Tailscale is up.
 3. Confirm the expected services are running before leaving the machine unattended.
@@ -367,10 +370,10 @@ an available recovery method.
 
 ## 11. Recovery from your MacBook
 
-Once Tailscale is available, connect using the approved key and tailnet name.
-If it is unavailable, use physical recovery from §10. Do not fall back to LAN
-SSH or direct VNC. The legacy `scripts/mac-mini/unlock.sh` LAN recovery flow is
-not part of this architecture; do not use it as a setup step.
+Connect using an approved key over LAN or Tailscale. If neither path is
+available, use physical recovery from §10. The legacy
+`scripts/mac-mini/unlock.sh` flow uses password-based preboot SSH and direct
+VNC, which are not covered by the LAN key-based SSH exception.
 
 ---
 
@@ -490,8 +493,10 @@ ls -la /Users/puddles/Documents
 # → Drive ON, Desktop & Documents ON, Messages in iCloud ON, Optimize Mac Storage OFF
 ```
 
-Also confirm SSH and Screen Sharing are unreachable outside Tailscale, including
-from the same LAN. An unauthorized tailnet device must not reach them either.
+Confirm key-based SSH works from approved development hosts over both LAN and
+Tailscale, without recurring approval prompts. Check that unapproved LAN hosts
+cannot reach SSH and Screen Sharing is unreachable outside Tailscale.
+Unauthorized tailnet devices must not reach either service.
 
 Before relying on unattended operation, rehearse a reboot with someone at the
 physical console. Confirm FileVault recovery, Tailscale access, and the service

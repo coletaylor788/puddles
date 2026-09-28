@@ -6,7 +6,8 @@ Setup guides and configuration hold deployment details; this is not a live audit
 **Governing principles**
 
 - Only authenticated people on the trusted allowlist can initiate or schedule a turn.
-- No ports exposed outside Tailscale. Authenticated SSH inside Tailscale is allowed.
+- No ports exposed outside Tailscale except key-authenticated SSH from approved
+  development hosts on the LAN. No internet port forwarding.
 - No personal iCloud accounts or data on the server. System Integrity Protection
   (SIP) is disabled; use only the dedicated Puddles iCloud account.
 - Any deviation requires explicit human approval before implementation. Update
@@ -23,7 +24,7 @@ flowchart TB
     APIs["Service APIs"]
     Models["Model providers"]
 
-    subgraph Tailnet["Tailscale: no ports exposed outside"]
+    subgraph Tailnet["Tailscale + approved LAN SSH"]
         subgraph DevMachine["Development host machine"]
             Developers["Agentic developers"]
         end
@@ -39,7 +40,7 @@ flowchart TB
         end
     end
 
-    Developers -->|"SSH / public-key auth + Tailscale ACLs"| Host
+    Developers -->|"SSH / approved key; Tailscale or LAN allowlist"| Host
     Sender <-->|"iMessage / channel identity"| Channel
     Channel <-->|"RPC over stdio / host-owned child process"| Gateway
     Gateway <-->|"Docker exec / host daemon permissions"| Tools
@@ -54,9 +55,9 @@ flowchart TB
 
 | Boundary | Separates | Rule | Compromise enables |
 |---|---|---|---|
-| Tailscale | Managed machines from outside networks | No ports exposed outside Tailscale. | Access SSH and VNC ports |
+| Tailscale | Managed machines from outside networks | Remote access uses Tailscale; approved LAN hosts may use key-based SSH. | Access SSH and VNC ports |
 | Host | Development files and tools from remote access | Access requires an authorized host account. | Personal iCloud, server via SSH, source/build tampering |
-| Server | Agent runtime and data from remote access | SSH requires an approved key, server account, and Tailscale access. | Puddles iCloud, connected account secrets, all OpenClaw data and usage |
+| Server | Agent runtime and data from remote access | SSH requires an approved key and server account, over Tailscale or from an approved LAN host. | Puddles iCloud, connected account secrets, all OpenClaw data and usage |
 | Sandbox | Agent tools from the trusted host | Agents get only granted tools and files. Credentials stay outside the sandbox. | Agent’s granted tools and accessible session history, memory, and workspaces |
 | Server Keychain | Host tools from stored credentials | Tools use an approved credential reader. Secrets never enter agent context. | Connected account secrets |
 
@@ -66,11 +67,14 @@ a compromised agent inside an intact sandbox, not a sandbox escape.
 ## Host and network architecture
 
 The [host setup](01-setting-up-your-mac-mini.md) separates administration from
-autonomous services. SSH logs directly into the chosen account.
+autonomous services. SSH logs directly into the chosen account. Approved
+development hosts may connect over LAN or Tailscale. Direct key-based SSH
+supports unattended work without interactive reauthentication; Touch ID is
+optional. Keep host-key verification enabled.
 
 ```mermaid
 flowchart TB
-    subgraph Tailnet["Tailscale"]
+    subgraph Tailnet["Tailscale + approved LAN SSH"]
         subgraph DevMachine["Development host machine"]
             Developers["Agentic developers"]
         end
@@ -84,13 +88,14 @@ flowchart TB
         end
     end
 
-    Developers -->|"SSH / public-key auth + Tailscale ACLs"| Admin
-    Developers -->|"SSH / public-key auth + Tailscale ACLs"| Service
+    Developers -->|"SSH / approved key; Tailscale or LAN allowlist"| Admin
+    Developers -->|"SSH / approved key; Tailscale or LAN allowlist"| Service
     Gateway -->|"Scoped tools and mounts"| Sandboxes
 ```
 
-- **Network:** keep local IPC on loopback or pipes. Outbound service connections
-  remain allowed; Tailscale does not replace sandbox network policy.
+- **Network:** limit the LAN exception to SSH from approved development hosts.
+  Other services stay behind Tailscale. Keep local IPC on loopback or pipes.
+  Outbound service connections remain allowed; Tailscale does not replace sandbox network policy.
 - **Accounts:** administrators own system changes. Gateway plugins and adapters
   hold the standard account's host authority. Only agent tool execution is
   sandboxed; gateway orchestration and model calls run on the host.
@@ -107,7 +112,7 @@ flowchart TB
     subgraph GitHub["GitHub: source and artifacts"]
         CI["Public CI builds"]
     end
-    subgraph Tailnet["Tailscale"]
+    subgraph Tailnet["Tailscale + approved LAN SSH"]
         subgraph Host["Development host"]
             Builds["Local draft and CI builds"]
         end
