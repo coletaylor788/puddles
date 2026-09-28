@@ -243,14 +243,16 @@ approved configuration contract and its release checks pass.
 
 The retained reviewer identified an overly broad fixture override, resolved
 credential references in SDK snapshots, and a missing final check when no cron
-operation exists. All three are corrected and the focused recheck is clear.
-Complete paired implementation review remains open.
+operation exists. Later review tightened service argument bindings, sealed the
+full environment values, and checked plugin-copy modes and rollback. All findings
+are corrected. The retained reviewer cleared the paired implementation and test
+worker cache reuse; final CI and exact-artifact validation remain required.
 
 ### Checklist
 
 - [x] Confirm whether the current configurations share a behavioral baseline.
 - [x] Record the gap and a concrete correction.
 - [x] Obtain approval for the shared-configuration design.
-- [ ] Implement configuration generation, parity checks and committed regressions.
-- [ ] Update the reusable process, scripts and skill.
+- [x] Implement configuration generation, parity checks and committed regressions.
+- [x] Update the reusable process, scripts and skill.
 - [ ] Complete review and the maintained release lifecycle.
