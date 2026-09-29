@@ -38,12 +38,12 @@ describe("sealed plugin selection retirement", () => {
     expect(f.getRecords()).toEqual({ other: { source: "npm", version: "2" } });
     expect(readFileSync(join(f.packageDir, "package.json"), "utf8")).toContain('"version":"1"');
   });
-  it("captures no retirement for later releases after the global selection is gone", async () => {
+  it("captures no retirement when the external selection is absent, even with a reader-only seed", async () => {
     const f = fixture(); const bindings = await capturePluginRetirements(f, f.api);
     await retirePluginSelections({ ...f, bindings, apply: true }, f.api);
     expect(await capturePluginRetirements(f, f.api)).toEqual([]);
     rmSync(join(f.runtime, "dist/extensions/fixture-plugin"), { recursive: true });
-    await expect(capturePluginRetirements(f, f.api)).rejects.toThrow();
+    expect(await capturePluginRetirements(f, f.api)).toEqual([]);
   });
   it.each(["record", "package", "marker", "replacement", "legacy"])("refuses %s drift before any mutation", async kind => {
     const f = fixture(); const bindings = await capturePluginRetirements(f, f.api);
