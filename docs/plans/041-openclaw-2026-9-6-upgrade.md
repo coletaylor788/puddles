@@ -1,6 +1,6 @@
 # Upgrade maintained OpenClaw support to 2026.9.6
 
-**Status:** Production restored; legacy selection capture repair in progress
+**Status:** Production restored; corrected release validation in progress
 **Issue:** [#114](https://github.com/coletaylor788/puddles/issues/114)
 **Last updated:** 2026-09-29
 
@@ -98,15 +98,16 @@ Add a schema-1 regression covering capture, actual upstream migration, retiremen
 
 ### Status
 
-The failed activation has completed full maintained rollback. Read-only checks verify the original runtime, interpreter and service, with PROD and DEV healthy. The failed candidate is held and the production lease is released. Replacement validation remains pending.
+Production remains healthy on the verified 2026.7.1 rollback. The latest candidate passed CI, DEV, the full-volume history migration and installed TEST checks. Physical TEST activation rejected a package digest mismatch before stopping the service. That candidate is held and both environment slots are released.
 
-The replacement artifact passed CI, all DEV checks and TEST, including a real-provider greeting with recorded delivery. Production activation reported healthy, but independent read-only verification found the old external plugin selection. The release is not complete. Maintained rollback restored the saved runtime, state and external paths. Read-only checks passed and the production lease is released. Recovery assets remain protected.
-
-The cause is confirmed: predecessor SQLite schema 1 held the plugin record, while capture only saw the current representation. The narrow repair adds legacy capture and a mandatory post-Doctor bundled-selection gate inside activation. Retained review agrees that this stays within the approved correction. A new regression and corrected candidate must pass the release gates before another promotion.
+The release handoff changed directory permissions while copying the TEST seed. The correction preserves the complete source tree through export and import. Regressions, a real selected-package handoff check and independent review pass. The corrected merged source is going through the release gates before another promotion.
 
 ## Agent section
 
 ### State
+
+- Latest release failure is confined to handoff packaging. Directory permissions changed after the selected package digest was sealed. Physical TEST preflight rejected that drift before shutdown; production was untouched. Both remaining directory-copy boundaries now preserve modes and compare source-before, destination and source-after digests. Round-trip regressions verify the extracted tree, executable files, relative links and unchanged sources. Detailed environment evidence stays in private records.
+- The previous candidate passed exact DEV, including full turns and real embeddings, plus a fresh 901,649 ms volume migration with all 5,445 histories and 168,172 events verified. Installed TEST passed. These receipts remain bound to that held candidate. The corrected merged source needs its own composed gate and exact-artifact DEV, TEST and PROD validation. Completed failed TEST payloads are retired after ownership and process checks; compact diagnostics remain.
 
 - Follow-up: pre-build capture rejected stale legacy records for unrelated plugins. Scope capture, packaging and preflight comparisons to explicitly selected IDs. Keep the full canonical post-Doctor registry during writes, preserve unrelated values, and still reject selected conflicts. Add the observed shape to the installed migration fixture. Production is unchanged; no replacement artifact was built.
 - Candidate validation passed CI, DEV and TEST, including full turns and a bounded real-provider TEST greeting. Post-activation verification found that capture had missed an external selection in the predecessor SQLite representation. Full rollback is verified, the failed candidate is disqualified and the production lease is released. Detailed environment evidence stays in private release records.
