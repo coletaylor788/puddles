@@ -7,6 +7,8 @@ import { runCommand } from "./process-runner.mjs";
 
 const releaseRuntimeSelectionTimeoutMs = 60_000;
 const runtimeSelectionOutputBytes = 16 * 1024 * 1024;
+// Composed runtimes include bundled plugins and can list more than 4 MiB of paths.
+const runtimeArchiveListingOutputBytes = 16 * 1024 * 1024;
 
 function parseRuntimeSelection(stdout) {
   const [pack] = JSON.parse(stdout);
@@ -225,7 +227,7 @@ export async function installRuntime(artifact, prefix, run = runCommand) {
   if (fileDigest(artifact.path) !== artifact.sha256) throw new Error("Artifact digest changed");
   if (existsSync(prefix)) throw new Error("Install prefix must be new");
   mkdirSync(prefix, { recursive: true, mode: 0o700 });
-  const entries = await run("tar", ["-tzf", artifact.path], { capture: true });
+  const entries = await run("tar", ["-tzf", artifact.path], { capture: true, maxOutputBytes: runtimeArchiveListingOutputBytes });
   if (entries.split("\n").filter(Boolean).some((entry) => entry.startsWith("/") || entry.split("/").includes("..") || !["runtime", "runtime-identity.json"].includes(entry.split("/")[0]))) {
     throw new Error("Invalid runtime archive path");
   }
