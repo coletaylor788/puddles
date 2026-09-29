@@ -558,3 +558,13 @@ describe("digest-bound stopped-state operations", () => {
     expect(load).not.toHaveBeenCalled();
   });
 });
+
+
+it("accepts a plugin-selection-only migration but rejects an empty migration", () => {
+  const manifest = { schemaVersion: 1, configOperations: [], pluginRetirements: [{
+    id: "fixture", packagePath: "npm/projects/fixture/node_modules/fixture",
+    packageSha256: "a".repeat(64), recordSha256: "b".repeat(64),
+  }] };
+  expect(() => validateMigrationManifest(manifest)).not.toThrow();
+  expect(() => validateMigrationManifest({ ...manifest, pluginRetirements: [] })).toThrow();
+});

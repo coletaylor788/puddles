@@ -442,6 +442,16 @@ appended to a fixture queue after a real `watch.subscribe`. The bridge emits
 protocol notifications, the gateway calls a local scripted model, and outbound
 messages go to a recorder instead of Messages.app.
 
+Keep the installed agent plugin, its state API and model SDK real. Replace the
+provider API at the HTTP boundary with deterministic responses. A plugin stub
+cannot prove that the installed plugin has the capabilities needed for a turn.
+Cover a greeting, tools, history, restart and pending cleanup through this path.
+Unknown provider requests fail; deterministic fixtures never fall back to a live
+provider. An explicitly authorized live TEST greeting can check authentication
+and provider compatibility once per release, with recorded delivery and a fixed
+request budget. Record its transport and bind its result to the candidate.
+A required turn that fails, is missing or is skipped blocks promotion.
+
 Every scenario declares its incoming events, model responses, and expected
 outbound replies. Tool scenarios declare explicit recording adapters. The
 fixture registers those tools through the supported OpenClaw plugin interface,
@@ -470,7 +480,7 @@ Cleanup stops only the fixture process group and removes its successful state.
 Public development works independently. A caller may explicitly set
 `E2E_LOCAL_EXTENSION` to an absolute local `.mjs` file. It exports a default
 object with `schemaVersion: 1`, `inputs`, `commands`, `scenarios`, optional
-`artifacts`, `preparedFiles`, and `healthChecks`. Nothing in public CI discovers
+`artifacts`, `bundledPlugins`, `providerFixture`, `preparedFiles`, and `healthChecks`. Nothing in public CI discovers
 or fetches that module.
 
 `inputs` lists absolute files whose bytes key extension evidence. Each command
@@ -487,6 +497,19 @@ scenario startup. Source remains available, but installed artifact bytes must
 not change. Use named artifacts for additional runtimes that need activation.
 Installed hooks can configure their isolated rehearsal through the supplied
 installed paths.
+
+`bundledPlugins` declares verified portable plugin archives to place at
+`dist/extensions/<id>` before sealing the host artifact. The host digest covers
+the bundled bytes and their provenance ledger. Reject duplicate IDs and occupied
+destinations. This gives only the reviewed bundled plugin the host's bundled
+capabilities; unrelated local archives remain untrusted.
+
+`providerFixture` receives the isolated context, installed runtime, scenario,
+`nextResponse`, and `registerCleanup`. It returns `env`, `configure`,
+`assertHealthy`, `assertComplete`, and `close`, with optional `assertTurn` and
+`beforeRestart` hooks. Register cleanup before asynchronous initialization when
+it can create credentials or processes. A step with `restartBefore: true` stops
+the gateway, runs the hook, then restarts against the same isolated state.
 
 Commands may declare `outputs`, a list of paths relative to the isolated root.
 Declare concrete artifact files or narrow directories. The runner records their

@@ -251,6 +251,7 @@ export async function nativePipeline(command, repositoryGates) {
           prepare: extension.phaseHashes.prepare,
           package: extension.phaseHashes.package,
           artifacts: extension.artifacts,
+          bundledPlugins: extension.bundledPlugins,
           preparedFiles: extension.preparedFiles,
         });
     const migrationPath = process.env.E2E_STATE_MIGRATION_MANIFEST;
@@ -390,9 +391,10 @@ export async function nativePipeline(command, repositoryGates) {
     const extensionOutputs = await stage(runDir, "extension-package", {
       candidateInputs, installedDependencies, tools, prepareOutputs,
       extension: extension.phaseHashes.package, artifacts: extension.artifacts,
-      preparedFiles: extension.preparedFiles,
+      preparedFiles: extension.preparedFiles, bundledPlugins: extension.bundledPlugins,
     }, async () => extensionPhase(extension, "package", context), (outputs) => outputs);
     const extensionArtifacts = additionalArtifacts(extension, context, extensionOutputs);
+    const bundledArtifacts = additionalArtifacts(extension, context, extensionOutputs, extension.bundledPlugins ?? []);
     const preparedFileRecords = await stage(runDir, "prepared-files", {
       candidateInputs, tools, extension: extension.phaseHashes.package,
       selected: extension.preparedFiles, extensionOutputs,
@@ -432,7 +434,7 @@ export async function nativePipeline(command, repositoryGates) {
       [result.artifact.path]: result.artifact.sha256,
       [result.provenance.path]: result.provenance.sha256,
     }));
-    const attestedExtensionArtifacts = extensionArtifacts.map((record) => ({
+    const attest = (record) => ({
       ...record,
       attestation: {
         schema: "puddles.openclaw-extension-artifact/v1",
@@ -442,10 +444,12 @@ export async function nativePipeline(command, repositoryGates) {
         artifactSha256: record.artifact.sha256,
         runtimeSha256: record.artifact.runtimeSha256,
       },
-    }));
+    });
+    const attestedExtensionArtifacts = extensionArtifacts.map(attest);
+    const bundledPlugins = bundledArtifacts.map(attest);
     const extras = [provider, ...attestedExtensionArtifacts];
     context.additionalArtifacts = extras;
-    const artifact = await stage(runDir, "package", { candidateInputs, installedDependencies, build: treeDigest(join(candidate, "dist")), tools, packaging: fileDigest(join(packageDir, "src", "native-package.mjs")) }, () => packRuntime(candidate, artifacts, run), (result) => ({ [result.path]: result.sha256 }));
+    const artifact = await stage(runDir, "package", { candidateInputs, installedDependencies, build: treeDigest(join(candidate, "dist")), tools, bundledPlugins, packaging: fileDigest(join(packageDir, "src", "native-package.mjs")) }, () => packRuntime(candidate, artifacts, run, bundledPlugins), (result) => ({ [result.path]: result.sha256 }));
     context.artifact = artifact;
     const repository = {
       head: publicHead,
@@ -541,7 +545,7 @@ export async function nativePipeline(command, repositoryGates) {
       const migrationFixtures = await rehearseStateMigration(installedDir, candidate, runDir);
       const results = [];
       for (const scenario of runtimeScenarios) {
-        results.push(await runScenario(installedDir, scenario, { runDir }));
+        results.push(await runScenario(installedDir, scenario, { runDir, providerFixture: extension.providerFixture }));
       }
       if (runtimeBefore !== treeDigest(installedDir, { portable: true })) throw new Error("Rehearsal changed the installed artifact");
       for (const [id, directory] of Object.entries(context.additionalInstalledDirs)) {
@@ -772,7 +776,7 @@ export async function nativeTargetPipeline(receiptPath, targetPath, seedPath) {
       );
       const outputs = await extensionPhase(extension, "installed", context);
       const results = [];
-      for (const scenario of runtimeScenarios) results.push(await runScenario(installedDir, scenario, { runDir }));
+      for (const scenario of runtimeScenarios) results.push(await runScenario(installedDir, scenario, { runDir, providerFixture: extension.providerFixture }));
       if (treeDigest(installedDir, { portable: true }) !== before) {
         throw new Error("Target rehearsal changed the imported runtime");
       }

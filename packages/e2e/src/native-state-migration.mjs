@@ -6,6 +6,8 @@ import { digest, fileDigest, inside } from "./native-state.mjs";
 import { assertConfigurationDigest, authoredConfiguration } from "./environment-configuration.mjs";
 import { assertWorkshopConfiguration, inspectWorkshopMigration, validateWorkshopBinding } from "./native-workshop-migration.mjs";
 
+import { retirePluginSelections, validatePluginRetirements } from "./native-plugin-selection.mjs";
+
 const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const prefix = (parent, child) => parent.length <= child.length && parent.every((part, index) => part === child[index]);
 const forbidden = new Set(["__proto__", "prototype", "constructor"]);
@@ -46,9 +48,9 @@ function migrationProjection(before, after, path = []) {
 }
 
 export function validateMigrationManifest(manifest) {
-  keys(manifest, ["schemaVersion", "configOperations", "cronOperation", "configuration", "workshopMigration"], ["schemaVersion", "configOperations"]);
+  keys(manifest, ["schemaVersion", "configOperations", "cronOperation", "configuration", "workshopMigration", "pluginRetirements"], ["schemaVersion", "configOperations"]);
   if (manifest.schemaVersion !== 1 || !Array.isArray(manifest.configOperations) ||
-      manifest.configOperations.length > 64 || (!manifest.configOperations.length && !manifest.cronOperation)) {
+      manifest.configOperations.length > 64 || (!manifest.configOperations.length && !manifest.cronOperation && !manifest.pluginRetirements?.length)) {
     throw new Error("Invalid migration version or operation count");
   }
   const paths = [];
@@ -89,6 +91,7 @@ export function validateMigrationManifest(manifest) {
   if (manifest.workshopMigration !== undefined && (!record(manifest.workshopMigration) || manifest.workshopMigration.schemaVersion !== 1)) {
     throw new Error("Invalid Workshop migration manifest");
   }
+  if (manifest.pluginRetirements !== undefined) validatePluginRetirements(manifest.pluginRetirements);
   return manifest;
 }
 
@@ -311,6 +314,11 @@ export async function executeStateMigration(
       expectedConfigSha256: canonicalValueDigest(expectedConfig),
     };
   };
+  if (manifest.pluginRetirements && ["preflight", "config"].includes(phase)) {
+    await retirePluginSelections({ runtime, stateDir,
+      config: snapshot.sourceConfigBeforeMigrations ?? snapshot.sourceConfig,
+      bindings: manifest.pluginRetirements, apply: phase === "config" });
+  }
   if (phase === "preflight") {
     if (manifest.configuration) assertConfigurationDigest(
       authoredConfiguration(snapshot),

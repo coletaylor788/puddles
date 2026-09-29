@@ -7,6 +7,7 @@ import { dirname, join } from "node:path";
 vi.setConfig({ testTimeout: 15_000 });
 
 const counters = vi.hoisted(() => ({ prepare: 0, install: 0, build: 0, package: 0, additionalInstalls: 0, runtimeCommands: 0, dependency: "first", generatedCaches: false }));
+const scenarioProviders = vi.hoisted(() => [] as unknown[]);
 const registrations = vi.hoisted(() => new Set<string>());
 vi.mock("../src/native-state.mjs", async (original) => {
   const state = await original<{ treeDigest: (path: string, options?: unknown) => string }>();
@@ -196,7 +197,10 @@ vi.mock("../src/native-package.mjs", () => ({
 }));
 vi.mock("../src/native-fixture.mjs", async (original) => ({
   ...await original<object>(),
-  runScenario: async (_installed: string, scenario: { id: string }) => ({ id: scenario.id, passed: true }),
+  runScenario: async (_installed: string, scenario: { id: string }, options: { providerFixture?: unknown }) => {
+    scenarioProviders.push(options.providerFixture);
+    return { id: scenario.id, passed: true };
+  },
 }));
 // @ts-expect-error JS lifecycle exports are tested at runtime.
 import { nativePipeline, nativeTargetPipeline, regressionEnvironment, removeOwnedWorktree, resolveBuildTimeoutMs, safeNode } from "../src/native-pipeline.mjs";
@@ -240,6 +244,7 @@ beforeEach(() => {
   vi.stubEnv("PNPM_CONFIG_STORE_DIR", store);
   Object.assign(counters, { prepare: 0, install: 0, build: 0, package: 0, additionalInstalls: 0, runtimeCommands: 0, dependency: "first", generatedCaches: false });
   registrations.clear();
+  scenarioProviders.length = 0;
 });
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -983,12 +988,16 @@ it("binds the explicit rehearsal target into artifact-only installed context", a
   const module = join(directory, "target-adapter.mjs");
   writeFileSync(module, `export default {
     schemaVersion: 1,
+    providerFixture: () => { throw new Error("orchestration must pass this factory to the scenario runner"); },
     commands: [{id:"installed",phase:"installed",command:"fixture-installed",args:[],timeoutMs:1000}]
   };`);
   const targetRun = join(directory, "target-run");
   vi.stubEnv("E2E_RUN_DIR", targetRun);
   vi.stubEnv("E2E_LOCAL_EXTENSION", module);
+  scenarioProviders.length = 0;
   const proof = await nativeTargetPipeline(buildPath, targetPath);
+  expect(scenarioProviders.length).toBeGreaterThan(0);
+  expect(scenarioProviders.every(factory => typeof factory === "function")).toBe(true);
   const context = JSON.parse(readFileSync(join(targetRun, "context/context.json"), "utf8"));
   expect(proof).toMatchObject({ buildId: build.buildId, targetSha256: context.deploymentTarget.sha256 });
   expect(context).not.toHaveProperty("sourceDir");
@@ -1165,4 +1174,15 @@ it("seals prepared files into their own proof and invalidates runtime rehearsal 
   const second = await nativePipeline("native", async () => {});
   expect(second.preparedFiles[0].sha256).not.toBe(first.preparedFiles[0].sha256);
   expect(counters.runtimeCommands).toBe(runs + 1);
+});
+
+
+it("passes the selected provider fixture through the native draft scenario path", async () => {
+  const { directory } = setup();
+  const path = join(directory, "provider-fixture.mjs");
+  writeFileSync(path, `export default {schemaVersion: 1, providerFixture: () => {throw new Error('runner owns fixture initialization');}};`);
+  vi.stubEnv("E2E_LOCAL_EXTENSION", path);
+  await nativePipeline("native", async () => {});
+  expect(scenarioProviders.length).toBeGreaterThan(0);
+  expect(scenarioProviders.every(factory => typeof factory === "function")).toBe(true);
 });

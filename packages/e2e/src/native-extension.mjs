@@ -6,11 +6,14 @@ import { fixtureEnv } from "./native-fixture.mjs";
 import { runCommand } from "./process-runner.mjs";
 
 export async function loadExtension(path) {
-  if (!path) return { schemaVersion: 1, commands: [], scenarios: [], healthChecks: [], artifacts: [], preparedFiles: [], hash: "none", phaseHashes: {} };
+  if (!path) return { schemaVersion: 1, commands: [], scenarios: [], healthChecks: [], artifacts: [], bundledPlugins: [], preparedFiles: [], hash: "none", phaseHashes: {} };
   if (!isAbsolute(path) || !existsSync(path)) throw new Error("Local extension requires an existing absolute module path");
   const extension = (await import(pathToFileURL(realpathSync(path)).href)).default;
   if (extension?.schemaVersion !== 1) throw new Error("Unsupported local extension version");
-  for (const key of ["commands", "scenarios", "healthChecks", "inputs", "artifacts", "preparedFiles"]) {
+  if (extension.providerFixture !== undefined && typeof extension.providerFixture !== "function") {
+    throw new Error("Local provider fixture must start a protocol service");
+  }
+  for (const key of ["commands", "scenarios", "healthChecks", "inputs", "artifacts", "bundledPlugins", "preparedFiles"]) {
     if (!Array.isArray(extension[key] ?? [])) throw new Error("Invalid local extension list");
   }
   const files = [path, ...(extension.inputs ?? [])];
@@ -40,8 +43,9 @@ export async function loadExtension(path) {
   }
   if (commands.some((command) => !["prepare", "gate", "package", "installed"].includes(command.phase))) throw new Error("Unknown local command phase");
   const artifacts = extension.artifacts ?? [];
+  const bundledPlugins = extension.bundledPlugins ?? [];
   const prepared = extension.preparedFiles ?? [];
-  for (const [kind, records] of [["artifact", artifacts], ["prepared file", prepared]]) {
+  for (const [kind, records] of [["artifact", artifacts], ["bundled plugin", bundledPlugins], ["prepared file", prepared]]) {
     const ids = new Set();
     for (const record of records) {
       if (!/^[a-z][a-z0-9-]*$/.test(record.id) || ids.has(record.id) ||
@@ -66,7 +70,7 @@ export async function loadExtension(path) {
     })];
   }));
   return {
-    ...extension, commands, healthChecks, artifacts, preparedFiles: prepared,
+    ...extension, commands, healthChecks, artifacts, bundledPlugins, preparedFiles: prepared,
     scenarios: extension.scenarios ?? [], phaseHashes, hash: jsonDigest(files.map(fileDigest)),
   };
 }
@@ -92,9 +96,9 @@ function packageOutputVerifier(context, outputs) {
   };
 }
 
-export function additionalArtifacts(extension, context, outputs) {
+export function additionalArtifacts(extension, context, outputs, selected = extension.artifacts) {
   const verifyOutput = packageOutputVerifier(context, outputs);
-  return extension.artifacts.map(({ id, manifest }) => {
+  return selected.map(({ id, manifest }) => {
     const path = resolve(context.root, manifest);
     verifyOutput(path);
     const value = JSON.parse(readFileSync(path, "utf8"));

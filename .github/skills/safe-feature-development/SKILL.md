@@ -447,6 +447,11 @@ investigating instead of asking.
      A later main commit belongs to the next candidate and does not invalidate
      the selected release. Record source, artifact ID, and stage results;
      scripts perform integrity checks without manual whole-workspace hashing.
+   - Exercise the real installed agent plugin and model SDK through a provider
+     API fixture, including a greeting and recorded reply. Do not replace the
+     plugin to make an integration test pass. When an authorized live TEST turn
+     is required, enforce its request budget, record its transport and candidate
+     identity, and block promotion on missing or failed evidence.
    - Claim an environment only for its deployment, checks, cleanup, and recovery.
      Keep writable state, configuration, sessions, ports, and PIDs separate.
      Environment settings and credentials stay outside the deployable artifact.

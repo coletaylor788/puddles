@@ -1,6 +1,6 @@
 # Upgrade maintained OpenClaw support to 2026.9.6
 
-**Status:** Restored to 2026.7.1 after message failure; bundled-plugin correction awaiting approval
+**Status:** Restored to 2026.7.1 after message failure; bundled-plugin correction implemented; release validation pending
 **Issue:** [#114](https://github.com/coletaylor788/puddles/issues/114)
 **Last updated:** 2026-09-28
 
@@ -64,7 +64,7 @@ We shipped an incompatible combination: the new OpenClaw host and a maintained a
 
 OpenClaw 2026.9.6 grants this API to bundled plugins and verified official installations. Our patched archive qualified as neither. The test gate checked that the plugin loaded, but never started an actual turn through the installed plugin with its real state API. That was the missing test.
 
-The proposed correction ships the same reviewed plugin as part of our certified private runtime bundle. OpenClaw then treats it as a bundled component and permits the state operations it requires. Use that existing mechanism and retain the real source and dependency provenance.
+The approved correction ships the same reviewed plugin as part of our certified private runtime bundle. OpenClaw then treats it as a bundled component and permits the state operations it requires. Use that existing mechanism and retain the real source and dependency provenance.
 
 The migration also removes the exact old installation record. Otherwise OpenClaw can keep selecting the external copy instead of the bundled copy. Use the supported registry API under a stopped snapshot, preserve plugin data and unrelated records, and restore the old selection with its package and state on rollback.
 
@@ -76,18 +76,26 @@ flowchart TD
     D --> E[Agent turn with recorded external effects]
 ```
 
-Add an installed regression that loads the actual packaged plugin and exercises its required state API, turn startup and cleanup with synthetic data and recorded model/delivery effects. Keep a negative case proving that an unrelated local archive remains untrusted. TEST must include the old external install record, verify the selected bundled implementation and prove rollback. Make required plugin capabilities part of future release checks. This packaging and trust decision passed independent review and awaits approval before implementation. It changes the plugin’s host capability classification within the existing trusted-host architecture. Agent permissions, sandboxing and data access policies remain unchanged. No trust rule or runtime change has been applied.
+#### Full-turn validation
+
+Keep the channel adapter, gateway, installed agent plugin, state API and model SDK real. A loopback HTTP service stands in for the provider API and returns fixed protocol responses. Record external delivery at the last boundary. Unknown requests fail the test; the fixture has no live-provider fallback.
+
+Use this path in DEV and TEST for a greeting, tool execution and a reply, then restart with synthetic pending cleanup and prove the next turn succeeds. Assert the recorded reply as well as plugin state and source selection. Keep a negative case proving that an unrelated local archive remains untrusted. TEST also starts with the old external install record and proves its removal and restoration on rollback.
+
+The requester authorized bounded real-provider calls with synthetic prompts to inspect protocol shapes. Keep credentials and personal data out of recordings. Once per release, run a bounded real-provider greeting in isolated TEST with recorded delivery. This checks authentication and service compatibility that a deterministic fixture cannot establish. A missing, skipped or failed required turn blocks promotion. Both fixtures and the bounded live check use the SDK's supported HTTP streaming transport. This covers the full agent path but does not certify the production-default WebSocket transport.
+
+Make these checks part of the maintained process and scripts for future releases. The requester approved this correction after independent review. It changes the plugin's host capability classification within the existing trusted-host architecture. Agent permissions, sandboxing and data access policies remain unchanged.
 
 ### Status
 
-Real user traffic exposed a plugin state-access refusal after activation. The maintained full rollback restored OpenClaw 2026.7.1, its original Node 22.23.3 and service. Both health endpoints pass. The failed live state, package and service remain preserved. PROD is released and the failed batch is held. Earlier HTTP, migration and synthetic checks did not establish working agent replies. The reviewed bundled-plugin correction awaits approval.
+Real user traffic exposed a plugin state-access refusal after activation. The maintained full rollback restored OpenClaw 2026.7.1, its original Node 22.23.3 and service. Both health endpoints pass. The failed live state, package and service remain preserved. PROD is released and the failed batch is held. Earlier HTTP, migration and synthetic checks did not establish working agent replies. The requester approved the bundled-plugin correction and provider-boundary tests. Installed turns and the real migration transaction pass locally, including complete rollback of the old plugin selection. Retained review and release validation are next. Production remains on the restored release.
 
 ## Agent section
 
 ### State
 
 - Incident: real message dispatch failed before reply after activation `activation-1790633653886-65893`. Release batch `02e09d78780db5ccdf62d8755b51a72175fe7b8dba0b6756710e116e97089bd3` is held. Explicit rollback completed with exit 0 and journal `rolled-back`, using the original receipt, target and recovery directory. The maintained controller restored state and external paths. Independent read-only verification confirms 2026.7.1, the original Node 22.23.3 and service, PROD/DEV HTTP 200, and preserved failed state/package/service. The controller joined and PROD maintenance lease was released. No test messages were sent.
-- Repair branches: `codex/openclaw-plugin-trust-repair` in the assigned public/private pair, based on freshly fetched main. No runtime implementation has begun. Required new proofs are actual plugin state capability, synthetic installed turns, external-record migration, and full rollback selection.
+- Repair branches: `codex/openclaw-bundled-copilot` in the assigned public/private pair, based on freshly fetched main. The correction is approved. Required proofs are actual plugin state capability, deterministic full turns through the real SDK against a fake provider API, one bounded real-provider TEST turn, external-record migration, and full rollback selection.
 - The following candidate proofs passed before the incident. They remain evidence for their individual assertions, not proof of working user replies.
 - Released public `cf4930115306f9655d8890153a163c68271c5c91` through composed CI `36482565849`, build `04e7da87ee01589135ef8bd1004742b5f47662d52c4ed32cd125d8036eed0c41`. Exact DEV passed four wrapper checks, nine messaging scenarios, 35 installed checks and the real local embedding test. Fresh uninterrupted Doctor migration took 876,810 ms under the 1,200,000 ms limit. All 5,445 synthetic histories and 168,172 events passed full content, ownership and integrity checks; the runtime digest remained unchanged.
 - TEST passed all 11 runtime scenarios, injected activation failure and rollback, healthy activation, certification and final rollback. Its owned target was removed. Production transaction `activation-1790633653886-65893` completed successfully. Read-only checks verify version 2026.9.6, Node 26.1.0, health, recovery identity, all eight primary database schemas at 23, and exact preservation of the three approved proposals, skills, drafts and rollback contents with only the approved owner assignment. No verification messages were sent. Retain the production recovery snapshot.
@@ -206,7 +214,7 @@ Follow the shared process on main without a plan-specific rollout sequence. The 
 
 ### Review log
 
-- Retained independent review confirmed the plugin capability failure and the missing installed-turn assertion. The proposed distribution packaging uses existing bundled trust and retains honest provenance. Its capability change needs specific approval. Preserve a negative untrusted-archive case and exact old plugin selection on rollback.
+- Retained independent review confirmed the plugin capability failure and the missing installed-turn assertion. The proposed distribution packaging uses existing bundled trust and retains honest provenance. The requester approved its capability change and the provider-boundary test design. Preserve a negative untrusted-archive case and exact old plugin selection on rollback.
 
 - Retained review clears the Doctor-only 20-minute bound, phase reporting, fast budget and timeout-rollback regressions, and volume guidance. The larger allowance is a routine correction within the approved stopped migration. The fresh uninterrupted exact-artifact volume proof passed before production.
 
@@ -224,5 +232,7 @@ Follow the shared process on main without a plan-specific rollout sequence. The 
 - [x] Align with current main and remove duplicated execution procedures.
 - [x] Obtain design approval.
 - [x] Deliver target compatibility, migration and regression coverage.
-- [ ] Approve the proposed bundled-plugin correction, implement and pass installed capability coverage.
+- [x] Approve the bundled-plugin correction and provider-boundary testing.
+- [x] Implement the correction and pass installed capability and full-turn coverage.
+- Local draft evidence: deterministic greeting, history, tools, restart and pending cleanup pass through the real installed plugin and SDK. One real-provider greeting passes with recorded delivery. Provider cleanup also passes a synthetic credential interruption test. These are development proofs, not release certification. The actual activation transaction passes migration, unchanged preflight, complete rollback to the old plugin selection, and a subsequent healthy activation. Exact-artifact release checks remain required.
 - [ ] Satisfy the shared process's completion gate for this upgrade after the message-handling repair.
