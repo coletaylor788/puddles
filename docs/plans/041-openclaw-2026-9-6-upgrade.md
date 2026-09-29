@@ -1,6 +1,6 @@
 # Upgrade maintained OpenClaw support to 2026.9.6
 
-**Status:** Message handling regression confirmed; recorded rollback in progress; packaging correction proposed
+**Status:** Restored to 2026.7.1 after message failure; bundled-plugin correction awaiting approval
 **Issue:** [#114](https://github.com/coletaylor788/puddles/issues/114)
 **Last updated:** 2026-09-28
 
@@ -72,17 +72,17 @@ flowchart TD
     D --> E[Agent turn with recorded external effects]
 ```
 
-Add an installed regression that loads the actual packaged plugin and exercises its required state API, turn startup and cleanup with synthetic data and recorded model/delivery effects. Keep a negative case proving that an unrelated local archive remains untrusted. TEST must include the old external install record, verify the selected bundled implementation and prove rollback. Make required plugin capabilities part of future release checks. This packaging and trust decision needs review before implementation; no trust rule or runtime change has been applied.
+Add an installed regression that loads the actual packaged plugin and exercises its required state API, turn startup and cleanup with synthetic data and recorded model/delivery effects. Keep a negative case proving that an unrelated local archive remains untrusted. TEST must include the old external install record, verify the selected bundled implementation and prove rollback. Make required plugin capabilities part of future release checks. This packaging and trust decision passed independent review and awaits approval before implementation. It changes the plugin’s host capability classification within the existing trusted-host architecture. Agent permissions, sandboxing and data access policies remain unchanged. No trust rule or runtime change has been applied.
 
 ### Status
 
-Real user traffic exposed a plugin state-access refusal after activation. The release is held and the maintained full rollback is in progress. Preserve failed live state and the recorded recovery copies. Earlier HTTP, migration and synthetic checks do not establish working agent replies. The proposed packaging correction awaits review and approval.
+Real user traffic exposed a plugin state-access refusal after activation. The maintained full rollback restored OpenClaw 2026.7.1, its original Node 22.23.3 and service. Both health endpoints pass. The failed live state, package and service remain preserved. PROD is released and the failed batch is held. Earlier HTTP, migration and synthetic checks did not establish working agent replies. The reviewed bundled-plugin correction awaits approval.
 
 ## Agent section
 
 ### State
 
-- Incident: real message dispatch failed before reply after activation `activation-1790633653886-65893`. Release batch `02e09d78780db5ccdf62d8755b51a72175fe7b8dba0b6756710e116e97089bd3` is held. Explicit rollback is running under a new PROD maintenance lease using the original receipt, target and recovery directory. Preserve post-activation failed state.
+- Incident: real message dispatch failed before reply after activation `activation-1790633653886-65893`. Release batch `02e09d78780db5ccdf62d8755b51a72175fe7b8dba0b6756710e116e97089bd3` is held. Explicit rollback completed with exit 0 and journal `rolled-back`, using the original receipt, target and recovery directory. The maintained controller restored state and external paths. Independent read-only verification confirms 2026.7.1, the original Node 22.23.3 and service, PROD/DEV HTTP 200, and preserved failed state/package/service. The controller joined and PROD maintenance lease was released. No test messages were sent.
 - Repair branches: `codex/openclaw-plugin-trust-repair` in the assigned public/private pair, based on freshly fetched main. No runtime implementation has begun. Required new proofs are actual plugin state capability, synthetic installed turns, external-record migration, and full rollback selection.
 - The following candidate proofs passed before the incident. They remain evidence for their individual assertions, not proof of working user replies.
 - Released public `cf4930115306f9655d8890153a163c68271c5c91` through composed CI `36482565849`, build `04e7da87ee01589135ef8bd1004742b5f47662d52c4ed32cd125d8036eed0c41`. Exact DEV passed four wrapper checks, nine messaging scenarios, 35 installed checks and the real local embedding test. Fresh uninterrupted Doctor migration took 876,810 ms under the 1,200,000 ms limit. All 5,445 synthetic histories and 168,172 events passed full content, ownership and integrity checks; the runtime digest remained unchanged.
