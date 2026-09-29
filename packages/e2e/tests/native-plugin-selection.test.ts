@@ -98,6 +98,29 @@ describe("sealed plugin selection retirement", () => {
     writeFileSync(path, '{"installRecords":[]}');
     await expect(capturePluginRetirements(f, f.api)).rejects.toThrow(/Invalid legacy/);
   });
+  it("ignores unrelated legacy conflicts during capture and preflight and preserves canonical values during retirement", async () => {
+    const f = fixture(); const expected = await capturePluginRetirements(f, f.api);
+    mkdirSync(join(f.stateDir, "state"));
+    const databasePath = join(f.stateDir, "state/openclaw.sqlite");
+    const db = new DatabaseSync(databasePath);
+    db.exec("CREATE TABLE installed_plugin_index(index_key TEXT PRIMARY KEY, install_records_json TEXT, plugins_json TEXT, diagnostics_json TEXT)");
+    db.prepare("INSERT INTO installed_plugin_index VALUES ('installed-plugin-index', ?, '[]', '[]')").run(JSON.stringify(f.getRecords()));
+    db.close();
+    const predecessorReader = { ...f.api, read: () => ({}) };
+    mkdirSync(join(f.stateDir, "plugins"));
+    const path = join(f.stateDir, "plugins/installs.json");
+    writeFileSync(path, JSON.stringify({ installRecords: { other: { source: "npm", version: "stale" } }, plugins: [], diagnostics: [] }));
+    expect(await capturePluginRetirements(f, predecessorReader)).toEqual(expected);
+    await expect(retirePluginSelections({ ...f, bindings: expected }, predecessorReader)).resolves.toBeUndefined();
+    // A conflict for the selected plugin must still reject.
+    writeFileSync(path, JSON.stringify({ installRecords: { "fixture-plugin": { source: "npm", version: "stale" } }, plugins: [], diagnostics: [] }));
+    await expect(capturePluginRetirements(f, predecessorReader)).rejects.toThrow(/disagree/);
+    writeFileSync(path, JSON.stringify({ installRecords: { other: { source: "npm", version: "stale" } }, plugins: [], diagnostics: [] }));
+    rmSync(databasePath);
+    // Applying uses the full canonical registry, including every unrelated entry.
+    await retirePluginSelections({ ...f, bindings: expected, apply: true }, f.api);
+    expect(f.getRecords()).toEqual({ other: { source: "npm", version: "2" } });
+  });
   it("preflights without mutation and retains old files while preserving unrelated records under the lifecycle lease", async () => {
     const f = fixture(); const bindings = await capturePluginRetirements(f, f.api);
     await retirePluginSelections({ ...f, bindings }, f.api);
