@@ -91,13 +91,20 @@ function legacyRecords(stateDir) {
   return records;
 }
 
-function recordsFor(api, stateDir, config, env) {
+function canonicalRecordsFor(api, stateDir, env) {
   api.clear();
   const options = { stateDir, env, artifactPreservingReadOnly: true };
   if (api.inspect(options).status === "invalid") throw new Error("Invalid persisted plugin index");
+  return installRecords(api.read(options) ?? {});
+}
+
+function recordsFor(api, stateDir, config, env, ids) {
+  if (ids !== undefined) validateRequiredBundledPlugins(ids);
+  const selected = ids === undefined ? null : new Set(ids);
   const merged = Object.create(null);
-  for (const source of [api.read(options) ?? {}, config.plugins?.installs ?? {}, ...legacyRecords(stateDir)]) {
+  for (const source of [canonicalRecordsFor(api, stateDir, env), config.plugins?.installs ?? {}, ...legacyRecords(stateDir)]) {
     for (const [id, record] of Object.entries(installRecords(source))) {
+      if (selected && !selected.has(id)) continue;
       if (Object.hasOwn(merged, id) && canonicalValueDigest(merged[id]) !== canonicalValueDigest(record)) throw new Error("Plugin install representations disagree");
       merged[id] = record;
     }
@@ -106,8 +113,8 @@ function recordsFor(api, stateDir, config, env) {
 }
 
 // Packaging predecessor files must use the same representation checks as capture.
-export async function readPluginSelectionRecords({ runtime, stateDir, config, env = process.env }, api) {
-  return recordsFor(api ?? await loadPluginSelectionApi(runtime), stateDir, config, env);
+export async function readPluginSelectionRecords({ runtime, stateDir, config, ids, env = process.env }, api) {
+  return recordsFor(api ?? await loadPluginSelectionApi(runtime), stateDir, config, env, ids);
 }
 
 export function validateRequiredBundledPlugins(ids) {
@@ -135,7 +142,7 @@ export async function assertBundledPluginSelections({ runtime, stateDir, ids, en
 // Only digests and state-relative paths enter the sealed release inputs.
 export async function capturePluginRetirements({ runtime, stateDir, config, ids, env = process.env }, api) {
   api ??= await loadPluginSelectionApi(runtime);
-  const records = recordsFor(api, stateDir, config, env);
+  const records = recordsFor(api, stateDir, config, env, ids);
   if (!Array.isArray(ids) || !ids.length || new Set(ids).size !== ids.length ||
       ids.some(id => !/^[a-z][a-z0-9-]*$/.test(id))) throw new Error("Invalid plugin selection IDs");
   const bindings = ids.flatMap(id => {
@@ -158,7 +165,10 @@ export async function retirePluginSelections({ runtime, stateDir, config, bindin
   api ??= await loadPluginSelectionApi(runtime);
   const options = { stateDir, env, config };
   const check = () => {
-    const records = recordsFor(api, stateDir, config, env);
+    // Doctor owns unrelated legacy conflicts. A write must start with the full
+    // canonical registry, never a filtered projection or stale legacy records.
+    const records = apply ? canonicalRecordsFor(api, stateDir, env)
+      : recordsFor(api, stateDir, config, env, bindings.map(binding => binding.id));
     for (const binding of bindings) {
       const record = records[binding.id];
       const packageDir = ownedPath(stateDir, binding.packagePath);
