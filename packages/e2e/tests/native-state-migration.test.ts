@@ -567,4 +567,18 @@ it("accepts a plugin-selection-only migration but rejects an empty migration", (
   }] };
   expect(() => validateMigrationManifest(manifest)).not.toThrow();
   expect(() => validateMigrationManifest({ ...manifest, pluginRetirements: [] })).toThrow();
+  expect(() => validateMigrationManifest({ schemaVersion: 1, configOperations: [], requiredBundledPlugins: ["fixture"] })).not.toThrow();
+});
+
+it("rejects an external selection after Doctor even when no retirement was captured", async () => {
+  const f = fixture();
+  f.manifest.configOperations = [];
+  delete (f.manifest as any).cronOperation;
+  Object.assign(f.manifest, { requiredBundledPlugins: ["fixture"] });
+  writeFileSync(join(f.root, "openclaw.mjs"), `console.log(JSON.stringify({
+    plugin: {id:'fixture',origin:'global',enabled:true,status:'loaded',trust:{reason:'origin-path'}},
+    install: {source:'npm'}
+  }));`);
+  await expect(f.run("plugins")).rejects.toThrow("Required bundled plugin is not selected");
+  expect(f.sdk.saveCronJobsStoreChanges).not.toHaveBeenCalled();
 });

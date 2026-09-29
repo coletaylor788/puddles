@@ -202,7 +202,12 @@ post-migration partition, persists legacy config and multi-agent ownership
 normalization, then checks every selected config value and applies those writes
 in one source-writer transaction. This stopped compare lets a manifest target
 the canonical post-plugin object without comparing it to obsolete live input.
-Doctor and the selected cron write follow. The controller records Doctor as its
+Doctor, plugin selection and the selected cron write follow. Sealed plugin
+retirements capture both predecessor and current install-index representations
+without opening the source database. Retirement runs after Doctor imports legacy
+records. `requiredBundledPlugins` checks actual selected origin and source before
+startup, even when no retirement was captured. A mismatch triggers rollback.
+The controller records Doctor as its
 own migration phase so failures cannot be mistaken for a config operation.
 Doctor has a 20-minute limit while ordinary service commands retain one minute.
 The gateway remains stopped during migration; other activation steps and rollback

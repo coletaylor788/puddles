@@ -818,6 +818,10 @@ export async function activateNative(receipt, target, operationsFactory = system
     save("migrating-doctor");
     await operations.doctor();
     if (journal.stateMigration) {
+      journal.stateMigration.phase = "plugins";
+      save("migrating-plugins");
+      await operations.stateMigration("plugins", target.installDir, join(recoveryDir, "state-migration.json"), journal.stateMigration.sha256);
+      checkpoint();
       journal.stateMigration.phase = "cron";
       save("migrating-cron");
       await operations.stateMigration("cron", target.installDir, join(recoveryDir, "state-migration.json"), journal.stateMigration.sha256);
