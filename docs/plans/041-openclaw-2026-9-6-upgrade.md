@@ -1,6 +1,6 @@
 # Upgrade maintained OpenClaw support to 2026.9.6
 
-**Status:** Released to healthy production on 2026.9.6; ready for requester validation
+**Status:** Message handling regression confirmed; recorded rollback in progress; packaging correction proposed
 **Issue:** [#114](https://github.com/coletaylor788/puddles/issues/114)
 **Last updated:** 2026-09-28
 
@@ -58,17 +58,36 @@ The candidate ownership check uses the same plugin-aware configuration preview t
 
 SQLite inspection must leave the original state untouched. Even a read-only SQLite connection can create journal sidecars. The ownership preflight therefore reads a stable private copy of the database and committed WAL data. It refuses changing inputs or a rollback journal and removes the temporary copy after inspection. This preserves the exact state that rollback must restore.
 
+#### Installed plugin state access
+
+A real message reached the channel after activation, but the managed agent plugin failed before replying. OpenClaw 2026.9.6 allows its plugin state API only for bundled plugins and verified official installations. Our locally built archive loaded successfully but did not qualify for that access. The installed check verified loading without exercising the state operation needed by a real turn.
+
+The proposed correction packages the reviewed plugin inside the immutable private runtime distribution. OpenClaw then discovers it through its existing bundled-plugin mechanism. Preserve honest source and dependency provenance. Remove the exact superseded external install selection through the supported registry API under a stopped snapshot; otherwise that copy can override the bundled one. Keep unrelated plugin records and all plugin data intact. Rollback restores the previous selection, package and state together.
+
+```mermaid
+flowchart TD
+    A[Reviewed host and plugin sources] --> B[One certified distribution]
+    B --> C[Normal bundled discovery]
+    C --> D[Real plugin state operations]
+    D --> E[Agent turn with recorded external effects]
+```
+
+Add an installed regression that loads the actual packaged plugin and exercises its required state API, turn startup and cleanup with synthetic data and recorded model/delivery effects. Keep a negative case proving that an unrelated local archive remains untrusted. TEST must include the old external install record, verify the selected bundled implementation and prove rollback. Make required plugin capabilities part of future release checks. This packaging and trust decision needs review before implementation; no trust rule or runtime change has been applied.
+
 ### Status
 
-Production is healthy on 2026.9.6. The three approved legacy records now belong to `main`; their skills, drafts and rollback contents are preserved. All eight agent databases use schema 23. The same CI artifact passed DEV, TEST activation and rollback, the full-volume history rehearsal, and production activation. The verified recovery snapshot remains available. The upgrade is ready for requester validation.
+Real user traffic exposed a plugin state-access refusal after activation. The release is held and the maintained full rollback is in progress. Preserve failed live state and the recorded recovery copies. Earlier HTTP, migration and synthetic checks do not establish working agent replies. The proposed packaging correction awaits review and approval.
 
 ## Agent section
 
 ### State
 
+- Incident: real message dispatch failed before reply after activation `activation-1790633653886-65893`. Release batch `02e09d78780db5ccdf62d8755b51a72175fe7b8dba0b6756710e116e97089bd3` is held. Explicit rollback is running under a new PROD maintenance lease using the original receipt, target and recovery directory. Preserve post-activation failed state.
+- Repair branches: `codex/openclaw-plugin-trust-repair` in the assigned public/private pair, based on freshly fetched main. No runtime implementation has begun. Required new proofs are actual plugin state capability, synthetic installed turns, external-record migration, and full rollback selection.
+- The following candidate proofs passed before the incident. They remain evidence for their individual assertions, not proof of working user replies.
 - Released public `cf4930115306f9655d8890153a163c68271c5c91` through composed CI `36482565849`, build `04e7da87ee01589135ef8bd1004742b5f47662d52c4ed32cd125d8036eed0c41`. Exact DEV passed four wrapper checks, nine messaging scenarios, 35 installed checks and the real local embedding test. Fresh uninterrupted Doctor migration took 876,810 ms under the 1,200,000 ms limit. All 5,445 synthetic histories and 168,172 events passed full content, ownership and integrity checks; the runtime digest remained unchanged.
 - TEST passed all 11 runtime scenarios, injected activation failure and rollback, healthy activation, certification and final rollback. Its owned target was removed. Production transaction `activation-1790633653886-65893` completed successfully. Read-only checks verify version 2026.9.6, Node 26.1.0, health, recovery identity, all eight primary database schemas at 23, and exact preservation of the three approved proposals, skills, drafts and rollback contents with only the approved owner assignment. No verification messages were sent. Retain the production recovery snapshot.
-- Source and process changes are landed. The following attempts are historical evidence, not the current release state.
+- Source and process changes are landed, but release completion is reopened by the incident. The following attempts are historical evidence.
 
 #### Earlier attempts
 
@@ -183,6 +202,8 @@ Follow the shared process on main without a plan-specific rollout sequence. The 
 
 ### Review log
 
+- Retained independent review confirmed the plugin capability failure and the missing installed-turn assertion. The proposed distribution packaging uses existing bundled trust and retains honest provenance. Its capability change needs specific approval. Preserve a negative untrusted-archive case and exact old plugin selection on rollback.
+
 - Retained review clears the Doctor-only 20-minute bound, phase reporting, fast budget and timeout-rollback regressions, and volume guidance. The larger allowance is a routine correction within the approved stopped migration. The fresh uninterrupted exact-artifact volume proof passed before production.
 
 - Independent release-input audit and retained review confirm that the synthetic TEST manifest cannot serve production. No supported target relocation or paired-manifest contract exists. The requester approved the release-provenance repair, including separate DEV configuration and durable process updates.
@@ -199,4 +220,5 @@ Follow the shared process on main without a plan-specific rollout sequence. The 
 - [x] Align with current main and remove duplicated execution procedures.
 - [x] Obtain design approval.
 - [x] Deliver target compatibility, migration and regression coverage.
-- [x] Satisfy the shared process's completion gate for this upgrade.
+- [ ] Approve the proposed bundled-plugin correction, implement and pass installed capability coverage.
+- [ ] Satisfy the shared process's completion gate for this upgrade after the message-handling repair.
