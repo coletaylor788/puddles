@@ -79,16 +79,11 @@ export async function capturePluginRetirements({ runtime, stateDir, config, ids,
       ids.some(id => !/^[a-z][a-z0-9-]*$/.test(id))) throw new Error("Invalid plugin selection IDs");
   const bindings = ids.flatMap(id => {
     const record = records[id];
-    if (!record) {
-      // Later releases have no global selection left to retire. Still require
-      // the candidate to contain the replacement at the canonical bundle path.
-      const bundled = join(runtime, "dist/extensions", id);
-      if (realpathSync(bundled) !== bundled || JSON.parse(readFileSync(join(bundled, "openclaw.plugin.json"), "utf8")).id !== id) {
-        throw new Error("Replacement bundled plugin is missing");
-      }
-      return [];
-    }
-    if (!record || record.source !== "npm" || record.artifactKind !== "npm-pack") throw new Error("Expected local archive selection is missing");
+    // Capture uses a versioned SDK seed before the replacement is built. An
+    // absent external selection needs no retirement. Activation validates any
+    // actual retirement against the replacement in the certified runtime.
+    if (!record) return [];
+    if (record.source !== "npm" || record.artifactKind !== "npm-pack") throw new Error("Expected local archive selection is missing");
     const packageDir = ownedPath(stateDir, record.installPath);
     const marker = api.retainedInfo(packageDir)?.markerPath;
     if (marker && existsSync(ownedPath(stateDir, marker))) throw new Error("Selected plugin already has a retention marker");
