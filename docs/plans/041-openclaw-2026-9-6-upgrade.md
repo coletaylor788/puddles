@@ -1,6 +1,6 @@
 # Upgrade maintained OpenClaw support to 2026.9.6
 
-**Status:** Production restored; corrected release validation in progress
+**Status:** Production healthy on rollback; rehearsal fixture repair in progress
 **Issue:** [#114](https://github.com/coletaylor788/puddles/issues/114)
 **Last updated:** 2026-09-29
 
@@ -96,18 +96,21 @@ Retire the bound selection after Doctor, because Doctor can also import a legacy
 
 Add a schema-1 regression covering capture, actual upstream migration, retirement and exact rollback. Also cover malformed/conflicting records, source drift, legacy JSON import and a post-Doctor selection appearing when no retirement was sealed. This repairs the approved packaging and retirement design; it adds no new trust exception.
 
+A database migration fixture is not automatically a runnable gateway fixture. Keep nonempty synthetic task data, but project its known placeholder values to valid terminal values before using it for startup. Exercise the actual registry restore after migration and start the gateway from that migrated state. Production task records and runtime validation remain unchanged.
+
 ### Status
 
-Production remains healthy on the verified 2026.7.1 rollback. The latest candidate passed CI, DEV, the full-volume history migration and installed TEST checks. Physical TEST activation rejected a package digest mismatch before stopping the service. That candidate is held and both environment slots are released.
+Production remains healthy on the verified 2026.7.1 rollback. The replacement passed CI, DEV, full-volume history migration and installed TEST turns. Physical TEST migration completed, but startup rejected an invalid synthetic task in the predecessor fixture. Automatic rollback passed; the candidate is held and environment slots are released.
 
-The release handoff changed directory permissions while copying the TEST seed. The correction preserves the complete source tree through export and import. Regressions, a real selected-package handoff check and independent review pass. The corrected merged source is going through the release gates before another promotion.
+The narrow fixture correction preserves that task and its linked delivery record with valid terminal values. The real registry regression reproduces the error before the fix and passes afterward. Complete post-migration gateway validation and retained review before selecting a replacement candidate.
 
 ## Agent section
 
 ### State
 
-- Latest release failure is confined to handoff packaging. Directory permissions changed after the selected package digest was sealed. Physical TEST preflight rejected that drift before shutdown; production was untouched. Both remaining directory-copy boundaries now preserve modes and compare source-before, destination and source-after digests. Round-trip regressions verify the extracted tree, executable files, relative links and unchanged sources. Detailed environment evidence stays in private records.
-- The previous candidate passed exact DEV, including full turns and real embeddings, plus a fresh 901,649 ms volume migration with all 5,445 histories and 168,172 events verified. Installed TEST passed. These receipts remain bound to that held candidate. The corrected merged source needs its own composed gate and exact-artifact DEV, TEST and PROD validation. Completed failed TEST payloads are retired after ownership and process checks; compact diagnostics remain.
+- The handoff correction passed CI and exact DEV, including full turns, real embeddings and a fresh full-volume migration. TEST passed installed turns and its migration, then gateway startup rejected synthetic task status `completed`. The fixture also used invalid notification policy `announce`. Automatic rollback restored the original TEST configuration; the service is unloaded, port idle and processes joined. Production was untouched. Both environment slots are released and the candidate is held.
+- Repair the known task only in the hash-pinned rehearsal archive projection. Preserve its payload and delivery row; leave the original schema archive and production tasks unchanged. The new regression calls real SDK schema repair and the installed registry restore/query. The managed rehearsal now starts the gateway again after the legacy migration. Existing full-turn provider fixtures remain in place. Detailed environment evidence stays in private records.
+- Corrected merged fixture source needs a new composed gate and exact-artifact DEV, TEST and PROD validation. Prior receipts remain bound to their original candidate. Retire diagnosed failed TEST payloads after ownership, recovery and process checks; retain compact logs.
 
 - Follow-up: pre-build capture rejected stale legacy records for unrelated plugins. Scope capture, packaging and preflight comparisons to explicitly selected IDs. Keep the full canonical post-Doctor registry during writes, preserve unrelated values, and still reject selected conflicts. Add the observed shape to the installed migration fixture. Production is unchanged; no replacement artifact was built.
 - Candidate validation passed CI, DEV and TEST, including full turns and a bounded real-provider TEST greeting. Post-activation verification found that capture had missed an external selection in the predecessor SQLite representation. Full rollback is verified, the failed candidate is disqualified and the production lease is released. Detailed environment evidence stays in private release records.
