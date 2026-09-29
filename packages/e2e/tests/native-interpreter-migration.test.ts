@@ -255,6 +255,8 @@ describe("stopped-state migration inside interpreter rollback", () => {
     expect(f.events.indexOf("migration:builtin-config")).toBeLessThan(f.events.indexOf("migration:config"));
     expect(f.events.indexOf("migration:schema")).toBeLessThan(f.events.indexOf("migration:config"));
     expect(f.events.indexOf("migration:config")).toBeLessThan(f.events.indexOf("doctor"));
+    expect(f.events.indexOf("migration:plugins")).toBeGreaterThan(f.events.indexOf("doctor"));
+    expect(f.events.indexOf("migration:plugins")).toBeLessThan(f.events.indexOf("start"));
     expect(f.events.indexOf("migration:cron")).toBeGreaterThan(f.events.indexOf("doctor"));
     expect(f.events.indexOf("migration:cron")).toBeLessThan(f.events.indexOf("start"));
     expect(fileDigest(join(result.recoveryDir, "state-migration.json"))).toBe(migration.sha256);
@@ -268,7 +270,7 @@ describe("stopped-state migration inside interpreter rollback", () => {
     });
   });
 
-  it.each(["migration:schema", "migration:builtin-config", "migration:config", "doctor", "migration:cron"])("restores stopped snapshots and the old interpreter after %s fails", async (failure) => {
+  it.each(["migration:schema", "migration:builtin-config", "migration:config", "doctor", "migration:plugins", "migration:cron"])("restores stopped snapshots and the old interpreter after %s fails", async (failure) => {
     const f = fixture();
     stateMigration(f);
     f.failures.push(failure);

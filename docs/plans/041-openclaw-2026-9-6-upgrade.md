@@ -1,8 +1,8 @@
 # Upgrade maintained OpenClaw support to 2026.9.6
 
-**Status:** Restored to 2026.7.1 after message failure; bundled-plugin correction implemented; release validation pending
+**Status:** Production restored; legacy selection capture repair in progress
 **Issue:** [#114](https://github.com/coletaylor788/puddles/issues/114)
-**Last updated:** 2026-09-28
+**Last updated:** 2026-09-29
 
 ## Human section
 
@@ -86,13 +86,30 @@ The requester authorized bounded real-provider calls with synthetic prompts to i
 
 Make these checks part of the maintained process and scripts for future releases. The requester approved this correction after independent review. It changes the plugin's host capability classification within the existing trusted-host architecture. Agent permissions, sandboxing and data access policies remain unchanged.
 
+#### Legacy plugin selection capture
+
+The replacement passed real turns in DEV and TEST, including a live-provider greeting. Production's final read-only check then found the old external plugin selected again. Its record was stored in the predecessor's schema-1 SQLite table. Capture looked at the new database representation and JSON config, incorrectly reported no selection, and sealed no retirement. Upstream migration preserved the old record correctly. Our fixture covered an external record in the current representation and missed this predecessor shape.
+
+Read the legacy record from a stable private copy of the database and committed WAL data. Never open the source through SQLite. Validate the singleton and records, and reject conflicting database, legacy JSON or config representations. Bind the record values and package contents as before. Canonicalize object field order when hashing records because Doctor may reorder fields; changed values and array order still fail the check. Keep conversion in upstream Doctor.
+
+Retire the bound selection after Doctor, because Doctor can also import a legacy JSON record. Check a sealed requirement for bundled selection after that retirement and before gateway startup, even when capture found no record. A surprise external selection must fail the activation transaction and restore the predecessor automatically. Keep unrelated records, plugin data and the existing trust rules unchanged.
+
+Add a schema-1 regression covering capture, actual upstream migration, retirement and exact rollback. Also cover malformed/conflicting records, source drift, legacy JSON import and a post-Doctor selection appearing when no retirement was sealed. This repairs the approved packaging and retirement design; it adds no new trust exception.
+
 ### Status
 
-Real user traffic exposed a plugin state-access refusal after activation. The maintained full rollback restored OpenClaw 2026.7.1, its original Node 22.23.3 and service. Both health endpoints pass. The failed live state, package and service remain preserved. PROD is released and the failed batch is held. Earlier HTTP, migration and synthetic checks did not establish working agent replies. The requester approved the bundled-plugin correction and provider-boundary tests. Installed turns and the real migration transaction pass locally, including complete rollback of the old plugin selection. Retained review is clear. Release input capture exposed an absent-selection guard that expected the future bundle in its reader-only seed. The narrow correction passes focused tests and read-only capture; release validation resumes after landing it. Production remains on the restored release. The next composed build passed CI, but DEV stopped before activation because the host archive listed 4.06 MiB of paths, just above the generic 4 MiB command-output limit. Give runtime archive listings a bounded 16 MiB allowance while retaining all path, digest and toolchain checks. The real oversized archive regression passes, along with 30 related packaging checks. A local install of the failed candidate passes full digest verification in 20 seconds. Retained review is clear; the replacement release build is next.
+The failed activation has completed full maintained rollback. Read-only checks verify the original runtime, interpreter and service, with PROD and DEV healthy. The failed candidate is held and the production lease is released. Replacement validation remains pending.
+
+The replacement artifact passed CI, all DEV checks and TEST, including a real-provider greeting with recorded delivery. Production activation reported healthy, but independent read-only verification found the old external plugin selection. The release is not complete. Maintained rollback restored the saved runtime, state and external paths. Read-only checks passed and the production lease is released. Recovery assets remain protected.
+
+The cause is confirmed: predecessor SQLite schema 1 held the plugin record, while capture only saw the current representation. The narrow repair adds legacy capture and a mandatory post-Doctor bundled-selection gate inside activation. Retained review agrees that this stays within the approved correction. A new regression and corrected candidate must pass the release gates before another promotion.
 
 ## Agent section
 
 ### State
+
+- Candidate validation passed CI, DEV and TEST, including full turns and a bounded real-provider TEST greeting. Post-activation verification found that capture had missed an external selection in the predecessor SQLite representation. Full rollback is verified, the failed candidate is disqualified and the production lease is released. Detailed environment evidence stays in private release records.
+- Repair within the approved scope: stable read-only legacy projection with strict singleton/record validation and conflict checks; canonical value digest-bound retirement after Doctor (object field order may change, values and array order may not); sealed required bundled selection checked before startup even with no retirements. Commit actual schema-1 migration/rollback and false-absence regressions, retain the reviewer, then select a new merged candidate. Do not reuse this batch as production-successful.
 
 - Composed CI `36528855519` passed on public `1ae108e` and companion `8700523`. Exact DEV installation stopped before activation: the host archive lists 50,858 entries (4,255,713 bytes), exceeding the generic 4 MiB command capture limit. DEV remained on its prior healthy build; PROD stayed on 2026.7.1. The failed import and empty staging were finalized under the owned controller, with compact evidence retained. DEV and capacity were released, and the batch is held. Repair `installRuntime` with a 16 MiB archive-specific bound. Add a committed real-tar regression larger than 4 MiB, run focused packaging checks, verify the actual failed archive locally, and retain independent review. Focused validation passes: 31 archive/packaging tests, TypeScript, and actual CI archive installation with full runtime digest verification in 20,366 ms. Retained review is clear and independently reproduced the passing real-tar regression. The replacement merged candidate starts again at the shared release gate.
 
