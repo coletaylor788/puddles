@@ -60,9 +60,13 @@ SQLite inspection must leave the original state untouched. Even a read-only SQLi
 
 #### Installed plugin state access
 
-A real message reached the channel after activation, but the managed agent plugin failed before replying. OpenClaw 2026.9.6 allows its plugin state API only for bundled plugins and verified official installations. Our locally built archive loaded successfully but did not qualify for that access. The installed check verified loading without exercising the state operation needed by a real turn.
+We shipped an incompatible combination: the new OpenClaw host and a maintained agent plugin still installed as a local archive. The host could load the plugin, but refused the persistent state API it needs before answering. A real message reached the channel and failed at that first agent operation.
 
-The proposed correction packages the reviewed plugin inside the immutable private runtime distribution. OpenClaw then discovers it through its existing bundled-plugin mechanism. Preserve honest source and dependency provenance. Remove the exact superseded external install selection through the supported registry API under a stopped snapshot; otherwise that copy can override the bundled one. Keep unrelated plugin records and all plugin data intact. Rollback restores the previous selection, package and state together.
+OpenClaw 2026.9.6 grants this API to bundled plugins and verified official installations. Our patched archive qualified as neither. The test gate checked that the plugin loaded, but never started an actual turn through the installed plugin with its real state API. That was the missing test.
+
+The proposed correction ships the same reviewed plugin as part of our certified private runtime bundle. OpenClaw then treats it as a bundled component and permits the state operations it requires. Use that existing mechanism and retain the real source and dependency provenance.
+
+The migration also removes the exact old installation record. Otherwise OpenClaw can keep selecting the external copy instead of the bundled copy. Use the supported registry API under a stopped snapshot, preserve plugin data and unrelated records, and restore the old selection with its package and state on rollback.
 
 ```mermaid
 flowchart TD
