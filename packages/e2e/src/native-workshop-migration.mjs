@@ -178,9 +178,25 @@ export function inspectWorkshopMigration(target, selectedCronJobs = []) {
     if (!owner) throw new Error(`Workshop proposal ${record.id} requires explicit configured ownership before shutdown`);
     const ownedDestination = inside(join(owner.agentDir, "workshop-skills"), skillDir);
     if (!ownedDestination && !workspaceOwners.length) throw new Error("Workshop target is outside sealed workspaces");
+    let historicalSkillDir;
     if (item.rollback) {
       const rollbackTarget = item.rollback.targetSkillFile ?? item.rollback.target_skill_file;
-      if (canonical(rollbackTarget) !== join(skillDir, "SKILL.md")) throw new Error("Workshop rollback target differs from proposal");
+      if (canonical(rollbackTarget) !== join(skillDir, "SKILL.md")) {
+        // Doctor relocates completed creates and retains their old rollback row.
+        // It is history, not an interrupted apply. Keep both surfaces in the
+        // inventory without changing ownership or rewriting the stored record.
+        const key = record.target.skillKey;
+        const originalRoots = [join(owner.workspace, "skills"), join(owner.workspace, ".agents/skills")];
+        const migratedCreate = item.source === "sqlite" && item.rowOwner === owner.id &&
+          record.kind === "create" && record.status === "applied" && record.target.source === "openclaw-workshop" &&
+          typeof key === "string" && idPattern.test(key) &&
+          skillDir === join(owner.agentDir, "workshop-skills", key) &&
+          item.rollback.proposal_id === record.id && item.rollback.action === "create" &&
+          originalRoots.some((root) => canonical(rollbackTarget) === join(root, key, "SKILL.md"));
+        if (!migratedCreate) throw new Error("Workshop rollback target differs from proposal");
+        historicalSkillDir = dirname(canonical(rollbackTarget));
+        if (isolationRoot && !inside(isolationRoot, historicalSkillDir)) throw new Error("Canonical Workshop rollback escapes its test-owned root");
+      }
     }
     if (item.source === "sidecar" && fileDigest(join(item.directory, "PROPOSAL.md")) !== record.draftHash) throw new Error("Workshop draft content differs from metadata");
     const moves = !ownedDestination && record.kind === "create" && record.status === "applied" && existsSync(skillDir);
@@ -188,6 +204,10 @@ export function inspectWorkshopMigration(target, selectedCronJobs = []) {
     if (!inside(state, skillDir) && !external.has(skillDir)) {
       if (existsSync(skillDir)) regularTree(skillDir);
       external.set(skillDir, { path: skillDir, sha256: existsSync(skillDir) ? treeDigest(skillDir) : null });
+    }
+    if (historicalSkillDir && !inside(state, historicalSkillDir) && !external.has(historicalSkillDir)) {
+      if (existsSync(historicalSkillDir)) regularTree(historicalSkillDir);
+      external.set(historicalSkillDir, { path: historicalSkillDir, sha256: existsSync(historicalSkillDir) ? treeDigest(historicalSkillDir) : null });
     }
     inventory.push({ source: item.source, record, rollback: item.rollback, owner: owner.id,
       ...(item.proposalSha256 ? { proposalSha256: item.proposalSha256 } : {}) });
