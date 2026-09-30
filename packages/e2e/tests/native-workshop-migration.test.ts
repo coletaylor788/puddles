@@ -33,7 +33,59 @@ function fixture() {
   return { root, stateDir, workspace, recovery, proposal, target };
 }
 
+function relocatedFixture() {
+  const f = fixture();
+  const created = seedWorkshopProposal({ stateDir: f.stateDir, workspace: f.workspace, name: "created", kind: "create", owner: "main" });
+  rmSync(join(f.stateDir, "skill-workshop"), { recursive: true });
+  const skillDir = join(f.stateDir, "agents/main/agent/workshop-skills/created");
+  mkdirSync(join(skillDir, ".."), { recursive: true });
+  renameSync(created.record.target.skillDir, skillDir);
+  const record = { ...created.record, target: { ...created.record.target, skillDir, skillFile: join(skillDir, "SKILL.md"), source: "openclaw-workshop" } };
+  const rollback = { proposal_id: record.id, target_skill_file: created.record.target.skillFile, action: "create" };
+  mkdirSync(join(f.stateDir, "state"));
+  const save = (owner = "main") => {
+    const db = new DatabaseSync(join(f.stateDir, "state/openclaw.sqlite"));
+    try {
+      db.exec("CREATE TABLE IF NOT EXISTS skill_workshop_proposals (proposal_id TEXT, record_json TEXT, owner_agent_id TEXT); CREATE TABLE IF NOT EXISTS skill_workshop_proposal_rollbacks (proposal_id TEXT, target_skill_file TEXT, action TEXT); DELETE FROM skill_workshop_proposals; DELETE FROM skill_workshop_proposal_rollbacks");
+      db.prepare("INSERT INTO skill_workshop_proposals VALUES (?,?,?)").run(record.id, JSON.stringify(record), owner);
+      db.prepare("INSERT INTO skill_workshop_proposal_rollbacks VALUES (?,?,?)").run(rollback.proposal_id, rollback.target_skill_file, rollback.action);
+    } finally { db.close(); }
+  };
+  save();
+  return { ...f, record, rollback, save, original: created.record.target.skillDir };
+}
+
 describe("Workshop migration boundaries", () => {
+  it("captures a completed relocation without changing history and detects its old path appearing", async () => {
+    const f = relocatedFixture();
+    const before = treeDigest(f.stateDir);
+    const inventory = inspectWorkshopMigration(f.target);
+    expect(inventory.external).toEqual([{ path: f.original, sha256: null }]);
+    expect(treeDigest(f.stateDir)).toBe(before);
+    mkdirSync(f.original);
+    writeFileSync(join(f.original, "SKILL.md"), "new external content");
+    await expect(snapshotWorkshopMigration(f.target, f.recovery, inventory, operations)).rejects.toThrow("changed after preflight");
+  });
+
+  it.each(["pending", "update", "foreign-owner", "rollback-id", "rollback-action", "foreign-path", "wrong-key", "traversal", "symlink"])("rejects an unrelated relocated rollback mismatch (%s)", (kind) => {
+    const f = relocatedFixture();
+    if (kind === "pending") f.record.status = "pending";
+    if (kind === "update") f.record.kind = "update";
+    if (kind === "rollback-id") f.rollback.proposal_id = "foreign-proposal";
+    if (kind === "rollback-action") f.rollback.action = "update";
+    if (kind === "foreign-path") f.rollback.target_skill_file = join(f.workspace, "skills/other/SKILL.md");
+    if (kind === "wrong-key") f.record.target.skillKey = "other";
+    if (kind === "traversal") f.record.target.skillKey = "../created";
+    if (kind === "symlink") {
+      const outside = join(f.root, "outside"); mkdirSync(outside);
+      symlinkSync(outside, f.original);
+    }
+    f.save(kind === "foreign-owner" ? "reader" : "main");
+    const before = treeDigest(f.stateDir);
+    expect(() => inspectWorkshopMigration(f.target)).toThrow(/rollback|target|interrupted/);
+    expect(treeDigest(f.stateDir)).toBe(before);
+  });
+
   it("refuses shared-workspace ambiguity without modifying metadata or skills", () => {
     const f = fixture();
     const before = [treeDigest(f.stateDir), treeDigest(f.workspace)];

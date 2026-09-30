@@ -121,6 +121,11 @@ a copied database that still names live workspaces is unsafe to run through
 Doctor. `candidate.workshop-migration.test.ts` exercises the actual Doctor
 migration with shared ownership and an external workspace.
 
+Completed creates can retain a historical rollback path after Doctor moves
+their skill. Preflight accepts only the exact configured owner's relocation
+and inventories the original path as well, even when absent. Other path
+mismatches and interrupted applies still block deployment.
+
 ## Development loop
 
 Use task-owned worktrees on the development machine for edits, type checks,

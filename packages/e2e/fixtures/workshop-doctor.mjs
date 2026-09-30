@@ -78,6 +78,13 @@ if (mode === "doctor") {
   } finally { db.close(); }
   assert.equal(existsSync(created.record.target.skillDir), false);
   assert.equal(treeDigest(update.record.target.skillDir), snapshot.external.find((entry) => entry.path === update.record.target.skillDir).sha256);
+  // A later release must capture Doctor's already migrated state. Completed
+  // creates retain their original rollback path after their proposal moves.
+  target.workshopMigration.ownerRepairs = [];
+  const migrated = inspectWorkshopMigration(target);
+  assert.equal(migrated.external.find((entry) => entry.path === created.record.target.skillDir).sha256, null);
+  assert.deepEqual(doctor().warnings, []);
+  assert.deepEqual(inspectWorkshopMigration(target), migrated);
   await reset();
   assert.equal(JSON.parse(readFileSync(join(update.directory, "proposal.json"), "utf8")).origin, undefined);
   process.stdout.write(JSON.stringify({ passed: true, actualDoctorFailureReproduced: true, repairedOwnership: true, externalRollback: true }));
