@@ -36,6 +36,8 @@ Add negative boundary tests and extend the existing actual-Doctor fixture to
 inspect migrated state and run Doctor again. The shared cumulative suite runs
 both regressions. Carry the repair in the next pinned release through DEV,
 TEST, rollback and production verification using the normal lifecycle.
+The calendar hook concurrency check uses controlled timers so runner load
+cannot change its expected completion order.
 
 ## Agent section
 
@@ -61,6 +63,9 @@ TEST, rollback and production verification using the normal lifecycle.
 - All 26 focused boundary tests and the component type check pass. The actual
   Doctor fixture passes relocation, repeated capture and state restoration.
 - The retained independent reviewer found no remaining issues.
+- Source CI exposed a wall-clock timer race in the existing calendar hook
+  concurrency test. Controlled timers preserve the assertion; all 61 calendar
+  tests pass.
 - Cumulative release and installed checks are pending.
 
 ### Rollback
