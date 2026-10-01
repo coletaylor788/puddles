@@ -126,11 +126,15 @@ a branch artifact with different merged contents. This is a transition check,
 not a reason to rebuild every feature before and after merging.
 
 Before building the release, use `openclaw-select-batch.mjs SPEC_JSON OUTPUT_JSON` in the tooling
-worktree to fetch each repository's main and pin its current merged head and
-tree. The spec contains `agent` and a `repositories` array. Each repository
+worktree to fetch each repository's main and pin a merged head and its tree.
+The spec contains `agent` and a `repositories` array. Each repository
 has `id` (`public`, plus `private` for composed delivery), absolute `root`,
-`base` (the deployed commit), optional `defaultBranch`, and `owners`, a map
-from every commit SHA in `base..main` to its feature agent's `id` and `contact`.
+`base` (the deployed commit), optional `defaultBranch`, optional `reviewedHead`,
+and `owners`, a map from every commit SHA in `base..selectedHead` to its feature
+agent's `id` and `contact`. By default, selection uses the fetched branch tip.
+Use an exact 40-character `reviewedHead` SHA to keep a repaired candidate bounded
+while unrelated features land. It must contain `base` and be an ancestor of the
+freshly fetched default branch. This never makes an unmerged branch eligible.
 Resolve ownership through PRs and agent messages, including merge commits. A
 missing owner is an error, not permission to assign blame to the batch owner.
 

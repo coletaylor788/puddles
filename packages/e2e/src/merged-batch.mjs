@@ -10,7 +10,8 @@ export async function snapshotMergedBatch(spec, run = runCommand) {
   for (const repository of spec.repositories) {
     if (!repository.id || !repository.root?.startsWith("/") ||
         !/^[a-f0-9]{40}$/.test(repository.base ?? "") ||
-        !/^[a-zA-Z0-9][a-zA-Z0-9/_.-]*$/.test(repository.defaultBranch ?? "main")) {
+        !/^[a-zA-Z0-9][a-zA-Z0-9/_.-]*$/.test(repository.defaultBranch ?? "main") ||
+        (repository.reviewedHead !== undefined && !/^[a-f0-9]{40}$/.test(repository.reviewedHead))) {
       throw new Error("Select a repository worktree, default branch, and previous deployed base");
     }
     const git = async (...args) => (await run("git", ["-C", repository.root, ...args], {
@@ -18,7 +19,12 @@ export async function snapshotMergedBatch(spec, run = runCommand) {
     })).trim();
     const branch = repository.defaultBranch ?? "main";
     await git("fetch", "origin", `refs/heads/${branch}:refs/remotes/origin/${branch}`);
-    const head = await git("rev-parse", `refs/remotes/origin/${branch}^{commit}`);
+    const tip = await git("rev-parse", `refs/remotes/origin/${branch}^{commit}`);
+    const head = repository.reviewedHead ?? tip;
+    if (repository.reviewedHead !== undefined) {
+      if (await git("rev-parse", `${head}^{commit}`) !== head) throw new Error("Reviewed head must identify a commit object");
+      await git("merge-base", "--is-ancestor", head, tip);
+    }
     const tree = await git("rev-parse", `${head}^{tree}`);
     await git("merge-base", "--is-ancestor", repository.base, head);
     const revisions = (await git("rev-list", "--reverse", `${repository.base}..${head}`)).split("\n").filter(Boolean);
