@@ -126,6 +126,14 @@ recovery is disposable test data, not an additional production backup.
 
 ## 4. Finalize task-owned scratch
 
+An approved build or release includes authority to clean all of its generated
+artifacts after their consumers finish. The owner performs cleanup without a
+separate permission request, including after failure, timeout or interruption.
+This covers generated source copies, dependencies, build output, archives,
+transfers, imports, test state and fixtures. Keep the active candidate,
+installations, required recovery, unique source and compact evidence described
+above. Uncertain ownership requires investigation, not automatic deletion.
+
 Controllers can call `finalizeScratch(root, owner, paths, evidence)` after their
 last awaited child and consumer finish. The private DEV bundle consumer does
 this after installed checks, preserving build and deployment proofs while

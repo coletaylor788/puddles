@@ -153,7 +153,10 @@ proofs, not unrelated unchanged source tests.
 An approved implementation request authorizes the assigned owner, through the
 parent orchestrator, to complete its part of the lifecycle. This includes
 commits, pushes, pull requests, review remediation, remote checks, deployment,
-rollback, merge, and verification. A controlling instruction may explicitly
+rollback, merge, verification, and cleanup of generated artifacts associated
+with the build. The owner completes that cleanup without separate approval,
+using the storage guide's ownership, consumer, evidence and recovery checks.
+A controlling instruction may explicitly
 limit those actions, and repository permissions and protections always apply.
 
 Invoking [development-loop-manager](skills/development-loop-manager/SKILL.md)
