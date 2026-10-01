@@ -27,7 +27,7 @@ function plist(path: string, value?: unknown, binary = false) {
   return JSON.parse(execFileSync("python3", ["-c", "import json,plistlib,sys; print(json.dumps(plistlib.load(open(sys.argv[1],'rb'))))", path], { encoding: "utf8" }));
 }
 
-function fixture(wrapper = true, migration = true, binary = false, oldAlias = false) {
+function fixture(wrapper = true, migration = true, binary = false, oldAlias = false, sameNode = false) {
   const directory = realpathSync(resolve(import.meta.dirname, "../../.."));
   const root = join(directory, `.node-migration-test-${randomUUID()}`);
   mkdirSync(root);
@@ -42,6 +42,7 @@ function fixture(wrapper = true, migration = true, binary = false, oldAlias = fa
   const expected = { path: oldNode, sha256: fileDigest(oldNode), version: "v22.22.0", platform: process.platform, arch: process.arch,
     ...(oldAlias ? { realPath: realpathSync(oldNode) } : {}) };
   const desired = { path: realpathSync(process.execPath), sha256: fileDigest(process.execPath), version: process.version, platform: process.platform, arch: process.arch };
+  if (sameNode) Object.assign(expected, desired, { realPath: desired.path });
   const target = {
     schemaVersion: 1, host: hostname(), installDir: join(root, "runtime"), stateDir: join(root, "state"),
     backupRoot: join(root, "backups"), plistPath: join(root, "service.plist"), label: "synthetic.gateway", port: 18799,
@@ -53,7 +54,7 @@ function fixture(wrapper = true, migration = true, binary = false, oldAlias = fa
   writeFileSync(join(target.installDir, "openclaw.mjs"), "old runtime");
   writeFileSync(join(target.stateDir, "config"), "old state");
   const args = [...(wrapper ? ["/bin/sh", "/synthetic/env-wrapper", "--env-file", "/synthetic/gateway.env"] : []),
-    oldNode, join(target.installDir, "openclaw.mjs"), "gateway", "--port", "18799", "--label", `prefix:${oldNode}`];
+    expected.path, join(target.installDir, "openclaw.mjs"), "gateway", "--port", "18799", "--label", `prefix:${oldNode}`];
   const service = { Label: target.label, ProgramArguments: args, EnvironmentVariables: { KEEP: "unchanged", NODE_OPTIONS: "--trace-warnings" },
     KeepAlive: { SuccessfulExit: false }, WorkingDirectory: "/synthetic/working", UnknownField: ["preserve", 3, true] };
   plist(target.plistPath, service, binary);
@@ -315,6 +316,37 @@ describe("stopped-state migration inside interpreter rollback", () => {
 });
 
 describe("reversible configured Node interpreter migration", () => {
+  it("verifies the retained interpreter and preserves exact service rollback when already current", async () => {
+    const f = fixture(true, true, true, false, true);
+    const activated = await f.activate();
+    expect(plist(f.target.plistPath)).toEqual(f.service);
+    expect(f.calls.filter(({ args }) => args[0] === "-p").length).toBeGreaterThanOrEqual(2);
+    const journal = JSON.parse(readFileSync(join(activated.recoveryDir, "recovery.json"), "utf8"));
+    expect(journal.nodeMigration.expected).toEqual(f.expected);
+    expect(journal.nodeMigration.desired).toEqual(f.desired);
+    expect((await f.activate(activated.recoveryDir, "rollback")).status).toBe("rolled-back");
+    expect(readFileSync(f.target.plistPath)).toEqual(f.original);
+    expect(readFileSync(join(f.target.installDir, "openclaw.mjs"), "utf8")).toBe("old runtime");
+    expect(f.calls.filter(({ args }) => args.includes("health")).at(-1)?.command).toBe(f.expected.path);
+  });
+
+  it.each(["digest", "version", "alias", "service", "toolchain"])("rejects conflicting retained interpreter %s before shutdown", async (failure) => {
+    const f = fixture(true, true, false, false, true);
+    if (failure === "digest") f.expected.sha256 = "0".repeat(64);
+    if (failure === "version") f.expected.version = "v22.22.0";
+    if (failure === "alias") f.expected.path = join(f.root, "node-alias");
+    if (failure === "service") {
+      f.service.ProgramArguments[f.target.nodeMigration!.argumentIndex] = "/wrong/node";
+      plist(f.target.plistPath, f.service);
+    }
+    if (failure === "toolchain") f.receipt.tools.nodeBinary = "0".repeat(64);
+    const before = readFileSync(f.target.plistPath);
+    await expect(f.activate()).rejects.toThrow();
+    expect(f.events).not.toContain("stop");
+    expect(f.events).not.toContain("install");
+    expect(readFileSync(f.target.plistPath)).toEqual(before);
+  });
+
   it("keeps no-option activation unchanged without inspecting or rewriting the service", async () => {
     const f = fixture(true, false);
     await f.activate();
