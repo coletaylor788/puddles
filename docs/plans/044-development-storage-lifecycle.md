@@ -1,8 +1,8 @@
 # Incremental development and complete task teardown
 
-**Status:** Approved; implementation and development-only cleanup in progress.
+**Status:** Implemented, merged and verified.
 **Issue:** [145](https://github.com/coletaylor788/puddles/issues/145)
-**Last updated:** 2026-09-30
+**Last updated:** 2026-10-01
 
 ## Human section
 
@@ -59,10 +59,13 @@ performs no production activation, restart, filesystem mutation or deletion.
 
 ### Status
 
-The requester approved complete development-task teardown and reiterated an
-absolute production exclusion. The new completion path and paired draft wrapper
-are being validated with isolated filesystem fixtures. Existing legacy artifacts
-are being reviewed separately; task scopes cannot grandfather them into deletion.
+The completion API and paired draft wrapper are merged. Local fixture tests,
+required repository CI, security checks and retained review pass. Production
+was excluded and no production deployment or filesystem operation occurred.
+
+Approved local cleanup removes individually reviewed legacy generated children.
+Source, active consumers and uncertain recovery fixtures remain protected;
+legacy roots cannot opt into whole-task deletion.
 
 ## Agent section
 
@@ -106,12 +109,16 @@ on exact local development children. Production paths are never cleanup targets.
 
 ### Validation
 
-Run focused storage/retention tests, the accumulated e2e package tests and type
-checks, paired draft/retention contract tests, and required repository CI.
-Exercise successful completion, active and failed work, interrupted deletion,
-source refusal, production alias/overlap refusal and preserved production
-sentinels. Record actual free-space delta separately from logical sizes.
-This is development-tooling validation with no production deployment.
+All 543 accumulated e2e tests pass across the full suite and a corrected-PATH
+rerun of the resource monitor test. Paired draft/retention contracts pass (13
+tests), as do package build, e2e typecheck and skill validation. Required
+repository and security checks pass before and after merge. Production
+sentinels remain intact in teardown and recovery fixtures. No production
+deployment is part of this validation.
+
+Public implementation: PR 199, merge `6de980b`. The companion wrapper was
+validated against this exact API. Actual free-space deltas are recorded
+separately from logical sizes in the local cleanup report.
 
 ### Rollout and rollback
 
@@ -123,15 +130,19 @@ output is intentionally not backed up; it can be rebuilt from preserved source.
 
 ### Review log
 
-One retained independent reviewer checks the full public/private diff and each
-meaningful correction. Review is in progress.
+The retained reviewer found and verified fixes for validation occurring after
+filesystem mutations and for interrupted completion recreating the task root.
+The final paired diff has no unresolved material findings. A separate review
+of the one-off cleanup driver required fresh consumer checks for every pending
+removal; that fix was verified before cleanup resumed.
 
 ### Checklist
 
 - [x] Measure growth and identify completed development artifacts.
 - [x] Obtain approval for one workspace/build and complete teardown.
 - [x] Record the absolute production exclusion.
-- [ ] Validate completion, interruption and protected-path behavior.
-- [ ] Complete retained review and required checks.
-- [ ] Land source and finish verified development-only cleanup.
-- [ ] Retire this task's own worktrees and build output.
+- [x] Validate completion, interruption and protected-path behavior.
+- [x] Complete retained review and required checks.
+- [x] Land source and verify the approved development cleanup procedure.
+- [x] Define final closeout: after these documents land, remove the task worktrees
+  and build output and record completion in the local cleanup report.
