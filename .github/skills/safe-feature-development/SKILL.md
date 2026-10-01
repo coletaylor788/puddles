@@ -641,7 +641,11 @@ Feature owners work in parallel. One release owner carries each pinned candidate
 through CI, DEV, TEST, and PROD; included feature agents help diagnose failures.
 The owner does not reserve main, other tasks' builds, or an environment while
 waiting. Use the maintained artifact, certification, deployment, and recovery
-commands. Design approval already authorizes production within scope.
+commands. Design approval already authorizes production and cleanup of the
+build's generated artifacts within scope. Do not request separate cleanup
+approval after ownership and retention checks pass. The owner finishes cleanup
+on success, failure, timeout and interruption, including outputs left by its
+child processes. Use the maintained cleaner; preserve its refusal checks.
 
 Keep one reusable mutable build per active task and the shared host package
 store. Retain the candidate being promoted, current PROD, and one verified PROD
