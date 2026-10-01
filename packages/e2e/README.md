@@ -411,10 +411,11 @@ Initialize, inspect, and apply it with
 owned objects and references. The current compatibility defaults keep the newest
 two successful bundles and one failed reproduction, plus dependencies referenced
 by current, pinned, active, paused, failed-debug, deployed, and recovery owners.
-Completed-owner diagnostic logs are compressed and bounded to 30 days and 1 GiB
-per owner; protected or unclassified legacy logs remain. See
+Explicit completion removes the acknowledged development objects, including
+logs, unless another consumer still references them. Unacknowledged legacy
+objects retain the compatibility defaults. See
 [development storage](DEVELOPMENT_STORAGE.md) for the approved retention target
-and the remaining executable alignment. Protected
+and task completion commands. Protected
 objects do not consume the ordinary two-build or one-failure quota.
 
 The pool never adopts a directory by its name or timestamp. Missing ownership,
@@ -423,7 +424,7 @@ the canonical direct child and ownership digest, rejects links and escapes,
 and moves the exact object through pool-owned trash with a resumable journal.
 Unregistered legacy directories, production recovery state, Copilot sessions,
 worktrees, package-manager caches, containers, and global caches stay outside
-this policy. Completed logs follow the limits above. Full homes,
+this pool policy. Task-owned logs disappear at feature completion. Full homes,
 databases, runtime state, and recordings are not diagnostic logs.
 
 `E2E_REQUIRED_FREE_BYTES` may raise the default 8 GiB preflight to a measured

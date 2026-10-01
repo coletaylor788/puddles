@@ -249,20 +249,14 @@ function selectRetention(state, now = new Date()) {
     state.references.flatMap((reference) => reference.objectIds),
   );
   const retained = new Set(protectedIds);
-  const logBudgets = new Map();
   for (const object of newest(state.objects, "diagnostic-log")) {
     const completion = state.completions[object.metadata.id];
     // Legacy and unacknowledged runs remain protected until explicitly completed.
     if (!completion) { retained.add(object.metadata.id); continue; }
-    if (protectedIds.has(object.metadata.id)) continue;
-    const used = logBudgets.get(completion.owner) ?? 0;
-    if (now.getTime() - Date.parse(completion.completedAt) <= 30 * 86400_000 && used + object.bytes <= 1024 ** 3) {
-      retained.add(object.metadata.id);
-      logBudgets.set(completion.owner, used + object.bytes);
-    }
   }
   for (const [kind, count] of [["successful-build", 2], ["failed-reproduction", 1]]) {
-    for (const object of newest(state.objects, kind).slice(0, count)) retained.add(object.metadata.id);
+    // Compatibility retention never overrides explicit task completion.
+    for (const object of newest(state.objects, kind).filter(object => !state.completions[object.metadata.id]).slice(0, count)) retained.add(object.metadata.id);
   }
   const retainedBuilds = new Set([...retained].filter((id) =>
     state.objects.get(id)?.metadata.kind === "successful-build"));
@@ -854,10 +848,8 @@ export function completeRetentionRun(poolPath, runReference, owner, now = new Da
     throw new Error("Completed run reference is missing or is a deployment/recovery reference");
   }
   const completions = state.completions;
-  for (const id of reference.objectIds) {
-    if (state.objects.get(id).metadata.kind === "diagnostic-log") {
-      completions[id] = { owner, completedAt: now.toISOString() };
-    }
+  for (const id of closure(state.objects, reference.objectIds)) {
+    completions[id] = { owner, completedAt: now.toISOString() };
   }
   atomicJson(join(root, "completed-runs.json"), completions);
   removeRetentionReference(root, runReference);

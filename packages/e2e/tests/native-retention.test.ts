@@ -280,3 +280,20 @@ describe("retention recovery and overlapping attempts", () => {
     expect(planArtifactCleanup(directory).remove.map((entry: { id: string }) => entry.id)).toEqual(["failure-log", "queued"]);
   });
 });
+
+it('explicit completion removes recent builds, failed reproductions and receipts while production references remain', () => {
+  const directory = pool();
+  const now = new Date().toISOString();
+  object(directory, 'recent-build', 'successful-build', now);
+  object(directory, 'recent-failure', 'failed-reproduction', now);
+  object(directory, 'recent-log', 'diagnostic-log', now);
+  object(directory, 'production-build', 'successful-build', now);
+  setRetentionReference(directory, { id: 'production', kind: 'deployed', objectIds: ['production-build'] });
+  setRetentionReference(directory, { id: 'run-complete', kind: 'paused', objectIds: ['recent-build', 'recent-failure', 'recent-log', 'production-build'] });
+  completeRetentionRun(directory, 'run-complete', 'task');
+  const result = applyArtifactCleanup(directory);
+  expect(result.remove.map((v: { id: string }) => v.id).sort()).toEqual(['recent-build', 'recent-failure', 'recent-log']);
+  expect(readFileSync(join(directory, 'references/production.json'), 'utf8')).toContain('production-build');
+  expect(existsSync(join(directory, 'objects/production-build'))).toBe(true);
+  expect(() => completeRetentionRun(directory, 'production', 'task')).toThrow('deployment/recovery');
+});
