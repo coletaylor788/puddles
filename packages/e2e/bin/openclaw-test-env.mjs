@@ -21,6 +21,11 @@ async function repositoryGates(run) {
   await run(python, ["-m", "pytest", "tests/", "--ignore=tests/integration", "-q"], { cwd: gmailDir });
   await run(python, ["-m", "ruff", "check", "src/", "tests/"], { cwd: gmailDir });
   await run(python, ["-m", "compileall", "-q", "src", "tests"], { cwd: gmailDir });
+  const cliDir = join(repoRoot, "packages", "cli-gateway");
+  const cliVenv = join(cliDir, ".venv", "bin", "python");
+  const cliPython = process.env.CLI_GATEWAY_PYTHON ?? (existsSync(cliVenv) ? cliVenv : "python3");
+  await run(cliPython, ["-m", "pytest", "tests/", "-q"], { cwd: cliDir });
+  await run(cliPython, ["-m", "ruff", "check", "src/", "tests/"], { cwd: cliDir });
 }
 
 installSignalHandlers({ cleanup: cleanupNativeFixtures });

@@ -134,7 +134,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install Gmail test dependencies
-        run: python -m pip install -e './servers/gmail-mcp[dev]'
+        run: python -m pip install -e './servers/gmail-mcp[dev]' -e './packages/cli-gateway[dev]'
 
       - name: Initialize public run evidence
         run: |
