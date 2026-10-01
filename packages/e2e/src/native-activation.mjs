@@ -33,7 +33,11 @@ function validateNodeMigration(target) {
     }
   }
   if (migration.expected.path === migration.desired.path || (migration.expected.realPath ?? migration.expected.path) === migration.desired.path) {
-    throw new Error("Node migration requires distinct retained executables");
+    const { expected, desired } = migration;
+    if (expected.path !== desired.path || (expected.realPath ?? expected.path) !== desired.path ||
+        ["sha256", "version", "platform", "arch"].some((key) => expected[key] !== desired[key])) {
+      throw new Error("Retained Node interpreter requires identical canonical paths and identities");
+    }
   }
   const [major, minor] = migration.desired.version.slice(1).split(".").map(Number);
   if (!(major === 24 && minor >= 16 || major === 26 && minor >= 1 || major > 26)) throw new Error("Unsupported desired Node runtime");
