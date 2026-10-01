@@ -507,7 +507,7 @@ Feature work is complete only when:
 - the requested behavior is implemented and documented;
 - all applicable local and test-environment gates are green;
 - the retained independent full-diff review has no unresolved material findings;
-- managed processes and temporary state are cleaned up;
+- managed processes and all completed feature artifacts, including worktrees and receipts, are removed or handed to an active consumer;
 - configured promotion and read-only production validation succeeded, or
   production was explicitly out of scope and promotion and rollback were proven
   in fixtures, or no configured promotion lifecycle exists and that limitation
@@ -552,7 +552,7 @@ workspace per task, with separate writable output. Reuse compatible run paths.
 Give temporary comparisons and payloads an owner and a retirement condition.
 Keep one ready payload plus an in-flight replacement. After the last consumer
 finishes, use [storage finalization](../../../packages/e2e/DEVELOPMENT_STORAGE.md)
-to preserve evidence and retire generated children. Keep queued artifact
+to retire generated children while the task remains active; remove evidence at task completion. Keep queued artifact
 references until handoff completes. Age or a missing PID never authorizes cleanup.
 
 Use a local incremental build for ordinary DEV iteration. Reuse the task's
@@ -647,13 +647,20 @@ approval after ownership and retention checks pass. The owner finishes cleanup
 on success, failure, timeout and interruption, including outputs left by its
 child processes. Use the maintained cleaner; preserve its refusal checks.
 
-Keep one reusable mutable build per active task and the shared host package
-store. Retain the candidate being promoted, current PROD, and one verified PROD
-recovery copy. Remove completed or superseded build staging, imported runtimes,
-and fixtures after their consumers stop. TEST has no retained backup; temporary
-rollback-test snapshots disappear when the check finishes. Preserve small logs,
-source/artifact identities, and stage results separately. A failed workspace
-needs an active debugging reason to remain.
+Keep one reusable workspace and mutable build per active session. A companion
+repository is one paired checkout in that workspace, not another attempt tree.
+Reuse compatible source, dependencies and output for incremental revisions.
+At feature completion remove its worktrees, builds, fixtures, archives, logs,
+receipts and evidence. Publish source first; preserve unpublished edits through
+Git or the app archive operation. Transfer any still-consumed artifact to its
+consumer before closeout. Run task completion through the storage controller;
+failed teardown leaves the task cleanup-pending and is retried on resume.
+
+Development cleanup never deletes production deployments, filesystem data,
+configuration, state, backups, recovery records or referenced dependencies.
+Keep those outside task roots and list them as protected paths. Do not retire
+production recovery to make room for development. Test-owned recovery fixtures
+require their producer's retirement check before generic task completion.
 
 Notify affected workers to apply merged tooling and clean their completed runs.
 A coordinator authorized to clean abandoned generated data may proceed after

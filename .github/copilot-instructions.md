@@ -137,12 +137,20 @@ rollback, interrupted-run recovery, and cleanup; an absent agent must not leave
 production stopped indefinitely. The parent orchestrator routes workers, and
 an owner records a handoff when transferring a release.
 
-Retain active workspaces, the candidate in promotion, current PROD, and one
-verified PROD recovery copy. TEST is disposable. Remove its temporary rollback
-snapshots after checks finish. Retain small logs and results separately from
-completed builds, imports, and fixtures. Keep a failed workspace only while an
-active investigation needs it. See [development storage](../packages/e2e/DEVELOPMENT_STORAGE.md)
-for safe cleanup and the remaining tooling transition.
+Each session owns one reusable workspace (one paired checkout when required)
+and one mutable build. Rebuild incrementally and deploy revisions from that same
+source. Temporary replacement payloads retire after acknowledgment. Completion
+includes removal of every development artifact: worktrees, build output,
+fixtures, archives, logs, receipts and evidence. Publish source before retiring
+its checkout; preserve unpublished edits through Git or the app archive tool.
+Transfer still-needed artifacts to their active consumer before completing the
+feature. A cleanup failure means cleanup pending, not complete.
+
+Development cleanup must never delete production deployments, filesystem data,
+configuration, state, backups, recovery records or anything they reference.
+These are outside the development lifecycle regardless of age or disk pressure.
+Use [development storage](../packages/e2e/DEVELOPMENT_STORAGE.md) for explicit
+development boundaries, completion and legacy cleanup.
 
 Keep one independent reviewer through remediation. Review the complete current
 behavior diff after meaningful changes. Do not require a terminal fresh reviewer

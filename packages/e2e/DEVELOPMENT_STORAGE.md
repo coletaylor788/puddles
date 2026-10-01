@@ -18,18 +18,60 @@ flowchart TD
     CI --> Clean
 ```
 
-The storage target is active task workspaces, the release candidate in promotion,
-current PROD, and one verified PROD recovery copy. Store each immutable artifact
-once where practical; installations may need a separate extraction while active.
-DEV and TEST have separate writable state, configuration, ports, and processes.
-TEST has no retained backup. Rollback-test snapshots exist only during the check.
-Keep compact logs and stage results after removing generated copies. A failed
-workspace stays only while an active investigation needs it.
+A session owns one mutable source/build workspace and reuses it for incremental
+revisions. Keep a ready payload plus a replacement only during transfer. When
+the feature completes, remove all development files, including worktrees,
+receipts, diagnostics and evidence. Rebuilding or cloning later is acceptable.
+Source must be published, or unpublished edits preserved with Git/app archival,
+before removing its checkout. A still-needed release artifact moves to its
+active consumer before feature completion.
 
-Some merged helpers still have older retention defaults, described below. Their
-owner must align those defaults and terminal hooks; do not claim automatic
-cleanup from this policy alone. Preserve live consumers and real production
-recovery while retiring completed runs through supported commands.
+Never delete production deployments, filesystem data, configuration, state,
+backups, recovery records or their dependencies as development cleanup. They
+must live outside the task root and be included in its protected boundaries.
+Disk pressure does not weaken that exclusion.
+
+### Task creation and completion
+
+Create an empty task directory directly under a dedicated development parent.
+Initialize it before creating worktrees or generated output:
+
+```sh
+node packages/e2e/bin/openclaw-storage.mjs task-init "$task_root" "$task_owner" boundaries.json
+```
+
+`boundaries.json` contains `developmentRoot` (the existing dedicated parent) and
+nonempty `protectedPaths` (absolute production and other active/shared paths).
+The parent must not overlap any protected path. Initialization refuses nonempty
+legacy roots, linked roots, scope changes and unfinished completion journals.
+One task owns its source checkout, one stable build directory and all local
+staging underneath this root. Keep shared toolchains and the host package store
+outside it. Reuse the same root and owner on resume.
+
+After the last producer and consumer finish, publish source and retire its
+worktree with Git or the app archive tool. Retire synthetic recovery fixtures
+through their producer. Complete task-owned artifact-pool references with
+`complete-run`; deployed/recovery references cannot be completed by that command.
+Then run:
+
+```sh
+node packages/e2e/bin/openclaw-storage.mjs task-complete "$task_root" "$task_owner"
+```
+
+The paired draft wrapper exposes `complete` to retire its ready payload before
+calling this operation. Completion removes the entire owned development root,
+including receipts, evidence and the local diagnostic pool. It refuses Git
+worktrees, recovery markers, locks, pending drafts, active native processes,
+consumer holds and release/production artifact references. It never follows
+nested symlinks. A journal outside the task makes interrupted deletion resumable;
+rerun the same command. Do not recreate a task while completion is pending.
+A crash before the rename can leave a producer lock: confirm its owner and
+children stopped before the existing explicit lock-recovery procedure.
+
+Initialization and completion are required session steps; this is not a daemon
+that infers an idle chat means completed. Record cleanup-pending if teardown
+fails and retry on resume. Legacy directories still require individual owner
+and consumer checks; they cannot be adopted wholesale into this API.
 
 ## 1. Reuse and configure
 
@@ -112,17 +154,18 @@ node packages/e2e/bin/openclaw-artifact-retention.mjs dry-run "$E2E_ARTIFACT_POO
 node packages/e2e/bin/openclaw-artifact-retention.mjs apply "$E2E_ARTIFACT_POOL"
 ```
 
-The current pool implementation keeps two recent successful bundles plus
-referenced dependencies. This is a compatibility default to replace with the
-active candidate, deployed artifact, and one PROD recovery dependency set.
+Uncompleted legacy pool objects retain their compatibility defaults. Explicit
+`complete-run` acknowledgment makes every unreferenced artifact in that run's
+dependency closure immediately eligible, including recent builds and logs.
+All remaining references, especially deployed/recovery references, still win.
 Complete obsolete run references so finished attempts do not remain protected.
 Do not delete pool objects behind its registry to work around the default.
 
-New diagnostic logs are compressed. The current limit is 30 days and 1 GiB per
-completed owner; compact stage results survive separately. Prefer small useful
-logs to retaining a workspace. Retire older PROD recovery only with the existing
-activation and backup tools after its replacement is verified. Synthetic TEST
-recovery is disposable test data, not an additional production backup.
+Operation logs are compressed in the task's local diagnostic pool and remain
+available during active development. Whole-task completion removes that pool.
+Do not send disposable operation logs to a shared release pool. Completed
+shared-pool logs become eligible immediately after their last reference ends.
+Production recovery records are never development cleanup targets.
 
 ## 4. Finalize task-owned scratch
 
@@ -159,10 +202,9 @@ Example `scratch.json`:
 {"id":"old-payload","path":"payloads/attempt-1","purpose":"Acknowledged DEV transfer","evidence":["proofs/attempt-1.json"]}
 ```
 
-The current `kind: "failed"` mode retains the newest sealed failure for seven
-days. That default still needs alignment: preserve the failed command, useful
-logs, and inputs, then remove generated output once no active debugging consumer
-needs it. Use the producer's terminal cleanup for completed fixtures; do not
+Legacy `kind: "failed"` scratch retains its compatibility seven-day window
+during operation cleanup. Explicit whole-task completion has no such retention. An active feature keeps its mutable failed build for repair; a completed
+feature removes it with the rest of its task root. Use the producer's terminal cleanup for completed fixtures; do not
 mislabel state to evade a guard. Active debug holds remain protected. Keep one
 ownership root per task instead of a new root for every attempt.
 

@@ -1,6 +1,6 @@
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { join, relative } from "node:path";
-import { acquireArtifactPoolLock, applyArtifactCleanup, artifactPoolRunId, completeRetentionRun, initializeArtifactPool, protectRunArtifacts, registerDiagnosticLogs } from "./native-retention.mjs";
+import { acquireArtifactPoolLock, applyArtifactCleanup, artifactPoolRunId, initializeArtifactPool, protectRunArtifacts, registerDiagnosticLogs } from "./native-retention.mjs";
 import { randomUUID } from "node:crypto";
 import { atomicJson, fileDigest, inside, jsonDigest } from "./native-state.mjs";
 import { importReleaseBundle, verifySourceGate } from "./native-release.mjs";
@@ -15,7 +15,7 @@ export function retainCompletedOperationLog(root, log, owner, poolPath) {
   if (!lstatSync(source).isFile() || realpathSync(source) !== source) throw new Error("Operation log must be a regular owned file");
   const digest = fileDigest(source);
   const staging = join(root, `.log-archive-${randomUUID()}`);
-  const pool = poolPath ?? process.env.E2E_ARTIFACT_POOL ?? join(root, "draft-controller/log-pool");
+  const pool = poolPath ?? join(root, "draft-controller/log-pool");
   initializeArtifactPool(pool);
   mkdirSync(join(staging, "logs"), { recursive: true, mode: 0o700 });
   try {
@@ -26,7 +26,8 @@ export function retainCompletedOperationLog(root, log, owner, poolPath) {
       logs = registerDiagnosticLogs(pool, staging);
       const id = artifactPoolRunId(staging);
       protectRunArtifacts(pool, { id, kind: "paused", objectIds: [logs.id] });
-      completeRetentionRun(pool, id, owner);
+      // Operation completion is not feature completion. Keep diagnostics in
+      // this task's local pool until the whole task closes.
       applyArtifactCleanup(pool);
     } finally { release(); }
     if (fileDigest(source) !== digest) throw new Error("Operation log changed during archival");

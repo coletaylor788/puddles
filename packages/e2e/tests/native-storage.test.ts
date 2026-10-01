@@ -231,7 +231,7 @@ it("bounds failed local builder attempts as groups while preserving source and r
 });
 
 
-it("archives completed draft logs once and expires their compressed diagnostics", async () => {
+it("keeps operation diagnostics until explicit task completion", async () => {
   const root = fixture();
   mkdirSync(join(root, "logs"));
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -244,8 +244,11 @@ it("archives completed draft logs once and expires their compressed diagnostics"
   }
   expect(readdirSync(join(root, "logs")).every(name => name.endsWith(".reference.json"))).toBe(true);
   // @ts-expect-error Executable JavaScript module.
-  const { applyArtifactCleanup } = await import("../src/native-retention.mjs");
+  const { applyArtifactCleanup, completeRetentionRun } = await import("../src/native-retention.mjs");
   const pool = join(root, "draft-controller/log-pool");
   applyArtifactCleanup(pool, new Date(Date.now() + 31 * 86400000));
+  expect(readdirSync(join(pool, "objects"))).toHaveLength(3);
+  for (const reference of readdirSync(join(pool, "references"))) completeRetentionRun(pool, reference.replace(/\.json$/, ""), "task");
+  applyArtifactCleanup(pool);
   expect(readdirSync(join(pool, "objects"))).toEqual([]);
 });
