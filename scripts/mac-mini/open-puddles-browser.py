@@ -61,7 +61,11 @@ def browser_state(command):
             continue
     if state is None:
         raise LauncherError("OpenClaw did not return a usable browser registry.")
-    matches = [b for b in state["browsers"] if isinstance(b, dict) and b.get("sessionKey") == "agent:browser-agent"]
+    def personal_browser(entry):
+        key = entry.get("sessionKey") if isinstance(entry, dict) else None
+        return isinstance(key, str) and (key == "agent:browser-agent" or key.startswith("agent:browser-agent:workspace:"))
+
+    matches = [b for b in state["browsers"] if personal_browser(b)]
     if len(matches) > 1:
         raise LauncherError("More than one personal browser was found. Resolve browser ownership before opening the viewer.")
     if not matches or not matches[0].get("running"):

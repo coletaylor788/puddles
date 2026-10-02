@@ -49,8 +49,8 @@ To inspect readiness without opening a window or reading its password:
    openclaw sandbox list --browser
    ```
 
-   Look for a running entry whose session is exactly `agent:browser-agent` and
-   which shows a noVNC port. If there is no such entry, start it with a harmless
+   Look for a running entry whose session is `agent:browser-agent` or begins
+   `agent:browser-agent:workspace:` and which shows a noVNC port. If there is no such entry, start it with a harmless
    local turn, then check again:
 
    ```bash
@@ -67,7 +67,7 @@ To inspect readiness without opening a window or reading its password:
 
    openclaw sandbox list --browser --json > "$STATE"
    C=$(jq -r \
-     '[.browsers[] | select(.running == true and .sessionKey == "agent:browser-agent" and (.noVncPort != null))][0].containerName // empty' \
+     '[.browsers[] | select(.running == true and (.sessionKey == "agent:browser-agent" or (.sessionKey | startswith("agent:browser-agent:workspace:"))) and (.noVncPort != null))] | if length == 1 then .[0].containerName else empty end' \
      "$STATE")
    PORT=$(jq -r --arg container "$C" \
      '[.browsers[] | select(.containerName == $container)][0].noVncPort // empty' \
