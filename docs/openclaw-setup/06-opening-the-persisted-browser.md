@@ -10,6 +10,38 @@ remote shell transcript.
 
 ## Open the browser
 
+Double-click **Open Puddles Browser** on the Mini's desktop. It opens the
+personal browser agent's noVNC viewer in the default web browser. If no browser
+is running, it starts one with a harmless local turn. It discovers the current
+viewer connection on every launch, preserves existing tabs, and never resets
+the profile. Sign in while the browser worker is idle. Close the outer viewer
+tab when finished, leaving the Chromium window inside it open.
+
+The shortcut uses the Node and OpenClaw entrypoint from the installed gateway
+LaunchAgent, so it does not depend on an interactive shell's Node version.
+If opening fails, Terminal shows a short error and waits for Return. The
+shortcut contains no viewer password or saved authenticated URL.
+
+### Install the shortcut
+
+From a reviewed Puddles checkout, run as the OpenClaw owner on the Mini:
+
+```bash
+mkdir -p "$HOME/.local/bin" "$HOME/Desktop"
+install -m 0700 scripts/mac-mini/open-puddles-browser.py "$HOME/.local/bin/open-puddles-browser.py"
+install -m 0700 'scripts/mac-mini/Open Puddles Browser.command' "$HOME/Desktop/Open Puddles Browser.command"
+```
+
+This installs the helper in `~/.local/bin` and creates
+`~/Desktop/Open Puddles Browser.command`. It does not start or reset a browser.
+To inspect readiness without opening a window or reading its password:
+
+```bash
+/usr/bin/python3 ~/.local/bin/open-puddles-browser.py --check
+```
+
+### Manual fallback
+
 1. Open Terminal on the Mac mini.
 2. Check that the `browser-agent` browser container is running:
 
