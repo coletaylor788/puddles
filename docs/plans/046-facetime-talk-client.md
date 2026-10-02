@@ -1,6 +1,6 @@
 # FaceTime as a shared Talk client
 
-Status: Implemented; installed validation in progress
+Status: Implemented and DEV validated; physical acceptance pending
 Issue: https://github.com/coletaylor788/puddles/issues/206
 Last updated: 2026-10-02
 
@@ -35,7 +35,7 @@ Select `realtime.mode: "talk"` to inherit Talk settings. The published standalon
 
 ### Status
 
-The shared host session and FaceTime adapter are implemented and independently reviewed. Native voice approval and consultation-lifetime fixes are included. Focused behavior, package, and migration checks pass. Installed validation is in progress; physical FaceTime acceptance and deployment remain outstanding.
+The shared host session and FaceTime adapter are implemented and independently reviewed. Native voice approval and consultation-lifetime fixes are included. Focused behavior, package, and migration checks pass. Installed DEV validation passes, including loading the patched FaceTime plugin through the actual host. Physical FaceTime acceptance and release remain outstanding; the carrier stays disabled.
 
 ## Agent section
 
@@ -72,15 +72,31 @@ The shared host session and FaceTime adapter are implemented and independently r
 - Focused session-runtime regression reproduces dropped steering/completion methods and passes after the fix.
 - Native session/control, scoped runtime, configuration, history, and existing FaceTime tests ran with synthetic providers. The broader run passed 509 cases; three fixture failures were repaired and their affected checks passed (52 driver cases and the native signature case).
 - Public patch registration passes (10 tests). Shared source composes with the companion overlay without losing the history change.
-- Full runtime build, declarations, all 158 public SDK exports, and UI sidecars pass. Core and extension type checks pass. Installed DEV checks are in progress. No physical acceptance or release evidence is claimed.
+- Full runtime build, declarations, all 158 public SDK exports, and UI sidecars pass. Core and extension type checks pass. All four standard installed DEV scenarios and the installed FaceTime host-loader assertion pass. No physical acceptance or release evidence is claimed.
 - Required cumulative release command: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
 - Physical audio, signed helper/driver, account routing, and device acceptance remain required.
+
+### Installed DEV evidence
+
+| Field | Result |
+| --- | --- |
+| Reviewed public source | `3505f199417552e33ae3bd129b59b4a231996b91` |
+| Standard scenarios | Four passed |
+| FaceTime assertion | Actual bundled plugin loads through the installed host SDK; Talk configuration, tool and Gateway registration pass |
+| Isolation | Synthetic owner, native service disabled, no calls or provider traffic |
+| Evidence | Exact installed identity and proof retained in the private implementation record |
+| Ownership | Controller finished and DEV lease released. Active runtime, pre-test state snapshot and fixture retained |
+
+This is local draft proof for source landing, not an immutable release receipt. Remaining host setup requires full Xcode and its first-run/license completion, Developer Mode, and matching signed native components before physical acceptance.
 
 ### Rollout and rollback
 
 Start disabled and owner-only. Use normal artifact DEV, TEST, and production gates. Retain native app access and restore only native setup changes introduced by this integration; preserve existing host settings and recovery artifacts.
 
 ### Review log
+
+- Shared Talk rejects outbound dialing and restored standalone dials; its tool menu omits outbound actions. Repeated normalization preserves Talk-owned settings. All 106 affected cases pass.
+- Removed the plugin manifest default that the host injected before registration. All 17 configuration cases pass, including the real schema-default path; retained review cleared the correction.
 
 - Requester approved the design and implementation.
 - Retained independent review of the complete runtime, patch, package, and delivery diff found no actionable findings. The provider-terminal callback test proves automatic cleanup; authority closures retain their original assertions.
@@ -91,8 +107,7 @@ Start disabled and owner-only. Use normal artifact DEV, TEST, and production gat
 - [x] Create isolated paired worktrees and composed source.
 - [x] Implement adapter and host session contract.
 - [x] Incorporate current native Talk fixes and pass independent implementation review.
-- [ ] Pass focused and installed checks and independent review.
-- [ ] Register regressions, land source, and complete release gates.
+- [x] Pass focused and installed checks and independent review.
+- [x] Register regressions for cumulative validation.
+- [ ] Land source and complete release gates.
 - [ ] Complete physical acceptance and task-owned cleanup.
-
-Latest review remediation: shared Talk rejects outbound dialing and does not adopt restored standalone dials. Its tool menu omits outbound actions. Repeated configuration normalization preserves Talk-owned settings without injecting standalone defaults. All 106 affected runtime, tool, configuration, registration, and driver cases pass; retained review cleared both corrections.
