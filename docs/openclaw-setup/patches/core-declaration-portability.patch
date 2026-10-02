@@ -372,10 +372,10 @@ index db7bf861..b329e3b0 100644
    ensureGitHubPublicationSchema(openOpenClawStateDatabase().db);
 diff --git a/src/config/sessions/session-declaration-portability.test.ts b/src/config/sessions/session-declaration-portability.test.ts
 new file mode 100644
-index 00000000..8857d2da
+index 00000000..cbe282ed
 --- /dev/null
 +++ b/src/config/sessions/session-declaration-portability.test.ts
-@@ -0,0 +1,262 @@
+@@ -0,0 +1,269 @@
 +import type { Kysely, Nullable, SelectQueryBuilder } from "kysely";
 +import { expectTypeOf, it } from "vitest";
 +import type { createBundleLspToolRuntime } from "../../agents/agent-bundle-lsp-runtime.js";
@@ -410,6 +410,7 @@ index 00000000..8857d2da
 +import type { AgentSession, ToolDefinition } from "../../agents/sessions/index.js";
 +import type { AgentToolWithMeta, AnyAgentTool } from "../../agents/tools/common.js";
 +import type { githubPublicationDatabase } from "../../gateway/github-publication-store.js";
++import type { createProcessPollDeliveryContract } from "../../plugin-sdk/test-helpers/agents/openclaw-owned-tool-runtime-contract.js";
 +import type { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
 +import type {
 +  DB as OpenClawAgentKyselyDatabase,
@@ -569,6 +570,12 @@ index 00000000..8857d2da
 +  >;
 +
 +it("keeps explicit portable annotations equal to the inferred public types", () => {
++  expectTypeOf<ReturnType<typeof createProcessPollDeliveryContract>>().toEqualTypeOf<{
++    tool: AgentToolWithMeta<typeof processSchema, unknown>;
++    pollArguments: { action: string; sessionId: string };
++    pendingNotifications: () => string[];
++    close: () => void;
++  }>();
 +  expectTypeOf<typeof execTool>().toEqualTypeOf<
 +    AgentToolWithMeta<typeof execSchema, ExecToolDetails>
 +  >();
@@ -651,3 +658,21 @@ index 00000000..ec1d06db
 +  },
 +  "include": ["../../src/config/sessions/session-declaration-portability.test.ts"]
 +}
+diff --git a/src/plugin-sdk/test-helpers/agents/openclaw-owned-tool-runtime-contract.ts b/src/plugin-sdk/test-helpers/agents/openclaw-owned-tool-runtime-contract.ts
+index 0975bdb6..057accb7 100644
+--- a/src/plugin-sdk/test-helpers/agents/openclaw-owned-tool-runtime-contract.ts
++++ b/src/plugin-sdk/test-helpers/agents/openclaw-owned-tool-runtime-contract.ts
+@@ -49,7 +49,12 @@ import { setPluginToolMeta } from "../../../plugins/tool-metadata.js";
+ import * as ttsRuntime from "../../../tts/tts.js";
+ 
+ /** Real process poll producer and notification queue, with a synthetic completed process. */
+-export function createProcessPollDeliveryContract(sessionId: string) {
++export function createProcessPollDeliveryContract(sessionId: string): {
++  tool: ReturnType<typeof createProcessTool>;
++  pollArguments: { action: string; sessionId: string };
++  pendingNotifications: () => string[];
++  close: () => void;
++} {
+   const sessionKey = `agent:main:${sessionId}`;
+   const session = createProcessSessionFixture({ id: sessionId, backgrounded: true });
+   session.scopeKey = sessionKey;
