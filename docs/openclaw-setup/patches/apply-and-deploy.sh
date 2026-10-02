@@ -33,6 +33,7 @@ PATCHES=(
   active-memory-fixture-cleanup
   gateway-protocol-declaration-portability
   core-declaration-portability
+  talk-agent-parity
 )
 
 if [ -n "${MINI_HOST:-}" ]; then
