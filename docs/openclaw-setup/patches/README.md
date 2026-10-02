@@ -35,6 +35,7 @@ activated gateway. Keep the previous interpreter available for rollback.
 | `gateway-protocol-declaration-portability.patch` | Regression tests for upstream protocol registry identity and types |
 | `talk-agent-parity.patch` | Optional text-equivalent Talk authorization and consultation work ownership |
 | `core-declaration-portability.patch` | Name portable core declaration exports for tools, sessions, databases, and plugin records |
+| `facetime-talk-client.patch` | Let FaceTime inherit native Talk configuration, history, controls, and accepted-work lifetime |
 
 Each patch has a neighboring document explaining its behavior and history.
 Register new patches and every applicable test in the cumulative manifest at
