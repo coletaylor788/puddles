@@ -72,7 +72,7 @@ The shared host session and FaceTime adapter are implemented and independently r
 - Focused session-runtime regression reproduces dropped steering/completion methods and passes after the fix.
 - Native session/control, scoped runtime, configuration, history, and existing FaceTime tests ran with synthetic providers. The broader run passed 509 cases; three fixture failures were repaired and their affected checks passed (52 driver cases and the native signature case).
 - Public patch registration passes (10 tests). Shared source composes with the companion overlay without losing the history change.
-- Full runtime build, declarations, all 158 public SDK exports, and UI sidecars pass. Final type checks and installed DEV checks are in progress. No physical acceptance or release evidence is claimed.
+- Full runtime build, declarations, all 158 public SDK exports, and UI sidecars pass. Core and extension type checks pass. Installed DEV checks are in progress. No physical acceptance or release evidence is claimed.
 - Required cumulative release command: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
 - Physical audio, signed helper/driver, account routing, and device acceptance remain required.
 
@@ -94,3 +94,5 @@ Start disabled and owner-only. Use normal artifact DEV, TEST, and production gat
 - [ ] Pass focused and installed checks and independent review.
 - [ ] Register regressions, land source, and complete release gates.
 - [ ] Complete physical acceptance and task-owned cleanup.
+
+Latest review remediation: shared Talk rejects outbound dialing and does not adopt restored standalone dials. Its tool menu omits outbound actions. Repeated configuration normalization preserves Talk-owned settings without injecting standalone defaults. All 106 affected runtime, tool, configuration, registration, and driver cases pass; retained review cleared both corrections.

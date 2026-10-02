@@ -127,6 +127,28 @@ index 1df89953..02037a75 100644
  `ownerHandles` is the only caller list. Every accepted identity receives owner
  authority. `realtime.toolPolicy` is one of `safe-read-only`, `owner`, or `none`;
  invalid explicit values fail validation.
+diff --git a/extensions/facetime/index.ts b/extensions/facetime/index.ts
+index 7e641842..9539c9d0 100644
+--- a/extensions/facetime/index.ts
++++ b/extensions/facetime/index.ts
+@@ -83,14 +83,15 @@ const faceTimePlugin: OpenClawPluginDefinition = definePluginEntry({
+       });
+     };
+ 
+-    api.registerTool(() => createFaceTimeCallTool({ ensureRuntime, getStatus }), {
++    const inboundOnly = config.realtime.mode === "talk";
++    api.registerTool(() => createFaceTimeCallTool({ ensureRuntime, getStatus, inboundOnly }), {
+       name: "facetime_call",
+     });
+     api.on("before_tool_call", (event) => {
+       if (event.toolName !== "facetime_call") {
+         return undefined;
+       }
+-      return resolveFaceTimeToolApproval(event.params);
++      return resolveFaceTimeToolApproval(event.params, inboundOnly);
+     });
+ 
+     api.registerService({
 diff --git a/extensions/facetime/openclaw.plugin.json b/extensions/facetime/openclaw.plugin.json
 index d1682970..8d47ebf4 100644
 --- a/extensions/facetime/openclaw.plugin.json
@@ -148,10 +170,10 @@ index d1682970..8d47ebf4 100644
      "realtime.model": { "label": "Realtime Model", "advanced": true },
      "realtime.voice": { "label": "Realtime Voice", "advanced": true },
 diff --git a/extensions/facetime/src/config.ts b/extensions/facetime/src/config.ts
-index d6a3f919..b0d07951 100644
+index d6a3f919..165dfe49 100644
 --- a/extensions/facetime/src/config.ts
 +++ b/extensions/facetime/src/config.ts
-@@ -9,6 +9,7 @@ export type FaceTimeConfig = {
+@@ -9,13 +9,14 @@ export type FaceTimeConfig = {
    enabled: boolean;
    ownerHandles: string[];
    realtime: {
@@ -159,6 +181,15 @@ index d6a3f919..b0d07951 100644
      provider?: string;
      model?: string;
      voice?: string;
+     sessionKey: string;
+-    toolPolicy: RealtimeVoiceAgentConsultToolPolicy;
++    toolPolicy?: RealtimeVoiceAgentConsultToolPolicy;
+     instructions?: string;
+-    providers: Record<string, Record<string, unknown>>;
++    providers?: Record<string, Record<string, unknown>>;
+   };
+ };
+ 
 @@ -67,6 +68,17 @@ function resolveProviders(value: unknown): Record<string, Record<string, unknown
  export function resolveFaceTimeConfig(input: unknown): FaceTimeConfig {
    const raw = asRecord(input);
@@ -177,7 +208,7 @@ index d6a3f919..b0d07951 100644
    if (typeof realtime.instructions === "string" && realtime.instructions.length > 4000) {
      throw new Error("realtime.instructions must not exceed 4000 characters");
    }
-@@ -74,6 +86,7 @@ export function resolveFaceTimeConfig(input: unknown): FaceTimeConfig {
+@@ -74,13 +86,20 @@ export function resolveFaceTimeConfig(input: unknown): FaceTimeConfig {
      enabled: resolveBoolean(raw.enabled, true),
      ownerHandles: resolveStringArray(raw.ownerHandles),
      realtime: {
@@ -185,6 +216,22 @@ index d6a3f919..b0d07951 100644
        provider: normalizeOptionalString(realtime.provider),
        model: normalizeOptionalString(realtime.model),
        voice: normalizeOptionalString(realtime.voice),
+       sessionKey: normalizeOptionalString(realtime.sessionKey) ?? "main",
+-      toolPolicy: resolveRealtimeVoiceAgentConsultToolPolicy(realtime.toolPolicy),
+-      instructions: normalizeOptionalString(realtime.instructions) ?? DEFAULT_INSTRUCTIONS,
+-      providers: resolveProviders(realtime.providers),
++      toolPolicy:
++        mode === "talk"
++          ? undefined
++          : resolveRealtimeVoiceAgentConsultToolPolicy(realtime.toolPolicy),
++      instructions:
++        mode === "talk"
++          ? undefined
++          : (normalizeOptionalString(realtime.instructions) ?? DEFAULT_INSTRUCTIONS),
++      providers: mode === "talk" ? undefined : resolveProviders(realtime.providers),
+     },
+   };
+ }
 diff --git a/extensions/facetime/src/runtime-call-control.ts b/extensions/facetime/src/runtime-call-control.ts
 index e5264a1d..bb7ee41e 100644
 --- a/extensions/facetime/src/runtime-call-control.ts
@@ -224,8 +271,83 @@ index e5264a1d..bb7ee41e 100644
            captureBinary: params.captureBinary,
            signal: call.lifecycleAbort.signal,
            async onHangupRequested() {
+diff --git a/extensions/facetime/src/runtime-call-events.ts b/extensions/facetime/src/runtime-call-events.ts
+index cae79ba2..eacf8e2d 100644
+--- a/extensions/facetime/src/runtime-call-events.ts
++++ b/extensions/facetime/src/runtime-call-events.ts
+@@ -85,7 +85,7 @@ export function createFaceTimeCallEventHandler(params: {
+       return undefined;
+     }
+     const owner =
+-      pending.delivery === "cancelling"
++      pending.delivery === "cancelling" || params.config.realtime.mode === "talk"
+         ? undefined
+         : resolveAuthorizedFaceTimeOwner({
+             event,
+@@ -96,7 +96,9 @@ export function createFaceTimeCallEventHandler(params: {
+     }
+     if (pending.delivery !== "cancelling") {
+       params.logger.warn(
+-        "[facetime] cancelling correlated outbound call because its handle is no longer authorized; add it to ownerHandles before dialing again",
++        params.config.realtime.mode === "talk"
++          ? "[facetime] cancelling retained outbound call because shared Talk is inbound-only"
++          : "[facetime] cancelling correlated outbound call because its handle is no longer authorized; add it to ownerHandles before dialing again",
+       );
+     }
+     try {
+diff --git a/extensions/facetime/src/runtime.ts b/extensions/facetime/src/runtime.ts
+index a06a3911..744df6f3 100644
+--- a/extensions/facetime/src/runtime.ts
++++ b/extensions/facetime/src/runtime.ts
+@@ -395,6 +395,9 @@ export async function createFaceTimeRuntime(params: {
+       return await readStatus();
+     },
+     async dial(dialParams) {
++      if (config.realtime.mode === "talk") {
++        throw new Error("shared Talk mode supports inbound FaceTime audio calls only");
++      }
+       if (stopping) {
+         throw new Error("cannot start an outbound FaceTime call while the plugin is stopping");
+       }
+diff --git a/extensions/facetime/src/talk-consult-controller.ts b/extensions/facetime/src/talk-consult-controller.ts
+index 8bb8b905..4fe81b1e 100644
+--- a/extensions/facetime/src/talk-consult-controller.ts
++++ b/extensions/facetime/src/talk-consult-controller.ts
+@@ -329,7 +329,9 @@ export function createFaceTimeConsultController(params: {
+       userLabel: "Caller",
+       assistantLabel: "Assistant",
+       questionSourceLabel: "caller",
+-      toolsAllow: resolveRealtimeVoiceAgentConsultToolsAllow(params.config.realtime.toolPolicy),
++      toolsAllow: resolveRealtimeVoiceAgentConsultToolsAllow(
++        params.config.realtime.toolPolicy ?? "owner",
++      ),
+       extraSystemPrompt: CONSULT_SYSTEM_PROMPT,
+       thinkLevel: "off",
+       abortSignal: consult.abortController.signal,
+diff --git a/extensions/facetime/src/talk-driver-config.ts b/extensions/facetime/src/talk-driver-config.ts
+index 00d723b7..6cbf0507 100644
+--- a/extensions/facetime/src/talk-driver-config.ts
++++ b/extensions/facetime/src/talk-driver-config.ts
+@@ -78,7 +78,7 @@ export function buildRealtimeInstructions(params: {
+           'While waiting for a tool result, use at most one short natural backchannel such as "one sec"; do not repeat progress updates or treat it as the final answer.',
+           "Never claim you retried or are retrying unless a new tool result explicitly confirms a new attempt.",
+           buildRealtimeVoiceAgentConsultPolicyInstructions({
+-            toolPolicy: params.toolPolicy,
++            toolPolicy: params.toolPolicy ?? "owner",
+             consultPolicy: "substantive",
+           }),
+         ]
+@@ -100,7 +100,7 @@ export async function resolveFaceTimeRealtimeProvider(params: {
+   agentId: string;
+ }) {
+   const configuredProviderId = params.config.realtime.provider;
+-  const sourceProviders = params.config.realtime.providers;
++  const sourceProviders = params.config.realtime.providers ?? {};
+   const selectedProviderIds = configuredProviderId
+     ? new Set([
+         configuredProviderId,
 diff --git a/extensions/facetime/src/talk-driver.ts b/extensions/facetime/src/talk-driver.ts
-index d30e60a0..c61b06f3 100644
+index d30e60a0..ff6ed702 100644
 --- a/extensions/facetime/src/talk-driver.ts
 +++ b/extensions/facetime/src/talk-driver.ts
 @@ -11,6 +11,7 @@ import {
@@ -378,7 +500,7 @@ index d30e60a0..c61b06f3 100644
            onReady() {
              if (!stopped && !mediaSuspended) {
                remember({ type: "session.ready", payload: { callUUID: params.callUUID } });
-@@ -604,7 +579,65 @@ export async function startFaceTimeTalkDriver(params: {
+@@ -604,7 +579,66 @@ export async function startFaceTimeTalkDriver(params: {
                }
              })();
            },
@@ -436,20 +558,83 @@ index d30e60a0..c61b06f3 100644
 +              bootstrapContext,
 +              toolPolicy: params.config.realtime.toolPolicy,
 +            }),
-+            tools: resolveRealtimeVoiceAgentConsultTools(params.config.realtime.toolPolicy, [
-+              FACETIME_END_CALL_TOOL,
-+            ]),
++            tools: resolveRealtimeVoiceAgentConsultTools(
++              params.config.realtime.toolPolicy ?? "owner",
++              [FACETIME_END_CALL_TOOL],
++            ),
 +            onToolCall: consultController!.handleToolCall,
 +          });
 +        }
          await bridge.connect();
        };
        try {
+diff --git a/extensions/facetime/src/tool.ts b/extensions/facetime/src/tool.ts
+index 68e5129a..9ee6565d 100644
+--- a/extensions/facetime/src/tool.ts
++++ b/extensions/facetime/src/tool.ts
+@@ -23,13 +23,29 @@ const FaceTimeCallToolSchema = Type.Object(
+   { additionalProperties: false },
+ );
+ 
++const FaceTimeInboundCallToolSchema = Type.Object(
++  {
++    action: stringEnum(["get_status", "check_readiness", "end_call"] as const),
++    callUUID: Type.Optional(
++      Type.String({ description: "Current call identity. Omit to end the current call." }),
++    ),
++  },
++  { additionalProperties: false },
++);
++
+ type FaceTimeToolRuntime = Pick<FaceTimeRuntime, "status" | "preflight" | "dial" | "hangup">;
+ 
+-export function resolveFaceTimeToolApproval(input: unknown) {
++export function resolveFaceTimeToolApproval(input: unknown, inboundOnly = false) {
+   const raw = asRecord(input);
+   if (raw.action !== "initiate_call") {
+     return undefined;
+   }
++  if (inboundOnly) {
++    return {
++      block: true,
++      blockReason: "shared Talk mode supports inbound FaceTime audio calls only",
++    };
++  }
+   const handle = normalizeOptionalString(raw.handle);
+   if (!handle) {
+     return undefined;
+@@ -81,6 +97,7 @@ function summarizeStatus(status: FaceTimeRuntimeStatus) {
+ }
+ 
+ export function createFaceTimeCallTool(params: {
++  inboundOnly?: boolean;
+   ensureRuntime: () => Promise<FaceTimeToolRuntime>;
+   getStatus: () => Promise<FaceTimeRuntimeStatus | FaceTimeStaticStatus>;
+ }) {
+@@ -89,7 +106,7 @@ export function createFaceTimeCallTool(params: {
+     label: "FaceTime Call",
+     description:
+       "Inspect FaceTime stages and manage calls for configured owner handles on this Mac.",
+-    parameters: FaceTimeCallToolSchema,
++    parameters: params.inboundOnly ? FaceTimeInboundCallToolSchema : FaceTimeCallToolSchema,
+     async execute(_toolCallId: string, input: unknown) {
+       const raw = asRecord(input);
+       const action = normalizeOptionalString(raw.action);
+@@ -113,6 +130,9 @@ export function createFaceTimeCallTool(params: {
+             });
+           }
+           case "initiate_call": {
++            if (params.inboundOnly) {
++              throw new Error("shared Talk mode supports inbound FaceTime audio calls only");
++            }
+             const runtime = await params.ensureRuntime();
+             const handle = normalizeOptionalString(raw.handle);
+             if (!handle) {
 diff --git a/extensions/facetime/tests/config.test.ts b/extensions/facetime/tests/config.test.ts
-index 4d4e4bc4..bc80abaa 100644
+index 4d4e4bc4..045861ca 100644
 --- a/extensions/facetime/tests/config.test.ts
 +++ b/extensions/facetime/tests/config.test.ts
-@@ -2,6 +2,20 @@ import { describe, expect, it } from "vitest";
+@@ -2,6 +2,31 @@ import { describe, expect, it } from "vitest";
  import { resolveFaceTimeConfig, validateFaceTimeConfig } from "../src/config.js";
  
  describe("facetime config", () => {
@@ -457,6 +642,17 @@ index 4d4e4bc4..bc80abaa 100644
 +    expect(resolveFaceTimeConfig({ realtime: { mode: "talk" } }).realtime.mode).toBe("talk");
 +    expect(resolveFaceTimeConfig({}).realtime.mode).toBe("standalone");
 +    expect(() => resolveFaceTimeConfig({ realtime: { mode: "invalid" } })).toThrow("realtime.mode");
++  });
++
++  it("can normalize shared Talk config again at runtime without introducing standalone defaults", () => {
++    const config = resolveFaceTimeConfig({
++      ownerHandles: ["owner@example.com"],
++      realtime: { mode: "talk" },
++    });
++    expect(resolveFaceTimeConfig(config)).toEqual(config);
++    expect(config.realtime.instructions).toBeUndefined();
++    expect(config.realtime.toolPolicy).toBeUndefined();
++    expect(config.realtime.providers).toBeUndefined();
 +  });
 +
 +  it.each(["provider", "model", "voice", "instructions", "providers", "toolPolicy"])(
@@ -470,6 +666,88 @@ index 4d4e4bc4..bc80abaa 100644
    it("defaults omitted policy to owner without exposing a helper endpoint", () => {
      const config = resolveFaceTimeConfig({ ownerHandles: ["mailto:omar@example.com"] });
  
+diff --git a/extensions/facetime/tests/runtime-admission.test.ts b/extensions/facetime/tests/runtime-admission.test.ts
+index 3a74d81e..fb7ff84d 100644
+--- a/extensions/facetime/tests/runtime-admission.test.ts
++++ b/extensions/facetime/tests/runtime-admission.test.ts
+@@ -4,6 +4,7 @@ import {
+   createTalkDriver,
+   incomingCall,
+   mocks,
++  pendingDialCancellationResult,
+   pendingDialState,
+   resetRuntimeTestState,
+ } from "./runtime.test-support.js";
+@@ -41,6 +42,53 @@ const deniedCallData = [
+ describe("FaceTime runtime admission", () => {
+   beforeEach(resetRuntimeTestState);
+ 
++  it("rejects shared Talk dialing before retaining state or invoking the helper", async () => {
++    const runtime = await createRuntime(undefined, undefined, "talk");
++    try {
++      await expect(runtime.dial({ handle: "owner@example.com" })).rejects.toThrow("inbound");
++      expect(mocks.helper.startCall).not.toHaveBeenCalled();
++      expect((await runtime.status()).outboundCallPending).toBeUndefined();
++    } finally {
++      await runtime.stop();
++    }
++  });
++
++  it.each([3, 1])(
++    "does not adopt a restored standalone dial at status %s in shared Talk",
++    async (status) => {
++      const state = await pendingDialState();
++      mocks.helper.cancelOutgoingCall.mockResolvedValue(pendingDialCancellationResult());
++      const runtime = await createRuntime(state, undefined, "talk");
++      try {
++        const event = incomingCall(status);
++        await mocks.helperParams?.onMessage({
++          ...event,
++          data: {
++            ...event.data,
++            call_uuid: "approved-call",
++            dial_id: "approved-dial",
++            is_outgoing: true,
++          },
++        });
++        expect((await runtime.status()).calls).toEqual([]);
++        expect(mocks.startTalk).not.toHaveBeenCalled();
++        expect(mocks.helper.cancelOutgoingCall).toHaveBeenCalled();
++      } finally {
++        const ended = incomingCall(6);
++        await mocks.helperParams?.onMessage({
++          ...ended,
++          data: {
++            ...ended.data,
++            call_uuid: "approved-call",
++            dial_id: "approved-dial",
++            is_outgoing: true,
++          },
++        });
++        await runtime.stop();
++      }
++    },
++  );
++
+   describe.each([
+     { phase: "ringing", status: 4 },
+     { phase: "active", status: 1 },
+diff --git a/extensions/facetime/tests/runtime.test-support.ts b/extensions/facetime/tests/runtime.test-support.ts
+index 8ebaa99e..c3d0156a 100644
+--- a/extensions/facetime/tests/runtime.test-support.ts
++++ b/extensions/facetime/tests/runtime.test-support.ts
+@@ -238,9 +238,10 @@ export async function createRuntime(
+     overflowPolicy: "reject-new",
+   }),
+   ownerHandles = ["owner@example.com"],
++  mode: "standalone" | "talk" = "standalone",
+ ) {
+   return await createFaceTimeRuntime({
+-    config: resolveFaceTimeConfig({ ownerHandles }),
++    config: resolveFaceTimeConfig({ ownerHandles, realtime: { mode } }),
+     fullConfig: {} as never,
+     runtime: {
+       system: {
 diff --git a/extensions/facetime/tests/talk-driver.shared-talk.test.ts b/extensions/facetime/tests/talk-driver.shared-talk.test.ts
 new file mode 100644
 index 00000000..c431f0d7
@@ -584,6 +862,40 @@ index 3044bfc7..dd788d99 100644
 +}
 +
  export { mocks };
+diff --git a/extensions/facetime/tests/tool.test.ts b/extensions/facetime/tests/tool.test.ts
+index 6fa5c4b5..a7b1cda4 100644
+--- a/extensions/facetime/tests/tool.test.ts
++++ b/extensions/facetime/tests/tool.test.ts
+@@ -50,6 +50,29 @@ function createRuntime() {
+ }
+ 
+ describe("FaceTime agent tool", () => {
++  it("omits outbound discovery and rejects stale requests without approval or runtime activation", async () => {
++    const runtime = createRuntime();
++    const ensureRuntime = vi.fn(async () => runtime);
++    const tool = createFaceTimeCallTool({
++      inboundOnly: true,
++      ensureRuntime,
++      getStatus: runtime.status,
++    });
++    expect(JSON.stringify(tool.parameters)).not.toContain("initiate_call");
++    expect(JSON.stringify(tool.parameters)).not.toContain("video");
++    const input = { action: "initiate_call", handle: "owner@example.com" };
++    expect(resolveFaceTimeToolApproval(input, true)).toEqual({
++      block: true,
++      blockReason: "shared Talk mode supports inbound FaceTime audio calls only",
++    });
++    expect(resultDetails(await tool.execute("stale-request", input))).toMatchObject({
++      ok: false,
++      error: expect.stringContaining("inbound"),
++    });
++    expect(ensureRuntime).not.toHaveBeenCalled();
++    expect(runtime.dial).not.toHaveBeenCalled();
++  });
++
+   it("publishes a flat provider-compatible action schema", () => {
+     const runtime = createRuntime();
+     const tool = createFaceTimeCallTool({
 diff --git a/extensions/openai/realtime-quicksilver-gateway-bridge.ts b/extensions/openai/realtime-quicksilver-gateway-bridge.ts
 index 83534c10..1799e0eb 100644
 --- a/extensions/openai/realtime-quicksilver-gateway-bridge.ts

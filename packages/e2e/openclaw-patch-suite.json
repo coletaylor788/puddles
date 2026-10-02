@@ -104,7 +104,8 @@
     "extensions/facetime/tests/talk-events-summary.test.ts": "extensions",
     "extensions/facetime/tests/talk-initial-greeting.test.ts": "extensions",
     "extensions/facetime/tests/tool.test.ts": "extensions",
-    "extensions/facetime/tests/verify-native-helper.test.ts": "extensions"
+    "extensions/facetime/tests/verify-native-helper.test.ts": "extensions",
+    "extensions/facetime/index.test.ts": "extensions"
   },
   "patches": [
     {
@@ -335,7 +336,8 @@
         "extensions/facetime/tests/talk-initial-greeting.test.ts",
         "extensions/facetime/tests/tool.test.ts",
         "extensions/facetime/tests/verify-native-helper.test.ts",
-        "src/gateway/talk/client-gateway-control.close.test.ts"
+        "src/gateway/talk/client-gateway-control.close.test.ts",
+        "extensions/facetime/index.test.ts"
       ]
     }
   ]

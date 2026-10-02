@@ -10,7 +10,7 @@ Set `plugins.entries.facetime.config.realtime.mode` to `talk`. Configure the
 allowlisted owner and canonical session as usual. Provider, model, voice,
 instructions, reasoning, tools, and authorization come from native Talk.
 Independent provider, voice, instruction, and tool-policy overrides are rejected
-in shared mode. Existing standalone installations keep their current behavior.
+in shared mode. Shared Talk accepts inbound calls only: outbound tool discovery and dialing are blocked, and retained standalone dials are cancelled instead of adopted. Normalized Talk configuration can be parsed repeatedly without introducing standalone defaults. Existing standalone installations keep their current behavior.
 
 The scoped `runtime.realtimeVoice.createSession` API binds an authenticated call
 to the existing Talk runners, session history, transcript writer, and task
