@@ -1,0 +1,1966 @@
+diff --git a/docs/plugins/sdk-runtime.md b/docs/plugins/sdk-runtime.md
+index c4a9acc2..f043ff43 100644
+--- a/docs/plugins/sdk-runtime.md
++++ b/docs/plugins/sdk-runtime.md
+@@ -43,32 +43,33 @@ register(api) {
+ 
+ Every `api.runtime` namespace and the page that documents it.
+ 
+-| Namespace                        | Page                                                                            |
+-| -------------------------------- | ------------------------------------------------------------------------------- |
+-| `api.runtime.agent`              | [Agent and sessions](/plugins/sdk-runtime/agent#api-runtime-agent)              |
+-| `api.runtime.agent.defaults`     | [Agent and sessions](/plugins/sdk-runtime/agent#api-runtime-agent-defaults)     |
+-| `api.runtime.llm`                | [Model helpers](/plugins/sdk-runtime/models#api-runtime-llm)                    |
+-| `api.runtime.gateway`            | [Gateway and nodes](/plugins/sdk-runtime/gateway-and-nodes#api-runtime-gateway) |
+-| `api.runtime.hooks`              | [Background work](/plugins/sdk-runtime/background-work#api-runtime-hooks)       |
+-| `api.runtime.subagent`           | [Background work](/plugins/sdk-runtime/background-work#api-runtime-subagent)    |
+-| `api.runtime.sandbox`            | [Agent and sessions](/plugins/sdk-runtime/agent#api-runtime-sandbox)            |
+-| `api.runtime.nodes`              | [Gateway and nodes](/plugins/sdk-runtime/gateway-and-nodes#api-runtime-nodes)   |
+-| `api.runtime.tasks`              | [Background work](/plugins/sdk-runtime/background-work#api-runtime-tasks)       |
+-| `api.runtime.tts`                | [Media helpers](/plugins/sdk-runtime/media#api-runtime-tts)                     |
+-| `api.runtime.mediaUnderstanding` | [Media helpers](/plugins/sdk-runtime/media#api-runtime-mediaunderstanding)      |
+-| `api.runtime.imageGeneration`    | [Media helpers](/plugins/sdk-runtime/media#api-runtime-imagegeneration)         |
+-| `api.runtime.videoGeneration`    | [Media helpers](/plugins/sdk-runtime/media#api-runtime-videogeneration)         |
+-| `api.runtime.musicGeneration`    | [Media helpers](/plugins/sdk-runtime/media#api-runtime-musicgeneration)         |
+-| `api.runtime.webSearch`          | [Media helpers](/plugins/sdk-runtime/media#api-runtime-websearch)               |
+-| `api.runtime.media`              | [Media helpers](/plugins/sdk-runtime/media#api-runtime-media)                   |
+-| `api.runtime.config`             | [State and system](/plugins/sdk-runtime/state-and-system#api-runtime-config)    |
+-| `api.runtime.system`             | [State and system](/plugins/sdk-runtime/state-and-system#api-runtime-system)    |
+-| `api.runtime.events`             | [State and system](/plugins/sdk-runtime/state-and-system#api-runtime-events)    |
+-| `api.runtime.logging`            | [State and system](/plugins/sdk-runtime/state-and-system#api-runtime-logging)   |
+-| `api.runtime.modelConfig`        | [Model helpers](/plugins/sdk-runtime/models#api-runtime-modelconfig)            |
+-| `api.runtime.modelAuth`          | [Model helpers](/plugins/sdk-runtime/models#api-runtime-modelauth)              |
+-| `api.runtime.state`              | [State and system](/plugins/sdk-runtime/state-and-system#api-runtime-state)     |
+-| `api.runtime.channel`            | [Channel helpers](/plugins/sdk-runtime/channel#api-runtime-channel)             |
++| Namespace                        | Page                                                                                      |
++| -------------------------------- | ----------------------------------------------------------------------------------------- |
++| `api.runtime.agent`              | [Agent and sessions](/plugins/sdk-runtime/agent#api-runtime-agent)                        |
++| `api.runtime.agent.defaults`     | [Agent and sessions](/plugins/sdk-runtime/agent#api-runtime-agent-defaults)               |
++| `api.runtime.llm`                | [Model helpers](/plugins/sdk-runtime/models#api-runtime-llm)                              |
++| `api.runtime.realtimeVoice`      | [Carrier Talk sessions](/plugins/sdk-runtime/gateway-and-nodes#api-runtime-realtimevoice) |
++| `api.runtime.gateway`            | [Gateway and nodes](/plugins/sdk-runtime/gateway-and-nodes#api-runtime-gateway)           |
++| `api.runtime.hooks`              | [Background work](/plugins/sdk-runtime/background-work#api-runtime-hooks)                 |
++| `api.runtime.subagent`           | [Background work](/plugins/sdk-runtime/background-work#api-runtime-subagent)              |
++| `api.runtime.sandbox`            | [Agent and sessions](/plugins/sdk-runtime/agent#api-runtime-sandbox)                      |
++| `api.runtime.nodes`              | [Gateway and nodes](/plugins/sdk-runtime/gateway-and-nodes#api-runtime-nodes)             |
++| `api.runtime.tasks`              | [Background work](/plugins/sdk-runtime/background-work#api-runtime-tasks)                 |
++| `api.runtime.tts`                | [Media helpers](/plugins/sdk-runtime/media#api-runtime-tts)                               |
++| `api.runtime.mediaUnderstanding` | [Media helpers](/plugins/sdk-runtime/media#api-runtime-mediaunderstanding)                |
++| `api.runtime.imageGeneration`    | [Media helpers](/plugins/sdk-runtime/media#api-runtime-imagegeneration)                   |
++| `api.runtime.videoGeneration`    | [Media helpers](/plugins/sdk-runtime/media#api-runtime-videogeneration)                   |
++| `api.runtime.musicGeneration`    | [Media helpers](/plugins/sdk-runtime/media#api-runtime-musicgeneration)                   |
++| `api.runtime.webSearch`          | [Media helpers](/plugins/sdk-runtime/media#api-runtime-websearch)                         |
++| `api.runtime.media`              | [Media helpers](/plugins/sdk-runtime/media#api-runtime-media)                             |
++| `api.runtime.config`             | [State and system](/plugins/sdk-runtime/state-and-system#api-runtime-config)              |
++| `api.runtime.system`             | [State and system](/plugins/sdk-runtime/state-and-system#api-runtime-system)              |
++| `api.runtime.events`             | [State and system](/plugins/sdk-runtime/state-and-system#api-runtime-events)              |
++| `api.runtime.logging`            | [State and system](/plugins/sdk-runtime/state-and-system#api-runtime-logging)             |
++| `api.runtime.modelConfig`        | [Model helpers](/plugins/sdk-runtime/models#api-runtime-modelconfig)                      |
++| `api.runtime.modelAuth`          | [Model helpers](/plugins/sdk-runtime/models#api-runtime-modelauth)                        |
++| `api.runtime.state`              | [State and system](/plugins/sdk-runtime/state-and-system#api-runtime-state)               |
++| `api.runtime.channel`            | [Channel helpers](/plugins/sdk-runtime/channel#api-runtime-channel)                       |
+ 
+ ## Storing runtime references
+ 
+diff --git a/docs/plugins/sdk-runtime/gateway-and-nodes.md b/docs/plugins/sdk-runtime/gateway-and-nodes.md
+index dafa2ff9..29914f37 100644
+--- a/docs/plugins/sdk-runtime/gateway-and-nodes.md
++++ b/docs/plugins/sdk-runtime/gateway-and-nodes.md
+@@ -264,6 +264,34 @@ applicable policy also requires fresh publication admission.
+   </Accordion>
+ </AccordionGroup>
+ 
++## Carrier Talk sessions
++
++<a id="api-runtime-realtimevoice" />
++
++`api.runtime.realtimeVoice.createSession(params)` lets a bundled or trusted official
++carrier provide audio to the same host-owned Talk conversation used by native clients.
++It inherits Talk configuration, provider authentication, conversation history, agent
++reasoning and tools, transcript persistence, and native run controls. It does not
++accept carrier-specific model or agent-policy overrides.
++
++Supply a stable `callId`, optional canonical `sessionKey`, an `owner` with a handle
++and `assertCurrent()` admission check, a call lifetime `signal`, and an `audioSink`.
++The assertion must recheck the same live call and authenticated allowlisted owner.
++The host also checks plugin and Gateway lifetime; a retained capability fails after
++its owner retires. The carrier identity does not fabricate a WebSocket client or
++operator credentials. Media can supply `audioFormat` and provider event callbacks.
++
++The result exposes the bridge media methods, canonical `sessionKey`, `voiceSessionId`,
++and `providerId`. Call `connect()` to start media. Ordinary `close()` detaches accepted
++native work, drains final provider transcripts, and closes the media owner. Explicit
++agent cancellation remains a separate native control operation. Accepted work may
++finish in the shared chat after the call ends.
++
++An optional `onHangupRequested` callback handles an explicit current-call hangup
++command. It requests carrier termination; the carrier still confirms its actual call
++end before closing media. A hangup request prevents new agent admission but does not
++cancel work already accepted. Callback failures are reported through `onError`.
++
+ ## Gateway service events
+ 
+ Gateway-hosted services can use `ctx.invokeNode?.()` for their own registered
+diff --git a/extensions/facetime/README.md b/extensions/facetime/README.md
+index 1df89953..02037a75 100644
+--- a/extensions/facetime/README.md
++++ b/extensions/facetime/README.md
+@@ -45,6 +45,21 @@ released.
+ 
+ ## Configuration
+ 
++Set `realtime.mode: "talk"` to use the same conversation, provider, voice,
++instructions, reasoning, tools, and permissions as the OpenClaw app. This mode
++requires a host with the shared Talk carrier runtime. Configure only the
++carrier's owner handles and optional Talk session key; provider, model, voice,
++instruction, and tool-policy overrides belong in Talk configuration.
++
++Normal hangup stops audio and closes call resources, while accepted agent work
++follows native Talk completion into the shared conversation. Explicit task
++cancellation remains separate. Clear commands such as "hang up" or "end this
++call" request native hangup without cancelling accepted work.
++
++The default `realtime.mode: "standalone"` preserves the published carrier
++configuration described below. It does not provide the shared Talk behavior.
++
++
+ `ownerHandles` is the only caller list. Every accepted identity receives owner
+ authority. `realtime.toolPolicy` is one of `safe-read-only`, `owner`, or `none`;
+ invalid explicit values fail validation.
+diff --git a/extensions/facetime/openclaw.plugin.json b/extensions/facetime/openclaw.plugin.json
+index d1682970..8d47ebf4 100644
+--- a/extensions/facetime/openclaw.plugin.json
++++ b/extensions/facetime/openclaw.plugin.json
+@@ -28,6 +28,7 @@
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
++          "mode": { "type": "string", "enum": ["standalone", "talk"], "default": "standalone" },
+           "provider": { "type": "string" },
+           "model": { "type": "string" },
+           "voice": { "type": "string" },
+@@ -55,6 +56,7 @@
+       "label": "Owner FaceTime Handles",
+       "help": "Only these handles may place or receive bridged calls. Every listed handle receives authenticated owner privileges."
+     },
++    "realtime.mode": { "label": "Voice Mode", "help": "Talk uses the same agent, conversation, and voice settings as the OpenClaw app." },
+     "realtime.provider": { "label": "Realtime Provider", "advanced": true },
+     "realtime.model": { "label": "Realtime Model", "advanced": true },
+     "realtime.voice": { "label": "Realtime Voice", "advanced": true },
+diff --git a/extensions/facetime/src/config.ts b/extensions/facetime/src/config.ts
+index d6a3f919..b0d07951 100644
+--- a/extensions/facetime/src/config.ts
++++ b/extensions/facetime/src/config.ts
+@@ -9,6 +9,7 @@ export type FaceTimeConfig = {
+   enabled: boolean;
+   ownerHandles: string[];
+   realtime: {
++    mode?: "standalone" | "talk";
+     provider?: string;
+     model?: string;
+     voice?: string;
+@@ -67,6 +68,17 @@ function resolveProviders(value: unknown): Record<string, Record<string, unknown
+ export function resolveFaceTimeConfig(input: unknown): FaceTimeConfig {
+   const raw = asRecord(input);
+   const realtime = asRecord(raw.realtime);
++  const mode = realtime.mode ?? "standalone";
++  if (mode !== "standalone" && mode !== "talk") {
++    throw new Error("realtime.mode must be standalone or talk");
++  }
++  if (mode === "talk") {
++    for (const key of ["provider", "model", "voice", "instructions", "providers", "toolPolicy"]) {
++      if (realtime[key] !== undefined) {
++        throw new Error(`realtime.${key} is owned by Talk when realtime.mode is talk`);
++      }
++    }
++  }
+   if (typeof realtime.instructions === "string" && realtime.instructions.length > 4000) {
+     throw new Error("realtime.instructions must not exceed 4000 characters");
+   }
+@@ -74,6 +86,7 @@ export function resolveFaceTimeConfig(input: unknown): FaceTimeConfig {
+     enabled: resolveBoolean(raw.enabled, true),
+     ownerHandles: resolveStringArray(raw.ownerHandles),
+     realtime: {
++      mode,
+       provider: normalizeOptionalString(realtime.provider),
+       model: normalizeOptionalString(realtime.model),
+       voice: normalizeOptionalString(realtime.voice),
+diff --git a/extensions/facetime/src/runtime-call-control.ts b/extensions/facetime/src/runtime-call-control.ts
+index e5264a1d..bb7ee41e 100644
+--- a/extensions/facetime/src/runtime-call-control.ts
++++ b/extensions/facetime/src/runtime-call-control.ts
+@@ -4,6 +4,7 @@ import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
+ import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
+ import type { PluginRuntime, RuntimeLogger } from "openclaw/plugin-sdk/plugin-runtime";
+ import { FACETIME_FEED_DEVICE_NAME, FACETIME_MIC_DEVICE_NAME } from "./audio-pump.js";
++import { isAuthorizedFaceTimeHandle } from "./call-events.js";
+ import { FaceTimeCallRegistry } from "./call-lifecycle.js";
+ import type { FaceTimeConfig } from "./config.js";
+ import {
+@@ -362,6 +363,7 @@ export function createFaceTimeCallControl(params: {
+       const callUUID = call.callUUID;
+       call.talkStarting = (async () => {
+         await routeCallAudio(call);
++        const generation = call.captureGeneration();
+         const talk = await startFaceTimeTalkDriver({
+           config: params.config,
+           fullConfig: params.fullConfig,
+@@ -370,6 +372,18 @@ export function createFaceTimeCallControl(params: {
+           callUUID,
+           senderId: call.senderId,
+           senderIsOwner: call.senderIsOwner,
++          assertOwnerCurrent() {
++            call.assertCurrent(generation);
++            if (
++              params.isStopping() ||
++              !isAuthorizedFaceTimeHandle({
++                handle: call.senderId,
++                ownerHandles: params.config.ownerHandles,
++              })
++            ) {
++              throw new Error("FaceTime caller authority is no longer current");
++            }
++          },
+           captureBinary: params.captureBinary,
+           signal: call.lifecycleAbort.signal,
+           async onHangupRequested() {
+diff --git a/extensions/facetime/src/talk-driver.ts b/extensions/facetime/src/talk-driver.ts
+index d30e60a0..c61b06f3 100644
+--- a/extensions/facetime/src/talk-driver.ts
++++ b/extensions/facetime/src/talk-driver.ts
+@@ -11,6 +11,7 @@ import {
+   recordTalkObservabilityEvent,
+   resolveRealtimeVoiceAgentConsultTools,
+   type RealtimeVoiceBridgeSession,
++  type RealtimeVoiceBridgeSessionParams,
+   type RealtimeVoiceResponseOutcome,
+   type RealtimeVoiceTranscriptEntry,
+   type TalkEvent,
+@@ -51,6 +52,7 @@ export async function startFaceTimeTalkDriver(params: {
+   callUUID: string;
+   senderId: string;
+   senderIsOwner: true;
++  assertOwnerCurrent?: () => void;
+   captureBinary: string;
+   signal?: AbortSignal;
+   onHangupRequested: () => Promise<void>;
+@@ -61,7 +63,15 @@ export async function startFaceTimeTalkDriver(params: {
+   }
+   // Fail closed before the call is answered; older hosts silently ignore the
+   // owner fields and would otherwise create a privilege-downgrade footgun.
+-  assertAuthenticatedSenderConsultSupport();
++  const sharedTalk = params.config.realtime.mode === "talk";
++  if (sharedTalk && (!params.runtime.realtimeVoice || !params.assertOwnerCurrent)) {
++    throw new Error(
++      "FaceTime Talk mode requires host session support and current caller authority",
++    );
++  }
++  if (!sharedTalk) {
++    assertAuthenticatedSenderConsultSupport();
++  }
+   const consultAgentId = agentIdFromSessionKey(
+     params.config.realtime.sessionKey,
+     params.fullConfig,
+@@ -328,28 +338,30 @@ export async function startFaceTimeTalkDriver(params: {
+     finishOutputAudio("continuity-reset");
+     endTurn("continuity-reset");
+   };
+-  const consultController = createFaceTimeConsultController({
+-    config: params.config,
+-    fullConfig: params.fullConfig,
+-    runtime: params.runtime,
+-    logger: params.logger,
+-    consultAgentId,
+-    consultSessionKey,
+-    requesterSessionKey,
+-    normalizedCallUUID,
+-    senderId: params.senderId,
+-    senderIsOwner: params.senderIsOwner,
+-    transcript,
+-    getBridge: () => bridge,
+-    getGeneration: () => modelMediaGeneration,
+-    isUnavailable: () => stopped || mediaSuspended,
+-    ensureTurn,
+-    remember,
+-    suspendMedia,
+-    reportFailure,
+-    close,
+-    onHangupRequested: params.onHangupRequested,
+-  });
++  const consultController = sharedTalk
++    ? undefined
++    : createFaceTimeConsultController({
++        config: params.config,
++        fullConfig: params.fullConfig,
++        runtime: params.runtime,
++        logger: params.logger,
++        consultAgentId,
++        consultSessionKey,
++        requesterSessionKey,
++        normalizedCallUUID,
++        senderId: params.senderId,
++        senderIsOwner: params.senderIsOwner,
++        transcript,
++        getBridge: () => bridge,
++        getGeneration: () => modelMediaGeneration,
++        isUnavailable: () => stopped || mediaSuspended,
++        ensureTurn,
++        remember,
++        suspendMedia,
++        reportFailure,
++        close,
++        onHangupRequested: params.onHangupRequested,
++      });
+   consultRef.current = consultController;
+ 
+   remember({ type: "session.started", payload: { callUUID: params.callUUID } });
+@@ -419,51 +431,15 @@ export async function startFaceTimeTalkDriver(params: {
+         readinessTimer.unref?.();
+       });
+       const prepareAndConnect = async () => {
+-        const providerResolution = resolveFaceTimeRealtimeProvider({
+-          config: params.config,
+-          fullConfig: params.fullConfig,
+-          agentId: consultAgentId,
+-        });
+-        const bootstrapContextResolution = resolveRealtimeBootstrapContextInstructions({
+-          config: params.fullConfig,
+-          agentId: consultAgentId,
+-          sessionKey: requesterSessionKey,
+-          warn: (message) =>
+-            params.logger.warn?.(`[facetime] realtime bootstrap context: ${message}`),
+-        }).catch((error: unknown) => {
+-          params.logger.warn?.(
+-            `[facetime] realtime bootstrap context unavailable: ${formatErrorMessage(error)}`,
+-          );
+-          return undefined;
+-        });
+-        const [resolved, bootstrapContext] = await Promise.all([
+-          providerResolution,
+-          bootstrapContextResolution,
+-        ]);
+-        if (params.signal?.aborted || stopped || mediaSuspended) {
+-          throw new Error("FaceTime talk startup aborted");
+-        }
+-        bridge = createRealtimeVoiceBridgeSession({
+-          provider: resolved.provider,
+-          capabilities: resolved.capabilities,
+-          cfg: params.fullConfig,
+-          agentId: consultAgentId,
+-          providerConfig: resolved.providerConfig,
++        const sessionCallbacks: Omit<
++          RealtimeVoiceBridgeSessionParams,
++          "provider" | "providerConfig"
++        > = {
+           audioFormat: REALTIME_VOICE_AUDIO_FORMAT_PCM16_24KHZ,
+-          // Configured voice/personality instructions remain customizable, but the
+-          // authoritative-agent boundary must not disappear when they are replaced.
+-          instructions: buildRealtimeInstructions({
+-            instructions: params.config.realtime.instructions,
+-            bootstrapContext,
+-            toolPolicy: params.config.realtime.toolPolicy,
+-          }),
+           autoRespondToAudio: true,
+           triggerGreetingOnReady: false,
+           initialGreetingInstructions: initialGreeting.instructions,
+           markStrategy: "ack-immediately",
+-          tools: resolveRealtimeVoiceAgentConsultTools(params.config.realtime.toolPolicy, [
+-            FACETIME_END_CALL_TOOL,
+-          ]),
+           audioSink: {
+             isOpen: () => !stopped && !mediaSuspended,
+             sendAudio(audio, metadata) {
+@@ -567,7 +543,6 @@ export async function startFaceTimeTalkDriver(params: {
+           onResponseDone(outcome) {
+             finishResponseOutcome(outcome, true);
+           },
+-          onToolCall: consultController.handleToolCall,
+           onReady() {
+             if (!stopped && !mediaSuspended) {
+               remember({ type: "session.ready", payload: { callUUID: params.callUUID } });
+@@ -604,7 +579,65 @@ export async function startFaceTimeTalkDriver(params: {
+               }
+             })();
+           },
+-        });
++        };
++        if (sharedTalk) {
++          const prepared = await params.runtime.realtimeVoice.createSession({
++            ...sessionCallbacks,
++            callId: params.callUUID,
++            sessionKey: requesterSessionKey,
++            owner: { handle: params.senderId, assertCurrent: params.assertOwnerCurrent! },
++            signal: params.signal ?? new AbortController().signal,
++            onHangupRequested: params.onHangupRequested,
++            onReady: () => sessionCallbacks.onReady?.(bridge!),
++          });
++          if (params.signal?.aborted || stopped || mediaSuspended) {
++            await prepared.close({ disposition: "detach" });
++            throw new Error("FaceTime talk startup aborted");
++          }
++          bridge = prepared;
++        } else {
++          const providerResolution = resolveFaceTimeRealtimeProvider({
++            config: params.config,
++            fullConfig: params.fullConfig,
++            agentId: consultAgentId,
++          });
++          const bootstrapContextResolution = resolveRealtimeBootstrapContextInstructions({
++            config: params.fullConfig,
++            agentId: consultAgentId,
++            sessionKey: requesterSessionKey,
++            warn: (message) =>
++              params.logger.warn?.(`[facetime] realtime bootstrap context: ${message}`),
++          }).catch((error: unknown) => {
++            params.logger.warn?.(
++              `[facetime] realtime bootstrap context unavailable: ${formatErrorMessage(error)}`,
++            );
++            return undefined;
++          });
++          const [resolved, bootstrapContext] = await Promise.all([
++            providerResolution,
++            bootstrapContextResolution,
++          ]);
++          if (params.signal?.aborted || stopped || mediaSuspended) {
++            throw new Error("FaceTime talk startup aborted");
++          }
++          bridge = createRealtimeVoiceBridgeSession({
++            ...sessionCallbacks,
++            provider: resolved.provider,
++            capabilities: resolved.capabilities,
++            cfg: params.fullConfig,
++            agentId: consultAgentId,
++            providerConfig: resolved.providerConfig,
++            instructions: buildRealtimeInstructions({
++              instructions: params.config.realtime.instructions,
++              bootstrapContext,
++              toolPolicy: params.config.realtime.toolPolicy,
++            }),
++            tools: resolveRealtimeVoiceAgentConsultTools(params.config.realtime.toolPolicy, [
++              FACETIME_END_CALL_TOOL,
++            ]),
++            onToolCall: consultController!.handleToolCall,
++          });
++        }
+         await bridge.connect();
+       };
+       try {
+diff --git a/extensions/facetime/tests/config.test.ts b/extensions/facetime/tests/config.test.ts
+index 4d4e4bc4..bc80abaa 100644
+--- a/extensions/facetime/tests/config.test.ts
++++ b/extensions/facetime/tests/config.test.ts
+@@ -2,6 +2,20 @@ import { describe, expect, it } from "vitest";
+ import { resolveFaceTimeConfig, validateFaceTimeConfig } from "../src/config.js";
+ 
+ describe("facetime config", () => {
++  it("selects shared Talk behavior without independent voice or policy settings", () => {
++    expect(resolveFaceTimeConfig({ realtime: { mode: "talk" } }).realtime.mode).toBe("talk");
++    expect(resolveFaceTimeConfig({}).realtime.mode).toBe("standalone");
++    expect(() => resolveFaceTimeConfig({ realtime: { mode: "invalid" } })).toThrow("realtime.mode");
++  });
++
++  it.each(["provider", "model", "voice", "instructions", "providers", "toolPolicy"])(
++    "rejects a separate %s override in Talk mode",
++    (key) =>
++      expect(() =>
++        resolveFaceTimeConfig({ realtime: { mode: "talk", [key]: "override" } }),
++      ).toThrow("owned by Talk"),
++  );
++
+   it("defaults omitted policy to owner without exposing a helper endpoint", () => {
+     const config = resolveFaceTimeConfig({ ownerHandles: ["mailto:omar@example.com"] });
+ 
+diff --git a/extensions/facetime/tests/talk-driver.shared-talk.test.ts b/extensions/facetime/tests/talk-driver.shared-talk.test.ts
+new file mode 100644
+index 00000000..c431f0d7
+--- /dev/null
++++ b/extensions/facetime/tests/talk-driver.shared-talk.test.ts
+@@ -0,0 +1,85 @@
++import type { RealtimeVoiceCarrierSessionParams } from "openclaw/plugin-sdk/realtime-voice";
++import { beforeEach, describe, expect, it, vi } from "vitest";
++import {
++  mocks,
++  resetTalkDriverMocks,
++  sharedTalkParams,
++  startTalkDriver,
++} from "./talk-driver.test-support.js";
++
++describe("FaceTime shared Talk mode", () => {
++  beforeEach(resetTalkDriverMocks);
++
++  it("uses the host session without the standalone provider, prompts, or consult controller", async () => {
++    let request!: RealtimeVoiceCarrierSessionParams;
++    const createSession = vi.fn(async (params: RealtimeVoiceCarrierSessionParams) => {
++      request = params;
++      return mocks.bridge;
++    });
++    mocks.bridge.connect.mockImplementation(async () => request.onReady?.());
++    const assertCurrent = vi.fn();
++    const driver = await startTalkDriver(
++      sharedTalkParams({
++        runtime: { realtimeVoice: { createSession } },
++        assertOwnerCurrent: assertCurrent,
++      }),
++    );
++    await driver.readyForAudio();
++    expect(createSession).toHaveBeenCalledOnce();
++    expect(request).toMatchObject({
++      callId: "call-1",
++      sessionKey: "agent:main:main",
++      owner: { handle: "caller@example.com", assertCurrent },
++    });
++    expect(request).not.toHaveProperty("providerConfig");
++    expect(request).not.toHaveProperty("tools");
++    expect(request).not.toHaveProperty("instructions");
++    expect(mocks.resolveProvider).not.toHaveBeenCalled();
++    expect(mocks.resolveBootstrapContext).not.toHaveBeenCalled();
++    expect(mocks.createSession).not.toHaveBeenCalled();
++    expect(mocks.consult).not.toHaveBeenCalled();
++    driver.activate();
++    const audio = Buffer.from([1, 2]);
++    mocks.pumpParams?.onInputAudio(audio);
++    expect(mocks.bridge.sendAudio).toHaveBeenCalledWith(audio);
++    await driver.close();
++    expect(mocks.bridge.close).toHaveBeenCalledOnce();
++    // The host owns detach semantics; no standalone cancellation is dispatched.
++    expect(mocks.consult).not.toHaveBeenCalled();
++    request.audioSink.sendAudio(audio);
++    expect(mocks.pump.writeOutputAudio).not.toHaveBeenCalled();
++  });
++
++  it("fails before capture when the host or live owner capability is unavailable", async () => {
++    await expect(startTalkDriver(sharedTalkParams({}))).rejects.toThrow(
++      "host session support and current caller authority",
++    );
++    expect(mocks.pumpParams).toBeUndefined();
++  });
++
++  it("closes a host session that finishes creation after carrier cancellation", async () => {
++    let finish!: (value: typeof mocks.bridge) => void;
++    const creating = new Promise<typeof mocks.bridge>((resolve) => {
++      finish = resolve;
++    });
++    const createSession = vi.fn(() => creating);
++    const controller = new AbortController();
++    const driver = await startTalkDriver(
++      sharedTalkParams({
++        runtime: { realtimeVoice: { createSession } },
++        assertOwnerCurrent: vi.fn(),
++        signal: controller.signal,
++      }),
++    );
++    const ready = driver.readyForAudio();
++    const rejected = expect(ready).rejects.toThrow("aborted");
++    controller.abort();
++    await rejected;
++    finish(mocks.bridge);
++    await vi.waitFor(() =>
++      expect(mocks.bridge.close).toHaveBeenCalledWith({ disposition: "detach" }),
++    );
++    expect(mocks.bridge.connect).not.toHaveBeenCalled();
++    await driver.close();
++  });
++});
+diff --git a/extensions/facetime/tests/talk-driver.test-support.ts b/extensions/facetime/tests/talk-driver.test-support.ts
+index 3044bfc7..dd788d99 100644
+--- a/extensions/facetime/tests/talk-driver.test-support.ts
++++ b/extensions/facetime/tests/talk-driver.test-support.ts
+@@ -204,4 +204,18 @@ export function resetTalkDriverMocks() {
+   });
+ }
+ 
++export function sharedTalkParams(overrides: Record<string, unknown> = {}) {
++  return startParams({
++    config: resolveFaceTimeConfig({
++      ownerHandles: ["caller@example.com"],
++      realtime: { mode: "talk" },
++    }),
++    ...overrides,
++  });
++}
++
++export function startTalkDriver(params = startParams()) {
++  return startFaceTimeTalkDriver(params);
++}
++
+ export { mocks };
+diff --git a/extensions/openai/realtime-quicksilver-gateway-bridge.ts b/extensions/openai/realtime-quicksilver-gateway-bridge.ts
+index 83534c10..1799e0eb 100644
+--- a/extensions/openai/realtime-quicksilver-gateway-bridge.ts
++++ b/extensions/openai/realtime-quicksilver-gateway-bridge.ts
+@@ -283,6 +283,7 @@ export class OpenAIQuicksilverGatewayBridge implements RealtimeVoiceBridge {
+         hostControlsInput: true,
+         instructions: this.config.instructions,
+         voice: this.config.voice,
++        initialItems: this.config.initialItems,
+       }),
+     );
+     await waitForOpenAIQuicksilverConnectStep(readyPromise, connectSignal);
+@@ -349,6 +350,7 @@ export class OpenAIQuicksilverGatewayBridge implements RealtimeVoiceBridge {
+             hostControlsInput: Boolean(this.config.handleDelegationInput),
+             instructions: this.config.instructions,
+             voice: this.config.voice,
++            initialItems: this.config.initialItems,
+           }),
+           signal: connectSignal,
+           fetchImpl: this.config.fetchImpl,
+diff --git a/extensions/openai/realtime-quicksilver-gateway-direct.test.ts b/extensions/openai/realtime-quicksilver-gateway-direct.test.ts
+index 233f3f82..2429b24c 100644
+--- a/extensions/openai/realtime-quicksilver-gateway-direct.test.ts
++++ b/extensions/openai/realtime-quicksilver-gateway-direct.test.ts
+@@ -379,6 +379,7 @@ describe("GPT-Live Gateway direct transport", () => {
+         model: "gpt-live-test-canary",
+         voice: "marin",
+         instructions: "Speak briefly.",
++        initialItems: [{ role: "user", text: "Remember our shared conversation" }],
+         audioFormat: { encoding: "pcm16", sampleRateHz: 24_000, channels: 1 },
+         onAudio,
+         onClearAudio: vi.fn(),
+@@ -418,6 +419,9 @@ describe("GPT-Live Gateway direct transport", () => {
+       expect(JSON.stringify(parseSent(connectedSocket)[0])).toContain(
+         "Wait for the host control result",
+       );
++      expect(JSON.stringify(parseSent(connectedSocket)[0])).toContain(
++        "Remember our shared conversation",
++      );
+       expect(onReady).not.toHaveBeenCalled();
+       expect(createPeer).not.toHaveBeenCalled();
+       expect(fetchImpl).not.toHaveBeenCalled();
+diff --git a/src/gateway/server-plugins.test.ts b/src/gateway/server-plugins.test.ts
+index 388447c1..c254586b 100644
+--- a/src/gateway/server-plugins.test.ts
++++ b/src/gateway/server-plugins.test.ts
+@@ -638,6 +638,42 @@ describe("loadGatewayPlugins", () => {
+     expect(getLastPluginLoadOption("preferBuiltPluginArtifacts")).toBe(true);
+   });
+ 
++  test("rejects untrusted carrier admission and retired Gateway runtime handles", async () => {
++    loadOpenClawPlugins.mockReturnValue(createRegistry([]));
++    const loaded = serverPluginsModule.loadGatewayPlugins({
++      loadIntent: "startup",
++      cfg: {},
++      autoEnabledReasons: {},
++      log: createTestLog(),
++      baseMethods: [],
++      resolveGatewayContext: () => resolveTestGatewayContext(),
++    });
++    const runtime = createRuntimeFromLastGatewayLoad();
++    const params = {
++      callId: "carrier-call",
++      owner: { handle: "owner@example.test", assertCurrent: vi.fn() },
++      signal: new AbortController().signal,
++      audioSink: { sendAudio: vi.fn() },
++    };
++    await expect(runtime.realtimeVoice.createSession(params)).rejects.toThrow(
++      "trusted official carrier",
++    );
++    await expect(
++      gatewayRequestScopeModule.withPluginRuntimePluginScope(
++        { pluginId: "unknown-carrier", pluginOrigin: "config" },
++        () => runtime.realtimeVoice.createSession(params),
++      ),
++    ).rejects.toThrow("trusted official carrier");
++    loaded.retireGatewayRuntimeBindings();
++    await expect(
++      gatewayRequestScopeModule.withPluginRuntimePluginScope(
++        { pluginId: "trusted-carrier", pluginOrigin: "bundled" },
++        () => runtime.realtimeVoice.createSession(params),
++      ),
++    ).rejects.toThrow("active Gateway runtime");
++    expect(params.owner.assertCurrent).not.toHaveBeenCalled();
++  });
++
+   test("binds channel reply dispatch to the owning Gateway context", async () => {
+     const terminalSessions = { listAgent: vi.fn(() => []) };
+     const context = {
+diff --git a/src/gateway/server-plugins.ts b/src/gateway/server-plugins.ts
+index 8c9ccc7b..a6499fa4 100644
+--- a/src/gateway/server-plugins.ts
++++ b/src/gateway/server-plugins.ts
+@@ -194,7 +194,7 @@ function createGatewayPluginRuntimeBindings(
+   resolveGatewayContext: GatewayContextResolver | undefined,
+   overridePolicies: PluginSubagentOverridePolicies,
+ ): {
+-  runtime: Pick<PluginRuntime, "gateway" | "hooks" | "nodes" | "subagent"> &
++  runtime: Pick<PluginRuntime, "gateway" | "hooks" | "nodes" | "subagent" | "realtimeVoice"> &
+     Pick<CreatePluginRuntimeOptions, "dispatchReplyFromConfig">;
+   retire: () => void;
+ } {
+@@ -228,6 +228,40 @@ function createGatewayPluginRuntimeBindings(
+           ? await withPluginRuntimeGatewayContextResolver(resolveBoundGatewayContext, run)
+           : await run();
+       },
++      realtimeVoice: {
++        createSession: async (params) => {
++          const scope = getPluginRuntimeGatewayRequestScope();
++          const pluginId = scope?.pluginId?.trim();
++          if (!pluginId || !canTrustedOfficialPluginRequestScopes(scope ?? {})) {
++            throw new Error(
++              "Realtime voice owner admission requires a bundled or trusted official carrier plugin.",
++            );
++          }
++          const context = getInProcessGatewayRequestContext(resolveBoundGatewayContext);
++          if (!context) {
++            throw new Error("Realtime voice carriers require an active Gateway runtime.");
++          }
++          const assertCarrierOwnerCurrent = params.owner.assertCurrent;
++          const { createTalkCarrierSession } = await import("./talk/carrier-session.js");
++          return await createTalkCarrierSession(
++            {
++              ...params,
++              signal: AbortSignal.any([params.signal, signal]),
++              owner: {
++                ...params.owner,
++                assertCurrent: () => {
++                  signal.throwIfAborted();
++                  if (getInProcessGatewayRequestContext(resolveBoundGatewayContext) !== context) {
++                    throw new Error("Realtime voice Gateway owner changed.");
++                  }
++                  assertCarrierOwnerCurrent();
++                },
++              },
++            },
++            { context, pluginId },
++          );
++        },
++      },
+       gateway: {
+         isAvailable: async () => hasInProcessGatewayContext(resolveBoundGatewayContext),
+         request: (method, params, options) =>
+diff --git a/src/gateway/talk/carrier-session.test.ts b/src/gateway/talk/carrier-session.test.ts
+new file mode 100644
+index 00000000..b52344b5
+--- /dev/null
++++ b/src/gateway/talk/carrier-session.test.ts
+@@ -0,0 +1,260 @@
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++import type { OpenClawConfig } from "../../config/types.openclaw.js";
++import type { RealtimeVoiceBridgeCreateRequest } from "../../talk/provider-types.js";
++import type { GatewayRequestContext } from "../server-methods/types.js";
++import { createTalkCarrierSession } from "./carrier-session.js";
++import { controlBridge, sessionTarget } from "./client-gateway-control.test-support.js";
++
++const mocks = vi.hoisted(() => ({
++  resolve: vi.fn(),
++  ensure: vi.fn(async () => "session-id"),
++  append: vi.fn(async () => {}),
++  flush: vi.fn(async () => {}),
++  logicalClose: vi.fn(async () => {}),
++  logicalCreate: vi.fn(),
++  createRunner: vi.fn(),
++  assertTarget: vi.fn(),
++  readHistory: vi.fn(async () => [{ role: "user" as const, text: "remember our plan" }]),
++  instructions: vi.fn(async () => "native instructions"),
++  config: vi.fn(),
++}));
++vi.mock("../../secrets/runtime-degraded-state.js", () => ({ assertSecretOwnerAvailable: vi.fn() }));
++vi.mock("../../talk/provider-resolver.js", () => ({
++  resolveConfiguredRealtimeVoiceProvider: mocks.resolve,
++}));
++vi.mock("../../talk/client-voice-session.js", () => ({
++  appendClientVoiceTranscript: mocks.append,
++  closeClientVoiceSession: mocks.logicalClose,
++  createOrResumeClientVoiceSession: mocks.logicalCreate,
++  ensureClientVoiceAgentSessionEntry: mocks.ensure,
++  flushClientVoiceSessionWrites: mocks.flush,
++}));
++vi.mock("./client-agent-consult.js", () => ({
++  createTalkClientAgentConsultRunner: mocks.createRunner,
++}));
++vi.mock("./session-target.js", () => ({
++  prepareTalkSessionTarget: () => ({
++    agentId: "main",
++    sessionKey: "main",
++    canonicalKey: "agent:main:main",
++    storePath: "/tmp/sessions",
++  }),
++  assertTalkSessionStorageTarget: mocks.assertTarget,
++}));
++vi.mock("./session-history.js", () => ({ readTalkRealtimeInitialItems: mocks.readHistory }));
++vi.mock("./session-config.js", () => ({
++  buildTalkRealtimeConfig: mocks.config,
++  buildRealtimeVoiceLaunchOptions: ({ defaults }: { defaults: unknown }) => defaults,
++  resolveTalkRealtimeGatewayRelayLaunch: ({ providerConfig }: { providerConfig: unknown }) => ({
++    providerConfig,
++  }),
++  resolveTalkRealtimeProviderInstructions: mocks.instructions,
++  buildRealtimeInstructions: (instructions: string) => instructions,
++}));
++
++function fixture() {
++  const config: OpenClawConfig = { talk: { consultThinkingLevel: "high" } };
++  const call = new AbortController();
++  const assertCurrent = vi.fn();
++  let request: RealtimeVoiceBridgeCreateRequest | undefined;
++  const media = controlBridge();
++  media.connect.mockImplementation(async () => {
++    request?.onReady?.();
++  });
++  media.close.mockImplementation(() => {
++    request?.onTranscript?.("assistant", "final spoken words", true);
++  });
++  mocks.resolve.mockReturnValue({
++    provider: {
++      id: "test-provider",
++      createBridge: (params: RealtimeVoiceBridgeCreateRequest) => {
++        request = params;
++        return media;
++      },
++    },
++    providerConfig: { model: "inherited-model", voice: "inherited-voice" },
++    capabilities: { handlesAgentConsult: true },
++  });
++  const run = Object.assign(
++    vi.fn(async () => ({ text: "done" })),
++    {
++      adoptCompletionClaims: vi.fn(),
++      claimAppend: vi.fn(() => true),
++      claimFailureAppend: vi.fn(() => true),
++      revokeRequesterFinal: vi.fn(),
++      steer: vi.fn(async () => ({ text: "steered" })),
++    },
++  );
++  mocks.createRunner.mockReturnValue({
++    runArgs: run,
++    runOwnedArgs: run,
++    getToolAuthorityOverlay: vi.fn(),
++  });
++  const context = {
++    getRuntimeConfig: () => config,
++    chatAbortControllers: new Map(),
++    logGateway: { warn: vi.fn() },
++    broadcastToConnIds: vi.fn(),
++  } as unknown as GatewayRequestContext;
++  const params = {
++    callId: "real-carrier-call",
++    sessionKey: "main",
++    owner: { handle: "owner@example.test", assertCurrent },
++    signal: call.signal,
++    audioSink: { sendAudio: vi.fn() },
++  };
++  return { context, params, call, media, run, request: () => request!, config, assertCurrent };
++}
++const sessions: Awaited<ReturnType<typeof createTalkCarrierSession>>[] = [];
++afterEach(async () => {
++  await Promise.allSettled(sessions.splice(0).map((session) => session.close()));
++});
++beforeEach(() => {
++  vi.clearAllMocks();
++  mocks.config.mockReturnValue({ provider: "test-provider", model: "inherited-model" });
++  mocks.ensure.mockImplementation(async () => "session-id");
++  mocks.instructions.mockResolvedValue("native instructions");
++});
++
++describe("host-owned Talk carrier", () => {
++  it("inherits native configuration, canonical history, and full runner ownership", async () => {
++    const f = fixture();
++    const session = await createTalkCarrierSession(f.params, {
++      context: f.context,
++      pluginId: "test-carrier",
++    });
++    sessions.push(session);
++    expect(session.sessionKey).toBe(sessionTarget.canonicalKey);
++    expect(mocks.resolve).toHaveBeenCalledWith(
++      expect.objectContaining({ cfg: f.config, surface: "gateway-relay" }),
++    );
++    expect(f.request()).toMatchObject({
++      instructions: "native instructions",
++      initialItems: [{ role: "user", text: "remember our plan" }],
++      tools: [],
++    });
++    expect(mocks.createRunner).toHaveBeenCalledWith(
++      expect.objectContaining({
++        config: f.config,
++        authority: { senderIsOwner: true },
++        initialItems: [{ role: "user", text: "remember our plan" }],
++      }),
++    );
++    await session.connect();
++    const runner = f.request().runAgentConsult!;
++    expect(runner.steer).toBeTypeOf("function");
++    runner.adoptCompletionClaims?.();
++    await expect(runner({ prompt: "real task" })).resolves.toEqual({ text: "done" });
++    expect(f.run).toHaveBeenCalled();
++    expect(f.context.broadcastToConnIds).not.toHaveBeenCalled();
++  });
++
++  it("hangup detaches accepted work and flushes the provider's final transcript", async () => {
++    const f = fixture();
++    let complete!: (result: { text: string }) => void;
++    let admitted!: () => void;
++    const admission = new Promise<void>((resolve) => {
++      admitted = resolve;
++    });
++    let acceptedSignal: AbortSignal | undefined;
++    f.run.mockImplementation(async (_args?: unknown, signal?: AbortSignal) => {
++      acceptedSignal = signal;
++      admitted();
++      return await new Promise<{ text: string }>((resolve) => {
++        complete = resolve;
++      });
++    });
++    const session = await createTalkCarrierSession(f.params, {
++      context: f.context,
++      pluginId: "test-carrier",
++    });
++    sessions.push(session);
++    await session.connect();
++    const runner = f.request().runAgentConsult!;
++    const result = runner({ prompt: "continue after hangup" });
++    await admission;
++    await session.close();
++    expect(f.media.close).toHaveBeenCalledWith({ disposition: "detach" });
++    expect(acceptedSignal?.aborted).toBe(false);
++    expect(mocks.append).toHaveBeenCalledWith(
++      expect.objectContaining({ sessionKey: "agent:main:main", text: "final spoken words" }),
++    );
++    expect(mocks.flush).toHaveBeenCalled();
++    await expect(runner({ prompt: "late request" })).rejects.toThrow("closed");
++    complete({ text: "finished in chat" });
++    await expect(result).resolves.toEqual({ text: "finished in chat" });
++  });
++
++  it("handles spoken hangup once without consulting or cancelling accepted work", async () => {
++    const f = fixture();
++    const requestHangup = vi.fn();
++    const session = await createTalkCarrierSession(
++      { ...f.params, onHangupRequested: requestHangup },
++      { context: f.context, pluginId: "test-carrier" },
++    );
++    sessions.push(session);
++    await session.connect();
++    expect(await f.request().handleDelegationInput?.("please hang up", vi.fn())).toBe("control");
++    f.request().onTranscript?.("user", "please hang up", true);
++    expect(requestHangup).toHaveBeenCalledOnce();
++    expect(f.run).not.toHaveBeenCalled();
++    expect(f.media.close).not.toHaveBeenCalled();
++    await expect(f.request().runAgentConsult!({ prompt: "new work" })).rejects.toThrow("ending");
++    await session.close();
++    expect(f.media.close).toHaveBeenCalledWith({ disposition: "detach" });
++  });
++
++  it("releases carrier listeners on provider termination even when its callback throws", async () => {
++    const f = fixture();
++    const remove = vi.spyOn(f.call.signal, "removeEventListener");
++    const session = await createTalkCarrierSession(
++      {
++        ...f.params,
++        onClose: () => {
++          throw new Error("carrier callback failed");
++        },
++      },
++      { context: f.context, pluginId: "test-carrier" },
++    );
++    sessions.push(session);
++    await session.connect();
++    f.request().onTranscript?.("assistant", "provider final transcript", true);
++    expect(() => f.request().onClose?.("completed")).toThrow("carrier callback failed");
++    await vi.waitFor(() => expect(remove).toHaveBeenCalledWith("abort", expect.any(Function)));
++    expect(mocks.logicalClose).toHaveBeenCalledOnce();
++    expect(mocks.append).toHaveBeenCalledWith(
++      expect.objectContaining({ text: "provider final transcript" }),
++    );
++  });
++
++  it("rechecks carrier authority after awaited preparation and at the persistent commit", async () => {
++    const f = fixture();
++    mocks.instructions.mockImplementationOnce(async () => {
++      f.call.abort();
++      return "native instructions";
++    });
++    await expect(
++      createTalkCarrierSession(f.params, { context: f.context, pluginId: "test-carrier" }),
++    ).rejects.toThrow();
++    expect(mocks.logicalCreate).not.toHaveBeenCalled();
++    expect(f.media.connect).not.toHaveBeenCalled();
++
++    const next = fixture();
++    const session = await createTalkCarrierSession(next.params, {
++      context: next.context,
++      pluginId: "test-carrier",
++    });
++    sessions.push(session);
++    mocks.ensure.mockImplementationOnce(async (params?: { assertCommitAllowed?: () => void }) => {
++      next.assertCurrent.mockImplementation(() => {
++        throw new Error("owner removed");
++      });
++      params?.assertCommitAllowed?.();
++      return "session-id";
++    });
++    await expect(session.connect()).rejects.toThrow("owner removed");
++    expect(mocks.logicalCreate).not.toHaveBeenCalled();
++    expect(next.media.connect).not.toHaveBeenCalled();
++    expect(next.media.close).toHaveBeenCalled();
++  });
++});
+diff --git a/src/gateway/talk/carrier-session.ts b/src/gateway/talk/carrier-session.ts
+new file mode 100644
+index 00000000..3f16efc6
+--- /dev/null
++++ b/src/gateway/talk/carrier-session.ts
+@@ -0,0 +1,310 @@
++import { randomUUID } from "node:crypto";
++import { assertSecretOwnerAvailable } from "../../secrets/runtime-degraded-state.js";
++import { REALTIME_VOICE_AGENT_CONSULT_TOOL } from "../../talk/agent-consult-tool.js";
++import { REALTIME_VOICE_AGENT_CONTROL_TOOL } from "../../talk/agent-run-control-shared.js";
++import { createRealtimeVoiceCarrierCallControl } from "../../talk/carrier-call-control.js";
++import type {
++  RealtimeVoiceCarrierSession,
++  RealtimeVoiceCarrierSessionParams,
++} from "../../talk/carrier-session.types.js";
++import {
++  appendClientVoiceTranscript,
++  closeClientVoiceSession,
++  createOrResumeClientVoiceSession,
++  ensureClientVoiceAgentSessionEntry,
++  flushClientVoiceSessionWrites,
++} from "../../talk/client-voice-session.js";
++import { resolveConfiguredRealtimeVoiceProvider } from "../../talk/provider-resolver.js";
++import {
++  createRealtimeVoiceBridgeSession,
++  type RealtimeVoiceBridgeSession,
++} from "../../talk/session-runtime.js";
++import type { GatewayRequestContext } from "../server-methods/types.js";
++import { createTalkClientAgentConsultRunner } from "./client-agent-consult.js";
++import { createTalkClientGatewayControlOwner } from "./client-gateway-control.js";
++import {
++  buildRealtimeInstructions,
++  buildRealtimeVoiceLaunchOptions,
++  buildTalkRealtimeConfig,
++  resolveTalkRealtimeGatewayRelayLaunch,
++  resolveTalkRealtimeProviderInstructions,
++} from "./session-config.js";
++import { readTalkRealtimeInitialItems } from "./session-history.js";
++import { cleanupTalkConnection } from "./session-registry.js";
++import { assertTalkSessionStorageTarget, prepareTalkSessionTarget } from "./session-target.js";
++
++/** Media carriers reuse the native Talk owners, configuration, history, and admission policy. */
++export async function createTalkCarrierSession(
++  params: RealtimeVoiceCarrierSessionParams,
++  host: { context: GatewayRequestContext; pluginId: string },
++): Promise<RealtimeVoiceCarrierSession> {
++  if (!params.callId.trim() || !params.owner.handle.trim()) {
++    throw new Error("Realtime voice requires a call identity and authenticated owner handle.");
++  }
++  const config = host.context.getRuntimeConfig();
++  const target = prepareTalkSessionTarget(config, params.sessionKey);
++  let callControl: ReturnType<typeof createRealtimeVoiceCarrierCallControl> | undefined;
++  const assertCurrent = () => {
++    if (callControl?.hangupRequested) {
++      throw new Error("Realtime voice call is ending");
++    }
++    params.signal.throwIfAborted();
++    params.owner.assertCurrent();
++    assertTalkSessionStorageTarget(host.context.getRuntimeConfig(), target);
++  };
++  callControl = createRealtimeVoiceCarrierCallControl({
++    assertCurrent,
++    requestHangup: params.onHangupRequested,
++    onError: (error) => {
++      host.context.logGateway.warn(`talk carrier hangup failed: ${String(error)}`);
++      params.onError?.(error);
++    },
++  });
++  assertCurrent();
++  assertSecretOwnerAvailable("capability", "talk:realtime");
++  const defaults = buildTalkRealtimeConfig(config);
++  if (
++    (defaults.mode && defaults.mode !== "realtime") ||
++    (defaults.brain && defaults.brain !== "agent-consult")
++  ) {
++    throw new Error(
++      "Realtime voice carriers require the native realtime agent-consult Talk configuration.",
++    );
++  }
++  const launchOptions = buildRealtimeVoiceLaunchOptions({ requested: {}, defaults });
++  const resolution = resolveConfiguredRealtimeVoiceProvider({
++    cfg: config,
++    agentId: target.agentId,
++    configuredProviderId: defaults.provider,
++    providerConfigs: defaults.providers,
++    ...(launchOptions.model ? { providerConfigOverrides: { model: launchOptions.model } } : {}),
++    defaultModel: defaults.model,
++    surface: "gateway-relay",
++  });
++  const launch = resolveTalkRealtimeGatewayRelayLaunch({
++    provider: resolution.provider,
++    providerConfig: resolution.providerConfig,
++    cfg: config,
++    launchOptions,
++    consultRouting: defaults.consultRouting,
++  });
++  if (launch.error || launch.forceAgentConsultOnFinalTranscript) {
++    throw new Error(
++      launch.error ?? "Forced transcript consultation is not supported by this carrier.",
++    );
++  }
++  const providerInstructions = await resolveTalkRealtimeProviderInstructions({
++    config,
++    agentId: target.agentId,
++    configuredInstructions: defaults.instructions,
++    sessionKey: target.canonicalKey,
++    warn: (message) => host.context.logGateway.warn(`talk realtime context: ${message}`),
++  });
++  assertCurrent();
++  const initialItems = await readTalkRealtimeInitialItems(target, assertCurrent);
++  assertCurrent();
++  const voiceSessionId = randomUUID();
++  // This is a real carrier capability owner, not a fabricated WebSocket/client identity.
++  // Native run ownership currently calls its opaque media owner field `connId`.
++  const ownerId = `carrier:${host.pluginId}:${randomUUID()}`;
++  const sessionTarget = {
++    agentId: target.agentId,
++    sessionKey: target.canonicalKey,
++    storePath: target.storePath,
++  };
++  let logicalSessionCreated = false;
++  const consult = createTalkClientAgentConsultRunner({
++    config,
++    context: host.context,
++    sessionTarget: target,
++    ownerConnId: ownerId,
++    authority: { senderIsOwner: true },
++    getVoiceSessionId: () => voiceSessionId,
++    initialItems,
++  });
++  const controlSource = resolution.capabilities?.handlesAgentConsult ? "delegation" : "transcript";
++  const owner = createTalkClientGatewayControlOwner({
++    voiceSessionId,
++    providerId: resolution.provider.id,
++    supportsToolCalls: resolution.capabilities?.supportsToolCalls,
++    controlSource,
++    sessionTarget: target,
++    connId: ownerId,
++    transport: "gateway-relay",
++    // Carrier media has no browser event recipient. It receives provider events below.
++    onTalkEvent: () => {},
++    context: host.context,
++    assertConnectionOpen: assertCurrent,
++    runToolAgentConsult: consult.runArgs,
++    runAgentConsult: consult.runOwnedArgs,
++    getToolAuthorityOverlay: (source) => consult.getToolAuthorityOverlay(undefined, source),
++    appendTranscript: ({ entryId, role, text, confirmation }) =>
++      appendClientVoiceTranscript({
++        agentId: target.agentId,
++        sessionKey: target.canonicalKey,
++        sessionTarget,
++        voiceSessionId,
++        entryId,
++        role,
++        text,
++        confirmation,
++        config,
++      }),
++    flushTranscript: () =>
++      flushClientVoiceSessionWrites({ agentId: target.agentId, voiceSessionId }),
++    closeLogicalSession: async () => {
++      if (logicalSessionCreated) {
++        await closeClientVoiceSession({
++          agentId: target.agentId,
++          sessionKey: target.canonicalKey,
++          voiceSessionId,
++          config,
++        });
++      }
++    },
++  });
++  let requestedDisposition: "abort" | "detach" = "detach";
++  let bridge: RealtimeVoiceBridgeSession;
++  try {
++    bridge = createRealtimeVoiceBridgeSession({
++      cfg: config,
++      agentId: target.agentId,
++      provider: resolution.provider,
++      providerConfig: launch.providerConfig,
++      capabilities: resolution.capabilities,
++      audioFormat: params.audioFormat,
++      audioSink: params.audioSink,
++      initialItems,
++      instructions:
++        controlSource === "delegation"
++          ? providerInstructions
++          : buildRealtimeInstructions(providerInstructions),
++      tools:
++        controlSource === "delegation"
++          ? []
++          : [REALTIME_VOICE_AGENT_CONSULT_TOOL, REALTIME_VOICE_AGENT_CONTROL_TOOL],
++      runAgentConsult: owner.runAgentConsult,
++      handleDelegationInput: (text, respond) => {
++        if (callControl!.handleInput(text) || callControl!.hangupRequested) {
++          return "control";
++        }
++        assertCurrent();
++        return owner.control.handleDelegationInput?.(text, respond) ?? "consult";
++      },
++      triggerGreetingOnReady: false,
++      onReady: () => {
++        owner.control.onReady?.();
++        params.onReady?.();
++      },
++      onTranscript: (role, text, done) => {
++        owner.control.onTranscript?.(role, text, done);
++        params.onTranscript?.(role, text, done);
++        if (role === "user" && done) {
++          callControl!.handleInput(text);
++        }
++      },
++      onEvent: (event) => {
++        owner.control.onEvent?.(event);
++        params.onEvent?.(event);
++      },
++      onResponseDone: (outcome) => {
++        owner.control.onResponseDone?.(outcome);
++        params.onResponseDone?.(outcome);
++      },
++      onToolCall: (event) => owner.control.onToolCall?.(event),
++      onError: (error) => {
++        owner.control.onError?.(error);
++        params.onError?.(error);
++      },
++      onClose: (reason) => {
++        owner.control.onClose?.(reason);
++        try {
++          params.onClose?.(reason);
++        } finally {
++          void Promise.resolve()
++            .then(() => close())
++            .catch((error: unknown) =>
++              host.context.logGateway.warn(`talk carrier cleanup failed: ${String(error)}`),
++            );
++        }
++      },
++    });
++  } catch (error) {
++    await owner.close();
++    cleanupTalkConnection(ownerId, host.context.logGateway);
++    throw error;
++  }
++  owner.control.bindControl({
++    sendUserMessage: (text) => bridge.sendUserMessage(text),
++    submitToolResult: (callId, result, options) => bridge.submitToolResult(callId, result, options),
++  });
++  let connectPromise: Promise<void> | undefined;
++  let closePromise: Promise<void> | undefined;
++  const close: RealtimeVoiceCarrierSession["close"] = (options) => {
++    if (!closePromise) {
++      requestedDisposition = options?.disposition ?? "detach";
++      params.signal.removeEventListener("abort", onAbort);
++      closePromise = owner
++        .close()
++        .finally(() => cleanupTalkConnection(ownerId, host.context.logGateway));
++    }
++    return closePromise;
++  };
++  const onAbort = () => {
++    void Promise.resolve(close()).catch((error: unknown) =>
++      host.context.logGateway.warn(`talk carrier cleanup failed: ${String(error)}`),
++    );
++  };
++  params.signal.addEventListener("abort", onAbort, { once: true });
++  try {
++    await owner.adoptProvider(async () => {
++      await bridge.close({ disposition: requestedDisposition });
++    });
++    assertCurrent();
++  } catch (error) {
++    await close();
++    throw error;
++  }
++  return {
++    ...bridge,
++    sessionKey: target.canonicalKey,
++    voiceSessionId,
++    providerId: resolution.provider.id,
++    close,
++    connect: () => {
++      connectPromise ??= (async () => {
++        try {
++          assertCurrent();
++          owner.assertOpen();
++          await ensureClientVoiceAgentSessionEntry({
++            ...sessionTarget,
++            creation: { actor: { type: "human", source: "channel", id: params.owner.handle } },
++            assertCommitAllowed: () => {
++              assertCurrent();
++              owner.assertOpen();
++            },
++          });
++          assertCurrent();
++          owner.assertOpen();
++          createOrResumeClientVoiceSession({
++            agentId: target.agentId,
++            sessionKey: target.canonicalKey,
++            provider: resolution.provider.id,
++            origin: "client",
++            transcriptCapable: true,
++            voiceSessionId,
++          });
++          logicalSessionCreated = true;
++          owner.activate();
++          await bridge.connect();
++          assertCurrent();
++          owner.assertOpen();
++        } catch (error) {
++          await close();
++          throw error;
++        }
++      })();
++      return connectPromise;
++    },
++  };
++}
+diff --git a/src/gateway/talk/client-gateway-control.ts b/src/gateway/talk/client-gateway-control.ts
+index 99bc105e..6a92353f 100644
+--- a/src/gateway/talk/client-gateway-control.ts
++++ b/src/gateway/talk/client-gateway-control.ts
+@@ -23,7 +23,7 @@ import {
+   createRealtimeVoiceSessionHarness,
+   handleRealtimeVoiceHarnessBridgeEvent,
+ } from "../../talk/realtime-session-harness.js";
+-import type { TalkEvent } from "../../talk/talk-events.js";
++import type { TalkTransport, TalkEvent } from "../../talk/talk-events.js";
+ import { ADMIN_SCOPE, WRITE_SCOPE } from "../operator-scopes.js";
+ import { resolveChatSendCallerContext } from "../server-methods/gateway-client-identity.js";
+ import type { GatewayRequestContext } from "../server-methods/shared-types.js";
+@@ -83,7 +83,10 @@ export function createTalkClientGatewayControlOwner(params: {
+   supportsToolCalls?: boolean;
+   controlSource?: "delegation" | "transcript";
+   sessionTarget: PreparedTalkSessionTarget;
++  /** Opaque media owner identity; carrier owners need no synthetic Gateway client. */
+   connId: string;
++  transport?: TalkTransport;
++  onTalkEvent?: (event: TalkEvent) => void;
+   context: Pick<
+     GatewayRequestContext,
+     "broadcastToConnIds" | "logGateway" | "chatAbortControllers"
+@@ -126,7 +129,7 @@ export function createTalkClientGatewayControlOwner(params: {
+     talk: {
+       sessionId: params.voiceSessionId,
+       mode: "realtime",
+-      transport: "webrtc",
++      transport: params.transport ?? "webrtc",
+       brain: "agent-consult",
+       provider: params.providerId,
+     },
+@@ -139,12 +142,14 @@ export function createTalkClientGatewayControlOwner(params: {
+       outputAudioDone: (reason) => ({ ...talkPayload(), reason }),
+     },
+     onTalkEvent: (talkEvent: TalkEvent) =>
+-      params.context.broadcastToConnIds(
+-        "talk.event",
+-        { voiceSessionId: params.voiceSessionId, talkEvent },
+-        new Set([params.connId]),
+-        { dropIfSlow: talkEvent.final !== true },
+-      ),
++      params.onTalkEvent
++        ? params.onTalkEvent(talkEvent)
++        : params.context.broadcastToConnIds(
++            "talk.event",
++            { voiceSessionId: params.voiceSessionId, talkEvent },
++            new Set([params.connId]),
++            { dropIfSlow: talkEvent.final !== true },
++          ),
+     captureBridgeEvents: false,
+   });
+ 
+diff --git a/src/plugin-sdk/realtime-voice.ts b/src/plugin-sdk/realtime-voice.ts
+index a5bca06d..bcbfac3b 100644
+--- a/src/plugin-sdk/realtime-voice.ts
++++ b/src/plugin-sdk/realtime-voice.ts
+@@ -1,3 +1,7 @@
++export type {
++  RealtimeVoiceCarrierSession,
++  RealtimeVoiceCarrierSessionParams,
++} from "../talk/carrier-session.types.js";
+ /** Production-private runtime seam for bundled and separately published official plugins. */
+ export {
+   registerRealtimeVoiceSelection,
+diff --git a/src/plugin-sdk/test-helpers/plugin-runtime-mock.ts b/src/plugin-sdk/test-helpers/plugin-runtime-mock.ts
+index 69499afd..6497817e 100644
+--- a/src/plugin-sdk/test-helpers/plugin-runtime-mock.ts
++++ b/src/plugin-sdk/test-helpers/plugin-runtime-mock.ts
+@@ -481,6 +481,11 @@ export function createPluginRuntimeMock(overrides: PluginRuntimeMockOverrides =
+   const base: PluginRuntime = {
+     version: "1.0.0-test",
+     ...createPluginModelRuntimeMock({ provider: DEFAULT_PROVIDER, model: DEFAULT_MODEL }),
++    realtimeVoice: {
++      createSession: vi.fn<PluginRuntime["realtimeVoice"]["createSession"]>(async () => {
++        throw new Error("Mock realtime voice carrier requires an explicit session fixture.");
++      }),
++    },
+     gateway: {
+       isAvailable: vi.fn(async () => false),
+       request: vi.fn(),
+diff --git a/src/plugins/loader-load-context.ts b/src/plugins/loader-load-context.ts
+index 0e841414..bafbda12 100644
+--- a/src/plugins/loader-load-context.ts
++++ b/src/plugins/loader-load-context.ts
+@@ -391,6 +391,7 @@ export function resolvePluginLoadCacheContext(options: PluginLoadOptions = {}) {
+       modelAuth: resolveRuntimeBindingCacheId(options.runtimeOptions?.modelAuth),
+       modelConfig: resolveRuntimeBindingCacheId(options.runtimeOptions?.modelConfig),
+       nodes: resolveRuntimeBindingCacheId(options.runtimeOptions?.nodes),
++      realtimeVoice: resolveRuntimeBindingCacheId(options.runtimeOptions?.realtimeVoice),
+       subagent: resolveRuntimeBindingCacheId(options.runtimeOptions?.subagent),
+       // Root publication becomes the next donor; only caller-owned handles track donor changes.
+       borrowedGatewayRuntime: shouldActivate
+diff --git a/src/plugins/loader-module-runtime.ts b/src/plugins/loader-module-runtime.ts
+index eb4a86a9..a7bf2239 100644
+--- a/src/plugins/loader-module-runtime.ts
++++ b/src/plugins/loader-module-runtime.ts
+@@ -60,6 +60,7 @@ const LAZY_RUNTIME_PROPERTIES = {
+   webSearch: true,
+   tasks: true,
+   modelConfig: true,
++  realtimeVoice: true,
+ } satisfies Record<keyof PluginRuntime, true>;
+ 
+ export function runPluginRegisterSyncInRegistry(
+@@ -250,6 +251,7 @@ export function createLazyPluginRuntime(params: {
+     if (!resolvedRuntime) {
+       if (
+         prop === "gateway" ||
++        prop === "realtimeVoice" ||
+         prop === "hooks" ||
+         prop === "nodes" ||
+         prop === "subagent" ||
+diff --git a/src/plugins/loader-runtime-core.ts b/src/plugins/loader-runtime-core.ts
+index 811e249f..11064422 100644
+--- a/src/plugins/loader-runtime-core.ts
++++ b/src/plugins/loader-runtime-core.ts
+@@ -85,6 +85,12 @@ function createDeferredGatewaySubagentRuntime(runtime: PluginRuntime): PluginRun
+   return subagent;
+ }
+ 
++function createDeferredGatewayRealtimeVoiceRuntime(
++  runtime: PluginRuntime,
++): PluginRuntime["realtimeVoice"] {
++  return { createSession: (...args) => runtime.realtimeVoice.createSession(...args) };
++}
++
+ function createDeferredGatewayNodesRuntime(runtime: PluginRuntime): PluginRuntime["nodes"] {
+   return {
+     list: (...args) => runtime.nodes.list(...args),
+@@ -188,6 +194,11 @@ export function loadOpenClawPluginsCore(
+                 },
+                 subagent: options.runtimeOptions?.subagent ?? borrowedSubagent,
+                 nodes: options.runtimeOptions?.nodes ?? borrowedNodes,
++                realtimeVoice:
++                  options.runtimeOptions?.realtimeVoice ??
++                  (context.borrowedGatewayRuntime
++                    ? createDeferredGatewayRealtimeVoiceRuntime(context.borrowedGatewayRuntime)
++                    : undefined),
+               },
+             });
+     const capabilityCatalogContext =
+diff --git a/src/plugins/loader.runtime-metadata.test.ts b/src/plugins/loader.runtime-metadata.test.ts
+index f3366055..b93d7709 100644
+--- a/src/plugins/loader.runtime-metadata.test.ts
++++ b/src/plugins/loader.runtime-metadata.test.ts
+@@ -12,6 +12,7 @@ afterEach(() => vi.restoreAllMocks());
+ 
+ it("keeps version and injected instance surfaces independent of the broad runtime module", () => {
+   const gateway = {} as PluginRuntime["gateway"];
++  const realtimeVoice = {} as PluginRuntime["realtimeVoice"];
+   const hooks = {
+     dispatchHookAgentTurn: vi.fn<PluginRuntime["hooks"]["dispatchHookAgentTurn"]>(),
+   };
+@@ -25,7 +26,7 @@ it("keeps version and injected instance surfaces independent of the broad runtim
+       throw new Error("broad runtime should stay lazy");
+     });
+   const runtime = createLazyPluginRuntime({
+-    runtimeOptions: { gateway, hooks, nodes, subagent },
++    runtimeOptions: { gateway, hooks, nodes, subagent, realtimeVoice },
+   });
+   expect(getGatewayContextResolver(runtime)).toBe(resolveGatewayContext);
+ 
+@@ -59,6 +60,7 @@ it("keeps version and injected instance surfaces independent of the broad runtim
+     "webSearch",
+     "tasks",
+     "modelConfig",
++    "realtimeVoice",
+   ]);
+   expect(Reflect.ownKeys(runtime)).toEqual(Reflect.ownKeys(descriptors));
+   for (const key of Object.keys(descriptors)) {
+@@ -67,6 +69,7 @@ it("keeps version and injected instance surfaces independent of the broad runtim
+   }
+   for (const [key, instance] of [
+     ["gateway", gateway],
++    ["realtimeVoice", realtimeVoice],
+     ["hooks", hooks],
+     ["nodes", nodes],
+     ["subagent", subagent],
+diff --git a/src/plugins/registry-runtime.ts b/src/plugins/registry-runtime.ts
+index 26205a8b..13cb8087 100644
+--- a/src/plugins/registry-runtime.ts
++++ b/src/plugins/registry-runtime.ts
+@@ -243,6 +243,26 @@ export function createPluginRuntimeResolver(state: PluginRegistryState) {
+             return addPluginRuntimeResolutionContext({ error, record, prop });
+           }
+         };
++        if (prop === "realtimeVoice") {
++          const voice: PluginRuntime["realtimeVoice"] = getRuntimeProperty();
++          return {
++            createSession: (params) => {
++              const assertCarrierOwnerCurrent = params.owner.assertCurrent;
++              return runWithPluginScope(() =>
++                voice.createSession({
++                  ...params,
++                  owner: {
++                    ...params.owner,
++                    assertCurrent: () => {
++                      assertRuntimeCurrent();
++                      assertCarrierOwnerCurrent();
++                    },
++                  },
++                }),
++              );
++            },
++          } satisfies PluginRuntime["realtimeVoice"];
++        }
+         if (prop === "state") {
+           const baseState = getRuntimeProperty();
+           return {
+diff --git a/src/plugins/registry.runtime-config.test.ts b/src/plugins/registry.runtime-config.test.ts
+index 1c0b23dc..f6985f9d 100644
+--- a/src/plugins/registry.runtime-config.test.ts
++++ b/src/plugins/registry.runtime-config.test.ts
+@@ -500,6 +500,50 @@ describe("plugin registry runtime config scope", () => {
+     },
+   );
+ 
++  it("retains carrier plugin identity and revokes held owner admission after retirement", async () => {
++    const runtime = createPluginRuntime();
++    let createScope = getPluginRuntimeGatewayRequestScope();
++    let ownerAdmission: (() => void) | undefined;
++    runtime.realtimeVoice = {
++      createSession: vi.fn(async (params) => {
++        createScope = getPluginRuntimeGatewayRequestScope();
++        ownerAdmission = params.owner.assertCurrent;
++        params.owner.assertCurrent();
++        throw new Error("fixture observed carrier admission");
++      }),
++    };
++    const registry = createRuntimeTestRegistry(runtime);
++    const record = createPluginRecord({
++      id: "test-carrier",
++      source: "/plugins/test-carrier/index.js",
++      origin: "bundled",
++      enabled: true,
++      configSchema: false,
++    });
++    const api = registry.createApi(record, { config: {} });
++    const assertOwnerCurrent = vi.fn();
++    const create = api.runtime.realtimeVoice.createSession;
++    const request = {
++      callId: "call-1",
++      owner: { handle: "owner@example.test", assertCurrent: assertOwnerCurrent },
++      signal: new AbortController().signal,
++      audioSink: { sendAudio: vi.fn() },
++    };
++    await expect(create(request)).rejects.toThrow("fixture observed carrier admission");
++    expect(createScope).toMatchObject({ pluginId: "test-carrier", pluginOrigin: "bundled" });
++    expect(assertOwnerCurrent).toHaveBeenCalledOnce();
++    expect(ownerAdmission).toBeTypeOf("function");
++    const replacementAdmission = vi.fn();
++    request.owner.assertCurrent = replacementAdmission;
++    ownerAdmission!();
++    expect(assertOwnerCurrent).toHaveBeenCalledTimes(2);
++    expect(replacementAdmission).not.toHaveBeenCalled();
++    revokePluginRecord(registry.registry, record);
++    expect(() => ownerAdmission!()).toThrow("runtime is no longer active");
++    expect(() => create(request)).toThrow("runtime is no longer active");
++    expect(runtime.realtimeVoice.createSession).toHaveBeenCalledOnce();
++  });
++
+   it("runs gateway requests with the owning plugin scope", async () => {
+     let requestScope = getPluginRuntimeGatewayRequestScope();
+     const runtime = createPluginRuntime();
+diff --git a/src/plugins/runtime/index.ts b/src/plugins/runtime/index.ts
+index 530f1575..a2335d0f 100644
+--- a/src/plugins/runtime/index.ts
++++ b/src/plugins/runtime/index.ts
+@@ -215,6 +215,11 @@ export const createPluginRuntime: PluginRuntimeFactory = (
+         (await import("../../decisions/runtime.js")).evaluateDecision(...args),
+     },
+     gateway: _options.gateway ?? createRuntimeGateway(),
++    realtimeVoice: _options.realtimeVoice ?? {
++      createSession: async () => {
++        throw new Error("Realtime voice carriers require an active Gateway runtime.");
++      },
++    },
+     config: base.config,
+     agent,
+     hooks: _options.hooks ?? {
+diff --git a/src/plugins/runtime/types.ts b/src/plugins/runtime/types.ts
+index 61c3fce3..a4b13c3c 100644
+--- a/src/plugins/runtime/types.ts
++++ b/src/plugins/runtime/types.ts
+@@ -134,6 +134,11 @@ export type RuntimeGatewayRequestOptions = {
+ 
+ /** Trusted in-process runtime surface injected into native plugins. */
+ export type PluginRuntime = PluginRuntimeCore & {
++  realtimeVoice: {
++    createSession: (
++      params: import("../../talk/carrier-session.types.js").RealtimeVoiceCarrierSessionParams,
++    ) => Promise<import("../../talk/carrier-session.types.js").RealtimeVoiceCarrierSession>;
++  };
+   gateway: {
+     /** Whether this process owns an active Gateway request context. */
+     isAvailable: () => Promise<boolean>;
+@@ -218,6 +223,7 @@ export type PluginRuntime = PluginRuntimeCore & {
+ export type CreatePluginRuntimeOptions = {
+   dispatchReplyFromConfig?: PluginRuntime["channel"]["reply"]["dispatchReplyFromConfig"];
+   gateway?: PluginRuntime["gateway"];
++  realtimeVoice?: PluginRuntime["realtimeVoice"];
+   hooks?: PluginRuntime["hooks"];
+   subagent?: PluginRuntime["subagent"];
+   nodes?: PluginRuntime["nodes"];
+diff --git a/src/talk/carrier-call-control.test.ts b/src/talk/carrier-call-control.test.ts
+new file mode 100644
+index 00000000..36c5a32d
+--- /dev/null
++++ b/src/talk/carrier-call-control.test.ts
+@@ -0,0 +1,63 @@
++import { describe, expect, it, vi } from "vitest";
++import { createRealtimeVoiceCarrierCallControl } from "./carrier-call-control.js";
++
++describe("carrier call control", () => {
++  it.each(["Hang up.", "please end this call", "disconnect the call please!", "hang up please"])(
++    "requests deliberate hangup once for %s",
++    (text) => {
++      const requestHangup = vi.fn();
++      const assertCurrent = vi.fn();
++      const control = createRealtimeVoiceCarrierCallControl({
++        requestHangup,
++        assertCurrent,
++        onError: vi.fn(),
++      });
++      expect(control.handleInput(text)).toBe(true);
++      expect(control.handleInput(text)).toBe(true);
++      expect(control.hangupRequested).toBe(true);
++      expect(assertCurrent).toHaveBeenCalledOnce();
++      expect(requestHangup).toHaveBeenCalledOnce();
++    },
++  );
++  it.each([
++    "don't hang up",
++    'Say "hang up"',
++    "can you explain hang up",
++    "hang up when the task is done",
++    "cancel that task",
++    "end the task",
++    "hang up?",
++    "",
++  ])("does not interpret %s as a call command", (text) => {
++    const requestHangup = vi.fn();
++    const control = createRealtimeVoiceCarrierCallControl({
++      requestHangup,
++      assertCurrent: vi.fn(),
++      onError: vi.fn(),
++    });
++    expect(control.handleInput(text)).toBe(false);
++    expect(requestHangup).not.toHaveBeenCalled();
++  });
++  it("rechecks authority and reports native failure without automatic retries", async () => {
++    const onError = vi.fn();
++    const error = new Error("carrier closure pending");
++    const requestHangup = vi.fn(async () => {
++      throw error;
++    });
++    const assertCurrent = vi.fn(() => {
++      throw new Error("owner retired");
++    });
++    const control = createRealtimeVoiceCarrierCallControl({
++      requestHangup,
++      assertCurrent,
++      onError,
++    });
++    expect(() => control.handleInput("hang up")).toThrow("owner retired");
++    expect(requestHangup).not.toHaveBeenCalled();
++    assertCurrent.mockImplementation(() => {});
++    expect(control.handleInput("hang up")).toBe(true);
++    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith(error));
++    expect(control.handleInput("hang up")).toBe(true);
++    expect(requestHangup).toHaveBeenCalledOnce();
++  });
++});
+diff --git a/src/talk/carrier-call-control.ts b/src/talk/carrier-call-control.ts
+new file mode 100644
+index 00000000..99381448
+--- /dev/null
++++ b/src/talk/carrier-call-control.ts
+@@ -0,0 +1,37 @@
++/** Deliberate current-call commands, separate from agent task cancellation. */
++export function createRealtimeVoiceCarrierCallControl(params: {
++  assertCurrent: () => void;
++  requestHangup?: () => void | Promise<void>;
++  onError: (error: Error) => void;
++}) {
++  let requested = false;
++  return {
++    get hangupRequested() {
++      return requested;
++    },
++    handleInput(text: string): boolean {
++      if (
++        !params.requestHangup ||
++        !/^(?:please\s+)?(?:hang\s+up|(?:end|disconnect)\s+(?:this|the)\s+call)(?:\s+please)?[.!]?$/i.test(
++          text.trim(),
++        )
++      ) {
++        return false;
++      }
++      if (requested) {
++        return true;
++      }
++      params.assertCurrent();
++      requested = true;
++      // Claim synchronously before any reentrant transcript or delegation callback.
++      try {
++        void Promise.resolve(params.requestHangup()).catch((error: unknown) => {
++          params.onError(error instanceof Error ? error : new Error(String(error)));
++        });
++      } catch (error) {
++        params.onError(error instanceof Error ? error : new Error(String(error)));
++      }
++      return true;
++    },
++  };
++}
+diff --git a/src/talk/carrier-session.types.ts b/src/talk/carrier-session.types.ts
+new file mode 100644
+index 00000000..1b9b3653
+--- /dev/null
++++ b/src/talk/carrier-session.types.ts
+@@ -0,0 +1,30 @@
++import type { RealtimeVoiceAudioFormat, RealtimeVoiceBridgeCallbacks } from "./provider-types.js";
++import type { RealtimeVoiceAudioSink, RealtimeVoiceBridgeSession } from "./session-runtime.js";
++
++/** Host-owned Talk conversation with a trusted carrier providing only media and owner admission. */
++export type RealtimeVoiceCarrierSessionParams = {
++  callId: string;
++  sessionKey?: string;
++  owner: {
++    handle: string;
++    /** Recheck the same live call and authenticated allowlisted owner before admission. */
++    assertCurrent: () => void;
++  };
++  signal: AbortSignal;
++  audioFormat?: RealtimeVoiceAudioFormat;
++  audioSink: RealtimeVoiceAudioSink;
++  onReady?: () => void;
++  onTranscript?: RealtimeVoiceBridgeCallbacks["onTranscript"];
++  onEvent?: RealtimeVoiceBridgeCallbacks["onEvent"];
++  onResponseDone?: RealtimeVoiceBridgeCallbacks["onResponseDone"];
++  onError?: RealtimeVoiceBridgeCallbacks["onError"];
++  onClose?: RealtimeVoiceBridgeCallbacks["onClose"];
++  onHangupRequested?: () => void | Promise<void>;
++};
++
++export type RealtimeVoiceCarrierSession = RealtimeVoiceBridgeSession & {
++  /** Canonical shared chat/voice session, never a per-call fork. */
++  readonly sessionKey: string;
++  readonly voiceSessionId: string;
++  readonly providerId: string;
++};
+diff --git a/src/talk/provider-types.ts b/src/talk/provider-types.ts
+index e94eaaa1..aedf5579 100644
+--- a/src/talk/provider-types.ts
++++ b/src/talk/provider-types.ts
+@@ -242,12 +242,21 @@ export type RealtimeVoiceProviderConfiguredContext = {
+   providerConfig: RealtimeVoiceProviderConfig;
+ };
+ 
+-export type RealtimeVoiceAgentConsultRunner = (params: {
++export type RealtimeVoiceAgentConsultRunner = ((params: {
+   prompt: string;
+   signal?: AbortSignal;
+-}) => Promise<{ text: string }>;
++}) => Promise<{ text: string }>) & {
++  /** Native delegation ownership must survive transport adapters. */
++  adoptCompletionClaims?: () => void;
++  claimAppend?: () => boolean;
++  claimFailureAppend?: () => boolean;
++  revokeRequesterFinal?: () => void;
++  steer?: RealtimeVoiceAgentConsultRunner;
++};
+ 
+ export type RealtimeVoiceBridgeCreateRequest = RealtimeVoiceBridgeCallbacks & {
++  /** Quoted shared conversation context supplied by the host. */
++  initialItems?: Array<{ role: "user" | "assistant"; text: string }>;
+   cfg?: OpenClawConfig;
+   /** Host-selected agent scope for provider auth and agent-owned bridge state. */
+   agentId?: string;
+diff --git a/src/talk/session-runtime.test.ts b/src/talk/session-runtime.test.ts
+index 7cd2d751..58aaa817 100644
+--- a/src/talk/session-runtime.test.ts
++++ b/src/talk/session-runtime.test.ts
+@@ -18,6 +18,72 @@ function expectBridgeRequest(
+ }
+ 
+ describe("realtime voice bridge session runtime", () => {
++  it("preserves steering and completion ownership across the bridge boundary", async () => {
++    let request: Parameters<RealtimeVoiceProviderPlugin["createBridge"]>[0] | undefined;
++    const methods = {
++      steer: vi.fn(async () => ({ text: "Updated" })),
++      adoptCompletionClaims: vi.fn(),
++      claimAppend: vi.fn(() => true),
++      claimFailureAppend: vi.fn(() => true),
++      revokeRequesterFinal: vi.fn(),
++    };
++    const runner = Object.assign(
++      vi.fn(async () => ({ text: "Done" })),
++      methods,
++    );
++    const session = createRealtimeVoiceBridgeSession({
++      provider: makeVoiceProvider((params) => {
++        request = params;
++        return makeBridge();
++      }),
++      providerConfig: {},
++      audioSink: { sendAudio: vi.fn() },
++      runAgentConsult: runner,
++    });
++    const forwarded = expectBridgeRequest(request).runAgentConsult as typeof runner;
++    forwarded.adoptCompletionClaims();
++    expect(methods.adoptCompletionClaims).toHaveBeenCalledOnce();
++    await expect(forwarded.steer({ prompt: "Use tomorrow" })).resolves.toEqual({ text: "Updated" });
++    expect(methods.steer).toHaveBeenCalledWith({ prompt: "Use tomorrow" });
++    await session.close({ disposition: "detach" });
++    // Accepted work still owns transcript completion after its audio carrier ends.
++    expect(forwarded.claimAppend()).toBe(true);
++    expect(forwarded.claimFailureAppend()).toBe(true);
++    forwarded.revokeRequesterFinal();
++    expect(methods.revokeRequesterFinal).toHaveBeenCalledOnce();
++    await expect(forwarded.steer({ prompt: "New correction" })).rejects.toThrow(
++      "session is closed",
++    );
++    expect(methods.steer).toHaveBeenCalledOnce();
++  });
++
++  it("fences completion claims after abort and steering before cancelled admission", async () => {
++    let request: Parameters<RealtimeVoiceProviderPlugin["createBridge"]>[0] | undefined;
++    const steer = vi.fn(async () => ({ text: "Updated" }));
++    const claimAppend = vi.fn(() => true);
++    const runner = Object.assign(
++      vi.fn(async () => ({ text: "Done" })),
++      { steer, claimAppend },
++    );
++    const session = createRealtimeVoiceBridgeSession({
++      provider: makeVoiceProvider((params) => {
++        request = params;
++        return makeBridge();
++      }),
++      providerConfig: {},
++      audioSink: { sendAudio: vi.fn() },
++      runAgentConsult: runner,
++    });
++    const forwarded = expectBridgeRequest(request).runAgentConsult as typeof runner;
++    await expect(
++      forwarded.steer({ prompt: "Old correction", signal: AbortSignal.abort() }),
++    ).rejects.toThrow();
++    expect(steer).not.toHaveBeenCalled();
++    await session.close();
++    expect(forwarded.claimAppend()).toBe(false);
++    expect(claimAppend).not.toHaveBeenCalled();
++  });
++
+   it.each(["abort", "detach", "cancelled-detach"] as const)(
+     "settles accepted native delegation after %s while rejecting new work",
+     async (ending) => {
+diff --git a/src/talk/session-runtime.ts b/src/talk/session-runtime.ts
+index e75cb00c..25b391d5 100644
+--- a/src/talk/session-runtime.ts
++++ b/src/talk/session-runtime.ts
+@@ -65,6 +65,7 @@ export type RealtimeVoiceBridgeSession = {
+  * Provider bridge inputs plus transport callbacks for one realtime voice session.
+  */
+ export type RealtimeVoiceBridgeSessionParams = {
++  initialItems?: Array<{ role: "user" | "assistant"; text: string }>;
+   provider: RealtimeVoiceProviderPlugin;
+   capabilities?: InternalRealtimeVoiceProviderCapabilities;
+   cfg?: OpenClawConfig;
+@@ -242,7 +243,58 @@ export function createRealtimeVoiceBridgeSession(
+       // An error callback is the terminal boundary for provider callback failures.
+     }
+   };
++  const wrapConsult = (
++    runner: RealtimeVoiceAgentConsultRunner,
++  ): RealtimeVoiceAgentConsultRunner => {
++    const wrapped: RealtimeVoiceAgentConsultRunner = async (request) => {
++      if (!isAdmitting()) {
++        throw new Error("Realtime voice session is closed");
++      }
++      request.signal?.throwIfAborted();
++      const result = await runner(request);
++      request.signal?.throwIfAborted();
++      if (!isAdmitting() && !detached) {
++        throw new Error("Realtime voice session is closed");
++      }
++      return result;
++    };
++    if (runner.adoptCompletionClaims) {
++      wrapped.adoptCompletionClaims = () => {
++        if (isAdmitting()) {
++          runner.adoptCompletionClaims!();
++        }
++      };
++    }
++    if (runner.claimAppend) {
++      wrapped.claimAppend = () => (isAdmitting() || detached) && runner.claimAppend!();
++    }
++    if (runner.claimFailureAppend) {
++      wrapped.claimFailureAppend = () =>
++        (isAdmitting() || detached) && runner.claimFailureAppend!();
++    }
++    // Revocation releases ownership and must remain available during teardown.
++    if (runner.revokeRequesterFinal) {
++      wrapped.revokeRequesterFinal = () => runner.revokeRequesterFinal!();
++    }
++    if (runner.steer) {
++      const steer = runner.steer;
++      wrapped.steer = async (request) => {
++        if (!isAdmitting()) {
++          throw new Error("Realtime voice session is closed");
++        }
++        request.signal?.throwIfAborted();
++        const result = await steer(request);
++        request.signal?.throwIfAborted();
++        if (!isAdmitting() && !detached) {
++          throw new Error("Realtime voice session is closed");
++        }
++        return result;
++      };
++    }
++    return wrapped;
++  };
+   const bridge = params.provider.createBridge({
++    initialItems: params.initialItems,
+     cfg: params.cfg,
+     agentId: params.agentId,
+     providerConfig: params.providerConfig,
+@@ -252,23 +304,7 @@ export function createRealtimeVoiceBridgeSession(
+     autoRespondToAudio: params.autoRespondToAudio,
+     interruptResponseOnInputAudio: params.interruptResponseOnInputAudio,
+     tools: params.tools,
+-    ...(runAgentConsult
+-      ? {
+-          runAgentConsult: async (request) => {
+-            if (!isAdmitting()) {
+-              throw new Error("Realtime voice session is closed");
+-            }
+-            request.signal?.throwIfAborted();
+-            const result = await runAgentConsult(request);
+-            request.signal?.throwIfAborted();
+-            // Replacement retires the transport, not work admitted before the handoff.
+-            if (!isAdmitting() && !detached) {
+-              throw new Error("Realtime voice session is closed");
+-            }
+-            return result;
+-          },
+-        }
+-      : {}),
++    ...(runAgentConsult ? { runAgentConsult: wrapConsult(runAgentConsult) } : {}),
+     onAudio: (audio, metadata) => {
+       if (canSendAudio()) {
+         params.audioSink.sendAudio(audio, metadata);
