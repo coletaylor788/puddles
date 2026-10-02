@@ -150,10 +150,10 @@ index 7e641842..9539c9d0 100644
  
      api.registerService({
 diff --git a/extensions/facetime/openclaw.plugin.json b/extensions/facetime/openclaw.plugin.json
-index d1682970..8d47ebf4 100644
+index d1682970..e9d51ae1 100644
 --- a/extensions/facetime/openclaw.plugin.json
 +++ b/extensions/facetime/openclaw.plugin.json
-@@ -28,6 +28,7 @@
+@@ -28,14 +28,14 @@
          "type": "object",
          "additionalProperties": false,
          "properties": {
@@ -161,7 +161,16 @@ index d1682970..8d47ebf4 100644
            "provider": { "type": "string" },
            "model": { "type": "string" },
            "voice": { "type": "string" },
-@@ -55,6 +56,7 @@
+           "sessionKey": { "type": "string", "default": "main" },
+           "toolPolicy": {
+             "type": "string",
+-            "enum": ["safe-read-only", "owner", "none"],
+-            "default": "owner"
++            "enum": ["safe-read-only", "owner", "none"]
+           },
+           "instructions": { "type": "string", "maxLength": 4000 },
+           "providers": {
+@@ -55,6 +55,7 @@
        "label": "Owner FaceTime Handles",
        "help": "Only these handles may place or receive bridged calls. Every listed handle receives authenticated owner privileges."
      },
@@ -631,13 +640,34 @@ index 68e5129a..9ee6565d 100644
              const handle = normalizeOptionalString(raw.handle);
              if (!handle) {
 diff --git a/extensions/facetime/tests/config.test.ts b/extensions/facetime/tests/config.test.ts
-index 4d4e4bc4..045861ca 100644
+index 4d4e4bc4..1b2c051c 100644
 --- a/extensions/facetime/tests/config.test.ts
 +++ b/extensions/facetime/tests/config.test.ts
-@@ -2,6 +2,31 @@ import { describe, expect, it } from "vitest";
+@@ -2,6 +2,52 @@ import { describe, expect, it } from "vitest";
  import { resolveFaceTimeConfig, validateFaceTimeConfig } from "../src/config.js";
  
  describe("facetime config", () => {
++  it.each(["talk", "standalone"])(
++    "accepts %s after host schema defaults and repeated normalization",
++    (mode) => {
++      const { configSchema } = JSON.parse(
++        readFileSync(new URL("../openclaw.plugin.json", import.meta.url), "utf8"),
++      );
++      const result = validateJsonSchemaValue({
++        schema: configSchema,
++        value: {
++          ownerHandles: ["owner@example.com"],
++          realtime: { mode },
++        },
++        applyDefaults: true,
++      });
++      expect(result.ok).toBe(true);
++      if (!result.ok) throw new Error("invalid fixture");
++      const config = resolveFaceTimeConfig(result.value);
++      expect(resolveFaceTimeConfig(config)).toEqual(config);
++      expect(config.realtime.toolPolicy).toBe(mode === "talk" ? undefined : "owner");
++    },
++  );
 +  it("selects shared Talk behavior without independent voice or policy settings", () => {
 +    expect(resolveFaceTimeConfig({ realtime: { mode: "talk" } }).realtime.mode).toBe("talk");
 +    expect(resolveFaceTimeConfig({}).realtime.mode).toBe("standalone");
@@ -666,6 +696,12 @@ index 4d4e4bc4..045861ca 100644
    it("defaults omitted policy to owner without exposing a helper endpoint", () => {
      const config = resolveFaceTimeConfig({ ownerHandles: ["mailto:omar@example.com"] });
  
+@@ -40,3 +86,5 @@ describe("facetime config", () => {
+     ).toThrow("must not exceed 4000 characters");
+   });
+ });
++import { readFileSync } from "node:fs";
++import { validateJsonSchemaValue } from "openclaw/plugin-sdk/json-schema-runtime";
 diff --git a/extensions/facetime/tests/runtime-admission.test.ts b/extensions/facetime/tests/runtime-admission.test.ts
 index 3a74d81e..fb7ff84d 100644
 --- a/extensions/facetime/tests/runtime-admission.test.ts
