@@ -59,7 +59,14 @@
     "src/infra/windows-process-start.test.ts": "infra",
     "src/config/sessions/session-declaration-portability.test.ts": "runtime-config",
     "extensions/imessage/src/monitor/inbound-processing.route.test.ts": "extension-imessage",
-    "src/channels/inbound-event/classification.test.ts": "unit-fast"
+    "src/channels/inbound-event/classification.test.ts": "unit-fast",
+    "src/gateway/talk/client-gateway-control.agent-consult.test.ts": "gateway-client",
+    "src/gateway/talk/client-gateway-control.close.test.ts": "gateway-client",
+    "src/gateway/talk/client-spoken-confirmation.test.ts": "gateway-client",
+    "src/agents/agent-tools.before-tool-call.integration.e2e.test.ts": "e2e",
+    "src/config/talk.normalize.test.ts": "runtime-config",
+    "src/config/zod-schema.talk.test.ts": "runtime-config",
+    "src/talk/client-voice-confirmation.test.ts": "unit-src"
   },
   "patches": [
     {
@@ -235,6 +242,18 @@
       ],
       "typechecks": [
         "test/tsconfig/tsconfig.core.test.declaration-portability.json"
+      ]
+    },
+    {
+      "name": "talk-agent-parity",
+      "tests": [
+        "src/gateway/talk/client-gateway-control.agent-consult.test.ts",
+        "src/gateway/talk/client-gateway-control.close.test.ts",
+        "src/gateway/talk/client-spoken-confirmation.test.ts",
+        "src/agents/agent-tools.before-tool-call.integration.e2e.test.ts",
+        "src/config/talk.normalize.test.ts",
+        "src/config/zod-schema.talk.test.ts",
+        "src/talk/client-voice-confirmation.test.ts"
       ]
     }
   ]

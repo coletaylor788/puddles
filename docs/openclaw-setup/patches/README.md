@@ -33,6 +33,7 @@ activated gateway. Keep the previous interpreter available for rollback.
 | `managed-local-service-lifecycle.patch` | Join gateway-owned service groups before stopped-state changes |
 | `gateway-memory-warmup.patch` | Prepare and retain managed local embeddings before readiness |
 | `gateway-protocol-declaration-portability.patch` | Regression tests for upstream protocol registry identity and types |
+| `talk-agent-parity.patch` | Optional text-equivalent Talk authorization and consultation work ownership |
 | `core-declaration-portability.patch` | Name portable core declaration exports for tools, sessions, databases, and plugin records |
 
 Each patch has a neighboring document explaining its behavior and history.

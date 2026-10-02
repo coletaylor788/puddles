@@ -147,7 +147,7 @@ describe("OpenClaw cumulative patch suite", () => {
     expect(manifest.testProjects["src/agents/subagents/spawn/subagent-spawn.test.ts"]).toBe("infra");
     expect(manifest.testProjects["src/config/dead-config-keys.test.ts"]).toBe("runtime-config");
     for (const test of suite.patches.flatMap((patch) => patch.tests)) {
-      expect(manifest.testProjects[test], test).toMatch(/^[a-z-]+$/);
+      expect(manifest.testProjects[test], test).toMatch(/^[a-z][a-z0-9-]*$/);
     }
     const runner = readFileSync(join(packageDir, "src/native-pipeline.mjs"), "utf8");
     expect(runner).toContain('"list", "--filesOnly"');
