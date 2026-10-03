@@ -63,6 +63,10 @@ export async function communicationFixture(installedDir, pluginDir, root, option
       const userMessage = request.messages.filter(m => m.role === 'user' && !JSON.stringify(m.content).includes('BEGIN_OPENCLAW_INTERNAL_CONTEXT')).at(-1);
       if (JSON.stringify(userMessage?.content).includes('Agent-to-agent announce step.')) {
         announcements++; text = 'ANNOUNCE_SKIP';
+      } else if (offered.includes('communication_calendar_acquire')) {
+        readerCalls++;
+        if (!last) tools = [call('communication_calendar_acquire', {})];
+        else { const data = parseResult(last); assert.equal(data.event.id, 'fixture-event'); text = 'Tentative dinner plan fixture-event exists.'; }
       } else if (offered.includes('communication_inbox_read')) {
         readerCalls++;
         if (!last) tools = [call('communication_inbox_read', cycle === 3 ? { mode: 'history' } : {})];
@@ -102,7 +106,7 @@ export async function communicationFixture(installedDir, pluginDir, root, option
           } else { assert.equal(parseResult(last).status, 'completed'); text = 'HEARTBEAT_OK'; }
         } else if (cycle === 2) {
           if (step === 3) { assert.match(parseResult(last).text, /Main received report/); tools = [call('communication_calendar_read', { id: 'fixture-event' })]; }
-          else if (step === 4) { assert.equal(parseResult(last).event.id, 'fixture-event'); tools = [call('communication_inbox_complete', { ticket: receipts[0].ticket })]; }
+          else if (step === 4) { assert.equal(parseResult(last).receipts[0].id, 'fixture-event'); tools = [call('communication_inbox_complete', { ticket: receipts[0].ticket })]; }
           else { assert.equal(parseResult(last).status, 'completed'); text = 'HEARTBEAT_OK'; }
         } else if (cycle === 4) {
           if (step === 3) {
@@ -274,9 +278,10 @@ export async function communicationFixture(installedDir, pluginDir, root, option
     assert.equal(calls.filter(c => c[0] === 'create').length, 1, 'recovery does not repeat calendar creation');
     assert.equal(mainCalls, 4, 'only the initial and recovered reports reach main');
     assert.equal(announcements, supportsDetachedReplies ? 2 : 0, 'native final announcement stays silent');
-    assert.equal(readerCalls, 10, 'one bounded reader job per heartbeat');
+    assert.equal(readerCalls, 12, 'bounded intake jobs and one separate calendar reader');
     const readerFiles = readdirSync(join(context.stateDir, 'agents/communication-reader/sessions')).filter(p => p.endsWith('.jsonl'));
     assert.deepEqual(readerFiles, [], 'reader transcripts are deleted');
+    assert.ok(!JSON.stringify(requests.filter(r => r.tools?.some(t => t.function?.name === 'communication_report'))).includes('CALENDAR_READER_ONLY'), 'full calendar content stays with the reader');
     const visible = JSON.stringify(requests);
     assert.ok(!visible.includes('SYNTHETIC_PRIVATE_VALUE') && !visible.includes('INJECT_FIXTURE'), 'raw source text must not reach any agent');
     const result = { passed: true, heartbeatCycles: cycle, mainCalls, readerCalls, followups, nativeProvenance: true, recoveryWithoutDuplicate: true, rawToolsDenied: true, ruleRefresh: true, pendingReportRecovery: true, oneReportPerHeartbeat: true, readOnlyMounts: options.docker === true, detachedRepliesValidated: supportsDetachedReplies };

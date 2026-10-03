@@ -35,16 +35,27 @@ it('paginates beyond closed notes and across restart without skipping an open se
   } while (after);
   expect(found).toEqual(expected);
 });
-it('fails closed on blocked notes, symlinks, and oversized content', async () => {
-  const path = note(1, true, 'INJECT');
-  await expect(pendingNotes(workspace, undefined, async () => { throw new Error('blocked'); })).rejects.toThrow('blocked');
-  writeFileSync(join(workspace, path), 'x'.repeat(16001));
-  await expect(pendingNotes(workspace, undefined, async s => s)).rejects.toMatchObject({ code: 'limit' });
-  rmSync(join(workspace, path)); symlinkSync('/etc/hosts', join(workspace, path));
-  await expect(pendingNotes(workspace, undefined, async s => s)).rejects.toMatchObject({ code: 'denied' });
+it('continues past blocked, oversized and linked files without exposing their content', async () => {
+  const blocked = note(1, true, 'INJECT');
+  const oversized = note(2, false, 'x'.repeat(16001));
+  const linked = note(3, true); rmSync(join(workspace, linked)); symlinkSync('/etc/hosts', join(workspace, linked));
+  const good = note(4, true);
+  const page = await pendingNotes(workspace, undefined, async text => { if (text.includes('INJECT')) throw new Error('INJECT provider error'); return text; });
+  expect(page.results.map(r => r.path)).toEqual([good]);
+  expect(page.failures).toEqual([{ path: blocked, status: 'unavailable' }, { path: oversized, status: 'limit' }, { path: linked, status: 'denied' }]);
+  expect(JSON.stringify(page)).not.toContain('INJECT');
+  expect(page.next).toBeNull();
+});
+it('returns a continuation when failures fill the page', async () => {
+  for (let i=1;i<=5;i++) note(i, false, 'x'.repeat(16001));
+  const good = note(6, true);
+  const first = await pendingNotes(workspace, undefined, async s => s);
+  expect(first.failures).toHaveLength(5); expect(first.next).not.toBeNull();
+  const next = await pendingNotes(workspace, first.next!, async s => s);
+  expect(next.results.map(r => r.path)).toEqual([good]); expect(next.next).toBeNull();
 });
 it('returns quiet empty and acknowledged-only pages', async () => {
-  expect(await pendingNotes(workspace, undefined, async s => s)).toEqual({ results: [], next: null });
+  expect(await pendingNotes(workspace, undefined, async s => s)).toEqual({ results: [], failures: [], next: null });
   note(1, false);
-  expect(await pendingNotes(workspace, undefined, async s => s)).toEqual({ results: [], next: null });
+  expect(await pendingNotes(workspace, undefined, async s => s)).toEqual({ results: [], failures: [], next: null });
 });

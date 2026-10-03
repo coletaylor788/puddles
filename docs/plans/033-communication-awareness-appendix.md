@@ -381,3 +381,14 @@ The local gateway fixture verifies heartbeat intake, scoped reader cleanup, guar
 Keep incomplete or uncertain reports in correspondence memory. A saved note or successful enqueue does not prove Cole received an alert. Main records receipt, its owner-facing alert reference, and the eventual decision/outcome. Subsequent heartbeats reconcile uncertain delivery without blindly repeating actions or alerts.
 
 The previously proposed fixed system-event notification and special main wake are withdrawn. Normal guarded OpenClaw handoffs remain the design. The watcher stays paused until installed mounts, instruction propagation, upgraded native replies, and the complete synthetic DEV flow are proven. The separate merge hold remains in force.
+
+
+## October 2 implementation revision
+
+Each heartbeat discovers pending correspondence before new intake. Notes carry a tool-maintained pending flag; discovery is deterministic and paginated. Rejected or oversized files return only their path and a categorical failure, allowing unrelated notes to proceed. The flag is not approval or a second intake ledger.
+
+A report combines up to five checked note references. One exclusive empty marker keyed by the native heartbeat session UUID limits it to one attempt, including failures, follow-ups and gateway restart. Unsent work remains in correspondence for a later heartbeat; main records acknowledgment before the watcher clears responsibility.
+
+Calendar provider content follows the same restricted-reader boundary as inbox content. The calendar reader receives one fixed query with no model-controlled scope. The watcher sees a checked summary and structural event IDs. Both reader types share serialized admission, transcript cleanup, and cleanup-failure recovery. Calendar writes continue to return only bounded action receipts.
+
+The earlier checklists and version-specific validation above are historical. Plan 033’s current status and validation section govern the resumed revision; release and real-phone validation remain separate from local draft evidence.

@@ -66,6 +66,7 @@
     "tools": [
       "communication_review",
       "communication_inbox_read",
+      "communication_calendar_acquire",
       "communication_inbox_complete",
       "communication_memory_read",
       "communication_memory_search",

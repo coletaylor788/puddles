@@ -1,6 +1,6 @@
 # Plan 033 - Communication watcher
 
-**Status:** Revised design agreed; implementation and merge held
+**Status:** Revision implemented and reviewed; repository checks pending; merge held
 **Issue:** [#132](https://github.com/coletaylor788/puddles/issues/132)
 **Last updated:** 2026-10-02
 
@@ -51,7 +51,7 @@ Send **at most one combined report to main per heartbeat**, covering routine res
 | Shared Reminders list | Hold pending messages as unchecked items and reviewed history as completed items. | Shared only with Cole and Puddles. Arrival does not start agent turns. |
 | Heartbeat | Wake the watcher every 30 minutes. | Forwarded messages cannot trigger a turn. |
 | Guarded read tool | Read unchecked items or selected completed history; check scope, secrets, and injection. | Only the configured inbox list is readable. Reading does not check items off. |
-| Reader agent | Call the read tool, then summarize its sanitized result for the watcher. | No actions or unrelated account access. Check the summary before returning it to the watcher. |
+| Reader agent | Read allocated inbox or calendar content, then summarize checked facts for the watcher. | No actions or unrelated account access. Check the summary before returning it to the watcher; only structural IDs bypass the summary. |
 | Communication watcher | Ignore, act and report, or hand off; then check off handled items. | Completion is limited to items read from this list. Save consequential work first. |
 | Main | Ask you, act on your decision, and document the outcome. | It takes ownership of a handoff; the watcher does not keep acting on it. |
 
@@ -123,17 +123,19 @@ The next heartbeat uses the updated rules. No update message or self-editing tur
 
 ### Status
 
-The October 2 design revision is agreed: check unfinished correspondence before new intake and send at most one combined report per heartbeat. The existing implementation predates these changes and needs alignment and focused validation. Prior records report successful local and synthetic DEV checks; the public cumulative CI check failed, and final exact-artifact DEV remains outstanding.
+The October 2 revision is implemented: check unfinished correspondence before new intake and send at most one combined report per heartbeat. Review identified two corrections: rejected correspondence must not block later notes, and calendar content must go through the restricted reader. Both are corrected and retained review is clear. Focused tests, real native gateway scenarios, and synthetic Docker validation pass. Updated repository checks remain pending.
 
-Work is held here for review. No merge, TEST, PROD, or real forwarding is authorized. Locked-phone forwarding and real account setup remain activation prerequisites.
+The resumed work stays in this thread for review. No merge, TEST, PROD, or real forwarding is authorized. Locked-phone forwarding and real account setup remain activation prerequisites.
 
 ## Agent section
 
 ### State
 
-Current review home: Codex thread `01a0fa9a-08cd-7532-bba7-c3a552120f74`. The agreed October 2 revision is design-only; runtime instructions and tool enforcement still need updating. Historical evidence below does not validate this revision.
+Current review home: Codex thread `01a0fa9a-08cd-7532-bba7-c3a552120f74`. The requester approved the simplified revision with a maximum of one report per heartbeat and then asked to continue. Implementation and local synthetic validation are authorized; the explicit merge and activation holds remain.
 
-Implementation branch: `codex/communication-watcher-dev`, based on freshly fetched main and integrated with upgrade candidate `a05bb40f0ad3ade665237255d1c1415bf4a140dc`. No merge, auto-merge, TEST, or PROD is authorized. Coordinate shared DEV ownership with the OpenClaw upgrade owner using the deployment slot controller. The [appendix](033-communication-awareness-appendix.md) retains source evidence and implementation detail. Diagrams and tables above are the review surface. The starting behavior list ships in `openclaw-plugins/communication-watcher/instructions/`. The configuration builder defaults to `0m`; explicit `enableHeartbeat: true` selects `30m`. Native `write` and `sessions_send` stay denied permanently. Instructions use `communication_memory_save` and `communication_report`. The relay privately constructs the fixed-main native capability through the public SDK; it does not modify host routing or model grants. Synthetic draft DEV passed under the shared controller. The previous DEV instance was restored, cleanup verified, and the slot released. No final CI artifact has been validated in DEV yet. On implementation resumption, verify current main and applicable lifecycle guidance before refreshing the candidate; do not rely on the old thread receiving an upgrade notice.
+Implementation branch: `codex/communication-watcher-dev`. Current main is integrated at merge `ae0d85d`. After the old checkout disappeared during this turn, the same branch and saved edit scripts were recovered into the task-owned checkout at `/private/tmp/communication-resume/puddles`. The checkpoint is `8ab77b5`; it contains the pending discovery and report-limit revision. No other session’s source was overwritten.
+
+Current repository guidance permits feature review and focused/required repository checks before source merge. Full cumulative CI and immutable-artifact DEV, TEST and PROD belong to the later release owner. Local draft checks are not release proof. Historical gate and upgrade-wait records below do not supersede this workflow or the requester’s explicit hold.
 
 ### Scope and acceptance criteria
 
@@ -170,7 +172,14 @@ Next revision: align heartbeat instructions, guarded unfinished-work discovery, 
 
 ### Validation
 
-Required for the October 2 revision: empty inbox with an unfinished report is reconciled; several reportable items produce at most one combined report; a second send is denied; follow-ups do not reset the cap; failed/uncertain sends wait for a later heartbeat without repeating actions; acknowledged main-owned cases and truly empty runs stay quiet. Verify bounded discovery across senders and restart without relying on a new reminder. These checks have not run.
+Current revision: 54 focused watcher checks, 57 affected packaging/pipeline checks, type checking and plugin build pass. The three real OpenClaw 2026.9.6 scenarios pass: native memory access, heartbeat/action/handoff/restart behavior, and interruption cleanup. The five-heartbeat Docker fixture passes empty-inbox report recovery, refusal of a second report, quiet main-acknowledged work, calendar-reader isolation, one calendar creation, nine read-only instruction files, writable memory, rule refresh, and removal of all owned containers. A final rebuilt Docker run also checks the calendar acquisition’s concurrent-call latch.
+
+The retained review accepted both corrections with no remaining actionable findings. Required repository checks will run on the updated PR heads. Real-phone automation, actual account bindings/classifier behavior, and release certification are not established by these synthetic checks.
+
+#### Historical validation before the resumed revision
+
+
+Required for the October 2 revision: empty inbox with an unfinished report is reconciled; several reportable items produce at most one combined report; a second send is denied; follow-ups do not reset the cap; failed/uncertain sends wait for a later heartbeat without repeating actions; acknowledged main-owned cases and truly empty runs stay quiet. Verify bounded discovery across senders and restart without relying on a new reminder. The focused, native and Docker checks described above cover these cases.
 
 The final integrated candidate includes the reviewed declaration portability repair, including the agent-session export, and runs its compiler check directly before the cumulative Vitest suite. The affected patch registration and watcher package selection passes 11 checks after this last annotation. Retained review is clean. The preceding public run [36297681651](https://github.com/coletaylor788/puddles/actions/runs/36297681651) built successfully but was canceled during regressions when superseded by these repairs; it provides no completed source gate. Full CI and exact-artifact DEV are being rerun for the frozen pair.
 
@@ -188,6 +197,11 @@ Only synthetic DEV installation and validation are authorized. Do not merge or a
 
 ### Review log
 
+The retained replacement reviewer checked the complete public and companion diffs. Accepted findings: direct calendar reads bypassed the restricted-reader boundary; one oversized correspondence note could block later pending reports. Calendar reads now allocate a fresh reader and return only its checked summary plus event-ID receipts. Pending discovery returns safe per-note failures and continues through bounded pages. The same reviewer verified these corrections and cleared the complete pair; the final allocation latch also has a concurrent-call regression. The companion artifact mapping had no actionable findings.
+
+#### Historical review
+
+
 The retained independent reviewer identified oversized-item queue blocking, incorrect concurrent-reader release, rejection of normal reasoning-plus-text answers, absent sandbox tool grants, missing optional main-tool grants, and sender lookup relying on unindexed paths. Those are corrected with runtime regressions. Notes now include a searchable sender key; look up that key separately from a new message ID. Failed transcript cleanup also blocks the next reader until cleanup succeeds. A final review accepted the paused candidate with no remaining actionable code findings; full activation and DEV gates remain open.
 
 The retained reviewer accepts the guarded save/report implementation without actionable findings. Native peer replies are allowed; the heartbeat controls intake. The public SDK preserves the actual source session and supports a private fixed-main backend route while raw tools stay denied. Stock 2026.9.3's detached reply can fail with expired caller authority. All three native candidate cases now pass on stock 2026.9.6, including a reply back to watcher and silent final announcement. The exact composed CI artifact still needs DEV proof. No competing core patch is included. Packaging now follows the existing additional-artifact chain, with source/dependency bindings and an installed fixture; consumers must map the new artifact without activating it. Review corrections bind the shared TypeScript configuration to the package cache, load configuration from the packaged plugin, and register fixture cleanup with the existing signal handler. All three native candidate cases pass, including SIGTERM cleanup. Recording-fixture completions run sequentially and assert each outcome. The same retained reviewer found no actionable integration findings after adding the upgrade candidate. On the combined branch, 42 plugin tests, 38 packaging/pipeline tests, both type checks, the plugin build, and all three native 9.6 cases pass (68 seconds). The watcher now requires the 9.6 peer and builds against that SDK. DEV retains the intended `tools.toolSearch: false` configuration.
@@ -197,7 +211,9 @@ Reminders is now the selected bus: automation adds sender, timestamp, and body; 
 ### Checklist
 
 - [x] Agree unfinished-work-first review and at most one combined report per heartbeat.
-- [ ] Align runtime instructions and tool enforcement with the October 2 revision and validate it.
+- [x] Align runtime instructions and tool enforcement with the October 2 revision.
+- [x] Complete refreshed native checks and retained review.
+- [ ] Pass required repository checks on updated PR heads.
 
 - [x] Select a 30-minute watcher heartbeat, guarded pending-item reads, and main takeover.
 - [x] Use Reminders check-off as intake tracking; remove the timestamp checkpoint.

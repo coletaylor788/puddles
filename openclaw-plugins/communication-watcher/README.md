@@ -2,13 +2,13 @@
 
 Reviews a private shared Reminders list on an OpenClaw heartbeat. A dedicated reader sees only checked text. The watcher can make personal calendar plans, keep correspondence in native memory, report to main, and check off reviewed items. Incoming reminders never dispatch agent turns.
 
-This is an implementation candidate. The configuration builder keeps heartbeat paused unless explicitly enabled and denies native writes and sends. No real forwarding or production configuration is enabled. Merging and TEST/PROD are held until the OpenClaw upgrade finishes and the requester releases the hold. See [Plan 033](../../docs/plans/033-communication-awareness.md).
+This is an implementation candidate. The configuration builder keeps heartbeat paused unless explicitly enabled and denies native writes and sends. No real forwarding or production configuration is enabled. Merging and TEST/PROD remain held until the requester releases the hold. See [Plan 033](../../docs/plans/033-communication-awareness.md).
 
 ## Data flow
 
-Each heartbeat first calls `communication_memory_pending` to reconcile unfinished correspondence, following its continuation pages. It then calls `communication_review`. An empty inbox alone is not a reason to exit. That tool creates a fresh `communication-reader` session using the public subagent runtime, admits that session to the read tool, waits for its answer, and checks the answer before returning it. Reader transcripts are deleted after the job. A cleanup failure returns only an unavailable status and must be cleared before another reader starts. Installed runtime cleanup behavior still needs DEV validation.
+Each heartbeat first calls `communication_memory_pending` to reconcile unfinished correspondence, following its continuation pages. It then calls `communication_review`. An empty inbox alone is not a reason to exit. That tool creates a fresh `communication-reader` session using the public subagent runtime, admits that session to the read tool, waits for its answer, and checks the answer before returning it. Reader transcripts are deleted after the job. A cleanup failure returns only an unavailable status and must be cleared before another reader starts. The native fixture checks successful and interrupted reader/gateway cleanup.
 
-`communication_inbox_read` only reads the configured list. Pending and completed-history reads share the same scope checks, strict verdict validation, secret redaction, and injection check. Results contain bounded text and receipts; no raw provider responses, errors, attachments, or probe evidence are returned. Original sender labels remain untrusted.
+`communication_inbox_read` for inbox jobs; `communication_calendar_acquire` for allocated calendar jobs reads the configured list. Pending and completed-history reads share the same scope checks, strict verdict validation, secret redaction, and injection check. Results contain bounded text and receipts; no raw provider responses, errors, attachments, or probe evidence are returned. Original sender labels remain untrusted.
 
 The watcher completes a receipt after handling it. Receipts are random, expire after 30 minutes, bind to the watcher session and source fingerprint, and are discarded on restart. They are temporary access grants, not an intake ledger. A fresh read issues fresh receipts. Reminders remain the intake queue; correspondence memory provides context and prevents blind repetition after failed check-off.
 
@@ -18,7 +18,7 @@ The installed CLI has no atomic compare-and-complete operation. The adapter rech
 
 | Agent | Tools |
 | --- | --- |
-| Dedicated reader | `communication_inbox_read` only |
+| Dedicated reader | `communication_inbox_read` for inbox jobs; `communication_calendar_acquire` for allocated calendar jobs |
 | Watcher | `communication_review`, `communication_inbox_complete`, guarded memory pending/read/search/save, guarded calendar read/plan, `communication_report` |
 | Main | `communication_memory_read` for checked handoff reads, plus existing owner-authorized tools |
 
@@ -28,9 +28,9 @@ The sandbox mounts every instruction file, including bootstrap `MEMORY.md`, read
 
 Memory uses the existing OpenClaw built-in manager and ordinary Markdown. Search results are limited to `memory/correspondence/<sender-key>/<date>.md`; current files are reread with the same content checks. There is no new memory database, collector, or timestamp checkpoint. Native automatic recall must stay disabled for these restricted profiles unless the installed recall path is separately proven to run the same guards.
 
-Calendar tools fix the calendar ID, accept explicit offset-bearing dates, prohibit attendees and deletions, and only confirm marked watcher placeholders with no attendees or recurrence. Creates search for the source marker before writing. Provider timeouts remain uncertain; consult memory and the provider before retrying. Calendar scope must be verified as a personal, unshared calendar before real use.
+Calendar reads use a fresh restricted reader; the watcher receives a checked summary and structural event IDs, never full provider objects. Reader allocation and cleanup use the same serialized lifecycle as inbox reads. Calendar tools fix the calendar ID, accept explicit offset-bearing dates, prohibit attendees and deletions, and only confirm marked watcher placeholders with no attendees or recurrence. Creates search for the source marker before writing. Provider timeouts remain uncertain; consult memory and the provider before retrying. Calendar scope must be verified as a personal, unshared calendar before real use.
 
-Reports combine up to five guarded note references and allow at most one send attempt per isolated heartbeat. The runtime session UUID identifies the heartbeat; native replies retain that UUID. An exclusive empty marker under `.communication-report-budget/` preserves the cap across concurrent calls and gateway restarts. These markers contain no message content or pending-work state and remain for the lifetime of the watcher workspace. Pending work lives in correspondence notes, using a `Watcher pending: yes/no` header. Main clears it only after acknowledging all pending entries in a note. Discovery scans bounded pages without semantic ranking and treats legacy notes as pending.
+Reports combine up to five guarded note references and allow at most one send attempt per isolated heartbeat. The runtime session UUID identifies the heartbeat; native replies retain that UUID. An exclusive empty marker under `.communication-report-budget/` preserves the cap across concurrent calls and gateway restarts. These markers contain no message content or pending-work state and remain for the lifetime of the watcher workspace. Pending work lives in correspondence notes, using a `Watcher pending: yes/no` header. Main clears it only after acknowledging all pending entries in a note. Discovery scans bounded pages without semantic ranking and treats legacy notes as pending. A rejected or oversized note returns a safe per-file status with continuation, so unrelated pending work remains discoverable.
 
 Each process limits source reads to eight per 30 minutes, calendar writes to five, and content checks to 64 per 30 minutes / 512 per day. Those process counters reset on gateway restart; report markers do not. Reader jobs allow two reads and 16 KiB total text, at most 20 items per call. Limits return categorical errors and leave unfinished items pending.
 

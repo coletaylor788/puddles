@@ -94,7 +94,7 @@ export async function pendingNotes(workspace: string, after: string | undefined,
       const stat = lstatSync(path);
       if (!stat.isDirectory() || stat.isSymbolicLink() || realpathSync(path) !== path) throw new BoundaryError("denied");
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === "ENOENT") return { results: [], next: null };
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") return { results: [], failures: [], next: null };
       throw e;
     }
   }
@@ -116,18 +116,26 @@ export async function pendingNotes(workspace: string, after: string | undefined,
   paths.sort();
   const fs = await root(workspace, { symlinks: "reject", hardlinks: "reject" });
   const results: Awaited<ReturnType<typeof readNote>>[] = [];
+  const failures: { path: string; status: string }[] = [];
   let scanned = 0, bytes = 0;
   for (const path of paths) {
-    safeNote(workspace, path);
-    const raw = await fs.read(path, { maxBytes: 16000 });
-    const closed = /^Sender key: [a-f0-9]{32}\nWatcher pending: no\n/.test(raw.buffer.toString("utf8"));
-    if (!closed) {
-      if (results.length && bytes + raw.buffer.length > 16000) return { results, next: paths[scanned - 1] };
-      results.push(await readNote(workspace, path, guard));
-      bytes += raw.buffer.length;
+    try {
+      safeNote(workspace, path);
+      if (lstatSync(join(workspace, path)).size > 16000) throw new BoundaryError("limit");
+      const raw = await fs.read(path, { maxBytes: 16000 });
+      const closed = /^Sender key: [a-f0-9]{32}\nWatcher pending: no\n/.test(raw.buffer.toString("utf8"));
+      if (!closed) {
+        if (results.length && bytes + raw.buffer.length > 16000) return { results, failures, next: paths[scanned - 1] };
+        results.push(await readNote(workspace, path, guard));
+        bytes += raw.buffer.length;
+      }
+    } catch (error) {
+      // A damaged or rejected note remains visible as a safe status, without
+      // stranding later correspondence or leaking provider/error text.
+      failures.push({ path, status: error instanceof BoundaryError ? error.code : "unavailable" });
     }
     scanned++;
-    if (results.length === 5 || scanned === 100) break;
+    if (results.length + failures.length === 5 || scanned === 100) break;
   }
-  return { results, next: scanned < paths.length ? paths[scanned - 1] : null };
+  return { results, failures, next: scanned < paths.length ? paths[scanned - 1] : null };
 }

@@ -8,7 +8,7 @@ it('preserves existing explicit heartbeat schedules and isolates watcher capabil
   expect(result.agents.entries.main).toEqual({ ...original.agents.entries.main, tools: { alsoAllow: ['communication_memory_read'] } });
   expect(result.agents.entries.household).toEqual(original.agents.entries.household);
   expect(result.agents.entries['communication-watcher'].heartbeat).toMatchObject({ every: '0m', target: 'none', isolatedSession: true });
-  expect(result.agents.entries['communication-reader'].tools.allow).toEqual(['session_status', 'communication_inbox_read']);
+  expect(result.agents.entries['communication-reader'].tools.allow).toEqual(['session_status', 'communication_inbox_read', 'communication_calendar_acquire']);
   expect(result.agents.entries['communication-reader'].tools.deny).toContain('session_status');
   expect(result.agents.entries['communication-watcher'].tools.deny).toEqual(expect.arrayContaining(['write', 'sessions_send']));
   expect(result.agents.entries['communication-watcher'].tools.sandbox.tools.allow).toEqual(result.agents.entries['communication-watcher'].tools.allow);

@@ -16,7 +16,7 @@ switch (args[0]) {
     if (flag('--list') !== 'fixture-list') throw new Error('Foreign list');
     result = { reminders: state.items.filter(i => i.isCompleted === args.includes('--filter')).slice(0, Number(flag('--limit'))) }; break;
   case 'get':
-    result = flag('--id') === 'fixture-event' ? { event: state.events[0] } : { reminder: reminder() }; break;
+    result = flag('--id') === 'fixture-event' ? { event: { ...state.events[0], notes: state.events[0].notes + ' CALENDAR_READER_ONLY' } } : { reminder: reminder() }; break;
   case 'complete':
     if (flag('--id') === 'dinner' && state.failCompletion) { state.failCompletion = false; result = { success: false }; }
     else { reminder().isCompleted = true; result = { reminder: reminder() }; }

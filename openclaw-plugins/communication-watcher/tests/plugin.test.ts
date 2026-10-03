@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const state = vi.hoisted(() => ({ reminders: [] as any[], complete: vi.fn(), readNote: vi.fn(), searchNotes: vi.fn(), saveNote: vi.fn(), pendingNotes: vi.fn() }));
-vi.mock('../src/backend.js', () => ({ cli: () => vi.fn(), reminders: () => ({
+const state = vi.hoisted(() => ({ reminders: [] as any[], calendarCommand: vi.fn(), complete: vi.fn(), readNote: vi.fn(), searchNotes: vi.fn(), saveNote: vi.fn(), pendingNotes: vi.fn() }));
+vi.mock('../src/backend.js', () => ({ cli: () => state.calendarCommand, reminders: () => ({
   list: async () => state.reminders,
   get: async (id: string) => state.reminders.find(v => v.id === id),
   complete: async (id: string) => { state.complete(id); state.reminders.find(v => v.id === id).isCompleted = true; },
@@ -41,6 +41,43 @@ describe('registered source-specific agent boundaries', () => {
     expect(state.complete).not.toHaveBeenCalled();
     const complete = tools.find((v: any) => v.name === 'communication_inbox_complete');
     expect((await complete.execute('complete', { ticket: output.details.receipts[0].ticket })).details.status).toBe('completed');
+  });
+  it('isolates full calendar content in a fresh reader and returns only a checked summary and IDs', async () => {
+    const { factory, runtime, hook } = setup();
+    state.calendarCommand.mockResolvedValue({ event: { id: 'event1', calendarId: 'personal', title: 'PRIVATE_CALENDAR_DETAILS' } });
+    const ctx = { agentId: 'communication-watcher', sessionKey: 'agent:communication-watcher:main:heartbeat', workspaceDir: '/fixture/main/communication-watcher' };
+    const tools = factory(ctx);
+    expect(tools.some((t: any) => t.name === 'communication_calendar_acquire')).toBe(false);
+    const output = await tools.find((t: any) => t.name === 'communication_calendar_read').execute('calendar', { id: 'event1' });
+    expect(output.isError).toBeUndefined();
+    expect(output.details.receipts).toEqual([{ id: 'event1' }]);
+    expect(output.details.summary).toContain('Dinner');
+    expect(JSON.stringify(output)).not.toContain('PRIVATE_CALENDAR_DETAILS');
+    expect(runtime.run.mock.calls[0][0].message).toContain('communication_calendar_acquire');
+    expect(runtime.deleteSession).toHaveBeenCalledOnce();
+    const child = runtime.run.mock.calls[0][0].sessionKey;
+    expect(factory({agentId:'communication-reader',sessionKey:child}).some((t: any) => t.name === 'communication_calendar_acquire')).toBe(false);
+    expect(await hook({toolName:'communication_calendar_acquire'}, {agentId:'communication-reader',sessionKey:child})).toBeUndefined();
+  });
+  it('limits a calendar allocation to one read even during concurrent calls', async () => {
+    const { factory, runtime } = setup();
+    let first!: any, second!: any;
+    state.calendarCommand.mockResolvedValue({event:{id:'event1',calendarId:'personal'}});
+    runtime.run.mockImplementationOnce(async (params: any) => {
+      const tool = factory({agentId:'communication-reader',sessionKey:params.sessionKey})[0];
+      [first,second] = await Promise.all([tool.execute('first',{}),tool.execute('second',{})]);
+      return {runId:'run'};
+    });
+    const tool = factory({agentId:'communication-watcher',sessionKey:'agent:communication-watcher:main:heartbeat',workspaceDir:'/fixture/main/communication-watcher'}).find((t: any) => t.name==='communication_calendar_read');
+    expect((await tool.execute('calendar',{id:'event1'})).isError).toBeUndefined();
+    expect(first.details.event.id).toBe('event1'); expect(second.details.status).toBe('denied');
+  });
+  it('does not accept a calendar summary without a successful allocated read', async () => {
+    const { factory, runtime } = setup();
+    runtime.run.mockImplementationOnce(async () => ({runId:'run'}));
+    const tool = factory({agentId:'communication-watcher',sessionKey:'agent:communication-watcher:main:heartbeat',workspaceDir:'/fixture/main/communication-watcher'}).find((t: any) => t.name==='communication_calendar_read');
+    expect((await tool.execute('calendar',{id:'event1'})).details.status).toBe('unavailable');
+    expect(runtime.deleteSession).toHaveBeenCalledOnce();
   });
   it('keeps native main relay pinned and denies tool escapes before dispatch', async () => {
     const { hook } = setup();

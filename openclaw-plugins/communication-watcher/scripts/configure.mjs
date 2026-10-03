@@ -51,7 +51,7 @@ export function configure(base, options) {
     workspace: readerWorkspace,
     memory: { search: { enabled: false } },
     sandbox: { mode: 'all', backend: 'docker', scope: 'agent', workspaceAccess: 'ro', docker: { network: 'none' } },
-    tools: restrictedTools(['communication_inbox_read']),
+    tools: restrictedTools(['communication_inbox_read', 'communication_calendar_acquire']),
   };
   cfg.plugins ??= {}; cfg.plugins.entries ??= {}; cfg.plugins.load ??= {};
   cfg.plugins.load.paths = [...new Set([...(cfg.plugins.load.paths ?? []), pluginPath])];
