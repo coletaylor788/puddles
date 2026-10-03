@@ -1,8 +1,8 @@
 # Plan 033 - Communication watcher
 
-**Status:** Revision implemented, reviewed and validated; merge held
+**Status:** Implemented and validated; ready for source integration
 **Issue:** [#132](https://github.com/coletaylor788/puddles/issues/132)
-**Last updated:** 2026-10-02
+**Last updated:** 2026-10-03
 
 ## Human section
 
@@ -125,17 +125,17 @@ The next heartbeat uses the updated rules. No update message or self-editing tur
 
 The October 2 revision is implemented: check unfinished correspondence before new intake and send at most one combined report per heartbeat. Review identified two corrections: rejected correspondence must not block later notes, and calendar content must go through the restricted reader. Both are corrected and retained review is clear. Focused tests, real native gateway scenarios, and synthetic Docker validation pass. Required repository and security checks pass on the implementation head.
 
-The resumed work stays in this thread for review. No merge, TEST, PROD, or real forwarding is authorized. Locked-phone forwarding and real account setup remain activation prerequisites.
+Required source checks are green. The next step is paired source merge followed by cumulative CI and immutable-artifact DEV, TEST and PROD validation. Locked-phone forwarding and real account setup remain activation prerequisites; the delivered package defaults to paused.
 
 ## Agent section
 
 ### State
 
-Current review home: Codex thread `01a0fa9a-08cd-7532-bba7-c3a552120f74`. The requester approved the simplified revision with a maximum of one report per heartbeat and then asked to continue. Implementation and local synthetic validation are authorized; the explicit merge and activation holds remain.
+The implemented revision permits a maximum of one report per heartbeat. Feature review and required checks are complete. Source integration and release validation are next. Real source activation still requires validated phone transport and account bindings.
 
 Implementation branch: `codex/communication-watcher-dev`. Current main is integrated at merge `ae0d85d`. After the old checkout disappeared during this turn, the same branch and saved edit scripts were recovered into the task-owned checkout at `/private/tmp/communication-resume/puddles`. The checkpoint is `8ab77b5`; it contains the pending discovery and report-limit revision. No other session’s source was overwritten.
 
-Current repository guidance permits feature review and focused/required repository checks before source merge. Full cumulative CI and immutable-artifact DEV, TEST and PROD belong to the later release owner. Local draft checks are not release proof. Historical gate and upgrade-wait records below do not supersede this workflow or the requester’s explicit hold.
+Current repository guidance permits feature review and focused/required repository checks before source merge. Full cumulative CI and immutable-artifact DEV, TEST and PROD belong to the later release owner. Local draft checks are not release proof. Historical gate and upgrade-wait records below do not supersede the current source integration and release workflow.
 
 ### Scope and acceptance criteria
 
@@ -193,7 +193,7 @@ Prove heartbeat wake-up, quiet empty runs, routine action, ignore, quarantine, h
 
 ### Rollout and rollback
 
-Only synthetic DEV installation and validation are authorized. Do not merge or advance to TEST/PROD until the upgrade is complete and Cole explicitly approves. Start with synthetic reads, then synthetic actions and handoffs. Review before real use. Pause the watcher heartbeat without losing unchecked items or saved correspondence needed to reconcile started work. Report unavailable history or incomplete reads rather than silently advancing past them.
+Merge the reviewed pair after required checks, then promote one cumulative CI artifact unchanged through DEV, TEST and PROD using the configured controllers. Keep the watcher paused until phone transport and account bindings are validated. Use synthetic reads, actions and handoffs for release proof. Pause the watcher heartbeat without losing unchecked items or saved correspondence needed to reconcile started work. Report unavailable history or incomplete reads rather than silently advancing past them.
 
 ### Review log
 
