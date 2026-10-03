@@ -1,0 +1,214 @@
+diff --git a/src/agents/harness/host-capability.test.ts b/src/agents/harness/host-capability.test.ts
+index 99a12c0e..61d05b52 100644
+--- a/src/agents/harness/host-capability.test.ts
++++ b/src/agents/harness/host-capability.test.ts
+@@ -1,3 +1,4 @@
++import { AsyncResource } from "node:async_hooks";
+ import fs from "node:fs";
+ import os from "node:os";
+ import path from "node:path";
+@@ -18,7 +19,12 @@ import {
+   bindGatewayContextResolver,
+   withPluginRuntimeGatewayRequestScope,
+ } from "../../plugins/runtime/gateway-request-scope.js";
+-import { AsyncWorkScope } from "../../shared/async-work-scope.js";
++import {
++  AsyncWorkScope,
++  getAsyncWorkSignal,
++  isAsyncWorkScopeActiveHere,
++  trackAsyncWork,
++} from "../../shared/async-work-scope.js";
+ import {
+   closeAdmittedRunDelegatedAuthority,
+   createOperationalRunInstanceRef,
+@@ -158,6 +164,115 @@ afterEach(() => {
+ });
+ 
+ describe("agent harness host capability", () => {
++  it.each(["direct", "prepared"] as const)(
++    "owns %s tool work across turns on a reused transport",
++    async (mode) => {
++      const firstWork = new AsyncWorkScope();
++      const secondWork = new AsyncWorkScope();
++      const transport = firstWork.run(() => new AsyncResource("reused-harness-transport"));
++      const hosts: ReturnType<typeof createAgentHarnessHostCapabilities>[] = [];
++      const calls: string[] = [];
++      try {
++        for (const [index, work] of [firstWork, secondWork].entries()) {
++          const { attempt } = await admittedAttempt(`followup-${index}`);
++          const execute = async () =>
++            await trackAsyncWork(async () => {
++              expect(getAsyncWorkSignal()).toBe(work.signal);
++              expect(isAsyncWorkScopeActiveHere(work)).toBe(true);
++              if (index > 0) expect(isAsyncWorkScopeActiveHere(firstWork)).toBe(false);
++              expect(getGatewayToolCallerIdentity()?.operationalRunInstance).toBe(
++                attempt.admittedRunContext.operationalRunInstance,
++              );
++              calls.push(attempt.runId);
++              return { content: [], details: {} };
++            });
++          const tool: AnyAgentTool = { ...testTool().tool, execute };
++          if (mode === "prepared") {
++            attachInternalToolExecutionPreparer(
++              tool,
++              async () =>
++                await trackAsyncWork(async () => {
++                  expect(getAsyncWorkSignal()).toBe(work.signal);
++                  expect(isAsyncWorkScopeActiveHere(work)).toBe(true);
++                  if (index > 0) expect(isAsyncWorkScopeActiveHere(firstWork)).toBe(false);
++                  return { kind: "ready", args: {}, execute, dispose: () => {} };
++                }),
++            );
++          }
++          const host = work.run(() =>
++            createAgentHarnessHostCapabilities({ attempt, pluginId: "codex" }),
++          );
++          hosts.push(host);
++          // Binding and invocation can both arrive from the retained transport.
++          const [bound] = transport.runInAsyncScope(() =>
++            host.capabilities.bindToolSurface([tool]),
++          );
++          expect(bound).toBeDefined();
++          await transport.runInAsyncScope(async () => {
++            if (mode === "direct") {
++              await bound!.execute("call", {});
++            } else {
++              const prepared = await getInternalToolExecutionPreparer(bound!)!({
++                toolCallId: "call",
++                args: {},
++              });
++              expect(prepared.kind).toBe("ready");
++              if (prepared.kind === "ready") {
++                await prepared.execute();
++                prepared.dispose();
++              }
++            }
++          });
++          host.close();
++          await work.drain();
++          await expect(transport.runInAsyncScope(() => bound!.execute("late", {}))).rejects.toThrow(
++            "no longer active",
++          );
++        }
++        expect(calls).toEqual(["followup-0", "followup-1"]);
++      } finally {
++        for (const host of hosts) host.close();
++        transport.emitDestroy();
++        await Promise.all([firstWork.drain(), secondWork.drain()]);
++      }
++    },
++  );
++
++  it("keeps a callback's descendants with the current owner and rejects its closed scope", async () => {
++    const stale = new AsyncWorkScope();
++    const current = new AsyncWorkScope();
++    const transport = stale.run(() => new AsyncResource("stale-tool-transport"));
++    await stale.drain();
++    const tail = createDeferred();
++    const { attempt } = await admittedAttempt("followup-tail");
++    const calls = vi.fn(async () => {
++      void trackAsyncWork(() => tail.promise);
++      return { content: [], details: {} };
++    });
++    const { host, bound } = current.run(() => bindTool(attempt, testTool(calls).tool));
++    try {
++      await transport.runInAsyncScope(() => bound.execute("call", {}));
++      let drained = false;
++      const draining = current.drain().then(() => {
++        drained = true;
++      });
++      await Promise.resolve();
++      expect(drained).toBe(false);
++      expect(current.hasPendingWork).toBe(true);
++      tail.resolve();
++      await draining;
++      await expect(transport.runInAsyncScope(() => bound.execute("late", {}))).rejects.toThrow(
++        "Async work scope is closed",
++      );
++      expect(calls).toHaveBeenCalledTimes(1);
++    } finally {
++      tail.resolve();
++      host.close();
++      transport.emitDestroy();
++      await current.drain();
++    }
++  });
++
+   it.each([
+     { available: undefined, expected: [] },
+     { available: false, expected: ["github_identity_status"] },
+diff --git a/src/agents/harness/host-capability.ts b/src/agents/harness/host-capability.ts
+index 2b10c2bb..3ecd8009 100644
+--- a/src/agents/harness/host-capability.ts
++++ b/src/agents/harness/host-capability.ts
+@@ -17,7 +17,11 @@ import {
+ } from "../../plugins/runtime/gateway-request-scope.js";
+ import { getActiveSecretsRuntimeConfigSnapshot } from "../../secrets/runtime-state.js";
+ import { bindUserTurnTranscriptAnnotation } from "../../sessions/user-turn-transcript-annotation.js";
+-import { getAsyncWorkSignal } from "../../shared/async-work-scope.js";
++import {
++  captureAsyncWorkTracker,
++  getAsyncWorkSignal,
++  runOutsideAsyncWorkScope,
++} from "../../shared/async-work-scope.js";
+ import { resolveSkillResourceCandidates } from "../../skills/runtime/resource-candidates.js";
+ import {
+   getAdmittedRunDelegatedAuthority,
+@@ -117,6 +121,7 @@ function gateBoundTool(
+   tool: AnyAgentTool,
+   assertActive: () => void,
+   observeResult: (result: unknown) => void,
++  trackOwner: ReturnType<typeof captureAsyncWorkTracker>,
+ ): AnyAgentTool {
+   const execute = tool.execute;
+   const sourcePreparer = getInternalToolExecutionPreparer(tool);
+@@ -135,7 +140,7 @@ function gateBoundTool(
+               // a tool that started and failed in downstream terminal evidence.
+               throw registerTrustedToolNoStartError(error);
+             }
+-            const result = await execute(...args);
++            const result = await runOutsideAsyncWorkScope(() => trackOwner(() => execute(...args)));
+             assertActive();
+             observeResult(result);
+             return result;
+@@ -147,7 +152,9 @@ function gateBoundTool(
+   if (sourcePreparer) {
+     attachInternalToolExecutionPreparer(gated, async (preparationParams) => {
+       assertActive();
+-      const prepared = await sourcePreparer(preparationParams);
++      const prepared = await runOutsideAsyncWorkScope(() =>
++        trackOwner(() => sourcePreparer(preparationParams)),
++      );
+       try {
+         assertActive();
+       } catch (error) {
+@@ -164,7 +171,9 @@ function gateBoundTool(
+         ...prepared,
+         execute: async (onImplementationStart) => {
+           assertActive();
+-          const result = await prepared.execute(onImplementationStart);
++          const result = await runOutsideAsyncWorkScope(() =>
++            trackOwner(() => prepared.execute(onImplementationStart)),
++          );
+           assertActive();
+           observeResult(result);
+           return result;
+@@ -188,6 +197,9 @@ export function createAgentHarnessHostCapabilities(params: {
+   const attempt = params.attempt;
+   const githubPublicationAvailable = attempt.githubPublicationAvailable;
+   const workSignal = getAsyncWorkSignal();
++  // A pooled transport can dispatch later turns from its first, closed scope.
++  // Tools belong to this host attempt, regardless of the callback transport.
++  const trackOwner = captureAsyncWorkTracker();
+   const attemptSignal = attempt.abortSignal;
+   const installationTarget = getInstallationTarget();
+   const localProcessEnv = installationTargetEnv(installationTarget);
+@@ -463,7 +475,7 @@ export function createAgentHarnessHostCapabilities(params: {
+         callerIdentity ? wrapToolWithGatewayCallerIdentity(tool, callerIdentity) : tool,
+       )
+       .map((tool) => wrapToolWithAbortSignal(tool, boundAbortSignal))
+-      .map((tool) => gateBoundTool(tool, assertActive, observeResult));
++      .map((tool) => gateBoundTool(tool, assertActive, observeResult, trackOwner));
+   };
+   const bindToolSurface: AgentHarnessHostCapabilities["bindToolSurface"] = (tools, options) =>
+     bindTools(tools, options, () => {});

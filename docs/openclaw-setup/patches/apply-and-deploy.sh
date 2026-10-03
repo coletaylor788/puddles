@@ -34,6 +34,7 @@ PATCHES=(
   gateway-protocol-declaration-portability
   core-declaration-portability
   talk-agent-parity
+  harness-tool-work-owner
 )
 
 if [ -n "${MINI_HOST:-}" ]; then
