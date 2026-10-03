@@ -71,7 +71,7 @@
     "extensions/facetime/tests/talk-driver.shared-talk.test.ts": "extensions",
     "extensions/openai/realtime-quicksilver-gateway-direct.test.ts": "extension-provider-openai",
     "src/gateway/server-plugins.test.ts": "gateway-server",
-    "src/gateway/talk/carrier-session.test.ts": "gateway-client",
+    "src/gateway/talk/carrier-session.test.ts": "gateway-core",
     "src/plugins/loader.runtime-metadata.test.ts": "plugins",
     "src/plugins/registry.runtime-config.test.ts": "plugins",
     "src/talk/carrier-call-control.test.ts": "unit-src",
