@@ -1,7 +1,7 @@
 import { isAbsolute, join } from 'node:path';
 
 export const SYSTEM_FILES = ['AGENTS.md', 'SOUL.md', 'IDENTITY.md', 'USER.md', 'TOOLS.md', 'HEARTBEAT.md', 'BOOTSTRAP.md', 'BOOT.md', 'MEMORY.md'];
-export const WATCHER_TOOLS = ['communication_review', 'communication_inbox_complete', 'communication_memory_read', 'communication_memory_search', 'communication_memory_save', 'communication_report', 'communication_calendar_read', 'communication_calendar_plan'];
+export const WATCHER_TOOLS = ['communication_review', 'communication_inbox_complete', 'communication_memory_read', 'communication_memory_search', 'communication_memory_pending', 'communication_memory_save', 'communication_report', 'communication_calendar_read', 'communication_calendar_plan'];
 const denied = ['exec', 'process', 'read', 'write', 'edit', 'apply_patch', 'sessions_send', 'sessions_spawn', 'skill_workshop', 'memory_search', 'memory_get', 'session_status'];
 function restrictedTools(names) {
   // A real built-in name anchors the allowlist if the optional plugin is absent.
@@ -40,7 +40,7 @@ export function configure(base, options) {
   }
   cfg.agents.entries[watcher] = {
     workspace,
-    heartbeat: { every: options.enableHeartbeat === true ? '30m' : '0m', isolatedSession: true, target: 'none', prompt: 'Follow AGENTS.md for the communication heartbeat. Read pending intake through communication_review. No work means HEARTBEAT_OK.' },
+    heartbeat: { every: options.enableHeartbeat === true ? '30m' : '0m', isolatedSession: true, target: 'none', prompt: 'Follow AGENTS.md for the communication heartbeat. First check unfinished correspondence through communication_memory_pending, following its pages. Then read new intake through communication_review. Send at most one combined communication_report. Finish quietly only when neither needs attention.' },
     memory: { search: { enabled: true, sources: ['memory'], extraPaths: [], experimental: { sessionMemory: false } } },
     sandbox: { mode: 'all', backend: 'docker', scope: 'agent', workspaceAccess: 'rw',
       docker: { network: 'none', dangerouslyAllowReservedContainerTargets: true,

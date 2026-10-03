@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const state = vi.hoisted(() => ({ reminders: [] as any[], complete: vi.fn(), readNote: vi.fn(), searchNotes: vi.fn(), saveNote: vi.fn() }));
+const state = vi.hoisted(() => ({ reminders: [] as any[], complete: vi.fn(), readNote: vi.fn(), searchNotes: vi.fn(), saveNote: vi.fn(), pendingNotes: vi.fn() }));
 vi.mock('../src/backend.js', () => ({ cli: () => vi.fn(), reminders: () => ({
   list: async () => state.reminders,
   get: async (id: string) => state.reminders.find(v => v.id === id),
   complete: async (id: string) => { state.complete(id); state.reminders.find(v => v.id === id).isCompleted = true; },
 }) }));
-vi.mock('../src/memory.js', () => ({ readNote: state.readNote, saveNote: state.saveNote, searchNotes: state.searchNotes, notePath: (s: string) => { if (!s.startsWith('memory/correspondence/')) throw new Error(); return s; }, safeNote: () => {} }));
+vi.mock('../src/memory.js', () => ({ readNote: state.readNote, saveNote: state.saveNote, searchNotes: state.searchNotes, pendingNotes: state.pendingNotes, notePath: (s: string) => { if (!s.startsWith('memory/correspondence/')) throw new Error(); return s; }, safeNote: () => {} }));
 vi.mock('mcp-hooks', async original => ({ ...await original<any>(), loadLLMProvider: async () => ({ classify: async (_c: string, _p: string, opts: any) => opts.label === 'secret-redact' ? '{"findings":[]}' : '{"detected":false,"evidence":""}' }) }));
 vi.mock('openclaw/plugin-sdk/agent-harness', () => ({ createOpenClawCodingTools: vi.fn() }));
 import plugin from '../src/plugin.js';
@@ -69,9 +69,9 @@ describe('registered source-specific agent boundaries', () => {
     const save = factory(ctx).find((t: any) => t.name === 'communication_memory_save');
     const path = `memory/correspondence/${'a'.repeat(32)}/2026-09-26.md`;
     state.saveNote.mockResolvedValueOnce({ status: 'saved', path });
-    expect((await save.execute('save', { path, content: 'Dinner proposal', previousRevision: null })).details.status).toBe('saved');
-    expect(state.saveNote).toHaveBeenCalledWith(ctx.workspaceDir, path, 'Dinner proposal', null, expect.any(Function));
-    expect((await save.execute('extra', { path, content: 'Dinner proposal', previousRevision: null, raw: true })).isError).toBe(true);
+    expect((await save.execute('save', { path, content: 'Dinner proposal', previousRevision: null, pending: true })).details.status).toBe('saved');
+    expect(state.saveNote).toHaveBeenCalledWith(ctx.workspaceDir, path, 'Dinner proposal', null, expect.any(Function), true);
+    expect((await save.execute('extra', { path, content: 'Dinner proposal', previousRevision: null, pending: true, raw: true })).isError).toBe(true);
   });
   it('retains review ownership until delayed transcript cleanup has finished', async () => {
     const { factory, runtime } = setup();
@@ -89,4 +89,16 @@ describe('registered source-specific agent boundaries', () => {
     expect((await review.execute('next', {})).isError).toBeUndefined();
     expect(runtime.deleteSession).toHaveBeenCalledTimes(3);
   });
+  it('discovers unfinished correspondence without invoking inbox or calendar tools', async () => {
+    const { factory, runtime } = setup();
+    const ctx = { agentId: 'communication-watcher', sessionKey: 'agent:communication-watcher:main:heartbeat', workspaceDir: '/fixture/main/communication-watcher' };
+    const pending = factory(ctx).find((t: any) => t.name === 'communication_memory_pending');
+    const path = `memory/correspondence/${'a'.repeat(32)}/2026-09-26.md`;
+    state.pendingNotes.mockResolvedValue({ results: [{ path, text: 'Report pending' }], next: null });
+    expect((await pending.execute('check', {})).details.results).toHaveLength(1);
+    expect(runtime.run).not.toHaveBeenCalled();
+    expect(state.pendingNotes).toHaveBeenCalledWith(ctx.workspaceDir, undefined, expect.any(Function));
+    expect((await pending.execute('escape', { after: '../other.md' })).isError).toBe(true);
+  });
+
 });

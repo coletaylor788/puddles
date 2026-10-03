@@ -5,12 +5,12 @@ import { loadLLMProvider, type LLMClient } from "mcp-hooks";
 import type { AnyAgentTool, OpenClawPluginApi, OpenClawPluginToolContext } from "openclaw/plugin-sdk/core";
 import { Relay } from "./relay.js";
 import { Calendar } from "./calendar.js";
-import { notePath, readNote, saveNote, searchNotes } from "./memory.js";
+import { notePath, readNote, saveNote, searchNotes, pendingNotes } from "./memory.js";
 import { Inbox } from "./inbox.js";
 import { cli, reminders } from "./backend.js";
 import { BoundaryError, guardedText, id, keys, object, string } from "./guards.js";
 
-const toolNames = ["communication_review", "communication_inbox_read", "communication_inbox_complete", "communication_memory_read", "communication_memory_search", "communication_memory_save", "communication_report", "communication_calendar_read", "communication_calendar_plan"];
+const toolNames = ["communication_review", "communication_inbox_read", "communication_inbox_complete", "communication_memory_read", "communication_memory_search", "communication_memory_pending", "communication_memory_save", "communication_report", "communication_calendar_read", "communication_calendar_plan"];
 const parameters = (properties: Record<string, unknown>, required: string[] = []) => ({ type: "object", additionalProperties: false, properties, required }) as AnyAgentTool["parameters"];
 function result(value: unknown) { return { content: [{ type: "text" as const, text: JSON.stringify(value) }], details: value }; }
 function failure(error: unknown) { return { ...result({ status: error instanceof BoundaryError ? error.code : "unavailable" }), isError: true }; }
@@ -68,8 +68,8 @@ export default {
       return [
         {
           name: "communication_report", label: "Report correspondence to main",
-          description: "Notify the fixed main session about a saved note. Accepted means queued for main, not delivered to the owner. No other recipient or sending mode is available.",
-          parameters: parameters({ path: { type: "string" }, category: { type: "string", enum: ["action-report", "decision-request"] }, summary: { type: "string", maxLength: 2000 } }, ["path", "category", "summary"]),
+          description: "Send at most one combined report per isolated heartbeat about up to five saved notes. Accepted means queued for main, not delivered to the owner. No other recipient or sending mode is available.",
+          parameters: parameters({ paths: { type: "array", minItems: 1, maxItems: 5, items: { type: "string" } }, category: { type: "string", enum: ["action-report", "decision-request"] }, summary: { type: "string", maxLength: 2000 } }, ["paths", "category", "summary"]),
           async execute(call, args, signal) {
             try {
               const current = ctx.getRuntimeConfig ? ctx.getRuntimeConfig() : ctx.runtimeConfig ?? ctx.config ?? api.config;
@@ -78,6 +78,10 @@ export default {
             } catch (e) { return failure(e); }
           },
         },
+        wrap("communication_memory_pending", "Check unfinished correspondence before new intake, even with an empty inbox. Follow next with after until null. Main acknowledgment closes watcher reporting responsibility.", parameters({ after: { type: "string" } }), async input => {
+          const args = object(input); keys(args, ["after"]);
+          return pendingNotes(workspace, args.after === undefined ? undefined : notePath(args.after), guard);
+        }),
         wrap("communication_memory_read", "Read a checked correspondence note from this agent's native memory.", parameters({ path: { type: "string" } }, ["path"]), async input => {
           const args = object(input); keys(args, ["path"]); return readNote(workspace, notePath(args.path), guard);
         }),
@@ -87,9 +91,10 @@ export default {
           if (!current) throw new BoundaryError("unavailable");
           return searchNotes(current, watcher, workspace, session, await guard(string(args.query, 2000)), guard);
         }),
-        wrap("communication_memory_save", "Save checked correspondence in native memory. Supply the last read revision, or null for a new note. Preserve other exchanges; main owns escalated work.", parameters({ path: { type: "string" }, content: { type: "string", maxLength: 15800 }, previousRevision: { type: ["string", "null"] } }, ["path", "content", "previousRevision"]), async input => {
-          const args = object(input); keys(args, ["path", "content", "previousRevision"]);
-          return saveNote(workspace, notePath(args.path), string(args.content, 15800), args.previousRevision === null ? null : string(args.previousRevision, 64), guard);
+        wrap("communication_memory_save", "Save checked correspondence in native memory. Supply the last read revision, or null for a new note. Preserve other exchanges; main owns escalated work.", parameters({ path: { type: "string" }, content: { type: "string", maxLength: 15800 }, previousRevision: { type: ["string", "null"] }, pending: { type: "boolean" } }, ["path", "content", "previousRevision", "pending"]), async input => {
+          const args = object(input); keys(args, ["path", "content", "previousRevision", "pending"]);
+          if (typeof args.pending !== "boolean") throw new BoundaryError("invalid");
+          return saveNote(workspace, notePath(args.path), string(args.content, 15800), args.previousRevision === null ? null : string(args.previousRevision, 64), guard, args.pending);
         }),
         wrap("communication_calendar_read", "Read the fixed personal calendar through content checks.", parameters({ id: { type: "string" }, from: { type: "string" }, to: { type: "string" } }), args => calendar.read(args)),
         wrap("communication_calendar_plan", "Create an agreed plan or a clearly tentative proposal. Confirm an existing watcher placeholder. No invitations, deletions, or other calendars.", parameters({ sourceId: { type: "string" }, title: { type: "string" }, start: { type: "string" }, end: { type: "string" }, notes: { type: "string" }, location: { type: "string" }, tentative: { type: "boolean" }, placeholderId: { type: "string" } }, ["sourceId", "title", "start", "end", "notes", "tentative"]), async args => { inbox.authorizeSource(session, id(object(args).sourceId)); return calendar.plan(args); }),

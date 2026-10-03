@@ -47,8 +47,9 @@ export async function communicationFixture(installedDir, pluginDir, root, option
   const requests = [], receipts = [];
   const sender = createHash('sha256').update('+15555550123').digest('hex').slice(0, 32);
   const path = `memory/correspondence/${sender}/2026-09-26.md`;
+  const pendingPath = `memory/correspondence/${sender}/2026-09-27.md`;
   const mainWorkspace = join(root, 'main'), readerWorkspace = join(root, 'reader'), workspace = join(mainWorkspace, 'communication-watcher');
-  let child, log, modelError, cycle = 0, step = 0, readerCalls = 0, mainCalls = 0, followups = 0, announcements = 0;
+  let child, log, modelError, cycle = 0, step = 0, checkedPending = false, readerCalls = 0, mainCalls = 0, followups = 0, announcements = 0;
   const call = (name, args) => ({ name, args });
   const server = createServer(async (req, res) => {
     try {
@@ -70,7 +71,13 @@ export async function communicationFixture(installedDir, pluginDir, root, option
         followups++; text = 'REPLY_SKIP';
       } else if (offered.includes('communication_report')) {
         assert.ok(!offered.includes('sessions_send') && !offered.includes('write') && !offered.includes('read'));
-        if (step++ === 0) tools = [call('communication_review', cycle === 3 ? { mode: 'history' } : {})];
+        if (!checkedPending) { checkedPending = true; tools = [call('communication_memory_pending', {})]; }
+        else if (step++ === 0) {
+          const outstanding = parseResult(last);
+          assert.equal(outstanding.next, null);
+          assert.equal(outstanding.results.length, cycle === 4 ? 1 : 0, 'unfinished work is checked without new intake');
+          tools = [call('communication_review', cycle === 3 ? { mode: 'history' } : {})];
+        }
         else if (step === 2) {
           const data = parseResult(last); assert.ok(Array.isArray(data.receipts), JSON.stringify(data));
           receipts.splice(0, receipts.length, ...data.receipts);
@@ -80,10 +87,14 @@ export async function communicationFixture(installedDir, pluginDir, root, option
           } else if (cycle === 2) {
             assert.deepEqual(receipts.map(r => r.id), ['dinner']); tools = [call('communication_memory_read', { path })];
           } else if (cycle === 3) { assert.equal(receipts.length, 3); text = 'HEARTBEAT_OK'; }
-          else { assert.equal(receipts.length, 0); assert.match(JSON.stringify(request.messages), /UPDATED_FIXTURE_RULE/); text = 'HEARTBEAT_OK'; }
+          else {
+            assert.equal(receipts.length, 0); assert.match(JSON.stringify(request.messages), /UPDATED_FIXTURE_RULE/);
+            if (cycle === 4) tools = [call('communication_report', { paths: [pendingPath], category: 'action-report', summary: 'Previously completed fixture-event work still needs its report.' })];
+            else text = 'HEARTBEAT_OK';
+          }
         } else if (cycle === 1) {
-          if (step === 3) { assert.equal(parseResult(last).status, 'saved'); tools = [call('communication_memory_save', { path, previousRevision: null, content: 'Source: dinner. Created tentative plan fixture-event. Report pending; owner: main.' })]; }
-          else if (step === 4) { assert.equal(parseResult(last).status, 'saved'); tools = [call('communication_report', { path, category: 'action-report', summary: 'Synthetic dinner proposal saved as a tentative plan.' })]; }
+          if (step === 3) { assert.equal(parseResult(last).status, 'saved'); tools = [call('communication_memory_save', { path, pending: true, previousRevision: null, content: 'Source: dinner. Created tentative plan fixture-event. Report pending; owner: main.' })]; }
+          else if (step === 4) { assert.equal(parseResult(last).status, 'saved'); tools = [call('communication_report', { paths: [path], category: 'action-report', summary: 'Synthetic dinner proposal saved as a tentative plan.' })]; }
           else if (step === 5) { assert.equal(parseResult(last).status, 'accepted'); tools = [call('communication_inbox_complete', { ticket: receipts[0].ticket })]; }
           else if (step === 6 || step === 7) {
             assert.equal(parseResult(last).status, step === 6 ? 'unavailable' : 'completed');
@@ -93,11 +104,16 @@ export async function communicationFixture(installedDir, pluginDir, root, option
           if (step === 3) { assert.match(parseResult(last).text, /Main received report/); tools = [call('communication_calendar_read', { id: 'fixture-event' })]; }
           else if (step === 4) { assert.equal(parseResult(last).event.id, 'fixture-event'); tools = [call('communication_inbox_complete', { ticket: receipts[0].ticket })]; }
           else { assert.equal(parseResult(last).status, 'completed'); text = 'HEARTBEAT_OK'; }
+        } else if (cycle === 4) {
+          if (step === 3) {
+            assert.equal(parseResult(last).status, 'accepted');
+            tools = [call('communication_report', { paths: [pendingPath], category: 'action-report', summary: 'A second report must be denied.' })];
+          } else { assert.equal(parseResult(last).status, 'limit'); text = 'HEARTBEAT_OK'; }
         } else throw new Error('Unexpected watcher step');
       } else {
         mainCalls++;
         assert.match(JSON.stringify(request.messages), /agent:communication-watcher:/);
-        if (!last) tools = [call('communication_memory_read', { path })];
+        if (mainCalls % 2 === 1) tools = [call('communication_memory_read', { path: cycle === 4 ? pendingPath : path })];
         else {
           assert.match(parseResult(last).text, /fixture-event/);
           if (options.interrupt) {
@@ -194,7 +210,7 @@ export async function communicationFixture(installedDir, pluginDir, root, option
       return { httpStatus: response.status, body: await response.json() };
     };
     const heartbeat = async () => {
-      cycle++; step = 0;
+      cycle++; step = 0; checkedPending = false;
       const value = await invoke('fixture_heartbeat', {}, 'agent:main:fixture-driver');
       if (modelError) throw modelError;
       assert.equal(value.body.result?.details?.status, 'ran', JSON.stringify(value));
@@ -228,9 +244,9 @@ export async function communicationFixture(installedDir, pluginDir, root, option
     const oldTicket = receipts[0].ticket;
     assert.equal((await invoke('write', { path: 'AGENTS.md', content: 'escape' })).httpStatus, 404);
     assert.equal((await invoke('sessions_send', { sessionKey: 'agent:main:main', message: 'raw escape' })).httpStatus, 404);
-    assert.equal((await invoke('communication_memory_save', { path: 'AGENTS.md', content: 'escape', previousRevision: null })).body.result?.details?.status, 'denied');
+    assert.equal((await invoke('communication_memory_save', { path: 'AGENTS.md', content: 'escape', pending: true, previousRevision: null })).body.result?.details?.status, 'denied');
     // Main owns the shared note. Its saved receipt is available to the next fresh heartbeat.
-    writeFileSync(join(workspace, path), readFileSync(join(workspace, path), 'utf8') + '\nMain received report. Owner: main. No further alert is needed.\n');
+    writeFileSync(join(workspace, path), readFileSync(join(workspace, path), 'utf8').replace('Watcher pending: yes', 'Watcher pending: no') + '\nMain received report. Owner: main. No further alert is needed.\n');
     await stop(); await start();
     assert.equal((await invoke('communication_inbox_complete', { ticket: oldTicket })).body.result?.details?.status, 'denied');
     await heartbeat();
@@ -242,22 +258,28 @@ export async function communicationFixture(installedDir, pluginDir, root, option
     if (options.docker) {
       await runCommand(process.execPath, [join(installedDir, 'openclaw.mjs'), 'sandbox', 'recreate', '--agent', 'communication-watcher', '--force'], { env: fixtureEnv(context), capture: true, timeoutMs: 30000 });
     }
-    await heartbeat(); // Empty pending read in a fresh heartbeat sees the host rule edit.
-    assert.equal(readFileSync(join(workspace, path), 'utf8'), afterRecovery, 'history and empty reads do not rewrite memory');
+    // Simulate a prior heartbeat ending after saving an action but before reporting.
+    writeFileSync(join(workspace, pendingPath), `Sender key: ${sender}\nWatcher pending: yes\nSource: interrupted-report. Action already completed: fixture-event. Report pending.\n`);
+    await heartbeat(); // Empty inbox still discovers and sends the unfinished report.
+    await waitForReply(() => mainCalls >= 4, 'recovered main report');
+    if (supportsDetachedReplies) await waitForReply(() => announcements >= 2, 'recovered announcement');
+    writeFileSync(join(workspace, pendingPath), readFileSync(join(workspace, pendingPath), 'utf8').replace('Watcher pending: yes', 'Watcher pending: no') + '\nMain received report. Owner: main.\n');
+    await heartbeat(); // Main acknowledgment leaves a truly empty heartbeat quiet.
+    assert.equal(readFileSync(join(workspace, path), 'utf8'), afterRecovery, 'recovery does not rewrite settled correspondence');
     if (options.docker) {
       const container = await checkMounts();
       assert.match(await docker(['exec', container, 'cat', '/workspace/AGENTS.md']), /UPDATED_FIXTURE_RULE/);
     }
     const calls = readFileSync(join(pim, 'calls.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
     assert.equal(calls.filter(c => c[0] === 'create').length, 1, 'recovery does not repeat calendar creation');
-    assert.equal(mainCalls, 2, 'recovery does not repeat main reports');
-    assert.equal(announcements, supportsDetachedReplies ? 1 : 0, 'native final announcement stays silent');
-    assert.equal(readerCalls, 8, 'one bounded reader job per heartbeat');
+    assert.equal(mainCalls, 4, 'only the initial and recovered reports reach main');
+    assert.equal(announcements, supportsDetachedReplies ? 2 : 0, 'native final announcement stays silent');
+    assert.equal(readerCalls, 10, 'one bounded reader job per heartbeat');
     const readerFiles = readdirSync(join(context.stateDir, 'agents/communication-reader/sessions')).filter(p => p.endsWith('.jsonl'));
     assert.deepEqual(readerFiles, [], 'reader transcripts are deleted');
     const visible = JSON.stringify(requests);
     assert.ok(!visible.includes('SYNTHETIC_PRIVATE_VALUE') && !visible.includes('INJECT_FIXTURE'), 'raw source text must not reach any agent');
-    const result = { passed: true, heartbeatCycles: cycle, mainCalls, readerCalls, followups, nativeProvenance: true, recoveryWithoutDuplicate: true, rawToolsDenied: true, ruleRefresh: true, readOnlyMounts: options.docker === true, detachedRepliesValidated: supportsDetachedReplies };
+    const result = { passed: true, heartbeatCycles: cycle, mainCalls, readerCalls, followups, nativeProvenance: true, recoveryWithoutDuplicate: true, rawToolsDenied: true, ruleRefresh: true, pendingReportRecovery: true, oneReportPerHeartbeat: true, readOnlyMounts: options.docker === true, detachedRepliesValidated: supportsDetachedReplies };
     writeFileSync(join(root, 'result.json'), JSON.stringify(result)); return result;
   } finally {
     try { await cleanup(); } finally { unregister(); }

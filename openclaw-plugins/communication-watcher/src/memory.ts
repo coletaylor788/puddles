@@ -1,3 +1,4 @@
+import { opendir } from "node:fs/promises";
 import { lstatSync, realpathSync, type Stats } from "node:fs";
 import { createHash } from "node:crypto";
 import { join, isAbsolute } from "node:path";
@@ -53,7 +54,7 @@ export async function searchNotes(config: OpenClawConfig, watcher: string, works
 const revision = (content: string | Buffer) => createHash("sha256").update(content).digest("hex");
 const saving = new Set<string>();
 /** Guarded native Markdown writes. Ownership remains coordinated with main through the note. */
-export async function saveNote(workspace: string, path: string, content: string, previous: string | null, guard: Guard) {
+export async function saveNote(workspace: string, path: string, content: string, previous: string | null, guard: Guard, pending = true) {
   notePath(path);
   if (previous !== null && !/^[a-f0-9]{64}$/.test(previous)) throw new BoundaryError("invalid");
   safeNote(workspace, path, true);
@@ -62,7 +63,8 @@ export async function saveNote(workspace: string, path: string, content: string,
   saving.add(key);
   try {
     const checked = await guard(string(content, 15800));
-    const saved = `Sender key: ${path.split("/")[2]}\n${checked.replace(/^Sender key: [a-f0-9]{32}\n/, "")}`;
+    const body = checked.replace(/^Sender key: [a-f0-9]{32}\n/, "").replace(/^Watcher pending: (yes|no)\n/, "");
+    const saved = `Sender key: ${path.split("/")[2]}\nWatcher pending: ${pending ? "yes" : "no"}\n${body}`;
     if (Buffer.byteLength(saved, "utf8") > 16000) throw new BoundaryError("limit");
     safeNote(workspace, path, true);
     const fs = await root(workspace, { symlinks: "reject", hardlinks: "reject" });
@@ -79,4 +81,53 @@ export async function saveNote(workspace: string, path: string, content: string,
     if (revision(verified.buffer) !== revision(saved)) throw new BoundaryError("changed");
     return { status: "saved", path, revision: revision(saved) };
   } finally { saving.delete(key); }
+}
+
+/** Deterministic, paginated discovery across senders; never relies on semantic top-k recall.
+ * Only the pending flag is inspected before the complete selected note passes guards. */
+export async function pendingNotes(workspace: string, after: string | undefined, guard: Guard) {
+  if (after !== undefined) notePath(after);
+  if (realpathSync(workspace) !== workspace) throw new BoundaryError("denied");
+  const base = join(workspace, "memory", "correspondence");
+  for (const path of [join(workspace, "memory"), base]) {
+    try {
+      const stat = lstatSync(path);
+      if (!stat.isDirectory() || stat.isSymbolicLink() || realpathSync(path) !== path) throw new BoundaryError("denied");
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") return { results: [], next: null };
+      throw e;
+    }
+  }
+  const paths: string[] = [];
+  let entries = 0;
+  for await (const sender of await opendir(base)) {
+    if (++entries > 10000) throw new BoundaryError("limit");
+    if (!/^[a-f0-9]{32}$/.test(sender.name)) continue;
+    if (!sender.isDirectory() || sender.isSymbolicLink()) throw new BoundaryError("denied");
+    const senderRoot = join(base, sender.name);
+    if (realpathSync(senderRoot) !== senderRoot) throw new BoundaryError("denied");
+    for await (const file of await opendir(senderRoot)) {
+      if (++entries > 10000) throw new BoundaryError("limit");
+      if (!/^\d{4}-\d{2}-\d{2}\.md$/.test(file.name)) continue;
+      const path = notePath(`memory/correspondence/${sender.name}/${file.name}`);
+      if (after === undefined || path > after) paths.push(path);
+    }
+  }
+  paths.sort();
+  const fs = await root(workspace, { symlinks: "reject", hardlinks: "reject" });
+  const results: Awaited<ReturnType<typeof readNote>>[] = [];
+  let scanned = 0, bytes = 0;
+  for (const path of paths) {
+    safeNote(workspace, path);
+    const raw = await fs.read(path, { maxBytes: 16000 });
+    const closed = /^Sender key: [a-f0-9]{32}\nWatcher pending: no\n/.test(raw.buffer.toString("utf8"));
+    if (!closed) {
+      if (results.length && bytes + raw.buffer.length > 16000) return { results, next: paths[scanned - 1] };
+      results.push(await readNote(workspace, path, guard));
+      bytes += raw.buffer.length;
+    }
+    scanned++;
+    if (results.length === 5 || scanned === 100) break;
+  }
+  return { results, next: scanned < paths.length ? paths[scanned - 1] : null };
 }

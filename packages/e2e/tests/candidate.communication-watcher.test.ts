@@ -88,21 +88,26 @@ try {
  try { assert.equal((await get.execute("race",{path})).isError,true); assert.equal(substituted,true); }
  finally { fsPromises.open=open; }
  const before = (await get.execute("before-save",{path})).details;
- const saved = await save.execute("save",{path,content:"Updated correspondence",previousRevision:before.revision});
+ const saved = await save.execute("save",{path,content:"Updated correspondence",pending:true,previousRevision:before.revision});
  assert.equal(saved.details.status,"saved",JSON.stringify(saved));
  assert.match(readFileSync(workspace+"/"+path,"utf8"),/^Sender key: [a-f0-9]{32}/);
- assert.equal((await save.execute("stale",{path,content:"Stale overwrite",previousRevision:before.revision})).details.status,"changed");
- assert.equal((await save.execute("blocked",{path,content:"INJECT_FIXTURE",previousRevision:saved.details.revision})).details.status,"blocked");
- assert.equal((await save.execute("rules",{path:"AGENTS.md",content:"Replace rules",previousRevision:null})).isError,true);
+ assert.equal((await save.execute("stale",{path,content:"Stale overwrite",pending:true,previousRevision:before.revision})).details.status,"changed");
+ assert.equal((await save.execute("blocked",{path,content:"INJECT_FIXTURE",pending:true,previousRevision:saved.details.revision})).details.status,"blocked");
+ assert.equal((await save.execute("rules",{path:"AGENTS.md",content:"Replace rules",pending:true,previousRevision:null})).isError,true);
+ const pending = tools.find(t=>t.name==="communication_memory_pending");
+ assert.equal((await pending.execute("unfinished",{})).details.results.length,1);
+ const closed = await save.execute("ack",{path,content:"Main acknowledged; fixture-event",pending:false,previousRevision:saved.details.revision});
+ assert.equal(closed.details.status,"saved");
+ assert.deepEqual((await pending.execute("acknowledged",{})).details.results,[]);
  const newPath="memory/correspondence/"+"c".repeat(32)+"/2026-09-26.md";
- assert.equal((await save.execute("new",{path:newPath,content:"New sender",previousRevision:null})).details.status,"saved");
- assert.equal((await save.execute("clobber",{path:newPath,content:"Replace existing",previousRevision:null})).details.status,"changed");
+ assert.equal((await save.execute("new",{path:newPath,content:"New sender",pending:true,previousRevision:null})).details.status,"saved");
+ assert.equal((await save.execute("clobber",{path:newPath,content:"Replace existing",pending:true,previousRevision:null})).details.status,"changed");
  const linkPath="memory/correspondence/"+"d".repeat(32);
  symlinkSync(process.cwd()+"/other",workspace+"/"+linkPath);
- assert.equal((await save.execute("symlink",{path:linkPath+"/2026-09-26.md",content:"Escape",previousRevision:null})).isError,true);
- assert.equal((await save.execute("multibyte",{path:newPath,content:"界".repeat(10000),previousRevision:null})).details.status,"limit");
+ assert.equal((await save.execute("symlink",{path:linkPath+"/2026-09-26.md",content:"Escape",pending:true,previousRevision:null})).isError,true);
+ assert.equal((await save.execute("multibyte",{path:newPath,content:"界".repeat(10000),pending:true,previousRevision:null})).details.status,"limit");
  const mainTools = factory({config:cfg,agentId:"main",sessionKey:"agent:main:owner",workspaceDir:cfg.agents.entries.main.workspace});
- assert.match((await mainTools[0].execute("handoff",{path})).details.text,/Updated correspondence/);
+ assert.match((await mainTools[0].execute("handoff",{path})).details.text,/Main acknowledged/);
  cfg.plugins.entries[watcher].enabled=false;
  for (const agentId of [watcher,"communication-reader"]) {
    const entry=cfg.agents.entries[agentId];
@@ -126,7 +131,7 @@ it("runs real heartbeat intake, guarded actions, native handoff, and restart rec
   // @ts-expect-error Executable native gateway fixture.
   const { communicationFixture } = await import("../fixtures/communication.mjs");
   const result = await communicationFixture(candidate!, join(repo, "openclaw-plugins/communication-watcher/dist"), root);
-  expect(result).toMatchObject({ passed: true, heartbeatCycles: 4, nativeProvenance: true, recoveryWithoutDuplicate: true });
+  expect(result).toMatchObject({ passed: true, heartbeatCycles: 5, nativeProvenance: true, recoveryWithoutDuplicate: true, pendingReportRecovery: true, oneReportPerHeartbeat: true });
 }, 180_000);
 
 it("cleans its detached gateway when interrupted during a pending main reply", () => {

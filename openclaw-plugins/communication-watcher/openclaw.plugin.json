@@ -69,6 +69,7 @@
       "communication_inbox_complete",
       "communication_memory_read",
       "communication_memory_search",
+      "communication_memory_pending",
       "communication_memory_save",
       "communication_report",
       "communication_calendar_read",
