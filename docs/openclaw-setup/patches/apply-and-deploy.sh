@@ -35,6 +35,7 @@ PATCHES=(
   core-declaration-portability
   talk-agent-parity
   facetime-talk-client
+  harness-tool-work-owner
 )
 
 if [ -n "${MINI_HOST:-}" ]; then

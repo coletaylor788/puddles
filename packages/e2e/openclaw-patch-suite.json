@@ -105,7 +105,8 @@
     "extensions/facetime/tests/talk-initial-greeting.test.ts": "extensions",
     "extensions/facetime/tests/tool.test.ts": "extensions",
     "extensions/facetime/tests/verify-native-helper.test.ts": "extensions",
-    "extensions/facetime/index.test.ts": "extensions"
+    "extensions/facetime/index.test.ts": "extensions",
+    "src/agents/harness/host-capability.test.ts": "agents-support"
   },
   "patches": [
     {
@@ -338,6 +339,12 @@
         "extensions/facetime/tests/verify-native-helper.test.ts",
         "src/gateway/talk/client-gateway-control.close.test.ts",
         "extensions/facetime/index.test.ts"
+      ]
+    },
+    {
+      "name": "harness-tool-work-owner",
+      "tests": [
+        "src/agents/harness/host-capability.test.ts"
       ]
     }
   ]
