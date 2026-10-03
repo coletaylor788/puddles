@@ -10,7 +10,9 @@ remote shell transcript.
 
 ## Open the browser
 
-Double-click **Open Puddles Browser** on the Mini's desktop. It opens the
+Sign in to the OpenClaw owner's desktop on the Mini, either locally or through
+Screen Sharing. Another account may remain signed in at the physical console.
+Double-click **Open Puddles Browser** on that desktop. It opens the
 personal browser agent's noVNC viewer in the default web browser. If no browser
 is running, it starts one with a harmless local turn. It discovers the current
 viewer connection on every launch, preserves existing tabs, and never resets

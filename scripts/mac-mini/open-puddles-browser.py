@@ -101,8 +101,17 @@ def main():
             raise LauncherError("The personal browser viewer is not running. Open the desktop shortcut to start it.")
         print("Personal browser viewer is ready.")
         return
-    if Path("/dev/console").stat().st_uid != os.getuid():
-        raise LauncherError("Open this shortcut from the browser owner's logged-in Mini desktop.")
+    # Screen Sharing and fast user switching can keep this owner's desktop
+    # alive while another user owns /dev/console. Check the owner's GUI domain.
+    try:
+        desktop = subprocess.run(
+            ["/bin/launchctl", "print", f"gui/{os.getuid()}"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        raise LauncherError("Could not check the desktop session. Sign in to the browser owner's Mini desktop and try again.") from None
+    if desktop.returncode:
+        raise LauncherError("Sign in to the browser owner's Mini desktop, locally or through Screen Sharing, then open this shortcut.")
     docker = shutil.which("docker") or "/Applications/Docker.app/Contents/Resources/bin/docker"
     if not Path(docker).is_file():
         raise LauncherError("Docker is not installed. Restore the browser's Docker setup first.")
