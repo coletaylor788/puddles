@@ -337,6 +337,7 @@ it("keeps a caller's release migration bindings out of synthetic pipelines", asy
 
 it("runs every mapped regression through the upstream test entrypoint", async () => {
   setup();
+  vi.stubEnv("DEVELOPER_DIR", "/Library/Developer/CommandLineTools");
   vi.stubEnv("GMAIL_MCP_PYTHON", "fixture-python");
   const { runCommand } = await import("../src/process-runner.mjs");
   vi.mocked(runCommand).mockClear();
@@ -344,6 +345,10 @@ it("runs every mapped regression through the upstream test entrypoint", async ()
   const suite = JSON.parse(readFileSync(join(import.meta.dirname, "../openclaw-patch-suite.json"), "utf8"));
   const calls = vi.mocked(runCommand).mock.calls;
   for (const [name, args, options] of calls) {
+    if ((name === "corepack" && args[1] === "build") ||
+        (name === "node" && ["scripts/run-vitest.mjs", "scripts/run-tsgo.mjs"].includes(args[0]))) {
+      expect(options?.env?.DEVELOPER_DIR).toBe("/Library/Developer/CommandLineTools");
+    }
     if (name === "node" && args[0] === "scripts/run-vitest.mjs") {
       expect(options?.env?.OPENCLAW_VITEST_WORKER_CACHE).toBe("1");
     }

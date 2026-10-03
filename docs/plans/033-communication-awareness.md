@@ -1,6 +1,6 @@
 # Plan 033 - Communication watcher
 
-**Status:** Implemented and validated; ready for source integration
+**Status:** Source merged; release validation in progress
 **Issue:** [#132](https://github.com/coletaylor788/puddles/issues/132)
 **Last updated:** 2026-10-03
 
@@ -125,13 +125,13 @@ The next heartbeat uses the updated rules. No update message or self-editing tur
 
 The October 2 revision is implemented: check unfinished correspondence before new intake and send at most one combined report per heartbeat. Review identified two corrections: rejected correspondence must not block later notes, and calendar content must go through the restricted reader. Both are corrected and retained review is clear. Focused tests, real native gateway scenarios, and synthetic Docker validation pass. Required repository and security checks pass on the implementation head.
 
-Required source checks are green. The next step is paired source merge followed by cumulative CI and immutable-artifact DEV, TEST and PROD validation. Locked-phone forwarding and real account setup remain activation prerequisites; the delivered package defaults to paused.
+Both source changes are merged and required checks pass. Cumulative release validation is in progress before immutable-artifact DEV, TEST and PROD validation. Locked-phone forwarding and real account setup remain activation prerequisites; the delivered package defaults to paused.
 
 ## Agent section
 
 ### State
 
-The implemented revision permits a maximum of one report per heartbeat. Feature review and required checks are complete. Source integration and release validation are next. Real source activation still requires validated phone transport and account bindings.
+The implemented revision permits a maximum of one report per heartbeat. Feature review, required checks and source integration are complete. Release validation is in progress. Real source activation still requires validated phone transport and account bindings.
 
 Implementation branch: `codex/communication-watcher-dev`. Current main is integrated at merge `ae0d85d`. After the old checkout disappeared during this turn, the same branch and saved edit scripts were recovered into the task-owned checkout at `/private/tmp/communication-resume/puddles`. The checkpoint is `8ab77b5`; it contains the pending discovery and report-limit revision. No other session’s source was overwritten.
 
@@ -171,6 +171,8 @@ Next revision: align heartbeat instructions, guarded unfinished-work discovery, 
 5. Demonstrate with synthetic messages before real forwarding.
 
 ### Validation
+
+Source merged as public `b225521` with required and post-merge checks passing. The first release builder stopped at Mini disk admission before tests. The local builder passed compilation and all 574 repository lifecycle checks after removing an operator-added storage environment variable. Mapped FaceTime tests exposed that the harness discarded an explicitly selected Apple toolchain. The harness now carries `DEVELOPER_DIR` into build, typecheck and test commands and binds it into the existing environment digest. A regression demonstrates the missing selection before the fix. The machine-wide toolchain selection is unchanged. Full release validation must complete on the corrected merged candidate.
 
 Current revision: 54 focused watcher checks, 57 affected packaging/pipeline checks, type checking and plugin build pass. The three real OpenClaw 2026.9.6 scenarios pass: native memory access, heartbeat/action/handoff/restart behavior, and interruption cleanup. The five-heartbeat Docker fixture passes empty-inbox report recovery, refusal of a second report, quiet main-acknowledged work, calendar-reader isolation, one calendar creation, nine read-only instruction files, writable memory, rule refresh, and removal of all owned containers. A final rebuilt Docker run also checks the calendar acquisition’s concurrent-call latch.
 

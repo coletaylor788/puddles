@@ -2,13 +2,13 @@
 
 Reviews a private shared Reminders list on an OpenClaw heartbeat. A dedicated reader sees only checked text. The watcher can make personal calendar plans, keep correspondence in native memory, report to main, and check off reviewed items. Incoming reminders never dispatch agent turns.
 
-This is an implementation candidate. The configuration builder keeps heartbeat paused unless explicitly enabled and denies native writes and sends. No real forwarding or production configuration is enabled. Merging and TEST/PROD remain held until the requester releases the hold. See [Plan 033](../../docs/plans/033-communication-awareness.md).
+The implementation is merged. The configuration builder keeps heartbeat paused unless explicitly enabled and denies native writes and sends. Installing the package does not enable real forwarding or add production agent configuration. Release certification is tracked separately. See [Plan 033](../../docs/plans/033-communication-awareness.md).
 
 ## Data flow
 
 Each heartbeat first calls `communication_memory_pending` to reconcile unfinished correspondence, following its continuation pages. It then calls `communication_review`. An empty inbox alone is not a reason to exit. That tool creates a fresh `communication-reader` session using the public subagent runtime, admits that session to the read tool, waits for its answer, and checks the answer before returning it. Reader transcripts are deleted after the job. A cleanup failure returns only an unavailable status and must be cleared before another reader starts. The native fixture checks successful and interrupted reader/gateway cleanup.
 
-`communication_inbox_read` for inbox jobs; `communication_calendar_acquire` for allocated calendar jobs reads the configured list. Pending and completed-history reads share the same scope checks, strict verdict validation, secret redaction, and injection check. Results contain bounded text and receipts; no raw provider responses, errors, attachments, or probe evidence are returned. Original sender labels remain untrusted.
+Inbox jobs use `communication_inbox_read` for the fixed Reminders list. Calendar jobs use `communication_calendar_acquire` for the host-allocated calendar query. Pending and completed-history reads share the same scope checks, strict verdict validation, secret redaction, and injection check. Results contain bounded text and receipts; no raw provider responses, errors, attachments, or probe evidence are returned. Original sender labels remain untrusted.
 
 The watcher completes a receipt after handling it. Receipts are random, expire after 30 minutes, bind to the watcher session and source fingerprint, and are discarded on restart. They are temporary access grants, not an intake ledger. A fresh read issues fresh receipts. Reminders remain the intake queue; correspondence memory provides context and prevents blind repetition after failed check-off.
 
@@ -60,7 +60,7 @@ Use a Shortcuts Dictionary converted to JSON for Notes, so quotes and newlines a
 
 Run `pnpm --filter communication-watcher test`, `lint`, and `build` using the repository-pinned toolchain. Runtime regressions cover guard order, invalid verdicts, wrong lists/callers, changed item versions, stale receipts, queue poisoning, concurrent review ownership, reader reasoning blocks, tool escapes, and calendar scope. Review instruction text directly; do not add tests of prose.
 
-The shared cumulative gate collects this workspace's runtime tests and `candidate.communication-watcher.test.ts`. The latter uses the selected native SDK for configuration validation, sender recall, current-file checks, ancestor replacement, guarded main reads, and disabled-plugin tool policy. The gateway fixture exercises four native heartbeats, fresh reader sessions and cleanup, secret/injection checks, calendar/save/report/complete, restart recovery after failed check-off, checked history, and instruction refresh. Its local mode does not prove Docker mounts. DEV runs the same fixture with actual Docker overlays against the extracted CI artifacts.
+The shared cumulative gate collects this workspace's runtime tests and `candidate.communication-watcher.test.ts`. The latter uses the selected native SDK for configuration validation, sender recall, current-file checks, ancestor replacement, guarded main reads, and disabled-plugin tool policy. The gateway fixture exercises five native heartbeats, fresh reader sessions and cleanup, secret/injection checks, calendar/save/report/complete, restart recovery after failed check-off, checked history, and instruction refresh. Its local mode does not prove Docker mounts. DEV runs the same fixture with actual Docker overlays against the extracted CI artifacts.
 
 ## Packaging and DEV
 
@@ -72,4 +72,4 @@ Under the maintained DEV slot controller, run `node packages/e2e/bin/communicati
 
 Stock OpenClaw 2026.9.3 delivers the initial native handoff but can reject its delayed reply after caller authority expires. Stock 2026.9.6 passes the native reply and silent announcement fixture. The fixture records whether it validated that newer reply path; the exact composed CI artifact still needs installed DEV validation. No competing core patch or special notification mechanism is included.
 
-Keep real forwarding paused until locked-phone behavior, account/list/calendar scope, installed mounts, and the upgrade's native reply path pass. The merge hold remains in force; no TEST or production activation is part of this task.
+Keep real forwarding paused until locked-phone behavior, account/list/calendar scope, installed mounts, and the upgrade's native reply path pass. The release promotes verified artifacts through DEV, TEST and production; enabling real forwarding additionally requires the device and account checks above.
