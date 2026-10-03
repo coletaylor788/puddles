@@ -1,6 +1,6 @@
 # Plan 033 - Technical appendix
 
-Current design: [Communication watcher](033-communication-awareness.md). This appendix specifies the design and historical implementation evidence, not deployed capabilities. The October 2 unfinished-work and one-report revision is not implemented. No runtime configuration changed in this review.
+Current design: [Communication watcher](033-communication-awareness.md). This appendix specifies the design and historical implementation evidence, not deployed capabilities. The October 2 unfinished-work and one-report revision is implemented and merged. Synthetic checks and retained review pass; release certification remains in progress.
 
 ## Selected transport: shared Reminders list
 
@@ -380,7 +380,7 @@ The local gateway fixture verifies heartbeat intake, scoped reader cleanup, guar
 
 Keep incomplete or uncertain reports in correspondence memory. A saved note or successful enqueue does not prove Cole received an alert. Main records receipt, its owner-facing alert reference, and the eventual decision/outcome. Subsequent heartbeats reconcile uncertain delivery without blindly repeating actions or alerts.
 
-The previously proposed fixed system-event notification and special main wake are withdrawn. Normal guarded OpenClaw handoffs remain the design. The watcher stays paused until installed mounts, instruction propagation, upgraded native replies, and the complete synthetic DEV flow are proven. The separate merge hold remains in force.
+The previously proposed fixed system-event notification and special main wake are withdrawn. Normal guarded OpenClaw handoffs remain the design. The watcher stays paused until installed mounts, instruction propagation, upgraded native replies, and the complete synthetic DEV flow are proven. Source integration is complete. Release validation and the device/account activation prerequisites remain separate.
 
 
 ## October 2 implementation revision

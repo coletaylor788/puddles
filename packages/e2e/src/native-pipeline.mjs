@@ -312,6 +312,7 @@ export async function nativePipeline(command, repositoryGates) {
     const buildEnv = {
       PATH: `${dirname(process.execPath)}:${process.env.PATH}`, HOME: process.env.HOME,
       TMPDIR: process.env.TMPDIR, COREPACK_HOME: process.env.COREPACK_HOME,
+      DEVELOPER_DIR: process.env.DEVELOPER_DIR,
       PUDDLES_DEVELOPMENT_CONFIG: process.env.PUDDLES_DEVELOPMENT_CONFIG,
       [PNPM_STORE_ENV]: repositoryPnpm.configuredStoreDir,
       CI: "true", ...resourceProfile.buildEnvironment,
