@@ -106,7 +106,11 @@
     "extensions/facetime/tests/tool.test.ts": "extensions",
     "extensions/facetime/tests/verify-native-helper.test.ts": "extensions",
     "extensions/facetime/index.test.ts": "extensions",
-    "src/agents/harness/host-capability.test.ts": "agents-support"
+    "src/agents/harness/host-capability.test.ts": "agents-support",
+    "extensions/openai/realtime-quicksilver-delegation.test.ts": "extension-provider-openai",
+    "extensions/openai/realtime-quicksilver-concurrency.test.ts": "extension-provider-openai",
+    "extensions/openai/realtime-quicksilver-public-delegation.test.ts": "extension-provider-openai",
+    "src/gateway/talk/client-gateway-control.native.test.ts": "gateway-client"
   },
   "patches": [
     {
@@ -345,6 +349,21 @@
       "name": "harness-tool-work-owner",
       "tests": [
         "src/agents/harness/host-capability.test.ts"
+      ]
+    },
+    {
+      "name": "talk-overlap-recovery",
+      "tests": [
+        "extensions/openai/realtime-quicksilver-delegation.test.ts",
+        "extensions/openai/realtime-quicksilver-concurrency.test.ts",
+        "extensions/openai/realtime-quicksilver-public-delegation.test.ts",
+        "src/gateway/talk/client-gateway-control.agent-consult.test.ts",
+        "src/gateway/talk/client-gateway-control.native.test.ts",
+        "src/gateway/talk/client-gateway-control.close.test.ts",
+        "src/gateway/talk/client-spoken-confirmation.test.ts"
+      ],
+      "candidateTests": [
+        "tests/candidate.talk-concurrency.test.ts"
       ]
     }
   ]
