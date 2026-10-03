@@ -2312,3 +2312,219 @@ index e75cb00c..25b391d5 100644
      onAudio: (audio, metadata) => {
        if (canSendAudio()) {
          params.audioSink.sendAudio(audio, metadata);
+diff --git a/extensions/facetime/scripts/inject-helper.sh b/extensions/facetime/scripts/inject-helper.sh
+index 88d7d8f4..657f98b0 100644
+--- a/extensions/facetime/scripts/inject-helper.sh
++++ b/extensions/facetime/scripts/inject-helper.sh
+@@ -113,9 +113,11 @@ lldb_log="$(mktemp "${TMPDIR:-/tmp}/openclaw-facetime-lldb.XXXXXX")"
+ cleanup_attach() {
+   if [[ -n "${watchdog_pid}" ]] && kill -0 "${watchdog_pid}" 2>/dev/null; then
+     kill "${watchdog_pid}" 2>/dev/null || true
++    wait "${watchdog_pid}" 2>/dev/null || true
+   fi
+   if [[ -n "${lldb_pid}" ]] && kill -0 "${lldb_pid}" 2>/dev/null; then
+     kill "${lldb_pid}" 2>/dev/null || true
++    wait "${lldb_pid}" 2>/dev/null || true
+   fi
+   if [[ -e "${auth_sidecar}" ]]; then
+     # Objective-C +load finishes synchronously inside this dlopen. Reinjection
+@@ -133,7 +135,10 @@ cleanup_attach() {
+       "${lldb_log}" >/dev/null 2>&1 || true
+   fi
+ }
+-trap cleanup_attach EXIT HUP INT TERM
++trap cleanup_attach EXIT
++trap 'exit 129' HUP
++trap 'exit 130' INT
++trap 'exit 143' TERM
+ 
+ "${repo_root}/scripts/ensure-helper-ipc-key.sh" >/dev/null
+ ipc_key="$(tr -d '[:space:]' < "${ipc_key_file}")"
+@@ -191,13 +196,22 @@ lldb -p "${target_pid}" \
+   -o detach \
+   -o quit >"${lldb_log}" 2>&1 &
+ lldb_pid=$!
+-(
+-  sleep "${FACETIME_HELPER_ATTACH_TIMEOUT_SECONDS:-90}"
+-  if kill -0 "${lldb_pid}" 2>/dev/null; then
+-    echo "LLDB attach to ${target_app} timed out" >&2
+-    kill "${lldb_pid}" 2>/dev/null || true
+-  fi
+-) &
++# Keep the timer in one process. Killing a shell wrapper around sleep leaves
++# sleep holding the caller's output pipes until the full attach timeout elapses.
++/usr/bin/python3 -c '
++import os
++import signal
++import sys
++import time
++
++time.sleep(float(sys.argv[2]))
++try:
++    os.kill(int(sys.argv[1]), 0)
++    print(f"LLDB attach to {sys.argv[3]} timed out", file=sys.stderr, flush=True)
++    os.kill(int(sys.argv[1]), signal.SIGTERM)
++except ProcessLookupError:
++    pass
++' "${lldb_pid}" "${FACETIME_HELPER_ATTACH_TIMEOUT_SECONDS:-90}" "${target_app}" &
+ watchdog_pid=$!
+ 
+ set +e
+diff --git a/extensions/facetime/tests/inject-helper.test.ts b/extensions/facetime/tests/inject-helper.test.ts
+index d1dca2e0..bbc4f8bc 100644
+--- a/extensions/facetime/tests/inject-helper.test.ts
++++ b/extensions/facetime/tests/inject-helper.test.ts
+@@ -1,14 +1,149 @@
+-import { readFile } from "node:fs/promises";
+-import { resolve } from "node:path";
+-import { describe, expect, it } from "vitest";
++import { spawn, type ChildProcess } from "node:child_process";
++import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join, resolve } from "node:path";
++import { performance } from "node:perf_hooks";
++import { afterEach, describe, expect, it } from "vitest";
+ 
+ const injectHelperScript = resolve(import.meta.dirname, "../scripts/inject-helper.sh");
++const fixtures: Array<{ root: string; child: ChildProcess; done: Promise<unknown> }> = [];
++
++function isAlive(pid: number) {
++  try {
++    process.kill(pid, 0);
++    return true;
++  } catch {
++    return false;
++  }
++}
++
++async function startInjector(options: { delay?: number; status?: number; timeout?: number } = {}) {
++  const root = await mkdtemp(join(tmpdir(), "facetime-inject-test-"));
++  const scripts = join(root, "scripts");
++  const bin = join(root, "bin");
++  const container = join(root, "Library/Containers/com.apple.FaceTime/Data/tmp");
++  const keyDir = join(root, "Library/Application Support/OpenClaw/FaceTime");
++  await Promise.all(
++    [scripts, bin, container, keyDir].map((dir) => mkdir(dir, { recursive: true })),
++  );
++  await Promise.all([
++    writeFile(join(container, "FaceTimeHelper.dylib"), "synthetic helper"),
++    writeFile(join(keyDir, "helper-ipc-key"), "a".repeat(64), { mode: 0o600 }),
++    writeFile(join(scripts, "ensure-helper-ipc-key.sh"), "#!/bin/bash\nexit 0\n", { mode: 0o700 }),
++    writeFile(join(bin, "csrutil"), "#!/bin/bash\necho 'Debugging Restrictions: disabled'\n", {
++      mode: 0o700,
++    }),
++    writeFile(join(bin, "DevToolsSecurity"), "#!/bin/bash\necho enabled\n", { mode: 0o700 }),
++    writeFile(
++      join(bin, "lldb"),
++      `#!/usr/bin/python3
++import os, sys, time
++with open(os.environ["TEST_LLDB_PID"], "w") as handle:
++    handle.write(str(os.getpid()))
++time.sleep(${options.delay ?? 0.1})
++print("(int) $0 = 1")
++sys.exit(${options.status ?? 0})
++`,
++      { mode: 0o700 },
++    ),
++  ]);
++  // Exercise the full production script with only native prerequisites faked.
++  // csrutil has an absolute path; all other commands use the fixture PATH/HOME.
++  const source = (await readFile(injectHelperScript, "utf8")).replaceAll(
++    "/usr/bin/csrutil",
++    join(bin, "csrutil"),
++  );
++  const script = join(scripts, "inject-helper.sh");
++  await writeFile(script, source);
++  const started = performance.now();
++  const child = spawn("/bin/bash", [script], {
++    env: {
++      ...process.env,
++      HOME: root,
++      TMPDIR: root,
++      PATH: `${bin}:/usr/bin:/bin`,
++      TEST_LLDB_PID: join(root, "lldb.pid"),
++      FACETIME_HELPER_PID: "12345",
++      FACETIME_HELPER_ATTACH_TIMEOUT_SECONDS: String(options.timeout ?? 5),
++    },
++    stdio: ["ignore", "pipe", "pipe"],
++  });
++  let output = "";
++  child.stdout!.on("data", (data) => {
++    output += data.toString();
++  });
++  child.stderr!.on("data", (data) => {
++    output += data.toString();
++  });
++  const done = new Promise<{ code: number | null; elapsed: number; output: string }>(
++    (complete, reject) => {
++      child.once("error", reject);
++      // close waits for inherited output pipes too, unlike exit.
++      child.once("close", (code) =>
++        complete({ code, elapsed: performance.now() - started, output }),
++      );
++    },
++  );
++  fixtures.push({ root, child, done });
++  return { root, container, child, done };
++}
++
++async function expectClean(root: string, container: string) {
++  const pid = Number(await readFile(join(root, "lldb.pid"), "utf8"));
++  expect(isAlive(pid)).toBe(false);
++  expect((await readdir(container)).filter((name) => name.endsWith(".auth"))).toEqual([]);
++  expect(
++    (await readdir(root)).filter((name) => name.startsWith("openclaw-facetime-lldb.")),
++  ).toEqual([]);
++}
++
++afterEach(async () => {
++  for (const { root, child, done } of fixtures.splice(0)) {
++    child.kill("SIGTERM");
++    await done;
++    await rm(root, { recursive: true, force: true });
++  }
++});
+ 
+ describe("FaceTime helper injection", () => {
+   it("casts dynamic-loader results for LLDB's fallback expression parser", async () => {
+     const source = await readFile(injectHelperScript, "utf8");
+-
+     expect(source).toContain('(void *)dlopen(\\"${dylib}\\", 2)');
+     expect(source).toContain('(int *)(void *)dlsym(h, \\"OpenClawFaceTimeHelperInitialized\\")');
+   });
+ });
++
++describe.skipIf(process.platform === "win32")("FaceTime injector process cleanup", () => {
++  it.each([0, 7])(
++    "releases output pipes immediately after LLDB exits with status %i",
++    async (status) => {
++      const fixture = await startInjector({ status });
++      const result = await fixture.done;
++      expect(result.code).toBe(status);
++      expect(result.elapsed).toBeLessThan(3_000);
++      await expectClean(fixture.root, fixture.container);
++    },
++    10_000,
++  );
++
++  it("terminates and reaps an attach that exceeds its timeout", async () => {
++    const fixture = await startInjector({ delay: 60, timeout: 0.3 });
++    const result = await fixture.done;
++    expect(result.code).not.toBe(0);
++    expect(result.output).toContain("LLDB attach to FaceTime timed out");
++    expect(result.elapsed).toBeLessThan(3_000);
++    await expectClean(fixture.root, fixture.container);
++  }, 10_000);
++
++  it("joins the debugger and watchdog when interrupted", async () => {
++    const fixture = await startInjector({ delay: 60 });
++    await expect
++      .poll(async () => readFile(join(fixture.root, "lldb.pid"), "utf8"))
++      .toMatch(/^\d+$/);
++    fixture.child.kill("SIGTERM");
++    const result = await fixture.done;
++    expect(result.code).toBe(143);
++    expect(result.elapsed).toBeLessThan(3_000);
++    await expectClean(fixture.root, fixture.container);
++  }, 10_000);
++});

@@ -33,9 +33,15 @@ A normal hangup ends audio and prevents new work, while accepted work follows na
 
 Select `realtime.mode: "talk"` to inherit Talk settings. The published standalone carrier mode remains available for existing installations. Shared mode rejects independent voice/provider/instruction and tool-policy overrides so it cannot silently become a different agent experience.
 
+#### Startup and recovery
+
+The enabled plugin starts with the Gateway in the existing macOS login service. Its supervisor opens FaceTime and Phone, attaches the helpers, and retries lost connections. A separate FaceTime login item is unnecessary. After a reboot, the host must reach the signed-in Gateway user session; this feature does not alter automatic login or FileVault.
+
+Acceptance includes startup with the call apps closed, recovery after an app exits, and an isolated Gateway restart. Full reboot recovery requires a physical check before claiming it verified.
+
 ### Status
 
-The shared host session and FaceTime adapter are implemented and independently reviewed. Native voice approval and consultation-lifetime fixes are included. Focused behavior, package, and migration checks pass. Installed DEV validation passes, including loading the patched FaceTime plugin through the actual host. Physical FaceTime acceptance and release remain outstanding; the carrier stays disabled.
+The shared host session and FaceTime adapter are implemented and independently reviewed. Native voice approval and consultation-lifetime fixes are included. Focused behavior, package, and migration checks pass. Installed DEV validation passes, including loading the patched FaceTime plugin through the actual host. Automatic call-app startup and recovery pass in an isolated installed runtime. Physical FaceTime acceptance and release remain outstanding; the carrier stays disabled.
 
 ## Agent section
 
@@ -76,7 +82,7 @@ The shared host session and FaceTime adapter are implemented and independently r
 - Required cumulative release command: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
 - Physical audio, signed helper/driver, account routing, and device acceptance remain required.
 
-### Installed DEV evidence
+#### Installed DEV evidence
 
 | Field | Result |
 | --- | --- |
@@ -87,7 +93,9 @@ The shared host session and FaceTime adapter are implemented and independently r
 | Evidence | Exact installed identity and proof retained in the private implementation record |
 | Ownership | Controller finished and DEV lease released. Active runtime, pre-test state snapshot and fixture retained |
 
-This is local draft proof for source landing, not an immutable release receipt. Remaining host setup requires full Xcode and its first-run/license completion, Developer Mode, and matching signed native components before physical acceptance.
+This is local draft proof for source landing, not an immutable release receipt. The current source inherits subsequent merged voice fixes. Injector, supervisor, and shared Talk checks pass (18 cases), together with patch registration (10 cases) and focused type-aware lint. The original injector fails both new pipe-release regressions. Independent review cleared the correction after a timeout-diagnostic race was fixed.
+
+An isolated installed runtime automatically launched both closed call apps and connected their helpers in about 51 seconds, including Gateway startup. Each app recovered after exit in about eight seconds. Both helpers also reconnected after Gateway restart. Physical audio, receiving-account routing, and full reboot acceptance remain outstanding. Exact runtime identity and host evidence stay in the private implementation record.
 
 ### Rollout and rollback
 
@@ -109,5 +117,6 @@ Start disabled and owner-only. Use normal artifact DEV, TEST, and production gat
 - [x] Incorporate current native Talk fixes and pass independent implementation review.
 - [x] Pass focused and installed checks and independent review.
 - [x] Register regressions for cumulative validation.
-- [ ] Land source and complete release gates.
+- [x] Land the reviewed implementation source.
+- [ ] Complete release gates.
 - [ ] Complete physical acceptance and task-owned cleanup.
