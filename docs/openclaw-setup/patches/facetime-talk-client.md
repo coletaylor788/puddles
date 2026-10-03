@@ -26,6 +26,13 @@ Explicit phrases such as “hang up” or “end this call” request the carrie
 physical hangup; quoted, conditional, and negated phrases do not. Transport
 closure fences stale audio and new work while preserving final transcript flush.
 
+## Automatic helper recovery
+
+The helper supervisor starts the call apps and reconnects after app or Gateway
+exit. The injector owns a single timeout process and joins it when attachment
+finishes. Successful, failed, timed-out, and interrupted attempts release their
+output pipes and temporary authentication files before the next attempt.
+
 ## Packaging and validation
 
 FaceTime is distributed separately from the OpenClaw package. Install or bundle
