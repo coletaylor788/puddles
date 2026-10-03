@@ -1,8 +1,8 @@
 # Plan 033 - Communication watcher
 
-**Status:** Implementation and validation in progress; merge held
+**Status:** Revised design agreed; implementation and merge held
 **Issue:** [#132](https://github.com/coletaylor788/puddles/issues/132)
-**Last updated:** 2026-09-27
+**Last updated:** 2026-10-02
 
 ## Human section
 
@@ -37,7 +37,9 @@ flowchart TD
 
 As with Gmail, the plugin owns the exposed tools and runs their guards inside each call. Memory saves, calendar actions, and reports enforce their own scope and content checks; raw alternatives stay unavailable.
 
-The watcher ignores, acts within standing permission, or hands off to main. `AGENTS.md` defines its behavior and use of built-in memory. Forwarded messages never trigger turns; the heartbeat starts intake. Main and watcher may exchange bounded follow-ups about an existing handoff. Those replies do not start another inbox sweep or grant new authority. Failed checks return only a safe status, and empty runs stay quiet.
+The watcher ignores, acts within standing permission, or hands off to main. `AGENTS.md` defines its behavior and use of built-in memory. Forwarded messages never trigger turns; the heartbeat starts intake. Main and watcher may exchange bounded follow-ups about an existing handoff. Those replies do not start another inbox sweep or grant new authority. Failed checks return only a safe status. Each heartbeat first checks unfinished work in correspondence memory, then reads new reminders. It stays quiet when neither needs attention. Main-owned work is left with main once acknowledged.
+
+Send **at most one combined report to main per heartbeat**, covering routine results, important alerts, and decision requests. Zero reports is normal. Failed or uncertain reports remain in correspondence memory for a later heartbeat; retrying a report must not repeat the underlying action. Bounded native clarification replies do not authorize additional proactive reports or reset this limit.
 
 > **Open validation:** test locked-phone automation, sender/timestamp/body preservation, iCloud sync, guarded pending/history reads, and check-off after handling. Telegram account history remains a fallback if Reminders fails; the appendix retains that research.
 
@@ -107,7 +109,7 @@ Before acting, consult the sender’s dated correspondence for relevant plans, p
 | An important alert or required action | Save the context and question in the correspondence note; send it to main. |
 | Anything else | Silently ignore and check off the item, with no memory entry. |
 
-Plans need enough information to place them on the calendar. Missing essential details or material conflicts go to main when important. Routine calendar work stays within the configured personal-calendar scope, with no invitations. Consequential heartbeats record the correspondence and action taken, then report through main.
+Start with explicit calendar times supported by the message or established context. Do not invent missing timing. Plans need enough information to place them on the calendar. Missing essential details or material conflicts go to main when important. Routine calendar work stays within the configured personal-calendar scope, with no invitations. Consequential heartbeats record the correspondence and action taken, then include reportable results in the heartbeat’s single combined report through main.
 
 #### Improving the watcher through main
 
@@ -121,19 +123,21 @@ The next heartbeat uses the updated rules. No update message or self-editing tur
 
 ### Status
 
-The guarded tools and heartbeat flow are implemented and reviewed. Local checks and synthetic DEV pass, including read-only instructions, writable memory, and rule updates. The shared OpenClaw composition still fails during declaration compilation before watcher packaging. Final validation waits for the upgrade to pass DEV and land on main, then includes that base before running paired CI and exact-artifact DEV. The watcher stays paused.
+The October 2 design revision is agreed: check unfinished correspondence before new intake and send at most one combined report per heartbeat. The existing implementation predates these changes and needs alignment and focused validation. Prior records report successful local and synthetic DEV checks; the public cumulative CI check failed, and final exact-artifact DEV remains outstanding.
 
-Implementation and synthetic DEV validation are approved. Merging remains held until the OpenClaw upgrade finishes and Cole releases the hold. No real forwarding, TEST, or PROD is enabled. Locked-phone forwarding and real account setup remain activation prerequisites.
+Work is held here for review. No merge, TEST, PROD, or real forwarding is authorized. Locked-phone forwarding and real account setup remain activation prerequisites.
 
 ## Agent section
 
 ### State
 
-Implementation branch: `codex/communication-watcher-dev`, based on freshly fetched main and integrated with upgrade candidate `a05bb40f0ad3ade665237255d1c1415bf4a140dc`. No merge, auto-merge, TEST, or PROD is authorized. Coordinate shared DEV ownership with the OpenClaw upgrade owner using the deployment slot controller. The [appendix](033-communication-awareness-appendix.md) retains source evidence and implementation detail. Diagrams and tables above are the review surface. The starting behavior list ships in `openclaw-plugins/communication-watcher/instructions/`. The configuration builder defaults to `0m`; explicit `enableHeartbeat: true` selects `30m`. Native `write` and `sessions_send` stay denied permanently. Instructions use `communication_memory_save` and `communication_report`. The relay privately constructs the fixed-main native capability through the public SDK; it does not modify host routing or model grants. Synthetic draft DEV passed under the shared controller. The previous DEV instance was restored, cleanup verified, and the slot released. No final CI artifact has been validated in DEV yet. The upgrade owner will notify this task after its DEV checks pass and it lands on main. Wait for that notice before taking more inputs; the merge helper requires the candidate to include current main.
+Current review home: Codex thread `01a0fa9a-08cd-7532-bba7-c3a552120f74`. The agreed October 2 revision is design-only; runtime instructions and tool enforcement still need updating. Historical evidence below does not validate this revision.
+
+Implementation branch: `codex/communication-watcher-dev`, based on freshly fetched main and integrated with upgrade candidate `a05bb40f0ad3ade665237255d1c1415bf4a140dc`. No merge, auto-merge, TEST, or PROD is authorized. Coordinate shared DEV ownership with the OpenClaw upgrade owner using the deployment slot controller. The [appendix](033-communication-awareness-appendix.md) retains source evidence and implementation detail. Diagrams and tables above are the review surface. The starting behavior list ships in `openclaw-plugins/communication-watcher/instructions/`. The configuration builder defaults to `0m`; explicit `enableHeartbeat: true` selects `30m`. Native `write` and `sessions_send` stay denied permanently. Instructions use `communication_memory_save` and `communication_report`. The relay privately constructs the fixed-main native capability through the public SDK; it does not modify host routing or model grants. Synthetic draft DEV passed under the shared controller. The previous DEV instance was restored, cleanup verified, and the slot released. No final CI artifact has been validated in DEV yet. On implementation resumption, verify current main and applicable lifecycle guidance before refreshing the candidate; do not rely on the old thread receiving an upgrade notice.
 
 ### Scope and acceptance criteria
 
-- A 30-minute OpenClaw heartbeat starts message intake; arrivals cause no agent turns or model probes. Empty heartbeat runs stay quiet. Bounded main/watcher replies may continue an existing handoff, without starting another inbox sweep or changing authority.
+- A 30-minute OpenClaw heartbeat starts message intake; arrivals cause no agent turns or model probes. Check unfinished correspondence before new intake, including when no unchecked reminders remain. Stay quiet when neither needs attention. Send at most one combined proactive report to main per heartbeat; deferred reports remain in correspondence memory. Bounded main/watcher replies may continue an existing handoff, without starting another inbox sweep or changing authority.
 - Put guards inside plugin-owned tool execution, following `secure-gmail`. Disabling the plugin removes those tools without exposing raw replacements. Preserve native source identity on the fixed-main handoff.
 - Same admission, secret-redaction, and injection protections on current/history reads, with checked summaries and memory output.
 - Watcher memory is organized by original sender, then date, recording consequential correspondence, actions, and handoffs. Keep references to external results rather than copies of their current state. Main updates the same correspondence note.
@@ -143,6 +147,8 @@ Implementation branch: `codex/communication-watcher-dev`, based on freshly fetch
 - Confirm writes before reporting success. Recover interrupted work without blindly repeating side effects.
 
 ### Architecture and decisions
+
+At heartbeat start, use guarded correspondence reads to discover unfinished work independently of new senders or pending reminders. Reconcile uncertain actions and delivery before considering a retry. Main acknowledgment ends watcher reporting responsibility until main explicitly returns the item. Combine new results and eligible retries into one bounded report with references to the relevant correspondence entries. Enforce the maximum in the report tool using trusted heartbeat identity; native replies must not reset it. Defer a failed or uncertain send to a later heartbeat after reconciliation. Items that cannot fit remain pending in existing correspondence notes, with no separate tracker.
 
 The phone writes one undated item per message in the shared inbox list, with sender, timestamp, and body. `communication_inbox_read` defaults to unchecked items and can retrieve selected completed history. It authorizes the caller and fixed list, validates records, runs `SecretRedactor`, then `InjectionGuard` before returning text. Check the reader’s summary before it reaches the watcher. No sender/time checkpoint or creation-date API extension is needed for intake.
 
@@ -154,6 +160,8 @@ Use OpenClaw’s built-in memory, with tracking, handoff, and recovery guidance 
 
 ### Implementation
 
+Next revision: align heartbeat instructions, guarded unfinished-work discovery, and combined-report tooling with the agreed one-report maximum. Keep the runtime paused.
+
 1. Validate locked-phone forwarding into the shared Reminders list, metadata, sync, pending/history reads, and scoped completion; retain Telegram as a fallback.
 2. **Write the expandable `AGENTS.md` behavior list:** sender-context lookup, agreed plans, tentative proposals, important alerts/actions, and ignore-by-default. Refine calendar details and importance examples.
 3. **Define supported tools and skills:** exact reader/watcher/main tool sets, scopes, role instructions, reusable workflows, and what each may write in memory.
@@ -161,6 +169,8 @@ Use OpenClaw’s built-in memory, with tracking, handoff, and recovery guidance 
 5. Demonstrate with synthetic messages before real forwarding.
 
 ### Validation
+
+Required for the October 2 revision: empty inbox with an unfinished report is reconciled; several reportable items produce at most one combined report; a second send is denied; follow-ups do not reset the cap; failed/uncertain sends wait for a later heartbeat without repeating actions; acknowledged main-owned cases and truly empty runs stay quiet. Verify bounded discovery across senders and restart without relying on a new reminder. These checks have not run.
 
 The final integrated candidate includes the reviewed declaration portability repair, including the agent-session export, and runs its compiler check directly before the cumulative Vitest suite. The affected patch registration and watcher package selection passes 11 checks after this last annotation. Retained review is clean. The preceding public run [36297681651](https://github.com/coletaylor788/puddles/actions/runs/36297681651) built successfully but was canceled during regressions when superseded by these repairs; it provides no completed source gate. Full CI and exact-artifact DEV are being rerun for the frozen pair.
 
@@ -185,6 +195,9 @@ The retained reviewer accepts the guarded save/report implementation without act
 Reminders is now the selected bus: automation adds sender, timestamp, and body; unchecked items are pending; the watcher completes them after handling. This replaces timestamp tracking and the Telegram reference diagram. Sender/date memory records consequential correspondence, actions, and handoffs. Main now owns direct instruction edits; watcher instruction files are read-only and there is no self-edit relay. The nested workspace and expandable behaviors remain.
 
 ### Checklist
+
+- [x] Agree unfinished-work-first review and at most one combined report per heartbeat.
+- [ ] Align runtime instructions and tool enforcement with the October 2 revision and validate it.
 
 - [x] Select a 30-minute watcher heartbeat, guarded pending-item reads, and main takeover.
 - [x] Use Reminders check-off as intake tracking; remove the timestamp checkpoint.
