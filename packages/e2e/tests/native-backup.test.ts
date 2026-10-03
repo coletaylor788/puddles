@@ -1068,3 +1068,184 @@ describe("activation recovery target compatibility", () => {
       join(f.target.backupRoot, "latest-activation.json"), f.target.legacyActivationReceipt)).toThrow(/migration binding differs/);
   });
 });
+
+// @ts-expect-error Executable host-maintenance lifecycle.
+import { planBackupRetention, applyBackupRetention, runBackupRetention } from "../src/native-backup-retention.mjs";
+// @ts-expect-error Executable activation context publisher.
+import { publishActivationRetentionContext } from "../src/native-activation.mjs";
+
+function retentionFixture() {
+  const f = fixture();
+  const current = legacyRecovery(f);
+  const now = Date.now();
+  const cloneGeneration = (days: number, status = "healthy") => {
+    const transaction = `activation-${now - days * 86_400_000}-1`;
+    const directory = join(f.target.backupRoot, transaction);
+    cpSync(current.directory, directory, { recursive: true });
+    const journal = { ...current.journal, transaction, status };
+    writeFileSync(join(directory, "recovery.json"), JSON.stringify(journal));
+    return { transaction, directory, journal };
+  };
+  const predecessor = cloneGeneration(1);
+  const old = cloneGeneration(4, "rolled-back");
+  const older = cloneGeneration(5);
+  writeFileSync(join(current.directory, "recovery.json"), JSON.stringify({
+    ...current.journal, coordination: { baseline: predecessor.transaction }, previousBrowser: f.target.browser.imageId,
+  }));
+  mkdirSync(join(f.target.backupRoot, "backup-references"));
+  writeFileSync(join(f.target.backupRoot, "backup-references", "latest-healthy-recovery.json"), JSON.stringify({ transaction: "backup-1-1" }));
+  const policy = {
+    schemaVersion: 1, minAgeHours: 24, keepRecent: 2, maxBatch: 8,
+    protectedTransactions: [] as string[],
+    consumerCheck: { command: process.execPath, sha256: fileDigest(process.execPath), args: [] },
+    replacement: { kind: "activation", receipt: f.target.legacyActivationReceipt },
+  };
+  let activePaths: string[] = [];
+  const execute = async (command: string, args: string[]) => command === "docker" ? f.target.browser.imageId :
+    JSON.stringify({ schemaVersion: 1, checkedPaths: JSON.parse(args.at(-1)!), activePaths });
+  return { ...f, current, predecessor, old, older, policy, execute, cloneGeneration,
+    setActive: (paths: string[]) => { activePaths = paths.map(path => realpathSync(path)); } };
+}
+
+describe("bounded superseded activation retention", () => {
+  it("retires exact old terminal generations while preserving current, predecessor and historical backup reference", async () => {
+    const f = retentionFixture();
+    const plan = await planBackupRetention(f.target, f.policy, f.execute);
+    expect(plan.entries.map((e: any) => e.transaction)).toEqual([f.older.transaction, f.old.transaction]);
+    const result = await applyBackupRetention(f.target, f.policy, plan, f.execute);
+    expect(result.retired).toHaveLength(2);
+    expect(existsSync(f.old.directory)).toBe(false);
+    expect(existsSync(f.current.directory)).toBe(true);
+    expect(existsSync(f.predecessor.directory)).toBe(true);
+    expect(readFileSync(join(f.target.backupRoot, "backup-references", "latest-healthy-recovery.json"), "utf8")).toContain("backup-1-1");
+    expect(await applyBackupRetention(f.target, f.policy, plan, f.execute)).toEqual(result);
+  });
+  it("keeps live, explicitly retained, young and nonterminal generations", async () => {
+    const f = retentionFixture();
+    f.setActive([f.old.directory]);
+    f.policy.protectedTransactions.push(f.older.transaction);
+    f.cloneGeneration(0.5);
+    f.cloneGeneration(6, "recovery-required");
+    const plan = await planBackupRetention(f.target, f.policy, f.execute);
+    expect(plan.entries).toEqual([]);
+    expect(plan.excluded).toHaveLength(2);
+  });
+  it("rejects changed recovery references without deleting any candidate", async () => {
+    const f = retentionFixture();
+    const plan = await planBackupRetention(f.target, f.policy, f.execute);
+    writeFileSync(join(f.target.backupRoot, "backup-references", "hold.json"), JSON.stringify({ recovery: f.old.directory }));
+    await expect(applyBackupRetention(f.target, f.policy, plan, f.execute)).rejects.toThrow("references changed");
+    expect(existsSync(f.older.directory)).toBe(true);
+  });
+  it("rechecks all pending consumers before the first mutation", async () => {
+    const f = retentionFixture();
+    const plan = await planBackupRetention(f.target, f.policy, f.execute);
+    f.setActive([f.old.directory]);
+    await expect(applyBackupRetention(f.target, f.policy, plan, f.execute)).rejects.toThrow("consumer blocks");
+    expect(existsSync(f.older.directory)).toBe(true);
+  });
+  it("detects a reference race during the consumer check", async () => {
+    const f = retentionFixture();
+    const plan = await planBackupRetention(f.target, f.policy, f.execute);
+    const execute = async (command: string, args: string[]) => {
+      if (command !== "docker") writeFileSync(join(f.target.backupRoot, "backup-references", "hold.json"), "{}");
+      return f.execute(command, args);
+    };
+    await expect(applyBackupRetention(f.target, f.policy, plan, execute)).rejects.toThrow("references changed");
+    expect(existsSync(f.older.directory)).toBe(true);
+  });
+  it("rejects altered journals and incomplete consumer evidence", async () => {
+    const f = retentionFixture();
+    const plan = await planBackupRetention(f.target, f.policy, f.execute);
+    writeFileSync(join(f.old.directory, "recovery.json"), JSON.stringify({ ...f.old.journal, artifact: "b".repeat(64) }));
+    await expect(applyBackupRetention(f.target, f.policy, plan, f.execute)).rejects.toThrow("changed after retention");
+    expect(existsSync(f.older.directory)).toBe(true);
+    await expect(planBackupRetention(f.target, f.policy, async () => "{}")).rejects.toThrow();
+  });
+  it("resumes an interrupted recursive removal using only its exact tombstone identity", async () => {
+    const f = retentionFixture();
+    const plan = await planBackupRetention(f.target, f.policy, f.execute);
+    const entry = plan.entries[0];
+    const trash = join(f.target.backupRoot, `.retiring-${entry.transaction}`);
+    renameSync(f.older.directory, trash);
+    rmSync(join(trash, "state"), { recursive: true });
+    writeFileSync(join(f.target.backupRoot, `retention-${entry.transaction}.json`), JSON.stringify({
+      schema: "puddles.openclaw-backup-retention/v1", planSha256: plan.sha256, entry, status: "deleting",
+    }));
+    const result = await applyBackupRetention(f.target, f.policy, plan, f.execute);
+    expect(result.retired).toHaveLength(2);
+    expect(existsSync(trash)).toBe(false);
+  });
+  it("refuses an unexpected replacement at the tombstone path", async () => {
+    const f = retentionFixture();
+    const plan = await planBackupRetention(f.target, f.policy, f.execute);
+    const entry = plan.entries[0];
+    const trash = join(f.target.backupRoot, `.retiring-${entry.transaction}`);
+    renameSync(f.older.directory, f.older.directory + "-held");
+    mkdirSync(trash);
+    writeFileSync(join(f.target.backupRoot, `retention-${entry.transaction}.json`), JSON.stringify({
+      schema: "puddles.openclaw-backup-retention/v1", planSha256: plan.sha256, entry, status: "deleting",
+    }));
+    await expect(applyBackupRetention(f.target, f.policy, plan, f.execute)).rejects.toThrow("tombstone identity");
+    expect(existsSync(f.old.directory)).toBe(true);
+  });
+  it("runs a bounded batch and retains compact results for a later lifecycle call", async () => {
+    const f = retentionFixture();
+    f.policy.maxBatch = 1;
+    const first = await runBackupRetention(f.target, f.policy, f.execute);
+    expect(first.retired).toEqual([f.older.transaction]);
+    const second = await runBackupRetention(f.target, f.policy, f.execute);
+    expect(second.retired).toEqual([f.old.transaction]);
+    expect(existsSync(join(f.target.backupRoot, "retention-plan.json"))).toBe(false);
+    expect(existsSync(join(f.target.backupRoot, "retention-result.json"))).toBe(true);
+  });
+  it("publishes exact target and receipt context only for the current healthy activation", () => {
+    const f = retentionFixture();
+    const receipt = JSON.parse(readFileSync(f.target.legacyActivationReceipt!.path, "utf8"));
+    publishActivationRetentionContext(receipt, f.target, f.current.directory);
+    const context = JSON.parse(readFileSync(join(f.target.backupRoot, "retention-context.json"), "utf8"));
+    expect(context.transaction).toBe(f.current.journal.transaction);
+    expect(context.target).toEqual(JSON.parse(JSON.stringify(f.target)));
+    expect(context.receipt.sha256).toBe(fileDigest(context.receipt.path));
+    expect(() => publishActivationRetentionContext(receipt, f.target, f.old.directory)).toThrow("current healthy");
+  });
+});
+
+describe("retention resumption after reference changes", () => {
+  it("refreshes a stale plan only while all its candidates remain untouched", async () => {
+    const f = retentionFixture();
+    const plan = await planBackupRetention(f.target, f.policy, f.execute);
+    writeFileSync(join(f.target.backupRoot, "retention-plan.json"), JSON.stringify(plan));
+    writeFileSync(join(f.target.backupRoot, "backup-references", "hold.json"), JSON.stringify({ recovery: f.old.directory }));
+    const result = await runBackupRetention(f.target, f.policy, f.execute);
+    expect(result.retired).toEqual([f.older.transaction]);
+    expect(existsSync(f.old.directory)).toBe(true);
+  });
+  it("preserves a partially applied stale plan for owner reconciliation", async () => {
+    const f = retentionFixture();
+    const plan = await planBackupRetention(f.target, f.policy, f.execute);
+    writeFileSync(join(f.target.backupRoot, "retention-plan.json"), JSON.stringify(plan));
+    const trash = join(f.target.backupRoot, `.retiring-${f.older.transaction}`);
+    renameSync(f.older.directory, trash);
+    writeFileSync(join(f.target.backupRoot, "backup-references", "hold.json"), "{}");
+    await expect(runBackupRetention(f.target, f.policy, f.execute)).rejects.toThrow("partially applied");
+    expect(existsSync(trash)).toBe(true);
+    expect(existsSync(join(f.target.backupRoot, "retention-plan.json"))).toBe(true);
+  });
+  it("rejects nested snapshot changes before retiring any candidate", async () => {
+    const f = retentionFixture();
+    const plan = await planBackupRetention(f.target, f.policy, f.execute);
+    writeFileSync(join(f.old.directory, "state", "openclaw.json"), "{}");
+    await expect(applyBackupRetention(f.target, f.policy, plan, f.execute)).rejects.toThrow("changed after retention");
+    expect(existsSync(f.older.directory)).toBe(true);
+  });
+  it("completes a normal no-op without asking the host checker to inspect zero paths", async () => {
+    const f = retentionFixture();
+    f.policy.protectedTransactions.push(f.old.transaction, f.older.transaction);
+    const execute = async (command: string, args: string[]) => {
+      if (command !== "docker") throw new Error("empty path check called");
+      return f.execute(command, args);
+    };
+    expect((await runBackupRetention(f.target, f.policy, execute)).retired).toEqual([]);
+  });
+});

@@ -523,6 +523,27 @@ export function verifyRehearsalTarget(target) {
   }
 }
 
+// Publish maintenance input only after production is healthy. The timer owns
+// retention later, outside activation and rollback. This compact receipt remains
+// with the recovery generation instead of depending on a temporary release tree.
+export function publishActivationRetentionContext(receipt, target, recoveryDir) {
+  if (target.purpose !== "production") throw new Error("Retention context requires production");
+  const root = realpathSync(target.backupRoot);
+  if (dirname(realpathSync(recoveryDir)) !== root) throw new Error("Retention context recovery escaped backups");
+  const journal = JSON.parse(readFileSync(join(recoveryDir, "recovery.json"), "utf8"));
+  const latest = JSON.parse(readFileSync(join(root, "latest-activation.json"), "utf8"));
+  if (journal.status !== "healthy" || journal.quiesced !== false || journal.transaction !== basename(recoveryDir) ||
+      latest.transaction !== journal.transaction || latest.target !== journal.target || receipt.artifact.sha256 !== journal.artifact) {
+    throw new Error("Retention context requires the current healthy activation");
+  }
+  const receiptPath = join(recoveryDir, "release-receipt.json");
+  atomicJson(receiptPath, receipt);
+  atomicJson(join(root, "retention-context.json"), {
+    schemaVersion: 1, transaction: journal.transaction, target,
+    receipt: { path: receiptPath, sha256: fileDigest(receiptPath) },
+  });
+}
+
 export async function activateNative(receipt, target, operationsFactory = systemOperations, recoverDir, action = "recover", mode = "legacy") {
   const ownership = assertDeploymentOwnership(target, target.purpose === "rehearsal" ? "TEST" : "PROD");
   if (!recoverDir) assertBatchArtifact(ownership, receipt);
@@ -860,6 +881,14 @@ export async function activateNative(receipt, target, operationsFactory = system
     rmSync(preparedStagingRoot, { recursive: true, force: true });
     journal.quiesced = false;
     save("healthy");
+    if (mode === "production") {
+      try { publishActivationRetentionContext(receipt, target, recoveryDir); }
+      catch (error) {
+        // Maintenance metadata failure must not mark a healthy gateway failed or
+        // trigger rollback. The caller sees pending maintenance explicitly.
+        return { status: "healthy", recoveryDir, retentionError: error.message };
+      }
+    }
     return { status: "healthy", recoveryDir };
   } catch (error) {
     if (!recoveryIdentityVerified) throw error;
