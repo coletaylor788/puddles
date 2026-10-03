@@ -15,6 +15,10 @@ import { runCommand } from "./process-runner.mjs";
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const activeFixtures = new Set();
+export function registerNativeFixture(cleanup) {
+  activeFixtures.add(cleanup);
+  return () => activeFixtures.delete(cleanup);
+}
 export async function cleanupNativeFixtures() {
   const errors = [];
   for (const cleanup of activeFixtures) {

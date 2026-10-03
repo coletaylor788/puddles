@@ -222,7 +222,8 @@
         "src/commands/doctor/shared/legacy-config-migrations.runtime.retired.memory-qmd.test.ts"
       ],
       "candidateTests": [
-        "tests/candidate.scoped-memory.test.ts"
+        "tests/candidate.scoped-memory.test.ts",
+        "tests/candidate.communication-watcher.test.ts"
       ]
     },
     {

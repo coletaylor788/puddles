@@ -377,6 +377,17 @@ build command, toolchain, archive, and installed runtime digest. Local extension
 cannot replace this artifact with an older registry package. Combined consumers
 must select the public archive and verify the provenance receipt instead of
 inferring compatibility from the package version.
+The communication watcher is also sealed as a named additional artifact. Its
+package stage owns a clean build, binds its public plugin and bundled guard
+sources, and rehearses the extracted package with the selected installed SDK.
+Target consumers must map `communication-watcher` in `additionalInstalls`; this
+does not activate its heartbeat. Under the DEV slot controller,
+`node packages/e2e/bin/communication-dev.mjs <imported-build.json> <new-run-root>`
+runs synthetic heartbeats and recording account adapters on DEV's registered
+port, checks Docker instruction mounts, and emits an exact-source DEV proof.
+The fixture records upgraded native-reply validation separately from the older
+runtime's initial-handoff support. No real accounts or forwarding are used.
+
 Dependency fingerprints exclude the generated `.experimental-vitest-cache`
 and `.unrun` directories directly under `node_modules`. Files with those names
 inside real packages remain part of the fingerprint. These root caches do not
