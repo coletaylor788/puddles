@@ -1,6 +1,6 @@
 # Bounded production backup retention
 
-Status: Implemented and reviewed; source integration and host rollout pending.
+Status: Complete. Source merged and scheduled maintenance verified.
 Issue: https://github.com/coletaylor788/puddles/issues/211
 Last updated: 2026-10-02
 
@@ -63,10 +63,11 @@ scheduler does not recover locks or partially applied plans by assumption. No ru
 ### Status
 
 The maintenance helper, consumer checker and scheduled owner are implemented.
-Focused backup and consumer checks pass. Independent review has no unresolved
-findings. Pinned-toolchain checks pass; source integration remains.
-Operational installation and the initial exact batch belong to the maintenance
-owner after source lands.
+Focused checks, typecheck, repository CI and CodeQL passed. Independent review
+has no unresolved findings. Source merged in #212. The maintenance owner
+installed the recurring job and completed the initial bounded batch with
+recovery protection, healthy service, released ownership and compact local
+evidence. Machine-specific inventory and capacity records remain local.
 
 ## Agent section
 
@@ -129,7 +130,9 @@ also required cumulative Python coverage and typed fixtures; both are included.
 Final full-diff review is clear. The focused pinned-Node checks passed 174 tests,
 including 47 backup tests, 65 activation topology tests, 56 interpreter tests,
 five runner tests and the cumulative Python checker wrapper. Typecheck passed.
-Required repository checks must be green before source lands.
+Required repository and CodeQL checks passed before #212 merged. The live
+maintenance batch passed. The schedule is loaded; current recovery remained
+unchanged and the maintenance lease and backup lock released normally.
 
 ### Checklist
 
@@ -137,5 +140,5 @@ Required repository checks must be green before source lands.
 - [x] Exact retirement, consumer checks and scheduled maintenance owner.
 - [x] Committed regression content prepared.
 - [x] Final pinned-toolchain checks and retained review.
-- [ ] Source merge with required checks.
-- [ ] Maintenance owner installs schedule and validates the exact initial batch.
+- [x] Source merge with required checks.
+- [x] Maintenance owner installs schedule and validates the exact initial batch.
