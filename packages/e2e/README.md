@@ -701,3 +701,63 @@ prepared candidate. This avoids recompiling the same test worker programs for
 each group. The wrapper still verifies inputs and outputs, owns child cleanup,
 and executes every mapped regression. This setting is part of regression proof
 identity and does not replace final candidate validation.
+
+## Retire superseded activation generations
+
+Use `openclaw-backup-retention.mjs` for older healthy or rolled-back activation
+snapshots. It preserves the current activation, its `coordination.baseline`, at
+least two newest generations and all reference or consumer holds. This is
+production maintenance, separate from development artifact cleanup.
+
+```bash
+node packages/e2e/bin/openclaw-backup-retention.mjs plan TARGET_JSON POLICY_JSON > PLAN_JSON
+node packages/e2e/bin/openclaw-backup-retention.mjs apply TARGET_JSON POLICY_JSON PLAN_JSON
+node packages/e2e/bin/openclaw-backup-retention.mjs run TARGET_JSON POLICY_JSON
+```
+
+Policy contains `schemaVersion: 1`, `minAgeHours` (at least 24), `keepRecent` (at
+least 2), `maxBatch` (1 through 32), `protectedTransactions` and an optional exact
+`transactions` list. `consumerCheck` names an absolute executable, its `sha256`
+and an `args` array. The bundled executable `openclaw-backup-consumers.py` accepts
+`--artifact-pools ROOT --coordination SLOTS --docker EXECUTABLE`; the helper
+appends the exact path array. It returns matching `checkedPaths` and the subset
+`activePaths`, failing closed on unavailable evidence. Checks run again for the
+whole pending batch before every destructive step.
+
+Select `replacement: {"kind":"backup"}` to use the existing fully verified
+current-backup reference, or `replacement: {"kind":"activation", "receipt":
+{"path":"/absolute/release.json", "sha256":"..."}}` to verify the current
+healthy activation and its retained rollback dependencies. The latter accepts
+its original production activation target, including interpreter migration.
+Missing predecessor, receipt, interpreter, browser or snapshot proof blocks
+retirement. Old backup references are preserved even when they cannot themselves
+serve as replacement authority.
+
+`plan` emits exact candidate metadata without deleting. `apply` requires PROD
+ownership and the backup lock, checks unchanged recovery references and candidate
+identities, then journals an exact rename and removal. `run` preserves its plan
+in `retention-plan.json` through interruption and writes compact results when the
+batch finishes. A stale plan is refreshed automatically only when all candidates remain
+untouched. Partially applied plans require owner reconciliation when recovery
+evidence changes.
+
+Successful production activation writes `retention-context.json`, with the exact
+target and a receipt retained inside the current recovery generation. A scheduled
+maintenance owner may refresh its receipt input only from that context after
+checking the current pointer. Run retention outside the activation transaction;
+it does not stop the gateway. See [the retention plan](../../docs/plans/049-backup-generation-retention.md).
+
+`openclaw-backup-maintenance.mjs CONFIG_JSON` is the scheduled host entrypoint.
+Its local configuration supplies `backupRoot`, `workDir`, `coordination`, `policy`
+(the policy JSON path), and the coordination `agent` identity. Optional
+`timeoutMs` bounds a run (one hour by default, at most four hours). The workspace
+must already exist. The launcher reads the producer context, skips busy PROD,
+claims maintenance ownership, runs the existing slot controller, and releases
+only after a successful joined completion with no remaining backup lock. Its
+work files and latest log/result use fixed names. Schedule this entrypoint with
+the host service manager after installing the reviewed tooling and configuration.
+
+An unsuccessful or forcibly killed controller retains ownership for explicit
+inspection. Scheduled calls do not steal that lease or clear its lock. A stopped
+owner and all children must be verified before the owner resumes its exact
+retention plan. Graceful signals unwind the helper; SIGKILL cannot run cleanup.
