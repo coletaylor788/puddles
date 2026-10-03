@@ -1,0 +1,190 @@
+diff --git a/extensions/imessage/src/monitor/inbound-processing.ts b/extensions/imessage/src/monitor/inbound-processing.ts
+--- a/extensions/imessage/src/monitor/inbound-processing.ts
++++ b/extensions/imessage/src/monitor/inbound-processing.ts
+@@ -1,6 +1,7 @@
+ import {
+   buildChannelInboundEventContext,
+   buildMentionRegexes,
++  classifyChannelInboundEvent,
+   formatMediaPlaceholderText,
+   type EnvelopeFormatOptions,
+   filterChannelInboundQuoteContext,
+@@ -11,6 +12,7 @@
+   resolveEnvelopeFormatOptions,
+   resolveInboundMentionDecision,
+   resolveInboundSupplementalSenderAllowed,
++  resolveUnmentionedGroupInboundPolicy,
+   toInboundMediaFactsWithMetadata,
+   type BuildChannelInboundEventContextParams,
+   type BuiltChannelInboundEventContext,
+@@ -29,6 +31,7 @@
+   resolveScopeRequireMention,
+ } from "openclaw/plugin-sdk/channel-policy";
+ import { hasControlCommand } from "openclaw/plugin-sdk/command-auth-native";
++import { isAbortRequestText } from "openclaw/plugin-sdk/command-primitives-runtime";
+ import type { DmPolicy, GroupPolicy, OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
+ import { resolveChannelContextVisibilityMode } from "openclaw/plugin-sdk/context-visibility-runtime";
+ import type { ConfiguredBindingRouteResult } from "openclaw/plugin-sdk/conversation-runtime";
+@@ -1002,11 +1005,21 @@
+   const media = await toInboundMediaFactsWithMetadata(
+     params.media?.facts?.map((entry) => ({ ...entry, url: entry.url ?? entry.path })),
+   );
++  const inboundEventKind = classifyChannelInboundEvent({
++    conversation: { kind: decision.isGroup ? "group" : "direct" },
++    unmentionedGroupPolicy: resolveUnmentionedGroupInboundPolicy({
++      cfg: params.cfg,
++      agentId: decision.route.agentId,
++    }),
++    wasMentioned: decision.effectiveWasMentioned,
++    hasControlCommand: decision.hasControlCommand,
++    hasAbortRequest: isAbortRequestText(decision.bodyText),
++  });
+   const channelIngress = await decision.resolveChannelIngress({
+     agentId: decision.route.agentId,
+     sessionKey: decision.route.sessionKey,
+     messageId: messageSid,
+-    inboundEventKind: "user_request",
++    inboundEventKind,
+   });
+   const ctxPayload = await (params.buildContext ?? buildChannelInboundEventContext)({
+     channelIngress,
+@@ -1052,6 +1065,7 @@
+       to: replyTarget,
+     },
+     message: {
++      inboundEventKind,
+       body: combinedBody,
+       bodyForAgent: decision.agentBodyText ?? decision.bodyText,
+       inboundHistory,
+diff --git a/extensions/imessage/src/monitor/inbound-processing.route.test.ts b/extensions/imessage/src/monitor/inbound-processing.route.test.ts
+--- a/extensions/imessage/src/monitor/inbound-processing.route.test.ts
++++ b/extensions/imessage/src/monitor/inbound-processing.route.test.ts
+@@ -18,14 +18,91 @@
+   resolveIMessageInboundDecision,
+ } from "./inbound-processing.js";
+ 
+-describe("buildIMessageInboundContext direct reply route", () => {
+-  it.each([undefined, 42])(
+-    "retains host admission after reply ID mapping (chat ID %s)",
+-    async (chatId) => {
++type InboundCase = {
++  name: string;
++  chatId?: number;
++  isGroup?: boolean;
++  text?: string;
++  policy?: "room_event" | "user_request";
++  agentPolicy?: "room_event" | "user_request";
++  expectedKind: "room_event" | "user_request";
++};
++
++const inboundCases: InboundCase[] = [
++  { name: "direct without chat ID", expectedKind: "user_request" },
++  {
++    name: "direct with room-event policy",
++    chatId: 42,
++    policy: "room_event",
++    expectedKind: "user_request",
++  },
++  {
++    name: "unmentioned group",
++    chatId: 42,
++    isGroup: true,
++    policy: "room_event",
++    expectedKind: "room_event",
++  },
++  {
++    name: "mentioned group",
++    chatId: 42,
++    isGroup: true,
++    policy: "room_event",
++    text: "@fixture-agent current",
++    expectedKind: "user_request",
++  },
++  {
++    name: "group control command",
++    chatId: 42,
++    isGroup: true,
++    policy: "room_event",
++    text: "/help",
++    expectedKind: "user_request",
++  },
++  {
++    name: "group abort",
++    chatId: 42,
++    isGroup: true,
++    policy: "room_event",
++    text: "stop",
++    expectedKind: "user_request",
++  },
++  { name: "default group policy", chatId: 42, isGroup: true, expectedKind: "user_request" },
++  {
++    name: "agent opts out",
++    chatId: 42,
++    isGroup: true,
++    policy: "room_event",
++    agentPolicy: "user_request",
++    expectedKind: "user_request",
++  },
++  {
++    name: "agent opts in",
++    chatId: 42,
++    isGroup: true,
++    policy: "user_request",
++    agentPolicy: "room_event",
++    expectedKind: "room_event",
++  },
++];
++
++describe("buildIMessageInboundContext reply route and inbound policy", () => {
++  it.each(inboundCases)(
++    "retains host admission and event classification for $name",
++    async ({ chatId, isGroup = false, text = "current", policy, agentPolicy, expectedKind }) => {
+       await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+         const cfg: OpenClawConfig = {
+           session: { store: state.path("sessions.json") },
+           commands: { ownerAllowFrom: ["imessage:+15555550123"] },
++          messages: {
++            groupChat: { mentionPatterns: ["@fixture-agent"], unmentionedInbound: policy },
++          },
++          ...(isGroup
++            ? { channels: { imessage: { groups: { "42": { requireMention: false } } } } }
++            : {}),
++          ...(agentPolicy
++            ? { agents: { list: [{ id: "main", groupChat: { unmentionedInbound: agentPolicy } }] } }
++            : {}),
+         };
+         type GatewayContext = NonNullable<
+           ReturnType<
+@@ -67,9 +144,9 @@
+             id: 12349,
+             guid: "p:0/GUID-current-guid-only",
+             sender: "+15555550123",
+-            text: "current",
++            text,
+             is_from_me: false,
+-            is_group: false,
++            is_group: isGroup,
+             chat_guid: "iMessage;-;+15555550123",
+             chat_id: chatId,
+           };
+@@ -78,7 +155,7 @@
+             accountId: "default",
+             opts: undefined,
+             allowFrom: ["*"],
+-            groupAllowFrom: [],
++            groupAllowFrom: ["*"],
+             groupPolicy: "open",
+             dmPolicy: "open",
+             storeAllowFrom: [],
+@@ -114,7 +191,10 @@
+           expect(ctxPayload.To).toBe(
+             chatId == null ? "chat_guid:iMessage;-;+15555550123" : "chat_id:42",
+           );
+-          expect(imessageTo).toBe("imessage:+15555550123");
++          expect(imessageTo).toBe(isGroup ? "chat_id:42" : "imessage:+15555550123");
++          expect(ctxPayload.ChatType).toBe(isGroup ? "group" : "direct");
++          expect(ctxPayload.InboundEventKind).toBe(expectedKind);
++          expect(bindings.at(-1)?.inboundEventKind).toBe(expectedKind);
+           expect(ctxPayload.MessageSid).toMatch(/^\d+$/u);
+           expect(ctxPayload.MessageSid).not.toBe(String(message.id));
+           expect(

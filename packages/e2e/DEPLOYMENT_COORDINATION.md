@@ -7,15 +7,17 @@ those owners about dependencies and overlapping edits. Local incremental DEV
 builds and final CI builds consume no environment slot. DEV, TEST, and PROD are
 shared mini resources.
 
-Iterate with focused local tests, incremental local builds, and queued DEV
-draft checks. After local DEV success and retained review, run the accumulated
-CI gate, validate its exact artifact in DEV, merge, then queue for TEST of the
-CI-built merged main batch and PROD. CI is not in the ordinary edit loop.
-The feature owner monitors its merge until a batch owner acknowledges it. The
-agent that initiates TEST registers itself as owner of the whole merged batch.
-Other included feature owners coordinate with that owner and do not start
-competing promotions. A batch owner remains responsible while waiting for CI or
-PROD even after releasing an environment slot.
+Iterate with focused local checks, incremental builds, and applicable DEV draft
+checks. Merge reviewed source after required repository checks. One release
+owner selects merged source and runs cumulative CI once. Promote that artifact
+unchanged through DEV, TEST, and PROD. Keep environment configuration and writable
+state separate. Main remains open and later commits join the next candidate.
+
+Feature owners hand off source to the release owner and remain available for
+fixes. The release owner carries the selected candidate through production and
+cleanup, coordinating with included owners. Claim shared environments only while
+mutating or checking them. Local builds, isolated DEV instances with separate
+ports/state, and CI need no shared deployment slot.
 
 ## Record and commands
 
@@ -67,7 +69,11 @@ for the initial adoption. The controller binds its host, PID, and process start
 time and passes the ownership variables to children. Run the controller on the
 mini, even when commands are initiated over SSH. It heartbeats every 30 seconds,
 retries metadata contention, forwards interruption, and joins its subprocesses.
-It leaves the slot occupied after either success or failure for inspection.
+It currently leaves the slot occupied after either success or failure for
+inspection. The owner must finish recovery, cleanup, and release. Controller
+alignment must automate that terminal work and bounded interruption recovery;
+until it lands, explicitly monitor this gap and recover abandoned owners using
+the existing commands below.
 
 Queue when the artifact and prerequisites are ready. Claim the oldest ready
 request; never hold another environment while waiting. `ready` can mark an
@@ -82,51 +88,62 @@ after inspecting the outcome, joining the controller, and cleaning only your
 resources. A healthy PROD release also records its actual journal `transaction`.
 Keep the slot through rollback and recovery. Do not release on a timer.
 
-## Merging and selecting TEST
+## Merging and selecting a release
 
-Ordinary DEV drafts may come from local incremental builds and mutable source.
-Use the maintained DEV wrapper and the same slot controller, target locks,
-isolated state, recording adapters, and rollback. Prepare before claiming DEV;
-release after checks and cleanup, before more editing or waiting for CI. Keep
-draft results separate from final eligibility; they must not produce a passing
-release-valid `puddles.dev-validation/v1` record.
+Ordinary DEV drafts use local incremental builds and mutable source. Prepare
+before claiming shared DEV, and release after installed checks and cleanup.
+Draft results support feature development and source merge; they never certify
+production. Review the feature, run focused and applicable DEV checks, satisfy
+required repository checks, and merge. Resolve conflicts in the feature's own
+worktree and repeat affected checks. Source merge does not reserve main or wait
+for another feature's release.
 
-For final premerge validation, DEV installs the exact selected CI bundle and
-checks the changed behavior with recording adapters. Save a
-`puddles.dev-validation/v1` record with `status:
-"passed"`, exact public `head` and `tree`, `owner`, and retained `evidence`.
-A configured companion wrapper produces this record after its installed checks.
-Include any feature-specific assertions in the retained evidence.
+The release owner selects merged source before the full CI build. Its CI bundle
+passes DEV and TEST before PROD, with stage results tied to the same artifact.
+Keep artifact/source identity and automatic integrity checks. Do not add manual
+whole-workspace hashing or duplicate release builds.
 
-Create premerge eligibility from the reviewed CI build, full source-gate record,
-and matching DEV proof. This does not grant production eligibility.
+### Existing tooling transition
 
-```bash
-node packages/e2e/bin/openclaw-merge-eligibility.mjs \
-  /ci/build.json /ci/source-gate.json /dev/dev-proof.json /run/merge-eligibility.json
-node packages/e2e/bin/openclaw-integrate.mjs \
-  /run/merge-eligibility.json example/public-repo 123
-```
+`openclaw-merge-eligibility.mjs` and legacy `openclaw-integrate.mjs` modes consume
+premerge CI/source-gate/DEV receipts. That older workflow is not a requirement to
+run a separate full release per feature. Use normal repository source merging
+with required checks, for example `gh pr merge --match-head-commit HEAD PR`
+with `HEAD` replaced by the reviewed commit. Use the repository's merge method.
+No additional merge helper or release receipt is needed. Keep the older commands
+for in-flight callers; never fabricate their receipts. Certification and
+activation guards still apply to PROD.
 
-The helper rechecks exact head, base, remote checks, and mergeability. Resolve
-merge conflicts in your worktree and repeat the affected checks. A merge that
-changes the candidate tree needs fresh eligibility. Documentation-only changes
-keep the documented short path and do not deploy unchanged runtime artifacts.
+Public PR and main-push CI runs repository checks without building OpenClaw.
+The release owner can dispatch `integration.yml` on the default branch for a
+public cumulative build. That dispatch pins its event commit even if main moves.
+An explicitly selected composed builder runs the same cumulative gate locally;
+do not dispatch a second public runtime build for that same release.
 
-Before TEST, use `openclaw-select-batch.mjs SPEC_JSON OUTPUT_JSON` in the tooling
-worktree to fetch each repository's main and pin its current merged head and
-tree. The spec contains `agent` and a `repositories` array. Each repository
+For in-flight work, reuse valid checks and artifacts. An already built artifact
+may continue only if it represents the selected merged candidate; never relabel
+a branch artifact with different merged contents. This is a transition check,
+not a reason to rebuild every feature before and after merging.
+
+Before building the release, use `openclaw-select-batch.mjs SPEC_JSON OUTPUT_JSON` in the tooling
+worktree to fetch each repository's main and pin a merged head and its tree.
+The spec contains `agent` and a `repositories` array. Each repository
 has `id` (`public`, plus `private` for composed delivery), absolute `root`,
-`base` (the deployed commit), optional `defaultBranch`, and `owners`, a map
-from every commit SHA in `base..main` to its feature agent's `id` and `contact`.
+`base` (the deployed commit), optional `defaultBranch`, optional `reviewedHead`,
+and `owners`, a map from every commit SHA in `base..selectedHead` to its feature
+agent's `id` and `contact`. By default, selection uses the fetched branch tip.
+Use an exact 40-character `reviewedHead` SHA to keep a repaired candidate bounded
+while unrelated features land. It must contain `base` and be an ancestor of the
+freshly fetched default branch. This never makes an unmerged branch eligible.
 Resolve ownership through PRs and agent messages, including merge commits. A
 missing owner is an error, not permission to assign blame to the batch owner.
 
 Register that output with the `batch` operation. Registration names the
 initiator as owner, returns `batchId` as `id` and a batch `token`, and notifies
 all included owners. Re-registering the same heads returns the existing owner;
-coordinate with it. Build those merged heads in CI. TEST and PROD must consume
-those immutable artifacts, including the exact private composition. A feature
+coordinate with it. Build those merged heads once in CI. Validate that artifact
+in DEV, then TEST and PROD, including the exact private composition. Save DEV's
+installed assertions in the existing `puddles.dev-validation/v1` result. A feature
 branch artifact never substitutes for the merged batch. Later merges belong
 to a later batch; do not chase moving main in the middle of a rehearsal.
 
@@ -140,7 +157,9 @@ production baseline recorded by the activation journals. An older proof cannot
 be republished under a fresh claim. Release TEST and queue for PROD.
 The same artifacts must reach PROD. If production changed since TEST acquired
 its slot, repeat the affected TEST rehearsal against the new baseline before
-claiming PROD. Superseded or disqualified batches cannot promote.
+claiming PROD. Reuse the artifact only while its sealed configuration and
+migration inputs remain valid; otherwise replace the candidate and start at DEV.
+Superseded or disqualified batches cannot promote.
 
 On the target, set `integration.ref` and `integration.mergedHead` to the selected
 merged public commit, with `integration.defaultRef` set to freshly fetched
@@ -148,7 +167,7 @@ merged public commit, with `integration.defaultRef` set to freshly fetched
 still on main. Do not point activation at the feature branch or substitute the
 newest unchecked main for an already tested batch.
 
-## Failure, reverts, and communication
+## Failure, corrections, and communication
 
 The batch owner identifies failures, preserves evidence, and records
 `batch-fail` with `batchId`, `batchToken`, `agent`, `evidence`, and, once known,
@@ -156,23 +175,27 @@ The batch owner identifies failures, preserves evidence, and records
 containing those failed commits. Distinguish source regressions from target or
 infrastructure failures before reverting. Keep PROD healthy while investigating.
 
-For a confirmed source regression, the batch owner creates and merges a normal
-revert on current main, including dependent changes that cannot stand alone.
-Never reset or force-push main. Recheck the reverting candidate and required CI.
-Message the responsible feature agent with its commit, failure evidence, revert,
-and repair request. That agent fixes its change with a regression in its own
-worktree and re-enters the DEV and merge loop. Do not wait for that repair to
-continue delivering unrelated work.
+For a confirmed source regression, merge a reviewed fix or revert on current
+main, with a committed regression and required repository checks. Prefer a
+revert when a repair would delay unrelated delivery. Never reset or force-push
+main. Notify the responsible feature owner with the cause and correction.
 
-Fetch current main again and select a successor batch. Include `predecessor`,
-`previousToken`, `revertEvidence`, and `reverts: [{"commit": "bad SHA", "revert":
-"merged revert SHA"}]` in the selection spec. The same initiating owner owns
-the corrected batch, even if it now contains additional merged work. Build it
-in CI and repeat from TEST. A successful corrected TEST clears its failed
-predecessors' promotion holds, while older artifacts containing reverted code
-remain disqualified. If attribution is uncertain or a revert would cause data
-loss or cross-feature breakage, preserve the hold and request the concrete
-human decision while continuing independent work.
+Select a successor with `predecessor` and `previousToken`. A fix uses
+`repairEvidence` and `repairs: [{"commit": "bad SHA", "repair": "merged fix SHA"}]`.
+A revert uses `revertEvidence` and
+`reverts: [{"commit": "bad SHA", "revert": "merged revert SHA"}]`. Both may appear
+for different failed commits. Each correction must be a different merged commit
+in the same repository. Preserve existing correction mappings; do not label a
+fix as a revert or omit known failure attribution to bypass disqualification.
+Infrastructure failures still hold the failed batch even without a responsible
+source commit.
+
+The successor owner builds selected merged source once and starts validation at
+DEV. Successful TEST clears predecessor promotion holds and records the proven
+correction. Older batches remain disqualified, and later batches containing the
+bad commit must also include its correction. If attribution is uncertain,
+preserve the failure evidence while investigating. Escalate only a concrete
+decision outside the approved scope, such as data loss or cross-feature breakage.
 
 Owners actively monitor their slot, CI, batch, and notification records until
 healthy production or a verified recovery and explicit ownership handoff.
@@ -193,6 +216,7 @@ and inspection `evidence`; it rotates ownership tokens and transfers the batch.
 For an abandoned batch with no active slot, `recover-batch` takes `batchId`,
 `previousAgent`, old `batchToken`, new `agent`, and contact/inspection `evidence`.
 It cancels that batch's old queued tickets so the new owner can requeue.
-Never recover around an active deployment. A leftover metadata lock can be
+An absent owner need not reply before an authorized coordinator recovers
+confirmed abandoned work. Never recover around an active deployment. A leftover metadata lock can be
 removed with `recover-metadata` only after its recorded process has stopped;
 pass its exact `owner.json`. Preserve uncertain state for manual inspection.

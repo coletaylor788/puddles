@@ -102,6 +102,30 @@ E2E_DEV_BUILD_TIMEOUT_MS=3600000 \
   node packages/e2e/bin/openclaw-test-env.mjs resume build
 ```
 
+## Workshop migration recovery
+
+When Doctor can change files outside `stateDir`, declare their agent/workspace
+boundaries in `workshopMigration` on the target and sealed migration manifest.
+The activation preflight checks the actual config, legacy sidecars, SQLite
+proposal rows and scheduled-job references before shutdown. It repeats the
+inventory after stopping writers and snapshots referenced external skill
+directories along with state. Approved ownership repairs require exact proposal,
+draft, rollback and applied-skill hashes. They run after the snapshot, before
+Doctor. Rollback restores absent external directories with exclusive publication
+and refuses to overwrite changed content.
+
+Collection backups, pending interrupted applies and agent destinations outside
+state require separate supported recovery before deployment. Rehearsal paths
+must stay under its owned root. Use synthetic legacy records and mapped copies;
+a copied database that still names live workspaces is unsafe to run through
+Doctor. `candidate.workshop-migration.test.ts` exercises the actual Doctor
+migration with shared ownership and an external workspace.
+
+Completed creates can retain a historical rollback path after Doctor moves
+their skill. Preflight accepts only the exact configured owner's relocation
+and inventories the original path as well, even when absent. Other path
+mismatches and interrupted applies still block deployment.
+
 ## Development loop
 
 Use task-owned worktrees on the development machine for edits, type checks,
@@ -127,14 +151,18 @@ messages on the mini. CI jobs and isolated fixtures use no deployment slot.
 Prepare drafts before acquiring DEV and release after installed checks and
 cleanup. Do not hold the slot while editing, building, or waiting for CI.
 
-Once local DEV checks and review pass, run the full accumulated gate in CI and
-validate that exact CI-built feature artifact in DEV. Only this final proof,
-not mutable draft evidence, qualifies for merge. The agent initiating TEST owns
-the batch of merged commits, selects latest main, and builds those bits in CI. It carries
-that exact batch through TEST and PROD. On a regression it merges the required
-revert, alerts the feature owner, and resumes from TEST with corrected main.
-The feature owner repairs separately. Do not use a branch artifact for TEST or
-PROD or silently replace an already tested batch with newer main.
+After focused checks, applicable local DEV checks, retained review, and required
+repository checks, merge the feature. One release owner pins selected merged
+heads and runs the full accumulated CI gate once. Promote that same artifact
+through DEV, TEST, and PROD. Main remains open; later commits join the next
+candidate. Source merge is distinct from release certification.
+
+A failed candidate leaves healthy PROD in place. Fix or revert the responsible
+source, then build a replacement and start it at DEV. Retry an infrastructure
+failure with the existing artifact when its inputs remain valid. Do not rebuild
+between environments or silently replace a tested candidate with newer main.
+The [coordination guide](DEPLOYMENT_COORDINATION.md) describes existing commands
+and the transition from older premerge receipt tooling.
 
 The gate runs every workspace build, lint, and test, the isolated Gmail Python
 pool, every mapped OpenClaw patch regression, and the cross-component candidate
@@ -179,8 +207,20 @@ post-migration partition, persists legacy config and multi-agent ownership
 normalization, then checks every selected config value and applies those writes
 in one source-writer transaction. This stopped compare lets a manifest target
 the canonical post-plugin object without comparing it to obsolete live input.
-Ordinary doctor and the selected cron write follow. The tests cover sole include
-ownership, plugin-owned retired settings, parent-object config preconditions,
+Doctor, plugin selection and the selected cron write follow. Sealed plugin
+retirements capture both predecessor and current install-index representations
+without opening the source database. Retirement runs after Doctor imports legacy
+records. `requiredBundledPlugins` checks actual selected origin and source before
+startup, even when no retirement was captured. A mismatch triggers rollback.
+The controller records Doctor as its
+own migration phase so failures cannot be mistaken for a config operation.
+Doctor has a 20-minute limit while ordinary service commands retain one minute.
+The gateway remains stopped during migration; other activation steps and rollback
+add time beyond that limit. Before production, validate the allowance for
+large legacy history with an uninterrupted isolated synthetic workload that represents
+both retained file volume and session-index cardinality. Keep the volume
+measurement separate from the fast cumulative timeout and rollback regressions.
+The tests cover sole include ownership, plugin-owned retired settings, parent-object config preconditions,
 job revision conflicts, retired `cron.store` paths, unrelated live-staging
 state, each failure stage, and interrupted
 rollback with the retained interpreter. The historical fixture comes from the
@@ -193,9 +233,33 @@ binds its bytes to regression and runtime evidence, and provides
 selected local extension. It never applies that manifest to a live target.
 The extension must prove its private values against isolated state. Public CI
 leaves this option unset and runs the committed synthetic migration fixtures.
-Activation requires the same digest in its local target. See the
+Legacy single-manifest releases require the same digest in their local target.
+For target-specific migrations, also supply `E2E_STATE_MIGRATION_BINDINGS` with
+schema `puddles.target-state-migrations/v1`. The maintained extension validates
+and reproduces both manifests; its `stateMigrations` export must match that
+selection. Regression evidence and the immutable build bind the generator,
+policy and both inputs. TEST and production each select the binding for their
+role and target identity. DEV uses its own configuration and never selects a
+release migration. See the
 [deployment guide](../../docs/openclaw-setup/patches/README.md) for the narrow
 manifest and recovery contract.
+
+Full configuration parity uses `environment-configuration.mjs`. Render from a
+reviewed base and exact JSON-pointer leaf bindings, then compare the entire
+authored result. Diagnostics report changed paths without values. Only named
+runtime timestamps are ignored; missing fields and explicit defaults differ.
+Whole plugin, model and permission subtrees cannot be environment overrides.
+
+A target manifest may carry `configuration` with `schemaVersion: 1` and
+`baseSha256`, `bindingsSha256`, `predecessorSha256`, `candidateSha256`. The executor
+checks the authored predecessor before mutation and the complete candidate after
+core/plugin migration, config operations and doctor. The final comparison runs
+even when the release has no cron operation. Capture parsed authored JSON rather
+than SDK snapshots with expanded credentials. Included configuration is rejected
+until its complete ownership can be represented. Optional companion preparation
+must seal these identities before building, preserve legacy input shape in TEST,
+and validate DEV against its own generated candidate. Public CI uses synthetic
+fixtures and remains independent of companion settings.
 
 Public CI initializes a fresh run directory for each hosted attempt and
 explicitly disables local extensions. On failure, it retains a seven-day
@@ -262,8 +326,9 @@ OPENCLAW_CANDIDATE_DIR=/path/to/native-run/installed/runtime \
 
 `build.json` is immutable package evidence with
 `eligibility: "built-not-certified"`. It is useful input for target testing,
-but it alone cannot integrate or activate production. Premerge eligibility
-combines it with the source gate and DEV proof; physical TEST follows merge. `source-gate` records the
+but it alone cannot activate production. Source merges use review and required
+repository checks; release eligibility requires CI and artifact checks through
+DEV and TEST. `source-gate` records the
 builder-only test inventory. The target command verifies the imported
 platform, Node binary identity, local migration file, and every additional and
 prepared-file mapping before giving installed hooks a digest-bound
@@ -354,10 +419,14 @@ Running a changed source gate for unchanged build bytes creates a new sidecar
 instead of overwriting or reusing the older attestation.
 Initialize, inspect, and apply it with
 `openclaw-artifact-retention.mjs init|dry-run|apply`. Producers register exact
-owned objects and references. Cleanup keeps the newest two successful build
-bundles with their package proofs, the newest failed reproduction, every local
-diagnostic log, and the dependency closure of current, pinned, active, paused,
-failed-debug, deployed, and latest-healthy-recovery references. Protected
+owned objects and references. The current compatibility defaults keep the newest
+two successful bundles and one failed reproduction, plus dependencies referenced
+by current, pinned, active, paused, failed-debug, deployed, and recovery owners.
+Explicit completion removes the acknowledged development objects, including
+logs, unless another consumer still references them. Unacknowledged legacy
+objects retain the compatibility defaults. See
+[development storage](DEVELOPMENT_STORAGE.md) for the approved retention target
+and task completion commands. Protected
 objects do not consume the ordinary two-build or one-failure quota.
 
 The pool never adopts a directory by its name or timestamp. Missing ownership,
@@ -366,7 +435,7 @@ the canonical direct child and ownership digest, rejects links and escapes,
 and moves the exact object through pool-owned trash with a resumable journal.
 Unregistered legacy directories, production recovery state, Copilot sessions,
 worktrees, package-manager caches, containers, and global caches stay outside
-this policy. Local diagnostic logs have no age or byte limit. Full homes,
+this pool policy. Task-owned logs disappear at feature completion. Full homes,
 databases, runtime state, and recordings are not diagnostic logs.
 
 `E2E_REQUIRED_FREE_BYTES` may raise the default 8 GiB preflight to a measured
@@ -394,6 +463,16 @@ installed iMessage channel and its JSON-RPC transport. Incoming messages are
 appended to a fixture queue after a real `watch.subscribe`. The bridge emits
 protocol notifications, the gateway calls a local scripted model, and outbound
 messages go to a recorder instead of Messages.app.
+
+Keep the installed agent plugin, its state API and model SDK real. Replace the
+provider API at the HTTP boundary with deterministic responses. A plugin stub
+cannot prove that the installed plugin has the capabilities needed for a turn.
+Cover a greeting, tools, history, restart and pending cleanup through this path.
+Unknown provider requests fail; deterministic fixtures never fall back to a live
+provider. An explicitly authorized live TEST greeting can check authentication
+and provider compatibility once per release, with recorded delivery and a fixed
+request budget. Record its transport and bind its result to the candidate.
+A required turn that fails, is missing or is skipped blocks promotion.
 
 Every scenario declares its incoming events, model responses, and expected
 outbound replies. Tool scenarios declare explicit recording adapters. The
@@ -423,7 +502,7 @@ Cleanup stops only the fixture process group and removes its successful state.
 Public development works independently. A caller may explicitly set
 `E2E_LOCAL_EXTENSION` to an absolute local `.mjs` file. It exports a default
 object with `schemaVersion: 1`, `inputs`, `commands`, `scenarios`, optional
-`artifacts`, `preparedFiles`, and `healthChecks`. Nothing in public CI discovers
+`artifacts`, `bundledPlugins`, `providerFixture`, `preparedFiles`, and `healthChecks`. Nothing in public CI discovers
 or fetches that module.
 
 `inputs` lists absolute files whose bytes key extension evidence. Each command
@@ -440,6 +519,19 @@ scenario startup. Source remains available, but installed artifact bytes must
 not change. Use named artifacts for additional runtimes that need activation.
 Installed hooks can configure their isolated rehearsal through the supplied
 installed paths.
+
+`bundledPlugins` declares verified portable plugin archives to place at
+`dist/extensions/<id>` before sealing the host artifact. The host digest covers
+the bundled bytes and their provenance ledger. Reject duplicate IDs and occupied
+destinations. This gives only the reviewed bundled plugin the host's bundled
+capabilities; unrelated local archives remain untrusted.
+
+`providerFixture` receives the isolated context, installed runtime, scenario,
+`nextResponse`, and `registerCleanup`. It returns `env`, `configure`,
+`assertHealthy`, `assertComplete`, and `close`, with optional `assertTurn` and
+`beforeRestart` hooks. Register cleanup before asynchronous initialization when
+it can create credentials or processes. A step with `restartBefore: true` stops
+the gateway, runs the hook, then restarts against the same isolated state.
 
 Commands may declare `outputs`, a list of paths relative to the isolated root.
 Declare concrete artifact files or narrow directories. The runner records their
@@ -605,3 +697,78 @@ Activation uses the rehearsed archive and the existing runtime clone mechanism.
 It never builds, fetches dependencies, or merges a pull request while the
 gateway is stopped. See the [deployment guide](../../docs/openclaw-setup/patches/README.md)
 for explicit target configuration and recovery.
+
+
+## Development storage lifecycle
+
+Use [development storage](DEVELOPMENT_STORAGE.md) for the single-workspace loop,
+shared store selection, capacity reservations, artifact references, terminal
+cleanup, and migration of old scratch. A successful source gate alone does not
+mean its files are disposable. The outer controller must finish artifact export
+and all consumers first.
+
+Mapped upstream test groups use OpenClaw's verified worker cache within the
+prepared candidate. This avoids recompiling the same test worker programs for
+each group. The wrapper still verifies inputs and outputs, owns child cleanup,
+and executes every mapped regression. This setting is part of regression proof
+identity and does not replace final candidate validation.
+
+## Retire superseded activation generations
+
+Use `openclaw-backup-retention.mjs` for older healthy or rolled-back activation
+snapshots. It preserves the current activation, its `coordination.baseline`, at
+least two newest generations and all reference or consumer holds. This is
+production maintenance, separate from development artifact cleanup.
+
+```bash
+node packages/e2e/bin/openclaw-backup-retention.mjs plan TARGET_JSON POLICY_JSON > PLAN_JSON
+node packages/e2e/bin/openclaw-backup-retention.mjs apply TARGET_JSON POLICY_JSON PLAN_JSON
+node packages/e2e/bin/openclaw-backup-retention.mjs run TARGET_JSON POLICY_JSON
+```
+
+Policy contains `schemaVersion: 1`, `minAgeHours` (at least 24), `keepRecent` (at
+least 2), `maxBatch` (1 through 32), `protectedTransactions` and an optional exact
+`transactions` list. `consumerCheck` names an absolute executable, its `sha256`
+and an `args` array. The bundled executable `openclaw-backup-consumers.py` accepts
+`--artifact-pools ROOT --coordination SLOTS --docker EXECUTABLE`; the helper
+appends the exact path array. It returns matching `checkedPaths` and the subset
+`activePaths`, failing closed on unavailable evidence. Checks run again for the
+whole pending batch before every destructive step.
+
+Select `replacement: {"kind":"backup"}` to use the existing fully verified
+current-backup reference, or `replacement: {"kind":"activation", "receipt":
+{"path":"/absolute/release.json", "sha256":"..."}}` to verify the current
+healthy activation and its retained rollback dependencies. The latter accepts
+its original production activation target, including interpreter migration.
+Missing predecessor, receipt, interpreter, browser or snapshot proof blocks
+retirement. Old backup references are preserved even when they cannot themselves
+serve as replacement authority.
+
+`plan` emits exact candidate metadata without deleting. `apply` requires PROD
+ownership and the backup lock, checks unchanged recovery references and candidate
+identities, then journals an exact rename and removal. `run` preserves its plan
+in `retention-plan.json` through interruption and writes compact results when the
+batch finishes. A stale plan is refreshed automatically only when all candidates remain
+untouched. Partially applied plans require owner reconciliation when recovery
+evidence changes.
+
+Successful production activation writes `retention-context.json`, with the exact
+target and a receipt retained inside the current recovery generation. A scheduled
+maintenance owner may refresh its receipt input only from that context after
+checking the current pointer. Run retention outside the activation transaction;
+it does not stop the gateway. See [the retention plan](../../docs/plans/049-backup-generation-retention.md).
+
+`openclaw-backup-maintenance.mjs CONFIG_JSON` is the scheduled host entrypoint.
+Its local configuration supplies `backupRoot`, `workDir`, `coordination`, `policy`
+(the policy JSON path), and the coordination `agent` identity. Optional
+`timeoutMs` bounds a run (one hour by default, at most four hours). The workspace
+must already exist. The launcher reads the producer context, skips busy PROD,
+claims maintenance ownership, runs the existing slot controller, and releases
+only after a successful joined completion with no remaining backup lock. Its
+work files and latest log/result use fixed names. Schedule this entrypoint with
+the host service manager after installing the reviewed tooling and configuration.
+
+An unsuccessful or forcibly killed controller retains ownership for explicit
+inspection. Scheduled calls do not steal that lease or clear its lock. A stopped
+owner and all children must be verified before the owner resumes its exact
+retention plan. Graceful signals unwind the helper; SIGKILL cannot run cleanup.

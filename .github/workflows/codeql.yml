@@ -13,6 +13,8 @@ on:
       - "docs/openclaw-setup/patches/*.md"
       - "docs/openclaw-setup/apple-pim/*.md"
       - "packages/*/docs/**/*.md"
+      - "packages/e2e/DEVELOPMENT_STORAGE.md"
+      - "packages/e2e/DEPLOYMENT_COORDINATION.md"
       - "servers/*/docs/**/*.md"
       - "servers/*/brainstorming/**/*.md"
   push:
@@ -28,6 +30,8 @@ on:
       - "docs/openclaw-setup/patches/*.md"
       - "docs/openclaw-setup/apple-pim/*.md"
       - "packages/*/docs/**/*.md"
+      - "packages/e2e/DEVELOPMENT_STORAGE.md"
+      - "packages/e2e/DEPLOYMENT_COORDINATION.md"
       - "servers/*/docs/**/*.md"
       - "servers/*/brainstorming/**/*.md"
   schedule:

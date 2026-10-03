@@ -1,16 +1,23 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import {
-  chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync,
+  chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 // @ts-expect-error Native release modules are executable JavaScript.
-import { certifyRelease, createBuildReceipt, createSourceGate, createTargetProof, exportReleaseBundle, importReleaseBundle, promoteRelease, verifyBuildReceipt } from "../src/native-release.mjs";
+import { certifyRelease, createBuildReceipt, createSourceGate, createTargetProof, exportReleaseBundle, importReleaseBundle, promoteRelease, verifyBuildReceipt, verifyRuntimeToolchain } from "../src/native-release.mjs";
 // @ts-expect-error Native lifecycle modules are executable JavaScript.
-import { fileDigest, jsonDigest, treeDigest } from "../src/native-state.mjs";
+import { acquireLock, fileDigest, jsonDigest, treeDigest } from "../src/native-state.mjs";
+// @ts-expect-error Native storage modules are executable JavaScript.
+import { initializeStorage, resumeFailedScratch, planStorageCleanup } from "../src/native-storage.mjs";
+// @ts-expect-error Native storage modules are executable JavaScript.
+import { finalizeFailedNativeBuild, finalizeNativeBuild } from "../src/native-storage-finalize.mjs";
 // @ts-expect-error Native retention modules are executable JavaScript.
 import { initializeArtifactPool } from "../src/native-retention.mjs";
+
+// @ts-expect-error Native migration binding modules are executable JavaScript.
+import { migrationTargetIdentity, selectTargetMigration, validateMigrationBindings } from "../src/native-migration-bindings.mjs";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -105,7 +112,7 @@ function build(directory: string, extensionSha256 = "none", preparedDirectory = 
     stateMigration: { sha256: "8".repeat(64) },
   });
 }
-function stage(directory: string, name: string, inputs = { fixture: name }) {
+function stage(directory: string, name: string, inputs: Record<string, unknown> = { fixture: name }) {
   const key = jsonDigest(inputs);
   mkdirSync(join(directory, "stages"), { recursive: true });
   writeFileSync(join(directory, "stages", `${name}.json`), JSON.stringify({
@@ -121,6 +128,7 @@ function recovery(directory: string, name: string, receipt: ReturnType<typeof bu
     status,
     transaction: name,
     target: "9".repeat(64),
+    ...(receipt.stateMigrations ? { migrationBinding: receipt.stateMigrations.bindings[0] } : {}),
     artifact: receipt.artifact.sha256,
   }));
   if (status === "rolled-back") writeFileSync(join(path, "failure.json"), JSON.stringify({ message: "expected drift" }));
@@ -214,6 +222,65 @@ describe("portable OpenClaw release bundle", () => {
 });
 
 describe("release proof chain", () => {
+  it("finalizes a successful retry without leaving stale failed ownership for the next build", async () => {
+    const task = realpathSync(root());
+    const directory = join(task, "builder");
+    const artifacts = join(directory, "artifacts");
+    mkdirSync(artifacts, { recursive: true });
+    initializeStorage(task, "task");
+    writeFileSync(join(artifacts, "failed"), "old output");
+    writeFileSync(join(directory, "run-status.json"), JSON.stringify({ status: "failed" }));
+    finalizeFailedNativeBuild(task, "task", directory);
+    const old = JSON.parse(readFileSync(join(task, "storage.json"), "utf8")).entries[0];
+    const taskUnlock = acquireLock(task);
+    const buildUnlock = acquireLock(directory);
+    try {
+      resumeFailedScratch(task, "task", directory);
+      rmSync(artifacts, { recursive: true });
+      mkdirSync(artifacts);
+    } finally { buildUnlock(); taskUnlock(); }
+    const receipt = build(artifacts);
+    stage(directory, "regressions");
+    const source = createSourceGate(receipt, directory, {});
+    writeFileSync(join(directory, "build.json"), JSON.stringify(receipt));
+    writeFileSync(join(directory, "source-gate.json"), JSON.stringify(source));
+    writeFileSync(join(directory, "run-status.json"), JSON.stringify({ status: "passed" }));
+    const bundle = join(directory, "retained.tar.gz");
+    await exportReleaseBundle(join(directory, "build.json"), bundle);
+    await finalizeNativeBuild(directory, "builder-owner", bundle, fileDigest(bundle));
+    expect(planStorageCleanup(task).keep).toEqual([]);
+    mkdirSync(artifacts);
+    writeFileSync(join(artifacts, "new-failure"), "new output");
+    writeFileSync(join(directory, "run-status.json"), JSON.stringify({ status: "failed" }));
+    finalizeFailedNativeBuild(task, "task", directory);
+    const entries = JSON.parse(readFileSync(join(task, "storage.json"), "utf8")).entries;
+    expect(entries[0].status).toBe("superseded");
+    expect(entries[1].id).not.toBe(old.id);
+    expect(entries[1].status).toBe("sealed");
+    expect(readFileSync(join(task, old.retainedEvidence[0].path), "utf8")).toContain("failed");
+  });
+
+  it("can certify from a portable bundle after disposable builder output is finalized", async () => {
+    // @ts-expect-error Executable storage finalizer.
+    const { finalizeNativeBuild } = await import("../src/native-storage-finalize.mjs");
+    const directory = root();
+    const artifacts = join(directory, "artifacts"); mkdirSync(artifacts);
+    const receipt = build(artifacts);
+    stage(directory, "regressions");
+    stage(directory, "install"); stage(directory, "runtime");
+    const source = createSourceGate(receipt, directory, {});
+    const target = createTargetProof(receipt, directory,
+      recovery(directory, "healthy", receipt, "healthy"), recovery(directory, "rollback", receipt, "rolled-back"));
+    writeFileSync(join(directory, "build.json"), JSON.stringify(receipt));
+    writeFileSync(join(directory, "source-gate.json"), JSON.stringify(source));
+    writeFileSync(join(directory, "run-status.json"), JSON.stringify({ status: "passed" }));
+    const bundle = join(directory, "retained.tar.gz");
+    await exportReleaseBundle(join(directory, "build.json"), bundle);
+    await finalizeNativeBuild(directory, "fixture", bundle, fileDigest(bundle));
+    const imported = await importReleaseBundle(bundle, join(directory, "consumer"));
+    expect(certifyRelease(imported.receipt, source, target).eligibility).toBe("certified-not-production");
+    expect(() => verifyBuildReceipt(receipt)).toThrow("archive differs");
+  });
   it("derives source and deployment evidence from retained stages and journals", () => {
     const directory = root();
     const receipt = build(directory);
@@ -245,7 +312,8 @@ describe("release proof chain", () => {
     const rollback = recovery(directory, "rollback", receipt, "rolled-back");
     writeFileSync(join(rollback, "recovery.json"), JSON.stringify({
       schemaVersion: 1, status: "rolled-back", transaction: "rollback",
-      target: "9".repeat(64), artifact: "0".repeat(64),
+      target: "9".repeat(64),
+    ...(receipt.stateMigrations ? { migrationBinding: receipt.stateMigrations.bindings[0] } : {}), artifact: "0".repeat(64),
     }));
     expect(() => createTargetProof(receipt, directory, success, rollback)).toThrow("does not match");
     const stagePath = join(directory, "stages/regressions.json");
@@ -265,4 +333,92 @@ describe("release proof chain", () => {
       deployment: { success: true, rollback: true },
     })).toThrow("deployment journals");
   });
+});
+
+describe("target-bound state migrations", () => {
+  function pair(directory: string) {
+    const old = build(directory, "1".repeat(64));
+    const targets = ["rehearsal", "production"].map((purpose, index) => ({
+      purpose, host: "synthetic-host", label: `fixture.${purpose}`, port: 19000 + index,
+      installDir: `/${purpose}/install`, stateDir: `/${purpose}/state`,
+      plistPath: `/${purpose}/service.plist`, backupRoot: `/${purpose}/backup`,
+      additionalInstalls: [{ id: "managed-runtime", path: "providers/managed" }],
+      preparedFiles: [{ id: "embedding-model", path: "model.gguf" }],
+      stateMigration: { manifestPath: `/${purpose}/migration.json`, sha256: String(index + 2).repeat(64) },
+    }));
+    const stateMigrations = { schema: "puddles.target-state-migrations/v1",
+      generator: { repositoryId: "overlay", inputsSha256: "4".repeat(64) },
+      policy: { id: "fixture-upgrade/v1", sha256: "5".repeat(64) },
+      bindings: targets.map((target, i) => ({ role: target.purpose,
+        targetSha256: jsonDigest(migrationTargetIdentity(target)), inputsSha256: String(i + 6).repeat(64),
+        manifestSha256: target.stateMigration.sha256 })),
+    };
+    const receipt = createBuildReceipt({ ...old, sourceRepositories: [{ id: "overlay", head: "a".repeat(40), tree: "b".repeat(40) }],
+      stateMigration: { sha256: targets[0].stateMigration.sha256 }, stateMigrations });
+    return { receipt, targets, stateMigrations };
+  }
+
+  it("certifies distinct target migrations and retains genuine runtime evidence", async () => {
+    const directory = root();
+    const { receipt, targets, stateMigrations } = pair(directory);
+    stage(directory, "regressions", { stateMigrations });
+    const source = createSourceGate(receipt, directory, []);
+    stage(directory, "install");
+    stage(directory, "runtime", { tools: receipt.tools, buildId: receipt.buildId });
+    const proof = createTargetProof(receipt, directory,
+      recovery(directory, "success", receipt, "healthy"), recovery(directory, "rollback", receipt, "rolled-back"));
+    const certification = certifyRelease(receipt, source, proof);
+    const release = promoteRelease(receipt, source, proof, certification);
+    expect(selectTargetMigration(receipt, targets[0])).toEqual(stateMigrations.bindings[0]);
+    expect(selectTargetMigration(release, targets[1])).toEqual(stateMigrations.bindings[1]);
+    expect(release.evidence.targetProof.runtimeEvidence.inputs.tools).toEqual(receipt.tools);
+    const changed = structuredClone(proof);
+    changed.runtimeEvidence.inputs.tools.node = "v0.0.0";
+    expect(() => certifyRelease(receipt, source, changed)).toThrow(/runtime evidence/);
+    const missingTools = structuredClone(proof);
+    delete missingTools.runtimeEvidence.inputs.tools;
+    missingTools.runtimeEvidence.key = jsonDigest(missingTools.runtimeEvidence.inputs);
+    missingTools.stages.runtime = missingTools.runtimeEvidence.key;
+    expect(() => certifyRelease(receipt, source, missingTools)).toThrow(/runtime evidence/);
+    const receiptPath = join(directory, "paired-build.json");
+    writeFileSync(receiptPath, JSON.stringify(receipt));
+    const bundle = join(directory, "paired.tar.gz");
+    await exportReleaseBundle(receiptPath, bundle, "local");
+    const imported = await importReleaseBundle(bundle, join(root(), "paired-import"));
+    expect(imported.receipt.stateMigrations).toEqual(stateMigrations);
+  });
+
+  it("rejects substituted manifests, targets, DEV selection, and unproved bindings", () => {
+    const directory = root();
+    const { receipt, targets, stateMigrations } = pair(directory);
+    const production = targets[1];
+    expect(() => selectTargetMigration(receipt, { ...production, stateMigration: targets[0].stateMigration })).toThrow(/sealed target/);
+    for (const change of [{ port: 19004 }, { stateDir: "/different/state" }, { privateRole: "development" },
+      { preparedFiles: [{ id: "embedding-model", path: "different.gguf" }] }]) {
+      expect(() => selectTargetMigration(receipt, { ...production, ...change })).toThrow();
+    }
+    expect(selectTargetMigration(receipt, { ...production, stateMigration: { ...production.stateMigration, manifestPath: "/transport/new.json" } }))
+      .toEqual(stateMigrations.bindings[1]);
+    stage(directory, "regressions", { stateMigrations: null });
+    expect(() => createSourceGate(receipt, directory, [])).toThrow(/did not validate/);
+    const mutated = structuredClone(receipt);
+    mutated.stateMigrations.bindings[1].manifestSha256 = "f".repeat(64);
+    expect(() => verifyBuildReceipt(mutated)).toThrow(/immutable build/);
+    const duplicate = structuredClone(stateMigrations);
+    duplicate.bindings[1].role = "rehearsal";
+    expect(() => validateMigrationBindings(duplicate)).toThrow(/Invalid/);
+  });
+
+  it("keeps legacy single-manifest equality checks", () => {
+    const receipt = build(root());
+    expect(selectTargetMigration(receipt, { stateMigration: receipt.stateMigration })).toBeNull();
+    expect(() => selectTargetMigration(receipt, { stateMigration: { sha256: "f".repeat(64) } })).toThrow(/rehearsed candidate/);
+  });
+});
+
+it("measures the interpreter binary before accepting target runtime evidence", () => {
+  const expected = { node: process.version, nodeBinary: fileDigest(process.execPath), platform: process.platform, arch: process.arch };
+  expect(verifyRuntimeToolchain(expected)).toEqual(expected);
+  expect(() => verifyRuntimeToolchain({ ...expected, nodeBinary: "f".repeat(64) })).toThrow(/nodeBinary/);
+  expect(() => verifyRuntimeToolchain(expected, { ...expected, nodeBinary: "f".repeat(64) })).toThrow(/nodeBinary/);
 });

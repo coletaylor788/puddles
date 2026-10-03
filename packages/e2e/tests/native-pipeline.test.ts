@@ -7,6 +7,7 @@ import { dirname, join } from "node:path";
 vi.setConfig({ testTimeout: 15_000 });
 
 const counters = vi.hoisted(() => ({ prepare: 0, install: 0, build: 0, package: 0, additionalInstalls: 0, runtimeCommands: 0, dependency: "first", generatedCaches: false }));
+const scenarioProviders = vi.hoisted(() => [] as unknown[]);
 const registrations = vi.hoisted(() => new Set<string>());
 vi.mock("../src/native-state.mjs", async (original) => {
   const state = await original<{ treeDigest: (path: string, options?: unknown) => string }>();
@@ -206,7 +207,10 @@ vi.mock("../src/communication-package.mjs", () => ({
 vi.mock("../fixtures/communication.mjs", () => ({ communicationFixture: async () => ({ passed: true }) }));
 vi.mock("../src/native-fixture.mjs", async (original) => ({
   ...await original<object>(),
-  runScenario: async (_installed: string, scenario: { id: string }) => ({ id: scenario.id, passed: true }),
+  runScenario: async (_installed: string, scenario: { id: string }, options: { providerFixture?: unknown }) => {
+    scenarioProviders.push(options.providerFixture);
+    return { id: scenario.id, passed: true };
+  },
 }));
 // @ts-expect-error JS lifecycle exports are tested at runtime.
 import { nativePipeline, nativeTargetPipeline, regressionEnvironment, removeOwnedWorktree, resolveBuildTimeoutMs, safeNode } from "../src/native-pipeline.mjs";
@@ -218,6 +222,10 @@ import { createRehearsalTarget } from "../src/native-target.mjs";
 import { atomicJson, jsonDigest, treeDigest } from "../src/native-state.mjs";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
 import { findRetainedSourceGate, initializeArtifactPool, planArtifactCleanup } from "../src/native-retention.mjs";
+// @ts-expect-error JS storage modules are tested at runtime.
+import { initializeStorage } from "../src/native-storage.mjs";
+// @ts-expect-error JS storage modules are tested at runtime.
+import { finalizeFailedNativeBuild } from "../src/native-storage-finalize.mjs";
 import { runCommand } from "../src/process-runner.mjs";
 
 const roots: string[] = [];
@@ -239,9 +247,14 @@ it("keeps release builds at 30 minutes and validates the bounded draft override"
 });
 function root() { const path = mkdtempSync(join(tmpdir(), "native-pipeline-test-")); roots.push(path); return path; }
 beforeEach(() => {
-  vi.stubEnv("PNPM_CONFIG_STORE_DIR", join(tmpdir(), "puddles-native-pnpm-store"));
+  const store = join(tmpdir(), "puddles-native-pnpm-store");
+  const config = join(root(), "development.json");
+  writeFileSync(config, JSON.stringify({ pnpmStore: store }));
+  vi.stubEnv("PUDDLES_DEVELOPMENT_CONFIG", config);
+  vi.stubEnv("PNPM_CONFIG_STORE_DIR", store);
   Object.assign(counters, { prepare: 0, install: 0, build: 0, package: 0, additionalInstalls: 0, runtimeCommands: 0, dependency: "first", generatedCaches: false });
   registrations.clear();
+  scenarioProviders.length = 0;
 });
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -249,6 +262,8 @@ afterEach(() => {
 });
 function setup() {
   const directory = root();
+  vi.stubEnv("E2E_CAPACITY_ROOT", join(realpathSync(directory), "capacity"));
+  vi.stubEnv("E2E_BUILD_RESERVATION_BYTES", "0");
   const source = join(directory, "upstream");
   mkdirSync(join(source, ".git"), { recursive: true });
   const run = join(directory, "run");
@@ -256,8 +271,69 @@ function setup() {
   vi.stubEnv("E2E_RUN_DIR", run);
   vi.stubEnv("E2E_LOCAL_EXTENSION", "");
   vi.stubEnv("E2E_STATE_MIGRATION_MANIFEST", "");
+  vi.stubEnv("E2E_STATE_MIGRATION_BINDINGS", "");
   return { directory, run };
 }
+
+it("rejects store drift before building when the host configuration is pinned", async () => {
+  const { directory } = setup();
+  const config = process.env.PUDDLES_DEVELOPMENT_CONFIG!;
+  const before = readFileSync(config);
+  vi.stubEnv("PNPM_CONFIG_STORE_DIR", join(directory, "competing-store"));
+  await expect(nativePipeline("ci", async () => {})).rejects.toThrow("differs from the maintained host store");
+  expect(counters).toMatchObject({ prepare: 0, install: 0, build: 0, package: 0 });
+  expect(readFileSync(config)).toEqual(before);
+});
+
+it("waits for the task cleanup lock before changing builder state", async () => {
+  const { directory, run } = setup();
+  vi.stubEnv("PUDDLES_STORAGE_ROOT", directory);
+  mkdirSync(run);
+  mkdirSync(join(directory, "lock"));
+  const previous = JSON.stringify({ status: "failed", failure: "preserved" });
+  writeFileSync(join(run, "run-status.json"), previous);
+  await expect(nativePipeline("build", async () => {})).rejects.toThrow();
+  expect(readFileSync(join(run, "run-status.json"), "utf8")).toBe(previous);
+  expect(existsSync(join(run, "logs"))).toBe(false);
+  expect(existsSync(join(run, "lock"))).toBe(false);
+  expect(counters.prepare).toBe(0);
+});
+
+it("releases the task lock when another process owns the builder", async () => {
+  const { directory, run } = setup();
+  vi.stubEnv("PUDDLES_STORAGE_ROOT", directory);
+  mkdirSync(join(run, "lock"), { recursive: true });
+  await expect(nativePipeline("build", async () => {})).rejects.toThrow();
+  expect(existsSync(join(directory, "lock"))).toBe(false);
+  expect(existsSync(join(run, "run-status.json"))).toBe(false);
+});
+
+it("withdraws failed scratch deletion authority before an incremental builder retry", async () => {
+  const directory = realpathSync(setup().directory);
+  const run = join(directory, "run");
+  vi.stubEnv("E2E_RUN_DIR", run);
+  vi.stubEnv("PUDDLES_STORAGE_ROOT", directory);
+  vi.stubEnv("PUDDLES_STORAGE_OWNER", "task");
+  initializeStorage(directory, "task");
+  mkdirSync(join(run, "context"), { recursive: true });
+  writeFileSync(join(run, "context", "prior-output"), "failed generation");
+  writeFileSync(join(run, "run-status.json"), JSON.stringify({ status: "failed" }));
+  finalizeFailedNativeBuild(directory, "task", run);
+  await nativePipeline("build", async () => {});
+  const entries = JSON.parse(readFileSync(join(directory, "storage.json"), "utf8")).entries;
+  expect(entries[0].status).toBe("superseded");
+  expect(existsSync(join(directory, entries[0].retainedEvidence[0].path))).toBe(true);
+  expect(existsSync(join(directory, "lock"))).toBe(false);
+  expect(existsSync(join(run, "lock"))).toBe(false);
+});
+
+it("keeps a caller's release migration bindings out of synthetic pipelines", async () => {
+  vi.stubEnv("E2E_STATE_MIGRATION_BINDINGS", "/synthetic/caller-release-bindings.json");
+  setup();
+  vi.stubEnv("GMAIL_MCP_PYTHON", "fixture-python");
+  const receipt = await nativePipeline("build", async () => {});
+  expect(receipt.stateMigrations).toBeUndefined();
+});
 
 it("runs every mapped regression through the upstream test entrypoint", async () => {
   setup();
@@ -267,6 +343,11 @@ it("runs every mapped regression through the upstream test entrypoint", async ()
   await nativePipeline("ci", async () => {});
   const suite = JSON.parse(readFileSync(join(import.meta.dirname, "../openclaw-patch-suite.json"), "utf8"));
   const calls = vi.mocked(runCommand).mock.calls;
+  for (const [name, args, options] of calls) {
+    if (name === "node" && args[0] === "scripts/run-vitest.mjs") {
+      expect(options?.env?.OPENCLAW_VITEST_WORKER_CACHE).toBe("1");
+    }
+  }
   for (const target of new Set<string>(suite.patches.flatMap((patch: { tests: string[] }) => patch.tests))) {
     for (const action of ["list", "run"]) {
       expect(calls.some(([command, args]) => command === "node" &&
@@ -349,7 +430,7 @@ it("propagates a mapped typecheck failure before Vitest", async () => {
 it("binds migration bytes to cumulative and runtime proofs without rebuilding unchanged source", async () => {
   const { directory, run } = setup();
   const path = join(realpathSync(directory), "migration.json");
-  const manifest = { schemaVersion: 1, configOperations: [
+  const manifest = { schemaVersion: 1, configuration: { schemaVersion: 1, baseSha256: "a".repeat(64), bindingsSha256: "b".repeat(64), predecessorSha256: "c".repeat(64), candidateSha256: "d".repeat(64) }, configOperations: [
     { kind: "set", path: ["memory", "search", "provider"], expected: { exists: false }, value: "local" },
   ] };
   writeFileSync(path, JSON.stringify(manifest));
@@ -359,6 +440,7 @@ it("binds migration bytes to cumulative and runtime proofs without rebuilding un
   for (const name of ["regressions", "runtime"]) {
     expect(JSON.parse(readFileSync(join(run, `stages/${name}.json`), "utf8")).inputs.stateMigration).toEqual(first.stateMigration);
   }
+  expect(first.stateMigration.configuration).toEqual(manifest.configuration);
   manifest.configOperations[0].value = "none";
   writeFileSync(path, JSON.stringify(manifest));
   const second = await nativePipeline("ci", async () => {});
@@ -750,7 +832,9 @@ it("reuses gate-independent stages and invalidates changed source, lock, and too
     package: 3,
   });
 
-  vi.stubEnv("PNPM_CONFIG_STORE_DIR", join(directory, "different-store"));
+  const changedStore = join(directory, "different-store");
+  writeFileSync(process.env.PUDDLES_DEVELOPMENT_CONFIG!, JSON.stringify({ pnpmStore: changedStore }));
+  vi.stubEnv("PNPM_CONFIG_STORE_DIR", changedStore);
   await nativePipeline("ci", async () => {});
   expect(counters).toMatchObject({
     prepare: 3,
@@ -914,12 +998,16 @@ it("binds the explicit rehearsal target into artifact-only installed context", a
   const module = join(directory, "target-adapter.mjs");
   writeFileSync(module, `export default {
     schemaVersion: 1,
+    providerFixture: () => { throw new Error("orchestration must pass this factory to the scenario runner"); },
     commands: [{id:"installed",phase:"installed",command:"fixture-installed",args:[],timeoutMs:1000}]
   };`);
   const targetRun = join(directory, "target-run");
   vi.stubEnv("E2E_RUN_DIR", targetRun);
   vi.stubEnv("E2E_LOCAL_EXTENSION", module);
+  scenarioProviders.length = 0;
   const proof = await nativeTargetPipeline(buildPath, targetPath);
+  expect(scenarioProviders.length).toBeGreaterThan(0);
+  expect(scenarioProviders.every(factory => typeof factory === "function")).toBe(true);
   const context = JSON.parse(readFileSync(join(targetRun, "context/context.json"), "utf8"));
   expect(proof).toMatchObject({ buildId: build.buildId, targetSha256: context.deploymentTarget.sha256 });
   expect(context).not.toHaveProperty("sourceDir");
@@ -1096,4 +1184,15 @@ it("seals prepared files into their own proof and invalidates runtime rehearsal 
   const second = await nativePipeline("native", async () => {});
   expect(second.preparedFiles[0].sha256).not.toBe(first.preparedFiles[0].sha256);
   expect(counters.runtimeCommands).toBe(runs + 1);
+});
+
+
+it("passes the selected provider fixture through the native draft scenario path", async () => {
+  const { directory } = setup();
+  const path = join(directory, "provider-fixture.mjs");
+  writeFileSync(path, `export default {schemaVersion: 1, providerFixture: () => {throw new Error('runner owns fixture initialization');}};`);
+  vi.stubEnv("E2E_LOCAL_EXTENSION", path);
+  await nativePipeline("native", async () => {});
+  expect(scenarioProviders.length).toBeGreaterThan(0);
+  expect(scenarioProviders.every(factory => typeof factory === "function")).toBe(true);
 });

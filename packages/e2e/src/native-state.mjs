@@ -24,6 +24,22 @@ export const fileDigest = (path) => {
 };
 export const jsonDigest = (value) => digest(JSON.stringify(value));
 
+export function canonicalJson(value) {
+  if (value === null || typeof value === "boolean" || typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "number" && Number.isFinite(value)) return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value !== null && typeof value === "object" && [Object.prototype, null].includes(Object.getPrototypeOf(value))) {
+    return `{${Object.keys(value).sort().map((key) => {
+      if (["__proto__", "prototype", "constructor"].includes(key)) throw new Error("Forbidden migration value key");
+      return `${JSON.stringify(key)}:${canonicalJson(value[key])}`;
+    }).join(",")}}`;
+  }
+  throw new Error("Migration values must be finite JSON");
+}
+
+export const canonicalValueDigest = (value) => digest(canonicalJson(value));
+
+
 function artifactIdentity(artifact) {
   if (!artifact || artifact.schemaVersion !== 1 ||
       !/^[a-f0-9]{64}$/.test(artifact.sha256) || !/^[a-f0-9]{64}$/.test(artifact.runtimeSha256) ||
@@ -93,6 +109,10 @@ export function verifyCandidateProofs(receiptPath, receipt) {
     if (!proof.inputs || proof.status !== "passed" || proof.key !== receipt.proofs?.[name] ||
         proof.key !== jsonDigest(proof.inputs)) throw new Error("Candidate proof chain does not match");
     proofs[name] = proof;
+  }
+  if (["regressions", "runtime"].some((name) =>
+    jsonDigest(proofs[name].inputs.stateMigrations ?? null) !== jsonDigest(receipt.stateMigrations ?? null))) {
+    throw new Error("Target migration bindings differ from candidate proofs");
   }
   const rootIdentity = jsonDigest(artifactIdentity(receipt.artifact));
   if (["regressions", "runtime"].some((name) => jsonDigest(proofs[name].inputs.stateMigration ?? null) !== jsonDigest(receipt.stateMigration ?? null))) {

@@ -72,8 +72,15 @@ describe("wrapMcpTool", () => {
     const wrapped = wrapMcpTool(tool, makeCaller(), {
       selectHooks: () => ({ ingress: [slow, fast] }),
     });
-    await wrapped.execute("c", { action: "events" });
-    expect(order).toEqual(["fast", "slow"]);
+    vi.useFakeTimers();
+    try {
+      const execution = wrapped.execute("c", { action: "events" });
+      await vi.runAllTimersAsync();
+      await execution;
+      expect(order).toEqual(["fast", "slow"]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("ingress block returns sentinel and includes the reason", async () => {

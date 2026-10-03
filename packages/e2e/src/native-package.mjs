@@ -1,12 +1,14 @@
-import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
-import { atomicJson, digest, fileDigest, jsonDigest, treeDigest } from "./native-state.mjs";
+import { atomicJson, digest, fileDigest, inside, jsonDigest, treeDigest } from "./native-state.mjs";
 import { runCommand } from "./process-runner.mjs";
 
 const releaseRuntimeSelectionTimeoutMs = 60_000;
 const runtimeSelectionOutputBytes = 16 * 1024 * 1024;
+// Composed runtimes include bundled plugins and can list more than 4 MiB of paths.
+const runtimeArchiveListingOutputBytes = 16 * 1024 * 1024;
 
 function parseRuntimeSelection(stdout) {
   const [pack] = JSON.parse(stdout);
@@ -124,10 +126,47 @@ export async function materializeRuntimeForDev(source, destination) {
   materializeSelectedRuntime(source, destination, { files: files.map((path) => ({ path })) });
 }
 
-export async function packRuntime(source, directory, run = runCommand) {
+export async function bundleRuntimePlugins(runtime, plugins, run = runCommand) {
+  if (!plugins.length) return;
+  const ledger = join(runtime, "puddles-bundled-plugins.json");
+  if (existsSync(ledger)) throw new Error("Bundled plugin provenance already exists");
+  const ids = new Set();
+  const records = [];
+  for (const { id, artifact, attestation } of plugins) {
+    if (!/^[a-z][a-z0-9-]*$/.test(id) || ids.has(id)) throw new Error("Invalid bundled plugin identity");
+    ids.add(id);
+    const destination = join(runtime, "dist", "extensions", id);
+    if (existsSync(destination)) throw new Error("Bundled plugin collides with the host distribution");
+    mkdirSync(dirname(destination), { recursive: true });
+    if (!inside(realpathSync(runtime), realpathSync(dirname(destination)))) throw new Error("Bundled plugin directory escapes the host");
+    const staging = mkdtempSync(join(dirname(runtime), ".bundled-plugin-"));
+    try {
+      const installed = await installRuntime(artifact, join(staging, "install"), run);
+      const manifest = JSON.parse(readFileSync(join(installed, "openclaw.plugin.json"), "utf8"));
+      if (manifest.id !== id) throw new Error("Bundled plugin manifest identity differs from selection");
+      const pkg = JSON.parse(readFileSync(join(installed, "package.json"), "utf8"));
+      const entries = pkg.openclaw?.runtimeExtensions ?? pkg.openclaw?.extensions;
+      if (!Array.isArray(entries) || !entries.length || entries.some((entry) =>
+        typeof entry !== "string" || isAbsolute(entry) || !existsSync(join(installed, entry)) ||
+        !inside(realpathSync(installed), realpathSync(join(installed, entry))))) {
+        throw new Error("Bundled plugin requires contained runtime entries");
+      }
+      renameSync(installed, destination);
+      const { path: _archivePath, ...identity } = artifact;
+      records.push({ id, artifact: identity, ...(attestation ? { attestation } : {}) });
+    } finally {
+      rmSync(staging, { recursive: true, force: true });
+    }
+  }
+  // Source provenance is part of the host archive's immutable content digest.
+  atomicJson(ledger, { schemaVersion: 1, plugins: records });
+}
+
+export async function packRuntime(source, directory, run = runCommand, bundledPlugins = []) {
   const runtime = join(directory, "runtime");
   if (existsSync(runtime)) rmSync(runtime, { recursive: true });
   materializeRuntime(source, runtime);
+  await bundleRuntimePlugins(runtime, bundledPlugins, run);
   const identity = { schemaVersion: 1, platform: process.platform, arch: process.arch, node: process.version, runtimeSha256: treeDigest(runtime, { portable: true }) };
   atomicJson(join(directory, "runtime-identity.json"), identity);
   const artifact = join(directory, "openclaw-runtime.tar.gz");
@@ -188,7 +227,7 @@ export async function installRuntime(artifact, prefix, run = runCommand) {
   if (fileDigest(artifact.path) !== artifact.sha256) throw new Error("Artifact digest changed");
   if (existsSync(prefix)) throw new Error("Install prefix must be new");
   mkdirSync(prefix, { recursive: true, mode: 0o700 });
-  const entries = await run("tar", ["-tzf", artifact.path], { capture: true });
+  const entries = await run("tar", ["-tzf", artifact.path], { capture: true, maxOutputBytes: runtimeArchiveListingOutputBytes });
   if (entries.split("\n").filter(Boolean).some((entry) => entry.startsWith("/") || entry.split("/").includes("..") || !["runtime", "runtime-identity.json"].includes(entry.split("/")[0]))) {
     throw new Error("Invalid runtime archive path");
   }

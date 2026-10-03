@@ -3,7 +3,7 @@ name: adversarial-review
 description: Independently challenge a completed feature for hidden defects, unsafe assumptions, regressions, and incomplete requirements. Use for the mandatory post-implementation review of every feature.
 metadata:
   author: Cole Taylor
-  version: "1.7.0"
+  version: "1.8.0"
 ---
 
 # Adversarial Review
@@ -51,7 +51,19 @@ into actionable remediation-loop findings. Before reporting, verify that the
 concern is not speculative, duplicative, already resolved, or unrelated to the
 current change.
 
-Use the agreed trust model, not a stricter one invented during review. Native
+Read the [security architecture](../../../docs/openclaw-setup/security-architecture.md)
+and check the complete change and affected paths against its boundaries,
+principles, and rules.
+
+- Block review clearance for any deviation or exception, regardless of finding
+  severity. Require explicit human approval for that specific deviation;
+  general feature approval or accepted residual risk is not enough.
+- After approval, require the architecture to reflect the approved change before
+  clearing review. Otherwise, require the implementation to align.
+- Review architecture edits against the previously approved version. Editing
+  the document does not itself authorize a deviation.
+
+Use that trust model, not a stricter one invented during review. Native
 rehearsal runs trusted code on a trusted host. Its isolation protects production
 uptime and writable state; it is not an adversarial host security boundary.
 Normal host filesystem access, shared dependencies, and existing coordination
@@ -110,10 +122,13 @@ integration happens before activation, outside the live rollback transaction.
 Distinguish local DEV drafts from final validation. Incremental local builds
 and mutable source are expected during iteration; do not require a CI artifact
 or full accumulated suite between ordinary fixes. Check that affected installed
-behavior is exercised early and that stale outputs are not reused. Final merge
-eligibility still needs the complete CI gate and DEV proof for that exact CI
-artifact. Draft evidence must not qualify for merge, TEST, or PROD. Preserve
-slot ownership, isolation, recording adapters, and rollback in both DEV modes.
+behavior is exercised early and that stale outputs are not reused. Reviewed
+features may merge after focused and required repository checks. One release
+owner runs the full accumulated CI gate on selected merged source and promotes
+that artifact through DEV, TEST, and PROD. Draft checks do not certify release.
+Check that later main commits do not force another build of the active candidate.
+Preserve slot ownership, isolation, recording adapters, and production recovery.
+TEST rollback snapshots are temporary and must be cleaned after their checks.
 
 ## Project-specific concerns
 

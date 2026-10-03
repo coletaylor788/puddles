@@ -2,7 +2,11 @@ import { createRequire } from "node:module";
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { digest, fileDigest, inside } from "./native-state.mjs";
+import { canonicalJson, canonicalValueDigest, digest, fileDigest, inside } from "./native-state.mjs";
+import { assertConfigurationDigest, authoredConfiguration } from "./environment-configuration.mjs";
+import { assertWorkshopConfiguration, inspectWorkshopMigration, validateWorkshopBinding } from "./native-workshop-migration.mjs";
+
+import { assertBundledPluginSelections, retirePluginSelections, validatePluginRetirements, validateRequiredBundledPlugins } from "./native-plugin-selection.mjs";
 
 const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const prefix = (parent, child) => parent.length <= child.length && parent.every((part, index) => part === child[index]);
@@ -14,20 +18,7 @@ function keys(value, allowed, required = allowed) {
       required.some((key) => !Object.hasOwn(value, key))) throw new Error("Invalid migration object fields");
 }
 
-function canonicalJson(value) {
-  if (value === null || typeof value === "boolean" || typeof value === "string") return JSON.stringify(value);
-  if (typeof value === "number" && Number.isFinite(value)) return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (record(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value))) {
-    return `{${Object.keys(value).sort().map((key) => {
-      if (forbidden.has(key)) throw new Error("Forbidden migration value key");
-      return `${JSON.stringify(key)}:${canonicalJson(value[key])}`;
-    }).join(",")}}`;
-  }
-  throw new Error("Migration values must be finite JSON");
-}
-
-export const canonicalValueDigest = (value) => digest(canonicalJson(value));
+export { canonicalValueDigest } from "./native-state.mjs";
 
 function migrationProjection(before, after, path = []) {
   if (canonicalJson(before) === canonicalJson(after)) return [];
@@ -44,9 +35,9 @@ function migrationProjection(before, after, path = []) {
 }
 
 export function validateMigrationManifest(manifest) {
-  keys(manifest, ["schemaVersion", "configOperations", "cronOperation"], ["schemaVersion", "configOperations"]);
+  keys(manifest, ["schemaVersion", "configOperations", "cronOperation", "configuration", "workshopMigration", "pluginRetirements", "requiredBundledPlugins"], ["schemaVersion", "configOperations"]);
   if (manifest.schemaVersion !== 1 || !Array.isArray(manifest.configOperations) ||
-      manifest.configOperations.length > 64 || (!manifest.configOperations.length && !manifest.cronOperation)) {
+      manifest.configOperations.length > 64 || (!manifest.configOperations.length && !manifest.cronOperation && !manifest.pluginRetirements?.length && !manifest.requiredBundledPlugins?.length)) {
     throw new Error("Invalid migration version or operation count");
   }
   const paths = [];
@@ -77,6 +68,18 @@ export function validateMigrationManifest(manifest) {
       throw new Error("Invalid one-job migration");
     }
   }
+  if (manifest.configuration !== undefined) {
+    keys(manifest.configuration, ["schemaVersion", "baseSha256", "bindingsSha256", "predecessorSha256", "candidateSha256"]);
+    if (manifest.configuration.schemaVersion !== 1 ||
+        Object.entries(manifest.configuration).some(([key, value]) => key !== "schemaVersion" && !hexDigest(value))) {
+      throw new Error("Invalid configuration parity identities");
+    }
+  }
+  if (manifest.workshopMigration !== undefined && (!record(manifest.workshopMigration) || manifest.workshopMigration.schemaVersion !== 1)) {
+    throw new Error("Invalid Workshop migration manifest");
+  }
+  if (manifest.pluginRetirements !== undefined) validatePluginRetirements(manifest.pluginRetirements);
+  if (manifest.requiredBundledPlugins !== undefined) validateRequiredBundledPlugins(manifest.requiredBundledPlugins);
   return manifest;
 }
 
@@ -107,7 +110,7 @@ function statePath(stateDir, path, required = false) {
   return resolve(path);
 }
 
-function configDraft(source, operations) {
+export function configDraft(source, operations) {
   const draft = structuredClone(source);
   for (const operation of operations) {
     let parent = source;
@@ -184,10 +187,11 @@ export function silenceCronJob(job) {
   return { ...structuredClone(job), delivery, failureAlert: false };
 }
 
-async function loadSdk(runtime, phase) {
+async function loadSdk(runtime, phase, workshop) {
   const require = createRequire(join(runtime, "package.json"));
   const sdk = {};
   const names = ["config-mutation", "cron-store-runtime", "state-paths"];
+  if (workshop) names.push("health");
   if (["schema", "builtin-config"].includes(phase)) names.push("doctor-repair-runtime");
   for (const name of names) {
     const path = require.resolve(`openclaw/plugin-sdk/${name}`);
@@ -201,13 +205,14 @@ export async function executeStateMigration(
   { phase, runtime, stateDir, manifestPath, sha256, expectedBuiltIn },
   sdkLoader = loadSdk,
 ) {
-  if (!["preflight", "schema", "builtin-config", "config", "cron"].includes(phase) || !isAbsolute(runtime) ||
+  if (!["preflight", "schema", "builtin-config", "config", "plugins", "cron"].includes(phase) || !isAbsolute(runtime) ||
       !isAbsolute(stateDir) || realpathSync(stateDir) !== stateDir ||
       process.env.OPENCLAW_STATE_DIR !== stateDir || process.env.OPENCLAW_CONFIG_PATH !== join(stateDir, "openclaw.json")) {
     throw new Error("Migration requires an explicit canonical stopped-state target");
   }
   const manifest = readMigrationManifest(manifestPath, sha256);
-  const sdk = await sdkLoader(runtime, phase);
+  if (manifest.workshopMigration) validateWorkshopBinding({ stateDir, workshopMigration: manifest.workshopMigration });
+  const sdk = await sdkLoader(runtime, phase, Boolean(manifest.workshopMigration));
   const assertSelection = () => {
     if (sdk.resolveStateDir(process.env) !== stateDir || process.env.OPENCLAW_CONFIG_PATH !== join(stateDir, "openclaw.json")) {
       throw new Error("Migration state selection changed");
@@ -225,6 +230,7 @@ export async function executeStateMigration(
     observe: false, pluginValidation: ["preflight", "schema"].includes(phase) ? "core-only" : "full",
   });
   assertSelection();
+  assertWorkshopConfiguration(manifest.workshopMigration, snapshot.sourceConfig, stateDir, sdk.resolveAgentWorkspaceDir);
   for (const source of [snapshot.sourceConfigBeforeMigrations, snapshot.sourceConfig].filter(record)) {
     statePath(stateDir, sdk.resolveCronJobsStorePathFromConfig(source, process.env, process.env, { artifactPreservingReadOnly: true }));
   }
@@ -296,8 +302,30 @@ export async function executeStateMigration(
       expectedConfigSha256: canonicalValueDigest(expectedConfig),
     };
   };
+  if (manifest.pluginRetirements && ["preflight", "plugins"].includes(phase)) {
+    await retirePluginSelections({ runtime, stateDir,
+      config: snapshot.sourceConfigBeforeMigrations ?? snapshot.sourceConfig,
+      bindings: manifest.pluginRetirements, apply: phase === "plugins" });
+  }
+  if (phase === "plugins" && manifest.requiredBundledPlugins) {
+    await assertBundledPluginSelections({ runtime, stateDir, ids: manifest.requiredBundledPlugins });
+  }
   if (phase === "preflight") {
+    if (manifest.configuration) assertConfigurationDigest(
+      authoredConfiguration(snapshot),
+      manifest.configuration.predecessorSha256,
+      "predecessor",
+    );
     const plan = await builtInPlan();
+    if (manifest.workshopMigration) {
+      // Sealed operations bind the complete stopped repair, including plugin
+      // normalization. Keep the core-only plan above for stable drift checks.
+      const candidatePreview = sdk.previewLegacyConfigRepair(snapshot, { pluginContracts: true });
+      assertWorkshopConfiguration(manifest.workshopMigration,
+        configDraft(candidatePreview?.expectedConfig ?? snapshot.sourceConfig, manifest.configOperations), stateDir, sdk.resolveAgentWorkspaceDir);
+      inspectWorkshopMigration({ stateDir, workshopMigration: manifest.workshopMigration },
+        [...plan.loaded.store.jobs, ...plan.targetLoaded.store.jobs]);
+    }
     configBoundary(
       snapshot,
       manifest.configOperations,
@@ -314,7 +342,14 @@ export async function executeStateMigration(
     assertSelection();
   }
   if (phase === "builtin-config") {
+    if (manifest.configuration) assertConfigurationDigest(
+      authoredConfiguration(snapshot),
+      manifest.configuration.predecessorSha256,
+      "stopped predecessor",
+    );
     const plan = await builtInPlan();
+    if (manifest.workshopMigration) inspectWorkshopMigration({ stateDir, workshopMigration: manifest.workshopMigration },
+      [...plan.loaded.store.jobs, ...plan.targetLoaded.store.jobs]);
     if (!record(expectedBuiltIn) ||
         canonicalValueDigest({ config: plan.config, cron: plan.cron }) !==
           canonicalValueDigest(expectedBuiltIn)) {
@@ -371,12 +406,17 @@ export async function executeStateMigration(
       writeOptions: { skipRuntimeSnapshotRefresh: true, skipOutputLogs: true },
       mutate(draft, context) {
         assertSelection();
-        const next = configBoundary(context.snapshot, manifest.configOperations, stateDir, sdk);
+        const next = configBoundary(context.snapshot, manifest.configOperations, stateDir, sdk,
+          manifest.configuration ? authoredConfiguration(context.snapshot) : context.snapshot.sourceConfig);
+        if (manifest.configuration) assertConfigurationDigest(next, manifest.configuration.candidateSha256, "candidate");
         for (const key of Object.keys(draft)) delete draft[key];
         Object.assign(draft, next);
       },
     });
     assertSelection();
+  }
+  if (phase === "cron" && manifest.configuration) {
+    assertConfigurationDigest(authoredConfiguration(snapshot), manifest.configuration.candidateSha256, "migrated candidate");
   }
   if (phase === "cron" && manifest.cronOperation) {
     configBoundary(snapshot, [], stateDir, sdk);

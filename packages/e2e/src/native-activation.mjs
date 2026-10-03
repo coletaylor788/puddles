@@ -1,3 +1,4 @@
+import { selectTargetMigration } from "./native-migration-bindings.mjs";
 import { accessSync, closeSync, constants, cpSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, rmSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
@@ -11,6 +12,7 @@ import { installRuntime } from "./native-package.mjs";
 import { runCommand } from "./process-runner.mjs";
 import { readMigrationManifest } from "./native-state-migration.mjs";
 import { assertBatchArtifact, assertDeploymentOwnership } from "./deploy-coordination.mjs";
+import { applyWorkshopOwnerRepairs, inspectWorkshopMigration, restoreWorkshopSnapshots, snapshotWorkshopMigration, validateWorkshopBinding, verifyWorkshopSnapshots } from "./native-workshop-migration.mjs";
 
 const patchDir = resolve(dirname(fileURLToPath(import.meta.url)), "../../../docs/openclaw-setup/patches");
 
@@ -31,7 +33,11 @@ function validateNodeMigration(target) {
     }
   }
   if (migration.expected.path === migration.desired.path || (migration.expected.realPath ?? migration.expected.path) === migration.desired.path) {
-    throw new Error("Node migration requires distinct retained executables");
+    const { expected, desired } = migration;
+    if (expected.path !== desired.path || (expected.realPath ?? expected.path) !== desired.path ||
+        ["sha256", "version", "platform", "arch"].some((key) => expected[key] !== desired[key])) {
+      throw new Error("Retained Node interpreter requires identical canonical paths and identities");
+    }
   }
   const [major, minor] = migration.desired.version.slice(1).split(".").map(Number);
   if (!(major === 24 && minor >= 16 || major === 26 && minor >= 1 || major > 26)) throw new Error("Unsupported desired Node runtime");
@@ -122,6 +128,8 @@ export function validateTarget(target) {
   }
   if (!lstatSync(target.plistPath).isFile()) throw new Error("Gateway service definition is missing");
   validateNodeMigration(target);
+  validateWorkshopBinding(target);
+  if (target.workshopMigration && !target.stateMigration) throw new Error("Workshop migration requires a sealed config migration");
   if (target.stateMigration) {
     const migration = target.stateMigration;
     if (Object.keys(migration).some((key) => !["manifestPath", "sha256"].includes(key)) ||
@@ -174,9 +182,10 @@ export function systemOperations(target, recoveryDir, execute = runCommand) {
     logPath: join(recoveryDir, `command-${counter++}.log`), ...options,
   });
   const service = `gui/${process.getuid()}/${target.label}`;
-  const cli = (args, runtime = target.installDir, interpreter = target.nodeMigration?.desired.path ?? process.execPath) =>
+  const cli = (args, runtime = target.installDir, interpreter = target.nodeMigration?.desired.path ?? process.execPath, options = {}) =>
     run(interpreter, [join(runtime, "openclaw.mjs"), ...args], {
       env: { ...env, PATH: `${dirname(interpreter)}:${process.env.PATH ?? "/usr/bin:/bin"}` },
+      ...options,
     });
   const currentBrowser = async () => target.browser
     ? (await run("docker", ["image", "inspect", "--format", "{{.Id}}", target.browser.tag], { capture: true })).trim()
@@ -250,6 +259,9 @@ shutil.copymode(source, destination)
       mkdirSync(dirname(to), { recursive: true, mode: 0o700 });
       renameSync(from, to);
     },
+    async publishExclusive(from, to) {
+      await run("python3", [join(patchDir, "publish-runtime-tree.py"), from, to]);
+    },
     async stop(runtime) {
       const helper = resolve(patchDir, "../../../packages/e2e/bin/openclaw-service-stop.mjs");
       const interpreter = target.nodeMigration?.desired.path ?? target.backupNode?.path ?? process.execPath;
@@ -281,7 +293,8 @@ shutil.copymode(source, destination)
     },
     async swap(from, to) { await run("python3", [join(patchDir, "swap-runtime-trees.py"), from, to]); },
     async doctor() {
-      await cli(["doctor", "--fix", "--yes"]);
+      // Importing retained history scales with data volume, unlike service commands.
+      await cli(["doctor", "--fix", "--yes"], undefined, undefined, { timeoutMs: 20 * 60_000 });
       if (await loaded()) throw new Error("Doctor activated the externally managed gateway");
     },
     async stateMigration(phase, runtime, manifestPath, sha256, expectedBuiltIn) {
@@ -318,6 +331,7 @@ shutil.copymode(source, destination)
 
 function verifySnapshots(recoveryDir, journal) {
   if (journal.snapshotReady) {
+    verifyWorkshopSnapshots(recoveryDir, journal.workshopSnapshot);
     if (treeDigest(join(recoveryDir, "state")) !== journal.snapshots.state ||
         treeDigest(join(recoveryDir, "package")) !== journal.snapshots.package ||
         fileDigest(join(recoveryDir, "service.plist")) !== journal.snapshots.service) throw new Error("Recovery snapshot content changed");
@@ -374,9 +388,14 @@ export function verifyCurrentActivationRecovery(target, recoveryDir, latestPath,
     const journal = JSON.parse(readFileSync(join(directory, "recovery.json"), "utf8"));
     if (receipt.artifact.sha256 !== identity.artifactSha256 ||
         receipt.artifact.runtimeSha256 !== journal.deployedRuntimeSha256 ||
-        receipt.evidence.targetProof.deployment.success.target !==
-          identity.activationTargetSha256) {
+        (!receipt.stateMigrations && receipt.evidence.targetProof.deployment.success.target !== identity.activationTargetSha256)) {
       throw new Error("Activation release receipt differs from recovery");
+    }
+    if (receipt.stateMigrations) {
+      const binding = selectTargetMigration(receipt, target);
+      if (jsonDigest(journal.migrationBinding ?? null) !== jsonDigest(binding)) {
+        throw new Error("Activation migration binding differs from recovery");
+      }
     }
     if (!existsSync(latestPath)) throw new Error("Activation ownership evidence is missing");
     const latest = JSON.parse(readFileSync(latestPath, "utf8"));
@@ -422,6 +441,7 @@ function verifyPreparedSnapshot(target, recoveryDir, journal, prepared) {
 
 async function restore(target, recoveryDir, journal, operations) {
   verifySnapshots(recoveryDir, journal);
+  if (journal.browserChanged && !journal.snapshotReady) throw new Error("Browser recovery requires a verified predecessor snapshot");
   if (journal.nodeMigration) {
     verifyNodeFile(journal.nodeMigration.expected);
     verifyNodeFile(journal.nodeMigration.desired);
@@ -454,13 +474,16 @@ async function restore(target, recoveryDir, journal, operations) {
     else cpSync(join(recoveryDir, "service.plist"), target.plistPath);
     if (treeDigest(target.stateDir) !== journal.snapshots.state ||
         fileDigest(target.plistPath) !== journal.snapshots.service) throw new Error("Restored state or service differs from snapshot");
+    await restoreWorkshopSnapshots(recoveryDir, journal.workshopSnapshot, operations);
   }
-  // Recovery can run after the old package was already restored. Never resolve
-  // sandbox discovery through the mutable production install path.
+  // The restored configuration belongs to the predecessor. Use its verified
+  // snapshot and interpreter even when an interrupted swap left another runtime
+  // at the mutable install path.
   if (journal.browserChanged) {
     const candidate = join(recoveryDir, "candidate");
     if (treeDigest(candidate, { portable: true }) !== journal.candidateSha256) throw new Error("Recovery candidate content changed");
-    await operations.browser(journal.previousBrowser, candidate, journal.nodeMigration?.desired.path);
+    await operations.browser(journal.previousBrowser, join(recoveryDir, "package"),
+      journal.nodeMigration?.expected.realPath ?? journal.nodeMigration?.expected.path ?? process.execPath);
   }
   if (journal.snapshotReady) {
     const replacement = join(recoveryDir, "restore-package");
@@ -500,6 +523,27 @@ export function verifyRehearsalTarget(target) {
   }
 }
 
+// Publish maintenance input only after production is healthy. The timer owns
+// retention later, outside activation and rollback. This compact receipt remains
+// with the recovery generation instead of depending on a temporary release tree.
+export function publishActivationRetentionContext(receipt, target, recoveryDir) {
+  if (target.purpose !== "production") throw new Error("Retention context requires production");
+  const root = realpathSync(target.backupRoot);
+  if (dirname(realpathSync(recoveryDir)) !== root) throw new Error("Retention context recovery escaped backups");
+  const journal = JSON.parse(readFileSync(join(recoveryDir, "recovery.json"), "utf8"));
+  const latest = JSON.parse(readFileSync(join(root, "latest-activation.json"), "utf8"));
+  if (journal.status !== "healthy" || journal.quiesced !== false || journal.transaction !== basename(recoveryDir) ||
+      latest.transaction !== journal.transaction || latest.target !== journal.target || receipt.artifact.sha256 !== journal.artifact) {
+    throw new Error("Retention context requires the current healthy activation");
+  }
+  const receiptPath = join(recoveryDir, "release-receipt.json");
+  atomicJson(receiptPath, receipt);
+  atomicJson(join(root, "retention-context.json"), {
+    schemaVersion: 1, transaction: journal.transaction, target,
+    receipt: { path: receiptPath, sha256: fileDigest(receiptPath) },
+  });
+}
+
 export async function activateNative(receipt, target, operationsFactory = systemOperations, recoverDir, action = "recover", mode = "legacy") {
   const ownership = assertDeploymentOwnership(target, target.purpose === "rehearsal" ? "TEST" : "PROD");
   if (!recoverDir) assertBatchArtifact(ownership, receipt);
@@ -514,9 +558,7 @@ export async function activateNative(receipt, target, operationsFactory = system
   } else if (receipt.status !== "passed" || receipt.accumulated !== true || !receipt.scenarios) {
     throw new Error("A complete accumulated rehearsal is required before activation");
   }
-  if ((receipt.stateMigration?.sha256 ?? null) !== (target.stateMigration?.sha256 ?? null)) {
-    throw new Error("State migration differs from the rehearsed candidate");
-  }
+  const migrationBinding = selectTargetMigration(receipt, target);
   const extras = receipt.additionalArtifacts ?? [];
   if (!Array.isArray(extras) || extras.some((extra) => !/^[a-z][a-z0-9-]*$/.test(extra.id) || !extra.artifact?.runtimeSha256) ||
       new Set(extras.map((extra) => extra.id)).size !== extras.length ||
@@ -565,6 +607,7 @@ export async function activateNative(receipt, target, operationsFactory = system
   let journal = {
     schemaVersion: 1, target: jsonDigest(target), artifact: receipt.artifact.sha256,
     transaction: basename(recoveryDir),
+    ...(migrationBinding ? { migrationBinding } : {}),
     ...(ownership ? { coordination: { requestId: ownership.owner.requestId, attemptId: ownership.owner.attemptId, baseline: ownership.owner.baseline } } : {}),
     additionalArtifacts: extraIdentity,
     preparedFiles: preparedFileIdentity,
@@ -657,12 +700,16 @@ export async function activateNative(receipt, target, operationsFactory = system
       save("preflight");
     }
     journal.previousBrowser = await operations.preflight();
+    const workshopPreflight = inspectWorkshopMigration(target);
     const prefix = join(dirname(target.installDir), `.puddles-install-${Date.now()}-${process.pid}`);
     journal.prefix = prefix;
     const installed = await operations.install(receipt.artifact, prefix);
     journal.deployedRuntimeSha256 = treeDigest(installed, { portable: true });
     if (target.stateMigration) {
-      readMigrationManifest(target.stateMigration.manifestPath, target.stateMigration.sha256);
+      const manifest = readMigrationManifest(target.stateMigration.manifestPath, target.stateMigration.sha256);
+      if (jsonDigest(manifest.workshopMigration ?? null) !== jsonDigest(target.workshopMigration ?? null)) {
+        throw new Error("Workshop paths or ownership repairs differ from the sealed manifest");
+      }
       const manifestPath = join(recoveryDir, "state-migration.json");
       durableServiceCopy(target.stateMigration.manifestPath, manifestPath);
       readMigrationManifest(manifestPath, target.stateMigration.sha256);
@@ -732,6 +779,7 @@ export async function activateNative(receipt, target, operationsFactory = system
     checkpoint();
     await operations.clone(target.stateDir, join(recoveryDir, "state"));
     verifyPreparedSnapshot(target, recoveryDir, journal, prepared);
+    journal.workshopSnapshot = await snapshotWorkshopMigration(target, recoveryDir, workshopPreflight, operations);
     journal.snapshots = {
       state: treeDigest(join(recoveryDir, "state")),
       package: treeDigest(join(recoveryDir, "package")),
@@ -790,8 +838,15 @@ export async function activateNative(receipt, target, operationsFactory = system
       await operations.stateMigration("config", target.installDir, join(recoveryDir, "state-migration.json"), journal.stateMigration.sha256);
       checkpoint();
     }
+    applyWorkshopOwnerRepairs(target);
+    if (journal.stateMigration) journal.stateMigration.phase = "doctor";
+    save("migrating-doctor");
     await operations.doctor();
     if (journal.stateMigration) {
+      journal.stateMigration.phase = "plugins";
+      save("migrating-plugins");
+      await operations.stateMigration("plugins", target.installDir, join(recoveryDir, "state-migration.json"), journal.stateMigration.sha256);
+      checkpoint();
       journal.stateMigration.phase = "cron";
       save("migrating-cron");
       await operations.stateMigration("cron", target.installDir, join(recoveryDir, "state-migration.json"), journal.stateMigration.sha256);
@@ -826,6 +881,14 @@ export async function activateNative(receipt, target, operationsFactory = system
     rmSync(preparedStagingRoot, { recursive: true, force: true });
     journal.quiesced = false;
     save("healthy");
+    if (mode === "production") {
+      try { publishActivationRetentionContext(receipt, target, recoveryDir); }
+      catch (error) {
+        // Maintenance metadata failure must not mark a healthy gateway failed or
+        // trigger rollback. The caller sees pending maintenance explicitly.
+        return { status: "healthy", recoveryDir, retentionError: error.message };
+      }
+    }
     return { status: "healthy", recoveryDir };
   } catch (error) {
     if (!recoveryIdentityVerified) throw error;
@@ -872,7 +935,12 @@ export async function verifyIntegratedCandidate(receiptPath, target) {
   }
   verifyProductionRelease(receipt);
   if (target.nodeMigration) {
-    const proof = JSON.parse(readFileSync(join(dirname(receiptPath), "stages", "runtime.json"), "utf8"));
+    const proof = receipt.evidence.targetProof.runtimeEvidence ??
+      JSON.parse(readFileSync(join(dirname(receiptPath), "stages", "runtime.json"), "utf8"));
+    if (proof.name !== "runtime" || proof.status !== "passed" ||
+        proof.key !== jsonDigest(proof.inputs) || proof.key !== receipt.evidence.targetProof.stages.runtime) {
+      throw new Error("Candidate runtime evidence differs from certified rehearsal");
+    }
     if (["node", "nodeBinary", "platform", "arch"].some((key) => proof.inputs.tools?.[key] !== receipt.tools?.[key])) {
       throw new Error("Candidate Node toolchain differs from rehearsal proof");
     }

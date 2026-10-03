@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseDocument } from "yaml";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
 import { safeNode } from "../src/native-pipeline.mjs";
 
@@ -114,7 +115,7 @@ describe("OpenClaw cumulative patch suite", () => {
     expect(runner).not.toMatch(/\[[^\]]*"E2E_RESOURCE_PROFILE"[^\]]*\]/);
     expect(runner).toMatch(/\[[^\]]*"E2E_RESOURCE_MEASURE"[^\]]*\]/);
     expect(runner).toMatch(/stage\(runDir,\s*"regressions",\s*\{[^}]*buildEnvironment/s);
-    const timeout = Number(workflow.match(/timeout-minutes:\s*(\d+)/)?.[1]);
+    const timeout = parseDocument(workflow).toJS().jobs.cumulative["timeout-minutes"];
     expect(timeout).toBeGreaterThan(90);
     expect(timeout).toBeLessThanOrEqual(360);
     expect(workflow).toContain("node packages/e2e/bin/openclaw-test-env.mjs ci");
@@ -146,7 +147,7 @@ describe("OpenClaw cumulative patch suite", () => {
     expect(manifest.testProjects["src/agents/subagents/spawn/subagent-spawn.test.ts"]).toBe("infra");
     expect(manifest.testProjects["src/config/dead-config-keys.test.ts"]).toBe("runtime-config");
     for (const test of suite.patches.flatMap((patch) => patch.tests)) {
-      expect(manifest.testProjects[test], test).toMatch(/^[a-z-]+$/);
+      expect(manifest.testProjects[test], test).toMatch(/^[a-z][a-z0-9-]*$/);
     }
     const runner = readFileSync(join(packageDir, "src/native-pipeline.mjs"), "utf8");
     expect(runner).toContain('"list", "--filesOnly"');

@@ -1,6 +1,7 @@
 import { packageCommunication } from "./communication-package.mjs";
 import { communicationFixture } from "../fixtures/communication.mjs";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, statfsSync } from "node:fs";
+import { selectTargetMigration, validateMigrationBindings } from "./native-migration-bindings.mjs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, rmSync, statfsSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,15 +22,16 @@ import scenarios from "../scenarios/imessage.mjs";
 import { readMigrationManifest } from "./native-state-migration.mjs";
 import { createRehearsalTarget, rehearsalTargetSeed } from "./native-target.mjs";
 import { rehearseStateMigration } from "./native-state-migration-fixture.mjs";
-import { createBuildReceipt, createSourceGate, verifyBuildReceipt } from "./native-release.mjs";
+import { createBuildReceipt, createSourceGate, verifyBuildReceipt, verifyRuntimeToolchain } from "./native-release.mjs";
 import { exportReleaseBundle } from "./native-release.mjs";
 import { validateTarget, verifyRehearsalTarget } from "./native-activation.mjs";
 import {
-  acquireArtifactPoolLock, applyArtifactCleanup, artifactPoolRunId,
+  protectRunArtifacts, acquireArtifactPoolLock, applyArtifactCleanup, artifactPoolRunId,
   findRetainedSourceGate, findSuccessfulBuild, registerDiagnosticLogs, registerFailedReproduction,
   registerSourceGate, registerSuccessfulBuild,
   registerRetainedObject, removeRetentionReference, retentionSpaceSummary, setRetentionReference,
 } from "./native-retention.mjs";
+import { reserveStorage, releaseStorage, resumeFailedScratch } from "./native-storage.mjs";
 import { resolveResourceProfile } from "./native-resources.mjs";
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -97,14 +99,25 @@ export async function nativePipeline(command, repositoryGates) {
   const source = resolve(process.env.OPENCLAW_SRC ?? join(homedir(), "git", "openclaw"));
   if (!existsSync(join(source, ".git"))) throw new Error("OPENCLAW_SRC must be a source checkout");
   const runDir = externalDirectory(process.env.E2E_RUN_DIR ?? mkdtempSync(join(tmpdir(), "puddles-native-")), [repoRoot, source]);
-  const unlock = acquireLock(runDir);
+  let taskUnlock;
+  let taskRoot;
+  if (process.env.PUDDLES_STORAGE_ROOT) {
+    taskRoot = realpathSync(process.env.PUDDLES_STORAGE_ROOT);
+    if (taskRoot === runDir || !runDir.startsWith(`${taskRoot}/`)) throw new Error("Builder is outside its task storage root");
+    taskUnlock = acquireLock(taskRoot);
+  }
+  let unlock;
+  try {
+    unlock = acquireLock(runDir);
+    if (taskRoot) resumeFailedScratch(taskRoot, process.env.PUDDLES_STORAGE_OWNER, runDir);
+  } catch (error) { unlock?.(); taskUnlock?.(); throw error; }
   let resourceProfile;
+  let reservation;
+  const capacityRoot = resolve(process.env.E2E_CAPACITY_ROOT ?? join(homedir(), ".puddles", "development-capacity"));
   const artifactPool = process.env.E2E_ARTIFACT_POOL
     ? resolve(process.env.E2E_ARTIFACT_POOL)
     : null;
   const retentionReference = artifactPool ? artifactPoolRunId(runDir) : null;
-  updateNativeRunStatus(runDir, { command, status: "running", pid: process.pid, startedAt: new Date().toISOString(), failure: null });
-  mkdirSync(join(runDir, "logs"), { recursive: true, mode: 0o700 });
   let sequence = 0;
   let resourceSequence = 0;
   const childEnvironment = { ...process.env };
@@ -148,8 +161,9 @@ export async function nativePipeline(command, repositoryGates) {
           ...(sourceGate ? [sourceGate.metadata.id] : []),
         ],
       });
-      registerDiagnosticLogs(artifactPool, runDir);
-      removeRetentionReference(artifactPool, retentionReference);
+      const logs = registerDiagnosticLogs(artifactPool, runDir);
+      protectRunArtifacts(artifactPool, { id: retentionReference, kind: "paused",
+        objectIds: [retained.metadata.id, ...(sourceGate ? [sourceGate.metadata.id] : []), ...(logs ? [logs.id] : [])] });
       applyArtifactCleanup(artifactPool);
       return true;
     });
@@ -169,18 +183,23 @@ export async function nativePipeline(command, repositoryGates) {
       if (retainsSourceGate) {
         registerSourceGate(artifactPool, runDir, buildReceipt.buildId);
       }
-      registerDiagnosticLogs(artifactPool, runDir);
-      removeRetentionReference(artifactPool, retentionReference);
+      const logs = registerDiagnosticLogs(artifactPool, runDir);
+      const retained = findSuccessfulBuild(artifactPool, buildReceipt.buildId);
+      const gate = findRetainedSourceGate(artifactPool, buildReceipt.buildId);
+      protectRunArtifacts(artifactPool, { id: retentionReference, kind: "paused",
+        objectIds: [retained.metadata.id, ...(gate ? [gate.metadata.id] : []), ...(logs ? [logs.id] : [])] });
       applyArtifactCleanup(artifactPool);
     });
   };
   try {
+    updateNativeRunStatus(runDir, { command, status: "running", pid: process.pid, startedAt: new Date().toISOString(), failure: null });
+    mkdirSync(join(runDir, "logs"), { recursive: true, mode: 0o700 });
     resourceProfile = resolveResourceProfile();
     const buildTimeoutMs = resolveBuildTimeoutMs(command);
     if (artifactPool) {
       withRetentionLock(() => {
         applyArtifactCleanup(artifactPool);
-        setRetentionReference(artifactPool, {
+        protectRunArtifacts(artifactPool, {
           id: retentionReference,
           kind: "active",
           objectIds: [],
@@ -194,6 +213,7 @@ export async function nativePipeline(command, repositoryGates) {
       if (changes) throw new Error("Commit the final candidate before the cumulative release gate");
     }
     const repositoryPnpm = await inspectPnpmContext(repoRoot, run);
+    childEnvironment[PNPM_STORE_ENV] = repositoryPnpm.configuredStoreDir;
     const manager = repositoryPnpm.version;
     const npm = (await run("npm", ["--version"], { capture: true })).trim();
     await run("tar", ["--version"], { capture: true });
@@ -209,6 +229,13 @@ export async function nativePipeline(command, repositoryGates) {
     if (!Number.isSafeInteger(requiredDisk) || requiredDisk < 0) {
       throw new Error("E2E_REQUIRED_FREE_BYTES must be a nonnegative integer");
     }
+    mkdirSync(capacityRoot, { recursive: true, mode: 0o700 });
+    if (lstatSync(capacityRoot).dev !== lstatSync(runDir).dev) {
+      throw new Error("Capacity record and build must be on the same filesystem");
+    }
+    const incrementalBytes = Number(process.env.E2E_BUILD_RESERVATION_BYTES ?? 8 * 1024 ** 3);
+    reservation = reserveStorage(capacityRoot, artifactPoolRunId(runDir), incrementalBytes, requiredDisk);
+    atomicJson(join(runDir, "capacity.json"), { root: capacityRoot, ...reservation });
     const disk = statfsSync(runDir);
     if (disk.bavail * disk.bsize < requiredDisk) {
       const retention = artifactPool ? withRetentionLock(() =>
@@ -226,11 +253,21 @@ export async function nativePipeline(command, repositoryGates) {
           prepare: extension.phaseHashes.prepare,
           package: extension.phaseHashes.package,
           artifacts: extension.artifacts,
+          bundledPlugins: extension.bundledPlugins,
           preparedFiles: extension.preparedFiles,
         });
     const migrationPath = process.env.E2E_STATE_MIGRATION_MANIFEST;
+    const bindingsPath = process.env.E2E_STATE_MIGRATION_BINDINGS;
+    const stateMigrations = bindingsPath
+      ? validateMigrationBindings(JSON.parse(readFileSync(bindingsPath, "utf8"))) : null;
+    if (stateMigrations && (extension.hash === "none" || jsonDigest(extension.stateMigrations) !== jsonDigest(stateMigrations))) {
+      throw new Error("Target migrations require an explicit maintained generator extension");
+    }
     const stateMigration = migrationPath ? { sha256: fileDigest(migrationPath) } : null;
-    if (migrationPath) readMigrationManifest(migrationPath, stateMigration.sha256);
+    if (migrationPath) {
+      const manifest = readMigrationManifest(migrationPath, stateMigration.sha256);
+      if (manifest.configuration) stateMigration.configuration = manifest.configuration;
+    }
     const context = isolatedContext(join(runDir, "context"));
     if (migrationPath) context.stateMigration = { manifestPath: migrationPath, ...stateMigration };
     const candidate = join(runDir, "source");
@@ -275,6 +312,7 @@ export async function nativePipeline(command, repositoryGates) {
     const buildEnv = {
       PATH: `${dirname(process.execPath)}:${process.env.PATH}`, HOME: process.env.HOME,
       TMPDIR: process.env.TMPDIR, COREPACK_HOME: process.env.COREPACK_HOME,
+      PUDDLES_DEVELOPMENT_CONFIG: process.env.PUDDLES_DEVELOPMENT_CONFIG,
       [PNPM_STORE_ENV]: repositoryPnpm.configuredStoreDir,
       CI: "true", ...resourceProfile.buildEnvironment,
     };
@@ -315,7 +353,8 @@ export async function nativePipeline(command, repositoryGates) {
         environment: jsonDigest(Object.entries(process.env).sort(([a], [b]) => a.localeCompare(b))),
         dependencies: treeDigest(join(repoRoot, "node_modules"), repositoryDependencyOptions),
       };
-      await stage(runDir, "regressions", { candidateInputs, repoInputs, installedDependencies, tools, harness, execution, prepareOutputs, extension: extension.phaseHashes.gate, command, stateMigration, buildEnvironment }, async () => {
+      const mappedTestEnv = { ...buildEnv, OPENCLAW_VITEST_WORKER_CACHE: "1" };
+      await stage(runDir, "regressions", { candidateInputs, repoInputs, installedDependencies, tools, harness, execution, prepareOutputs, extension: extension.phaseHashes.gate, command, stateMigration, stateMigrations, buildEnvironment, mappedTestEnvironment: jsonDigest(mappedTestEnv) }, async () => {
         if (command === "ci" || command === "source-gate") await repositoryGates(run);
         await run("corepack", ["pnpm", "prompt:snapshots:check"], { cwd: candidate, env: buildEnv });
         const typechecks = [...new Set(suite.patches.flatMap((patch) => patch.typechecks ?? []))];
@@ -336,11 +375,11 @@ export async function nativePipeline(command, repositoryGates) {
         }
         for (const [project, targets] of groups) {
           const workerArgs = resourceProfile.testWorkers ? ["--maxWorkers", String(resourceProfile.testWorkers)] : [];
-          const collected = await run("node", ["scripts/run-vitest.mjs", "list", "--filesOnly", "--config", `test/vitest/vitest.${project}.config.ts`, ...workerArgs, ...targets], { cwd: candidate, env: buildEnv, capture: true, logPath: join(runDir, "logs", `${sequence++}.log`) });
+          const collected = await run("node", ["scripts/run-vitest.mjs", "list", "--filesOnly", "--config", `test/vitest/vitest.${project}.config.ts`, ...workerArgs, ...targets], { cwd: candidate, env: mappedTestEnv, capture: true, logPath: join(runDir, "logs", `${sequence++}.log`) });
           for (const target of targets) {
             if (!collected.split("\n").some((line) => line.trim() === target || line.trim().endsWith(`/${target}`) || line.trim().endsWith(` ${target}`))) throw new Error(`Mapped regression was not collected: ${target} in ${project}`);
           }
-          await run("node", ["scripts/run-vitest.mjs", "run", "--config", `test/vitest/vitest.${project}.config.ts`, ...workerArgs, ...targets], { cwd: candidate, env: buildEnv });
+          await run("node", ["scripts/run-vitest.mjs", "run", "--config", `test/vitest/vitest.${project}.config.ts`, ...workerArgs, ...targets], { cwd: candidate, env: mappedTestEnv });
         }
         const candidateTests = [...new Set(suite.patches.flatMap((patch) => patch.candidateTests ?? []))];
         const candidateWorkerArgs = resourceProfile.testWorkers ? ["--maxWorkers", String(resourceProfile.testWorkers)] : [];
@@ -354,9 +393,10 @@ export async function nativePipeline(command, repositoryGates) {
     const extensionOutputs = await stage(runDir, "extension-package", {
       candidateInputs, installedDependencies, tools, prepareOutputs,
       extension: extension.phaseHashes.package, artifacts: extension.artifacts,
-      preparedFiles: extension.preparedFiles,
+      preparedFiles: extension.preparedFiles, bundledPlugins: extension.bundledPlugins,
     }, async () => extensionPhase(extension, "package", context), (outputs) => outputs);
     const extensionArtifacts = additionalArtifacts(extension, context, extensionOutputs);
+    const bundledArtifacts = additionalArtifacts(extension, context, extensionOutputs, extension.bundledPlugins ?? []);
     const preparedFileRecords = await stage(runDir, "prepared-files", {
       candidateInputs, tools, extension: extension.phaseHashes.package,
       selected: extension.preparedFiles, extensionOutputs,
@@ -396,7 +436,7 @@ export async function nativePipeline(command, repositoryGates) {
       [result.artifact.path]: result.artifact.sha256,
       [result.provenance.path]: result.provenance.sha256,
     }));
-    const attestedExtensionArtifacts = extensionArtifacts.map((record) => ({
+    const attest = (record) => ({
       ...record,
       attestation: {
         schema: "puddles.openclaw-extension-artifact/v1",
@@ -406,11 +446,13 @@ export async function nativePipeline(command, repositoryGates) {
         artifactSha256: record.artifact.sha256,
         runtimeSha256: record.artifact.runtimeSha256,
       },
-    }));
+    });
+    const attestedExtensionArtifacts = extensionArtifacts.map(attest);
+    const bundledPlugins = bundledArtifacts.map(attest);
     const communication = await packageCommunication(repoRoot, runDir, tools, treeDigest(join(repoRoot, "node_modules"), repositoryDependencyOptions), buildEnv, run);
     const extras = [provider, communication, ...attestedExtensionArtifacts];
     context.additionalArtifacts = extras;
-    const artifact = await stage(runDir, "package", { candidateInputs, installedDependencies, build: treeDigest(join(candidate, "dist")), tools, packaging: fileDigest(join(packageDir, "src", "native-package.mjs")) }, () => packRuntime(candidate, artifacts, run), (result) => ({ [result.path]: result.sha256 }));
+    const artifact = await stage(runDir, "package", { candidateInputs, installedDependencies, build: treeDigest(join(candidate, "dist")), tools, bundledPlugins, packaging: fileDigest(join(packageDir, "src", "native-package.mjs")) }, () => packRuntime(candidate, artifacts, run, bundledPlugins), (result) => ({ [result.path]: result.sha256 }));
     context.artifact = artifact;
     const repository = {
       head: publicHead,
@@ -446,6 +488,7 @@ export async function nativePipeline(command, repositoryGates) {
       tools,
       proofs: buildProofs,
       ...(stateMigration ? { stateMigration } : {}),
+      ...(stateMigrations ? { stateMigrations } : {}),
     });
     atomicJson(join(runDir, "build.json"), buildReceipt);
     if (command === "build") {
@@ -499,7 +542,7 @@ export async function nativePipeline(command, repositoryGates) {
       tools, harness, extensionOutputs,
       installedCommands: extension.phaseHashes.installed,
       scenarios: jsonDigest(runtimeScenarios), environment: jsonDigest(fixtureEnv(context)),
-      stateMigration,
+      stateMigration, stateMigrations,
     }, async () => {
       const outputs = await extensionPhase(extension, "installed", context);
       const communicationRoot = join(runDir, "communication-fixture");
@@ -508,7 +551,7 @@ export async function nativePipeline(command, repositoryGates) {
       const migrationFixtures = await rehearseStateMigration(installedDir, candidate, runDir);
       const results = [];
       for (const scenario of runtimeScenarios) {
-        results.push(await runScenario(installedDir, scenario, { runDir }));
+        results.push(await runScenario(installedDir, scenario, { runDir, providerFixture: extension.providerFixture }));
       }
       if (runtimeBefore !== treeDigest(installedDir, { portable: true })) throw new Error("Rehearsal changed the installed artifact");
       for (const [id, directory] of Object.entries(context.additionalInstalledDirs)) {
@@ -530,6 +573,7 @@ export async function nativePipeline(command, repositoryGates) {
       additionalArtifacts: extras, preparedFiles: preparedFileRecords,
       scenarios: result.scenarios.length, tools, proofs,
       ...(stateMigration ? { stateMigration } : {}),
+      ...(stateMigrations ? { stateMigrations } : {}),
     };
     atomicJson(join(runDir, "candidate.json"), receipt);
     if (command === "ci") {
@@ -560,9 +604,10 @@ export async function nativePipeline(command, repositoryGates) {
     if (artifactPool) {
       try {
         withRetentionLock(() => {
-          registerFailedReproduction(artifactPool, runDir);
-          registerDiagnosticLogs(artifactPool, runDir);
-          removeRetentionReference(artifactPool, retentionReference);
+          const failure = registerFailedReproduction(artifactPool, runDir);
+          const logs = registerDiagnosticLogs(artifactPool, runDir);
+          protectRunArtifacts(artifactPool, { id: retentionReference, kind: "failed-debug",
+            objectIds: [failure.id, ...(logs ? [logs.id] : [])] });
           applyArtifactCleanup(artifactPool);
         });
       } catch (cleanupError) {
@@ -571,12 +616,14 @@ export async function nativePipeline(command, repositoryGates) {
     }
     throw error;
   } finally {
-    unlock();
+    try { if (reservation) releaseStorage(capacityRoot, reservation.token); }
+    finally { try { taskUnlock?.(); } finally { unlock(); } }
   }
 }
 
 export async function nativeTargetPipeline(receiptPath, targetPath, seedPath) {
   const receipt = verifyBuildReceipt(JSON.parse(readFileSync(receiptPath, "utf8")));
+  const targetTools = verifyRuntimeToolchain(receipt.tools);
   if (receipt.artifact.platform !== process.platform ||
       receipt.artifact.arch !== process.arch ||
       receipt.artifact.node !== process.version) {
@@ -586,13 +633,11 @@ export async function nativeTargetPipeline(receiptPath, targetPath, seedPath) {
   const target = JSON.parse(readFileSync(targetPath, "utf8"));
   const { assertBatchArtifact, assertDeploymentOwnership } = await import("./deploy-coordination.mjs");
   assertBatchArtifact(assertDeploymentOwnership(target, "TEST"), receipt);
+  selectTargetMigration(receipt, target);
   createRehearsalTarget(target, seedPath);
   validateTarget(target);
   verifyRehearsalTarget(target);
   const seed = rehearsalTargetSeed(target);
-  if ((receipt.stateMigration?.sha256 ?? null) !== (target.stateMigration?.sha256 ?? null)) {
-    throw new Error("Target migration differs from the imported build");
-  }
   if (target.stateMigration) {
     readMigrationManifest(target.stateMigration.manifestPath, target.stateMigration.sha256);
   }
@@ -635,7 +680,7 @@ export async function nativeTargetPipeline(receiptPath, targetPath, seedPath) {
         applyArtifactCleanup(artifactPool);
         const build = findSuccessfulBuild(artifactPool, receipt.buildId);
         if (!build) throw new Error("Artifact target requires its imported build in the artifact pool");
-        setRetentionReference(artifactPool, {
+        protectRunArtifacts(artifactPool, {
           id: retentionReference,
           kind: "active",
           objectIds: [build.metadata.id],
@@ -651,7 +696,7 @@ export async function nativeTargetPipeline(receiptPath, targetPath, seedPath) {
     context.adapter = { sha256: extension.hash };
     context.source = receipt.source;
     context.repository = receipt.repository;
-    context.toolchain = receipt.tools;
+    context.toolchain = targetTools;
     context.artifact = receipt.artifact;
     context.additionalArtifacts = receipt.additionalArtifacts ?? [];
     context.preparedFiles = receipt.preparedFiles ?? [];
@@ -683,9 +728,10 @@ export async function nativeTargetPipeline(receiptPath, targetPath, seedPath) {
     const prefix = join(runDir, "installed");
     const installedDir = await stage(runDir, "install", {
       buildId: receipt.buildId,
+      tools: targetTools,
       targetSha256,
       artifact: receipt.artifact,
-      tools: receipt.tools,
+      tools: targetTools,
       installer,
     }, async () => {
       if (existsSync(prefix)) rmSync(prefix, { recursive: true });
@@ -707,7 +753,7 @@ export async function nativeTargetPipeline(receiptPath, targetPath, seedPath) {
         id: record.id,
         artifact: record.artifact,
         provenance: record.provenance ?? null,
-        tools: receipt.tools,
+        tools: targetTools,
         installer,
       }, async () => {
         if (existsSync(prefix)) rmSync(prefix, { recursive: true });
@@ -718,6 +764,7 @@ export async function nativeTargetPipeline(receiptPath, targetPath, seedPath) {
     const runtimeScenarios = [...scenarios, ...extension.scenarios];
     const runtime = await stage(runDir, "runtime", {
       buildId: receipt.buildId,
+      tools: targetTools,
       targetSha256,
       artifact: receipt.artifact,
       additionalArtifacts: receipt.additionalArtifacts ?? [],
@@ -735,7 +782,7 @@ export async function nativeTargetPipeline(receiptPath, targetPath, seedPath) {
       );
       const outputs = await extensionPhase(extension, "installed", context);
       const results = [];
-      for (const scenario of runtimeScenarios) results.push(await runScenario(installedDir, scenario, { runDir }));
+      for (const scenario of runtimeScenarios) results.push(await runScenario(installedDir, scenario, { runDir, providerFixture: extension.providerFixture }));
       if (treeDigest(installedDir, { portable: true }) !== before) {
         throw new Error("Target rehearsal changed the imported runtime");
       }
@@ -756,6 +803,7 @@ export async function nativeTargetPipeline(receiptPath, targetPath, seedPath) {
       schemaVersion: 1,
       status: "passed",
       buildId: receipt.buildId,
+      tools: targetTools,
       targetSha256,
       stages,
       scenarios: runtime.scenarios.length,
@@ -788,8 +836,9 @@ export async function nativeTargetPipeline(receiptPath, targetPath, seedPath) {
           kind: "current",
           objectIds: [build.metadata.id, retained.id],
         });
-        registerDiagnosticLogs(artifactPool, runDir);
-        removeRetentionReference(artifactPool, retentionReference);
+        const logs = registerDiagnosticLogs(artifactPool, runDir);
+        protectRunArtifacts(artifactPool, { id: retentionReference, kind: "paused",
+          objectIds: [build.metadata.id, retained.id, ...(logs ? [logs.id] : [])] });
         applyArtifactCleanup(artifactPool);
       });
     }
@@ -807,15 +856,16 @@ export async function nativeTargetPipeline(receiptPath, targetPath, seedPath) {
       try {
         withRetentionLock(() => {
           const build = findSuccessfulBuild(artifactPool, receipt.buildId);
-          registerFailedReproduction(
+          const failure = registerFailedReproduction(
             artifactPool,
             runDir,
             new Date(),
             build ? [build.metadata.id] : [],
             seed ? [{ source: seed.path, path: "target-seed.json" }] : [],
           );
-          registerDiagnosticLogs(artifactPool, runDir);
-          removeRetentionReference(artifactPool, retentionReference);
+          const logs = registerDiagnosticLogs(artifactPool, runDir);
+          protectRunArtifacts(artifactPool, { id: retentionReference, kind: "failed-debug",
+            objectIds: [failure.id, ...(logs ? [logs.id] : [])] });
           applyArtifactCleanup(artifactPool);
         });
       } catch (cleanupError) {

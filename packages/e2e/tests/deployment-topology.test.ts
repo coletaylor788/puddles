@@ -11,6 +11,8 @@ import { fileDigest, jsonDigest, treeDigest } from "../src/native-state.mjs";
 import { createBuildReceipt } from "../src/native-release.mjs";
 // @ts-expect-error Native retention is also executable without TypeScript.
 import { acquireArtifactPoolLock, initializeArtifactPool } from "../src/native-retention.mjs";
+// @ts-expect-error Executable shared synthetic fixture.
+import { seedWorkshopProposal } from "../fixtures/workshop-migration.mjs";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cloneHelper = join(repoRoot, "docs/openclaw-setup/patches/clone-runtime-tree.py");
@@ -177,10 +179,16 @@ function fixture(failures: string[] = []) {
       writeFileSync(join(target.stateDir, "config"), "migrated");
       writeFileSync(join(target.stateDir, "new-state"), "new");
     },
-    async browser(image: string, runtime = target.installDir) {
+    async browser(image: string, runtime = target.installDir, interpreter?: string) {
       check(image === "previous-browser" ? "browser-restore" : "browser");
       expect(started).toBe(false);
-      expect(readFileSync(join(runtime, "package"), "utf8")).toBe("candidate");
+      const restoring = image === "previous-browser";
+      expect(readFileSync(join(runtime, "package"), "utf8")).toBe(restoring ? "previous" : "candidate");
+      expect(readFileSync(join(target.stateDir, "config"), "utf8")).toBe(restoring ? "original" : "migrated");
+      if (restoring) {
+        expect(runtime).not.toBe(target.installDir);
+        expect(interpreter).toBe(process.execPath);
+      }
       browser = image;
     },
     async currentBrowser() { check("browser-identity"); return browser; },
@@ -372,6 +380,41 @@ function rehearsalWrapperFixture(fault: boolean) {
 }
 
 describe("native activation and recovery transaction", () => {
+  it.each(["ambiguous", "failed-health"])("guards and restores Workshop state through the activation transaction (%s)", async (mode) => {
+    const f = fixture(mode === "failed-health" ? ["health"] : []);
+    const workspace = join(f.directory, "external-workspace");
+    const update = seedWorkshopProposal({ stateDir: f.target.stateDir, workspace });
+    const created = seedWorkshopProposal({ stateDir: f.target.stateDir, workspace, name: "created", kind: "create", owner: "main" });
+    const binding = { schemaVersion: 1, agents: ["main", "reader"].map((id) => ({ id, workspace, agentDir: join(f.target.stateDir, "agents", id, "agent") })),
+      ownerRepairs: mode === "ambiguous" ? [] : [update.repair] };
+    const manifestPath = join(f.directory, "migration.json");
+    writeFileSync(manifestPath, JSON.stringify({ schemaVersion: 1, workshopMigration: binding,
+      configOperations: [{ kind: "set", path: ["fixture"], expected: { exists: false }, value: true }] }));
+    const stateMigration = { manifestPath: realpathSync(manifestPath), sha256: fileDigest(manifestPath) };
+    const target = { ...f.target, workshopMigration: binding, stateMigration };
+    const receipt = { ...f.receipt, stateMigration: { sha256: stateMigration.sha256 } };
+    const prior = [treeDigest(target.stateDir), treeDigest(workspace)];
+    const operations = { ...f.ops,
+      async stateMigration(phase: string) { return phase === "preflight" || phase === "builtin-config" ? { synthetic: true } : undefined; },
+      async doctor() {
+        await f.ops.doctor();
+        expect(JSON.parse(readFileSync(join(update.directory, "proposal.json"), "utf8")).origin).toEqual({ agentId: "main" });
+        const destination = join(target.stateDir, "agents/main/agent/workshop-skills/created");
+        mkdirSync(dirname(destination), { recursive: true });
+        renameSync(created.record.target.skillDir, destination);
+      },
+      async publishExclusive(from: string, to: string) {
+        execFileSync("python3", [join(repoRoot, "docs/openclaw-setup/patches/publish-runtime-tree.py"), from, to], { stdio: "pipe" });
+      },
+    };
+    await expect(activateNative(receipt, target, () => operations)).rejects.toThrow("Activation failed");
+    const recovery = readdirSync(target.backupRoot).find((name) => name.startsWith("activation-"))!;
+    expect(JSON.parse(readFileSync(join(target.backupRoot, recovery, "failure.json"), "utf8")).message).toContain(mode === "ambiguous" ? "explicit configured ownership" : "synthetic health failure");
+    expect([treeDigest(target.stateDir), treeDigest(workspace)]).toEqual(prior);
+    expect(f.running()).toBe(true);
+    if (mode === "ambiguous") expect(f.calls).not.toContain("stop");
+    else expect(f.calls).toContain("doctor");
+  });
   it("accepts only maintained rehearsal and TEST service identities", () => {
     const directory = root();
     const targetRoot = join(directory, "test-target");
@@ -568,7 +611,22 @@ describe("native activation and recovery transaction", () => {
     expect(f.running()).toBe(true);
   });
 
-  it("uses an immutable candidate CLI when recovery resumes after the old package was restored", async () => {
+  it("rejects browser recovery without a complete predecessor snapshot before stopping", async () => {
+    const f = fixture(["health", "browser-restore"]);
+    await expect(activateNative(f.receipt, f.target, () => f.ops)).rejects.toThrow("Activation and rollback failed");
+    const recovery = join(f.target.backupRoot, readdirSync(f.target.backupRoot).find((name) => name.startsWith("activation-"))!);
+    const path = join(recovery, "recovery.json");
+    const journal = JSON.parse(readFileSync(path, "utf8"));
+    journal.snapshotReady = false;
+    writeFileSync(path, JSON.stringify(journal));
+    f.calls.length = 0;
+    await expect(activateNative(f.receipt, f.target, () => f.ops, recovery)).rejects.toThrow("Activation and rollback failed");
+    expect(JSON.parse(readFileSync(join(recovery, "rollback-failure.json"), "utf8")).message).toContain("verified predecessor snapshot");
+    expect(f.calls).not.toContain("stop");
+    expect(f.running()).toBe(false);
+  });
+
+  it("uses the immutable predecessor CLI with restored legacy config when rollback resumes", async () => {
     const f = fixture(["health"]);
     const start = f.ops.start;
     let starts = 0;

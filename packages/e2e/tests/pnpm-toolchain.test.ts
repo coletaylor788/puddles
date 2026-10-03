@@ -18,6 +18,16 @@ describe("unified pnpm toolchain", () => {
     return directory;
   };
 
+  it("selects the maintained host store and rejects a competing per-task store", () => {
+    const directory = project();
+    try {
+      const config = join(directory, "development.json");
+      writeFileSync(config, JSON.stringify({ pnpmStore: configured }));
+      expect(configuredPnpmStore({ PUDDLES_DEVELOPMENT_CONFIG: config })).toBe(configured);
+      expect(() => configuredPnpmStore({ PUDDLES_DEVELOPMENT_CONFIG: config, PNPM_CONFIG_STORE_DIR: "/other" })).toThrow("differs");
+    } finally { rmSync(directory, { recursive: true }); }
+  });
+
   it("requires one absolute configured store root", () => {
     expect(() => configuredPnpmStore({})).toThrow(PNPM_STORE_ENV);
     expect(() => configuredPnpmStore({ [PNPM_STORE_ENV]: "relative" })).toThrow("absolute");
@@ -63,6 +73,8 @@ describe("unified pnpm toolchain", () => {
 
   it("leaves project manifests and locks unchanged through the real process runner", async () => {
     const directory = project();
+    const config = join(directory, "development.json");
+    writeFileSync(config, JSON.stringify({ pnpmStore: configured }));
     const bin = mkdtempSync(join(tmpdir(), "pnpm-toolchain-bin-"));
     const record = join(directory, "corepack-cwds");
     const executable = join(bin, "corepack");
@@ -77,6 +89,7 @@ process.stdout.write(process.argv[3] === "--version" ? "${PNPM_VERSION}\\n" : pr
       const lockBefore = readFileSync(join(directory, "pnpm-lock.yaml"));
       await inspectPnpmContext(directory, undefined, {
         ...process.env,
+        PUDDLES_DEVELOPMENT_CONFIG: config,
         [PNPM_STORE_ENV]: configured,
         PATH: `${bin}:${process.env.PATH ?? ""}`,
         PNPM_TEST_CWDS: record,

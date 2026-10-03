@@ -1,11 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 // @ts-expect-error Native lifecycle helpers execute directly as JavaScript.
-import { canonicalValueDigest, executeStateMigration, silenceCronJob, validateMigrationManifest } from "../src/native-state-migration.mjs";
+import { canonicalValueDigest, configDraft, executeStateMigration, silenceCronJob, validateMigrationManifest } from "../src/native-state-migration.mjs";
+// @ts-expect-error Executable release module.
+import { configurationDigest } from "../src/environment-configuration.mjs";
 // @ts-expect-error Native lifecycle helpers execute directly as JavaScript.
 import { fileDigest } from "../src/native-state.mjs";
+// @ts-expect-error Executable shared fixture.
+import { seedWorkshopProposal } from "../fixtures/workshop-migration.mjs";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -55,7 +60,7 @@ function fixture() {
     resolveIncludeWriteBoundary: vi.fn((): null | { includePath: string } => null),
     readConfigFileSnapshotForWrite: vi.fn(async () => ({ snapshot })),
     repairOpenClawStateDatabaseSchema: vi.fn(() => ({ changes: [], warnings: [] as string[] })),
-    previewLegacyConfigRepair: vi.fn((_snapshot): {
+    previewLegacyConfigRepair: vi.fn((_snapshot, _options?: { pluginContracts?: boolean }): {
       sourceConfig: SourceConfig;
       expectedConfig: SourceConfig;
       changes: string[];
@@ -86,7 +91,79 @@ function fixture() {
   return { root, stateDir, configPath, database, manifest, manifestPath, selected, snapshot, sdk, run, job };
 }
 
+describe("Workshop boundaries through the configured SDK", () => {
+  it.each([false, true])("checks the plugin-normalized candidate before shutdown (path drift: %s)", async (drift) => {
+    const f = fixture();
+    rmSync(f.database);
+    new DatabaseSync(f.database).close();
+    const workspace = join(f.root, "workspace");
+    const agentDir = join(f.stateDir, "agents/main/agent");
+    seedWorkshopProposal({ stateDir: f.stateDir, workspace, kind: "create", owner: "main" });
+    Object.assign(f.snapshot.sourceConfig, { agents: { entries: { main: { workspace, agentDir } } } });
+    Object.assign(f.manifest, { workshopMigration: { schemaVersion: 1, agents: [{ id: "main", workspace, agentDir }], ownerRepairs: [] } });
+    const normalized = structuredClone(f.snapshot.sourceConfig);
+    normalized.plugins.entries.fixture.config.selected = "normalized";
+    if (drift) (normalized as any).agents.entries.main.agentDir = join(f.root, "external-agent");
+    f.manifest.configOperations[0].expected.sha256 = canonicalValueDigest("normalized");
+    f.sdk.previewLegacyConfigRepair.mockImplementation((_snapshot, options) => options?.pluginContracts
+      ? { sourceConfig: f.snapshot.sourceConfig, expectedConfig: normalized, changes: ["Normalize plugin settings"] }
+      : null);
+    const before = readFileSync(f.configPath);
+    if (drift) await expect(f.run("preflight")).rejects.toThrow("Doctor configuration");
+    else {
+      const result = await f.run("preflight");
+      expect(result.config.required).toBe(false);
+    }
+    expect(f.sdk.mutateConfigFile).not.toHaveBeenCalled();
+    expect(f.sdk.repairLegacyConfigForStoppedState).not.toHaveBeenCalled();
+    expect(readFileSync(f.configPath)).toEqual(before);
+  });
+
+  it.each(["current-path", "candidate-path", "alternate-cron"])("rejects %s before shutdown", async (mode) => {
+    const f = fixture();
+    rmSync(f.database);
+    new DatabaseSync(f.database).close();
+    const workspace = join(f.root, "workspace");
+    const proposal = seedWorkshopProposal({ stateDir: f.stateDir, workspace, kind: "create", owner: "main" });
+    const agentDir = join(f.stateDir, "agents/main/agent");
+    Object.assign(f.snapshot.sourceConfig, { agents: { entries: { main: { workspace, agentDir } } } });
+    Object.assign(f.manifest, { workshopMigration: { schemaVersion: 1, agents: [{ id: "main", workspace, agentDir }], ownerRepairs: [] } });
+    if (mode === "current-path") (f.snapshot.sourceConfig as any).agents.entries.main.agentDir = join(f.root, "external-agent");
+    if (mode === "candidate-path") f.manifest.configOperations.push({ kind: "set", path: ["agents", "entries", "main", "agentDir"],
+      expected: { exists: true, sha256: canonicalValueDigest(agentDir) }, value: join(f.root, "external-agent") });
+    if (mode === "alternate-cron") {
+      f.snapshot.sourceConfig.cron = { store: join(f.stateDir, "selected-jobs.json") };
+      f.job.payload.message = `Run ${proposal.record.target.skillDir}/task.sh`;
+    }
+    await expect(f.run("preflight")).rejects.toThrow(mode === "alternate-cron" ? "Scheduled job references" : "Doctor configuration");
+    expect(f.sdk.mutateConfigFile).not.toHaveBeenCalled();
+  });
+});
+
 describe("digest-bound stopped-state operations", () => {
+  it("binds the full predecessor, including unrelated settings, without resolving credentials", async () => {
+    const f = fixture();
+    const authored = structuredClone(f.snapshot.parsed);
+    Object.assign(authored, { gateway: { auth: { token: "${SYNTHETIC_TOKEN}" } }, tools: { profile: "minimal" } });
+    f.snapshot.parsed = authored;
+    Object.assign(f.snapshot.sourceConfig, { gateway: { auth: { token: "resolved-value-must-not-be-compared" } } });
+    Object.assign(f.manifest, { configuration: { schemaVersion: 1, baseSha256: "a".repeat(64), bindingsSha256: "b".repeat(64),
+      predecessorSha256: configurationDigest(authored), candidateSha256: configurationDigest(configDraft(authored, f.manifest.configOperations)) } });
+    await expect(f.run("preflight")).resolves.toBeDefined();
+    Object.assign(f.snapshot.parsed, { tools: { profile: "full" } });
+    await expect(f.run("preflight")).rejects.toThrow(/parity failed for predecessor/);
+    expect(f.sdk.mutateConfigFile).not.toHaveBeenCalled();
+  });
+
+  it("checks the final configuration even without a cron operation", async () => {
+    const f = fixture();
+    Object.assign(f.manifest, { configuration: { schemaVersion: 1, baseSha256: "a".repeat(64), bindingsSha256: "b".repeat(64),
+      predecessorSha256: configurationDigest(f.snapshot.parsed), candidateSha256: configurationDigest(configDraft(f.snapshot.parsed, f.manifest.configOperations)) } });
+    Reflect.deleteProperty(f.manifest, "cronOperation");
+    await expect(f.run("cron")).rejects.toThrow(/parity failed for migrated candidate/);
+    f.snapshot.parsed = configDraft(f.snapshot.parsed, f.manifest.configOperations);
+    await expect(f.run("cron")).resolves.toBeUndefined();
+  });
   it("shares deterministic JSON value digests without accepting non-JSON values", () => {
     expect(canonicalValueDigest({ b: 2, a: [1, false] })).toBe(canonicalValueDigest({ a: [1, false], b: 2 }));
     expect(canonicalValueDigest("1")).not.toBe(canonicalValueDigest(1));
@@ -480,4 +557,28 @@ describe("digest-bound stopped-state operations", () => {
     await expect(executeStateMigration({ phase: "preflight", ...selected }, load)).rejects.toThrow("digest");
     expect(load).not.toHaveBeenCalled();
   });
+});
+
+
+it("accepts a plugin-selection-only migration but rejects an empty migration", () => {
+  const manifest = { schemaVersion: 1, configOperations: [], pluginRetirements: [{
+    id: "fixture", packagePath: "npm/projects/fixture/node_modules/fixture",
+    packageSha256: "a".repeat(64), recordSha256: "b".repeat(64),
+  }] };
+  expect(() => validateMigrationManifest(manifest)).not.toThrow();
+  expect(() => validateMigrationManifest({ ...manifest, pluginRetirements: [] })).toThrow();
+  expect(() => validateMigrationManifest({ schemaVersion: 1, configOperations: [], requiredBundledPlugins: ["fixture"] })).not.toThrow();
+});
+
+it("rejects an external selection after Doctor even when no retirement was captured", async () => {
+  const f = fixture();
+  f.manifest.configOperations = [];
+  delete (f.manifest as any).cronOperation;
+  Object.assign(f.manifest, { requiredBundledPlugins: ["fixture"] });
+  writeFileSync(join(f.root, "openclaw.mjs"), `console.log(JSON.stringify({
+    plugin: {id:'fixture',origin:'global',enabled:true,status:'loaded',trust:{reason:'origin-path'}},
+    install: {source:'npm'}
+  }));`);
+  await expect(f.run("plugins")).rejects.toThrow("Required bundled plugin is not selected");
+  expect(f.sdk.saveCronJobsStoreChanges).not.toHaveBeenCalled();
 });

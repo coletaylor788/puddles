@@ -1,6 +1,7 @@
 name: Integration
 
 on:
+  workflow_dispatch:
   pull_request:
     # Only human-facing docs; runtime prompts, patches, and CI changes still run.
     paths-ignore:
@@ -13,6 +14,8 @@ on:
       - "docs/openclaw-setup/patches/*.md"
       - "docs/openclaw-setup/apple-pim/*.md"
       - "packages/*/docs/**/*.md"
+      - "packages/e2e/DEVELOPMENT_STORAGE.md"
+      - "packages/e2e/DEPLOYMENT_COORDINATION.md"
       - "servers/*/docs/**/*.md"
       - "servers/*/brainstorming/**/*.md"
   push:
@@ -28,6 +31,8 @@ on:
       - "docs/openclaw-setup/patches/*.md"
       - "docs/openclaw-setup/apple-pim/*.md"
       - "packages/*/docs/**/*.md"
+      - "packages/e2e/DEVELOPMENT_STORAGE.md"
+      - "packages/e2e/DEPLOYMENT_COORDINATION.md"
       - "servers/*/docs/**/*.md"
       - "servers/*/brainstorming/**/*.md"
 
@@ -39,7 +44,52 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  repository:
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      E2E_LOCAL_EXTENSION: ""
+      E2E_RESOURCE_PROFILE: hosted-arm
+    steps:
+      - name: Check out Puddles
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "26.1.0"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Configure package manager store
+        run: echo "PNPM_CONFIG_STORE_DIR=$RUNNER_TOOL_CACHE/puddles-pnpm-store" >> "$GITHUB_ENV"
+      - name: Enable package managers
+        run: |
+          npm install --global corepack@0.36.0
+          corepack enable
+          test "$(corepack pnpm --version)" = "12.4.0"
+      - name: Install Puddles dependencies
+        run: corepack pnpm install --frozen-lockfile
+      - name: Install Gmail test dependencies
+        run: python -m pip install -e './servers/gmail-mcp[dev]'
+      - name: Check repository packages
+        run: |
+          corepack pnpm build
+          corepack pnpm lint
+          corepack pnpm test
+      - name: Check Gmail
+        working-directory: servers/gmail-mcp
+        run: |
+          python -m pytest tests/ --ignore=tests/integration -q
+          python -m ruff check src/ tests/
+          python -m compileall -q src tests
+
   cumulative:
+    # Dispatch on main pins github.sha once. Later main commits do not replace it.
+    if: github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     # Standard public ARM runner. The managed profile measures the complete job.
     runs-on: macos-15
     timeout-minutes: 180
@@ -107,6 +157,7 @@ jobs:
             public
 
       - name: Retain public ARM build bundle
+        id: build-upload
         if: success()
         uses: actions/upload-artifact@v4
         with:
@@ -144,3 +195,11 @@ jobs:
           path: ${{ runner.temp }}/puddles-public-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
           retention-days: 7
           if-no-files-found: error
+
+      - name: Finalize acknowledged builder scratch
+        if: success() && steps.build-upload.outcome == 'success'
+        run: |
+          bundle="$RUNNER_TEMP/openclaw-public-arm64-build.tar.gz"
+          digest="$(shasum -a 256 "$bundle" | cut -d ' ' -f 1)"
+          node packages/e2e/bin/openclaw-storage.mjs finalize-build \
+            "$E2E_RUN_DIR" "ci-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" "$bundle" "$digest"

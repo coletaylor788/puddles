@@ -121,6 +121,15 @@ defines design approval, isolated worktrees, the fast local and DEV loop,
 independent review, and delivery through production. The
 [managed runner guide](./packages/e2e/README.md) supplies current commands.
 
+The [development loop manager skill](./.github/skills/development-loop-manager/SKILL.md)
+guides an agent reviewing recent development loops for late failures, slow
+feedback, repeated work, and disk growth. It turns findings into maintained
+improvements and checks whether later loops benefit.
+
+The [security architecture](./docs/openclaw-setup/security-architecture.md) defines
+trust rings and boundaries across agents, host services, and delivery, with
+implementation references and known gaps.
+
 ## License
 
 MIT

@@ -27,7 +27,7 @@ function plist(path: string, value?: unknown, binary = false) {
   return JSON.parse(execFileSync("python3", ["-c", "import json,plistlib,sys; print(json.dumps(plistlib.load(open(sys.argv[1],'rb'))))", path], { encoding: "utf8" }));
 }
 
-function fixture(wrapper = true, migration = true, binary = false, oldAlias = false) {
+function fixture(wrapper = true, migration = true, binary = false, oldAlias = false, sameNode = false) {
   const directory = realpathSync(resolve(import.meta.dirname, "../../.."));
   const root = join(directory, `.node-migration-test-${randomUUID()}`);
   mkdirSync(root);
@@ -42,6 +42,7 @@ function fixture(wrapper = true, migration = true, binary = false, oldAlias = fa
   const expected = { path: oldNode, sha256: fileDigest(oldNode), version: "v22.22.0", platform: process.platform, arch: process.arch,
     ...(oldAlias ? { realPath: realpathSync(oldNode) } : {}) };
   const desired = { path: realpathSync(process.execPath), sha256: fileDigest(process.execPath), version: process.version, platform: process.platform, arch: process.arch };
+  if (sameNode) Object.assign(expected, desired, { realPath: desired.path });
   const target = {
     schemaVersion: 1, host: hostname(), installDir: join(root, "runtime"), stateDir: join(root, "state"),
     backupRoot: join(root, "backups"), plistPath: join(root, "service.plist"), label: "synthetic.gateway", port: 18799,
@@ -53,7 +54,7 @@ function fixture(wrapper = true, migration = true, binary = false, oldAlias = fa
   writeFileSync(join(target.installDir, "openclaw.mjs"), "old runtime");
   writeFileSync(join(target.stateDir, "config"), "old state");
   const args = [...(wrapper ? ["/bin/sh", "/synthetic/env-wrapper", "--env-file", "/synthetic/gateway.env"] : []),
-    oldNode, join(target.installDir, "openclaw.mjs"), "gateway", "--port", "18799", "--label", `prefix:${oldNode}`];
+    expected.path, join(target.installDir, "openclaw.mjs"), "gateway", "--port", "18799", "--label", `prefix:${oldNode}`];
   const service = { Label: target.label, ProgramArguments: args, EnvironmentVariables: { KEEP: "unchanged", NODE_OPTIONS: "--trace-warnings" },
     KeepAlive: { SuccessfulExit: false }, WorkingDirectory: "/synthetic/working", UnknownField: ["preserve", 3, true] };
   plist(target.plistPath, service, binary);
@@ -92,6 +93,10 @@ function fixture(wrapper = true, migration = true, binary = false, oldAlias = fa
         return "";
       }
       if (!args[0].endsWith("openclaw.mjs")) throw new Error("Unexpected fixture Node command");
+      if (args[1] === "doctor" && failures.includes("doctor-timeout")) {
+        failures.splice(failures.indexOf("doctor-timeout"), 1);
+        throw new Error(`Command exceeded ${options.timeoutMs}ms and was terminated`);
+      }
       if (migration) {
         const oldRuntime = readFileSync(args[0], "utf8") === "old runtime";
         expect(command).toBe(oldRuntime ? expected.realPath ?? expected.path : desired.path);
@@ -134,7 +139,12 @@ function fixture(wrapper = true, migration = true, binary = false, oldAlias = fa
         check(to.includes("restore-package") ? "restore-package" : "swap");
         renameSync(from, `${from}.exchange`); renameSync(to, from); renameSync(`${from}.exchange`, to);
       },
-      async doctor() { check("doctor"); await native.doctor(); },
+      async doctor() {
+        const journal = JSON.parse(readFileSync(join(recovery, "recovery.json"), "utf8"));
+        expect(journal.status).toBe("migrating-doctor");
+        if (journal.stateMigration) expect(journal.stateMigration.phase).toBe("doctor");
+        check("doctor"); await native.doctor();
+      },
       async stateMigration(phase: string, runtime: string, manifestPath: string, sha256: string, expectedBuiltIn?: object) {
         check(`migration:${phase}`);
         expect(readFileSync(join(runtime, "openclaw.mjs"), "utf8")).toBe("candidate runtime");
@@ -207,6 +217,34 @@ describe("stopped-state migration inside interpreter rollback", () => {
     expect(f.events).not.toContain("swap");
   });
 
+  it("gives Doctor a migration allowance while keeping service commands short", async () => {
+    const f = fixture();
+    await f.activate();
+    const doctors = f.calls.filter((call) => call.args[1] === "doctor");
+    expect(doctors).toHaveLength(1);
+    expect(doctors[0].options.timeoutMs).toBe(20 * 60_000);
+    const serviceCalls = f.calls.filter((call) => call.command === "launchctl" || call.args[1] === "gateway" && call.args[2] === "health");
+    expect(serviceCalls.some((call) => call.args[1] === "gateway" && call.args[2] === "health")).toBe(true);
+    expect(serviceCalls.some((call) => call.command === "launchctl")).toBe(true);
+    expect(serviceCalls.every((call) => call.options.timeoutMs === 60_000)).toBe(true);
+  });
+
+  it("restores the predecessor after the bounded Doctor command times out", async () => {
+    const f = fixture();
+    stateMigration(f);
+    f.failures.push("doctor-timeout");
+    await expect(f.activate()).rejects.toThrow("Activation failed");
+    const recovery = f.recovery();
+    expect(JSON.parse(readFileSync(join(recovery, "failure.json"), "utf8")).message)
+      .toBe("Command exceeded 1200000ms and was terminated");
+    expect(JSON.parse(readFileSync(join(recovery, "recovery.json"), "utf8")))
+      .toMatchObject({ status: "rolled-back", quiesced: false, stateMigration: { phase: "doctor" } });
+    expect(readFileSync(join(f.target.stateDir, "config"), "utf8")).toBe("old state");
+    expect(readFileSync(f.target.plistPath)).toEqual(f.original);
+    expect(readFileSync(join(f.target.installDir, "openclaw.mjs"), "utf8")).toBe("old runtime");
+    expect(f.events).not.toContain("migration:cron");
+  });
+
   it("checks the manifest before stop, then mutates config before doctor and cron before start", async () => {
     const f = fixture();
     const migration = stateMigration(f);
@@ -218,6 +256,8 @@ describe("stopped-state migration inside interpreter rollback", () => {
     expect(f.events.indexOf("migration:builtin-config")).toBeLessThan(f.events.indexOf("migration:config"));
     expect(f.events.indexOf("migration:schema")).toBeLessThan(f.events.indexOf("migration:config"));
     expect(f.events.indexOf("migration:config")).toBeLessThan(f.events.indexOf("doctor"));
+    expect(f.events.indexOf("migration:plugins")).toBeGreaterThan(f.events.indexOf("doctor"));
+    expect(f.events.indexOf("migration:plugins")).toBeLessThan(f.events.indexOf("start"));
     expect(f.events.indexOf("migration:cron")).toBeGreaterThan(f.events.indexOf("doctor"));
     expect(f.events.indexOf("migration:cron")).toBeLessThan(f.events.indexOf("start"));
     expect(fileDigest(join(result.recoveryDir, "state-migration.json"))).toBe(migration.sha256);
@@ -231,7 +271,7 @@ describe("stopped-state migration inside interpreter rollback", () => {
     });
   });
 
-  it.each(["migration:schema", "migration:builtin-config", "migration:config", "doctor", "migration:cron"])("restores stopped snapshots and the old interpreter after %s fails", async (failure) => {
+  it.each(["migration:schema", "migration:builtin-config", "migration:config", "doctor", "migration:plugins", "migration:cron"])("restores stopped snapshots and the old interpreter after %s fails", async (failure) => {
     const f = fixture();
     stateMigration(f);
     f.failures.push(failure);
@@ -240,6 +280,9 @@ describe("stopped-state migration inside interpreter rollback", () => {
     expect(readFileSync(f.target.plistPath)).toEqual(f.original);
     expect(readFileSync(join(f.target.installDir, "openclaw.mjs"), "utf8")).toBe("old runtime");
     expect(JSON.parse(readFileSync(join(f.recovery(), "failure.json"), "utf8")).message).toBe(`synthetic ${failure} failure`);
+    if (failure === "doctor") {
+      expect(JSON.parse(readFileSync(join(f.recovery(), "recovery.json"), "utf8")).stateMigration.phase).toBe("doctor");
+    }
   });
 
   it("retains recovery after a partial config migration and interrupted rollback", async () => {
@@ -273,6 +316,37 @@ describe("stopped-state migration inside interpreter rollback", () => {
 });
 
 describe("reversible configured Node interpreter migration", () => {
+  it("verifies the retained interpreter and preserves exact service rollback when already current", async () => {
+    const f = fixture(true, true, true, false, true);
+    const activated = await f.activate();
+    expect(plist(f.target.plistPath)).toEqual(f.service);
+    expect(f.calls.filter(({ args }) => args[0] === "-p").length).toBeGreaterThanOrEqual(2);
+    const journal = JSON.parse(readFileSync(join(activated.recoveryDir, "recovery.json"), "utf8"));
+    expect(journal.nodeMigration.expected).toEqual(f.expected);
+    expect(journal.nodeMigration.desired).toEqual(f.desired);
+    expect((await f.activate(activated.recoveryDir, "rollback")).status).toBe("rolled-back");
+    expect(readFileSync(f.target.plistPath)).toEqual(f.original);
+    expect(readFileSync(join(f.target.installDir, "openclaw.mjs"), "utf8")).toBe("old runtime");
+    expect(f.calls.filter(({ args }) => args.includes("health")).at(-1)?.command).toBe(f.expected.path);
+  });
+
+  it.each(["digest", "version", "alias", "service", "toolchain"])("rejects conflicting retained interpreter %s before shutdown", async (failure) => {
+    const f = fixture(true, true, false, false, true);
+    if (failure === "digest") f.expected.sha256 = "0".repeat(64);
+    if (failure === "version") f.expected.version = "v22.22.0";
+    if (failure === "alias") f.expected.path = join(f.root, "node-alias");
+    if (failure === "service") {
+      f.service.ProgramArguments[f.target.nodeMigration!.argumentIndex] = "/wrong/node";
+      plist(f.target.plistPath, f.service);
+    }
+    if (failure === "toolchain") f.receipt.tools.nodeBinary = "0".repeat(64);
+    const before = readFileSync(f.target.plistPath);
+    await expect(f.activate()).rejects.toThrow();
+    expect(f.events).not.toContain("stop");
+    expect(f.events).not.toContain("install");
+    expect(readFileSync(f.target.plistPath)).toEqual(before);
+  });
+
   it("keeps no-option activation unchanged without inspecting or rewriting the service", async () => {
     const f = fixture(true, false);
     await f.activate();
@@ -356,7 +430,7 @@ describe("reversible configured Node interpreter migration", () => {
     expect(JSON.parse(readFileSync(join(f.recovery(), "failure.json"), "utf8")).message).toBe(`synthetic ${failure} failure`);
   });
 
-  it.each(["recover", "rollback"])("recovers interrupted explicit rollback using old health and retained candidate sandbox Node (%s)", async (action) => {
+  it.each(["recover", "rollback"])("recovers interrupted explicit rollback using predecessor health and sandbox Node (%s)", async (action) => {
     const f = fixture();
     const activated = await f.activate();
     const before = f.calls.length;
@@ -371,7 +445,7 @@ describe("reversible configured Node interpreter migration", () => {
     const replay = f.calls.slice(replayStart);
     const sandbox = replay.filter(({ args }) => args.includes("sandbox"));
     expect(sandbox).toHaveLength(2);
-    expect(sandbox.every(({ command, args }) => command === f.desired.path && args[0] === join(activated.recoveryDir, "candidate/openclaw.mjs"))).toBe(true);
+    expect(sandbox.every(({ command, args }) => command === f.expected.path && args[0] === join(activated.recoveryDir, "package/openclaw.mjs"))).toBe(true);
     expect(replay.find(({ args }) => args.includes("health"))?.command).toBe(f.expected.path);
     expect(readFileSync(join(activated.recoveryDir, "failed-service.plist"))).toEqual(failedService);
     expect(readFileSync(f.target.plistPath)).toEqual(f.original);
@@ -405,10 +479,15 @@ describe("reversible configured Node interpreter migration", () => {
     const journal = JSON.parse(readFileSync(join(activated.recoveryDir, "recovery.json"), "utf8"));
     expect(journal.nodeMigration.expected.path).toBe(f.expected.path);
     expect(journal.nodeMigration.expected.realPath).toBe(f.expected.realPath);
+    const rollbackStart = f.calls.length;
     expect((await f.activate(activated.recoveryDir, "rollback")).status).toBe("rolled-back");
     expect(readFileSync(f.target.plistPath)).toEqual(f.original);
     expect(plist(f.target.plistPath).ProgramArguments[4]).toBe(f.expected.path);
     expect(realpathSync(f.expected.path)).toBe(f.expected.realPath);
+    const sandbox = f.calls.slice(rollbackStart).filter(({ args }) => args.includes("sandbox"));
+    expect(sandbox).toHaveLength(2);
+    expect(sandbox.every(({ command, args }) => command === f.expected.realPath &&
+      args[0] === join(activated.recoveryDir, "package/openclaw.mjs"))).toBe(true);
     expect(f.calls.filter(({ args }) => args.includes("health")).at(-1)?.command).toBe(f.expected.realPath);
   });
 

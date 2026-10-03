@@ -22,6 +22,7 @@ PATCHES=(
   subagent-cross-agent-spawn-fix
   skill-workshop-sandbox-fix
   imessage-message-part-coalescing
+  imessage-group-inbound-policy
   sandbox-discovery-failure-fix
   browser-userdata-dir-fix
   builtin-memory-migration
@@ -32,6 +33,10 @@ PATCHES=(
   active-memory-fixture-cleanup
   gateway-protocol-declaration-portability
   core-declaration-portability
+  talk-agent-parity
+  facetime-talk-client
+  harness-tool-work-owner
+  talk-overlap-recovery
 )
 
 if [ -n "${MINI_HOST:-}" ]; then

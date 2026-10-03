@@ -21,6 +21,7 @@ activated gateway. Keep the previous interpreter available for rollback.
 | `subagent-cross-agent-spawn-fix.patch` | Explicit targeting and inherited tools |
 | `skill-workshop-sandbox-fix.patch` | Skill workshop in sandboxed agents |
 | `imessage-message-part-coalescing.patch` | Selective text, link, and image coalescing |
+| `imessage-group-inbound-policy.patch` | Honor configured unmentioned group events in iMessage |
 | `sandbox-discovery-failure-fix.patch` | Select the configured registry; upstream supplies discovery error propagation |
 | `browser-userdata-dir-fix.patch` | Browser data directory and singleton cleanup |
 | `builtin-memory-migration.patch` | Regression tests for upstream memory migration and per-agent source isolation |
@@ -32,7 +33,11 @@ activated gateway. Keep the previous interpreter available for rollback.
 | `managed-local-service-lifecycle.patch` | Join gateway-owned service groups before stopped-state changes |
 | `gateway-memory-warmup.patch` | Prepare and retain managed local embeddings before readiness |
 | `gateway-protocol-declaration-portability.patch` | Regression tests for upstream protocol registry identity and types |
+| `harness-tool-work-owner.patch` | Bind tool callbacks to their current harness attempt across reused connections |
+| `talk-overlap-recovery.patch` | Keep Talk connected when the active harness cannot accept a follow-up |
+| `talk-agent-parity.patch` | Optional text-equivalent Talk authorization and consultation work ownership |
 | `core-declaration-portability.patch` | Name portable core declaration exports for tools, sessions, databases, and plugin records |
+| `facetime-talk-client.patch` | Let FaceTime inherit native Talk configuration, history, controls, and accepted-work lifetime |
 
 Each patch has a neighboring document explaining its behavior and history.
 Register new patches and every applicable test in the cumulative manifest at
@@ -99,29 +104,32 @@ the Docker archive manifest and rejects production-tag collisions before load,
 then records the prior production image ID before importing candidate layers.
 No browser build happens during downtime.
 
-## Merge, test merged main, then activate
+## Build once, then promote DEV, TEST, and PROD
 
 Follow [deployment coordination](../../../packages/e2e/DEPLOYMENT_COORDINATION.md).
 Iterate with local incremental builds and focused installed checks in owned
-DEV. Mutable drafts need no CI receipt and cannot qualify for promotion. After
-independent review, run the accumulated CI gate and validate that exact CI-built
-candidate in DEV before merging. Keep final proof separate from draft results.
-Create `merge-eligibility.json` from the exact build, source gate, and DEV proof,
-then pass it to `openclaw-integrate.mjs`. The helper verifies the head, base,
-remote eligibility, and resulting tree before any physical TEST or live change.
+DEV. Merge reviewed source after focused and required repository checks. Mutable
+drafts support development; they do not qualify for production promotion.
 
-The initiating TEST owner registers the batch of current merged main commits
-and each feature owner. Build those heads in CI and rehearse the immutable
-artifacts in the owned TEST slot. The normal certification and promotion
-commands still produce the required production receipt. Acquire PROD through
-its queue and consume the exact TEST artifact. A changed production baseline
-requires renewed affected TEST proof. No merge occurs inside live rollback.
+One release owner pins selected merged public and optional companion heads and
+runs cumulative CI once. Deploy the same resulting artifact to DEV, then TEST,
+then PROD. Environment configuration and writable state stay separate. Main can
+advance while that candidate is being validated; newer commits belong to the
+next candidate. Use existing certification and promotion commands for the
+production receipt. No build, dependency fetch, or merge occurs during downtime.
 
 Fetch main into the target's reviewed tooling worktree. Set `integration.ref`
 and `integration.mergedHead` to the pinned merged commit, and `defaultRef` to
-`origin/main`. Activation checks exact head and tree and main ancestry. On TEST
-failure, the batch owner merges the necessary revert, messages the feature
-owner to fix it, and repeats from TEST with corrected latest main.
+`origin/main`. Activation checks that selected source is on main. A changed
+production baseline requires the affected TEST rehearsal again. Reuse the
+artifact only while its sealed migration and configuration inputs remain valid.
+Changed sealed inputs, a source fix, or a revert produce a replacement candidate
+that starts again at DEV.
+
+Keep current PROD and one verified PROD recovery copy. TEST is disposable;
+remove temporary rollback snapshots after testing. Keep compact results and
+finalize completed staging. The coordination and storage guides distinguish
+available commands from controller changes still needed for this workflow.
 
 Create a local target JSON file, outside the repository. This synthetic example
 shows the required fields. Set real paths and host identity locally.
@@ -188,6 +196,28 @@ For a stopped-state migration, add `stateMigration` to the local target with
 `E2E_STATE_MIGRATION_MANIFEST` during the combined cumulative rehearsal.
 Its digest is bound to the regression and installed-runtime proofs. Activation
 rejects a different manifest or a candidate that did not include it.
+
+When environment values differ, prepare a paired binding before CI seals the
+build. `E2E_STATE_MIGRATION_BINDINGS` names a JSON file with schema
+`puddles.target-state-migrations/v1`, a `generator` (`repositoryId` and
+`inputsSha256`), a `policy` (`id` and `sha256`), and two `bindings`. Each binding
+has `role` (`rehearsal` or `production`), `targetSha256`, `inputsSha256` and
+`manifestSha256`. Use `migrationTargetIdentity` from
+`packages/e2e/src/native-migration-bindings.mjs` for the target projection.
+Transport filenames and integration checkout paths do not change that identity.
+
+The explicitly selected extension owns the maintained generator and validates
+both outputs against their sealed input records. Public CI uses synthetic
+fixtures independently. Keep owner-specific input records and generated files
+in protected companion artifacts. Stable non-secret descriptors can be committed
+in that private repository; credentials and captured live baselines cannot.
+
+The build, source gate and TEST proof carry the pair through certification.
+Production requires its exact role, target and manifest digest, then performs
+the existing expected-value checks. Changed input needs refreshed evidence;
+editing the digest after TEST is unsupported. Old releases keep their original
+single-manifest behavior. The target proof also retains the genuine runtime
+stage, including interpreter identity, for portable production verification.
 
 The manifest contains `schemaVersion: 1`, `configOperations`, and an optional
 `cronOperation`. Config operations have `kind` (`set` or `unset`), a nonempty

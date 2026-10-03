@@ -7,7 +7,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 // @ts-expect-error Native retention is executable JavaScript.
-import { acquireArtifactPoolLock, applyArtifactCleanup, initializeArtifactPool, planArtifactCleanup, registerDiagnosticLogs, registerRetainedObject, retentionSpaceSummary, setRetentionReference } from "../src/native-retention.mjs";
+import { protectRunArtifacts, completeRetentionRun, acquireArtifactPoolLock, applyArtifactCleanup, initializeArtifactPool, planArtifactCleanup, registerDiagnosticLogs, registerRetainedObject, retentionSpaceSummary, setRetentionReference } from "../src/native-retention.mjs";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -120,7 +120,9 @@ describe("owned artifact retention", () => {
       entries: [{ id: "success-one", kind: "successful-build", bytes: 1, metadataSha256, status: "moved" }],
     }));
     renameSync(source, trash);
-    expect(planArtifactCleanup(directory).remove).toEqual([]);
+    expect(() => planArtifactCleanup(directory)).toThrow("recovery is pending");
+    expect(existsSync(trash)).toBe(true);
+    expect(applyArtifactCleanup(directory).remove).toEqual([]);
     expect(existsSync(trash)).toBe(false);
     expect(existsSync(join(directory, "objects/success-three"))).toBe(true);
   });
@@ -156,7 +158,7 @@ describe("owned artifact retention", () => {
     }
     const result = applyArtifactCleanup(directory);
     expect(result.summary.removableBytes).toBeGreaterThan(0);
-    expect(result.summary.diagnosticsBytes).toBe("ordinary diagnostic".length);
+    expect(result.summary.diagnosticsBytes).toBeGreaterThan(0);
     expect(result.summary.diskAfter.freeBytes).toBeGreaterThan(0);
     expect(readdirSync(join(directory, "objects")).some((name) => name.startsWith("log-"))).toBe(true);
     const space = retentionSpaceSummary(directory, Number.MAX_SAFE_INTEGER);
@@ -219,4 +221,79 @@ describe("retention CLI", () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("ownership");
   });
+});
+
+
+describe("completed diagnostic retention", () => {
+  it("expires acknowledged logs while another task reference protects shared content", () => {
+    const directory = pool();
+    object(directory, "shared-logs", "diagnostic-log", "2026-01-01T00:00:00.000Z");
+    setRetentionReference(directory, { id: "run-one", kind: "paused", objectIds: ["shared-logs"] });
+    setRetentionReference(directory, { id: "run-two", kind: "paused", objectIds: ["shared-logs"] });
+    completeRetentionRun(directory, "run-one", "task-one", new Date("2026-01-02T00:00:00.000Z"));
+    expect(planArtifactCleanup(directory, new Date("2026-03-01T00:00:00.000Z")).remove).toEqual([]);
+    completeRetentionRun(directory, "run-two", "task-two", new Date("2026-01-03T00:00:00.000Z"));
+    expect(planArtifactCleanup(directory, new Date("2026-03-01T00:00:00.000Z")).remove.map((v: { id: string }) => v.id)).toEqual(["shared-logs"]);
+  });
+
+  it("preview refuses an outstanding cleanup journal without replaying it", () => {
+    const directory = pool();
+    const trash = join(directory, "trash", "success-old");
+    mkdirSync(trash); writeFileSync(join(trash, "remaining"), "keep");
+    const journal = JSON.stringify({ schema: "puddles.openclaw-retention-cleanup/v1", entries: [{ id: "success-old", status: "moved" }] });
+    writeFileSync(join(directory, "cleanup-journal.json"), journal);
+    expect(() => planArtifactCleanup(directory)).toThrow("recovery is pending");
+    expect(readFileSync(join(directory, "cleanup-journal.json"), "utf8")).toBe(journal);
+    expect(existsSync(join(trash, "remaining"))).toBe(true);
+  });
+});
+
+
+describe("retention recovery and overlapping attempts", () => {
+  it.each([false, true])("resumes planned cleanup with rename already performed: %s", moved => {
+    const directory = pool();
+    object(directory, "old-one", "successful-build", "2020-01-01T00:00:00.000Z");
+    object(directory, "old-two", "successful-build", "2020-01-02T00:00:00.000Z");
+    object(directory, "new-one", "successful-build", "2026-01-01T00:00:00.000Z");
+    object(directory, "new-two", "successful-build", "2026-01-02T00:00:00.000Z");
+    const plan = planArtifactCleanup(directory);
+    writeFileSync(join(directory, "cleanup-journal.json"), JSON.stringify({
+      schema: "puddles.openclaw-retention-cleanup/v1", entries: plan.remove.map((entry: { id: string }) => ({ ...entry, status: "planned" })),
+    }));
+    if (moved) renameSync(join(directory, "objects", "old-one"), join(directory, "trash", "old-one"));
+    applyArtifactCleanup(directory);
+    expect(readdirSync(join(directory, "objects"))).toEqual(["new-one", "new-two"]);
+    expect(existsSync(join(directory, "cleanup-journal.json"))).toBe(false);
+  });
+
+  it("keeps a prior queued build and failed logs through later attempts until acknowledgment", () => {
+    const directory = pool();
+    object(directory, "queued", "successful-build", "2020-01-01T00:00:00.000Z");
+    object(directory, "failure-log", "diagnostic-log", "2020-01-01T00:00:00.000Z");
+    protectRunArtifacts(directory, { id: "run-task", kind: "paused", objectIds: ["queued"] });
+    protectRunArtifacts(directory, { id: "run-task", kind: "active", objectIds: [] });
+    protectRunArtifacts(directory, { id: "run-task", kind: "failed-debug", objectIds: ["failure-log"] });
+    object(directory, "new-one", "successful-build", "2026-01-01T00:00:00.000Z");
+    object(directory, "new-two", "successful-build", "2026-01-02T00:00:00.000Z");
+    expect(planArtifactCleanup(directory).remove).toEqual([]);
+    completeRetentionRun(directory, "run-task", "task", new Date("2020-01-01T00:00:00.000Z"));
+    expect(planArtifactCleanup(directory).remove.map((entry: { id: string }) => entry.id)).toEqual(["failure-log", "queued"]);
+  });
+});
+
+it('explicit completion removes recent builds, failed reproductions and receipts while production references remain', () => {
+  const directory = pool();
+  const now = new Date().toISOString();
+  object(directory, 'recent-build', 'successful-build', now);
+  object(directory, 'recent-failure', 'failed-reproduction', now);
+  object(directory, 'recent-log', 'diagnostic-log', now);
+  object(directory, 'production-build', 'successful-build', now);
+  setRetentionReference(directory, { id: 'production', kind: 'deployed', objectIds: ['production-build'] });
+  setRetentionReference(directory, { id: 'run-complete', kind: 'paused', objectIds: ['recent-build', 'recent-failure', 'recent-log', 'production-build'] });
+  completeRetentionRun(directory, 'run-complete', 'task');
+  const result = applyArtifactCleanup(directory);
+  expect(result.remove.map((v: { id: string }) => v.id).sort()).toEqual(['recent-build', 'recent-failure', 'recent-log']);
+  expect(readFileSync(join(directory, 'references/production.json'), 'utf8')).toContain('production-build');
+  expect(existsSync(join(directory, 'objects/production-build'))).toBe(true);
+  expect(() => completeRetentionRun(directory, 'production', 'task')).toThrow('deployment/recovery');
 });

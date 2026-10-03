@@ -111,6 +111,11 @@ function validateScenario(scenario) {
     }
   }
   for (const step of scenario.steps) {
+    if (step.restartBefore !== undefined && typeof step.restartBefore !== "boolean") throw new Error("Invalid fixture restart selection");
+    if (!Array.isArray(step.expect?.sends) || step.expect.sends.some(value =>
+      !(typeof value === "string" && value.length) && !(Array.isArray(value) && value.length && value.every(text => typeof text === "string" && text.length)))) {
+      throw new Error("Invalid fixture reply expectation");
+    }
     for (const incoming of step.incoming ?? []) {
       if (incoming.delayMs !== undefined &&
           (!Number.isInteger(incoming.delayMs) || incoming.delayMs < 0 || incoming.delayMs > 1_000)) {
@@ -149,6 +154,14 @@ export async function runScenario(installedDir, scenario, options = {}) {
   const requests = [];
   const responses = [];
   let modelError;
+  let provider;
+  const providerCleanups = new Set();
+  const nextResponse = (request) => {
+    requests.push(request);
+    const scripted = responses.shift();
+    if (!scripted) throw new Error("Unscripted model request");
+    return scripted;
+  };
   const server = createServer(async (request, response) => {
     try {
       if (request.method !== "POST" || request.url !== "/v1/chat/completions") throw new Error("Unexpected model endpoint");
@@ -158,9 +171,7 @@ export async function runScenario(installedDir, scenario, options = {}) {
         if (body.length > 4 * 1024 * 1024) throw new Error("Model request exceeds bound");
       }
       const parsed = JSON.parse(body);
-      requests.push(parsed);
-      const scripted = responses.shift();
-      if (!scripted) throw new Error("Unscripted model request");
+      const scripted = nextResponse(parsed);
       if (scripted.error) {
         response.writeHead(400, { "Content-Type": "application/json" });
         response.end(JSON.stringify({ error: { message: scripted.error, type: "invalid_request_error" } }));
@@ -195,13 +206,28 @@ export async function runScenario(installedDir, scenario, options = {}) {
   let primaryError;
   const cleanup = async () => {
     await stop(child);
-    server.closeAllConnections();
-    await new Promise((yes) => server.close(yes));
+    const errors = [];
+    if (provider) {
+      try { await provider.close(); } catch (error) { errors.push(error); }
+    }
+    for (const cleanup of providerCleanups) {
+      try { await cleanup(); } catch (error) { errors.push(error); }
+    }
+    if (server.listening) {
+      server.closeAllConnections();
+      await new Promise((yes) => server.close(yes));
+    }
+    if (errors.length) throw new AggregateError(errors, "Provider cleanup failed");
   };
   activeFixtures.add(cleanup);
   try {
-    await new Promise((yes, no) => { server.once("error", no); server.listen(0, "127.0.0.1", yes); });
-    const modelPort = server.address().port;
+    if (options.providerFixture) {
+      provider = await options.providerFixture({ context, nextResponse, scenario, installedDir, registerCleanup: cleanup => providerCleanups.add(cleanup) });
+    } else {
+      await new Promise((yes, no) => { server.once("error", no); server.listen(0, "127.0.0.1", yes); });
+    }
+    const modelPort = server.address()?.port ?? 1;
+    const environment = { ...fixtureEnv(context), ...provider?.env };
     const port = await freePort();
     const bridge = join(root, "imsg-fixture");
     cpSync(join(packageDir, "mocks", "imsg-mock.mjs"), bridge);
@@ -214,7 +240,7 @@ export async function runScenario(installedDir, scenario, options = {}) {
     });
     atomicJson(join(context.recordingsDir, "adapters.json"), scenario.adapters ?? {});
     writeFileSync(join(context.workspace, "AGENTS.md"), "This is a scripted fixture. Follow the model response exactly.\n");
-    atomicJson(context.configPath, {
+    const config = {
       gateway: { mode: "local", port, bind: "loopback", auth: { mode: "token", token: "synthetic-fixture-gateway-token" }, controlUi: { enabled: false } },
       logging: { file: join(root, "openclaw.log") },
       update: { checkOnStart: false },
@@ -230,32 +256,39 @@ export async function runScenario(installedDir, scenario, options = {}) {
         ...(scenario.chatType === "group" ? { groupChat: { mentionPatterns: ["@fixture-agent"], unmentionedInbound: "room_event" } } : {}),
       },
       plugins: { allow: ["imessage", "puddles-recording-tools"], load: { paths: [plugin] }, entries: { imessage: { enabled: true }, "puddles-recording-tools": { enabled: true } } },
-      tools: { allow: Object.keys(scenario.adapters ?? {}), deny: ["exec", "process", "browser", "web_fetch", "web_search", "cron", "sessions_spawn", "nodes"] },
+      // Scripted model responses call recording tools directly, without discovery.
+      tools: { toolSearch: false, allow: Object.keys(scenario.adapters ?? {}), deny: ["exec", "process", "browser", "web_fetch", "web_search", "cron", "sessions_spawn", "nodes"] },
       session: { dmScope: "per-channel-peer" },
-    });
+    };
+    atomicJson(context.configPath, provider ? provider.configure(config) : config);
     if (scenario.expectBundledSkills) {
       const listed = JSON.parse(await runCommand(process.execPath, [join(installedDir, "openclaw.mjs"), "skills", "list", "--json"], {
-        cwd: context.workspace, env: fixtureEnv(context), capture: true, quiet: true, timeoutMs: 60_000,
+        cwd: context.workspace, env: environment, capture: true, quiet: true, timeoutMs: 60_000,
       }));
       for (const name of scenario.expectBundledSkills) {
         assert.ok(listed.skills.some((skill) => skill.name === name && skill.source === "openclaw-bundled"), "installed bundled skill missing");
       }
     }
     log = openSync(join(root, "gateway.log"), "w", 0o600);
-    child = spawn(process.execPath, [join(installedDir, "openclaw.mjs"), "gateway", "run", "--port", String(port), "--bind", "loopback"], {
-      cwd: context.workspace, env: fixtureEnv(context), detached: true, stdio: ["ignore", log, log],
-    });
-    let spawnError;
-    child.once("error", (error) => { spawnError = error; });
     const timeout = options.timeoutMs ?? 90_000;
-    await until(() => {
-      if (spawnError) throw spawnError;
-      return records(join(context.recordingsDir, "imsg-ready.jsonl")).length > 0;
-    }, "real iMessage subscription", timeout, child);
+    const startGateway = async () => {
+      const readyCount = records(join(context.recordingsDir, "imsg-ready.jsonl")).length;
+      child = spawn(process.execPath, [join(installedDir, "openclaw.mjs"), "gateway", "run", "--port", String(port), "--bind", "loopback"], {
+        cwd: context.workspace, env: environment, detached: true, stdio: ["ignore", log, log],
+      });
+      let spawnError;
+      child.once("error", error => { spawnError = error; });
+      await until(() => {
+        if (spawnError) throw spawnError;
+        return records(join(context.recordingsDir, "imsg-ready.jsonl")).length > readyCount;
+      }, "real iMessage subscription", timeout, child);
+    };
+    await startGateway();
     let requestCount = 0;
     let sendCount = 0;
     let rowid = 1;
     for (const step of scenario.steps) {
+      if (step.restartBefore) { await stop(child); await provider?.beforeRestart?.(); await startGateway(); }
       responses.push(...step.responses);
       requestCount += step.responses.length;
       for (const incoming of step.incoming) {
@@ -273,16 +306,18 @@ export async function runScenario(installedDir, scenario, options = {}) {
       const expected = step.expect.sends;
       await until(() => {
         if (modelError) throw modelError;
+        provider?.assertHealthy();
         return requests.length >= requestCount &&
           records(join(context.recordingsDir, "imsg-sends.jsonl")).length >= sendCount + expected.length;
       }, "scripted response and recorded delivery", timeout, child);
       // Include the quiet tail to catch duplicate sends and suppressed-output failures.
       await delay(step.expect.quietMs ?? 1200);
       if (modelError) throw modelError;
+      provider?.assertHealthy();
       assert.equal(requests.length, requestCount, "unexpected model request count");
       const sends = records(join(context.recordingsDir, "imsg-sends.jsonl")).slice(sendCount);
       assert.equal(sends.length, expected.length, "unexpected outbound message count");
-      sends.forEach((send, index) => assert.ok((send.params?.text ?? "").includes(expected[index]), "recorded reply differs"));
+      sends.forEach((send, index) => assert.ok((Array.isArray(expected[index]) ? expected[index] : [expected[index]]).some(text => (send.params?.text ?? "").includes(text)), "recorded reply differs"));
       for (const text of step.expect.sendsExclude ?? []) {
         assert.ok(sends.every((send) => !(send.params?.text ?? "").includes(text)), "recorded reply exposes excluded content");
       }
@@ -290,6 +325,7 @@ export async function runScenario(installedDir, scenario, options = {}) {
         const prompt = JSON.stringify(requests[requestCount - step.responses.length].messages);
         for (const text of step.expect.promptIncludes) assert.ok(prompt.includes(text), "incoming event missing from real model request");
       }
+      await provider?.assertTurn?.();
       sendCount += expected.length;
     }
     const calls = records(join(context.recordingsDir, "tool-calls.jsonl"));
@@ -301,6 +337,7 @@ export async function runScenario(installedDir, scenario, options = {}) {
     if (scenario.expectCalls) assert.deepEqual(calls, scenario.expectCalls);
     assert.equal(records(join(context.recordingsDir, "imsg-denied.jsonl")).length, 0, "unsupported bridge method");
     assert.equal(responses.length, 0, "unconsumed model script");
+    await provider?.assertComplete();
     return { id: scenario.id, passed: true, modelRequests: requests.length, sends: sendCount, toolCalls: calls.length };
   } catch (error) {
     primaryError = error;
@@ -313,6 +350,7 @@ export async function runScenario(installedDir, scenario, options = {}) {
     if (log !== undefined) closeSync(log);
     if (!primaryError && errors.length === 0) {
       try {
+        provider?.assertHealthy();
         assert.equal(records(join(context.recordingsDir, "imsg-sends.jsonl")).length, scenario.steps.reduce((count, step) => count + step.expect.sends.length, 0), "unexpected delivery during shutdown");
         assert.equal(records(join(context.recordingsDir, "imsg-denied.jsonl")).length, 0, "unsupported bridge operation");
       } catch (error) { errors.push(error); }

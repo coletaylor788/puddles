@@ -4,6 +4,7 @@ import {
   statSync, writeFileSync,
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { atomicJson, fileDigest, inside, jsonDigest, treeDigest } from "./native-state.mjs";
 
@@ -202,7 +203,14 @@ function loadPool(root) {
       if (!objects.has(id)) throw new Error(`Retained reference target is missing: ${reference.id} -> ${id}`);
     }
   }
-  return { objects, references };
+  const completionPath = join(root, "completed-runs.json");
+  const completions = existsSync(completionPath) ? JSON.parse(readFileSync(completionPath, "utf8")) : {};
+  for (const [id, value] of Object.entries(completions)) {
+    if (!idPattern.test(id) || !idPattern.test(value.owner) || !Number.isFinite(Date.parse(value.completedAt))) {
+      throw new Error("Invalid completed retention run");
+    }
+  }
+  return { objects, references, completions };
 }
 
 function closure(objects, seeds) {
@@ -235,15 +243,20 @@ function dependencyDepth(objects, id, visiting = new Set()) {
     dependencyDepth(objects, dependency, next)));
 }
 
-function selectRetention(state) {
+function selectRetention(state, now = new Date()) {
   const protectedIds = closure(
     state.objects,
     state.references.flatMap((reference) => reference.objectIds),
   );
   const retained = new Set(protectedIds);
-  for (const object of newest(state.objects, "diagnostic-log")) retained.add(object.metadata.id);
+  for (const object of newest(state.objects, "diagnostic-log")) {
+    const completion = state.completions[object.metadata.id];
+    // Legacy and unacknowledged runs remain protected until explicitly completed.
+    if (!completion) { retained.add(object.metadata.id); continue; }
+  }
   for (const [kind, count] of [["successful-build", 2], ["failed-reproduction", 1]]) {
-    for (const object of newest(state.objects, kind).slice(0, count)) retained.add(object.metadata.id);
+    // Compatibility retention never overrides explicit task completion.
+    for (const object of newest(state.objects, kind).filter(object => !state.completions[object.metadata.id]).slice(0, count)) retained.add(object.metadata.id);
   }
   const retainedBuilds = new Set([...retained].filter((id) =>
     state.objects.get(id)?.metadata.kind === "successful-build"));
@@ -277,31 +290,56 @@ function validateDeletion(root, object, metadataSha256) {
   walkOwned(current.path);
 }
 
-function recoverCleanup(root) {
+function recoverCleanup(root, now = new Date()) {
   const journalPath = join(root, "cleanup-journal.json");
   if (!existsSync(journalPath)) return;
   regular(journalPath);
   const journal = JSON.parse(readFileSync(journalPath, "utf8"));
-  if (journal.schema !== "puddles.openclaw-retention-cleanup/v1" ||
-      !Array.isArray(journal.entries)) throw new Error("Retention cleanup journal is invalid");
+  if (journal.schema !== "puddles.openclaw-retention-cleanup/v1" || !Array.isArray(journal.entries)) {
+    throw new Error("Retention cleanup journal is invalid");
+  }
   for (const entry of journal.entries) {
-    if (!idPattern.test(entry.id ?? "") || !["planned", "moved", "removed"].includes(entry.status)) {
+    if (!idPattern.test(entry.id ?? "") || !["planned", "moved", "removed", "cancelled"].includes(entry.status)) {
       throw new Error("Retention cleanup journal entry is invalid");
     }
     const trash = join(root, "trash", entry.id);
     const object = join(root, "objects", entry.id);
-    if (entry.status === "moved" && existsSync(trash)) {
-      regular(trash, true);
-      rmSync(trash, { recursive: true });
+    if (entry.status === "planned") {
+      if (existsSync(object)) {
+        if (existsSync(trash)) throw new Error("Retention object and trash both exist");
+        const state = loadPool(root);
+        if (selectRetention(state, now).retained.has(entry.id)) {
+          entry.status = "cancelled";
+          atomicJson(journalPath, journal);
+          continue;
+        }
+        validateDeletion(root, state.objects.get(entry.id), entry.metadataSha256);
+        const stat = lstatSync(object);
+        entry.identity = { dev: stat.dev, ino: stat.ino };
+        atomicJson(journalPath, journal);
+        renameSync(object, trash);
+      } else if (!existsSync(trash)) throw new Error(`Planned retention object disappeared: ${entry.id}`);
+      entry.status = "moved";
+      atomicJson(journalPath, journal);
+    }
+    if (entry.status === "moved") {
+      if (existsSync(object)) throw new Error("Moved retention object reappeared");
+      if (existsSync(trash)) {
+        const stat = regular(trash, true);
+        if (entry.identity) {
+          if (entry.identity.dev !== stat.dev || entry.identity.ino !== stat.ino) throw new Error("Retention trash identity changed");
+        } else if (fileDigest(join(trash, "ownership.json")) !== entry.metadataSha256) {
+          throw new Error("Legacy retention trash ownership changed");
+        }
+        rmSync(trash, { recursive: true });
+      }
       entry.status = "removed";
       atomicJson(journalPath, journal);
     } else if (entry.status === "removed" && (existsSync(trash) || existsSync(object))) {
       throw new Error(`Retention cleanup journal disagrees with disk: ${entry.id}`);
-    } else if (entry.status === "planned" && !existsSync(object)) {
-      throw new Error(`Planned retention object disappeared: ${entry.id}`);
     }
   }
-  if (journal.entries.every((entry) => entry.status === "removed")) rmSync(journalPath);
+  rmSync(journalPath);
 }
 
 function recoverRegistrations(root) {
@@ -318,9 +356,11 @@ function recoverRegistrations(root) {
 
 export function planArtifactCleanup(poolPath, now = new Date()) {
   const root = canonicalPool(poolPath);
-  recoverCleanup(root);
+  if (existsSync(join(root, "cleanup-journal.json"))) {
+    throw new Error("Cleanup recovery is pending; apply under the retention lock before previewing");
+  }
   const state = loadPool(root);
-  const selection = selectRetention(state);
+  const selection = selectRetention(state, now);
   const remove = [...state.objects.values()]
     .filter((object) => !selection.retained.has(object.metadata.id))
     .sort((a, b) => dependencyDepth(state.objects, b.metadata.id) -
@@ -362,6 +402,7 @@ export function planArtifactCleanup(poolPath, now = new Date()) {
 
 export function applyArtifactCleanup(poolPath, now = new Date()) {
   const root = canonicalPool(poolPath);
+  recoverCleanup(root, now);
   recoverRegistrations(root);
   const plan = planArtifactCleanup(root, now);
   if (!plan.remove.length) {
@@ -377,7 +418,7 @@ export function applyArtifactCleanup(poolPath, now = new Date()) {
   atomicJson(journalPath, journal);
   for (const entry of journal.entries) {
     const state = loadPool(root);
-    const selection = selectRetention(state);
+    const selection = selectRetention(state, now);
     if (selection.retained.has(entry.id)) {
       throw new Error(`Retention changed before deletion; object is now protected: ${entry.id}`);
     }
@@ -386,6 +427,9 @@ export function applyArtifactCleanup(poolPath, now = new Date()) {
     validateDeletion(root, object, entry.metadataSha256);
     const trash = join(root, "trash", entry.id);
     if (existsSync(trash)) throw new Error(`Retention trash destination already exists: ${entry.id}`);
+    const stat = lstatSync(object.path);
+    entry.identity = { dev: stat.dev, ino: stat.ino };
+    atomicJson(journalPath, journal);
     renameSync(object.path, trash);
     entry.status = "moved";
     atomicJson(journalPath, journal);
@@ -706,13 +750,17 @@ export function registerDiagnosticLogs(poolPath, runDir, now = new Date()) {
     }
     return object.metadata;
   }
-  return registerRetainedObject(poolPath, {
-    id,
-    kind: "diagnostic-log",
-    createdAt: now.toISOString(),
-    dependencies: [],
-    assets: [{ source: logs, path: "logs" }],
-  });
+  walkOwned(logs);
+  const temporary = join(root, "trash", `.register-${randomUUID()}`);
+  mkdirSync(temporary, { mode: 0o700 });
+  try {
+    const archive = join(temporary, "logs.tar.gz");
+    execFileSync("tar", ["-czf", archive, "-C", logs, "."], { timeout: 120_000 });
+    return registerRetainedObject(poolPath, {
+      id, kind: "diagnostic-log", createdAt: now.toISOString(), dependencies: [],
+      assets: [{ source: archive, path: "logs.tar.gz" }],
+    });
+  } finally { rmSync(temporary, { recursive: true, force: true }); }
 }
 
 export function registerTargetProof(
@@ -787,4 +835,30 @@ export function retentionSpaceSummary(poolPath, requiredBytes) {
 
 export function artifactPoolRunId(runDir) {
   return `run-${jsonDigest(realpathSync(runDir)).slice(0, 48)}`;
+}
+
+// The caller confirms the whole run has no remaining consumers, not merely that
+// its source gate passed. Other tasks' references continue to protect shared IDs.
+export function completeRetentionRun(poolPath, runReference, owner, now = new Date()) {
+  if (!idPattern.test(runReference) || !idPattern.test(owner)) throw new Error("Invalid completion owner");
+  const root = canonicalPool(poolPath);
+  const state = loadPool(root);
+  const reference = state.references.find(value => value.id === runReference);
+  if (!reference || !["paused", "active", "failed-debug"].includes(reference.kind)) {
+    throw new Error("Completed run reference is missing or is a deployment/recovery reference");
+  }
+  const completions = state.completions;
+  for (const id of closure(state.objects, reference.objectIds)) {
+    completions[id] = { owner, completedAt: now.toISOString() };
+  }
+  atomicJson(join(root, "completed-runs.json"), completions);
+  removeRetentionReference(root, runReference);
+  return { completed: runReference, owner };
+}
+
+
+export function protectRunArtifacts(poolPath, value) {
+  const root = canonicalPool(poolPath);
+  const prior = loadPool(root).references.find(reference => reference.id === value.id);
+  return setRetentionReference(root, { ...value, objectIds: [...new Set([...(prior?.objectIds ?? []), ...value.objectIds])] });
 }
