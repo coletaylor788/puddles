@@ -67,7 +67,11 @@
     "src/config/talk.normalize.test.ts": "runtime-config",
     "src/config/zod-schema.talk.test.ts": "runtime-config",
     "src/talk/client-voice-confirmation.test.ts": "unit-src",
-    "src/agents/harness/host-capability.test.ts": "agents-support"
+    "src/agents/harness/host-capability.test.ts": "agents-support",
+    "extensions/openai/realtime-quicksilver-delegation.test.ts": "extension-provider-openai",
+    "extensions/openai/realtime-quicksilver-concurrency.test.ts": "extension-provider-openai",
+    "extensions/openai/realtime-quicksilver-public-delegation.test.ts": "extension-provider-openai",
+    "src/gateway/talk/client-gateway-control.native.test.ts": "gateway-client"
   },
   "patches": [
     {
@@ -261,6 +265,21 @@
       "name": "harness-tool-work-owner",
       "tests": [
         "src/agents/harness/host-capability.test.ts"
+      ]
+    },
+    {
+      "name": "talk-overlap-recovery",
+      "tests": [
+        "extensions/openai/realtime-quicksilver-delegation.test.ts",
+        "extensions/openai/realtime-quicksilver-concurrency.test.ts",
+        "extensions/openai/realtime-quicksilver-public-delegation.test.ts",
+        "src/gateway/talk/client-gateway-control.agent-consult.test.ts",
+        "src/gateway/talk/client-gateway-control.native.test.ts",
+        "src/gateway/talk/client-gateway-control.close.test.ts",
+        "src/gateway/talk/client-spoken-confirmation.test.ts"
+      ],
+      "candidateTests": [
+        "tests/candidate.talk-concurrency.test.ts"
       ]
     }
   ]

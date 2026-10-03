@@ -35,6 +35,7 @@ PATCHES=(
   core-declaration-portability
   talk-agent-parity
   harness-tool-work-owner
+  talk-overlap-recovery
 )
 
 if [ -n "${MINI_HOST:-}" ]; then
