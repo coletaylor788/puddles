@@ -1,6 +1,6 @@
 # Plan 033 - Communication watcher
 
-**Status:** Revision implemented and reviewed; repository checks pending; merge held
+**Status:** Revision implemented, reviewed and validated; merge held
 **Issue:** [#132](https://github.com/coletaylor788/puddles/issues/132)
 **Last updated:** 2026-10-02
 
@@ -123,7 +123,7 @@ The next heartbeat uses the updated rules. No update message or self-editing tur
 
 ### Status
 
-The October 2 revision is implemented: check unfinished correspondence before new intake and send at most one combined report per heartbeat. Review identified two corrections: rejected correspondence must not block later notes, and calendar content must go through the restricted reader. Both are corrected and retained review is clear. Focused tests, real native gateway scenarios, and synthetic Docker validation pass. Updated repository checks remain pending.
+The October 2 revision is implemented: check unfinished correspondence before new intake and send at most one combined report per heartbeat. Review identified two corrections: rejected correspondence must not block later notes, and calendar content must go through the restricted reader. Both are corrected and retained review is clear. Focused tests, real native gateway scenarios, and synthetic Docker validation pass. Required repository and security checks pass on the implementation head.
 
 The resumed work stays in this thread for review. No merge, TEST, PROD, or real forwarding is authorized. Locked-phone forwarding and real account setup remain activation prerequisites.
 
@@ -174,7 +174,7 @@ Next revision: align heartbeat instructions, guarded unfinished-work discovery, 
 
 Current revision: 54 focused watcher checks, 57 affected packaging/pipeline checks, type checking and plugin build pass. The three real OpenClaw 2026.9.6 scenarios pass: native memory access, heartbeat/action/handoff/restart behavior, and interruption cleanup. The five-heartbeat Docker fixture passes empty-inbox report recovery, refusal of a second report, quiet main-acknowledged work, calendar-reader isolation, one calendar creation, nine read-only instruction files, writable memory, rule refresh, and removal of all owned containers. A final rebuilt Docker run also checks the calendar acquisition’s concurrent-call latch.
 
-The retained review accepted both corrections with no remaining actionable findings. Required repository checks will run on the updated PR heads. Real-phone automation, actual account bindings/classifier behavior, and release certification are not established by these synthetic checks.
+The retained review accepted both corrections with no remaining actionable findings. Required public [repository CI](https://github.com/coletaylor788/puddles/actions/runs/37100333681) and [security checks](https://github.com/coletaylor788/puddles/actions/runs/37100333663) pass for implementation head `3ae5170`. This final status update changes documentation only. Real-phone automation, actual account bindings/classifier behavior, and release certification are not established by these synthetic checks.
 
 #### Historical validation before the resumed revision
 
@@ -213,7 +213,7 @@ Reminders is now the selected bus: automation adds sender, timestamp, and body; 
 - [x] Agree unfinished-work-first review and at most one combined report per heartbeat.
 - [x] Align runtime instructions and tool enforcement with the October 2 revision.
 - [x] Complete refreshed native checks and retained review.
-- [ ] Pass required repository checks on updated PR heads.
+- [x] Pass required repository checks on the implementation head.
 
 - [x] Select a 30-minute watcher heartbeat, guarded pending-item reads, and main takeover.
 - [x] Use Reminders check-off as intake tracking; remove the timestamp checkpoint.
