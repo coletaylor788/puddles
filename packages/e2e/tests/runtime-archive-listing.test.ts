@@ -30,9 +30,13 @@ it("installs a real runtime archive whose listing exceeds the generic command ca
   writeFileSync(list, members);
   const archive = join(root, "runtime.tar.gz");
   execFileSync("tar", ["-czf", archive, "-C", source, "-T", list], { timeout: 15_000 });
-  await expect(runCommand("tar", ["-tzf", archive], { capture: true, quiet: true }))
+  // Bound each real tar operation before the test deadline so its process has
+  // exited before afterEach removes the fixture, including on a slow host.
+  const run = (command: string, args: string[], options = {}) =>
+    runCommand(command, args, { ...options, timeoutMs: 30_000, killGraceMs: 1_000 });
+  await expect(run("tar", ["-tzf", archive], { capture: true, quiet: true }))
     .rejects.toThrow("Command output exceeded its capture bound");
-  const installed = await installRuntime({ ...identity, path: archive, sha256: fileDigest(archive) }, join(root, "installed"));
+  const installed = await installRuntime({ ...identity, path: archive, sha256: fileDigest(archive) }, join(root, "installed"), run);
   expect(readFileSync(join(installed, entry.slice("runtime/".length)), "utf8")).toBe("synthetic runtime content\n");
   expect(treeDigest(installed, { portable: true })).toBe(identity.runtimeSha256);
-}, 20_000);
+}, 120_000);

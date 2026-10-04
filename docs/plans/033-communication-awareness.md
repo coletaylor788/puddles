@@ -182,6 +182,8 @@ The retained review accepted both corrections with no remaining actionable findi
 
 The corrected mapping passes all accumulated upstream regressions, including the five carrier tests. Real-candidate watcher scenarios also pass. The final Workshop rollback rehearsal exposed a second isolated child environment that dropped `DEVELOPER_DIR`, causing system Python to select the unaccepted global Xcode toolchain. Preserving that one selected toolchain variable makes the existing real Doctor migration and external rollback regression pass. The fixture retains its isolated home, temporary directory, state, configuration and fixed executable search path. Full release validation remains required on the merged correction.
 
+The large archive regression also exposed an unreliable fixture deadline: its real extraction can take more than 20 seconds under suite load, so the test timed out while cleanup raced the still-running child. The fixture now bounds each tar command and allows their combined deadlines before its own timeout. All 7,500 archive entries, the listing above 4 MiB, the generic capture-limit rejection and installed-content/hash checks remain. The archive test passes in 21.34 seconds alongside the 45 lifecycle pipeline tests. All 574 lifecycle tests and e2e type checking pass; retained independent review found no actionable issues.
+
 #### Historical validation before the resumed revision
 
 
