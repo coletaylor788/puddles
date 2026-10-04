@@ -180,6 +180,8 @@ Current revision: 54 focused watcher checks, 57 affected packaging/pipeline chec
 
 The retained review accepted both corrections with no remaining actionable findings. Required public [repository CI](https://github.com/coletaylor788/puddles/actions/runs/37100333681) and [security checks](https://github.com/coletaylor788/puddles/actions/runs/37100333663) pass for implementation head `3ae5170`. This final status update changes documentation only. Real-phone automation, actual account bindings/classifier behavior, and release certification are not established by these synthetic checks.
 
+The corrected mapping passes all accumulated upstream regressions, including the five carrier tests. Real-candidate watcher scenarios also pass. The final Workshop rollback rehearsal exposed a second isolated child environment that dropped `DEVELOPER_DIR`, causing system Python to select the unaccepted global Xcode toolchain. Preserving that one selected toolchain variable makes the existing real Doctor migration and external rollback regression pass. The fixture retains its isolated home, temporary directory, state, configuration and fixed executable search path. Full release validation remains required on the merged correction.
+
 #### Historical validation before the resumed revision
 
 
