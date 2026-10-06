@@ -78,8 +78,8 @@ quality remains for the requester's next voice test.
 ### Status
 
 Independent review of the complete change, including the Copilot event producer,
-is clear. Focused checks pass: 43 Copilot bridge tests, 25 consultation tests
-including the composed Copilot-to-Live path, 84 provider tests, 56 Gateway tests,
+is clear. Focused checks pass: 43 Copilot bridge tests, 24 consultation tests,
+one composed Copilot-to-Live test, 84 other provider tests, 56 Gateway tests,
 18 built-in commentary producer tests, and 10 patch-manifest tests. Core and
 extension production type checks passed. Test type checks and the refreshed
 managed Copilot package are in progress. Local DEV installed proof and release

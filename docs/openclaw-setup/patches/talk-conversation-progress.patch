@@ -410,20 +410,7 @@ diff --git a/src/gateway/talk/client-gateway-control.ts b/src/gateway/talk/clien
 diff --git a/src/talk/agent-consult-runtime.test.ts b/src/talk/agent-consult-runtime.test.ts
 --- a/src/talk/agent-consult-runtime.test.ts
 +++ b/src/talk/agent-consult-runtime.test.ts
-@@ -2,6 +2,12 @@
- import os from "node:os";
- import path from "node:path";
- import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-+import { attachEventBridge, type SessionLike } from "../../extensions/copilot/src/event-bridge.js";
-+import {
-+  createDelegationHarness,
-+  parseSent,
-+  type ConsultRunner,
-+} from "../../extensions/openai/realtime-quicksilver.test-helpers.js";
- import { createDeferred } from "../../test/helpers/promise.js";
- import type { RunEmbeddedAgentParams } from "../agents/embedded-agent-runner/run/params.js";
- import { setReplyPayloadMetadata } from "../auto-reply/reply-payload.js";
-@@ -207,6 +213,161 @@
+@@ -207,6 +207,67 @@
      }
    });
  
@@ -487,100 +474,6 @@ diff --git a/src/talk/agent-consult-runtime.test.ts b/src/talk/agent-consult-run
 +      expect(onProgress).toHaveBeenCalledTimes(2);
 +    },
 +  );
-+
-+  it("carries Copilot commentary through a pending Talk consult into silent Live context", async () => {
-+    const { runtime, runEmbeddedAgent } = createAgentRuntime();
-+    const backend = createDeferred<void>();
-+    const handlers = new Map<string, (event: unknown) => void>();
-+    const sdkSession = {
-+      id: "sdk-test",
-+      on(type: string, callback: (event: unknown) => void) {
-+        handlers.set(type, callback);
-+        return () => handlers.delete(type);
-+      },
-+    } as unknown as SessionLike;
-+    runEmbeddedAgent.mockImplementationOnce(async (params) => {
-+      const bridge = attachEventBridge(sdkSession, {
-+        getSdkSessionId: () => "sdk-test",
-+        isAborted: () => false,
-+        onAgentEvent: params!.onAgentEvent,
-+      });
-+      try {
-+        handlers.get("assistant.message")!({
-+          id: "commentary-1",
-+          type: "assistant.message",
-+          parentId: null,
-+          timestamp: "2026-01-01T00:00:00Z",
-+          data: {
-+            messageId: "message-1",
-+            phase: "commentary",
-+            content: "Research is underway. Existing notes name two options.",
-+            reasoningText: "private sentinel",
-+          },
-+        });
-+        await bridge.awaitAgentEventChain();
-+        await backend.promise;
-+        return { payloads: [{ text: "Research complete." }], meta: {} };
-+      } finally {
-+        bridge.detach();
-+      }
-+    });
-+    const runAgentConsult = vi.fn<ConsultRunner>(async ({ onProgress, signal }) =>
-+      consultRealtimeVoiceAgent({
-+        cfg: {} as never,
-+        agentRuntime: runtime as never,
-+        logger: { warn: vi.fn() },
-+        sessionKey: "voice:copilot-progress",
-+        messageProvider: "voice",
-+        lane: "voice",
-+        runIdPrefix: "voice-progress",
-+        args: { question: "Research this" },
-+        transcript: [],
-+        surface: "a live voice session",
-+        userLabel: "User",
-+        abortSignal: signal,
-+        onProgress,
-+      }),
-+    );
-+    const h = createDelegationHarness({ model: "gpt-live-1", runAgentConsult });
-+    try {
-+      for (const event of [
-+        {
-+          type: "session.input_transcript.delta",
-+          delta: "Research this",
-+          start_ms: 0,
-+          end_ms: 100,
-+        },
-+        {
-+          type: "session.delegation.created",
-+          offset_ms: 100,
-+          delegation: { id: "research", type: "delegation", target: "client" },
-+        },
-+      ])
-+        h.controller.handleFrame(Buffer.from(JSON.stringify(event)), false);
-+      await vi.waitFor(() =>
-+        expect(parseSent(h.socket)).toEqual([
-+          {
-+            type: "session.thinking.append",
-+            delegation_id: "research",
-+            content: "Research is underway. Existing notes name two options.",
-+          },
-+        ]),
-+      );
-+      expect(runAgentConsult).toHaveBeenCalledOnce();
-+      backend.resolve();
-+      await vi.waitFor(() =>
-+        expect(parseSent(h.socket)).toContainEqual({
-+          type: "session.commentary.append",
-+          delegation_id: "research",
-+          content: "Research complete.",
-+        }),
-+      );
-+    } finally {
-+      backend.resolve();
-+      h.controller.stop(new Error("test complete"));
-+    }
-+  });
 +
    it("exposes the shared consult tool based on policy", () => {
      expect(REALTIME_VOICE_AGENT_CONSULT_SENDER_AUTH_VERSION).toBe(1);
@@ -838,4 +731,150 @@ new file mode 100644
 +      await work.promise;
 +    },
 +  );
++});
+diff --git a/extensions/openai/realtime-quicksilver-copilot-progress.test.ts b/extensions/openai/realtime-quicksilver-copilot-progress.test.ts
+new file mode 100644
+--- /dev/null
++++ b/extensions/openai/realtime-quicksilver-copilot-progress.test.ts
+@@ -0,0 +1,141 @@
++import { describe, expect, it, vi } from "vitest";
++import type { RunEmbeddedAgentParams } from "../../src/agents/embedded-agent-runner/run/params.js";
++import type { SessionEntry } from "../../src/config/sessions/types.js";
++import { consultRealtimeVoiceAgent } from "../../src/talk/agent-consult-runtime.js";
++import { clientVoiceSessionTesting } from "../../src/talk/client-voice-session.test-support.js";
++import { withOpenClawTestState } from "../../src/test-utils/openclaw-test-state.js";
++import { createDeferred } from "../../test/helpers/promise.js";
++import { attachEventBridge, type SessionLike } from "../copilot/src/event-bridge.js";
++import {
++  createDelegationHarness,
++  parseSent,
++  type ConsultRunner,
++} from "./realtime-quicksilver.test-helpers.js";
++
++describe("Copilot progress in Live", () => {
++  it("carries Copilot commentary through a pending Talk consult into silent Live context", async () => {
++    await withOpenClawTestState({ label: "copilot-live-progress" }, async (state) => {
++      const entries: Record<string, SessionEntry> = {};
++      const runEmbeddedAgent = vi.fn(async (_params?: RunEmbeddedAgentParams) => ({
++        payloads: [{ text: "" }],
++        meta: {},
++      }));
++      const runtime = {
++        resolveAgentDir: () => state.agentDir(),
++        resolveAgentWorkspaceDir: () => state.workspaceDir,
++        ensureAgentWorkspace: async () => {},
++        resolveAgentTimeoutMs: () => 30000,
++        session: {
++          resolveStorePath: () => state.path("sessions.json"),
++          getSessionEntry: ({ sessionKey }: { sessionKey: string }) => entries[sessionKey],
++          patchSessionEntry: async ({
++            sessionKey,
++            fallbackEntry,
++            update,
++          }: {
++            sessionKey: string;
++            fallbackEntry: SessionEntry;
++            update: (entry: SessionEntry) => Promise<Partial<SessionEntry>>;
++          }) =>
++            (entries[sessionKey] = {
++              ...(entries[sessionKey] ?? fallbackEntry),
++              ...(await update(entries[sessionKey] ?? fallbackEntry)),
++            }),
++          resolveSessionFilePath: () => state.path("session.json"),
++        },
++        runEmbeddedAgent,
++      };
++      const backend = createDeferred<void>();
++      const handlers = new Map<string, (event: unknown) => void>();
++      const sdkSession = {
++        id: "sdk-test",
++        on(type: string, callback: (event: unknown) => void) {
++          handlers.set(type, callback);
++          return () => handlers.delete(type);
++        },
++      } as unknown as SessionLike;
++      runEmbeddedAgent.mockImplementationOnce(async (params) => {
++        const bridge = attachEventBridge(sdkSession, {
++          getSdkSessionId: () => "sdk-test",
++          isAborted: () => false,
++          onAgentEvent: params!.onAgentEvent,
++        });
++        try {
++          handlers.get("assistant.message")!({
++            id: "commentary-1",
++            type: "assistant.message",
++            parentId: null,
++            timestamp: "2026-01-01T00:00:00Z",
++            data: {
++              messageId: "message-1",
++              phase: "commentary",
++              content: "Research is underway. Existing notes name two options.",
++              reasoningText: "private sentinel",
++            },
++          });
++          await bridge.awaitAgentEventChain();
++          await backend.promise;
++          return { payloads: [{ text: "Research complete." }], meta: {} };
++        } finally {
++          bridge.detach();
++        }
++      });
++      const runAgentConsult = vi.fn<ConsultRunner>(async ({ onProgress, signal }) =>
++        consultRealtimeVoiceAgent({
++          cfg: {} as never,
++          agentRuntime: runtime as never,
++          logger: { warn: vi.fn() },
++          sessionKey: "voice:copilot-progress",
++          messageProvider: "voice",
++          lane: "voice",
++          runIdPrefix: "voice-progress",
++          args: { question: "Research this" },
++          transcript: [],
++          surface: "a live voice session",
++          userLabel: "User",
++          abortSignal: signal,
++          onProgress,
++        }),
++      );
++      const h = createDelegationHarness({ model: "gpt-live-1", runAgentConsult });
++      try {
++        for (const event of [
++          {
++            type: "session.input_transcript.delta",
++            delta: "Research this",
++            start_ms: 0,
++            end_ms: 100,
++          },
++          {
++            type: "session.delegation.created",
++            offset_ms: 100,
++            delegation: { id: "research", type: "delegation", target: "client" },
++          },
++        ])
++          h.controller.handleFrame(Buffer.from(JSON.stringify(event)), false);
++        await vi.waitFor(() =>
++          expect(parseSent(h.socket)).toEqual([
++            {
++              type: "session.thinking.append",
++              delegation_id: "research",
++              content: "Research is underway. Existing notes name two options.",
++            },
++          ]),
++        );
++        expect(runAgentConsult).toHaveBeenCalledOnce();
++        backend.resolve();
++        await vi.waitFor(() =>
++          expect(parseSent(h.socket)).toContainEqual({
++            type: "session.commentary.append",
++            delegation_id: "research",
++            content: "Research complete.",
++          }),
++        );
++      } finally {
++        backend.resolve();
++        h.controller.stop(new Error("test complete"));
++        clientVoiceSessionTesting.reset();
++      }
++    });
++  });
 +});

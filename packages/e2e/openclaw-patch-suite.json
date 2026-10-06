@@ -115,7 +115,8 @@
     "src/talk/agent-consult-runtime.test.ts": "unit-fast-isolated",
     "src/gateway/talk/client-gateway-control.test.ts": "gateway-client",
     "src/agents/embedded-agent-subscribe.handlers.messages.update-stream-items.test.ts": "agents-core",
-    "extensions/copilot/src/event-bridge.test.ts": "extensions"
+    "extensions/copilot/src/event-bridge.test.ts": "extensions",
+    "extensions/openai/realtime-quicksilver-copilot-progress.test.ts": "extension-provider-openai"
   },
   "patches": [
     {
@@ -385,7 +386,11 @@
         "src/gateway/talk/client-gateway-control.close.test.ts",
         "src/gateway/talk/client-gateway-control.test.ts",
         "src/agents/embedded-agent-subscribe.handlers.messages.update-stream-items.test.ts",
-        "extensions/copilot/src/event-bridge.test.ts"
+        "extensions/copilot/src/event-bridge.test.ts",
+        "extensions/openai/realtime-quicksilver-copilot-progress.test.ts"
+      ],
+      "candidateTests": [
+        "tests/candidate.talk-concurrency.test.ts"
       ]
     }
   ]
