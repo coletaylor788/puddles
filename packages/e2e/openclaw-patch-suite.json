@@ -110,7 +110,12 @@
     "extensions/openai/realtime-quicksilver-delegation.test.ts": "extension-provider-openai",
     "extensions/openai/realtime-quicksilver-concurrency.test.ts": "extension-provider-openai",
     "extensions/openai/realtime-quicksilver-public-delegation.test.ts": "extension-provider-openai",
-    "src/gateway/talk/client-gateway-control.native.test.ts": "gateway-client"
+    "src/gateway/talk/client-gateway-control.native.test.ts": "gateway-client",
+    "extensions/openai/realtime-quicksilver-progress.test.ts": "extension-provider-openai",
+    "src/talk/agent-consult-runtime.test.ts": "unit-fast-isolated",
+    "src/gateway/talk/client-gateway-control.test.ts": "gateway-client",
+    "src/agents/embedded-agent-subscribe.handlers.messages.update-stream-items.test.ts": "agents-core",
+    "extensions/copilot/src/event-bridge.test.ts": "extensions"
   },
   "patches": [
     {
@@ -365,6 +370,22 @@
       ],
       "candidateTests": [
         "tests/candidate.talk-concurrency.test.ts"
+      ]
+    },
+    {
+      "name": "talk-conversation-progress",
+      "tests": [
+        "extensions/openai/realtime-quicksilver-progress.test.ts",
+        "extensions/openai/realtime-quicksilver-delegation.test.ts",
+        "extensions/openai/realtime-quicksilver-public-delegation.test.ts",
+        "extensions/openai/realtime-quicksilver-concurrency.test.ts",
+        "src/talk/agent-consult-runtime.test.ts",
+        "src/gateway/talk/client-gateway-control.native.test.ts",
+        "src/gateway/talk/client-gateway-control.agent-consult.test.ts",
+        "src/gateway/talk/client-gateway-control.close.test.ts",
+        "src/gateway/talk/client-gateway-control.test.ts",
+        "src/agents/embedded-agent-subscribe.handlers.messages.update-stream-items.test.ts",
+        "extensions/copilot/src/event-bridge.test.ts"
       ]
     }
   ]
