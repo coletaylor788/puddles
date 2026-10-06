@@ -70,6 +70,12 @@ if (process.argv[3] !== "--child") {
   try {
     request("first", "read the synthetic calendar");
     await tick();
+    assert.equal(typeof calls[0].onProgress, "function");
+    calls[0].onProgress("Existing notes identify two options. Research is running.");
+    assert.deepEqual(sent, [{
+      type: "session.thinking.append", delegation_id: "first",
+      content: "Existing notes identify two options. Research is running.",
+    }]);
     for (const id of ["weather", "memory"]) {
       request(id, `also read synthetic ${id}`);
       await tick();
@@ -79,8 +85,14 @@ if (process.argv[3] !== "--child") {
     assert.equal(calls.length, 1);
     assert.equal(calls[0].signal.aborted, false);
     assert.deepEqual(fatal, []);
+    calls[0].onProgress("The original research is still running.");
+    assert.equal(sent.at(-1).type, "session.thinking.append");
+    assert.equal(sent.at(-1).delegation_id, "first");
     finish({ text: "", yielded: true });
     await tick();
+    const settledCount = sent.length;
+    calls[0].onProgress("Late context must be dropped.");
+    assert.equal(sent.length, settledCount);
     assert.equal(appendFinal("original child result"), true);
     assert.equal(appendFinal("duplicate result"), false);
     assert.ok(replies("first").some(e => e.content === "original child result"));
@@ -91,6 +103,6 @@ if (process.argv[3] !== "--child") {
     await tick();
     assert.equal(replies("next")[0].content, "next result");
     assert.deepEqual(fatal, []);
-    console.log(JSON.stringify({ status: "passed", checks: ["compiled-public-wire", "repeated-overlap-rejection", "original-run-preserved", "delayed-child-once", "subsequent-request"], modelCalls: 0, externalWrites: 0 }));
+    console.log(JSON.stringify({ status: "passed", checks: ["compiled-public-wire", "silent-progress", "progress-fenced-after-yield", "repeated-overlap-rejection", "original-run-preserved", "delayed-child-once", "subsequent-request"], modelCalls: 0, externalWrites: 0 }));
   } finally { controller.stop(new Error("fixture complete")); }
 }

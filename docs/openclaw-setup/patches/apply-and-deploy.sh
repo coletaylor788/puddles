@@ -37,6 +37,7 @@ PATCHES=(
   facetime-talk-client
   harness-tool-work-owner
   talk-overlap-recovery
+  talk-conversation-progress
 )
 
 if [ -n "${MINI_HOST:-}" ]; then
