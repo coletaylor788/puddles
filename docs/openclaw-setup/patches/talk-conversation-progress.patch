@@ -638,7 +638,7 @@ new file mode 100644
 +      };
 +      request("original", "Research this", 0);
 +      await vi.waitFor(() => expect(runAgentConsult).toHaveBeenCalledOnce());
-+      const progress = runAgentConsult.mock.calls[0][0].onProgress!;
++      const progress = runAgentConsult.mock.calls[0]![0].onProgress!;
 +      request("followup", "Focus on alternatives", 200);
 +      await vi.waitFor(() => expect(steer).toHaveBeenCalledOnce());
 +      progress("Ambiguous during steering");
@@ -662,7 +662,7 @@ new file mode 100644
 +    async (ending) => {
 +      const work = deferred<{ text: string; yielded?: true }>();
 +      const runAgentConsult = vi.fn<ConsultRunner>(async () => work.promise);
-+      let currentSocket: FakeSocket | undefined;
++      let currentSocket!: FakeSocket;
 +      const h = createDelegationHarness({
 +        model: "gpt-live-1",
 +        runAgentConsult,
@@ -691,7 +691,7 @@ new file mode 100644
 +        false,
 +      );
 +      await vi.waitFor(() => expect(runAgentConsult).toHaveBeenCalledOnce());
-+      const progress = runAgentConsult.mock.calls[0][0].onProgress!;
++      const progress = runAgentConsult.mock.calls[0]![0].onProgress!;
 +      progress("Public research is underway. Existing notes identify two options.");
 +      expect(parseSent(h.socket)).toEqual([
 +        {
