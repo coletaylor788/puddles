@@ -14,7 +14,7 @@ Confirmed delivery places bounded awareness in the destination session for its n
 
 ## Validation and rollback
 
-The cumulative manifest registers selector, prompt, tool assembly, terminal completion, and destination-awareness regressions. The committed native heartbeat scenario uses a real Gateway with synthetic provider responses and recorded iMessage delivery. It checks three fresh heartbeat sessions, quiet completion, a single question, an intervening poll, and the question in the next main reply prompt. The tool assembly regression checks agent and sandbox grants independently and preserves denial when either is missing.
+The cumulative manifest registers selector, prompt, tool assembly, terminal completion, and destination-awareness regressions. The committed native heartbeat scenario uses a real Gateway with synthetic provider responses and recorded iMessage delivery. It runs the persisted monitor through native cron execution, seeds its checklist with revision-checked scratch updates, and asserts that checklist reaches the model. It checks three fresh heartbeat sessions, quiet completion, a single question, an intervening poll, and the question in the next main reply prompt. The tool assembly regression checks agent and sandbox grants independently and preserves denial when either is missing.
 
 Run the accumulated release command from the repository root:
 
