@@ -126,7 +126,9 @@
     "src/agents/agent-tools.create-openclaw-coding-tools.test.ts": "infra",
     "extensions/openai/realtime-quicksilver-gateway-bridge.test.ts": "extension-provider-openai",
     "extensions/openai/realtime-quicksilver-session-lifecycle.test.ts": "extension-provider-openai",
-    "extensions/openai/realtime-voice-provider-routing.test.ts": "extension-provider-openai"
+    "extensions/openai/realtime-voice-provider-routing.test.ts": "extension-provider-openai",
+    "extensions/copilot/src/attempt.test.ts": "extensions",
+    "extensions/copilot/src/attempt-transcript-journal.test.ts": "extensions"
   },
   "patches": [
     {
@@ -255,7 +257,9 @@
         "src/infra/heartbeat-runner.isolated-session-mirror.test.ts",
         "src/agents/system-prompt.test.ts",
         "src/agents/embedded-agent-runner/run/terminal-resolution.settled-request.test.ts",
-        "src/agents/agent-tools.create-openclaw-coding-tools.test.ts"
+        "src/agents/agent-tools.create-openclaw-coding-tools.test.ts",
+        "extensions/copilot/src/attempt.test.ts",
+        "extensions/copilot/src/attempt-transcript-journal.test.ts"
       ]
     },
     {

@@ -282,3 +282,165 @@ index 09a8e180..7519dbe5 100644
    it("uses the heartbeat response tool prompt for the default Codex runtime", async () => {
      const result = await runPromptScenario();
  
+diff --git a/extensions/copilot/src/attempt-session-setup.ts b/extensions/copilot/src/attempt-session-setup.ts
+--- a/extensions/copilot/src/attempt-session-setup.ts
++++ b/extensions/copilot/src/attempt-session-setup.ts
+@@ -82,6 +82,7 @@
+     }
+     promptBuild = await resolveAgentHarnessBeforePromptBuildResult({
+       prompt: input.prompt,
++      currentInboundContext: ordinaryAttemptInput.currentInboundContext,
+       developerInstructions: {
+         build: ({ toolsAllow }) => {
+           promptPolicyResult = promptToolPolicy.apply({ toolsAllow, forceToolNames });
+diff --git a/extensions/copilot/src/attempt.test.ts b/extensions/copilot/src/attempt.test.ts
+--- a/extensions/copilot/src/attempt.test.ts
++++ b/extensions/copilot/src/attempt.test.ts
+@@ -554,6 +554,23 @@
+     expect(result.lastToolError).toBeUndefined();
+   });
+ 
++  it.each([false, true])("passes current inbound context through native prompt assembly (hooks=%s)", async (withHooks) => {
++    const currentInboundContext = { text: "A heartbeat delivered: Tuesday or Thursday?", promptJoiner: "\n" };
++    const beforePromptBuild = vi.fn(() => ({ appendContext: "Hook suffix" }));
++    if (withHooks) initializeGlobalHookRunner(createMockPluginRegistry([
++      { hookName: "before_prompt_build", handler: beforePromptBuild },
++    ]));
++    const sdk = makeFakeSdk();
++    await runCopilotAttempt(makeParams({ currentInboundContext }), { pool: makeFakePool(sdk) });
++    const prompt = sdk.sessions[0]?.sendAndWait.mock.calls[0]?.[0]?.prompt;
++    expect(prompt).toBe(`${currentInboundContext.text}\nhello${withHooks ? "\n\nHook suffix" : ""}`);
++    expect(requireCreateSessionConfig(sdk).systemMessage?.content ?? "").not.toContain(currentInboundContext.text);
++    if (withHooks) expect(beforePromptBuild).toHaveBeenCalledWith(
++      expect.objectContaining({ prompt: `${currentInboundContext.text}\nhello` }), expect.anything(),
++    );
++    expect(currentInboundContext).toEqual({ text: "A heartbeat delivered: Tuesday or Thursday?", promptJoiner: "\n" });
++  });
++
+   it("runs generic prompt and lifecycle hooks through the standard harness helpers", async () => {
+     const params = makeParams({
+       agentAccountId: "account-a",
+@@ -2695,6 +2712,7 @@
+       await runCopilotAttempt(
+         makeParams({
+           modelRun: true,
++          currentInboundContext: { text: "Must remain outside a raw probe" },
+         } as never),
+         { pool: makeFakePool(sdk) },
+       );
+diff --git a/extensions/copilot/src/attempt-execution.ts b/extensions/copilot/src/attempt-execution.ts
+--- a/extensions/copilot/src/attempt-execution.ts
++++ b/extensions/copilot/src/attempt-execution.ts
+@@ -421,6 +421,7 @@
+     transcriptJournal = createAttemptTranscriptJournal({
+       abortSession: () => session?.abort() ?? Promise.resolve(),
+       attempt: input,
++      submittedPrompt: attemptInput.prompt,
+       messages,
+       onInitialSdkUserValidated: () => {
+         initialSdkUserValidated = true;
+diff --git a/extensions/copilot/src/attempt-transcript-journal.ts b/extensions/copilot/src/attempt-transcript-journal.ts
+--- a/extensions/copilot/src/attempt-transcript-journal.ts
++++ b/extensions/copilot/src/attempt-transcript-journal.ts
+@@ -85,6 +85,8 @@
+ export function createAttemptTranscriptJournal(params: {
+   abortSession: () => Promise<void>;
+   attempt: AttemptParamsLike;
++  /** Exact host-prepared text submitted to the SDK; canonical user text stays unchanged. */
++  submittedPrompt?: string;
+   messages: AgentMessage[];
+   onInitialSdkUserValidated?: () => void;
+   sdkSessionId: string;
+@@ -481,7 +483,7 @@
+         initialSdkUserObserved = true;
+         if (
+           !persistedInitialUser ||
+-          userText(persistedInitialUser.content) !== userText(input.message.content)
++          (params.submittedPrompt ?? userText(persistedInitialUser.content)) !== userText(input.message.content)
+         ) {
+           replayInvalid = true;
+         } else {
+diff --git a/extensions/copilot/src/attempt-transcript-journal.test-helpers.ts b/extensions/copilot/src/attempt-transcript-journal.test-helpers.ts
+--- a/extensions/copilot/src/attempt-transcript-journal.test-helpers.ts
++++ b/extensions/copilot/src/attempt-transcript-journal.test-helpers.ts
+@@ -75,11 +75,13 @@
+   attempt: AttemptParamsLike,
+   messages: AgentMessage[] = [],
+   resultContentSourceByToolName?: ReadonlyMap<string, "network">,
++  submittedPrompt?: string,
+ ) {
+   const session = createFakeSession();
+   const journal = createAttemptTranscriptJournal({
+     abortSession: () => session.abort(),
+     attempt,
++    submittedPrompt,
+     messages,
+     sdkSessionId: "sdk-session",
+   });
+@@ -117,6 +119,7 @@
+ export async function createFixture(
+   trigger?: string,
+   resultContentSourceByToolName?: ReadonlyMap<string, "network">,
++  submittedPrompt?: string,
+ ): Promise<AttemptTranscriptJournalFixture> {
+   const tempDir = await fs.mkdtemp(
+     path.join(resolvePreferredOpenClawTmpDir(), "openclaw-copilot-journal-"),
+@@ -184,6 +187,7 @@
+     attempt,
+     [],
+     resultContentSourceByToolName,
++    submittedPrompt,
+   );
+   return { attempt, bridge, journal, recorder, session, target, tempDir };
+ }
+diff --git a/extensions/copilot/src/attempt-transcript-journal.test.ts b/extensions/copilot/src/attempt-transcript-journal.test.ts
+--- a/extensions/copilot/src/attempt-transcript-journal.test.ts
++++ b/extensions/copilot/src/attempt-transcript-journal.test.ts
+@@ -27,6 +27,20 @@
+ });
+ 
+ describe("Copilot attempt transcript journal", () => {
++  it.each([false, true])("validates submitted context while retaining canonical user text (tampered=%s)", async (tampered) => {
++    const submitted = "Delivered notification context\ninspect both files";
++    const { journal, session, target } = await createFixture(undefined, undefined, submitted);
++    await journal.persistInitialUser();
++    session.emit(event("user.message", "initial-user", { content: tampered ? "Different context\ninspect both files" : submitted }));
++    await journal.barrier("submitted prompt");
++    const snapshot = journal.snapshot();
++    expect(snapshot.initialSdkUserValidated).toBe(!tampered);
++    expect(snapshot.replayInvalid).toBe(tampered);
++    const rows = transcriptMessages(await readSessionTranscriptEvents(target));
++    expect(rows).toHaveLength(1);
++    expect(rows[0].message).toMatchObject({ role: "user", content: "inspect both files" });
++  });
++
+   it("prepares standalone media after hooks without claiming user or tool-group media", async () => {
+     const sourceText = "Artifacts ready\nMEDIA:./artifact.json";
+     const rewrittenText = `${sourceText}\nMEDIA:./hook-only.json`;
+diff --git a/extensions/copilot/src/attempt.test.ts b/extensions/copilot/src/attempt.test.ts
+--- a/extensions/copilot/src/attempt.test.ts
++++ b/extensions/copilot/src/attempt.test.ts
+@@ -2738,6 +2738,7 @@
+       await runCopilotAttempt(
+         makeParams({
+           promptMode: "none",
++          currentInboundContext: { text: "Must remain outside promptMode none" },
+         } as never),
+         { pool: makeFakePool(sdk) },
+       );
+@@ -4801,6 +4802,7 @@
+         makeFinalizationParams({
+           disableTools: false,
+           extraSystemPrompt: "ambient instructions must not reach finalization",
++          currentInboundContext: { text: "Must remain outside settled finalization" },
+           hooksConfig: { onPreToolUse: nativeHook },
+           infiniteSessionConfig: { enabled: true },
+           initialReplayState: { replayInvalid: true, sdkSessionId: "sdk-settled-session" },
+@@ -4818,6 +4820,7 @@
+ 
+       expect(projectAgentRunAttemptTerminal(result.terminal).promptError).toBeNull();
+       expect(result.assistantTexts).toEqual(["final answer"]);
++      expect(sdk.sessions[0]?.sendAndWait.mock.calls[0]?.[0]?.prompt).not.toContain("Must remain outside settled finalization");
+       expect(result.currentAttemptCompletedAssistant).toMatchObject({
+         content: [{ type: "text", text: "final answer" }],
+         stopReason: "stop",

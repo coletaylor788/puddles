@@ -61,6 +61,12 @@ Browser relay, session lifecycle, and provider routing checks now assert the
 current complete policy as well, with all targets in the shared pool.
 A native fixture crash is now reported as a gateway exit. Its writable state
 moves outside the source checkout; runtime delegation behavior is unchanged.
+Installed TEST also exposed a fixture mismatch: its provider adapter omitted
+request instructions and forced heartbeat work onto the main agent's harness.
+Preserve both request shapes and exercise the configured split between the main
+agent and the built-in heartbeat runtime. That test also found that the Copilot
+adapter drops queued conversation context. Forward it through the existing native
+prompt builder and validate the submitted prompt without rewriting user history.
 
 ## Agent section
 
@@ -85,6 +91,16 @@ the checkout. Standalone and Vitest controls outside the checkout pass. Keep
 fixture state in a unique host temporary directory and check both exit code and
 signal while starting or awaiting replies. The crashing file operation is not
 identified, so this does not claim a SQLite runtime fix.
+The companion Responses observer must include actual instructions before input
+items and translate tool schemas for the shared assertions without changing the
+wire request. The private scripted endpoint supports both configured model routes.
+The mixed-runtime regression runs the existing heartbeat
+scenario through Copilot main and a built-in heartbeat, including quiet checks,
+one notification, and subsequent main-chat replies on the same SDK session.
+Forward ordinary `currentInboundContext` through the native prompt builder.
+The transcript journal checks the exact submitted prompt while preserving the
+canonical user message and rejecting mismatched SDK events. Raw and settled
+finalization paths keep their existing isolation.
 
 ### Scope and acceptance criteria
 
