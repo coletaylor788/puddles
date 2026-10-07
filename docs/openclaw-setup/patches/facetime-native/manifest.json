@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "repository": "https://github.com/openclaw/openclaw-facetime.git",
+  "revision": "c6f6970828e4f0274c2da85f379096bfba02fcb4",
+  "patches": [
+    "call-lifecycle.patch"
+  ]
+}

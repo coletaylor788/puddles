@@ -77,6 +77,7 @@
     "src/talk/carrier-call-control.test.ts": "unit-src",
     "src/talk/session-runtime.test.ts": "unit-src",
     "extensions/facetime/tests/audio-pump.test.ts": "extensions",
+    "extensions/facetime/tests/capture-launcher.test.ts": "extensions",
     "extensions/facetime/tests/call-events.test.ts": "extensions",
     "extensions/facetime/tests/call-lifecycle.test.ts": "extensions",
     "extensions/facetime/tests/config-compat.test.ts": "extensions",
@@ -88,6 +89,7 @@
     "extensions/facetime/tests/package-manifest.test.ts": "extensions",
     "extensions/facetime/tests/pending-dial-store.test.ts": "extensions",
     "extensions/facetime/tests/plugin-paths.test.ts": "extensions",
+    "extensions/facetime/tests/pinned-helper.test.ts": "extensions",
     "extensions/facetime/tests/preflight.test.ts": "extensions",
     "extensions/facetime/tests/runtime-admission.test.ts": "extension-database-workers",
     "extensions/facetime/tests/runtime-authority-boundary.test.ts": "extension-database-workers",
@@ -335,6 +337,7 @@
         "src/talk/carrier-call-control.test.ts",
         "src/talk/session-runtime.test.ts",
         "extensions/facetime/tests/audio-pump.test.ts",
+        "extensions/facetime/tests/capture-launcher.test.ts",
         "extensions/facetime/tests/call-events.test.ts",
         "extensions/facetime/tests/call-lifecycle.test.ts",
         "extensions/facetime/tests/config-compat.test.ts",
@@ -346,6 +349,7 @@
         "extensions/facetime/tests/package-manifest.test.ts",
         "extensions/facetime/tests/pending-dial-store.test.ts",
         "extensions/facetime/tests/plugin-paths.test.ts",
+        "extensions/facetime/tests/pinned-helper.test.ts",
         "extensions/facetime/tests/preflight.test.ts",
         "extensions/facetime/tests/runtime-admission.test.ts",
         "extensions/facetime/tests/runtime-authority-boundary.test.ts",
@@ -365,6 +369,9 @@
         "extensions/facetime/tests/verify-native-helper.test.ts",
         "src/gateway/talk/client-gateway-control.close.test.ts",
         "extensions/facetime/index.test.ts"
+      ],
+      "candidateTests": [
+        "tests/candidate.facetime-native.test.ts"
       ]
     },
     {

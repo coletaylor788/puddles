@@ -39,9 +39,21 @@ The enabled plugin starts with the Gateway in the existing macOS login service. 
 
 Acceptance includes startup with the call apps closed, recovery after an app exits, and an isolated Gateway restart. Full reboot recovery requires a physical check before claiming it verified.
 
+#### Locally built call helper
+
+A deployment may select a call-control helper built from the separate pinned
+native patch set. Package its source receipt, checksum, build ID, signature, and
+license notices inside the immutable runtime. Verify the image before selection
+and again after the injector copies it. This path uses local ad-hoc signing;
+operator approval and the normal artifact gates apply. It leaves the vendor-signed
+capture helper and its microphone permission identity unchanged. Device-specific
+acceptance and release evidence belong in private deployment records.
+
 ### Status
 
-The shared host session and FaceTime adapter are implemented and independently reviewed. Native voice approval and consultation-lifetime fixes are included. Focused behavior, package, and migration checks pass. Installed DEV validation passes, including loading the patched FaceTime plugin through the actual host. Automatic call-app startup and recovery pass in an isolated installed runtime. Physical FaceTime acceptance and release remain outstanding; the carrier stays disabled.
+The shared Talk adapter and automatic call-app startup are implemented. The maintained patch set adds capture-permission stability, streaming playback, and independent media/provider cleanup. Native call-helper source preparation and receipt verification are part of the deployment tooling.
+
+Target-specific device acceptance, operator signing selection, deployment state, and release evidence are tracked outside this public design. The normal cumulative and immutable-artifact deployment gates apply before activation.
 
 ## Agent section
 
