@@ -304,7 +304,18 @@ export async function runScenario(installedDir, scenario, options = {}) {
       responses.push(...step.responses);
       requestCount += step.responses.length;
       if (step.wake) {
-        await runCommand(process.execPath, [join(installedDir, "openclaw.mjs"), "gateway", "call", "wake", "--params", JSON.stringify({ mode: "now", text: step.wake, agentId: "main" }), "--json"], {
+        // Exercise the persisted monitor, whose scratch is the real checklist.
+        // Generic wake payloads intentionally bypass monitor scratch.
+        const state = new DatabaseSync(join(context.stateDir, "state/openclaw.sqlite"), { readOnly: true });
+        let monitor;
+        try {
+          monitor = state.prepare("select j.job_id, coalesce(s.revision, 0) revision from cron_jobs j left join cron_job_scratch s on s.job_id=j.job_id and s.store_key=j.store_key where j.declaration_key='heartbeat:main'").get();
+        } finally { state.close(); }
+        assert.ok(monitor, "native heartbeat monitor missing");
+        await runCommand(process.execPath, [join(installedDir, "openclaw.mjs"), "cron", "scratch", monitor.job_id, "--set", step.wake, "--expected-revision", String(monitor.revision), "--json"], {
+          cwd: context.workspace, env: environment, capture: true, quiet: true, timeoutMs: 30_000,
+        });
+        await runCommand(process.execPath, [join(installedDir, "openclaw.mjs"), "gateway", "call", "cron.run", "--params", JSON.stringify({ id: monitor.job_id, mode: "force" }), "--json"], {
           cwd: context.workspace, env: environment, capture: true, quiet: true, timeoutMs: 30_000,
         });
       }
@@ -361,6 +372,7 @@ export async function runScenario(installedDir, scenario, options = {}) {
         const terminalMessages = JSON.stringify(requests[requestCount - 1].messages);
         assert.ok(terminalMessages.includes("heartbeat_respond") && terminalMessages.includes("accepted"), "final pass lacks successful heartbeat tool result");
         const prompt = JSON.stringify(firstRequest.messages);
+        assert.ok(prompt.includes(step.wake), "monitor scratch missing from model request");
         assert.ok(prompt.includes("Complete this heartbeat with `heartbeat_respond`"), "native notification instructions absent");
         assert.ok(!prompt.includes("visible reply MUST use `message(action=send)`"), "contradictory notification instruction");
       }

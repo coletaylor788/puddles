@@ -25,7 +25,7 @@ The native dispatcher sends a notification once and queues its delivered text fo
 
 ### Status
 
-The prototype passed real local Gateway checks with a scripted provider and recorded iMessage delivery. The maintained scenario and regression targets are being integrated. Independent review identified an additional sandbox grant requirement; the configuration integration and tool assembly regression cover it.
+The prototype passed real local Gateway checks with a scripted provider and recorded iMessage delivery. The maintained scenario and regression targets are integrated. Independent review identified an additional sandbox grant requirement; the configuration integration and tool assembly regression cover it.
 
 Release validation will run the complete accumulated pool on selected merged source and promote one immutable artifact. Source integration alone does not certify production.
 
@@ -65,6 +65,7 @@ Release validation will run the complete accumulated pool on selected merged sou
 
 - Prototype Gateway scenario passed: 10 model requests, three sends including ordinary seed/reply, one heartbeat question, two recorded adapter calls.
 - New native fixture prerequisite tests passed with the existing suite.
+- The scenario runs the persisted native monitor and verifies its revision-checked scratch reaches the actual model request. Generic wake payloads bypass that scratch and do not represent a scheduled checklist.
 - Tool assembly regression checks independent agent/sandbox grant combinations and ordinary-turn absence.
 - Final cumulative release command: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
 - Scripted provider results establish plumbing; they do not establish live model judgment.
