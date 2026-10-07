@@ -14,7 +14,7 @@ returns its final answer normally. This does not add a summarizer or poll tools.
 The runtime bounds updates and removes consecutive duplicates. Gateway ownership
 and the provider connection fence late output. During steering, progress waits
 for an accepted presentation target; rejected steering retains the original
-target. Final delivery and retained child results use their existing claims.
+target. Final delivery and retained child results use their existing claims. Normal transport retirement also fences pending steering before the provider acknowledges closure, preserving accepted host work. Explicit cancellation still aborts it.
 
 The cumulative manifest includes runtime event filtering, Gateway callback
 propagation, native provider channel routing, steering and call retirement tests.

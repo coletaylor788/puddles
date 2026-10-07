@@ -18,6 +18,22 @@ const bindings = [
 const overrides = { "/gateway/port": 18001, "/secrets/providers/local/path": "/test/credentials.json" };
 
 describe("environment configuration", () => {
+  it("binds a synthetic FaceTime owner while preserving carrier enablement and Talk behavior", () => {
+    const config = { plugins: { entries: { facetime: { enabled: true,
+      config: { enabled: true, ownerHandles: ["owner@example.invalid"], realtime: { mode: "talk" } } } } } };
+    const path = "/plugins/entries/facetime/config/ownerHandles/0";
+    const rules = [{ path, category: "account", reason: "Synthetic caller" }];
+    const result = renderEnvironmentConfiguration(config, rules, { [path]: "fixture@example.invalid" });
+    expect(result.plugins.entries.facetime.config.ownerHandles).toEqual(["fixture@example.invalid"]);
+    expect(result.plugins.entries.facetime.enabled).toBe(true);
+    expect(result.plugins.entries.facetime.config.realtime).toEqual({ mode: "talk" });
+    expect(() => assertEnvironmentConfiguration(config, config, rules, { [path]: "fixture@example.invalid" })).toThrow(/parity failed/);
+    for (const invalid of ["enabled", "config/enabled", "config/realtime/mode", "config/ownerHandles"]) {
+      const path = `/plugins/entries/facetime/${invalid}`;
+      expect(() => renderEnvironmentConfiguration(config, [{ path, category: "account", reason: "Invalid override" }], { [path]: "changed" })).toThrow(/Unsupported|Behavior/);
+    }
+  });
+
   it.each(["defaults", "entries/main"])("isolates heartbeat delivery at %s without changing its schedule or model", (agent) => {
     const heartbeat = { every: "60m", model: "example/model", target: "example-channel", to: "prod-recipient", accountId: "prod-account" };
     const config = agent === "defaults"

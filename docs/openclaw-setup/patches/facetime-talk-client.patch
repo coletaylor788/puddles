@@ -2528,3 +2528,2221 @@ index d1dca2e0..bbc4f8bc 100644
 +    await expectClean(fixture.root, fixture.container);
 +  }, 10_000);
 +});
+diff --git a/src/plugin-sdk/talk-config-runtime.ts b/src/plugin-sdk/talk-config-runtime.ts
+--- a/src/plugin-sdk/talk-config-runtime.ts
++++ b/src/plugin-sdk/talk-config-runtime.ts
+@@ -3,3 +3,6 @@
+  */
+ export { resolveActiveTalkProviderConfig } from "../config/talk.js";
+ export type { OpenClawConfig } from "../config/types.js";
++
++/** Validate the same provider route used by native Talk media carriers. */
++export { resolveTalkCarrierProvider } from "../gateway/talk/carrier-provider.js";
+diff --git a/src/gateway/talk/carrier-provider.ts b/src/gateway/talk/carrier-provider.ts
+new file mode 100644
+--- /dev/null
++++ b/src/gateway/talk/carrier-provider.ts
+@@ -0,0 +1,43 @@
++import type { OpenClawConfig } from "../../config/types.openclaw.js";
++import { resolveConfiguredRealtimeVoiceProvider } from "../../talk/provider-resolver.js";
++import {
++  buildRealtimeVoiceLaunchOptions,
++  buildTalkRealtimeConfig,
++  resolveTalkRealtimeGatewayRelayLaunch,
++} from "./session-config.js";
++
++/** Read-only carrier validation, shared by readiness checks and call creation. */
++export function resolveTalkCarrierProvider(config: OpenClawConfig, agentId: string) {
++  const defaults = buildTalkRealtimeConfig(config);
++  if (
++    (defaults.mode && defaults.mode !== "realtime") ||
++    (defaults.brain && defaults.brain !== "agent-consult")
++  ) {
++    throw new Error(
++      "Realtime voice carriers require the native realtime agent-consult Talk configuration.",
++    );
++  }
++  const launchOptions = buildRealtimeVoiceLaunchOptions({ requested: {}, defaults });
++  const resolution = resolveConfiguredRealtimeVoiceProvider({
++    cfg: config,
++    agentId,
++    configuredProviderId: defaults.provider,
++    providerConfigs: defaults.providers,
++    ...(launchOptions.model ? { providerConfigOverrides: { model: launchOptions.model } } : {}),
++    defaultModel: defaults.model,
++    surface: "gateway-relay",
++  });
++  const launch = resolveTalkRealtimeGatewayRelayLaunch({
++    provider: resolution.provider,
++    providerConfig: resolution.providerConfig,
++    cfg: config,
++    launchOptions,
++    consultRouting: defaults.consultRouting,
++  });
++  if (launch.error || launch.forceAgentConsultOnFinalTranscript) {
++    throw new Error(
++      launch.error ?? "Forced transcript consultation is not supported by this carrier.",
++    );
++  }
++  return { defaults, resolution, launch };
++}
+diff --git a/src/gateway/talk/carrier-session.ts b/src/gateway/talk/carrier-session.ts
+--- a/src/gateway/talk/carrier-session.ts
++++ b/src/gateway/talk/carrier-session.ts
+@@ -14,19 +14,16 @@
+   ensureClientVoiceAgentSessionEntry,
+   flushClientVoiceSessionWrites,
+ } from "../../talk/client-voice-session.js";
+-import { resolveConfiguredRealtimeVoiceProvider } from "../../talk/provider-resolver.js";
+ import {
+   createRealtimeVoiceBridgeSession,
+   type RealtimeVoiceBridgeSession,
+ } from "../../talk/session-runtime.js";
+ import type { GatewayRequestContext } from "../server-methods/types.js";
++import { resolveTalkCarrierProvider } from "./carrier-provider.js";
+ import { createTalkClientAgentConsultRunner } from "./client-agent-consult.js";
+ import { createTalkClientGatewayControlOwner } from "./client-gateway-control.js";
+ import {
+   buildRealtimeInstructions,
+-  buildRealtimeVoiceLaunchOptions,
+-  buildTalkRealtimeConfig,
+-  resolveTalkRealtimeGatewayRelayLaunch,
+   resolveTalkRealtimeProviderInstructions,
+ } from "./session-config.js";
+ import { readTalkRealtimeInitialItems } from "./session-history.js";
+@@ -62,37 +59,7 @@
+   });
+   assertCurrent();
+   assertSecretOwnerAvailable("capability", "talk:realtime");
+-  const defaults = buildTalkRealtimeConfig(config);
+-  if (
+-    (defaults.mode && defaults.mode !== "realtime") ||
+-    (defaults.brain && defaults.brain !== "agent-consult")
+-  ) {
+-    throw new Error(
+-      "Realtime voice carriers require the native realtime agent-consult Talk configuration.",
+-    );
+-  }
+-  const launchOptions = buildRealtimeVoiceLaunchOptions({ requested: {}, defaults });
+-  const resolution = resolveConfiguredRealtimeVoiceProvider({
+-    cfg: config,
+-    agentId: target.agentId,
+-    configuredProviderId: defaults.provider,
+-    providerConfigs: defaults.providers,
+-    ...(launchOptions.model ? { providerConfigOverrides: { model: launchOptions.model } } : {}),
+-    defaultModel: defaults.model,
+-    surface: "gateway-relay",
+-  });
+-  const launch = resolveTalkRealtimeGatewayRelayLaunch({
+-    provider: resolution.provider,
+-    providerConfig: resolution.providerConfig,
+-    cfg: config,
+-    launchOptions,
+-    consultRouting: defaults.consultRouting,
+-  });
+-  if (launch.error || launch.forceAgentConsultOnFinalTranscript) {
+-    throw new Error(
+-      launch.error ?? "Forced transcript consultation is not supported by this carrier.",
+-    );
+-  }
++  const { defaults, resolution, launch } = resolveTalkCarrierProvider(config, target.agentId);
+   const providerInstructions = await resolveTalkRealtimeProviderInstructions({
+     config,
+     agentId: target.agentId,
+diff --git a/extensions/facetime/src/talk-driver-config.ts b/extensions/facetime/src/talk-driver-config.ts
+--- a/extensions/facetime/src/talk-driver-config.ts
++++ b/extensions/facetime/src/talk-driver-config.ts
+@@ -10,6 +10,7 @@
+ } from "openclaw/plugin-sdk/realtime-voice";
+ import { parseAgentSessionKey, resolveAgentIdFromSessionKey } from "openclaw/plugin-sdk/routing";
+ import { resolveConfiguredSecretInputString } from "openclaw/plugin-sdk/secret-input-runtime";
++import { resolveTalkCarrierProvider } from "openclaw/plugin-sdk/talk-config-runtime";
+ import type { FaceTimeConfig } from "./config.js";
+ 
+ export const CONSULT_SYSTEM_PROMPT = [
+@@ -99,6 +100,10 @@
+   fullConfig: OpenClawConfig;
+   agentId: string;
+ }) {
++  if (params.config.realtime.mode === "talk") {
++    const { resolution, launch } = resolveTalkCarrierProvider(params.fullConfig, params.agentId);
++    return { ...resolution, providerConfig: launch.providerConfig };
++  }
+   const configuredProviderId = params.config.realtime.provider;
+   const sourceProviders = params.config.realtime.providers ?? {};
+   const selectedProviderIds = configuredProviderId
+diff --git a/extensions/facetime/tests/preflight.test.ts b/extensions/facetime/tests/preflight.test.ts
+--- a/extensions/facetime/tests/preflight.test.ts
++++ b/extensions/facetime/tests/preflight.test.ts
+@@ -13,6 +13,13 @@
+       return { provider: { id: selected[0] }, providerConfig: selected[1] };
+     },
+   ),
++}));
++
++vi.mock("../../../src/talk/provider-resolver.js", () => ({
++  resolveConfiguredRealtimeVoiceProvider: vi.fn(({ providerConfigs, providerConfigOverrides }) => ({
++    provider: { id: "openai" },
++    providerConfig: { ...providerConfigs.openai, ...providerConfigOverrides },
++  })),
+ }));
+ 
+ import { resolveFaceTimeConfig } from "../src/config.js";
+@@ -79,6 +86,63 @@
+       ["realtime-provider", true, true],
+     ]);
+   });
++
++  it.each([
++    { model: undefined, consultRouting: undefined, expectedModel: "shared-model", ready: true },
++    {
++      model: "talk-override",
++      consultRouting: undefined,
++      expectedModel: "talk-override",
++      ready: true,
++    },
++    {
++      model: undefined,
++      consultRouting: "force-agent-consult",
++      expectedModel: "shared-model",
++      ready: false,
++    },
++  ])(
++    "checks the shared Talk route: $model / $consultRouting",
++    async ({ model, consultRouting, expectedModel, ready }) => {
++      const runCommandWithTimeout = vi.fn(async (argv: string[]) => {
++        if (argv[0] === "/usr/sbin/system_profiler") {
++          return { code: 0, stdout: "        OpenClaw-Mic:\n        OpenClaw-Feed:\n", stderr: "" };
++        }
++        if (argv.at(-1) === "--default-devices") {
++          return { code: 0, stdout: JSON.stringify(defaults), stderr: "" };
++        }
++        return { code: 0, stdout: "123\n", stderr: "" };
++      });
++      const result = await runFaceTimePreflight({
++        config: resolveFaceTimeConfig({
++          ownerHandles: ["owner@example.invalid"],
++          realtime: { mode: "talk", sessionKey: "agent:main:main" },
++        }),
++        fullConfig: {
++          talk: {
++            realtime: {
++              provider: "openai",
++              mode: "realtime",
++              brain: "agent-consult",
++              model,
++              consultRouting,
++              providers: { openai: { apiKey: "synthetic-provider-key", model: "shared-model" } },
++            },
++          },
++        } as never,
++        runtime: runtimeWithCommands(runCommandWithTimeout),
++        helperConnected: true,
++        captureBinary: "/capture",
++      });
++      expect(result.ok).toBe(ready);
++      expect(result.checks.find((check) => check.id === "realtime-provider")).toMatchObject({
++        ok: ready,
++        message: ready
++          ? `openai:${expectedModel}`
++          : expect.stringContaining("Forced transcript consultation"),
++      });
++    },
++  );
+ 
+   it("fails provider readiness for an unresolved configured SecretRef", async () => {
+     const runCommandWithTimeout = vi.fn(async (argv: string[]) => {
+diff --git a/docs/plugins/sdk-runtime.md b/docs/plugins/sdk-runtime.md
+--- a/docs/plugins/sdk-runtime.md
++++ b/docs/plugins/sdk-runtime.md
+@@ -308,3 +308,7 @@
+ Choice, ordered Score, and Boolean-probability batches. Retained handles reject
+ after consumer retirement. See [decision models](/plugins/sdk-overview/capabilities#decision-models-contract-version-1)
+ for provider selection, lifecycle, failure handling, limits, and diagnostics.
++
++`openclaw/plugin-sdk/talk-config-runtime` exports `resolveTalkCarrierProvider`
++for carrier readiness checks that must use the same realtime defaults as native Talk.
++It validates the selected model and carrier route without opening a provider session.
+diff --git a/extensions/facetime/src/runtime-call-events.ts b/extensions/facetime/src/runtime-call-events.ts
+--- a/extensions/facetime/src/runtime-call-events.ts
++++ b/extensions/facetime/src/runtime-call-events.ts
+@@ -166,14 +166,6 @@
+     retainAliases(call, event);
+     let answerAttempted = false;
+     try {
+-      await params.callControl.startCallTalk(call);
+-      if (
+-        call.lifecycleAbort.signal.aborted ||
+-        params.calls.active !== call ||
+-        call.carrierHangupPending
+-      ) {
+-        throw new Error("FaceTime call closed before answer");
+-      }
+       const generation = call.beginAnswering();
+       answerAttempted = true;
+       const answerResult = await call.runCarrierCommand({
+@@ -182,6 +174,10 @@
+       });
+       projectFaceTimeNativeAction("answer", answerResult);
+       retainHelperResultPeers(call, answerResult);
++      // The native process tap needs an answered call with an active audio owner.
++      // Keep uplink muted until capture, provider, and routing are ready.
++      await params.callControl.startCallTalk(call);
++      call.assertCurrent(generation);
+       await params.callControl.activateCallTalk(call, { unmute: true });
+       params.logger.info("[facetime] answered authorized FaceTime call");
+     } catch (error) {
+@@ -238,6 +234,11 @@
+     // lifecycle identity stable, but direct subsequent commands to this owner event's UUID.
+     call.promoteCarrierCallUUID(callUUID);
+     updateCallStatus(call, event);
++    // An active event may arrive before the answer acknowledgement. The incoming
++    // startup owns activation; this event only refreshes the carrier identity.
++    if (call.phase === "answering") {
++      return;
++    }
+     try {
+       await params.callControl.startCallTalk(call);
+       await params.callControl.activateCallTalk(call, { unmute: true });
+diff --git a/extensions/facetime/tests/runtime.test.ts b/extensions/facetime/tests/runtime.test.ts
+--- a/extensions/facetime/tests/runtime.test.ts
++++ b/extensions/facetime/tests/runtime.test.ts
+@@ -18,7 +18,7 @@
+ describe("FaceTime runtime call sequencing", () => {
+   beforeEach(resetRuntimeTestState);
+ 
+-  it("answers muted after suppression, then waits for provider and route readiness", async () => {
++  it("answers muted before capture, then waits for provider and route readiness", async () => {
+     const order: string[] = [];
+     let releaseReadiness = () => {};
+     const talk = createTalkDriver({
+@@ -29,6 +29,7 @@
+         }),
+     });
+     mocks.startTalk.mockImplementationOnce(async () => {
++      expect(mocks.helper.answerCall).toHaveBeenCalledOnce();
+       order.push("suppression-ready");
+       return talk;
+     });
+@@ -63,7 +64,7 @@
+     void mocks.helperParams?.onMessage(incomingCall());
+     await vi.waitFor(() => expect(talk.readyForAudio).toHaveBeenCalledOnce());
+ 
+-    expect(order).toEqual(["suppression-ready", "answer-muted", "provider-and-route-readiness"]);
++    expect(order).toEqual(["answer-muted", "suppression-ready", "provider-and-route-readiness"]);
+     expect(mocks.helper.setMuted).not.toHaveBeenCalled();
+     expect(mocks.helper.startTransmission).not.toHaveBeenCalled();
+     expect(talk.activate).not.toHaveBeenCalled();
+@@ -71,8 +72,8 @@
+     releaseReadiness();
+     await vi.waitFor(() => expect(talk.activate).toHaveBeenCalledOnce());
+     expect(order).toEqual([
++      "answer-muted",
+       "suppression-ready",
+-      "answer-muted",
+       "provider-and-route-readiness",
+       "unmute",
+       "start-transmission",
+@@ -196,7 +197,7 @@
+     await runtime.stop();
+   });
+ 
+-  it("does not answer a call that ends while native suppression is starting", async () => {
++  it("does not activate an answered call that ends while native suppression is starting", async () => {
+     mocks.startTalk.mockImplementationOnce(
+       async (params: { signal?: AbortSignal }) =>
+         await new Promise((_resolve, reject) => {
+@@ -216,11 +217,13 @@
+       expect((await runtime.status()).calls).toEqual([]);
+     });
+ 
+-    expect(mocks.helper.answerCall).not.toHaveBeenCalled();
+-    await runtime.stop();
+-  });
+-
+-  it("does not answer after helper control is lost during suppression startup", async () => {
++    expect(mocks.helper.answerCall).toHaveBeenCalledOnce();
++    expect(mocks.helper.setMuted).not.toHaveBeenCalled();
++    expect(mocks.helper.startTransmission).not.toHaveBeenCalled();
++    await runtime.stop();
++  });
++
++  it("does not activate after helper control is lost during suppression startup", async () => {
+     let releaseSuppression = () => {};
+     const talk = createTalkDriver({});
+     mocks.startTalk.mockImplementationOnce(
+@@ -241,7 +244,9 @@
+       expect((await runtime.status()).calls).toEqual([]);
+     });
+ 
+-    expect(mocks.helper.answerCall).not.toHaveBeenCalled();
++    expect(mocks.helper.answerCall).toHaveBeenCalledOnce();
++    expect(mocks.helper.setMuted).not.toHaveBeenCalled();
++    expect(mocks.helper.startTransmission).not.toHaveBeenCalled();
+     await runtime.stop();
+   });
+ 
+@@ -437,7 +442,8 @@
+         await vi.waitFor(() => expect(startupReleased).toBe(true));
+         await expect(releaseStartup).resolves.toBe(true);
+         await vi.waitFor(async () => expect((await runtime.status()).calls).toEqual([]));
+-        expect(mocks.helper.answerCall).not.toHaveBeenCalled();
++        expect(mocks.helper.answerCall).toHaveBeenCalledOnce();
++        expect(mocks.helper.setMuted).not.toHaveBeenCalled();
+         await stop;
+       } finally {
+         confirmProcessAbsence();
+@@ -600,8 +606,6 @@
+   });
+ 
+   it("fails closed when answer does not observe a safely muted uplink", async () => {
+-    const talk = createTalkDriver({});
+-    mocks.startTalk.mockResolvedValueOnce(talk);
+     mocks.helper.answerCall.mockResolvedValueOnce(
+       completeAction({ outcome: "answered-muted", muted: true, is_uplink_muted: false }),
+     );
+@@ -610,6 +614,7 @@
+     void mocks.helperParams?.onMessage(incomingCall());
+     await vi.waitFor(() => expect(mocks.helper.leaveCall).toHaveBeenCalled());
+     expect(mocks.helper.setMuted).not.toHaveBeenCalled();
++    expect(mocks.startTalk).not.toHaveBeenCalled();
+     await vi.waitFor(async () => expect((await runtime.status()).calls).toEqual([]));
+     await runtime.stop();
+   });
+diff --git a/extensions/facetime/tests/runtime-carrier-aliases.test.ts b/extensions/facetime/tests/runtime-carrier-aliases.test.ts
+--- a/extensions/facetime/tests/runtime-carrier-aliases.test.ts
++++ b/extensions/facetime/tests/runtime-carrier-aliases.test.ts
+@@ -2,6 +2,7 @@
+ import {
+   completeAbsence,
+   completeAction,
++  completeSharedAction,
+   createRuntime,
+   createTalkDriver,
+   incomingCall,
+@@ -148,3 +149,102 @@
+     }
+   });
+ });
++
++describe("FaceTime incoming startup lifecycle", () => {
++  beforeEach(resetRuntimeTestState);
++
++  it("keeps incoming startup ownership when a replacement active event precedes answer acknowledgement", async () => {
++    let releaseAnswer = () => {};
++    let releaseReadiness = () => {};
++    const talk = createTalkDriver({
++      readyForAudio: () =>
++        new Promise<void>((resolve) => {
++          releaseReadiness = resolve;
++        }),
++    });
++    mocks.startTalk.mockResolvedValueOnce(talk);
++    mocks.helper.answerCall.mockImplementationOnce(
++      () =>
++        new Promise((resolve) => {
++          releaseAnswer = () =>
++            resolve(
++              completeSharedAction({
++                outcome: "answered-muted",
++                muted: true,
++                is_uplink_muted: true,
++              }),
++            );
++        }),
++    );
++    const runtime = await createRuntime();
++    const ringing = incomingCall();
++    void mocks.helperParams?.onMessage({
++      ...ringing,
++      data: { ...ringing.data, conversation_uuid: "conversation-1" },
++    });
++    await vi.waitFor(() => expect(mocks.helper.answerCall).toHaveBeenCalledOnce());
++    const active = incomingCall(1);
++    const replacement = {
++      ...active,
++      data: { ...active.data, call_uuid: "replacement-call", conversation_uuid: "conversation-1" },
++    };
++    await mocks.helperParams?.onMessage(replacement);
++    expect(mocks.startTalk).not.toHaveBeenCalled();
++    expect(mocks.helper.setMuted).not.toHaveBeenCalled();
++    releaseAnswer();
++    await vi.waitFor(() => expect(talk.readyForAudio).toHaveBeenCalledOnce());
++    await mocks.helperParams?.onMessage(replacement);
++    expect(mocks.startTalk).toHaveBeenCalledOnce();
++    expect(talk.activate).not.toHaveBeenCalled();
++    releaseReadiness();
++    await vi.waitFor(() => expect(talk.activate).toHaveBeenCalledOnce());
++    expect(mocks.helper.setMuted).toHaveBeenCalledWith("replacement-call", false);
++    expect(mocks.helper.startTransmission).toHaveBeenCalledWith("replacement-call");
++    await runtime.stop();
++  });
++
++  it.each(["ended", "shutdown"])(
++    "revokes incoming startup on %s before the answer acknowledgement",
++    async (ending) => {
++      let releaseAnswer = () => {};
++      mocks.helper.answerCall.mockImplementationOnce(
++        () =>
++          new Promise((resolve) => {
++            releaseAnswer = () =>
++              resolve(
++                completeSharedAction({
++                  outcome: "answered-muted",
++                  muted: true,
++                  is_uplink_muted: true,
++                }),
++              );
++          }),
++      );
++      const runtime = await createRuntime();
++      void mocks.helperParams?.onMessage(incomingCall());
++      await vi.waitFor(() => expect(mocks.helper.answerCall).toHaveBeenCalledOnce());
++      const ended =
++        ending === "shutdown" ? runtime.stop() : mocks.helperParams?.onMessage(incomingCall(6));
++      releaseAnswer();
++      await ended;
++      await vi.waitFor(async () => expect((await runtime.status()).calls).toEqual([]));
++      expect(mocks.startTalk).not.toHaveBeenCalled();
++      expect(mocks.helper.setMuted).not.toHaveBeenCalled();
++      expect(mocks.helper.startTransmission).not.toHaveBeenCalled();
++      await runtime.stop();
++    },
++  );
++
++  it("hangs up an answered call when capture startup fails", async () => {
++    mocks.startTalk.mockRejectedValueOnce(new Error("native capture unavailable"));
++    const runtime = await createRuntime();
++    void mocks.helperParams?.onMessage(incomingCall());
++    await vi.waitFor(() => expect(mocks.helper.leaveCall).toHaveBeenCalledWith("call-1"));
++    await vi.waitFor(async () => expect((await runtime.status()).calls).toEqual([]));
++    expect(mocks.helper.answerCall).toHaveBeenCalledOnce();
++    expect(mocks.helper.safetyMute).toHaveBeenCalledWith("call-1");
++    expect(mocks.helper.setMuted).not.toHaveBeenCalled();
++    expect(mocks.helper.startTransmission).not.toHaveBeenCalled();
++    await runtime.stop();
++  });
++});
+diff --git a/extensions/facetime/tests/runtime-persistence.test.ts b/extensions/facetime/tests/runtime-persistence.test.ts
+--- a/extensions/facetime/tests/runtime-persistence.test.ts
++++ b/extensions/facetime/tests/runtime-persistence.test.ts
+@@ -2,6 +2,7 @@
+ import { observeHostDataSql } from "openclaw/plugin-sdk/sqlite-runtime-testing";
+ import { beforeEach, describe, expect, it, vi } from "vitest";
+ import {
++  completeAbsence,
+   createRuntime,
+   createTalkDriver,
+   incomingCall,
+@@ -279,11 +280,15 @@
+         }),
+       );
+       expect((await runtime.status()).calls).toMatchObject([{ phase: "closing" }]);
+-      expect(mocks.helper.answerCall).not.toHaveBeenCalled();
+-    } finally {
++      expect(mocks.helper.answerCall).toHaveBeenCalledOnce();
++      expect(mocks.helper.setMuted).not.toHaveBeenCalled();
++    } finally {
++      // Shutdown failed while the answered carrier was unconfirmed. Supply
++      // verified closure before joining the retained startup worker.
++      mocks.helper.inspectCall.mockResolvedValue(completeAbsence());
+       releaseStartup.resolve();
++      await vi.advanceTimersByTimeAsync(1_000);
+       await active;
+-      await vi.advanceTimersByTimeAsync(1_000);
+       await startupFailure;
+       await stopping;
+       vi.useRealTimers();
+diff --git a/extensions/facetime/tests/runtime-authority-boundary.test.ts b/extensions/facetime/tests/runtime-authority-boundary.test.ts
+--- a/extensions/facetime/tests/runtime-authority-boundary.test.ts
++++ b/extensions/facetime/tests/runtime-authority-boundary.test.ts
+@@ -84,9 +84,20 @@
+           this.actions.push(payload);
+           this.send({
+             transactionId: payload.transactionId,
+-            ...(payload.action === "find-outgoing-call"
+-              ? { found: true, call_uuid: "recovered-call" }
+-              : { found: false, cancelled: true, tombstoned: true }),
++            ...(payload.action === "answer-call"
++              ? { outcome: "answered-muted", muted: true, is_uplink_muted: true }
++              : payload.action === "safety-mute"
++                ? {
++                    outcome: "safe-muted",
++                    downlink_muted: true,
++                    muted: true,
++                    is_uplink_muted: true,
++                  }
++                : payload.action === "leave-call"
++                  ? { outcome: "termination-requested" }
++                  : payload.action === "find-outgoing-call"
++                    ? { found: true, call_uuid: "recovered-call" }
++                    : { outcome: "absent", found: false, cancelled: true, tombstoned: true }),
+           });
+         } else if (this.waiting) {
+           const resolve = this.waiting;
+@@ -249,7 +260,10 @@
+     expect(log.warn).toHaveBeenCalledWith(
+       expect.stringContaining("isolated capture effect reached"),
+     );
+-    expect(peer.actions).toEqual([]);
++    expect(peer.actions[0]?.action).toBe("answer-call");
++    expect(peer.actions.map((action) => action.action)).toContain("leave-call");
++    expect(peer.actions.map((action) => action.action)).not.toContain("set-muted");
++    expect(peer.actions.map((action) => action.action)).not.toContain("start-transmission");
+   });
+ 
+   describe.each([4, 1])("native call status %s", (status) => {
+diff --git a/extensions/facetime/src/talk-driver.ts b/extensions/facetime/src/talk-driver.ts
+--- a/extensions/facetime/src/talk-driver.ts
++++ b/extensions/facetime/src/talk-driver.ts
+@@ -188,22 +188,29 @@
+     interruptProviderConnect?.();
+     consultRef.current?.abortForClose();
+     suspendMediaPromise = (async () => {
+-      try {
+-        await bridge?.close();
+-      } catch (error) {
+-        params.logger.debug?.(
+-          `[facetime] realtime bridge close ignored: ${formatErrorMessage(error)}`,
+-        );
+-      }
+-      try {
+-        await pump?.suspendMedia();
+-      } catch (error) {
+-        // The logical media gates above are already terminal. Native cleanup
+-        // failure must not prevent carrier safety reporting or final teardown.
+-        params.logger.warn?.(
+-          `[facetime] native media suspension failed: ${formatErrorMessage(error)}`,
+-        );
+-      }
++      // Provider shutdown owns its transport deadline. Shared Talk may then
++      // drain persistence; neither drain may delay native media suspension.
++      // Keep process-tap suppression until the carrier confirms safe teardown.
++      await Promise.all([
++        (async () => {
++          try {
++            await bridge?.close();
++          } catch (error) {
++            params.logger.warn?.(
++              `[facetime] realtime bridge cleanup incomplete: ${formatErrorMessage(error)}`,
++            );
++          }
++        })(),
++        (async () => {
++          try {
++            await pump?.suspendMedia();
++          } catch (error) {
++            params.logger.warn?.(
++              `[facetime] native media suspension failed: ${formatErrorMessage(error)}`,
++            );
++          }
++        })(),
++      ]);
+       resetResponsePlayback();
+       finishOutputAudio(reason);
+     })();
+diff --git a/extensions/facetime/tests/talk-driver.shared-talk.test.ts b/extensions/facetime/tests/talk-driver.shared-talk.test.ts
+--- a/extensions/facetime/tests/talk-driver.shared-talk.test.ts
++++ b/extensions/facetime/tests/talk-driver.shared-talk.test.ts
+@@ -57,6 +57,44 @@
+     expect(mocks.pumpParams).toBeUndefined();
+   });
+ 
++  it("suspends native media while shared Talk persistence is still closing", async () => {
++    let request!: RealtimeVoiceCarrierSessionParams;
++    const createSession = vi.fn(async (params: RealtimeVoiceCarrierSessionParams) => {
++      request = params;
++      return mocks.bridge;
++    });
++    mocks.bridge.connect.mockImplementation(async () => request.onReady?.());
++    let finishClose!: () => void;
++    mocks.bridge.close.mockReturnValue(
++      new Promise<void>((resolve) => {
++        finishClose = resolve;
++      }),
++    );
++    const driver = await startTalkDriver(
++      sharedTalkParams({
++        runtime: { realtimeVoice: { createSession } },
++        assertOwnerCurrent: vi.fn(),
++      }),
++    );
++    await driver.readyForAudio();
++    driver.activate();
++    const closing = driver.suspendMedia("hangup");
++    try {
++      await vi.waitFor(() => expect(mocks.pump.suspendMedia).toHaveBeenCalledOnce());
++      expect(mocks.bridge.close).toHaveBeenCalledOnce();
++      mocks.pumpParams?.onInputAudio(Buffer.from([1, 2]));
++      request.audioSink.sendAudio(Buffer.from([1, 2]));
++      expect(mocks.bridge.sendAudio).not.toHaveBeenCalled();
++      expect(mocks.pump.writeOutputAudio).not.toHaveBeenCalled();
++      // Process-tap suppression remains owned until physical hangup is safe.
++      expect(mocks.pump.stop).not.toHaveBeenCalled();
++    } finally {
++      finishClose();
++      await closing;
++      await driver.close();
++    }
++  });
++
+   it("closes a host session that finishes creation after carrier cancellation", async () => {
+     let finish!: (value: typeof mocks.bridge) => void;
+     const creating = new Promise<typeof mocks.bridge>((resolve) => {
+diff --git a/src/gateway/talk/carrier-session.test.ts b/src/gateway/talk/carrier-session.test.ts
+--- a/src/gateway/talk/carrier-session.test.ts
++++ b/src/gateway/talk/carrier-session.test.ts
+@@ -185,6 +185,40 @@
+     await expect(result).resolves.toEqual({ text: "finished in chat" });
+   });
+ 
++  it.each(["transcript", "logical session"])(
++    "carrier abort closes provider before blocked %s cleanup",
++    async (barrier) => {
++      const f = fixture();
++      let release!: () => void;
++      const blocked = new Promise<void>((resolve) => {
++        release = resolve;
++      });
++      const cleanup = barrier === "transcript" ? mocks.flush : mocks.logicalClose;
++      cleanup.mockImplementationOnce(() => blocked);
++      const session = await createTalkCarrierSession(f.params, {
++        context: f.context,
++        pluginId: "test-carrier",
++      });
++      sessions.push(session);
++      await session.connect();
++      f.call.abort();
++      let settled = false;
++      const closing = session.close().then(() => {
++        settled = true;
++      });
++      try {
++        await vi.waitFor(() => expect(cleanup).toHaveBeenCalled());
++        expect(f.media.close).toHaveBeenCalledExactlyOnceWith({ disposition: "detach" });
++        expect(settled).toBe(false);
++        session.sendAudio(Buffer.from([1, 2]));
++        expect(f.media.sendAudio).not.toHaveBeenCalled();
++      } finally {
++        release();
++        await closing;
++      }
++    },
++  );
++
+   it("handles spoken hangup once without consulting or cancelling accepted work", async () => {
+     const f = fixture();
+     const requestHangup = vi.fn();
+diff --git a/extensions/facetime/tests/talk-driver.test.ts b/extensions/facetime/tests/talk-driver.test.ts
+--- a/extensions/facetime/tests/talk-driver.test.ts
++++ b/extensions/facetime/tests/talk-driver.test.ts
+@@ -262,7 +262,7 @@
+     expect(driver.realtimeActive()).toBe(false);
+   });
+ 
+-  it("waits for asynchronous provider shutdown before suspending native media", async () => {
++  it("joins asynchronous provider shutdown while suspending native media immediately", async () => {
+     let finishClose = () => {};
+     mocks.bridge.close.mockImplementationOnce(
+       () =>
+@@ -272,13 +272,20 @@
+     );
+     const driver = await startReadyFaceTimeTalkDriver();
+ 
+-    const suspended = driver.suspendMedia("carrier-hangup-pending");
+-    await vi.waitFor(() => expect(mocks.bridge.close).toHaveBeenCalledOnce());
+-    expect(mocks.pump.suspendMedia).not.toHaveBeenCalled();
+-    finishClose();
+-    await suspended;
+-
+-    expect(mocks.pump.suspendMedia).toHaveBeenCalledOnce();
++    let settled = false;
++    const suspended = driver.suspendMedia("carrier-hangup-pending").then(() => {
++      settled = true;
++    });
++    try {
++      await vi.waitFor(() => expect(mocks.bridge.close).toHaveBeenCalledOnce());
++      expect(mocks.pump.suspendMedia).toHaveBeenCalledOnce();
++      expect(mocks.pump.stop).not.toHaveBeenCalled();
++      expect(settled).toBe(false);
++    } finally {
++      finishClose();
++      await suspended;
++      await driver.close();
++    }
+   });
+ 
+   it("fails closed when the provider never becomes ready after connect", async () => {
+diff --git a/extensions/facetime/src/plugin-paths.ts b/extensions/facetime/src/plugin-paths.ts
+--- a/extensions/facetime/src/plugin-paths.ts
++++ b/extensions/facetime/src/plugin-paths.ts
+@@ -160,13 +160,28 @@
+   };
+ }
+ 
+-export async function ensureCaptureBinary(
+-  params: {
+-    access?: typeof access;
+-    readFile?: typeof readFile;
+-  } = {},
+-): Promise<string> {
+-  return (await resolveNativeInstall(params)).capture;
++export async function ensureCaptureBinary(params: {
++  pluginRoot: string;
++  runCommandWithTimeout: PluginRuntime["system"]["runCommandWithTimeout"];
++  access?: typeof access;
++  readFile?: typeof readFile;
++}): Promise<string> {
++  const installation = await resolveNativeInstall(params);
++  const launcher = resolve(
++    homedir(),
++    "Library/Application Support/OpenClaw/FaceTime/audio/capture-launcher",
++  );
++  const result = await params.runCommandWithTimeout(
++    ["/bin/bash", resolve(params.pluginRoot, "scripts/stage-capture.sh"), installation.directory],
++    { timeoutMs: 120_000 },
++  );
++  if (result.code !== 0) {
++    throw new Error(
++      `FaceTime audio identity setup failed: ${result.stderr || result.stdout || `exit ${result.code}`}`,
++    );
++  }
++  await (params.access ?? access)(launcher, constants.X_OK);
++  return launcher;
+ }
+ 
+ export async function ensureHelperArtifacts(params: {
+diff --git a/extensions/facetime/src/runtime.ts b/extensions/facetime/src/runtime.ts
+--- a/extensions/facetime/src/runtime.ts
++++ b/extensions/facetime/src/runtime.ts
+@@ -98,7 +98,10 @@
+   let driverInstallAbortController: AbortController | undefined;
+   let driverInstallTask: Promise<void> | undefined;
+   const isDriverInstallPending = () => driverInstall.phase === "installing";
+-  const captureBinary = await ensureCaptureBinary();
++  const captureBinary = await ensureCaptureBinary({
++    pluginRoot: params.pluginRoot,
++    runCommandWithTimeout: params.runtime.system.runCommandWithTimeout,
++  });
+   const { buildId: helperBuildId, ipcKey: helperIpcKey } = await ensureHelperArtifacts({
+     pluginRoot: params.pluginRoot,
+     runCommandWithTimeout: params.runtime.system.runCommandWithTimeout,
+diff --git a/extensions/facetime/package.json b/extensions/facetime/package.json
+--- a/extensions/facetime/package.json
++++ b/extensions/facetime/package.json
+@@ -44,7 +44,9 @@
+     "LICENSE",
+     "THIRD_PARTY_NOTICES.md",
+     "README.md",
+-    "openclaw.plugin.json"
++    "openclaw.plugin.json",
++    "scripts/capture-launcher.c",
++    "scripts/stage-capture.sh"
+   ],
+   "os": [
+     "darwin"
+diff --git a/extensions/facetime/tests/plugin-paths.test.ts b/extensions/facetime/tests/plugin-paths.test.ts
+--- a/extensions/facetime/tests/plugin-paths.test.ts
++++ b/extensions/facetime/tests/plugin-paths.test.ts
+@@ -1,3 +1,5 @@
++import { homedir } from "node:os";
++import { resolve } from "node:path";
+ import { describe, expect, it, vi } from "vitest";
+ import {
+   ensureCaptureBinary,
+@@ -9,7 +11,11 @@
+ 
+ function installedAccess() {
+   return vi.fn(async (path: string) => {
+-    if (!path.startsWith(homebrewDir) && !path.endsWith("FaceTimeHelper.dylib")) {
++    if (
++      !path.startsWith(homebrewDir) &&
++      !path.endsWith("FaceTimeHelper.dylib") &&
++      !path.endsWith("capture-launcher")
++    ) {
+       throw new Error("missing");
+     }
+   });
+@@ -25,13 +31,54 @@
+ }
+ 
+ describe("plugin paths", () => {
+-  it("uses the Homebrew capture helper", async () => {
++  it("stages a stable capture identity instead of executing from the versioned native package", async () => {
++    const runCommandWithTimeout = vi
++      .fn()
++      .mockResolvedValue({ code: 0, stdout: "/untrusted/output", stderr: "" });
+     await expect(
+       ensureCaptureBinary({
++        pluginRoot: "/tmp/facetime",
++        runCommandWithTimeout,
+         access: installedAccess() as never,
+         readFile: installedReadFile() as never,
+       }),
+-    ).resolves.toBe(`${homebrewDir}/facetime-audio-capture`);
++    ).resolves.toBe(
++      resolve(homedir(), "Library/Application Support/OpenClaw/FaceTime/audio/capture-launcher"),
++    );
++    expect(runCommandWithTimeout).toHaveBeenCalledWith(
++      ["/bin/bash", "/tmp/facetime/scripts/stage-capture.sh", homebrewDir],
++      { timeoutMs: 120_000 },
++    );
++  });
++
++  it("stages capture from the same compatible fallback installation as the helper", async () => {
++    const runCommandWithTimeout = vi.fn().mockResolvedValue({ code: 0 });
++    await ensureCaptureBinary({
++      pluginRoot: "/tmp/facetime",
++      runCommandWithTimeout,
++      access: vi.fn(async (path: string) => {
++        if (path.startsWith(homebrewDir) && path.endsWith("native-protocol.env")) {
++          throw new Error("incomplete installation");
++        }
++      }) as never,
++      readFile: installedReadFile() as never,
++    });
++    expect(runCommandWithTimeout.mock.calls[0]?.[0]).toEqual([
++      "/bin/bash",
++      "/tmp/facetime/scripts/stage-capture.sh",
++      "/usr/local/opt/openclaw-facetime/libexec",
++    ]);
++  });
++
++  it("does not fall back to Node-owned capture when identity staging fails", async () => {
++    await expect(
++      ensureCaptureBinary({
++        pluginRoot: "/tmp/facetime",
++        access: installedAccess() as never,
++        readFile: installedReadFile() as never,
++        runCommandWithTimeout: vi.fn().mockResolvedValue({ code: 1, stderr: "signature rejected" }),
++      }),
++    ).rejects.toThrow("FaceTime audio identity setup failed: signature rejected");
+   });
+ 
+   it("inspects native package readiness without staging runtime artifacts", async () => {
+@@ -52,6 +99,8 @@
+   it("fails with the install command when no compatible package exists", async () => {
+     await expect(
+       ensureCaptureBinary({
++        pluginRoot: "/tmp/facetime",
++        runCommandWithTimeout: vi.fn().mockResolvedValue({ code: 0 }),
+         access: vi.fn().mockRejectedValue(new Error("missing")) as never,
+         readFile: installedReadFile() as never,
+       }),
+@@ -63,7 +112,12 @@
+       path.endsWith("native-protocol.env") ? "NATIVE_PROTOCOL_VERSION=2\n" : `${"b".repeat(64)}\n`,
+     );
+     await expect(
+-      ensureCaptureBinary({ access: installedAccess() as never, readFile: readFile as never }),
++      ensureCaptureBinary({
++        pluginRoot: "/tmp/facetime",
++        runCommandWithTimeout: vi.fn().mockResolvedValue({ code: 0 }),
++        access: installedAccess() as never,
++        readFile: readFile as never,
++      }),
+     ).rejects.toThrow("Compatible FaceTime native helpers are not installed");
+   });
+ 
+diff --git a/extensions/facetime/tests/package-manifest.test.ts b/extensions/facetime/tests/package-manifest.test.ts
+--- a/extensions/facetime/tests/package-manifest.test.ts
++++ b/extensions/facetime/tests/package-manifest.test.ts
+@@ -78,6 +78,8 @@
+     expect(packageManifest.files).not.toContain("scripts/build-capture.sh");
+     expect(packageManifest.files).not.toContain("scripts/build-helper-macabi.sh");
+     expect(packageManifest.files).toContain("scripts/stage-helper.sh");
++    expect(packageManifest.files).toContain("scripts/stage-capture.sh");
++    expect(packageManifest.files).toContain("scripts/capture-launcher.c");
+     expect(packageManifest.files).toContain("scripts/verify-native-helper.sh");
+     expect(packageManifest.files).not.toContain("dist/");
+     expect(packageManifest.files).toContain("doctor-contract-api.ts");
+diff --git a/extensions/facetime/scripts/remove-user-artifacts.sh b/extensions/facetime/scripts/remove-user-artifacts.sh
+--- a/extensions/facetime/scripts/remove-user-artifacts.sh
++++ b/extensions/facetime/scripts/remove-user-artifacts.sh
+@@ -19,3 +19,8 @@
+   fi
+ done
+ /bin/rm -rf "$temporary_root/openclaw-facetime-macabi"
++
++/bin/rm -f \
++  "$user_home/Library/Application Support/OpenClaw/FaceTime/audio/capture-launcher" \
++  "$user_home/Library/Application Support/OpenClaw/FaceTime/audio/facetime-audio-capture" \
++  "$user_home/Library/Application Support/OpenClaw/FaceTime/audio/installed.sha256"
+diff --git a/extensions/facetime/README.md b/extensions/facetime/README.md
+--- a/extensions/facetime/README.md
++++ b/extensions/facetime/README.md
+@@ -97,3 +97,19 @@
+ The separately released Objective-C and Swift native sources, their adapted
+ third-party notices, and their signing pipeline live in
+ `openclaw/openclaw-facetime`.
++
++## Stable audio consent
++
++Runtime setup stages the vendor-signed capture helper at a stable physical path
++in `~/Library/Application Support/OpenClaw/FaceTime/audio`. A small native
++launcher makes that helper its own macOS audio-permission identity, independent
++of Node and Homebrew's versioned installation paths. The helper is not re-signed.
++Setup builds the launcher with the already-required Xcode tools only when its
++source or the installed helper changes. Subsequent starts reuse the staged files.
++
++The launcher replaces its own process, preserving the capture PID, standard
++streams, and shutdown controls. It accepts only capture, `--check`, and
++`--default-devices`; unsupported macOS responsibility APIs fail explicitly.
++Normal macOS consent is still required. A successful process-tap startup is not
++proof of consent or audible audio. Node upgrade and native-helper upgrade
++persistence require separate acceptance checks.
+diff --git a/extensions/facetime/scripts/capture-launcher.c b/extensions/facetime/scripts/capture-launcher.c
+new file mode 100644
+--- /dev/null
++++ b/extensions/facetime/scripts/capture-launcher.c
+@@ -0,0 +1,53 @@
++// Keep macOS audio consent on the signed native helper across Node upgrades.
++// Process replacement preserves the PID, PCM pipes and stdin safety protocol.
++#include <dlfcn.h>
++#include <limits.h>
++#include <mach-o/dyld.h>
++#include <spawn.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <unistd.h>
++
++extern char **environ;
++typedef int (*disclaim_fn)(posix_spawnattr_t *, int);
++
++int main(int argc, char **argv) {
++  if (argc > 2 || (argc == 2 && strcmp(argv[1], "--check") != 0 &&
++                   strcmp(argv[1], "--default-devices") != 0)) {
++    fputs("Usage: capture-launcher [--check|--default-devices]\n", stderr);
++    return 64;
++  }
++  char executable[PATH_MAX], target[PATH_MAX];
++  uint32_t size = sizeof executable;
++  if (_NSGetExecutablePath(executable, &size) != 0 || !realpath(executable, target)) {
++    fputs("capture-launcher: cannot resolve installation\n", stderr);
++    return 78;
++  }
++  char *slash = strrchr(target, '/');
++  if (!slash) return 78;
++  *slash = '\0';
++  const char suffix[] = "/facetime-audio-capture";
++  if (strlen(target) + sizeof suffix > sizeof target) return 78;
++  strcat(target, suffix);
++
++  // macOS SPI also used by the Apple PIM launcher. Never fall back to Node's identity.
++  disclaim_fn disclaim = (disclaim_fn)dlsym(RTLD_DEFAULT, "responsibility_spawnattrs_setdisclaim");
++  if (!disclaim) {
++    fputs("capture-launcher: macOS audio responsibility API unavailable; rerun FaceTime setup\n", stderr);
++    return 78;
++  }
++  posix_spawnattr_t attr;
++  int error = posix_spawnattr_init(&attr);
++  if (error) return 78;
++  error = disclaim(&attr, 1);
++  if (!error) error = posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETEXEC);
++  if (!error) {
++    char *args[] = {target, argc == 2 ? argv[1] : NULL, NULL};
++    error = posix_spawn(NULL, target, NULL, &attr, args, environ);
++  }
++  posix_spawnattr_destroy(&attr);
++  fprintf(stderr, "capture-launcher: cannot start signed audio helper: %s\n", strerror(error));
++  return 78;
++}
+diff --git a/extensions/facetime/scripts/stage-capture.sh b/extensions/facetime/scripts/stage-capture.sh
+new file mode 100755
+--- /dev/null
++++ b/extensions/facetime/scripts/stage-capture.sh
+@@ -0,0 +1,91 @@
++#!/usr/bin/env bash
++set -euo pipefail
++umask 077
++
++if [[ $# -ne 1 ]]; then
++  echo "Usage: $0 <supported-native-libexec>" >&2
++  exit 2
++fi
++case "$1" in
++  /opt/homebrew/opt/openclaw-facetime/libexec|/usr/local/opt/openclaw-facetime/libexec) ;;
++  *) echo "Unsupported FaceTime native installation" >&2; exit 2 ;;
++esac
++scripts_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++audio_dir="${HOME}/Library/Application Support/OpenClaw/FaceTime/audio"
++source_capture="$1/facetime-audio-capture"
++"${scripts_dir}/verify-native-helper.sh" "${source_capture}" >&2
++/usr/bin/codesign --verify --strict -R='identifier "ai.openclaw.facetime-audio-capture"' "${source_capture}"
++
++digest() { /usr/bin/shasum -a 256 "$1" | /usr/bin/awk '{print $1}'; }
++mkdir -p "${audio_dir}"
++if [[ -L "${audio_dir}" || -L "${audio_dir}/facetime-audio-capture" || -L "${audio_dir}/capture-launcher" ]]; then
++  echo "FaceTime audio installation must use regular files at a stable directory" >&2
++  exit 1
++fi
++# Serialize setup, including the reuse check. Never break another installer's lock.
++lock="${audio_dir}/.install-lock"
++for ((attempt=0; attempt<120; attempt++)); do
++  if mkdir "${lock}" 2>/dev/null; then break; fi
++  sleep 0.25
++done
++if [[ ${attempt} -eq 120 ]]; then
++  echo "FaceTime audio setup is busy or was interrupted; inspect ${lock} before retrying" >&2
++  exit 1
++fi
++stage=""
++committing=0
++cleanup() {
++  result=$?
++  rollback_failed=0
++  trap - EXIT HUP INT TERM
++  if [[ ${committing} -eq 1 ]]; then
++    for name in facetime-audio-capture capture-launcher installed.sha256; do
++      if [[ -f "${stage}/previous/${name}" ]]; then
++        /bin/mv -f "${stage}/previous/${name}" "${audio_dir}/${name}" || rollback_failed=1
++      else
++        /bin/rm -f "${audio_dir}/${name}" || rollback_failed=1
++      fi
++    done
++  fi
++  if [[ ${rollback_failed} -eq 1 ]]; then
++    echo "FaceTime audio rollback failed; recovery files preserved at ${stage}; inspect ${lock} before retrying" >&2
++    exit 1
++  fi
++  [[ -z "${stage}" ]] || /bin/rm -rf "${stage}"
++  /bin/rmdir "${lock}" || result=1
++  exit "${result}"
++}
++trap cleanup EXIT
++trap 'exit 1' HUP INT TERM
++inputs="$(digest "${source_capture}"):$(digest "${scripts_dir}/capture-launcher.c")"
++if [[ -x "${audio_dir}/capture-launcher" && -f "${audio_dir}/installed.sha256" &&
++      "$(cat "${audio_dir}/installed.sha256")" == "${inputs}:$(digest "${audio_dir}/capture-launcher")" ]] &&
++   /usr/bin/cmp -s "${source_capture}" "${audio_dir}/facetime-audio-capture"; then
++  echo "${audio_dir}/capture-launcher"
++  exit 0
++fi
++
++# Stage before replacing either executable. A failed build leaves the prior files intact.
++stage="$(mktemp -d "${audio_dir}/.stage.XXXXXX")"
++/usr/bin/xcrun clang -arch arm64 -mmacosx-version-min=14.0 -O2 -Wall -Wextra -Werror \
++  "${scripts_dir}/capture-launcher.c" -o "${stage}/capture-launcher"
++/usr/bin/ditto "${source_capture}" "${stage}/facetime-audio-capture"
++"${scripts_dir}/verify-native-helper.sh" "${stage}/facetime-audio-capture" >&2
++/usr/bin/codesign --verify --strict -R='identifier "ai.openclaw.facetime-audio-capture"' "${stage}/facetime-audio-capture"
++/usr/bin/cmp -s "${source_capture}" "${stage}/facetime-audio-capture"
++[[ "${inputs}" == "$(digest "${stage}/facetime-audio-capture"):$(digest "${scripts_dir}/capture-launcher.c")" ]]
++chmod 700 "${stage}/capture-launcher" "${stage}/facetime-audio-capture"
++printf '%s\n' "${inputs}:$(digest "${stage}/capture-launcher")" > "${stage}/installed.sha256"
++mkdir "${stage}/previous"
++for name in facetime-audio-capture capture-launcher installed.sha256; do
++  if [[ -f "${audio_dir}/${name}" ]]; then
++    /usr/bin/ditto "${audio_dir}/${name}" "${stage}/previous/${name}"
++  fi
++done
++committing=1
++/bin/mv -f "${stage}/facetime-audio-capture" "${audio_dir}/facetime-audio-capture"
++/bin/mv -f "${stage}/capture-launcher" "${audio_dir}/capture-launcher"
++/bin/mv -f "${stage}/installed.sha256" "${audio_dir}/installed.sha256"
++[[ "$(cat "${audio_dir}/installed.sha256")" == "$(digest "${audio_dir}/facetime-audio-capture"):$(digest "${scripts_dir}/capture-launcher.c"):$(digest "${audio_dir}/capture-launcher")" ]]
++committing=0
++echo "${audio_dir}/capture-launcher"
+diff --git a/extensions/facetime/tests/capture-launcher.test.ts b/extensions/facetime/tests/capture-launcher.test.ts
+new file mode 100644
+--- /dev/null
++++ b/extensions/facetime/tests/capture-launcher.test.ts
+@@ -0,0 +1,236 @@
++import { spawn, spawnSync } from "node:child_process";
++import { createHash } from "node:crypto";
++import { once } from "node:events";
++import { cp, mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join, resolve } from "node:path";
++import { afterAll, beforeAll, describe, expect, it } from "vitest";
++
++describe.skipIf(process.platform !== "darwin")("FaceTime capture identity launcher", () => {
++  let root: string;
++  let launcher: string;
++  beforeAll(async () => {
++    root = await mkdtemp(join(tmpdir(), "facetime-capture-launcher-"));
++    launcher = join(root, "capture-launcher");
++    const source = resolve(import.meta.dirname, "../scripts/capture-launcher.c");
++    const helperSource = join(root, "helper.c");
++    await writeFile(
++      helperSource,
++      `#include <stdio.h>
++#include <unistd.h>
++int main(int argc, char **argv) {
++  printf("pid=%d;mode=%s\\n", getpid(), argc == 2 ? argv[1] : "capture");
++  fflush(stdout);
++  char data[256]; ssize_t count;
++  while ((count = read(0, data, sizeof data)) > 0) write(1, data, count);
++  return 0;
++}`,
++    );
++    for (const [input, output] of [
++      [source, launcher],
++      [helperSource, join(root, "facetime-audio-capture")],
++    ]) {
++      const result = spawnSync(
++        "/usr/bin/xcrun",
++        ["clang", "-Wall", "-Wextra", "-Werror", input!, "-o", output!],
++        { encoding: "utf8" },
++      );
++      expect(result.status, result.stderr).toBe(0);
++    }
++    const absentSource = join(root, "absent-api.c");
++    await writeFile(
++      absentSource,
++      (await readFile(source, "utf8")).replace(
++        '"responsibility_spawnattrs_setdisclaim"',
++        '"facetime_nonexistent_responsibility_api"',
++      ),
++    );
++    const result = spawnSync(
++      "/usr/bin/xcrun",
++      ["clang", absentSource, "-o", join(root, "absent-api")],
++      { encoding: "utf8" },
++    );
++    expect(result.status, result.stderr).toBe(0);
++  });
++  afterAll(async () => {
++    if (root) {
++      await rm(root, { recursive: true, force: true });
++    }
++  });
++
++  it.each([[], ["--check"], ["--default-devices"]])(
++    "preserves PID, mode, PCM bytes, and EOF for %j",
++    async (...args) => {
++      const child = spawn(launcher, args, { stdio: ["pipe", "pipe", "pipe"] });
++      const done = once(child, "close");
++      const chunks: Buffer[] = [];
++      child.stdout.on("data", (data) => chunks.push(data));
++      const payload = Buffer.from([4, 0, 0, 0, 4, 0, 0, 0, 0, 255]);
++      child.stdin.end(payload);
++      expect(await done).toEqual([0, null]);
++      const output = Buffer.concat(chunks);
++      const header = Buffer.from(`pid=${child.pid};mode=${args[0] ?? "capture"}\n`);
++      expect(output.subarray(0, header.length)).toEqual(header);
++      expect(output.subarray(header.length)).toEqual(payload);
++    },
++  );
++
++  it.each(["SIGTERM", "SIGKILL"] as const)(
++    "terminates the actual capture PID with %s",
++    async (signal) => {
++      const child = spawn(launcher, [], { stdio: ["pipe", "pipe", "pipe"] });
++      const done = once(child, "close");
++      try {
++        const [header] = await once(child.stdout, "data");
++        expect(header.toString()).toContain(`pid=${child.pid};`);
++        child.kill(signal);
++        expect(await done).toEqual([null, signal]);
++        expect(() => process.kill(child.pid!, 0)).toThrow();
++      } finally {
++        child.kill("SIGKILL");
++      }
++    },
++  );
++
++  it("rejects extra modes and unavailable responsibility APIs without starting capture", () => {
++    for (const args of [["/bin/sh"], ["--process", "anything"], ["--check", "extra"]]) {
++      const result = spawnSync(launcher, args, { encoding: "utf8" });
++      expect(result.status).toBe(64);
++      expect(result.stdout).toBe("");
++    }
++    const result = spawnSync(join(root, "absent-api"), [], { encoding: "utf8" });
++    expect(result.status).toBe(78);
++    expect(result.stdout).toBe("");
++    expect(result.stderr).toContain("responsibility API unavailable");
++  });
++
++  it("does not search PATH or run another command if its fixed helper is missing", async () => {
++    const empty = join(root, "empty");
++    await mkdir(empty);
++    const copy = join(empty, "capture-launcher");
++    await writeFile(copy, await readFile(launcher), { mode: 0o700 });
++    const result = spawnSync(copy, [], { encoding: "utf8" });
++    expect(result.status).toBe(78);
++    expect(result.stdout).toBe("");
++  });
++
++  it("stages unchanged helper bytes at a stable path, reuses them, and preserves them on build failure", async () => {
++    const fixture = join(root, "stage-test");
++    const scripts = join(fixture, "scripts");
++    const native = join(fixture, "brew/opt/openclaw-facetime/libexec");
++    const audio = join(fixture, "Library/Application Support/OpenClaw/FaceTime/audio");
++    await mkdir(scripts, { recursive: true });
++    await mkdir(native, { recursive: true });
++    await writeFile(join(native, "facetime-audio-capture"), "signed native bytes v1");
++    await writeFile(join(scripts, "capture-launcher.c"), "launcher source v1");
++    await writeFile(join(scripts, "verify-native-helper.sh"), "#!/bin/sh\nexit 0\n", {
++      mode: 0o700,
++    });
++    const codeSign = join(fixture, "codesign");
++    await writeFile(codeSign, "#!/bin/sh\nexit 0\n", { mode: 0o700 });
++    const compiler = join(fixture, "xcrun");
++    await writeFile(
++      compiler,
++      `#!/bin/bash
++set -eu
++test "\${FAIL_COMPILE:-0}" != 1 || exit 1
++echo compile >> "$HOME/compiles"
++sleep "\${COMPILE_DELAY:-0}"
++cp "$TEST_COMPILED_LAUNCHER" "\${!#}"
++cat "\${@: -3:1}" >> "\${!#}"
++`,
++      { mode: 0o700 },
++    );
++    const move = join(fixture, "move");
++    await writeFile(
++      move,
++      `#!/bin/bash
++if [[ "\${FAIL_COMMIT:-0}" == 1 && "$2" == */.stage.*/capture-launcher && "$2" != */previous/* ]]; then exit 1; fi
++exec /bin/mv "$@"
++`,
++      { mode: 0o700 },
++    );
++    const original = await readFile(
++      resolve(import.meta.dirname, "../scripts/stage-capture.sh"),
++      "utf8",
++    );
++    const script = join(scripts, "stage-capture.sh");
++    await writeFile(
++      script,
++      original
++        .replaceAll("/opt/homebrew", `${fixture}/brew`)
++        .replaceAll("/usr/local", `${fixture}/unused`)
++        .replaceAll("/usr/bin/codesign", codeSign)
++        .replaceAll("/usr/bin/xcrun", compiler)
++        .replaceAll('/bin/mv -f "${stage}/', `${move} -f "\${stage}/`),
++    );
++    const run = (fail = false, failCommit = false) =>
++      spawnSync("/bin/bash", [script, native], {
++        encoding: "utf8",
++        env: {
++          ...process.env,
++          HOME: fixture,
++          TEST_COMPILED_LAUNCHER: launcher,
++          FAIL_COMPILE: fail ? "1" : "0",
++          FAIL_COMMIT: failCommit ? "1" : "0",
++        },
++      });
++    const first = run();
++    expect(first.status, first.stderr).toBe(0);
++    expect(first.stdout.trim()).toBe(join(audio, "capture-launcher"));
++    expect(await readFile(join(audio, "facetime-audio-capture"), "utf8")).toBe(
++      "signed native bytes v1",
++    );
++    const inode = (await stat(join(audio, "facetime-audio-capture"))).ino;
++    expect(run().status).toBe(0);
++    expect((await stat(join(audio, "facetime-audio-capture"))).ino).toBe(inode);
++    expect(await readFile(join(fixture, "compiles"), "utf8")).toBe("compile\n");
++    await writeFile(join(native, "facetime-audio-capture"), "signed native bytes v2");
++    expect(run(true).status).not.toBe(0);
++    expect(await readFile(join(audio, "facetime-audio-capture"), "utf8")).toBe(
++      "signed native bytes v1",
++    );
++    expect(run(false, true).status).not.toBe(0);
++    expect(await readFile(join(audio, "facetime-audio-capture"), "utf8")).toBe(
++      "signed native bytes v1",
++    );
++    expect(run().status).toBe(0);
++    expect(await readFile(join(audio, "facetime-audio-capture"), "utf8")).toBe(
++      "signed native bytes v2",
++    );
++    // Distinct source generations share one stable install and must serialize commits.
++    const otherScripts = join(fixture, "other-scripts");
++    await cp(scripts, otherScripts, { recursive: true });
++    await writeFile(join(otherScripts, "capture-launcher.c"), "launcher source v2");
++    await writeFile(join(scripts, "capture-launcher.c"), "launcher source v3");
++    const runs = [script, join(otherScripts, "stage-capture.sh")].map((entry) => {
++      const child = spawn("/bin/bash", [entry, native], {
++        env: {
++          ...process.env,
++          HOME: fixture,
++          TEST_COMPILED_LAUNCHER: launcher,
++          COMPILE_DELAY: "0.3",
++        },
++        stdio: "ignore",
++      });
++      return once(child, "close");
++    });
++    expect(await Promise.all(runs)).toEqual([
++      [0, null],
++      [0, null],
++    ]);
++    const digest = (bytes: Buffer | string) => createHash("sha256").update(bytes).digest("hex");
++    const installed = await readFile(join(audio, "capture-launcher"));
++    const receipt = (await readFile(join(audio, "installed.sha256"), "utf8")).trim().split(":");
++    expect(receipt[0]).toBe(digest(await readFile(join(audio, "facetime-audio-capture"))));
++    expect(receipt[2]).toBe(digest(installed));
++    const installedSource = installed.subarray((await readFile(launcher)).length).toString();
++    expect(["launcher source v2", "launcher source v3"]).toContain(installedSource);
++    expect(receipt[1]).toBe(digest(installedSource));
++    // Either generation may win; its next setup must observe a consistent receipt.
++    expect(run().status).toBe(0);
++    const finalInode = (await stat(join(audio, "capture-launcher"))).ino;
++    expect(run().status).toBe(0);
++    expect((await stat(join(audio, "capture-launcher"))).ino).toBe(finalInode);
++  });
++});
+diff --git a/extensions/facetime/src/audio-pump.ts b/extensions/facetime/src/audio-pump.ts
+--- a/extensions/facetime/src/audio-pump.ts
++++ b/extensions/facetime/src/audio-pump.ts
+@@ -146,6 +146,9 @@
+     "-q",
+     "--buffer",
+     String(SOX_COREAUDIO_BUFFER_BYTES),
++    // macOS reports a finite size for Node's stdin socket. This is a live PCM
++    // stream; otherwise SoX can stop at that size before the next voice chunk.
++    "--ignore-length",
+     "-t",
+     "raw",
+     "-r",
+diff --git a/extensions/facetime/tests/audio-pump.test.ts b/extensions/facetime/tests/audio-pump.test.ts
+--- a/extensions/facetime/tests/audio-pump.test.ts
++++ b/extensions/facetime/tests/audio-pump.test.ts
+@@ -44,6 +44,30 @@
+ }
+ 
+ describe("FaceTime native audio bridge", () => {
++  it("requests unbounded PCM input for initial and replacement playback", async () => {
++    const spawn = captureProcesses([]);
++    const pump = startFaceTimeAudioPump({
++      captureBinary: "/capture",
++      logger: console,
++      onInputAudio() {},
++      spawn,
++    });
++    try {
++      pump.writeOutputAudio(Buffer.alloc(96_000));
++      pump.clearOutputAudio();
++      pump.writeOutputAudio(Buffer.alloc(4_800));
++      const playbackCalls = spawn.mock.calls.filter(([command]) => command.endsWith("sox"));
++      expect(playbackCalls).toHaveLength(2);
++      for (const [, args] of playbackCalls) {
++        // Input options must precede stdin. Without this, SoX infers a finite
++        // raw-file length from macOS socket metadata and silently truncates it.
++        expect(args.slice(0, args.indexOf("-"))).toContain("--ignore-length");
++      }
++    } finally {
++      await pump.stop();
++    }
++  });
++
+   it("routes model audio through the separate SoX playback process", () => {
+     const processes: FakeProcess[] = [];
+     const spawn = captureProcesses(processes);
+diff --git a/extensions/facetime/package.json b/extensions/facetime/package.json
+--- a/extensions/facetime/package.json
++++ b/extensions/facetime/package.json
+@@ -45,8 +45,13 @@
+     "THIRD_PARTY_NOTICES.md",
+     "README.md",
+     "openclaw.plugin.json",
++    "scripts/pinned-helper.mjs",
++    "native-helper.json",
++    "native/FaceTimeHelper.dylib",
+     "scripts/capture-launcher.c",
+-    "scripts/stage-capture.sh"
++    "scripts/stage-capture.sh",
++    "native/LICENSE",
++    "native/THIRD_PARTY_NOTICES.md"
+   ],
+   "os": [
+     "darwin"
+diff --git a/extensions/facetime/scripts/inject-helper.sh b/extensions/facetime/scripts/inject-helper.sh
+--- a/extensions/facetime/scripts/inject-helper.sh
++++ b/extensions/facetime/scripts/inject-helper.sh
+@@ -85,6 +85,10 @@
+ fi
+ 
+ dylib="${staged_macabi}"
++if [[ -e "${repo_root}/native-helper.json" ]]; then
++  # This verifies the package-selected digest and code signature on each attach.
++  dylib="$(node "${repo_root}/scripts/pinned-helper.mjs" --path)"
++fi
+ 
+ if [[ -z "${dylib}" || ! -f "${dylib}" ]]; then
+   cat >&2 <<EOF
+@@ -105,6 +109,9 @@
+ unique_dylib="${target_tmp}/FaceTimeHelper-$(date +%Y%m%d%H%M%S)-$$.dylib"
+ cp "${dylib}" "${unique_dylib}"
+ dylib="${unique_dylib}"
++if [[ -e "${repo_root}/native-helper.json" ]]; then
++  node "${repo_root}/scripts/pinned-helper.mjs" --verify-copy "${dylib}"
++fi
+ ipc_key_file="${HOME}/Library/Application Support/OpenClaw/FaceTime/helper-ipc-key"
+ auth_sidecar="${dylib}.auth"
+ lldb_pid=""
+diff --git a/extensions/facetime/scripts/pinned-helper.mjs b/extensions/facetime/scripts/pinned-helper.mjs
+new file mode 100644
+--- /dev/null
++++ b/extensions/facetime/scripts/pinned-helper.mjs
+@@ -0,0 +1,72 @@
++import { execFileSync } from "node:child_process";
++import { createHash } from "node:crypto";
++import { readFileSync, realpathSync } from "node:fs";
++import { dirname, resolve } from "node:path";
++import { fileURLToPath } from "node:url";
++
++// The runtime artifact selects these exact bytes. This opt-in receipt is only
++// for a source-built call helper; the vendor capture path stays unchanged.
++export function resolvePinnedHelper(
++  root,
++  verifySignature = (path) => {
++    execFileSync("/usr/bin/codesign", ["--verify", "--strict", path], {
++      stdio: "pipe",
++      timeout: 10_000,
++    });
++  },
++) {
++  const manifest = JSON.parse(readFileSync(resolve(root, "native-helper.json"), "utf8"));
++  const validSelection = (manifest.schemaVersion === 1 && manifest.developmentOnly === true) ||
++    (manifest.schemaVersion === 2 && manifest.kind === "source-built" &&
++      manifest.configuration === "release" && manifest.signing === "ad-hoc" &&
++      Array.isArray(manifest.patches) && manifest.patches.length > 0 &&
++      manifest.patches.every((patch) => patch && /^[a-z0-9-]+\.patch$/.test(patch.name ?? "") &&
++        /^[a-f0-9]{64}$/.test(patch.sha256 ?? "")));
++  if (
++    !validSelection ||
++    !/^[a-f0-9]{64}$/.test(manifest.helperSha256 ?? "") ||
++    !/^[a-f0-9]{64}$/.test(manifest.buildId ?? "") ||
++    !/^[a-f0-9]{40}$/.test(manifest.revision ?? "") ||
++    !/^[a-f0-9]{40}$/.test(manifest.tree ?? "")
++  ) {
++    throw new Error("Invalid pinned FaceTime helper receipt");
++  }
++  const dylib = resolve(root, "native", "FaceTimeHelper.dylib");
++  if (realpathSync(dylib) !== dylib)
++    throw new Error("Pinned helper must be a regular artifact path");
++  const bytes = readFileSync(dylib);
++  if (
++    createHash("sha256").update(bytes).digest("hex") !== manifest.helperSha256 ||
++    !bytes.includes(Buffer.from(manifest.buildId))
++  ) {
++    throw new Error("Pinned FaceTime helper identity mismatch");
++  }
++  verifySignature(dylib);
++  return { buildId: manifest.buildId, dylib, sha256: manifest.helperSha256 };
++}
++
++if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
++  try {
++    const result = resolvePinnedHelper(resolve(dirname(fileURLToPath(import.meta.url)), ".."));
++    if (process.argv[2] === "--verify-copy" && process.argv.length === 4) {
++      const bytes = readFileSync(process.argv[3]);
++      if (createHash("sha256").update(bytes).digest("hex") !== result.sha256) {
++        throw new Error("Copied FaceTime helper identity mismatch");
++      }
++      execFileSync("/usr/bin/codesign", ["--verify", "--strict", process.argv[3]], {
++        stdio: "pipe",
++        timeout: 10_000,
++      });
++    } else {
++      if (process.argv.length !== 3 || !["--json", "--path"].includes(process.argv[2])) {
++        throw new Error("Use --json, --path, or --verify-copy PATH");
++      }
++      process.stdout.write(
++        (process.argv[2] === "--path" ? result.dylib : JSON.stringify(result)) + "\n",
++      );
++    }
++  } catch (error) {
++    console.error(error.message);
++    process.exitCode = 1;
++  }
++}
+diff --git a/extensions/facetime/src/call-events.ts b/extensions/facetime/src/call-events.ts
+--- a/extensions/facetime/src/call-events.ts
++++ b/extensions/facetime/src/call-events.ts
+@@ -308,16 +308,19 @@
+ 
+ export function isIncomingRingingCall(event: FaceTimeCallStatusEvent): boolean {
+   return (
+-    event.data.call_status === TU_CALL_STATUS.incomingRinging && event.data.is_outgoing !== true
++    !isEndedCall(event) &&
++    event.data.call_status === TU_CALL_STATUS.incomingRinging &&
++    event.data.is_outgoing !== true
+   );
+ }
+ 
+ export function isActiveCall(event: FaceTimeCallStatusEvent): boolean {
+-  return event.data.call_status === TU_CALL_STATUS.active;
++  return !isEndedCall(event) && event.data.call_status === TU_CALL_STATUS.active;
+ }
+ 
+ export function isOutgoingRingingCall(event: FaceTimeCallStatusEvent): boolean {
+   return (
++    !isEndedCall(event) &&
+     (event.data.call_status === TU_CALL_STATUS.outgoingCreated ||
+       event.data.call_status === TU_CALL_STATUS.outgoingRinging) &&
+     event.data.is_outgoing === true
+diff --git a/extensions/facetime/src/plugin-paths.ts b/extensions/facetime/src/plugin-paths.ts
+--- a/extensions/facetime/src/plugin-paths.ts
++++ b/extensions/facetime/src/plugin-paths.ts
+@@ -1,4 +1,4 @@
+-import { constants } from "node:fs";
++import { constants, existsSync } from "node:fs";
+ import { access, readFile, readdir } from "node:fs/promises";
+ import { homedir } from "node:os";
+ import { resolve } from "node:path";
+@@ -190,6 +190,26 @@
+   access?: typeof access;
+   readFile?: typeof readFile;
+ }): Promise<{ buildId: string; dylib: string; ipcKey: string }> {
++  if (existsSync(resolve(params.pluginRoot, "native-helper.json"))) {
++    const selected = await params.runCommandWithTimeout(
++      [process.execPath, resolve(params.pluginRoot, "scripts", "pinned-helper.mjs"), "--json"],
++      { timeoutMs: 15_000 },
++    );
++    if (selected.code !== 0) throw new Error("Pinned FaceTime helper verification failed");
++    const receipt = JSON.parse(selected.stdout ?? "");
++    const dylib = resolve(params.pluginRoot, "native", "FaceTimeHelper.dylib");
++    if (receipt.dylib !== dylib || !/^[a-f0-9]{64}$/.test(receipt.buildId ?? "")) {
++      throw new Error("Pinned FaceTime helper verification returned an invalid identity");
++    }
++    const keySetup = await params.runCommandWithTimeout(
++      ["/bin/bash", resolve(params.pluginRoot, "scripts", "ensure-helper-ipc-key.sh")],
++      { timeoutMs: 10_000 },
++    );
++    if (keySetup.code !== 0) throw new Error("FaceTime helper authentication setup failed");
++    const ipcKey = (await (params.readFile ?? readFile)(resolveHelperIpcKey(), "utf8")).trim();
++    if (!/^[a-f0-9]{64}$/.test(ipcKey)) throw new Error("Invalid FaceTime helper authentication");
++    return { buildId: receipt.buildId, dylib, ipcKey };
++  }
+   const installation = await resolveNativeInstall(params);
+   const stageScript = resolve(params.pluginRoot, "scripts", "stage-helper.sh");
+   const result = await params.runCommandWithTimeout(["/bin/bash", stageScript, "--if-needed"], {
+diff --git a/extensions/facetime/src/runtime-call-control.ts b/extensions/facetime/src/runtime-call-control.ts
+--- a/extensions/facetime/src/runtime-call-control.ts
++++ b/extensions/facetime/src/runtime-call-control.ts
+@@ -47,7 +47,11 @@
+         result = await request.call.runCarrierCommand({
+           generation: request.generation,
+           allowClosing: true,
+-          action: async () => await request.run(candidate),
++          action: async () => {
++            const result = await request.run(candidate);
++            params.retainHelperResultPeers(request.call, result);
++            return result;
++          },
+         });
+       } catch (error) {
+         if (!(error instanceof FaceTimeHelperAmbiguousError)) {
+@@ -126,17 +130,23 @@
+     const generation = call.captureGeneration();
+     const mutedResult = await call.runCarrierCommand({
+       generation,
+-      action: async () => await params.helper.setMuted(call.carrierCallUUID, false),
++      action: async () => {
++        const result = await params.helper.setMuted(call.carrierCallUUID, false);
++        params.retainHelperResultPeers(call, result);
++        return result;
++      },
+     });
+     call.lastHelperAction = mutedResult;
+-    params.retainHelperResultPeers(call, mutedResult);
+     projectFaceTimeNativeAction("unmute", mutedResult);
+     const transmissionResult = await call.runCarrierCommand({
+       generation,
+-      action: async () => await params.helper.startTransmission(call.carrierCallUUID),
++      action: async () => {
++        const result = await params.helper.startTransmission(call.carrierCallUUID);
++        params.retainHelperResultPeers(call, result);
++        return result;
++      },
+     });
+     call.lastHelperAction = transmissionResult;
+-    params.retainHelperResultPeers(call, transmissionResult);
+     projectFaceTimeNativeAction("activate", transmissionResult);
+     call.markCarrierActive(generation);
+     if (call.audioTransport) {
+@@ -413,11 +423,17 @@
+             return carrierClosed;
+           },
+         });
+-        if (params.isStopping() || params.calls.active !== call) {
+-          await talk.close("call-ended-during-start");
++        // Startup may finish while carrier shutdown is still pending. Keep the
++        // returned driver owned so closeCall can release capture after closure.
++        call.talk = talk;
++        if (params.isStopping() || params.calls.active !== call || call.phase === "closing") {
++          if (call.carrierMode === "closed") {
++            await talk.close("call-ended-during-start");
++          } else {
++            await talk.suspendMedia("call-ended-during-start");
++          }
+           return;
+         }
+-        call.talk = talk;
+         if (call.audioTransport) {
+           call.audioTransport.processOutputSuppressed = true;
+         }
+diff --git a/extensions/facetime/src/runtime-call-events.ts b/extensions/facetime/src/runtime-call-events.ts
+--- a/extensions/facetime/src/runtime-call-events.ts
++++ b/extensions/facetime/src/runtime-call-events.ts
+@@ -170,10 +170,15 @@
+       answerAttempted = true;
+       const answerResult = await call.runCarrierCommand({
+         generation,
+-        action: async () => await params.helper.answerCall(callUUID),
++        action: async () => {
++          const result = await params.helper.answerCall(callUUID);
++          // Retain side-effect evidence before generation and postcondition
++          // checks can reject an answer that already reached a native peer.
++          retainHelperResultPeers(call, result);
++          return result;
++        },
+       });
+       projectFaceTimeNativeAction("answer", answerResult);
+-      retainHelperResultPeers(call, answerResult);
+       // The native process tap needs an answered call with an active audio owner.
+       // Keep uplink muted until capture, provider, and routing are ready.
+       await params.callControl.startCallTalk(call);
+@@ -319,10 +324,13 @@
+             const generation = ringingCall.captureGeneration();
+             const muteResult = await ringingCall.runCarrierCommand({
+               generation,
+-              action: async () => await params.helper.safetyMute(ringingCall.carrierCallUUID),
++              action: async () => {
++                const result = await params.helper.safetyMute(ringingCall.carrierCallUUID);
++                retainHelperResultPeers(ringingCall, result);
++                return result;
++              },
+             });
+             ringingCall.lastHelperAction = muteResult;
+-            retainHelperResultPeers(ringingCall, muteResult);
+             projectFaceTimeNativeAction("safe-mute", muteResult);
+           } catch (error) {
+             params.logger.warn(
+diff --git a/extensions/facetime/src/talk-driver.ts b/extensions/facetime/src/talk-driver.ts
+--- a/extensions/facetime/src/talk-driver.ts
++++ b/extensions/facetime/src/talk-driver.ts
+@@ -138,6 +138,7 @@
+   const mediaSuspendedPromise = mediaSuspendedDeferred.promise;
+   void mediaSuspendedPromise.catch(() => {});
+   let suspendMediaPromise: Promise<void> | undefined;
++  let providerClosePromise: Promise<void> | undefined;
+   let closePromise: Promise<void> | undefined;
+   let startupSettled = false;
+   let startupFailure: Error | undefined;
+@@ -187,30 +188,25 @@
+     mediaSuspendedDeferred.reject(mediaSuspensionError);
+     interruptProviderConnect?.();
+     consultRef.current?.abortForClose();
++    // Start provider teardown now, but do not let transcript persistence hold
++    // native suspension or the subsequent carrier hangup hostage.
++    providerClosePromise = (async () => {
++      try {
++        await bridge?.close();
++      } catch (error) {
++        params.logger.warn?.(
++          `[facetime] realtime bridge cleanup incomplete: ${formatErrorMessage(error)}`,
++        );
++      }
++    })();
+     suspendMediaPromise = (async () => {
+-      // Provider shutdown owns its transport deadline. Shared Talk may then
+-      // drain persistence; neither drain may delay native media suspension.
+-      // Keep process-tap suppression until the carrier confirms safe teardown.
+-      await Promise.all([
+-        (async () => {
+-          try {
+-            await bridge?.close();
+-          } catch (error) {
+-            params.logger.warn?.(
+-              `[facetime] realtime bridge cleanup incomplete: ${formatErrorMessage(error)}`,
+-            );
+-          }
+-        })(),
+-        (async () => {
+-          try {
+-            await pump?.suspendMedia();
+-          } catch (error) {
+-            params.logger.warn?.(
+-              `[facetime] native media suspension failed: ${formatErrorMessage(error)}`,
+-            );
+-          }
+-        })(),
+-      ]);
++      try {
++        await pump?.suspendMedia();
++      } catch (error) {
++        params.logger.warn?.(
++          `[facetime] native media suspension failed: ${formatErrorMessage(error)}`,
++        );
++      }
+       resetResponsePlayback();
+       finishOutputAudio(reason);
+     })();
+@@ -229,6 +225,25 @@
+       } finally {
+         try {
+           await pump?.stop();
++          // Carrier closure is established before close(). Capture is released
++          // above even if the shared session is still saving its transcript.
++          let deadline: ReturnType<typeof setTimeout> | undefined;
++          try {
++            const completed = await Promise.race([
++              providerClosePromise?.then(() => true) ?? Promise.resolve(true),
++              new Promise<false>((resolve) => {
++                deadline = setTimeout(() => resolve(false), 20_000);
++                deadline.unref?.();
++              }),
++            ]);
++            if (!completed) {
++              params.logger.warn?.(
++                "[facetime] shared Talk cleanup still pending after native media stopped",
++              );
++            }
++          } finally {
++            if (deadline) clearTimeout(deadline);
++          }
+         } finally {
+           remember({ type: "session.closed", payload: { reason }, final: true });
+         }
+diff --git a/extensions/facetime/tests/inject-helper.test.ts b/extensions/facetime/tests/inject-helper.test.ts
+--- a/extensions/facetime/tests/inject-helper.test.ts
++++ b/extensions/facetime/tests/inject-helper.test.ts
+@@ -1,10 +1,18 @@
+-import { spawn, type ChildProcess } from "node:child_process";
++import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+ import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+ import { tmpdir } from "node:os";
+ import { join, resolve } from "node:path";
+ import { performance } from "node:perf_hooks";
+ import { afterEach, describe, expect, it } from "vitest";
+ 
++// Use an installed interpreter, not the macOS developer-tools shim. The
++// fixture must not prompt for an unrelated host Xcode license.
++const python = spawnSync("python3", ["-c", "import sys; print(sys.executable)"], {
++  encoding: "utf8",
++});
++if (python.status !== 0 || !python.stdout.trim())
++  throw new Error("Python fixture runtime unavailable");
++const pythonPath = python.stdout.trim();
+ const injectHelperScript = resolve(import.meta.dirname, "../scripts/inject-helper.sh");
+ const fixtures: Array<{ root: string; child: ChildProcess; done: Promise<unknown> }> = [];
+ 
+@@ -36,7 +44,7 @@
+     writeFile(join(bin, "DevToolsSecurity"), "#!/bin/bash\necho enabled\n", { mode: 0o700 }),
+     writeFile(
+       join(bin, "lldb"),
+-      `#!/usr/bin/python3
++      `#!${pythonPath}
+ import os, sys, time
+ with open(os.environ["TEST_LLDB_PID"], "w") as handle:
+     handle.write(str(os.getpid()))
+@@ -49,10 +57,9 @@
+   ]);
+   // Exercise the full production script with only native prerequisites faked.
+   // csrutil has an absolute path; all other commands use the fixture PATH/HOME.
+-  const source = (await readFile(injectHelperScript, "utf8")).replaceAll(
+-    "/usr/bin/csrutil",
+-    join(bin, "csrutil"),
+-  );
++  const source = (await readFile(injectHelperScript, "utf8"))
++    .replaceAll("/usr/bin/csrutil", join(bin, "csrutil"))
++    .replaceAll("/usr/bin/python3", pythonPath);
+   const script = join(scripts, "inject-helper.sh");
+   await writeFile(script, source);
+   const started = performance.now();
+diff --git a/extensions/facetime/tests/package-manifest.test.ts b/extensions/facetime/tests/package-manifest.test.ts
+--- a/extensions/facetime/tests/package-manifest.test.ts
++++ b/extensions/facetime/tests/package-manifest.test.ts
+@@ -9,7 +9,7 @@
+ 
+ const tempDirs = useAutoCleanupTempDirTracker(afterEach);
+ 
+-it("packs the complete source runtime without native binaries or test fixtures", async () => {
++it("packs the complete runtime with only an explicitly selected native helper", async () => {
+   const packageDir = fileURLToPath(new URL("..", import.meta.url));
+   const invocation = resolveNpmRunner({
+     npmArgs: ["pack", "--dry-run", "--json", "--ignore-scripts"],
+@@ -25,9 +25,13 @@
+   expect(result.status, result.stderr).toBe(0);
+   const [packed] = JSON.parse(result.stdout) as Array<{ files: Array<{ path: string }> }>;
+   const files = packed!.files.map((file) => file.path);
+-  expect(
+-    files.filter((file) => /(?:\.test\.ts$|\.dylib$|^native\/|^helper\/)/u.test(file)),
+-  ).toEqual([]);
++  expect(files.filter((file) => /(?:\.test\.ts$|^helper\/)/u.test(file))).toEqual([]);
++  const nativeFiles = files.filter((file) => file.startsWith("native/") || file.endsWith(".dylib"));
++  expect(nativeFiles).toEqual(
++    files.includes("native-helper.json")
++      ? ["native/FaceTimeHelper.dylib", "native/LICENSE", "native/THIRD_PARTY_NOTICES.md"]
++      : [],
++  );
+   const staged = tempDirs.make("openclaw-facetime-source-package-");
+   for (const file of files) {
+     const target = join(staged, file);
+@@ -74,7 +78,11 @@
+     expect(packageManifest.files).toEqual(expect.arrayContaining(["index.ts", "runtime-api.ts"]));
+     expect(packageManifest.files).not.toContain("runtime-entry.ts");
+     expect(packageManifest.files.some((file: string) => file.startsWith("helper/"))).toBe(false);
+-    expect(packageManifest.files.some((file: string) => file.startsWith("native/"))).toBe(false);
++    expect(packageManifest.files.filter((file: string) => file.startsWith("native/"))).toEqual([
++      "native/FaceTimeHelper.dylib",
++      "native/LICENSE",
++      "native/THIRD_PARTY_NOTICES.md",
++    ]);
+     expect(packageManifest.files).not.toContain("scripts/build-capture.sh");
+     expect(packageManifest.files).not.toContain("scripts/build-helper-macabi.sh");
+     expect(packageManifest.files).toContain("scripts/stage-helper.sh");
+diff --git a/extensions/facetime/tests/pinned-helper.test.ts b/extensions/facetime/tests/pinned-helper.test.ts
+new file mode 100644
+--- /dev/null
++++ b/extensions/facetime/tests/pinned-helper.test.ts
+@@ -0,0 +1,94 @@
++import { createHash } from "node:crypto";
++import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync, realpathSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { afterEach, describe, expect, it, vi } from "vitest";
++
++const { resolvePinnedHelper } = await import(
++  new URL("../scripts/pinned-helper.mjs", import.meta.url).href
++);
++const roots: string[] = [];
++afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })));
++function fixture() {
++  const root = realpathSync(mkdtempSync(join(tmpdir(), "facetime-pinned-")));
++  roots.push(root);
++  mkdirSync(join(root, "native"));
++  const buildId = "b".repeat(64);
++  const bytes = Buffer.from(`synthetic native image ${buildId}`);
++  const manifest = {
++    schemaVersion: 1,
++    developmentOnly: true,
++    buildId,
++    helperSha256: createHash("sha256").update(bytes).digest("hex"),
++    revision: "a".repeat(40),
++    tree: "c".repeat(40),
++  };
++  const dylib = join(root, "native", "FaceTimeHelper.dylib");
++  writeFileSync(dylib, bytes);
++  const save = () => writeFileSync(join(root, "native-helper.json"), JSON.stringify(manifest));
++  save();
++  return { root, manifest, dylib, save };
++}
++describe("pinned source-built call helper", () => {
++  it("requires the selected bytes and a successful signature check", () => {
++    const f = fixture();
++    const verify = vi.fn();
++    expect(resolvePinnedHelper(f.root, verify)).toMatchObject({
++      dylib: f.dylib,
++      buildId: f.manifest.buildId,
++    });
++    expect(verify).toHaveBeenCalledWith(f.dylib);
++    expect(() =>
++      resolvePinnedHelper(f.root, () => {
++        throw Error("signature invalid");
++      }),
++    ).toThrow("signature invalid");
++  });
++  it("accepts release provenance while still requiring signature integrity", () => {
++    const f = fixture();
++    const receipt = { ...f.manifest, schemaVersion: 2, kind: "source-built",
++      configuration: "release", signing: "ad-hoc",
++      patches: [{ name: "call-lifecycle.patch", sha256: "e".repeat(64) }] };
++    const save = () => writeFileSync(join(f.root, "native-helper.json"), JSON.stringify(receipt));
++    save();
++    const verify = vi.fn();
++    expect(resolvePinnedHelper(f.root, verify).buildId).toBe(f.manifest.buildId);
++    expect(verify).toHaveBeenCalledWith(f.dylib);
++    expect(() => resolvePinnedHelper(f.root, () => { throw Error("bad signature"); })).toThrow("bad signature");
++    receipt.patches[0].sha256 = "invalid";
++    save();
++    expect(() => resolvePinnedHelper(f.root, verify)).toThrow("Invalid pinned");
++    receipt.patches[0].sha256 = "e".repeat(64);
++    receipt.configuration = "debug";
++    save();
++    expect(() => resolvePinnedHelper(f.root, verify)).toThrow("Invalid pinned");
++  });
++  it("rejects changed helper bytes before signature verification", () => {
++    const f = fixture();
++    const verify = vi.fn();
++    writeFileSync(f.dylib, "replacement");
++    expect(() => resolvePinnedHelper(f.root, verify)).toThrow("identity mismatch");
++    expect(verify).not.toHaveBeenCalled();
++  });
++  it("rejects a build ID that is not embedded in the selected binary", () => {
++    const f = fixture();
++    f.manifest.buildId = "d".repeat(64);
++    f.save();
++    expect(() => resolvePinnedHelper(f.root, vi.fn())).toThrow("identity mismatch");
++  });
++  it("rejects missing or malformed provenance without falling back", () => {
++    const f = fixture();
++    f.manifest.developmentOnly = false;
++    f.save();
++    expect(() => resolvePinnedHelper(f.root, vi.fn())).toThrow("Invalid pinned");
++    rmSync(join(f.root, "native-helper.json"));
++    expect(() => resolvePinnedHelper(f.root, vi.fn())).toThrow();
++  });
++  it("rejects a linked helper outside the selected runtime", () => {
++    const f = fixture();
++    const other = fixture();
++    rmSync(f.dylib);
++    symlinkSync(other.dylib, f.dylib);
++    expect(() => resolvePinnedHelper(f.root, vi.fn())).toThrow("regular artifact path");
++  });
++});
+diff --git a/extensions/facetime/tests/plugin-paths.test.ts b/extensions/facetime/tests/plugin-paths.test.ts
+--- a/extensions/facetime/tests/plugin-paths.test.ts
++++ b/extensions/facetime/tests/plugin-paths.test.ts
+@@ -1,4 +1,5 @@
+-import { homedir } from "node:os";
++import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
++import { homedir, tmpdir } from "node:os";
+ import { resolve } from "node:path";
+ import { describe, expect, it, vi } from "vitest";
+ import {
+@@ -31,6 +32,45 @@
+ }
+ 
+ describe("plugin paths", () => {
++  it("selects the verified pinned helper without staging over the vendor", async () => {
++    const root = mkdtempSync(resolve(tmpdir(), "facetime-selected-"));
++    writeFileSync(resolve(root, "native-helper.json"), "{}");
++    const run = vi.fn(async (argv: string[]) => ({
++      code: 0,
++      stdout: argv.includes("--json")
++        ? JSON.stringify({
++            buildId: "b".repeat(64),
++            dylib: resolve(root, "native/FaceTimeHelper.dylib"),
++          })
++        : "",
++    }));
++    try {
++      expect(
++        await ensureHelperArtifacts({
++          pluginRoot: root,
++          runCommandWithTimeout: run as never,
++          readFile: installedReadFile() as never,
++        }),
++      ).toMatchObject({
++        buildId: "b".repeat(64),
++        dylib: resolve(root, "native/FaceTimeHelper.dylib"),
++      });
++      expect(
++        run.mock.calls.some(([argv]) => argv.some((arg) => arg.endsWith("stage-helper.sh"))),
++      ).toBe(false);
++      run.mockResolvedValueOnce({ code: 1, stdout: "" });
++      await expect(
++        ensureHelperArtifacts({
++          pluginRoot: root,
++          runCommandWithTimeout: run as never,
++          readFile: installedReadFile() as never,
++        }),
++      ).rejects.toThrow("verification failed");
++    } finally {
++      rmSync(root, { recursive: true, force: true });
++    }
++  });
++
+   it("stages a stable capture identity instead of executing from the versioned native package", async () => {
+     const runCommandWithTimeout = vi
+       .fn()
+diff --git a/extensions/facetime/tests/runtime.test.ts b/extensions/facetime/tests/runtime.test.ts
+--- a/extensions/facetime/tests/runtime.test.ts
++++ b/extensions/facetime/tests/runtime.test.ts
+@@ -18,6 +18,94 @@
+ describe("FaceTime runtime call sequencing", () => {
+   beforeEach(resetRuntimeTestState);
+ 
++  it("retains an answering peer when answer validation fails and that peer disconnects", async () => {
++    const hiddenPeer = {
++      bundleIdentifier: "com.apple.FaceTime",
++      processId: 4321,
++      processStartedAtMs: 1700000000000,
++      connectionGeneration: 7,
++    };
++    mocks.helper.answerCall.mockImplementationOnce(async () => {
++      mocks.helper.connectedSockets = 1;
++      mocks.helper.connectedHelperBundles = ["com.apple.mobilephone"];
++      return completeAction({
++        outcome: "answered-muted",
++        muted: false,
++        is_uplink_muted: false,
++        helperPeer: hiddenPeer,
++      });
++    });
++    mocks.helper.inspectCall.mockImplementation(async (_aliases: string[], pids: number[]) => ({
++      helpersContacted: 1,
++      topologyGeneration: 1,
++      topologyComplete: !pids.includes(hiddenPeer.processId),
++      helperResults: [{ outcome: "absent", found: false }],
++    }));
++    const runtime = await createRuntime();
++    try {
++      await mocks.helperParams?.onMessage(incomingCall());
++      expect(mocks.startTalk).not.toHaveBeenCalled();
++      expect(mocks.helper.inspectCall).toHaveBeenCalledWith(["call-1"], [4321]);
++      expect((await runtime.status()).calls).toMatchObject([
++        { callUUID: "call-1", carrierHangupPending: true },
++      ]);
++    } finally {
++      mocks.helper.inspectCall.mockResolvedValue(completeAbsence());
++      await runtime.stop();
++    }
++  });
++
++  it.each([1, 3, 4])("treats has_ended as terminal even with call status %i", async (status) => {
++    const talk = createTalkDriver({});
++    mocks.startTalk.mockResolvedValueOnce(talk);
++    const runtime = await createRuntime();
++    try {
++      await mocks.helperParams?.onMessage(incomingCall(1));
++      await vi.waitFor(() => expect(talk.activate).toHaveBeenCalledOnce());
++      const event = incomingCall(status);
++      await mocks.helperParams?.onMessage({ ...event, data: { ...event.data, has_ended: true } });
++      expect(talk.activate).toHaveBeenCalledTimes(1);
++      expect(talk.close).toHaveBeenCalledWith("native-ended");
++      expect((await runtime.status()).calls).toEqual([]);
++    } finally {
++      await runtime.stop();
++    }
++  });
++
++  it.each(["safetyMute", "leaveCall"] as const)(
++    "retains a newly observed peer before failed %s validation",
++    async (action) => {
++      const talk = createTalkDriver({});
++      mocks.startTalk.mockResolvedValueOnce(talk);
++      const runtime = await createRuntime();
++      try {
++        await mocks.helperParams?.onMessage(incomingCall(1));
++        await vi.waitFor(() => expect(talk.activate).toHaveBeenCalledOnce());
++        const peer = {
++          bundleIdentifier: "com.apple.FaceTime",
++          processId: 4321,
++          processStartedAtMs: 1700000000000,
++          connectionGeneration: 7,
++        };
++        mocks.helper[action].mockImplementationOnce(async () => {
++          mocks.helper.connectedSockets = 1;
++          mocks.helper.connectedHelperBundles = ["com.apple.mobilephone"];
++          return completeAction({ outcome: "unconfirmed", helperPeer: peer });
++        });
++        mocks.helper.inspectCall.mockImplementation(async (_aliases: string[], pids: number[]) => ({
++          ...completeAbsence(),
++          topologyComplete: !pids.includes(4321),
++        }));
++        await expect(runtime.hangup()).rejects.toThrow("carrier hangup pending");
++        expect(mocks.helper.inspectCall).toHaveBeenCalledWith(["call-1"], [4321]);
++        expect(talk.close).not.toHaveBeenCalled();
++      } finally {
++        mocks.helper.inspectCall.mockResolvedValue(completeAbsence());
++        await runtime.stop();
++      }
++    },
++  );
++
+   it("answers muted before capture, then waits for provider and route readiness", async () => {
+     const order: string[] = [];
+     let releaseReadiness = () => {};
+@@ -221,6 +309,43 @@
+     expect(mocks.helper.setMuted).not.toHaveBeenCalled();
+     expect(mocks.helper.startTransmission).not.toHaveBeenCalled();
+     await runtime.stop();
++  });
++
++  it("retains late startup suppression until runtime stop confirms carrier closure", async () => {
++    let releaseSuppression!: () => void;
++    let releaseLeave!: () => void;
++    const talk = createTalkDriver({});
++    mocks.startTalk.mockImplementationOnce(
++      () =>
++        new Promise<typeof talk>((resolve) => {
++          releaseSuppression = () => resolve(talk);
++        }),
++    );
++    const leave = new Promise<void>((resolve) => {
++      releaseLeave = resolve;
++    });
++    mocks.helper.leaveCall.mockImplementation(async () => {
++      await leave;
++      return completeAbsence();
++    });
++    const runtime = await createRuntime();
++    void mocks.helperParams?.onMessage(incomingCall());
++    await vi.waitFor(() => expect(mocks.startTalk).toHaveBeenCalledOnce());
++    const stopping = runtime.stop();
++    try {
++      await vi.waitFor(() => expect(mocks.helper.leaveCall).toHaveBeenCalled());
++      releaseSuppression();
++      await vi.waitFor(() => expect(talk.suspendMedia).toHaveBeenCalled());
++      expect(talk.close).not.toHaveBeenCalled();
++      expect(mocks.helper.startTransmission).not.toHaveBeenCalled();
++      releaseLeave();
++      await stopping;
++      expect(talk.close).toHaveBeenCalled();
++    } finally {
++      releaseSuppression();
++      releaseLeave();
++      await stopping;
++    }
+   });
+ 
+   it("does not activate after helper control is lost during suppression startup", async () => {
+diff --git a/extensions/facetime/tests/talk-driver.shared-talk.test.ts b/extensions/facetime/tests/talk-driver.shared-talk.test.ts
+--- a/extensions/facetime/tests/talk-driver.shared-talk.test.ts
++++ b/extensions/facetime/tests/talk-driver.shared-talk.test.ts
+@@ -79,6 +79,7 @@
+     await driver.readyForAudio();
+     driver.activate();
+     const closing = driver.suspendMedia("hangup");
++    let finalClose: Promise<void> | undefined;
+     try {
+       await vi.waitFor(() => expect(mocks.pump.suspendMedia).toHaveBeenCalledOnce());
+       expect(mocks.bridge.close).toHaveBeenCalledOnce();
+@@ -88,9 +89,49 @@
+       expect(mocks.pump.writeOutputAudio).not.toHaveBeenCalled();
+       // Process-tap suppression remains owned until physical hangup is safe.
+       expect(mocks.pump.stop).not.toHaveBeenCalled();
++      // The carrier now confirms closure. Persistence still has not completed.
++      finalClose = driver.close("carrier-closed");
++      await vi.waitFor(() => expect(mocks.pump.stop).toHaveBeenCalledOnce());
+     } finally {
+       finishClose();
+       await closing;
++      await (finalClose ?? driver.close());
++    }
++  });
++
++  it("bounds shared cleanup after releasing capture on confirmed carrier closure", async () => {
++    let request!: RealtimeVoiceCarrierSessionParams;
++    const createSession = vi.fn(async (params: RealtimeVoiceCarrierSessionParams) => {
++      request = params;
++      return mocks.bridge;
++    });
++    mocks.bridge.connect.mockImplementation(async () => request.onReady?.());
++    let release!: () => void;
++    mocks.bridge.close.mockReturnValue(
++      new Promise<void>((resolve) => {
++        release = resolve;
++      }),
++    );
++    const warn = vi.fn();
++    const driver = await startTalkDriver(
++      sharedTalkParams({
++        runtime: { realtimeVoice: { createSession } },
++        assertOwnerCurrent: vi.fn(),
++        logger: { ...console, warn },
++      }),
++    );
++    await driver.readyForAudio();
++    vi.useFakeTimers();
++    try {
++      const closing = driver.close("carrier-closed");
++      await vi.advanceTimersByTimeAsync(0);
++      expect(mocks.pump.stop).toHaveBeenCalledOnce();
++      await vi.advanceTimersByTimeAsync(20_000);
++      await closing;
++      expect(warn).toHaveBeenCalledWith(expect.stringContaining("cleanup still pending"));
++    } finally {
++      release();
++      vi.useRealTimers();
+       await driver.close();
+     }
+   });

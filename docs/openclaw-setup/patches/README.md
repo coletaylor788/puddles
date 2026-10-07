@@ -45,6 +45,12 @@ Register new patches and every applicable test in the cumulative manifest at
 `packages/e2e/openclaw-patch-suite.json`. Keep the visible patch order in
 `apply-and-deploy.sh` synchronized. Do not drop older regression targets.
 
+## Separate FaceTime native companion
+
+[FaceTime native patches](facetime-native/README.md) have their own pinned source
+and apply-and-check command. Their compiled regressions run through the FaceTime
+candidate test target. They do not apply to the host OpenClaw tree.
+
 ## Build and rehearse
 
 ```bash

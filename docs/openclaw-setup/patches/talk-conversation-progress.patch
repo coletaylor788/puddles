@@ -878,3 +878,116 @@ new file mode 100644
 +    });
 +  });
 +});
+diff --git a/extensions/openai/realtime-quicksilver-concurrency.test.ts b/extensions/openai/realtime-quicksilver-concurrency.test.ts
+--- a/extensions/openai/realtime-quicksilver-concurrency.test.ts
++++ b/extensions/openai/realtime-quicksilver-concurrency.test.ts
+@@ -60,6 +60,45 @@
+ }
+ 
+ describe("GPT-Live concurrent conversation and backend work", () => {
++  it.each(["resolve", "reject"] as const)(
++    "preserves accepted work when pending steering %s during detached transcript drain",
++    async (outcome) => {
++      const work = deferred<{ text: string }>();
++      const steering = deferred<{ text: string }>();
++      const completed: string[] = [];
++      const run = vi.fn<ConsultRunner>(async () => {
++        const result = await work.promise;
++        completed.push(result.text);
++        return result;
++      });
++      const steer = vi.fn(async () => await steering.promise);
++      const h = scenario({ runAgentConsult: run, steerAgentConsult: steer });
++      try {
++        h.request("accepted", "finish the original task");
++        await vi.waitFor(() => expect(run).toHaveBeenCalledOnce());
++        h.request("pending", "also do this");
++        await vi.waitFor(() => expect(steer).toHaveBeenCalledOnce());
++        h.controller.beginTranscriptDrain("detach");
++        const atClose = h.socket.sent.length;
++        if (outcome === "reject") steering.reject(new Error("Realtime voice session closed"));
++        else steering.resolve({ text: "follow-up accepted before close" });
++        await nextEventLoopTurn();
++        expect(run.mock.calls[0]?.[0].signal?.aborted).toBe(false);
++        expect(h.onFatalError).not.toHaveBeenCalled();
++        work.resolve({ text: "original task finished in the host" });
++        await vi.waitFor(() => expect(completed).toEqual(["original task finished in the host"]));
++        expect(h.socket.sent).toHaveLength(atClose);
++        // The server has not acknowledged closure until after work settles.
++        h.frame({ type: "session.closed", reason: "close_requested" });
++        expect(run.mock.calls[0]?.[0].signal?.aborted).toBe(false);
++      } finally {
++        steering.resolve({ text: "cleanup" });
++        work.resolve({ text: "cleanup" });
++        h.controller.detach();
++      }
++    },
++  );
++
+   const workKinds = [
+     "read",
+     "parallel-reads",
+diff --git a/extensions/openai/realtime-quicksilver-delegation-controller.ts b/extensions/openai/realtime-quicksilver-delegation-controller.ts
+--- a/extensions/openai/realtime-quicksilver-delegation-controller.ts
++++ b/extensions/openai/realtime-quicksilver-delegation-controller.ts
+@@ -412,7 +412,12 @@
+     }
+     const steering = (async () => {
+       await Promise.resolve();
+-      while (!this.stopped && !controller.signal.aborted && this.consultController === controller) {
++      while (
++        !this.stopped &&
++        !this.drainDisposition &&
++        !controller.signal.aborted &&
++        this.consultController === controller
++      ) {
+         const delegation = this.pendingDelegation;
+         this.pendingDelegation = undefined;
+         if (!delegation) {
+@@ -423,6 +428,9 @@
+         } catch (error) {
+           if (
+             this.stopped ||
++            // Normal transport retirement preserves accepted host work, even
++            // before session.closed acknowledges the transcript drain.
++            this.drainDisposition ||
+             controller.signal.aborted ||
+             this.consultController !== controller ||
+             readErrorName(error) === "AbortError" ||
+@@ -456,7 +464,12 @@
+           this.fail(fatal);
+           return;
+         }
+-        if (this.stopped || controller.signal.aborted || this.consultController !== controller) {
++        if (
++          this.stopped ||
++          this.drainDisposition ||
++          controller.signal.aborted ||
++          this.consultController !== controller
++        ) {
+           return;
+         }
+         this.activeDelegationId = delegation.id;
+diff --git a/src/gateway/talk/client-gateway-control.close.test.ts b/src/gateway/talk/client-gateway-control.close.test.ts
+--- a/src/gateway/talk/client-gateway-control.close.test.ts
++++ b/src/gateway/talk/client-gateway-control.close.test.ts
+@@ -47,6 +47,7 @@
+       await owner.close();
+       expect(acceptedSignal?.aborted).toBe(false);
+       await expect(owner.runAgentConsult({ prompt: "late task" })).rejects.toThrow("closed");
++      expect(() => owner.assertOpen()).toThrow(expect.objectContaining({ name: "AbortError" }));
+       expect(runAgentConsult).toHaveBeenCalledOnce();
+       providerController.abort(new Error("provider cancelled accepted work"));
+       expect(acceptedSignal?.aborted).toBe(true);
+diff --git a/src/gateway/talk/client-gateway-control.ts b/src/gateway/talk/client-gateway-control.ts
+--- a/src/gateway/talk/client-gateway-control.ts
++++ b/src/gateway/talk/client-gateway-control.ts
+@@ -618,7 +618,7 @@
+         });
+       // preserveRuns keeps accepted work alive, not a retired transport's presentation authority.
+       params.runAgentConsult.revokeRequesterFinal?.();
+-      lifetime.abort(new Error("Realtime voice session closed"));
++      lifetime.abort(new DOMException("Realtime voice session closed", "AbortError"));
+       confirmationReadiness.close();
+       return closing;
+     },
