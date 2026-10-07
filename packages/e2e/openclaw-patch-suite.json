@@ -123,7 +123,10 @@
     "src/infra/heartbeat-runner.isolated-session-mirror.test.ts": "infra",
     "src/agents/system-prompt.test.ts": "agents-core",
     "src/agents/embedded-agent-runner/run/terminal-resolution.settled-request.test.ts": "unit-fast",
-    "src/agents/agent-tools.create-openclaw-coding-tools.test.ts": "infra"
+    "src/agents/agent-tools.create-openclaw-coding-tools.test.ts": "infra",
+    "extensions/openai/realtime-quicksilver-gateway-bridge.test.ts": "extension-provider-openai",
+    "extensions/openai/realtime-quicksilver-session-lifecycle.test.ts": "extension-provider-openai",
+    "extensions/openai/realtime-voice-provider-routing.test.ts": "extension-provider-openai"
   },
   "patches": [
     {
@@ -410,7 +413,10 @@
         "src/gateway/talk/client-gateway-control.test.ts",
         "src/agents/embedded-agent-subscribe.handlers.messages.update-stream-items.test.ts",
         "extensions/copilot/src/event-bridge.test.ts",
-        "extensions/openai/realtime-quicksilver-copilot-progress.test.ts"
+        "extensions/openai/realtime-quicksilver-copilot-progress.test.ts",
+        "extensions/openai/realtime-quicksilver-gateway-bridge.test.ts",
+        "extensions/openai/realtime-quicksilver-session-lifecycle.test.ts",
+        "extensions/openai/realtime-voice-provider-routing.test.ts"
       ],
       "candidateTests": [
         "tests/candidate.talk-concurrency.test.ts"

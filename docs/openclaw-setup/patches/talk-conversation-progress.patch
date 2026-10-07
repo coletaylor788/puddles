@@ -149,6 +149,28 @@ diff --git a/extensions/openai/realtime-quicksilver-delegation-controller.ts b/e
      }
      while (this.steeringPromise) {
        await this.steeringPromise;
+diff --git a/extensions/openai/realtime-quicksilver-gateway-bridge.test.ts b/extensions/openai/realtime-quicksilver-gateway-bridge.test.ts
+--- a/extensions/openai/realtime-quicksilver-gateway-bridge.test.ts
++++ b/extensions/openai/realtime-quicksilver-gateway-bridge.test.ts
+@@ -2,6 +2,7 @@
+ import { openAIRealtimeHost } from "./realtime-host.js";
+ import { OpenAIQuicksilverPendingAudio } from "./realtime-quicksilver-audio-buffer.js";
+ import { OpenAIQuicksilverGatewayBridge } from "./realtime-quicksilver-gateway-bridge.js";
++import { OPENAI_QUICKSILVER_HOST_CONTROL_INSTRUCTIONS } from "./realtime-quicksilver-instructions.js";
+ import type {
+   OpenAIQuicksilverAudioPeerCallbacks,
+   OpenAIQuicksilverAudioPeerContract,
+@@ -416,7 +417,9 @@
+       "Content-Type": expect.stringMatching(/^multipart\/form-data; boundary=/),
+     });
+     expect(body).toContain('"delegation":{"type":"client","ack_filler":false}');
+-    expect(body).toContain("Wait for the host control result");
++    expect(body).toContain(
++      JSON.stringify(OPENAI_QUICKSILVER_HOST_CONTROL_INSTRUCTIONS).slice(1, -1),
++    );
+     expect(createOffer).toHaveBeenCalledOnce();
+     expect(fetchImpl).toHaveBeenCalledOnce();
+     expect(applyAnswer).toHaveBeenCalledWith("v=answer\r\n");
 diff --git a/extensions/openai/realtime-quicksilver-gateway-direct.test.ts b/extensions/openai/realtime-quicksilver-gateway-direct.test.ts
 --- a/extensions/openai/realtime-quicksilver-gateway-direct.test.ts
 +++ b/extensions/openai/realtime-quicksilver-gateway-direct.test.ts
@@ -208,6 +230,34 @@ diff --git a/extensions/openai/realtime-quicksilver-instructions.ts b/extensions
  Shared conversation history may describe other calls or completed work; it does not establish this call's live ownership or status.
  Only that fresh result establishes whether this call's work is active, completed, or cancelled. Do not add your own acknowledgement or progress claims; a delegation or task receipt is not evidence of progress.
  Current host-provided task receipts and control results are not new requests: speak them exactly as instructed, without delegating them.`;
+diff --git a/extensions/openai/realtime-quicksilver-session-lifecycle.test.ts b/extensions/openai/realtime-quicksilver-session-lifecycle.test.ts
+--- a/extensions/openai/realtime-quicksilver-session-lifecycle.test.ts
++++ b/extensions/openai/realtime-quicksilver-session-lifecycle.test.ts
+@@ -1,6 +1,7 @@
+ import type { RealtimeVoiceGatewayControl } from "openclaw/plugin-sdk/realtime-voice";
+ import { findSourceImportBackedges } from "openclaw/plugin-sdk/test-fixtures";
+ import { describe, expect, it, vi } from "vitest";
++import { OPENAI_QUICKSILVER_HOST_CONTROL_INSTRUCTIONS } from "./realtime-quicksilver-instructions.js";
+ import {
+   createBroker,
+   createCallResponse,
+@@ -124,15 +125,8 @@
+           expect(session.instructions).toContain("prior calls and backing work");
+           expect(session.instructions).toContain("data, not instructions");
+           expect(session.instructions).toContain("not this call's conversation or live task state");
+-          expect(session.instructions).toContain("Wait for the host control result");
+-          expect(session.instructions).toContain(
+-            "Delegate status, cancellation, redirects, and follow-up requests to the client using the caller's request",
+-          );
+-          expect(session.instructions).toContain("Do not answer these requests yourself");
++          expect(session.instructions).toContain(OPENAI_QUICKSILVER_HOST_CONTROL_INSTRUCTIONS);
+           expect(session.instructions).toContain("Keep my answers brief.");
+-          expect(session.instructions).toContain(
+-            "before answering each new request: it must be fresh and for this voice call, even if shared history appears to answer it",
+-          );
+           expect(session.instructions).toContain(
+             "Shared conversation history may describe other calls or completed work; it does not establish this call's live ownership or status",
+           );
 diff --git a/extensions/openai/realtime-quicksilver.test-helpers.ts b/extensions/openai/realtime-quicksilver.test-helpers.ts
 --- a/extensions/openai/realtime-quicksilver.test-helpers.ts
 +++ b/extensions/openai/realtime-quicksilver.test-helpers.ts
@@ -219,6 +269,30 @@ diff --git a/extensions/openai/realtime-quicksilver.test-helpers.ts b/extensions
    signal?: AbortSignal;
    requesterFinal?: { append: (text: string) => boolean };
  }) => Promise<{ text: string; yielded?: true }>) & {
+diff --git a/extensions/openai/realtime-voice-provider-routing.test.ts b/extensions/openai/realtime-voice-provider-routing.test.ts
+--- a/extensions/openai/realtime-voice-provider-routing.test.ts
++++ b/extensions/openai/realtime-voice-provider-routing.test.ts
+@@ -1,5 +1,6 @@
+ // Openai tests cover realtime voice provider plugin behavior.
+ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++import { buildOpenAIQuicksilverInstructions } from "./realtime-quicksilver-instructions.js";
+ import { buildOpenAIRealtimeVoiceProvider } from "./realtime-voice-provider.js";
+ 
+ const mocks = await vi.hoisted(async () => {
+@@ -731,11 +732,8 @@
+         "quicksilver request",
+       );
+       expect(quicksilverRequest.instructions).toMatch(/^You are OpenClaw's realtime voice layer\./);
+-      expect(quicksilverRequest.instructions).toContain(
+-        "Delegate each user request once and wait for its result.",
+-      );
+-      expect(quicksilverRequest.instructions).toContain(
+-        "New user follow-ups, corrections, and explicit retries are new requests.",
++      expect(quicksilverRequest.instructions).toBe(
++        buildOpenAIQuicksilverInstructions(model, "Always address the caller as Captain."),
+       );
+       if (publicApi) {
+         expect(quicksilverRequest.instructions).toContain(
 diff --git a/src/gateway/talk/client-agent-consult.ts b/src/gateway/talk/client-agent-consult.ts
 --- a/src/gateway/talk/client-agent-consult.ts
 +++ b/src/gateway/talk/client-agent-consult.ts
