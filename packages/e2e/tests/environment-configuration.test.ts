@@ -18,6 +18,24 @@ const bindings = [
 const overrides = { "/gateway/port": 18001, "/secrets/providers/local/path": "/test/credentials.json" };
 
 describe("environment configuration", () => {
+  it.each(["defaults", "entries/main"])("isolates heartbeat delivery at %s without changing its schedule or model", (agent) => {
+    const heartbeat = { every: "60m", model: "example/model", target: "example-channel", to: "prod-recipient", accountId: "prod-account" };
+    const config = agent === "defaults"
+      ? { agents: { defaults: { heartbeat } } }
+      : { agents: { entries: { main: { heartbeat } } } };
+    const fields = { target: "none", to: "fixture-recipient", accountId: "fixture-account" };
+    const routing = Object.keys(fields).map((key) => ({ path: `/agents/${agent}/heartbeat/${key}`, category: "account", reason: "Isolated delivery" }));
+    const selected = Object.fromEntries(Object.entries(fields).map(([key, value]) => [`/agents/${agent}/heartbeat/${key}`, value]));
+    const result = renderEnvironmentConfiguration(config, routing, selected);
+    const actual = agent === "defaults" ? result.agents.defaults.heartbeat : result.agents.entries.main.heartbeat;
+    expect(actual).toEqual({ ...heartbeat, ...fields });
+    expect(() => assertEnvironmentConfiguration(config, config, routing, selected)).toThrow(/Configuration parity failed/);
+    for (const field of ["every", "model"]) {
+      const path = `/agents/${agent}/heartbeat/${field}`;
+      expect(() => renderEnvironmentConfiguration(config, [{ path, category: "account", reason: "Invalid behavior override" }], { [path]: "changed" })).toThrow(/Unsupported|Behavior/);
+    }
+  });
+
   it("renders only declared bindings and preserves legacy authored behavior", () => {
     const config = renderEnvironmentConfiguration(base, bindings, overrides);
     expect(config.gateway.port).toBe(18001);
