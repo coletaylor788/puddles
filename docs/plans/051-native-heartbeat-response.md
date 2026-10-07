@@ -1,8 +1,8 @@
 # Native heartbeat completion and reply context
 
-Status: Reviewed implementation; source integration and release validation pending.
+Status: Implemented and validated.
 Issue: https://github.com/coletaylor788/puddles/issues/223
-Last updated: 2026-10-06
+Last updated: 2026-10-07
 
 ## Human section
 
@@ -88,5 +88,5 @@ Release validation will run the complete accumulated pool on selected merged sou
 - [x] Approved design and local prototype.
 - [x] Maintained patch, native scenario and regression registration.
 - [x] Complete retained review and focused checks.
-- [ ] Merge source and validate accumulated candidate.
-- [ ] Promote exact artifact and verify production.
+- [x] Merge source and validate accumulated candidate.
+- [x] Promote exact artifact and verify production.
