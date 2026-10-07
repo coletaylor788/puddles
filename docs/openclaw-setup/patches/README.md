@@ -26,6 +26,7 @@ activated gateway. Keep the previous interpreter available for rollback.
 | `browser-userdata-dir-fix.patch` | Browser data directory and singleton cleanup |
 | `builtin-memory-migration.patch` | Regression tests for upstream memory migration and per-agent source isolation |
 | `silent-reply-completion-evidence.patch` | Regression tests for upstream silent-reply completion evidence |
+| `native-heartbeat-response.patch` | Native structured completion and notification for built-in heartbeat turns |
 | `stopped-state-migration-sdk.patch` | Expose maintained stopped config repair, cron partition migration, and targeted writes |
 | `scoped-container-temp-root.patch` | Carry explicit private staging through sandbox and browser creation |
 | `active-memory-cold-recall.patch` | Regression tests for upstream cold recall and the configured recall limit |
