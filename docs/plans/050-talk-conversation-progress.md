@@ -59,6 +59,8 @@ The direct-transport regression now checks the current host-control policy
 rather than its retired wording and observes startup rejection during cleanup.
 Browser relay, session lifecycle, and provider routing checks now assert the
 current complete policy as well, with all targets in the shared pool.
+A native fixture crash is now reported as a gateway exit. Its writable state
+moves outside the source checkout; runtime delegation behavior is unchanged.
 
 ## Agent section
 
@@ -78,6 +80,11 @@ if an earlier assertion fails. The companion gate exposed the same retired
 policy assertions in browser relay, session lifecycle, and provider routing tests.
 Match the exported policy or instruction builder at each transport boundary,
 preserve history and channel checks, and register all targets in the shared pool.
+The communication fixture exposed a native SQLite signal crash with state inside
+the checkout. Standalone and Vitest controls outside the checkout pass. Keep
+fixture state in a unique host temporary directory and check both exit code and
+signal while starting or awaiting replies. The crashing file operation is not
+identified, so this does not claim a SQLite runtime fix.
 
 ### Scope and acceptance criteria
 
@@ -123,6 +130,10 @@ still reports unrelated errors. Installed DEV integration and the compiled Talk
 concurrency probe pass, with zero model calls and external writes. The DEV slot
 is released. Release validation remains; this repair is not active in production.
 
+Signal-exit and nonzero-exit regressions use actual child processes. The full
+communication candidate scenario retains its handoff, restart, interruption,
+one-report budget, and guarded-tool assertions.
+
 ### Rollout and rollback
 
 Independent review and focused tests precede source landing. The release owner
@@ -134,13 +145,14 @@ quality remains for the requester's next voice test.
 ### Review log
 
 The retained independent reviewer cleared the complete behavior diff, then checked
-the composed regression and compiled runtime probe. No actionable findings remain.
+the composed regression and compiled runtime probe. No actionable findings remain. The retained reviewer also cleared the temporary
+fixture roots and signal-aware exit checks; no runtime SQLite change is included.
 
 ### Checklist
 
 - [x] Approved design and registered regression coverage.
 - [x] Focused checks and independent review.
 - [x] Installed DEV validation.
-- [ ] Source landing.
+- [x] Original source landing. Release fixture correction reviewed; landing pending.
 - [ ] Selected merged cumulative gate and exact-artifact promotion.
 - [ ] User voice test and owned artifact cleanup.

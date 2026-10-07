@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { cpSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 // @ts-expect-error executable staging helper
 import { configure } from "../../../openclaw-plugins/communication-watcher/scripts/configure.mjs";
 
@@ -13,7 +14,7 @@ const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
 it("uses native correspondence search, checks current files, and leaves no native tool fallback when disabled", () => {
-  const root = join(realpathSync(repo), `.communication-candidate-${randomUUID()}`);
+  const root = join(realpathSync(tmpdir()), `communication-candidate-${randomUUID()}`);
   roots.push(root);
   const sender = "a".repeat(32), foreign = "b".repeat(32);
   const workspace = join(root, "main/communication-watcher");
@@ -126,7 +127,7 @@ try {
 }, 125_000);
 
 it("runs real heartbeat intake, guarded actions, native handoff, and restart recovery", async () => {
-  const root = join(realpathSync(repo), `.communication-gateway-${randomUUID()}`);
+  const root = join(realpathSync(tmpdir()), `communication-gateway-${randomUUID()}`);
   roots.push(root);
   // @ts-expect-error Executable native gateway fixture.
   const { communicationFixture } = await import("../fixtures/communication.mjs");
@@ -135,7 +136,7 @@ it("runs real heartbeat intake, guarded actions, native handoff, and restart rec
 }, 180_000);
 
 it("cleans its detached gateway when interrupted during a pending main reply", () => {
-  const root = join(realpathSync(repo), `.communication-interrupt-${randomUUID()}`); roots.push(root);
+  const root = join(realpathSync(tmpdir()), `communication-interrupt-${randomUUID()}`); roots.push(root);
   const child = spawnSync(process.execPath, [join(repo, "packages/e2e/fixtures/communication.mjs"), candidate!, join(repo, "openclaw-plugins/communication-watcher/dist"), root, "--interrupt"], { encoding: "utf8", timeout: 90000, maxBuffer: 2 * 1024 * 1024 });
   expect(child.status, `${child.stdout}\n${child.stderr}`).toBe(143);
   expect(JSON.parse(readFileSync(join(root, "main-reply.json"), "utf8"))).toEqual({ pending: true });
