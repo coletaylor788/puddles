@@ -1,9 +1,11 @@
+import heartbeat from "./heartbeat.mjs";
 const reply = (id, text) => ({
   id,
   steps: [{ incoming: [{ text, guid: "reusable-fixture-guid" }], responses: [{ text: "Fixture reply." }], expect: { sends: ["Fixture reply."], promptIncludes: [text] } }],
 });
 
 export default [
+  heartbeat,
   { ...reply("ordinary-conversation", "Say hello to the fixture."), expectBundledSkills: ["healthcheck", "skill-creator"] },
   {
     id: "conversation-history",

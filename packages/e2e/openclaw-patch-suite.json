@@ -116,7 +116,12 @@
     "src/gateway/talk/client-gateway-control.test.ts": "gateway-client",
     "src/agents/embedded-agent-subscribe.handlers.messages.update-stream-items.test.ts": "agents-core",
     "extensions/copilot/src/event-bridge.test.ts": "extensions",
-    "extensions/openai/realtime-quicksilver-copilot-progress.test.ts": "extension-provider-openai"
+    "extensions/openai/realtime-quicksilver-copilot-progress.test.ts": "extension-provider-openai",
+    "src/infra/heartbeat-runner.tool-response.test.ts": "infra",
+    "src/infra/heartbeat-runner.isolated-session-mirror.test.ts": "infra",
+    "src/agents/system-prompt.test.ts": "agents-core",
+    "src/agents/embedded-agent-runner/run/terminal-resolution.settled-request.test.ts": "unit-fast",
+    "src/agents/agent-tools.create-openclaw-coding-tools.test.ts": "infra"
   },
   "patches": [
     {
@@ -236,6 +241,16 @@
       "name": "silent-reply-completion-evidence",
       "tests": [
         "src/agents/embedded-agent-runner/run/terminal-resolution.test.ts"
+      ]
+    },
+    {
+      "name": "native-heartbeat-response",
+      "tests": [
+        "src/infra/heartbeat-runner.tool-response.test.ts",
+        "src/infra/heartbeat-runner.isolated-session-mirror.test.ts",
+        "src/agents/system-prompt.test.ts",
+        "src/agents/embedded-agent-runner/run/terminal-resolution.settled-request.test.ts",
+        "src/agents/agent-tools.create-openclaw-coding-tools.test.ts"
       ]
     },
     {

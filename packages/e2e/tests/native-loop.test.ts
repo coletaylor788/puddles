@@ -352,6 +352,18 @@ describe("recording fixture prerequisites", () => {
     await expect(runScenario(root(), { id: "missing-adapter", steps: [{ incoming: [], responses: [{ toolCalls: [{ name: "real_write", args: {} }] }], expect: { sends: [] } }] })).rejects.toThrow("Missing required recording adapter");
   });
 
+  it("allows the native heartbeat response only on explicitly selected heartbeat wakes", async () => {
+    const response = { toolCalls: [{ name: "heartbeat_respond", args: { outcome: "no_change", notify: false, summary: "Quiet." } }] };
+    for (const selection of [{}, { heartbeat: true }]) {
+      await expect(runScenario(root(), { id: "wrong-heartbeat-scope", ...selection,
+        steps: [{ incoming: [], responses: [response], expect: { sends: [] } }] })).rejects.toThrow("Missing required recording adapter");
+    }
+    await expect(runScenario(root(), { id: "valid-heartbeat-scope", heartbeat: true,
+      steps: [{ wake: "Check", responses: [response], expect: { sends: [] } }] })).rejects.toThrow("real installed");
+    await expect(runScenario(root(), { id: "unselected-wake",
+      steps: [{ wake: "Check", responses: [], expect: { sends: [] } }] })).rejects.toThrow("Invalid fixture heartbeat wake");
+  });
+
   it("never counts a missing real installed candidate as green", async () => {
     await expect(runScenario(root(), { id: "missing-runtime", steps: [{ incoming: [{ text: "test" }], responses: [{ text: "test" }], expect: { sends: ["test"] } }] })).rejects.toThrow("real installed");
   });
