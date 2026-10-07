@@ -18,6 +18,12 @@ export function ownedCommunicationContainers(entries, root) {
       mount.Type === 'bind' && mount.Source.startsWith(`${root}/`)));
 }
 
+export function assertCommunicationGatewayRunning(child, stage) {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    throw new Error(`Gateway exited during ${stage}: ${child.signalCode ?? `exit code ${child.exitCode}`}`);
+  }
+}
+
 /** Real gateway and tool execution, with scripted models and recording-only account adapters. */
 export async function communicationFixture(installedDir, pluginDir, root, options = {}) {
   mkdirSync(root, { recursive: true, mode: 0o700 }); root = realpathSync(root);
@@ -203,7 +209,7 @@ export async function communicationFixture(installedDir, pluginDir, root, option
       child = spawn(process.execPath, [join(installedDir, 'openclaw.mjs'), 'gateway', 'run', '--port', String(port), '--bind', 'loopback'], { cwd: workspace, env: fixtureEnv(context), detached: true, stdio: ['ignore', log, log] });
       writeFileSync(join(root, 'gateway-pid.json'), JSON.stringify({ pid: child.pid, port }));
       for (let i = 0; i < 600; i++) {
-        if (child.exitCode !== null) throw new Error('Gateway exited: '+readFileSync(join(root, 'gateway.log'), 'utf8').slice(-4000));
+        assertCommunicationGatewayRunning(child, 'startup');
         try { if ((await fetch(`http://127.0.0.1:${port}/healthz`)).ok) return; } catch {}
         await delay(100);
       }
@@ -226,7 +232,10 @@ export async function communicationFixture(installedDir, pluginDir, root, option
     // within that budget; the interruption proof instead stops an active reply.
     const waitForReply = async (ready, stage) => {
       const deadline = Date.now() + 30_000;
-      while (!ready() && Date.now() < deadline && !modelError) await delay(100);
+      while (!ready() && Date.now() < deadline && !modelError) {
+        assertCommunicationGatewayRunning(child, stage);
+        await delay(100);
+      }
       if (modelError) throw modelError;
       assert.ok(ready(), `Native ${stage} did not settle: ${JSON.stringify({ mainCalls, followups, announcements })}\n${readFileSync(join(root, 'gateway.log'), 'utf8').slice(-8000)}`);
     };
