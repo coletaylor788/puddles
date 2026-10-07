@@ -1,8 +1,8 @@
 # Talk conversation during delegated work
 
-Status: Focused and installed DEV validation passed; source landing pending.
+Status: Source merged; final release preparation in progress.
 Issue: [PR #220](https://github.com/coletaylor788/puddles/pull/220)
-Last updated: 2026-10-05
+Last updated: 2026-10-06
 
 ## Human section
 
@@ -49,14 +49,19 @@ path. A silent progress update never claims final delivery.
 
 ### Status
 
-The approved prompt and progress changes pass focused validation and independent
-review. Installed DEV checks also pass. Source landing and release validation remain.
+The approved prompt and progress changes are merged and pass focused validation,
+independent review, and installed DEV checks. Final release preparation is in
+progress. Environment bindings now cover exact heartbeat delivery destinations
+so rehearsal can preserve authored routing while disabling external delivery.
 
 ## Agent section
 
 ### State
 
 The repair uses the existing task worktree. No production activation has occurred.
+Release reconciliation adds account bindings only for heartbeat `target`, `to`,
+and `accountId`, at the defaults or named-agent level. Schedule and model
+overrides remain rejected. Focused rendering tests cover both agent shapes.
 
 ### Scope and acceptance criteria
 
