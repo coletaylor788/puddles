@@ -1,8 +1,8 @@
 # Talk conversation during delegated work
 
-Status: Source merged; final release preparation in progress.
+Status: Deployed and verified in production. Physical voice acceptance remains open.
 Issue: [PR #220](https://github.com/coletaylor788/puddles/pull/220)
-Last updated: 2026-10-06
+Last updated: 2026-10-07
 
 ## Human section
 
@@ -49,30 +49,23 @@ path. A silent progress update never claims final delivery.
 
 ### Status
 
-The approved prompt and progress changes are merged and pass focused validation,
-independent review, and installed DEV checks. Final release preparation is in
-progress. Environment bindings now cover exact heartbeat delivery destinations
-so rehearsal can preserve authored routing while disabling external delivery.
-The release runner also needs to pass the existing prebuilt-runtime contract to
-mapped E2E tests, so their setup consumes the candidate it already built.
-The direct-transport regression now checks the current host-control policy
-rather than its retired wording and observes startup rejection during cleanup.
-Browser relay, session lifecycle, and provider routing checks now assert the
-current complete policy as well, with all targets in the shared pool.
-A native fixture crash is now reported as a gateway exit. Its writable state
-moves outside the source checkout; runtime delegation behavior is unchanged.
-Installed TEST also exposed a fixture mismatch: its provider adapter omitted
-request instructions and forced heartbeat work onto the main agent's harness.
-Preserve both request shapes and exercise the configured split between the main
-agent and the built-in heartbeat runtime. That test also found that the Copilot
-adapter drops queued conversation context. Forward it through the existing native
-prompt builder and validate the submitted prompt without rewriting user history.
+The approved conversation and progress changes are deployed and verified in
+production. Live can discuss available context while backend work runs, and
+completed backend commentary arrives as silent context. Existing consultation
+ownership, yield behavior and operator voice settings are preserved.
+
+The selected merged candidate passed the full cumulative gate, installed DEV
+checks, 14 TEST scenarios, activation and rollback rehearsal, and read-only
+production verification. The native context repair also preserves the main
+agent's session across mixed-harness follow-ups. Physical conversation quality
+remains for the requester's next voice test.
 
 ## Agent section
 
 ### State
 
-The repair uses the existing task worktree. No production activation has occurred.
+The repair uses the existing task worktree. Production activation and verification
+completed on October 7 after the exact artifact passed DEV and TEST.
 Release reconciliation adds account bindings only for heartbeat `target`, `to`,
 and `accountId`, at the defaults or named-agent level. Schedule and model
 overrides remain rejected. Focused rendering tests cover both agent shapes.
@@ -143,8 +136,12 @@ one composed Copilot-to-Live test, 84 other provider tests, 56 Gateway tests,
 extension production type checks and focused changed-test type checks pass. The
 refreshed managed Copilot package matches its expected digest. Broader test typing
 still reports unrelated errors. Installed DEV integration and the compiled Talk
-concurrency probe pass, with zero model calls and external writes. The DEV slot
-is released. Release validation remains; this repair is not active in production.
+concurrency probe pass, with zero model calls and external writes. The selected release also passed the complete cumulative gate, four installed
+DEV scenarios and explicit ownership, concurrency, mixed-harness and credential
+startup probes. TEST passed 14 scenarios plus activation and rollback. Production
+verification confirmed exact runtime and companion digests, approved voice
+configuration, recovery linkage and health HTTP 200. No billable voice session or
+real message was used; the deployment slots are released.
 
 Signal-exit and nonzero-exit regressions use actual child processes. The full
 communication candidate scenario retains its handoff, restart, interruption,
@@ -169,6 +166,7 @@ fixture roots and signal-aware exit checks; no runtime SQLite change is included
 - [x] Approved design and registered regression coverage.
 - [x] Focused checks and independent review.
 - [x] Installed DEV validation.
-- [x] Original source landing. Release fixture correction reviewed; landing pending.
-- [ ] Selected merged cumulative gate and exact-artifact promotion.
-- [ ] User voice test and owned artifact cleanup.
+- [x] Source and release fixture corrections reviewed and merged.
+- [x] Selected merged cumulative gate and exact-artifact DEV, TEST and PROD promotion.
+- [ ] User voice acceptance.
+- [ ] Retire remaining unreferenced development artifacts; preserve recovery dependencies.
