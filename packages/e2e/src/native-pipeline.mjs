@@ -354,7 +354,9 @@ export async function nativePipeline(command, repositoryGates) {
         environment: jsonDigest(Object.entries(process.env).sort(([a], [b]) => a.localeCompare(b))),
         dependencies: treeDigest(join(repoRoot, "node_modules"), repositoryDependencyOptions),
       };
-      const mappedTestEnv = { ...buildEnv, OPENCLAW_VITEST_WORKER_CACHE: "1" };
+      // The successful build above owns dist. E2E setup must consume it rather
+      // than start another build after Vitest switches to an isolated home.
+      const mappedTestEnv = { ...buildEnv, OPENCLAW_VITEST_WORKER_CACHE: "1", OPENCLAW_E2E_USE_PREBUILT_DIST: "1" };
       await stage(runDir, "regressions", { candidateInputs, repoInputs, installedDependencies, tools, harness, execution, prepareOutputs, extension: extension.phaseHashes.gate, command, stateMigration, stateMigrations, buildEnvironment, mappedTestEnvironment: jsonDigest(mappedTestEnv) }, async () => {
         if (command === "ci" || command === "source-gate") await repositoryGates(run);
         await run("corepack", ["pnpm", "prompt:snapshots:check"], { cwd: candidate, env: buildEnv });

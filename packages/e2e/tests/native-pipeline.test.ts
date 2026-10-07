@@ -335,7 +335,7 @@ it("keeps a caller's release migration bindings out of synthetic pipelines", asy
   expect(receipt.stateMigrations).toBeUndefined();
 });
 
-it("runs every mapped regression through the upstream test entrypoint", async () => {
+it("runs every mapped regression against the built candidate through the upstream test entrypoint", async () => {
   setup();
   vi.stubEnv("DEVELOPER_DIR", "/Library/Developer/CommandLineTools");
   vi.stubEnv("GMAIL_MCP_PYTHON", "fixture-python");
@@ -344,13 +344,20 @@ it("runs every mapped regression through the upstream test entrypoint", async ()
   await nativePipeline("ci", async () => {});
   const suite = JSON.parse(readFileSync(join(import.meta.dirname, "../openclaw-patch-suite.json"), "utf8"));
   const calls = vi.mocked(runCommand).mock.calls;
-  for (const [name, args, options] of calls) {
+  const buildIndex = calls.findIndex(([name, args]) => name === "corepack" && args[1] === "build");
+  expect(buildIndex).toBeGreaterThanOrEqual(0);
+  expect(counters.build).toBe(1);
+  expect(calls[buildIndex][2]?.env?.OPENCLAW_E2E_USE_PREBUILT_DIST).toBeUndefined();
+  for (const [index, [name, args, options]] of calls.entries()) {
     if ((name === "corepack" && args[1] === "build") ||
         (name === "node" && ["scripts/run-vitest.mjs", "scripts/run-tsgo.mjs"].includes(args[0]))) {
       expect(options?.env?.DEVELOPER_DIR).toBe("/Library/Developer/CommandLineTools");
     }
     if (name === "node" && args[0] === "scripts/run-vitest.mjs") {
+      expect(index).toBeGreaterThan(buildIndex);
       expect(options?.env?.OPENCLAW_VITEST_WORKER_CACHE).toBe("1");
+      expect(options?.env?.OPENCLAW_E2E_USE_PREBUILT_DIST).toBe("1");
+      expect(readFileSync(join(options!.cwd!, "dist/entry.js"), "utf8")).toBe("unchanged build");
     }
   }
   for (const target of new Set<string>(suite.patches.flatMap((patch: { tests: string[] }) => patch.tests))) {
