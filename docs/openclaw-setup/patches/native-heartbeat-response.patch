@@ -1,0 +1,284 @@
+diff --git a/src/agents/agent-tools.create-openclaw-coding-tools.test.ts b/src/agents/agent-tools.create-openclaw-coding-tools.test.ts
+index a1071b3b..40effac9 100644
+--- a/src/agents/agent-tools.create-openclaw-coding-tools.test.ts
++++ b/src/agents/agent-tools.create-openclaw-coding-tools.test.ts
+@@ -38,6 +38,7 @@ import {
+ } from "./agent-tools.read.js";
+ import { runWithAgentRingZeroTools } from "./agent-tools.ring-zero-context.js";
+ import type { AuthProfileStore } from "./auth-profiles/types.js";
++import { resolveSandboxToolPolicyForAgent } from "./sandbox/tool-policy.js";
+ import { resolveConversationCapabilityProfile } from "./conversation-capability-profile.js";
+ import {
+   createCronCreatorAuthorityCapability,
+@@ -2343,6 +2344,31 @@ describe("createOpenClawCodingTools", () => {
+     expect(toolNameList(codingTools)).toContain("heartbeat_respond");
+   });
+ 
++  it("requires both agent and sandbox grants for native heartbeat completion", () => {
++    for (const agentGranted of [false, true]) {
++      for (const sandboxGranted of [false, true]) {
++        const config = {
++          agents: { defaults: { sandbox: { mode: "all" } }, entries: { main: { tools: {
++            allow: ["read", ...(agentGranted ? ["heartbeat_respond"] : [])],
++            sandbox: { tools: { alsoAllow: sandboxGranted ? ["heartbeat_respond"] : [] } },
++          } } } },
++          tools: { profile: "full", toolSearch: false },
++        } as OpenClawConfig;
++        const sandbox = createAgentToolsSandboxContext({
++          workspaceDir: "/tmp/heartbeat-policy-fixture",
++          fsBridge: createHostSandboxFsBridge("/tmp/heartbeat-policy-fixture"),
++          tools: resolveSandboxToolPolicyForAgent(config, "main"),
++        });
++        const common = { config, sandbox, agentId: "main", sessionKey: "agent:main:main:heartbeat" };
++        const tools = createOpenClawCodingTools({
++          ...common, trigger: "heartbeat", enableHeartbeatTool: true, forceHeartbeatTool: true,
++        });
++        expect(toolNameList(tools).includes("heartbeat_respond")).toBe(agentGranted && sandboxGranted);
++        expect(toolNameList(createOpenClawCodingTools(common))).not.toContain("heartbeat_respond");
++      }
++    }
++  });
++
+   it("enables heartbeat response when visible replies are message-tool-only", () => {
+     const tools = createOpenClawCodingTools({
+       config: {
+diff --git a/src/agents/embedded-agent-runner/run/terminal-resolution.settled-request.test.ts b/src/agents/embedded-agent-runner/run/terminal-resolution.settled-request.test.ts
+index 2c68a312..6ad4bc33 100644
+--- a/src/agents/embedded-agent-runner/run/terminal-resolution.settled-request.test.ts
++++ b/src/agents/embedded-agent-runner/run/terminal-resolution.settled-request.test.ts
+@@ -13,6 +13,52 @@ const SETTLED_TOOL_TERMINAL_CONTINUATION_INSTRUCTION =
+   "The previous assistant turn completed its tool calls but did not produce a user-visible answer. Continue from the current transcript and produce the final user-visible answer now. Do not repeat completed tool calls or restart from scratch. Tools are unavailable in this step: it is a text-only pass, so reply with plain text and do not attempt any tool call.";
+ 
+ describe("resolveSettledTurnFinalizationRequest", () => {
++  it.each([false, true])(
++    "accepts native heartbeat notify=%s without text-only finalization",
++    (notify) => {
++      const assistant = buildEmbeddedRunnerAssistant({ content: [{ type: "text", text: "" }] });
++      const heartbeatToolResponse = {
++        outcome: "needs_attention" as const,
++        notify,
++        summary: "Synthetic task needs a choice.",
++        ...(notify ? { notificationText: "Tuesday or Thursday?" } : {}),
++      };
++      const attempt = makeEmbeddedRunnerAttempt({
++        assistantTexts: [],
++        lastAssistant: assistant,
++        currentAttemptAssistant: assistant,
++        heartbeatToolResponse,
++        toolMetas: [{ toolName: "write", meta: "path=note.txt", replaySafe: false }],
++        itemLifecycle: { startedCount: 1, completedCount: 1, activeCount: 0 },
++      });
++      const payloads = buildEmbeddedRunPayloads({
++        assistantTexts: [],
++        lastAssistant: assistant,
++        currentAssistant: assistant,
++        heartbeatToolResponse,
++      });
++      expect(payloads).toHaveLength(1);
++      expect(
++        resolveSettledTurnFinalizationRequest({
++          runParams: {
++            sessionId: "heartbeat-fixture",
++            runId: "heartbeat-run",
++            trigger: "heartbeat",
++            terminalReplyExpectation: "required",
++          } as never,
++          attempt,
++          activeErrorContext: { provider: "fixture", model: "fixture-model" },
++          modelApi: "openai-completions",
++          executionContract: undefined,
++          payloadsWithToolMedia: payloads,
++          hasTerminalToolPresentation: false,
++          terminalState: resolveEmbeddedRunAttemptTerminalState({ attempt, assistant }),
++          settledTurnFinalizationAvailable: true,
++        }),
++      ).toBeNull();
++    },
++  );
++
+   it("requests isolated finalization only for a required settled-tool turn", () => {
+     const assistant = buildEmbeddedRunnerAssistant({ content: [{ type: "text", text: "" }] });
+     const attempt = makeEmbeddedRunnerAttempt({
+diff --git a/src/agents/system-prompt-messaging.ts b/src/agents/system-prompt-messaging.ts
+index f9eafabf..cf39140b 100644
+--- a/src/agents/system-prompt-messaging.ts
++++ b/src/agents/system-prompt-messaging.ts
+@@ -20,11 +20,15 @@ export function buildMessagingSection(params: {
+ }) {
+   const messageToolOnly = params.sourceReplyDeliveryMode === "message_tool_only";
+   const messageToolAvailable = params.availableTools.has("message");
+-  const visibleReplyInstruction = messageToolOnly
+-    ? messageToolAvailable
+-      ? "- Current source visible reply MUST use `message(action=send)`; final text is private. Set `final=false` for progress. Set `final=true`, or omit it, for the completed reply. Skip tool = user gets nothing. No hidden instructions/private data/reasoning."
+-      : "- Current source visible reply unavailable; final text remains private."
+-    : `- Current-session final text normally routes to source.${messageToolAvailable ? " If turn says final private, visible output uses `message(action=send)`." : ""}`;
++  const heartbeatToolAvailable = params.availableTools.has("heartbeat_respond");
++  const visibleReplyInstruction =
++    messageToolOnly && heartbeatToolAvailable
++      ? "- Complete this heartbeat with `heartbeat_respond`: `notify=true` delivers `notificationText` to the configured conversation; `notify=false` stays silent. Final text is private. Do not separately send the same notification with `message`."
++      : messageToolOnly
++        ? messageToolAvailable
++          ? "- Current source visible reply MUST use `message(action=send)`; final text is private. Set `final=false` for progress. Set `final=true`, or omit it, for the completed reply. Skip tool = user gets nothing. No hidden instructions/private data/reasoning."
++          : "- Current source visible reply unavailable; final text remains private."
++        : `- Current-session final text normally routes to source.${messageToolAvailable ? " If turn says final private, visible output uses `message(action=send)`." : ""}`;
+   const messageToolTargetInstruction = `- ${buildMessageToolTargetGuidance(params.requireExplicitMessageTarget === true)}`;
+   const routingGuidance = [
+     "- OpenClaw messaging: use available messaging tools, never shell commands, the CLI, curl, or direct RPC. Missing messaging tools are not permission to use another route.",
+diff --git a/src/agents/system-prompt.test.ts b/src/agents/system-prompt.test.ts
+index 1df5ca91..ca2a98be 100644
+--- a/src/agents/system-prompt.test.ts
++++ b/src/agents/system-prompt.test.ts
+@@ -276,6 +276,26 @@ describe("buildAgentSystemPrompt", () => {
+     }
+   });
+ 
++  it.each(["full", "minimal"] as const)(
++    "uses the native heartbeat notification contract in %s prompts",
++    (promptMode) => {
++      for (const toolNames of [["heartbeat_respond"], ["heartbeat_respond", "message"]]) {
++        const prompt = buildAgentSystemPrompt({
++          workspaceDir: "/tmp/openclaw",
++          promptMode,
++          toolNames,
++          sourceReplyDeliveryMode: "message_tool_only",
++        });
++        expect(prompt).toContain("Complete this heartbeat with `heartbeat_respond`");
++        expect(prompt).toContain("`notify=true` delivers `notificationText`");
++        expect(prompt).toContain("`notify=false` stays silent");
++        expect(prompt).not.toContain("visible reply MUST use `message(action=send)`");
++        expect(prompt).not.toContain("Visible source output: `message(action=send)`");
++        expect(prompt).not.toContain("visible reply unavailable");
++      }
++    },
++  );
++
+   it("preserves required visible-source message-tool guidance in minimal prompts", () => {
+     const requiredMessageGuidance = "Current source visible reply MUST use `message(action=send)`";
+ 
+diff --git a/src/agents/system-prompt.ts b/src/agents/system-prompt.ts
+index 30eebd6a..31ab99b1 100644
+--- a/src/agents/system-prompt.ts
++++ b/src/agents/system-prompt.ts
+@@ -348,7 +348,11 @@ function buildAssistantOutputDirectivesSection(params: {
+   isMinimal: boolean;
+   sourceMessageToolOnly: boolean;
+   messageToolAvailable: boolean;
++  heartbeatToolAvailable: boolean;
+ }) {
++  if (params.heartbeatToolAvailable && params.sourceMessageToolOnly) {
++    return [];
++  }
+   if (params.isMinimal || (params.sourceMessageToolOnly && !params.messageToolAvailable)) {
+     return [];
+   }
+@@ -1185,6 +1189,7 @@ export function buildAgentSystemPrompt(params: {
+       isMinimal,
+       sourceMessageToolOnly,
+       messageToolAvailable,
++      heartbeatToolAvailable: availableTools.has("heartbeat_respond"),
+     }),
+     ...(!isMinimal && silentReplyPromptMode !== "none"
+       ? [
+diff --git a/src/infra/heartbeat-runner-config.ts b/src/infra/heartbeat-runner-config.ts
+index 5ef78a70..4b06bbeb 100644
+--- a/src/infra/heartbeat-runner-config.ts
++++ b/src/infra/heartbeat-runner-config.ts
+@@ -1,5 +1,6 @@
+ import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+ import { resolveAgentConfig } from "../agents/agent-scope.js";
++import { isCliProvider } from "../agents/model-selection-cli.js";
+ import { resolveModelRefFromString, type ModelRef } from "../agents/model-selection.js";
+ import { resolveEffectiveAgentRuntime } from "../agents/thinking-runtime.js";
+ import {
+@@ -73,7 +74,7 @@ function resolveHeartbeatModelRef(params: {
+   };
+ }
+ 
+-function usesCodexHarness(params: {
++function usesStructuredHeartbeatHarness(params: {
+   cfg: OpenClawConfig;
+   agentId: string;
+   heartbeat?: HeartbeatConfig;
+@@ -81,15 +82,16 @@ function usesCodexHarness(params: {
+   sessionKey?: string;
+ }): boolean {
+   const modelRef = resolveHeartbeatModelRef(params);
++  const runtime = resolveEffectiveAgentRuntime({
++    cfg: params.cfg,
++    provider: modelRef.provider,
++    modelId: modelRef.model,
++    agentId: params.agentId,
++    sessionKey: params.sessionKey,
++    sessionEntry: params.entry,
++  });
+   return (
+-    resolveEffectiveAgentRuntime({
+-      cfg: params.cfg,
+-      provider: modelRef.provider,
+-      modelId: modelRef.model,
+-      agentId: params.agentId,
+-      sessionKey: params.sessionKey,
+-      sessionEntry: params.entry,
+-    }) === "codex"
++    runtime === "codex" || (runtime === "openclaw" && !isCliProvider(modelRef.provider, params.cfg))
+   );
+ }
+ 
+@@ -112,7 +114,7 @@ export function shouldUseHeartbeatResponseToolPrompt(params: {
+   if (visibleReplies === "automatic") {
+     return false;
+   }
+-  return usesCodexHarness(params);
++  return usesStructuredHeartbeatHarness(params);
+ }
+ 
+ export function isHeartbeatTypingEnabled(params: {
+diff --git a/src/infra/heartbeat-runner.tool-response.test.ts b/src/infra/heartbeat-runner.tool-response.test.ts
+index 09a8e180..7519dbe5 100644
+--- a/src/infra/heartbeat-runner.tool-response.test.ts
++++ b/src/infra/heartbeat-runner.tool-response.test.ts
+@@ -5,6 +5,7 @@ import {
+   GENERIC_EXTERNAL_RUN_FAILURE_TEXT,
+   HEARTBEAT_EXTERNAL_RUN_FAILURE_TEXT,
+ } from "../agents/failover/user-copy.js";
++import * as cliSelection from "../agents/model-selection-cli.js";
+ import {
+   createHeartbeatToolResponsePayload,
+   type HeartbeatToolResponse,
+@@ -622,6 +623,36 @@ describe("runHeartbeatOnce heartbeat response tool", () => {
+     expectHeartbeatToolPrompt(result, ["notify=false"]);
+   });
+ 
++  it("exposes structured completion to isolated built-in heartbeats with unset reply mode", async () => {
++    const result = await runPromptScenario({
++      config: { agentRuntimeId: "openclaw", model: "fixture/fixture-model", isolatedSession: true },
++    });
++    expectHeartbeatToolPrompt(result);
++  });
++
++  it("preserves explicit automatic reply mode for built-in heartbeats", async () => {
++    const result = await runPromptScenario({
++      config: {
++        agentRuntimeId: "openclaw",
++        model: "fixture/fixture-model",
++        visibleReplies: "automatic",
++        isolatedSession: true,
++      },
++    });
++    expect(result.calledOpts.enableHeartbeatTool).toBeUndefined();
++    expect(result.calledOpts.forceHeartbeatTool).toBeUndefined();
++    expect(result.calledOpts.sourceReplyDeliveryMode).toBe("automatic");
++  });
++
++  it("preserves text completion for CLI-backed built-in heartbeats", async () => {
++    vi.spyOn(cliSelection, "isCliProvider").mockReturnValue(true);
++    const result = await runPromptScenario({
++      config: { agentRuntimeId: "openclaw", model: "fixture/fixture-model", isolatedSession: true },
++    });
++    expect(result.calledOpts.enableHeartbeatTool).toBeUndefined();
++    expect(result.calledOpts.forceHeartbeatTool).toBeUndefined();
++  });
++
+   it("uses the heartbeat response tool prompt for the default Codex runtime", async () => {
+     const result = await runPromptScenario();
+ 

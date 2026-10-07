@@ -27,6 +27,7 @@ PATCHES=(
   browser-userdata-dir-fix
   builtin-memory-migration
   silent-reply-completion-evidence
+  native-heartbeat-response
   stopped-state-migration-sdk
   scoped-container-temp-root
   active-memory-cold-recall
