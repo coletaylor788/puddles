@@ -57,6 +57,8 @@ The release runner also needs to pass the existing prebuilt-runtime contract to
 mapped E2E tests, so their setup consumes the candidate it already built.
 The direct-transport regression now checks the current host-control policy
 rather than its retired wording and observes startup rejection during cleanup.
+Browser relay, session lifecycle, and provider routing checks now assert the
+current complete policy as well, with all targets in the shared pool.
 
 ## Agent section
 
@@ -72,7 +74,10 @@ build passes. The regression checks build ordering, unchanged output, and every
 mapped collection and execution command. The cumulative provider group also
 exposed an obsolete direct-transport prompt expectation. Match the exported
 policy in the actual session payload and observe the pending startup promise
-if an earlier assertion fails. Keep the target in the shared patch manifest.
+if an earlier assertion fails. The companion gate exposed the same retired
+policy assertions in browser relay, session lifecycle, and provider routing tests.
+Match the exported policy or instruction builder at each transport boundary,
+preserve history and channel checks, and register all targets in the shared pool.
 
 ### Scope and acceptance criteria
 
