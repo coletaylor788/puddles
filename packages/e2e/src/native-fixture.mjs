@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import {
@@ -110,7 +111,11 @@ function validateScenario(scenario) {
       throw new Error("Missing deterministic read fixture");
     }
   }
+  if (scenario.heartbeat !== undefined && scenario.heartbeat !== true) throw new Error("Invalid fixture heartbeat selection");
   for (const step of scenario.steps) {
+    if (step.wake !== undefined && (!scenario.heartbeat || typeof step.wake !== "string" || !step.wake.trim() || step.incoming?.length)) {
+      throw new Error("Invalid fixture heartbeat wake");
+    }
     if (step.restartBefore !== undefined && typeof step.restartBefore !== "boolean") throw new Error("Invalid fixture restart selection");
     if (!Array.isArray(step.expect?.sends) || step.expect.sends.some(value =>
       !(typeof value === "string" && value.length) && !(Array.isArray(value) && value.length && value.every(text => typeof text === "string" && text.length)))) {
@@ -124,7 +129,7 @@ function validateScenario(scenario) {
     }
     for (const response of step.responses) {
       for (const tool of response.toolCalls ?? []) {
-        if (!scenario.adapters?.[tool.name]) throw new Error(`Missing required recording adapter: ${tool.name}`);
+        if (!(scenario.heartbeat && step.wake && tool.name === "heartbeat_respond") && !scenario.adapters?.[tool.name]) throw new Error(`Missing required recording adapter: ${tool.name}`);
       }
     }
   }
@@ -239,12 +244,12 @@ export async function runScenario(installedDir, scenario, options = {}) {
       contracts: { tools: Object.keys(scenario.adapters ?? {}) },
     });
     atomicJson(join(context.recordingsDir, "adapters.json"), scenario.adapters ?? {});
-    writeFileSync(join(context.workspace, "AGENTS.md"), "This is a scripted fixture. Follow the model response exactly.\n");
+    writeFileSync(join(context.workspace, "AGENTS.md"), "This is a scripted fixture. Follow the model response exactly. FULL_WORKSPACE_CONTEXT_MARKER.\n");
     const config = {
       gateway: { mode: "local", port, bind: "loopback", auth: { mode: "token", token: "synthetic-fixture-gateway-token" }, controlUi: { enabled: false } },
       logging: { file: join(root, "openclaw.log") },
       update: { checkOnStart: false },
-      cron: { enabled: false },
+      cron: { enabled: Boolean(scenario.heartbeat) },
       browser: { enabled: false },
       agents: { defaults: { workspace: context.workspace, model: { primary: "fixture/fixture-model" }, compaction: { mode: "default" }, heartbeat: { every: "0m" } } },
       models: { mode: "replace", providers: { fixture: { api: "openai-completions", baseUrl: `http://127.0.0.1:${modelPort}/v1`, apiKey: "synthetic-fixture-key", models: [{ id: "fixture-model", name: "Scripted model", contextWindow: 128000, maxTokens: 4096, reasoning: false, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }] } } },
@@ -260,6 +265,13 @@ export async function runScenario(installedDir, scenario, options = {}) {
       tools: { toolSearch: false, allow: Object.keys(scenario.adapters ?? {}), deny: ["exec", "process", "browser", "web_fetch", "web_search", "cron", "sessions_spawn", "nodes"] },
       session: { dmScope: "per-channel-peer" },
     };
+    if (scenario.heartbeat) {
+      config.agents.defaults.heartbeat = { every: "60m", isolatedSession: true, target: "imessage", to: "+15550001111", accountId: "default" };
+      config.agents.entries = { main: { tools: { allow: ["message", "heartbeat_respond", ...Object.keys(scenario.adapters ?? {})] } } };
+      // Exercise explicit agent policy: profile expansion cannot bypass this list.
+      delete config.tools.allow;
+      config.tools.profile = "full";
+    }
     atomicJson(context.configPath, provider ? provider.configure(config) : config);
     if (scenario.expectBundledSkills) {
       const listed = JSON.parse(await runCommand(process.execPath, [join(installedDir, "openclaw.mjs"), "skills", "list", "--json"], {
@@ -291,7 +303,12 @@ export async function runScenario(installedDir, scenario, options = {}) {
       if (step.restartBefore) { await stop(child); await provider?.beforeRestart?.(); await startGateway(); }
       responses.push(...step.responses);
       requestCount += step.responses.length;
-      for (const incoming of step.incoming) {
+      if (step.wake) {
+        await runCommand(process.execPath, [join(installedDir, "openclaw.mjs"), "gateway", "call", "wake", "--params", JSON.stringify({ mode: "now", text: step.wake, agentId: "main" }), "--json"], {
+          cwd: context.workspace, env: environment, capture: true, quiet: true, timeoutMs: 30_000,
+        });
+      }
+      for (const incoming of step.incoming ?? []) {
         const { delayMs = 0, ...payload } = incoming;
         if (delayMs) await delay(delayMs);
         const message = {
@@ -317,6 +334,7 @@ export async function runScenario(installedDir, scenario, options = {}) {
       assert.equal(requests.length, requestCount, "unexpected model request count");
       const sends = records(join(context.recordingsDir, "imsg-sends.jsonl")).slice(sendCount);
       assert.equal(sends.length, expected.length, "unexpected outbound message count");
+      if (step.wake) for (const send of sends) assert.equal(send.params?.to, "+15550001111", "heartbeat sent to wrong destination");
       sends.forEach((send, index) => assert.ok((Array.isArray(expected[index]) ? expected[index] : [expected[index]]).some(text => (send.params?.text ?? "").includes(text)), "recorded reply differs"));
       for (const text of step.expect.sendsExclude ?? []) {
         assert.ok(sends.every((send) => !(send.params?.text ?? "").includes(text)), "recorded reply exposes excluded content");
@@ -325,8 +343,39 @@ export async function runScenario(installedDir, scenario, options = {}) {
         const prompt = JSON.stringify(requests[requestCount - step.responses.length].messages);
         for (const text of step.expect.promptIncludes) assert.ok(prompt.includes(text), "incoming event missing from real model request");
       }
+      if (scenario.heartbeat) {
+      const firstRequest = requests[requestCount - step.responses.length];
+      const offered = firstRequest.tools?.map(t => t.function?.name) ?? [];
+      assert.equal(offered.includes("heartbeat_respond"), Boolean(step.wake), "heartbeat tool scope differs");
+      assert.ok(JSON.stringify(firstRequest.messages).includes("FULL_WORKSPACE_CONTEXT_MARKER"), "full bootstrap absent");
+      for (const text of step.expect.promptExcludes ?? []) assert.ok(!JSON.stringify(firstRequest.messages).includes(text), "unwanted history in heartbeat");
+      if(step.wake) {
+        for (const req of requests.slice(requestCount - step.responses.length, requestCount)) {
+          const messages = JSON.stringify(req.messages);
+          assert.ok(!messages.includes("The previous assistant turn completed its tool calls"), "settled-tool recovery was requested");
+          assert.ok(!messages.includes("The previous assistant turn recorded reasoning"), "reasoning-only recovery was requested");
+          assert.ok(!messages.includes("The previous attempt did not produce a user-visible answer"), "empty-response recovery was requested");
+          assert.ok(!messages.includes("text-only pass"), "text-only recovery was requested");
+          assert.ok((req.tools ?? []).some(t => t.function?.name === "heartbeat_respond"), "recovery removed tool schema");
+        }
+        const terminalMessages = JSON.stringify(requests[requestCount - 1].messages);
+        assert.ok(terminalMessages.includes("heartbeat_respond") && terminalMessages.includes("accepted"), "final pass lacks successful heartbeat tool result");
+        const prompt = JSON.stringify(firstRequest.messages);
+        assert.ok(prompt.includes("Complete this heartbeat with `heartbeat_respond`"), "native notification instructions absent");
+        assert.ok(!prompt.includes("visible reply MUST use `message(action=send)`"), "contradictory notification instruction");
+      }
+      }
       await provider?.assertTurn?.();
       sendCount += expected.length;
+    }
+    if (scenario.heartbeat) {
+    const db = new DatabaseSync(join(context.stateDir, "agents/main/agent/openclaw-agent.sqlite"), {readOnly:true});
+    let windows;
+    try { windows = db.prepare("select session_key,session_id,reason from session_windows order by created_at").all(); } finally { db.close(); }
+    const heartbeatWindows = windows.filter(w => w.session_key.endsWith(":heartbeat"));
+    assert.equal(heartbeatWindows.length, scenario.steps.filter(s => s.wake).length, "heartbeat session count differs");
+    assert.equal(new Set(heartbeatWindows.map(w => w.session_id)).size, heartbeatWindows.length, "heartbeat reused a session");
+    assert.equal(windows.filter(w => w.session_key.includes(":imessage:")).length, 1, "main conversation did not retain one session");
     }
     const calls = records(join(context.recordingsDir, "tool-calls.jsonl"));
     for (const name of ["AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md"]) {
