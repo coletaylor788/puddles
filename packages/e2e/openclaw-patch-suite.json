@@ -377,6 +377,7 @@
       "name": "talk-conversation-progress",
       "tests": [
         "extensions/openai/realtime-quicksilver-progress.test.ts",
+        "extensions/openai/realtime-quicksilver-gateway-direct.test.ts",
         "extensions/openai/realtime-quicksilver-delegation.test.ts",
         "extensions/openai/realtime-quicksilver-public-delegation.test.ts",
         "extensions/openai/realtime-quicksilver-concurrency.test.ts",

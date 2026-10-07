@@ -149,6 +149,39 @@ diff --git a/extensions/openai/realtime-quicksilver-delegation-controller.ts b/e
      }
      while (this.steeringPromise) {
        await this.steeringPromise;
+diff --git a/extensions/openai/realtime-quicksilver-gateway-direct.test.ts b/extensions/openai/realtime-quicksilver-gateway-direct.test.ts
+--- a/extensions/openai/realtime-quicksilver-gateway-direct.test.ts
++++ b/extensions/openai/realtime-quicksilver-gateway-direct.test.ts
+@@ -1,6 +1,7 @@
+ import { describe, expect, it, vi } from "vitest";
+ import { openAIRealtimeHost } from "./realtime-host.js";
+ import { OPENAI_QUICKSILVER_RELAY_FRAME_BYTES } from "./realtime-quicksilver-audio-buffer.js";
++import { OPENAI_QUICKSILVER_HOST_CONTROL_INSTRUCTIONS } from "./realtime-quicksilver-instructions.js";
+ import { OpenAIQuicksilverGatewayBridge } from "./realtime-quicksilver-gateway-bridge.js";
+ import {
+   releaseOpenAIQuicksilverSession,
+@@ -404,6 +405,8 @@
+ 
+     try {
+       const connection = bridge.connect();
++      // Keep cleanup rejection observed if an assertion fails before startup.
++      void connection.catch(() => {});
+       await vi.waitFor(() => expect(socket?.sent).toHaveLength(1));
+       if (!socket) {
+         throw new Error("expected direct socket");
+@@ -416,9 +419,9 @@
+           delegation: { type: "client", ack_filler: false },
+         },
+       });
+-      expect(JSON.stringify(parseSent(connectedSocket)[0])).toContain(
+-        "Wait for the host control result",
+-      );
++      expect(parseSent(connectedSocket)[0]).toMatchObject({
++        session: { instructions: expect.stringContaining(OPENAI_QUICKSILVER_HOST_CONTROL_INSTRUCTIONS) },
++      });
+       expect(JSON.stringify(parseSent(connectedSocket)[0])).toContain(
+         "Remember our shared conversation",
+       );
 diff --git a/extensions/openai/realtime-quicksilver-instructions.ts b/extensions/openai/realtime-quicksilver-instructions.ts
 --- a/extensions/openai/realtime-quicksilver-instructions.ts
 +++ b/extensions/openai/realtime-quicksilver-instructions.ts

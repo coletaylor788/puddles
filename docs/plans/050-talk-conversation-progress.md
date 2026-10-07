@@ -55,6 +55,8 @@ progress. Environment bindings now cover exact heartbeat delivery destinations
 so rehearsal can preserve authored routing while disabling external delivery.
 The release runner also needs to pass the existing prebuilt-runtime contract to
 mapped E2E tests, so their setup consumes the candidate it already built.
+The direct-transport regression now checks the current host-control policy
+rather than its retired wording and observes startup rejection during cleanup.
 
 ## Agent section
 
@@ -67,7 +69,10 @@ overrides remain rejected. Focused rendering tests cover both agent shapes.
 Release validation exposed an E2E setup rebuild inside Vitest's temporary home.
 Pass `OPENCLAW_E2E_USE_PREBUILT_DIST=1` only to mapped test commands after the
 build passes. The regression checks build ordering, unchanged output, and every
-mapped collection and execution command.
+mapped collection and execution command. The cumulative provider group also
+exposed an obsolete direct-transport prompt expectation. Match the exported
+policy in the actual session payload and observe the pending startup promise
+if an earlier assertion fails. Keep the target in the shared patch manifest.
 
 ### Scope and acceptance criteria
 
