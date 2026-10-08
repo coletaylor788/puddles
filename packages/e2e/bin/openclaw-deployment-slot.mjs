@@ -79,6 +79,11 @@ export async function main(argv = process.argv.slice(2)) {
   if (operation === "status") return write(readCoordination(inputPath));
   if (!inputPath) throw new Error("Usage: openclaw-deployment-slot.mjs status [STATE] | OPERATION INPUT_JSON [STATE] | run LEASE_JSON STATE COMMAND [ARGS...]");
   const input = read(inputPath);
+  if (operation === "progress") {
+    if (argv.length !== 2) throw new Error("Usage: openclaw-deployment-slot.mjs progress DESCRIPTOR_JSON");
+    const { progressRelease } = await import("../src/deployment-progress.mjs");
+    return write(await progressRelease(input));
+  }
   if (operation === "init") return write(initializeCoordination(path, input));
   if (operation === "recover-metadata") return recoverMetadataLock(path, input);
   if (operation === "run") {

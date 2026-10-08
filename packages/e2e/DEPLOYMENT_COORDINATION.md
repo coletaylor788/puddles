@@ -69,11 +69,10 @@ for the initial adoption. The controller binds its host, PID, and process start
 time and passes the ownership variables to children. Run the controller on the
 mini, even when commands are initiated over SSH. It heartbeats every 30 seconds,
 retries metadata contention, forwards interruption, and joins its subprocesses.
-It currently leaves the slot occupied after either success or failure for
-inspection. The owner must finish recovery, cleanup, and release. Controller
-alignment must automate that terminal work and bounded interruption recovery;
-until it lands, explicitly monitor this gap and recover abandoned owners using
-the existing commands below.
+The low-level `run` command leaves the slot occupied after success or failure.
+Use `progress` below to automate the sequence, recovery, cleanup, and release.
+For individually invoked commands, the owner still completes those terminal
+steps before releasing the slot.
 
 Queue when the artifact and prerequisites are ready. Claim the oldest ready
 request; never hold another environment while waiting. `ready` can mark an
@@ -87,6 +86,73 @@ Release with the same ownership fields plus `result` and `cleanupEvidence`
 after inspecting the outcome, joining the controller, and cleaning only your
 resources. A healthy PROD release also records its actual journal `transaction`.
 Keep the slot through rollback and recovery. Do not release on a timer.
+
+### Resumable release progression
+
+Run the existing slot controller once with an owner-only local descriptor:
+
+```bash
+node packages/e2e/bin/openclaw-deployment-slot.mjs progress /private/path/release.json
+```
+
+The descriptor selects reviewed existing build, deployment, verification,
+recovery, and producer-cleanup commands. It does not contain credentials. Keep
+target paths and configuration outside public repositories. Each command is an
+object with an absolute `command`, string-array `args`, absolute `cwd`, and
+bounded `timeoutMs` (at most six hours); optional `env` carries its normal
+non-secret runner settings. No shell parsing is involved.
+
+| Descriptor field | Meaning |
+|---|---|
+| `schemaVersion` | `1` |
+| `runId`, `agent`, `worktree` | Unique attempt, existing agent/contact identity, absolute checkout |
+| `plan` | Absolute plan path; Human Status has `**Approval:**` and `**Approval reference:**` |
+| `coordination` | Existing shared slot record on this host |
+| `directory` | Canonical durable controller directory, separate from disposable task storage |
+| `task` | `root`, `owner`, `developmentRoot`, `protectedPaths`, using the storage guide's task boundaries |
+| `batch` | Existing selected merged batch's `id` and `token` |
+| `candidate` | Absolute `build` and `sourceGate` receipt paths for the pinned artifact |
+| `stages` | Ordered DEV, TEST, PROD entries, or one DEV entry for a DEV-only task |
+
+Each stage has `environment`, optional `prepare`, and required `execute`,
+`verify`, `recover`, `cleanup`, and `verifyCleanup` commands. TEST also names
+its absolute target `proof`; PROD names its actual activation `recoveryJournal`.
+Use the maintained native builder for preparation so its capacity reservations
+and shared-store checks remain effective. Preparation happens before claiming
+the environment. Release descriptors consume the same pinned artifact at each
+stage, never rebuild it during promotion.
+
+The controller initializes or resumes task storage and journals each stage. It
+checks the plan before advancing, validates the build/source gate and merged
+batch, queues and claims the environment, then runs and verifies the operation.
+TEST publishes its actual attempt-bound proof through `tested`; PROD must have
+a healthy journal matching the candidate, claim, and production baseline.
+Cleanup and its verifier run while ownership is held. Only after their children
+have stopped does the parent release the slot and advance. DEV approval stops a
+full release before TEST; after a genuine approval update, the same command
+continues without repeating DEV. An approval reference records the actual human
+decision; changing the field yourself does not grant permission.
+
+On an operation failure or uncertain interrupted operation, `recover` must
+inspect the existing transaction, restore or finish its safe recovery, verify
+health, and stop any owned descendants. Recovery must be safe to repeat. The
+controller marks the batch failed, runs recovery and verified cleanup, and stops
+for engineering review. It never retries uncertain activation automatically.
+An interrupted or rejected waiting request cancels only its own queue ticket.
+Failed recovery retains ownership. Successful deployment followed by cleanup
+failure resumes cleanup without rerunning activation. Producer cleanup commands
+must be repeatable, preserve active consumers and production recovery, and
+retire only acknowledged generated files using the storage helpers.
+
+At the end, whole-task completion uses the storage controller, which refuses
+remaining worktrees, recovery state, active consumers, or protected references.
+Failure records `cleanup-pending`; rerunning retries completion. Keep the compact
+controller record until the task owner has recorded the result and retired it.
+Raw command logs live inside task storage and are removed by completion.
+SIGKILL or host failure can leave a controller lock: use the existing explicit
+owner/process inspection before removing its exact stale lock. Never delete a
+lock or take another owner's lease simply because the run is old. Changed
+descriptor inputs or a corrected candidate require a new attempt starting at DEV.
 
 ## Merging and selecting a release
 

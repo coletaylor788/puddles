@@ -406,6 +406,12 @@ The owner fixes failures with committed regressions and resumes the same run.
 `status` prints the durable run state. `resume` is required after an unchanged
 failed stage, so an ordinary command never retries the same failure in a loop.
 
+For a selected release, use the slot controller's
+[`progress` command](DEPLOYMENT_COORDINATION.md#resumable-release-progression)
+to sequence the reviewed preparation, deployment, verification, recovery, and
+cleanup commands. It reads plan approval before advancing and finishes owned
+task storage after the final stage.
+
 Set `E2E_ARTIFACT_POOL` to an initialized owner-managed pool to enable automatic
 retention before the disk-capacity check and after terminal success or failure.
 Bundle import registers the immutable build. Target runs protect it while active,

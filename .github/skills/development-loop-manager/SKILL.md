@@ -34,8 +34,14 @@ and tooling that guide future work. Make each loop safer, faster, and simpler.
   differences that delay finding issues.
 - Disk growth: package-store reuse, incremental builds, and completed scratch
   on both the development machine and OpenClaw server.
-- Approval blockers: fix obvious general guidance gaps behind design reapproval.
-  New information sometimes needs approval; do not force a process fix.
+- Approval and autonomy: read the plan's Human Status on resume and handoff.
+  Act through its full approved scope; ask only for significant deviations or
+  scope expansion. Routine publication, commits, PRs, issue updates, and merges
+  need no separate approval within scope. Preserve repo checks and publication
+  boundaries; never publish credentials, secrets, or private configuration.
+- Asynchronous human: investigate first, prepare a recommendation, and bundle
+  related high-value asks. Avoid serial trivial questions. Keep authorized work
+  moving and checkpoint while waiting; silence does not grant approval.
 
 ## Workflow
 

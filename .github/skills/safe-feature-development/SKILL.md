@@ -177,6 +177,26 @@ deployment within that scope without another production approval. Required
 checks, exact-artifact eligibility, target identity, and rollback still apply.
 An explicit implementation-only or no-production scope remains binding.
 
+### Plan approval and routine repository work
+
+In the Human section's Status, record `**Approval:** Proposed`, `DEV approved`,
+or `Production approved`, followed by `**Approval reference:**` and the actual
+requester decision. Record the approved scope and explicit limits separately
+from implementation progress. On resume or handoff, read this status and act
+through the full authorized scope. DEV approval permits local/DEV work;
+production approval includes landing, deployment, rollback, and cleanup.
+Passing checks does not expand approval. Carry forward an existing explicit
+approval; do not ask again merely because an older plan lacks these fields.
+
+Publishing designs and maintaining issues are part of design work and do not
+require approval of the design. Within the requested scope, commit, push,
+create or update PRs and issues, and merge PRs after required checks and review
+without a separate permission request. Implementation and any deployment
+triggered by merging must stay within the approved scope. Follow repository
+rules and public/private separation. Inspect files, commit messages, PRs,
+issues, and published logs; never publish credentials, secrets, or private
+configuration. Use provider-neutral, synthetic examples in public material.
+
 During implementation, escalate every security architecture deviation and any
 other major or high-impact deviation from the approved design. Examples include
 changing user-visible requirements, replacing the agreed architecture, crossing
@@ -262,6 +282,14 @@ such as changing live state, adding unapproved privilege, or sending real data
 outside the approved environment. A harness permission error alone is not such
 a boundary.
 
+The requester is asynchronous and may not be watching. Investigate before
+asking and make each touchpoint useful: prepare a recommendation, explain the
+consequential tradeoffs, and bundle related decisions or missing facts into
+one self-contained request. Avoid serial short questions that unlock one small
+step each. Continue authorized independent work and save a checkpoint while
+waiting. Do not delay an urgent blocker to assemble a batch or treat silence
+as approval.
+
 Every help request must be concise and self-contained. It must:
 
 - name the exact blocker and the affected feature, environment, or lifecycle
@@ -270,7 +298,7 @@ Every help request must be concise and self-contained. It must:
   verified;
 - explain why the worker cannot safely or correctly resolve it without the
   requester;
-- ask for one exact decision, fact, permission, configuration change, or action;
+- ask for the concrete decisions, facts, permissions, or actions needed together;
   and
 - state what the worker will do after the answer and any material consequence
   of the available choices.

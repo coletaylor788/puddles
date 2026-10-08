@@ -178,6 +178,23 @@ for the current design remains valid. After approval, continue autonomously
 through landing and production deployment within that scope; production does
 not need a second approval. Technical release and rollback gates still apply.
 
+Record approval, its reference, scope, and limits in the plan's Human Status,
+separate from implementation progress. Use Proposed, DEV approved, or
+Production approved as defined in the skill. On resume or handoff, act through
+the full approved scope without repeating routine approval requests.
+
+Publishing designs, maintaining issues, committing, pushing, opening or updating
+PRs, and merging after required reviews and checks need no separate approval
+within the requested scope. Publishing a proposal does not approve its
+implementation. Follow repository rules and public/private separation; never
+publish credentials, secrets, or private configuration in files or metadata.
+
+The requester is asynchronous, not constantly monitoring. Investigate before
+asking, prepare a recommendation, and bundle related high-value decisions into
+one self-contained request instead of serial short questions. Continue
+independent authorized work while waiting and save a clear checkpoint. Silence
+is not approval; do not delay urgent blockers merely to batch questions.
+
 If implementation deviates from the
 [security architecture](../docs/openclaw-setup/security-architecture.md) or reveals
 a major or high-impact conflict with the approved design, record the blocker,

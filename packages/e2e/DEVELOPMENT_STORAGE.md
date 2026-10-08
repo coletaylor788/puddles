@@ -33,6 +33,10 @@ Disk pressure does not weaken that exclusion.
 
 ### Task creation and completion
 
+The slot controller's [release progression](DEPLOYMENT_COORDINATION.md#resumable-release-progression)
+initializes this scope and calls completion after its final verified stage.
+Its producer cleanup commands retire consumed objects before releasing each slot.
+
 Create an empty task directory directly under a dedicated development parent.
 Initialize it before creating worktrees or generated output:
 
