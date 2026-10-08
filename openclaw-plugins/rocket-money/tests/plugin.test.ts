@@ -1,7 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { createPlugin, TOOLS } from "../src/plugin.js";
+const leakCheck = vi.hoisted(() => vi.fn(async (_name: string, text: string) => {
+  if (text.includes("guard-failure")) throw new Error("private classifier error");
+  return {action: text.includes("outbound-secret") ? "block" : "allow"};
+}));
 vi.mock("mcp-hooks", () => ({
+  LeakGuard: class { check = leakCheck; },
   loadLLMProvider: vi.fn(async () => ({})),
   InjectionGuard: class { async check(_name: string, text: string) { return {action: text.includes("injection-canary") ? "block" : "allow"}; } },
   SecretRedactor: class { async check(_name: string, text: string) { return {action:"modify", content:text.replaceAll("secret-canary", "[REDACTED]")}; } },
@@ -18,6 +23,25 @@ function setup() {
 }
 
 describe("Rocket Money adapter", () => {
+ it.each(["outbound-secret", "guard-failure"])("stops %s before opening or calling MCP", async (value) => {
+   const {factory,ctx,callTool,connect}=setup();
+   const read=factory(ctx).find((t:any)=>t.name==="rocket_money_read");
+   const out=await read.execute("one",{query:"query Q($s:String){search(s:$s){id}}",variables:{s:value}});
+   expect(out.content[0].text).toContain("EGRESS_BLOCKED");
+   expect(callTool).not.toHaveBeenCalled();
+   expect(connect).not.toHaveBeenCalled();
+   expect(JSON.stringify(out)).not.toContain("private classifier error");
+ });
+ it("rechecks authority after outbound classification", async () => {
+   const {factory,ctx,cfg,callTool}=setup();
+   const write=factory(ctx).find((t:any)=>t.name==="rocket_money_set_date");
+   leakCheck.mockImplementationOnce(async () => {
+     cfg.plugins.entries["rocket-money"].config.writesEnabled=false;
+     return {action:"allow"};
+   });
+   expect((await write.execute("one",{})).content[0].text).toContain("ACCESS_DENIED");
+   expect(callTool).not.toHaveBeenCalled();
+ });
  it("matches the Python server's tool manifest", () => {
    const source=JSON.parse(readFileSync(new URL("../../../servers/rocket-money-mcp/src/rocket_money_mcp/resources/tools.json",import.meta.url),"utf8"));
    expect(TOOLS).toEqual(source);

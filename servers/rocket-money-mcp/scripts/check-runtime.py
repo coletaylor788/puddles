@@ -5,6 +5,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+sys.dont_write_bytecode = True
 artifact = Path(sys.argv[1]).resolve()
 sys.path.insert(0, str(artifact / "python/lib"))
 from mcp import ClientSession, StdioServerParameters

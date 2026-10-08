@@ -4,7 +4,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { OpenClawPluginApi, OpenClawPluginToolContext, AnyAgentTool } from "openclaw/plugin-sdk/core";
-import { InjectionGuard, SecretRedactor, loadLLMProvider, type LLMClient } from "mcp-hooks";
+import { InjectionGuard, SecretRedactor, LeakGuard, loadLLMProvider, type LLMClient } from "mcp-hooks";
 import tools from "./tools.json" with { type: "json" };
 
 export const TOOLS = tools;
@@ -68,18 +68,31 @@ export function createPlugin(connector: typeof connect = connect) {
             // Recheck grants for existing sessions. No account, process or credential
             // configuration can come from tool arguments.
             const key = JSON.stringify([cfg.command, cfg.stateDir, cfg.chromeExecutable]);
+            let llm: LLMClient;
+            try {
+              const classifierKey = JSON.stringify([cfg.llmProvider, cfg.llmProviderOptions, cfg.model]);
+              if (!provider || classifierKey !== providerKey) {
+                providerKey = classifierKey;
+                provider = loadLLMProvider(cfg.llmProvider, { ...cfg.llmProviderOptions, ...(cfg.model ? { model: cfg.model } : {}) });
+              }
+              llm = await provider;
+              const verdict = await new LeakGuard({ llm }).check(t.name, JSON.stringify(params ?? {}));
+              if (verdict.action !== "allow") throw new Error("EGRESS_BLOCKED");
+            } catch {
+              return result({ status: "error", error: { code: "EGRESS_BLOCKED" } });
+            }
+            // The guard is asynchronous. Recheck authority before any provider call.
+            const authorized = configuration(api, ctx);
+            if (!authorized || JSON.stringify([authorized.command, authorized.stateDir, authorized.chromeExecutable]) !== key ||
+                (t.name.startsWith("rocket_money_set_") && !authorized.writesEnabled)) {
+              return result({ status: "error", error: { code: "ACCESS_DENIED" } });
+            }
             try {
               if (bound && bound !== key) await close();
               if (!bridge) { bound = key; bridge = connector(cfg); }
               const raw = await (await bridge).callTool(t.name, (params ?? {}) as Record<string, unknown>);
               const text = raw.content.filter(c => c.type === "text").map(c => c.text).join("\n");
               if (text.length > 16 * 1024 * 1024) throw new Error("LIMIT_EXCEEDED");
-              const classifierKey = JSON.stringify([cfg.llmProvider, cfg.llmProviderOptions, cfg.model]);
-              if (!provider || classifierKey !== providerKey) {
-                providerKey = classifierKey;
-                provider = loadLLMProvider(cfg.llmProvider, { ...cfg.llmProviderOptions, ...(cfg.model ? { model: cfg.model } : {}) });
-              }
-              const llm = await provider;
               const guards = [new InjectionGuard({ llm }), new SecretRedactor({ llm })];
               let checked = text;
               for (const guard of guards) {
