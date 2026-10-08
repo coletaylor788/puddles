@@ -1,0 +1,2637 @@
+{
+  "sourceBuild": "6e650d09e6",
+  "viewerType": "User",
+  "viewer": {
+    "account": {
+      "type": "Account",
+      "args": [
+        "accountId"
+      ]
+    },
+    "accountBalanceSum": {
+      "type": "Any",
+      "args": [
+        "accountsToInclude",
+        "category",
+        "customType",
+        "includePending"
+      ]
+    },
+    "accounts": {
+      "type": "AccountConnection",
+      "args": [
+        "accountsToInclude",
+        "achAvailable",
+        "achEligible",
+        "achPurpose",
+        "after",
+        "before",
+        "categories",
+        "customType",
+        "enabled",
+        "excludeAccountsWithoutTransactions",
+        "excludeClosureMarkedAccounts",
+        "first",
+        "includeACHOnlyAccounts",
+        "includeDisabledWithPreservedTransactionHistory",
+        "last",
+        "source",
+        "type"
+      ]
+    },
+    "billsDueCount": {
+      "type": "Any",
+      "args": []
+    },
+    "billsMonthlyCostCents": {
+      "type": "Any",
+      "args": []
+    },
+    "budgetPlan": {
+      "type": "BudgetPlan",
+      "args": [
+        "createCurrentPlan",
+        "month",
+        "mostRecent"
+      ]
+    },
+    "creditReport": {
+      "type": "CreditReport",
+      "args": []
+    },
+    "creditScoreEligibility": {
+      "type": "Any",
+      "args": []
+    },
+    "dailySpendingForMonth": {
+      "type": "DailySpendItem",
+      "args": [
+        "accountIds",
+        "feedEventTypes",
+        "mode",
+        "timestamp"
+      ]
+    },
+    "debt": {
+      "type": "Debt",
+      "args": []
+    },
+    "debtPaydown": {
+      "type": "DebtPaydown",
+      "args": []
+    },
+    "debtPaydownHistoricalProgress": {
+      "type": "DebtPaydownHistoricalProgressMonth",
+      "args": []
+    },
+    "debtPaydownMonthlyDetails": {
+      "type": "DebtPaydownMonthlyDetails",
+      "args": [
+        "month"
+      ]
+    },
+    "featureEntitlements": {
+      "type": "FeatureEntitlements",
+      "args": []
+    },
+    "feeTransactions": {
+      "type": "Transaction",
+      "args": [
+        "gteDate",
+        "limit",
+        "ltDate"
+      ]
+    },
+    "financialGoalFeature": {
+      "type": "FinancialGoalFeature",
+      "args": []
+    },
+    "firstBudgetPlan": {
+      "type": "BudgetPlan",
+      "args": []
+    },
+    "frequentNonSubscriptionTransactions": {
+      "type": "FrequentNonSubscriptionTransaction",
+      "args": [
+        "gteDate",
+        "limit",
+        "ltDate",
+        "minCount",
+        "prevGteDate",
+        "prevLtDate",
+        "transactionCategoryNodeId"
+      ]
+    },
+    "id": {
+      "type": "Any",
+      "args": []
+    },
+    "incomeAccounts": {
+      "type": "Account",
+      "args": []
+    },
+    "largestNonSubscriptionTransactions": {
+      "type": "Transaction",
+      "args": [
+        "excludeCategoryIconKeys",
+        "gteDate",
+        "limit",
+        "ltDate"
+      ]
+    },
+    "lastMonthSpend": {
+      "type": "LastMonthSpendType",
+      "args": []
+    },
+    "liabilities": {
+      "type": "Liabilities",
+      "args": []
+    },
+    "masterAccount": {
+      "type": "MasterAccount",
+      "args": [
+        "masterAccountId"
+      ]
+    },
+    "masterAccounts": {
+      "type": "MasterAccountConnection",
+      "args": [
+        "after",
+        "attributes",
+        "before",
+        "first",
+        "last"
+      ]
+    },
+    "netWorth": {
+      "type": "NetWorth",
+      "args": []
+    },
+    "spendProjection": {
+      "type": "SpendProjection",
+      "args": []
+    },
+    "spendTrajectory": {
+      "type": "SpendTrajectory",
+      "args": []
+    },
+    "spendingByCategories": {
+      "type": "SpendingByCategory",
+      "args": [
+        "excludeBudgetIgnoredTransactions",
+        "gteDate",
+        "includeSubscriptions",
+        "ltDate",
+        "searchFilter",
+        "sortBy"
+      ]
+    },
+    "spendingByServices": {
+      "type": "SpendingByServiceConnection",
+      "args": [
+        "after",
+        "first",
+        "gteDate",
+        "ltDate",
+        "removeZeroAmounts",
+        "searchTerm",
+        "sortBy"
+      ]
+    },
+    "spendingByTransactionTags": {
+      "type": "SpendingByTransactionTag",
+      "args": [
+        "excludedSyntheticTagTypes",
+        "gteDate",
+        "ltDate",
+        "sortBy",
+        "status",
+        "transactionTagContains",
+        "transactionTagStatuses",
+        "usedGteDate",
+        "usedLtDate"
+      ]
+    },
+    "spendingHistory": {
+      "type": "TransactionHistory",
+      "args": [
+        "accountIds",
+        "excludeIgnoredFrom",
+        "excludeTransactionCategoryIds",
+        "gteDate",
+        "interval",
+        "ltDate",
+        "metaCategory",
+        "serviceIds",
+        "transactionCategoryIds",
+        "transactionTagIds"
+      ]
+    },
+    "spendingSummary": {
+      "type": "SpendingSummary",
+      "args": [
+        "category",
+        "gteDate",
+        "ltDate",
+        "metaCategory",
+        "transactionCategoryId"
+      ]
+    },
+    "subscription": {
+      "type": "Subscription",
+      "args": [
+        "id",
+        "subscriptionId"
+      ]
+    },
+    "subscriptionCalendarItems": {
+      "type": "SubscriptionCalendarItem",
+      "args": [
+        "endDate",
+        "excludeNegativeCharges",
+        "first",
+        "limitFuture",
+        "limitPast",
+        "startDate"
+      ]
+    },
+    "subscriptions": {
+      "type": "SubscriptionConnection",
+      "args": [
+        "accountNodeIds",
+        "active",
+        "after",
+        "before",
+        "billpayLinkInitiated",
+        "billsharkEligible",
+        "filterPayrollMode",
+        "first",
+        "forceIncludeMerchantBlocked",
+        "hasBillsharkBill",
+        "includeUnknownForSubscriptionServiceTypes",
+        "last",
+        "order",
+        "query",
+        "serviceTypes",
+        "visible"
+      ]
+    },
+    "subscriptionsMonthlyCostCents": {
+      "type": "Any",
+      "args": []
+    },
+    "syntheticTransactionTags": {
+      "type": "SyntheticTransactionTagConnection",
+      "args": [
+        "after",
+        "before",
+        "first",
+        "last",
+        "status"
+      ]
+    },
+    "timezone": {
+      "type": "Any",
+      "args": []
+    },
+    "transaction": {
+      "type": "Transaction",
+      "args": [
+        "transactionId"
+      ]
+    },
+    "transactionAmountSum": {
+      "type": "Any",
+      "args": [
+        "accountIds",
+        "categoryIds",
+        "eqAmount",
+        "excludeIgnoredFrom",
+        "gteAmount",
+        "gteDate",
+        "ltAmount",
+        "ltDate",
+        "query",
+        "reviewStatuses",
+        "serviceIds",
+        "transactionTagIds",
+        "type"
+      ]
+    },
+    "transactionCategories": {
+      "type": "TransactionCategory",
+      "args": [
+        "first",
+        "includeOther",
+        "order",
+        "usedGteDate",
+        "usedLtDate"
+      ]
+    },
+    "transactionCategoryByIconKey": {
+      "type": "TransactionCategory",
+      "args": [
+        "iconKey"
+      ]
+    },
+    "transactionHistory": {
+      "type": "TransactionHistory",
+      "args": [
+        "accountIds",
+        "excludeIgnoredFrom",
+        "excludeTransactionCategoryIds",
+        "gteDate",
+        "interval",
+        "ltDate",
+        "metaCategory",
+        "serviceIds",
+        "transactionCategoryIds",
+        "transactionTagIds"
+      ]
+    },
+    "transactionMetaCategory": {
+      "type": "TransactionMetaCategoryData",
+      "args": [
+        "metaCategoryName"
+      ]
+    },
+    "transactionRules": {
+      "type": "TransactionRuleConnection",
+      "args": [
+        "after",
+        "before",
+        "first",
+        "ids",
+        "last"
+      ]
+    },
+    "transactionTag": {
+      "type": "TransactionTagNode",
+      "args": [
+        "id"
+      ]
+    },
+    "transactionTags": {
+      "type": "TransactionTagConnection",
+      "args": [
+        "after",
+        "before",
+        "excludedSyntheticTagTypes",
+        "first",
+        "gteDate",
+        "last",
+        "ltDate",
+        "sortBy",
+        "status",
+        "transactionTagContains",
+        "usedGteDate",
+        "usedLtDate"
+      ]
+    },
+    "transactions": {
+      "type": "TransactionConnection",
+      "args": [
+        "accountIds",
+        "after",
+        "categories",
+        "eqAmount",
+        "excludeIgnoredFrom",
+        "excludeTransactionCategoryIds",
+        "first",
+        "gteAmount",
+        "gteDate",
+        "importId",
+        "ltAmount",
+        "ltDate",
+        "metaCategory",
+        "order",
+        "query",
+        "reviewStatuses",
+        "serviceIds",
+        "subscriptionIds",
+        "transactionCategoryIds",
+        "transactionFilterType",
+        "transactionIds",
+        "transactionTagIds",
+        "useAbsoluteAmount"
+      ]
+    },
+    "transactionsCount": {
+      "type": "Any",
+      "args": [
+        "accountIds",
+        "categories",
+        "eqAmount",
+        "excludeIgnoredFrom",
+        "excludeTransactionCategoryIds",
+        "gteAmount",
+        "gteDate",
+        "importId",
+        "ltAmount",
+        "ltDate",
+        "metaCategory",
+        "query",
+        "reviewStatuses",
+        "serviceIds",
+        "subscriptionIds",
+        "transactionCategoryIds",
+        "transactionFilterType",
+        "transactionIds",
+        "transactionTagIds",
+        "useAbsoluteAmount"
+      ]
+    },
+    "transactionsTimeline": {
+      "type": "TransactionsTimeline",
+      "args": [
+        "accountIds"
+      ]
+    },
+    "upcomingSubscriptionCharges": {
+      "type": "UpcomingSubscriptionCharges",
+      "args": [
+        "gteDate",
+        "isPaydayView",
+        "ltDate"
+      ]
+    },
+    "upcomingSubscriptions": {
+      "type": "Subscription",
+      "args": [
+        "endDate"
+      ]
+    }
+  },
+  "types": {
+    "TransactionCategory": {
+      "amountSpent": {
+        "type": "Any",
+        "args": [
+          "excludeIgnoredFrom",
+          "gteDate",
+          "ltDate"
+        ]
+      },
+      "average3MonthSpend": {
+        "type": "Any",
+        "args": []
+      },
+      "averageMonthlySpend": {
+        "type": "Any",
+        "args": []
+      },
+      "budgetsLastThreeMonthsAmountSpent": {
+        "type": "Any",
+        "args": []
+      },
+      "canCreateBudget": {
+        "type": "Any",
+        "args": []
+      },
+      "categoryType": {
+        "type": "Any",
+        "args": []
+      },
+      "colors": {
+        "type": "Colors",
+        "args": []
+      },
+      "iconKey": {
+        "type": "Any",
+        "args": []
+      },
+      "id": {
+        "type": "Any",
+        "args": []
+      },
+      "ignoredFromSpending": {
+        "type": "Any",
+        "args": []
+      },
+      "includeInEarnings": {
+        "type": "Any",
+        "args": []
+      },
+      "includeInSpending": {
+        "type": "Any",
+        "args": []
+      },
+      "isRecommendedForBudget": {
+        "type": "Any",
+        "args": []
+      },
+      "label": {
+        "type": "Any",
+        "args": []
+      },
+      "taxDeductible": {
+        "type": "Any",
+        "args": []
+      },
+      "type": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "Colors": {},
+    "Transaction": {
+      "_id": {
+        "type": "Any",
+        "args": []
+      },
+      "account": {
+        "type": "Account",
+        "args": []
+      },
+      "account_id": {
+        "type": "Any",
+        "args": []
+      },
+      "account_last_4": {
+        "type": "Any",
+        "args": []
+      },
+      "amount": {
+        "type": "Any",
+        "args": []
+      },
+      "authorized_date": {
+        "type": "Any",
+        "args": []
+      },
+      "availableDate": {
+        "type": "Any",
+        "args": []
+      },
+      "category": {
+        "type": "TransactionCategory",
+        "args": []
+      },
+      "colors": {
+        "type": "Colors",
+        "args": []
+      },
+      "currency": {
+        "type": "Any",
+        "args": []
+      },
+      "custom_name": {
+        "type": "Any",
+        "args": []
+      },
+      "date": {
+        "type": "Any",
+        "args": []
+      },
+      "hasReportedName": {
+        "type": "Any",
+        "args": []
+      },
+      "id": {
+        "type": "Any",
+        "args": []
+      },
+      "ignoredByCategory": {
+        "type": "Any",
+        "args": []
+      },
+      "ignoredFrom": {
+        "type": "Any",
+        "args": []
+      },
+      "isRecurringLocked": {
+        "type": "Any",
+        "args": []
+      },
+      "longName": {
+        "type": "Any",
+        "args": [
+          "prependCustomName"
+        ]
+      },
+      "manual": {
+        "type": "Any",
+        "args": []
+      },
+      "master_account_id": {
+        "type": "Any",
+        "args": []
+      },
+      "merchantCategory": {
+        "type": "TransactionCategory",
+        "args": []
+      },
+      "merchantShortName": {
+        "type": "Any",
+        "args": []
+      },
+      "name": {
+        "type": "Any",
+        "args": []
+      },
+      "normalized_name": {
+        "type": "Any",
+        "args": []
+      },
+      "note": {
+        "type": "Any",
+        "args": []
+      },
+      "original_description": {
+        "type": "Any",
+        "args": []
+      },
+      "pairedTransaction": {
+        "type": "TransactionPair",
+        "args": []
+      },
+      "pending": {
+        "type": "Any",
+        "args": []
+      },
+      "posted_date": {
+        "type": "Any",
+        "args": []
+      },
+      "relatedTransactions": {
+        "type": "TransactionConnection",
+        "args": [
+          "after",
+          "before",
+          "endDate",
+          "first",
+          "last",
+          "startDate"
+        ]
+      },
+      "reviewStatus": {
+        "type": "Any",
+        "args": []
+      },
+      "service": {
+        "type": "Service",
+        "args": []
+      },
+      "settled": {
+        "type": "Any",
+        "args": []
+      },
+      "settledDate": {
+        "type": "Any",
+        "args": []
+      },
+      "shortName": {
+        "type": "Any",
+        "args": []
+      },
+      "splitParentTransaction": {
+        "type": "Transaction",
+        "args": []
+      },
+      "splitStatus": {
+        "type": "Any",
+        "args": []
+      },
+      "splitTransactions": {
+        "type": "Transaction",
+        "args": []
+      },
+      "subscription": {
+        "type": "Subscription",
+        "args": []
+      },
+      "subscription_id": {
+        "type": "Any",
+        "args": []
+      },
+      "taxDeductible": {
+        "type": "Any",
+        "args": []
+      },
+      "transactionRuleNodeIds": {
+        "type": "Any",
+        "args": []
+      },
+      "transactionRules": {
+        "type": "TransactionRuleConnection",
+        "args": [
+          "after",
+          "before",
+          "first",
+          "last"
+        ]
+      },
+      "transactionStatus": {
+        "type": "Any",
+        "args": []
+      },
+      "transactionTags": {
+        "type": "TransactionTagNode",
+        "args": [
+          "status"
+        ]
+      },
+      "transactionType": {
+        "type": "TransactionType",
+        "args": []
+      },
+      "transferToTransaction": {
+        "type": "Transaction",
+        "args": []
+      },
+      "unlinkedCreditCardPayment": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "TransactionType": {
+      "_id": {
+        "type": "Any",
+        "args": []
+      },
+      "id": {
+        "type": "Any",
+        "args": []
+      },
+      "name": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "TransactionTagNode": {
+      "colors": {
+        "type": "Colors",
+        "args": []
+      },
+      "id": {
+        "type": "Any",
+        "args": []
+      },
+      "status": {
+        "type": "Any",
+        "args": []
+      },
+      "transactions": {
+        "type": "TransactionConnection",
+        "args": [
+          "accountIds",
+          "after",
+          "categories",
+          "eqAmount",
+          "excludeIgnoredFrom",
+          "excludeTransactionCategoryIds",
+          "first",
+          "gteAmount",
+          "gteDate",
+          "importId",
+          "ltAmount",
+          "ltDate",
+          "metaCategory",
+          "order",
+          "query",
+          "reviewStatuses",
+          "serviceIds",
+          "subscriptionIds",
+          "transactionCategoryIds",
+          "transactionFilterType",
+          "transactionIds",
+          "useAbsoluteAmount"
+        ]
+      }
+    },
+    "TransactionConnection": {
+      "edges": {
+        "type": "TransactionEdge",
+        "args": []
+      },
+      "pageInfo": {
+        "type": "PageInfo",
+        "args": []
+      }
+    },
+    "PageInfo": {
+      "endCursor": {
+        "type": "Any",
+        "args": []
+      },
+      "hasNextPage": {
+        "type": "Any",
+        "args": []
+      },
+      "hasPreviousPage": {
+        "type": "Any",
+        "args": []
+      },
+      "startCursor": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "TransactionEdge": {
+      "node": {
+        "type": "Transaction",
+        "args": []
+      }
+    },
+    "TransactionRuleConnection": {
+      "edges": {
+        "type": "TransactionRuleEdge",
+        "args": []
+      },
+      "pageInfo": {
+        "type": "PageInfo",
+        "args": []
+      }
+    },
+    "TransactionRuleEdge": {
+      "node": {
+        "type": "TransactionRule",
+        "args": []
+      }
+    },
+    "TransactionRule": {
+      "id": {
+        "type": "Any",
+        "args": []
+      },
+      "numberMatchingTransactions": {
+        "type": "Any",
+        "args": []
+      },
+      "version": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "Subscription": {
+      "_id": {
+        "type": "Any",
+        "args": []
+      },
+      "active": {
+        "type": "Any",
+        "args": []
+      },
+      "amount": {
+        "type": "Any",
+        "args": []
+      },
+      "amountChange": {
+        "type": "Any",
+        "args": []
+      },
+      "colors": {
+        "type": "Colors",
+        "args": []
+      },
+      "created_at": {
+        "type": "Any",
+        "args": []
+      },
+      "currency": {
+        "type": "Any",
+        "args": []
+      },
+      "custom_name": {
+        "type": "Any",
+        "args": []
+      },
+      "end_date": {
+        "type": "Any",
+        "args": []
+      },
+      "estimatedMonthlyAmountCents": {
+        "type": "Any",
+        "args": []
+      },
+      "expected_next_amount": {
+        "type": "Any",
+        "args": []
+      },
+      "expected_next_bill_date": {
+        "type": "Any",
+        "args": []
+      },
+      "first_transaction_date": {
+        "type": "Any",
+        "args": []
+      },
+      "frequency": {
+        "type": "Any",
+        "args": []
+      },
+      "hidden": {
+        "type": "Any",
+        "args": []
+      },
+      "id": {
+        "type": "Any",
+        "args": []
+      },
+      "isIncome": {
+        "type": "Any",
+        "args": []
+      },
+      "isNew": {
+        "type": "Any",
+        "args": []
+      },
+      "lastTransaction": {
+        "type": "Transaction",
+        "args": []
+      },
+      "last_paid_date": {
+        "type": "Any",
+        "args": []
+      },
+      "last_transaction_date": {
+        "type": "Any",
+        "args": []
+      },
+      "manual": {
+        "type": "Any",
+        "args": []
+      },
+      "minimumDue": {
+        "type": "MinimumDue",
+        "args": []
+      },
+      "monthlyCostCents": {
+        "type": "Any",
+        "args": []
+      },
+      "nextCharge": {
+        "type": "NextSubscriptionCharge",
+        "args": []
+      },
+      "relatedSubscriptions": {
+        "type": "Subscription",
+        "args": []
+      },
+      "service": {
+        "type": "Service",
+        "args": []
+      },
+      "service_id": {
+        "type": "Any",
+        "args": []
+      },
+      "service_type": {
+        "type": "Any",
+        "args": []
+      },
+      "source": {
+        "type": "Any",
+        "args": []
+      },
+      "start_date": {
+        "type": "Any",
+        "args": []
+      },
+      "total_amount": {
+        "type": "Any",
+        "args": []
+      },
+      "transactionCategory": {
+        "type": "TransactionCategory",
+        "args": []
+      },
+      "transaction_count": {
+        "type": "Any",
+        "args": []
+      },
+      "transaction_name": {
+        "type": "Any",
+        "args": []
+      },
+      "transactions": {
+        "type": "TransactionConnection",
+        "args": [
+          "after",
+          "before",
+          "endDate",
+          "first",
+          "last",
+          "startDate"
+        ]
+      },
+      "updated_at": {
+        "type": "Any",
+        "args": []
+      },
+      "useMinimumDue": {
+        "type": "Any",
+        "args": []
+      },
+      "yearlyCost": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "Service": {
+      "_id": {
+        "type": "Any",
+        "args": []
+      },
+      "colors": {
+        "type": "Colors",
+        "args": []
+      },
+      "created_at": {
+        "type": "Any",
+        "args": []
+      },
+      "description": {
+        "type": "Any",
+        "args": []
+      },
+      "frequency": {
+        "type": "Any",
+        "args": []
+      },
+      "id": {
+        "type": "Any",
+        "args": []
+      },
+      "institution_id": {
+        "type": "Any",
+        "args": []
+      },
+      "name": {
+        "type": "Any",
+        "args": []
+      },
+      "recurring": {
+        "type": "Any",
+        "args": []
+      },
+      "transactionCategory": {
+        "type": "TransactionCategory",
+        "args": []
+      },
+      "type": {
+        "type": "Any",
+        "args": []
+      },
+      "updated_at": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "NextSubscriptionCharge": {},
+    "MinimumDue": {
+      "amount": {
+        "type": "Any",
+        "args": []
+      },
+      "source": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "TransactionPair": {
+      "transaction": {
+        "type": "Transaction",
+        "args": []
+      }
+    },
+    "Account": {
+      "_id": {
+        "type": "Any",
+        "args": []
+      },
+      "available_balance": {
+        "type": "Any",
+        "args": []
+      },
+      "balanceHistory": {
+        "type": "AccountBalanceConnection",
+        "args": [
+          "after",
+          "before",
+          "first",
+          "gteDate",
+          "interval",
+          "last"
+        ]
+      },
+      "balanceHistoryFast": {
+        "type": "BalanceHistoryRecord",
+        "args": [
+          "gteDate",
+          "includePendingTransactions",
+          "interval"
+        ]
+      },
+      "category": {
+        "type": "Any",
+        "args": []
+      },
+      "closed": {
+        "type": "Any",
+        "args": []
+      },
+      "created_at": {
+        "type": "Any",
+        "args": []
+      },
+      "creditDetails": {
+        "type": "PlaidCreditDetails",
+        "args": []
+      },
+      "creditUtilization": {
+        "type": "CreditUtilization",
+        "args": []
+      },
+      "credit_limit": {
+        "type": "Any",
+        "args": []
+      },
+      "currentBalance": {
+        "type": "Any",
+        "args": []
+      },
+      "current_balance": {
+        "type": "Any",
+        "args": []
+      },
+      "customType": {
+        "type": "Any",
+        "args": []
+      },
+      "displayedBalance": {
+        "type": "Any",
+        "args": []
+      },
+      "enabled": {
+        "type": "Any",
+        "args": []
+      },
+      "firstSyncDate": {
+        "type": "Any",
+        "args": []
+      },
+      "id": {
+        "type": "Any",
+        "args": []
+      },
+      "includeInNetWorth": {
+        "type": "Any",
+        "args": []
+      },
+      "institution": {
+        "type": "Institution",
+        "args": []
+      },
+      "institution_id": {
+        "type": "Any",
+        "args": []
+      },
+      "liabilityDetails": {
+        "type": "LiabilityDetails",
+        "args": []
+      },
+      "liabilityMinimumPayment": {
+        "type": "LiabilityMinimumPayment",
+        "args": []
+      },
+      "masterAccount": {
+        "type": "MasterAccount",
+        "args": []
+      },
+      "master_account_id": {
+        "type": "Any",
+        "args": []
+      },
+      "name": {
+        "type": "Any",
+        "args": [
+          "ignoreCustomName"
+        ]
+      },
+      "pending_balance": {
+        "type": "Any",
+        "args": []
+      },
+      "purchaseAPR": {
+        "type": "Any",
+        "args": []
+      },
+      "source": {
+        "type": "Any",
+        "args": []
+      },
+      "updated_at": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "MasterAccount": {
+      "_id": {
+        "type": "Any",
+        "args": []
+      },
+      "accounts": {
+        "type": "AccountConnection",
+        "args": [
+          "after",
+          "applicable",
+          "before",
+          "enabled",
+          "first",
+          "includePeerToPeer",
+          "last",
+          "order"
+        ]
+      },
+      "created_at": {
+        "type": "Any",
+        "args": []
+      },
+      "id": {
+        "type": "Any",
+        "args": []
+      },
+      "institution": {
+        "type": "Institution",
+        "args": []
+      },
+      "institution_id": {
+        "type": "Any",
+        "args": []
+      },
+      "source": {
+        "type": "Any",
+        "args": []
+      },
+      "status": {
+        "type": "Any",
+        "args": []
+      },
+      "updated_at": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "Institution": {
+      "enabled": {
+        "type": "Any",
+        "args": []
+      },
+      "id": {
+        "type": "Any",
+        "args": []
+      },
+      "name": {
+        "type": "Any",
+        "args": []
+      },
+      "source": {
+        "type": "Any",
+        "args": []
+      },
+      "status": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "AccountConnection": {
+      "edges": {
+        "type": "AccountEdge",
+        "args": []
+      },
+      "pageInfo": {
+        "type": "PageInfo",
+        "args": []
+      }
+    },
+    "AccountEdge": {
+      "node": {
+        "type": "Account",
+        "args": []
+      }
+    },
+    "LiabilityMinimumPayment": {},
+    "LiabilityDetails": {
+      "status": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "CreditUtilization": {},
+    "PlaidCreditDetails": {},
+    "BalanceHistoryRecord": {
+      "date": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "AccountBalanceConnection": {
+      "edges": {
+        "type": "AccountBalanceEdge",
+        "args": []
+      },
+      "pageInfo": {
+        "type": "PageInfo",
+        "args": []
+      }
+    },
+    "AccountBalanceEdge": {
+      "node": {
+        "type": "AccountBalance",
+        "args": []
+      }
+    },
+    "AccountBalance": {
+      "available_balance": {
+        "type": "Any",
+        "args": []
+      },
+      "credit_limit": {
+        "type": "Any",
+        "args": []
+      },
+      "current_balance": {
+        "type": "Any",
+        "args": []
+      },
+      "date": {
+        "type": "Any",
+        "args": []
+      },
+      "displayedBalance": {
+        "type": "Any",
+        "args": []
+      },
+      "id": {
+        "type": "Any",
+        "args": []
+      },
+      "source": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "UpcomingSubscriptionCharges": {},
+    "TransactionsTimeline": {},
+    "TransactionTagConnection": {
+      "edges": {
+        "type": "TransactionTagEdge",
+        "args": []
+      },
+      "pageInfo": {
+        "type": "PageInfo",
+        "args": []
+      }
+    },
+    "TransactionTagEdge": {
+      "node": {
+        "type": "TransactionTag",
+        "args": []
+      }
+    },
+    "TransactionTag": {
+      "colors": {
+        "type": "Colors",
+        "args": []
+      },
+      "id": {
+        "type": "Any",
+        "args": []
+      },
+      "status": {
+        "type": "Any",
+        "args": []
+      },
+      "transactions": {
+        "type": "TransactionConnection",
+        "args": [
+          "accountIds",
+          "after",
+          "categories",
+          "eqAmount",
+          "excludeIgnoredFrom",
+          "excludeTransactionCategoryIds",
+          "first",
+          "gteAmount",
+          "gteDate",
+          "importId",
+          "ltAmount",
+          "ltDate",
+          "metaCategory",
+          "order",
+          "query",
+          "reviewStatuses",
+          "serviceIds",
+          "subscriptionIds",
+          "transactionCategoryIds",
+          "transactionFilterType",
+          "transactionIds",
+          "useAbsoluteAmount"
+        ]
+      }
+    },
+    "TransactionMetaCategoryData": {
+      "iconKey": {
+        "type": "Any",
+        "args": []
+      },
+      "id": {
+        "type": "Any",
+        "args": []
+      },
+      "transactions": {
+        "type": "TransactionConnection",
+        "args": [
+          "after",
+          "eqAmount",
+          "excludeIgnoredFrom",
+          "first",
+          "gteAmount",
+          "gteDate",
+          "ltAmount",
+          "ltDate",
+          "order"
+        ]
+      }
+    },
+    "TransactionHistory": {
+      "amount": {
+        "type": "Any",
+        "args": []
+      },
+      "date": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "SyntheticTransactionTagConnection": {
+      "edges": {
+        "type": "SyntheticTransactionTagEdge",
+        "args": []
+      },
+      "pageInfo": {
+        "type": "PageInfo",
+        "args": []
+      }
+    },
+    "SyntheticTransactionTagEdge": {
+      "node": {
+        "type": "SyntheticTransactionTag",
+        "args": []
+      }
+    },
+    "SyntheticTransactionTag": {
+      "colors": {
+        "type": "Colors",
+        "args": []
+      },
+      "id": {
+        "type": "Any",
+        "args": []
+      },
+      "status": {
+        "type": "Any",
+        "args": []
+      },
+      "transactions": {
+        "type": "TransactionConnection",
+        "args": [
+          "accountIds",
+          "after",
+          "categories",
+          "eqAmount",
+          "excludeIgnoredFrom",
+          "excludeTransactionCategoryIds",
+          "first",
+          "gteAmount",
+          "gteDate",
+          "importId",
+          "ltAmount",
+          "ltDate",
+          "metaCategory",
+          "order",
+          "query",
+          "reviewStatuses",
+          "serviceIds",
+          "subscriptionIds",
+          "transactionCategoryIds",
+          "transactionFilterType",
+          "transactionIds",
+          "useAbsoluteAmount"
+        ]
+      }
+    },
+    "SubscriptionConnection": {
+      "edges": {
+        "type": "SubscriptionEdge",
+        "args": []
+      },
+      "pageInfo": {
+        "type": "PageInfo",
+        "args": []
+      }
+    },
+    "SubscriptionEdge": {
+      "node": {
+        "type": "Subscription",
+        "args": []
+      }
+    },
+    "SubscriptionCalendarItem": {
+      "id": {
+        "type": "Any",
+        "args": []
+      },
+      "subscription": {
+        "type": "Subscription",
+        "args": []
+      },
+      "transaction": {
+        "type": "Transaction",
+        "args": []
+      }
+    },
+    "SpendingSummary": {
+      "totalAmount": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "SpendingByTransactionTag": {
+      "amount": {
+        "type": "Any",
+        "args": []
+      },
+      "count": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "SpendingByServiceConnection": {
+      "edges": {
+        "type": "SpendingByServiceEdge",
+        "args": []
+      },
+      "pageInfo": {
+        "type": "PageInfo",
+        "args": []
+      }
+    },
+    "SpendingByServiceEdge": {
+      "node": {
+        "type": "SpendingByService",
+        "args": []
+      }
+    },
+    "SpendingByService": {
+      "amount": {
+        "type": "Any",
+        "args": []
+      },
+      "count": {
+        "type": "Any",
+        "args": []
+      },
+      "service": {
+        "type": "Service",
+        "args": []
+      }
+    },
+    "SpendingByCategory": {
+      "amount": {
+        "type": "Any",
+        "args": []
+      },
+      "transactionCategory": {
+        "type": "TransactionCategory",
+        "args": []
+      }
+    },
+    "SpendTrajectory": {},
+    "SpendProjection": {
+      "available": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "NetWorth": {
+      "assetBackedLoans": {
+        "type": "AssetBackedLoanNetWorthDebt",
+        "args": []
+      },
+      "assetHistory": {
+        "type": "NetWorthAssetHistory",
+        "args": [
+          "gteDate",
+          "interval",
+          "useEquity"
+        ]
+      },
+      "assets": {
+        "type": "NetWorthAsset",
+        "args": []
+      },
+      "assetsWithLoan": {
+        "type": "NetWorthAssetWithLoan",
+        "args": []
+      },
+      "cash": {
+        "type": "NetWorthCash",
+        "args": []
+      },
+      "creditCardDebts": {
+        "type": "CreditCardAccountNetWorthDebt",
+        "args": []
+      },
+      "debtHistory": {
+        "type": "NetWorthDebtHistory",
+        "args": [
+          "gteDate",
+          "interval",
+          "useEquity"
+        ]
+      },
+      "debts": {
+        "type": "NetWorthDebt",
+        "args": [
+          "masterAccountNodeId"
+        ]
+      },
+      "investments": {
+        "type": "NetWorthInvestment",
+        "args": []
+      },
+      "longTermDebts": {
+        "type": "LoanAccountNetWorthDebt",
+        "args": []
+      },
+      "netWorthHistory": {
+        "type": "NetWorthHistory",
+        "args": [
+          "gteDate",
+          "interval",
+          "useEquity"
+        ]
+      },
+      "oldestCompleteHistoryDate": {
+        "type": "Any",
+        "args": []
+      },
+      "other": {
+        "type": "NetWorthOther",
+        "args": []
+      },
+      "otherDebts": {
+        "type": "OtherNetWorthDebt",
+        "args": []
+      },
+      "savings": {
+        "type": "NetWorthSaving",
+        "args": []
+      }
+    },
+    "NetWorthSaving": {
+      "accountNodeId": {
+        "type": "Any",
+        "args": []
+      },
+      "id": {
+        "type": "Any",
+        "args": []
+      },
+      "includeInNetWorth": {
+        "type": "Any",
+        "args": []
+      },
+      "institution": {
+        "type": "Institution",
+        "args": []
+      },
+      "name": {
+        "type": "Any",
+        "args": []
+      },
+      "type": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "OtherNetWorthDebt": {
+      "account": {
+        "type": "Account",
+        "args": []
+      },
+      "accountNodeId": {
+        "type": "Any",
+        "args": []
+      },
+      "id": {
+        "type": "Any",
+        "args": []
+      },
+      "includeInNetWorth": {
+        "type": "Any",
+        "args": []
+      },
+      "institution": {
+        "type": "Institution",
+        "args": []
+      },
+      "name": {
+        "type": "Any",
+        "args": []
+      },
+      "source": {
+        "type": "Any",
+        "args": []
+      },
+      "type": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "NetWorthOther": {
+      "id": {
+        "type": "Any",
+        "args": []
+      },
+      "includeInNetWorth": {
+        "type": "Any",
+        "args": []
+      },
+      "institution": {
+        "type": "Institution",
+        "args": []
+      },
+      "name": {
+        "type": "Any",
+        "args": []
+      },
+      "type": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "NetWorthHistory": {
+      "date": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "LoanAccountNetWorthDebt": {
+      "account": {
+        "type": "Account",
+        "args": []
+      },
+      "accountNodeId": {
+        "type": "Any",
+        "args": []
+      },
+      "id": {
+        "type": "Any",
+        "args": []
+      },
+      "includeInNetWorth": {
+        "type": "Any",
+        "args": []
+      },
+      "institution": {
+        "type": "Institution",
+        "args": []
+      },
+      "name": {
+        "type": "Any",
+        "args": []
+      },
+      "source": {
+        "type": "Any",
+        "args": []
+      },
+      "type": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "NetWorthInvestment": {
+      "accountNodeId": {
+        "type": "Any",
+        "args": []
+      },
+      "id": {
+        "type": "Any",
+        "args": []
+      },
+      "includeInNetWorth": {
+        "type": "Any",
+        "args": []
+      },
+      "institution": {
+        "type": "Institution",
+        "args": []
+      },
+      "name": {
+        "type": "Any",
+        "args": []
+      },
+      "type": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "NetWorthDebt": {
+      "account": {
+        "type": "Account",
+        "args": []
+      },
+      "accountNodeId": {
+        "type": "Any",
+        "args": []
+      },
+      "id": {
+        "type": "Any",
+        "args": []
+      },
+      "includeInNetWorth": {
+        "type": "Any",
+        "args": []
+      },
+      "institution": {
+        "type": "Institution",
+        "args": []
+      },
+      "name": {
+        "type": "Any",
+        "args": []
+      },
+      "source": {
+        "type": "Any",
+        "args": []
+      },
+      "type": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "NetWorthDebtHistory": {
+      "date": {
+        "type": "Any",
+        "args": []
+      },
+      "total": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "CreditCardAccountNetWorthDebt": {
+      "account": {
+        "type": "Account",
+        "args": []
+      },
+      "accountNodeId": {
+        "type": "Any",
+        "args": []
+      },
+      "id": {
+        "type": "Any",
+        "args": []
+      },
+      "includeInNetWorth": {
+        "type": "Any",
+        "args": []
+      },
+      "institution": {
+        "type": "Institution",
+        "args": []
+      },
+      "name": {
+        "type": "Any",
+        "args": []
+      },
+      "source": {
+        "type": "Any",
+        "args": []
+      },
+      "type": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "NetWorthCash": {
+      "accountNodeId": {
+        "type": "Any",
+        "args": []
+      },
+      "id": {
+        "type": "Any",
+        "args": []
+      },
+      "includeInNetWorth": {
+        "type": "Any",
+        "args": []
+      },
+      "institution": {
+        "type": "Institution",
+        "args": []
+      },
+      "name": {
+        "type": "Any",
+        "args": []
+      },
+      "type": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "NetWorthAssetWithLoan": {
+      "id": {
+        "type": "Any",
+        "args": []
+      },
+      "includeInNetWorth": {
+        "type": "Any",
+        "args": []
+      },
+      "institution": {
+        "type": "Institution",
+        "args": []
+      },
+      "name": {
+        "type": "Any",
+        "args": []
+      },
+      "type": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "NetWorthAsset": {
+      "id": {
+        "type": "Any",
+        "args": []
+      },
+      "includeInNetWorth": {
+        "type": "Any",
+        "args": []
+      },
+      "institution": {
+        "type": "Institution",
+        "args": []
+      },
+      "name": {
+        "type": "Any",
+        "args": []
+      },
+      "type": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "NetWorthAssetHistory": {
+      "date": {
+        "type": "Any",
+        "args": []
+      },
+      "total": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "AssetBackedLoanNetWorthDebt": {
+      "account": {
+        "type": "Account",
+        "args": []
+      },
+      "accountNodeId": {
+        "type": "Any",
+        "args": []
+      },
+      "assets": {
+        "type": "Asset",
+        "args": []
+      },
+      "id": {
+        "type": "Any",
+        "args": []
+      },
+      "includeInNetWorth": {
+        "type": "Any",
+        "args": []
+      },
+      "institution": {
+        "type": "Institution",
+        "args": []
+      },
+      "name": {
+        "type": "Any",
+        "args": []
+      },
+      "source": {
+        "type": "Any",
+        "args": []
+      },
+      "type": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "Asset": {
+      "category": {
+        "type": "Any",
+        "args": []
+      },
+      "id": {
+        "type": "Any",
+        "args": []
+      },
+      "includeInNetWorth": {
+        "type": "Any",
+        "args": []
+      },
+      "name": {
+        "type": "Any",
+        "args": []
+      },
+      "type": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "MasterAccountConnection": {
+      "edges": {
+        "type": "MasterAccountEdge",
+        "args": []
+      },
+      "pageInfo": {
+        "type": "PageInfo",
+        "args": []
+      }
+    },
+    "MasterAccountEdge": {
+      "node": {
+        "type": "MasterAccount",
+        "args": []
+      }
+    },
+    "Liabilities": {},
+    "LastMonthSpendType": {
+      "subscriptions": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "FrequentNonSubscriptionTransaction": {
+      "amount": {
+        "type": "Any",
+        "args": []
+      },
+      "count": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "BudgetPlan": {
+      "amountBudgeted": {
+        "type": "Any",
+        "args": [
+          "includeRecurring"
+        ]
+      },
+      "amountSpent": {
+        "type": "Any",
+        "args": [
+          "includeRecurring"
+        ]
+      },
+      "amount_left_to_spend": {
+        "type": "Any",
+        "args": []
+      },
+      "billsAndUtilitiesBudgetItem": {
+        "type": "BillsAndUtilitiesBudgetItem",
+        "args": []
+      },
+      "bills_utilities_spent": {
+        "type": "Any",
+        "args": []
+      },
+      "budgetHistoryThumbnails": {
+        "type": "BudgetHistoryThumbnail",
+        "args": [
+          "monthsToLookBack"
+        ]
+      },
+      "budgetItems": {
+        "type": "BudgetItem",
+        "args": []
+      },
+      "custom_bills": {
+        "type": "Any",
+        "args": []
+      },
+      "custom_income": {
+        "type": "Any",
+        "args": []
+      },
+      "custom_recurring": {
+        "type": "Any",
+        "args": []
+      },
+      "date": {
+        "type": "Any",
+        "args": []
+      },
+      "discretionarySpendBudgetItem": {
+        "type": "DiscretionarySpendBudgetItem",
+        "args": []
+      },
+      "earnings": {
+        "type": "Any",
+        "args": []
+      },
+      "earningsBudgetItem": {
+        "type": "EarningsBudgetItem",
+        "args": []
+      },
+      "effectiveFrom": {
+        "type": "Any",
+        "args": []
+      },
+      "effectiveTo": {
+        "type": "Any",
+        "args": []
+      },
+      "everythingElseBudgetItem": {
+        "type": "EverythingElseBudgetItem",
+        "args": []
+      },
+      "expected_bills": {
+        "type": "Any",
+        "args": []
+      },
+      "expected_income": {
+        "type": "Any",
+        "args": []
+      },
+      "expected_savings": {
+        "type": "Any",
+        "args": []
+      },
+      "id": {
+        "type": "Any",
+        "args": []
+      },
+      "ignoredTransactions": {
+        "type": "TransactionConnection",
+        "args": [
+          "after",
+          "before",
+          "first",
+          "last"
+        ]
+      },
+      "month": {
+        "type": "Any",
+        "args": []
+      },
+      "nonDiscretionarySpendBudgetItem": {
+        "type": "NonDiscretionarySpendBudgetItem",
+        "args": []
+      },
+      "outlierTransactions": {
+        "type": "TransactionConnection",
+        "args": [
+          "after",
+          "before",
+          "first",
+          "last"
+        ]
+      },
+      "recurringBudgetItem": {
+        "type": "RecurringBudgetItem",
+        "args": []
+      },
+      "remainingBudgetItem": {
+        "type": "RemainingBudgetItem",
+        "args": []
+      },
+      "savings_target": {
+        "type": "Any",
+        "args": []
+      },
+      "spendingBudgetItem": {
+        "type": "SpendingBudgetItem",
+        "args": []
+      }
+    },
+    "SpendingBudgetItem": {
+      "colors": {
+        "type": "Colors",
+        "args": []
+      },
+      "iconKey": {
+        "type": "Any",
+        "args": []
+      },
+      "status": {
+        "type": "Any",
+        "args": []
+      },
+      "targetAmount": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "RemainingBudgetItem": {
+      "colors": {
+        "type": "Colors",
+        "args": []
+      },
+      "iconKey": {
+        "type": "Any",
+        "args": []
+      },
+      "label": {
+        "type": "Any",
+        "args": []
+      },
+      "status": {
+        "type": "Any",
+        "args": []
+      },
+      "targetAmount": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "RecurringBudgetItem": {
+      "colors": {
+        "type": "Colors",
+        "args": []
+      },
+      "iconKey": {
+        "type": "Any",
+        "args": []
+      },
+      "status": {
+        "type": "Any",
+        "args": []
+      },
+      "targetAmount": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "NonDiscretionarySpendBudgetItem": {
+      "colors": {
+        "type": "Colors",
+        "args": []
+      },
+      "iconKey": {
+        "type": "Any",
+        "args": []
+      },
+      "label": {
+        "type": "Any",
+        "args": []
+      },
+      "status": {
+        "type": "Any",
+        "args": []
+      },
+      "targetAmount": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "EverythingElseBudgetItem": {
+      "amount": {
+        "type": "Any",
+        "args": []
+      },
+      "colors": {
+        "type": "Colors",
+        "args": []
+      },
+      "iconKey": {
+        "type": "Any",
+        "args": []
+      },
+      "status": {
+        "type": "Any",
+        "args": []
+      },
+      "targetAmount": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "EarningsBudgetItem": {
+      "colors": {
+        "type": "Colors",
+        "args": []
+      },
+      "iconKey": {
+        "type": "Any",
+        "args": []
+      },
+      "status": {
+        "type": "Any",
+        "args": []
+      },
+      "targetAmount": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "DiscretionarySpendBudgetItem": {
+      "colors": {
+        "type": "Colors",
+        "args": []
+      },
+      "iconKey": {
+        "type": "Any",
+        "args": []
+      },
+      "status": {
+        "type": "Any",
+        "args": []
+      },
+      "targetAmount": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "BudgetItem": {
+      "amount": {
+        "type": "Any",
+        "args": []
+      },
+      "effectiveFrom": {
+        "type": "Any",
+        "args": []
+      },
+      "effectiveTo": {
+        "type": "Any",
+        "args": []
+      },
+      "id": {
+        "type": "Any",
+        "args": []
+      },
+      "service": {
+        "type": "Service",
+        "args": []
+      },
+      "transactionCategory": {
+        "type": "TransactionCategory",
+        "args": []
+      }
+    },
+    "BudgetHistoryThumbnail": {
+      "month": {
+        "type": "Any",
+        "args": []
+      },
+      "status": {
+        "type": "Any",
+        "args": []
+      },
+      "targetAmount": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "BillsAndUtilitiesBudgetItem": {
+      "colors": {
+        "type": "Colors",
+        "args": []
+      },
+      "iconKey": {
+        "type": "Any",
+        "args": []
+      },
+      "status": {
+        "type": "Any",
+        "args": []
+      },
+      "targetAmount": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "FinancialGoalFeature": {
+      "goal": {
+        "type": "FinancialGoal",
+        "args": [
+          "id"
+        ]
+      },
+      "goals": {
+        "type": "FinancialGoal",
+        "args": [
+          "first"
+        ]
+      }
+    },
+    "FinancialGoal": {
+      "id": {
+        "type": "Any",
+        "args": []
+      },
+      "name": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "FeatureEntitlements": {
+      "account_sharing": {
+        "type": "Any",
+        "args": []
+      },
+      "account_syncing": {
+        "type": "Any",
+        "args": []
+      },
+      "ai_agent": {
+        "type": "Any",
+        "args": []
+      },
+      "bill_negotiations": {
+        "type": "Any",
+        "args": []
+      },
+      "bill_pay": {
+        "type": "Any",
+        "args": []
+      },
+      "cancellations": {
+        "type": "Any",
+        "args": []
+      },
+      "cash_management": {
+        "type": "Any",
+        "args": []
+      },
+      "child_id_theft_protection": {
+        "type": "Any",
+        "args": []
+      },
+      "custom_transaction_categories": {
+        "type": "Any",
+        "args": []
+      },
+      "customize_dashboard": {
+        "type": "Any",
+        "args": []
+      },
+      "debt_paydown_plan": {
+        "type": "Any",
+        "args": []
+      },
+      "enhanced_credit_score": {
+        "type": "Any",
+        "args": []
+      },
+      "fee_refunds": {
+        "type": "Any",
+        "args": []
+      },
+      "financial_goals": {
+        "type": "Any",
+        "args": []
+      },
+      "full_budget": {
+        "type": "Any",
+        "args": []
+      },
+      "grow": {
+        "type": "Any",
+        "args": []
+      },
+      "high_yield_savings_deposits": {
+        "type": "Any",
+        "args": []
+      },
+      "high_yield_savings_interest": {
+        "type": "Any",
+        "args": []
+      },
+      "id_theft_protection": {
+        "type": "Any",
+        "args": []
+      },
+      "manual_transactions": {
+        "type": "Any",
+        "args": []
+      },
+      "non_monthly_intervals": {
+        "type": "Any",
+        "args": []
+      },
+      "pay_advance": {
+        "type": "Any",
+        "args": []
+      },
+      "premium_transaction_categories": {
+        "type": "Any",
+        "args": []
+      },
+      "recurring_upcoming": {
+        "type": "Any",
+        "args": []
+      },
+      "savings_plans": {
+        "type": "Any",
+        "args": []
+      },
+      "spend_trajectory": {
+        "type": "Any",
+        "args": []
+      },
+      "subscription_agent": {
+        "type": "Any",
+        "args": []
+      },
+      "transaction_edits": {
+        "type": "Any",
+        "args": []
+      },
+      "transaction_export": {
+        "type": "Any",
+        "args": []
+      },
+      "transaction_tags": {
+        "type": "Any",
+        "args": []
+      },
+      "trial_tracking": {
+        "type": "Any",
+        "args": []
+      },
+      "truecard": {
+        "type": "Any",
+        "args": []
+      },
+      "unlimited_budget_items": {
+        "type": "Any",
+        "args": []
+      },
+      "unlimited_category_budget": {
+        "type": "Any",
+        "args": []
+      },
+      "unlimited_history": {
+        "type": "Any",
+        "args": []
+      },
+      "watchlist": {
+        "type": "Any",
+        "args": []
+      },
+      "web": {
+        "type": "Any",
+        "args": []
+      },
+      "widgets": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "DebtPaydownMonthlyDetails": {
+      "accounts": {
+        "type": "DebtPaydownMonthlyAccountDetail",
+        "args": []
+      }
+    },
+    "DebtPaydownMonthlyAccountDetail": {
+      "account": {
+        "type": "Account",
+        "args": []
+      },
+      "accountId": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "DebtPaydownHistoricalProgressMonth": {
+      "accounts": {
+        "type": "DebtPaydownMonthlyAccountDetail",
+        "args": []
+      }
+    },
+    "DebtPaydown": {},
+    "Debt": {},
+    "DailySpendItem": {
+      "amount": {
+        "type": "Any",
+        "args": []
+      },
+      "date": {
+        "type": "Any",
+        "args": []
+      }
+    },
+    "CreditReport": {}
+  }
+}
