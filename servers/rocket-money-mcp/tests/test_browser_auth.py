@@ -47,6 +47,10 @@ def test_browser_http_cookie_rotation_and_restart(tmp_path, monkeypatch):
             pass
 
         def do_GET(self):
+            if self.path != "/":
+                self.send_response(204)
+                self.end_headers()
+                return
             self.send_response(200)
             self.send_header("Set-Cookie", "session=fixture-initial; HttpOnly; Secure; Path=/")
             self.end_headers()
