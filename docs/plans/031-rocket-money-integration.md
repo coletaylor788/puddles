@@ -8,68 +8,85 @@
 
 ### Design
 
-#### Objective
+#### Goal
 
-Expose Rocket Money operations through MCP while keeping login, credentials and session state on the trusted host. Separate reusable browser authentication from the Rocket Money-specific HTTP client.
+Give main scoped Rocket Money tools. Keep login and sessions in a shared browser auth provider on the trusted host. Keep the Rocket Money MCP server focused on HTTP operations.
 
-#### Architecture
+#### System overview
 
 ```mermaid
 flowchart TB
     Main["Main agent"]
     subgraph Host["Trusted host"]
-        MCP["Rocket Money MCP server"]
-        Auth["Shared browser auth provider"]
-        Vault["1Password"]
-        Browser["Private login browser and session"]
-        MCP -->|"Acquire or renew authenticated client"| Auth
-        Auth -->|"Retrieve login when needed"| Vault
-        Auth <-->|"Login and session lifecycle"| Browser
+        MCP["Rocket Money MCP<br/>HTTP operations and verification"]
+        Auth["Shared browser auth provider<br/>Login and persistent sessions"]
+        Login["1Password + private login browser"]
+        MCP <-->|"Authenticated client"| Auth
+        Auth -->|"Manage login"| Login
     end
     API["Rocket Money API"]
     Owner["Owner via desktop viewer"]
-    Main -->|"Scoped finance tool call"| MCP
-    MCP -->|"Financial result or status"| Main
-    MCP <-->|"Authenticated HTTP operations"| API
-    Owner -->|"Complete MFA or challenge"| Browser
+    Main <-->|"Finance tools and results"| MCP
+    MCP <-->|"HTTP requests and responses"| API
+    Owner -->|"MFA or challenge when needed"| Login
 ```
 
-#### Components
+#### Component ownership
 
-| Component | Responsibility |
+| Component | Owns |
 |---|---|
-| Main agent | Interpret requests, apply private finance rules and authorize changes. |
-| Rocket Money MCP server | Expose finance tools, validate operations, make Rocket Money HTTP requests and verify results. |
-| Shared browser auth provider | Own password-manager access, browser profiles, login, session reuse and renewal. Supply an authenticated HTTP client to trusted host callers. |
-| Desktop viewer | Let the owner complete interactive login steps in the provider's private browser. |
+| Main | Request interpretation, private finance rules and authorization. |
+| Rocket Money MCP | Tool contracts, Rocket Money HTTP requests, operation limits and result verification. |
+| Shared browser auth | Password-manager access, site login configuration, private profiles, session reuse and renewal. |
+| Desktop viewer | Owner-assisted login in the auth provider's browser. |
 
-The auth provider is reusable by other host integrations. Site-specific login configuration belongs behind that provider's interface. The Rocket Money server remains a small custom integration with its own API operations and financial safeguards. It does not need a generic provider framework.
+The shared provider can serve other host integrations. Rocket Money remains a small custom MCP server using standard HTTP and MCP libraries.
 
-#### Authentication contract
+#### Request flow
 
-The MCP server asks the auth provider for an authenticated client for a configured account. The provider reuses the existing session across calls and conversation turns. When needed, it performs a bounded login or renewal attempt using host-only 1Password access. If interaction is required, it returns `needs_user_login`; the owner opens the desktop viewer and completes the challenge.
+1. **Request:** Main calls a scoped finance tool.
+2. **Authenticate:** MCP obtains a host-only authenticated client from the shared provider.
+3. **Execute:** MCP validates the operation and calls the Rocket Money API.
+4. **Return:** MCP verifies the result and returns financial data or a bounded status.
 
-Passwords, cookies and tokens remain inside the trusted host. Only the host-side HTTP client receives authentication context. The model and test sandbox receive neither credentials nor browser, profile or debugger access. Authentication is an internal dependency, not a model-facing tool.
+#### Login and session reuse
 
-#### Rocket Money operations
-
-| Interface | Scope |
+| Session state | Provider behavior |
 |---|---|
-| Read | Supported financial queries, transaction details, categories, pagination and session status. |
-| Write | An individual transaction's existing category or editable date only. |
-| Result | Financial data with coverage, or a bounded operation/login status. |
+| Ready | Reuse the session across calls and conversation turns. |
+| Expired | Attempt bounded renewal or login using host-only 1Password access. |
+| Needs interaction | Return `needs_user_login`; the owner completes MFA or a challenge through the desktop viewer. |
 
-The server owns Rocket Money request construction and approved API destinations. Reads preserve supported native query semantics. Writes check transaction identity and expected current values, disable category propagation, and read back the result. Stable request IDs and a small outcome journal prevent blind retries after an uncertain write.
+The provider owns browser-to-HTTP session synchronization. Authentication is an internal host dependency, not a model-facing tool.
 
-Private categorization and date rules remain in main's runtime skill and memory. The server enforces the allowed operations; it does not become a financial planner or browser agent.
+#### Access boundary
 
-#### Deployment
+| Stays on the trusted host | Available to the model |
+|---|---|
+| Passwords, cookies, tokens, browser profiles and authenticated HTTP client | Scoped finance tools, financial results, coverage and operation status |
 
-Run both components on the trusted host. Prefer the shared auth provider as a reusable library within the host process unless an existing supported host service already supplies it. A shared interface does not require another daemon or network hop. The runtime exposes the MCP server's scoped tools to main.
+Normal model tools and test sandboxes cannot access the private browser, its debugger or session files. Main's financial rules stay in private runtime skill and memory.
+
+#### Financial operations
+
+| Operation | Scope |
+|---|---|
+| Read | Supported financial queries, transactions, categories, pagination and session status. |
+| Write | An individual transaction's existing category or editable date. |
+| Verify | Check identity and current values before writing; read back afterward. |
+| Recover | Record uncertain outcomes and reconcile them before retrying. |
+
+MCP controls API destinations and preserves supported native query semantics. Category changes do not propagate to other transactions. Stable request IDs and a small outcome journal support safe recovery.
+
+#### Deployment and scope
+
+Both components run on the trusted host. Prefer a shared auth library in the host process, or an existing supported host service. Reuse does not require a new daemon.
+
+Other financial writes, scheduled automation and a general integration framework remain outside this design. Dedicated tests stay in the [deferred appendix](031-rocket-money-deferred.md).
 
 ### Status
 
-This is a design proposal. The shared authentication integration and MCP interface still need implementation and validation. Runtime behavior is unchanged. Dedicated testing remains in the [deferred appendix](031-rocket-money-deferred.md).
+Proposal only. The auth implementation, Rocket Money integration and runtime binding still need validation and implementation. Runtime behavior is unchanged.
 
 ## Agent section
 
@@ -114,7 +131,7 @@ After implementation validation, enable reads first and then the two permitted w
 ### Review log
 
 - 2026-10-06: Selected trusted-host execution with model-visible tools only.
-- 2026-10-07: Recorded the proposal in repository docs; separated shared browser authentication from the Rocket Money-specific MCP client.
+- 2026-10-07: Recorded the proposal in repository docs; separated shared browser authentication from the Rocket Money-specific MCP client. Organized the review surface around the diagram, component ownership, request flow and boundaries.
 
 ### Checklist
 
