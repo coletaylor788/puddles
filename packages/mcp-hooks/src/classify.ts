@@ -51,15 +51,17 @@ export async function classifyBoolean(
       label,
       elapsed_ms: Date.now() - start,
       outcome: "api_error",
-      error: result.error,
     });
     return result;
   }
 
   try {
     const parsed = parseJsonLoose(raw) as { detected?: unknown; evidence?: unknown };
+    if (!parsed || typeof parsed.detected !== "boolean") {
+      throw new Error("Classifier response requires a boolean detected field");
+    }
     const result: ClassificationResult = {
-      detected: Boolean(parsed.detected),
+      detected: parsed.detected,
       evidence: String(parsed.evidence ?? ""),
       outcome: "ok",
       raw,
@@ -83,7 +85,6 @@ export async function classifyBoolean(
       label,
       elapsed_ms: Date.now() - start,
       outcome: "parse_error",
-      error: result.error,
     });
     return result;
   }

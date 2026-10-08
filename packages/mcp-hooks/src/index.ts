@@ -10,6 +10,7 @@ export {
 export { loadLLMProvider } from "./load-llm-provider.js";
 export { log, sanitize, type LogFields } from "./logger.js";
 
+export { ContentEgressGuard } from "./egress/content-egress-guard.js";
 export { LeakGuard } from "./egress/leak-guard.js";
 export {
   ContactsEgressGuard,

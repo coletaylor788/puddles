@@ -187,6 +187,21 @@ Add a label to one or more emails.
 - "Mark these 3 emails as important"
 - "Add the 'Work' label to these emails"
 
+### send_email (trusted host only)
+
+Disabled by default. The approved OpenClaw Gmail integration enables this tool
+on its own bridge with `GMAIL_MCP_ENABLE_SEND=1` and `GMAIL_MCP_SEND_MAILBOX` set
+to the authenticated account. Native owner approval and content guards run in
+the plugin before it calls this MCP handler. Direct MCP callers do not acquire
+those protections and must not receive an enabled raw connection.
+
+The closed input is `to`, optional `cc` and `bcc` arrays of mailbox addresses,
+`subject`, and `body_text`. The server validates again, checks the actual mailbox,
+constructs plain-text MIME, and attempts `users.messages.send` once. It returns
+`sent` with message/thread IDs, `failed_before_send`, or `unknown`. Never retry
+an unknown outcome automatically. No message content or recipients enter send
+logs. No attachments, aliases, HTML, arbitrary headers, or reply threading.
+
 ## Security
 
 - **Refresh tokens** are stored in macOS Keychain (encrypted at rest) or read from `GOOGLE_MCP_TOKEN` env var (for Azure deployments where Key Vault injects secrets)

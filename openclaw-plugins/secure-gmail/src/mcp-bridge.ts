@@ -58,8 +58,13 @@ export class McpBridge {
   async callTool(
     name: string,
     args: Record<string, unknown>,
+    signal?: AbortSignal,
   ): Promise<CallToolResult> {
+    signal?.throwIfAborted();
     const client = this.requireClient();
+    if (signal) {
+      return (await client.callTool({ name, arguments: args }, undefined, { signal })) as CallToolResult;
+    }
     return (await client.callTool({ name, arguments: args })) as CallToolResult;
   }
 

@@ -259,3 +259,11 @@ npm test          # Run tests (LLM is stubbed; no provider required)
 npm run build     # Compile TypeScript
 npm run lint      # Type check
 ```
+
+## Content-only egress
+
+`ContentEgressGuard` applies the same secrets and sensitive-content classifiers
+as `ContactsEgressGuard`, without recipient trust checks. Gmail uses it after
+native owner approval. Classifier errors and malformed boolean responses block
+egress. `ContactsEgressGuard` composes these checks with its existing contact and
+domain policy. Neither class adds the separate PII policy from `LeakGuard`.

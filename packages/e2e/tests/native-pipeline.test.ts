@@ -39,6 +39,10 @@ vi.mock("../src/process-runner.mjs", () => ({
           writeFileSync(join(path, name), name);
         }
         const suite = JSON.parse(readFileSync(join(import.meta.dirname, "../openclaw-patch-suite.json"), "utf8"));
+        for (const target of suite.tests ?? []) {
+          mkdirSync(dirname(join(path, target)), { recursive: true });
+          writeFileSync(join(path, target), "synthetic native API test");
+        }
         for (const patch of suite.patches) {
           for (const target of patch.tests) {
             mkdirSync(dirname(join(path, target)), { recursive: true });
@@ -360,13 +364,18 @@ it("runs every mapped regression against the built candidate through the upstrea
       expect(readFileSync(join(options!.cwd!, "dist/entry.js"), "utf8")).toBe("unchanged build");
     }
   }
-  for (const target of new Set<string>(suite.patches.flatMap((patch: { tests: string[] }) => patch.tests))) {
+  for (const target of new Set<string>([...suite.patches.flatMap((patch: { tests: string[] }) => patch.tests), ...(suite.tests ?? [])])) {
     for (const action of ["list", "run"]) {
       expect(calls.some(([command, args]) => command === "node" &&
         args[0] === "scripts/run-vitest.mjs" && args[1] === action &&
         args.includes(`test/vitest/vitest.${suite.testProjects[target]}.config.ts`) &&
         args.includes(target))).toBe(true);
     }
+  }
+  for (const target of suite.candidateTests ?? []) {
+    expect(calls.some(([command, args, options]) => command === "corepack" &&
+      args.includes("vitest.candidate.config.ts") && args.includes(target) &&
+      options?.env?.GMAIL_MCP_PYTHON === "fixture-python")).toBe(true);
   }
   for (const project of new Set<string>(
     suite.patches.flatMap((patch: { typechecks?: string[] }) => patch.typechecks ?? []),

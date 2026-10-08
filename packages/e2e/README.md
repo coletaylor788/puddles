@@ -189,6 +189,10 @@ Bootstrap checks follow the stable AGENTS, SOUL, IDENTITY, and USER files.
 `openclaw-patch-suite.json` retains the cumulative patch order, test targets, and
 explicit upstream Vitest projects. New patches must register every added test.
 Do not replace earlier regressions with only the newest feature's targets.
+Features using existing native APIs add upstream targets to the manifest's
+top-level `tests` array (with `testProjects` mappings) and cross-component
+targets to `candidateTests`. Both run alongside all patch regressions without
+requiring a source patch.
 
 The memory migration entry also runs the scoped-memory adapter against the
 built candidate's SDK. Workspace gates build and test that plugin before the

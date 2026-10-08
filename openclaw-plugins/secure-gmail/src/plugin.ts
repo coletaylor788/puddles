@@ -5,6 +5,7 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import {
+  ContentEgressGuard,
   InjectionGuard,
   SecretRedactor,
   loadLLMProvider,
@@ -12,6 +13,7 @@ import {
   type LLMClient,
 } from "mcp-hooks";
 import { connectMcpBridge, McpBridge } from "./mcp-bridge.js";
+import { approvalSummary, createSendTool, SEND_NAME, validMailbox } from "./send-email.js";
 import { gmailPrefilter } from "./prefilter.js";
 import { wrapMcpTool, type AuditEntry, type AuditLogger } from "./wrap-tool.js";
 import type {
@@ -32,6 +34,8 @@ export interface PluginToolContext {
 
 interface SecureGmailConfig {
   gmailMcpCommand: string;
+  sendEnabled?: boolean;
+  sendMailbox?: string;
   gmailMcpArgs?: string[];
   gmailMcpCwd?: string;
   /**
@@ -97,9 +101,7 @@ function createAuditLogger(
  * Mutating tools (`archive_email`, `add_label`) are exposed but currently
  * have no human-in-the-loop / approval gate. Ingress hooks only run on the
  * tool *response*, so destructive params are not vetted before execution.
- * Add a `ContactsEgressGuard` (from mcp-hooks) before exposing any tool that
- * could permanently destroy user data (e.g., delete_email) or that emits
- * content to an external recipient (e.g., send_email).
+ * Sending is registered separately with native approval and content checks.
  *
  * Per-tool ingress: only tools whose response surfaces external content
  * (sender-controlled text) get ingress hooks. See INGRESS_TOOLS below.
@@ -317,6 +319,9 @@ const secureGmailPlugin = {
           command,
           args: config.gmailMcpArgs ?? DEFAULT_ARGS,
           cwd,
+          env: config.sendEnabled === true && validMailbox(config.sendMailbox)
+            ? { GMAIL_MCP_ENABLE_SEND: "1", GMAIL_MCP_SEND_MAILBOX: config.sendMailbox }
+            : { GMAIL_MCP_ENABLE_SEND: "0" },
         }).catch((err) => {
           api.logger.error?.(
             `[secure-gmail] bridge connect failed: ${
@@ -332,8 +337,12 @@ const secureGmailPlugin = {
     };
 
     const lazyCaller = {
-      callTool: async (name: string, args: Record<string, unknown>) =>
-        (await getBridge()).callTool(name, args),
+      async callTool(name: string, args: Record<string, unknown>, signal?: AbortSignal) {
+        signal?.throwIfAborted();
+        const bridge = await getBridge();
+        signal?.throwIfAborted();
+        return bridge.callTool(name, args, signal);
+      },
     };
 
     const auditLogPath = config.auditLogPath ?? DEFAULT_AUDIT_LOG_PATH;
@@ -360,6 +369,31 @@ const secureGmailPlugin = {
             : lazyCaller;
         return wrapMcpTool(tool, caller, { ingress: toolIngress, audit });
       });
+    }
+
+    if (config.sendEnabled === true && validMailbox(config.sendMailbox)) {
+      const mailbox = config.sendMailbox;
+      api.on("before_tool_call", (event, ctx) => {
+        if (event.toolName !== SEND_NAME) return;
+        if (ctx.agentId !== "main" || ctx.requester?.senderIsOwner !== true) {
+          return { block: true, blockReason: "Sending requires an interactive request from the owner to the main agent." };
+        }
+        try {
+          // Hooks receive isolated original events. Explicit overrides make the
+          // native snapshot match this summary, including after earlier hooks.
+          return { params: event.params, requireApproval: {
+            title: "Send email",
+            description: approvalSummary(mailbox, event.params),
+            timeoutMs: 600000,
+            allowedDecisions: ["allow-once", "deny"],
+          } };
+        } catch {
+          return { block: true, blockReason: "Cannot display the full email envelope in the approval summary." };
+        }
+      });
+      api.registerTool((ctx: PluginToolContext) => ctx.agentId === "main"
+        ? createSendTool({ mailbox, guard: new ContentEgressGuard(llm), bridge: lazyCaller, audit })
+        : null, { names: [SEND_NAME], optional: true });
     }
 
     api.on("session_end", async () => {
