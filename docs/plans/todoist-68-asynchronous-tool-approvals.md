@@ -1,6 +1,6 @@
 # Native tool approvals and guarded Gmail sending
 
-**Status:** Approved design, implementation in progress
+**Status:** Implemented and reviewed, release pending
 **Issue:** [#68](https://github.com/coletaylor788/puddles/issues/68)
 **Last updated:** 2026-10-07
 
@@ -94,9 +94,14 @@ Cancellation after Gmail dispatch cannot recall an email.
 
 ### Status
 
-The owner approved this design and shipping it on 2026-10-07. Implementation
-is in progress. Focused tests, native integration, independent review, and
-release validation precede deployment; physical phone acceptance remains.
+The owner approved this design and shipping it on 2026-10-07. Implementation,
+focused tests, native integration, and independent review are complete.
+Repository CI and source landing precede release validation.
+
+Deployment needs the exact sender mailbox and its host configuration. The
+read-only account lookup could not access the host credential store; the owner
+has been asked for the sender address. Installed gateway forwarding and physical
+phone acceptance remain. Production has not changed.
 
 ## Agent section
 
@@ -238,12 +243,16 @@ reconciliation. An accepted email cannot be recalled by rollback.
   now uses a per-call authenticated Requests session with transport retries,
   response-triggered credential retries, and redirects disabled. Local HTTP
   regressions verify one POST for acceptance, lost responses, 401, and redirects.
-  Existing read transport is unchanged. The reviewer is checking the correction.
+  Existing read transport is unchanged. The retained reviewer cleared the full
+  behavior diff at `629529e` and independently passed all 19 send tests. No
+  material findings remain. Installed gateway routing and phone acceptance are
+  release validation gaps.
 
 ### Checklist
 
 - [x] Verify native approval and iMessage contracts in pinned source.
 - [x] Keep Human and Agent sections and Plan 027 consistent.
 - [x] Owner approved the revised design and shipping it on 2026-10-07.
-- [ ] Implement and validate with recording transports and providers.
+- [x] Implement and validate with recording transports and providers.
+- [x] Complete independent review and resolve its transport retry finding.
 - [ ] Complete the approved release lifecycle and owner validation.
