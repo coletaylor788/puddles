@@ -39,24 +39,38 @@ flowchart TD
     Result --> Resume(["END: Main agent continues with the result"])
 ```
 
-#### What OpenClaw already does
+#### What we reuse and what we build
 
-The proposal has been checked against the repository's pinned OpenClaw, the
-latest stable release, and current upstream main. Source support is distinct
-from configuration or device behavior on the deployed host.
+OpenClaw supplies the approval system, the iMessage decision path, and the queue
+that brings results back to the agent. Custom work connects those pieces to
+Gmail and adds the ability to review a complete email and approve it later.
+This requires code changes, not just configuration.
 
-| Native facility | Use and current limit |
+##### Reuse from OpenClaw
+
+| Existing piece | Its job in this flow |
 |---|---|
-| Plugin approval RPC and persistent operator approval store | Reuse IDs, decisions, audit records, expiration, and single-use consumption. Persistence already exists. Pending requests from the old gateway runtime are cancelled at startup. |
-| Trusted tool policy and preparation hooks | Reuse caller authorization and normal tool policy. The ordinary approval hook can precede final parameter preparation, so it is not sufficient by itself to bind the email that actually sends. |
-| Native iMessage approval adapter | Reuse actor authorization, message GUID correlation, tapbacks, and supported native controls. Explicit forwarded targets and native origin prompts have different delivery paths. |
-| Authenticated review UI and channel summary | Native reviewer detail exists, but ordinary channel messages expose a bounded summary. A summary is not full email review. |
-| Session delivery queue | Reuse durable result delivery and original-session binding. It does not itself execute an approved Gmail operation. |
+| Tool permissions and caller identity | Decide which agent may request a send and identify its original session. |
+| Plugin approval system | Create the approval ID, store the request and decision, authenticate the reviewer, and allow an approval to be consumed only once. |
+| iMessage approval handling | Deliver approval prompts and match a native control or `/approve` command to the correct request and owner. |
+| Session delivery queue | Return the outcome to the original session. If the agent is busy, queue the result until it can continue. |
 
-Three claims from the old design need correction. Approval state is no longer
-memory-only. Native `defer` postpones an approval within a live tool execution;
-it is not a durable, detached send. A persisted request does not survive restart
-as usable authority: native restart handling deliberately cancels it.
+Our existing Gmail bridge, credential handling, and content classifiers are
+also reused. Those are Puddles components, not built-in OpenClaw features.
+
+##### Custom work in this proposal
+
+| Change | Where it belongs and why it is needed |
+|---|---|
+| Guarded `send_email` tool | Extend the existing Puddles Gmail plugin and MCP server. Validate and freeze the email, run the existing secrets/sensitive-content checks without contact lookup, and send only the approved values. Gmail sending is not exposed today. |
+| Complete email review | Extend OpenClaw's approval display and iMessage rendering for this email flow. Show every recipient, the subject, and the full body. The existing channel prompt only shows a short summary. |
+| Deferred execution and result handling | Extend OpenClaw's approval lifecycle so this operation can wait after the agent's turn ends, survive a restart, and execute once after approval. Add the Gmail-specific execution handler and connect its stored outcome to the existing session queue. Current approvals time out within ten minutes and cancel on restart. |
+
+We do not need to build a second approval service, an iMessage channel, a phone
+app, or a new result queue. The custom parts are the Gmail send tool, its full
+review display, and the lifecycle that carries an approved email through to a
+recorded send outcome. Later sections explain those changes; exact source
+references are in the Agent section.
 
 #### Prepare and guard the email
 
