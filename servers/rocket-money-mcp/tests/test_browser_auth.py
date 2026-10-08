@@ -62,6 +62,7 @@ def test_browser_http_cookie_rotation_and_restart(tmp_path, monkeypatch):
 
     http = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    tls.minimum_version = ssl.TLSVersion.TLSv1_2
     tls.load_cert_chain(certfile, keyfile)
     http.socket = tls.wrap_socket(http.socket, server_side=True)
     thread = threading.Thread(target=http.serve_forever, daemon=True)
