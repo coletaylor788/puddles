@@ -31,9 +31,10 @@ flowchart TD
 
 #### What OpenClaw handles
 
-Use the documented `before_tool_call.requireApproval` API. This is a hook that
-runs after the model requests a tool and before its execution method runs.
-OpenClaw already:
+The Gmail integration requests native approval through the documented
+`before_tool_call.requireApproval` hook. It supplies the title and summary
+after the model requests the tool; email validation and content checks run
+inside the tool after approval. OpenClaw already:
 
 - Snapshots the call arguments and any overrides supplied by the hook. Later
   hooks may block the call but cannot rewrite the approved parameters.
@@ -50,9 +51,12 @@ result queue, or OpenClaw core patch in this design.
 
 | Component | Responsibility |
 |---|---|
-| Pre-call approval hook | Check caller access and supply OpenClaw's approval title and summary. |
 | `send_email` tool | After approval, validate the input, run the content guard, call Gmail through the existing MCP bridge, and return a safe result. |
-| Shared content guard | Reuse the existing secrets/sensitive-content checks without the contact lookup. Other tools keep their existing recipient checks. |
+| Shared content guard | Inside the tool, after approval and before dispatch, check the full email for secrets and disallowed sensitive content. A content block or classifier failure prevents sending even if approved. Reuse existing checks without contact lookup; other tools keep their recipient checks. |
+
+The owner approves the displayed recipients, so this tool requires no known-contact
+or trusted-domain lookup. The [security architecture](../openclaw-setup/security-architecture.md)
+records this exception.
 
 Version one sends a new plain-text email from the configured mailbox. Inputs
 are `to`, optional `cc` and `bcc`, `subject`, and `body_text`. Validate addresses,
@@ -65,26 +69,12 @@ Only the authorized main agent gets the send tool. The reader retains its
 existing guarded read access. Credentials and the raw MCP connection stay on
 the trusted host; a model-supplied approval ID grants no authority.
 
-#### Content checks and the review summary
-
-Content checks run inside the Gmail tool after approval and before dispatch.
-Approval permits the tool to run; it does not override the content guard.
-Secrets, disallowed sensitive content, and classifier failures block sending.
-An approved request can therefore return a content-blocked result without
-sending an email. The approval preview appears before this content check;
-there is no separate Gmail content check before approval.
+#### Approving and sending follow-ups in iMessage
 
 Use OpenClaw's existing summary to show the configured sender, every To/Cc/Bcc
 recipient, subject, and a short body preview. Reject an envelope that cannot fit
-in the summary; the body preview can be shortened. The full email still passes
-the content guard. No custom full-email review is needed.
-
-The owner's approval authorizes the displayed recipients. This email tool does
-not require known contacts or trusted domains. That requested exception is
-recorded in the [security architecture](../openclaw-setup/security-architecture.md).
-Other tools retain their recipient checks.
-
-#### Approving and sending follow-ups in iMessage
+in the summary; the body preview can be shortened. This preview appears before
+the tool runs its content guard. No custom full-email review is needed.
 
 Forward native plugin approvals to the owner's fixed direct iMessage chat,
 with an explicit authorized owner and only `allow-once` and `deny` decisions.
