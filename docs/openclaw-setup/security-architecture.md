@@ -178,7 +178,17 @@ Guards run inside tools at the relevant boundary:
   non-send calls such as web searches, check outgoing data for secrets,
   sensitive information, and PII.
 - **[ContactsEgressGuard](../../packages/mcp-hooks/src/egress/contacts-egress-guard.ts):**
-  any content destined to a recipient must be addressed to a known contact.
+  content destined to a recipient must be addressed to a known contact, except
+  for the explicitly approved email flow below.
+
+**Approved design exception, not yet implemented:** the
+[guarded Gmail send proposal](../plans/todoist-68-asynchronous-tool-approvals.md)
+uses the authenticated owner's single-use approval of the exact To, Cc, and Bcc
+addresses instead of contact or domain trust checks. The owner requested this
+exception on 2026-10-07. Unknown recipients are allowed only through that
+reviewed send flow. Address validation, complete recipient display, frozen
+inputs, and mandatory secrets/sensitive-content checks still apply. Approval
+cannot override a content block. Other tools retain their recipient checks.
 
 Outbound guards apply at every label. Passing a guard does not change content
 labels or replace action authorization, turn permissions, or human approval.

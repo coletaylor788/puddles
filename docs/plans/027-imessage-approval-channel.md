@@ -47,7 +47,9 @@ does not prove final-parameter review or restart-safe deferred execution.
   and the built-in iMessage approval adapter.
 - Reuse the authenticated `/approve` path where generic forwarding does not
   provide native controls. Never interpret a bare yes/no as a decision.
-- Contacts-based destination trust grants neither owner identity nor approval.
+- Owner identity comes from native approval authorization. For Gmail sending,
+  the owner approves the exact recipients; contact membership is not required.
+  Other tools retain their recipient checks.
 - Native pending requests normally cancel on gateway restart. Only the
   proposed explicit deferred operation changes that behavior for its own work.
 - Do not create a custom pending-state file or independent channel resolver.

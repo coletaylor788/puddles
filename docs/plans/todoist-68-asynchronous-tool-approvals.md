@@ -9,7 +9,7 @@
 ### Design
 
 Add `send_email` to the existing Gmail integration. The agent prepares an email,
-the host checks its recipients and content, and the owner reviews the exact
+the host checks its content, and the owner reviews the exact recipients and
 email in the configured direct iMessage conversation. Only an authenticated
 approval releases that email. The agent can finish its current turn while the
 request waits, then continue when the send has a terminal result.
@@ -27,12 +27,12 @@ pending, the current agent turn ends; the stored request waits for the owner.
 flowchart TD
     Start(["START: Owner asks the main agent to send an email"])
     Start --> Prepare["1. Main agent calls send_email<br/>Gmail tool validates and freezes the email"]
-    Prepare --> Guards{"2. Content and recipient<br/>guards pass?"}
+    Prepare --> Guards{"2. Content guard passes?"}
     Guards -->|"No"| Blocked["Return blocked to the agent<br/>No approval request or email sent"]
     Guards -->|"Yes"| Pending["3. OpenClaw stores the approval request<br/>Agent turn ends with pending status"]
     Pending --> Review["4. Owner reviews the exact email<br/>in the fixed direct iMessage chat"]
     Review --> Decision{"Native approval resolver<br/>accepts owner's decision"}
-    Decision -->|"Allow once"| Send["5. Recheck guards and consume approval<br/>Gmail MCP sends the frozen email if allowed"]
+    Decision -->|"Allow once"| Send["5. Recheck content and consume approval<br/>Gmail MCP sends the frozen email if allowed"]
     Decision -->|"Deny or expire"| NoSend["No email sent"]
     Send --> Result["6. Store the outcome and queue it<br/>for the original session"]
     NoSend --> Result
@@ -72,19 +72,26 @@ sender identity and defaults. Reject arbitrary headers, raw MIME, attachments,
 HTML, alternate accounts, sender aliases, reply/thread options, and unknown
 fields. Reply support can follow with explicit thread and header binding.
 
-Use the existing `ContactsEgressGuard` with its secrets and sensitive-content
-classifiers enabled. Give it an email-specific extractor covering **all** To,
-Cc, and Bcc recipients; its default extractor does not do that. Validate a
-nonempty recipient set before calling it. Require known contacts for this tool,
-with no new domain bypass. Unavailable contacts, classifier failures, or thrown
-guard errors block the send.
-Scan the complete outgoing subject, body, and user-controlled envelope text.
+Keep the existing secrets and sensitive-content checks from `mcp-hooks`, but
+separate them from the contact lookup. Scan the complete outgoing subject,
+body, and user-controlled envelope text. Classifier failures or thrown guard
+errors block the send.
 
-Run these checks before showing an approval, since the review is itself an
-outbound message. Repeat the guard checks immediately before dispatch using the
-same frozen email. Changed trust, revoked access, or a degraded guard produces a
-blocked result. Approval never overrides a content or recipient block. The
-workflow does not automatically create contacts to make a send pass.
+The owner's approval authorizes every displayed To, Cc, and Bcc recipient for
+this email. Recipients need not be known contacts or belong to trusted domains;
+this tool performs no recipient trust lookup. Validate address syntax and a
+nonempty recipient set, and include every destination in the frozen review.
+Those checks prevent malformed or hidden destinations, not unfamiliar ones.
+
+Run the content guard before showing an approval, since the review is itself an
+outbound message. Repeat it immediately before dispatch using the same frozen
+email. Revoked caller access or a degraded content guard produces a blocked
+result. Approval never overrides a content block.
+
+This is an explicitly requested, send-email-specific exception to the security
+architecture's contact requirement. It replaces recipient trust with the
+owner's single-use approval of the exact destinations. Other tools retain their
+existing recipient checks.
 
 #### Review exactly what will send
 
@@ -137,8 +144,8 @@ without sending. Persisted expiration and cancellation take precedence over a
 late decision.
 
 The native decision is authority to perform one frozen operation. A trusted
-executor revalidates that authority, reruns guards, and consumes it atomically
-before provider dispatch. Cancellation before dispatch prevents a send. Once
+executor revalidates that authority, reruns the content guard, and atomically
+consumes approval before provider dispatch. Cancellation before dispatch prevents a send. Once
 Gmail has accepted a request, cancellation cannot promise to recall the email.
 The UI distinguishes approval granted from email sent.
 
@@ -197,13 +204,14 @@ lengths rather than the email payload or classifier evidence containing it.
 | Separate approval service or phone app | Unnecessary. |
 
 This scope adds one protected send tool. It does not change archive or label
-approval policy, workshop approval policy, all tool calls, guard trust rules,
+approval policy, workshop approval policy, other tools' recipient trust rules,
 or the reader's permissions. It introduces no public listener or hosted UI.
 
 ### Status
 
 The proposal is refreshed against current source and includes Gmail sending,
-mandatory guards, complete review, asynchronous execution, and uncertainty
+mandatory content checks, owner-approved recipients, complete review,
+asynchronous execution, and uncertainty
 handling. The existing approval proposal and iMessage plan are reconciled.
 
 Implementation awaits review of this design. Full native routing on the actual
@@ -238,8 +246,9 @@ as current facts. No upstream upgrade is included in this proposal.
 - The closed schema covers `to`, `cc`, `bcc`, `subject`, and `body_text`.
   Mailbox identity comes from trusted configuration. Nonempty recipients,
   bounded fields, valid addresses, and no header injection are required.
-- Every destination and outgoing content field passes `ContactsEgressGuard`
-  before review and again before send. Classifier/contact outages block.
+- Outgoing content passes the secrets and sensitive-content guard before review
+  and again before send. Classifier outages block. Owner approval authorizes all
+  displayed To/Cc/Bcc recipients; no contact or domain lookup is required.
 - Approved input equals dispatched input. Unknown fields, oversized review,
   hidden recipients, changed payloads, and unsupported features never send.
 - The authenticated owner alone chooses allow-once or deny. Permanent grants,
@@ -286,11 +295,16 @@ Current repository contracts:
   ingress after the MCP call. That cannot protect a send. Its modified-result
   `details.original` retains raw content; remove that escape when touching this
   boundary and add a focused regression.
-- [Recipient guard](../../packages/mcp-hooks/src/egress/contacts-egress-guard.ts)
-  already handles secrets, sensitive content, and contact trust. Its default
-  extraction stops at one field and accepts an empty destination list. Supply
-  a complete extractor and deterministic validation; do not duplicate it with
-  a second LeakGuard pass or change its shared semantics for other tools.
+- [ContactsEgressGuard](../../packages/mcp-hooks/src/egress/contacts-egress-guard.ts)
+  currently combines secrets/sensitive-content checks and destination trust.
+  Factor its content checks into a shared content-only guard in `mcp-hooks`;
+  let ContactsEgressGuard keep composing that guard with its existing recipient
+  checks. Gmail uses only the content guard. Preserve classifier prompts,
+  fail-closed outcomes, and other callers' behavior. Do not pass an empty
+  destination extractor or a fake trust resolver to bypass the combined guard.
+- [LeakGuard](../../packages/mcp-hooks/src/egress/leak-guard.ts) additionally
+  blocks PII. Substituting it would change the retained content policy. Keep the
+  existing secrets/sensitive checks without adding that extra category.
 - [Gmail server](../../servers/gmail-mcp/src/gmail_mcp/server.py),
   [authentication](../../servers/gmail-mcp/src/gmail_mcp/auth.py), and
   [async adapter](../../servers/gmail-mcp/src/gmail_mcp/_async.py) own provider
@@ -299,8 +313,11 @@ Current repository contracts:
   logs some recipient/subject fields. Send handling needs metadata-only logs,
   including redaction of raw MIME and provider exception echoes.
 - The [security architecture](../openclaw-setup/security-architecture.md)
-  requires recipient trust independently of action approval. This proposal
-  does not add an override for unknown recipients or sensitive content.
+  records the owner-approved exception for this exact email flow. Impact:
+  unfamiliar recipients can receive a reviewed email after owner approval.
+  Content policy remains non-overridable, and other tools retain recipient
+  trust checks. This explicit design correction needs no second approval;
+  implementation of the whole proposal still awaits design review.
 
 #### Minimal extension boundary
 
@@ -342,8 +359,9 @@ No runtime implementation is included. After design approval:
    explicit forwarding, and terminal session delivery using synthetic fixtures
    on the repository pin. Recheck exact SDK seams before writing a patch.
 2. Add the closed `send_email` schema, host caller checks, preparation, complete
-   recipient extraction, egress guards, and safe result handling to
-   `secure-gmail`. Add Python MIME/send handling to `gmail-mcp` behind explicit
+   recipient validation, the shared content-only guard, and safe result handling
+   to `secure-gmail`. Preserve ContactsEgressGuard behavior for its other callers
+   when extracting the shared content checks. Add Python MIME/send handling to `gmail-mcp` behind explicit
    trusted-host enablement. Keep schemas in contract tests.
 3. Add the bounded email review projection and the opt-in deferred operation to
    the existing native approval lifecycle. Preserve ordinary approval behavior,
@@ -358,7 +376,7 @@ No runtime implementation is included. After design approval:
    OpenClaw patch regression in the cumulative suite.
 
 The review size and exact SDK entrypoint names are implementation details to
-settle from fixtures. The lifetime, caller restrictions, non-overridable guards,
+settle from fixtures. The lifetime, caller restrictions, non-overridable content checks,
 restart authority, and unknown-outcome behavior are design decisions. Any need
 to weaken them returns to design review.
 
@@ -373,7 +391,7 @@ Future executable regressions must cover:
 | Area | Required proof |
 |---|---|
 | Gmail contract | Schema parity, MIME/header injection rejection, Unicode, all To/Cc/Bcc recipients, fixed mailbox, rejection of unsupported fields and direct bypass |
-| Guards | Secrets/sensitive data, unknown contacts, empty list, Cc/Bcc-only attacks, lookup/classifier outage, revoked contact during wait, no raw content in result metadata or logs |
+| Guards and recipients | Secrets/sensitive data still block even with approval; classifier failure blocks; unfamiliar To/Cc/Bcc addresses pass with owner approval; no contact lookup occurs; malformed, empty, hidden, or changed recipients fail; other tools retain their existing checks; no raw content in result metadata or logs |
 | Review | Exact final values after hooks, no hidden defaults, escaping and display spoofing, full bounded body, no truncation, partial delivery failure, controls bound to the complete review |
 | Authority | Wrong actor/account/chat/GUID, forged approval arguments, allow-always refusal, original caller/session mismatch, disabled executor, no reader or unattended escalation |
 | Lifetime | Pending returns without holding the run, expiry, restart recovery for deferred operations only, ordinary restart cancellation, no restoration of closed run authority |
@@ -413,8 +431,12 @@ part of TEST rehearsal. Ordinary native approvals continue unchanged.
   original-session continuation from the earlier proposal.
 - It removes a dependency on obsolete TaskFlow APIs and does not treat Lobster
   tokens or live-call defer descriptors as owner approval authority.
-- It makes Gmail's existing guard gaps, default extractor limits, raw metadata
-  exposure, logging, and ambiguous send outcomes explicit implementation work.
+- The owner explicitly removed recipient trust checks for this email flow.
+  Single-use approval now authorizes the displayed destinations. The same
+  secrets/sensitive-content policy remains mandatory, and the security
+  architecture records this scoped exception.
+- Raw metadata exposure, logging, and ambiguous send outcomes remain explicit
+  implementation work.
 - This is a local design/source consistency review, not independent runtime
   review or production acceptance.
 
