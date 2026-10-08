@@ -73,8 +73,11 @@ jobs:
           test "$(corepack pnpm --version)" = "12.4.0"
       - name: Install Puddles dependencies
         run: corepack pnpm install --frozen-lockfile
-      - name: Install Gmail test dependencies
-        run: python -m pip install -e './servers/gmail-mcp[dev]'
+      - name: Install Python service test dependencies
+        run: |
+          python -m pip install --require-hashes -r servers/rocket-money-mcp/requirements.lock
+          python -m pip install -e './servers/gmail-mcp[dev]' -e './packages/browser-auth' -e './servers/rocket-money-mcp[dev]'
+          test -x '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
       - name: Check repository packages
         run: |
           corepack pnpm build
@@ -86,6 +89,11 @@ jobs:
           python -m pytest tests/ --ignore=tests/integration -q
           python -m ruff check src/ tests/
           python -m compileall -q src tests
+
+      - name: Check Rocket Money and shared browser auth
+        run: |
+          python -m pytest servers/rocket-money-mcp/tests -q
+          python -m ruff check servers/rocket-money-mcp/src servers/rocket-money-mcp/tests packages/browser-auth/src
 
   cumulative:
     # Dispatch on main pins github.sha once. Later main commits do not replace it.
@@ -133,8 +141,11 @@ jobs:
       - name: Install Puddles dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install Gmail test dependencies
-        run: python -m pip install -e './servers/gmail-mcp[dev]'
+      - name: Install Python service test dependencies
+        run: |
+          python -m pip install --require-hashes -r servers/rocket-money-mcp/requirements.lock
+          python -m pip install -e './servers/gmail-mcp[dev]' -e './packages/browser-auth' -e './servers/rocket-money-mcp[dev]'
+          test -x '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 
       - name: Initialize public run evidence
         run: |

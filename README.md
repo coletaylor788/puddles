@@ -6,6 +6,7 @@ A collection of [Model Context Protocol (MCP)](https://modelcontextprotocol.io/)
 
 | Server | Description | Status |
 |--------|-------------|--------|
+| [rocket-money-mcp](./servers/rocket-money-mcp/) | Scoped finance tools with trusted host browser authentication | Validation in progress |
 | [gmail-mcp](./servers/gmail-mcp/) | Gmail integration - read, search, and manage emails | ✅ Ready |
 
 ## Quick Start

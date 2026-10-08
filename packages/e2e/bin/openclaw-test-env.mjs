@@ -21,6 +21,9 @@ async function repositoryGates(run) {
   await run(python, ["-m", "pytest", "tests/", "--ignore=tests/integration", "-q"], { cwd: gmailDir });
   await run(python, ["-m", "ruff", "check", "src/", "tests/"], { cwd: gmailDir });
   await run(python, ["-m", "compileall", "-q", "src", "tests"], { cwd: gmailDir });
+  const rocketDir = join(repoRoot, "servers", "rocket-money-mcp");
+  await run(python, ["-m", "pytest", "tests/", "-q"], { cwd: rocketDir });
+  await run(python, ["-m", "ruff", "check", "src/", "tests/", "../../packages/browser-auth/src"], { cwd: rocketDir });
 }
 
 installSignalHandlers({ cleanup: cleanupNativeFixtures });

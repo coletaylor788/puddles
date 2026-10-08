@@ -1,0 +1,35 @@
+{
+  "name": "rocket-money",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Main-only Rocket Money MCP tools with trusted host authentication",
+  "type": "module",
+  "main": "dist/plugin.js",
+  "types": "dist/plugin.d.ts",
+  "scripts": {
+    "build": "tsc --emitDeclarationOnly && esbuild src/plugin.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/plugin.js --external:openclaw --external:keytar --banner:js='import { createRequire as createBundleRequire } from \"node:module\"; const require = createBundleRequire(import.meta.url);' && node scripts/write-dist-manifest.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.18.0",
+    "mcp-hooks": "workspace:*"
+  },
+  "peerDependencies": {
+    "openclaw": "*"
+  },
+  "openclaw": {
+    "extensions": [
+      "./dist/plugin.js"
+    ]
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.25.0",
+    "keytar": "^7.9.0",
+    "openclaw": "2026.9.6",
+    "typescript": "^5.0.0",
+    "vitest": "^3.0.0"
+  }
+}

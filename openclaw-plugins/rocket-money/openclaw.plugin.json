@@ -1,0 +1,49 @@
+{
+  "id": "rocket-money",
+  "name": "Rocket Money",
+  "version": "0.1.0",
+  "description": "Main-only scoped finance tools; credentials remain on the host.",
+  "contracts": {
+    "tools": [
+      "rocket_money_status",
+      "rocket_money_read",
+      "rocket_money_set_category",
+      "rocket_money_set_date",
+      "rocket_money_operation_status"
+    ]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "command",
+      "stateDir",
+      "llmProvider"
+    ],
+    "properties": {
+      "command": {
+        "type": "string"
+      },
+      "stateDir": {
+        "type": "string"
+      },
+      "chromeExecutable": {
+        "type": "string"
+      },
+      "writesEnabled": {
+        "type": "boolean",
+        "default": false
+      },
+      "llmProvider": {
+        "type": "string"
+      },
+      "llmProviderOptions": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "model": {
+        "type": "string"
+      }
+    }
+  }
+}

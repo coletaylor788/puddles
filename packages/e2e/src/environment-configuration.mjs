@@ -12,6 +12,8 @@ function environmentLeaf(path, category) {
   if (category === "credential-reference") return /^secrets\/providers\/[^/]+\/path$/.test(joined);
   if (category === "account") return /^(?:channels\/[^/]+\/(?:allowFrom|groupAllowFrom)\/\d+|commands\/ownerAllowFrom\/\d+|plugins\/entries\/facetime\/config\/ownerHandles\/\d+|bindings\/\d+\/match\/(?:accountId|peer\/id)|agents\/(?:defaults|entries\/[^/]+)\/heartbeat\/(?:target|to|accountId))$/.test(joined);
   if (category === "service") return /(?:\/allowedOrigins\/\d+|\/publicUrl|\/image|^models\/providers\/[^/]+\/(?:baseUrl|localService\/(?:healthUrl|args\/\d+)))$/.test(joined);
+  if (category === "fixture" && /^plugins\/entries\/rocket-money\/config\/(?:command|chromeExecutable)$/.test(joined)) return true;
+  if (category === "path" && joined === "plugins/entries/rocket-money/config/stateDir") return true;
   if (category === "fixture") return /(?:\/cliPath|\/binDir|\/llmProvider|\/baseUrl|\/gmailMcpCommand|\/applePimMcpCommand|\/applePimMcpArgs\/\d+|^memory\/qmd\/command)$/.test(joined);
   if (category === "path") return /(?:\/(?:workspace|agentDir|gmailMcpCwd)|^plugins\/load\/paths\/\d+|\/sandbox\/browser\/binds\/\d+|^plugins\/entries\/canvas\/config\/host\/root|\/memory\/search\/(?:extraPaths\/\d+|local\/modelPath)|^memory\/search\/local\/modelPath|^models\/providers\/[^/]+\/localService\/(?:command|cwd|args\/\d+))$/.test(joined);
   return false;

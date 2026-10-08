@@ -29,6 +29,7 @@ The maintained plugins are:
 
 | Plugin | Plan | Purpose |
 |---|---|---|
+| `rocket-money` | [031](../docs/plans/031-rocket-money-integration.md) | Main-only finance tools with trusted host login and filtered results |
 | `secure-gmail` | [010](../docs/plans/completed/010-secure-gmail-plugin.md) | Filters Gmail MCP results with ingress hooks |
 | `secure-apple-calendar` | [017](../docs/plans/completed/017-secure-apple-calendar.md) | Wraps apple-pim's calendar MCP tool with ingress + egress hooks |
 | `scoped-memory` | [037](../docs/plans/completed/037-openclaw-stable-upgrade.md) | Reads only the trusted calling agent's own Markdown notes |
