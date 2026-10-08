@@ -17,11 +17,12 @@ and send through the existing Gmail MCP bridge.
 ```mermaid
 flowchart TD
     Start(["START: Owner asks the agent to send an email"])
-    Start --> Hook["1. Agent requests send_email<br/>Gmail pre-call hook checks input and content"]
-    Hook -->|"Blocked"| Blocked(["END: Explain the block. No email sent"])
-    Hook -->|"Pass"| Approval["2. OpenClaw snapshots the arguments<br/>and sends the approval summary to iMessage"]
+    Start --> Hook["1. Agent requests send_email<br/>Gmail hook supplies the approval summary"]
+    Hook --> Approval["2. OpenClaw snapshots the arguments<br/>and sends the approval summary to iMessage"]
     Approval --> Wait{"3. OpenClaw waits for the owner's reaction"}
-    Wait -->|"👍 Approve once"| Send["4. OpenClaw calls the Gmail tool<br/>Validate, run content guard, send"]
+    Wait -->|"👍 Approve once"| Checks{"4. Gmail tool runs<br/>Input validation and content guard pass?"}
+    Checks -->|"Yes"| Send["5. Send through Gmail"]
+    Checks -->|"No"| NoSend
     Wait -->|"👎 Deny or timeout"| NoSend["No email sent"]
     Wait -->|"Run cancelled or gateway restarts"| Cancelled(["END: Pending send cancelled"])
     Send --> Result(["END: Agent receives the tool result"])
@@ -49,7 +50,7 @@ result queue, or OpenClaw core patch in this design.
 
 | Component | Responsibility |
 |---|---|
-| Pre-call approval hook | Check caller access, validate the proposed email, run the content guard, and supply OpenClaw's approval title and summary. |
+| Pre-call approval hook | Check caller access and supply OpenClaw's approval title and summary. |
 | `send_email` tool | After approval, validate the input, run the content guard, call Gmail through the existing MCP bridge, and return a safe result. |
 | Shared content guard | Reuse the existing secrets/sensitive-content checks without the contact lookup. Other tools keep their existing recipient checks. |
 
@@ -66,10 +67,12 @@ the trusted host; a model-supplied approval ID grants no authority.
 
 #### Content checks and the review summary
 
-Content checks run before the approval prompt because the prompt itself sends
-email text to iMessage. They run again inside the tool before Gmail dispatch.
-Secrets, disallowed sensitive content, and classifier failures block sending,
-even after approval.
+Content checks run inside the Gmail tool after approval and before dispatch.
+Approval permits the tool to run; it does not override the content guard.
+Secrets, disallowed sensitive content, and classifier failures block sending.
+An approved request can therefore return a content-blocked result without
+sending an email. The approval preview appears before this content check;
+there is no separate Gmail content check before approval.
 
 Use OpenClaw's existing summary to show the configured sender, every To/Cc/Bcc
 recipient, subject, and a short body preview. Reject an envelope that cannot fit
@@ -136,7 +139,8 @@ by this design. The evidence below is pinned source inspection, not live proof.
   must appear in the summary. No contact lookup is required for this tool.
 - Preserve the native approved arguments through dispatch. No custom preparation,
   finalization, fingerprint, or approval-binding state is needed.
-- Content checks fail closed before review and send; approval cannot bypass them.
+- Content checks run only inside the tool after approval and fail closed before
+  dispatch. Approval cannot bypass them; a blocked email is not sent.
 - Only an authenticated allow-once decision permits execution. Timeout, restart,
   and run abort do not leave detached work to execute later.
 - Attempt Gmail dispatch once per approved call. Never automatically replay an
@@ -157,9 +161,9 @@ All links below refer to the repository pin.
 | Reactions authenticate the actor and target the correct pending request | [Reaction handling](https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/extensions/imessage/src/approval-reactions.ts), [regression tests](https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/extensions/imessage/src/approval-reactions.test.ts) |
 | Follow-up messages respect existing queue and steering boundaries | [Queue behavior](https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/docs/concepts/queue.md) |
 
-Use a normal registered `before_tool_call` hook scoped to `send_email`. If input
-normalization is needed, return `params` alongside `requireApproval` and build
-the summary from those same values. Request `timeoutMs: 600000` and allow only
+Use a normal registered `before_tool_call` hook scoped to `send_email`. Supply
+the summary from the proposed arguments; leave email validation and content
+checks to the tool after approval. Request `timeoutMs: 600000` and allow only
 `allow-once` and `deny`. Do not send from `onResolution`.
 
 Configure `approvals.plugin.enabled: true`, `mode: "targets"`, and an exact owner
@@ -206,8 +210,9 @@ Implementation tests must cover:
 
 - Schema parity, header injection, Unicode, all recipients visible, fixed sender,
   and unsupported fields rejected.
-- Content blocks and classifier failure, including after approval; unfamiliar
-  recipients allowed with approval; other tools' contact policy unchanged.
+- Approval completes before the Gmail content guard runs; content blocks and
+  classifier failure then prevent dispatch. Unfamiliar recipients are allowed
+  with approval; other tools' contact policy stays unchanged.
 - Native argument snapshots, later hook rewrites rejected, and no execution
   before approval or after denial, timeout, restart, or pre-dispatch abort.
 - Actual structured forwarding and authenticated 👍/👎 resolution using recorded
@@ -232,6 +237,8 @@ reconciliation. An accepted email cannot be recalled by rollback.
 
 - Owner selected native summary, iMessage reactions, and the built-in live wait.
 - Owner removed recipient trust checks while retaining content guards.
+- Owner selected approval first, then validation and content checks inside the
+  Gmail tool. The approval preview is not gated by a separate Gmail content scan.
 - Native argument snapshots replace the earlier custom freeze/finalizer design.
 - Detached execution, restart recovery, and custom result delivery are removed.
 
