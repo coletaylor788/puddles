@@ -9,7 +9,10 @@ from email.message import EmailMessage
 from email.policy import SMTP
 from typing import Any
 
+from google.auth.transport.requests import AuthorizedSession
+
 from ._async import run_blocking
+from .auth import HTTP_SOCKET_TIMEOUT_S
 from .logging_setup import log
 
 SEND_SCHEMA = {
@@ -68,6 +71,23 @@ def validate_email(args: dict[str, Any]) -> None:
         raise ValueError("Invalid body")
 
 
+def _send_once(request):
+    # httplib2 can repeat a POST after a lost response even with num_retries=0.
+    # Requests' default adapter has no retries. Also disable credential-response
+    # retries and redirects so this write has exactly one transport attempt.
+    with AuthorizedSession(request.http.credentials, max_refresh_attempts=0) as session:
+        response = session.post(
+            request.uri,
+            data=request.body,
+            headers=request.headers,
+            timeout=HTTP_SOCKET_TIMEOUT_S,
+            allow_redirects=False,
+        )
+        if not 200 <= response.status_code < 300:
+            raise RuntimeError("Gmail send was not accepted")
+        return response.json()
+
+
 async def send_email(args: dict[str, Any], get_service) -> dict[str, str]:
     mailbox = os.environ.get("GMAIL_MCP_SEND_MAILBOX", "")
     try:
@@ -101,7 +121,7 @@ async def send_email(args: dict[str, Any], get_service) -> dict[str, str]:
                 return {"status": "failed_before_send"}
             log("info", "send_dispatch", request_id=request_id)
             dispatched.set()
-            reply = request.execute(num_retries=0)
+            reply = _send_once(request)
             if not all(
                 isinstance(reply.get(k), str) and re.fullmatch(r"[A-Za-z0-9_-]{1,128}", reply[k])
                 for k in ("id", "threadId")

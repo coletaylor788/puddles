@@ -29,11 +29,13 @@ def provider(monkeypatch):
     service = Mock()
     users = service.users.return_value
     users.getProfile.return_value.execute.return_value = {"emailAddress": "owner@example.org"}
-    users.messages.return_value.send.return_value.execute.return_value = {
+    send_once = Mock(return_value={
         "id": "abc",
         "threadId": "def",
         "unexpected": "PRIVATE_ECHO",
-    }
+    })
+    monkeypatch.setattr("gmail_mcp.send._send_once", send_once)
+    service.send_once = send_once
     return service, AsyncMock(return_value=service)
 
 
@@ -53,7 +55,7 @@ async def test_send_mime_and_no_retries(provider, capsys):
         assert str(message[key]) == ", ".join(EMAIL[key])
     assert str(message["Subject"]) == EMAIL["subject"]
     assert message.get_content().rstrip("\r\n") == EMAIL["body_text"]
-    send.return_value.execute.assert_called_once_with(num_retries=0)
+    service.send_once.assert_called_once_with(send.return_value)
     logs = capsys.readouterr().err
     for text in ("PRIVATE_ECHO", EMAIL["body_text"], EMAIL["subject"], EMAIL["to"][0]):
         assert text not in logs
@@ -91,10 +93,10 @@ async def test_mailbox_mismatch_cannot_send(provider):
 
 async def test_lost_response_is_unknown_not_retryable(provider, capsys):
     service, get_service = provider
-    execute = service.users().messages().send.return_value.execute
+    execute = service.send_once
     execute.side_effect = RuntimeError("PRIVATE_ECHO " + json.dumps(EMAIL))
     assert await send_email(EMAIL, get_service) == {"status": "unknown"}
-    execute.assert_called_once_with(num_retries=0)
+    execute.assert_called_once_with(service.users().messages().send.return_value)
     assert "PRIVATE_ECHO" not in capsys.readouterr().err
 
 
@@ -121,7 +123,7 @@ async def test_timeout_during_profile_does_not_dispatch_later(provider, monkeypa
     await asyncio.sleep(0.03)
     release.set()
     assert await task == {"status": "failed_before_send"}
-    service.users().messages().send.return_value.execute.assert_not_called()
+    service.send_once.assert_not_called()
 
 
 async def test_disabled_raw_server_refuses_and_hides_send(monkeypatch):
@@ -135,3 +137,58 @@ async def test_tool_schema_is_closed(provider):
     tool = next(tool for tool in await list_tools() if tool.name == "send_email")
     assert tool.inputSchema == SEND_SCHEMA
     assert tool.inputSchema["additionalProperties"] is False
+
+
+@pytest.mark.parametrize("outcome", ["lost_response", "unauthorized", "redirect", "accepted"])
+async def test_real_transport_never_repeats_post(monkeypatch, capsys, outcome):
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    from google.auth.credentials import AnonymousCredentials
+    from google_auth_httplib2 import AuthorizedHttp
+    from googleapiclient.http import HttpRequest
+
+    received = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *_args):
+            pass
+
+        def do_POST(self):
+            received.append(self.rfile.read(int(self.headers["Content-Length"])))
+            if outcome == "lost_response":
+                self.close_connection = True
+                return
+            self.send_response({"unauthorized": 401, "redirect": 307, "accepted": 200}[outcome])
+            self.send_header("Location", "/repeat")
+            self.end_headers()
+            self.wfile.write(b'{"id":"abc","threadId":"def","echo":"PRIVATE_ECHO"}')
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    monkeypatch.setenv("GMAIL_MCP_ENABLE_SEND", "1")
+    monkeypatch.setenv("GMAIL_MCP_SEND_MAILBOX", "owner@example.org")
+    service = Mock()
+    service.users().getProfile.return_value.execute.return_value = {
+        "emailAddress": "owner@example.org"
+    }
+    service.users().messages().send.return_value = HttpRequest(
+        AuthorizedHttp(AnonymousCredentials()),
+        lambda _response, content: json.loads(content),
+        f"http://127.0.0.1:{server.server_port}/send",
+        method="POST",
+        body='{"raw":"synthetic"}',
+        headers={"content-type": "application/json"},
+    )
+    try:
+        result = await send_email(EMAIL, AsyncMock(return_value=service))
+        expected = {"status": "sent", "id": "abc", "threadId": "def"}
+        assert result == (expected if outcome == "accepted" else {"status": "unknown"})
+        assert received == [b'{"raw":"synthetic"}']
+        logs = capsys.readouterr().err
+        assert "PRIVATE_ECHO" not in logs
+        assert "synthetic" not in logs
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)

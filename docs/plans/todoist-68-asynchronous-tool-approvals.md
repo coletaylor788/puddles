@@ -194,7 +194,7 @@ denial, content blocks, abort, runtime stop, and Python/TypeScript schema parity
 Bridge startup cancellation has a separate regression. All sends are recorded;
 no test sends a real email or approval message.
 
-Focused results: 70 Gmail plugin tests, 118 shared-hook tests, 190 Python tests,
+Focused results: 70 Gmail plugin tests, 118 shared-hook tests, 194 Python tests,
 and 56 release-runner tests pass. The pinned OpenClaw source passes 54 iMessage,
 29 hook, and 26 approval regressions. Its draft build and the final native
 wrapper/stdio integration pass. These are development checks, not release proof.
@@ -233,6 +233,12 @@ reconciliation. An accepted email cannot be recalled by rollback.
   Gmail tool. The approval preview is not gated by a separate Gmail content scan.
 - Native argument snapshots replace the earlier custom freeze/finalizer design.
 - Detached execution, restart recovery, and custom result delivery are removed.
+- Independent review found that the Google client's underlying HTTP transport
+  can repeat a POST after a lost response despite `num_retries=0`. Gmail sending
+  now uses a per-call authenticated Requests session with transport retries,
+  response-triggered credential retries, and redirects disabled. Local HTTP
+  regressions verify one POST for acceptance, lost responses, 401, and redirects.
+  Existing read transport is unchanged. The reviewer is checking the correction.
 
 ### Checklist
 
