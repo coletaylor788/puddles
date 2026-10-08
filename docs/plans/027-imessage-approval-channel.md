@@ -39,7 +39,8 @@ and links. Earlier observations of installed configuration were from
 
 Use the linked proposal's scope and acceptance criteria. Native iMessage must
 bind an authorized owner decision to the correct request. Channel support alone
-does not prove frozen-input binding or guarded Gmail execution.
+does not prove guarded Gmail execution. OpenClaw's pre-call approval hook owns
+the argument snapshot; the Gmail tool validates, guards, and sends after approval.
 
 ### Architecture and decisions
 
