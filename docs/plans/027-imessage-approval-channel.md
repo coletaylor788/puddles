@@ -10,15 +10,16 @@
 
 The current design is [Native tool approvals and guarded Gmail
 sending](todoist-68-asynchronous-tool-approvals.md). It uses OpenClaw's native
-plugin approval authority and iMessage adapter, then adds complete email review
-and an explicit deferred operation for the existing Gmail integration.
+plugin approval authority, iMessage adapter, built-in summary, and live tool
+wait. It adds guarded sending to the existing Gmail integration. Version one
+waits up to ten minutes and cancels pending work on restart.
 
 Native iMessage approval support now exists in the repository's pinned
 OpenClaw. There is no need for a new Puddles iMessage channel plugin. Native
-origin prompts and explicit forwarded notifications use different paths;
-validate the configured route rather than assuming every message supports
-reaction-based approval. The current proposal defines the owner route, complete
-review, decision authorization, restart behavior, and result continuation.
+origin prompts and structured forwarded notifications both support bound
+reactions. Use the built-in fixed-target path with typed approval metadata and
+the delivered message GUID. The current proposal defines the owner route,
+summary, decision authorization, restart behavior, and result continuation.
 
 ### Status
 
@@ -38,20 +39,21 @@ and links. Earlier observations of installed configuration were from
 
 Use the linked proposal's scope and acceptance criteria. Native iMessage must
 bind an authorized owner decision to the correct request. Channel support alone
-does not prove final-parameter review or restart-safe deferred execution.
+does not prove frozen-input binding or guarded Gmail execution.
 
 ### Architecture and decisions
 
 - Reuse `plugin.approval.request`, `plugin.approval.waitDecision`, and
   `plugin.approval.resolve`, the persistent native operator approval store,
   and the built-in iMessage approval adapter.
-- Reuse the authenticated `/approve` path where generic forwarding does not
-  provide native controls. Never interpret a bare yes/no as a decision.
+- Use built-in thumbs-up/thumbs-down reactions on structured forwarded
+  approvals. `/approve` is a fallback. Never interpret a bare yes/no as a decision.
 - Owner identity comes from native approval authorization. For Gmail sending,
   the owner approves the exact recipients; contact membership is not required.
   Other tools retain their recipient checks.
-- Native pending requests normally cancel on gateway restart. Only the
-  proposed explicit deferred operation changes that behavior for its own work.
+- Native pending requests cancel on gateway restart. There is no deferred
+  executor or restart recovery. An unrelated follow-up may wait until the
+  approval completes; it does not approve, deny, or edit the pending email.
 - Do not create a custom pending-state file or independent channel resolver.
 
 ### Implementation
