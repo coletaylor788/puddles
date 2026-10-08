@@ -1,6 +1,6 @@
 # Plan 031: Rocket Money MCP and shared browser authentication
 
-**Status:** Implemented; independent review and release validation in progress
+**Status:** Merged; cumulative CI and installed DEV passed; TEST and production pending
 **Issue:** [#135](https://github.com/coletaylor788/puddles/issues/135)
 **Last updated:** 2026-10-07
 
@@ -97,14 +97,20 @@ Other financial writes, scheduled automation and a general integration framework
 
 ### Status
 
-The host auth package, five MCP tools and main-only adapter are implemented in [PR #233](https://github.com/coletaylor788/puddles/pull/233). Focused synthetic checks and the packaged MCP startup check pass. The owner approved publication and independent review; review and required repository CI are running. Cumulative CI and environment promotion follow source integration. Production is unchanged.
+**Approval:** Production approved.
+**Approval reference:** Owner instruction, “this design is approved, implement and ship it, giving me directions to login when ready”; subsequent approval covers publication and retained independent review.
+**Scope:** The approved five tools, shared host authentication, private main skill and desktop login shortcut. No live financial mutations during validation.
+
+The implementation and review fixes are merged. Retained independent review, repository checks and cumulative CI passed. The exact packaged artifact passed installed DEV checks, including synthetic Chrome session persistence/recovery and the scoped tools with empty login state. Installed bytes still match the sealed artifact.
+
+TEST and production remain pending because the release host is below the required free-space reserve. Cleanup of this attempt's temporary DEV snapshot is complete; additional legacy DEV cleanup awaits explicit approval. Production is unchanged. The private skill and login shortcut will be activated after deployment; owner-assisted login and a bounded read then validate the live provider.
 
 ## Agent section
 
 ### State
 
 - Canonical repository design; supersedes the earlier combined gateway and browser-worker proposals.
-- The retained host client on `codex/cli-gateway-design-flow` is reuse material, not proof that either component exists in the required form.
+- The implementation uses the shared `browser-auth` Python package, official MCP SDK and a main-only OpenClaw stdio adapter. The adapter retains the host process across turns and applies outbound LeakGuard plus inbound classification and redaction.
 - Main's skill and owner-specific finance rules remain private runtime content, managed outside the repository.
 
 ### Scope and acceptance criteria
@@ -150,5 +156,5 @@ After implementation validation, enable reads first and then the two permitted w
 - [x] Define the shared auth and Rocket Money responsibilities.
 - [x] Preserve credential isolation, private rules and verified writes.
 - [x] Keep testing in the deferred appendix.
-- [ ] Select the auth implementation and validate the integration.
+- [x] Select the auth implementation and validate the synthetic installed integration.
 - [ ] Complete the approved implementation, validation and activation; provide owner login instructions.
