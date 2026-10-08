@@ -114,6 +114,10 @@ class BrowserAuth:
         except AuthError:
             raise
         except Exception:  # noqa: BLE001 - sanitize host/provider failures
+            # A user may close the private browser window. Retire dead handles so
+            # the next call can reopen the saved session instead of staying stuck.
+            self.close()
+            self.mark("unavailable")
             raise AuthError("PROVIDER_ERROR") from None
 
     def persist(self):
@@ -155,11 +159,15 @@ class BrowserAuth:
                     self.persist()
                 finally:
                     self.context.close()
+        except Exception:  # noqa: BLE001 - closed browser handles need cleanup, not diagnostics
+            pass
         finally:
             self.context = None
             try:
                 if self.driver:
                     self.driver.stop()
+            except Exception:  # noqa: BLE001 - still release the profile when the driver died
+                pass
             finally:
                 self.driver = None
                 if self.lock:

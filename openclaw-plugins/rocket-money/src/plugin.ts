@@ -88,7 +88,10 @@ export function createPlugin(connector: typeof connect = connect) {
                 if (verdict.action === "modify") checked = verdict.content ?? "";
               }
               // Do not leak unfiltered structuredContent or original payload in details.
-              if (!configuration(api, ctx)) return result({ status: "error", error: { code: "ACCESS_DENIED" } });
+              const current = configuration(api, ctx);
+              if (!current || JSON.stringify([current.command, current.stateDir, current.chromeExecutable]) !== key) {
+                return result({ status: "error", error: { code: "ACCESS_DENIED" } });
+              }
               return { content: [{ type: "text" as const, text: checked }], details: { source: "rocket-money", isError: raw.isError === true } };
             } catch {
               await close();

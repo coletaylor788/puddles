@@ -101,3 +101,28 @@ def test_browser_http_cookie_rotation_and_restart(tmp_path, monkeypatch):
         http.shutdown()
         http.server_close()
         thread.join(timeout=5)
+
+
+def test_dead_browser_releases_profile_for_next_owner(tmp_path):
+    from puddles_browser_auth.state import account_lock
+
+    class DeadContext:
+        def storage_state(self):
+            raise RuntimeError("dead browser")
+
+        def close(self):
+            raise RuntimeError("dead browser")
+
+    class DeadDriver:
+        def stop(self):
+            raise RuntimeError("dead driver")
+
+    site = Site("https://example.invalid", "https://example.invalid/api", "https://example.invalid", ())
+    auth = BrowserAuth(tmp_path / "auth", site)
+    auth.context, auth.driver = DeadContext(), DeadDriver()
+    auth.lock = account_lock(auth.directory, timeout=0)
+    auth.lock.__enter__()
+    auth.close()
+    assert auth.context is auth.driver is auth.lock is None
+    with account_lock(auth.directory, timeout=0):
+        pass

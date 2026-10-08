@@ -53,6 +53,16 @@ describe("Rocket Money adapter", () => {
    expect(JSON.stringify(out)).not.toContain("secret-canary");
    expect(out.content[0].text).toBe("[REDACTED]");
  });
+ it("does not release an old account result after configuration switches", async () => {
+   const {factory,ctx,cfg,callTool}=setup();
+   callTool.mockImplementation(async () => {
+     cfg.plugins.entries["rocket-money"].config.stateDir="/trusted/different-account";
+     return {content:[{type:"text",text:"old-account-data"}],structuredContent:{private:""}};
+   });
+   const out=await factory(ctx)[0].execute("one",{});
+   expect(JSON.stringify(out)).not.toContain("old-account-data");
+   expect(out.content[0].text).toContain("ACCESS_DENIED");
+ });
  it("blocks injected provider text", async () => {
    const {factory,ctx,callTool}=setup();
    callTool.mockResolvedValue({content:[{type:"text",text:"injection-canary"}],structuredContent:{private:"secret-canary"}});
