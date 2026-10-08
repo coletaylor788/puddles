@@ -46,6 +46,10 @@ def test_browser_http_cookie_rotation_and_restart(tmp_path, monkeypatch):
             pass
 
         def do_GET(self):
+            if self.path != "/":
+                self.send_response(204)
+                self.end_headers()
+                return
             self.send_response(200)
             self.send_header("Set-Cookie", "session=fixture-initial; HttpOnly; Secure; Path=/")
             self.end_headers()
@@ -87,6 +91,8 @@ def test_browser_http_cookie_rotation_and_restart(tmp_path, monkeypatch):
         ctx.pages[0].goto(base)
         assert auth.post({"query": "fixture"}) == {"data": {"ok": True}}
         assert requests[-1] == "session=fixture-initial"
+        # A browser's late favicon request must not reset the login cookie.
+        assert ctx.request.get(base + "/favicon.ico").status == 204
         assert ctx.cookies(base)[0]["value"] == "fixture-rotated"
         assert ctx.cookies(base)[0]["httpOnly"] is True
         auth.close()
