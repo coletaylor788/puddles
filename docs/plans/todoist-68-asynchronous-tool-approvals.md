@@ -1,487 +1,425 @@
-# Asynchronous tool approvals
+# Native tool approvals and guarded Gmail sending
 
-**Status:** Ready for review
+**Status:** Revised proposal, awaiting design review
 **Issue:** [#68](https://github.com/coletaylor788/puddles/issues/68)
-**Last updated:** 2026-08-12
-**Owner:** Cole
+**Last updated:** 2026-10-07
 
-## Human design
+## Human section
 
-### Problem
+### Design
 
-Some tools can cause real-world effects. Sending email is the first example.
-The model may prepare the call, but it must not approve the call or reach the
-send credential directly. Cole needs to see every value that will be used,
-approve or deny from his iPhone, and have the agent continue after the result.
+Add `send_email` to the existing Gmail integration. The agent prepares an email,
+the host checks its recipients and content, and the owner reviews the exact
+email in the configured direct iMessage conversation. Only an authenticated
+approval releases that email. The agent can finish its current turn while the
+request waits, then continue when the send has a terminal result.
 
-OpenClaw already has generic tool approvals and native iMessage approval
-delivery. The proposal should use them instead of creating another approval
-service. Two current limits remain: the approval view does not show every final
-parameter, and the existing wait keeps the agent run open for a short,
-process-local decision.
+Use OpenClaw's plugin approvals as the approval authority. It already supplies
+persistent approval records, single-use consumption, authenticated decisions,
+iMessage controls, and durable delivery back to sessions. Extend those existing
+parts only where the email workflow needs behavior they do not provide today.
 
-### Outcome
+```mermaid
+flowchart TD
+    Main["Authorized main agent"] -->|"send_email"| Gmail["secure-gmail: validate and freeze email"]
+    Gmail --> Guards["Content and recipient guards"]
+    Guards -->|"pass"| Approval["OpenClaw plugin approval and stored operation"]
+    Guards -->|"block"| Stop["Return blocked; no send"]
+    Approval -->|"exact review"| Owner["Owner's fixed direct iMessage chat"]
+    Approval -->|"pending; release current turn"| Main
+    Owner -->|"authenticated allow-once or deny"| Resolver["Native approval resolver"]
+    Resolver -->|"allow-once; recheck and consume"| Send["Existing Gmail MCP: send frozen email"]
+    Resolver -->|"deny or expire"| Result["Stored terminal result"]
+    Send --> Result
+    Result -->|"native session queue"| Resume["Continue original session once"]
+```
 
-The built-in OpenClaw approval remains the only approval authority. Trusted
-configuration marks the send tool as protected, limits decisions to approve
-once or deny, fixes Cole's direct iMessage conversation as the route, and keeps
-the provider credential outside the model sandbox.
+#### What OpenClaw already does
 
-Cole receives the built-in approval in Messages on his iPhone. It shows the
-exact recipients, subject, body, and options that would execute. A thumbs-up
-approves that call once. A thumbs-down denies it. The existing iMessage poller
-on the Mac receives the synchronized reaction, so this design needs no custom
-phone app, hosted approval page, or new inbound network service.
+The proposal has been checked against the repository's pinned OpenClaw, the
+latest stable release, and current upstream main. Source support is distinct
+from configuration or device behavior on the deployed host.
 
-An approved call executes with the reviewed values. A denied call returns a
-denied result. Either result is delivered back to the originating agent, and the
-agent resumes the suspended workflow.
+| Native facility | Use and current limit |
+|---|---|
+| Plugin approval RPC and persistent operator approval store | Reuse IDs, decisions, audit records, expiration, and single-use consumption. Persistence already exists. Pending requests from the old gateway runtime are cancelled at startup. |
+| Trusted tool policy and preparation hooks | Reuse caller authorization and normal tool policy. The ordinary approval hook can precede final parameter preparation, so it is not sufficient by itself to bind the email that actually sends. |
+| Native iMessage approval adapter | Reuse actor authorization, message GUID correlation, tapbacks, and supported native controls. Explicit forwarded targets and native origin prompts have different delivery paths. |
+| Authenticated review UI and channel summary | Native reviewer detail exists, but ordinary channel messages expose a bounded summary. A summary is not full email review. |
+| Session delivery queue | Reuse durable result delivery and original-session binding. It does not itself execute an approved Gmail operation. |
 
-### Approach
+Three claims from the old design need correction. Approval state is no longer
+memory-only. Native `defer` postpones an approval within a live tool execution;
+it is not a durable, detached send. A persisted request does not survive restart
+as usable authority: native restart handling deliberately cancels it.
 
-Start with configuration and existing facilities. Use the current trusted
-tool-policy hook, built-in approval ID and resolver, native iMessage approval
-adapter, GUID-bound reactions, and durable session delivery queue.
+#### Prepare and guard the email
 
-Add only three focused extensions:
+Keep the current split: the reader reads external mail through `InjectionGuard`
+and `SecretRedactor`; the authorized main agent can propose a send. Reader,
+browser, and lower-trust agents receive no send capability. The Gmail credential
+and raw MCP connection remain on the trusted host.
 
-1. Move protected approval to the final tool boundary and add a structured view
-   of every effective parameter. The reviewed values become the executor input,
-   so approval cannot release different arguments.
-2. Add a durable deferred mode to the existing plugin approval manager. It
-   stores the built-in approval, finalized arguments, origin, and expiry, returns
-   a pending result to end the current run, and restores pending approvals after
-   a gateway restart.
-3. When the existing resolver receives the decision, consume that stored
-   approval once. Approve invokes the protected executor. Deny records failure.
-   The existing session delivery queue returns the terminal result and requests
-   one continuation for the originating session.
+Version one sends a new plain-text email from the configured authenticated
+mailbox. Its agent-visible fields are `to`, optional `cc` and `bcc`, `subject`,
+and `body_text`. Every recipient is an explicit mailbox address. The host sets
+sender identity and defaults. Reject arbitrary headers, raw MIME, attachments,
+HTML, alternate accounts, sender aliases, reply/thread options, and unknown
+fields. Reply support can follow with explicit thread and header binding.
 
-Version 1 supports text email with ordinary scalar options. Attachment-bearing
-calls fail closed unless an existing OpenClaw media facility can provide an
-immutable content reference that is both displayed and passed unchanged to the
-executor. This avoids inventing an attachment storage system as part of the
-approval feature.
+Use the existing `ContactsEgressGuard` with its secrets and sensitive-content
+classifiers enabled. Give it an email-specific extractor covering **all** To,
+Cc, and Bcc recipients; its default extractor does not do that. Validate a
+nonempty recipient set before calling it. Require known contacts for this tool,
+with no new domain bypass. Unavailable contacts, classifier failures, or thrown
+guard errors block the send.
+Scan the complete outgoing subject, body, and user-controlled envelope text.
 
-### Safety and rollout
+Run these checks before showing an approval, since the review is itself an
+outbound message. Repeat the guard checks immediately before dispatch using the
+same frozen email. Changed trust, revoked access, or a degraded guard produces a
+blocked result. Approval never overrides a content or recipient block. The
+workflow does not automatically create contacts to make a send pass.
 
-The model sandbox is untrusted. The gateway process and logged-in Mac account
-are trusted. The protected executor, provider credential, approval route, owner
-allowlist, and decision handling remain in the trusted gateway. The sandbox has
-no direct provider credential or alternate send path.
+#### Review exactly what will send
 
-The model cannot choose the approver, route, wording, reaction meanings, or
-approval policy. Approval is valid only for the finalized values stored under
-the built-in approval ID. Missing, stale, unauthorized, duplicate, or malformed
-decisions execute nothing.
+Freeze the normalized email after tool hooks and finalization. Generate the
+review from that stored value with host-owned labels: sender, To, Cc, Bcc,
+subject, and full plain-text body. Show absent optional fields explicitly. The
+executor uses the stored value, not new arguments supplied after approval.
+Editing any material field requires a new request and review.
 
-This is design-only. No runtime, account, credential, message, or external
-service changes are authorized. A future implementation starts disabled and
-uses recording adapters for Messages and email. Rollback disables deferred
-approvals while leaving ordinary built-in approvals unchanged.
+Use the existing native approval ID, owner authentication, and allow-once/deny
+choices. Do not infer approval from a conversational yes, from the agent's
+claim, or from a contact match. The model cannot select the reviewer or route,
+resolve requests, or choose permanent approval.
 
-## Agent details
+Add a narrowly scoped email review projection to the native approval view and
+iMessage renderer. Do not globally expose existing reviewer-only `detail` on
+channels. Version one accepts only an email whose complete escaped review fits
+a tested, bounded native prompt. Reject larger input before creating a request;
+do not silently truncate, attach a mutable file, or add a hosted preview page.
+Any native chunking must complete before approval controls become usable.
+
+The approval destination is a fixed owner-only direct conversation, never the
+session's last delivery destination. On that originating owner conversation,
+use native iMessage controls. For explicit forwarding, use the existing
+`/approve <full-approval-id> allow-once|deny` path unless the selected runtime
+proves native controls for that route. Do not promise tapbacks on a generic
+forwarded notification. Both paths resolve the same native request. Full email
+review and owner authentication are required on either path.
+
+#### Wait without holding an agent turn
+
+Retain the original asynchronous requirement. A send returns a pending ID and
+releases the current agent turn. An owner can decide later, and pending work
+can recover after gateway restart. This requires a focused extension to native
+plugin approvals; current configuration alone cannot deliver it.
+
+Add an opt-in deferred operation owned by a registered host plugin to the
+existing approval lifecycle and state database. It stores the frozen email,
+original caller/session, owner route, approval ID, deadline, executor version,
+and operation outcome. Reuse native transitions and consumption rather than
+creating another broker, database, approval tool, or background agent.
+
+The proposed approval lifetime is 24 hours, configured by the operator. This
+applies only to this explicit deferred mode. Ordinary native approvals retain
+their current two-minute default, ten-minute maximum, and restart cancellation.
+Startup can recover a deferred operation only when its registered executor,
+owner, session, route, payload, and policy remain valid. It must not revive a
+closed agent run or serialize its temporary authority. Invalid records close
+without sending. Persisted expiration and cancellation take precedence over a
+late decision.
+
+The native decision is authority to perform one frozen operation. A trusted
+executor revalidates that authority, reruns guards, and consumes it atomically
+before provider dispatch. Cancellation before dispatch prevents a send. Once
+Gmail has accepted a request, cancellation cannot promise to recall the email.
+The UI distinguishes approval granted from email sent.
+
+#### Send through the existing Gmail integration
+
+Extend `secure-gmail` and its existing Python `gmail-mcp` bridge, using Gmail's
+`users.messages.send` endpoint. Do not add a shell-based mail command or a
+second Gmail integration. The Python side validates the closed schema again,
+constructs MIME with the standard email library, and uses the authenticated
+mailbox. No recipient or message content is inferred after review.
+
+The agent-visible tool stages the operation. The effectful MCP send handler is
+available only on the trusted approval executor's bridge, enabled explicitly
+and disabled by default. It is not exposed as a second agent-callable raw tool.
+An `approved: true` argument or an approval ID supplied by the model grants no
+authority. Direct MCP consumers do not inherit OpenClaw's approval protection;
+they must not receive an enabled raw send connection in this deployment.
+
+The repository already requests `gmail.modify` and `gmail.send`. Gmail accepts
+`gmail.modify` for this endpoint as well. Verify the actual grant during future
+setup; do not assume the configured scopes prove the live token's permissions
+or trigger a new OAuth flow as part of this proposal.
+
+Record dispatch before making the provider call. A successful API response
+means Gmail accepted the email, not that the recipient read or received it.
+Return its message ID and thread ID with that status. Gmail's send API offers
+no documented idempotency-key contract. A timeout, lost response, or crash after
+dispatch is therefore **unknown**, not safely retryable. Neither the model,
+queue recovery, HTTP retry logic, nor restart recovery automatically resends.
+An operator can reconcile uncertainty through read-only provider evidence.
+A generated Message-ID can aid that lookup; it is not a deduplication promise.
+
+#### Return the result and continue
+
+Store the send outcome before notifying the agent. Reuse OpenClaw's durable
+session delivery queue with a stable operation key and the original session
+identity. A duplicate notification cannot invoke Gmail again. A replaced,
+deleted, or unauthorized session receives no continuation in another session.
+
+The result distinguishes `sent`, `denied`, `expired`, `cancelled`, `blocked`,
+`failed_before_send`, and `unknown`. Only `sent` means Gmail returned success.
+Return minimal validated receipt fields. Any external error text that must
+reach an agent passes ingress guards; never return raw MIME, body echoes, or
+unchecked originals in result metadata. Log IDs, categorical outcomes, and
+lengths rather than the email payload or classifier evidence containing it.
+
+#### Alternatives and scope
+
+| Approach | Decision |
+|---|---|
+| Native approvals unchanged | Good short-lived baseline and first validation step. Does not meet complete phone review, detached waiting, or restart recovery. |
+| Native approvals with an email adapter and scoped deferred operation | Recommended. Preserves one approval authority, the existing Gmail integration, and native return delivery. |
+| Lobster workflow checkpoint | Official resumable workflow support is real. Its agent-accessible resume token and `approve: true` are not an authenticated owner gate. Wrapping it would still require the same protected executor and native approval authority, so it adds a runtime without closing the main gap. |
+| TaskFlow-based controller | Available in the repository pin, but removed from current upstream main. Do not make a new approval feature depend on it. |
+| Shell exec approval, MCP annotations, or a prompt asking permission | None binds an authenticated human decision to the final Gmail payload at the send boundary. |
+| Separate approval service or phone app | Unnecessary. |
+
+This scope adds one protected send tool. It does not change archive or label
+approval policy, workshop approval policy, all tool calls, guard trust rules,
+or the reader's permissions. It introduces no public listener or hosted UI.
+
+### Status
+
+The proposal is refreshed against current source and includes Gmail sending,
+mandatory guards, complete review, asynchronous execution, and uncertainty
+handling. The existing approval proposal and iMessage plan are reconciled.
+
+Implementation awaits review of this design. Full native routing on the actual
+phone, the bounded review size, and the deferred lifecycle are acceptance work,
+not claimed production behavior. No runtime or account changes are made.
+
+## Agent section
 
 ### State
 
-The strict recommendation is configuration plus three small changes at existing
-OpenClaw seams:
+Design-only refresh of PR #71 and issue #68, dated 2026-10-07. Public repository
+base: `fcd0b1a40fa553c25f2019876eace23aadd3f9b5`. Original proposal head:
+`b69f0448caf1c2e3bf898f336e041fc1450e154a`.
 
-1. structured final-parameter review;
-2. durable deferred plugin approvals; and
-3. terminal-result delivery through the existing session queue.
+Source comparison uses three distinct revisions:
 
-The built-in plugin approval manager remains the authority. The existing native
-iMessage adapter remains the phone interface. The existing session delivery
-queue remains the return and wake-up transport.
+| Source | Exact revision | Meaning |
+|---|---|---|
+| Repository OpenClaw pin | `eb377ac59e6c9fd6c7705028034812becf00271b` | 2026.9.6, from `packages/e2e/openclaw-patch-suite.json`; source read from a clean prepared checkout |
+| Latest published stable | `fc23bc864e4553c2d215e479eeec47b67a0bf943` | Tag `v2026.9.8`, release metadata and selected source checked through GitHub |
+| Upstream main snapshot | `3b4ba3abb5e33a59ab79e2002f1c7e79c932e8ac` | Selected approval, iMessage, SDK, workflow, and queue files checked through GitHub; not a deployment recommendation |
 
-The previous proposal's separate operation subsystem, custom state machine,
-admission quotas, rate limits, clock model, attachment staging service,
-protected reaction index, cancellation fence, and bespoke rollback protocol are
-not part of this design. They are not required by Cole's stated trust model or
-the four required outcomes.
-
-The pinned OpenClaw source is commit `12f9abf044`. This task changes only the
-proposal. Implementation and deployment remain blocked pending approval.
+No installed-runtime or configuration audit is claimed for this refresh. Old
+Mini configuration observations in Plan 027 are historical and are not reused
+as current facts. No upstream upgrade is included in this proposal.
 
 ### Scope and acceptance criteria
 
-#### In scope
-
-- Provider-neutral approval for a protected plugin tool, starting with text
-  email.
-- Existing trusted tool policy to require approval.
-- Existing plugin approval ID, request, resolver, and decisions.
-- Existing native iMessage prompt and GUID-bound reactions.
-- Existing session delivery queue for terminal result and continuation.
-- Final effective parameter display and binding.
-- A durable non-blocking mode in the existing approval manager.
-- Protected execution after approve and denied failure after deny.
-- Durable result return and one resumed agent turn.
-
-#### Out of scope
-
-- A parallel broker, approval authority, resolver, or protocol.
-- A hosted page, webhook, new listener, custom phone app, or native Mac app.
-- Permanent approval for protected tools.
-- Model-selected routes, approvers, decision meanings, or policy.
-- Designing for compromise of the trusted gateway, Mac account, or owner phone.
-- A new attachment store, previewer, scanner, quota system, or rate limiter.
-- Generic approval for every tool.
-- Implementation, deployment, test sends, account changes, or credential
-  changes.
-
-#### Acceptance criteria
-
-A future implementation is acceptable only when:
-
-1. Trusted configuration marks the tool protected and fixes one direct
-   iMessage owner route.
-2. The model sandbox cannot disable approval, select the approver, resolve the
-   approval, access the provider credential, or invoke the protected executor
-   directly.
-3. Protected decisions are limited to `allow-once` and `deny`.
-4. Approval occurs after all trusted parameter preparation and finalization.
-5. The built-in approval view shows every effective parameter without hidden
-   defaults or silent truncation.
-6. The protected executor receives exactly the stored reviewed values.
-7. Unsupported values, including mutable attachment inputs in version 1, fail
-   before an approval prompt is sent.
-8. The original tool call returns `pending` and releases the sandbox worker.
-9. The existing approval manager persists the built-in approval ID, finalized
-   values, origin, route correlation, and expiry.
-10. Pending deferred approvals restore after gateway restart and expire
-    fail-closed.
-11. The existing iMessage adapter delivers the prompt and binds reactions to
-    the concrete outbound message GUID.
-12. Only an allowlisted actor's thumbs-up on that GUID maps to `allow-once`.
-    Only thumbs-down maps to `deny`.
-13. Missing, stale, unauthorized, duplicate, malformed, or conflicting
-    decisions execute nothing.
-14. The existing resolver consumes a deferred approval once. Approval invokes
-    the protected executor with the stored values. Denial does not invoke it.
-15. The terminal result is `sent`, `denied`, `expired`, or `failed`, with a
-    provider receipt and timestamp on success when available.
-16. A stable result key enqueues one trusted result through the existing session
-    delivery queue for the originating session.
-17. Queue retry cannot repeat the provider effect, duplicate the transcript
-    result, or start a second continuation.
-18. A busy session waits in the existing queue. A missing session retains the
-    queue failure for operator recovery rather than rerouting to another
-    session.
-19. No new hosted service, public endpoint, inbound listener, or custom mobile
-    application is introduced.
-20. Automated tests use recording adapters and send no real message or email.
+- Only an authorized Personal/main caller may stage `send_email`. Reader,
+  browser, lower-tier, and unattended calls fail closed in version one. Any
+  later scheduled-send support needs explicit originating-task authority.
+- The closed schema covers `to`, `cc`, `bcc`, `subject`, and `body_text`.
+  Mailbox identity comes from trusted configuration. Nonempty recipients,
+  bounded fields, valid addresses, and no header injection are required.
+- Every destination and outgoing content field passes `ContactsEgressGuard`
+  before review and again before send. Classifier/contact outages block.
+- Approved input equals dispatched input. Unknown fields, oversized review,
+  hidden recipients, changed payloads, and unsupported features never send.
+- The authenticated owner alone chooses allow-once or deny. Permanent grants,
+  model-selected routes, broad resolver tools, and raw send access are absent.
+- The original tool returns pending. Waiting occupies no live agent turn.
+  Recovery retains only explicit deferred operation authority; ordinary native
+  approvals still cancel on restart.
+- Concurrent decisions consume once. Deadline, cancellation, policy revocation,
+  session replacement, executor-version change, and disabled plugin prevent
+  dispatch when detected before it starts.
+- At most one attempted Gmail dispatch per operation. Crashes and transport
+  uncertainty after dispatch are terminal `unknown`, never an automatic retry.
+- Result publication is durable and deduplicated, binds the original session,
+  and requests one continuation without repeating the effect.
+- Tests record every outbound approval notification and Gmail write through
+  explicit doubles. Production checks are read-only.
 
 ### Architecture and decisions
 
-#### Confirmed built-in path
+#### Source evidence
 
-OpenClaw already provides the core path:
+Links below identify inspected upstream files at fixed revisions. These are
+source findings, not end-to-end runtime proofs.
 
-- a trusted `before_tool_call` policy can require plugin approval;
-- the gateway creates a server-owned `plugin:` approval ID;
-- `allowedDecisions` limits the accepted decisions;
-- the resolver rejects a conflicting second decision;
-- the iMessage channel declares native plugin approval support;
-- native delivery requires a concrete outbound GUID before reaction binding;
-- the reaction target records account, conversation, GUID, approval ID,
-  decisions, and expiry;
-- the iMessage poller authorizes the actor and resolves thumbs-up or thumbs-down;
-  and
-- the session delivery queue durably retries system-event and agent-turn
-  delivery with idempotency keys.
-
-These facilities stay in place. The design does not add another authority.
-
-#### Gap 1: exact effective parameters
-
-Current plugin approval rendering contains a title, description, severity, and
-metadata. Approval can occur before later trusted parameter changes. A protected
-effect needs one small boundary and payload extension:
-
-1. Trusted policy marks the call protected.
-2. Tool preparation, trusted hooks, reconciliation, and finalization complete.
-3. The wrapper freezes the final arguments.
-4. The built-in request stores structured reviewed values.
-5. The native iMessage renderer displays those values with fixed labels.
-6. `allow-once` passes the stored values to the registered protected executor.
-
-The model does not supply the display text. The view uses inert formatting and
-fails when the full supported value set cannot be represented without
-truncation.
-
-Version 1 email fields are recipients, subject, body, reply or thread options,
-and other scalar send options. Attachments are accepted only when an existing
-OpenClaw facility already supplies an immutable reference. Otherwise the tool
-returns an unsupported-input failure before approval.
-
-#### Gap 2: asynchronous non-blocking approval
-
-Current plugin approval waits in the live run, defaults to 120 seconds, caps at
-600 seconds, and stores pending approvals in memory. Add a deferred mode to the
-existing approval manager rather than a separate broker.
-
-The deferred record contains only what the built-in manager needs:
-
-- approval ID and allowed decisions;
-- finalized executor input;
-- originating tool call, session, and task correlation;
-- iMessage route and concrete GUID after delivery;
-- expiry;
-- current decision or terminal result; and
-- a stable result-delivery key.
-
-Creation stores the record before the original tool call returns `pending`.
-Startup reloads unexpired records into the existing manager. Expiry uses the
-stored absolute deadline and the trusted host clock. Ordinary immediate
-approvals keep their current behavior and timeout.
-
-The existing reaction target store remains the iMessage correlation mechanism.
-No second protected-reaction database or custom phone protocol is needed.
-
-#### Gap 3: execute, return, and resume
-
-The existing resolver remains the decision entry point. For a deferred record:
-
-- `deny` writes a terminal denied result without invoking the executor;
-- `allow-once` atomically changes the record from pending to consumed, then
-  invokes the registered protected executor with the stored values; and
-- expiry writes a terminal expired result without invoking the executor.
-
-The consume transition prevents a duplicate reaction or resolver retry from
-starting a second provider call. If the provider supports an idempotency key,
-use the built-in approval ID. If a provider call fails or its result is unknown,
-record a failed result and do not retry the effect automatically.
-
-After a terminal result is stored, enqueue a trusted system event and agent turn
-through the existing session delivery queue. Use the approval ID as the stable
-queue idempotency key. The result event carries the original tool correlation,
-status, safe error, and provider receipt when available. The continuation prompt
-states that the protected call is complete and must not be repeated.
-
-The queue already owns persistence, retry, and busy-session ordering. The
-session consumer records the stable result key before starting the continuation,
-so redelivery is a no-op. This is a focused idempotency check at the existing
-consumer seam, not a second workflow engine.
-
-#### Trust boundary
-
-Trusted:
-
-- gateway process and logged-in Mac account;
-- protected-tool configuration;
-- approval manager and resolver;
-- iMessage route and approver allowlist;
-- provider credential and protected executor; and
-- session delivery queue and consumer.
-
-Untrusted:
-
-- model output and tool arguments;
-- sandbox code and environment;
-- message-like text produced by the model; and
-- repeated or malformed tool calls.
-
-The sandbox receives only the protected tool schema and approval status. It has
-no provider credential, resolver authority, direct executor route, or control
-over iMessage approval configuration.
-
-#### Work classification
-
-| Class | Work |
+| Finding | Evidence |
 |---|---|
-| Configuration | Mark the email tool protected, set one direct iMessage owner route, use an explicit allowlist, and limit decisions to allow-once and deny |
-| Reuse unchanged | Plugin approval ID and resolver, native iMessage delivery and GUID reactions, session delivery queue |
-| Focused extension | Structured final arguments in the approval payload and iMessage renderer |
-| Focused extension | Persistent deferred mode in the existing approval manager |
-| Focused extension | Deferred executor consumption and idempotent terminal-result continuation |
-| Not proposed | Parallel broker, custom phone protocol, hosted UI, new listener, new attachment service, quota or rate-limit framework |
+| Persistent approval registration already precedes notification; allow-once consumption exists | [Native approval manager](https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/src/gateway/exec-approval-manager.ts) and [current manager](https://github.com/openclaw/openclaw/blob/3b4ba3abb5e33a59ab79e2002f1c7e79c932e8ac/src/gateway/exec-approval-manager.ts) |
+| Restart closes old pending authority rather than restoring runnable work | [Operator approval transitions](https://github.com/openclaw/openclaw/blob/3b4ba3abb5e33a59ab79e2002f1c7e79c932e8ac/src/gateway/operator-approval-store.transitions.ts), `closeOrphanedOperatorApprovals` |
+| Plugin request IDs, allowed decisions, runtime authority, wait, and resolve are native | [Plugin approval handlers](https://github.com/openclaw/openclaw/blob/3b4ba3abb5e33a59ab79e2002f1c7e79c932e8ac/src/gateway/server-methods/plugin-approval.ts) |
+| 120-second default, 600-second maximum, 80-character title, 512-character description, bounded reviewer detail | [Plugin approval payload](https://github.com/openclaw/openclaw/blob/3b4ba3abb5e33a59ab79e2002f1c7e79c932e8ac/src/infra/plugin-approvals.ts) |
+| Approval helper waits and native defer is a live-call descriptor; finalization follows policy | [Approval helper](https://github.com/openclaw/openclaw/blob/3b4ba3abb5e33a59ab79e2002f1c7e79c932e8ac/src/agents/agent-tools.before-tool-call.approval.ts), [execution wrapper](https://github.com/openclaw/openclaw/blob/3b4ba3abb5e33a59ab79e2002f1c7e79c932e8ac/src/agents/agent-tools.before-tool-call.wrapper.ts) |
+| Native iMessage approval and generic forwarding are different surfaces | [Native adapter](https://github.com/openclaw/openclaw/blob/3b4ba3abb5e33a59ab79e2002f1c7e79c932e8ac/extensions/imessage/src/approval-native.ts), [delivery and controls](https://github.com/openclaw/openclaw/blob/3b4ba3abb5e33a59ab79e2002f1c7e79c932e8ac/extensions/imessage/src/approval-handler.runtime.ts) |
+| Queue publication preserves original requester/session admission | [Session queue](https://github.com/openclaw/openclaw/blob/3b4ba3abb5e33a59ab79e2002f1c7e79c932e8ac/src/infra/session-delivery-queue-storage.ts) |
+| Lobster is optional, resumable, and token-driven | [Official Lobster documentation](https://github.com/openclaw/openclaw/blob/3b4ba3abb5e33a59ab79e2002f1c7e79c932e8ac/docs/tools/lobster.md) |
+| TaskFlow existed at the pin; current SDK says Tasks runtime was removed | [Pinned TaskFlow](https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/docs/automation/taskflow.md), [current SDK](https://github.com/openclaw/openclaw/blob/3b4ba3abb5e33a59ab79e2002f1c7e79c932e8ac/docs/plugins/sdk-runtime.md) |
+| Gmail sends to To/Cc/Bcc and accepts modify or send scope | [Google messages.send reference](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/send) |
 
-#### Alternatives
+Current repository contracts:
 
-| Alternative | Decision |
-|---|---|
-| Current built-in approval unchanged | Insufficient because it blocks the live run, expires quickly, loses pending state on restart, and does not show every final parameter |
-| Built-in approval with focused extensions | Recommended because it preserves the current authority, phone path, and result transport |
-| Separate approval broker | Rejected as duplicate machinery |
-| Custom iMessage protocol | Rejected because native plugin approvals and GUID-bound reactions already exist |
-| Hosted review page or phone app | Rejected because iMessage already provides the phone path without a new inbound service |
-| Keep attachment support in version 1 | Rejected unless an existing immutable media reference can be reused |
+- [Gmail registration](../../openclaw-plugins/secure-gmail/src/plugin.ts) uses a
+  static manifest and per-agent factories. No `send_email` is registered.
+  Do not rely on the README's older dynamic-discovery description.
+- [Gmail wrapper](../../openclaw-plugins/secure-gmail/src/wrap-tool.ts) performs
+  ingress after the MCP call. That cannot protect a send. Its modified-result
+  `details.original` retains raw content; remove that escape when touching this
+  boundary and add a focused regression.
+- [Recipient guard](../../packages/mcp-hooks/src/egress/contacts-egress-guard.ts)
+  already handles secrets, sensitive content, and contact trust. Its default
+  extraction stops at one field and accepts an empty destination list. Supply
+  a complete extractor and deterministic validation; do not duplicate it with
+  a second LeakGuard pass or change its shared semantics for other tools.
+- [Gmail server](../../servers/gmail-mcp/src/gmail_mcp/server.py),
+  [authentication](../../servers/gmail-mcp/src/gmail_mcp/auth.py), and
+  [async adapter](../../servers/gmail-mcp/src/gmail_mcp/_async.py) own provider
+  access. Cancelling an async wait does not prove the underlying send stopped.
+- [Logging](../../servers/gmail-mcp/src/gmail_mcp/logging_setup.py) currently
+  logs some recipient/subject fields. Send handling needs metadata-only logs,
+  including redaction of raw MIME and provider exception echoes.
+- The [security architecture](../openclaw-setup/security-architecture.md)
+  requires recipient trust independently of action approval. This proposal
+  does not add an override for unknown recipients or sensitive content.
 
-#### Evidence
+#### Minimal extension boundary
 
-Pinned OpenClaw source:
+Implement final email preparation inside the dedicated tool's `execute()` after
+normal OpenClaw hooks have finalized input. That staging call performs no Gmail
+send. Reuse native plugin approvals through a host-owned deferred-operation
+entrypoint. Do not move approval ordering for every unrelated OpenClaw tool.
 
-- `src/infra/plugin-approvals.ts:15-51` defines plugin approval payloads and the
-  current 120-second default and 600-second maximum.
-- `src/plugins/hook-before-tool-call-result.ts:1-26` defines trusted hook
-  approval results and closed decisions.
-- `src/agents/agent-tools.before-tool-call.ts:164-190,687-935` defines current
-  approval waits and the deferred live-run descriptor.
-- `src/agents/agent-tools.before-tool-call.ts:1240-1539` shows the parameter
-  preparation and finalization order.
-- `src/gateway/server-methods/plugin-approval.ts:39-197` creates and resolves
-  plugin approvals.
-- `src/gateway/server-methods/approval-shared.ts:414-681` handles routing,
-  decisions, and conflicting resolutions.
-- `src/gateway/exec-approval-manager.ts:65-169` stores pending approvals in a
-  process-local map.
-- `src/infra/approval-view-model.ts:87-102` shows the current compact approval
-  view.
-- `extensions/imessage/src/channel.ts:307-323` registers native iMessage
-  approval support.
-- `extensions/imessage/src/approval-native.ts:331-443` renders plugin approvals.
-- `extensions/imessage/src/approval-handler.runtime.ts:95-233` delivers prompts,
-  requires a GUID, binds reactions, and updates resolved prompts.
-- `extensions/imessage/src/approval-auth.ts:38-79` authorizes decision actors.
-- `extensions/imessage/src/approval-reactions.ts:24-232` persists GUID-to-
-  approval reaction targets.
-- `src/infra/session-delivery-queue-storage.ts:39-113` defines durable,
-  idempotent system-event and agent-turn queue entries.
-- `src/infra/session-delivery-queue-recovery.ts:1-105` retries unacknowledged
-  deliveries.
+Extend the native store/manager with an explicit deferred-operation binding and
+host executor registration. Reuse existing database transactions, decision
+validation, expiration, audience rules, and allow-once consumption. The operation
+record is not an RPC-supplied executable, closure, path, or arbitrary tool name.
+Only a reviewed registered executor/version may consume its typed payload.
 
-Current tests:
+A serialized operation must not inherit old run credentials. Define the new
+native owner as the registered plugin operation, scoped to the admitted caller,
+original session instance, fixed reviewer, and exact payload. Recovery validates
+those bindings under current configuration before permitting a decision or
+execution. Exempt only this explicit kind from ordinary restart cancellation.
+Changing the generic runtime-epoch check is not an acceptable shortcut.
 
-- `src/gateway/server-methods/plugin-approval.test.ts`
-- `src/gateway/exec-approval-manager.test.ts`
-- `src/gateway/approval-shared.test.ts`
-- `extensions/imessage/src/approval-native.test.ts`
-- `src/infra/session-delivery-queue-storage.test.ts`
-- `src/infra/session-delivery-queue-recovery.test.ts`
+Store a terminal result and pending publication marker together. Recover missing
+queue publication using the native queue's idempotency key. Use its existing
+session lifecycle and acknowledgement behavior before proposing any extra
+consumer deduplication. Prove the crash windows instead of assuming an
+idempotency key guarantees exactly-once model execution.
 
-Prior public plans:
-
-- `docs/plans/027-imessage-approval-channel.md` describes the native iMessage
-  approval path now present in source.
-- `docs/plans/028-announce-via-session-delivery-queue.md` describes the durable
-  session return path now present in source.
+Protected payloads remain in gateway-owned state inaccessible to agent tools.
+Expose only status and minimal correlation in agent results. Apply existing
+state retention to terminal payloads and keep metadata sufficient to prevent
+replay. No credentials enter approval records. Account identities, host paths,
+and real routes belong in local configuration, not this public plan.
 
 ### Implementation
 
-No implementation is authorized.
+No runtime implementation is included. After design approval:
 
-A future approved implementation has three phases.
+1. Prove native plugin request, owner resolution, direct iMessage controls,
+   explicit forwarding, and terminal session delivery using synthetic fixtures
+   on the repository pin. Recheck exact SDK seams before writing a patch.
+2. Add the closed `send_email` schema, host caller checks, preparation, complete
+   recipient extraction, egress guards, and safe result handling to
+   `secure-gmail`. Add Python MIME/send handling to `gmail-mcp` behind explicit
+   trusted-host enablement. Keep schemas in contract tests.
+3. Add the bounded email review projection and the opt-in deferred operation to
+   the existing native approval lifecycle. Preserve ordinary approval behavior,
+   owner authorization, and run-lifetime checks. Add only the host SDK seam
+   needed by this plugin, not an agent-visible approval resolver.
+4. Wire native resolution to guarded execution, persisted dispatch/outcome,
+   recovery, and existing session return delivery. Disable provider/transport
+   retries for an ambiguous send, including automatic retries hidden below the
+   Python API call.
+5. Update component docs and explicitly grant main the send tool. Preserve read
+   permissions, archive/label policy, and workshop settings. Register every
+   OpenClaw patch regression in the cumulative suite.
 
-#### Phase 1: configure and prove built-in reuse
-
-- Configure one protected text-email tool.
-- Fix one direct iMessage owner route and explicit allowlist.
-- Limit decisions to `allow-once` and `deny`.
-- Add recording fixtures that prove the current prompt, GUID reaction,
-  authorization, resolution, and update path.
-
-#### Phase 2: add final review and deferred mode
-
-- Move protected approval to the final parameter boundary.
-- Add structured reviewed arguments to the existing approval payload and
-  iMessage renderer.
-- Make the reviewed arguments the protected executor input.
-- Add persistent deferred records to the existing approval manager.
-- Return `pending` from the original tool call and restore unexpired records on
-  restart.
-- Reject unsupported attachment-bearing calls before approval.
-
-#### Phase 3: execute and resume
-
-- Let the existing resolver consume a deferred approval once.
-- Invoke the protected executor only after `allow-once`.
-- Store sent, denied, expired, or failed.
-- Enqueue the trusted result and continuation through the existing session
-  delivery queue with a stable idempotency key.
-- Add the consumer-side duplicate check before starting the continuation.
+The review size and exact SDK entrypoint names are implementation details to
+settle from fixtures. The lifetime, caller restrictions, non-overridable guards,
+restart authority, and unknown-outcome behavior are design decisions. Any need
+to weaken them returns to design review.
 
 ### Validation
 
-Future tests must use recording transports and providers.
+This revision uses source/API inspection, document review, relative-link checks,
+and `git diff --check`. It does not run runtime CI, install dependencies, start
+DEV/TEST, request a live approval, or send mail.
 
-Built-in reuse:
+Future executable regressions must cover:
 
-- trusted configuration requires approval and fixes the owner route;
-- the server creates the only approval ID;
-- only allow-once and deny are accepted;
-- native iMessage delivery returns a concrete GUID;
-- the allowlisted actor's thumbs-up approves and thumbs-down denies;
-- wrong actor, wrong GUID, stale reaction, duplicate reaction, and conflicting
-  decision execute nothing.
+| Area | Required proof |
+|---|---|
+| Gmail contract | Schema parity, MIME/header injection rejection, Unicode, all To/Cc/Bcc recipients, fixed mailbox, rejection of unsupported fields and direct bypass |
+| Guards | Secrets/sensitive data, unknown contacts, empty list, Cc/Bcc-only attacks, lookup/classifier outage, revoked contact during wait, no raw content in result metadata or logs |
+| Review | Exact final values after hooks, no hidden defaults, escaping and display spoofing, full bounded body, no truncation, partial delivery failure, controls bound to the complete review |
+| Authority | Wrong actor/account/chat/GUID, forged approval arguments, allow-always refusal, original caller/session mismatch, disabled executor, no reader or unattended escalation |
+| Lifetime | Pending returns without holding the run, expiry, restart recovery for deferred operations only, ordinary restart cancellation, no restoration of closed run authority |
+| Effects | Concurrent and duplicate decisions, cancellation races, crash before and after dispatch, timeout with a still-running Python worker, lost success response, no transport or model resend |
+| Continuation | Persist-before-publish crash, duplicate queue delivery, busy/deleted/reset sessions, one terminal event and continuation, no Gmail call from notification recovery |
+| Harnesses | Exercise each configured harness through the actual OpenClaw tool boundary. A unit test of the approval helper alone is insufficient. |
 
-Exact values:
-
-- approval runs after every trusted parameter change;
-- every supported final field appears in the review;
-- hidden, truncated, or changed fields fail;
-- the executor receives the stored reviewed arguments;
-- attachment-bearing input without an existing immutable media reference fails
-  before delivery.
-
-Asynchronous decision:
-
-- the original tool call returns pending and releases the worker;
-- pending approval survives gateway restart;
-- expiry fails closed;
-- ordinary immediate approvals keep current behavior.
-
-Execution and continuation:
-
-- approve invokes once with reviewed values;
-- deny and expiry never invoke;
-- duplicate resolution never starts another provider call;
-- terminal success includes provider receipt and timestamp when available;
-- one stable result enters the existing session queue;
-- queue redelivery records one result and starts one continuation;
-- busy sessions wait and missing sessions remain recoverable;
-- no live message or provider effect occurs in automated tests.
-
-Publication checks:
-
-- the diff is documentation-only;
-- the plan has exactly the required Human design and Agent details sections;
-- the Human design contains no path, symbol, command, or commit ID;
-- the document contains no em dash;
-- public content contains no private repository or provider-specific deployment
-  detail;
-- issue 68 contains only the plan link, Summary, and Status;
-- `git diff --check` passes.
+Use documented focused checks in [secure-gmail](../../openclaw-plugins/secure-gmail/README.md)
+and [gmail-mcp](../../servers/gmail-mcp/README.md). After implementation, add
+cross-component cases under [e2e](../../packages/e2e/README.md) and patch targets
+in `packages/e2e/openclaw-patch-suite.json`. The release owner runs the accumulated
+`node packages/e2e/bin/openclaw-test-env.mjs ci` gate for the pinned candidate.
+All external writes use deny-by-default recording adapters.
 
 ### Rollout and rollback
 
-This pull request changes documentation only. Publication rollback is a normal
-documentation revert.
+This PR remains a proposal for review. Publishing it authorizes no runtime,
+credential, account, send, or deployment change.
 
-A future implementation starts disabled. First prove the unchanged built-in
-approval and iMessage flow with recording adapters. Then enable structured
-review and deferred mode for one text-email tool against a recording provider.
-Only an explicit later deployment may enable a real provider credential.
+Future implementation follows the repository's approved-design lifecycle,
+including focused DEV checks, retained review, source landing, the accumulated
+release gate, TEST rehearsal, and the same artifact's production promotion.
+Start the send tool disabled and validate against recordings first. Verify the
+actual mailbox grant and configured approval route without sending mail.
 
-Runtime rollback disables deferred protected approvals and the protected
-executor. Existing pending deferred approvals become failed results delivered
-through the normal session queue. Ordinary built-in approvals and native
-iMessage approvals remain unchanged. An operation already handed to the
-provider is not retried during rollback.
+Rollback disables new send admission and deferred dispatch before retiring the
+executor. Close unconsumed operations without sending and publish their terminal
+outcomes. Preserve consumed/unknown records for reconciliation; rollback cannot
+unsend an email. Schema compatibility and the disable/close migration must be
+part of TEST rehearsal. Ordinary native approvals continue unchanged.
 
 ### Review log
 
-- Source review confirmed that built-in plugin approvals, native iMessage
-  approvals, and the session delivery queue are the correct reuse seams.
-- Cole requested a strict minimality pass after the proposal accumulated
-  machinery beyond the four required outcomes.
-- The final design removes the parallel subsystem details and keeps only final
-  parameter binding, deferred persistence, protected execution, and durable
-  return and resume at existing seams.
-- Per controlling direction, publication uses one local consistency read and no
-  further independent review loop.
+- The refreshed proposal replaces the older memory-only approval assumption
+  with the current persistent native store and explicit restart semantics.
+- It retains complete review, detached waiting, guarded one-time execution, and
+  original-session continuation from the earlier proposal.
+- It removes a dependency on obsolete TaskFlow APIs and does not treat Lobster
+  tokens or live-call defer descriptors as owner approval authority.
+- It makes Gmail's existing guard gaps, default extractor limits, raw metadata
+  exposure, logging, and ambiguous send outcomes explicit implementation work.
+- This is a local design/source consistency review, not independent runtime
+  review or production acceptance.
 
 ### Checklist
 
-- [x] Read the current repository instructions and design workflow.
-- [x] Confirm the pinned built-in plugin approval path.
-- [x] Confirm native iMessage plugin approvals and GUID-bound reactions.
-- [x] Confirm the existing durable session delivery queue.
-- [x] Keep the trusted gateway and untrusted sandbox boundary.
-- [x] Reduce the proposal to configuration and three focused extensions.
-- [x] Remove custom broker, state-machine, quota, rate-limit, clock, attachment
-  staging, and fencing machinery.
-- [x] Keep only the four required outcomes and their direct safety conditions.
-- [x] Preserve design-only scope and provider-neutral publication boundaries.
-- [x] Prepare the final minimal proposal for Cole's review.
+- [x] Recover the existing proposal and tracking issue.
+- [x] Compare repository pin, latest stable, and current upstream source.
+- [x] Separate native reuse from required extensions.
+- [x] Include Gmail schema, guards, approval, send, and return flow.
+- [x] Reconcile Human and Agent sections and the older iMessage plan.
+- [ ] Obtain review of this revised design before implementation.
+- [ ] Implement and validate with recording transports and providers.
+- [ ] Complete the approved release lifecycle and owner validation.
