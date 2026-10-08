@@ -81,6 +81,8 @@ Review guidance directly, including publication during design work and routine r
 
 Focused validation passed on supported Node 24.19: 91 public tests across progression, coordination, task storage, process handling, and native pipeline; E2E type checking also passed. Extension timing and contract checks passed, with installed-runtime cases left to the configured cumulative lifecycle. The focused regressions exercise real child-process ownership, failure recovery, approval changes, interrupted queues, cleanup retry, and protection of unrelated state.
 
+An isolated helper benchmark using the same source, host, dependencies, and Node 24.19 measured preparation at 13.0 seconds with caching disabled, 18.8 seconds for cold cache fill, and 3.3 seconds for warm reuse. Changing a source input caused a cache miss and a 14.6-second rebuild. Including verification and disposal, disabled versus warm took 14.9 versus 4.7 seconds. This exercised helper preparation and invalidation, not the complete regression gate.
+
 No full-gate speedup or installed runtime release is claimed. Gate timing records now capture command duration, helper preparation, and cache hits/misses for the comparison under #180.
 
 ### Rollout and rollback
