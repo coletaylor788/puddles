@@ -30,6 +30,7 @@ describe("native send approval registration", () => {
     const result = hook({ toolName: "send_email", params: email }, { agentId: "main", requester: { senderIsOwner: true } });
     expect(result.requireApproval).toMatchObject({ timeoutMs: 600000, allowedDecisions: ["allow-once", "deny"] });
     expect(result.requireApproval.description).toContain("a@example.com");
+    expect(result.params).toEqual(email);
   });
   it.each([{ agentId: "reader", requester: { senderIsOwner: true } }, { agentId: "main" }, { agentId: "main", requester: { senderIsOwner: false } }])("blocks callers without main and owner provenance", ctx => {
     const { hook } = register({ sendEnabled: true, sendMailbox: "owner@example.org" });

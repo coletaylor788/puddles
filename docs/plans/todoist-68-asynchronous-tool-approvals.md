@@ -141,7 +141,10 @@ All links below refer to the repository pin.
 
 Use a normal registered `before_tool_call` hook scoped to `send_email`. Supply
 the summary from the proposed arguments; leave email validation and content
-checks to the tool after approval. Request `timeoutMs: 600000` and allow only
+checks to the tool after approval. Return those same arguments through the
+hook's `params` field: native hooks receive isolated original events, so this
+keeps the summary and snapshot consistent even after an earlier parameter hook.
+Request `timeoutMs: 600000` and allow only
 `allow-once` and `deny`. Do not send from `onResolution`.
 
 Configure `approvals.plugin.enabled: true`, `mode: "targets"`, and an exact owner
@@ -185,10 +188,16 @@ Approved implementation work:
 Focused Gmail tests cover the plugin, Python handler, and shared content guard.
 The native integration fixture runs the real OpenClaw approval wrapper with the
 built Gmail plugin and a recording stdio bridge. It verifies approval before
-classification, argument snapshots, rejected later-hook rewrites, allow-once,
+classification, matching summaries after earlier hooks, native snapshots,
+rejected later-hook rewrites, allow-once,
 denial, content blocks, abort, runtime stop, and Python/TypeScript schema parity.
 Bridge startup cancellation has a separate regression. All sends are recorded;
 no test sends a real email or approval message.
+
+Focused results: 70 Gmail plugin tests, 118 shared-hook tests, 190 Python tests,
+and 56 release-runner tests pass. The pinned OpenClaw source passes 54 iMessage,
+29 hook, and 26 approval regressions. Its draft build and the final native
+wrapper/stdio integration pass. These are development checks, not release proof.
 
 Implementation tests must cover:
 

@@ -379,7 +379,9 @@ const secureGmailPlugin = {
           return { block: true, blockReason: "Sending requires an interactive request from the owner to the main agent." };
         }
         try {
-          return { requireApproval: {
+          // Hooks receive isolated original events. Explicit overrides make the
+          // native snapshot match this summary, including after earlier hooks.
+          return { params: event.params, requireApproval: {
             title: "Send email",
             description: approvalSummary(mailbox, event.params),
             timeoutMs: 600000,

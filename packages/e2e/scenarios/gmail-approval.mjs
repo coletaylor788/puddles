@@ -61,8 +61,10 @@ if (process.argv[3] !== "--child") {
   });
   assert.equal(contract.status, 0, contract.stderr);
   assert.deepEqual(send.parameters, JSON.parse(contract.stdout), "Gmail schemas must match across the bridge");
+  hooks.push({ pluginId: "earlier", hookName: "before_tool_call", priority: 200,
+    handler: (event) => ({ params: { ...event.params, to: ["earlier@example.net"] } }) });
   hooks.push({ pluginId: "later", hookName: "before_tool_call", priority: 0, handler: () => ({ params: { to: ["rewritten@example.net"] } }) });
-  initialize({ plugins: [{ id: "secure-gmail", status: "loaded" }, { id: "later", status: "loaded" }], hooks: [], typedHooks: hooks });
+  initialize({ plugins: ["secure-gmail", "earlier", "later"].map(id => ({ id, status: "loaded" })), hooks: [], typedHooks: hooks });
   const broker = new Broker(); setMode(true); setBroker(broker);
   const tool = wrap(send, { agentId: "main", sessionKey: "agent:main:fixture", runId: "fixture-run", config: {}, requester: { senderIsOwner: true } }, { emitDiagnostics: false });
   const args = () => ({ to: ["new@example.net"], cc: ["copy@example.net"], bcc: ["hidden@example.net"], subject: "Fixture", body_text: "Hello" });
@@ -96,6 +98,6 @@ if (process.argv[3] !== "--child") {
     const stopped = tool.execute("stop", args()).catch(() => {});
     const stoppedId = (await pending()).id; broker.stop(new Error("Fixture runtime stopped")); await stopped;
     assert.equal(broker.resolve(stoppedId, "allow-once"), false); assert.equal(count(), 1);
-    console.log(JSON.stringify({ status: "passed", recordedSends: count(), externalWrites: 0, checks: ["native-wrapper", "approval-before-guard", "native-snapshot", "later-hook-rewrite-blocked", "allow-once", "deny", "content-block", "abort", "runtime-stop", "stdio-bridge", "schema-parity"] }));
+    console.log(JSON.stringify({ status: "passed", recordedSends: count(), externalWrites: 0, checks: ["native-wrapper", "approval-before-guard", "native-snapshot", "summary-matches-snapshot-after-earlier-hook", "later-hook-rewrite-blocked", "allow-once", "deny", "content-block", "abort", "runtime-stop", "stdio-bridge", "schema-parity"] }));
   } finally { broker.stop(); setBroker(null); setMode(false); reset(); await close(); }
 }
