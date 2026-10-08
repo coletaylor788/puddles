@@ -19,19 +19,24 @@ persistent approval records, single-use consumption, authenticated decisions,
 iMessage controls, and durable delivery back to sessions. Extend those existing
 parts only where the email workflow needs behavior they do not provide today.
 
+Start at the top: the owner asks the main agent to send an email. The flow
+moves downward through preparation, review, and the result. While approval is
+pending, the current agent turn ends; the stored request waits for the owner.
+
 ```mermaid
 flowchart TD
-    Main["Authorized main agent"] -->|"send_email"| Gmail["secure-gmail: validate and freeze email"]
-    Gmail --> Guards["Content and recipient guards"]
-    Guards -->|"pass"| Approval["OpenClaw plugin approval and stored operation"]
-    Guards -->|"block"| Stop["Return blocked; no send"]
-    Approval -->|"exact review"| Owner["Owner's fixed direct iMessage chat"]
-    Approval -->|"pending; release current turn"| Main
-    Owner -->|"authenticated allow-once or deny"| Resolver["Native approval resolver"]
-    Resolver -->|"allow-once; recheck and consume"| Send["Existing Gmail MCP: send frozen email"]
-    Resolver -->|"deny or expire"| Result["Stored terminal result"]
-    Send --> Result
-    Result -->|"native session queue"| Resume["Continue original session once"]
+    Start(["START: Owner asks the main agent to send an email"])
+    Start --> Prepare["1. Main agent calls send_email<br/>Gmail tool validates and freezes the email"]
+    Prepare --> Guards{"2. Content and recipient<br/>guards pass?"}
+    Guards -->|"No"| Blocked["Return blocked to the agent<br/>No approval request or email sent"]
+    Guards -->|"Yes"| Pending["3. OpenClaw stores the approval request<br/>Agent turn ends with pending status"]
+    Pending --> Review["4. Owner reviews the exact email<br/>in the fixed direct iMessage chat"]
+    Review --> Decision{"Native approval resolver<br/>accepts owner's decision"}
+    Decision -->|"Allow once"| Send["5. Recheck guards and consume approval<br/>Gmail MCP sends the frozen email if allowed"]
+    Decision -->|"Deny or expire"| NoSend["No email sent"]
+    Send --> Result["6. Store the outcome and queue it<br/>for the original session"]
+    NoSend --> Result
+    Result --> Resume(["END: Main agent continues with the result"])
 ```
 
 #### What OpenClaw already does
