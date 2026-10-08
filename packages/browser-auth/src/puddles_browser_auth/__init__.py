@@ -1,7 +1,7 @@
 """Shared browser auth. Callers must be trusted host code, never agent sandboxes."""
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -10,7 +10,7 @@ from .state import account_lock, atomic_json, private_directory, read_private
 
 
 def now():
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 @dataclass(frozen=True)
