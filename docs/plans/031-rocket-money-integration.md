@@ -20,7 +20,7 @@ flowchart TB
     subgraph Host["Trusted host"]
         MCP["Rocket Money MCP<br/>HTTP operations and verification"]
         Auth["Shared browser auth provider<br/>Login and persistent sessions"]
-        Login["1Password + private login browser"]
+        Login["Private Chrome profile<br/>Saved passwords and session"]
         MCP <-->|"Authenticated client"| Auth
         Auth -->|"Manage login"| Login
     end
@@ -37,16 +37,16 @@ flowchart TB
 |---|---|
 | Main | Request interpretation, private finance rules and authorization. |
 | Rocket Money MCP | Tool contracts, Rocket Money HTTP requests, operation limits and result verification. |
-| Shared browser auth | Password-manager access, site login configuration, private profiles, session reuse and renewal. |
+| Shared browser auth | Saved-login access, site login configuration, private profiles, session reuse and renewal. |
 | Desktop viewer | Owner-assisted login in the auth provider's browser. |
 
 The shared provider can serve other host integrations. Rocket Money remains a small custom MCP server using standard HTTP and MCP libraries.
 
 #### Request flow
 
-1. **Request:** Main calls a scoped finance tool.
+1. **Request:** Main calls a scoped tool; MCP validates its inputs and allowed operation.
 2. **Authenticate:** MCP obtains a host-only authenticated client from the shared provider.
-3. **Execute:** MCP validates the operation and calls the Rocket Money API.
+3. **Execute:** MCP performs any transaction preflight and calls the Rocket Money API.
 4. **Return:** MCP verifies the result and returns financial data or a bounded status.
 
 #### Login and session reuse
@@ -54,10 +54,10 @@ The shared provider can serve other host integrations. Rocket Money remains a sm
 | Session state | Provider behavior |
 |---|---|
 | Ready | Reuse the session across calls and conversation turns. |
-| Expired | Attempt bounded renewal or login using host-only 1Password access. |
+| Expired | Attempt bounded renewal or login using the host browser's saved login. |
 | Needs interaction | Return `needs_user_login`; the owner completes MFA or a challenge through the desktop viewer. |
 
-The provider owns browser-to-HTTP session synchronization. Authentication is an internal host dependency, not a model-facing tool.
+The provider owns browser-to-HTTP session synchronization. Start with Chrome's password manager in the private host profile; an external password manager is optional. Unattended autofill and login remain validation items. Authentication is an internal host dependency, not a model-facing tool.
 
 #### Access boundary
 
@@ -67,16 +67,21 @@ The provider owns browser-to-HTTP session synchronization. Authentication is an 
 
 Normal model tools and test sandboxes cannot access the private browser, its debugger or session files. Main's financial rules stay in private runtime skill and memory.
 
-#### Financial operations
+#### MCP tool contract
 
-| Operation | Scope |
-|---|---|
-| Read | Supported financial queries, transactions, categories, pagination and session status. |
-| Write | An individual transaction's existing category or editable date. |
-| Verify | Check identity and current values before writing; read back afterward. |
-| Recover | Record uncertain outcomes and reconcile them before retrying. |
+| Tool | Parameters | Result |
+|---|---|---|
+| `rocket_money_status` | None | Last observed login state and safe recovery guidance. |
+| `rocket_money_read` | GraphQL `query`; optional `variables`, `operationName` | Reviewed native financial data, errors and page information. |
+| `rocket_money_set_category` | `requestId`, `transactionId`, `expectedCategoryId`, `categoryId` | Verified category change or explicit outcome. |
+| `rocket_money_set_date` | `requestId`, `transactionId`, `expectedDate`, `date` | Verified date change or explicit outcome. |
+| `rocket_money_operation_status` | `requestId` | Recorded or reconciled write outcome; never repeats the write. |
 
-MCP controls API destinations and preserves supported native query semantics. Category changes do not propagate to other transactions. Stable request IDs and a small outcome journal support safe recovery.
+The [MCP contract](031-rocket-money-mcp-contract.md) defines required parameters, types, response shapes and retry behavior for review. This replaces the earlier generic write-tool proposal with two explicit mutation tools.
+
+#### Financial safeguards
+
+MCP controls API destinations and accepts only reviewed read queries. Writes check identity and expected current values, then read back the result. Category changes never propagate to other transactions. Stable request IDs and a small outcome journal support recovery without blindly repeating a write.
 
 #### Deployment and scope
 
@@ -110,6 +115,7 @@ Proposal only. The auth implementation, Rocket Money integration and runtime bin
 - Use a standard HTTP client and MCP library. Keep Rocket Money-specific logic limited to API contracts, validation and result verification.
 - Prefer the runtime's supported MCP binding and local stdio. Confirm compatibility before choosing an adapter.
 - Reuse a supported browser authentication implementation where practical. Select that implementation during design validation; this proposal does not claim an existing provider already satisfies the contract.
+- The [MCP contract](031-rocket-money-mcp-contract.md) is the proposed model-facing interface. Query catalog contents and live provider field compatibility still require validation.
 - Authenticated clients are host-only and bound to configured accounts and approved destinations. The model cannot select arbitrary credentials, URLs or authentication headers.
 - The auth provider owns browser-to-HTTP session synchronization. Login automation and refresh behavior must be validated for Rocket Money; do not assume an OAuth refresh flow exists.
 - Provider responses and diagnostics must exclude authentication material. Financial source text remains untrusted input.
@@ -131,7 +137,7 @@ After implementation validation, enable reads first and then the two permitted w
 ### Review log
 
 - 2026-10-06: Selected trusted-host execution with model-visible tools only.
-- 2026-10-07: Recorded the proposal in repository docs; separated shared browser authentication from the Rocket Money-specific MCP client. Organized the review surface around the diagram, component ownership, request flow and boundaries.
+- 2026-10-07: Recorded the proposal in repository docs; separated shared browser authentication from the Rocket Money-specific MCP client. Organized the review surface around the diagram, component ownership, request flow and boundaries. Added explicit MCP contracts; made an external password manager optional.
 
 ### Checklist
 
