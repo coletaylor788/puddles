@@ -159,14 +159,14 @@ class BrowserAuth:
                     self.persist()
                 finally:
                     self.context.close()
-        except Exception:  # noqa: BLE001 - closed browser handles need cleanup, not diagnostics
+        except Exception:  # noqa: BLE001, S110 - closed handles need cleanup, not sensitive diagnostics
             pass
         finally:
             self.context = None
             try:
                 if self.driver:
                     self.driver.stop()
-            except Exception:  # noqa: BLE001 - still release the profile when the driver died
+            except Exception:  # noqa: BLE001, S110 - release the profile without logging driver diagnostics
                 pass
             finally:
                 self.driver = None

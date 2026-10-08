@@ -1,6 +1,6 @@
 # Plan 031: Rocket Money MCP and shared browser authentication
 
-**Status:** Approved; implementation and validation in progress
+**Status:** Implemented locally; review and public publication approvals pending
 **Issue:** [#135](https://github.com/coletaylor788/puddles/issues/135)
 **Last updated:** 2026-10-07
 
@@ -97,7 +97,7 @@ Other financial writes, scheduled automation and a general integration framework
 
 ### Status
 
-The design is approved for implementation and shipment. The host auth package, five MCP tools and main-only adapter are implemented locally; validation and installed-runtime checks are in progress. Production is unchanged.
+The host auth package, five MCP tools and main-only adapter are implemented and committed locally. Focused synthetic checks and the packaged MCP startup check pass. Independent review, publication, cumulative CI and environment promotion remain pending. Automatic approval review blocked the fallback private-source review and public push until the owner explicitly approves those disclosures. Production is unchanged.
 
 ## Agent section
 
