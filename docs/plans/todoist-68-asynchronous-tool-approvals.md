@@ -92,18 +92,6 @@ or change the email first, deny with 👎 and then ask the follow-up. Existing
 queue settings still apply; `interrupt` or `/stop` can abort the active run.
 Cancellation after Gmail dispatch cannot recall an email.
 
-#### Results and uncertain sends
-
-Return through the normal tool result path. Gmail success means the provider
-accepted the email, not that the recipient received or read it. Denial, expiry,
-a content block, or failure before dispatch means no email was sent. Run
-cancellation may end the turn without a final reply.
-
-A lost response or crash after dispatch is **unknown**. Gmail offers no
-documented idempotency-key contract, so never automatically retry an uncertain
-send. Keep minimal dispatch/receipt metadata for read-only reconciliation.
-Results and logs must not expose raw email content or provider error echoes.
-
 ### Status
 
 Design only. The owner selected the built-in summary and native wait, with
@@ -177,7 +165,8 @@ same reaction binding. Real routes and identities belong in local configuration.
   retains raw `details.original` after modification. Remove that escape at this
   boundary. Keep send logs and external errors free of message content.
 - Cancellation of the Python async wait does not prove its underlying send
-  stopped. Disable transport retries and preserve unknown outcomes.
+  stopped. A lost response or crash after dispatch returns an unknown outcome,
+  never an automatic retry. A successful result means Gmail accepted the email.
 
 ### Implementation
 
