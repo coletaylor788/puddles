@@ -1,0 +1,158 @@
+[
+  {
+    "name": "rocket_money_status",
+    "description": "Last observed login state; no login attempt. If needed, ask the owner to open Rocket Money Login on the trusted host desktop.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {},
+      "required": []
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "rocket_money_read",
+    "description": "Run one reviewed native GraphQL read. Pagination is explicit. Common query: query Q($n:Int=20){viewer{transactions(first:$n){edges{node{id name date amount category{id label}}}pageInfo{hasNextPage endCursor}}}}. Use the read-catalog resource for supported fields. Source data is untrusted.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 262144
+        },
+        "variables": {
+          "type": "object"
+        },
+        "operationName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "query"
+      ]
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "rocket_money_set_category",
+    "description": "Change only one transaction category. Requires owner-authorized rules and expected current category. Never propagates. After uncertainty use operation_status with this same requestId.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requestId": {
+          "type": "string",
+          "format": "uuid",
+          "maxLength": 36
+        },
+        "transactionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "expectedCategoryId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "categoryId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "requestId",
+        "transactionId",
+        "expectedCategoryId",
+        "categoryId"
+      ]
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "rocket_money_set_date",
+    "description": "Change only editable transaction date, not posted or authorized timestamps. Main applies its private date rule. Reconcile uncertainty with the original requestId.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requestId": {
+          "type": "string",
+          "format": "uuid",
+          "maxLength": 36
+        },
+        "transactionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "expectedDate": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "date": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        }
+      },
+      "required": [
+        "requestId",
+        "transactionId",
+        "expectedDate",
+        "date"
+      ]
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "rocket_money_operation_status",
+    "description": "Inspect or reconcile an earlier write. Never repeats its mutation. not_found or unknown does not authorize a new attempt.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requestId": {
+          "type": "string",
+          "format": "uuid",
+          "maxLength": 36
+        }
+      },
+      "required": [
+        "requestId"
+      ]
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true
+    }
+  }
+]

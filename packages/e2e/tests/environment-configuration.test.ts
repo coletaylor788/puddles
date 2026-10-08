@@ -18,6 +18,17 @@ const bindings = [
 const overrides = { "/gateway/port": 18001, "/secrets/providers/local/path": "/test/credentials.json" };
 
 describe("environment configuration", () => {
+  it("binds Rocket Money host executables and state without changing write permission", () => {
+    const config = {plugins:{entries:{"rocket-money":{enabled:true,config:{command:"/host/python",chromeExecutable:"/host/chrome",stateDir:"/host/private",writesEnabled:true}}}}};
+    const rules = ["command", "chromeExecutable", "stateDir"].map(field => ({path:`/plugins/entries/rocket-money/config/${field}`,category:field === "stateDir" ? "path" : "fixture",reason:"Synthetic transport"}));
+    const result = renderEnvironmentConfiguration(config,rules,Object.fromEntries(rules.map(r => [r.path,"/fixture/isolated"])));
+    expect(result.plugins.entries["rocket-money"].config.writesEnabled).toBe(true);
+    for (const field of ["writesEnabled", "unknownCommand"]) {
+      const path = `/plugins/entries/rocket-money/config/${field}`;
+      expect(() => renderEnvironmentConfiguration(config,[{path,category:"fixture",reason:"Invalid"}],{[path]:false})).toThrow(/Unsupported|Behavior/);
+    }
+  });
+
   it("binds a synthetic FaceTime owner while preserving carrier enablement and Talk behavior", () => {
     const config = { plugins: { entries: { facetime: { enabled: true,
       config: { enabled: true, ownerHandles: ["owner@example.invalid"], realtime: { mode: "talk" } } } } } };

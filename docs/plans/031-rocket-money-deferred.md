@@ -4,7 +4,7 @@ Companion to the [Rocket Money MCP design](031-rocket-money-integration.md).
 
 ## Deferred validation
 
-Dedicated testing is outside the current design task. Before activation with real credentials or writes, validate:
+The implementation is now approved. The following checks are required before activation; future scope remains below. Validate:
 
 | Area | Required evidence |
 |---|---|

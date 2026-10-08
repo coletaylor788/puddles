@@ -1,6 +1,6 @@
 # Plan 031: Rocket Money MCP and shared browser authentication
 
-**Status:** Design proposal; implementation pending
+**Status:** Approved; implementation and validation in progress
 **Issue:** [#135](https://github.com/coletaylor788/puddles/issues/135)
 **Last updated:** 2026-10-07
 
@@ -93,11 +93,11 @@ MCP controls API destinations and accepts only reviewed read queries. Writes che
 
 Both components run on the trusted host. Prefer a shared auth library in the host process, or an existing supported host service. Reuse does not require a new daemon.
 
-Other financial writes, scheduled automation and a general integration framework remain outside this design. Dedicated tests stay in the [deferred appendix](031-rocket-money-deferred.md).
+Other financial writes, scheduled automation and a general integration framework remain outside this design. The [future-scope appendix](031-rocket-money-deferred.md) retains follow-on work. Approval to ship activates the required synthetic regressions and release checks.
 
 ### Status
 
-Proposal only. The auth implementation, Rocket Money integration and runtime binding still need validation and implementation. Runtime behavior is unchanged.
+The design is approved for implementation and shipment. The host auth package, five MCP tools and main-only adapter are implemented locally; validation and installed-runtime checks are in progress. Production is unchanged.
 
 ## Agent section
 
@@ -134,7 +134,7 @@ Proposal only. The auth implementation, Rocket Money integration and runtime bin
 
 ### Validation
 
-Review documentation and component ownership now. Tests, live capability checks and release validation are in the [deferred appendix](031-rocket-money-deferred.md). No runtime validation is claimed by this revision.
+Implementation approval activates the applicable checks recorded in the [validation appendix](031-rocket-money-deferred.md). Focused tests use synthetic transactions and credentials. Installed authentication, sandbox isolation and release evidence remain required before activation.
 
 ### Rollout and rollback
 
@@ -151,4 +151,4 @@ After implementation validation, enable reads first and then the two permitted w
 - [x] Preserve credential isolation, private rules and verified writes.
 - [x] Keep testing in the deferred appendix.
 - [ ] Select the auth implementation and validate the integration.
-- [ ] Implement and activate under a subsequent approved implementation task.
+- [ ] Complete the approved implementation, validation and activation; provide owner login instructions.
