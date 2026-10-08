@@ -69,15 +69,21 @@ Normal model tools and test sandboxes cannot access the private browser, its deb
 
 #### MCP tool contract
 
-| Tool | Parameters | Result |
-|---|---|---|
-| `rocket_money_status` | None | Last observed login state and safe recovery guidance. |
-| `rocket_money_read` | GraphQL `query`; optional `variables`, `operationName` | Reviewed native financial data, errors and page information. |
-| `rocket_money_set_category` | `requestId`, `transactionId`, `expectedCategoryId`, `categoryId` | Verified category change or explicit outcome. |
-| `rocket_money_set_date` | `requestId`, `transactionId`, `expectedDate`, `date` | Verified date change or explicit outcome. |
-| `rocket_money_operation_status` | `requestId` | Recorded or reconciled write outcome; never repeats the write. |
+All parameters are required unless marked `?`. IDs and dates are strings; dates use `YYYY-MM-DD`. Each write uses a stable UUID `requestId`.
 
-The [MCP contract](031-rocket-money-mcp-contract.md) defines required parameters, types, response shapes and retry behavior for review. This replaces the earlier generic write-tool proposal with two explicit mutation tools.
+| Tool | Parameters | Returns |
+|---|---|---|
+| `rocket_money_status` | None | Last observed login state and recovery guidance. Does not initiate login. |
+| `rocket_money_read` | `query`, `variables?` (JSON object), `operationName?` | Native financial data, page information and any query errors. Read-only; one page/request at a time. |
+| `rocket_money_set_category` | `requestId`, `transactionId`, `expectedCategoryId`, `categoryId` | Write outcome and observed category. |
+| `rocket_money_set_date` | `requestId`, `transactionId`, `expectedDate`, `date` | Write outcome and observed date. |
+| `rocket_money_operation_status` | `requestId` | Outcome of an earlier write, checked through its record and a read-back if needed. Never repeats the write. |
+
+**Write outcomes:** `verified`, `unchanged`, `conflict`, `blocked` or `unknown`. Expected values must match before an edit. Reusing a request ID never repeats the mutation; different arguments under that ID are rejected.
+
+**Operation status** answers “Did that edit take effect?” after a timeout or lost response. It can also report `in_progress` or `not_found`; neither permits a blind retry. Login status is separate: it answers whether the account session is ready.
+
+Calls use a host-configured account. Credentials, URLs and headers are never parameters. Invalid or unsupported requests return a bounded error. Read queries must match the reviewed catalog; `operationName` is required for a document with multiple operations.
 
 #### Financial safeguards
 
@@ -115,7 +121,7 @@ Proposal only. The auth implementation, Rocket Money integration and runtime bin
 - Use a standard HTTP client and MCP library. Keep Rocket Money-specific logic limited to API contracts, validation and result verification.
 - Prefer the runtime's supported MCP binding and local stdio. Confirm compatibility before choosing an adapter.
 - Reuse a supported browser authentication implementation where practical. Select that implementation during design validation; this proposal does not claim an existing provider already satisfies the contract.
-- The [MCP contract](031-rocket-money-mcp-contract.md) is the proposed model-facing interface. Query catalog contents and live provider field compatibility still require validation.
+- The [tool table above](#mcp-tool-contract) defines the model-facing contract. Query catalog contents and live provider field compatibility still require validation.
 - Authenticated clients are host-only and bound to configured accounts and approved destinations. The model cannot select arbitrary credentials, URLs or authentication headers.
 - The auth provider owns browser-to-HTTP session synchronization. Login automation and refresh behavior must be validated for Rocket Money; do not assume an OAuth refresh flow exists.
 - Provider responses and diagnostics must exclude authentication material. Financial source text remains untrusted input.
@@ -137,7 +143,7 @@ After implementation validation, enable reads first and then the two permitted w
 ### Review log
 
 - 2026-10-06: Selected trusted-host execution with model-visible tools only.
-- 2026-10-07: Recorded the proposal in repository docs; separated shared browser authentication from the Rocket Money-specific MCP client. Organized the review surface around the diagram, component ownership, request flow and boundaries. Added explicit MCP contracts; made an external password manager optional.
+- 2026-10-07: Recorded the proposal in repository docs; separated shared browser authentication from the Rocket Money-specific MCP client. Organized the review surface around the diagram, component ownership, request flow and boundaries. Consolidated concise MCP contracts into the main design; made an external password manager optional.
 
 ### Checklist
 

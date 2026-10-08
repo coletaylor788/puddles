@@ -11,7 +11,7 @@ Dedicated testing is outside the current design task. Before activation with rea
 | Auth boundary | Normal model tools and test sandboxes cannot read passwords, cookies, tokens, profiles or debugger endpoints. Use synthetic credentials in automated tests. |
 | Session lifecycle | Reuse across turns, expiry, bounded renewal, concurrent callers, restart persistence and owner-assisted MFA recovery, Chrome saved-login behavior and device-authentication prompts. |
 | Browser-to-HTTP integration | The shared provider supplies a usable authenticated client and retains session updates without exposing authentication material. |
-| API contract | The [five-tool contract](031-rocket-money-mcp-contract.md), schema validation, supported queries, account entitlements, pagination and the two allowed mutations. |
+| API contract | The [five-tool contract](031-rocket-money-integration.md#mcp-tool-contract), schema validation, supported queries, account entitlements, pagination and the two allowed mutations. |
 | Write integrity | Identity/current-value conflicts, individual-only category changes, read-back mismatch and unknown-outcome reconciliation without replay. |
 | Main's rules | Exact rule matching, ambiguity handling and title-based date corrections. Private account data stays out of fixtures. |
 | Delivery | Applicable focused checks, cumulative CI, isolated DEV/TEST validation and rollback before activation. |
