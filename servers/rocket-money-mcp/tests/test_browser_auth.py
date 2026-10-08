@@ -6,6 +6,7 @@ import ssl
 import threading
 from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
@@ -46,6 +47,10 @@ def test_browser_http_cookie_rotation_and_restart(tmp_path, monkeypatch):
             pass
 
         def do_GET(self):
+            if self.path != "/":
+                self.send_response(204)
+                self.end_headers()
+                return
             self.send_response(200)
             self.send_header("Set-Cookie", "session=fixture-initial; HttpOnly; Secure; Path=/")
             self.end_headers()
@@ -81,7 +86,9 @@ def test_browser_http_cookie_rotation_and_restart(tmp_path, monkeypatch):
         return original(self, path, **{**kwargs, "headless": True, "ignore_https_errors": True})
 
     monkeypatch.setattr(BrowserType, "launch_persistent_context", fixture_launch)
-    auth = BrowserAuth(tmp_path / "auth", site)
+    user_chrome = Path.home() / "Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    executable = str(user_chrome) if user_chrome.is_file() else None
+    auth = BrowserAuth(tmp_path / "auth", site, executable=executable)
     try:
         ctx = auth.start()
         ctx.pages[0].goto(base)
@@ -93,7 +100,7 @@ def test_browser_http_cookie_rotation_and_restart(tmp_path, monkeypatch):
         stored = read_private(tmp_path / "auth/session.json")
         assert stored["cookies"][0]["value"] == "fixture-rotated"
         assert (tmp_path / "auth/session.json").stat().st_mode & 0o077 == 0
-        auth = BrowserAuth(tmp_path / "auth", site)
+        auth = BrowserAuth(tmp_path / "auth", site, executable=executable)
         auth.post({"query": "fixture"})
         assert requests[-1] == "session=fixture-rotated"
         assert len(launches) == 2
