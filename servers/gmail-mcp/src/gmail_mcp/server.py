@@ -28,6 +28,7 @@ from .auth import (
 )
 from .keychain import KeychainAccessError
 from .logging_setup import log
+from .send import SEND_SCHEMA, send_email, send_enabled
 
 # Initialize MCP server
 server = Server("gmail-mcp")
@@ -49,7 +50,7 @@ class AuthenticationUnavailableError(RuntimeError):
 @server.list_tools()
 async def list_tools() -> list[Tool]:
     """List available Gmail tools."""
-    return [
+    tools = [
         Tool(
             name="authenticate",
             description="Authenticate with Gmail. Opens browser for OAuth login.",
@@ -185,15 +186,26 @@ async def list_tools() -> list[Tool]:
         ),
     ]
 
+    if send_enabled():
+        tools.append(Tool(
+            name="send_email",
+            description="Send a new plain-text email. Host-only; requires prior OpenClaw approval.",
+            inputSchema=SEND_SCHEMA,
+        ))
+    return tools
+
 
 @server.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     """Handle tool calls."""
     start = time.monotonic()
-    log("info", "tool_start", tool=name, args=arguments)
+    log("info", "tool_start", tool=name, args={} if name == "send_email" else arguments)
     ok = False
     try:
-        if name == "authenticate":
+        if name == "send_email":
+            receipt = await send_email(arguments, _get_gmail_service_async)
+            result = [TextContent(type="text", text=json.dumps(receipt))]
+        elif name == "authenticate":
             result = await _authenticate()
         elif name == "list_emails":
             result = await _list_emails(arguments)

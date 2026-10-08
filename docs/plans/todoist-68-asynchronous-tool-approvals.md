@@ -1,6 +1,6 @@
 # Native tool approvals and guarded Gmail sending
 
-**Status:** Revised proposal, awaiting design review
+**Status:** Approved design, implementation in progress
 **Issue:** [#68](https://github.com/coletaylor788/puddles/issues/68)
 **Last updated:** 2026-10-07
 
@@ -94,10 +94,9 @@ Cancellation after Gmail dispatch cannot recall an email.
 
 ### Status
 
-Design only. The owner selected the built-in summary and native wait, with
-content guards and owner-approved recipients. Implementation and deployment
-have not started. Source supports the native flow; an actual phone round trip
-and guarded Gmail execution remain implementation acceptance work.
+The owner approved this design and shipping it on 2026-10-07. Implementation
+is in progress. Focused tests, native integration, independent review, and
+release validation precede deployment; physical phone acceptance remains.
 
 ## Agent section
 
@@ -107,7 +106,8 @@ This proposal updates PR #71 and issue #68. The repository OpenClaw pin is
 `eb377ac59e6c9fd6c7705028034812becf00271b` (2026.9.6). The earlier comparison also
 inspected stable 2026.9.8 at `fc23bc864e4553c2d215e479eeec47b67a0bf943` and upstream
 main at `3b4ba3abb5e33a59ab79e2002f1c7e79c932e8ac`. No upstream upgrade is required
-by this design. The evidence below is pinned source inspection, not live proof.
+by this design. The native wrapper has now been exercised with the Gmail plugin
+and a recording MCP bridge. Deployment and physical phone acceptance remain.
 
 ### Scope and acceptance criteria
 
@@ -152,25 +152,26 @@ same reaction binding. Real routes and identities belong in local configuration.
 #### Existing Gmail work
 
 - [secure-gmail registration](../../openclaw-plugins/secure-gmail/src/plugin.ts)
-  is static and currently has no send tool. Add the hook and tool there.
+  adds an optional, main-only send tool and its native approval hook. Sending is
+  disabled unless the host config enables it and supplies a valid mailbox.
 - [ContactsEgressGuard](../../packages/mcp-hooks/src/egress/contacts-egress-guard.ts)
-  combines content and contact checks. Extract reusable content checks while
-  preserving all other callers' behavior. Do not substitute LeakGuard's broader
+  delegates its content checks to the reusable `ContentEgressGuard` while
+  preserving other callers' contact checks. Do not substitute LeakGuard's broader
   PII policy or bypass contact checks using a fake resolver.
 - [gmail-mcp](../../servers/gmail-mcp/src/gmail_mcp/server.py) owns MIME and provider
   access. Enable its send handler only for the trusted bridge. Existing auth
   requests Gmail scopes accepted by [messages.send](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/send);
   verify the actual grant during implementation setup.
 - [The result wrapper](../../openclaw-plugins/secure-gmail/src/wrap-tool.ts)
-  retains raw `details.original` after modification. Remove that escape at this
-  boundary. Keep send logs and external errors free of message content.
+  no longer retains raw `details.original` after modification. Send logs and
+  external errors omit message content and classifier evidence.
 - Cancellation of the Python async wait does not prove its underlying send
   stopped. A lost response or crash after dispatch returns an unknown outcome,
   never an automatic retry. A successful result means Gmail accepted the email.
 
 ### Implementation
 
-After design approval:
+Approved implementation work:
 
 1. Add the schema and content-only guard, preserving existing contact-guard use.
 2. Add the pre-call approval hook using the documented native API.
@@ -181,9 +182,13 @@ After design approval:
 
 ### Validation
 
-Documentation checks: review source contracts, links, and `git diff --check`.
-Upstream tests were inspected, not executed. No runtime build, DEV/TEST start,
-live approval notification, or email send is part of this proposal update.
+Focused Gmail tests cover the plugin, Python handler, and shared content guard.
+The native integration fixture runs the real OpenClaw approval wrapper with the
+built Gmail plugin and a recording stdio bridge. It verifies approval before
+classification, argument snapshots, rejected later-hook rewrites, allow-once,
+denial, content blocks, abort, runtime stop, and Python/TypeScript schema parity.
+Bridge startup cancellation has a separate regression. All sends are recorded;
+no test sends a real email or approval message.
 
 Implementation tests must cover:
 
@@ -202,14 +207,13 @@ Implementation tests must cover:
 
 Use [secure-gmail](../../openclaw-plugins/secure-gmail/README.md),
 [gmail-mcp](../../servers/gmail-mcp/README.md), and [e2e](../../packages/e2e/README.md)
-checks. Future release validation follows the repository's accumulated pool and
+checks. Release validation follows the repository's accumulated pool and
 DEV/TEST/PROD lifecycle. Physical iPhone acceptance remains owner validation.
 
 ### Rollout and rollback
 
-Keep the send tool disabled until implementation validation. Publishing this
-proposal changes no runtime, account, credentials, or deployment. Future rollback
-disables sending and cancels pending calls; retain unknown-send receipts for
+Keep the send tool disabled until release validation. Rollback disables sending
+and cancels pending calls; retain unknown-send receipts for
 reconciliation. An accepted email cannot be recalled by rollback.
 
 ### Review log
@@ -225,6 +229,6 @@ reconciliation. An accepted email cannot be recalled by rollback.
 
 - [x] Verify native approval and iMessage contracts in pinned source.
 - [x] Keep Human and Agent sections and Plan 027 consistent.
-- [ ] Review the revised design before implementation.
+- [x] Owner approved the revised design and shipping it on 2026-10-07.
 - [ ] Implement and validate with recording transports and providers.
 - [ ] Complete the approved release lifecycle and owner validation.

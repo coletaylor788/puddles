@@ -9,12 +9,16 @@
       "get_email",
       "get_attachments",
       "archive_email",
-      "add_label"
+      "add_label",
+      "send_email"
     ]
   },
   "configSchema": {
     "type": "object",
-    "required": ["gmailMcpCommand", "llmProvider"],
+    "required": [
+      "gmailMcpCommand",
+      "llmProvider"
+    ],
     "additionalProperties": false,
     "properties": {
       "gmailMcpCommand": {
@@ -23,9 +27,14 @@
       },
       "gmailMcpArgs": {
         "type": "array",
-        "items": { "type": "string" },
+        "items": {
+          "type": "string"
+        },
         "description": "Args passed to gmailMcpCommand to launch the MCP server.",
-        "default": ["-m", "gmail_mcp"]
+        "default": [
+          "-m",
+          "gmail_mcp"
+        ]
       },
       "gmailMcpCwd": {
         "type": "string",
@@ -46,9 +55,24 @@
       },
       "skipTools": {
         "type": "array",
-        "items": { "type": "string" },
+        "items": {
+          "type": "string"
+        },
         "description": "Tool names to register without ingress hooks.",
-        "default": ["authenticate", "archive_email", "add_label"]
+        "default": [
+          "authenticate",
+          "archive_email",
+          "add_label"
+        ]
+      },
+      "sendEnabled": {
+        "type": "boolean",
+        "default": false,
+        "description": "Enable owner-approved sending for the main agent."
+      },
+      "sendMailbox": {
+        "type": "string",
+        "description": "Authenticated mailbox used as the sender. Must match the Gmail account."
       }
     }
   }

@@ -3,9 +3,8 @@
 OpenClaw plugin that wraps the [gmail-mcp](../../servers/gmail-mcp/) server's
 tools with security hooks from [`mcp-hooks`](../../packages/mcp-hooks/).
 
-For each gmail tool it discovers via MCP it registers an OpenClaw `AnyAgentTool`
-whose `execute()` runs the MCP call and then pipes the JSON result through
-ingress hooks before returning to the agent:
+The plugin registers a static tool manifest. Read tools call MCP and apply
+ingress hooks to returned email content:
 
 - **InjectionGuard** — flags prompt-injection attempts in attacker-controlled
   fields (subject, body, sender headers)
@@ -30,10 +29,36 @@ If any hook returns `block`, the agent receives a sentinel message instead of
 the raw content. If all hooks return `allow` the original MCP result passes
 through unchanged.
 
-The deployed Gmail scope is ingress filtering. The bridge exposes no
-`send_email` tool and has no interactive send-approval workflow. Contacts-based
-recipient checks are implemented by the Calendar plugin, as documented in
-[plan 018](../../docs/plans/018-contacts-as-trust.md).
+## Owner-approved sending
+
+Sending is disabled by default. Set `sendEnabled: true` and `sendMailbox` to the
+address of the authenticated Gmail account, then allow `send_email` for `main`
+in OpenClaw's normal tool permissions (including its sandbox tool allowlist).
+The plugin exposes sending only to `main` and requires host-proven owner
+requester identity. Reader and unattended calls cannot request a send.
+
+The native pre-call hook displays sender, To/Cc/Bcc, subject, and a bounded body
+preview. OpenClaw owns the argument snapshot, allow-once decision, and wait of up
+to ten minutes. After approval, the tool validates the email and runs the shared
+secrets/sensitive-content guard before sending. Unknown recipients need no
+contact lookup. A guard block or outage prevents dispatch even after approval.
+
+Configure OpenClaw's `approvals.plugin` forwarding with `enabled: true`,
+`mode: "targets"`, and an explicit owner route. For iMessage, use the native
+structured forwarding path and an explicit `allowFrom` owner. React 👍 or 👎 on
+the delivered approval message. A normal follow-up is not a decision and may
+wait behind the active tool. Restart or run cancellation closes pending work.
+
+Inputs are `to`, optional `cc`/`bcc` arrays, `subject`, and `body_text`. Use plain
+mailbox addresses and plain text. Unsupported headers, attachments, aliases,
+HTML, and reply threading are rejected. All destinations and the subject must
+fit the native summary. Gmail success returns only provider IDs; an uncertain
+response returns `unknown` and must never be retried automatically.
+
+The plugin enables sending only on its trusted MCP subprocess using
+`GMAIL_MCP_ENABLE_SEND=1` and `GMAIL_MCP_SEND_MAILBOX`. Do not expose that raw
+connection to agents: MCP itself does not supply OpenClaw's approval gate.
+The server confirms the configured sender matches the authenticated mailbox.
 
 ## Why ingress runs inside `execute()` (not via `tool_result_persist`)
 

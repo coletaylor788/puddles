@@ -131,7 +131,7 @@ describe("OpenClaw cumulative patch suite", () => {
       'await run("corepack", ["pnpm", "prompt:snapshots:check"]',
     );
     const mappedTests = runner.indexOf(
-      "const tests = [...new Set(suite.patches.flatMap((patch) => patch.tests))]",
+      "const { tests, candidateTests } = nativeRegressionTargets(suite)",
     );
 
     expect(finalApply).toBeGreaterThan(-1);

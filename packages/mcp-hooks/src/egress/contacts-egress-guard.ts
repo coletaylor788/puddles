@@ -1,7 +1,6 @@
 import type { LLMClient } from "../llm-client.js";
 import type { EgressHook, HookResult } from "../types.js";
-import { classifyBoolean } from "../classify.js";
-import { SECRETS_PROMPT, SENSITIVE_PROMPT } from "../prompts.js";
+import { ContentEgressGuard } from "./content-egress-guard.js";
 import type { ContactsTrustResolver } from "../contacts/contacts-trust.js";
 
 /**
@@ -60,34 +59,8 @@ export class ContactsEgressGuard implements EgressHook {
     params?: Record<string, unknown>,
   ): Promise<HookResult> {
     if (this.runContentClassifiers && this.llm && content.length > 0) {
-      const [secrets, sensitive] = await Promise.all([
-        classifyBoolean(this.llm, content, SECRETS_PROMPT, "contacts-egress.secrets"),
-        classifyBoolean(this.llm, content, SENSITIVE_PROMPT, "contacts-egress.sensitive"),
-      ]);
-      if (secrets.outcome !== "ok") {
-        return {
-          action: "block",
-          reason: `Leak check degraded: secrets classifier ${secrets.outcome} (${secrets.error ?? "no detail"}). Failing closed to prevent egress.`,
-        };
-      }
-      if (sensitive.outcome !== "ok") {
-        return {
-          action: "block",
-          reason: `Leak check degraded: sensitive classifier ${sensitive.outcome} (${sensitive.error ?? "no detail"}). Failing closed to prevent egress.`,
-        };
-      }
-      if (secrets.detected) {
-        return {
-          action: "block",
-          reason: `Secrets detected: ${secrets.evidence}`,
-        };
-      }
-      if (sensitive.detected) {
-        return {
-          action: "block",
-          reason: `Sensitive data detected: ${sensitive.evidence}`,
-        };
-      }
+      const verdict = await new ContentEgressGuard(this.llm).check(toolName, content);
+      if (verdict.action !== "allow") return verdict;
     }
 
     const destinations = this.extractDestinations(toolName, params ?? {})

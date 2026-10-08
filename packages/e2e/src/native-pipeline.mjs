@@ -94,6 +94,14 @@ export async function removeOwnedWorktree(repository, path, git) {
   }
 }
 
+/** Features using native APIs can add regressions without inventing a source patch. */
+export function nativeRegressionTargets(suite) {
+  return {
+    tests: [...new Set([...suite.patches.flatMap((patch) => patch.tests), ...(suite.tests ?? [])])],
+    candidateTests: [...new Set([...suite.patches.flatMap((patch) => patch.candidateTests ?? []), ...(suite.candidateTests ?? [])])],
+  };
+}
+
 export async function nativePipeline(command, repositoryGates) {
   if (!safeNode()) throw new Error("Use OpenClaw's supported Node version (24.16.0+ on 24.x, or 26.1.0+). Older releases can truncate SQLite text.");
   const source = resolve(process.env.OPENCLAW_SRC ?? join(homedir(), "git", "openclaw"));
@@ -313,6 +321,7 @@ export async function nativePipeline(command, repositoryGates) {
       PATH: `${dirname(process.execPath)}:${process.env.PATH}`, HOME: process.env.HOME,
       TMPDIR: process.env.TMPDIR, COREPACK_HOME: process.env.COREPACK_HOME,
       DEVELOPER_DIR: process.env.DEVELOPER_DIR,
+      GMAIL_MCP_PYTHON: process.env.GMAIL_MCP_PYTHON,
       PUDDLES_DEVELOPMENT_CONFIG: process.env.PUDDLES_DEVELOPMENT_CONFIG,
       [PNPM_STORE_ENV]: repositoryPnpm.configuredStoreDir,
       CI: "true", ...resourceProfile.buildEnvironment,
@@ -368,7 +377,7 @@ export async function nativePipeline(command, repositoryGates) {
             env: buildEnv,
           });
         }
-        const tests = [...new Set(suite.patches.flatMap((patch) => patch.tests))];
+        const { tests, candidateTests } = nativeRegressionTargets(suite);
         const groups = new Map();
         for (const test of tests) {
           if (!existsSync(join(candidate, test))) throw new Error("Mapped OpenClaw test missing");
@@ -384,7 +393,6 @@ export async function nativePipeline(command, repositoryGates) {
           }
           await run("node", ["scripts/run-vitest.mjs", "run", "--config", `test/vitest/vitest.${project}.config.ts`, ...workerArgs, ...targets], { cwd: candidate, env: mappedTestEnv });
         }
-        const candidateTests = [...new Set(suite.patches.flatMap((patch) => patch.candidateTests ?? []))];
         const candidateWorkerArgs = resourceProfile.testWorkers ? ["--maxWorkers", String(resourceProfile.testWorkers)] : [];
         await run("corepack", ["pnpm", "--filter", "e2e", "exec", "vitest", "run", "--config", "vitest.candidate.config.ts", ...candidateWorkerArgs, ...candidateTests], { env: { ...buildEnv, OPENCLAW_CANDIDATE: candidate } });
         const outputs = await extensionPhase(extension, "gate", context);

@@ -39,7 +39,7 @@ export interface WrapToolOptions {
 
 /** Minimal subset of McpBridge that wrap-tool depends on (eases testing). */
 export interface McpCaller {
-  callTool(name: string, args: Record<string, unknown>): Promise<CallToolResult>;
+  callTool(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<CallToolResult>;
 }
 
 /**
@@ -136,7 +136,6 @@ export function wrapMcpTool(
         details: {
           source: "secure-gmail",
           modified: true,
-          original: raw,
         },
       };
     },

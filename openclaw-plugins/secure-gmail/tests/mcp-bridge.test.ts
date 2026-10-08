@@ -88,6 +88,19 @@ describe("McpBridge", () => {
     await expect(bridge.callTool("x", {})).rejects.toThrow(/connect\(\)/);
   });
 
+  it("uses MCP cancellation and prevents dispatch for an already aborted call", async () => {
+    clientInstances.length = 0;
+    const bridge = await connectMcpBridge({ command: "x" });
+    const abort = new AbortController();
+    await bridge.callTool("send_email", {}, abort.signal);
+    expect(clientInstances[0].callTool).toHaveBeenCalledWith(
+      { name: "send_email", arguments: {} }, undefined, { signal: abort.signal },
+    );
+    abort.abort();
+    await expect(bridge.callTool("send_email", {}, abort.signal)).rejects.toThrow();
+    expect(clientInstances[0].callTool).toHaveBeenCalledTimes(1);
+  });
+
   it("close() shuts down both client and transport", async () => {
     clientInstances.length = 0;
     transportInstances.length = 0;

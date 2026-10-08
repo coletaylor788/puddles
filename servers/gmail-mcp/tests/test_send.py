@@ -1,0 +1,137 @@
+"""All sends use a recording provider. No credentials or network access."""
+
+import asyncio
+import base64
+import json
+import threading
+from email import policy
+from email.parser import BytesParser
+from unittest.mock import AsyncMock, Mock
+
+import pytest
+
+from gmail_mcp.send import SEND_SCHEMA, send_email
+from gmail_mcp.server import call_tool, list_tools
+
+EMAIL = {
+    "to": ["new@example.net"],
+    "cc": ["copy@example.net"],
+    "bcc": ["hidden@example.net"],
+    "subject": "Café",
+    "body_text": "Hello 世界",
+}
+
+
+@pytest.fixture
+def provider(monkeypatch):
+    monkeypatch.setenv("GMAIL_MCP_ENABLE_SEND", "1")
+    monkeypatch.setenv("GMAIL_MCP_SEND_MAILBOX", "owner@example.org")
+    service = Mock()
+    users = service.users.return_value
+    users.getProfile.return_value.execute.return_value = {"emailAddress": "owner@example.org"}
+    users.messages.return_value.send.return_value.execute.return_value = {
+        "id": "abc",
+        "threadId": "def",
+        "unexpected": "PRIVATE_ECHO",
+    }
+    return service, AsyncMock(return_value=service)
+
+
+async def test_send_mime_and_no_retries(provider, capsys):
+    service, get_service = provider
+    result = await send_email(EMAIL, get_service)
+    assert result == {"status": "sent", "id": "abc", "threadId": "def"}
+    send = service.users().messages().send
+    send.assert_called_once()
+    kwargs = send.call_args.kwargs
+    assert kwargs["userId"] == "me"
+    message = BytesParser(policy=policy.default).parsebytes(
+        base64.urlsafe_b64decode(kwargs["body"]["raw"])
+    )
+    assert str(message["From"]) == "owner@example.org"
+    for key in ("to", "cc", "bcc"):
+        assert str(message[key]) == ", ".join(EMAIL[key])
+    assert str(message["Subject"]) == EMAIL["subject"]
+    assert message.get_content().rstrip("\r\n") == EMAIL["body_text"]
+    send.return_value.execute.assert_called_once_with(num_retries=0)
+    logs = capsys.readouterr().err
+    for text in ("PRIVATE_ECHO", EMAIL["body_text"], EMAIL["subject"], EMAIL["to"][0]):
+        assert text not in logs
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"to": []},
+        {"to": ["name <a@example.org>"]},
+        {"bcc": "a@example.org"},
+        {"subject": "x\r\nBcc: a@example.org"},
+        {"raw": "arbitrary"},
+        {"approved": True},
+        {"body_text": "界" * 40000},
+        {"body_text": "\ud800"},
+        {"subject": "\ud800"},
+    ],
+)
+async def test_invalid_input_cannot_reach_provider(provider, change):
+    service, get_service = provider
+    assert await send_email({**EMAIL, **change}, get_service) == {"status": "failed_before_send"}
+    get_service.assert_not_called()
+    service.users.assert_not_called()
+
+
+async def test_mailbox_mismatch_cannot_send(provider):
+    service, get_service = provider
+    service.users().getProfile.return_value.execute.return_value = {
+        "emailAddress": "other@example.org"
+    }
+    assert await send_email(EMAIL, get_service) == {"status": "failed_before_send"}
+    service.users().messages.assert_not_called()
+
+
+async def test_lost_response_is_unknown_not_retryable(provider, capsys):
+    service, get_service = provider
+    execute = service.users().messages().send.return_value.execute
+    execute.side_effect = RuntimeError("PRIVATE_ECHO " + json.dumps(EMAIL))
+    assert await send_email(EMAIL, get_service) == {"status": "unknown"}
+    execute.assert_called_once_with(num_retries=0)
+    assert "PRIVATE_ECHO" not in capsys.readouterr().err
+
+
+async def test_timeout_during_profile_does_not_dispatch_later(provider, monkeypatch):
+    from gmail_mcp import send as module
+    from gmail_mcp._async import run_blocking
+
+    service, get_service = provider
+    started, release = threading.Event(), threading.Event()
+
+    def profile(**_kwargs):
+        started.set()
+        release.wait(2)
+        return {"emailAddress": "owner@example.org"}
+
+    service.users().getProfile.return_value.execute.side_effect = profile
+
+    async def short_wait(call, **kwargs):
+        return await run_blocking(call, **kwargs, timeout=0.01)
+
+    monkeypatch.setattr(module, "run_blocking", short_wait)
+    task = asyncio.create_task(send_email(EMAIL, get_service))
+    await asyncio.to_thread(started.wait, 1)
+    await asyncio.sleep(0.03)
+    release.set()
+    assert await task == {"status": "failed_before_send"}
+    service.users().messages().send.return_value.execute.assert_not_called()
+
+
+async def test_disabled_raw_server_refuses_and_hides_send(monkeypatch):
+    monkeypatch.delenv("GMAIL_MCP_ENABLE_SEND", raising=False)
+    assert "send_email" not in [tool.name for tool in await list_tools()]
+    result = await call_tool("send_email", EMAIL)
+    assert json.loads(result[0].text) == {"status": "failed_before_send"}
+
+
+async def test_tool_schema_is_closed(provider):
+    tool = next(tool for tool in await list_tools() if tool.name == "send_email")
+    assert tool.inputSchema == SEND_SCHEMA
+    assert tool.inputSchema["additionalProperties"] is False
