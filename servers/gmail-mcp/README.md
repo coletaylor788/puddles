@@ -81,6 +81,23 @@ You only need to do this once. The token persists across sessions.
 
 **Note:** If you see a "scope" error, just run authenticate again - the server will automatically request the updated permissions.
 
+Existing installations that used the Python `keyring` backend need one
+non-destructive credential migration. Run the migration module with the
+currently trusted legacy virtual environment while loading this release's
+source:
+
+```bash
+cd servers/gmail-mcp
+PYTHONPATH="$PWD/src" /path/to/legacy/.venv/bin/python \
+  -m gmail_mcp.scripts.migrate_legacy_keychain
+```
+
+The legacy interpreter reads service `gmail-mcp` in memory. The migration
+creates service `gmail-mcp-stable`, trusts `/usr/bin/security`, and verifies an
+exact round trip without printing or writing the credential outside Keychain.
+It refuses to overwrite a different stable item and leaves the legacy item
+untouched for rollback.
+
 ## Available Tools
 
 ### authenticate
@@ -177,6 +194,7 @@ Add a label to one or more emails.
 - **Client credentials** (`credentials.json`) stay local in `~/.config/gmail-mcp/` (macOS) or bundled in the Key Vault secret (Azure)
 - The server requests **modify** Gmail access (`gmail.modify` scope) to support archiving
 - Attachment filenames are sanitized to prevent path traversal attacks
+- Keychain operations use `/usr/bin/security` with a five-second timeout, so an invisible macOS approval prompt cannot wedge the MCP bridge
 
 On macOS, you can inspect or delete stored credentials in Keychain Access.app (search for "gmail-mcp").
 

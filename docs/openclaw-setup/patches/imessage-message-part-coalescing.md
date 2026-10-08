@@ -1,6 +1,6 @@
 # Selective iMessage message-part coalescing
 
-**Status:** Verified in an isolated fixture against OpenClaw 2026.6.11.
+**Status:** Ported to OpenClaw 2026.9.6 with recording fixtures.
 
 ## Symptom
 
@@ -15,10 +15,28 @@ Without coalescing, the first row starts an agent turn before the payload
 arrives. The reply therefore lacks the link or image, and the payload starts a
 second turn after the fact.
 
-OpenClaw's existing `channels.imessage.coalesceSameSenderDms` compatibility mode
-solves structurally marked URL previews, but it can hold every direct message
-for the full compatibility window and does not reliably join caption-plus-image
-rows after `imsg` advertises balloon metadata.
+OpenClaw 2026.9.6 keeps a generic text-only debounce in
+`monitor/monitor-provider.ts`, but its retired-config migration explicitly
+deletes `coalesceSameSenderDms`. That debounce does not provide the selective
+text, link, and media grouping described here. This patch retains a Puddles
+feature: it restores the opt-in setting, notification metadata, and selective
+grouping on top of the new durable inbound queue. It keeps the release's GUID,
+media, and recovery owners.
+
+The patch also keeps iMessage in the built runtime and npm file selection.
+Stable otherwise downloads the official external plugin, which does not contain
+these changes. Doctor preserves the setting at channel and account scope,
+including explicit `false` overrides. Installed rehearsal refuses a missing
+bundled plugin and confirms that startup kept the configured option.
+The archive's channel schema comes from committed generated metadata. Regenerate
+it with upstream `pnpm config:channels:gen` after changing the channel schema.
+Source parity and installed channel/account checks prevent an old snapshot from
+rejecting the maintained option before the channel starts.
+
+The queue saves a notification before advancing its recovery cursor. Each
+grouped agent turn owns only its own message claims. Separate turns wait for
+admission in order, rather than sharing one completion claim. The hold deadline
+starts at the notification's recorded receive time, not at a later disk callback.
 
 ## Fix
 
@@ -118,10 +136,13 @@ The patch adds regression coverage for:
 - the same sandwich behavior under an explicit nonzero iMessage debounce;
 - an unchained second URL flushing separately without inheriting the pending
   composition deadline;
+- first-row standalone URL-preview and image payloads dispatching immediately
+  with no prior composition state;
 - back-to-back text-link-text compositions retaining independent continuation
   buckets;
-- a joined payload without a GUID and with a malformed timestamp still closing
-  its composition bucket without qualifying as a continuation anchor;
+- a joined payload with a malformed timestamp closing its composition bucket
+  without qualifying as a continuation anchor; durable ingress independently
+  rejects raw notifications without a GUID;
 - quickly reply-chained non-URL balloons remaining structurally instant;
 - broken reply chains, malformed timestamps, out-of-order source times, and
   source gaps above one second remaining separate;
@@ -143,17 +164,20 @@ The patch adds regression coverage for:
 - invalid conversation anchors failing open instead of sharing a coalescing key;
 - the existing merge caps, reply context, cursor, and GUID tracking.
 
-The focused coalescer and monitor suites pass all 87 tests after a clean
-reapplication of the exported patch.
+The coalescer and monitor suites retain the existing scenarios. Configuration,
+notification parsing, and durable ingress coverage are also registered in the
+accumulated pool.
 
-Manual smoke test after deployment:
+Run all message-delivery scenarios through the registered managed test
+environment with recording mocks:
 
-1. Send a caption and image as one iMessage composition.
-2. Send a payload-referential question and link as one composition.
-3. Send text, a link, and trailing text as one composition.
-4. Send two short, genuinely separate text messages rapidly.
-5. Confirm the first three cases each produce one `embedded run start` and the
-   fourth produces two turns in the gateway log.
+```bash
+node packages/e2e/bin/openclaw-test-env.mjs ci
+```
+
+Production verification is read-only. Check service health, the installed
+version and patch marker, and unchanged configuration. Do not send test
+messages or trigger live replies.
 
 ## Apply and revert
 

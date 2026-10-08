@@ -1,0 +1,6 @@
+{
+  "id": "puddles-recording-tools",
+  "name": "Puddles recording tools",
+  "description": "Explicit test-only read fixtures and write recorders",
+  "configSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+}

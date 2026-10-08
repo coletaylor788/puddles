@@ -1,0 +1,80 @@
+import { existsSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { isAbsolute, join, relative, resolve } from "node:path";
+import { runCommand } from "./process-runner.mjs";
+
+export const PNPM_VERSION = "12.4.0";
+export const PNPM_PACKAGE_MANAGER =
+  "pnpm@12.4.0+sha512.37536c26ed40ab4134b6511e09f6b27f3ebb45687468f2406ca3805279a4e5ca158c1931350ad9774d6ab2108d71b3dbaeb39943159294375e4d053e8e05685c";
+export const PNPM_STORE_ENV = "PNPM_CONFIG_STORE_DIR";
+
+export function configuredPnpmStore(env = process.env) {
+  const configPath = env.PUDDLES_DEVELOPMENT_CONFIG ?? (env.HOME ? join(env.HOME, ".puddles", "development.json") : null);
+  const config = configPath && existsSync(configPath) ? JSON.parse(readFileSync(configPath, "utf8")) : null;
+  if (env.PUDDLES_DEVELOPMENT_CONFIG && !config) throw new Error("Development host configuration is missing");
+  const selected = config?.pnpmStore;
+  if (config && (!selected || !isAbsolute(selected))) throw new Error("Host pnpmStore must be absolute");
+  const requested = env[PNPM_STORE_ENV] ?? selected;
+  if (selected && requested && resolve(selected) !== resolve(requested)) {
+    throw new Error("PNPM_CONFIG_STORE_DIR differs from the maintained host store; finish active work before migrating it");
+  }
+  if (!requested || !isAbsolute(requested)) {
+    throw new Error(`${PNPM_STORE_ENV} must name one absolute host-local pnpm store root`);
+  }
+  return resolve(requested);
+}
+
+function validateResolvedStore(configured, value) {
+  if (!isAbsolute(value)) throw new Error("pnpm store path must be absolute");
+  const store = resolve(value);
+  const path = relative(configured, store);
+  if (path === ".." || path.startsWith("../")) {
+    throw new Error("pnpm resolved a store outside PNPM_CONFIG_STORE_DIR");
+  }
+  return store;
+}
+
+export async function inspectPnpmContext(
+  cwd,
+  execute = runCommand,
+  env = process.env,
+) {
+  const configuredStoreDir = configuredPnpmStore(env);
+  const commandEnv = { ...env, [PNPM_STORE_ENV]: configuredStoreDir };
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(join(cwd, "package.json"), "utf8"));
+  } catch (error) {
+    throw new Error("Package manager manifest is invalid", { cause: error });
+  }
+  if (manifest.packageManager !== PNPM_PACKAGE_MANAGER) {
+    throw new Error(`The integrity-bound package manager must be pinned as ${PNPM_PACKAGE_MANAGER}`);
+  }
+  const command = `pnpm@${PNPM_VERSION}`;
+  const version = (await execute(
+    "corepack",
+    [command, "--version"],
+    { cwd: tmpdir(), env: commandEnv, capture: true, quiet: true },
+  )).trim();
+  if (version !== PNPM_VERSION) {
+    throw new Error(`pnpm ${PNPM_VERSION} is required; ${version || "no version"} resolved`);
+  }
+  const storeDir = validateResolvedStore(
+    configuredStoreDir,
+    (await execute(
+      "corepack",
+      [command, "store", "path", "--silent"],
+      { cwd: tmpdir(), env: commandEnv, capture: true, quiet: true },
+    )).trim(),
+  );
+  return { version, configuredStoreDir, storeDir };
+}
+
+export function requireSharedPnpmStore(repository, source) {
+  if (repository.version !== PNPM_VERSION || source.version !== PNPM_VERSION ||
+      repository.configuredStoreDir !== source.configuredStoreDir ||
+      repository.storeDir !== source.storeDir) {
+    throw new Error("Puddles and OpenClaw must use one pnpm version and resolved host store");
+  }
+  return repository;
+}

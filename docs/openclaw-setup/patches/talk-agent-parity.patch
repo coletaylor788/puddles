@@ -1,0 +1,295 @@
+diff --git a/src/agents/agent-tools.before-tool-call.integration.e2e.test.ts b/src/agents/agent-tools.before-tool-call.integration.e2e.test.ts
+index 408df343..ce671b77 100644
+--- a/src/agents/agent-tools.before-tool-call.integration.e2e.test.ts
++++ b/src/agents/agent-tools.before-tool-call.integration.e2e.test.ts
+@@ -208,6 +208,38 @@ describe("before_tool_call hook integration", () => {
+     vi.restoreAllMocks();
+   });
+ 
++  it.each(["sessions_spawn", "message"])(
++    "uses ordinary tool policy for %s in standard voice mode",
++    async (name) => {
++      const runId = `standard-${name}`;
++      installVoiceRunBinding(runId);
++      const execute = vi.fn().mockResolvedValue({ content: [], details: { ok: true } });
++      const tool = wrapToolWithBeforeToolCallHook(asAgentTool({ name, execute }), {
++        runId,
++        agentId: "main",
++        config: { talk: { realtime: { confirmationPolicy: "standard" } } },
++      });
++      const args =
++        name === "message" ? { action: "send", message: "fixture" } : { task: "read calendar" };
++      await expect(tool.execute("standard-allowed", args)).resolves.toMatchObject({
++        details: { ok: true },
++      });
++      expect(execute).toHaveBeenCalledOnce();
++      beforeToolCallHook.mockResolvedValue({
++        block: true,
++        blockReason: "ordinary permission denied",
++      });
++      await expect(tool.execute("standard-denied", args)).resolves.toMatchObject({
++        details: {
++          status: "blocked",
++          deniedReason: "plugin-before-tool-call",
++          reason: "ordinary permission denied",
++        },
++      });
++      expect(execute).toHaveBeenCalledOnce();
++    },
++  );
++
+   it("executes tool normally when no hook is registered", async () => {
+     beforeToolCallHook = installBeforeToolCallHook({ enabled: false });
+     const execute = vi.fn().mockResolvedValue({ content: [], details: { ok: true } });
+diff --git a/src/agents/agent-tools.before-tool-call.policy.ts b/src/agents/agent-tools.before-tool-call.policy.ts
+index 088b4658..d38390fe 100644
+--- a/src/agents/agent-tools.before-tool-call.policy.ts
++++ b/src/agents/agent-tools.before-tool-call.policy.ts
+@@ -90,6 +90,7 @@ export function consumeFinalClientVoiceToolConfirmation(args: {
+ }) {
+   const voiceRun = resolveClientVoiceRunBinding(args.ctx?.runId);
+   return consumeClientVoiceToolConfirmationPolicy({
++    confirmationPolicy: (args.ctx?.config ?? getRuntimeConfig()).talk?.realtime?.confirmationPolicy,
+     agentId: voiceRun?.agentId,
+     voiceSessionId: voiceRun?.voiceSessionId,
+     runId: args.ctx?.runId,
+@@ -184,6 +185,8 @@ export async function runBeforeToolCallHook(args: {
+         : undefined;
+     const voiceRun = resolveClientVoiceRunBinding(args.ctx?.runId);
+     const voiceConfirmation = checkClientVoiceToolConfirmationPolicy({
++      confirmationPolicy: (args.ctx?.config ?? getRuntimeConfig()).talk?.realtime
++        ?.confirmationPolicy,
+       agentId: voiceRun?.agentId,
+       voiceSessionId: voiceRun?.voiceSessionId,
+       runId: args.ctx?.runId,
+diff --git a/src/config/schema.help.core.ts b/src/config/schema.help.core.ts
+index 8e7db460..56b69dfa 100644
+--- a/src/config/schema.help.core.ts
++++ b/src/config/schema.help.core.ts
+@@ -252,6 +252,8 @@ export const CORE_FIELD_HELP: Record<string, string> = {
+     "Talk reasoning strategy: agent-consult for Gateway-mediated agent help, direct-tools for local tool calls, or none.",
+   "talk.realtime.consultRouting":
+     "Gateway relay fallback for final user transcripts when the realtime provider skips openclaw_agent_consult. provider-direct preserves provider replies; force-agent-consult routes through OpenClaw.",
++  "talk.realtime.confirmationPolicy":
++    "Extra spoken confirmation for Talk tool calls: high-impact (default), or standard to use the same tool permissions and approvals as text. Standard does not bypass ordinary tool policies.",
+   "talk.consultThinkingLevel":
+     "Use this to override the thinking level for the regular agent run behind Talk realtime consults.",
+   "talk.consultFastMode":
+diff --git a/src/config/schema.labels.ts b/src/config/schema.labels.ts
+index b000f94d..77356901 100644
+--- a/src/config/schema.labels.ts
++++ b/src/config/schema.labels.ts
+@@ -743,6 +743,7 @@ export const FIELD_LABELS: Record<string, string> = {
+   "talk.speechLocale": "Talk Speech Locale",
+   "talk.interruptOnSpeech": "Talk Interrupt on Speech",
+   "talk.silenceTimeoutMs": "Talk Silence Timeout (ms)",
++  "talk.realtime.confirmationPolicy": "Talk Tool Confirmation Policy",
+   "talk.consultThinkingLevel": "Talk Consult Thinking Level",
+   "talk.consultFastMode": "Talk Consult Fast Mode",
+   messages: "Messages",
+diff --git a/src/config/talk.normalize.test.ts b/src/config/talk.normalize.test.ts
+index 8f7c279b..8c134c40 100644
+--- a/src/config/talk.normalize.test.ts
++++ b/src/config/talk.normalize.test.ts
+@@ -4,6 +4,15 @@ import { TALK_TEST_PROVIDER_ID } from "../test-utils/talk-test-provider.js";
+ import { buildTalkConfigResponse, normalizeTalkSection } from "./talk.js";
+ 
+ describe("talk normalization", () => {
++  it.each(["standard", "high-impact"] as const)(
++    "preserves %s confirmation policy",
++    (confirmationPolicy) => {
++      expect(normalizeTalkSection({ realtime: { confirmationPolicy } })).toEqual({
++        realtime: { confirmationPolicy },
++      });
++    },
++  );
++
+   it("preserves the explicit ambient Talk agent", () => {
+     expect(normalizeTalkSection({ agentId: " ops " })).toEqual({ agentId: "ops" });
+     expect(buildTalkConfigResponse({ agentId: "ops" })).toEqual({ agentId: "ops" });
+diff --git a/src/config/talk.ts b/src/config/talk.ts
+index 74e91816..13ebd19c 100644
+--- a/src/config/talk.ts
++++ b/src/config/talk.ts
+@@ -92,6 +92,9 @@ function normalizeTalkRealtimeConfig(value: unknown): TalkRealtimeConfig | undef
+   const source = value;
+   const normalized: TalkRealtimeConfig = {};
+ 
++  if (source.confirmationPolicy === "standard" || source.confirmationPolicy === "high-impact") {
++    normalized.confirmationPolicy = source.confirmationPolicy;
++  }
+   const provider = normalizeOptionalString(source.provider);
+   if (provider) {
+     normalized.provider = provider;
+diff --git a/src/config/zod-schema.root-support.ts b/src/config/zod-schema.root-support.ts
+index a5ab55ba..f2297474 100644
+--- a/src/config/zod-schema.root-support.ts
++++ b/src/config/zod-schema.root-support.ts
+@@ -211,6 +211,7 @@ const TalkRealtimeSchema = z
+     reasoningEffort: z.string().min(1).optional(),
+     brain: z.enum(["agent-consult", "direct-tools", "none"]).optional(),
+     consultRouting: z.enum(["provider-direct", "force-agent-consult"]).optional(),
++    confirmationPolicy: z.enum(["standard", "high-impact"]).optional(),
+   })
+   .superRefine((realtime, ctx) => {
+     const provider = normalizeLowercaseStringOrEmpty(realtime.provider ?? "");
+diff --git a/src/config/zod-schema.talk.test.ts b/src/config/zod-schema.talk.test.ts
+index 7dc7ad32..ab32d514 100644
+--- a/src/config/zod-schema.talk.test.ts
++++ b/src/config/zod-schema.talk.test.ts
+@@ -3,6 +3,22 @@ import { describe, expect, it } from "vitest";
+ import { OpenClawSchema } from "./zod-schema.js";
+ 
+ describe("OpenClawSchema talk validation", () => {
++  it.each(["standard", "high-impact"])(
++    "accepts %s voice confirmation policy",
++    (confirmationPolicy) => {
++      expect(OpenClawSchema.safeParse({ talk: { realtime: { confirmationPolicy } } }).success).toBe(
++        true,
++      );
++    },
++  );
++
++  it("rejects unknown voice confirmation policies", () => {
++    expect(
++      OpenClawSchema.safeParse({ talk: { realtime: { confirmationPolicy: "allow-everything" } } })
++        .success,
++    ).toBe(false);
++  });
++
+   it("accepts a positive integer talk.silenceTimeoutMs", () => {
+     const result = OpenClawSchema.safeParse({
+       talk: {
+diff --git a/src/gateway/talk/client-agent-consult.ts b/src/gateway/talk/client-agent-consult.ts
+index 9ee04eec..664fdfdd 100644
+--- a/src/gateway/talk/client-agent-consult.ts
++++ b/src/gateway/talk/client-agent-consult.ts
+@@ -20,6 +20,7 @@ import {
+   buildRunUserTurnIdempotencyKey,
+   createUserTurnTranscriptRecorder,
+ } from "../../sessions/user-turn-transcript.js";
++import { runOutsideAsyncWorkScope } from "../../shared/async-work-scope.js";
+ import { createDeferredCore } from "../../shared/deferred.js";
+ import { createLazyRuntimeModule } from "../../shared/lazy-runtime.js";
+ import {
+@@ -307,8 +308,11 @@ export function createTalkClientAgentConsultRunner(params: {
+     }
+     let confirmationObservation: ReturnType<typeof observeClientVoiceConfirmationRun> | undefined;
+     let yielded = false;
+-    return await admission
+-      .run(() =>
++    // Provider callbacks retain the offer request's async context after it closes.
++    // Transfer work ownership without dropping caller authorization. The consult's
++    // admission and embedded run continue to own cancellation and completion.
++    return await runOutsideAsyncWorkScope(() =>
++      admission.run(() =>
+         consultRealtimeVoiceAgent({
+           cfg: params.config,
+           agentRuntime: runtime,
+@@ -426,7 +430,8 @@ export function createTalkClientAgentConsultRunner(params: {
+               : undefined;
+           },
+         }),
+-      )
++      ),
++    )
+       .then((result) => {
+         yielded = result.yielded === true;
+         const confirmationReply = confirmationObservation?.readReply();
+diff --git a/src/gateway/talk/client-gateway-control.agent-consult.test.ts b/src/gateway/talk/client-gateway-control.agent-consult.test.ts
+index c73d3851..335b8435 100644
+--- a/src/gateway/talk/client-gateway-control.agent-consult.test.ts
++++ b/src/gateway/talk/client-gateway-control.agent-consult.test.ts
+@@ -1,3 +1,4 @@
++import { AsyncLocalStorage } from "node:async_hooks";
+ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+ import type { OperationalRunInstanceRef } from "../../agents/admitted-run-context.js";
+ import {
+@@ -8,9 +9,11 @@ import {
+   createEmbeddedRunHandle,
+   testing as embeddedRunsTesting,
+ } from "../../agents/embedded-agent-runner/runs.test-support.js";
++import { prepareContextEngineSubagentSpawn } from "../../agents/subagents/spawn/subagent-spawn-context.js";
+ import { withGatewayToolCallerIdentity } from "../../agents/tools/gateway-caller-context.js";
+ import type { OpenClawConfig } from "../../config/types.openclaw.js";
+ import type { PluginRuntime } from "../../plugins/runtime/types.js";
++import { AsyncWorkScope } from "../../shared/async-work-scope.js";
+ import {
+   authorizeClientVoiceConfirmation,
+   checkClientVoiceToolConfirmationPolicy,
+@@ -150,6 +153,52 @@ describe("Talk client agent consult admission", () => {
+     resetClientVoiceConfirmationStateForTest();
+   });
+ 
++  it.each(["before-consult", "during-consult"] as const)(
++    "prepares a reader after the offer request closes (%s)",
++    async (closedAt) => {
++      const request = new AsyncWorkScope();
++      const caller = new AsyncLocalStorage<string>();
++      const callback = caller.run("authenticated-owner", () =>
++        request.run(() => AsyncLocalStorage.snapshot()),
++      );
++      const entered = deferred<void>();
++      const proceed = deferred<void>();
++      mocks.runEmbeddedAgentCore.mockImplementationOnce(async () => {
++        entered.resolve();
++        await proceed.promise;
++        expect(caller.getStore()).toBe("authenticated-owner");
++        const result = await prepareContextEngineSubagentSpawn({
++          cfg: {},
++          context: { status: "ok", mode: "isolated" },
++          requesterInternalKey: "agent:researcher:talk",
++          childSessionKey: "agent:reader:subagent:voice-test",
++          runTimeoutSeconds: 30,
++        });
++        if (result.status === "error") {
++          throw new Error(result.error);
++        }
++        if (result.status === "ok") {
++          await result.preparation.dispose();
++        }
++        return { payloads: [] };
++      });
++      if (closedAt === "before-consult") {
++        await request.drain();
++      }
++      const run = callback(() => createRunner().runPrompt({ prompt: "read my calendar" }));
++      try {
++        await entered.promise;
++        await request.drain();
++        proceed.resolve();
++        await expect(run).resolves.toEqual({ text: "done" });
++        expect(mocks.close).toHaveBeenCalledOnce();
++      } finally {
++        proceed.resolve();
++        await run.catch(() => undefined);
++      }
++    },
++  );
++
+   it("runs through a Talk-owned gateway admission and closes it after success", async () => {
+     await expect(createRunner().runPrompt({ prompt: "check" })).resolves.toEqual({ text: "done" });
+ 
+diff --git a/src/talk/client-voice-confirmation.ts b/src/talk/client-voice-confirmation.ts
+index 65c7cd7c..fb8d72f2 100644
+--- a/src/talk/client-voice-confirmation.ts
++++ b/src/talk/client-voice-confirmation.ts
+@@ -326,6 +326,7 @@ export function noteClientVoiceConfirmationUtterance(params: {
+ }
+ 
+ type ClientVoiceToolConfirmationPolicyParams = {
++  confirmationPolicy?: "standard" | "high-impact";
+   agentId?: string;
+   voiceSessionId?: string;
+   runId?: string;
+@@ -344,6 +345,10 @@ function resolveClientVoiceToolConfirmationPolicy(
+   params: ClientVoiceToolConfirmationPolicyParams,
+   consume: boolean,
+ ): ClientVoiceToolConfirmationPolicyResult {
++  // Standard mode uses the ordinary tool policies and approvals that also apply to text.
++  if (params.confirmationPolicy === "standard") {
++    return { allowed: true };
++  }
+   if (!params.agentId || !params.voiceSessionId) {
+     return { allowed: true };
+   }

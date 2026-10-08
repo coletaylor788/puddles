@@ -1,0 +1,119 @@
+diff --git a/src/agents/embedded-agent-runner/run/terminal-resolution.test.ts b/src/agents/embedded-agent-runner/run/terminal-resolution.test.ts
+index 4bba4d94c..148ab52d7 100644
+--- a/src/agents/embedded-agent-runner/run/terminal-resolution.test.ts
++++ b/src/agents/embedded-agent-runner/run/terminal-resolution.test.ts
+@@ -302,45 +302,77 @@ describe("terminal resolution", () => {
+     },
+   );
+ 
+-  it.each(["explicit policy", "internal notification"])(
+-    "completes NO_REPLY from %s without retrying",
+-    async (source) => {
+-      const assistant = buildEmbeddedRunnerAssistant({
+-        content: [{ type: "text", text: SILENT_REPLY_TOKEN }],
+-      });
+-      const attempt = makeEmbeddedRunnerAttempt({
+-        assistantTexts: [SILENT_REPLY_TOKEN],
+-        lastAssistant: assistant,
+-        currentAttemptAssistant: assistant,
+-        currentAttemptReplayMetadata: { hadPotentialSideEffects: false, replaySafe: true },
+-      });
+-      const activateInternalPrompt = vi.fn();
+-      const input = makeTerminalInput({
+-        attempt,
+-        attemptAssistant: assistant,
+-        runParams:
+-          source === "explicit policy"
+-            ? { allowEmptyAssistantReplyAsSilent: false, terminalReplyExpectation: "optional" }
+-            : {
+-                allowEmptyAssistantReplyAsSilent: false,
+-                trigger: "user",
+-                inputProvenance: { kind: "inter_session", sourceTool: "subagent_announce" },
+-              },
+-        activateInternalPrompt,
+-      });
++  it.each(
++    ["explicit policy", "internal notification"].flatMap((source) =>
++      ["subscription", "current", "completed"].map((evidence) => ({ source, evidence })),
++    ),
++  )("completes $evidence NO_REPLY from $source without retrying", async ({ source, evidence }) => {
++    const assistant = buildEmbeddedRunnerAssistant({
++      content: [{ type: "text", text: SILENT_REPLY_TOKEN }],
++    });
++    const attempt = makeEmbeddedRunnerAttempt({
++      assistantTexts: evidence === "subscription" ? [SILENT_REPLY_TOKEN] : [],
++      lastAssistant: assistant,
++      currentAttemptAssistant: evidence === "completed" ? undefined : assistant,
++      currentAttemptCompletedAssistant: evidence === "completed" ? assistant : undefined,
++      currentAttemptReplayMetadata: { hadPotentialSideEffects: false, replaySafe: true },
++    });
++    const activateInternalPrompt = vi.fn();
++    const input = makeTerminalInput({
++      attempt,
++      attemptAssistant: assistant,
++      runParams:
++        source === "explicit policy"
++          ? { allowEmptyAssistantReplyAsSilent: false, terminalReplyExpectation: "optional" }
++          : {
++              allowEmptyAssistantReplyAsSilent: false,
++              trigger: "user",
++              inputProvenance: { kind: "inter_session", sourceTool: "subagent_announce" },
++            },
++      activateInternalPrompt,
++    });
+ 
+-      const resolved = await resolveEmbeddedRunTerminal(input);
++    const resolved = await resolveEmbeddedRunTerminal(input);
+ 
+-      expect(resolved.action).toBe("complete");
+-      if (resolved.action !== "complete") {
+-        return;
+-      }
+-      expect(resolved.result.payloads).toEqual([{ text: SILENT_REPLY_TOKEN }]);
+-      expect(resolved.result.meta.terminalReplyKind).toBe("silent-empty");
+-      expect(resolved.result.meta.livenessState).toBe("working");
+-      expect(activateInternalPrompt).not.toHaveBeenCalled();
+-    },
+-  );
++    expect(resolved.action).toBe("complete");
++    if (resolved.action !== "complete") {
++      return;
++    }
++    expect(resolved.result.payloads).toEqual([{ text: SILENT_REPLY_TOKEN }]);
++    expect(resolved.result.meta.terminalReplyKind).toBe("silent-empty");
++    expect(resolved.result.meta.livenessState).toBe("working");
++    expect(activateInternalPrompt).not.toHaveBeenCalled();
++  });
++
++  it("does not revive a historical silent reply when this attempt returned nothing", async () => {
++    const assistant = buildEmbeddedRunnerAssistant({
++      content: [{ type: "text", text: SILENT_REPLY_TOKEN }],
++    });
++    const input = makeTerminalInput({
++      attempt: makeEmbeddedRunnerAttempt({
++        assistantTexts: [],
++        lastAssistant: assistant,
++        currentAttemptAssistant: undefined,
++        currentAttemptCompletedAssistant: undefined,
++      }),
++      runParams: { allowEmptyAssistantReplyAsSilent: true, terminalReplyExpectation: "required" },
++    });
++    await expect(resolveEmbeddedRunTerminal(input)).resolves.toEqual({ action: "retry" });
++  });
++
++  it("keeps visible-answer recovery when the conversation does not permit silence", async () => {
++    const assistant = buildEmbeddedRunnerAssistant({
++      content: [{ type: "text", text: SILENT_REPLY_TOKEN }],
++    });
++    const input = makeTerminalInput({
++      attempt: makeEmbeddedRunnerAttempt({
++        assistantTexts: [],
++        currentAttemptAssistant: assistant,
++      }),
++      runParams: { allowEmptyAssistantReplyAsSilent: false, terminalReplyExpectation: "required" },
++    });
++    await expect(resolveEmbeddedRunTerminal(input)).resolves.toEqual({ action: "retry" });
++  });
+ 
+   it("keeps an empty visible parent alive for accepted completion children", async () => {
+     const attempt = makeEmbeddedRunnerAttempt({

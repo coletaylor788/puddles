@@ -26,8 +26,11 @@ is bypassed.
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 from typing import Any, Callable, TypeVar
+
+import anyio
 
 from .logging_setup import log
 
@@ -36,6 +39,7 @@ T = TypeVar("T")
 # Timeout defaults
 DEFAULT_TIMEOUT_S = 60.0
 SLOW_CALL_THRESHOLDS_S = (10.0, 30.0)
+CANCELLATION_DRAIN_TIMEOUT_S = 10.0
 
 
 async def _emit_slow_warnings(op: str, start: float) -> None:
@@ -55,6 +59,7 @@ async def run_blocking(
     *,
     op: str,
     timeout: float = DEFAULT_TIMEOUT_S,
+    cancellation: threading.Event | None = None,
 ) -> T:
     """Run a blocking callable in a worker thread with a timeout + slow warnings.
 
@@ -76,12 +81,23 @@ async def run_blocking(
     start = time.monotonic()
     log("info", "api_call", op=op)
 
-    work = asyncio.create_task(asyncio.to_thread(call))
+    started = threading.Event()
+
+    def invoke():
+        started.set()
+        return call()
+
+    work = asyncio.create_task(asyncio.to_thread(invoke))
     warner = asyncio.create_task(_emit_slow_warnings(op, start))
 
     try:
         result = await asyncio.wait_for(asyncio.shield(work), timeout=timeout)
     except asyncio.TimeoutError:
+        if cancellation is not None:
+            cancellation.set()
+            await _drain_cancelled_work(work, started)
+        else:
+            work.cancel()
         elapsed_ms = int((time.monotonic() - start) * 1000)
         log(
             "error",
@@ -90,6 +106,13 @@ async def run_blocking(
             elapsed_ms=elapsed_ms,
             timeout_s=timeout,
         )
+        raise
+    except asyncio.CancelledError:
+        if cancellation is not None:
+            cancellation.set()
+            await _drain_cancelled_work(work, started)
+        else:
+            work.cancel()
         raise
     except Exception as exc:
         elapsed_ms = int((time.monotonic() - start) * 1000)
@@ -115,6 +138,24 @@ async def run_blocking(
     size = _result_size(result)
     log("info", "api_done", op=op, elapsed_ms=elapsed_ms, result_size=size)
     return result
+
+
+async def _drain_cancelled_work(
+    work: asyncio.Task[Any],
+    started: threading.Event,
+) -> None:
+    """Cancel queued work or briefly drain a bounded in-flight side effect."""
+    if not started.is_set():
+        work.cancel()
+        return
+    with anyio.CancelScope(shield=True):
+        try:
+            await asyncio.wait_for(
+                asyncio.shield(work),
+                timeout=CANCELLATION_DRAIN_TIMEOUT_S,
+            )
+        except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
+            pass
 
 
 def _result_size(result: Any) -> int | None:

@@ -1,0 +1,241 @@
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
+import { basename, dirname, isAbsolute, join, relative } from "node:path";
+import { atomicJson, digest, fileDigest, inside, jsonDigest, treeDigest } from "./native-state.mjs";
+import { runCommand } from "./process-runner.mjs";
+
+const releaseRuntimeSelectionTimeoutMs = 60_000;
+const runtimeSelectionOutputBytes = 16 * 1024 * 1024;
+// Composed runtimes include bundled plugins and can list more than 4 MiB of paths.
+const runtimeArchiveListingOutputBytes = 16 * 1024 * 1024;
+
+function parseRuntimeSelection(stdout) {
+  const [pack] = JSON.parse(stdout);
+  if (!pack?.files?.length) throw new Error("Upstream selected an empty package");
+  return pack;
+}
+
+// Materialize the production dependency graph from the installed frozen graph.
+// Resolve per package, not from the root: transitive versions and patched modules differ.
+function materializeSelectedRuntime(source, destination, pack) {
+  if (existsSync(destination)) throw new Error("Runtime destination already exists");
+  mkdirSync(destination, { recursive: true, mode: 0o700 });
+  const installed = new Map([[realpathSync(source), destination]]);
+  function packageCopy(from) {
+    const real = realpathSync(from);
+    if (installed.has(real)) return installed.get(real);
+    const to = join(destination, "node_modules", ".runtime-deps", digest(real).slice(0, 24));
+    installed.set(real, to);
+    mkdirSync(dirname(to), { recursive: true });
+    const manifest = JSON.parse(readFileSync(join(real, "package.json"), "utf8"));
+    cpSync(real, to, {
+      recursive: true, dereference: true,
+      filter: (path) => !["node_modules", ".git"].includes(relative(real, path).split("/")[0]),
+    });
+    const deps = { ...manifest.peerDependencies, ...manifest.dependencies, ...manifest.optionalDependencies };
+    for (const name of Object.keys(deps)) {
+      let current = real;
+      let dependency;
+      while (true) {
+        const candidate = join(current, "node_modules", name);
+        if (existsSync(candidate)) { dependency = realpathSync(candidate); break; }
+        if (dirname(current) === current) break;
+        current = dirname(current);
+      }
+      if (!dependency) {
+        if (Object.hasOwn(manifest.optionalDependencies ?? {}, name) || manifest.peerDependenciesMeta?.[name]?.optional) continue;
+        throw new Error(`Missing production dependency: ${name}`);
+      }
+      const target = join(to, "node_modules", name);
+      mkdirSync(dirname(target), { recursive: true });
+      const copied = packageCopy(dependency);
+      symlinkSync(relative(dirname(target), copied), target);
+      for (const field of ["dependencies", "optionalDependencies", "peerDependencies"]) {
+        if (manifest[field]?.[name]) manifest[field][name] = JSON.parse(readFileSync(join(dependency, "package.json"), "utf8")).version;
+      }
+    }
+    delete manifest.devDependencies;
+    // This tree is extracted directly; registry resolution is never part of installation.
+    atomicJson(join(to, "package.json"), manifest);
+    return to;
+  }
+  const manifest = JSON.parse(readFileSync(join(source, "package.json"), "utf8"));
+  // Copy exactly the production graph by resolving from the root package.
+  for (const name of Object.keys({ ...manifest.dependencies, ...manifest.optionalDependencies })) {
+    const from = join(source, "node_modules", name);
+    if (!existsSync(from)) {
+      if (Object.hasOwn(manifest.optionalDependencies ?? {}, name)) continue;
+      throw new Error(`Missing production dependency: ${name}`);
+    }
+    const to = join(destination, "node_modules", name);
+    mkdirSync(dirname(to), { recursive: true });
+    const copied = packageCopy(from);
+    symlinkSync(relative(dirname(to), copied), to);
+    for (const field of ["dependencies", "optionalDependencies"]) {
+      if (manifest[field]?.[name]) manifest[field][name] = JSON.parse(readFileSync(join(from, "package.json"), "utf8")).version;
+    }
+  }
+  for (const { path: name } of pack.files) {
+    const parts = name.split("/");
+    if (isAbsolute(name) || parts.includes("..")) throw new Error("Invalid upstream package path");
+    if (parts[0] === "node_modules") {
+      // npm also selects bundled dependencies. Only the resolved graph owns their bytes.
+      const selected = realpathSync(join(source, name));
+      let owner = dirname(selected);
+      while (!installed.has(owner) && dirname(owner) !== owner) owner = dirname(owner);
+      if (!installed.has(owner) || installed.get(owner) === destination
+        || ["node_modules", ".git"].includes(relative(owner, selected).split("/")[0])) {
+        throw new Error("Bundled package is outside the production dependency graph");
+      }
+      continue;
+    }
+    mkdirSync(dirname(join(destination, name)), { recursive: true });
+    cpSync(join(source, name), join(destination, name), { dereference: true });
+  }
+  delete manifest.devDependencies;
+  atomicJson(join(destination, "package.json"), manifest);
+  treeDigest(destination, { portable: true });
+}
+
+export function materializeRuntime(source, destination) {
+  // Let npm apply upstream's files list and exclusions, without lifecycle hooks.
+  const selection = spawnSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
+    cwd: source, encoding: "utf8", timeout: releaseRuntimeSelectionTimeoutMs,
+    maxBuffer: runtimeSelectionOutputBytes,
+    env: { ...process.env, PATH: `${dirname(process.execPath)}:${process.env.PATH}`, npm_config_update_notifier: "false" },
+  });
+  if (selection.error?.code === "ETIMEDOUT") {
+    throw new Error(`Upstream package file selection exceeded ${releaseRuntimeSelectionTimeoutMs}ms`);
+  }
+  if (selection.error || selection.status !== 0) throw new Error("Bounded upstream package file selection failed");
+  materializeSelectedRuntime(source, destination, parseRuntimeSelection(selection.stdout));
+}
+
+export async function selectRuntimePackageFiles(source) {
+  const npmCli = realpathSync(join(dirname(process.execPath), process.platform === "win32" ? "npm.cmd" : "npm"));
+  const npmRequire = createRequire(npmCli);
+  const Arborist = npmRequire("@npmcli/arborist");
+  const packlist = npmRequire("npm-packlist");
+  const tree = await new Arborist({ path: source }).loadActual();
+  return packlist(tree, { path: source });
+}
+
+export async function materializeRuntimeForDev(source, destination) {
+  const files = await selectRuntimePackageFiles(source);
+  materializeSelectedRuntime(source, destination, { files: files.map((path) => ({ path })) });
+}
+
+export async function bundleRuntimePlugins(runtime, plugins, run = runCommand) {
+  if (!plugins.length) return;
+  const ledger = join(runtime, "puddles-bundled-plugins.json");
+  if (existsSync(ledger)) throw new Error("Bundled plugin provenance already exists");
+  const ids = new Set();
+  const records = [];
+  for (const { id, artifact, attestation } of plugins) {
+    if (!/^[a-z][a-z0-9-]*$/.test(id) || ids.has(id)) throw new Error("Invalid bundled plugin identity");
+    ids.add(id);
+    const destination = join(runtime, "dist", "extensions", id);
+    if (existsSync(destination)) throw new Error("Bundled plugin collides with the host distribution");
+    mkdirSync(dirname(destination), { recursive: true });
+    if (!inside(realpathSync(runtime), realpathSync(dirname(destination)))) throw new Error("Bundled plugin directory escapes the host");
+    const staging = mkdtempSync(join(dirname(runtime), ".bundled-plugin-"));
+    try {
+      const installed = await installRuntime(artifact, join(staging, "install"), run);
+      const manifest = JSON.parse(readFileSync(join(installed, "openclaw.plugin.json"), "utf8"));
+      if (manifest.id !== id) throw new Error("Bundled plugin manifest identity differs from selection");
+      const pkg = JSON.parse(readFileSync(join(installed, "package.json"), "utf8"));
+      const entries = pkg.openclaw?.runtimeExtensions ?? pkg.openclaw?.extensions;
+      if (!Array.isArray(entries) || !entries.length || entries.some((entry) =>
+        typeof entry !== "string" || isAbsolute(entry) || !existsSync(join(installed, entry)) ||
+        !inside(realpathSync(installed), realpathSync(join(installed, entry))))) {
+        throw new Error("Bundled plugin requires contained runtime entries");
+      }
+      renameSync(installed, destination);
+      const { path: _archivePath, ...identity } = artifact;
+      records.push({ id, artifact: identity, ...(attestation ? { attestation } : {}) });
+    } finally {
+      rmSync(staging, { recursive: true, force: true });
+    }
+  }
+  // Source provenance is part of the host archive's immutable content digest.
+  atomicJson(ledger, { schemaVersion: 1, plugins: records });
+}
+
+export async function packRuntime(source, directory, run = runCommand, bundledPlugins = []) {
+  const runtime = join(directory, "runtime");
+  if (existsSync(runtime)) rmSync(runtime, { recursive: true });
+  materializeRuntime(source, runtime);
+  await bundleRuntimePlugins(runtime, bundledPlugins, run);
+  const identity = { schemaVersion: 1, platform: process.platform, arch: process.arch, node: process.version, runtimeSha256: treeDigest(runtime, { portable: true }) };
+  atomicJson(join(directory, "runtime-identity.json"), identity);
+  const artifact = join(directory, "openclaw-runtime.tar.gz");
+  await run("tar", ["-czf", artifact, "-C", directory, "runtime", "runtime-identity.json"]);
+  return { path: artifact, sha256: fileDigest(artifact), ...identity };
+}
+
+export async function packProviderRuntime(sourceRoot, directory, provenance, run = runCommand) {
+  const source = join(sourceRoot, "extensions", "llama-cpp");
+  const built = join(sourceRoot, "dist", "extensions", "llama-cpp");
+  const sourceManifest = JSON.parse(readFileSync(join(source, "package.json"), "utf8"));
+  const builtManifest = JSON.parse(readFileSync(join(built, "package.json"), "utf8"));
+  if (sourceManifest.name !== "@openclaw/llama-cpp-provider" ||
+      builtManifest.name !== sourceManifest.name || builtManifest.version !== sourceManifest.version ||
+      builtManifest.openclaw?.extensions?.[0] !== "./index.js") {
+    throw new Error("Built llama.cpp provider identity differs from its patched source");
+  }
+  const sourceSha256 = treeDigest(source);
+  const buildOutputSha256 = treeDigest(built, { portable: true, excludeNames: ["node_modules"] });
+  const artifact = await packRuntime(built, directory, run);
+  const receipt = {
+    schema: "puddles.openclaw-provider-artifact/v1",
+    schemaVersion: 1,
+    id: "llama-cpp-provider",
+    package: { name: sourceManifest.name, version: sourceManifest.version },
+    publicHead: provenance.publicHead,
+    source: { sha256: sourceSha256 },
+    build: {
+      inputsSha256: provenance.buildInputsSha256,
+      commandSha256: provenance.buildCommandSha256,
+      outputSha256: buildOutputSha256,
+    },
+    toolchain: provenance.tools,
+    artifact: {
+      file: basename(artifact.path),
+      sha256: artifact.sha256,
+      runtimeSha256: artifact.runtimeSha256,
+    },
+  };
+  const provenancePath = join(directory, "provider-provenance.json");
+  atomicJson(provenancePath, receipt);
+  return {
+    id: "llama-cpp-provider",
+    artifact,
+    provenance: {
+      path: provenancePath,
+      sha256: fileDigest(provenancePath),
+      schema: receipt.schema,
+      publicHead: receipt.publicHead,
+      sourceSha256,
+      buildInputsSha256: receipt.build.inputsSha256,
+      buildCommandSha256: receipt.build.commandSha256,
+    },
+  };
+}
+
+export async function installRuntime(artifact, prefix, run = runCommand) {
+  if (fileDigest(artifact.path) !== artifact.sha256) throw new Error("Artifact digest changed");
+  if (existsSync(prefix)) throw new Error("Install prefix must be new");
+  mkdirSync(prefix, { recursive: true, mode: 0o700 });
+  const entries = await run("tar", ["-tzf", artifact.path], { capture: true, maxOutputBytes: runtimeArchiveListingOutputBytes });
+  if (entries.split("\n").filter(Boolean).some((entry) => entry.startsWith("/") || entry.split("/").includes("..") || !["runtime", "runtime-identity.json"].includes(entry.split("/")[0]))) {
+    throw new Error("Invalid runtime archive path");
+  }
+  await run("tar", ["-xpzf", artifact.path, "-C", prefix]);
+  const identity = JSON.parse(readFileSync(join(prefix, "runtime-identity.json"), "utf8"));
+  if (["schemaVersion", "platform", "arch", "node", "runtimeSha256"].some((key) => identity[key] !== artifact[key])) throw new Error("Archive identity differs from its manifest");
+  if (identity.platform !== process.platform || identity.arch !== process.arch || identity.node !== process.version) throw new Error("Runtime toolchain or target differs from rehearsal");
+  const runtime = join(prefix, "runtime");
+  if (treeDigest(runtime, { portable: true }) !== identity.runtimeSha256) throw new Error("Installed runtime differs from artifact identity");
+  return runtime;
+}

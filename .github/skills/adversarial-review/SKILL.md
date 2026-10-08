@@ -3,10 +3,29 @@ name: adversarial-review
 description: Independently challenge a completed feature for hidden defects, unsafe assumptions, regressions, and incomplete requirements. Use for the mandatory post-implementation review of every feature.
 metadata:
   author: Cole Taylor
-  version: "1.3.0"
+  version: "1.8.0"
 ---
 
 # Adversarial Review
+
+Routine documentation, plan, repository-instruction, and development-skill edits
+do not require this review or the full feature validation loop. Follow the
+documentation-only path in `safe-feature-development`. When explicitly asked to
+review documentation or a substantive policy change, check accuracy, consistency,
+and relevant links or contracts. Do not demand runtime regression tests, DEV or
+TEST, release receipts, deployment, or rollback evidence for unchanged runtime
+behavior. Runtime-consumed prompts, configuration, executable examples used by
+automation, and mixed code/documentation changes still need applicable behavior
+validation. A CI trigger-only change needs focused filter tests, not runtime
+rehearsal.
+
+Do not request or add regression tests that assert wording, headings, section
+order, or prose content in documentation, plans, `AGENTS.md`, repository
+instructions, or development skills. Review those changes directly, with
+existing link, formatting, or frontmatter validators where useful. Missing
+prose assertions are not a test gap. Test executable scripts included with a
+skill for their observable behavior, without turning the skill text into a
+regression contract.
 
 Review the complete feature diff and all new files as a skeptical engineer who
 did not implement the change. Do not limit review to the latest fix. Read the
@@ -31,6 +50,34 @@ Record residual validation gaps only when useful, and do not promote minor gaps
 into actionable remediation-loop findings. Before reporting, verify that the
 concern is not speculative, duplicative, already resolved, or unrelated to the
 current change.
+
+Read the [security architecture](../../../docs/openclaw-setup/security-architecture.md)
+and check the complete change and affected paths against its boundaries,
+principles, and rules.
+
+- Block review clearance for any deviation or exception, regardless of finding
+  severity. Require explicit human approval for that specific deviation;
+  general feature approval or accepted residual risk is not enough.
+- After approval, require the architecture to reflect the approved change before
+  clearing review. Otherwise, require the implementation to align.
+- Review architecture edits against the previously approved version. Editing
+  the document does not itself authorize a deviation.
+
+Use that trust model, not a stricter one invented during review. Native
+rehearsal runs trusted code on a trusted host. Its isolation protects production
+uptime and writable state; it is not an adversarial host security boundary.
+Normal host filesystem access, shared dependencies, and existing coordination
+directories are not defects by themselves. Keep product agent access controls,
+recorded external writes, secret handling, and deployment rollback in scope.
+Report a concrete path to violating those requirements, not the mere absence
+of an optional harness sandbox.
+
+Challenge unnecessary complexity as well as missing safeguards. Prefer removing
+a harness-only restriction over adding runtime patches, alternate locking, or
+new fixture protocols to work around it. Require extra machinery only when an
+existing supported mechanism cannot meet a concrete requirement. Do not turn
+optional hardening into a release gate or ask for repeat approval of access
+already covered by the requester's stated scope.
 
 When the implementation agent disputes a significant finding, assess its
 evidence and rationale on the merits. Withdraw or revise a finding that is no
@@ -66,9 +113,26 @@ so and identify any useful residual validation gaps separately from findings.
 
 Apply any additional checks listed below.
 
+Retain the same independent reviewer across corrections. Routine bookkeeping
+does not require a terminal fresh reviewer. Inspect whether cached proofs bind
+the actual source, test, environment, toolchain, build, and artifact inputs.
+Reject a mock-only proxy for the installed real runtime. Check that source
+integration happens before activation, outside the live rollback transaction.
+
+Distinguish local DEV drafts from final validation. Incremental local builds
+and mutable source are expected during iteration; do not require a CI artifact
+or full accumulated suite between ordinary fixes. Check that affected installed
+behavior is exercised early and that stale outputs are not reused. Reviewed
+features may merge after focused and required repository checks. One release
+owner runs the full accumulated CI gate on selected merged source and promotes
+that artifact through DEV, TEST, and PROD. Draft checks do not certify release.
+Check that later main commits do not force another build of the active candidate.
+Preserve slot ownership, isolation, recording adapters, and production recovery.
+TEST rollback snapshots are temporary and must be cleaned after their checks.
+
 ## Project-specific concerns
 
 1. Prefer solving features via well established extension patterns such as plugins, MCP tools, etc.
 2. If a patch to OpenClaw is required, give extra scrutiny and hold the patch to the bar "this would be accepted and checked-in to OpenClaw itself". Be very careful to ensure it doesn't cause unintended consequences or behavior, doesn't re-invent things, etc. This code base is large and requires extensive research to validate.
 3. If a patch to OpenClaw, ensure patch is fully docmented for repeat application in the repo
-4. Everything must have integration tests. I can't test this is not acceptable. Mock dependencies, built test harnesses, etc. The integration test suite being complete and thorough is absolutely critical to avoiding regressions.
+4. Runtime behavior changes must have integration tests, using mocks or harnesses where needed. Preserve complete cumulative coverage. Documentation-only changes use focused document checks; CI trigger-only changes use focused workflow and path-selection tests.

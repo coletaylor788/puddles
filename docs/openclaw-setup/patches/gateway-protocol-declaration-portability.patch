@@ -1,0 +1,75 @@
+diff --git a/packages/gateway-protocol/src/schema/protocol-schema-fragment-portability.test.ts b/packages/gateway-protocol/src/schema/protocol-schema-fragment-portability.test.ts
+new file mode 100644
+index 000000000..ee728eadd
+--- /dev/null
++++ b/packages/gateway-protocol/src/schema/protocol-schema-fragment-portability.test.ts
+@@ -0,0 +1,69 @@
++import { expect, expectTypeOf, it } from "vitest";
++import { AgentsListResultSchema } from "./agents-models-skills.js";
++import { ApprovalHistoryResultSchema } from "./approvals.js";
++import { AuditActivityAgentRunV1Schema } from "./audit-activity.js";
++import { BoardSnapshotSchema } from "./board.js";
++import { TalkModeParamsSchema } from "./channels.js";
++import { CronJobSchema } from "./cron.js";
++import { EnvironmentsListResultSchema } from "./environments.js";
++import { NodePairListParamsSchema } from "./nodes.js";
++import { CapabilityConsentErrorDetailsSchema } from "./plugins.js";
++import { PortalSummarySchema } from "./portals.js";
++import { ProgressCardStepStatusSchema } from "./progress-card.js";
++import { ProtocolSchemas } from "./protocol-schemas.js";
++import { PushTestParamsSchema } from "./push.js";
++import { SessionGitHubOptionsParamsSchema } from "./session-github-publication.js";
++import { SessionPermissionModeSchema, SessionsGoalUpdateParamsSchema } from "./sessions.js";
++import { SnapshotSchema } from "./snapshot.js";
++
++it("keeps fragment registry values exact and nameable for declaration output", () => {
++  expect(ProtocolSchemas.Snapshot).toBe(SnapshotSchema);
++  expect(ProtocolSchemas.EnvironmentsListResult).toBe(EnvironmentsListResultSchema);
++  expect(ProtocolSchemas.AgentsListResult).toBe(AgentsListResultSchema);
++  expect(ProtocolSchemas.ApprovalHistoryResult).toBe(ApprovalHistoryResultSchema);
++  expect(ProtocolSchemas.BoardSnapshot).toBe(BoardSnapshotSchema);
++  expect(ProtocolSchemas.TalkModeParams).toBe(TalkModeParamsSchema);
++  expect(ProtocolSchemas.PushTestParams).toBe(PushTestParamsSchema);
++  expect(ProtocolSchemas.NodePairListParams).toBe(NodePairListParamsSchema);
++  expect(ProtocolSchemas.AuditActivityAgentRunV1).toBe(AuditActivityAgentRunV1Schema);
++  expect(ProtocolSchemas.CapabilityConsentErrorDetails).toBe(CapabilityConsentErrorDetailsSchema);
++  expect(ProtocolSchemas.PortalSummary).toBe(PortalSummarySchema);
++  expect(ProtocolSchemas.ProgressCardStepStatus).toBe(ProgressCardStepStatusSchema);
++  expect(ProtocolSchemas.CronJob).toBe(CronJobSchema);
++  expect(ProtocolSchemas.SessionGitHubOptionsParams).toBe(SessionGitHubOptionsParamsSchema);
++  expect(ProtocolSchemas.SessionPermissionMode).toBe(SessionPermissionModeSchema);
++  expect(ProtocolSchemas.SessionsGoalUpdateParams).toBe(SessionsGoalUpdateParamsSchema);
++
++  expectTypeOf(ProtocolSchemas.Snapshot).toEqualTypeOf<typeof SnapshotSchema>();
++  expectTypeOf(ProtocolSchemas.EnvironmentsListResult).toEqualTypeOf<
++    typeof EnvironmentsListResultSchema
++  >();
++  expectTypeOf(ProtocolSchemas.AgentsListResult).toEqualTypeOf<typeof AgentsListResultSchema>();
++  expectTypeOf(ProtocolSchemas.ApprovalHistoryResult).toEqualTypeOf<
++    typeof ApprovalHistoryResultSchema
++  >();
++  expectTypeOf(ProtocolSchemas.BoardSnapshot).toEqualTypeOf<typeof BoardSnapshotSchema>();
++  expectTypeOf(ProtocolSchemas.TalkModeParams).toEqualTypeOf<typeof TalkModeParamsSchema>();
++  expectTypeOf(ProtocolSchemas.PushTestParams).toEqualTypeOf<typeof PushTestParamsSchema>();
++  expectTypeOf(ProtocolSchemas.NodePairListParams).toEqualTypeOf<typeof NodePairListParamsSchema>();
++  expectTypeOf(ProtocolSchemas.AuditActivityAgentRunV1).toEqualTypeOf<
++    typeof AuditActivityAgentRunV1Schema
++  >();
++  expectTypeOf(ProtocolSchemas.CapabilityConsentErrorDetails).toEqualTypeOf<
++    typeof CapabilityConsentErrorDetailsSchema
++  >();
++  expectTypeOf(ProtocolSchemas.PortalSummary).toEqualTypeOf<typeof PortalSummarySchema>();
++  expectTypeOf(ProtocolSchemas.ProgressCardStepStatus).toEqualTypeOf<
++    typeof ProgressCardStepStatusSchema
++  >();
++  expectTypeOf(ProtocolSchemas.CronJob).toEqualTypeOf<typeof CronJobSchema>();
++  expectTypeOf(ProtocolSchemas.SessionGitHubOptionsParams).toEqualTypeOf<
++    typeof SessionGitHubOptionsParamsSchema
++  >();
++  expectTypeOf(ProtocolSchemas.SessionPermissionMode).toEqualTypeOf<
++    typeof SessionPermissionModeSchema
++  >();
++  expectTypeOf(ProtocolSchemas.SessionsGoalUpdateParams).toEqualTypeOf<
++    typeof SessionsGoalUpdateParamsSchema
++  >();
++});

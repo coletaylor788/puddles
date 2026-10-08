@@ -1,0 +1,53 @@
+{
+  "checked_at": "2026-09-26",
+  "web_build": "6e650d09e6",
+  "sources": [
+    {
+      "url": "https://app.rocketmoney.com/_next/static/chunks/pages/_app-50d1b9c675d9ef42.js",
+      "sha256": "69a552f80caa201790122d2515ad8319675a4379b8ddaf6677eb3991a39f371b"
+    },
+    {
+      "url": "https://app.rocketmoney.com/_next/static/chunks/pages/transactions-62cb97afdc04e906.js",
+      "sha256": "c12d52f71ed71d21e9bfc2c7c685610f46a79aa8743aff9cebe57a214f8dc14a"
+    }
+  ],
+  "live_evidence": {
+    "authenticated_ui": [
+      "transaction details",
+      "category picker",
+      "date picker"
+    ],
+    "unauthenticated_api_error": "GRAPHQL_REQUIRES_AUTHENTICATION",
+    "introspection": "disabled",
+    "remote_mutations_performed": false,
+    "session_exported": false,
+    "standalone_authenticated_api_tested": false,
+    "anonymous_silent_login_probe": {
+      "entrypoint": "https://client-api.rocketmoney.com/auth0/auth/oidc/login",
+      "silentOnly": true,
+      "authorize_origin": "https://auth.rocketaccount.com",
+      "scope": "openid profile email offline_access",
+      "prompt": "none",
+      "response_type": "code",
+      "code_challenge_method": "S256",
+      "callback": "https://client-api.rocketmoney.com/auth0/auth/oidc/callback",
+      "no_session_result": "login_required",
+      "credentials_retained": false,
+      "authenticated_renewal_tested": false,
+      "refresh_token_issuance_or_access_proven": false
+    },
+    "authenticated_silent_login_browser_test": {
+      "checked_at": "2026-09-26",
+      "before": "Rocket Money inactivity logout notice",
+      "action": "Navigate observed SSO login route with silentOnly=true in existing browser session",
+      "after": "Authenticated dashboard restored",
+      "password_entry": false,
+      "mfa_prompt_observed": false,
+      "credential_store_exported": false,
+      "financial_mutations": false,
+      "standalone_http_renewal_tested": false,
+      "idp_maximum_session_lifetime_known": false,
+      "cookie_rotation_inspected": false
+    }
+  }
+}

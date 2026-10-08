@@ -1,0 +1,446 @@
+diff --git a/src/agents/agent-tools.create-openclaw-coding-tools.test.ts b/src/agents/agent-tools.create-openclaw-coding-tools.test.ts
+index a1071b3b..40effac9 100644
+--- a/src/agents/agent-tools.create-openclaw-coding-tools.test.ts
++++ b/src/agents/agent-tools.create-openclaw-coding-tools.test.ts
+@@ -38,6 +38,7 @@ import {
+ } from "./agent-tools.read.js";
+ import { runWithAgentRingZeroTools } from "./agent-tools.ring-zero-context.js";
+ import type { AuthProfileStore } from "./auth-profiles/types.js";
++import { resolveSandboxToolPolicyForAgent } from "./sandbox/tool-policy.js";
+ import { resolveConversationCapabilityProfile } from "./conversation-capability-profile.js";
+ import {
+   createCronCreatorAuthorityCapability,
+@@ -2343,6 +2344,31 @@ describe("createOpenClawCodingTools", () => {
+     expect(toolNameList(codingTools)).toContain("heartbeat_respond");
+   });
+ 
++  it("requires both agent and sandbox grants for native heartbeat completion", () => {
++    for (const agentGranted of [false, true]) {
++      for (const sandboxGranted of [false, true]) {
++        const config = {
++          agents: { defaults: { sandbox: { mode: "all" } }, entries: { main: { tools: {
++            allow: ["read", ...(agentGranted ? ["heartbeat_respond"] : [])],
++            sandbox: { tools: { alsoAllow: sandboxGranted ? ["heartbeat_respond"] : [] } },
++          } } } },
++          tools: { profile: "full", toolSearch: false },
++        } as OpenClawConfig;
++        const sandbox = createAgentToolsSandboxContext({
++          workspaceDir: "/tmp/heartbeat-policy-fixture",
++          fsBridge: createHostSandboxFsBridge("/tmp/heartbeat-policy-fixture"),
++          tools: resolveSandboxToolPolicyForAgent(config, "main"),
++        });
++        const common = { config, sandbox, agentId: "main", sessionKey: "agent:main:main:heartbeat" };
++        const tools = createOpenClawCodingTools({
++          ...common, trigger: "heartbeat", enableHeartbeatTool: true, forceHeartbeatTool: true,
++        });
++        expect(toolNameList(tools).includes("heartbeat_respond")).toBe(agentGranted && sandboxGranted);
++        expect(toolNameList(createOpenClawCodingTools(common))).not.toContain("heartbeat_respond");
++      }
++    }
++  });
++
+   it("enables heartbeat response when visible replies are message-tool-only", () => {
+     const tools = createOpenClawCodingTools({
+       config: {
+diff --git a/src/agents/embedded-agent-runner/run/terminal-resolution.settled-request.test.ts b/src/agents/embedded-agent-runner/run/terminal-resolution.settled-request.test.ts
+index 2c68a312..6ad4bc33 100644
+--- a/src/agents/embedded-agent-runner/run/terminal-resolution.settled-request.test.ts
++++ b/src/agents/embedded-agent-runner/run/terminal-resolution.settled-request.test.ts
+@@ -13,6 +13,52 @@ const SETTLED_TOOL_TERMINAL_CONTINUATION_INSTRUCTION =
+   "The previous assistant turn completed its tool calls but did not produce a user-visible answer. Continue from the current transcript and produce the final user-visible answer now. Do not repeat completed tool calls or restart from scratch. Tools are unavailable in this step: it is a text-only pass, so reply with plain text and do not attempt any tool call.";
+ 
+ describe("resolveSettledTurnFinalizationRequest", () => {
++  it.each([false, true])(
++    "accepts native heartbeat notify=%s without text-only finalization",
++    (notify) => {
++      const assistant = buildEmbeddedRunnerAssistant({ content: [{ type: "text", text: "" }] });
++      const heartbeatToolResponse = {
++        outcome: "needs_attention" as const,
++        notify,
++        summary: "Synthetic task needs a choice.",
++        ...(notify ? { notificationText: "Tuesday or Thursday?" } : {}),
++      };
++      const attempt = makeEmbeddedRunnerAttempt({
++        assistantTexts: [],
++        lastAssistant: assistant,
++        currentAttemptAssistant: assistant,
++        heartbeatToolResponse,
++        toolMetas: [{ toolName: "write", meta: "path=note.txt", replaySafe: false }],
++        itemLifecycle: { startedCount: 1, completedCount: 1, activeCount: 0 },
++      });
++      const payloads = buildEmbeddedRunPayloads({
++        assistantTexts: [],
++        lastAssistant: assistant,
++        currentAssistant: assistant,
++        heartbeatToolResponse,
++      });
++      expect(payloads).toHaveLength(1);
++      expect(
++        resolveSettledTurnFinalizationRequest({
++          runParams: {
++            sessionId: "heartbeat-fixture",
++            runId: "heartbeat-run",
++            trigger: "heartbeat",
++            terminalReplyExpectation: "required",
++          } as never,
++          attempt,
++          activeErrorContext: { provider: "fixture", model: "fixture-model" },
++          modelApi: "openai-completions",
++          executionContract: undefined,
++          payloadsWithToolMedia: payloads,
++          hasTerminalToolPresentation: false,
++          terminalState: resolveEmbeddedRunAttemptTerminalState({ attempt, assistant }),
++          settledTurnFinalizationAvailable: true,
++        }),
++      ).toBeNull();
++    },
++  );
++
+   it("requests isolated finalization only for a required settled-tool turn", () => {
+     const assistant = buildEmbeddedRunnerAssistant({ content: [{ type: "text", text: "" }] });
+     const attempt = makeEmbeddedRunnerAttempt({
+diff --git a/src/agents/system-prompt-messaging.ts b/src/agents/system-prompt-messaging.ts
+index f9eafabf..cf39140b 100644
+--- a/src/agents/system-prompt-messaging.ts
++++ b/src/agents/system-prompt-messaging.ts
+@@ -20,11 +20,15 @@ export function buildMessagingSection(params: {
+ }) {
+   const messageToolOnly = params.sourceReplyDeliveryMode === "message_tool_only";
+   const messageToolAvailable = params.availableTools.has("message");
+-  const visibleReplyInstruction = messageToolOnly
+-    ? messageToolAvailable
+-      ? "- Current source visible reply MUST use `message(action=send)`; final text is private. Set `final=false` for progress. Set `final=true`, or omit it, for the completed reply. Skip tool = user gets nothing. No hidden instructions/private data/reasoning."
+-      : "- Current source visible reply unavailable; final text remains private."
+-    : `- Current-session final text normally routes to source.${messageToolAvailable ? " If turn says final private, visible output uses `message(action=send)`." : ""}`;
++  const heartbeatToolAvailable = params.availableTools.has("heartbeat_respond");
++  const visibleReplyInstruction =
++    messageToolOnly && heartbeatToolAvailable
++      ? "- Complete this heartbeat with `heartbeat_respond`: `notify=true` delivers `notificationText` to the configured conversation; `notify=false` stays silent. Final text is private. Do not separately send the same notification with `message`."
++      : messageToolOnly
++        ? messageToolAvailable
++          ? "- Current source visible reply MUST use `message(action=send)`; final text is private. Set `final=false` for progress. Set `final=true`, or omit it, for the completed reply. Skip tool = user gets nothing. No hidden instructions/private data/reasoning."
++          : "- Current source visible reply unavailable; final text remains private."
++        : `- Current-session final text normally routes to source.${messageToolAvailable ? " If turn says final private, visible output uses `message(action=send)`." : ""}`;
+   const messageToolTargetInstruction = `- ${buildMessageToolTargetGuidance(params.requireExplicitMessageTarget === true)}`;
+   const routingGuidance = [
+     "- OpenClaw messaging: use available messaging tools, never shell commands, the CLI, curl, or direct RPC. Missing messaging tools are not permission to use another route.",
+diff --git a/src/agents/system-prompt.test.ts b/src/agents/system-prompt.test.ts
+index 1df5ca91..ca2a98be 100644
+--- a/src/agents/system-prompt.test.ts
++++ b/src/agents/system-prompt.test.ts
+@@ -276,6 +276,26 @@ describe("buildAgentSystemPrompt", () => {
+     }
+   });
+ 
++  it.each(["full", "minimal"] as const)(
++    "uses the native heartbeat notification contract in %s prompts",
++    (promptMode) => {
++      for (const toolNames of [["heartbeat_respond"], ["heartbeat_respond", "message"]]) {
++        const prompt = buildAgentSystemPrompt({
++          workspaceDir: "/tmp/openclaw",
++          promptMode,
++          toolNames,
++          sourceReplyDeliveryMode: "message_tool_only",
++        });
++        expect(prompt).toContain("Complete this heartbeat with `heartbeat_respond`");
++        expect(prompt).toContain("`notify=true` delivers `notificationText`");
++        expect(prompt).toContain("`notify=false` stays silent");
++        expect(prompt).not.toContain("visible reply MUST use `message(action=send)`");
++        expect(prompt).not.toContain("Visible source output: `message(action=send)`");
++        expect(prompt).not.toContain("visible reply unavailable");
++      }
++    },
++  );
++
+   it("preserves required visible-source message-tool guidance in minimal prompts", () => {
+     const requiredMessageGuidance = "Current source visible reply MUST use `message(action=send)`";
+ 
+diff --git a/src/agents/system-prompt.ts b/src/agents/system-prompt.ts
+index 30eebd6a..31ab99b1 100644
+--- a/src/agents/system-prompt.ts
++++ b/src/agents/system-prompt.ts
+@@ -348,7 +348,11 @@ function buildAssistantOutputDirectivesSection(params: {
+   isMinimal: boolean;
+   sourceMessageToolOnly: boolean;
+   messageToolAvailable: boolean;
++  heartbeatToolAvailable: boolean;
+ }) {
++  if (params.heartbeatToolAvailable && params.sourceMessageToolOnly) {
++    return [];
++  }
+   if (params.isMinimal || (params.sourceMessageToolOnly && !params.messageToolAvailable)) {
+     return [];
+   }
+@@ -1185,6 +1189,7 @@ export function buildAgentSystemPrompt(params: {
+       isMinimal,
+       sourceMessageToolOnly,
+       messageToolAvailable,
++      heartbeatToolAvailable: availableTools.has("heartbeat_respond"),
+     }),
+     ...(!isMinimal && silentReplyPromptMode !== "none"
+       ? [
+diff --git a/src/infra/heartbeat-runner-config.ts b/src/infra/heartbeat-runner-config.ts
+index 5ef78a70..4b06bbeb 100644
+--- a/src/infra/heartbeat-runner-config.ts
++++ b/src/infra/heartbeat-runner-config.ts
+@@ -1,5 +1,6 @@
+ import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+ import { resolveAgentConfig } from "../agents/agent-scope.js";
++import { isCliProvider } from "../agents/model-selection-cli.js";
+ import { resolveModelRefFromString, type ModelRef } from "../agents/model-selection.js";
+ import { resolveEffectiveAgentRuntime } from "../agents/thinking-runtime.js";
+ import {
+@@ -73,7 +74,7 @@ function resolveHeartbeatModelRef(params: {
+   };
+ }
+ 
+-function usesCodexHarness(params: {
++function usesStructuredHeartbeatHarness(params: {
+   cfg: OpenClawConfig;
+   agentId: string;
+   heartbeat?: HeartbeatConfig;
+@@ -81,15 +82,16 @@ function usesCodexHarness(params: {
+   sessionKey?: string;
+ }): boolean {
+   const modelRef = resolveHeartbeatModelRef(params);
++  const runtime = resolveEffectiveAgentRuntime({
++    cfg: params.cfg,
++    provider: modelRef.provider,
++    modelId: modelRef.model,
++    agentId: params.agentId,
++    sessionKey: params.sessionKey,
++    sessionEntry: params.entry,
++  });
+   return (
+-    resolveEffectiveAgentRuntime({
+-      cfg: params.cfg,
+-      provider: modelRef.provider,
+-      modelId: modelRef.model,
+-      agentId: params.agentId,
+-      sessionKey: params.sessionKey,
+-      sessionEntry: params.entry,
+-    }) === "codex"
++    runtime === "codex" || (runtime === "openclaw" && !isCliProvider(modelRef.provider, params.cfg))
+   );
+ }
+ 
+@@ -112,7 +114,7 @@ export function shouldUseHeartbeatResponseToolPrompt(params: {
+   if (visibleReplies === "automatic") {
+     return false;
+   }
+-  return usesCodexHarness(params);
++  return usesStructuredHeartbeatHarness(params);
+ }
+ 
+ export function isHeartbeatTypingEnabled(params: {
+diff --git a/src/infra/heartbeat-runner.tool-response.test.ts b/src/infra/heartbeat-runner.tool-response.test.ts
+index 09a8e180..7519dbe5 100644
+--- a/src/infra/heartbeat-runner.tool-response.test.ts
++++ b/src/infra/heartbeat-runner.tool-response.test.ts
+@@ -5,6 +5,7 @@ import {
+   GENERIC_EXTERNAL_RUN_FAILURE_TEXT,
+   HEARTBEAT_EXTERNAL_RUN_FAILURE_TEXT,
+ } from "../agents/failover/user-copy.js";
++import * as cliSelection from "../agents/model-selection-cli.js";
+ import {
+   createHeartbeatToolResponsePayload,
+   type HeartbeatToolResponse,
+@@ -622,6 +623,36 @@ describe("runHeartbeatOnce heartbeat response tool", () => {
+     expectHeartbeatToolPrompt(result, ["notify=false"]);
+   });
+ 
++  it("exposes structured completion to isolated built-in heartbeats with unset reply mode", async () => {
++    const result = await runPromptScenario({
++      config: { agentRuntimeId: "openclaw", model: "fixture/fixture-model", isolatedSession: true },
++    });
++    expectHeartbeatToolPrompt(result);
++  });
++
++  it("preserves explicit automatic reply mode for built-in heartbeats", async () => {
++    const result = await runPromptScenario({
++      config: {
++        agentRuntimeId: "openclaw",
++        model: "fixture/fixture-model",
++        visibleReplies: "automatic",
++        isolatedSession: true,
++      },
++    });
++    expect(result.calledOpts.enableHeartbeatTool).toBeUndefined();
++    expect(result.calledOpts.forceHeartbeatTool).toBeUndefined();
++    expect(result.calledOpts.sourceReplyDeliveryMode).toBe("automatic");
++  });
++
++  it("preserves text completion for CLI-backed built-in heartbeats", async () => {
++    vi.spyOn(cliSelection, "isCliProvider").mockReturnValue(true);
++    const result = await runPromptScenario({
++      config: { agentRuntimeId: "openclaw", model: "fixture/fixture-model", isolatedSession: true },
++    });
++    expect(result.calledOpts.enableHeartbeatTool).toBeUndefined();
++    expect(result.calledOpts.forceHeartbeatTool).toBeUndefined();
++  });
++
+   it("uses the heartbeat response tool prompt for the default Codex runtime", async () => {
+     const result = await runPromptScenario();
+ 
+diff --git a/extensions/copilot/src/attempt-session-setup.ts b/extensions/copilot/src/attempt-session-setup.ts
+--- a/extensions/copilot/src/attempt-session-setup.ts
++++ b/extensions/copilot/src/attempt-session-setup.ts
+@@ -82,6 +82,7 @@
+     }
+     promptBuild = await resolveAgentHarnessBeforePromptBuildResult({
+       prompt: input.prompt,
++      currentInboundContext: ordinaryAttemptInput.currentInboundContext,
+       developerInstructions: {
+         build: ({ toolsAllow }) => {
+           promptPolicyResult = promptToolPolicy.apply({ toolsAllow, forceToolNames });
+diff --git a/extensions/copilot/src/attempt.test.ts b/extensions/copilot/src/attempt.test.ts
+--- a/extensions/copilot/src/attempt.test.ts
++++ b/extensions/copilot/src/attempt.test.ts
+@@ -554,6 +554,23 @@
+     expect(result.lastToolError).toBeUndefined();
+   });
+ 
++  it.each([false, true])("passes current inbound context through native prompt assembly (hooks=%s)", async (withHooks) => {
++    const currentInboundContext = { text: "A heartbeat delivered: Tuesday or Thursday?", promptJoiner: "\n" };
++    const beforePromptBuild = vi.fn(() => ({ appendContext: "Hook suffix" }));
++    if (withHooks) initializeGlobalHookRunner(createMockPluginRegistry([
++      { hookName: "before_prompt_build", handler: beforePromptBuild },
++    ]));
++    const sdk = makeFakeSdk();
++    await runCopilotAttempt(makeParams({ currentInboundContext }), { pool: makeFakePool(sdk) });
++    const prompt = sdk.sessions[0]?.sendAndWait.mock.calls[0]?.[0]?.prompt;
++    expect(prompt).toBe(`${currentInboundContext.text}\nhello${withHooks ? "\n\nHook suffix" : ""}`);
++    expect(requireCreateSessionConfig(sdk).systemMessage?.content ?? "").not.toContain(currentInboundContext.text);
++    if (withHooks) expect(beforePromptBuild).toHaveBeenCalledWith(
++      expect.objectContaining({ prompt: `${currentInboundContext.text}\nhello` }), expect.anything(),
++    );
++    expect(currentInboundContext).toEqual({ text: "A heartbeat delivered: Tuesday or Thursday?", promptJoiner: "\n" });
++  });
++
+   it("runs generic prompt and lifecycle hooks through the standard harness helpers", async () => {
+     const params = makeParams({
+       agentAccountId: "account-a",
+@@ -2695,6 +2712,7 @@
+       await runCopilotAttempt(
+         makeParams({
+           modelRun: true,
++          currentInboundContext: { text: "Must remain outside a raw probe" },
+         } as never),
+         { pool: makeFakePool(sdk) },
+       );
+diff --git a/extensions/copilot/src/attempt-execution.ts b/extensions/copilot/src/attempt-execution.ts
+--- a/extensions/copilot/src/attempt-execution.ts
++++ b/extensions/copilot/src/attempt-execution.ts
+@@ -421,6 +421,7 @@
+     transcriptJournal = createAttemptTranscriptJournal({
+       abortSession: () => session?.abort() ?? Promise.resolve(),
+       attempt: input,
++      submittedPrompt: attemptInput.prompt,
+       messages,
+       onInitialSdkUserValidated: () => {
+         initialSdkUserValidated = true;
+diff --git a/extensions/copilot/src/attempt-transcript-journal.ts b/extensions/copilot/src/attempt-transcript-journal.ts
+--- a/extensions/copilot/src/attempt-transcript-journal.ts
++++ b/extensions/copilot/src/attempt-transcript-journal.ts
+@@ -85,6 +85,8 @@
+ export function createAttemptTranscriptJournal(params: {
+   abortSession: () => Promise<void>;
+   attempt: AttemptParamsLike;
++  /** Exact host-prepared text submitted to the SDK; canonical user text stays unchanged. */
++  submittedPrompt?: string;
+   messages: AgentMessage[];
+   onInitialSdkUserValidated?: () => void;
+   sdkSessionId: string;
+@@ -481,7 +483,7 @@
+         initialSdkUserObserved = true;
+         if (
+           !persistedInitialUser ||
+-          userText(persistedInitialUser.content) !== userText(input.message.content)
++          (params.submittedPrompt ?? userText(persistedInitialUser.content)) !== userText(input.message.content)
+         ) {
+           replayInvalid = true;
+         } else {
+diff --git a/extensions/copilot/src/attempt-transcript-journal.test-helpers.ts b/extensions/copilot/src/attempt-transcript-journal.test-helpers.ts
+--- a/extensions/copilot/src/attempt-transcript-journal.test-helpers.ts
++++ b/extensions/copilot/src/attempt-transcript-journal.test-helpers.ts
+@@ -75,11 +75,13 @@
+   attempt: AttemptParamsLike,
+   messages: AgentMessage[] = [],
+   resultContentSourceByToolName?: ReadonlyMap<string, "network">,
++  submittedPrompt?: string,
+ ) {
+   const session = createFakeSession();
+   const journal = createAttemptTranscriptJournal({
+     abortSession: () => session.abort(),
+     attempt,
++    submittedPrompt,
+     messages,
+     sdkSessionId: "sdk-session",
+   });
+@@ -117,6 +119,7 @@
+ export async function createFixture(
+   trigger?: string,
+   resultContentSourceByToolName?: ReadonlyMap<string, "network">,
++  submittedPrompt?: string,
+ ): Promise<AttemptTranscriptJournalFixture> {
+   const tempDir = await fs.mkdtemp(
+     path.join(resolvePreferredOpenClawTmpDir(), "openclaw-copilot-journal-"),
+@@ -184,6 +187,7 @@
+     attempt,
+     [],
+     resultContentSourceByToolName,
++    submittedPrompt,
+   );
+   return { attempt, bridge, journal, recorder, session, target, tempDir };
+ }
+diff --git a/extensions/copilot/src/attempt-transcript-journal.test.ts b/extensions/copilot/src/attempt-transcript-journal.test.ts
+--- a/extensions/copilot/src/attempt-transcript-journal.test.ts
++++ b/extensions/copilot/src/attempt-transcript-journal.test.ts
+@@ -27,6 +27,20 @@
+ });
+ 
+ describe("Copilot attempt transcript journal", () => {
++  it.each([false, true])("validates submitted context while retaining canonical user text (tampered=%s)", async (tampered) => {
++    const submitted = "Delivered notification context\ninspect both files";
++    const { journal, session, target } = await createFixture(undefined, undefined, submitted);
++    await journal.persistInitialUser();
++    session.emit(event("user.message", "initial-user", { content: tampered ? "Different context\ninspect both files" : submitted }));
++    await journal.barrier("submitted prompt");
++    const snapshot = journal.snapshot();
++    expect(snapshot.initialSdkUserValidated).toBe(!tampered);
++    expect(snapshot.replayInvalid).toBe(tampered);
++    const rows = transcriptMessages(await readSessionTranscriptEvents(target));
++    expect(rows).toHaveLength(1);
++    expect(rows[0].message).toMatchObject({ role: "user", content: "inspect both files" });
++  });
++
+   it("prepares standalone media after hooks without claiming user or tool-group media", async () => {
+     const sourceText = "Artifacts ready\nMEDIA:./artifact.json";
+     const rewrittenText = `${sourceText}\nMEDIA:./hook-only.json`;
+diff --git a/extensions/copilot/src/attempt.test.ts b/extensions/copilot/src/attempt.test.ts
+--- a/extensions/copilot/src/attempt.test.ts
++++ b/extensions/copilot/src/attempt.test.ts
+@@ -2738,6 +2738,7 @@
+       await runCopilotAttempt(
+         makeParams({
+           promptMode: "none",
++          currentInboundContext: { text: "Must remain outside promptMode none" },
+         } as never),
+         { pool: makeFakePool(sdk) },
+       );
+@@ -4801,6 +4802,7 @@
+         makeFinalizationParams({
+           disableTools: false,
+           extraSystemPrompt: "ambient instructions must not reach finalization",
++          currentInboundContext: { text: "Must remain outside settled finalization" },
+           hooksConfig: { onPreToolUse: nativeHook },
+           infiniteSessionConfig: { enabled: true },
+           initialReplayState: { replayInvalid: true, sdkSessionId: "sdk-settled-session" },
+@@ -4818,6 +4820,7 @@
+ 
+       expect(projectAgentRunAttemptTerminal(result.terminal).promptError).toBeNull();
+       expect(result.assistantTexts).toEqual(["final answer"]);
++      expect(sdk.sessions[0]?.sendAndWait.mock.calls[0]?.[0]?.prompt).not.toContain("Must remain outside settled finalization");
+       expect(result.currentAttemptCompletedAssistant).toMatchObject({
+         content: [{ type: "text", text: "final answer" }],
+         stopReason: "stop",

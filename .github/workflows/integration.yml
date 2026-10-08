@@ -1,40 +1,205 @@
 name: Integration
 
 on:
+  workflow_dispatch:
   pull_request:
+    # Only human-facing docs; runtime prompts, patches, and CI changes still run.
+    paths-ignore:
+      - "**/README.md"
+      - "AGENTS.md"
+      - ".github/copilot-instructions.md"
+      - ".github/skills/**/*.md"
+      - "docs/plans/**/*.md"
+      - "docs/openclaw-setup/*.md"
+      - "docs/openclaw-setup/patches/*.md"
+      - "docs/openclaw-setup/apple-pim/*.md"
+      - "packages/*/docs/**/*.md"
+      - "packages/e2e/DEVELOPMENT_STORAGE.md"
+      - "packages/e2e/DEPLOYMENT_COORDINATION.md"
+      - "servers/*/docs/**/*.md"
+      - "servers/*/brainstorming/**/*.md"
   push:
     branches: [main]
+    # Only human-facing docs; runtime prompts, patches, and CI changes still run.
+    paths-ignore:
+      - "**/README.md"
+      - "AGENTS.md"
+      - ".github/copilot-instructions.md"
+      - ".github/skills/**/*.md"
+      - "docs/plans/**/*.md"
+      - "docs/openclaw-setup/*.md"
+      - "docs/openclaw-setup/patches/*.md"
+      - "docs/openclaw-setup/apple-pim/*.md"
+      - "packages/*/docs/**/*.md"
+      - "packages/e2e/DEVELOPMENT_STORAGE.md"
+      - "packages/e2e/DEPLOYMENT_COORDINATION.md"
+      - "servers/*/docs/**/*.md"
+      - "servers/*/brainstorming/**/*.md"
 
 permissions:
   contents: read
 
+concurrency:
+  group: integration-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  cumulative:
-    runs-on: macos-latest
+  repository:
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: macos-15
     timeout-minutes: 30
+    env:
+      E2E_LOCAL_EXTENSION: ""
+      E2E_RESOURCE_PROFILE: hosted-arm
     steps:
       - name: Check out Puddles
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "26.1.0"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Configure package manager store
+        run: echo "PNPM_CONFIG_STORE_DIR=$RUNNER_TOOL_CACHE/puddles-pnpm-store" >> "$GITHUB_ENV"
+      - name: Enable package managers
+        run: |
+          npm install --global corepack@0.36.0
+          corepack enable
+          test "$(corepack pnpm --version)" = "12.4.0"
+      - name: Install Puddles dependencies
+        run: corepack pnpm install --frozen-lockfile
+      - name: Install Gmail test dependencies
+        run: python -m pip install -e './servers/gmail-mcp[dev]'
+      - name: Check repository packages
+        run: |
+          corepack pnpm build
+          corepack pnpm lint
+          corepack pnpm test
+      - name: Check Gmail
+        working-directory: servers/gmail-mcp
+        run: |
+          python -m pytest tests/ --ignore=tests/integration -q
+          python -m ruff check src/ tests/
+          python -m compileall -q src tests
+
+  cumulative:
+    # Dispatch on main pins github.sha once. Later main commits do not replace it.
+    if: github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    # Standard public ARM runner. The managed profile measures the complete job.
+    runs-on: macos-15
+    timeout-minutes: 180
+    env:
+      E2E_LOCAL_EXTENSION: ""
+      E2E_RESOURCE_MEASURE: "1"
+      E2E_RESOURCE_PROFILE: hosted-arm
+    steps:
+      - name: Check out Puddles
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Check out pinned OpenClaw source
         uses: actions/checkout@v4
         with:
           repository: openclaw/openclaw
-          ref: 0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c
+          ref: eb377ac59e6c9fd6c7705028034812becf00271b
           path: .openclaw-source
 
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: "22.23.1"
+          node-version: "26.1.0"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Configure package manager store
+        run: echo "PNPM_CONFIG_STORE_DIR=$RUNNER_TOOL_CACHE/puddles-pnpm-store" >> "$GITHUB_ENV"
 
       - name: Enable package managers
-        run: corepack enable
+        run: |
+          npm install --global corepack@0.36.0
+          corepack enable
+          test "$(corepack pnpm --version)" = "12.4.0"
+          corepack pnpm store path --silent
 
       - name: Install Puddles dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Install Gmail test dependencies
+        run: python -m pip install -e './servers/gmail-mcp[dev]'
+
+      - name: Initialize public run evidence
+        run: |
+          export E2E_RUN_DIR="$RUNNER_TEMP/puddles-public-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          node packages/e2e/bin/public-ci-diagnostics.mjs init
+          printf 'E2E_RUN_DIR=%s\n' "$E2E_RUN_DIR" >> "$GITHUB_ENV"
+
       - name: Run cumulative integration lifecycle
+        id: cumulative
         env:
           OPENCLAW_SRC: ${{ github.workspace }}/.openclaw-source
         run: node packages/e2e/bin/openclaw-test-env.mjs ci
+
+      - name: Export public ARM build bundle
+        if: success()
+        run: |
+          node packages/e2e/bin/openclaw-release-bundle.mjs export \
+            "$E2E_RUN_DIR/build.json" \
+            "$RUNNER_TEMP/openclaw-public-arm64-build.tar.gz" \
+            public
+
+      - name: Retain public ARM build bundle
+        id: build-upload
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openclaw-public-arm64-build-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/openclaw-public-arm64-build.tar.gz
+            ${{ env.E2E_RUN_DIR }}/source-gate.json
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Collect public resource evidence
+        id: public-resources
+        if: always()
+        run: node packages/e2e/bin/public-ci-diagnostics.mjs resources
+
+      - name: Retain public resource evidence
+        if: always() && steps.public-resources.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-native-resources-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/puddles-public-resources-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Collect public failure evidence
+        id: public-diagnostics
+        if: failure() && steps.cumulative.outcome == 'failure'
+        run: node packages/e2e/bin/public-ci-diagnostics.mjs collect
+
+      - name: Retain sanitized public failure evidence
+        if: failure() && steps.public-diagnostics.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-native-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/puddles-public-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Finalize acknowledged builder scratch
+        if: success() && steps.build-upload.outcome == 'success'
+        run: |
+          bundle="$RUNNER_TEMP/openclaw-public-arm64-build.tar.gz"
+          digest="$(shasum -a 256 "$bundle" | cut -d ' ' -f 1)"
+          node packages/e2e/bin/openclaw-storage.mjs finalize-build \
+            "$E2E_RUN_DIR" "ci-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" "$bundle" "$digest"

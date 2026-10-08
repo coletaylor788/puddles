@@ -84,7 +84,7 @@ puddles/
 ├── scripts/
 │   └── mac-mini/           # Host scripts for the Mac Mini server
 ├── docs/
-│   ├── plans/              # Cross-cutting implementation plans
+│   ├── plans/              # Pending plans; completed work in completed/
 │   └── openclaw-setup/     # Mac Mini setup guides
 └── .github/
     └── copilot-instructions.md  # Development guidelines
@@ -114,7 +114,21 @@ the `openclaw-plugins/*` workspace glob.
 
 ## Development
 
-See [.github/copilot-instructions.md](./.github/copilot-instructions.md) for development guidelines.
+Start with [AGENTS.md](./AGENTS.md), a tracked symlink to the shared
+[development instructions](./.github/copilot-instructions.md). The
+[safe feature development skill](./.github/skills/safe-feature-development/SKILL.md)
+defines design approval, isolated worktrees, the fast local and DEV loop,
+independent review, and delivery through production. The
+[managed runner guide](./packages/e2e/README.md) supplies current commands.
+
+The [development loop manager skill](./.github/skills/development-loop-manager/SKILL.md)
+guides an agent reviewing recent development loops for late failures, slow
+feedback, repeated work, and disk growth. It turns findings into maintained
+improvements and checks whether later loops benefit.
+
+The [security architecture](./docs/openclaw-setup/security-architecture.md) defines
+trust rings and boundaries across agents, host services, and delivery, with
+implementation references and known gaps.
 
 ## License
 

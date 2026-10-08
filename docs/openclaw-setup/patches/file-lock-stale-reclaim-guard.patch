@@ -1,0 +1,489 @@
+diff --git a/patches/@openclaw__fs-safe@0.18.1.patch b/patches/@openclaw__fs-safe@0.18.1.patch
+new file mode 100644
+index 000000000..50c9f2116
+--- /dev/null
++++ b/patches/@openclaw__fs-safe@0.18.1.patch
+@@ -0,0 +1,152 @@
++diff --git a/dist/file-lock-sync-admission.js b/dist/file-lock-sync-admission.js
++index ec3595ac1d026f211955d44b983e19bf89764ef4..98dfd57cc4a4070b89042d4a16d95d3929c5a99b 100644
++--- a/dist/file-lock-sync-admission.js
+++++ b/dist/file-lock-sync-admission.js
++@@ -1,3 +1,4 @@
+++import { kernelReclaimGuardExists, releaseKernelReclaimGuard, tryAcquireKernelReclaimGuard } from "./reclaim-kernel-guard.js";
++ import fs from "node:fs";
++ import { sidecarLockPayloadCreatedAtMs, sidecarLockTimeout } from "./sidecar-lock-policy.js";
++ import { ensureSidecarLockCleanupRegistered } from "./sidecar-lock-registration.js";
++@@ -33,6 +34,7 @@ export function defaultSyncShouldReclaim(snapshot, staleMs, nowMs) {
++     return !snapshot.stat || nowMs - snapshot.stat.mtimeMs > staleMs;
++ }
++ export function syncReclaimGuardExists(reclaimGuardPath) {
+++    if (process.platform === "darwin") return kernelReclaimGuardExists(reclaimGuardPath);
++     try {
++         fs.lstatSync(reclaimGuardPath);
++         return true;
++diff --git a/dist/file-lock-sync-stale-admission.js b/dist/file-lock-sync-stale-admission.js
++index da84a68fbbd7b89ca9dfd1b29790d9dd2843ba03..deeeb091032898dff39621187a2f5d387efe6de6 100644
++--- a/dist/file-lock-sync-stale-admission.js
+++++ b/dist/file-lock-sync-stale-admission.js
++@@ -1,3 +1,4 @@
+++import { kernelReclaimGuardExists, releaseKernelReclaimGuard, tryAcquireKernelReclaimGuard } from "./reclaim-kernel-guard.js";
++ import fs from "node:fs";
++ import { defaultSyncShouldReclaim } from "./file-lock-sync-admission.js";
++ import { parseSidecarLockSnapshot, readSidecarLockRawSnapshotSync, removeSidecarLockIfUnchangedSync, } from "./sidecar-lock-reclaim.js";
++@@ -153,7 +154,12 @@ export function handleSyncStaleAdmission(acquisition, params) {
++             throw sidecarLockStale(acquisition.lockPath, acquisition.normalizedTargetPath);
++         }
++         try {
++-            fs.mkdirSync(params.reclaimGuardPath);
+++            if (process.platform === "darwin") {
+++                if (!tryAcquireKernelReclaimGuard(params.reclaimGuardPath)) {
+++                    acquisition.waitForRetry();
+++                    return;
+++                }
+++            } else fs.mkdirSync(params.reclaimGuardPath);
++         }
++         catch (error) {
++             try {
++@@ -184,7 +190,8 @@ export function handleSyncStaleAdmission(acquisition, params) {
++         }
++         finally {
++             try {
++-                fs.rmdirSync(params.reclaimGuardPath);
+++                if (process.platform === "darwin") releaseKernelReclaimGuard(params.reclaimGuardPath);
+++                else fs.rmdirSync(params.reclaimGuardPath);
++             }
++             catch {
++                 // A surviving reclaim guard fails closed.
++diff --git a/dist/reclaim-kernel-guard.js b/dist/reclaim-kernel-guard.js
++new file mode 100644
++index 0000000000000000000000000000000000000000..053747764b1f662309c7146a010e7d0a34278205
++--- /dev/null
+++++ b/dist/reclaim-kernel-guard.js
++@@ -0,0 +1,42 @@
+++import fs from "node:fs";
+++
+++const key = Symbol.for("fsSafe.darwinReclaimGuards");
+++const guards = globalThis[key] ??= new Map();
+++const DARWIN_O_EXLOCK = 32;
+++
+++export function tryAcquireKernelReclaimGuard(path) {
+++    if (guards.has(path)) return false;
+++    let fd;
+++    try {
+++        fd = fs.openSync(path, fs.constants.O_CREAT | fs.constants.O_RDWR |
+++            fs.constants.O_NONBLOCK | fs.constants.O_NOFOLLOW | DARWIN_O_EXLOCK, 0o600);
+++        if (!fs.fstatSync(fd).isFile()) {
+++            throw new Error("Reclaim guard must be a regular file");
+++        }
+++        guards.set(path, fd);
+++        return true;
+++    }
+++    catch (error) {
+++        if (fd !== undefined) fs.closeSync(fd);
+++        if (error.code === "EAGAIN" || error.code === "EWOULDBLOCK") return false;
+++        throw error;
+++    }
+++}
+++
+++export function releaseKernelReclaimGuard(path) {
+++    const fd = guards.get(path);
+++    if (fd === undefined) throw new Error("Reclaim guard is not held");
+++    fs.closeSync(fd);
+++    guards.delete(path);
+++}
+++
+++export function kernelReclaimGuardExists(path) {
+++    try {
+++        if (!tryAcquireKernelReclaimGuard(path)) return true;
+++    } catch (error) {
+++        if (error.code === "ENOENT") return false;
+++        throw error;
+++    }
+++    releaseKernelReclaimGuard(path);
+++    return false;
+++}
++diff --git a/dist/sidecar-lock-reclaim.js b/dist/sidecar-lock-reclaim.js
++index a69e9bad2d257c6b42be6b0ca693890dd571e858..76554b624a8714263c9a28fd5337c49ff7c8792e 100644
++--- a/dist/sidecar-lock-reclaim.js
+++++ b/dist/sidecar-lock-reclaim.js
++@@ -1,3 +1,4 @@
+++import { kernelReclaimGuardExists, releaseKernelReclaimGuard, tryAcquireKernelReclaimGuard } from "./reclaim-kernel-guard.js";
++ import { randomBytes } from "node:crypto";
++ import fsSync, {} from "node:fs";
++ import fs from "node:fs/promises";
++@@ -261,6 +262,7 @@ export async function sidecarLockSnapshotStillPresent(lockPath, observed, option
++     return !!current && !!observed && sidecarLockSnapshotMatches(current, observed);
++ }
++ export async function sidecarReclaimGuardExists(pathname, lockRoot) {
+++    if (process.platform === "darwin" && !lockRoot) return kernelReclaimGuardExists(pathname);
++     try {
++         if (lockRoot)
++             await lockRoot.stat(relativeSidecarLockPath(lockRoot, pathname));
++@@ -311,6 +313,17 @@ export async function tryAcquireSidecarReclaimGuard(reclaimGuards, pathname, loc
++             },
++         };
++     }
+++    if (process.platform === "darwin") {
+++        if (!tryAcquireKernelReclaimGuard(pathname)) return;
+++        reclaimGuards.add(pathname);
+++        let released = false;
+++        return { async release() {
+++            if (released) return;
+++            releaseKernelReclaimGuard(pathname);
+++            reclaimGuards.delete(pathname);
+++            released = true;
+++        } };
+++    }
++     try {
++         await fs.mkdir(pathname);
++     }
++diff --git a/dist/sidecar-lock.js b/dist/sidecar-lock.js
++index 3c45e42c544143fe0d77d9317d62aba3c487bf9e..a54c259b96e473a3fb85813c662f5355d02ef82f 100644
++--- a/dist/sidecar-lock.js
+++++ b/dist/sidecar-lock.js
++@@ -1,3 +1,4 @@
+++import { kernelReclaimGuardExists, releaseKernelReclaimGuard, tryAcquireKernelReclaimGuard } from "./reclaim-kernel-guard.js";
++ import fsSync from "node:fs";
++ import { FsSafeError } from "./errors.js";
++ import { sameFileIdentity } from "./file-identity.js";
++@@ -92,7 +93,8 @@ function releaseAllReclaimGuardsSync(state) {
++     // Exit cleanup also visits managers created by older copies and never reopened here.
++     for (const reclaimGuardPath of state.reclaimGuards ?? []) {
++         try {
++-            fsSync.rmdirSync(reclaimGuardPath);
+++            if (process.platform === "darwin") releaseKernelReclaimGuard(reclaimGuardPath);
+++            else fsSync.rmdirSync(reclaimGuardPath);
++             state.reclaimGuards.delete(reclaimGuardPath);
++         }
++         catch {
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index c53f56e71..9c5671f6c 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -209,6 +209,7 @@ packageExtensionsChecksum: sha256-zZ8fyodhMTumshonC7kktCqTPsiHL3UAyS9vltFAlMo=
+ patchedDependencies:
+   '@awesome.me/webawesome@3.12.0': e30830e3b67d6b834f2257eb85dd252dcf225ed935fb69646e6c90433c85d99c
+   '@novnc/novnc@1.7.0': bfde0e1bda172da3525f9f5014d85ad28073325b74f09609084598a65d2f412d
++  '@openclaw/fs-safe@0.18.1': 3c01c5b1dfcfe759a7816e0459b4b2ecc0798534d9cb9f94df193059ff53a36c
+   chrome-devtools-mcp@1.8.0: c9e9590160eb099415e7ff6e705b0e0f725e364419f91153a0207e31a71f8547
+   matrix-js-sdk@42.3.0: 79bea7a0ca1c3c98635b2da6957539ab04386a2fe0ffec5498b5e9abc18b8b97
+   vitest@5.0.0: 5e7c1655044613ad5d71751e82ea0e6448f7bf5a7445b86114f495866c9a3bcf
+@@ -261,7 +262,7 @@ importers:
+         version: link:packages/ai
+       '@openclaw/fs-safe':
+         specifier: 0.18.1
+-        version: 0.18.1
++        version: 0.18.1(patch_hash=3c01c5b1dfcfe759a7816e0459b4b2ecc0798534d9cb9f94df193059ff53a36c)
+       '@openclaw/proxyline':
+         specifier: 0.3.12
+         version: 0.3.12(undici@8.10.2)
+@@ -1196,7 +1197,7 @@ importers:
+     dependencies:
+       '@openclaw/fs-safe':
+         specifier: 0.18.1
+-        version: 0.18.1
++        version: 0.18.1(patch_hash=3c01c5b1dfcfe759a7816e0459b4b2ecc0798534d9cb9f94df193059ff53a36c)
+       minimatch:
+         specifier: 10.2.6
+         version: 10.2.6
+@@ -1435,7 +1436,7 @@ importers:
+     dependencies:
+       '@openclaw/fs-safe':
+         specifier: 0.18.1
+-        version: 0.18.1
++        version: 0.18.1(patch_hash=3c01c5b1dfcfe759a7816e0459b4b2ecc0798534d9cb9f94df193059ff53a36c)
+     devDependencies:
+       '@openclaw/plugin-sdk':
+         specifier: workspace:*
+@@ -1642,7 +1643,7 @@ importers:
+     dependencies:
+       '@openclaw/fs-safe':
+         specifier: 0.18.1
+-        version: 0.18.1
++        version: 0.18.1(patch_hash=3c01c5b1dfcfe759a7816e0459b4b2ecc0798534d9cb9f94df193059ff53a36c)
+     devDependencies:
+       '@openclaw/plugin-sdk':
+         specifier: workspace:*
+@@ -1809,7 +1810,7 @@ importers:
+     dependencies:
+       '@openclaw/fs-safe':
+         specifier: 0.18.1
+-        version: 0.18.1
++        version: 0.18.1(patch_hash=3c01c5b1dfcfe759a7816e0459b4b2ecc0798534d9cb9f94df193059ff53a36c)
+     devDependencies:
+       '@openclaw/plugin-sdk':
+         specifier: workspace:*
+@@ -1873,7 +1874,7 @@ importers:
+     dependencies:
+       '@openclaw/fs-safe':
+         specifier: 0.18.1
+-        version: 0.18.1
++        version: 0.18.1(patch_hash=3c01c5b1dfcfe759a7816e0459b4b2ecc0798534d9cb9f94df193059ff53a36c)
+       p-limit:
+         specifier: 7.3.2
+         version: 7.3.2
+@@ -2074,7 +2075,7 @@ importers:
+     dependencies:
+       '@openclaw/fs-safe':
+         specifier: 0.18.1
+-        version: 0.18.1
++        version: 0.18.1(patch_hash=3c01c5b1dfcfe759a7816e0459b4b2ecc0798534d9cb9f94df193059ff53a36c)
+       ws:
+         specifier: 8.21.3
+         version: 8.21.3
+@@ -11927,7 +11928,7 @@ snapshots:
+       '@openclaw/fs-safe-win32-x64-msvc': 0.12.0
+       jszip: 3.10.2
+ 
+-  '@openclaw/fs-safe@0.18.1':
++  '@openclaw/fs-safe@0.18.1(patch_hash=3c01c5b1dfcfe759a7816e0459b4b2ecc0798534d9cb9f94df193059ff53a36c)':
+     optionalDependencies:
+       '@openclaw/fs-safe-darwin-arm64': 0.18.1
+       '@openclaw/fs-safe-darwin-x64': 0.18.1
+diff --git a/pnpm-workspace.yaml b/pnpm-workspace.yaml
+index 41e43d2cb..2f64eeccf 100644
+--- a/pnpm-workspace.yaml
++++ b/pnpm-workspace.yaml
+@@ -143,3 +143,4 @@ patchedDependencies:
+   "matrix-js-sdk@42.3.0": patches/matrix-js-sdk@42.3.0.patch
+   "@novnc/novnc@1.7.0": patches/@novnc__novnc@1.7.0.patch
+   vitest@5.0.0: patches/vitest@5.0.0.patch
++  '@openclaw/fs-safe@0.18.1': patches/@openclaw__fs-safe@0.18.1.patch
+diff --git a/src/plugin-sdk/file-lock.stale-contention.test.ts b/src/plugin-sdk/file-lock.stale-contention.test.ts
+new file mode 100644
+index 000000000..6efc52ab3
+--- /dev/null
++++ b/src/plugin-sdk/file-lock.stale-contention.test.ts
+@@ -0,0 +1,232 @@
++import { spawn } from "node:child_process";
++import { once } from "node:events";
++import fs from "node:fs/promises";
++import os from "node:os";
++import path from "node:path";
++import { pathToFileURL } from "node:url";
++import { afterEach, describe, expect, it } from "vitest";
++
++const workerSource = `
++import fs from "node:fs/promises";
++import process from "node:process";
++import { pathToFileURL } from "node:url";
++
++const [modulePath, target, controlDir, eventsPath, id] = process.argv.slice(2);
++const { acquireFileLock } = await import(pathToFileURL(modulePath).href);
++const waitFor = async (file) => {
++  for (let attempt = 0; attempt < 500; attempt += 1) {
++    try {
++      await fs.access(file);
++      return;
++    } catch {}
++    await new Promise((resolve) => setTimeout(resolve, 10));
++  }
++  throw new Error("worker barrier timed out");
++};
++const lock = await acquireFileLock(target, {
++  managerKey: "stale-contention-" + id,
++  staleMs: 1,
++  retry: { retries: 500, factor: 1, minTimeout: 5, maxTimeout: 5 },
++  staleRecovery: "remove-if-unchanged",
++  allowReentrant: false,
++  payload: async () => ({
++    pid: process.pid,
++    createdAt: new Date().toISOString(),
++  }),
++  shouldReclaim: async ({ payload }) => payload?.pid === -1,
++  shouldRemoveStaleLock: async () => {
++    await fs.writeFile(controlDir + "/" + id + ".ready", "");
++    if (id === "a") {
++      await waitFor(controlDir + "/a.allow");
++    }
++    return true;
++  },
++});
++try {
++  await fs.appendFile(eventsPath, "enter " + id + "\\n");
++  await new Promise((resolve) => setTimeout(resolve, 100));
++  await fs.appendFile(eventsPath, "exit " + id + "\\n");
++} finally {
++  await lock.release();
++}
++`;
++
++describe("shared file-lock stale contention", () => {
++  const tempDirs: string[] = [];
++
++  afterEach(async () => {
++    await Promise.all(
++      tempDirs.splice(0).map((directory) => fs.rm(directory, { recursive: true, force: true })),
++    );
++  });
++
++  it.skipIf(process.platform !== "darwin")(
++    "recovers after a killed reclaimer and shares persistent guards with sync callers",
++    async () => {
++      const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-killed-lock-"));
++      tempDirs.push(tempDir);
++      const target = path.join(tempDir, "config.json");
++      const ready = path.join(tempDir, "ready");
++      const modulePath = path.join(
++        process.cwd(),
++        "node_modules/@openclaw/fs-safe/dist/file-lock.js",
++      );
++      await fs.writeFile(`${target}.lock`, JSON.stringify({ pid: -1 }));
++      // Existing production guards are persistent files, not stale directories.
++      await fs.writeFile(`${target}.lock.reclaim`, "");
++      const child = spawn(
++        process.execPath,
++        [
++          "--input-type=module",
++          "-e",
++          `
++        import fs from "node:fs/promises";
++        const { acquireFileLock } = await import(${JSON.stringify(pathToFileURL(modulePath).href)});
++        await acquireFileLock(${JSON.stringify(target)}, {
++          payload: () => ({ pid: process.pid, createdAt: new Date().toISOString() }),
++          staleRecovery: "remove-if-unchanged", shouldReclaim: () => true,
++          shouldRemoveStaleLock: async () => {
++            await fs.writeFile(${JSON.stringify(ready)}, "");
++            await new Promise(() => setInterval(() => {}, 1000));
++            return true;
++          },
++        });
++      `,
++        ],
++        { stdio: ["ignore", "ignore", "pipe"] },
++      );
++      const exited = once(child, "exit");
++      try {
++        await waitFor(() => fs.access(ready));
++        child.kill("SIGKILL");
++        await exited;
++        const { acquireFileLock, acquireFileLockSync } = await import(
++          pathToFileURL(modulePath).href
++        );
++        const options = {
++          payload: () => ({ pid: process.pid, createdAt: new Date().toISOString() }),
++          staleRecovery: "remove-if-unchanged",
++          shouldReclaim: ({ payload }: { payload?: { pid?: number } }) => payload?.pid === -1,
++          shouldRemoveStaleLock: () => true,
++          retry: { retries: 1, minTimeout: 1, maxTimeout: 1 },
++        };
++        const first = await acquireFileLock(target, options);
++        try {
++          expect(() => acquireFileLockSync(target, options)).toThrow("file lock timeout");
++        } finally {
++          await first.release();
++        }
++        const second = acquireFileLockSync(target, options);
++        second.release();
++        expect((await fs.stat(`${target}.lock.reclaim`)).isFile()).toBe(true);
++      } finally {
++        if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
++        await exited;
++      }
++    },
++    15_000,
++  );
++
++  it.skipIf(process.platform !== "darwin")(
++    "serializes two stale reclaimers without overlapping lock owners",
++    async () => {
++      const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-stale-lock-"));
++      tempDirs.push(tempDir);
++      const target = path.join(tempDir, "openclaw.json");
++      const lockPath = `${target}.lock`;
++      const controlDir = path.join(tempDir, "control");
++      const eventsPath = path.join(tempDir, "events.log");
++      const workerPath = path.join(tempDir, "worker.mjs");
++      const modulePath = path.join(
++        process.cwd(),
++        "node_modules",
++        "@openclaw",
++        "fs-safe",
++        "dist",
++        "file-lock.js",
++      );
++      await fs.mkdir(controlDir);
++      await fs.writeFile(workerPath, workerSource);
++      await fs.writeFile(
++        lockPath,
++        JSON.stringify({
++          pid: -1,
++          createdAt: new Date(Date.now() - 60_000).toISOString(),
++        }),
++      );
++
++      const first = spawnWorker({
++        workerPath,
++        modulePath,
++        target,
++        controlDir,
++        eventsPath,
++        id: "a",
++      });
++      await waitFor(() => fs.access(path.join(controlDir, "a.ready")));
++
++      const second = spawnWorker({
++        workerPath,
++        modulePath,
++        target,
++        controlDir,
++        eventsPath,
++        id: "b",
++      });
++      await new Promise((resolve) => setTimeout(resolve, 150));
++      await expect(fs.access(path.join(controlDir, "b.ready"))).rejects.toThrow();
++
++      await fs.writeFile(path.join(controlDir, "a.allow"), "");
++      const [firstResult, secondResult] = await Promise.all([first, second]);
++      expect(firstResult).toEqual({ code: 0, stderr: "" });
++      expect(secondResult).toEqual({ code: 0, stderr: "" });
++
++      const events = (await fs.readFile(eventsPath, "utf8")).trim().split("\n");
++      let active = 0;
++      for (const event of events) {
++        active += event.startsWith("enter ") ? 1 : -1;
++        expect(active).toBeGreaterThanOrEqual(0);
++        expect(active).toBeLessThanOrEqual(1);
++      }
++      expect(active).toBe(0);
++    },
++    15_000,
++  );
++});
++
++function spawnWorker(params: {
++  workerPath: string;
++  modulePath: string;
++  target: string;
++  controlDir: string;
++  eventsPath: string;
++  id: string;
++}): Promise<{ code: number | null; stderr: string }> {
++  const child = spawn(process.execPath, [
++    params.workerPath,
++    params.modulePath,
++    params.target,
++    params.controlDir,
++    params.eventsPath,
++    params.id,
++  ]);
++  let stderr = "";
++  child.stderr.setEncoding("utf8");
++  child.stderr.on("data", (chunk) => {
++    stderr += chunk;
++  });
++  return new Promise((resolve) => {
++    child.on("close", (code) => resolve({ code, stderr }));
++  });
++}
++
++async function waitFor(check: () => Promise<void>): Promise<void> {
++  for (let attempt = 0; attempt < 500; attempt += 1) {
++    try {
++      await check();
++      return;
++    } catch {}
++    await new Promise((resolve) => setTimeout(resolve, 10));
++  }
++  throw new Error("test barrier timed out");
++}

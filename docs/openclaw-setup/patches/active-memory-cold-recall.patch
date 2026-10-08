@@ -1,0 +1,68 @@
+diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/index.test.ts
+index 9dd571d63..456ea6553 100644
+--- a/extensions/active-memory/index.test.ts
++++ b/extensions/active-memory/index.test.ts
+@@ -4910,6 +4910,63 @@ describe("active-memory plugin", () => {
+     expect(runEmbeddedAgent).not.toHaveBeenCalled();
+   });
+ 
++  it.each([
++    { readyAfterMs: 1_850, setupGraceTimeoutMs: 2_000, recalled: true },
++    { readyAfterMs: 2_600, setupGraceTimeoutMs: 1_700, recalled: true },
++    { readyAfterMs: 6_000, setupGraceTimeoutMs: 1_700, recalled: false },
++  ])(
++    "continues cold recall within its configured budget (readyAfterMs=$readyAfterMs, recalled=$recalled)",
++    async ({ readyAfterMs, setupGraceTimeoutMs, recalled }) => {
++      const timeoutMs = 250;
++      registerPluginConfig({ timeoutMs, setupGraceTimeoutMs, logging: true });
++      const providerReady = createDeferred<void>();
++      let readinessTimer: ReturnType<typeof setTimeout> | undefined;
++      hoisted.getActiveMemorySearchManager.mockImplementationOnce(async () => {
++        readinessTimer = setTimeout(() => providerReady.resolve(), readyAfterMs);
++        await providerReady.promise;
++        return { manager: null };
++      });
++      runEmbeddedAgent.mockImplementationOnce(async (params: { sessionFile: string }) => {
++        await providerReady.promise;
++        await writeUsableMemoryTranscript(params.sessionFile, "cold local recall");
++        return { payloads: [{ text: "cold local recall" }] };
++      });
++      const startedAt = Date.now();
++      try {
++        const result = await runPromptBuild(
++          { prompt: "What did we decide about the project?" },
++          {
++            sessionKey: "agent:main:telegram:direct:cold",
++            messageProvider: "telegram",
++            channelId: "cold",
++          },
++        );
++        expect(runEmbeddedAgent).toHaveBeenCalledTimes(1);
++        // Upstream bounds optional preflight separately and preserves this recall allowance.
++        expect(lastEmbeddedRunParams().timeoutMs).toBe(timeoutMs + setupGraceTimeoutMs);
++        if (recalled) {
++          expectPrependContextContains(result, "cold local recall");
++        } else {
++          expect(result).toBeUndefined();
++          expectLinesToContain(
++            vi.mocked(api.logger.info).mock.calls.map((call: unknown[]) => String(call[0])),
++            "status=timeout",
++          );
++        }
++        expect(Date.now() - startedAt).toBeLessThan(
++          timeoutMs + setupGraceTimeoutMs + 1_500 + 1_000,
++        );
++        expectLinesNotToContain(
++          vi.mocked(api.logger.warn).mock.calls.map((call: unknown[]) => String(call[0])),
++          "preflight timed out",
++        );
++      } finally {
++        clearTimeout(readinessTimer);
++        providerReady.resolve();
++      }
++    },
++  );
++
+   it("preserves recall settlement time after near-limit preflight latency", async () => {
+     vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
+     testing.setMinimumTimeoutMsForTests(1);

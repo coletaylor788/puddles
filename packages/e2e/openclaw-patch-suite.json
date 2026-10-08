@@ -1,32 +1,222 @@
 {
-  "openclawRef": "0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c",
+  "openclawRef": "eb377ac59e6c9fd6c7705028034812becf00271b",
+  "testProjects": {
+    "src/agents/provider-local-service.test.ts": "agents-core",
+    "src/agents/provider-local-service.shutdown.test.ts": "agents-core",
+    "src/process/supervisor/service-child-ownership.test.ts": "process",
+    "src/process/supervisor/service-child-relay-host.test.ts": "process",
+    "src/process/supervisor/adapters/child.service-lifecycle.test.ts": "process",
+    "src/infra/container-env-file.test.ts": "infra",
+    "src/agents/sandbox.resolveSandboxContext.test.ts": "agents-core",
+    "src/agents/sandbox/docker-backend.test.ts": "agents-support",
+    "src/agents/sandbox/docker.config-hash-recreate.test.ts": "agents-support",
+    "src/agents/sandbox/browser.create.test.ts": "agents-support",
+    "extensions/active-memory/index.test.ts": "extension-database-workers",
+    "extensions/active-memory/trigger-recall.test.ts": "extension-active-memory",
+    "extensions/active-memory/config.test.ts": "extension-active-memory",
+    "extensions/active-memory/escalation.test.ts": "extension-active-memory",
+    "src/cron/store.test.ts": "cron",
+    "src/agents/embedded-agent-runner/run/terminal-resolution.test.ts": "agents-embedded-agent-run",
+    "src/plugin-sdk/file-lock.stale-contention.test.ts": "plugin-sdk",
+    "src/agents/tools/sessions-yield-tool.test.ts": "agents-tools",
+    "src/agents/tools/yield-gather-state.test.ts": "unit-fast",
+    "src/agents/tools/yield-descendant-gather.test.ts": "agents-tools",
+    "src/agents/subagents/announce/subagent-announce-delivery.test.ts": "agents-support",
+    "src/agents/subagents/registry/subagent-registry-queries.test.ts": "unit-fast",
+    "src/agents/subagents/registry/subagent-registry-lifecycle.test.ts": "agents-support",
+    "src/agents/subagents/registry/subagent-registry.store.sqlite.test.ts": "agents-support",
+    "src/cron/isolated-agent/subagent-followup.test.ts": "cron",
+    "src/agents/subagents/spawn/acp-spawn.test.ts": "agents-support",
+    "src/agents/subagents/spawn/subagent-spawn.test.ts": "infra",
+    "src/agents/tools/sessions-spawn-tool.test.ts": "agents-tools",
+    "src/agents/tools/skill-workshop-tool.test.ts": "infra",
+    "extensions/imessage/src/monitor.last-route.test.ts": "extension-database-workers",
+    "extensions/imessage/src/monitor/coalesce.test.ts": "extension-imessage",
+    "extensions/imessage/src/config-schema.test.ts": "extension-imessage",
+    "extensions/imessage/src/monitor/parse-notification.coalescing.test.ts": "extension-imessage",
+    "extensions/imessage/src/monitor/ingress.test.ts": "extension-imessage",
+    "src/config/dead-config-keys.test.ts": "runtime-config",
+    "src/commands/doctor/shared/legacy-config-migrations.runtime.retired.test.ts": "unit-fast",
+    "src/commands/sandbox.test.ts": "commands",
+    "packages/memory-host-sdk/src/host/backend-config.test.ts": "unit-fast-isolated",
+    "src/commands/doctor/shared/legacy-config-migrations.memory-isolation.test.ts": "commands",
+    "src/commands/doctor/shared/legacy-config-migrations.runtime.retired.memory-qmd.test.ts": "unit-fast",
+    "src/gateway/server-memory-warmup.test.ts": "gateway-server",
+    "src/gateway/server-startup-post-attach.test.ts": "gateway-server",
+    "src/plugins/openai-compatible-embedding-provider.test.ts": "plugins",
+    "extensions/llama-cpp/index.test.ts": "extensions",
+    "extensions/llama-cpp/src/managed-server.test.ts": "extensions",
+    "packages/gateway-protocol/src/schema/protocol-schema-fragment-portability.test.ts": "gateway-client",
+    "src/cron/stopped-state-sdk.test.ts": "cron",
+    "src/commands/doctor/stopped-config-repair.test.ts": "commands",
+    "src/agents/tools/skill-workshop-tool.availability.test.ts": "agents-tools",
+    "src/skills/workshop/tool-policy-diagnostic.test.ts": "unit-fast",
+    "src/agents/tool-allowlist-guard.test.ts": "unit-fast",
+    "src/agents/subagents/registry/subagent-registry-yield-gather.test.ts": "agents-support",
+    "src/state/openclaw-agent-db.storage-migration.test.ts": "infra",
+    "src/commands/doctor-agent-memory-schema.test.ts": "commands",
+    "src/process/supervisor/service-child-ownership.bundle.test.ts": "process",
+    "src/infra/windows-process-start.test.ts": "infra",
+    "src/config/sessions/session-declaration-portability.test.ts": "runtime-config",
+    "extensions/imessage/src/monitor/inbound-processing.route.test.ts": "extension-imessage",
+    "src/channels/inbound-event/classification.test.ts": "unit-fast",
+    "src/gateway/talk/client-gateway-control.agent-consult.test.ts": "gateway-client",
+    "src/gateway/talk/client-gateway-control.close.test.ts": "gateway-client",
+    "src/gateway/talk/client-spoken-confirmation.test.ts": "gateway-client",
+    "src/agents/agent-tools.before-tool-call.integration.e2e.test.ts": "e2e",
+    "src/config/talk.normalize.test.ts": "runtime-config",
+    "src/config/zod-schema.talk.test.ts": "runtime-config",
+    "src/talk/client-voice-confirmation.test.ts": "unit-src",
+    "extensions/facetime/tests/config.test.ts": "extensions",
+    "extensions/facetime/tests/talk-driver.shared-talk.test.ts": "extensions",
+    "extensions/openai/realtime-quicksilver-gateway-direct.test.ts": "extension-provider-openai",
+    "src/gateway/server-plugins.test.ts": "gateway-server",
+    "src/gateway/talk/carrier-session.test.ts": "gateway-core",
+    "src/plugins/loader.runtime-metadata.test.ts": "plugins",
+    "src/plugins/registry.runtime-config.test.ts": "plugins",
+    "src/talk/carrier-call-control.test.ts": "unit-src",
+    "src/talk/session-runtime.test.ts": "unit-src",
+    "extensions/facetime/tests/audio-pump.test.ts": "extensions",
+    "extensions/facetime/tests/capture-launcher.test.ts": "extensions",
+    "extensions/facetime/tests/call-events.test.ts": "extensions",
+    "extensions/facetime/tests/call-lifecycle.test.ts": "extensions",
+    "extensions/facetime/tests/config-compat.test.ts": "extensions",
+    "extensions/facetime/tests/driver-setup.test.ts": "extensions",
+    "extensions/facetime/tests/helper-rpc.test.ts": "extensions",
+    "extensions/facetime/tests/helper-supervisor.test.ts": "extensions",
+    "extensions/facetime/tests/inject-helper.test.ts": "extensions",
+    "extensions/facetime/tests/outbound-call.test.ts": "extensions",
+    "extensions/facetime/tests/package-manifest.test.ts": "extensions",
+    "extensions/facetime/tests/pending-dial-store.test.ts": "extensions",
+    "extensions/facetime/tests/plugin-paths.test.ts": "extensions",
+    "extensions/facetime/tests/pinned-helper.test.ts": "extensions",
+    "extensions/facetime/tests/preflight.test.ts": "extensions",
+    "extensions/facetime/tests/runtime-admission.test.ts": "extension-database-workers",
+    "extensions/facetime/tests/runtime-authority-boundary.test.ts": "extension-database-workers",
+    "extensions/facetime/tests/runtime-carrier-aliases.test.ts": "extension-database-workers",
+    "extensions/facetime/tests/runtime-carrier-process.test.ts": "extensions",
+    "extensions/facetime/tests/runtime-lifecycle.test.ts": "extensions",
+    "extensions/facetime/tests/runtime-persistence.test.ts": "extension-database-workers",
+    "extensions/facetime/tests/runtime-reconciliation.test.ts": "extension-database-workers",
+    "extensions/facetime/tests/runtime.test.ts": "extension-database-workers",
+    "extensions/facetime/tests/setup.test.ts": "extensions",
+    "extensions/facetime/tests/talk-driver.consult.test.ts": "extensions",
+    "extensions/facetime/tests/talk-driver.provider.test.ts": "extensions",
+    "extensions/facetime/tests/talk-driver.test.ts": "extensions",
+    "extensions/facetime/tests/talk-events-summary.test.ts": "extensions",
+    "extensions/facetime/tests/talk-initial-greeting.test.ts": "extensions",
+    "extensions/facetime/tests/tool.test.ts": "extensions",
+    "extensions/facetime/tests/verify-native-helper.test.ts": "extensions",
+    "extensions/facetime/index.test.ts": "extensions",
+    "src/agents/harness/host-capability.test.ts": "agents-support",
+    "extensions/openai/realtime-quicksilver-delegation.test.ts": "extension-provider-openai",
+    "extensions/openai/realtime-quicksilver-concurrency.test.ts": "extension-provider-openai",
+    "extensions/openai/realtime-quicksilver-public-delegation.test.ts": "extension-provider-openai",
+    "src/gateway/talk/client-gateway-control.native.test.ts": "gateway-client",
+    "extensions/openai/realtime-quicksilver-progress.test.ts": "extension-provider-openai",
+    "src/talk/agent-consult-runtime.test.ts": "unit-fast-isolated",
+    "src/gateway/talk/client-gateway-control.test.ts": "gateway-client",
+    "src/agents/embedded-agent-subscribe.handlers.messages.update-stream-items.test.ts": "agents-core",
+    "extensions/copilot/src/event-bridge.test.ts": "extensions",
+    "extensions/openai/realtime-quicksilver-copilot-progress.test.ts": "extension-provider-openai",
+    "src/infra/heartbeat-runner.tool-response.test.ts": "infra",
+    "src/infra/heartbeat-runner.isolated-session-mirror.test.ts": "infra",
+    "src/agents/system-prompt.test.ts": "agents-core",
+    "src/agents/embedded-agent-runner/run/terminal-resolution.settled-request.test.ts": "unit-fast",
+    "src/agents/agent-tools.create-openclaw-coding-tools.test.ts": "infra",
+    "extensions/openai/realtime-quicksilver-gateway-bridge.test.ts": "extension-provider-openai",
+    "extensions/openai/realtime-quicksilver-session-lifecycle.test.ts": "extension-provider-openai",
+    "extensions/openai/realtime-voice-provider-routing.test.ts": "extension-provider-openai",
+    "extensions/copilot/src/attempt.test.ts": "extensions",
+    "extensions/copilot/src/attempt-transcript-journal.test.ts": "extensions"
+  },
   "patches": [
+    {
+      "name": "managed-local-service-lifecycle",
+      "tests": [
+        "src/agents/provider-local-service.test.ts",
+        "src/agents/provider-local-service.shutdown.test.ts",
+        "src/process/supervisor/service-child-ownership.test.ts",
+        "src/process/supervisor/service-child-relay-host.test.ts",
+        "src/process/supervisor/adapters/child.service-lifecycle.test.ts",
+        "src/process/supervisor/service-child-ownership.bundle.test.ts",
+        "src/infra/windows-process-start.test.ts"
+      ]
+    },
+    {
+      "name": "gateway-memory-warmup",
+      "tests": [
+        "src/gateway/server-memory-warmup.test.ts",
+        "src/gateway/server-startup-post-attach.test.ts",
+        "src/plugins/openai-compatible-embedding-provider.test.ts",
+        "extensions/llama-cpp/index.test.ts",
+        "extensions/llama-cpp/src/managed-server.test.ts"
+      ]
+    },
+    {
+      "name": "file-lock-stale-reclaim-guard",
+      "tests": [
+        "src/plugin-sdk/file-lock.stale-contention.test.ts"
+      ],
+      "candidateTests": [
+        "tests/candidate.file-lock-reclaim-guard.test.ts"
+      ]
+    },
     {
       "name": "sessions-yield-block-and-gather",
       "tests": [
         "src/agents/tools/sessions-yield-tool.test.ts",
-        "src/agents/tools/yield-gather-state.test.ts"
+        "src/agents/tools/yield-gather-state.test.ts",
+        "src/agents/tools/yield-descendant-gather.test.ts",
+        "src/agents/subagents/announce/subagent-announce-delivery.test.ts",
+        "src/agents/subagents/registry/subagent-registry-queries.test.ts",
+        "src/agents/subagents/registry/subagent-registry-lifecycle.test.ts",
+        "src/cron/isolated-agent/subagent-followup.test.ts"
+      ]
+    },
+    {
+      "name": "sessions-yield-durable-handoff",
+      "tests": [
+        "src/agents/tools/yield-descendant-gather.test.ts",
+        "src/agents/subagents/announce/subagent-announce-delivery.test.ts",
+        "src/agents/subagents/registry/subagent-registry.store.sqlite.test.ts",
+        "src/agents/subagents/registry/subagent-registry-yield-gather.test.ts"
       ]
     },
     {
       "name": "subagent-cross-agent-spawn-fix",
       "tests": [
-        "src/agents/acp-spawn.test.ts",
-        "src/agents/subagent-spawn.test.ts",
+        "src/agents/subagents/spawn/acp-spawn.test.ts",
+        "src/agents/subagents/spawn/subagent-spawn.test.ts",
         "src/agents/tools/sessions-spawn-tool.test.ts"
       ]
     },
     {
       "name": "skill-workshop-sandbox-fix",
       "tests": [
-        "src/agents/tools/skill-workshop-tool.test.ts"
+        "src/agents/tools/skill-workshop-tool.test.ts",
+        "src/agents/tools/skill-workshop-tool.availability.test.ts",
+        "src/skills/workshop/tool-policy-diagnostic.test.ts",
+        "src/agents/tool-allowlist-guard.test.ts"
       ]
     },
     {
       "name": "imessage-message-part-coalescing",
       "tests": [
         "extensions/imessage/src/monitor.last-route.test.ts",
-        "extensions/imessage/src/monitor/coalesce.test.ts"
+        "extensions/imessage/src/monitor/coalesce.test.ts",
+        "extensions/imessage/src/config-schema.test.ts",
+        "extensions/imessage/src/monitor/parse-notification.coalescing.test.ts",
+        "extensions/imessage/src/monitor/ingress.test.ts",
+        "src/config/dead-config-keys.test.ts",
+        "src/commands/doctor/shared/legacy-config-migrations.runtime.retired.test.ts"
+      ]
+    },
+    {
+      "name": "imessage-group-inbound-policy",
+      "tests": [
+        "extensions/imessage/src/monitor/inbound-processing.route.test.ts",
+        "src/channels/inbound-event/classification.test.ts"
       ]
     },
     {
@@ -40,6 +230,200 @@
       "tests": [],
       "candidateTests": [
         "tests/candidate.browser-entrypoint.test.ts"
+      ]
+    },
+    {
+      "name": "builtin-memory-migration",
+      "tests": [
+        "packages/memory-host-sdk/src/host/backend-config.test.ts",
+        "src/commands/doctor/shared/legacy-config-migrations.memory-isolation.test.ts",
+        "src/commands/doctor/shared/legacy-config-migrations.runtime.retired.memory-qmd.test.ts"
+      ],
+      "candidateTests": [
+        "tests/candidate.scoped-memory.test.ts",
+        "tests/candidate.communication-watcher.test.ts"
+      ]
+    },
+    {
+      "name": "silent-reply-completion-evidence",
+      "tests": [
+        "src/agents/embedded-agent-runner/run/terminal-resolution.test.ts"
+      ]
+    },
+    {
+      "name": "native-heartbeat-response",
+      "tests": [
+        "src/infra/heartbeat-runner.tool-response.test.ts",
+        "src/infra/heartbeat-runner.isolated-session-mirror.test.ts",
+        "src/agents/system-prompt.test.ts",
+        "src/agents/embedded-agent-runner/run/terminal-resolution.settled-request.test.ts",
+        "src/agents/agent-tools.create-openclaw-coding-tools.test.ts",
+        "extensions/copilot/src/attempt.test.ts",
+        "extensions/copilot/src/attempt-transcript-journal.test.ts"
+      ]
+    },
+    {
+      "name": "stopped-state-migration-sdk",
+      "tests": [
+        "src/cron/stopped-state-sdk.test.ts",
+        "src/commands/doctor/stopped-config-repair.test.ts",
+        "src/cron/store.test.ts",
+        "src/state/openclaw-agent-db.storage-migration.test.ts",
+        "src/commands/doctor-agent-memory-schema.test.ts"
+      ],
+      "candidateTests": [
+        "tests/candidate.state-migration.test.ts",
+        "tests/candidate.workshop-migration.test.ts"
+      ]
+    },
+    {
+      "name": "scoped-container-temp-root",
+      "tests": [
+        "src/infra/container-env-file.test.ts",
+        "src/agents/sandbox.resolveSandboxContext.test.ts",
+        "src/agents/sandbox/docker-backend.test.ts",
+        "src/agents/sandbox/docker.config-hash-recreate.test.ts",
+        "src/agents/sandbox/browser.create.test.ts"
+      ]
+    },
+    {
+      "name": "active-memory-cold-recall",
+      "tests": [
+        "extensions/active-memory/index.test.ts",
+        "extensions/active-memory/trigger-recall.test.ts",
+        "extensions/active-memory/config.test.ts",
+        "extensions/active-memory/escalation.test.ts"
+      ]
+    },
+    {
+      "name": "active-memory-fixture-cleanup",
+      "tests": [
+        "extensions/active-memory/index.test.ts"
+      ]
+    },
+    {
+      "name": "gateway-protocol-declaration-portability",
+      "tests": [
+        "packages/gateway-protocol/src/schema/protocol-schema-fragment-portability.test.ts"
+      ],
+      "candidateTests": [
+        "tests/candidate.development-loop.test.ts"
+      ]
+    },
+    {
+      "name": "core-declaration-portability",
+      "tests": [
+        "src/config/sessions/session-declaration-portability.test.ts"
+      ],
+      "typechecks": [
+        "test/tsconfig/tsconfig.core.test.declaration-portability.json"
+      ]
+    },
+    {
+      "name": "talk-agent-parity",
+      "tests": [
+        "src/gateway/talk/client-gateway-control.agent-consult.test.ts",
+        "src/gateway/talk/client-gateway-control.close.test.ts",
+        "src/gateway/talk/client-spoken-confirmation.test.ts",
+        "src/agents/agent-tools.before-tool-call.integration.e2e.test.ts",
+        "src/config/talk.normalize.test.ts",
+        "src/config/zod-schema.talk.test.ts",
+        "src/talk/client-voice-confirmation.test.ts"
+      ]
+    },
+    {
+      "name": "facetime-talk-client",
+      "tests": [
+        "extensions/facetime/tests/config.test.ts",
+        "extensions/facetime/tests/talk-driver.shared-talk.test.ts",
+        "extensions/openai/realtime-quicksilver-gateway-direct.test.ts",
+        "src/gateway/server-plugins.test.ts",
+        "src/gateway/talk/carrier-session.test.ts",
+        "src/plugins/loader.runtime-metadata.test.ts",
+        "src/plugins/registry.runtime-config.test.ts",
+        "src/talk/carrier-call-control.test.ts",
+        "src/talk/session-runtime.test.ts",
+        "extensions/facetime/tests/audio-pump.test.ts",
+        "extensions/facetime/tests/capture-launcher.test.ts",
+        "extensions/facetime/tests/call-events.test.ts",
+        "extensions/facetime/tests/call-lifecycle.test.ts",
+        "extensions/facetime/tests/config-compat.test.ts",
+        "extensions/facetime/tests/driver-setup.test.ts",
+        "extensions/facetime/tests/helper-rpc.test.ts",
+        "extensions/facetime/tests/helper-supervisor.test.ts",
+        "extensions/facetime/tests/inject-helper.test.ts",
+        "extensions/facetime/tests/outbound-call.test.ts",
+        "extensions/facetime/tests/package-manifest.test.ts",
+        "extensions/facetime/tests/pending-dial-store.test.ts",
+        "extensions/facetime/tests/plugin-paths.test.ts",
+        "extensions/facetime/tests/pinned-helper.test.ts",
+        "extensions/facetime/tests/preflight.test.ts",
+        "extensions/facetime/tests/runtime-admission.test.ts",
+        "extensions/facetime/tests/runtime-authority-boundary.test.ts",
+        "extensions/facetime/tests/runtime-carrier-aliases.test.ts",
+        "extensions/facetime/tests/runtime-carrier-process.test.ts",
+        "extensions/facetime/tests/runtime-lifecycle.test.ts",
+        "extensions/facetime/tests/runtime-persistence.test.ts",
+        "extensions/facetime/tests/runtime-reconciliation.test.ts",
+        "extensions/facetime/tests/runtime.test.ts",
+        "extensions/facetime/tests/setup.test.ts",
+        "extensions/facetime/tests/talk-driver.consult.test.ts",
+        "extensions/facetime/tests/talk-driver.provider.test.ts",
+        "extensions/facetime/tests/talk-driver.test.ts",
+        "extensions/facetime/tests/talk-events-summary.test.ts",
+        "extensions/facetime/tests/talk-initial-greeting.test.ts",
+        "extensions/facetime/tests/tool.test.ts",
+        "extensions/facetime/tests/verify-native-helper.test.ts",
+        "src/gateway/talk/client-gateway-control.close.test.ts",
+        "extensions/facetime/index.test.ts"
+      ],
+      "candidateTests": [
+        "tests/candidate.facetime-native.test.ts"
+      ]
+    },
+    {
+      "name": "harness-tool-work-owner",
+      "tests": [
+        "src/agents/harness/host-capability.test.ts"
+      ]
+    },
+    {
+      "name": "talk-overlap-recovery",
+      "tests": [
+        "extensions/openai/realtime-quicksilver-delegation.test.ts",
+        "extensions/openai/realtime-quicksilver-concurrency.test.ts",
+        "extensions/openai/realtime-quicksilver-public-delegation.test.ts",
+        "src/gateway/talk/client-gateway-control.agent-consult.test.ts",
+        "src/gateway/talk/client-gateway-control.native.test.ts",
+        "src/gateway/talk/client-gateway-control.close.test.ts",
+        "src/gateway/talk/client-spoken-confirmation.test.ts"
+      ],
+      "candidateTests": [
+        "tests/candidate.talk-concurrency.test.ts"
+      ]
+    },
+    {
+      "name": "talk-conversation-progress",
+      "tests": [
+        "extensions/openai/realtime-quicksilver-progress.test.ts",
+        "extensions/openai/realtime-quicksilver-gateway-direct.test.ts",
+        "extensions/openai/realtime-quicksilver-delegation.test.ts",
+        "extensions/openai/realtime-quicksilver-public-delegation.test.ts",
+        "extensions/openai/realtime-quicksilver-concurrency.test.ts",
+        "src/talk/agent-consult-runtime.test.ts",
+        "src/gateway/talk/client-gateway-control.native.test.ts",
+        "src/gateway/talk/client-gateway-control.agent-consult.test.ts",
+        "src/gateway/talk/client-gateway-control.close.test.ts",
+        "src/gateway/talk/client-gateway-control.test.ts",
+        "src/agents/embedded-agent-subscribe.handlers.messages.update-stream-items.test.ts",
+        "extensions/copilot/src/event-bridge.test.ts",
+        "extensions/openai/realtime-quicksilver-copilot-progress.test.ts",
+        "extensions/openai/realtime-quicksilver-gateway-bridge.test.ts",
+        "extensions/openai/realtime-quicksilver-session-lifecycle.test.ts",
+        "extensions/openai/realtime-voice-provider-routing.test.ts"
+      ],
+      "candidateTests": [
+        "tests/candidate.talk-concurrency.test.ts"
       ]
     }
   ]

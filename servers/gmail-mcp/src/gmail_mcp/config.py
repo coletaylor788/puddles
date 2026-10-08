@@ -3,11 +3,9 @@
 import os
 from pathlib import Path
 
-# Default config directory (XDG-compliant)
-DEFAULT_CONFIG_DIR = Path.home() / ".config" / "gmail-mcp"
-
-# Keychain service name
-KEYCHAIN_SERVICE = "gmail-mcp"
+# Keychain service names
+LEGACY_KEYCHAIN_SERVICE = "gmail-mcp"
+KEYCHAIN_SERVICE = "gmail-mcp-stable"
 
 # Environment variable for Google OAuth token injection (e.g. from Azure Key Vault)
 GOOGLE_TOKEN_ENV = "GOOGLE_MCP_TOKEN"
@@ -19,7 +17,12 @@ def get_config_dir() -> Path:
     Returns:
         Path to config directory (~/.config/gmail-mcp/)
     """
-    config_dir = Path(os.environ.get("GMAIL_MCP_CONFIG_DIR", DEFAULT_CONFIG_DIR))
+    configured_dir = os.environ.get("GMAIL_MCP_CONFIG_DIR")
+    config_dir = (
+        Path(configured_dir)
+        if configured_dir is not None
+        else Path.home() / ".config" / "gmail-mcp"
+    )
 
     if not config_dir.exists():
         config_dir.mkdir(parents=True, mode=0o700)

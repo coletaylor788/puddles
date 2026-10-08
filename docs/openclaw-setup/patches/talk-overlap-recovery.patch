@@ -1,0 +1,589 @@
+diff --git a/extensions/openai/realtime-quicksilver-delegation-controller.ts b/extensions/openai/realtime-quicksilver-delegation-controller.ts
+--- a/extensions/openai/realtime-quicksilver-delegation-controller.ts
++++ b/extensions/openai/realtime-quicksilver-delegation-controller.ts
+@@ -421,15 +421,33 @@
+         try {
+           await steer({ prompt: delegation.prompt, signal: controller.signal });
+         } catch (error) {
+-          this.revokeRequesterFinal();
+           if (
+             this.stopped ||
+             controller.signal.aborted ||
++            this.consultController !== controller ||
+             readErrorName(error) === "AbortError" ||
+             extractErrorCode(error) === "ABORT_ERR"
+           ) {
++            this.revokeRequesterFinal();
+             return;
+           }
++          if (extractErrorCode(error) === "TALK_STEERING_UNSUPPORTED") {
++            // The host confirmed no input was injected. Preserve the original
++            // task and its completion owner while keeping the voice call open.
++            // Do not replay the request or report that it was queued.
++            try {
++              this.sendAppend(
++                "The additional request was not accepted. The earlier task is still running. " +
++                  "Tell the user you can keep chatting, and ask them to repeat the additional request after the earlier task finishes.",
++                "speakable",
++                delegation.id,
++              );
++              continue;
++            } catch (deliveryError) {
++              error = deliveryError;
++            }
++          }
++          this.revokeRequesterFinal();
+           const fatal = toErrorObject(error, "Realtime delegation steering failed");
+           // The queued delegation belongs to this steering attempt. Do not let the
+           // active-run finalizer relaunch it after its owner has failed.
+diff --git a/src/gateway/talk/client-agent-consult.ts b/src/gateway/talk/client-agent-consult.ts
+--- a/src/gateway/talk/client-agent-consult.ts
++++ b/src/gateway/talk/client-agent-consult.ts
+@@ -590,6 +590,16 @@
+           : undefined,
+       mode: "steer",
+     });
++    // This capability refusal happens before injection. Tell the provider that
++    // only the additional request was rejected, not the active voice session.
++    // Never classify accepted-but-unconfirmed input as safe to retry.
++    if (
++      !result.ok &&
++      result.queued === false &&
++      result.reason === "guarded_injection_unsupported"
++    ) {
++      throw Object.assign(new Error(result.message), { code: "TALK_STEERING_UNSUPPORTED" });
++    }
+     if (!result.ok || result.queued !== true || !isOwnerCurrent(owner, identity.sessionId)) {
+       throw new Error(result.message);
+     }
+diff --git a/extensions/openai/realtime-quicksilver-delegation.test.ts b/extensions/openai/realtime-quicksilver-delegation.test.ts
+--- a/extensions/openai/realtime-quicksilver-delegation.test.ts
++++ b/extensions/openai/realtime-quicksilver-delegation.test.ts
+@@ -679,6 +679,77 @@
+     ).toEqual([]);
+   });
+ 
++  it.each([false, true])(
++    "keeps listening and the original completion after unsupported steering: yielded=%s",
++    async (yielded) => {
++      const result = deferred<{ text: string; yielded?: true }>();
++      let appendFinal: ((text: string) => boolean) | undefined;
++      const runAgentConsult = vi.fn<ConsultRunner>(async ({ requesterFinal }) => {
++        appendFinal = requesterFinal?.append;
++        return await result.promise;
++      });
++      const steerAgentConsult = vi.fn(async () => {
++        throw Object.assign(new Error("private runtime detail"), {
++          code: "TALK_STEERING_UNSUPPORTED",
++        });
++      });
++      const onTranscript = vi.fn();
++      const { controller, socket, onFatalError } = createDelegationHarness({
++        runAgentConsult,
++        steerAgentConsult,
++        onTranscript,
++      });
++      try {
++        delegate(controller, "original", "check my calendar");
++        for (const id of ["weather", "match"]) {
++          delegate(controller, id, `also check ${id}`);
++          await vi.waitFor(() =>
++            expect(parseSent(socket)).toContainEqual(
++              expect.objectContaining({
++                delegation_item_id: id,
++                content: [{ type: "input_text", text: expect.stringContaining("not accepted") }],
++              }),
++            ),
++          );
++        }
++        expect(onFatalError).not.toHaveBeenCalled();
++        expect(runAgentConsult).toHaveBeenCalledOnce();
++        expect(runAgentConsult.mock.calls[0]?.[0].signal?.aborted).toBe(false);
++        controller.handleEvent({ kind: "transcript-done", role: "user", text: "still here" });
++        expect(onTranscript).toHaveBeenCalledWith("user", "still here", true);
++        result.resolve(yielded ? { text: "", yielded: true } : { text: "calendar result" });
++        await nextEventLoopTurn();
++        if (yielded) {
++          expect(appendFinal?.("calendar result")).toBe(true);
++          expect(appendFinal?.("duplicate")).toBe(false);
++        }
++        await vi.waitFor(() =>
++          expect(parseSent(socket)).toContainEqual(
++            expect.objectContaining({
++              delegation_item_id: "original",
++              content: [{ type: "input_text", text: "calendar result" }],
++            }),
++          ),
++        );
++        runAgentConsult.mockResolvedValueOnce({ text: "next result" });
++        delegate(controller, "next", "now check weather");
++        await vi.waitFor(() =>
++          expect(parseSent(socket)).toContainEqual(
++            expect.objectContaining({
++              delegation_item_id: "next",
++              content: [{ type: "input_text", text: "next result" }],
++            }),
++          ),
++        );
++        expect(JSON.stringify(parseSent(socket))).not.toContain("private runtime detail");
++        expect(onFatalError).not.toHaveBeenCalled();
++      } finally {
++        result.resolve({ text: "" });
++        controller.stop(new Error("test complete"));
++      }
++    },
++  );
++
+   it("drops queued work when steering fails", async () => {
+     let appendRequesterFinal: ((text: string) => boolean) | undefined;
+     const runAgentConsult = vi.fn<ConsultRunner>(async ({ requesterFinal, signal }) => {
+diff --git a/src/gateway/talk/client-gateway-control.agent-consult.test.ts b/src/gateway/talk/client-gateway-control.agent-consult.test.ts
+--- a/src/gateway/talk/client-gateway-control.agent-consult.test.ts
++++ b/src/gateway/talk/client-gateway-control.agent-consult.test.ts
+@@ -850,83 +850,108 @@
+     }
+   });
+ 
+-  it("installs steering ownership before readiness and delays backend admission", async () => {
+-    const ready = deferred<void>();
+-    const finish = deferred<void>();
+-    const chatAbortControllers = new Map();
+-    const handle = createEmbeddedRunHandle({ runId: "run-talk" });
+-    const operationalRunInstance = {
+-      instanceId: "instance:readiness",
+-      runId: "run-talk",
+-    };
+-    mocks.createOperationalRunInstanceRef.mockReturnValueOnce(operationalRunInstance);
+-    mocks.runEmbeddedAgentCore.mockImplementationOnce(async () => {
+-      await withGatewayToolCallerIdentity(
+-        {
++  it.each(["accepted", "unsupported", "unconfirmed", "other-rejection"])(
++    "preserves consult ownership and classifies steering admission: %s",
++    async (outcome) => {
++      const ready = deferred<void>();
++      const finish = deferred<void>();
++      const chatAbortControllers = new Map();
++      const handle = createEmbeddedRunHandle({ runId: "run-talk" });
++      const operationalRunInstance = {
++        instanceId: "instance:readiness",
++        runId: "run-talk",
++      };
++      mocks.createOperationalRunInstanceRef.mockReturnValueOnce(operationalRunInstance);
++      mocks.runEmbeddedAgentCore.mockImplementationOnce(async () => {
++        await withGatewayToolCallerIdentity(
++          {
++            agentId: "researcher",
++            sessionKey: "agent:researcher:talk",
++            operationalRunInstance,
++            embeddedRunToolAuthorityBinding: () => ({
++              source: "attempt",
++              project: () => "authority",
++              assertActive: () => {},
++            }),
++          },
++          () => setActiveEmbeddedRun("session-talk", handle, "agent:researcher:talk"),
++        );
++        await finish.promise;
++        clearActiveEmbeddedRun("session-talk", handle, "agent:researcher:talk");
++        return { payloads: [] };
++      });
++      const runner = createTalkClientAgentConsultRunner({
++        config,
++        context: { chatAbortControllers, logGateway: { warn: vi.fn() } } as never,
++        sessionTarget: {
+           agentId: "researcher",
+-          sessionKey: "agent:researcher:talk",
+-          operationalRunInstance,
+-          embeddedRunToolAuthorityBinding: () => ({
+-            source: "attempt",
+-            project: () => "authority",
+-            assertActive: () => {},
+-          }),
++          sessionKey: "main",
++          canonicalKey: "agent:researcher:talk",
++          storePath: "/tmp/sessions",
+         },
+-        () => setActiveEmbeddedRun("session-talk", handle, "agent:researcher:talk"),
++        ownerConnId: "connection-owner",
++        getVoiceSessionId: () => "voice-session",
++        initialItems: [],
++        registerRun: vi.fn(),
++        isRunCurrent: () => true,
++      });
++      const readiness = vi.fn(() => ready.promise);
++      const assertCurrent = vi.fn();
++      const run = runner.runOwnedArgs(
++        { question: "first task" },
++        new AbortController().signal,
++        readiness,
++        assertCurrent,
+       );
+-      await finish.promise;
+-      clearActiveEmbeddedRun("session-talk", handle, "agent:researcher:talk");
+-      return { payloads: [] };
+-    });
+-    const runner = createTalkClientAgentConsultRunner({
+-      config,
+-      context: { chatAbortControllers, logGateway: { warn: vi.fn() } } as never,
+-      sessionTarget: {
+-        agentId: "researcher",
+-        sessionKey: "main",
+-        canonicalKey: "agent:researcher:talk",
+-        storePath: "/tmp/sessions",
+-      },
+-      ownerConnId: "connection-owner",
+-      getVoiceSessionId: () => "voice-session",
+-      initialItems: [],
+-      registerRun: vi.fn(),
+-      isRunCurrent: () => true,
+-    });
+-    const readiness = vi.fn(() => ready.promise);
+-    const assertCurrent = vi.fn();
+-    const run = runner.runOwnedArgs(
+-      { question: "first task" },
+-      new AbortController().signal,
+-      readiness,
+-      assertCurrent,
+-    );
+-    const steer = runner.runOwnedArgs.steer;
+-    if (!steer) {
+-      throw new Error("owned Talk runner did not expose steering");
+-    }
+-    const steering = steer({ prompt: "latest task" });
+-
+-    try {
+-      expect(readiness).toHaveBeenCalledOnce();
+-      expect(assertCurrent).not.toHaveBeenCalled();
+-      expect(mocks.consultRealtimeVoiceAgent).not.toHaveBeenCalled();
+-      await Promise.resolve();
+-      expect(mocks.controlRealtimeVoiceAgentRun).not.toHaveBeenCalled();
+-      ready.resolve();
+-      await steering;
+-      expect(assertCurrent).toHaveBeenCalledTimes(3);
+-      expect(mocks.consultRealtimeVoiceAgent).toHaveBeenCalledOnce();
+-      expect(mocks.controlRealtimeVoiceAgentRun).toHaveBeenCalledOnce();
+-      finish.resolve();
+-      await expect(run).resolves.toEqual({ text: "done" });
+-    } finally {
+-      ready.resolve();
+-      finish.resolve();
+-      await steering.catch(() => undefined);
+-      await run.catch(() => undefined);
+-    }
+-  });
++      const steer = runner.runOwnedArgs.steer;
++      if (!steer) {
++        throw new Error("owned Talk runner did not expose steering");
++      }
++      if (outcome !== "accepted") {
++        mocks.controlRealtimeVoiceAgentRun.mockResolvedValueOnce({
++          ok: false,
++          queued: outcome === "unconfirmed",
++          reason:
++            outcome === "unsupported"
++              ? "guarded_injection_unsupported"
++              : outcome === "unconfirmed"
++                ? "delivery_unconfirmed"
++                : "not_streaming",
++          message: "Steering rejected.",
++        });
++      }
++      const steering = steer({ prompt: "latest task" });
++      const observed = steering.catch((error: unknown) => error);
++
++      try {
++        expect(readiness).toHaveBeenCalledOnce();
++        expect(assertCurrent).not.toHaveBeenCalled();
++        expect(mocks.consultRealtimeVoiceAgent).not.toHaveBeenCalled();
++        await Promise.resolve();
++        expect(mocks.controlRealtimeVoiceAgentRun).not.toHaveBeenCalled();
++        ready.resolve();
++        const outcomeResult = await observed;
++        if (outcome === "accepted") {
++          expect(outcomeResult).toEqual({ text: "" });
++        } else {
++          expect(outcomeResult).toBeInstanceOf(Error);
++          expect((outcomeResult as Error & { code?: string }).code).toBe(
++            outcome === "unsupported" ? "TALK_STEERING_UNSUPPORTED" : undefined,
++          );
++        }
++        expect(assertCurrent).toHaveBeenCalledTimes(3);
++        expect(mocks.consultRealtimeVoiceAgent).toHaveBeenCalledOnce();
++        expect(mocks.controlRealtimeVoiceAgentRun).toHaveBeenCalledOnce();
++        finish.resolve();
++        await expect(run).resolves.toEqual({ text: "done" });
++      } finally {
++        ready.resolve();
++        finish.resolve();
++        await steering.catch(() => undefined);
++        await run.catch(() => undefined);
++      }
++    },
++  );
+ 
+   it("rechecks reusable browser ownership after yielding before backend admission", async () => {
+     let current = true;
+diff --git a/extensions/openai/realtime-quicksilver-concurrency.test.ts b/extensions/openai/realtime-quicksilver-concurrency.test.ts
+new file mode 100644
+--- /dev/null
++++ b/extensions/openai/realtime-quicksilver-concurrency.test.ts
+@@ -0,0 +1,259 @@
++import { setImmediate as nextEventLoopTurn } from "node:timers/promises";
++import { describe, expect, it, vi } from "vitest";
++import {
++  createDelegationHarness,
++  parseSent,
++  type ConsultRunner,
++} from "./realtime-quicksilver.test-helpers.js";
++
++function deferred<T>() {
++  let resolve!: (value: T) => void;
++  let reject!: (reason: Error) => void;
++  const promise = new Promise<T>((done, fail) => {
++    resolve = done;
++    reject = fail;
++  });
++  return { promise, resolve, reject };
++}
++
++const unsupported = () =>
++  Object.assign(new Error("private host detail"), {
++    code: "TALK_STEERING_UNSUPPORTED",
++  });
++
++// Real public wire decoding, transcript matching, delegation lifecycle and output.
++// Only backend work and provider transport are recording doubles. These tests do
++// not certify tool authorization, which is covered by the host policy suites.
++function scenario(params: Parameters<typeof createDelegationHarness>[0]) {
++  const h = createDelegationHarness({ ...params, model: "gpt-live-1" });
++  let offset = 0;
++  const frame = (event: unknown) =>
++    h.controller.handleFrame(Buffer.from(JSON.stringify(event)), false);
++  const request = (id: string, text: string, noticeFirst = false) => {
++    const input = () =>
++      frame({
++        type: "session.input_transcript.delta",
++        delta: text,
++        start_ms: offset,
++        end_ms: offset + 100,
++      });
++    const notice = () =>
++      frame({
++        type: "session.delegation.created",
++        offset_ms: offset + 100,
++        delegation: { id, type: "delegation", target: "client" },
++      });
++    if (noticeFirst) {
++      notice();
++      input();
++    } else {
++      input();
++      notice();
++    }
++    offset += 200;
++  };
++  const replies = (id: string) =>
++    parseSent(h.socket).filter(
++      (e) => e.type === "session.commentary.append" && e.delegation_id === id,
++    );
++  return { ...h, request, replies, frame };
++}
++
++describe("GPT-Live concurrent conversation and backend work", () => {
++  const workKinds = [
++    "read",
++    "parallel-reads",
++    "recorded-write",
++    "reader-child",
++    "tool-failure",
++  ] as const;
++  it.each(workKinds.flatMap((kind) => [false, true].map((noticeFirst) => ({ kind, noticeFirst }))))(
++    "keeps $kind work and conversation alive across rejected overlaps; noticeFirst=$noticeFirst",
++    async ({ kind, noticeFirst }) => {
++      const tool = deferred<string>();
++      const secondTool = deferred<string>();
++      const effects: string[] = [];
++      let final: ((text: string) => boolean) | undefined;
++      const run = vi.fn<ConsultRunner>(async ({ requesterFinal }) => {
++        final = requesterFinal?.append;
++        effects.push(kind);
++        if (kind === "reader-child") {
++          return { text: "", yielded: true };
++        }
++        if (kind === "parallel-reads") {
++          const values = await Promise.all([tool.promise, secondTool.promise]);
++          return { text: values.join(" + ") };
++        }
++        return { text: await tool.promise };
++      });
++      const steer = vi.fn(async () => {
++        throw unsupported();
++      });
++      // Hold the parent until after overlaps, then simulate a yielded child.
++      const admission = deferred<void>();
++      const runner = vi.fn<ConsultRunner>(async (request) => {
++        await admission.promise;
++        return run(request);
++      });
++      const h = scenario({ runAgentConsult: runner, steerAgentConsult: steer });
++      try {
++        h.request("first", "check my calendar", noticeFirst);
++        await vi.waitFor(() => expect(runner).toHaveBeenCalledOnce());
++        for (const id of ["weather", "match"]) {
++          h.request(id, `also check ${id}`, noticeFirst);
++          await vi.waitFor(() => expect(h.replies(id)).toHaveLength(1));
++          expect(h.replies(id)[0]?.content).toContain("not accepted");
++        }
++        expect(h.onFatalError).not.toHaveBeenCalled();
++        expect(runner.mock.calls[0]?.[0].signal?.aborted).toBe(false);
++        admission.resolve();
++        await vi.waitFor(() => expect(effects).toEqual([kind]));
++        // Parallel tools finish out of order, but each result retains its slot.
++        secondTool.resolve("second read");
++        if (kind === "tool-failure") {
++          tool.reject(new Error("private tool failure"));
++        } else {
++          tool.resolve("first result");
++        }
++        await nextEventLoopTurn();
++        if (kind === "reader-child") {
++          expect(final?.("child result")).toBe(true);
++          expect(final?.("duplicate child result")).toBe(false);
++        }
++        await vi.waitFor(() =>
++          expect(
++            h
++              .replies("first")
++              .some((e) =>
++                String(e.content).includes(
++                  kind === "tool-failure"
++                    ? "failed"
++                    : kind === "reader-child"
++                      ? "child result"
++                      : "first result",
++                ),
++              ),
++          ).toBe(true),
++        );
++        expect(effects).toEqual([kind]);
++        runner.mockResolvedValueOnce({ text: "next result" });
++        h.request("next", "now check weather", noticeFirst);
++        await vi.waitFor(() => expect(h.replies("next")[0]?.content).toBe("next result"));
++        expect(runner).toHaveBeenCalledTimes(2);
++        expect(h.onFatalError).not.toHaveBeenCalled();
++        expect(JSON.stringify(parseSent(h.socket))).not.toContain("private");
++      } finally {
++        admission.resolve();
++        tool.resolve("");
++        secondTool.resolve("");
++        h.controller.stop(new Error("test cleanup"));
++      }
++    },
++  );
++
++  it.each(["result-first", "rejection-first"])(
++    "resolves completion racing steering: %s",
++    async (order) => {
++      const result = deferred<{ text: string }>();
++      const steering = deferred<{ text: string }>();
++      const run = vi.fn<ConsultRunner>(async () => result.promise);
++      const steer = vi.fn(async () => steering.promise);
++      const h = scenario({ runAgentConsult: run, steerAgentConsult: steer });
++      try {
++        h.request("first", "original question");
++        h.request("second", "additional question");
++        await vi.waitFor(() => expect(steer).toHaveBeenCalledOnce());
++        if (order === "result-first") {
++          result.resolve({ text: "original answer" });
++          await nextEventLoopTurn();
++        }
++        steering.reject(unsupported());
++        await vi.waitFor(() => expect(h.replies("second")).toHaveLength(1));
++        result.resolve({ text: "original answer" });
++        await vi.waitFor(() => expect(h.replies("first")[0]?.content).toBe("original answer"));
++        expect(h.onFatalError).not.toHaveBeenCalled();
++        expect(run).toHaveBeenCalledOnce();
++      } finally {
++        result.resolve({ text: "" });
++        h.controller.stop(new Error("test cleanup"));
++      }
++    },
++  );
++
++  it.each(["cancel", "detach", "provider-failure"])(
++    "fences pending rejection and stale results after %s",
++    async (ending) => {
++      const result = deferred<{ text: string }>();
++      const steering = deferred<{ text: string }>();
++      let final: ((text: string) => boolean) | undefined;
++      const run = vi.fn<ConsultRunner>(async ({ requesterFinal }) => {
++        final = requesterFinal?.append;
++        return result.promise;
++      });
++      const steer = vi.fn(async () => steering.promise);
++      const h = scenario({ runAgentConsult: run, steerAgentConsult: steer });
++      try {
++        h.request("first", "original question");
++        h.request("second", "additional question");
++        await vi.waitFor(() => expect(steer).toHaveBeenCalledOnce());
++        if (ending === "detach") {
++          h.controller.detach();
++        } else {
++          h.controller.stop(new Error(ending));
++        }
++        const count = h.socket.sent.length;
++        steering.reject(unsupported());
++        result.resolve({ text: "late result" });
++        await nextEventLoopTurn();
++        expect(final?.("late child result")).toBe(false);
++        expect(h.socket.sent).toHaveLength(count);
++        expect(run.mock.calls[0]?.[0].signal?.aborted).toBe(ending !== "detach");
++        expect(h.onFatalError).not.toHaveBeenCalled();
++        // Reconnecting creates a distinct owner. Old callbacks cannot publish there.
++        const fresh = scenario({
++          runAgentConsult: vi.fn(async () => ({ text: "new connection" })),
++        });
++        try {
++          fresh.request("fresh", "new request");
++          await vi.waitFor(() => expect(fresh.replies("fresh")[0]?.content).toBe("new connection"));
++          expect(final?.("stale reconnect result")).toBe(false);
++          expect(fresh.replies("first")).toEqual([]);
++        } finally {
++          fresh.controller.stop(new Error("test cleanup"));
++        }
++      } finally {
++        result.resolve({ text: "" });
++        h.controller.stop(new Error("test cleanup"));
++      }
++    },
++  );
++
++  it("cleans up a failed rejection delivery without an unhandled promise or duplicate work", async () => {
++    const run = vi.fn<ConsultRunner>(
++      async ({ signal }) =>
++        new Promise((_resolve, reject) => {
++          signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
++        }),
++    );
++    const h = scenario({
++      runAgentConsult: run,
++      steerAgentConsult: vi.fn(async () => {
++        throw unsupported();
++      }),
++    });
++    try {
++      h.request("first", "original question");
++      await vi.waitFor(() => expect(run).toHaveBeenCalledOnce());
++      vi.spyOn(h.socket, "send").mockImplementation(() => {
++        throw new Error("transport send failed");
++      });
++      h.request("second", "additional question");
++      await vi.waitFor(() => expect(h.onFatalError).toHaveBeenCalledOnce());
++      expect(run.mock.calls[0]?.[0].signal?.aborted).toBe(true);
++      await nextEventLoopTurn();
++      expect(run).toHaveBeenCalledOnce();
++    } finally {
++      h.controller.stop(new Error("test cleanup"));
++    }
++  });
++});
