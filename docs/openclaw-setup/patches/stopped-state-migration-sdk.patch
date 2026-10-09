@@ -820,10 +820,10 @@ index e00b9b2cc..4faa88815 100644
  export { resolveRequiredHomeDir } from "../infra/home-dir.js";
 +export { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
 diff --git a/src/config/sessions/session-accessor.sqlite-entry-mutation.ts b/src/config/sessions/session-accessor.sqlite-entry-mutation.ts
-index a993a780..d955873e 100644
+index a993a780..5aedead2 100644
 --- a/src/config/sessions/session-accessor.sqlite-entry-mutation.ts
 +++ b/src/config/sessions/session-accessor.sqlite-entry-mutation.ts
-@@ -45,7 +45,10 @@ export function applySessionEntryPatchInDatabase(
+@@ -45,7 +45,12 @@ export function applySessionEntryPatchInDatabase(
      next: SessionEntry | undefined;
      options: Pick<
        SessionEntryPatchOptions,
@@ -832,35 +832,89 @@ index a993a780..d955873e 100644
 +      | "assertCommitAllowed"
 +      | "providerReviewMutation"
 +      | "preserveConversation"
++      | "restoreWindowActivity"
++      | "preserveWindowActivity"
      >;
    },
  ): { entry: SessionEntry; identity?: SessionEntryIdentityChange } {
-@@ -68,6 +71,7 @@ export function applySessionEntryPatchInDatabase(
+@@ -60,6 +65,9 @@ export function applySessionEntryPatchInDatabase(
+     fresh = params.readSnapshot(database);
+     assertLifecycleTargetSnapshotUnchanged(params.prepared, fresh, params.operationLabel);
+   }
++  if (params.options.restoreWindowActivity !== undefined && !params.options.assertCommitAllowed) {
++    throw new Error("Window activity recovery requires a commit admission check");
++  }
+   params.options.assertCommitAllowed?.();
+   if (!params.next) {
+     return { entry: cloneSessionEntry(params.writeBase) };
+@@ -68,6 +76,9 @@ export function applySessionEntryPatchInDatabase(
    const previous = new Map(fresh.map((row) => [row.sessionKey, row.entry]));
    const selectedPreviousEntry = fresh[0]?.entry ?? params.writeBase;
    const persisted = writeSessionEntry(database, params.sessionKey, params.next, {
 +    ...(params.options.preserveConversation ? { preserveConversation: true } : {}),
++    restoreWindowActivity: params.options.restoreWindowActivity,
++    preserveWindowActivity: params.options.preserveWindowActivity,
      ...(params.options.consumePendingReset ? { consumePendingReset: true } : {}),
      ...(params.options.providerReviewMutation ? { providerReviewMutation: true } : {}),
      previousEntry: selectedPreviousEntry,
 diff --git a/src/config/sessions/session-accessor.sqlite-entry-store.ts b/src/config/sessions/session-accessor.sqlite-entry-store.ts
-index f3664462..70aa96c6 100644
+index f3664462..b430dd2d 100644
 --- a/src/config/sessions/session-accessor.sqlite-entry-store.ts
 +++ b/src/config/sessions/session-accessor.sqlite-entry-store.ts
-@@ -453,6 +453,7 @@ export function writeSessionEntry(
+@@ -453,6 +453,9 @@ export function writeSessionEntry(
      canonicalPreviousEntry?: SessionEntry | null;
      consumePendingReset?: boolean;
      preserveNodeSuggestions?: boolean;
 +    preserveConversation?: boolean;
++    restoreWindowActivity?: { updatedAt: number; transcriptObservedAt: number | null };
++    preserveWindowActivity?: boolean;
      previousEntry?: SessionEntry | null;
      routeContext?: ConversationRouteContext | null;
    } = {},
-@@ -585,13 +586,61 @@ export function writeSessionEntry(
+@@ -543,6 +546,34 @@ export function writeSessionEntry(
+     normalizedEntry.updatedAt = 0;
+   }
+   const updatedAt = normalizedEntry.updatedAt;
++  const restoreWindowActivity = options.restoreWindowActivity;
++  if (
++    options.preserveWindowActivity &&
++    (!options.preserveConversation || restoreWindowActivity !== undefined)
++  ) {
++    throw new Error(
++      "Window activity preservation requires unchanged conversation and no restoration",
++    );
++  }
++  if (restoreWindowActivity !== undefined) {
++    if (
++      !options.preserveConversation ||
++      !restoreWindowActivity ||
++      typeof restoreWindowActivity !== "object" ||
++      Array.isArray(restoreWindowActivity) ||
++      Object.keys(restoreWindowActivity).length !== 2 ||
++      !Object.hasOwn(restoreWindowActivity, "updatedAt") ||
++      !Object.hasOwn(restoreWindowActivity, "transcriptObservedAt") ||
++      !Number.isSafeInteger(restoreWindowActivity.updatedAt) ||
++      restoreWindowActivity.updatedAt < 0 ||
++      (restoreWindowActivity.transcriptObservedAt !== null &&
++        (!Number.isSafeInteger(restoreWindowActivity.transcriptObservedAt) ||
++          restoreWindowActivity.transcriptObservedAt < 0))
++    ) {
++      throw new Error("Invalid guarded window activity recovery");
++    }
++  }
++
+   // Public/plugin projections omit this server-owned field. Same-session replacements
+   // retain publication; only an explicit field clear or a new session id revokes it.
+   if (
+@@ -585,14 +616,77 @@ export function writeSessionEntry(
      ...(options.routeContext !== undefined ? { routeContext: options.routeContext } : {}),
      sessionScope: boundSessionRoot.session_scope,
    });
 -  if (conversation) {
 +  let retainedPrimaryConversationId: string | null = null;
++  let retainedWindowActivity:
++    | { updatedAt: number; transcriptObservedAt: number | null }
++    | undefined;
 +  if (options.preserveConversation) {
 +    // Metadata repair must not replay an old session's route, title or activity
 +    // over a newer session sharing its conversation. Keep the current projection.
@@ -897,30 +951,44 @@ index f3664462..70aa96c6 100644
 +      database.db,
 +      getSessionKysely(database.db)
 +        .selectFrom("session_windows")
-+        .select(["session_key", "primary_conversation_id"])
++        .select(["session_key", "primary_conversation_id", "updated_at", "transcript_observed_at"])
 +        .where("session_id", "=", normalizedEntry.sessionId),
 +    );
 +    if (!window || window.session_key !== sessionKey) {
 +      throw new Error("Conversation preservation requires the existing session window");
 +    }
 +    retainedPrimaryConversationId = window.primary_conversation_id;
++    if (options.preserveWindowActivity) {
++      retainedWindowActivity = {
++        updatedAt: window.updated_at,
++        transcriptObservedAt: window.transcript_observed_at,
++      };
++    }
 +  }
 +  if (conversation && !options.preserveConversation) {
      upsertConversationIdentity(database, conversation.identity, updatedAt);
    }
++  const windowActivity = restoreWindowActivity ?? retainedWindowActivity;
    const boundSessionRow = {
      ...boundSessionRoot,
 -    primary_conversation_id:
 -      conversation?.role === "primary" ? conversation.identity.conversationRef : null,
+-    transcript_observed_at: transcriptObservedAt,
 +    primary_conversation_id: options.preserveConversation
 +      ? retainedPrimaryConversationId
 +      : conversation?.role === "primary"
 +        ? conversation.identity.conversationRef
 +        : null,
-     transcript_observed_at: transcriptObservedAt,
++    // Recovery restores the sealed window clocks independently of entry activity.
++    // In particular it must not acknowledge history by observing a newer mutation.
++    updated_at: windowActivity?.updatedAt ?? boundSessionRoot.updated_at,
++    transcript_observed_at: windowActivity
++      ? windowActivity.transcriptObservedAt
++      : transcriptObservedAt,
    };
    const sessionRow = resolveSessionEntryProvenanceRow({
-@@ -623,7 +672,7 @@ export function writeSessionEntry(
+     boundSessionRow,
+@@ -623,7 +717,7 @@ export function writeSessionEntry(
        ? queries.retainWindow
        : queries.claimWindow;
    writeWindow(sessionRow);
@@ -929,24 +997,51 @@ index f3664462..70aa96c6 100644
      linkSessionConversation({
        database,
        ...(previousEntry?.sessionId ? { previousSessionId: previousEntry.sessionId } : {}),
+diff --git a/src/config/sessions/session-accessor.sqlite-entry-write-queries.ts b/src/config/sessions/session-accessor.sqlite-entry-write-queries.ts
+index e2c3ed21..dc5781d0 100644
+--- a/src/config/sessions/session-accessor.sqlite-entry-write-queries.ts
++++ b/src/config/sessions/session-accessor.sqlite-entry-write-queries.ts
+@@ -5,7 +5,7 @@ import type { bindSessionNode, bindSessionRoot } from "./session-accessor.sqlite
+ 
+ type SessionWindowWriteRow = Omit<ReturnType<typeof bindSessionRoot>, "primary_conversation_id"> & {
+   primary_conversation_id: string | null;
+-  transcript_observed_at: number;
++  transcript_observed_at: number | null;
+ };
+ 
+ function prepareSessionEntryWriteQueries(database: DatabaseSync) {
 diff --git a/src/config/sessions/session-accessor.types.ts b/src/config/sessions/session-accessor.types.ts
-index 0a4b58a5..8837edf0 100644
+index 0a4b58a5..a9b1ac16 100644
 --- a/src/config/sessions/session-accessor.types.ts
 +++ b/src/config/sessions/session-accessor.types.ts
-@@ -574,6 +574,8 @@ export type SessionEntryPatchOptions = {
+@@ -574,6 +574,12 @@ export type SessionEntryPatchOptions = {
    maintenanceConfig?: ResolvedSessionMaintenanceConfig;
    /** Keep the previous updatedAt value when the patch should not count as activity. */
    preserveActivity?: boolean;
 +  /** Preserve conversation rows and bindings; rejects generation or route changes. */
 +  preserveConversation?: boolean;
++  /** Restore sealed window activity during guarded same-generation metadata recovery. */
++  restoreWindowActivity?: { updatedAt: number; transcriptObservedAt: number | null };
++  /** Keep current window clocks inside the metadata write transaction. */
++  preserveWindowActivity?: boolean;
    /** Throw when best-effort store recovery cannot confirm the requested write. */
    requireWriteSuccess?: boolean;
    /** Replace the whole entry instead of merging the returned patch. */
 diff --git a/src/plugin-sdk/session-store-runtime.conversation.test.ts b/src/plugin-sdk/session-store-runtime.conversation.test.ts
-index cc910bd7..59dfb136 100644
+index cc910bd7..21e31457 100644
 --- a/src/plugin-sdk/session-store-runtime.conversation.test.ts
 +++ b/src/plugin-sdk/session-store-runtime.conversation.test.ts
-@@ -7,6 +7,7 @@ import { replaceSessionEntrySync } from "../config/sessions/session-accessor.sql
+@@ -2,11 +2,16 @@ import fs from "node:fs";
+ import os from "node:os";
+ import path from "node:path";
+ import { afterEach, beforeEach, describe, expect, it } from "vitest";
+-import { resetSessionEntryLifecycle } from "../config/sessions/session-accessor.js";
++import {
++  appendTranscriptMessage,
++  appendTranscriptMessageSync,
++  resetSessionEntryLifecycle,
++} from "../config/sessions/session-accessor.js";
+ import { replaceSessionEntrySync } from "../config/sessions/session-accessor.sqlite-entry.js";
  import {
    closeOpenClawAgentDatabasesForTest,
    getOpenClawAgentDatabaseIfOpen,
@@ -954,7 +1049,7 @@ index cc910bd7..59dfb136 100644
    runOpenClawAgentWriteTransaction,
  } from "../state/openclaw-agent-db.js";
  import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
-@@ -143,6 +144,143 @@ describe("current conversation session binding", () => {
+@@ -143,6 +148,293 @@ describe("current conversation session binding", () => {
      expect(getSessionEntry(replacementScope)).not.toHaveProperty("displayName");
    });
  
@@ -1045,6 +1140,156 @@ index cc910bd7..59dfb136 100644
 +    },
 +  );
 +
++  it.each([null, 100])(
++    "restores independent window clocks without acknowledging history (%s)",
++    async (observedAt) => {
++      const databaseOptions = { agentId: "main", env: { OPENCLAW_STATE_DIR: tempDir } };
++      const scope = { ...databaseOptions, sessionKey: "agent:main:reef:group:room" };
++      const delivery = normalizeSessionDeliveryState({
++        context: { channel: "reef", accountId: "default", to: "group:room" },
++      });
++      await upsertSessionEntry({
++        ...scope,
++        entry: {
++          sessionId: "existing",
++          lifecycleRevision: "same",
++          updatedAt: 100,
++          delivery,
++          chatType: "group",
++        },
++      });
++      const database = openOpenClawAgentDatabase(databaseOptions);
++      const window = () =>
++        database.db.prepare("SELECT * FROM session_windows WHERE session_id = ?").get("existing")!;
++      // A real transcript write advances window activity independently of the entry.
++      await appendTranscriptMessage(
++        { ...scope, sessionId: "existing" },
++        { message: { content: "Synthetic history", role: "user" }, cwd: tempDir },
++      );
++      const originalWindow = window();
++      expect(originalWindow.updated_at).not.toBe(getSessionEntry(scope)!.updatedAt);
++      expect(originalWindow.transcript_updated_at).not.toBe(originalWindow.transcript_observed_at);
++      const history = () =>
++        database.db.prepare("SELECT * FROM transcript_events ORDER BY seq").all();
++      const beforeHistory = history();
++      await patchSessionEntry({
++        ...scope,
++        preserveConversation: true,
++        replaceEntry: true,
++        update: (current) => ({ ...current, updatedAt: Number(originalWindow.updated_at) + 100 }),
++      });
++      const beforeWindow = window();
++      const shared = () => ({
++        conversations: database.db.prepare("SELECT * FROM conversations").all(),
++        links: database.db.prepare("SELECT * FROM session_conversations").all(),
++      });
++      const beforeShared = shared();
++      await patchSessionEntry({
++        ...scope,
++        preserveConversation: true,
++        replaceEntry: true,
++        restoreWindowActivity: {
++          updatedAt: Number(originalWindow.updated_at),
++          transcriptObservedAt: observedAt,
++        },
++        assertCommitAllowed: () => {
++          expect(window()).toEqual(beforeWindow);
++          expect(history()).toEqual(beforeHistory);
++        },
++        update: (current) => ({ ...current, updatedAt: 100, modelOverrideSource: "default" }),
++      });
++      expect(getSessionEntry(scope)!.updatedAt).toBe(100);
++      expect(window()).toEqual({
++        ...beforeWindow,
++        updated_at: originalWindow.updated_at,
++        transcript_observed_at: observedAt,
++      });
++      expect(history()).toEqual(beforeHistory);
++      expect(shared()).toEqual(beforeShared);
++    },
++  );
++
++  it("preserves current window clocks after transcript progress during an ordinary metadata callback", async () => {
++    const databaseOptions = { agentId: "main", env: { OPENCLAW_STATE_DIR: tempDir } };
++    const scope = { ...databaseOptions, sessionKey: "agent:main:main" };
++    await upsertSessionEntry({
++      ...scope,
++      entry: { sessionId: "existing", lifecycleRevision: "same", updatedAt: 100 },
++    });
++    const database = openOpenClawAgentDatabase(databaseOptions);
++    const window = () =>
++      database.db.prepare("SELECT * FROM session_windows WHERE session_id = ?").get("existing")!;
++    let expectedWindow = window();
++    await patchSessionEntry({
++      ...scope,
++      preserveActivity: true,
++      preserveConversation: true,
++      preserveWindowActivity: true,
++      update: () => {
++        const appended = appendTranscriptMessageSync(
++          { ...scope, sessionId: "existing" },
++          { message: { content: "Synthetic new history", role: "user" }, cwd: tempDir },
++        );
++        expect(appended.ok).toBe(true);
++        expectedWindow = window();
++        expect(expectedWindow.updated_at).not.toBe(100);
++        expect(expectedWindow.transcript_observed_at).toBe(100);
++        return { modelOverrideSource: "default" };
++      },
++    });
++    expect(getSessionEntry(scope)!.updatedAt).toBe(100);
++    expect(window()).toEqual(expectedWindow);
++    const entry = getSessionEntry(scope);
++    await expect(
++      patchSessionEntry({
++        ...scope,
++        preserveConversation: true,
++        preserveWindowActivity: true,
++        restoreWindowActivity: { updatedAt: 10, transcriptObservedAt: null },
++        assertCommitAllowed: () => {},
++        update: () => ({ modelOverrideSource: "user" }),
++      }),
++    ).rejects.toThrow(/no restoration/);
++    expect(getSessionEntry(scope)).toEqual(entry);
++    expect(window()).toEqual(expectedWindow);
++  });
++
++  it.each(["admission", "conversation", "shape", "generation"])(
++    "refuses unguarded window recovery: %s",
++    async (reason) => {
++      const databaseOptions = { agentId: "main", env: { OPENCLAW_STATE_DIR: tempDir } };
++      const scope = { ...databaseOptions, sessionKey: "agent:main:main" };
++      await upsertSessionEntry({
++        ...scope,
++        entry: { sessionId: "existing", lifecycleRevision: "same", updatedAt: 100 },
++      });
++      const database = openOpenClawAgentDatabase(databaseOptions);
++      const rows = () => ({
++        nodes: database.db.prepare("SELECT * FROM session_nodes").all(),
++        windows: database.db.prepare("SELECT * FROM session_windows").all(),
++      });
++      const before = rows();
++      await expect(
++        patchSessionEntry({
++          ...scope,
++          preserveConversation: reason !== "conversation",
++          replaceEntry: true,
++          restoreWindowActivity: {
++            updatedAt: reason === "shape" ? -1 : 20,
++            transcriptObservedAt: null,
++          },
++          ...(reason !== "admission" ? { assertCommitAllowed: () => {} } : {}),
++          update: (current) => ({
++            ...current,
++            updatedAt: 10,
++            ...(reason === "generation" ? { lifecycleRevision: "successor" } : {}),
++          }),
++        }),
++      ).rejects.toThrow();
++      expect(rows()).toEqual(before);
++    },
++  );
++
 +  it.each(["generation", "identity", "route", "title", "new-row"])(
 +    "refuses conversation preservation for %s changes",
 +    async (change) => {
@@ -1099,23 +1344,29 @@ index cc910bd7..59dfb136 100644
      const sessionKey = "agent:main:reef:group:room";
      const address = {
 diff --git a/src/plugin-sdk/session-store-runtime.ts b/src/plugin-sdk/session-store-runtime.ts
-index 536405b3..5355d1ac 100644
+index 536405b3..6d99212a 100644
 --- a/src/plugin-sdk/session-store-runtime.ts
 +++ b/src/plugin-sdk/session-store-runtime.ts
-@@ -109,6 +109,8 @@ type PatchSessionEntryParams = SessionStoreReadParams & {
+@@ -109,6 +109,12 @@ type PatchSessionEntryParams = SessionStoreReadParams & {
    fallbackEntry?: SessionEntry;
    maintenanceConfig?: ResolvedSessionMaintenanceConfigInput;
    preserveActivity?: boolean;
 +  /** Preserve existing conversation projections for same-generation metadata-only patches. */
 +  preserveConversation?: boolean;
++  /** Restore sealed window activity during guarded same-generation metadata recovery. */
++  restoreWindowActivity?: { updatedAt: number; transcriptObservedAt: number | null };
++  /** Keep current window clocks inside the metadata write transaction. */
++  preserveWindowActivity?: boolean;
    requireWriteSuccess?: boolean;
    replaceEntry?: boolean;
    skipMaintenance?: boolean;
-@@ -492,6 +494,7 @@ export async function patchSessionEntry(
+@@ -492,6 +498,9 @@ export async function patchSessionEntry(
            ? normalizeResolvedMaintenanceConfigInput(params.maintenanceConfig)
            : undefined,
        preserveActivity: params.preserveActivity,
 +      preserveConversation: params.preserveConversation,
++      restoreWindowActivity: params.restoreWindowActivity,
++      preserveWindowActivity: params.preserveWindowActivity,
        requireWriteSuccess: params.requireWriteSuccess,
        replaceEntry: params.replaceEntry,
        skipMaintenance: params.skipMaintenance,

@@ -41,7 +41,7 @@ describe('stopped session default selection migration',()=>{
       modelOverrideSource:'default'});
     expect(after).not.toHaveProperty('modelOverride');expect(after).not.toHaveProperty('modelOverrideFallbackOriginModel');
     expect(f.options.sdk.applyModelOverrideToSessionEntry).toHaveBeenCalledWith(expect.objectContaining({explicitDefaultSelection:true,preserveAuthProfileOverride:true,selection:{provider:'synthetic',model:'new',isDefault:true}}));
-    expect(f.options.sdk.patchSessionEntry).toHaveBeenCalledWith(expect.objectContaining({preserveActivity:true,preserveConversation:true,skipMaintenance:true,requireWriteSuccess:true}));
+    expect(f.options.sdk.patchSessionEntry).toHaveBeenCalledWith(expect.objectContaining({preserveActivity:true,preserveConversation:true,preserveWindowActivity:true,skipMaintenance:true,requireWriteSuccess:true}));
     expect(await f.run()).toEqual({changed:0,recovered:0});
   });
   it('leaves user pins, other origins, and unrelated models unchanged',async()=>{
@@ -96,7 +96,7 @@ function repaired() {
   return entry;
 }
 function recoveryFor(sessionKey:string,entry:any) {
-  return {sessionKey,expectedEntrySha256:sessionModelDefaultEntryDigest(entry),expectedActivitySha256:'a'.repeat(64),originalUpdatedAt:12};
+  return {sessionKey,expectedEntrySha256:sessionModelDefaultEntryDigest(entry),expectedActivitySha256:'a'.repeat(64),originalUpdatedAt:12,originalWindowActivity:{updatedAt:18,transcriptObservedAt:9}};
 }
 function recoveryFixture(entries:Record<string,any>={'agent:collector:repaired':repaired()}) {
   const f=fixture(entries);
@@ -112,7 +112,7 @@ describe('sealed session model recovery',()=>{
     const expected={...before,updatedAt:12,modelOverrideSource:'default'};delete expected.model;delete expected.modelProvider;
     expect(f.rows['agent:collector:repaired']).toEqual(expected);
     expect(f.rows['agent:collector:user']).toEqual({...original(),modelOverrideSource:'user'});
-    expect(f.options.sdk.patchSessionEntry).toHaveBeenCalledWith(expect.objectContaining({sessionKey:'agent:collector:repaired',replaceEntry:true,preserveActivity:true,preserveConversation:true}));
+    expect(f.options.sdk.patchSessionEntry).toHaveBeenCalledWith(expect.objectContaining({sessionKey:'agent:collector:repaired',replaceEntry:true,preserveActivity:true,preserveConversation:true,restoreWindowActivity:{updatedAt:18,transcriptObservedAt:9}}));
     await expect(f.run()).rejects.toThrow(/recovery predecessor differs/);
   });
   it('hashes the persisted JSON projection independent of insertion order',()=>{
@@ -143,10 +143,14 @@ describe('sealed session model recovery',()=>{
   it('validates bounded strict recovery inputs',()=>{
     const recovery=recoveryFor('agent:collector:repaired',repaired());
     expect(validateSessionModelDefaults([{...operation,recoveries:[recovery]}])).toBeTruthy();
+    expect(validateSessionModelDefaults([{...operation,recoveries:[{...recovery,originalWindowActivity:{updatedAt:18,transcriptObservedAt:null}}]}])).toBeTruthy();
     for(const recoveries of [[],Array(257).fill(recovery),[recovery,recovery],
       [{...recovery,extra:true}],[{...recovery,sessionKey:'agent:other:key'}],
       [{...recovery,sessionKey:'agent:collector:bad\nkey'}],[{...recovery,expectedEntrySha256:'bad'}],
-      [{...recovery,expectedActivitySha256:'bad'}],[{...recovery,originalUpdatedAt:-1}],[{...recovery,originalUpdatedAt:1.5}]]) {
+      [{...recovery,expectedActivitySha256:'bad'}],[{...recovery,originalUpdatedAt:-1}],[{...recovery,originalUpdatedAt:1.5}],
+      ...[undefined,{}, {updatedAt:-1,transcriptObservedAt:0},{updatedAt:1,transcriptObservedAt:-1},
+        {updatedAt:1,transcriptObservedAt:0.5},{updatedAt:1,transcriptObservedAt:null,extra:true}]
+        .map(originalWindowActivity=>[{...recovery,originalWindowActivity}])]) {
       expect(()=>validateSessionModelDefaults([{...operation,recoveries}])).toThrow();
     }
   });

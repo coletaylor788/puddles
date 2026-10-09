@@ -70,6 +70,18 @@ and unchanged delivery and derived conversation metadata. It retains the window'
 primary conversation and skips conversation and association writes. Other callers
 keep the existing behavior unless they opt in. No database schema changes.
 
+Window activity and observed-history times are independent of the public entry's
+activity time. Ordinary migration requests `preserveWindowActivity` to retain both
+current window values inside the native write transaction, including transcript
+progress during preparation. A sealed recovery instead requests
+`restoreWindowActivity: { updatedAt, transcriptObservedAt }`; its observed value
+may be null. Restoration requires a commit admission check and the same existing
+generation, window and route. The migration validates its selected activity
+witness there. Both options require conversation preservation and are mutually
+exclusive. Neither changes `transcript_updated_at` or transcript history. Real
+SQLite tests exercise separate entry/window clocks, unobserved transcript writes,
+restoration, preservation during callback activity, and rejected unsafe options.
+
 The patch targets stable source
 `eb377ac59e6c9fd6c7705028034812becf00271b`. Its registered SDK tests use real
 SQLite, including the maintained compressed 2026.7.1-2 fixture. They cover
