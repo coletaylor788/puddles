@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
+import { DatabaseSync } from 'node:sqlite';
 // @ts-expect-error Native lifecycle JavaScript module.
-import { executeSessionModelDefaults, validateSessionModelDefaults } from '../src/native-session-model-defaults.mjs';
+import { executeSessionModelDefaults, validateSessionModelDefaults, sessionModelDefaultEntryDigest, sessionModelDefaultActivityDigest } from '../src/native-session-model-defaults.mjs';
 // @ts-expect-error Native lifecycle JavaScript module.
 import { validateMigrationManifest } from '../src/native-state-migration.mjs';
 
@@ -13,6 +14,8 @@ function fixture(entries: Record<string,any> = {'agent:collector:auto':original(
   const rows=structuredClone(entries);
   const config={agents:{entries:{collector:{model:{primary:'synthetic/new'}}}}};
   const options={operations:[operation],config,stateDir:'/synthetic/state',assertCurrent:vi.fn(),assertStatePath:vi.fn(),sdk:{
+    resolveOpenClawAgentSqlitePath:vi.fn(()=>'/synthetic/state/agents/collector/agent/openclaw-agent.sqlite'),
+    withOpenClawAgentDatabaseReadOnly:vi.fn(()=>({found:true,value:'a'.repeat(64)})),
     resolveStorePath:vi.fn(()=>'/synthetic/state/agents/collector/sessions/sessions.json'),
     resolveSessionStoreBackupPaths:vi.fn(()=>['/synthetic/state/agents/collector/agent/openclaw-agent.sqlite']),
     listSessionEntries:vi.fn(()=>Object.entries(rows).map(([sessionKey,entry])=>({sessionKey,entry:structuredClone(entry)}))),
@@ -21,6 +24,7 @@ function fixture(entries: Record<string,any> = {'agent:collector:auto':original(
     patchSessionEntry:vi.fn(async(params:any)=>{
       const patch=await params.update(structuredClone(rows[params.sessionKey]),{existingEntry:structuredClone(rows[params.sessionKey])});
       params.assertCommitAllowed();
+      if(params.replaceEntry) rows[params.sessionKey]={};
       for(const [key,value] of Object.entries(patch)) if(value===undefined) delete rows[params.sessionKey][key];else rows[params.sessionKey][key]=value;
       return structuredClone(rows[params.sessionKey]);
     }),
@@ -30,15 +34,15 @@ function fixture(entries: Record<string,any> = {'agent:collector:auto':original(
 describe('stopped session default selection migration',()=>{
   it('changes only the auto self-origin selection and preserves identity, auth, history, and activity',async()=>{
     const before=original();const f=fixture();
-    expect(await f.run()).toEqual({changed:1});
+    expect(await f.run()).toEqual({changed:1,recovered:0});
     const after=f.rows['agent:collector:auto'];
     expect(after).toMatchObject({sessionId:before.sessionId,updatedAt:before.updatedAt,lifecycleRevision:before.lifecycleRevision,
       authProfileOverride:before.authProfileOverride,authProfileOverrideSource:before.authProfileOverrideSource,cliSessionIds:before.cliSessionIds,unknown:before.unknown,
       modelOverrideSource:'default'});
     expect(after).not.toHaveProperty('modelOverride');expect(after).not.toHaveProperty('modelOverrideFallbackOriginModel');
     expect(f.options.sdk.applyModelOverrideToSessionEntry).toHaveBeenCalledWith(expect.objectContaining({explicitDefaultSelection:true,preserveAuthProfileOverride:true,selection:{provider:'synthetic',model:'new',isDefault:true}}));
-    expect(f.options.sdk.patchSessionEntry).toHaveBeenCalledWith(expect.objectContaining({preserveActivity:true,skipMaintenance:true,requireWriteSuccess:true}));
-    expect(await f.run()).toEqual({changed:0});
+    expect(f.options.sdk.patchSessionEntry).toHaveBeenCalledWith(expect.objectContaining({preserveActivity:true,preserveConversation:true,skipMaintenance:true,requireWriteSuccess:true}));
+    expect(await f.run()).toEqual({changed:0,recovered:0});
   });
   it('leaves user pins, other origins, and unrelated models unchanged',async()=>{
     const entries={
@@ -47,7 +51,7 @@ describe('stopped session default selection migration',()=>{
       'agent:collector:other-model':{...original(),modelOverride:'different'},
       'agent:collector:default':{...original(),modelOverrideSource:'default'},
     };
-    const f=fixture(entries);expect(await f.run()).toEqual({changed:0});expect(f.rows).toEqual(entries);expect(f.options.sdk.patchSessionEntry).not.toHaveBeenCalled();
+    const f=fixture(entries);expect(await f.run()).toEqual({changed:0,recovered:0});expect(f.rows).toEqual(entries);expect(f.options.sdk.patchSessionEntry).not.toHaveBeenCalled();
   });
   it.each([{modelSelectionLocked:true},{status:'running'},{status:undefined},{liveModelSwitchPending:true},{pendingTranscriptRepair:[{}]},{cronRunContinuation:{phase:'ready'}}])('rejects every selected non-idle or locked row before any mutation: %j',async state=>{
     const f=fixture({'agent:collector:first':original(),'agent:collector:blocked':{...original(),...state}});
@@ -82,5 +86,116 @@ describe('stopped session default selection migration',()=>{
       [{...operation,agentId:'../collector'}],[{...operation,extra:true}],[{...operation,desired:operation.expected}],
       [{...operation,desired:{provider:'different',model:'new'}}],
       [{...operation,expected:{provider:'synthetic',model:'bad\nmodel'}}]]) expect(()=>validateSessionModelDefaults(invalid)).toThrow();
+  });
+});
+
+function repaired() {
+  const entry:any=original();
+  for(const key of ['modelOverrideSource','providerOverride','modelOverride','modelOverrideFallbackOriginProvider','modelOverrideFallbackOriginModel']) delete entry[key];
+  entry.updatedAt=90;
+  return entry;
+}
+function recoveryFor(sessionKey:string,entry:any) {
+  return {sessionKey,expectedEntrySha256:sessionModelDefaultEntryDigest(entry),expectedActivitySha256:'a'.repeat(64),originalUpdatedAt:12};
+}
+function recoveryFixture(entries:Record<string,any>={'agent:collector:repaired':repaired()}) {
+  const f=fixture(entries);
+  (f.options.operations[0] as any)={...operation,recoveries:Object.entries(entries).filter(([key])=>key.includes('repaired')).map(([key,entry])=>recoveryFor(key,entry))};
+  return f;
+}
+describe('sealed session model recovery',()=>{
+  it('uses a complete current-derived replacement to restore activity and counts recovery separately',async()=>{
+    const before=repaired();
+    const f=recoveryFixture({'agent:collector:repaired':before,'agent:collector:auto':original(),
+      'agent:collector:user':{...original(),modelOverrideSource:'user'}});
+    expect(await f.run()).toEqual({changed:1,recovered:1});
+    const expected={...before,updatedAt:12,modelOverrideSource:'default'};delete expected.model;delete expected.modelProvider;
+    expect(f.rows['agent:collector:repaired']).toEqual(expected);
+    expect(f.rows['agent:collector:user']).toEqual({...original(),modelOverrideSource:'user'});
+    expect(f.options.sdk.patchSessionEntry).toHaveBeenCalledWith(expect.objectContaining({sessionKey:'agent:collector:repaired',replaceEntry:true,preserveActivity:true,preserveConversation:true}));
+    await expect(f.run()).rejects.toThrow(/recovery predecessor differs/);
+  });
+  it('hashes the persisted JSON projection independent of insertion order',()=>{
+    expect(sessionModelDefaultEntryDigest({nested:{b:2,a:1},absent:undefined,a:3})).toBe(sessionModelDefaultEntryDigest({a:3,nested:{a:1,b:2}}));
+    expect(sessionModelDefaultEntryDigest({a:3})).not.toBe(sessionModelDefaultEntryDigest({a:4}));
+  });
+  it.each([{updatedAt:91},{status:'running'},{modelSelectionLocked:true},{unknown:{progressed:true}},
+    {modelOverrideSource:'user'},{providerOverride:'synthetic'},{modelOverrideRouteResolution:{route:'other'}},
+    {pendingFinalDelivery:{status:'pending'}},{sessionId:'successor'}])('refuses sealed recovery drift before any ordinary write: %j',async delta=>{
+    const f=recoveryFixture({'agent:collector:auto':original(),'agent:collector:repaired':repaired()});
+    Object.assign(f.rows['agent:collector:repaired'],delta);
+    await expect(f.run()).rejects.toThrow();expect(f.options.sdk.patchSessionEntry).not.toHaveBeenCalled();
+  });
+  it.each([{status:'running'},{modelSelectionLocked:true},{modelOverrideSource:'auto'},{updatedAt:1}])('refuses ineligible entries even when their digest matches: %j',async delta=>{
+    const f=recoveryFixture({'agent:collector:auto':original(),'agent:collector:repaired':{...repaired(),...delta}});
+    await expect(f.run()).rejects.toThrow();expect(f.options.sdk.patchSessionEntry).not.toHaveBeenCalled();
+  });
+  it('refuses missing sealed entries before any ordinary write',async()=>{
+    const f=recoveryFixture({'agent:collector:auto':original(),'agent:collector:repaired':repaired()});
+    delete f.rows['agent:collector:repaired'];
+    await expect(f.run()).rejects.toThrow(/predecessor missing/);expect(f.options.sdk.patchSessionEntry).not.toHaveBeenCalled();
+  });
+  it('rechecks the complete recovery predecessor inside the native write callback',async()=>{
+    const f=recoveryFixture();f.options.sdk.patchSessionEntry.mockImplementation(async(params:any)=>
+      params.update({...f.rows[params.sessionKey],updatedAt:91},{existingEntry:f.rows[params.sessionKey]}));
+    await expect(f.run()).rejects.toThrow(/predecessor changed/);expect(f.rows['agent:collector:repaired']).toEqual(repaired());
+  });
+  it('validates bounded strict recovery inputs',()=>{
+    const recovery=recoveryFor('agent:collector:repaired',repaired());
+    expect(validateSessionModelDefaults([{...operation,recoveries:[recovery]}])).toBeTruthy();
+    for(const recoveries of [[],Array(257).fill(recovery),[recovery,recovery],
+      [{...recovery,extra:true}],[{...recovery,sessionKey:'agent:other:key'}],
+      [{...recovery,sessionKey:'agent:collector:bad\nkey'}],[{...recovery,expectedEntrySha256:'bad'}],
+      [{...recovery,expectedActivitySha256:'bad'}],[{...recovery,originalUpdatedAt:-1}],[{...recovery,originalUpdatedAt:1.5}]]) {
+      expect(()=>validateSessionModelDefaults([{...operation,recoveries}])).toThrow();
+    }
+  });
+});
+
+describe('selected recovery activity witness',()=>{
+  it('blocks changed selected activity before ordinary writes and at native commit admission',async()=>{
+    const f=recoveryFixture({'agent:collector:auto':original(),'agent:collector:repaired':repaired()});
+    f.options.sdk.withOpenClawAgentDatabaseReadOnly.mockReturnValue({found:true,value:'b'.repeat(64)});
+    await expect(f.run()).rejects.toThrow(/activity changed/);expect(f.options.sdk.patchSessionEntry).not.toHaveBeenCalled();
+    const g=recoveryFixture();
+    g.options.sdk.patchSessionEntry.mockImplementation(async(params:any)=>{
+      params.update(structuredClone(g.rows[params.sessionKey]),{existingEntry:g.rows[params.sessionKey]});
+      g.options.sdk.withOpenClawAgentDatabaseReadOnly.mockReturnValue({found:true,value:'b'.repeat(64)});
+      params.assertCommitAllowed();
+    });
+    await expect(g.run()).rejects.toThrow(/activity changed/);expect(g.rows['agent:collector:repaired']).toEqual(repaired());
+  });
+  it('binds exact own history, private node metadata, windows and inputs while excluding another session and shared conversation activity',()=>{
+    const db=new DatabaseSync(':memory:');
+    const tables=['transcript_events','session_transcript_active_events','transcript_rewrite_watermarks','session_transcript_archives',
+      'session_transcript_cold_archives','session_pending_inputs','session_input_completions','session_conversations'];
+    try {
+      db.exec(`CREATE TABLE session_nodes(session_key TEXT,current_session_id TEXT,private_writer TEXT);
+        CREATE TABLE session_windows(session_key TEXT,session_id TEXT,updated_at INTEGER);
+        CREATE TABLE session_participants(session_key TEXT,actor_id TEXT);
+        CREATE TABLE conversations(conversation_id TEXT,label TEXT,updated_at INTEGER);
+        INSERT INTO session_nodes VALUES('selected','selected-id','fence'),('other','other-id','other');
+        INSERT INTO session_windows VALUES('selected','selected-id',100),('other','other-id',200);`);
+      for(const table of tables) db.exec(`CREATE TABLE ${table}(session_id TEXT,value BLOB,session_key TEXT); INSERT INTO ${table} VALUES('selected-id',x'0102','selected'),('other-id',x'0304','other')`);
+      const before=sessionModelDefaultActivityDigest(db,'selected');
+      for(const table of tables) db.exec(`UPDATE ${table} SET value=x'9999' WHERE session_id='other-id'`);
+      db.exec("INSERT INTO conversations VALUES('shared','newer',999)");
+      expect(sessionModelDefaultActivityDigest(db,'selected')).toBe(before);
+      for(const table of tables) {
+        db.exec(`UPDATE ${table} SET value=x'0103' WHERE session_id='selected-id'`);
+        expect(sessionModelDefaultActivityDigest(db,'selected')).not.toBe(before);
+        db.exec(`UPDATE ${table} SET value=x'0102' WHERE session_id='selected-id'`);
+      }
+      for(const table of ['session_pending_inputs','session_input_completions','session_transcript_archives']) {
+        db.exec(`INSERT INTO ${table} VALUES('unbound-id',x'05','selected')`);
+        expect(sessionModelDefaultActivityDigest(db,'selected')).not.toBe(before);
+        db.exec(`DELETE FROM ${table} WHERE session_id='unbound-id'`);
+      }
+      db.exec("UPDATE session_nodes SET private_writer='new-fence' WHERE session_key='selected'");
+      expect(sessionModelDefaultActivityDigest(db,'selected')).not.toBe(before);
+      db.exec("UPDATE session_nodes SET private_writer='fence' WHERE session_key='selected'; UPDATE session_windows SET updated_at=101 WHERE session_key='selected'");
+      expect(sessionModelDefaultActivityDigest(db,'selected')).not.toBe(before);
+      expect(db.isTransaction).toBe(false);
+    } finally { db.close(); }
   });
 });

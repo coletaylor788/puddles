@@ -819,3 +819,303 @@ index e00b9b2cc..4faa88815 100644
  export { resolveConfigPath, resolveOAuthDir, resolveStateDir, STATE_DIR } from "../config/paths.js";
  export { resolveRequiredHomeDir } from "../infra/home-dir.js";
 +export { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
+diff --git a/src/config/sessions/session-accessor.sqlite-entry-mutation.ts b/src/config/sessions/session-accessor.sqlite-entry-mutation.ts
+index a993a780..d955873e 100644
+--- a/src/config/sessions/session-accessor.sqlite-entry-mutation.ts
++++ b/src/config/sessions/session-accessor.sqlite-entry-mutation.ts
+@@ -45,7 +45,10 @@ export function applySessionEntryPatchInDatabase(
+     next: SessionEntry | undefined;
+     options: Pick<
+       SessionEntryPatchOptions,
+-      "consumePendingReset" | "assertCommitAllowed" | "providerReviewMutation"
++      | "consumePendingReset"
++      | "assertCommitAllowed"
++      | "providerReviewMutation"
++      | "preserveConversation"
+     >;
+   },
+ ): { entry: SessionEntry; identity?: SessionEntryIdentityChange } {
+@@ -68,6 +71,7 @@ export function applySessionEntryPatchInDatabase(
+   const previous = new Map(fresh.map((row) => [row.sessionKey, row.entry]));
+   const selectedPreviousEntry = fresh[0]?.entry ?? params.writeBase;
+   const persisted = writeSessionEntry(database, params.sessionKey, params.next, {
++    ...(params.options.preserveConversation ? { preserveConversation: true } : {}),
+     ...(params.options.consumePendingReset ? { consumePendingReset: true } : {}),
+     ...(params.options.providerReviewMutation ? { providerReviewMutation: true } : {}),
+     previousEntry: selectedPreviousEntry,
+diff --git a/src/config/sessions/session-accessor.sqlite-entry-store.ts b/src/config/sessions/session-accessor.sqlite-entry-store.ts
+index f3664462..70aa96c6 100644
+--- a/src/config/sessions/session-accessor.sqlite-entry-store.ts
++++ b/src/config/sessions/session-accessor.sqlite-entry-store.ts
+@@ -453,6 +453,7 @@ export function writeSessionEntry(
+     canonicalPreviousEntry?: SessionEntry | null;
+     consumePendingReset?: boolean;
+     preserveNodeSuggestions?: boolean;
++    preserveConversation?: boolean;
+     previousEntry?: SessionEntry | null;
+     routeContext?: ConversationRouteContext | null;
+   } = {},
+@@ -585,13 +586,61 @@ export function writeSessionEntry(
+     ...(options.routeContext !== undefined ? { routeContext: options.routeContext } : {}),
+     sessionScope: boundSessionRoot.session_scope,
+   });
+-  if (conversation) {
++  let retainedPrimaryConversationId: string | null = null;
++  if (options.preserveConversation) {
++    // Metadata repair must not replay an old session's route, title or activity
++    // over a newer session sharing its conversation. Keep the current projection.
++    if (
++      !canonicalPreviousEntry ||
++      options.routeContext !== undefined ||
++      options.allowStoredAliases ||
++      canonicalPreviousEntry.sessionId !== normalizedEntry.sessionId ||
++      canonicalPreviousEntry.lifecycleRevision !== normalizedEntry.lifecycleRevision ||
++      !isDeepStrictEqual(canonicalPreviousEntry.delivery, normalizedEntry.delivery)
++    ) {
++      throw new Error(
++        "Conversation preservation requires an unchanged session generation and route",
++      );
++    }
++    const previousRoot = bindSessionRoot({
++      entry: canonicalPreviousEntry,
++      sessionKey,
++      updatedAt: canonicalPreviousEntry.updatedAt,
++    });
++    const previousConversation = prepareSessionConversationForWrite({
++      database,
++      entry: canonicalPreviousEntry,
++      previousEntry: canonicalPreviousEntry,
++      sessionScope: previousRoot.session_scope,
++    });
++    if (
++      previousRoot.session_scope !== boundSessionRoot.session_scope ||
++      !isDeepStrictEqual(previousConversation, conversation)
++    ) {
++      throw new Error("Conversation preservation requires unchanged conversation metadata");
++    }
++    const window = executeSqliteQueryTakeFirstSync(
++      database.db,
++      getSessionKysely(database.db)
++        .selectFrom("session_windows")
++        .select(["session_key", "primary_conversation_id"])
++        .where("session_id", "=", normalizedEntry.sessionId),
++    );
++    if (!window || window.session_key !== sessionKey) {
++      throw new Error("Conversation preservation requires the existing session window");
++    }
++    retainedPrimaryConversationId = window.primary_conversation_id;
++  }
++  if (conversation && !options.preserveConversation) {
+     upsertConversationIdentity(database, conversation.identity, updatedAt);
+   }
+   const boundSessionRow = {
+     ...boundSessionRoot,
+-    primary_conversation_id:
+-      conversation?.role === "primary" ? conversation.identity.conversationRef : null,
++    primary_conversation_id: options.preserveConversation
++      ? retainedPrimaryConversationId
++      : conversation?.role === "primary"
++        ? conversation.identity.conversationRef
++        : null,
+     transcript_observed_at: transcriptObservedAt,
+   };
+   const sessionRow = resolveSessionEntryProvenanceRow({
+@@ -623,7 +672,7 @@ export function writeSessionEntry(
+       ? queries.retainWindow
+       : queries.claimWindow;
+   writeWindow(sessionRow);
+-  if (conversation) {
++  if (conversation && !options.preserveConversation) {
+     linkSessionConversation({
+       database,
+       ...(previousEntry?.sessionId ? { previousSessionId: previousEntry.sessionId } : {}),
+diff --git a/src/config/sessions/session-accessor.types.ts b/src/config/sessions/session-accessor.types.ts
+index 0a4b58a5..8837edf0 100644
+--- a/src/config/sessions/session-accessor.types.ts
++++ b/src/config/sessions/session-accessor.types.ts
+@@ -574,6 +574,8 @@ export type SessionEntryPatchOptions = {
+   maintenanceConfig?: ResolvedSessionMaintenanceConfig;
+   /** Keep the previous updatedAt value when the patch should not count as activity. */
+   preserveActivity?: boolean;
++  /** Preserve conversation rows and bindings; rejects generation or route changes. */
++  preserveConversation?: boolean;
+   /** Throw when best-effort store recovery cannot confirm the requested write. */
+   requireWriteSuccess?: boolean;
+   /** Replace the whole entry instead of merging the returned patch. */
+diff --git a/src/plugin-sdk/session-store-runtime.conversation.test.ts b/src/plugin-sdk/session-store-runtime.conversation.test.ts
+index cc910bd7..59dfb136 100644
+--- a/src/plugin-sdk/session-store-runtime.conversation.test.ts
++++ b/src/plugin-sdk/session-store-runtime.conversation.test.ts
+@@ -7,6 +7,7 @@ import { replaceSessionEntrySync } from "../config/sessions/session-accessor.sql
+ import {
+   closeOpenClawAgentDatabasesForTest,
+   getOpenClawAgentDatabaseIfOpen,
++  openOpenClawAgentDatabase,
+   runOpenClawAgentWriteTransaction,
+ } from "../state/openclaw-agent-db.js";
+ import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
+@@ -143,6 +144,143 @@ describe("current conversation session binding", () => {
+     expect(getSessionEntry(replacementScope)).not.toHaveProperty("displayName");
+   });
+ 
++  it.each([false, true])(
++    "preserves newer shared conversation activity during metadata repair (replace: %s)",
++    async (replaceEntry) => {
++      const databaseOptions = { agentId: "main", env: { OPENCLAW_STATE_DIR: tempDir } };
++      const scope = { ...databaseOptions, sessionKey: "agent:main:reef:group:room" };
++      const newerScope = { ...scope, sessionKey: `${scope.sessionKey}:thread:first` };
++      const delivery = normalizeSessionDeliveryState({
++        context: { channel: "reef", accountId: "default", to: "group:room", threadId: "first" },
++      });
++      await upsertSessionEntry({
++        ...scope,
++        entry: {
++          sessionId: "older",
++          lifecycleRevision: "same",
++          updatedAt: 100,
++          chatType: "group",
++          delivery,
++          label: "Older title",
++        },
++      });
++      await upsertSessionEntry({
++        ...newerScope,
++        entry: {
++          sessionId: "newer",
++          updatedAt: 200,
++          chatType: "group",
++          delivery,
++          label: "Newer title",
++        },
++      });
++      const database = openOpenClawAgentDatabase(databaseOptions);
++      const conversations = () =>
++        database.db.prepare("SELECT * FROM conversations ORDER BY conversation_id").all();
++      const links = () =>
++        database.db
++          .prepare("SELECT * FROM session_conversations ORDER BY session_id, conversation_id, role")
++          .all();
++      const primary = () =>
++        database.db
++          .prepare("SELECT primary_conversation_id FROM session_windows WHERE session_id = ?")
++          .get("older");
++      let before = { conversations: conversations(), links: links(), primary: primary() };
++      expect(before.conversations).toHaveLength(1);
++      expect(before.links).toHaveLength(2);
++      expect(before.primary).toMatchObject({ primary_conversation_id: expect.any(String) });
++      const current = getSessionEntry(scope)!;
++      await patchSessionEntry({
++        ...scope,
++        preserveActivity: true,
++        preserveConversation: true,
++        replaceEntry,
++        skipMaintenance: true,
++        update: () => {
++          // The selected entry remains unchanged while another session advances
++          // its shared conversation between preparation and native commit.
++          queueMicrotask(() => {
++            replaceSessionEntrySync(newerScope, {
++              sessionId: "newer",
++              updatedAt: 300,
++              chatType: "group",
++              delivery,
++              label: "Latest title",
++            });
++            before = { conversations: conversations(), links: links(), primary: primary() };
++          });
++          return replaceEntry
++            ? { ...current, updatedAt: 10, modelOverrideSource: "default" }
++            : { modelOverrideSource: "default" };
++        },
++      });
++      expect({ conversations: conversations(), links: links(), primary: primary() }).toEqual(
++        before,
++      );
++      expect(getSessionEntry(scope)).toMatchObject({
++        sessionId: "older",
++        lifecycleRevision: "same",
++        updatedAt: replaceEntry ? 10 : current.updatedAt,
++        modelOverrideSource: "default",
++      });
++      expect(
++        database.db
++          .prepare("SELECT updated_at FROM session_windows WHERE session_id = ?")
++          .get("older"),
++      ).toEqual({ updated_at: replaceEntry ? 10 : current.updatedAt });
++    },
++  );
++
++  it.each(["generation", "identity", "route", "title", "new-row"])(
++    "refuses conversation preservation for %s changes",
++    async (change) => {
++      const databaseOptions = { agentId: "main", env: { OPENCLAW_STATE_DIR: tempDir } };
++      const scope = { ...databaseOptions, sessionKey: "agent:main:reef:group:room" };
++      const delivery = normalizeSessionDeliveryState({
++        context: { channel: "reef", accountId: "default", to: "group:room" },
++      });
++      await upsertSessionEntry({
++        ...scope,
++        entry: {
++          sessionId: "existing",
++          lifecycleRevision: "original",
++          updatedAt: 100,
++          chatType: "group",
++          delivery,
++          label: "Retained title",
++        },
++      });
++      const database = openOpenClawAgentDatabase(databaseOptions);
++      const snapshot = () =>
++        ["session_nodes", "session_windows", "conversations", "session_conversations"].map(
++          (table) => database.db.prepare(`SELECT * FROM ${table}`).all(),
++        );
++      const before = snapshot();
++      const entry = getSessionEntry(scope)!;
++      const replacement = { ...entry, updatedAt: 10 };
++      if (change === "generation") replacement.lifecycleRevision = "successor";
++      if (change === "identity") replacement.sessionId = "successor";
++      if (change === "title") replacement.label = "Changed title";
++      if (change === "route")
++        replacement.delivery = normalizeSessionDeliveryState({
++          context: { channel: "reef", accountId: "default", to: "group:other" },
++        });
++      await expect(
++        patchSessionEntry({
++          ...scope,
++          ...(change === "new-row"
++            ? { sessionKey: "agent:main:missing", fallbackEntry: replacement }
++            : {}),
++          preserveConversation: true,
++          replaceEntry: true,
++          skipMaintenance: true,
++          update: () => replacement,
++        }),
++      ).rejects.toThrow(/Conversation preservation/);
++      expect(snapshot()).toEqual(before);
++    },
++  );
++
+   it("resolves an exact conversation through session reset and deletion", async () => {
+     const sessionKey = "agent:main:reef:group:room";
+     const address = {
+diff --git a/src/plugin-sdk/session-store-runtime.ts b/src/plugin-sdk/session-store-runtime.ts
+index 536405b3..5355d1ac 100644
+--- a/src/plugin-sdk/session-store-runtime.ts
++++ b/src/plugin-sdk/session-store-runtime.ts
+@@ -109,6 +109,8 @@ type PatchSessionEntryParams = SessionStoreReadParams & {
+   fallbackEntry?: SessionEntry;
+   maintenanceConfig?: ResolvedSessionMaintenanceConfigInput;
+   preserveActivity?: boolean;
++  /** Preserve existing conversation projections for same-generation metadata-only patches. */
++  preserveConversation?: boolean;
+   requireWriteSuccess?: boolean;
+   replaceEntry?: boolean;
+   skipMaintenance?: boolean;
+@@ -492,6 +494,7 @@ export async function patchSessionEntry(
+           ? normalizeResolvedMaintenanceConfigInput(params.maintenanceConfig)
+           : undefined,
+       preserveActivity: params.preserveActivity,
++      preserveConversation: params.preserveConversation,
+       requireWriteSuccess: params.requireWriteSuccess,
+       replaceEntry: params.replaceEntry,
+       skipMaintenance: params.skipMaintenance,

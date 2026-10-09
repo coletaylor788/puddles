@@ -598,7 +598,7 @@ it.each(['valid', 'external', 'symlink', 'config-drift'])('runs session metadata
     listSessionEntries:()=>{if(mode==='config-drift')writeFileSync(f.configPath,'{}');return [];},
     patchSessionEntry:patch,
   });
-  if(mode==='valid') await expect(f.run('sessions')).resolves.toEqual({sessionModelDefaults:{changed:0}});
+  if(mode==='valid') await expect(f.run('sessions')).resolves.toEqual({sessionModelDefaults:{changed:0,recovered:0}});
   else await expect(f.run('sessions')).rejects.toThrow(mode==='config-drift'?'config changed':mode==='external'?'escapes snapshotted':'links or special');
   expect(patch).not.toHaveBeenCalled();
 });

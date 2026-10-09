@@ -195,7 +195,7 @@ async function loadSdk(runtime, phase, workshop) {
   const names = ["config-mutation", "cron-store-runtime", "state-paths"];
   if (workshop) names.push("health");
   if (["schema", "builtin-config"].includes(phase)) names.push("doctor-repair-runtime");
-  if (phase === "sessions") names.push("session-store-runtime", "session-store-paths", "model-session-runtime");
+  if (phase === "sessions") names.push("session-store-runtime", "session-store-paths", "model-session-runtime", "sqlite-runtime");
   for (const name of names) {
     const path = require.resolve(`openclaw/plugin-sdk/${name}`);
     if (!inside(realpathSync(runtime), realpathSync(path))) throw new Error("Migration SDK resolved outside candidate runtime");
