@@ -40,6 +40,7 @@ PATCHES=(
   talk-overlap-recovery
   talk-conversation-progress
   shared-conversation-context
+  wiki-get-mutation-metadata
 )
 
 if [ -n "${MINI_HOST:-}" ]; then
