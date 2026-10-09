@@ -39,6 +39,7 @@ activated gateway. Keep the previous interpreter available for rollback.
 | `talk-overlap-recovery.patch` | Keep Talk connected when the active harness cannot accept a follow-up |
 | `talk-agent-parity.patch` | Optional text-equivalent Talk authorization and consultation work ownership |
 | `core-declaration-portability.patch` | Name portable core declaration exports for tools, sessions, databases, and plugin records |
+| `shared-conversation-context.patch` | Supply native shared history to a persistent harness before each ordinary turn |
 | `facetime-talk-client.patch` | Let FaceTime inherit native Talk configuration, history, controls, and accepted-work lifetime |
 
 Each patch has a neighboring document explaining its behavior and history.
