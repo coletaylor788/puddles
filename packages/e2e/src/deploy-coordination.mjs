@@ -296,6 +296,14 @@ export function coordinate(path, operation, input) {
       requireValue(input.environment === "TEST" && testedBuild, "TEST requires a build identity and proof path");
       const batch = state.batches[current.batchId];
       requireValue(batch && batch.owner.id === current.agent.id, "Only the batch owner can publish TEST success");
+      // A different batch may have proven a correction after this one was selected.
+      // Requalify only corrections already proven in TEST and present in this source.
+      batch.invalidatedBy = batch.invalidatedBy.filter((commit) => {
+        const failure = state.disqualified[commit];
+        const correction = failure?.repair ?? failure?.revert;
+        const source = batch.sources.find((source) => source.id === failure?.repository);
+        return !sha(correction) || !source?.commits.some(({ sha }) => sha === correction);
+      });
       requireValue(!batch.invalidatedBy.length, "Batch contains a disqualified commit; select corrected main");
       assertBatchArtifact({ batch, environment: "TEST" }, testedBuild);
       batch.status = "tested"; batch.buildId = testedBuild.buildId; batch.proof = input.proof; batch.updatedAt = now;
