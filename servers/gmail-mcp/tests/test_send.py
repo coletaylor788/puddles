@@ -25,7 +25,7 @@ EMAIL = {
 @pytest.fixture
 def provider(monkeypatch):
     monkeypatch.setenv("GMAIL_MCP_ENABLE_SEND", "1")
-    monkeypatch.setenv("GMAIL_MCP_SEND_MAILBOX", "owner@example.org")
+    monkeypatch.delenv("GMAIL_MCP_SEND_MAILBOX", raising=False)
     service = Mock()
     users = service.users.return_value
     users.getProfile.return_value.execute.return_value = {"emailAddress": "owner@example.org"}
@@ -70,6 +70,7 @@ async def test_send_mime_and_no_retries(provider, capsys):
         {"subject": "x\r\nBcc: a@example.org"},
         {"raw": "arbitrary"},
         {"approved": True},
+        {"from": "alias@example.net"},
         {"body_text": "界" * 40000},
         {"body_text": "\ud800"},
         {"subject": "\ud800"},
@@ -82,13 +83,25 @@ async def test_invalid_input_cannot_reach_provider(provider, change):
     service.users.assert_not_called()
 
 
-async def test_mailbox_mismatch_cannot_send(provider):
+@pytest.mark.parametrize("address", [None, "", "bad\r\nBcc: x@example.net", "alias <x@example.net>"])
+async def test_invalid_authenticated_mailbox_cannot_send(provider, address):
     service, get_service = provider
     service.users().getProfile.return_value.execute.return_value = {
-        "emailAddress": "other@example.org"
+        "emailAddress": address
     }
     assert await send_email(EMAIL, get_service) == {"status": "failed_before_send"}
     service.users().messages.assert_not_called()
+
+
+async def test_sender_comes_from_existing_authenticated_profile(provider):
+    service, get_service = provider
+    service.users().getProfile.return_value.execute.return_value = {
+        "emailAddress": "connected@example.net"
+    }
+    assert (await send_email(EMAIL, get_service))["status"] == "sent"
+    raw = service.users().messages().send.call_args.kwargs["body"]["raw"]
+    message = BytesParser(policy=policy.default).parsebytes(base64.urlsafe_b64decode(raw))
+    assert str(message["From"]) == "connected@example.net"
 
 
 async def test_lost_response_is_unknown_not_retryable(provider, capsys):
@@ -167,7 +180,7 @@ async def test_real_transport_never_repeats_post(monkeypatch, capsys, outcome):
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     monkeypatch.setenv("GMAIL_MCP_ENABLE_SEND", "1")
-    monkeypatch.setenv("GMAIL_MCP_SEND_MAILBOX", "owner@example.org")
+    monkeypatch.delenv("GMAIL_MCP_SEND_MAILBOX", raising=False)
     service = Mock()
     service.users().getProfile.return_value.execute.return_value = {
         "emailAddress": "owner@example.org"

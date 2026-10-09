@@ -89,19 +89,10 @@ def _send_once(request):
 
 
 async def send_email(args: dict[str, Any], get_service) -> dict[str, str]:
-    mailbox = os.environ.get("GMAIL_MCP_SEND_MAILBOX", "")
     try:
-        if not send_enabled() or not valid_mailbox(mailbox):
-            raise ValueError("Sending disabled or invalid mailbox")
+        if not send_enabled():
+            raise ValueError("Sending disabled")
         validate_email(args)
-        message = EmailMessage(policy=SMTP)
-        message["From"] = mailbox
-        for key, header in (("to", "To"), ("cc", "Cc"), ("bcc", "Bcc")):
-            if args.get(key):
-                message[header] = ", ".join(args[key])
-        message["Subject"] = args["subject"]
-        message.set_content(args["body_text"])
-        raw = base64.urlsafe_b64encode(message.as_bytes()).decode("ascii")
         service = await get_service()
     except Exception:
         return {"status": "failed_before_send"}
@@ -112,10 +103,19 @@ async def send_email(args: dict[str, Any], get_service) -> dict[str, str]:
 
     def dispatch():
         try:
-            # Bind the configured sender to this credential, never an inferred alias.
+            # The existing authenticated account owns the sender, never the model.
             profile = service.users().getProfile(userId="me").execute(num_retries=0)
-            if str(profile.get("emailAddress", "")).lower() != mailbox.lower():
+            mailbox = profile.get("emailAddress")
+            if not valid_mailbox(mailbox):
                 return {"status": "failed_before_send"}
+            message = EmailMessage(policy=SMTP)
+            message["From"] = mailbox
+            for key, header in (("to", "To"), ("cc", "Cc"), ("bcc", "Bcc")):
+                if args.get(key):
+                    message[header] = ", ".join(args[key])
+            message["Subject"] = args["subject"]
+            message.set_content(args["body_text"])
+            raw = base64.urlsafe_b64encode(message.as_bytes()).decode("ascii")
             request = service.users().messages().send(userId="me", body={"raw": raw})
             if cancellation.is_set():
                 return {"status": "failed_before_send"}

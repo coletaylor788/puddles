@@ -69,10 +69,6 @@
         "type": "boolean",
         "default": false,
         "description": "Enable owner-approved sending for the main agent."
-      },
-      "sendMailbox": {
-        "type": "string",
-        "description": "Authenticated mailbox used as the sender. Must match the Gmail account."
       }
     }
   }

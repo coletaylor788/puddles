@@ -21,7 +21,7 @@ it("does not dispatch if the run is cancelled while the first bridge connection 
   let send: any;
   plugin.register({
     pluginConfig: { gmailMcpCommand: "/unused", llmProvider: "/unused", sendEnabled: true,
-      sendMailbox: "owner@example.org", auditLogPath: join(root, "audit.jsonl") },
+      auditLogPath: join(root, "audit.jsonl") },
     logger: { info() {}, warn() {}, error() {} },
     registerTool(factory: any) {
       const tool = factory({ agentId: "main" });
