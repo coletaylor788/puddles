@@ -134,7 +134,10 @@
     "src/plugins/hooks.before-tool-call.test.ts": "plugins",
     "src/agents/agent-tools.before-tool-call.embedded-mode.test.ts": "agents-core",
     "src/plugin-sdk/session-transcript-runtime.test.ts": "plugin-sdk",
-    "extensions/copilot/src/attempt-session.integration.test.ts": "extensions"
+    "extensions/copilot/src/attempt-session.integration.test.ts": "extensions",
+    "extensions/memory-wiki/src/tool.test.ts": "extension-memory",
+    "extensions/memory-wiki/src/query.test.ts": "extension-memory",
+    "extensions/memory-wiki/src/query.reads.test.ts": "extension-memory"
   },
   "patches": [
     {
@@ -441,6 +444,14 @@
       ],
       "candidateTests": [
         "tests/candidate.main-conversation.test.ts"
+      ]
+    },
+    {
+      "name": "wiki-get-mutation-metadata",
+      "tests": [
+        "extensions/memory-wiki/src/tool.test.ts",
+        "extensions/memory-wiki/src/query.test.ts",
+        "extensions/memory-wiki/src/query.reads.test.ts"
       ]
     }
   ],

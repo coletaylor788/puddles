@@ -42,6 +42,8 @@ activated gateway. Keep the previous interpreter available for rollback.
 | `shared-conversation-context.patch` | Supply native shared history to a persistent harness before each ordinary turn |
 | `facetime-talk-client.patch` | Let FaceTime inherit native Talk configuration, history, controls, and accepted-work lifetime |
 
+| `wiki-get-mutation-metadata.patch` | Expose complete citation and claim metadata for preserving wiki updates |
+
 Each patch has a neighboring document explaining its behavior and history.
 Register new patches and every applicable test in the cumulative manifest at
 `packages/e2e/openclaw-patch-suite.json`. Keep the visible patch order in

@@ -1,0 +1,222 @@
+diff --git a/docs/plugins/memory-wiki.md b/docs/plugins/memory-wiki.md
+index ae33aa58..4d9a9d9e 100644
+--- a/docs/plugins/memory-wiki.md
++++ b/docs/plugins/memory-wiki.md
+@@ -294,6 +294,19 @@ includes compact `Claim:` and `Evidence:` lines when available.
+ | `wiki_apply`  | narrow synthesis/metadata mutations without freeform page surgery                                                                                             |
+ | `wiki_lint`   | structural checks, provenance gaps, contradictions, open questions                                                                                            |
+ 
++Before changing a synthesis, call `wiki_get` with `includeMetadata: true`.
++Its text result is JSON containing the page body, pagination, and complete
++mutation metadata: `sourceIds`, `claims` with evidence, `contradictions`,
++`questions`, and optional `confidence` and `status`. Metadata is not paginated;
++`fromLine` and `lineCount` still apply to the body. Read remaining body pages
++when `truncated` is true. Ordinary calls keep their body-only text output.
++Memory-corpus fallback has no wiki mutation metadata. This option does not
++change page visibility or allow filesystem access.
++
++A synthesis update replaces `sourceIds` and any supplied `claims` array. Retain
++unrelated citations and claim evidence, omit unchanged optional arrays, and
++preserve the page status. Do not infer complete metadata from search snippets.
++
+ The plugin also registers a non-exclusive memory corpus supplement, so shared
+ `memory_search` and `memory_get` can reach the wiki when the active memory
+ plugin supports corpus selection.
+diff --git a/extensions/memory-wiki/src/query.ts b/extensions/memory-wiki/src/query.ts
+index 395afb2a..f96a5ce2 100644
+--- a/extensions/memory-wiki/src/query.ts
++++ b/extensions/memory-wiki/src/query.ts
+@@ -140,12 +140,18 @@ type WikiSearchResult = {
+   evidenceSourceIds?: string[];
+ };
+ 
++type WikiPageMutationMetadata = Pick<
++  WikiPageSummary,
++  "sourceIds" | "claims" | "contradictions" | "questions" | "confidence"
++> & { status?: string };
++
+ type WikiGetResult = {
+   corpus: "wiki" | "memory";
+   path: string;
+   title: string;
+   kind: WikiPageSummary["kind"] | "memory";
+   content: string;
++  metadata?: WikiPageMutationMetadata;
+   fromLine: number;
+   lineCount: number;
+   totalLines?: number;
+@@ -1306,6 +1312,16 @@ export async function getMemoryWikiPage(input: {
+         totalLines,
+         truncated,
+         ...buildWikiResultMetadata(page),
++        metadata: {
++          sourceIds: page.sourceIds,
++          claims: page.claims,
++          contradictions: page.contradictions,
++          questions: page.questions,
++          ...(page.confidence !== undefined ? { confidence: page.confidence } : {}),
++          ...(typeof page.parsed.frontmatter.status === "string"
++            ? { status: page.parsed.frontmatter.status }
++            : {}),
++        },
+       };
+     }
+   }
+diff --git a/extensions/memory-wiki/src/tool.test.ts b/extensions/memory-wiki/src/tool.test.ts
+index 7bb8255a..b9409d9a 100644
+--- a/extensions/memory-wiki/src/tool.test.ts
++++ b/extensions/memory-wiki/src/tool.test.ts
+@@ -4,9 +4,9 @@ import path from "node:path";
+ import { describe, expect, it } from "vitest";
+ import type { ResolvedMemoryWikiConfig } from "./config.js";
+ import { lintMemoryWikiVault } from "./lint.js";
+-import { parseWikiMarkdown } from "./markdown.js";
++import { parseWikiMarkdown, renderWikiMarkdown } from "./markdown.js";
+ import { createMemoryWikiTestHarness } from "./test-helpers.js";
+-import { createWikiApplyTool, createWikiLintTool } from "./tool.js";
++import { createWikiApplyTool, createWikiGetTool, createWikiLintTool } from "./tool.js";
+ 
+ function asSchemaObject(value: unknown): Record<string, unknown> {
+   if (typeof value !== "object" || value === null || Array.isArray(value)) {
+@@ -29,6 +29,104 @@ function unionLiteralValues(schema: Record<string, unknown>): string[] {
+ describe("memory-wiki tools", () => {
+   const harness = createMemoryWikiTestHarness();
+ 
++  it("exposes complete metadata in model-visible text for a preserving synthesis update", async () => {
++    const { rootDir, config } = await harness.createVault({
++      initialize: true,
++      config: { search: { backend: "local", corpus: "wiki" } },
++    });
++    const metadata = {
++      sourceIds: ["source.legacy", "source.bridge"],
++      claims: [
++        {
++          id: "claim.alpha",
++          text: "Alpha fact",
++          status: "supported",
++          confidence: 0.9,
++          updatedAt: "2026-01-01T00:00:00.000Z",
++          evidence: [
++            {
++              kind: "note",
++              sourceId: "source.legacy",
++              path: "memory/alpha.md",
++              lines: "2-4",
++              weight: 1,
++              confidence: 0.8,
++              privacyTier: "private",
++              note: "Original evidence",
++              updatedAt: "2026-01-01T00:00:00.000Z",
++            },
++          ],
++        },
++        { id: "claim.beta", text: "Another fact", evidence: [{ sourceId: "source.bridge" }] },
++      ],
++      contradictions: ["Unresolved conflict"],
++      questions: ["Unanswered question"],
++      confidence: 0.7,
++      status: "review",
++    };
++    const pagePath = path.join(rootDir, "syntheses", "alpha.md");
++    await fs.writeFile(
++      pagePath,
++      renderWikiMarkdown({
++        frontmatter: { pageType: "synthesis", id: "synthesis.alpha", title: "Alpha", ...metadata },
++        body: "# Alpha\n\nOriginal summary.\n",
++      }),
++    );
++    const get = createWikiGetTool(config);
++    const result = await get.execute("read-metadata", {
++      lookup: "synthesis.alpha",
++      includeMetadata: true,
++      lineCount: 1,
++    });
++    const text = result.content.find((part) => part.type === "text")?.text ?? "";
++    const snapshot = JSON.parse(text);
++    expect(snapshot.metadata).toEqual(metadata);
++    expect(snapshot.truncated).toBe(true);
++    expect(snapshot.content.split("\n")).toHaveLength(1);
++    // Body-only callers keep their existing model-visible format.
++    const plain = await get.execute("read-body", { lookup: "synthesis.alpha", lineCount: 1 });
++    expect(plain.content.find((part) => part.type === "text")?.text).toBe(snapshot.content);
++    await createWikiApplyTool(config).execute("update-summary", {
++      op: "synthesis",
++      title: "Alpha",
++      body: "Updated summary.",
++      ...snapshot.metadata,
++    });
++    const updated = parseWikiMarkdown(await fs.readFile(pagePath, "utf8"));
++    expect(updated.frontmatter).toMatchObject(metadata);
++    expect(updated.frontmatter.id).toBe("synthesis.alpha");
++    expect(updated.body).toContain("Updated summary.");
++  });
++
++  it("does not expose metadata from an unreadable bridge source", async () => {
++    const { rootDir, config } = await harness.createVault({
++      initialize: true,
++      config: { vault: { scope: "global" }, search: { backend: "local", corpus: "wiki" } },
++    });
++    await fs.writeFile(
++      path.join(rootDir, "sources", "foreign.md"),
++      renderWikiMarkdown({
++        frontmatter: {
++          pageType: "source",
++          id: "source.foreign",
++          title: "Foreign",
++          sourceType: "memory-bridge",
++          bridgeAgentIds: ["other"],
++          sourceIds: ["private-evidence"],
++          claims: [{ text: "Private claim" }],
++        },
++        body: "Private body.",
++      }),
++    );
++    const result = await createWikiGetTool(config, undefined, {
++      agentId: "main",
++      sandboxed: true,
++    }).execute("denied", { lookup: "sources/foreign.md", includeMetadata: true });
++    expect(result.details).toEqual({ found: false });
++    expect(JSON.stringify(result)).not.toContain("private-evidence");
++    expect(JSON.stringify(result)).not.toContain("Private claim");
++  });
++
+   it("accepts CLI-style operation aliases in wiki_apply schema", () => {
+     const tool = createWikiApplyTool({} as ResolvedMemoryWikiConfig);
+     const applyProperties = asSchemaObject(asSchemaObject(tool.parameters).properties);
+diff --git a/extensions/memory-wiki/src/tool.ts b/extensions/memory-wiki/src/tool.ts
+index 075f3095..a694b796 100644
+--- a/extensions/memory-wiki/src/tool.ts
++++ b/extensions/memory-wiki/src/tool.ts
+@@ -51,6 +51,12 @@ const WikiSearchSchema = Type.Object(
+ const WikiGetSchema = Type.Object(
+   {
+     lookup: Type.String({ minLength: 1 }),
++    includeMetadata: Type.Optional(
++      Type.Boolean({
++        description:
++          "Include complete mutation metadata and body pagination in the text result. Use before updating citations or claims.",
++      }),
++    ),
+     fromLine: Type.Optional(Type.Integer({ minimum: 1 })),
+     lineCount: Type.Optional(Type.Integer({ minimum: 1 })),
+     backend: Type.Optional(WikiSearchBackendSchema),
+@@ -262,6 +268,7 @@ export function createWikiGetTool(
+     execute: async (_toolCallId, rawParams) => {
+       const params = asNonArrayRecord(rawParams) as {
+         lookup?: string;
++        includeMetadata?: boolean;
+         fromLine?: number;
+         lineCount?: number;
+         backend?: ResolvedMemoryWikiConfig["search"]["backend"];
+@@ -288,7 +295,10 @@ export function createWikiGetTool(
+       if (!result) {
+         return textResult(`Wiki page not found: ${lookup}`, { found: false });
+       }
+-      return textResult(result.content, { found: true, ...result });
++      return textResult(
++        params.includeMetadata === true ? JSON.stringify(result, null, 2) : result.content,
++        { found: true, ...result },
++      );
+     },
+   };
+ }
