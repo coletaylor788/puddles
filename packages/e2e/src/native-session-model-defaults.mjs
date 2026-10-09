@@ -49,13 +49,19 @@ export function validateSessionModelDefaults(operations) {
       if (!Array.isArray(operation.recoveries) || !operation.recoveries.length || operation.recoveries.length > 256) throw new Error("Invalid session model recovery count");
       const keys = new Set();
       for (const recovery of operation.recoveries) {
-        exact(recovery, ["sessionKey", "expectedEntrySha256", "expectedActivitySha256", "originalUpdatedAt"]);
+        exact(recovery, ["sessionKey", "expectedEntrySha256", "expectedActivitySha256", "originalUpdatedAt", "originalWindowActivity"]);
         if (typeof recovery.sessionKey !== "string" || recovery.sessionKey.length > 512 ||
             !recovery.sessionKey.startsWith(`agent:${operation.agentId}:`) || recovery.sessionKey.length <= `agent:${operation.agentId}:`.length ||
             /[\x00-\x20\x7f]/.test(recovery.sessionKey) ||
             keys.has(recovery.sessionKey) || typeof recovery.expectedEntrySha256 !== "string" || !/^[a-f0-9]{64}$/.test(recovery.expectedEntrySha256) ||
             typeof recovery.expectedActivitySha256 !== "string" || !/^[a-f0-9]{64}$/.test(recovery.expectedActivitySha256) ||
             !Number.isSafeInteger(recovery.originalUpdatedAt) || recovery.originalUpdatedAt < 0) throw new Error("Invalid or duplicate session model recovery");
+        exact(recovery.originalWindowActivity, ["updatedAt", "transcriptObservedAt"]);
+        const window = recovery.originalWindowActivity;
+        if (!Number.isSafeInteger(window.updatedAt) || window.updatedAt < 0 ||
+            (window.transcriptObservedAt !== null && (!Number.isSafeInteger(window.transcriptObservedAt) || window.transcriptObservedAt < 0))) {
+          throw new Error("Invalid session model recovery window activity");
+        }
         keys.add(recovery.sessionKey);
       }
     }
@@ -132,7 +138,7 @@ export async function executeSessionModelDefaults({ operations, config, stateDir
         "contextTokens", "contextTokensSource", "contextBudgetStatus", "fallbackNotice"]);
       if (recovery) mutable.add("updatedAt");
       if (Object.keys(patch).some(key => !mutable.has(key))) throw new Error("Native default selection changed unrelated session metadata");
-      plans.push({ scope, sessionKey, before, after, patch, paths, recovery: Boolean(recovery), expectedActivitySha256: recovery?.expectedActivitySha256 });
+      plans.push({ scope, sessionKey, before, after, patch, paths, recovery: Boolean(recovery), expectedActivitySha256: recovery?.expectedActivitySha256, originalWindowActivity: recovery?.originalWindowActivity });
     }
     if (found.size !== recoveries.size) throw new Error("Session model recovery predecessor missing");
   }
@@ -159,6 +165,7 @@ export async function executeSessionModelDefaults({ operations, config, stateDir
   for (const plan of plans) {
     verify(plan);
     const actual = await sdk.patchSessionEntry({ ...plan.scope, sessionKey: plan.sessionKey,
+      ...(plan.recovery ? { restoreWindowActivity: plan.originalWindowActivity } : { preserveWindowActivity: true }),
       replaceEntry: plan.recovery, preserveActivity: true, preserveConversation: true, skipMaintenance: true, requireWriteSuccess: true,
       assertCommitAllowed: () => { check(); for (const path of plan.paths) assertStatePath(path); verifyActivity(plan); },
       update(entry, context) {
