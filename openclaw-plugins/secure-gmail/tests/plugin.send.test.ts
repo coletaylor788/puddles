@@ -23,17 +23,18 @@ describe("native send approval registration", () => {
     expect(factories.map(f => f({ agentId: "main" }).name)).not.toContain("send_email");
   });
   it("exposes an optional send tool only to main and requests allow-once with no classifiers", () => {
-    const { factories, hook } = register({ sendEnabled: true, sendMailbox: "owner@example.org" });
+    const { factories, hook } = register({ sendEnabled: true });
     const factory = factories.at(-1);
     expect(factory({ agentId: "reader" })).toBeNull();
     expect(factory({ agentId: "main" }).name).toBe("send_email");
     const result = hook({ toolName: "send_email", params: email }, { agentId: "main", requester: { senderIsOwner: true } });
     expect(result.requireApproval).toMatchObject({ timeoutMs: 600000, allowedDecisions: ["allow-once", "deny"] });
     expect(result.requireApproval.description).toContain("a@example.com");
+    expect(result.requireApproval.description).toContain("From: connected Gmail account");
     expect(result.params).toEqual(email);
   });
   it.each([{ agentId: "reader", requester: { senderIsOwner: true } }, { agentId: "main" }, { agentId: "main", requester: { senderIsOwner: false } }])("blocks callers without main and owner provenance", ctx => {
-    const { hook } = register({ sendEnabled: true, sendMailbox: "owner@example.org" });
+    const { hook } = register({ sendEnabled: true });
     expect(hook({ toolName: "send_email", params: email }, ctx).block).toBe(true);
     expect(hook({ toolName: "get_email", params: {} }, ctx)).toBeUndefined();
   });

@@ -2,7 +2,7 @@
 
 **Status:** Implemented and reviewed, release pending
 **Issue:** [#68](https://github.com/coletaylor788/puddles/issues/68)
-**Last updated:** 2026-10-07
+**Last updated:** 2026-10-08
 
 ## Human section
 
@@ -58,7 +58,7 @@ The owner approves the displayed recipients, so this tool requires no known-cont
 or trusted-domain lookup. The [security architecture](../openclaw-setup/security-architecture.md)
 records this exception.
 
-Version one sends a new plain-text email from the configured mailbox. Inputs
+Version one sends a new plain-text email from the existing authenticated Gmail account. Inputs
 are `to`, optional `cc` and `bcc`, `subject`, and `body_text`. Validate addresses,
 require at least one recipient, bound input sizes, and reject header injection
 and unknown fields. Attachments, HTML, aliases, arbitrary headers, raw MIME,
@@ -71,7 +71,7 @@ the trusted host; a model-supplied approval ID grants no authority.
 
 #### Approving and sending follow-ups in iMessage
 
-Use OpenClaw's existing summary to show the configured sender, every To/Cc/Bcc
+Use OpenClaw's existing summary to show the sender as "connected Gmail account", every To/Cc/Bcc
 recipient, subject, and a short body preview. Reject an envelope that cannot fit
 in the summary; the body preview can be shortened. This preview appears before
 the tool runs its content guard. No custom full-email review is needed.
@@ -94,14 +94,15 @@ Cancellation after Gmail dispatch cannot recall an email.
 
 ### Status
 
-The owner approved this design and shipping it on 2026-10-07. Implementation,
-focused tests, native integration, and independent review are complete.
-Repository CI and source landing precede release validation.
+The original implementation is merged after focused tests, native integration,
+CI, and independent review. The follow-up uses the existing authenticated Gmail
+account as the sender and passes focused tests and native integration.
 
-Deployment needs the exact sender mailbox and its host configuration. The
-read-only account lookup could not access the host credential store; the owner
-has been asked for the sender address. Installed gateway forwarding and physical
-phone acceptance remain. Production has not changed.
+The owner clarified that sending uses the existing authenticated Gmail account.
+The redundant sender setting is removed; Gmail resolves its own profile after
+approval. Deployment preparation includes a hash-locked Python MCP runtime
+packaged with the plugin, keeping activation and rollback together. Installed
+gateway forwarding and physical phone acceptance remain. Production has not changed.
 
 ## Agent section
 
@@ -118,7 +119,7 @@ and a recording MCP bridge. Deployment and physical phone acceptance remain.
 
 - Expose sending only to the authorized main caller; reader, lower-trust, and
   unattended calls fail closed in version one.
-- Use the closed schema and fixed mailbox described above. Every destination
+- Use the closed schema and authenticated mailbox described above. Every destination
   must appear in the summary. No contact lookup is required for this tool.
 - Preserve the native approved arguments through dispatch. No custom preparation,
   finalization, fingerprint, or approval-binding state is needed.
@@ -161,7 +162,7 @@ same reaction binding. Real routes and identities belong in local configuration.
 
 - [secure-gmail registration](../../openclaw-plugins/secure-gmail/src/plugin.ts)
   adds an optional, main-only send tool and its native approval hook. Sending is
-  disabled unless the host config enables it and supplies a valid mailbox.
+  disabled unless the host config enables it.
 - [ContactsEgressGuard](../../packages/mcp-hooks/src/egress/contacts-egress-guard.ts)
   delegates its content checks to the reusable `ContentEgressGuard` while
   preserving other callers' contact checks. Do not substitute LeakGuard's broader
@@ -199,14 +200,18 @@ denial, content blocks, abort, runtime stop, and Python/TypeScript schema parity
 Bridge startup cancellation has a separate regression. All sends are recorded;
 no test sends a real email or approval message.
 
-Focused results: 70 Gmail plugin tests, 118 shared-hook tests, 194 Python tests,
+Focused results: 71 Gmail plugin tests, 118 shared-hook tests, 199 Python tests,
 and 56 release-runner tests pass. The pinned OpenClaw source passes 54 iMessage,
 29 hook, and 26 approval regressions. Its draft build and the final native
-wrapper/stdio integration pass. These are development checks, not release proof.
+wrapper/stdio integration pass. These are development checks, not release proof. The packaged Python runtime
+passes isolated stdio discovery with network and subprocess activity denied.
+Its builder regression covers relocation, hash-locked dependencies and immutable
+output. Environment binding tests keep native approval destinations synthetic
+in test environments without changing approval policy.
 
 Implementation tests must cover:
 
-- Schema parity, header injection, Unicode, all recipients visible, fixed sender,
+- Schema parity, header injection, Unicode, all recipients visible, sender derived from the existing login,
   and unsupported fields rejected.
 - Approval completes before the Gmail content guard runs; content blocks and
   classifier failure then prevent dispatch. Unfamiliar recipients are allowed
@@ -244,7 +249,8 @@ reconciliation. An accepted email cannot be recalled by rollback.
   response-triggered credential retries, and redirects disabled. Local HTTP
   regressions verify one POST for acceptance, lost responses, 401, and redirects.
   Existing read transport is unchanged. The retained reviewer cleared the full
-  behavior diff at `629529e` and independently passed all 19 send tests. No
+  behavior diff at `629529e` and independently passed all 19 send tests. The follow-up removes
+  redundant mailbox configuration as requested by the owner. No
   material findings remain. Installed gateway routing and phone acceptance are
   release validation gaps.
 

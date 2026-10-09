@@ -190,8 +190,8 @@ Add a label to one or more emails.
 ### send_email (trusted host only)
 
 Disabled by default. The approved OpenClaw Gmail integration enables this tool
-on its own bridge with `GMAIL_MCP_ENABLE_SEND=1` and `GMAIL_MCP_SEND_MAILBOX` set
-to the authenticated account. Native owner approval and content guards run in
+on its own bridge with `GMAIL_MCP_ENABLE_SEND=1`. The existing authenticated
+Gmail profile supplies the sender address. Native owner approval and content guards run in
 the plugin before it calls this MCP handler. Direct MCP callers do not acquire
 those protections and must not receive an enabled raw connection.
 
@@ -273,3 +273,13 @@ subjects, and IDs are logged as-is.
 ## License
 
 MIT
+
+### Native release artifact
+
+Use Python 3.11 to run `scripts/build-runtime.py --output /absolute/empty/path`
+when packaging the server with a native plugin release. The builder installs
+hash-locked dependencies and copies the server into a relocatable directory.
+Launch it with `python3.11 -I /installed/path/run.py`. Authentication continues
+to use the existing account and credential storage. Include this directory in
+the same immutable artifact as the plugin so activation and rollback keep them
+in sync.

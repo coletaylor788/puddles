@@ -18,6 +18,28 @@ const bindings = [
 const overrides = { "/gateway/port": 18001, "/secrets/providers/local/path": "/test/credentials.json" };
 
 describe("environment configuration", () => {
+  it("isolates the packaged Gmail entrypoint while preserving interpreter flags", () => {
+    const config = { plugins: { entries: { "secure-gmail": { config: { gmailMcpArgs: ["-I", "/host/run.py"] } } } } };
+    const path = "/plugins/entries/secure-gmail/config/gmailMcpArgs/1";
+    const rules = [{ path, category: "path", reason: "Recording runtime" }];
+    const selected = renderEnvironmentConfiguration(config, rules, { [path]: "/fixture/run.py" });
+    expect(selected.plugins.entries["secure-gmail"].config.gmailMcpArgs).toEqual(["-I", "/fixture/run.py"]);
+    const flags = path.slice(0, -1) + "0";
+    expect(() => renderEnvironmentConfiguration(config, [{ ...rules[0], path: flags }], { [flags]: "-m" })).toThrow(/Unsupported/);
+  });
+  it("isolates plugin approval destinations without changing approval behavior", () => {
+    const plugin = { enabled: true, mode: "targets", agentFilter: ["main"], targets: [{ channel: "imessage", accountId: "default", to: "production-owner" }] };
+    const config = { approvals: { plugin } };
+    const path = "/approvals/plugin/targets/0/to";
+    const rules = [{ path, category: "account", reason: "Recording approval destination" }];
+    const selected = renderEnvironmentConfiguration(config, rules, { [path]: "fixture-owner" });
+    expect(selected.approvals.plugin).toEqual({ ...plugin, targets: [{ ...plugin.targets[0], to: "fixture-owner" }] });
+    expect(() => assertEnvironmentConfiguration(config, config, rules, { [path]: "fixture-owner" })).toThrow(/parity failed/);
+    for (const field of ["enabled", "mode", "agentFilter/0", "targets/0/channel"]) {
+      const path = `/approvals/plugin/${field}`;
+      expect(() => renderEnvironmentConfiguration(config, [{ path, category: "account", reason: "Invalid override" }], { [path]: "changed" })).toThrow(/Unsupported|Behavior/);
+    }
+  });
   it("binds Rocket Money host executables and state without changing write permission", () => {
     const config = {plugins:{entries:{"rocket-money":{enabled:true,config:{command:"/host/python",chromeExecutable:"/host/chrome",stateDir:"/host/private",writesEnabled:true}}}}};
     const rules = ["command", "chromeExecutable", "stateDir"].map(field => ({path:`/plugins/entries/rocket-money/config/${field}`,category:field === "stateDir" ? "path" : "fixture",reason:"Synthetic transport"}));

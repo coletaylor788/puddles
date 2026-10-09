@@ -89,6 +89,10 @@ jobs:
           python -m pytest tests/ --ignore=tests/integration -q
           python -m ruff check src/ tests/
           python -m compileall -q src tests
+          runtime_root=$(mktemp -d)
+          trap 'rm -rf "$runtime_root"' EXIT
+          python scripts/build-runtime.py --output "$runtime_root/python"
+          GMAIL_MCP_PYTHON=$(command -v python) node ../../packages/e2e/scenarios/gmail-runtime.mjs "$runtime_root/python"
 
       - name: Check Rocket Money and shared browser auth
         run: |

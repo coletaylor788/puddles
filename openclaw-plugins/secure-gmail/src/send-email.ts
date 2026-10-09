@@ -46,10 +46,10 @@ export function validateEmail(value: unknown): Record<string, unknown> {
 }
 
 /** Display only. Gmail validation and content classification happen after approval. */
-export function approvalSummary(mailbox: string, args: Record<string, unknown>): string {
+export function approvalSummary(args: Record<string, unknown>): string {
   const display = (text: string) => text.replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/gu,
     (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`);
-  const lines = [`From: ${mailbox}`];
+  const lines = ["From: connected Gmail account"];
   for (const [key, label] of [["to", "To"], ["cc", "Cc"], ["bcc", "Bcc"]]) {
     const list = args[key];
     if (list === undefined && key !== "to") continue;
@@ -75,7 +75,6 @@ function result(status: string, message: string, receipt: Record<string, string>
 }
 
 export function createSendTool(options: {
-  mailbox: string;
   guard: EgressHook;
   bridge: McpCaller;
   audit?: AuditLogger;
@@ -88,7 +87,6 @@ export function createSendTool(options: {
     async execute(_id, input, signal) {
       let args: Record<string, unknown>;
       try { args = validateEmail(input); } catch { return result("blocked", "Invalid email input. No email sent."); }
-      if (!validMailbox(options.mailbox)) return result("blocked", "Mailbox configuration is invalid.");
       if (signal?.aborted) return result("cancelled", "No email sent.");
       const content = JSON.stringify(args);
       try {

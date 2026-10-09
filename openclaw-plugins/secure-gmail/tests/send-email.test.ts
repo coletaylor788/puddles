@@ -7,7 +7,7 @@ const email = { to: ["new@example.net"], cc: ["copy@example.net"], bcc: ["hidden
 const receipt = { content: [{ type: "text", text: '{"status":"sent","id":"abc","threadId":"def"}' }] };
 const setup = (guard = { check: vi.fn(async () => ({ action: "allow" as const })) }) => {
   const bridge = { callTool: vi.fn(async () => receipt) };
-  const tool = createSendTool({ mailbox: "owner@example.org", guard, bridge });
+  const tool = createSendTool({ guard, bridge });
   return { tool, bridge, guard };
 };
 afterEach(() => vi.restoreAllMocks());
@@ -25,6 +25,7 @@ describe("approved Gmail execution", () => {
     { ...email, to: ["a@example.com\r\nBcc: x@example.com"] },
     { ...email, subject: "hello\r\nBcc: x@example.com" },
     { ...email, raw: "MIME" }, { ...email, approved: true },
+    { ...email, from: "alias@example.net" },
     { ...email, body_text: "界".repeat(40000) }, { ...email, bcc: "x@example.com" },
   ])("rejects invalid input before classification or sending", async (args) => {
     const { tool, bridge, guard } = setup();
@@ -39,7 +40,7 @@ describe("approved Gmail execution", () => {
       return JSON.stringify({ detected: opts?.label?.endsWith(mode === "secret" ? ".secrets" : ".sensitive"), evidence: "PRIVATE_EMAIL_ECHO" });
     } });
     const bridge = { callTool: vi.fn(async () => receipt) };
-    const output = await createSendTool({ mailbox: "owner@example.org", guard, bridge }).execute("call", email);
+    const output = await createSendTool({ guard, bridge }).execute("call", email);
     expect(output.details).toMatchObject({ status: "blocked" });
     expect(JSON.stringify(output)).not.toContain("PRIVATE_EMAIL_ECHO");
     expect(bridge.callTool).not.toHaveBeenCalled();
@@ -68,16 +69,16 @@ describe("approved Gmail execution", () => {
 
 describe("approval summary", () => {
   it("shows all destinations and bounds the body preview", () => {
-    const summary = approvalSummary("owner@example.org", { ...email, body_text: "x".repeat(1000) });
+    const summary = approvalSummary({ ...email, body_text: "x".repeat(1000) });
     for (const address of [...email.to, ...email.cc, ...email.bcc]) expect(summary).toContain(address);
     expect(summary.length).toBeLessThanOrEqual(512);
     expect(summary.endsWith("…")).toBe(true);
   });
   it("rejects a summary that would hide destinations", () => {
-    expect(() => approvalSummary("owner@example.org", { ...email, to: Array(20).fill("long-mailbox@example.net") })).toThrow();
+    expect(() => approvalSummary({ ...email, to: Array(20).fill("long-mailbox@example.net") })).toThrow();
   });
   it("does not classify or reject content as part of review", () => {
-    expect(approvalSummary("owner@example.org", { ...email, body_text: "A secret for review" })).toContain("A secret for review");
+    expect(approvalSummary({ ...email, body_text: "A secret for review" })).toContain("A secret for review");
   });
   it("validates ordinary unicode mail", () => expect(validateEmail(email)).toEqual(email));
 });

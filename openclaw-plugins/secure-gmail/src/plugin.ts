@@ -13,7 +13,7 @@ import {
   type LLMClient,
 } from "mcp-hooks";
 import { connectMcpBridge, McpBridge } from "./mcp-bridge.js";
-import { approvalSummary, createSendTool, SEND_NAME, validMailbox } from "./send-email.js";
+import { approvalSummary, createSendTool, SEND_NAME } from "./send-email.js";
 import { gmailPrefilter } from "./prefilter.js";
 import { wrapMcpTool, type AuditEntry, type AuditLogger } from "./wrap-tool.js";
 import type {
@@ -35,7 +35,6 @@ export interface PluginToolContext {
 interface SecureGmailConfig {
   gmailMcpCommand: string;
   sendEnabled?: boolean;
-  sendMailbox?: string;
   gmailMcpArgs?: string[];
   gmailMcpCwd?: string;
   /**
@@ -319,8 +318,8 @@ const secureGmailPlugin = {
           command,
           args: config.gmailMcpArgs ?? DEFAULT_ARGS,
           cwd,
-          env: config.sendEnabled === true && validMailbox(config.sendMailbox)
-            ? { GMAIL_MCP_ENABLE_SEND: "1", GMAIL_MCP_SEND_MAILBOX: config.sendMailbox }
+          env: config.sendEnabled === true
+            ? { GMAIL_MCP_ENABLE_SEND: "1" }
             : { GMAIL_MCP_ENABLE_SEND: "0" },
         }).catch((err) => {
           api.logger.error?.(
@@ -371,8 +370,7 @@ const secureGmailPlugin = {
       });
     }
 
-    if (config.sendEnabled === true && validMailbox(config.sendMailbox)) {
-      const mailbox = config.sendMailbox;
+    if (config.sendEnabled === true) {
       api.on("before_tool_call", (event, ctx) => {
         if (event.toolName !== SEND_NAME) return;
         if (ctx.agentId !== "main" || ctx.requester?.senderIsOwner !== true) {
@@ -383,7 +381,7 @@ const secureGmailPlugin = {
           // native snapshot match this summary, including after earlier hooks.
           return { params: event.params, requireApproval: {
             title: "Send email",
-            description: approvalSummary(mailbox, event.params),
+            description: approvalSummary(event.params),
             timeoutMs: 600000,
             allowedDecisions: ["allow-once", "deny"],
           } };
@@ -392,7 +390,7 @@ const secureGmailPlugin = {
         }
       });
       api.registerTool((ctx: PluginToolContext) => ctx.agentId === "main"
-        ? createSendTool({ mailbox, guard: new ContentEgressGuard(llm), bridge: lazyCaller, audit })
+        ? createSendTool({ guard: new ContentEgressGuard(llm), bridge: lazyCaller, audit })
         : null, { names: [SEND_NAME], optional: true });
     }
 

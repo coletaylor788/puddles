@@ -31,13 +31,12 @@ through unchanged.
 
 ## Owner-approved sending
 
-Sending is disabled by default. Set `sendEnabled: true` and `sendMailbox` to the
-address of the authenticated Gmail account, then allow `send_email` for `main`
+Sending is disabled by default. Set `sendEnabled: true`, then allow `send_email` for `main`
 in OpenClaw's normal tool permissions (including its sandbox tool allowlist).
 The plugin exposes sending only to `main` and requires host-proven owner
 requester identity. Reader and unattended calls cannot request a send.
 
-The native pre-call hook displays sender, To/Cc/Bcc, subject, and a bounded body
+The native pre-call hook displays "From: connected Gmail account", To/Cc/Bcc, subject, and a bounded body
 preview. OpenClaw owns the argument snapshot, allow-once decision, and wait of up
 to ten minutes. After approval, the tool validates the email and runs the shared
 secrets/sensitive-content guard before sending. Unknown recipients need no
@@ -56,9 +55,10 @@ fit the native summary. Gmail success returns only provider IDs; an uncertain
 response returns `unknown` and must never be retried automatically.
 
 The plugin enables sending only on its trusted MCP subprocess using
-`GMAIL_MCP_ENABLE_SEND=1` and `GMAIL_MCP_SEND_MAILBOX`. Do not expose that raw
+`GMAIL_MCP_ENABLE_SEND=1`. Do not expose that raw
 connection to agents: MCP itself does not supply OpenClaw's approval gate.
-The server confirms the configured sender matches the authenticated mailbox.
+The existing Gmail login supplies the sender. The server resolves its profile
+after approval; no separate mailbox setting or agent-selected alias is accepted.
 
 ## Why ingress runs inside `execute()` (not via `tool_result_persist`)
 

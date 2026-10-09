@@ -50,7 +50,7 @@ if (process.argv[3] !== "--child") {
   const hooks = [];
   plugin.register({
     pluginConfig: { gmailMcpCommand: process.execPath, gmailMcpArgs: [join(repo, "packages/e2e/fixtures/gmail/recording-mcp.mjs"), record],
-      llmProvider: provider, sendEnabled: true, sendMailbox: "owner@example.org", auditLogPath: join(root, "audit.jsonl") },
+      llmProvider: provider, sendEnabled: true, auditLogPath: join(root, "audit.jsonl") },
     logger: { info() {}, warn() {}, error() {} },
     registerTool(factory) { const tool = factory({ agentId: "main", workspaceDir: root }); if (tool?.name === "send_email") send = tool; },
     on(hookName, handler) { if (hookName === "session_end") close = handler;
