@@ -40,6 +40,7 @@ activated gateway. Keep the previous interpreter available for rollback.
 | `talk-agent-parity.patch` | Optional text-equivalent Talk authorization and consultation work ownership |
 | `core-declaration-portability.patch` | Name portable core declaration exports for tools, sessions, databases, and plugin records |
 | `shared-conversation-context.patch` | Supply native shared history to a persistent harness before each ordinary turn |
+| `untrusted-agent-results.patch` | Enclose configured source agent findings at model-facing boundaries |
 | `facetime-talk-client.patch` | Let FaceTime inherit native Talk configuration, history, controls, and accepted-work lifetime |
 
 Each patch has a neighboring document explaining its behavior and history.

@@ -134,7 +134,17 @@
     "src/plugins/hooks.before-tool-call.test.ts": "plugins",
     "src/agents/agent-tools.before-tool-call.embedded-mode.test.ts": "agents-core",
     "src/plugin-sdk/session-transcript-runtime.test.ts": "plugin-sdk",
-    "extensions/copilot/src/attempt-session.integration.test.ts": "extensions"
+    "extensions/copilot/src/attempt-session.integration.test.ts": "extensions",
+    "src/agents/internal-events.test.ts": "unit-fast",
+    "src/agents/openclaw-tools.sessions-send-child-coordination.test.ts": "infra",
+    "src/agents/subagents/announce/subagent-announce-output.test.ts": "agents-support",
+    "src/agents/tools/sessions-history-tool.test.ts": "agents-tools",
+    "src/agents/tools/sessions-list-projection.test.ts": "agents-tools",
+    "src/agents/tools/sessions-search-tool.test.ts": "unit-fast",
+    "src/agents/tools/sessions-send-tool.a2a.test.ts": "agents-tools",
+    "src/agents/tools/sessions-untrusted-projection.test.ts": "unit-fast",
+    "src/agents/tools/subagents-tool.test.ts": "agents-tools",
+    "src/agents/untrusted-agent-results.test.ts": "agents-core"
   },
   "patches": [
     {
@@ -441,6 +451,22 @@
       ],
       "candidateTests": [
         "tests/candidate.main-conversation.test.ts"
+      ]
+    },
+    {
+      "name": "untrusted-agent-results",
+      "tests": [
+        "src/agents/internal-events.test.ts",
+        "src/agents/openclaw-tools.sessions-send-child-coordination.test.ts",
+        "src/agents/subagents/announce/subagent-announce-output.test.ts",
+        "src/agents/tools/sessions-history-tool.test.ts",
+        "src/agents/tools/sessions-list-projection.test.ts",
+        "src/agents/tools/sessions-search-tool.test.ts",
+        "src/agents/tools/sessions-send-tool.a2a.test.ts",
+        "src/agents/tools/sessions-untrusted-projection.test.ts",
+        "src/agents/tools/subagents-tool.test.ts",
+        "src/agents/untrusted-agent-results.test.ts",
+        "src/cron/isolated-agent/subagent-followup.test.ts"
       ]
     }
   ],

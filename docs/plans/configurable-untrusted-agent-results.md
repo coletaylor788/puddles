@@ -1,7 +1,7 @@
 # Configurable untrusted agent results
 
 **Status:** Approved, implementation in progress  
-**Issue:** Pending  
+**Issue:** [#241](https://github.com/coletaylor788/puddles/issues/241)
 **Last updated:** 2026-10-08
 
 ## Human section

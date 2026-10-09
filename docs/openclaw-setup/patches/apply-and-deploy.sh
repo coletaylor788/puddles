@@ -40,6 +40,7 @@ PATCHES=(
   talk-overlap-recovery
   talk-conversation-progress
   shared-conversation-context
+  untrusted-agent-results
 )
 
 if [ -n "${MINI_HOST:-}" ]; then
