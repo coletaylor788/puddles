@@ -9,6 +9,8 @@ import { setImmediate } from "node:timers/promises";
 import { activateNative, systemOperations } from "../src/native-activation.mjs";
 // @ts-expect-error Native lifecycle also runs without TypeScript.
 import { fileDigest } from "../src/native-state.mjs";
+// @ts-expect-error Native lifecycle also runs without TypeScript.
+import { executeSessionModelDefaults } from "../src/native-session-model-defaults.mjs";
 
 // Repeated real binary hashes and complete rollback passes take up to 15s on hosted Intel.
 vi.setConfig({ testTimeout: 30_000 });
@@ -68,6 +70,7 @@ function fixture(wrapper = true, migration = true, binary = false, oldAlias = fa
   const calls: Array<{ command: string; args: string[]; options: any }> = [];
   const events: string[] = [];
   const failures: string[] = [];
+  const hooks: { sessions?: () => Promise<unknown> } = {};
   const check = (event: string) => {
     events.push(event);
     const index = failures.indexOf(event);
@@ -166,8 +169,9 @@ function fixture(wrapper = true, migration = true, binary = false, oldAlias = fa
           expect(readFileSync(join(recovery, "state/config"), "utf8")).toBe("old state");
           writeFileSync(join(target.stateDir, "config"), `${phase} migrated state`);
           if (phase === "sessions") {
-            expect(events.indexOf("doctor")).toBeLessThan(events.indexOf("migration:sessions"));
-            expect(events.indexOf("migration:cron")).toBeLessThan(events.indexOf("migration:sessions"));
+            expect(events).not.toContain("doctor");
+            expect(events.indexOf("migration:config")).toBeLessThan(events.indexOf("migration:sessions"));
+            if (hooks.sessions) return await hooks.sessions();
             const sessionPath = join(target.stateDir, "reader-session-metadata");
             if (existsSync(sessionPath)) {
               writeFileSync(sessionPath, '{"sessionId":"retained-reader","modelOverrideSource":"default"}');
@@ -188,7 +192,7 @@ function fixture(wrapper = true, migration = true, binary = false, oldAlias = fa
   };
   const activate = (recovery?: string, action?: string) => activateNative(receipt, target, factory, recovery, action);
   const recovery = () => join(target.backupRoot, readdirSync(target.backupRoot).find((name) => name.startsWith("activation-"))!);
-  return { root, target, expected, desired, service, original, receipt, calls, events, failures, metadata, execute, activate, recovery };
+  return { root, target, expected, desired, service, original, receipt, calls, events, failures, hooks, metadata, execute, activate, recovery };
 }
 
 function stateMigration(f: ReturnType<typeof fixture>) {
@@ -254,7 +258,7 @@ describe("stopped-state migration inside interpreter rollback", () => {
     expect(f.events).not.toContain("migration:cron");
   });
 
-  it("checks before stop and migrates session selections after doctor and cron, before start", async () => {
+  it("checks before stop and migrates session selections after config, before doctor", async () => {
     const f = fixture();
     const migration = stateMigration(f);
     const result = await f.activate();
@@ -269,7 +273,8 @@ describe("stopped-state migration inside interpreter rollback", () => {
     expect(f.events.indexOf("migration:plugins")).toBeLessThan(f.events.indexOf("start"));
     expect(f.events.indexOf("migration:cron")).toBeGreaterThan(f.events.indexOf("doctor"));
     expect(f.events.indexOf("migration:cron")).toBeLessThan(f.events.indexOf("start"));
-    expect(f.events.indexOf("migration:sessions")).toBeGreaterThan(f.events.indexOf("migration:cron"));
+    expect(f.events.indexOf("migration:sessions")).toBeGreaterThan(f.events.indexOf("migration:config"));
+    expect(f.events.indexOf("migration:sessions")).toBeLessThan(f.events.indexOf("doctor"));
     expect(f.events.indexOf("migration:sessions")).toBeLessThan(f.events.indexOf("start"));
     expect(fileDigest(join(result.recoveryDir, "state-migration.json"))).toBe(migration.sha256);
     expect(JSON.parse(readFileSync(join(result.recoveryDir, "recovery.json"), "utf8")).stateMigration).toMatchObject({
@@ -294,6 +299,28 @@ describe("stopped-state migration inside interpreter rollback", () => {
     if (failure === "doctor") {
       expect(JSON.parse(readFileSync(join(f.recovery(), "recovery.json"), "utf8")).stateMigration.phase).toBe("doctor");
     }
+  });
+
+  it.each([{ status: "running" }, { status: "done", modelSelectionLocked: true }])("rejects selected non-idle sessions before doctor: %j", async (state) => {
+    const f = fixture();
+    stateMigration(f);
+    const entry = { sessionId: "retained", providerOverride: "synthetic", modelOverride: "old",
+      modelOverrideSource: "auto", modelOverrideFallbackOriginProvider: "synthetic",
+      modelOverrideFallbackOriginModel: "old", ...state };
+    const patch = vi.fn();
+    f.hooks.sessions = () => executeSessionModelDefaults({
+      operations: [{ agentId: "collector", expected: { provider: "synthetic", model: "old" }, desired: { provider: "synthetic", model: "new" } }],
+      config: { agents: { entries: { collector: { model: "synthetic/new" } } } }, stateDir: f.target.stateDir,
+      assertCurrent() {}, assertStatePath() {},
+      sdk: { resolveStorePath: () => f.target.stateDir, resolveSessionStoreBackupPaths: () => [],
+        listSessionEntries: () => [{ sessionKey: "agent:collector:retained", entry }], patchSessionEntry: patch },
+    });
+    await expect(f.activate()).rejects.toThrow("Activation failed");
+    expect(f.events).toContain("migration:sessions");
+    expect(f.events).not.toContain("doctor");
+    expect(patch).not.toHaveBeenCalled();
+    expect(readFileSync(join(f.target.stateDir, "config"), "utf8")).toBe("old state");
+    expect(JSON.parse(readFileSync(join(f.recovery(), "failure.json"), "utf8")).message).toMatch(/locked or not idle/);
   });
 
   it("restores original session metadata and history after a partial session migration", async () => {
