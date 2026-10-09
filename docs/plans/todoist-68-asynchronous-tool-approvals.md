@@ -102,7 +102,10 @@ The owner clarified that sending uses the existing authenticated Gmail account.
 The redundant sender setting is removed; Gmail resolves its own profile after
 approval. Deployment preparation includes a hash-locked Python MCP runtime
 packaged with the plugin, keeping activation and rollback together. Installed
-gateway forwarding and physical phone acceptance remain. Production has not changed.
+gateway checks have passed in DEV and TEST. Promotion is waiting on a small
+coordinator repair: recognize an already-proven correction that arrived after
+this release was selected. The runtime artifact stays unchanged. Physical phone
+acceptance remains owner validation. Production has not changed.
 
 ## Agent section
 
@@ -190,6 +193,13 @@ Approved implementation work:
    and add the focused and cross-component regressions below.
 
 ### Validation
+
+The merged candidate has passed cumulative CI, installed DEV and TEST checks,
+and TEST activation and rollback. Coordinator requalification has two committed
+regressions for repair and revert mappings, with all 20 coordinator tests and
+the package type check passing. Retained independent review found no material
+issues. A fresh TEST claim requires fresh physical rehearsal evidence before
+the coordinator can record success and permit production promotion.
 
 Focused Gmail tests cover the plugin, Python handler, and shared content guard.
 The native integration fixture runs the real OpenClaw approval wrapper with the

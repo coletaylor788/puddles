@@ -258,8 +258,11 @@ source commit.
 
 The successor owner builds selected merged source once and starts validation at
 DEV. Successful TEST clears predecessor promotion holds and records the proven
-correction. Older batches remain disqualified, and later batches containing the
-bad commit must also include its correction. If attribution is uncertain,
+correction. A batch selected before that proof arrived rechecks its recorded
+invalidations when publishing its own TEST success. It must contain the proven
+correction in the same repository and still pass its own attempt, artifact,
+and production baseline checks. Batches without the correction remain
+disqualified. If attribution is uncertain,
 preserve the failure evidence while investigating. Escalate only a concrete
 decision outside the approved scope, such as data loss or cross-feature breakage.
 
