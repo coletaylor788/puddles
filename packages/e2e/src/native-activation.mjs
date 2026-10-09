@@ -837,6 +837,12 @@ export async function activateNative(receipt, target, operationsFactory = system
       save("migrating-config");
       await operations.stateMigration("config", target.installDir, join(recoveryDir, "state-migration.json"), journal.stateMigration.sha256);
       checkpoint();
+      // Doctor can clear obsolete automatic routes. Apply the guarded default
+      // transition first, while its reviewed predecessor identity still exists.
+      journal.stateMigration.phase = "sessions";
+      save("migrating-sessions");
+      journal.stateMigration.sessionsResult = await operations.stateMigration("sessions", target.installDir, join(recoveryDir, "state-migration.json"), journal.stateMigration.sha256);
+      checkpoint();
     }
     applyWorkshopOwnerRepairs(target);
     if (journal.stateMigration) journal.stateMigration.phase = "doctor";
@@ -851,9 +857,6 @@ export async function activateNative(receipt, target, operationsFactory = system
       save("migrating-cron");
       await operations.stateMigration("cron", target.installDir, join(recoveryDir, "state-migration.json"), journal.stateMigration.sha256);
       checkpoint();
-      journal.stateMigration.phase = "sessions";
-      save("migrating-sessions");
-      journal.stateMigration.sessionsResult = await operations.stateMigration("sessions", target.installDir, join(recoveryDir, "state-migration.json"), journal.stateMigration.sha256);
       journal.stateMigration.phase = "complete";
       save("migrated");
     }

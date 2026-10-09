@@ -3,7 +3,7 @@
 **Status:** Implementation complete, replacement release pending
 
 **Issue:** [#241](https://github.com/coletaylor788/puddles/issues/241)
-**Last updated:** 2026-10-08
+**Last updated:** 2026-10-09
 
 ## Human section
 
@@ -79,7 +79,7 @@ A summarizer may omit conditions, dates, amounts, or attachment coverage. Existi
 
 Changing an agent's configured model does not replace an automatic model selection already stored on a reusable session. The installation migration therefore clears only reviewed, automatic selections that still point to the old default and have that same origin. Explicit user selections remain unchanged.
 
-Run this through the existing stopped-state deployment transaction, after native history repair. Use native default-selection semantics and preserve conversation history, identity, activity times, and unrelated metadata. A selected active or locked session blocks activation. The existing complete state snapshot restores the original selections if activation fails.
+Run this through the existing stopped-state deployment transaction, after native schema and candidate configuration migration but before doctor. Use native default-selection semantics and preserve conversation history, identity, activity times, and unrelated metadata. A selected active or locked session blocks activation. The existing complete state snapshot restores the original selections if activation fails.
 
 #### Validation and rollout
 
@@ -93,19 +93,15 @@ Canary wrapping separately from any model change. Activate through the existing 
 
 **Approval reference:** Requester approval recorded by the feature owner on 2026-10-08. The reusable formatting change is approved through implementation, review, landing, deployment, rollback, and development cleanup.
 
-This public plan covers the provider-neutral source patch and receiving guidance. The approved reader model migration remains part of the overall delivery and is tracked with installation configuration in the companion plan. Publishing this component plan does not remove or replace that requirement.
+The immutable candidate passed cumulative validation, DEV and TEST, including installed receiving guidance, reader selection and rollback. Production activation reached healthy service, but strict post-activation checks found that doctor had cleared automatic model selections before the guarded migration could process them. The migration count was zero and activity timestamps changed. This candidate has not passed release acceptance.
 
-The first immutable build was canceled while queued after inspection found that stored automatic model selections would survive the configuration change. A narrow stopped-state migration now forms part of release acceptance. No candidate from that canceled build was activated.
-
-The reused-session repair passed focused migration tests, activation rollback tests, and a packaged native model-selection regression. Retained review is clear. The replacement cumulative build and environment promotion remain pending.
-
-The pinned runtime retires `TOOLS.md` into the `AGENTS.md` Tools section. Installed Copilot canaries confirm that section loads in ordinary, restarted/resumed, isolated cron, and main-owned subagent sessions. This native compatibility adjustment preserves the approved receiving rule and worker restrictions.
-
-The formatting patch and retained source review are complete. Installed checks pass for recalled content, direct replies, delayed replies, and spawned completion. Active gather exposed an existing cleanup race with wrapping disabled as well. A narrow repair retains strict completion checks and never replays a committed or uncertain write. Rebuilt local installed checks now pass with wrapping disabled and enabled. The final cumulative and environment promotion gates remain pending. Reader has made no production changes.
+The repair runs the existing guarded sessions phase immediately after candidate configuration and before doctor. It preserves the original selection evidence for full-row comparison, explicit default selection and activity preservation. Active or locked selections fail before doctor. No fallback, additional model route or broader repair is introduced. Replacement validation and promotion remain pending; the release owner is handling the current production recovery.
 
 ## Agent section
 
 ### State
+
+The current repair moves guarded session-default migration before doctor, after schema and candidate configuration migration. The sessions result is recorded and checkpointed before doctor; the transaction is marked complete only after doctor, plugin and cron phases. Source and installed regressions cover the real plugin-owned doctor interaction and refusal before doctor for active or locked selections. Replacement release acceptance remains pending.
 
 The maintained source pin is OpenClaw 2026.9.6 at `eb377ac59e6c9fd6c7705028034812becf00271b`. The patch composes with the blocking-yield and durable-handoff patches. Implementation and validation are in progress.
 
@@ -144,7 +140,7 @@ This is a source policy: reader-to-main and browser-to-main content is enclosed;
 
 The release migration manifest gains an optional provider-neutral `sessionModelDefaults` operation list. Each entry names an agent and exact old and new provider/model identities. The configured candidate primary must equal the declared new identity. Select only automatic entries whose override and origin both equal the declared old identity. Leave explicit user pins, unrelated selections, and entries already using defaults untouched.
 
-Apply the operation in the native stopped-state `sessions` phase after doctor and cron repair. Resolve state-owned session storage through candidate SDK helpers, use native default-selection semantics, and compare selected metadata before writing. Preserve session identity, raw transcripts, lifecycle fields, original activity time, and compatible auth. Reject selected active or locked entries. Whole-state activation rollback covers these writes. Tests must exercise model selection after reuse and rollback after a session mutation.
+Apply the operation in the native stopped-state `sessions` phase after candidate configuration is applied and before doctor repair. Resolve state-owned session storage through candidate SDK helpers, use native default-selection semantics, and compare selected metadata before writing. Preserve session identity, raw transcripts, lifecycle fields, original activity time, and compatible auth. Reject selected active or locked entries. Whole-state activation rollback covers these writes. Tests must exercise model selection after reuse and rollback after a session mutation.
 
 #### Patch scope and placement
 
@@ -246,6 +242,8 @@ Source research supporting the scope:
 | [Maintained patch lifecycle](../openclaw-setup/patches/README.md) | Validate composition with the cumulative patch stack and installed runtime. |
 
 ### Validation
+
+The session-order repair adds a real native doctor regression with plugin ownership enabled. Doctor-first reproduces lost automatic-selection evidence and changed activity time. Migration-first preserves the explicit default marker, activity, raw transcript, identity, lifecycle, auth and user pin through doctor, then restores the predecessor through the existing snapshot. Activation regressions require configuration before sessions, sessions before doctor, and rollback on session failure.
 
 Prove behavior with deterministic fixtures, then the full cumulative suite and an isolated installed gateway. Do not use live external writes.
 
