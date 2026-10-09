@@ -1,6 +1,6 @@
 # Native tool approvals and guarded Gmail sending
 
-**Status:** Implemented and reviewed, release pending
+**Status:** Deployed, owner phone validation pending
 **Issue:** [#68](https://github.com/coletaylor788/puddles/issues/68)
 **Last updated:** 2026-10-08
 
@@ -94,18 +94,17 @@ Cancellation after Gmail dispatch cannot recall an email.
 
 ### Status
 
-The original implementation is merged after focused tests, native integration,
-CI, and independent review. The follow-up uses the existing authenticated Gmail
-account as the sender and passes focused tests and native integration.
+The implementation is merged and deployed. The same immutable artifact passed
+cumulative CI, DEV, installed TEST checks, activation and rollback rehearsal,
+then production activation and health checks. Sending uses the existing
+authenticated Gmail account. Its Python runtime is packaged with the plugin so
+activation and rollback stay together.
 
-The owner clarified that sending uses the existing authenticated Gmail account.
-The redundant sender setting is removed; Gmail resolves its own profile after
-approval. Deployment preparation includes a hash-locked Python MCP runtime
-packaged with the plugin, keeping activation and rollback together. Installed
-gateway checks have passed in DEV and TEST. Promotion is waiting on a small
-coordinator repair: recognize an already-proven correction that arrived after
-this release was selected. The runtime artifact stays unchanged. Physical phone
-acceptance remains owner validation. Production has not changed.
+The coordinator repair now recognizes corrections that another release proved
+after a batch was selected. It preserved this release's artifact identity and
+required fresh rehearsal evidence for its final TEST claim. Physical iPhone
+acceptance remains the owner's final validation. Automated tests use recorded
+delivery and have sent no real email or approval message.
 
 ## Agent section
 
@@ -116,7 +115,8 @@ This proposal updates PR #71 and issue #68. The repository OpenClaw pin is
 inspected stable 2026.9.8 at `fc23bc864e4553c2d215e479eeec47b67a0bf943` and upstream
 main at `3b4ba3abb5e33a59ab79e2002f1c7e79c932e8ac`. No upstream upgrade is required
 by this design. The native wrapper has now been exercised with the Gmail plugin
-and a recording MCP bridge. Deployment and physical phone acceptance remain.
+and a recording MCP bridge. Production is deployed; physical phone acceptance
+remains.
 
 ### Scope and acceptance criteria
 
@@ -194,12 +194,13 @@ Approved implementation work:
 
 ### Validation
 
-The merged candidate has passed cumulative CI, installed DEV and TEST checks,
-and TEST activation and rollback. Coordinator requalification has two committed
+The merged candidate passed cumulative CI, installed DEV and all 14 TEST
+scenarios, TEST activation and rollback, coexistence and provider readiness,
+and production activation and health checks. Coordinator requalification has two committed
 regressions for repair and revert mappings, with all 20 coordinator tests and
 the package type check passing. Retained independent review found no material
-issues. A fresh TEST claim requires fresh physical rehearsal evidence before
-the coordinator can record success and permit production promotion.
+issues. A fresh TEST claim passed fresh physical rehearsal before the
+coordinator recorded success and permitted production promotion.
 
 Focused Gmail tests cover the plugin, Python handler, and shared content guard.
 The native integration fixture runs the real OpenClaw approval wrapper with the
@@ -210,7 +211,7 @@ denial, content blocks, abort, runtime stop, and Python/TypeScript schema parity
 Bridge startup cancellation has a separate regression. All sends are recorded;
 no test sends a real email or approval message.
 
-Focused results: 71 Gmail plugin tests, 118 shared-hook tests, 199 Python tests,
+Focused results: 71 Gmail plugin tests, 118 shared-hook tests, 200 Python tests,
 and 56 release-runner tests pass. The pinned OpenClaw source passes 54 iMessage,
 29 hook, and 26 approval regressions. Its draft build and the final native
 wrapper/stdio integration pass. These are development checks, not release proof. The packaged Python runtime
@@ -241,7 +242,7 @@ DEV/TEST/PROD lifecycle. Physical iPhone acceptance remains owner validation.
 
 ### Rollout and rollback
 
-Keep the send tool disabled until release validation. Rollback disables sending
+The send tool is enabled after release validation. Rollback disables sending
 and cancels pending calls; retain unknown-send receipts for
 reconciliation. An accepted email cannot be recalled by rollback.
 
@@ -261,8 +262,8 @@ reconciliation. An accepted email cannot be recalled by rollback.
   Existing read transport is unchanged. The retained reviewer cleared the full
   behavior diff at `629529e` and independently passed all 19 send tests. The follow-up removes
   redundant mailbox configuration as requested by the owner. No
-  material findings remain. Installed gateway routing and phone acceptance are
-  release validation gaps.
+  material findings remain. Installed gateway configuration is verified;
+  physical phone acceptance remains owner validation.
 
 ### Checklist
 
@@ -271,4 +272,5 @@ reconciliation. An accepted email cannot be recalled by rollback.
 - [x] Owner approved the revised design and shipping it on 2026-10-07.
 - [x] Implement and validate with recording transports and providers.
 - [x] Complete independent review and resolve its transport retry finding.
-- [ ] Complete the approved release lifecycle and owner validation.
+- [x] Complete cumulative CI and promote the unchanged artifact through DEV, TEST and PROD.
+- [ ] Finish development cleanup and owner phone validation.
