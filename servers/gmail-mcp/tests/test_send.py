@@ -83,7 +83,9 @@ async def test_invalid_input_cannot_reach_provider(provider, change):
     service.users.assert_not_called()
 
 
-@pytest.mark.parametrize("address", [None, "", "bad\r\nBcc: x@example.net", "alias <x@example.net>"])
+@pytest.mark.parametrize(
+    "address", [None, "", "bad\r\nBcc: x@example.net", "alias <x@example.net>"]
+)
 async def test_invalid_authenticated_mailbox_cannot_send(provider, address):
     service, get_service = provider
     service.users().getProfile.return_value.execute.return_value = {

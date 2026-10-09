@@ -18,6 +18,15 @@ const bindings = [
 const overrides = { "/gateway/port": 18001, "/secrets/providers/local/path": "/test/credentials.json" };
 
 describe("environment configuration", () => {
+  it("isolates the packaged Gmail entrypoint while preserving interpreter flags", () => {
+    const config = { plugins: { entries: { "secure-gmail": { config: { gmailMcpArgs: ["-I", "/host/run.py"] } } } } };
+    const path = "/plugins/entries/secure-gmail/config/gmailMcpArgs/1";
+    const rules = [{ path, category: "path", reason: "Recording runtime" }];
+    const selected = renderEnvironmentConfiguration(config, rules, { [path]: "/fixture/run.py" });
+    expect(selected.plugins.entries["secure-gmail"].config.gmailMcpArgs).toEqual(["-I", "/fixture/run.py"]);
+    const flags = path.slice(0, -1) + "0";
+    expect(() => renderEnvironmentConfiguration(config, [{ ...rules[0], path: flags }], { [flags]: "-m" })).toThrow(/Unsupported/);
+  });
   it("isolates plugin approval destinations without changing approval behavior", () => {
     const plugin = { enabled: true, mode: "targets", agentFilter: ["main"], targets: [{ channel: "imessage", accountId: "default", to: "production-owner" }] };
     const config = { approvals: { plugin } };

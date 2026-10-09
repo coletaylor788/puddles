@@ -273,3 +273,13 @@ subjects, and IDs are logged as-is.
 ## License
 
 MIT
+
+### Native release artifact
+
+Use Python 3.11 to run `scripts/build-runtime.py --output /absolute/empty/path`
+when packaging the server with a native plugin release. The builder installs
+hash-locked dependencies and copies the server into a relocatable directory.
+Launch it with `python3.11 -I /installed/path/run.py`. Authentication continues
+to use the existing account and credential storage. Include this directory in
+the same immutable artifact as the plugin so activation and rollback keep them
+in sync.

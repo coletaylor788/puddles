@@ -100,8 +100,9 @@ account as the sender and passes focused tests and native integration.
 
 The owner clarified that sending uses the existing authenticated Gmail account.
 The redundant sender setting is removed; Gmail resolves its own profile after
-approval. Deployment configuration, installed gateway forwarding, and physical
-phone acceptance remain. Production has not changed.
+approval. Deployment preparation includes a hash-locked Python MCP runtime
+packaged with the plugin, keeping activation and rollback together. Installed
+gateway forwarding and physical phone acceptance remain. Production has not changed.
 
 ## Agent section
 
@@ -202,7 +203,11 @@ no test sends a real email or approval message.
 Focused results: 71 Gmail plugin tests, 118 shared-hook tests, 199 Python tests,
 and 56 release-runner tests pass. The pinned OpenClaw source passes 54 iMessage,
 29 hook, and 26 approval regressions. Its draft build and the final native
-wrapper/stdio integration pass. These are development checks, not release proof.
+wrapper/stdio integration pass. These are development checks, not release proof. The packaged Python runtime
+passes isolated stdio discovery with network and subprocess activity denied.
+Its builder regression covers relocation, hash-locked dependencies and immutable
+output. Environment binding tests keep native approval destinations synthetic
+in test environments without changing approval policy.
 
 Implementation tests must cover:
 
