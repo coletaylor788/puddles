@@ -147,7 +147,10 @@
     "src/agents/tools/sessions-send-tool.a2a.test.ts": "agents-tools",
     "src/agents/tools/sessions-untrusted-projection.test.ts": "unit-fast",
     "src/agents/tools/subagents-tool.test.ts": "agents-tools",
-    "src/agents/untrusted-agent-results.test.ts": "agents-core"
+    "src/agents/untrusted-agent-results.test.ts": "agents-core",
+    "src/plugin-sdk/session-store-runtime.conversation.test.ts": "plugin-sdk",
+    "src/plugin-sdk/session-store-runtime.recovery.test.ts": "plugin-sdk",
+    "src/config/sessions/session-accessor.sqlite-entry-revalidation.test.ts": "runtime-config"
   },
   "patches": [
     {
@@ -288,7 +291,10 @@
         "src/commands/doctor/stopped-config-repair.test.ts",
         "src/cron/store.test.ts",
         "src/state/openclaw-agent-db.storage-migration.test.ts",
-        "src/commands/doctor-agent-memory-schema.test.ts"
+        "src/commands/doctor-agent-memory-schema.test.ts",
+        "src/plugin-sdk/session-store-runtime.conversation.test.ts",
+        "src/plugin-sdk/session-store-runtime.recovery.test.ts",
+        "src/config/sessions/session-accessor.sqlite-entry-revalidation.test.ts"
       ],
       "candidateTests": [
         "tests/candidate.state-migration.test.ts",

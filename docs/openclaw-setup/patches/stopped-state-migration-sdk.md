@@ -62,6 +62,14 @@ write. None of the bounded pre-doctor steps compile memory or start a gateway,
 scheduler, plugin hook, or model. Private policy remains in the selected local
 manifest.
 
+Session-default migration also uses an optional `preserveConversation` flag on
+native session patches. A metadata-only repair can lower a session's activity
+time without replacing a newer shared conversation title, activity time or
+binding. The native transaction requires the same existing session generation
+and unchanged delivery and derived conversation metadata. It retains the window's
+primary conversation and skips conversation and association writes. Other callers
+keep the existing behavior unless they opt in. No database schema changes.
+
 The patch targets stable source
 `eb377ac59e6c9fd6c7705028034812becf00271b`. Its registered SDK tests use real
 SQLite, including the maintained compressed 2026.7.1-2 fixture. They cover
