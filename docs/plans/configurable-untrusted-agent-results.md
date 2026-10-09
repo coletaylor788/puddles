@@ -1,6 +1,6 @@
 # Configurable untrusted agent results
 
-**Status:** Implementation complete, release pending
+**Status:** Implementation complete, replacement release pending
 
 **Issue:** [#241](https://github.com/coletaylor788/puddles/issues/241)
 **Last updated:** 2026-10-08
@@ -75,6 +75,12 @@ Keep the receiving rule in main's native `AGENTS.md` Tools section: reader and b
 
 A summarizer may omit conditions, dates, amounts, or attachment coverage. Existing source guards and targeted verification remain necessary. Evaluate accuracy and total main-plus-reader consumption, including follow-up reads; cheaper reader tokens alone do not prove savings.
 
+#### Reused-session model migration
+
+Changing an agent's configured model does not replace an automatic model selection already stored on a reusable session. The installation migration therefore clears only reviewed, automatic selections that still point to the old default and have that same origin. Explicit user selections remain unchanged.
+
+Run this through the existing stopped-state deployment transaction, after native history repair. Use native default-selection semantics and preserve conversation history, identity, activity times, and unrelated metadata. A selected active or locked session blocks activation. The existing complete state snapshot restores the original selections if activation fails.
+
 #### Validation and rollout
 
 Test the same communication scenarios with the setting disabled and enabled. Only selected content presentation should differ. Cover immediate and delayed replies, parallel children, silence, timeouts, partial delivery, and restart after gathered completion. Verify the actual input seen by each installed harness, not just stored transcripts.
@@ -83,9 +89,15 @@ Canary wrapping separately from any model change. Activate through the existing 
 
 ### Status
 
-**Approval:** Production approved. **Approval reference:** Requester approval recorded by the feature owner on 2026-10-08. The reusable formatting change is approved through implementation, review, landing, deployment, rollback, and development cleanup.
+**Approval:** Production approved
+
+**Approval reference:** Requester approval recorded by the feature owner on 2026-10-08. The reusable formatting change is approved through implementation, review, landing, deployment, rollback, and development cleanup.
 
 This public plan covers the provider-neutral source patch and receiving guidance. The approved reader model migration remains part of the overall delivery and is tracked with installation configuration in the companion plan. Publishing this component plan does not remove or replace that requirement.
+
+The first immutable build was canceled while queued after inspection found that stored automatic model selections would survive the configuration change. A narrow stopped-state migration now forms part of release acceptance. No candidate from that canceled build was activated.
+
+The reused-session repair passed focused migration tests, activation rollback tests, and a packaged native model-selection regression. Retained review is clear. The replacement cumulative build and environment promotion remain pending.
 
 The pinned runtime retires `TOOLS.md` into the `AGENTS.md` Tools section. Installed Copilot canaries confirm that section loads in ordinary, restarted/resumed, isolated cron, and main-owned subagent sessions. This native compatibility adjustment preserves the approved receiving rule and worker restrictions.
 
@@ -127,6 +139,12 @@ Proposed new configuration, introduced by this patch:
 Merge this leaf into the current configuration. Preserve `enabled`, `allow`, session visibility, and subagent permissions. The formatting policy applies to permitted selected-agent results even when ordinary peer-agent messaging is disabled but requester-owned children remain reachable. Listing an agent grants no access and changes no routing.
 
 This is a source policy: reader-to-main and browser-to-main content is enclosed; main-to-reader task instructions are not enclosed merely because reader is the destination. Replies from selected agents to other agents receive the same treatment. Do not infer trust from text or build a new registry of calls. Use the resolved source identity already available in session ownership, completion records, and inter-session delivery. Resolve aliases through existing helpers before matching.
+
+#### Sealed session defaults
+
+The release migration manifest gains an optional provider-neutral `sessionModelDefaults` operation list. Each entry names an agent and exact old and new provider/model identities. The configured candidate primary must equal the declared new identity. Select only automatic entries whose override and origin both equal the declared old identity. Leave explicit user pins, unrelated selections, and entries already using defaults untouched.
+
+Apply the operation in the native stopped-state `sessions` phase after doctor and cron repair. Resolve state-owned session storage through candidate SDK helpers, use native default-selection semantics, and compare selected metadata before writing. Preserve session identity, raw transcripts, lifecycle fields, original activity time, and compatible auth. Reject selected active or locked entries. Whole-state activation rollback covers these writes. Tests must exercise model selection after reuse and rollback after a session mutation.
 
 #### Patch scope and placement
 
