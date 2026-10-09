@@ -231,6 +231,36 @@ describe("shared deployment queue and merged batch ownership", () => {
   });
 
 
+  it.each(["repair", "revert"])("rechecks a selected batch after another batch proves its %s", (kind) => {
+    const f = setup();
+    const failed = f.op("batch", { agent: alice, sources: sources() });
+    const bad = "d".repeat(40), correction = "e".repeat(40);
+    f.op("batch-fail", { batchId: failed.id, batchToken: failed.token, agent: alice,
+      evidence: "regression", responsible: [bad] });
+    const pendingSources = sources("1".repeat(40));
+    pendingSources[0].commits.push({ sha: correction, agent: alice });
+    const pending = f.op("batch", { agent: alice, sources: pendingSources });
+    expect(pending.invalidatedBy).toEqual([bad]);
+    const first = f.enqueue("pending-before-proof", "TEST", { batchId: pending.id, batchToken: pending.token });
+    f.op("claim", f.lease(first, "TEST"));
+    expect(() => f.tested(first, pending)).toThrow("disqualified");
+    f.op("release", { ...f.lease(first, "TEST"), result: "waiting", cleanupEvidence: "clean" });
+    const corrected = f.op("batch", { agent: alice, sources: sources(correction), predecessor: failed.id,
+      previousToken: failed.token, [kind + "Evidence"]: "reviewed merged correction",
+      [kind + "s"]: [{ commit: bad, [kind]: correction }] });
+    const proving = f.enqueue("proving", "TEST", { batchId: corrected.id, batchToken: corrected.token });
+    f.op("claim", f.lease(proving, "TEST")); f.tested(proving, corrected);
+    f.op("release", { ...f.lease(proving, "TEST"), result: "passed", cleanupEvidence: "clean" });
+    const next = f.enqueue("pending-after-proof", "TEST", { batchId: pending.id, batchToken: pending.token });
+    f.op("claim", f.lease(next, "TEST"));
+    expect(() => f.op("tested", { ...f.lease(next, "TEST"), build: join(f.root, `${pending.id}-build.json`),
+      proof: join(f.root, `${pending.id}-proof.json`) })).toThrow("different attempt");
+    expect(readCoordination(f.path).batches[pending.id].invalidatedBy).toEqual([bad]);
+    f.tested(next, pending);
+    expect(readCoordination(f.path).batches[pending.id]).toMatchObject({ status: "tested", invalidatedBy: [] });
+    expect(readCoordination(f.path).batches[failed.id].invalidatedBy).toEqual([bad]);
+  });
+
   it("rejects missing, self, unknown, cross-repository and ambiguous repairs without clearing holds", () => {
     const f = setup();
     const failed = f.op("batch", { agent: alice, sources: sources() });
