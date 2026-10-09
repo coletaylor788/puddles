@@ -12,6 +12,13 @@ returns. The registry worker commits the whole gathered batch before ownership a
 in memory. A changed completion or persistence failure leaves the original
 records available for recovery. The process-local map remains only a fast path.
 
+Browser cleanup may set its dispatch timestamp while the worker waits. A proven
+uncommitted save may retry with a fresh complete snapshot only when that
+one-time timestamp is the sole change. An acknowledged save publishes ownership
+without overwriting a newer cleanup timestamp. Changes to completion, delivery,
+generation or identity still fail, and committed or uncertain saves are never
+replayed.
+
 Upstream 9.6 already persists subagent completions through its registry worker.
 It does not record ownership of Puddles' blocking gather result. The remaining
 patch adds that correlation through the existing asynchronous worker API; it
@@ -22,6 +29,7 @@ It acknowledges the completion only after finding the exact successful
 `sessions_yield` tool result with the matching gathered run ID in the requester
 transcript. Missing or unrelated transcript evidence remains retryable.
 
-Regressions cover worker commit ordering, concurrent completion changes,
+Regressions cover worker commit ordering, cleanup races before and after commit,
+bounded retries, concurrent completion changes,
 persistence failure, SQLite round-trip, exact transcript
 matching, and recovery after the bounded process-local map evicts the handoff.

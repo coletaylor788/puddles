@@ -88,7 +88,7 @@ This public plan covers the provider-neutral source patch and receiving guidance
 
 The pinned runtime retires `TOOLS.md` into the `AGENTS.md` Tools section. Installed Copilot canaries confirm that section loads in ordinary, restarted/resumed, isolated cron, and main-owned subagent sessions. This native compatibility adjustment preserves the approved receiving rule and worker restrictions.
 
-Implementation is in progress. Requalify the delivery paths against OpenClaw 2026.9.6 before activation. Production remains unchanged.
+The formatting patch and retained source review are complete. Installed checks pass for recalled content, direct replies, delayed replies, and spawned completion. Active gather exposed an existing cleanup race with wrapping disabled as well. A narrow repair retains strict completion checks and never replays a committed or uncertain write. Its installed qualification and the final release gates remain pending. Production remains unchanged.
 
 ## Agent section
 
@@ -214,6 +214,8 @@ Measure complete main-plus-reader work, including follow-up reads, retries, late
 
 Implement as one focused maintained source patch against OpenClaw 2026.9.6 and the existing patch stack, with configuration docs and committed regressions. Keep installation configuration outside public artifacts. No new plugin, generic hook API, state database, message broker, or model-provider adapter is required.
 
+Installed gather qualification also requires correcting the existing durable-handoff patch. Browser cleanup can set its dispatch timestamp while an asynchronous handoff save is waiting. Retry only a proven uncommitted write when that timestamp is the sole change, using a fresh complete snapshot and the original database identity. After acknowledgement, publish the handoff in place without overwriting newer cleanup state. Completion, ownership, delivery, and generation changes still reject the handoff. Retries are bounded by the number of possible one-time cleanup transitions.
+
 Source research supporting the scope:
 
 | Evidence | Consequence |
@@ -248,7 +250,7 @@ An empty list disables additional wrapping on the patched runtime. Remove the ne
 
 ### Review log
 
-The proposal replaces the incomplete middleware solution with a configuration-driven presentation patch. Research checked the pinned source and composed the two relevant yield patches in a temporary source copy. The highest-risk interactions are silent-result classification, multiple completion representations, embedded A2A report excerpts, canonical duplicate detection, and durable gather ownership. The scope explicitly preserves those mechanisms. No new patch implementation, independent code review, cumulative test run, or production proof is claimed.
+The retained reviewer checked the complete formatting implementation and its remediations. The gather repair adds refusal and concurrency regressions while preserving durable ownership. Its 24 focused tests and 40 adjacent SQLite/worker tests pass. Installed gather, cumulative validation, and production proof remain pending.
 
 ### Checklist
 
@@ -256,6 +258,6 @@ The proposal replaces the incomplete middleware solution with a configuration-dr
 - [x] Trace pinned result delivery, recall, and existing gather/handoff patches.
 - [x] Define content-only patch boundaries and communication invariants.
 - [x] Retain main receiving guidance and deletion-only lifecycle cleanup.
-- [ ] Implement the maintained patch and configuration validation after design acceptance.
+- [x] Implement the maintained patch and configuration validation after design acceptance.
 - [ ] Complete focused, cumulative, and installed-runtime validation with independent review.
 - [ ] Canary framing and model changes separately, with verified rollback.
