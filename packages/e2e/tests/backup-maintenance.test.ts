@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 // @ts-expect-error Executable host-maintenance entrypoint.
@@ -18,7 +18,7 @@ function fixture() {
   const deps = {
     status: (): { environments: { PROD: { owner: unknown; queue: unknown[] } } } => ({ environments: { PROD: { owner: null, queue: [] } } }),
     coordinate: async (_path: string, operation: string, input: Record<string, any>) => { calls.push({ operation, input }); return { token: "token" }; },
-    execute: async () => {},
+    execute: async (..._args: any[]) => {},
   };
   return { dir, root, work, write, config, deps, calls, close: () => rmSync(dir, { recursive: true, force: true }) };
 }
@@ -73,4 +73,24 @@ describe("scheduled backup maintenance", () => {
       expect(f.calls.some(c => c.operation === "release")).toBe(false);
     } finally { f.close(); }
   });
+});
+
+it.each(["none", "plan", "tombstone", "lock", "journal", "missing-join"])("failed maintenance release requires clean joined preflight: %s", async fault => {
+  const f = fixture();
+  try {
+    f.deps.execute = async (...args: any[]) => {
+      const lease = JSON.parse(readFileSync(join(f.work, "lease.json"), "utf8"));
+      if (fault !== "missing-join") f.write(args[4], { schemaVersion: 1, requestId: lease.requestId, joined: true, controllerPid: 123 });
+      if (fault === "plan") f.write(join(f.root, "retention-plan.json"), {});
+      if (fault === "tombstone") mkdirSync(join(f.root, ".retiring-activation-1-1"));
+      if (fault === "lock") mkdirSync(join(f.root, "lock"));
+      if (fault === "journal") f.write(join(f.root, "retention-activation-1-1.json"), { status: "removed" });
+      throw new Error("preflight failed");
+    };
+    await expect(maintain(f.config, f.deps)).rejects.toThrow("preflight failed");
+    expect(f.calls.some(call => call.operation === "release")).toBe(fault === "none");
+    const result = JSON.parse(readFileSync(join(f.root, "retention-health.json"), "utf8"));
+    expect(result.status).toBe(fault === "none" ? "blocked" : "failed");
+    expect(result.leaseRetained).toBe(fault !== "none");
+  } finally { f.close(); }
 });

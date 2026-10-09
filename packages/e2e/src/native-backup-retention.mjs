@@ -10,7 +10,8 @@ const schema = "puddles.openclaw-backup-retention/v1";
 const activation = /^activation-([0-9]+)-[0-9]+$/;
 const hash = /^[a-f0-9]{64}$/;
 const terminal = ["healthy", "rolled-back"];
-const allowed = /^(recovery\.json|release-receipt\.json|failure\.json|rollback-failure\.json|package|state|service\.plist|candidate|candidate-service\.plist|restore-state|restore-package|failed-state|failed-package|failed-service\.plist|state-migration\.json|read-cache|workshop|additional-staging|command-[0-9]+\.log)$/;
+const disposable = [...terminal, "failed-before-shutdown"];
+const allowed = /^(recovery\.json|capacity-admission\.json|release-receipt\.json|failure\.json|rollback-failure\.json|package|state|service\.plist|candidate|candidate-service\.plist|restore-state|restore-package|failed-state|failed-package|failed-service\.plist|state-migration\.json|read-cache|workshop|additional-staging|command-[0-9]+\.log)$/;
 function realDirectory(path) {
   const s = lstatSync(path);
   if (!s.isDirectory() || s.isSymbolicLink() || realpathSync(path) !== resolve(path)) throw new Error("Retention requires canonical real directories");
@@ -99,9 +100,10 @@ function generation(root, transaction, directoryPath) {
   const directory = identity(source);
   const journalPath = join(source, "recovery.json");
   const journal = read(journalPath);
-  if (journal.schemaVersion !== 1 || journal.transaction !== transaction || !terminal.includes(journal.status) ||
-      journal.quiesced !== false || journal.snapshotReady !== true || !hash.test(journal.target ?? "") ||
-      !hash.test(journal.artifact ?? "") || !["package", "state", "service"].every(k => hash.test(journal.snapshots?.[k] ?? ""))) {
+  if (journal.schemaVersion !== 1 || journal.transaction !== transaction || !disposable.includes(journal.status) ||
+      journal.quiesced !== false || !hash.test(journal.target ?? "") || !hash.test(journal.artifact ?? "") ||
+      journal.status !== "failed-before-shutdown" && (journal.snapshotReady !== true ||
+        !["package", "state", "service"].every(k => hash.test(journal.snapshots?.[k] ?? "")))) {
     throw new Error(`Activation is not a terminal snapshot: ${transaction}`);
   }
   const entries = readdirSync(source).sort().map(name => {
@@ -165,7 +167,34 @@ async function replacement(target, policy, execute) {
   return { reference: recovery.reference, manifestSha256: recovery.manifest.manifestSha256, proofSha256: recovery.proof.proofSha256 };
 }
 function planDigest(plan) { const { sha256, ...body } = plan; return jsonDigest(body); }
-function pathsFor(root, entries) { return entries.flatMap(e => [join(root, e.transaction), join(root, `.retiring-${e.transaction}`)]); }
+function pathsFor(root, entries) { return entries.flatMap(e => [join(root, e.transaction), join(root, `.retiring-${e.transaction}`),
+  ...(e.externalInstallations ?? []).flatMap(x => [x.path, x.trash])]); }
+function externalInstallations(target, transaction) {
+  const journal = read(join(target.backupRoot, transaction, "recovery.json"));
+  // Old journals never gain authority from a filename or a runtime manifest.
+  if (journal.externalInstallations === undefined) return [];
+  if (!Array.isArray(journal.externalInstallations) || journal.externalInstallations.length !== 1) throw new Error("Invalid installation ownership");
+  return journal.externalInstallations.map(record => {
+    const path = record.path;
+    if (dirname(path) !== realpathSync(dirname(target.installDir)) || !/^\.puddles-install-[0-9]+-[0-9]+$/.test(basename(path)) ||
+        path !== journal.prefix || jsonDigest(identity(path)) !== jsonDigest(record.identity)) throw new Error("External installation ownership changed");
+    return { path, trash: `${path}.retiring-${transaction}`, directory: record.identity, inventorySha256: inventoryDigest(path) };
+  });
+}
+function assertNoExternalReferences(root, entry) {
+  const paths = (entry.externalInstallations ?? []).flatMap(item => [item.path, item.trash]);
+  if (!paths.length) return;
+  const references = readdirSync(join(root, "backup-references")).map(name => read(join(root, "backup-references", name)));
+  for (const name of readdirSync(root).filter(name => activation.test(name) && name !== entry.transaction)) {
+    references.push(read(join(root, name, "recovery.json")));
+  }
+  const scan = value => {
+    if (typeof value === "string" && paths.some(path => value === path || value.startsWith(`${path}/`))) throw new Error("External installation has a retained recovery reference");
+    if (value && typeof value === "object") Object.values(value).forEach(scan);
+  };
+  references.forEach(scan);
+}
+function withoutExternal(entry) { const { externalInstallations, ...metadata } = entry; return metadata; }
 
 // The plan adopts only producer-owned terminal generations. It binds compact
 // immutable recovery metadata and filesystem identities, not the age alone.
@@ -184,7 +213,11 @@ export async function planBackupRetention(target, policy, execute = runCommand) 
     for (const name of names.reverse()) {
       if (held.has(name) || policy.transactions && !policy.transactions.includes(name) ||
           Date.now() - Number(name.match(activation)[1]) < policy.minAgeHours * 3600_000) continue;
-      try { entries.push(generation(root, name)); }
+      try {
+        const entry = { ...generation(root, name), externalInstallations: externalInstallations(target, name) };
+        assertNoExternalReferences(root, entry);
+        entries.push(entry);
+      }
       catch (error) { excluded.push({ transaction: name, reason: error.message }); }
     }
     const active = await consumers(policy, pathsFor(root, entries), execute);
@@ -223,9 +256,16 @@ export async function applyBackupRetention(target, policy, plan, execute = runCo
       const source = join(root, entry.transaction);
       const trash = join(root, `.retiring-${entry.transaction}`);
       const journalPath = join(root, `retention-${entry.transaction}.json`);
-      const journal = existsSync(journalPath) ? read(journalPath) : { schema, planSha256: plan.sha256, entry, status: "planned" };
+      const journal = existsSync(journalPath) ? read(journalPath) : { schema, planSha256: plan.sha256, entry, status: "planned", external: (entry.externalInstallations ?? []).map(() => "planned") };
       if (journal.schema !== schema || journal.planSha256 !== plan.sha256 || jsonDigest(journal.entry) !== jsonDigest(entry) ||
           !["planned", "moved", "deleting", "removed"].includes(journal.status)) throw new Error("Retention journal identity is invalid");
+      if (journal.external === undefined && !(entry.externalInstallations ?? []).length) journal.external = [];
+      if (!Array.isArray(journal.external) || journal.external.length !== (entry.externalInstallations ?? []).length ||
+          journal.external.some(status => !["planned", "moved", "deleting", "removed"].includes(status))) throw new Error("Invalid installation retirement journal");
+      for (const external of entry.externalInstallations ?? []) {
+        if (dirname(external.path) !== realpathSync(dirname(target.installDir)) || !/^\.puddles-install-[0-9]+-[0-9]+$/.test(basename(external.path)) ||
+            external.trash !== `${external.path}.retiring-${entry.transaction}`) throw new Error("Invalid installation retirement path");
+      }
       return { entry, source, trash, journalPath, journal };
     });
     const verifyPending = async () => {
@@ -235,17 +275,33 @@ export async function applyBackupRetention(target, policy, plan, execute = runCo
       verifyReferences();
       // Every remaining path is checked again before *each* destructive step.
       for (const s of states) {
+        assertNoExternalReferences(root, s.entry);
+        for (const [index, external] of (s.entry.externalInstallations ?? []).entries()) {
+          const status = s.journal.external[index];
+          if (status === "removed") {
+            if (existsSync(external.path) || existsSync(external.trash)) throw new Error("Retired installation reappeared");
+            continue;
+          }
+          const original = existsSync(external.path);
+          const moved = existsSync(external.trash);
+          if (original && moved || original && status !== "planned" || !original && !moved && status !== "deleting") throw new Error("Installation retirement paths changed");
+          if (original || moved) {
+            const path = original ? external.path : external.trash;
+            if (jsonDigest(identity(path)) !== jsonDigest(external.directory) ||
+                status !== "deleting" && inventoryDigest(path) !== external.inventorySha256) throw new Error("External installation changed");
+          }
+        }
         if (s.journal.status === "removed") {
           if (existsSync(s.source) || existsSync(s.trash)) throw new Error("Retired activation reappeared");
         } else if (s.journal.status === "planned" && existsSync(s.source)) {
-          if (existsSync(s.trash) || jsonDigest(generation(root, s.entry.transaction)) !== jsonDigest(s.entry)) throw new Error("Activation changed after retention plan");
+          if (existsSync(s.trash) || jsonDigest(generation(root, s.entry.transaction)) !== jsonDigest(withoutExternal(s.entry))) throw new Error("Activation changed after retention plan");
         } else {
           if (existsSync(s.source)) throw new Error("Retirement source reappeared");
           if (!existsSync(s.trash)) {
             if (s.journal.status !== "deleting") throw new Error("Retirement tombstone missing");
           } else {
             if (jsonDigest(identity(s.trash)) !== jsonDigest(s.entry.directory)) throw new Error("Retirement tombstone identity changed");
-            if (s.journal.status !== "deleting" && jsonDigest(generation(root, s.entry.transaction, s.trash)) !== jsonDigest(s.entry)) throw new Error("Moved activation changed after retention plan");
+            if (s.journal.status !== "deleting" && jsonDigest(generation(root, s.entry.transaction, s.trash)) !== jsonDigest(withoutExternal(s.entry))) throw new Error("Moved activation changed after retention plan");
           }
         }
       }
@@ -254,6 +310,20 @@ export async function applyBackupRetention(target, policy, plan, execute = runCo
       await verifyPending();
       if (s.journal.status === "removed") continue;
       const save = status => { s.journal.status = status; atomicJson(s.journalPath, s.journal); sync(root); };
+      for (const [index, external] of (s.entry.externalInstallations ?? []).entries()) {
+        if (s.journal.external[index] === "removed") continue;
+        await verifyPending();
+        if (s.journal.external[index] === "planned") {
+          save(s.journal.status);
+          if (existsSync(external.path)) { renameSync(external.path, external.trash); sync(dirname(external.path)); }
+          s.journal.external[index] = "moved"; save(s.journal.status);
+        }
+        await verifyPending();
+        s.journal.external[index] = "deleting"; save(s.journal.status);
+        if (existsSync(external.trash)) rmSync(external.trash, { recursive: true });
+        sync(dirname(external.path));
+        s.journal.external[index] = "removed"; save(s.journal.status);
+      }
       if (s.journal.status === "planned") {
         save("planned");
         if (existsSync(s.source)) { renameSync(s.source, s.trash); sync(root); }
@@ -291,8 +361,9 @@ export async function runBackupRetention(target, policy, execute = runCommand) {
           const journalPath = join(root, `retention-${entry.transaction}.json`);
           const journal = existsSync(journalPath) ? read(journalPath) : null;
           if (existsSync(join(root, `.retiring-${entry.transaction}`)) ||
-              journal && (journal.planSha256 !== plan.sha256 || journal.status !== "planned") ||
-              jsonDigest(generation(root, entry.transaction)) !== jsonDigest(entry)) {
+              journal && (journal.planSha256 !== plan.sha256 || journal.status !== "planned" || journal.external?.some(status => status !== "planned")) ||
+              jsonDigest(externalInstallations(target, entry.transaction)) !== jsonDigest(entry.externalInstallations ?? []) ||
+              jsonDigest(generation(root, entry.transaction)) !== jsonDigest(withoutExternal(entry))) {
             throw new Error("Changed recovery requires reconciliation of partially applied retention");
           }
         }

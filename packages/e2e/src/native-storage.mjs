@@ -2,7 +2,7 @@ import {
   chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync,
   realpathSync, renameSync, rmSync, statfsSync,
 } from "node:fs";
-import { hostname } from "node:os";
+import { hostname, homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { acquireLock, atomicJson, fileDigest, inside, jsonDigest, treeDigest } from "./native-state.mjs";
@@ -362,4 +362,20 @@ export function assertTerminalNativeStorage(root) {
   canonical(root);
   if (existsSync(join(root, "lock"))) throw new Error("Native producer lock remains active");
   assertQuiescent(root, { holds: [] });
+}
+
+// Peak copy estimates deliberately count independent bytes, including APFS clones.
+export function storageLogicalBytes(path) {
+  const stat = lstatSync(path);
+  if (stat.isSymbolicLink()) return 0;
+  if (stat.isFile()) return stat.size;
+  if (!stat.isDirectory()) throw new Error("Cannot estimate unsupported storage input");
+  return readdirSync(path).reduce((sum, name) => sum + storageLogicalBytes(join(path, name)), 0);
+}
+
+export function reserveStageStorage(owner, destination, bytes, floor = Number(process.env.E2E_REQUIRED_FREE_BYTES ?? 8 * 1024 ** 3)) {
+  const root = resolve(process.env.E2E_CAPACITY_ROOT ?? join(homedir(), ".puddles/development-capacity"));
+  mkdirSync(root, { recursive: true, mode: 0o700 });
+  if (lstatSync(root).dev !== lstatSync(destination).dev) throw new Error("Capacity record and stage must share a filesystem");
+  return { root, ...reserveStorage(root, owner, bytes, floor) };
 }

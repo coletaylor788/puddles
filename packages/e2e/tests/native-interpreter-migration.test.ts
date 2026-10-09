@@ -126,6 +126,7 @@ function fixture(wrapper = true, migration = true, binary = false, oldAlias = fa
     const native = systemOperations(target, recovery, execute);
     return {
       ...native,
+      async reserveCapacity() { return null; },
       async preflight() { check("preflight"); return browser; },
       async currentBrowser() { return browser; },
       async install(_artifact: unknown, prefix: string) {

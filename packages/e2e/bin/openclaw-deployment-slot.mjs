@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { readFileSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
+import { atomicJson } from "../src/native-state.mjs";
 import {
   coordinate, coordinationPath, initializeCoordination, processIdentity,
   readCoordination, recoverMetadataLock,
@@ -21,7 +22,7 @@ export async function retryCoordinate(path, operation, input, update = coordinat
   }
 }
 
-export async function runWithSlot(path, lease, command, args) {
+export async function runWithSlot(path, lease, command, args, joinedEvidence) {
   await retryCoordinate(path, "bind-process", { ...lease, process: processIdentity() });
   const child = spawn(command, args, { detached: true, stdio: "inherit", env: {
     ...process.env, PUDDLES_DEPLOY_REQUEST_ID: lease.requestId, PUDDLES_DEPLOY_TOKEN: lease.token,
@@ -65,6 +66,8 @@ export async function runWithSlot(path, lease, command, args) {
       if (attempt === 39) throw new Error("Deployment children remain; retain slot for recovery");
       await delay(250);
     }
+    if (joinedEvidence) atomicJson(joinedEvidence, { schemaVersion: 1, requestId: lease.requestId,
+      controllerPid: process.pid, joined: true, code, failed: Boolean(failure) });
     if (failure) throw failure;
     if (code !== 0) throw new Error(`Deployment command failed (${code}); retain slot and inspect recovery`);
   } finally {
@@ -88,7 +91,7 @@ export async function main(argv = process.argv.slice(2)) {
   if (operation === "recover-metadata") return recoverMetadataLock(path, input);
   if (operation === "run") {
     if (!args.length) throw new Error("A command is required");
-    return runWithSlot(path, input, args[0], args.slice(1));
+    return runWithSlot(path, input, args[0], args.slice(1), process.env.PUDDLES_DEPLOY_JOIN_EVIDENCE);
   }
   write(await retryCoordinate(path, operation, input));
 }

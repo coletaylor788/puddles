@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { existsSync, openSync, closeSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, openSync, closeSync, readFileSync, realpathSync, readdirSync, rmSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { atomicJson } from "../src/native-state.mjs";
+import { atomicJson, fileDigest, jsonDigest } from "../src/native-state.mjs";
 import { readCoordination } from "../src/deploy-coordination.mjs";
 import { retryCoordinate } from "./openclaw-deployment-slot.mjs";
 
@@ -19,6 +19,15 @@ export function maintenanceInputs(root, policy) {
     throw new Error("Current release has no matching retention context");
   }
   return { target: context.target, policy: { ...policy, replacement: { kind: "activation", receipt: context.receipt } } };
+}
+
+// Only an unchanged, plan-free preflight can be released after a failed child.
+// The controller must independently attest that its entire child group joined.
+function retentionState(root) {
+  if (existsSync(join(root, "lock")) || existsSync(join(root, "retention-plan.json")) ||
+      readdirSync(root).some(name => name.startsWith(".retiring-"))) return null;
+  return readdirSync(root).filter(name => /^retention-activation-.*\.json$/.test(name))
+    .sort().map(name => [name, fileDigest(join(root, name))]);
 }
 
 export async function maintain(config, dependencies = {}) {
@@ -48,32 +57,50 @@ export async function maintain(config, dependencies = {}) {
   const policyPath = join(work, "policy.json");
   const log = join(work, "last-run.log");
   const evidence = join(work, "last-result.json");
+  const joinedEvidence = join(work, "controller-joined.json");
+  let before = null;
   let controllerStarted = false;
   try {
+    before = retentionState(root);
     atomicJson(leasePath, lease);
     atomicJson(targetPath, inputs.target);
     atomicJson(policyPath, inputs.policy);
+    rmSync(joinedEvidence, { force: true });
     controllerStarted = true;
     await execute(process.execPath, [join(bin, "openclaw-deployment-slot.mjs"), "run", leasePath,
-      config.coordination, process.execPath, join(bin, "openclaw-backup-retention.mjs"), "run", targetPath, policyPath], log, timeoutMs);
+      config.coordination, process.execPath, join(bin, "openclaw-backup-retention.mjs"), "run", targetPath, policyPath], log, timeoutMs, joinedEvidence);
     // The controller has exited after joining its child group. A leftover
     // backup lock cannot be assumed to belong to this process.
     if (existsSync(join(root, "lock"))) throw new Error("Backup lock remains; retain maintenance ownership for inspection");
     atomicJson(evidence, { status: "passed", transaction: inputs.target && read(join(root, "latest-activation.json")).transaction, finishedAt: new Date().toISOString() });
+    atomicJson(join(root, "retention-health.json"), read(evidence));
     await coordinate(config.coordination, "release", { ...lease, result: "passed", cleanupEvidence: evidence });
     return read(evidence);
   } catch (error) {
-    atomicJson(evidence, { status: "failed", message: error.message, lease, finishedAt: new Date().toISOString() });
-    if (!controllerStarted) await coordinate(config.coordination, "release", { ...lease, result: "failed-before-start", cleanupEvidence: evidence });
+    let readOnlyFailure = false;
+    try {
+      const joined = read(joinedEvidence);
+      const after = retentionState(root);
+      readOnlyFailure = controllerStarted && joined.schemaVersion === 1 && joined.requestId === requestId &&
+        joined.joined === true && Number.isSafeInteger(joined.controllerPid) && joined.controllerPid > 0 &&
+        before !== null && after !== null && jsonDigest(before) === jsonDigest(after);
+    } catch { /* Missing or unreadable evidence retains ownership. */ }
+    const result = { status: readOnlyFailure ? "blocked" : "failed", message: error.message,
+      readOnlyFailure, leaseRetained: controllerStarted && !readOnlyFailure, finishedAt: new Date().toISOString() };
+    atomicJson(evidence, result);
+    atomicJson(join(root, "retention-health.json"), result);
+    if (!controllerStarted || readOnlyFailure) await coordinate(config.coordination, "release", {
+      ...lease, result: readOnlyFailure ? "blocked-read-only" : "failed-before-start", cleanupEvidence: evidence });
     // A failed or killed controller needs explicit inspection and recovery.
     // Never make an unattended timer steal or clear a production lock.
     throw error;
   }
 }
 
-async function runController(command, args, log, timeoutMs) {
+async function runController(command, args, log, timeoutMs, joinedEvidence) {
   const fd = openSync(log, "w", 0o600);
-  const child = spawn(command, args, { stdio: ["ignore", fd, fd] });
+  const child = spawn(command, args, { stdio: ["ignore", fd, fd],
+    env: { ...process.env, PUDDLES_DEPLOY_JOIN_EVIDENCE: joinedEvidence } });
   closeSync(fd);
   let timedOut = false;
   let escalation;
