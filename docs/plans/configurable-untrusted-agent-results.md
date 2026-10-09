@@ -1,6 +1,6 @@
 # Configurable untrusted agent results
 
-**Status:** Implementation complete, replacement release pending
+**Status:** Replacement TEST failed, repair in progress
 
 **Issue:** [#241](https://github.com/coletaylor788/puddles/issues/241)
 **Last updated:** 2026-10-09
@@ -95,17 +95,17 @@ Canary wrapping separately from any model change. Activate through the existing 
 
 **Approval reference:** Requester approval recorded by the feature owner on 2026-10-08. The reusable formatting change is approved through implementation, review, landing, deployment, rollback, and development cleanup.
 
-The immutable candidate passed cumulative validation, DEV and TEST, including installed receiving guidance, reader selection and rollback. Production activation reached healthy service, but strict post-activation checks found that doctor had cleared automatic model selections before the guarded migration could process them. The migration count was zero and activity timestamps changed. This candidate has not passed release acceptance.
+The replacement immutable candidate passed cumulative validation, DEV and the installed TEST suite. The forced rollback rehearsal then failed because the copied predecessor seed retained unfinished legacy startup fixtures and lacked declared plugins. TEST closed failed with its isolated target and complete failure/recovery evidence retained. No external model requests ran. Production was unchanged and remains healthy on the earlier activation that failed migration acceptance.
 
-The repair runs the existing guarded sessions phase immediately after candidate configuration and before doctor. A bounded recovery list also handles exact entries already changed by the earlier doctor pass. It preserves current production activity rather than restoring the earlier whole-state snapshot. Active, locked, missing or progressed selections fail before writing. No fallback or additional model route is introduced. Replacement validation and promotion remain pending; the release owner is handling recovery through a new normal activation.
+The guarded session migration and metadata-preservation repair remain approved. The release owner is correcting predecessor seed preparation and adding a regression that proves the copied predecessor starts before retrying the release. A new candidate must pass the normal cumulative and environment gates. Production acceptance and development cleanup remain pending.
 
 ## Agent section
 
 ### State
 
-The current repair moves guarded session-default migration before doctor, after schema and candidate configuration migration. Its optional sealed recovery entries restore explicit defaults and original activity only when current session metadata exactly matches the reviewed predecessor. The sessions result records ordinary changes and recovered entries separately before doctor; the transaction is complete only after doctor, plugin and cron phases. Source and installed regressions cover the real doctor interaction, complete native replacement, refusal before any write on drift, and rollback to the fresh current-state snapshot. Replacement release acceptance remains pending.
+The current repair moves guarded session-default migration before doctor, after schema and candidate configuration migration. Its optional sealed recovery entries restore explicit defaults and original activity only when current session metadata exactly matches the reviewed predecessor. The sessions result records ordinary changes and recovered entries separately before doctor; the transaction is complete only after doctor, plugin and cron phases. Source and installed regressions cover the real doctor interaction, complete native replacement, refusal before any write on drift, and rollback to the fresh current-state snapshot. Replacement release acceptance remains pending. The latest candidate passed cumulative validation, DEV and installed TEST checks, then failed the forced rollback because its copied predecessor seed could not start with the supplied fixtures and plugins. The failed isolated target and recovery evidence are retained. Seed preparation and an actual predecessor-startup regression are in progress; no provider request or production mutation occurred.
 
-The maintained source pin is OpenClaw 2026.9.6 at `eb377ac59e6c9fd6c7705028034812becf00271b`. The patch composes with the blocking-yield and durable-handoff patches. Implementation and validation are in progress.
+The maintained source pin is OpenClaw 2026.9.6 at `eb377ac59e6c9fd6c7705028034812becf00271b`. The patch composes with the blocking-yield and durable-handoff patches. The implementation is merged; replacement rehearsal seed repair and release validation are in progress.
 
 ### Scope and acceptance criteria
 
@@ -271,7 +271,7 @@ An empty list disables additional wrapping on the patched runtime. Remove the ne
 
 ### Review log
 
-The retained reviewer checked the complete formatting implementation and its remediations. The gather repair adds refusal and concurrency regressions while preserving durable ownership. Its 24 focused tests and 40 adjacent SQLite/worker tests pass. Rebuilt local installed checks pass for direct, delayed, spawned, and active gathered results with policy disabled and enabled. Both runs made 11 receiving-model requests and preserved five raw child reports. The complete prepared guidance also passes after real compaction. Cumulative validation and immutable DEV, TEST, and PROD proof remain pending.
+The retained reviewer checked the complete formatting implementation and its remediations. The gather repair adds refusal and concurrency regressions while preserving durable ownership. Its 24 focused tests and 40 adjacent SQLite/worker tests pass. Rebuilt local installed checks pass for direct, delayed, spawned, and active gathered results with policy disabled and enabled. Both runs made 11 receiving-model requests and preserved five raw child reports. The complete prepared guidance also passes after real compaction. The replacement passed cumulative validation, immutable DEV and installed TEST checks. Forced rollback failed on the predecessor seed startup contract; its repair and replacement TEST/PROD acceptance remain pending.
 
 ### Checklist
 
