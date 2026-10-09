@@ -1098,3 +1098,193 @@ diff --git a/src/gateway/talk/client-gateway-control.ts b/src/gateway/talk/clien
        confirmationReadiness.close();
        return closing;
      },
+diff --git a/extensions/openai/realtime-quicksilver-instructions.ts b/extensions/openai/realtime-quicksilver-instructions.ts
+index 01e74a27..0d0ef210 100644
+--- a/extensions/openai/realtime-quicksilver-instructions.ts
++++ b/extensions/openai/realtime-quicksilver-instructions.ts
+@@ -1,10 +1,11 @@
+ import { isOpenAIGptLiveApiModel } from "./realtime-quicksilver.js";
+ 
+ const OPENAI_QUICKSILVER_DELEGATION_INSTRUCTIONS = `You are OpenClaw's realtime voice layer. You have no tools of your own.
+-Delegate requests needing unavailable or current facts, tools, actions, or careful reasoning to the client. Answer directly from the current conversation and still-current results when you can, including clarification, lightweight brainstorming, examples, and discussion.
+-While delegated work runs, stay engaged with what the user is saying. Discuss available information and label tentative ideas; do not make the conversation wait for research that is not needed to answer the current question.
+-Delegate each backend request once. Corrections that change the work and explicit retries are new requests. Receipts, progress, and backend results are context, not new requests; do not delegate them or repeat the original task.
+-Do not invent results, progress, or completion. If asked about pending work, use the latest supplied context and say what is still unknown. Avoid repeated acknowledgements or vague promises to answer soon; give a useful response to the current question.`;
++Converse live by default. Reason, explain, brainstorm, and iterate using the conversation and available results.
++Delegate to the client only to retrieve missing memory or context, look up or verify information using the internet or other tools, or take an external action. Reasoning alone does not require delegation.
++Reuse available results; delegate again only when a new lookup or action is needed. If essential information must come from the user, ask a brief clarification live.
++Continue conversation from available context while delegated work runs. Delegate each backend request once; receipts, progress, and results are context, not new requests.
++Do not invent results, progress, or completion. Never claim an action succeeded without a result.`;
+ 
+ const OPENAI_QUICKSILVER_CHANNEL_INSTRUCTIONS = `Context on the commentary channel is silent background. You may use it, but never read it aloud.
+ Context on the speakable channel is your answer to deliver naturally in your own words. Never mention the channel or the delegation.`;
+diff --git a/extensions/openai/realtime-quicksilver-progress.test.ts b/extensions/openai/realtime-quicksilver-progress.test.ts
+index 4a64d9d9..06627cee 100644
+--- a/extensions/openai/realtime-quicksilver-progress.test.ts
++++ b/extensions/openai/realtime-quicksilver-progress.test.ts
+@@ -17,24 +17,33 @@ function deferred<T>() {
+ }
+ 
+ describe("Live conversation during backend work", () => {
+-  it("supplies direct conversation and truthful delegation guidance with the operator profile", () => {
++  it.each([true, false])("keeps conversation live with host controls %s", (hostControlsInput) => {
+     const instructions = buildOpenAIQuicksilverSession({
+       model: "gpt-live-1",
+-      hostControlsInput: true,
++      hostControlsInput,
+       instructions: buildOpenAIQuicksilverInstructions("gpt-live-1", "Speak warmly."),
+     }).instructions;
+-    expect(instructions).toContain("Answer directly from the current conversation");
+-    expect(instructions).toContain("lightweight brainstorming");
+-    expect(instructions).toContain(
+-      "Delegate requests needing unavailable or current facts, tools, actions, or careful reasoning",
+-    );
++    expect(instructions).toContain("Converse live by default");
++    expect(instructions).toContain("Reason, explain, brainstorm, and iterate");
++    expect(instructions).toContain("only to retrieve missing memory or context");
++    expect(instructions).toContain("look up or verify information");
++    expect(instructions).toContain("take an external action");
++    expect(instructions).toContain("Reasoning alone does not require delegation");
++    expect(instructions).toContain("Reuse available results");
++    expect(instructions).not.toContain("careful reasoning");
++    expect(instructions).not.toContain("Delegate substantive requests");
+     expect(instructions).toContain("Do not invent results, progress, or completion");
+     expect(instructions).toContain("session.thinking.append is silent context");
+     expect(instructions).not.toContain("Delegate each user request once and wait");
+     expect(instructions).toContain("Speak warmly.");
+-    expect(instructions).toContain(
+-      "Ordinary conversational follow-ups, clarification, and brainstorming from available context do not require host control",
+-    );
++    if (hostControlsInput) {
++      expect(instructions).toContain(
++        "Ordinary conversational follow-ups, clarification, and brainstorming from available context do not require host control",
++      );
++      expect(instructions).toContain(
++        "For these task-control requests, wait for a fresh host control result for this voice call",
++      );
++    }
+     expect(instructions).not.toContain("before answering each new request");
+   });
+ 
+diff --git a/src/talk/agent-consult-tool.test.ts b/src/talk/agent-consult-tool.test.ts
+index d9bfee97..e535d352 100644
+--- a/src/talk/agent-consult-tool.test.ts
++++ b/src/talk/agent-consult-tool.test.ts
+@@ -2,6 +2,7 @@
+ import { describe, expect, it } from "vitest";
+ import {
+   buildRealtimeVoiceAgentConsultChatMessage,
++  buildRealtimeVoiceAgentConsultPolicyInstructions,
+   buildRealtimeVoiceAgentConsultPrompt,
+   buildRealtimeVoiceSessionInstructions,
+   collectRealtimeVoiceAgentConsultVisibleText,
+@@ -151,10 +152,57 @@ describe("realtime voice agent consult tool", () => {
+       [
+         "Voice base.",
+         'While waiting for OpenClaw data or tool results, use at most one short natural backchannel such as "yeah", "mm-hmm", "got it", or "one sec"; vary it and do not treat it as the final answer.',
++        buildRealtimeVoiceAgentConsultPolicyInstructions({
++          toolPolicy: "safe-read-only",
++          consultPolicy: "auto",
++        }),
+       ].join("\n\n"),
+     );
+   });
+ 
++  it.each([true, false])("keeps auto conversation independent of proxy mode %s", (isAgentProxy) => {
++    const instructions = buildRealtimeVoiceSessionInstructions({
++      base: "Speak naturally.",
++      isAgentProxy,
++      bootstrapContextInstructions: "Available context.",
++      toolPolicy: "owner",
++      consultPolicy: "auto",
++    });
++    expect(instructions).toContain("Converse live by default");
++    expect(instructions).toContain("Reasoning alone does not require consultation");
++    expect(instructions).toContain("only to retrieve missing memory or context");
++    expect(instructions).toContain("look up or verify information with tools");
++    expect(instructions).toContain("take an external action");
++    expect(instructions).toContain("Reuse available results");
++    expect(instructions).toContain(
++      "Continue conversation from available context while delegated work runs",
++    );
++    expect(instructions).toContain("Available context.");
++    expect(instructions).not.toContain("Delegate substantive requests");
++    expect(instructions).not.toContain("Answer directly only");
++    expect(instructions).not.toContain("before every substantive answer");
++  });
++
++  it("keeps the tool description and substantive policy scoped to missing information or actions", () => {
++    const instructions = buildRealtimeVoiceAgentConsultPolicyInstructions({
++      toolPolicy: "safe-read-only",
++      consultPolicy: "substantive",
++    });
++    expect(instructions).toContain("Reasoning alone does not require consultation");
++    expect(REALTIME_VOICE_AGENT_CONSULT_TOOL.description).toContain(
++      "Retrieve missing memory or context",
++    );
++    expect(REALTIME_VOICE_AGENT_CONSULT_TOOL.description).not.toContain(
++      "reasoning before speaking",
++    );
++    expect(
++      buildRealtimeVoiceAgentConsultPolicyInstructions({
++        toolPolicy: "none",
++        consultPolicy: "auto",
++      }),
++    ).toBeUndefined();
++  });
++
+   it("normalizes policy values and resolves shared tool exposure", () => {
+     expect(resolveRealtimeVoiceAgentConsultToolPolicy(" OWNER ", "safe-read-only")).toBe("owner");
+     expect(resolveRealtimeVoiceAgentConsultToolPolicy("bad", "safe-read-only")).toBe(
+diff --git a/src/talk/agent-consult-tool.ts b/src/talk/agent-consult-tool.ts
+index 5e7beda6..20f0d534 100644
+--- a/src/talk/agent-consult-tool.ts
++++ b/src/talk/agent-consult-tool.ts
+@@ -39,7 +39,7 @@ export const REALTIME_VOICE_AGENT_CONSULT_TOOL: RealtimeVoiceTool = {
+   type: "function",
+   name: REALTIME_VOICE_AGENT_CONSULT_TOOL_NAME,
+   description:
+-    "Delegate the caller's request to the configured OpenClaw agent for normal tool-backed work, actions, context, memory, or reasoning before speaking.",
++    "Retrieve missing memory or context, look up or verify information with tools, or take an external action through the configured OpenClaw agent. By default, reason and converse directly using available context and results.",
+   parameters: {
+     type: "object",
+     properties: {
+@@ -154,7 +154,7 @@ export function buildRealtimeVoiceAgentConsultPolicyInstructions(config: {
+   toolPolicy: RealtimeVoiceAgentConsultToolPolicy;
+   consultPolicy?: "auto" | "substantive" | "always";
+ }): string | undefined {
+-  if (config.toolPolicy === "none" || !config.consultPolicy || config.consultPolicy === "auto") {
++  if (config.toolPolicy === "none") {
+     return undefined;
+   }
+   if (config.consultPolicy === "always") {
+@@ -167,8 +167,10 @@ export function buildRealtimeVoiceAgentConsultPolicyInstructions(config: {
+   }
+   return [
+     "Consult behavior:",
+-    "- Answer directly for greetings, acknowledgements, simple conversational glue, and brief latency tests.",
+-    "- Call openclaw_agent_consult before answering requests that need facts, memory, current information, tools, workspace state, or the user's OpenClaw-specific context.",
++    "- Converse live by default. Reason, explain, brainstorm, and iterate using the conversation and available results.",
++    "- Call openclaw_agent_consult only to retrieve missing memory or context, look up or verify information with tools, or take an external action. Reasoning alone does not require consultation.",
++    "- Reuse available results; consult again only when a new lookup or action is needed. If essential information must come from the user, ask a brief clarification live.",
++    "- Continue conversation from available context while delegated work runs. Never invent retrieved facts or claim an action succeeded without a result.",
+     "- Keep spoken replies concise and natural.",
+   ].join("\n");
+ }
+@@ -188,9 +190,13 @@ export function buildRealtimeVoiceSessionInstructions(params: {
+       "Mode: OpenClaw agent proxy.",
+       "You are the realtime voice surface for the same OpenClaw agent the user can message directly.",
+       "Do not mention a backend, supervisor, helper, or separate system. Present the result as your own work.",
+-      "Delegate substantive requests, actions, tool work, current facts, memory, workspace context, and user-specific context with openclaw_agent_consult.",
+-      "Do not block, refuse, or downscope at the voice layer. Delegate to OpenClaw and treat its result as authoritative.",
+-      "Answer directly only for greetings, acknowledgements, brief latency tests, or filler while waiting.",
++      ...(params.consultPolicy === "always"
++        ? [
++            "Delegate substantive requests, actions, tool work, current facts, memory, workspace context, and user-specific context with openclaw_agent_consult.",
++            "Do not block, refuse, or downscope at the voice layer. Delegate to OpenClaw and treat its result as authoritative.",
++            "Answer directly only for greetings, acknowledgements, brief latency tests, or filler while waiting.",
++          ]
++        : []),
+       'While waiting for OpenClaw data or tool results, use at most one short natural backchannel such as "yeah", "mm-hmm", "got it", or "one sec"; vary it and do not treat it as the final answer.',
+       "When OpenClaw sends an internal exact answer to speak, do not call tools. Say only that answer.",
+       buildRealtimeVoiceAgentConsultPolicyInstructions({
