@@ -49,6 +49,25 @@ packaging is in progress. Production is unchanged.
 
 ## Agent section
 
+### State
+
+Assigned public worktree, branch `codex/wiki-maintenance`. Public PR #243 holds
+the runtime fix. Its companion prompt changes remain private. One task owns the
+pinned OpenClaw source and reusable local build workspace.
+
+### Scope and acceptance criteria
+
+- Complete supported mutation metadata is visible to an agent on request.
+- Ordinary body output, page visibility and filesystem access remain unchanged.
+- Existing citations and claim evidence survive a summary refresh.
+- Install runtime support before a dependent maintenance prompt.
+
+### Architecture and decisions
+
+Return known mutation fields after the existing reader selects an authorized page.
+Render them in tool text because model harnesses may omit the separate details
+object. Keep body pagination and leave raw filesystem access unchanged.
+
 ### Implementation
 
 Patch `wiki-get-mutation-metadata.patch` against OpenClaw 2026.9.6, commit
@@ -57,7 +76,7 @@ after visibility filtering. `tool.ts` renders JSON only when requested. The patc
 includes the user-facing contract and tool regressions. Register it last in the
 cumulative manifest and deployment list.
 
-### Validation and review
+### Validation
 
 Retained independent reviewer has cleared the source behavior after finding that
 body-only reads could lose citations. Focused coverage includes a rich claim and
@@ -72,6 +91,11 @@ one immutable candidate through DEV, TEST and PROD. Preserve healthy production 
 failure. Install the runtime before any operator prompt requests the new flag.
 Rollback the dependent prompt before restoring an older runtime. Never force a
 production maintenance turn as a deployment test.
+
+### Review log
+
+Retained independent reviewer cleared source and patch packaging. The original
+citation-preservation finding is resolved. No new actionable findings remain.
 
 ### Checklist
 
