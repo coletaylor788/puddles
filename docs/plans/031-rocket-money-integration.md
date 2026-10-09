@@ -1,8 +1,8 @@
 # Plan 031: Rocket Money MCP and shared browser authentication
 
-**Status:** Merged; cumulative CI and installed DEV passed; TEST and production pending
+**Status:** Deployed; owner login and live read validation pending
 **Issue:** [#135](https://github.com/coletaylor788/puddles/issues/135)
-**Last updated:** 2026-10-07
+**Last updated:** 2026-10-08
 
 ## Human section
 
@@ -101,9 +101,11 @@ Other financial writes, scheduled automation and a general integration framework
 **Approval reference:** Owner instruction, “this design is approved, implement and ship it, giving me directions to login when ready”; subsequent approval covers publication and retained independent review.
 **Scope:** The approved five tools, shared host authentication, private main skill and desktop login shortcut. No live financial mutations during validation.
 
-The implementation and review fixes are merged. Retained independent review, repository checks and cumulative CI passed. The exact packaged artifact passed installed DEV checks, including synthetic Chrome session persistence/recovery and the scoped tools with empty login state. Installed bytes still match the sealed artifact.
+The implementation is deployed. Retained independent review, cumulative CI, installed DEV, all 14 installed TEST scenarios, and physical activation, coexistence, readiness and rollback checks passed. Production is healthy on the same certified artifact.
 
-TEST and production remain pending because the release host is below the required free-space reserve. Cleanup of this attempt's temporary DEV snapshot is complete; additional legacy DEV cleanup awaits explicit approval. Production is unchanged. The private skill and login shortcut will be activated after deployment; owner-assisted login and a bounded read then validate the live provider.
+Main's skill was updated through Skill Workshop. It keeps the same account and run across follow-ups, uses the five scoped tools, and includes login and uncertain-write recovery. Its read catalog matches the installed server. The desktop login shortcut is installed and points to the production artifact. The live main-container boundary check and existing sandbox mount checks passed without reading credentials.
+
+Owner-assisted login and a bounded live read remain pending. Open the host's logged-in desktop through its viewer, double-click **Rocket Money Login**, sign in inside Chrome, and complete MFA. Wait for **Rocket Money login verified**, then resume the same task. No live financial mutations were used for validation.
 
 ## Agent section
 
@@ -157,4 +159,5 @@ After implementation validation, enable reads first and then the two permitted w
 - [x] Preserve credential isolation, private rules and verified writes.
 - [x] Keep testing in the deferred appendix.
 - [x] Select the auth implementation and validate the synthetic installed integration.
-- [ ] Complete the approved implementation, validation and activation; provide owner login instructions.
+- [x] Ship the approved implementation, complete release validation, and provide owner login instructions.
+- [ ] Validate owner-assisted login and a bounded live read.
