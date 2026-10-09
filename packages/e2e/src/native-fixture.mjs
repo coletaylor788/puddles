@@ -111,6 +111,9 @@ function validateScenario(scenario) {
       throw new Error("Missing deterministic read fixture");
     }
   }
+  if (scenario.sessionRecall !== undefined &&
+      (!scenario.sessionRecall || typeof scenario.sessionRecall.enabled !== "boolean" ||
+       Object.keys(scenario.sessionRecall).join(",") !== "enabled")) throw new Error("Invalid session recall fixture");
   if (scenario.heartbeat !== undefined && scenario.heartbeat !== true) throw new Error("Invalid fixture heartbeat selection");
   for (const step of scenario.steps) {
     if (step.wake !== undefined && (!scenario.heartbeat || typeof step.wake !== "string" || !step.wake.trim() || step.incoming?.length)) {
@@ -129,7 +132,8 @@ function validateScenario(scenario) {
     }
     for (const response of step.responses) {
       for (const tool of response.toolCalls ?? []) {
-        if (!(scenario.heartbeat && step.wake && tool.name === "heartbeat_respond") && !scenario.adapters?.[tool.name]) throw new Error(`Missing required recording adapter: ${tool.name}`);
+        if (!(scenario.heartbeat && step.wake && tool.name === "heartbeat_respond") &&
+            !(scenario.sessionRecall && tool.name === "sessions_history") && !scenario.adapters?.[tool.name]) throw new Error(`Missing required recording adapter: ${tool.name}`);
       }
     }
   }
@@ -272,7 +276,17 @@ export async function runScenario(installedDir, scenario, options = {}) {
       delete config.tools.allow;
       config.tools.profile = "full";
     }
+    if (scenario.sessionRecall) {
+      config.agents.entries = { main: {}, reader: { workspace: join(context.stateDir, "reader-workspace") } };
+      config.tools.allow.push("sessions_history");
+      config.tools.sessions = { visibility: "all" };
+      config.tools.agentToAgent = { enabled: true, allow: ["main", "reader"],
+        untrustedAgents: scenario.sessionRecall.enabled ? ["reader"] : [] };
+    }
     atomicJson(context.configPath, provider ? provider.configure(config) : config);
+    if (scenario.sessionRecall) await runCommand(process.execPath,
+      [join(packageDir, "fixtures/sessions/seed-reader.mjs"), installedDir, context.root],
+      { cwd: context.workspace, env: environment, capture: true, quiet: true, timeoutMs: 30_000 });
     if (scenario.expectBundledSkills) {
       const listed = JSON.parse(await runCommand(process.execPath, [join(installedDir, "openclaw.mjs"), "skills", "list", "--json"], {
         cwd: context.workspace, env: environment, capture: true, quiet: true, timeoutMs: 60_000,
@@ -354,6 +368,9 @@ export async function runScenario(installedDir, scenario, options = {}) {
         const prompt = JSON.stringify(requests[requestCount - step.responses.length].messages);
         for (const text of step.expect.promptIncludes) assert.ok(prompt.includes(text), "incoming event missing from real model request");
       }
+      const finalPrompt = JSON.stringify(requests[requestCount - 1].messages);
+      for (const text of step.expect.finalPromptIncludes ?? []) assert.ok(finalPrompt.includes(text), "expected final provider input missing");
+      for (const text of step.expect.finalPromptExcludes ?? []) assert.ok(!finalPrompt.includes(text), "excluded source text reached final provider input");
       if (scenario.heartbeat) {
       const firstRequest = requests[requestCount - step.responses.length];
       const offered = firstRequest.tools?.map(t => t.function?.name) ?? [];

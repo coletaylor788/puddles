@@ -1,3 +1,4 @@
+import untrustedAgentResults from "./untrusted-agent-results.mjs";
 import heartbeat from "./heartbeat.mjs";
 const reply = (id, text) => ({
   id,
@@ -5,6 +6,7 @@ const reply = (id, text) => ({
 });
 
 export default [
+  ...untrustedAgentResults,
   heartbeat,
   { ...reply("ordinary-conversation", "Say hello to the fixture."), expectBundledSkills: ["healthcheck", "skill-creator"] },
   {

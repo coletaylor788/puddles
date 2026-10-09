@@ -41,6 +41,7 @@ PATCHES=(
   talk-conversation-progress
   shared-conversation-context
   wiki-get-mutation-metadata
+  untrusted-agent-results
 )
 
 if [ -n "${MINI_HOST:-}" ]; then
