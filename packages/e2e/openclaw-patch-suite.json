@@ -132,7 +132,9 @@
     "extensions/imessage/src/approval-native.test.ts": "extension-imessage",
     "extensions/imessage/src/approval-reactions.test.ts": "extension-imessage",
     "src/plugins/hooks.before-tool-call.test.ts": "plugins",
-    "src/agents/agent-tools.before-tool-call.embedded-mode.test.ts": "agents-core"
+    "src/agents/agent-tools.before-tool-call.embedded-mode.test.ts": "agents-core",
+    "src/plugin-sdk/session-transcript-runtime.test.ts": "plugin-sdk",
+    "extensions/copilot/src/attempt-session.integration.test.ts": "extensions"
   },
   "patches": [
     {
@@ -429,6 +431,17 @@
       "candidateTests": [
         "tests/candidate.talk-concurrency.test.ts"
       ]
+    },
+    {
+      "name": "shared-conversation-context",
+      "tests": [
+        "src/plugin-sdk/session-transcript-runtime.test.ts",
+        "extensions/copilot/src/attempt-session.integration.test.ts",
+        "extensions/copilot/src/attempt.test.ts"
+      ],
+      "candidateTests": [
+        "tests/candidate.main-conversation.test.ts"
+      ]
     }
   ],
   "tests": [
@@ -438,6 +451,7 @@
     "src/agents/agent-tools.before-tool-call.embedded-mode.test.ts"
   ],
   "candidateTests": [
-    "tests/candidate.gmail-approval.test.ts"
+    "tests/candidate.gmail-approval.test.ts",
+    "tests/candidate.main-conversation.test.ts"
   ]
 }

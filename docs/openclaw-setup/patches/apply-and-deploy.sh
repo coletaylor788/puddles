@@ -39,6 +39,7 @@ PATCHES=(
   harness-tool-work-owner
   talk-overlap-recovery
   talk-conversation-progress
+  shared-conversation-context
 )
 
 if [ -n "${MINI_HOST:-}" ]; then
