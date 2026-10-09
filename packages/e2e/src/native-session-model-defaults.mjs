@@ -166,7 +166,7 @@ export async function executeSessionModelDefaults({ operations, config, stateDir
     verify(plan);
     const actual = await sdk.patchSessionEntry({ ...plan.scope, sessionKey: plan.sessionKey,
       ...(plan.recovery ? { restoreWindowActivity: plan.originalWindowActivity } : { preserveWindowActivity: true }),
-      replaceEntry: plan.recovery, preserveActivity: true, preserveConversation: true, skipMaintenance: true, requireWriteSuccess: true,
+      replaceEntry: plan.recovery, preserveActivity: true, preserveConversation: true, preservePrivateMetadata: true, skipMaintenance: true, requireWriteSuccess: true,
       assertCommitAllowed: () => { check(); for (const path of plan.paths) assertStatePath(path); verifyActivity(plan); },
       update(entry, context) {
         if (!context.existingEntry || !isDeepStrictEqual(entry, plan.before)) throw new Error("Session model default predecessor changed");

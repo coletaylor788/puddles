@@ -820,10 +820,10 @@ index e00b9b2cc..4faa88815 100644
  export { resolveRequiredHomeDir } from "../infra/home-dir.js";
 +export { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
 diff --git a/src/config/sessions/session-accessor.sqlite-entry-mutation.ts b/src/config/sessions/session-accessor.sqlite-entry-mutation.ts
-index a993a780..5aedead2 100644
+index a993a780..6699901e 100644
 --- a/src/config/sessions/session-accessor.sqlite-entry-mutation.ts
 +++ b/src/config/sessions/session-accessor.sqlite-entry-mutation.ts
-@@ -45,7 +45,12 @@ export function applySessionEntryPatchInDatabase(
+@@ -45,7 +45,13 @@ export function applySessionEntryPatchInDatabase(
      next: SessionEntry | undefined;
      options: Pick<
        SessionEntryPatchOptions,
@@ -834,10 +834,11 @@ index a993a780..5aedead2 100644
 +      | "preserveConversation"
 +      | "restoreWindowActivity"
 +      | "preserveWindowActivity"
++      | "preservePrivateMetadata"
      >;
    },
  ): { entry: SessionEntry; identity?: SessionEntryIdentityChange } {
-@@ -60,6 +65,9 @@ export function applySessionEntryPatchInDatabase(
+@@ -60,6 +66,9 @@ export function applySessionEntryPatchInDatabase(
      fresh = params.readSnapshot(database);
      assertLifecycleTargetSnapshotUnchanged(params.prepared, fresh, params.operationLabel);
    }
@@ -847,31 +848,65 @@ index a993a780..5aedead2 100644
    params.options.assertCommitAllowed?.();
    if (!params.next) {
      return { entry: cloneSessionEntry(params.writeBase) };
-@@ -68,6 +76,9 @@ export function applySessionEntryPatchInDatabase(
+@@ -68,6 +77,10 @@ export function applySessionEntryPatchInDatabase(
    const previous = new Map(fresh.map((row) => [row.sessionKey, row.entry]));
    const selectedPreviousEntry = fresh[0]?.entry ?? params.writeBase;
    const persisted = writeSessionEntry(database, params.sessionKey, params.next, {
 +    ...(params.options.preserveConversation ? { preserveConversation: true } : {}),
 +    restoreWindowActivity: params.options.restoreWindowActivity,
 +    preserveWindowActivity: params.options.preserveWindowActivity,
++    preservePrivateMetadata: params.options.preservePrivateMetadata,
      ...(params.options.consumePendingReset ? { consumePendingReset: true } : {}),
      ...(params.options.providerReviewMutation ? { providerReviewMutation: true } : {}),
      previousEntry: selectedPreviousEntry,
 diff --git a/src/config/sessions/session-accessor.sqlite-entry-store.ts b/src/config/sessions/session-accessor.sqlite-entry-store.ts
-index f3664462..b430dd2d 100644
+index f3664462..2f55ca17 100644
 --- a/src/config/sessions/session-accessor.sqlite-entry-store.ts
 +++ b/src/config/sessions/session-accessor.sqlite-entry-store.ts
-@@ -453,6 +453,9 @@ export function writeSessionEntry(
+@@ -57,6 +57,7 @@ import {
+   canonicalSessionKeyMigrationRequiredError,
+ } from "./session-canonical-key.js";
+ import { certifyCanonicalSessionValidationRow } from "./session-canonical-validation.js";
++import { preserveCanonicalPrivateSessionMetadata } from "./session-entry-projection.js";
+ import { preserveCreationStamp } from "./session-entry-provenance.js";
+ import { resolveSessionPublicShare } from "./session-public-share.js";
+ import { resolveDeliveryProvenCanonicalSessionKey } from "./store-entry.js";
+@@ -453,6 +454,11 @@ export function writeSessionEntry(
      canonicalPreviousEntry?: SessionEntry | null;
      consumePendingReset?: boolean;
      preserveNodeSuggestions?: boolean;
 +    preserveConversation?: boolean;
 +    restoreWindowActivity?: { updatedAt: number; transcriptObservedAt: number | null };
 +    preserveWindowActivity?: boolean;
++    /** Retain canonical private metadata during guarded same-generation repairs. */
++    preservePrivateMetadata?: boolean;
      previousEntry?: SessionEntry | null;
      routeContext?: ConversationRouteContext | null;
    } = {},
-@@ -543,6 +546,34 @@ export function writeSessionEntry(
+@@ -479,6 +485,22 @@ export function writeSessionEntry(
+       : options.allowStoredAliases && options.previousEntry !== undefined
+         ? (options.previousEntry ?? undefined)
+         : readExactSessionEntryRow(database, sessionKey)?.entry;
++  if (options.preservePrivateMetadata) {
++    if (
++      !options.preserveConversation ||
++      !canonicalPreviousEntry ||
++      canonicalPreviousEntry.sessionId !== normalizedEntry.sessionId ||
++      canonicalPreviousEntry.lifecycleRevision !== normalizedEntry.lifecycleRevision
++    ) {
++      throw new Error(
++        "Private metadata preservation requires unchanged conversation and generation",
++      );
++    }
++    normalizedEntry = preserveCanonicalPrivateSessionMetadata(
++      normalizedEntry,
++      canonicalPreviousEntry,
++    );
++  }
+   if (!options.providerReviewMutation && !options.allowStoredAliases) {
+     // Bookkeeping can carry a stale snapshot; only the review owner may clear its pause.
+     normalizedEntry = {
+@@ -543,6 +565,34 @@ export function writeSessionEntry(
      normalizedEntry.updatedAt = 0;
    }
    const updatedAt = normalizedEntry.updatedAt;
@@ -906,7 +941,7 @@ index f3664462..b430dd2d 100644
    // Public/plugin projections omit this server-owned field. Same-session replacements
    // retain publication; only an explicit field clear or a new session id revokes it.
    if (
-@@ -585,14 +616,77 @@ export function writeSessionEntry(
+@@ -585,14 +635,77 @@ export function writeSessionEntry(
      ...(options.routeContext !== undefined ? { routeContext: options.routeContext } : {}),
      sessionScope: boundSessionRoot.session_scope,
    });
@@ -988,7 +1023,7 @@ index f3664462..b430dd2d 100644
    };
    const sessionRow = resolveSessionEntryProvenanceRow({
      boundSessionRow,
-@@ -623,7 +717,7 @@ export function writeSessionEntry(
+@@ -623,7 +736,7 @@ export function writeSessionEntry(
        ? queries.retainWindow
        : queries.claimWindow;
    writeWindow(sessionRow);
@@ -1011,10 +1046,10 @@ index e2c3ed21..dc5781d0 100644
  
  function prepareSessionEntryWriteQueries(database: DatabaseSync) {
 diff --git a/src/config/sessions/session-accessor.types.ts b/src/config/sessions/session-accessor.types.ts
-index 0a4b58a5..a9b1ac16 100644
+index 0a4b58a5..13b7c363 100644
 --- a/src/config/sessions/session-accessor.types.ts
 +++ b/src/config/sessions/session-accessor.types.ts
-@@ -574,6 +574,12 @@ export type SessionEntryPatchOptions = {
+@@ -574,6 +574,14 @@ export type SessionEntryPatchOptions = {
    maintenanceConfig?: ResolvedSessionMaintenanceConfig;
    /** Keep the previous updatedAt value when the patch should not count as activity. */
    preserveActivity?: boolean;
@@ -1024,14 +1059,42 @@ index 0a4b58a5..a9b1ac16 100644
 +  restoreWindowActivity?: { updatedAt: number; transcriptObservedAt: number | null };
 +  /** Keep current window clocks inside the metadata write transaction. */
 +  preserveWindowActivity?: boolean;
++  /** Retain canonical private metadata during guarded same-generation repairs. */
++  preservePrivateMetadata?: boolean;
    /** Throw when best-effort store recovery cannot confirm the requested write. */
    requireWriteSuccess?: boolean;
    /** Replace the whole entry instead of merging the returned patch. */
+diff --git a/src/config/sessions/session-entry-projection.ts b/src/config/sessions/session-entry-projection.ts
+index a17bfbc7..5ca3db5f 100644
+--- a/src/config/sessions/session-entry-projection.ts
++++ b/src/config/sessions/session-entry-projection.ts
+@@ -37,6 +37,21 @@ const PRIVATE_SESSION_ENTRY_KEYS = [
+   "transcriptByteCompactionLatch",
+ ] as const satisfies readonly (keyof InternalSessionEntry)[];
+ 
++/** Copy only supported native private fields, never caller-provided claims or retired metadata. */
++export function preserveCanonicalPrivateSessionMetadata(
++  entry: InternalSessionEntry,
++  canonical: InternalSessionEntry,
++): InternalSessionEntry {
++  const result = { ...entry };
++  for (const key of PRIVATE_SESSION_ENTRY_KEYS) {
++    delete result[key];
++    if (Object.hasOwn(canonical, key)) {
++      Object.assign(result, { [key]: canonical[key] });
++    }
++  }
++  return result;
++}
++
+ function projectPublicModelFallback(
+   fallback: RetiredSessionMetadata["modelFallback"],
+ ): AgentPatchedSessionModelFallback | undefined {
 diff --git a/src/plugin-sdk/session-store-runtime.conversation.test.ts b/src/plugin-sdk/session-store-runtime.conversation.test.ts
-index cc910bd7..21e31457 100644
+index cc910bd7..2b805f7a 100644
 --- a/src/plugin-sdk/session-store-runtime.conversation.test.ts
 +++ b/src/plugin-sdk/session-store-runtime.conversation.test.ts
-@@ -2,11 +2,16 @@ import fs from "node:fs";
+@@ -2,11 +2,17 @@ import fs from "node:fs";
  import os from "node:os";
  import path from "node:path";
  import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -1039,6 +1102,7 @@ index cc910bd7..21e31457 100644
 +import {
 +  appendTranscriptMessage,
 +  appendTranscriptMessageSync,
++  loadSessionEntry,
 +  resetSessionEntryLifecycle,
 +} from "../config/sessions/session-accessor.js";
  import { replaceSessionEntrySync } from "../config/sessions/session-accessor.sqlite-entry.js";
@@ -1049,7 +1113,118 @@ index cc910bd7..21e31457 100644
    runOpenClawAgentWriteTransaction,
  } from "../state/openclaw-agent-db.js";
  import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
-@@ -143,6 +148,293 @@ describe("current conversation session binding", () => {
+@@ -34,6 +40,110 @@ describe("current conversation session binding", () => {
+     fs.rmSync(tempDir, { recursive: true, force: true });
+   });
+ 
++  it.each([false, true])(
++    "retains canonical private fields only for opted-in replacement (%s)",
++    async (preservePrivateMetadata) => {
++      const scope = { agentId: "main", storePath, sessionKey: "agent:main:private-repair" };
++      const privateFields = {
++        activeWriterRunId: "writer",
++        lastRunId: "last",
++        lifecycleRunId: "lifecycle",
++        pendingProjectGitUrl: "https://example.invalid/repository.git",
++        pendingWorktree: { titleSource: "approved", baseRef: "main" },
++        cliHistoryBoundary: {
++          version: 1 as const,
++          sessionId: "private-session",
++          state: "unknown" as const,
++        },
++        mainRestartRecovery: { cycleId: "cycle", revision: 1, chargedAttempts: 0 },
++        sessionDiffBaselineCapture: {
++          version: 1 as const,
++          captureId: "capture",
++          status: "pending" as const,
++        },
++        transcriptByteCompactionLatch: {
++          activeBytes: 200,
++          maxBytes: 100,
++          sessionId: "private-session",
++        },
++        profileInvolvement: {
++          key: scope.sessionKey,
++          profiles: { synthetic: { hidden: true, updatedAt: 5 } },
++        },
++        publicShare: { id: "a".repeat(48), sessionId: "private-session", createdAt: 5 },
++      };
++      replaceSessionEntrySync(scope, {
++        ...privateFields,
++        sessionId: "private-session",
++        lifecycleRevision: "generation",
++        updatedAt: 100,
++      });
++      const before = loadSessionEntry(scope)!;
++      expect(before).toMatchObject(privateFields);
++      await patchSessionEntry({
++        ...scope,
++        replaceEntry: true,
++        preserveActivity: true,
++        preserveConversation: true,
++        preservePrivateMetadata,
++        update: (entry) => ({
++          ...entry,
++          modelOverrideSource: "default",
++          lastRunId: "forged",
++          activeWriterRunId: "forged",
++        }),
++      });
++      const after = loadSessionEntry(scope)!;
++      if (preservePrivateMetadata) {
++        for (const key of Object.keys(privateFields) as (keyof typeof privateFields)[]) {
++          expect(after[key], key).toEqual(before[key]);
++        }
++      } else {
++        // Existing SDK replacement semantics remain unchanged for other callers.
++        expect(after.lastRunId).toBeUndefined();
++        expect(after.pendingWorktree).toBeUndefined();
++        expect(after.activeWriterRunId).toBe(before.activeWriterRunId);
++      }
++      expect(getSessionEntry(scope)).not.toHaveProperty("lastRunId");
++      expect(getSessionEntry(scope)).not.toHaveProperty("activeWriterRunId");
++    },
++  );
++
++  it.each(["conversation", "generation", "private-drift"])(
++    "rejects unsafe private metadata preservation: %s",
++    async (reason) => {
++      const scope = { agentId: "main", storePath, sessionKey: "agent:main:private-refusal" };
++      replaceSessionEntrySync(scope, {
++        sessionId: "private-session",
++        lifecycleRevision: "generation",
++        updatedAt: 100,
++        lastRunId: "old",
++      });
++      const before = loadSessionEntry(scope)!;
++      await expect(
++        patchSessionEntry({
++          ...scope,
++          replaceEntry: true,
++          preserveActivity: true,
++          preserveConversation: reason !== "conversation",
++          preservePrivateMetadata: true,
++          update: (entry) => {
++            if (reason === "private-drift")
++              replaceSessionEntrySync(scope, { ...before, lastRunId: "new" });
++            return {
++              ...entry,
++              ...(reason === "generation" ? { lifecycleRevision: "successor" } : {}),
++              modelOverrideSource: "default",
++            };
++          },
++        }),
++      ).rejects.toThrow();
++      expect(loadSessionEntry(scope)).toEqual(
++        reason === "private-drift" ? { ...before, lastRunId: "new" } : before,
++      );
++    },
++  );
++
+   it("does not create a database or hold a writer when the conversation store is missing", () => {
+     const scope = { agentId: "missing-owner", env: { OPENCLAW_STATE_DIR: tempDir } };
+ 
+@@ -143,6 +253,293 @@ describe("current conversation session binding", () => {
      expect(getSessionEntry(replacementScope)).not.toHaveProperty("displayName");
    });
  
@@ -1344,10 +1519,10 @@ index cc910bd7..21e31457 100644
      const sessionKey = "agent:main:reef:group:room";
      const address = {
 diff --git a/src/plugin-sdk/session-store-runtime.ts b/src/plugin-sdk/session-store-runtime.ts
-index 536405b3..6d99212a 100644
+index 536405b3..ad2996a2 100644
 --- a/src/plugin-sdk/session-store-runtime.ts
 +++ b/src/plugin-sdk/session-store-runtime.ts
-@@ -109,6 +109,12 @@ type PatchSessionEntryParams = SessionStoreReadParams & {
+@@ -109,6 +109,14 @@ type PatchSessionEntryParams = SessionStoreReadParams & {
    fallbackEntry?: SessionEntry;
    maintenanceConfig?: ResolvedSessionMaintenanceConfigInput;
    preserveActivity?: boolean;
@@ -1357,16 +1532,19 @@ index 536405b3..6d99212a 100644
 +  restoreWindowActivity?: { updatedAt: number; transcriptObservedAt: number | null };
 +  /** Keep current window clocks inside the metadata write transaction. */
 +  preserveWindowActivity?: boolean;
++  /** Retain canonical private metadata during guarded same-generation repairs. */
++  preservePrivateMetadata?: boolean;
    requireWriteSuccess?: boolean;
    replaceEntry?: boolean;
    skipMaintenance?: boolean;
-@@ -492,6 +498,9 @@ export async function patchSessionEntry(
+@@ -492,6 +500,10 @@ export async function patchSessionEntry(
            ? normalizeResolvedMaintenanceConfigInput(params.maintenanceConfig)
            : undefined,
        preserveActivity: params.preserveActivity,
 +      preserveConversation: params.preserveConversation,
 +      restoreWindowActivity: params.restoreWindowActivity,
 +      preserveWindowActivity: params.preserveWindowActivity,
++      preservePrivateMetadata: params.preservePrivateMetadata,
        requireWriteSuccess: params.requireWriteSuccess,
        replaceEntry: params.replaceEntry,
        skipMaintenance: params.skipMaintenance,
