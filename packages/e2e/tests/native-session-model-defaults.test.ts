@@ -41,7 +41,7 @@ describe('stopped session default selection migration',()=>{
       modelOverrideSource:'default'});
     expect(after).not.toHaveProperty('modelOverride');expect(after).not.toHaveProperty('modelOverrideFallbackOriginModel');
     expect(f.options.sdk.applyModelOverrideToSessionEntry).toHaveBeenCalledWith(expect.objectContaining({explicitDefaultSelection:true,preserveAuthProfileOverride:true,selection:{provider:'synthetic',model:'new',isDefault:true}}));
-    expect(f.options.sdk.patchSessionEntry).toHaveBeenCalledWith(expect.objectContaining({preserveActivity:true,preserveConversation:true,preserveWindowActivity:true,skipMaintenance:true,requireWriteSuccess:true}));
+    expect(f.options.sdk.patchSessionEntry).toHaveBeenCalledWith(expect.objectContaining({preserveActivity:true,preserveConversation:true,preservePrivateMetadata:true,preserveWindowActivity:true,skipMaintenance:true,requireWriteSuccess:true}));
     expect(await f.run()).toEqual({changed:0,recovered:0});
   });
   it('leaves user pins, other origins, and unrelated models unchanged',async()=>{
@@ -112,7 +112,7 @@ describe('sealed session model recovery',()=>{
     const expected={...before,updatedAt:12,modelOverrideSource:'default'};delete expected.model;delete expected.modelProvider;
     expect(f.rows['agent:collector:repaired']).toEqual(expected);
     expect(f.rows['agent:collector:user']).toEqual({...original(),modelOverrideSource:'user'});
-    expect(f.options.sdk.patchSessionEntry).toHaveBeenCalledWith(expect.objectContaining({sessionKey:'agent:collector:repaired',replaceEntry:true,preserveActivity:true,preserveConversation:true,restoreWindowActivity:{updatedAt:18,transcriptObservedAt:9}}));
+    expect(f.options.sdk.patchSessionEntry).toHaveBeenCalledWith(expect.objectContaining({sessionKey:'agent:collector:repaired',replaceEntry:true,preserveActivity:true,preserveConversation:true,preservePrivateMetadata:true,restoreWindowActivity:{updatedAt:18,transcriptObservedAt:9}}));
     await expect(f.run()).rejects.toThrow(/recovery predecessor differs/);
   });
   it('hashes the persisted JSON projection independent of insertion order',()=>{

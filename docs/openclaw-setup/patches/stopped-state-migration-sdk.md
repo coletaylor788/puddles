@@ -82,6 +82,17 @@ exclusive. Neither changes `transcript_updated_at` or transcript history. Real
 SQLite tests exercise separate entry/window clocks, unobserved transcript writes,
 restoration, preservation during callback activity, and rejected unsafe options.
 
+Both migration paths also request `preservePrivateMetadata`. The same native
+transaction copies the supported private fields from its current canonical row,
+including writer and last-run identity and pending worktree intent. It never
+accepts private claims from the caller. The existing generation, window and
+conversation guards remain mandatory. The private projection's native key list
+is the single authority; retired thinking and compaction metadata stay retired.
+Other SDK callers keep their existing replacement behavior. Real SQLite tests
+cover the supported private fields, attempted forgery, private-row drift and
+rejected generation changes. Recovery's activity witness still binds the full
+raw node before all writes and at commit admission.
+
 The patch targets stable source
 `eb377ac59e6c9fd6c7705028034812becf00271b`. Its registered SDK tests use real
 SQLite, including the maintained compressed 2026.7.1-2 fixture. They cover
