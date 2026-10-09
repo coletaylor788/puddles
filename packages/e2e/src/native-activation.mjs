@@ -303,7 +303,7 @@ shutil.copymode(source, destination)
         phase, runtime, realpathSync(target.stateDir), manifestPath, sha256,
         ...(expectedBuiltIn ? [JSON.stringify(expectedBuiltIn)] : []),
       ], {
-        ...(phase === "preflight" || phase === "builtin-config" ? { capture: true } : {}),
+        ...(["preflight", "builtin-config", "sessions"].includes(phase) ? { capture: true } : {}),
         env: {
           ...env, OPENCLAW_STATE_DIR: realpathSync(target.stateDir),
           OPENCLAW_CONFIG_PATH: join(realpathSync(target.stateDir), "openclaw.json"),
@@ -850,6 +850,10 @@ export async function activateNative(receipt, target, operationsFactory = system
       journal.stateMigration.phase = "cron";
       save("migrating-cron");
       await operations.stateMigration("cron", target.installDir, join(recoveryDir, "state-migration.json"), journal.stateMigration.sha256);
+      checkpoint();
+      journal.stateMigration.phase = "sessions";
+      save("migrating-sessions");
+      journal.stateMigration.sessionsResult = await operations.stateMigration("sessions", target.installDir, join(recoveryDir, "state-migration.json"), journal.stateMigration.sha256);
       journal.stateMigration.phase = "complete";
       save("migrated");
     }

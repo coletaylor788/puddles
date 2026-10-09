@@ -582,3 +582,23 @@ it("rejects an external selection after Doctor even when no retirement was captu
   await expect(f.run("plugins")).rejects.toThrow("Required bundled plugin is not selected");
   expect(f.sdk.saveCronJobsStoreChanges).not.toHaveBeenCalled();
 });
+
+it.each(['valid', 'external', 'symlink', 'config-drift'])('runs session metadata repair only within snapshotted stopped state (%s)', async mode => {
+  const f=fixture();
+  Object.assign(f.snapshot.sourceConfig,{agents:{entries:{collector:{model:{primary:'synthetic/new'}}}}});
+  f.snapshot.raw=JSON.stringify(f.snapshot.sourceConfig);writeFileSync(f.configPath,f.snapshot.raw);
+  Object.assign(f.manifest,{sessionModelDefaults:[{agentId:'collector',expected:{provider:'synthetic',model:'old'},desired:{provider:'synthetic',model:'new'}}]});
+  const directory=join(f.stateDir,'agents/collector/agent');mkdirSync(directory,{recursive:true});
+  const database=join(directory,'openclaw-agent.sqlite');writeFileSync(database,'synthetic');
+  if(mode==='symlink') {rmSync(database);symlinkSync(f.database,database);}
+  const paths=mode==='external'?[join(f.root,'outside.sqlite')]:[database,`${database}-wal`,`${database}-shm`];
+  const patch=vi.fn();
+  Object.assign(f.sdk,{
+    resolveStorePath:()=>database,resolveSessionStoreBackupPaths:()=>paths,
+    listSessionEntries:()=>{if(mode==='config-drift')writeFileSync(f.configPath,'{}');return [];},
+    patchSessionEntry:patch,
+  });
+  if(mode==='valid') await expect(f.run('sessions')).resolves.toEqual({sessionModelDefaults:{changed:0}});
+  else await expect(f.run('sessions')).rejects.toThrow(mode==='config-drift'?'config changed':mode==='external'?'escapes snapshotted':'links or special');
+  expect(patch).not.toHaveBeenCalled();
+});

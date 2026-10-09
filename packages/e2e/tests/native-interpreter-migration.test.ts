@@ -165,6 +165,15 @@ function fixture(wrapper = true, migration = true, binary = false, oldAlias = fa
           expect(journal.snapshotReady).toBe(true);
           expect(readFileSync(join(recovery, "state/config"), "utf8")).toBe("old state");
           writeFileSync(join(target.stateDir, "config"), `${phase} migrated state`);
+          if (phase === "sessions") {
+            expect(events.indexOf("doctor")).toBeLessThan(events.indexOf("migration:sessions"));
+            expect(events.indexOf("migration:cron")).toBeLessThan(events.indexOf("migration:sessions"));
+            const sessionPath = join(target.stateDir, "reader-session-metadata");
+            if (existsSync(sessionPath)) {
+              writeFileSync(sessionPath, '{"sessionId":"retained-reader","modelOverrideSource":"default"}');
+              check("migration:sessions:written");
+            }
+          }
           if (phase === "builtin-config") {
             expect(expectedBuiltIn).toBeDefined();
             return {
@@ -245,7 +254,7 @@ describe("stopped-state migration inside interpreter rollback", () => {
     expect(f.events).not.toContain("migration:cron");
   });
 
-  it("checks the manifest before stop, then mutates config before doctor and cron before start", async () => {
+  it("checks before stop and migrates session selections after doctor and cron, before start", async () => {
     const f = fixture();
     const migration = stateMigration(f);
     const result = await f.activate();
@@ -260,6 +269,8 @@ describe("stopped-state migration inside interpreter rollback", () => {
     expect(f.events.indexOf("migration:plugins")).toBeLessThan(f.events.indexOf("start"));
     expect(f.events.indexOf("migration:cron")).toBeGreaterThan(f.events.indexOf("doctor"));
     expect(f.events.indexOf("migration:cron")).toBeLessThan(f.events.indexOf("start"));
+    expect(f.events.indexOf("migration:sessions")).toBeGreaterThan(f.events.indexOf("migration:cron"));
+    expect(f.events.indexOf("migration:sessions")).toBeLessThan(f.events.indexOf("start"));
     expect(fileDigest(join(result.recoveryDir, "state-migration.json"))).toBe(migration.sha256);
     expect(JSON.parse(readFileSync(join(result.recoveryDir, "recovery.json"), "utf8")).stateMigration).toMatchObject({
       sha256: migration.sha256, phase: "complete",
@@ -271,7 +282,7 @@ describe("stopped-state migration inside interpreter rollback", () => {
     });
   });
 
-  it.each(["migration:schema", "migration:builtin-config", "migration:config", "doctor", "migration:plugins", "migration:cron"])("restores stopped snapshots and the old interpreter after %s fails", async (failure) => {
+  it.each(["migration:schema", "migration:builtin-config", "migration:config", "doctor", "migration:plugins", "migration:cron", "migration:sessions"])("restores stopped snapshots and the old interpreter after %s fails", async (failure) => {
     const f = fixture();
     stateMigration(f);
     f.failures.push(failure);
@@ -283,6 +294,26 @@ describe("stopped-state migration inside interpreter rollback", () => {
     if (failure === "doctor") {
       expect(JSON.parse(readFileSync(join(f.recovery(), "recovery.json"), "utf8")).stateMigration.phase).toBe("doctor");
     }
+  });
+
+  it("restores original session metadata and history after a partial session migration", async () => {
+    const f = fixture();
+    stateMigration(f);
+    const sessionPath = join(f.target.stateDir, "reader-session-metadata");
+    const transcriptPath = join(f.target.stateDir, "reader-transcript");
+    const before = '{"sessionId":"retained-reader","modelOverrideSource":"auto","modelOverride":"previous"}';
+    const history = 'retained synthetic conversation history\n';
+    writeFileSync(sessionPath, before);
+    writeFileSync(transcriptPath, history);
+    f.failures.push("migration:sessions:written");
+    await expect(f.activate()).rejects.toThrow("Activation failed");
+    expect(f.events).toContain("migration:sessions:written");
+    expect(readFileSync(sessionPath, "utf8")).toBe(before);
+    expect(readFileSync(transcriptPath, "utf8")).toBe(history);
+    expect(readFileSync(join(f.target.stateDir, "config"), "utf8")).toBe("old state");
+    expect(readFileSync(join(f.target.installDir, "openclaw.mjs"), "utf8")).toBe("old runtime");
+    expect(JSON.parse(readFileSync(join(f.recovery(), "recovery.json"), "utf8")))
+      .toMatchObject({ status: "rolled-back", stateMigration: { phase: "sessions" } });
   });
 
   it("retains recovery after a partial config migration and interrupted rollback", async () => {

@@ -7,6 +7,7 @@ import { assertConfigurationDigest, authoredConfiguration } from "./environment-
 import { assertWorkshopConfiguration, inspectWorkshopMigration, validateWorkshopBinding } from "./native-workshop-migration.mjs";
 
 import { assertBundledPluginSelections, retirePluginSelections, validatePluginRetirements, validateRequiredBundledPlugins } from "./native-plugin-selection.mjs";
+import { executeSessionModelDefaults, validateSessionModelDefaults } from "./native-session-model-defaults.mjs";
 
 const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const prefix = (parent, child) => parent.length <= child.length && parent.every((part, index) => part === child[index]);
@@ -35,9 +36,9 @@ function migrationProjection(before, after, path = []) {
 }
 
 export function validateMigrationManifest(manifest) {
-  keys(manifest, ["schemaVersion", "configOperations", "cronOperation", "configuration", "workshopMigration", "pluginRetirements", "requiredBundledPlugins"], ["schemaVersion", "configOperations"]);
+  keys(manifest, ["schemaVersion", "configOperations", "cronOperation", "configuration", "workshopMigration", "pluginRetirements", "requiredBundledPlugins", "sessionModelDefaults"], ["schemaVersion", "configOperations"]);
   if (manifest.schemaVersion !== 1 || !Array.isArray(manifest.configOperations) ||
-      manifest.configOperations.length > 64 || (!manifest.configOperations.length && !manifest.cronOperation && !manifest.pluginRetirements?.length && !manifest.requiredBundledPlugins?.length)) {
+      manifest.configOperations.length > 64 || (!manifest.configOperations.length && !manifest.cronOperation && !manifest.pluginRetirements?.length && !manifest.requiredBundledPlugins?.length && !manifest.sessionModelDefaults?.length)) {
     throw new Error("Invalid migration version or operation count");
   }
   const paths = [];
@@ -80,6 +81,7 @@ export function validateMigrationManifest(manifest) {
   }
   if (manifest.pluginRetirements !== undefined) validatePluginRetirements(manifest.pluginRetirements);
   if (manifest.requiredBundledPlugins !== undefined) validateRequiredBundledPlugins(manifest.requiredBundledPlugins);
+  if (manifest.sessionModelDefaults !== undefined) validateSessionModelDefaults(manifest.sessionModelDefaults);
   return manifest;
 }
 
@@ -193,6 +195,7 @@ async function loadSdk(runtime, phase, workshop) {
   const names = ["config-mutation", "cron-store-runtime", "state-paths"];
   if (workshop) names.push("health");
   if (["schema", "builtin-config"].includes(phase)) names.push("doctor-repair-runtime");
+  if (phase === "sessions") names.push("session-store-runtime", "session-store-paths", "model-session-runtime");
   for (const name of names) {
     const path = require.resolve(`openclaw/plugin-sdk/${name}`);
     if (!inside(realpathSync(runtime), realpathSync(path))) throw new Error("Migration SDK resolved outside candidate runtime");
@@ -205,7 +208,7 @@ export async function executeStateMigration(
   { phase, runtime, stateDir, manifestPath, sha256, expectedBuiltIn },
   sdkLoader = loadSdk,
 ) {
-  if (!["preflight", "schema", "builtin-config", "config", "plugins", "cron"].includes(phase) || !isAbsolute(runtime) ||
+  if (!["preflight", "schema", "builtin-config", "config", "plugins", "cron", "sessions"].includes(phase) || !isAbsolute(runtime) ||
       !isAbsolute(stateDir) || realpathSync(stateDir) !== stateDir ||
       process.env.OPENCLAW_STATE_DIR !== stateDir || process.env.OPENCLAW_CONFIG_PATH !== join(stateDir, "openclaw.json")) {
     throw new Error("Migration requires an explicit canonical stopped-state target");
@@ -431,6 +434,19 @@ export async function executeStateMigration(
     const next = { ...loaded.store, jobs: loaded.store.jobs.map((job) => job.id === replacement.id ? replacement : job) };
     await sdk.saveCronJobsStoreChanges(storePath, loaded.store, next);
     assertSelection();
+  }
+  if (phase === "sessions" && manifest.sessionModelDefaults) {
+    if (manifest.configuration) assertConfigurationDigest(authoredConfiguration(snapshot), manifest.configuration.candidateSha256, "migrated candidate");
+    const result = await executeSessionModelDefaults({ operations: manifest.sessionModelDefaults,
+      config: snapshot.sourceConfig, stateDir, sdk,
+      assertCurrent: () => {
+        assertSelection();
+        if (fileDigest(manifestPath) !== sha256) throw new Error("Migration manifest changed during execution");
+        if (fileDigest(snapshot.path) !== digest(snapshot.raw)) throw new Error("Migration config changed during session repair");
+      },
+      assertStatePath: path => statePath(stateDir, path),
+    });
+    return { sessionModelDefaults: result };
   }
   if (fileDigest(manifestPath) !== sha256) throw new Error("Migration manifest changed during execution");
 }
