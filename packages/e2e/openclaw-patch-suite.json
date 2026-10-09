@@ -135,6 +135,9 @@
     "src/agents/agent-tools.before-tool-call.embedded-mode.test.ts": "agents-core",
     "src/plugin-sdk/session-transcript-runtime.test.ts": "plugin-sdk",
     "extensions/copilot/src/attempt-session.integration.test.ts": "extensions",
+    "extensions/memory-wiki/src/tool.test.ts": "extension-memory",
+    "extensions/memory-wiki/src/query.test.ts": "extension-memory",
+    "extensions/memory-wiki/src/query.reads.test.ts": "extension-memory",
     "src/agents/internal-events.test.ts": "unit-fast",
     "src/agents/openclaw-tools.sessions-send-child-coordination.test.ts": "infra",
     "src/agents/subagents/announce/subagent-announce-output.test.ts": "agents-support",
@@ -451,6 +454,14 @@
       ],
       "candidateTests": [
         "tests/candidate.main-conversation.test.ts"
+      ]
+    },
+    {
+      "name": "wiki-get-mutation-metadata",
+      "tests": [
+        "extensions/memory-wiki/src/tool.test.ts",
+        "extensions/memory-wiki/src/query.test.ts",
+        "extensions/memory-wiki/src/query.reads.test.ts"
       ]
     },
     {
