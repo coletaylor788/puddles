@@ -1,6 +1,7 @@
 # Configurable untrusted agent results
 
-**Status:** Approved, implementation in progress  
+**Status:** Implementation complete, release pending
+
 **Issue:** [#241](https://github.com/coletaylor788/puddles/issues/241)
 **Last updated:** 2026-10-08
 
@@ -88,7 +89,7 @@ This public plan covers the provider-neutral source patch and receiving guidance
 
 The pinned runtime retires `TOOLS.md` into the `AGENTS.md` Tools section. Installed Copilot canaries confirm that section loads in ordinary, restarted/resumed, isolated cron, and main-owned subagent sessions. This native compatibility adjustment preserves the approved receiving rule and worker restrictions.
 
-The formatting patch and retained source review are complete. Installed checks pass for recalled content, direct replies, delayed replies, and spawned completion. Active gather exposed an existing cleanup race with wrapping disabled as well. A narrow repair retains strict completion checks and never replays a committed or uncertain write. Its installed qualification and the final release gates remain pending. Production remains unchanged.
+The formatting patch and retained source review are complete. Installed checks pass for recalled content, direct replies, delayed replies, and spawned completion. Active gather exposed an existing cleanup race with wrapping disabled as well. A narrow repair retains strict completion checks and never replays a committed or uncertain write. Rebuilt local installed checks now pass with wrapping disabled and enabled. The final cumulative and environment promotion gates remain pending. Reader has made no production changes.
 
 ## Agent section
 
@@ -250,7 +251,7 @@ An empty list disables additional wrapping on the patched runtime. Remove the ne
 
 ### Review log
 
-The retained reviewer checked the complete formatting implementation and its remediations. The gather repair adds refusal and concurrency regressions while preserving durable ownership. Its 24 focused tests and 40 adjacent SQLite/worker tests pass. Installed gather, cumulative validation, and production proof remain pending.
+The retained reviewer checked the complete formatting implementation and its remediations. The gather repair adds refusal and concurrency regressions while preserving durable ownership. Its 24 focused tests and 40 adjacent SQLite/worker tests pass. Rebuilt local installed checks pass for direct, delayed, spawned, and active gathered results with policy disabled and enabled. Both runs made 11 receiving-model requests and preserved five raw child reports. The complete prepared guidance also passes after real compaction. Cumulative validation and immutable DEV, TEST, and PROD proof remain pending.
 
 ### Checklist
 
