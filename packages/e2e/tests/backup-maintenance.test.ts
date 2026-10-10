@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 // @ts-expect-error Executable host-maintenance entrypoint.
 import { maintain, maintenanceInputs } from "../bin/openclaw-backup-maintenance.mjs";
+// @ts-expect-error Executable digest helpers.
+import { fileDigest, jsonDigest } from "../src/native-state.mjs";
 
 function fixture() {
   const dir = mkdtempSync(join(tmpdir(), "backup-maintenance-"));
@@ -128,5 +130,81 @@ it('refreshes a newly published healthy release and retains ownership after a fa
     await expect(maintain(f.config, f.deps)).rejects.toThrow('capture failed');
     expect(f.calls.some(call => call.operation === 'release')).toBe(false);
     expect(JSON.parse(readFileSync(join(f.root, 'retention-health.json'), 'utf8')).readOnlyFailure).toBe(false);
+  } finally { f.close(); }
+});
+
+
+function legacyPublisherFixture() {
+  const f = fixture();
+  const plistPath = join(f.dir, 'service.plist');
+  writeFileSync(plistPath, 'original deployed service');
+  const target = { backupRoot: f.root, purpose: 'production', plistPath,
+    nodeMigration: { desired: { path: '/obsolete-candidate-node' } },
+    legacyActivationReceipt: { path: '/obsolete-receipt' } };
+  const latest = { transaction: 'activation-40-1', target: jsonDigest(target) };
+  f.write(join(f.root, 'backup-retention-context.json'), { schemaVersion: 1, transaction: 'backup-30-1',
+    target: { backupRoot: f.root, purpose: 'production' }, activation: { transaction: 'activation-10-1' } });
+  f.write(join(f.root, 'latest-activation.json'), latest);
+  f.write(join(f.root, 'retention-context.json'), { schemaVersion: 1, transaction: latest.transaction, target });
+  mkdirSync(join(f.root, latest.transaction));
+  const journalPath = join(f.root, latest.transaction, 'recovery.json');
+  const journal = { schemaVersion: 1, ...latest, status: 'healthy', quiesced: false, deployedServiceSha256: fileDigest(plistPath) };
+  f.write(journalPath, journal);
+  f.write(f.config.policy, { mode: 'single-verified-backup' });
+  return { ...f, target, latest, journalPath, journal };
+}
+
+it('refreshes a matching older publisher using the actual service interpreter under ownership', async () => {
+  const f = legacyPublisherFixture();
+  try {
+    const node = { path: '/actual-deployed-node', sha256: 'a'.repeat(64) };
+    const deps = { ...f.deps, inspectServiceNode: async () => {
+      expect(f.calls.map(call => call.operation)).toEqual(['enqueue', 'claim']);
+      return node;
+    }, execute: async (...args: any[]) => {
+      const selected = JSON.parse(readFileSync(join(f.work, 'target.json'), 'utf8'));
+      expect(args[1]).toContain('refresh');
+      expect(selected.backupNode).toEqual(node);
+      expect(selected.nodeMigration).toBeUndefined();
+      expect(selected.legacyActivationReceipt).toBeUndefined();
+      expect(selected.backupExclusions).toEqual([{ path: 'deploy-snapshots', reason: 'legacy-backup-storage' }]);
+    } };
+    expect((await maintain(f.config, deps)).status).toBe('passed');
+    expect(f.calls.map(call => call.operation)).toEqual(['enqueue', 'claim', 'release']);
+  } finally { f.close(); }
+});
+
+it.each(['target', 'service', 'journal', 'transaction'])('holds older publisher with mismatched %s', async fault => {
+  const f = legacyPublisherFixture();
+  try {
+    if (fault === 'target') f.write(join(f.root, 'retention-context.json'), { schemaVersion: 1, transaction: f.latest.transaction, target: { ...f.target, port: 1 } });
+    if (fault === 'service') writeFileSync(f.target.plistPath, 'changed');
+    if (fault === 'journal') f.write(f.journalPath, { ...f.journal, status: 'recovery-required' });
+    if (fault === 'transaction') f.write(join(f.root, 'latest-activation.json'), { ...f.latest, transaction: '../unexpected' });
+    await expect(maintain(f.config, f.deps)).rejects.toThrow();
+    expect(f.calls).toEqual([]);
+  } finally { f.close(); }
+});
+
+it('releases a claimed owner when legacy service inspection fails before starting capture', async () => {
+  const f = legacyPublisherFixture();
+  try {
+    const deps = { ...f.deps, inspectServiceNode: async () => { throw new Error('unsupported interpreter'); } };
+    await expect(maintain(f.config, deps)).rejects.toThrow('unsupported interpreter');
+    expect(f.calls.at(-1)).toMatchObject({ operation: 'release', input: { result: 'failed-before-start' } });
+  } finally { f.close(); }
+});
+
+it('rechecks producer identity after winning a maintenance claim', async () => {
+  const f = legacyPublisherFixture();
+  try {
+    const coordinate = f.deps.coordinate;
+    f.deps.coordinate = async (path, operation, input) => {
+      const result = await coordinate(path, operation, input);
+      if (operation === 'claim') f.write(join(f.root, 'latest-activation.json'), { transaction: 'activation-99-1' });
+      return result;
+    };
+    await expect(maintain(f.config, f.deps)).rejects.toThrow();
+    expect(f.calls.at(-1)).toMatchObject({ operation: 'release', input: { result: 'failed-before-start' } });
   } finally { f.close(); }
 });

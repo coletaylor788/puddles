@@ -1,6 +1,6 @@
 # Retain one verified recovery backup
 
-Status: Source validated; repository checks pending.
+Status: Initial source landed; older-producer compatibility in validation.
 Issue: [#262](https://github.com/coletaylor788/puddles/issues/262)
 Last updated: 2026-10-09
 
@@ -52,7 +52,9 @@ Use the existing activation publisher and maintenance scheduler. A healthy
 activation publishes the exact post-release backup target. Maintenance captures
 and validates a replacement when the published deployment changes, then runs
 bounded retirement. Reserve both copies alongside other host reservations before
-capture. Capture uses the existing bounded stop/restart workflow; retirement does
+capture. Older publishers can supply their matching original target and healthy
+journal instead; maintenance verifies unchanged service bytes and derives the
+actual interpreter after claiming ownership. Capture uses the existing bounded stop/restart workflow; retirement does
 not stop the service. Partial work retains the existing owner and recovery journals.
 
 ### Status

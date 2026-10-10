@@ -806,8 +806,9 @@ floor, captures current production with the existing bounded stop/restart path,
 validates an isolated copy, publishes the current reference, then runs one bounded
 retirement batch. Capture or validation failure retains prior authority and its
 recovery evidence. If retirement fails after publication, the verified new
-authority stays current and the pending plan and owner remain held. Publication rejects a deployment that changed since capture. Original
-snapshots are checked again after validation, before any reference advances.
+authority stays current and the pending plan and owner remain held. Publication
+rejects a deployment that changed since capture. Original snapshots are checked
+again after validation, before any reference advances.
 
 Superseded healthy, rolled-back, failed-before-shutdown and recovery-required
 activation payloads, and closed backup captures, become candidates after the
@@ -834,6 +835,13 @@ single-backup policy, the existing scheduler consumes that target and current
 backup authority even after old activation payloads retire. The activation
 publisher supplies an exact post-release backup target. When its deployment
 changes, maintenance automatically refreshes before retiring anything else.
-Failed refreshes always retain their owner, even if they failed before context
-publication. No new service is needed. Enable the schedule only after its exact
+Once capture starts, failed refreshes retain their owner, even if they failed
+before context publication. No new service is needed. Enable the schedule only after its exact
 target, policy, capacity and initial replacement are verified.
+
+For a release producer that predates `backupTarget`, maintenance accepts only the
+matching original target and healthy activation journal, with the deployed
+service bytes unchanged. After taking ownership it rechecks that context and
+inspects the actual service Node, then uses the same capture and verification
+path. Unknown layouts or mismatched identities hold refresh before capture.
+Existing pinned release candidates do not need their descriptors rewritten.
