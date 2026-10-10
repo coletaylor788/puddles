@@ -2,6 +2,7 @@ import { afterEach, expect, it } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
+// @ts-expect-error JS lifecycle exports are tested at runtime.
 import { createRehearsalTarget } from "../src/native-target.mjs";
 
 const roots: string[] = [];
