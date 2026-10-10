@@ -53,6 +53,30 @@ describe('stopped session default selection migration',()=>{
     };
     const f=fixture(entries);expect(await f.run()).toEqual({changed:0,recovered:0});expect(f.rows).toEqual(entries);expect(f.options.sdk.patchSessionEntry).not.toHaveBeenCalled();
   });
+  it('moves multiple reviewed automatic defaults while preserving user pins and cross-origin fallbacks',async()=>{
+    const intermediate={...original(),modelOverride:'intermediate',modelOverrideFallbackOriginModel:'intermediate',model:'intermediate'};
+    const entries={'agent:collector:old':original(),'agent:collector:intermediate':intermediate,
+      'agent:collector:user':{...intermediate,modelOverrideSource:'user'},
+      'agent:collector:fallback':{...intermediate,modelOverrideFallbackOriginModel:'old'}};
+    const f=fixture(entries);
+    f.options.operations=[{...operation,additionalExpected:[{provider:'synthetic',model:'intermediate'}]} as any];
+    expect(await f.run()).toEqual({changed:2,recovered:0});
+    for(const key of ['old','intermediate']) expect(f.rows[`agent:collector:${key}`]).toMatchObject({modelOverrideSource:'default',updatedAt:12,unknown:{preserve:true}});
+    for(const key of ['user','fallback']) expect(f.rows[`agent:collector:${key}`]).toEqual(entries[`agent:collector:${key}` as keyof typeof entries]);
+    expect(await f.run()).toEqual({changed:0,recovered:0});
+    const blocked=fixture({'agent:collector:old':original(),'agent:collector:intermediate':{...intermediate,status:'running'}});
+    blocked.options.operations=f.options.operations;
+    await expect(blocked.run()).rejects.toThrow(/locked or not idle/);
+    expect(blocked.options.sdk.patchSessionEntry).not.toHaveBeenCalled();
+  });
+  it('rejects unbounded, duplicate, unchanged, or cross-provider additional selections',()=>{
+    const next={provider:'synthetic',model:'intermediate'};
+    expect(validateSessionModelDefaults([{...operation,additionalExpected:[next]}])).toBeTruthy();
+    for(const additionalExpected of [undefined,[],{},Array(8).fill(next),[next,next],[operation.expected],[operation.desired],
+      [{...next,provider:'other'}],[{...next,extra:true}],[{...next,model:'bad\nmodel'}]]) {
+      expect(()=>validateSessionModelDefaults([{...operation,additionalExpected}])).toThrow();
+    }
+  });
   it.each([{modelSelectionLocked:true},{status:'running'},{status:undefined},{liveModelSwitchPending:true},{pendingTranscriptRepair:[{}]},{cronRunContinuation:{phase:'ready'}}])('rejects every selected non-idle or locked row before any mutation: %j',async state=>{
     const f=fixture({'agent:collector:first':original(),'agent:collector:blocked':{...original(),...state}});
     await expect(f.run()).rejects.toThrow(/locked or not idle/);expect(f.options.sdk.patchSessionEntry).not.toHaveBeenCalled();

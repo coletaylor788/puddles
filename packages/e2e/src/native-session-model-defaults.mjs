@@ -42,7 +42,8 @@ export function validateSessionModelDefaults(operations) {
   if (!Array.isArray(operations) || !operations.length || operations.length > 16) throw new Error("Invalid session model default operation count");
   const agents = new Set();
   for (const operation of operations) {
-    exact(operation, ["agentId", "expected", "desired", ...(Object.hasOwn(operation, "recoveries") ? ["recoveries"] : [])]);
+    exact(operation, ["agentId", "expected", "desired", ...(Object.hasOwn(operation, "recoveries") ? ["recoveries"] : []),
+      ...(Object.hasOwn(operation, "additionalExpected") ? ["additionalExpected"] : [])]);
     if (typeof operation.agentId !== "string" || !/^[a-z][a-z0-9_-]{0,63}$/.test(operation.agentId) || agents.has(operation.agentId)) throw new Error("Invalid or duplicate session model agent");
     agents.add(operation.agentId);
     if (Object.hasOwn(operation, "recoveries")) {
@@ -65,14 +66,24 @@ export function validateSessionModelDefaults(operations) {
         keys.add(recovery.sessionKey);
       }
     }
-    for (const selection of [operation.expected, operation.desired]) {
+    if (Object.hasOwn(operation, "additionalExpected") &&
+        (!Array.isArray(operation.additionalExpected) || !operation.additionalExpected.length || operation.additionalExpected.length > 7)) {
+      throw new Error("Invalid additional session model selection count");
+    }
+    const expected = [operation.expected, ...(operation.additionalExpected ?? [])];
+    for (const selection of [...expected, operation.desired]) {
       exact(selection, ["provider", "model"]);
       if (typeof selection.provider !== "string" || typeof selection.model !== "string" ||
           !/^[a-z0-9][a-z0-9-]{0,63}$/.test(selection.provider) ||
           !/^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,199}$/.test(selection.model)) throw new Error("Invalid session model selection");
     }
-    if (isDeepStrictEqual(operation.expected, operation.desired)) throw new Error("Session model default must change");
-    if (operation.expected.provider !== operation.desired.provider) throw new Error("Session model defaults must retain the provider");
+    const identities = new Set();
+    for (const selection of expected) {
+      if (isDeepStrictEqual(selection, operation.desired)) throw new Error("Session model default must change");
+      if (selection.provider !== operation.desired.provider) throw new Error("Session model defaults must retain the provider");
+      if (identities.has(selection.model)) throw new Error("Duplicate expected session model selection");
+      identities.add(selection.model);
+    }
   }
   return operations;
 }
@@ -111,7 +122,7 @@ export async function executeSessionModelDefaults({ operations, config, stateDir
     const found = new Set();
     for (const { sessionKey, entry } of sdk.listSessionEntries({ ...scope, readOnly: true })) {
       const recovery = recoveries.get(sessionKey);
-      if (!recovery && !selected(entry, operation.expected)) continue;
+      if (!recovery && ![operation.expected, ...(operation.additionalExpected ?? [])].some(expected => selected(entry, expected))) continue;
       if (recovery) {
         if (found.has(sessionKey)) throw new Error("Duplicate session model recovery row");
         found.add(sessionKey);
