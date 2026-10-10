@@ -1,7 +1,7 @@
 # Default to live conversation
 
-Status: Implemented, reviewed, and DEV-validated; publication approval pending
-Issue: Not created
+Status: Implemented, reviewed, and DEV-validated; approved for landing and rollout
+Issue: [#256](https://github.com/coletaylor788/puddles/issues/256)
 Last updated: 2026-10-09
 
 ## Human section
@@ -36,13 +36,15 @@ and include any necessary adjustment in the existing configuration lifecycle.
 ### Status
 
 **Approval:** Production approved. **Approval reference:** The requester replied
-"Approved to implement" to this exact proposal on 2026-10-09. Scope includes
-implementation, validation, landing, rollout, rollback, and task cleanup.
+"Approved to implement" to this exact proposal on 2026-10-09 and then
+"Approved and ship it" after the publication approval request. Scope includes
+publication, validation, landing, rollout, rollback, and task cleanup.
 
 The implementation passes 116 focused runtime tests, ten patch-manifest checks,
-both TypeScript checks, independent review, and installed DEV validation. Publication
-awaits explicit permission after automatic approval review rejected creating the
-tracking issue. Production remains unchanged.
+both TypeScript checks, independent review, and installed DEV validation.
+Publication and shipping are explicitly approved. Required repository checks,
+source merge, and the cumulative release pipeline are next. Production remains
+unchanged.
 
 ## Agent section
 
@@ -125,5 +127,6 @@ distinct from prompt assertions and needs a real voice acceptance check.
 - [x] Align active prompts and configuration; add and run focused regressions.
 - [x] Complete independent source review.
 - [x] Validate the installed DEV runtime and release its slot.
-- [ ] Obtain explicit publication permission and land the reviewed change.
+- [x] Obtain explicit publication permission.
+- [ ] Land the reviewed change after required repository checks.
 - [ ] Complete cumulative release and real voice acceptance.
