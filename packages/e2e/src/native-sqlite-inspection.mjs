@@ -17,7 +17,9 @@ function databaseFiles(databasePath, label) {
   });
 }
 
-export function inspectDatabaseCopy(databasePath, inspect, label = "State") {
+class CopyChanged extends Error {}
+
+function stableDatabaseCopy(databasePath, label) {
   // SQLite readOnly still creates or changes WAL/SHM beside its input. Copy
   // stable database bytes and committed WAL frames before opening SQLite.
   const before = databaseFiles(databasePath, label);
@@ -30,11 +32,28 @@ export function inspectDatabaseCopy(databasePath, inspect, label = "State") {
       if (entry.identity === null || entry.suffix === "-shm") continue;
       copyFileSync(`${databasePath}${entry.suffix}`, `${copy}${entry.suffix}`);
       chmodSync(`${copy}${entry.suffix}`, 0o600);
-      if (fileDigest(`${copy}${entry.suffix}`) !== entry.sha256) throw new Error(`${label} database changed while copying; retry inspection`);
+      if (fileDigest(`${copy}${entry.suffix}`) !== entry.sha256) throw new CopyChanged(`${label} database changed while copying; retry inspection`);
     }
-    if (jsonDigest(databaseFiles(databasePath, label)) !== jsonDigest(before)) throw new Error(`${label} database changed while copying; retry inspection`);
+    if (jsonDigest(databaseFiles(databasePath, label)) !== jsonDigest(before)) throw new CopyChanged(`${label} database changed while copying; retry inspection`);
+    return { root, copy };
+  } catch (error) {
+    rmSync(root, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+export function inspectDatabaseCopy(databasePath, inspect, label = "State") {
+  let acquired;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try { acquired = stableDatabaseCopy(databasePath, label); break; }
+    catch (error) {
+      if (!(error instanceof CopyChanged) || attempt === 2) throw error;
+    }
+  }
+  // Only acquisition can retry. Never replay SQLite inspection or its callback.
+  const { root, copy } = acquired;
+  try {
     const db = new DatabaseSync(copy, { readOnly: true });
     try { return inspect(db); } finally { db.close(); }
   } finally { rmSync(root, { recursive: true, force: true }); }
 }
-

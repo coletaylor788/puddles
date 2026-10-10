@@ -1,6 +1,6 @@
 # Configurable untrusted agent results
 
-**Status:** Replacement TEST failed, repair in progress
+**Status:** Replacement input capture failed, repair in progress
 
 **Issue:** [#241](https://github.com/coletaylor788/puddles/issues/241)
 **Last updated:** 2026-10-09
@@ -97,7 +97,7 @@ Canary wrapping separately from any model change. Activate through the existing 
 
 The requester approved the updated installed reader model on 2026-10-09. The latest immutable candidate passed cumulative CI, all private integration commands, isolated predecessor startup and rollback, and all four DEV checks. TEST then stopped before startup because its seed validator rejected a managed plugin's relative link to the separately declared runtime directory. No model request or production mutation occurred.
 
-The repair lets the two declared seed trees refer to each other only when the copied link resolves to its corresponding isolated target. Absolute links and undeclared destinations still fail. The guarded session migration, metadata preservation and explicit user pins remain unchanged. The replacement must pass the cumulative and environment gates. Production acceptance and development cleanup remain pending.
+The seed repair is merged. Its replacement repeatedly stopped during fresh input capture when the live plugin database changed during copying. Capture now permits three attempts to acquire a stable private copy, retaining every source identity and hash check. It inspects only the successful copy and never retries inspection, permission failures or rollback journals. The guarded session migration, metadata preservation and explicit user pins remain unchanged. The replacement must pass the cumulative and environment gates. Production acceptance and development cleanup remain pending.
 
 ## Agent section
 
@@ -105,7 +105,9 @@ The repair lets the two declared seed trees refer to each other only when the co
 
 The current repair moves guarded session-default migration before doctor, after schema and candidate configuration migration. Its optional sealed recovery entries restore explicit defaults and original activity only when current session metadata exactly matches the reviewed predecessor. The sessions result records ordinary changes and recovered entries separately before doctor; the transaction is complete only after doctor, plugin and cron phases. Source and installed regressions cover the real doctor interaction, complete native replacement, refusal before any write on drift, and rollback to the fresh current-state snapshot. Replacement release acceptance remains pending. The latest candidate passed cumulative CI, the actual predecessor startup and rollback qualification, and four DEV checks. TEST rejected a portable managed-plugin peer link before target creation. The public target copier now maps links across the declared install and state roots and verifies their real destinations after both trees are copied. It rejects absolute source links, undeclared referents and target layouts that change a link's meaning. Seven filesystem regressions and 45 adjacent pipeline tests pass. No provider request or production mutation occurred.
 
-The maintained source pin is OpenClaw 2026.9.6 at `eb377ac59e6c9fd6c7705028034812becf00271b`. The patch composes with the blocking-yield and durable-handoff patches. The implementation is merged; replacement target-copy repair and release validation are in progress.
+The next candidate stopped in plugin capture three times before any artifact or provider request. Standalone full copy diagnostics passed three times, but did not identify which suffix changed in the failed captures. The native SQLite inspection helper now retries only its two existing copy-drift failures, up to three fresh acquisitions. Every failed owned copy is removed before retry. SQLite construction and the callback remain outside the retry loop, and persistent drift still fails. Nine filesystem regressions cover transient and persistent drift, copied-byte mismatch, SHM metadata, inspection and IO errors, rollback journals, invalid SQLite and unchanged live WAL bytes. All 50 focused and adjacent tests pass. No database consistency guard is relaxed.
+
+The maintained source pin is OpenClaw 2026.9.6 at `eb377ac59e6c9fd6c7705028034812becf00271b`. The patch composes with the blocking-yield and durable-handoff patches. The implementation and target-copy repair are merged; capture repair and replacement release validation are in progress.
 
 ### Scope and acceptance criteria
 
