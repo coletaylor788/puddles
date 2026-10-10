@@ -150,7 +150,8 @@
     "src/agents/untrusted-agent-results.test.ts": "agents-core",
     "src/plugin-sdk/session-store-runtime.conversation.test.ts": "plugin-sdk",
     "src/plugin-sdk/session-store-runtime.recovery.test.ts": "plugin-sdk",
-    "src/config/sessions/session-accessor.sqlite-entry-revalidation.test.ts": "runtime-config"
+    "src/config/sessions/session-accessor.sqlite-entry-revalidation.test.ts": "runtime-config",
+    "src/talk/agent-consult-tool.test.ts": "unit-src"
   },
   "patches": [
     {
@@ -445,7 +446,8 @@
         "extensions/openai/realtime-quicksilver-copilot-progress.test.ts",
         "extensions/openai/realtime-quicksilver-gateway-bridge.test.ts",
         "extensions/openai/realtime-quicksilver-session-lifecycle.test.ts",
-        "extensions/openai/realtime-voice-provider-routing.test.ts"
+        "extensions/openai/realtime-voice-provider-routing.test.ts",
+        "src/talk/agent-consult-tool.test.ts"
       ],
       "candidateTests": [
         "tests/candidate.talk-concurrency.test.ts"
