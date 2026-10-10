@@ -56,6 +56,27 @@ export function verifyNodeFile(identity) {
   if (fileDigest(canonical) !== identity.sha256) throw new Error("Node interpreter executable digest changed");
 }
 
+// The maintained service starts Node immediately before its runtime entrypoint,
+// possibly behind an environment wrapper. Reject unknown or ambiguous layouts.
+export async function serviceNodePath(target, execute = runCommand) {
+  return (await execute("python3", ["-c", `
+import os, plistlib, sys
+with open(sys.argv[1], "rb") as file:
+    service = plistlib.load(file)
+args = service.get("ProgramArguments")
+entries = [os.path.join(sys.argv[2], "openclaw.mjs"), os.path.join(sys.argv[2], "dist", "index.js")]
+if not isinstance(args, list) or not all(isinstance(arg, str) for arg in args):
+    raise ValueError("Invalid service arguments")
+selected = [index for index, arg in enumerate(args) if arg in entries]
+if len(selected) != 1 or selected[0] < 1:
+    raise ValueError("Missing or ambiguous deployed runtime entrypoint")
+index = selected[0] - 1
+if not os.path.isabs(args[index]) or ("Program" in service and service["Program"] != args[0]):
+    raise ValueError("Unsupported service interpreter layout")
+print(args[index])
+`, target.plistPath, target.installDir], { capture: true, quiet: true, timeoutMs: 60_000 })).trim();
+}
+
 async function verifyNodeIdentities(migration, receipt, operations) {
   for (const identity of [migration.expected, migration.desired]) {
     verifyNodeFile(identity);
@@ -200,6 +221,14 @@ export function systemOperations(target, recoveryDir, execute = runCommand) {
     }
   };
   return {
+    async inspectServiceNode() {
+      const path = await serviceNodePath(target, run);
+      const identity = { path, realPath: realpathSync(path), sha256: fileDigest(path),
+        ...JSON.parse(await run(path, ["-p", "JSON.stringify({version:process.version,platform:process.platform,arch:process.arch})"], { capture: true })) };
+      verifyNodeFile(identity);
+      if (identity.platform !== process.platform || identity.arch !== process.arch || !/^v\d+\.\d+\.\d+$/.test(identity.version)) throw new Error("Deployed interpreter is incompatible");
+      return identity;
+    },
     async inspectNode(path) {
       return JSON.parse(await run(path, ["-p", "JSON.stringify({version:process.version,platform:process.platform,arch:process.arch})"], { capture: true }));
     },
@@ -554,7 +583,7 @@ export function verifyRehearsalTarget(target) {
 // Publish maintenance input only after production is healthy. The timer owns
 // retention later, outside activation and rollback. This compact receipt remains
 // with the recovery generation instead of depending on a temporary release tree.
-export function publishActivationRetentionContext(receipt, target, recoveryDir) {
+export async function publishActivationRetentionContext(receipt, target, recoveryDir, operations = systemOperations(target, recoveryDir)) {
   if (target.purpose !== "production") throw new Error("Retention context requires production");
   const root = realpathSync(target.backupRoot);
   if (dirname(realpathSync(recoveryDir)) !== root) throw new Error("Retention context recovery escaped backups");
@@ -566,9 +595,14 @@ export function publishActivationRetentionContext(receipt, target, recoveryDir) 
   }
   const receiptPath = join(recoveryDir, "release-receipt.json");
   atomicJson(receiptPath, receipt);
+  const { nodeMigration, legacyActivationReceipt, ...currentTarget } = target;
+  const backupNode = await operations.inspectServiceNode();
+  if (nodeMigration && ["path", "sha256", "version", "platform", "arch"].some(key => backupNode[key] !== nodeMigration.desired[key])) throw new Error("Deployed interpreter differs from activated interpreter");
   atomicJson(join(root, "retention-context.json"), {
     schemaVersion: 1, transaction: journal.transaction, target,
     receipt: { path: receiptPath, sha256: fileDigest(receiptPath) },
+    backupTarget: { ...currentTarget, backupNode,
+      backupExclusions: [{ path: "deploy-snapshots", reason: "legacy-backup-storage" }] },
   });
 }
 
@@ -934,7 +968,7 @@ export async function activateNative(receipt, target, operationsFactory = system
     journal.quiesced = false;
     save("healthy");
     if (mode === "production") {
-      try { publishActivationRetentionContext(receipt, target, recoveryDir); }
+      try { await publishActivationRetentionContext(receipt, target, recoveryDir, operations); }
       catch (error) {
         // Maintenance metadata failure must not mark a healthy gateway failed or
         // trigger rollback. The caller sees pending maintenance explicitly.
