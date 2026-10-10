@@ -2,10 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
 import {
   chmodSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync,
-  realpathSync, renameSync, rmSync, writeFileSync,
+  realpathSync, renameSync, rmSync, symlinkSync, writeFileSync,
 } from "node:fs";
 import { hostname, tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 // @ts-expect-error Native backup lifecycle is also executable without TypeScript.
 import { backupOperations, captureCurrentBackup, currentBackupRecovery, materializeCurrentBackup, planCurrentBackup, retireCurrentBackup, verifyCurrentBackup } from "../src/native-backup.mjs";
 // @ts-expect-error Native lifecycle is also executable without TypeScript.
@@ -24,7 +24,8 @@ function root() {
   roots.push(value);
   return value;
 }
-afterEach(() => {
+afterEach(async () => {
+  await new Promise<void>(resolve => setImmediate(resolve));
   vi.unstubAllEnvs();
   for (const path of roots.splice(0)) rmSync(path, { recursive: true, force: true });
 });
@@ -1073,6 +1074,8 @@ describe("activation recovery target compatibility", () => {
 import { planBackupRetention, applyBackupRetention, runBackupRetention } from "../src/native-backup-retention.mjs";
 // @ts-expect-error Executable activation context publisher.
 import { publishActivationRetentionContext } from "../src/native-activation.mjs";
+// @ts-expect-error Executable backup replacement lifecycle.
+import { refreshSingleBackup } from "../src/native-single-backup-retention.mjs";
 
 function retentionFixture() {
   const f = fixture();
@@ -1199,15 +1202,15 @@ describe("bounded superseded activation retention", () => {
     expect(existsSync(join(f.target.backupRoot, "retention-plan.json"))).toBe(false);
     expect(existsSync(join(f.target.backupRoot, "retention-result.json"))).toBe(true);
   });
-  it("publishes exact target and receipt context only for the current healthy activation", () => {
+  it("publishes exact target and receipt context only for the current healthy activation", async () => {
     const f = retentionFixture();
     const receipt = JSON.parse(readFileSync(f.target.legacyActivationReceipt!.path, "utf8"));
-    publishActivationRetentionContext(receipt, f.target, f.current.directory);
+    await publishActivationRetentionContext(receipt, f.target, f.current.directory, { inspectServiceNode: async () => f.target.backupNode });
     const context = JSON.parse(readFileSync(join(f.target.backupRoot, "retention-context.json"), "utf8"));
     expect(context.transaction).toBe(f.current.journal.transaction);
     expect(context.target).toEqual(JSON.parse(JSON.stringify(f.target)));
     expect(context.receipt.sha256).toBe(fileDigest(context.receipt.path));
-    expect(() => publishActivationRetentionContext(receipt, f.target, f.old.directory)).toThrow("current healthy");
+    await expect(publishActivationRetentionContext(receipt, f.target, f.old.directory)).rejects.toThrow("current healthy");
   });
 });
 
@@ -1297,4 +1300,201 @@ it("resumes partial external deletion before retiring the generation", async () 
   await applyBackupRetention(f.target, f.policy, plan, f.execute);
   expect(existsSync(trash)).toBe(false);
   expect(existsSync(f.older.directory)).toBe(false);
+});
+
+async function singleBackupFixture(setup?: (f: ReturnType<typeof retentionFixture>) => void) {
+  const f = retentionFixture();
+  setup?.(f);
+  rmSync(join(f.target.backupRoot, 'backup-references', 'latest-healthy-recovery.json'));
+  const old = await captureCurrentBackup(f.target, f.factory);
+  const oldMaterialized = await materializeCurrentBackup(f.target, old.directory, join(root(), 'old-validation'), f.factory);
+  const currentBackup = await captureCurrentBackup(f.target, f.factory);
+  const currentMaterialized = await materializeCurrentBackup(f.target, currentBackup.directory, join(root(), 'current-validation'), f.factory);
+  const policy = { ...f.policy, transactions: undefined as string[] | undefined, mode: 'single-verified-backup', keepRecent: 0, minAgeHours: 0, maxBatch: 32, replacement: { kind: 'backup' } };
+  return { ...f, policy, oldBackup: old, currentBackup, oldMaterialized, currentMaterialized };
+}
+
+describe('one verified backup retention', () => {
+  it('retires all superseded activation and backup payloads while keeping original evidence and current backup', async () => {
+    const f = await singleBackupFixture();
+    const journal = readFileSync(join(f.current.directory, 'recovery.json'), 'utf8');
+    writeFileSync(join(f.current.directory, 'state', 'changed-sidecar'), 'original mismatch');
+    const failed = f.cloneGeneration(6, 'recovery-required');
+    const failure = { ...failed.journal, quiesced: true };
+    writeFileSync(join(failed.directory, 'recovery.json'), JSON.stringify(failure));
+    writeFileSync(join(failed.directory, 'failure.json'), JSON.stringify({ message: 'original failure' }));
+    const oldManifestPath = join(f.oldBackup.directory, 'backup.json');
+    const oldManifest = JSON.parse(readFileSync(oldManifestPath, 'utf8'));
+    oldManifest.node.path = '/missing-obsolete-interpreter';
+    const { manifestSha256: _oldHash, ...body } = oldManifest;
+    oldManifest.manifestSha256 = jsonDigest(body);
+    writeFileSync(oldManifestPath, JSON.stringify(oldManifest));
+    const result = await runBackupRetention(f.target, f.policy, f.execute);
+    expect(result.retired).toContain(f.current.journal.transaction);
+    expect(result.retired).toContain(f.predecessor.transaction);
+    expect(result.retired).toContain(failed.transaction);
+    expect(existsSync(join(f.currentBackup.directory, 'state'))).toBe(true);
+    for (const directory of [f.current.directory, f.predecessor.directory, failed.directory, f.oldBackup.directory, f.oldMaterialized.destination, f.currentMaterialized.destination]) {
+      expect(existsSync(join(directory, 'state'))).toBe(false);
+      expect(existsSync(join(directory, 'payload-retirement.json'))).toBe(true);
+    }
+    expect(readFileSync(join(f.current.directory, 'recovery.json'), 'utf8')).toBe(journal);
+    expect(JSON.parse(readFileSync(join(failed.directory, 'recovery.json'), 'utf8'))).toEqual(failure);
+    expect(JSON.parse(readFileSync(join(failed.directory, 'failure.json'), 'utf8')).message).toBe('original failure');
+    expect((await runBackupRetention(f.target, f.policy, f.execute)).retired).toEqual([]);
+  }, 20_000);
+  it('preserves active consumers and foreign references without an implicit predecessor hold', async () => {
+    const f = await singleBackupFixture();
+    f.setActive([f.predecessor.directory]);
+    writeFileSync(join(f.target.backupRoot, 'backup-references', 'foreign.json'), JSON.stringify({ recovery: f.older.directory }));
+    const plan = await planBackupRetention(f.target, f.policy, f.execute);
+    expect(plan.entries.some((entry: any) => entry.transaction === f.predecessor.transaction)).toBe(false);
+    expect(plan.entries.some((entry: any) => entry.transaction === f.older.transaction)).toBe(false);
+    expect(plan.entries.some((entry: any) => entry.transaction === f.current.journal.transaction)).toBe(true);
+  });
+  it('refuses all retirement when replacement contents fail verification', async () => {
+    const f = await singleBackupFixture();
+    writeFileSync(join(f.currentBackup.directory, 'state', 'changed'), 'changed');
+    await expect(planBackupRetention(f.target, f.policy, f.execute)).rejects.toThrow('differs from manifest');
+    expect(existsSync(join(f.oldBackup.directory, 'runtime'))).toBe(true);
+  });
+  it('rechecks payload inventory, evidence and consumer identity before deletion', async () => {
+    const f = await singleBackupFixture();
+    const plan = await planBackupRetention(f.target, f.policy, f.execute);
+    writeFileSync(join(f.old.directory, 'state', 'new-consumer-data'), 'new');
+    await expect(applyBackupRetention(f.target, f.policy, plan, f.execute)).rejects.toThrow('changed after plan');
+    expect(existsSync(join(f.old.directory, 'state'))).toBe(true);
+  });
+  it('resumes a partially removed payload without rewriting original journals', async () => {
+    const f = await singleBackupFixture();
+    f.policy.transactions = [f.older.transaction];
+    const plan = await planBackupRetention(f.target, f.policy, f.execute);
+    const entry = plan.entries.find((entry: any) => entry.transaction === f.older.transaction);
+    const payload = entry.payloads[0];
+    renameSync(payload.path, payload.trash);
+    rmSync(payload.trash, { recursive: true });
+    writeFileSync(join(f.target.backupRoot, `retention-${entry.transaction}.json`), JSON.stringify({
+      schema: 'puddles.single-backup-retention/v1', planSha256: plan.sha256, entry, status: 'planned',
+      payloads: entry.payloads.map((_item: any, index: number) => index === 0 ? 'deleting' : 'planned'),
+    }));
+    await applyBackupRetention(f.target, f.policy, plan, f.execute);
+    expect(existsSync(join(f.older.directory, 'recovery.json'))).toBe(true);
+    expect(existsSync(join(f.older.directory, 'state'))).toBe(false);
+  });
+  it('rejects validation that alters the source and never publishes its reference', async () => {
+    const f = fixture();
+    const captured = await captureCurrentBackup(f.target, f.factory);
+    const factory = () => ({ ...f.factory(), verifySqlite: async () => {
+      writeFileSync(join(captured.directory, 'state', 'unexpected-sidecar'), 'changed');
+    } });
+    await expect(materializeCurrentBackup(f.target, captured.directory, join(root(), 'validation'), factory)).rejects.toThrow('differs from manifest');
+    expect(existsSync(join(f.target.backupRoot, 'backup-references'))).toBe(false);
+  });
+  it('refreshes through capture, isolated verification and exact retirement using existing capacity', async () => {
+    const f = await singleBackupFixture();
+    vi.stubEnv('E2E_CAPACITY_ROOT', join(realpathSync(root()), 'capacity'));
+    vi.stubEnv('E2E_REQUIRED_FREE_BYTES', '0');
+    try {
+      await refreshSingleBackup(f.target, f.policy, root(), f.execute, f.factory);
+      const current = currentBackupRecovery(f.target);
+      expect(current.reference.transaction).not.toBe(f.currentBackup.manifest.transaction);
+      expect(existsSync(join(f.currentBackup.directory, 'state'))).toBe(false);
+    } finally { vi.unstubAllEnvs(); }
+  }, 20_000);
+});
+
+it('binds replacement authority to the activation captured, not a later release', async () => {
+  const f = fixture();
+  const pointer = join(f.target.backupRoot, 'latest-activation.json');
+  writeFileSync(pointer, JSON.stringify({ transaction: 'activation-1-1', target: 'a'.repeat(64) }));
+  const captured = await captureCurrentBackup(f.target, f.factory);
+  writeFileSync(pointer, JSON.stringify({ transaction: 'activation-2-1', target: 'a'.repeat(64) }));
+  await expect(materializeCurrentBackup(f.target, captured.directory, join(root(), 'changed-release-validation'), f.factory)).rejects.toThrow('Deployment changed after backup capture');
+  expect(existsSync(join(f.target.backupRoot, 'backup-references'))).toBe(false);
+});
+
+it('retires a closed incomplete capture and preserves its original failure evidence', async () => {
+  const f = await singleBackupFixture();
+  const incomplete = join(f.target.backupRoot, 'backup-1-3');
+  mkdirSync(incomplete); mkdirSync(join(incomplete, 'runtime'));
+  writeFileSync(join(incomplete, 'runtime', 'partial'), 'partial-runtime');
+  const journal = { schema: 'puddles.openclaw-current-backup-journal/v1', schemaVersion: 1,
+    transaction: 'backup-1-3', targetSha256: 'a'.repeat(64), serviceStopped: false, status: 'restarted', failure: 'capture interrupted' };
+  writeFileSync(join(incomplete, 'backup-journal.json'), JSON.stringify(journal));
+  f.policy.transactions = ['backup-1-3'];
+  const result = await runBackupRetention(f.target, f.policy, f.execute);
+  expect(result.retired).toContain('backup-1-3');
+  expect(existsSync(join(incomplete, 'runtime'))).toBe(false);
+  expect(JSON.parse(readFileSync(join(incomplete, 'backup-journal.json'), 'utf8'))).toEqual(journal);
+}, 15_000);
+
+it('only adopts a legacy external installation through exact journal and directory identity', async () => {
+  const f = await singleBackupFixture();
+  const path = join(realpathSync(dirname(f.target.installDir)), '.puddles-install-1-9');
+  mkdirSync(path); writeFileSync(join(path, 'old-runtime'), 'old');
+  const journalPath = join(f.old.directory, 'recovery.json');
+  const journal = JSON.parse(readFileSync(journalPath, 'utf8')); journal.prefix = path;
+  writeFileSync(journalPath, JSON.stringify(journal));
+  const stat = lstatSync(path);
+  const policy = { ...f.policy, transactions: [f.old.transaction], installations: [{ transaction: f.old.transaction,
+    path, journalSha256: fileDigest(journalPath), identity: { dev: stat.dev, ino: stat.ino, birthtimeMs: stat.birthtimeMs } }] };
+  const invalid = { ...policy, installations: [{ ...policy.installations[0], journalSha256: 'b'.repeat(64) }] };
+  const rejected = await planBackupRetention(f.target, invalid, f.execute);
+  expect(rejected.excluded.some((item: any) => item.transaction === f.old.transaction)).toBe(true);
+  await runBackupRetention(f.target, policy, f.execute);
+  expect(existsSync(path)).toBe(false);
+}, 15_000);
+
+it('applies exact transaction selection to duplicate materializations including empty nondeleting plans', async () => {
+  const f = await singleBackupFixture();
+  f.policy.transactions = [];
+  expect((await planBackupRetention(f.target, f.policy, f.execute)).entries).toEqual([]);
+  f.policy.transactions = [f.oldBackup.manifest.transaction];
+  const plan = await planBackupRetention(f.target, f.policy, f.execute);
+  expect(plan.entries.some((entry: any) => entry.path === f.oldMaterialized.destination)).toBe(true);
+  expect(plan.entries.some((entry: any) => entry.path === f.currentMaterialized.destination)).toBe(false);
+}, 15_000);
+
+
+it('preserves an external installation required by the verified backup', async () => {
+  let path = '';
+  const f = await singleBackupFixture(f => {
+    path = join(realpathSync(dirname(f.target.installDir)), '.puddles-install-1-7');
+    mkdirSync(path); writeFileSync(join(path, 'dependency'), 'required');
+    symlinkSync(join(path, 'dependency'), join(f.target.installDir, 'dependency'));
+    const journalPath = join(f.old.directory, 'recovery.json');
+    const journal = JSON.parse(readFileSync(journalPath, 'utf8')); journal.prefix = path;
+    writeFileSync(journalPath, JSON.stringify(journal));
+  });
+  const stat = lstatSync(path);
+  const policy = { ...f.policy, transactions: [f.old.transaction], installations: [{ transaction: f.old.transaction,
+    path, journalSha256: fileDigest(join(f.old.directory, 'recovery.json')),
+    identity: { dev: stat.dev, ino: stat.ino, birthtimeMs: stat.birthtimeMs } }] };
+  const plan = await planBackupRetention(f.target, policy, f.execute);
+  expect(plan.entries).toEqual([]);
+  expect(plan.excluded).toContainEqual({ transaction: f.old.transaction, reason: 'Payload is required by the verified backup' });
+  expect(existsSync(path)).toBe(true);
+}, 15_000);
+
+it.each(['openclaw.mjs', 'dist/index.js'])('publishes the deployed service interpreter for %s without migrating Node', async entry => {
+  const f = retentionFixture();
+  const receipt = JSON.parse(readFileSync(f.target.legacyActivationReceipt!.path, 'utf8'));
+  const deployed = join(realpathSync(dirname(f.target.installDir)), 'deployed-node');
+  writeFileSync(deployed, '#!/bin/sh\nprintf \'{"version":"v26.1.0","platform":"' + process.platform + '","arch":"' + process.arch + '"}\\n\'\n', { mode: 0o755 });
+  execFileSync('python3', ['-c', 'import plistlib,sys; plistlib.dump({"ProgramArguments":["/bin/sh","/synthetic/wrapper","/synthetic/environment",sys.argv[2],sys.argv[3]]},open(sys.argv[1],"wb"))', f.target.plistPath, deployed, join(f.target.installDir, entry)]);
+  await publishActivationRetentionContext(receipt, f.target, f.current.directory);
+  const context = JSON.parse(readFileSync(join(f.target.backupRoot, 'retention-context.json'), 'utf8'));
+  expect(context.backupTarget.backupNode).toEqual({ path: deployed, realPath: deployed,
+    sha256: fileDigest(deployed), version: 'v26.1.0', platform: process.platform, arch: process.arch });
+  expect(context.backupTarget.backupNode.path).not.toBe(process.execPath);
+});
+
+
+it('rejects a materialized service whose interpreter differs from its verified Node', async () => {
+  const f = fixture();
+  const work = root();
+  const other = join(work, 'other-node');
+  writeFileSync(other, 'different executable');
+  execFileSync('python3', ['-c', 'import plistlib,sys; plistlib.dump({"ProgramArguments":[sys.argv[2],sys.argv[3]]},open(sys.argv[1],"wb"))', f.target.plistPath, other, join(f.target.installDir, 'openclaw.mjs')]);
+  await expect(backupOperations(f.target, work).verifyService(f.target.plistPath, f.target.backupNode)).rejects.toThrow('differs from verified Node');
 });

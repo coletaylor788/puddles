@@ -5,6 +5,7 @@ import { currentBackupRecovery, validateBackupTarget } from "./native-backup.mjs
 import { validateTarget, verifyCurrentActivationRecovery, verifyNodeFile } from "./native-activation.mjs";
 import { assertDeploymentOwnership } from "./deploy-coordination.mjs";
 import { runCommand } from "./process-runner.mjs";
+import { planSingleBackupRetention, applySingleBackupRetention, runSingleBackupRetention } from "./native-single-backup-retention.mjs";
 
 const schema = "puddles.openclaw-backup-retention/v1";
 const activation = /^activation-([0-9]+)-[0-9]+$/;
@@ -30,11 +31,15 @@ function validateRetentionTarget(target, policy) {
   if (target.purpose !== "production") throw new Error("Retention requires a production target");
 }
 function validatePolicy(policy) {
-  if (policy.schemaVersion !== 1 || !Number.isFinite(policy.minAgeHours) || policy.minAgeHours < 24 ||
-      !Number.isInteger(policy.keepRecent) || policy.keepRecent < 2 ||
+  const single = policy.mode === "single-verified-backup";
+  const transaction = single ? /^(activation|backup)-[0-9]+-[0-9]+$/ : activation;
+  if (policy.schemaVersion !== 1 || policy.mode !== undefined && !single ||
+      single && (policy.replacement?.kind !== "backup" || policy.keepRecent !== 0) ||
+      !Number.isFinite(policy.minAgeHours) || policy.minAgeHours < (single ? 0 : 24) ||
+      !Number.isInteger(policy.keepRecent) || policy.keepRecent < (single ? 0 : 2) ||
       !Number.isInteger(policy.maxBatch) || policy.maxBatch < 1 || policy.maxBatch > 32 ||
-      !Array.isArray(policy.protectedTransactions) || policy.protectedTransactions.some(x => !activation.test(x)) ||
-      policy.transactions !== undefined && (!Array.isArray(policy.transactions) || policy.transactions.some(x => !activation.test(x))) ||
+      !Array.isArray(policy.protectedTransactions) || policy.protectedTransactions.some(x => !transaction.test(x)) ||
+      policy.transactions !== undefined && (!Array.isArray(policy.transactions) || policy.transactions.some(x => !transaction.test(x))) ||
       !isAbsolute(policy.consumerCheck?.command ?? "") || !hash.test(policy.consumerCheck?.sha256 ?? "") ||
       !Array.isArray(policy.consumerCheck?.args) || policy.consumerCheck.args.some(x => typeof x !== "string")) {
     throw new Error("Retention policy is invalid");
@@ -199,6 +204,7 @@ function withoutExternal(entry) { const { externalInstallations, ...metadata } =
 // The plan adopts only producer-owned terminal generations. It binds compact
 // immutable recovery metadata and filesystem identities, not the age alone.
 export async function planBackupRetention(target, policy, execute = runCommand) {
+  if (policy.mode === "single-verified-backup") return planSingleBackupRetention(target, policy, execute);
   validateRetentionTarget(target, policy);
   validatePolicy(policy);
   const root = realpathSync(target.backupRoot);
@@ -235,6 +241,7 @@ export async function planBackupRetention(target, policy, execute = runCommand) 
 }
 
 export async function applyBackupRetention(target, policy, plan, execute = runCommand) {
+  if (policy.mode === "single-verified-backup") return applySingleBackupRetention(target, policy, plan, execute);
   assertDeploymentOwnership(target, "PROD");
   validateRetentionTarget(target, policy);
   validatePolicy(policy);
@@ -342,6 +349,7 @@ export async function applyBackupRetention(target, policy, plan, execute = runCo
 // A lifecycle caller keeps this exact manifest until all interrupted deletes
 // finish. A subsequent invocation produces a new bounded plan from fresh facts.
 export async function runBackupRetention(target, policy, execute = runCommand) {
+  if (policy.mode === "single-verified-backup") return runSingleBackupRetention(target, policy, execute);
   assertDeploymentOwnership(target, "PROD");
   const root = realpathSync(target.backupRoot);
   const path = join(root, "retention-plan.json");
@@ -384,3 +392,5 @@ export async function runBackupRetention(target, policy, execute = runCommand) {
   sync(root);
   return result;
 }
+
+export const retentionChecks = { read, identity, inventoryDigest, consumers, replacement, sync, validatePolicy, externalInstallations, assertNoExternalReferences };

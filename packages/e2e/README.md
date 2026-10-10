@@ -787,3 +787,53 @@ forcibly killed controllers retain ownership for explicit inspection.
 `capacity-admission.json`. Scheduled calls do not steal that lease or clear its lock. A stopped
 owner and all children must be verified before the owner resumes its exact
 retention plan. Graceful signals unwind the helper; SIGKILL cannot run cleanup.
+
+#### One verified backup
+
+An explicit `mode: "single-verified-backup"` policy replaces the historical
+count rule. Set `replacement: {"kind":"backup"}`, `keepRecent: 0` and
+`minAgeHours: 0`. Keep `maxBatch`, `protectedTransactions` and the pinned
+`consumerCheck`. Optional `transactions` remains an exact allowlist, including
+materializations of those transactions; an empty array is nondeleting.
+
+```bash
+node packages/e2e/bin/openclaw-backup-retention.mjs refresh TARGET_JSON POLICY_JSON WORK_DIR
+```
+
+Run initial refresh under the existing bounded PROD controller. It reserves the
+capture and validation peak alongside other reservations and the configured free
+floor, captures current production with the existing bounded stop/restart path,
+validates an isolated copy, publishes the current reference, then runs one bounded
+retirement batch. Capture or validation failure retains prior authority and its
+recovery evidence. If retirement fails after publication, the verified new
+authority stays current and the pending plan and owner remain held. Publication rejects a deployment that changed since capture. Original
+snapshots are checked again after validation, before any reference advances.
+
+Superseded healthy, rolled-back, failed-before-shutdown and recovery-required
+activation payloads, and closed backup captures, become candidates after the
+replacement verifies. Old interpreter availability is a restore requirement for
+the replacement, not a requirement to retire obsolete bytes. Original journals,
+failure records, service definitions and logs remain at their original paths.
+`payload-retirement.json` explicitly records removed payloads. These compact
+directories are historical evidence, not usable recovery snapshots. Reference
+and consumer holds still block retirement; unrelated artifact-pool references
+are never removed by this operation.
+
+Materialization records its exact destination identity in
+`backup-materializations.json`. The duplicate runtime/state can retire after
+verification while its proof remains. Historical destinations require explicit
+`materializations: [{path, transaction, proofSha256, identity}]`, where identity
+contains the inspected directory's `dev`, `ino` and `birthtimeMs`. Their proof must
+match the retained source proof. Legacy external installation adoption uses
+`installations: [{transaction, path, journalSha256, identity}]`; it must match the
+original journal's exact prefix and the inspected directory identity. Names alone
+never establish ownership. These records are host-local; keep them out of source.
+
+Successful materialization publishes `backup-retention-context.json`. With the
+single-backup policy, the existing scheduler consumes that target and current
+backup authority even after old activation payloads retire. The activation
+publisher supplies an exact post-release backup target. When its deployment
+changes, maintenance automatically refreshes before retiring anything else.
+Failed refreshes always retain their owner, even if they failed before context
+publication. No new service is needed. Enable the schedule only after its exact
+target, policy, capacity and initial replacement are verified.

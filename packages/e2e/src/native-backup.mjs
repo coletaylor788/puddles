@@ -7,6 +7,7 @@ import { hostname } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import {
   systemOperations,
+  serviceNodePath,
   validateTarget,
   verifyActivationRecoveryContents,
   verifyCurrentActivationRecovery,
@@ -195,8 +196,9 @@ export function backupOperations(target, workDir, execute = runCommand) {
       const found = (await run("docker", ["image", "inspect", "--format", "{{.Id}}", imageId], { capture: true })).trim();
       if (found !== imageId) throw new Error("Backup browser image is unavailable");
     },
-    async verifyService(path) {
-      await run("python3", ["-c", "import plistlib,sys; plistlib.load(open(sys.argv[1],'rb'))", path]);
+    async verifyService(path, node) {
+      const deployed = await serviceNodePath({ ...target, plistPath: path }, run);
+      if (deployed !== node.path || realpathSync(deployed) !== canonicalNode(node)) throw new Error("Backup service interpreter differs from verified Node");
     },
     async verifyConfig(stateDir) {
       const config = join(stateDir, "openclaw.json");
@@ -421,6 +423,25 @@ export function verifyCurrentBackup(target, requestedDirectory) {
   return manifest;
 }
 
+// Retirement proves who produced these bytes, not whether an obsolete runtime
+// can still boot. The caller must independently verify a replacement first.
+export function verifyBackupRetirementIdentity(directory) {
+  stat(directory, true);
+  if (realpathSync(directory) !== resolve(directory) || !transactionPattern.test(basename(directory))) throw new Error("Backup retirement path is invalid");
+  validateBackupTopLevel(directory);
+  const journal = parseJson(join(directory, "backup-journal.json"), "Backup journal is invalid");
+  if (journal.schema !== journalSchema || journal.schemaVersion !== 1 || journal.transaction !== basename(directory) ||
+      !/^[a-f0-9]{64}$/.test(journal.targetSha256 ?? "") || journal.serviceStopped !== false ||
+      !["captured", "referenced", "capture-failed", "restarted"].includes(journal.status)) throw new Error("Backup producer has not stopped");
+  if (!existsSync(join(directory, "backup.json"))) return journal;
+  const manifest = parseJson(join(directory, "backup.json"), "Backup manifest is invalid");
+  if (manifest.schema !== manifestSchema || manifest.schemaVersion !== 1 || manifest.transaction !== journal.transaction ||
+      manifest.targetSha256 !== journal.targetSha256 || manifest.host !== hostname() || manifest.status !== "captured" ||
+      manifest.manifestSha256 !== manifestDigest(manifest) ||
+      !["runtime", "state", "service"].every(key => /^[a-f0-9]{64}$/.test(manifest.assets?.[key]?.sha256 ?? ""))) throw new Error("Backup retirement identity is invalid");
+  return manifest;
+}
+
 export async function captureCurrentBackup(target, operationsFactory = backupOperations, requestedDirectory, options = {}) {
   assertDeploymentOwnership(target, "PROD");
   validateBackupTarget(target);
@@ -449,6 +470,8 @@ export async function captureCurrentBackup(target, operationsFactory = backupOpe
       status: "preparing",
       serviceStopped: false,
       referenceToken: referenceToken(initialReference),
+      activation: existsSync(join(target.backupRoot, "latest-activation.json"))
+        ? parseJson(join(target.backupRoot, "latest-activation.json"), "Activation pointer is invalid") : null,
     };
   const operations = operationsFactory(target, directory);
   try {
@@ -483,7 +506,7 @@ export async function captureCurrentBackup(target, operationsFactory = backupOpe
       rmSync(join(directory, name), { recursive: true, force: true });
     }
     await operations.clone(target.installDir, join(directory, "runtime"));
-    await operations.verifyService(target.plistPath);
+    await operations.verifyService(target.plistPath, target.backupNode);
     durableCopy(target.plistPath, join(directory, "service.plist"));
     journal.runtimeSha256 = treeDigest(join(directory, "runtime"));
     journal.serviceSha256 = fileDigest(join(directory, "service.plist"));
@@ -555,6 +578,7 @@ export async function captureCurrentBackup(target, operationsFactory = backupOpe
       node: journal.node,
       browser: journal.browser,
       previousRecovery: null,
+      activation: journal.activation ?? null,
     };
     manifest.manifestSha256 = manifestDigest(manifest);
     atomicJson(join(directory, "backup.json"), manifest);
@@ -614,7 +638,7 @@ export async function materializeCurrentBackup(
       if (inspected[key] !== manifest.node[key]) throw new Error("Backup Node is incompatible");
     }
     if (manifest.browser) await operations.inspectBrowser(manifest.browser.imageId);
-    await operations.verifyService(join(destination, "service.plist"));
+    await operations.verifyService(join(destination, "service.plist"), manifest.node);
     await operations.verifyConfig(join(destination, "state"));
     await operations.verifySqlite(join(destination, "state"));
     await operations.verifyRuntime(
@@ -622,6 +646,9 @@ export async function materializeCurrentBackup(
       join(destination, "state"),
       canonicalNode(manifest.node),
     );
+    // A validator may open SQLite sidecars, but only inside the isolated copy.
+    // Never publish replacement authority if inspection modified its source.
+    verifyCurrentBackup(target, directory);
     const proofBase = {
       schema: materializationSchema,
       schemaVersion: 1,
@@ -653,13 +680,26 @@ export async function materializeCurrentBackup(
     const unlock = acquireLock(target.backupRoot);
     try {
       const journal = parseJson(join(directory, "backup-journal.json"), "Backup journal is invalid");
+      const latestPath = join(target.backupRoot, "latest-activation.json");
+      const latest = existsSync(latestPath) ? parseJson(latestPath, "Activation pointer is invalid") : null;
       const referencePath = currentReferencePath(target);
       const previous = readReference(referencePath);
-      if (previous?.transaction === manifest.transaction &&
-          previous.manifestSha256 === manifest.manifestSha256 &&
-          previous.materializationSha256 === proof.proofSha256) {
+      const alreadyCurrent = previous?.transaction === manifest.transaction &&
+        previous.manifestSha256 === manifest.manifestSha256 && previous.materializationSha256 === proof.proofSha256;
+      // Rechecking the already authoritative backup does not advance authority.
+      // Its captured deployment remains unchanged in the maintenance context.
+      if (!alreadyCurrent && manifest.activation !== undefined && jsonDigest(manifest.activation) !== jsonDigest(latest)) throw new Error("Deployment changed after backup capture");
+      const registryPath = join(target.backupRoot, "backup-materializations.json");
+      const registry = existsSync(registryPath) ? parseJson(registryPath, "Materialization registry is invalid") : { schemaVersion: 1, entries: [] };
+      if (registry.schemaVersion !== 1 || !Array.isArray(registry.entries)) throw new Error("Materialization registry is invalid");
+      const owned = lstatSync(destination);
+      registry.entries.push({ path: destination, transaction: manifest.transaction, proofSha256: proof.proofSha256,
+        identity: { dev: owned.dev, ino: owned.ino, birthtimeMs: owned.birthtimeMs } });
+      atomicJson(registryPath, registry);
+      if (alreadyCurrent) {
         journal.reference = previous;
         saveJournal(join(directory, "backup-journal.json"), journal, "referenced");
+        publishBackupRetentionContext(target, manifest);
         return { destination, manifest, proof, reference: previous };
       }
       if (referenceToken(previous) !== journal.referenceToken) {
@@ -679,6 +719,7 @@ export async function materializeCurrentBackup(
       atomicJson(referencePath, reference);
       journal.reference = reference;
       saveJournal(join(directory, "backup-journal.json"), journal, "referenced");
+      publishBackupRetentionContext(target, manifest);
       return { destination, manifest, proof, reference };
     } finally {
       unlock();
@@ -687,6 +728,13 @@ export async function materializeCurrentBackup(
     rmSync(destination, { recursive: true, force: true });
     throw error;
   }
+}
+
+function publishBackupRetentionContext(target, manifest) {
+  atomicJson(join(target.backupRoot, "backup-retention-context.json"), {
+    schemaVersion: 1, transaction: manifest.transaction, target,
+    activation: manifest.activation ?? null,
+  });
 }
 
 function verifiedReplacement(target, backupRoot) {

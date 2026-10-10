@@ -12,6 +12,17 @@ const read = path => JSON.parse(readFileSync(path, "utf8"));
 const bin = dirname(fileURLToPath(import.meta.url));
 
 export function maintenanceInputs(root, policy) {
+  if (policy.mode === "single-verified-backup") {
+    const backup = read(join(root, "backup-retention-context.json"));
+    if (backup.schemaVersion !== 1 || realpathSync(backup.target?.backupRoot) !== realpathSync(root) ||
+        backup.target.purpose !== "production") throw new Error("Current backup has no matching maintenance context");
+    const latest = existsSync(join(root, "latest-activation.json")) ? read(join(root, "latest-activation.json")) : null;
+    if (jsonDigest(latest) === jsonDigest(backup.activation)) return { target: backup.target, policy: { ...policy, replacement: { kind: "backup" } } };
+    const release = read(join(root, "retention-context.json"));
+    if (!latest || release.transaction !== latest.transaction || !release.backupTarget ||
+        realpathSync(release.backupTarget.backupRoot) !== realpathSync(root)) throw new Error("New release requires an exact backup target");
+    return { target: release.backupTarget, policy: { ...policy, replacement: { kind: "backup" } }, refresh: true };
+  }
   const latest = read(join(root, "latest-activation.json"));
   const context = read(join(root, "retention-context.json"));
   if (context.schemaVersion !== 1 || context.transaction !== latest.transaction ||
@@ -26,7 +37,8 @@ export function maintenanceInputs(root, policy) {
 function retentionState(root) {
   if (existsSync(join(root, "lock")) || existsSync(join(root, "retention-plan.json")) ||
       readdirSync(root).some(name => name.startsWith(".retiring-"))) return null;
-  return readdirSync(root).filter(name => /^retention-activation-.*\.json$/.test(name))
+  return readdirSync(root).filter(name => /^retention-(?:activation|backup|materialization)-.*\.json$/.test(name) ||
+    ["backup-retention-context.json", "backup-materializations.json"].includes(name))
     .sort().map(name => [name, fileDigest(join(root, name))]);
 }
 
@@ -68,11 +80,13 @@ export async function maintain(config, dependencies = {}) {
     rmSync(joinedEvidence, { force: true });
     controllerStarted = true;
     await execute(process.execPath, [join(bin, "openclaw-deployment-slot.mjs"), "run", leasePath,
-      config.coordination, process.execPath, join(bin, "openclaw-backup-retention.mjs"), "run", targetPath, policyPath], log, timeoutMs, joinedEvidence);
+      config.coordination, process.execPath, join(bin, "openclaw-backup-retention.mjs"), inputs.refresh ? "refresh" : "run", targetPath, policyPath,
+      ...(inputs.refresh ? [work] : [])], log, timeoutMs, joinedEvidence);
     // The controller has exited after joining its child group. A leftover
     // backup lock cannot be assumed to belong to this process.
     if (existsSync(join(root, "lock"))) throw new Error("Backup lock remains; retain maintenance ownership for inspection");
-    atomicJson(evidence, { status: "passed", transaction: inputs.target && read(join(root, "latest-activation.json")).transaction, finishedAt: new Date().toISOString() });
+    atomicJson(evidence, { status: "passed", transaction: inputs.policy.mode === "single-verified-backup"
+      ? read(join(root, "backup-retention-context.json")).transaction : read(join(root, "latest-activation.json")).transaction, finishedAt: new Date().toISOString() });
     atomicJson(join(root, "retention-health.json"), read(evidence));
     await coordinate(config.coordination, "release", { ...lease, result: "passed", cleanupEvidence: evidence });
     return read(evidence);
@@ -81,7 +95,7 @@ export async function maintain(config, dependencies = {}) {
     try {
       const joined = read(joinedEvidence);
       const after = retentionState(root);
-      readOnlyFailure = controllerStarted && joined.schemaVersion === 1 && joined.requestId === requestId &&
+      readOnlyFailure = !inputs.refresh && controllerStarted && joined.schemaVersion === 1 && joined.requestId === requestId &&
         joined.joined === true && Number.isSafeInteger(joined.controllerPid) && joined.controllerPid > 0 &&
         before !== null && after !== null && jsonDigest(before) === jsonDigest(after);
     } catch { /* Missing or unreadable evidence retains ownership. */ }

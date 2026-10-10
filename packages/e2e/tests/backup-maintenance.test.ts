@@ -94,3 +94,39 @@ it.each(["none", "plan", "tombstone", "lock", "journal", "missing-join"])("faile
     expect(result.leaseRetained).toBe(fault !== "none");
   } finally { f.close(); }
 });
+
+it('uses current backup authority after activation payloads are retired', async () => {
+  const f = fixture();
+  try {
+    const target = { backupRoot: f.root, purpose: 'production', backupNode: { path: '/synthetic-node' } };
+    f.write(join(f.root, 'backup-retention-context.json'), { schemaVersion: 1, transaction: 'backup-30-1', target, activation: { transaction: 'activation-10-1' } });
+    const policy = { mode: 'single-verified-backup' };
+    const inputs = maintenanceInputs(f.root, policy);
+    expect(inputs.policy.replacement.kind).toBe('backup');
+    expect(inputs.target).toEqual(target);
+    expect(inputs.refresh).toBeUndefined();
+    f.write(f.config.policy, policy);
+    expect((await maintain(f.config, f.deps)).transaction).toBe('backup-30-1');
+  } finally { f.close(); }
+});
+
+it('refreshes a newly published healthy release and retains ownership after a failed refresh', async () => {
+  const f = fixture();
+  try {
+    const target = { backupRoot: f.root, purpose: 'production' };
+    f.write(join(f.root, 'backup-retention-context.json'), { schemaVersion: 1, transaction: 'backup-30-1', target, activation: { transaction: 'activation-10-1' } });
+    f.write(join(f.root, 'latest-activation.json'), { transaction: 'activation-40-1' });
+    f.write(join(f.root, 'retention-context.json'), { schemaVersion: 1, transaction: 'activation-40-1', target, backupTarget: { ...target, backupNode: { path: '/new-node' } } });
+    f.write(f.config.policy, { mode: 'single-verified-backup' });
+    expect(maintenanceInputs(f.root, { mode: 'single-verified-backup' })).toMatchObject({ refresh: true, target: { backupNode: { path: '/new-node' } } });
+    f.deps.execute = async (...args: any[]) => {
+      expect(args[1]).toContain('refresh');
+      const lease = JSON.parse(readFileSync(join(f.work, 'lease.json'), 'utf8'));
+      f.write(args[4], { schemaVersion: 1, requestId: lease.requestId, joined: true, controllerPid: 123 });
+      throw new Error('capture failed before context publication');
+    };
+    await expect(maintain(f.config, f.deps)).rejects.toThrow('capture failed');
+    expect(f.calls.some(call => call.operation === 'release')).toBe(false);
+    expect(JSON.parse(readFileSync(join(f.root, 'retention-health.json'), 'utf8')).readOnlyFailure).toBe(false);
+  } finally { f.close(); }
+});
