@@ -1,6 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
-import { readFileSync } from "node:fs";
-import { createPlugin, TOOLS } from "../src/plugin.js";
+import { readFileSync, readdirSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { createPlugin, createBridgeRuntime, TOOLS } from "../src/plugin.js";
 const leakCheck = vi.hoisted(() => vi.fn(async (_name: string, text: string) => {
   if (text.includes("guard-failure")) throw new Error("private classifier error");
   return {action: text.includes("outbound-secret") ? "block" : "allow"};
@@ -17,7 +20,7 @@ function setup() {
   const connect = vi.fn(async () => ({callTool,close:vi.fn(async()=>{})}));
   const cfg = {plugins:{entries:{"rocket-money":{enabled:true,config:{command:"/trusted/python",stateDir:"/trusted/state",llmProvider:"fixture",writesEnabled:true}}}}};
   let factory: any; let stop: any;
-  createPlugin(connect as any).register({config:cfg,registerTool:(f:any)=>{factory=f},registerService:(s:any)=>{stop=s.stop}} as any);
+  createPlugin(connect as any, createBridgeRuntime()).register({config:cfg,registerTool:(f:any)=>{factory=f},registerService:(s:any)=>{stop=s.stop}} as any);
   const ctx = {agentId:"main",sessionKey:"session",workspaceDir:"/workspace",getRuntimeConfig:()=>cfg};
   return {callTool,connect,cfg,factory,ctx,stop};
 }
@@ -99,5 +102,82 @@ describe("Rocket Money adapter", () => {
    expect(out.content[0].text).toContain("OUTCOME_UNKNOWN");
    expect(JSON.stringify(out)).not.toContain("secret-canary");
    expect(callTool).toHaveBeenCalledTimes(1);
+ });
+});
+
+
+describe("shared gateway session", () => {
+ function registration(plugin: ReturnType<typeof createPlugin>, cfg: any) {
+  let factory: any; let stop: () => Promise<void> = async () => {};
+  plugin.register({config:cfg,registerTool:(f:any)=>{factory=f},registerService:(s:any)=>{stop=s.stop}} as any);
+  const ctx={agentId:"main",sessionKey:"agent:main:main",workspaceDir:"/workspace",getRuntimeConfig:()=>cfg};
+  return {invoke:()=>factory(ctx)[0].execute("request",{}),stop};
+ }
+ const config=()=>({plugins:{entries:{"rocket-money":{enabled:true,config:{command:"/trusted/python",stateDir:"/trusted/shared-state",llmProvider:"fixture"}}}}});
+ it("reuses one bridge across native plugin instances and separate module loads", async () => {
+  const close=vi.fn(async()=>{});
+  const callTool=vi.fn(async()=>({content:[{type:"text",text:'{"status":"ok"}'}]}));
+  const connector=vi.fn(async()=>({callTool,close}));
+  const cfg=config();
+  // Use the pinned loader's real scopes; plain module imports miss its
+  // instance-local runtime-store behavior. Chunk names vary with the build.
+  const dist=dirname(dirname(createRequire(import.meta.url).resolve("openclaw/plugin-sdk/core")));
+  const chunk=readdirSync(dist).find(name=>/^plugin-setup-module-.*\.mjs$/.test(name));
+  expect(chunk).toBeDefined();
+  const native=await import(pathToFileURL(join(dist,chunk!)).href);
+  const Instance=Object.values(native).find((value:any)=>value?.name==="PluginInstance") as any;
+  expect(Instance).toBeDefined();
+  const httpOwner=new Instance("rocket-money");
+  const agentOwner=new Instance("rocket-money");
+  const http=httpOwner.run(()=>registration(createPlugin(connector as any),cfg));
+  const agent=agentOwner.run(()=>registration(createPlugin(connector as any),cfg));
+  vi.resetModules();
+  const later=await agentOwner.run(async()=>{
+   const reloaded=await import("../src/plugin.js");
+   return registration(reloaded.createPlugin(connector as any),cfg);
+  });
+  try {
+   await httpOwner.run(()=>http.invoke());
+   await agentOwner.run(()=>agent.invoke());
+   await agentOwner.run(()=>later.invoke());
+   expect(connector).toHaveBeenCalledTimes(1);
+   expect(callTool).toHaveBeenCalledTimes(3);
+  } finally {await http.stop();await agent.stop();await later.stop();}
+  expect(close).toHaveBeenCalledTimes(1);
+ });
+ it("waits for an active call before shutdown and lets the next call reconnect", async () => {
+  let release!:()=>void;
+  const blocked=new Promise<void>(resolve=>{release=resolve;});
+  let started!:()=>void;
+  const running=new Promise<void>(resolve=>{started=resolve;});
+  const close=vi.fn(async()=>{});
+  const callTool=vi.fn(async()=>{started();await blocked;return {content:[{type:"text",text:'{"status":"ok"}'}]};});
+  const connector=vi.fn(async()=>({callTool,close}));
+  const plugin=createPlugin(connector as any,createBridgeRuntime());
+  const first=registration(plugin,config());const second=registration(plugin,config());
+  const call=first.invoke();await running;
+  const stop=second.stop();
+  expect(close).not.toHaveBeenCalled();
+  release();await call;await stop;
+  expect(close).toHaveBeenCalledTimes(1);
+  await second.invoke();
+  expect(connector).toHaveBeenCalledTimes(2);
+  await second.stop();
+ });
+ it("rechecks a queued caller's permission after another registration finishes", async () => {
+  let release!:()=>void;const blocked=new Promise<void>(resolve=>{release=resolve;});
+  let started!:()=>void;const running=new Promise<void>(resolve=>{started=resolve;});
+  const callTool=vi.fn(async()=>{started();await blocked;return {content:[{type:"text",text:'{"status":"ok"}'}]};});
+  const connector=vi.fn(async()=>({callTool,close:vi.fn(async()=>{})}));
+  const plugin=createPlugin(connector as any,createBridgeRuntime());
+  const cfg=config();const first=registration(plugin,cfg);const second=registration(plugin,cfg);
+  const call=first.invoke();await running;
+  const queued=second.invoke();
+  await Promise.resolve();await Promise.resolve();
+  cfg.plugins.entries["rocket-money"].enabled=false;
+  release();await call;
+  expect((await queued).content[0].text).toContain("ACCESS_DENIED");
+  expect(callTool).toHaveBeenCalledTimes(1);
+  await first.stop();
  });
 });

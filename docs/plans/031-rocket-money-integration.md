@@ -1,8 +1,8 @@
 # Plan 031: Rocket Money MCP and shared browser authentication
 
-**Status:** Deployed; owner login and live read validation pending
+**Status:** Deployed; authenticated read passed; shared-session correction in progress
 **Issue:** [#135](https://github.com/coletaylor788/puddles/issues/135)
-**Last updated:** 2026-10-08
+**Last updated:** 2026-10-09
 
 ## Human section
 
@@ -105,7 +105,7 @@ The implementation is deployed. Retained independent review, cumulative CI, inst
 
 Main's skill was updated through Skill Workshop. It keeps the same account and run across follow-ups, uses the five scoped tools, and includes login and uncertain-write recovery. Its read catalog matches the installed server. The desktop login shortcut is installed and points to the production artifact. The live main-container boundary check and existing sandbox mount checks passed without reading credentials.
 
-Owner-assisted login and a bounded live read remain pending. Open the host's logged-in desktop through its viewer, double-click **Rocket Money Login**, sign in inside Chrome, and complete MFA. Wait for **Rocket Money login verified**, then resume the same task. No live financial mutations were used for validation.
+Owner-assisted login and a bounded authenticated read passed. A later main-agent request exposed duplicate MCP connections across tool registries, causing a local browser-lock `BUSY` response. A correction shares one process connection and serializes its lifecycle across registrations and module reloads. The competing verification process was closed; the permanent correction is under review and release validation. No live financial mutations were used for validation.
 
 ## Agent section
 
@@ -114,6 +114,7 @@ Owner-assisted login and a bounded live read remain pending. Open the host's log
 - Canonical repository design; supersedes the earlier combined gateway and browser-worker proposals.
 - The implementation uses the shared `browser-auth` Python package, official MCP SDK and a main-only OpenClaw stdio adapter. The adapter retains the host process across turns and applies outbound LeakGuard plus inbound classification and redaction.
 - Main's skill and owner-specific finance rules remain private runtime content, managed outside the repository.
+- Shared-session correction: native plugin runtime stores are scoped to managed instances. Keep the MCP bridge in one process slot, retain per-call authorization and guards, and serialize dispatch, account changes and shutdown. Regression coverage uses distinct native plugin instances and the packaged MCP subprocess.
 
 ### Scope and acceptance criteria
 
