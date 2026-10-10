@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
 import {
-  chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync,
+  chmodSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync,
   realpathSync, renameSync, rmSync, writeFileSync,
 } from "node:fs";
 import { hostname, tmpdir } from "node:os";
@@ -1248,4 +1248,53 @@ describe("retention resumption after reference changes", () => {
     };
     expect((await runBackupRetention(f.target, f.policy, execute)).retired).toEqual([]);
   });
+});
+
+function ownedInstallation(f: ReturnType<typeof retentionFixture>) {
+  const path = join(realpathSync(f.directory), ".puddles-install-100-1");
+  mkdirSync(path);
+  writeFileSync(join(path, "runtime"), "actual predecessor bytes");
+  writeFileSync(join(path, "runtime-identity.json"), "incoming identity is not the predecessor digest");
+  const stat = lstatSync(path);
+  const journal = { ...f.older.journal, prefix: path,
+    externalInstallations: [{ path, identity: { dev: stat.dev, ino: stat.ino, birthtimeMs: stat.birthtimeMs } }] };
+  writeFileSync(join(f.older.directory, "recovery.json"), JSON.stringify(journal));
+  return path;
+}
+it("retires the exact external predecessor with its generation and keeps unowned legacy staging", async () => {
+  const f = retentionFixture(), path = ownedInstallation(f);
+  const legacy = join(f.directory, ".puddles-install-99-1"); mkdirSync(legacy);
+  const plan = await planBackupRetention(f.target, f.policy, f.execute);
+  expect(plan.excluded).toEqual([]);
+  await applyBackupRetention(f.target, f.policy, plan, f.execute);
+  expect(existsSync(path)).toBe(false);
+  expect(existsSync(legacy)).toBe(true);
+  await applyBackupRetention(f.target, f.policy, plan, f.execute);
+});
+it.each(["consumer", "content", "reference"])("keeps external predecessor on changed %s", async fault => {
+  const f = retentionFixture(), path = ownedInstallation(f);
+  const plan = await planBackupRetention(f.target, f.policy, f.execute);
+  if (fault === "consumer") f.setActive([path]);
+  if (fault === "content") writeFileSync(join(path, "runtime"), "changed");
+  if (fault === "reference") {
+    const journalPath = join(f.predecessor.directory, "recovery.json");
+    const journal = JSON.parse(readFileSync(journalPath, "utf8"));
+    writeFileSync(journalPath, JSON.stringify({ ...journal, retainedPath: path }));
+  }
+  await expect(applyBackupRetention(f.target, f.policy, plan, f.execute)).rejects.toThrow();
+  expect(existsSync(path)).toBe(true);
+  expect(existsSync(f.older.directory)).toBe(true);
+});
+it("resumes partial external deletion before retiring the generation", async () => {
+  const f = retentionFixture(), path = ownedInstallation(f);
+  const plan = await planBackupRetention(f.target, f.policy, f.execute);
+  const entry = plan.entries.find((item: any) => item.transaction === f.older.transaction);
+  const trash = entry.externalInstallations[0].trash;
+  renameSync(path, trash); rmSync(join(trash, "runtime"));
+  writeFileSync(join(f.target.backupRoot, `retention-${entry.transaction}.json`), JSON.stringify({
+    schema: "puddles.openclaw-backup-retention/v1", planSha256: plan.sha256, entry, status: "planned", external: ["deleting"],
+  }));
+  await applyBackupRetention(f.target, f.policy, plan, f.execute);
+  expect(existsSync(trash)).toBe(false);
+  expect(existsSync(f.older.directory)).toBe(false);
 });

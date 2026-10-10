@@ -7,7 +7,7 @@ import { spawn } from "node:child_process";
 import { assertBatchArtifact, assertDeploymentOwnership, coordinate, initializeCoordination, processIdentity, readCoordination } from "../src/deploy-coordination.mjs";
 
 // @ts-expect-error Executable lifecycle module.
-import { retryCoordinate } from "../bin/openclaw-deployment-slot.mjs";
+import { retryCoordinate, runWithSlot } from "../bin/openclaw-deployment-slot.mjs";
 // @ts-expect-error Executable lifecycle module.
 import { snapshotMergedBatch } from "../src/merged-batch.mjs";
 // @ts-expect-error Executable lifecycle module.
@@ -308,4 +308,14 @@ describe("shared deployment queue and merged batch ownership", () => {
       async () => results.shift())).rejects.toThrow("feature owner");
   });
 
+});
+
+it("records joined failed-controller evidence only after its child exits", async () => {
+  const f = setup();
+  const ticket = f.enqueue("maintenance-failure", "PROD", { purpose: "maintenance", ready: true });
+  const lease = f.lease(ticket, "PROD"); f.op("claim", lease);
+  const proof = join(f.root, "joined.json");
+  await expect(runWithSlot(f.path, lease, process.execPath, ["-e", "process.exit(3)"], proof)).rejects.toThrow("command failed");
+  expect(JSON.parse(readFileSync(proof, "utf8"))).toMatchObject({ requestId: lease.requestId, joined: true, code: 3 });
+  expect(readCoordination(f.path).environments.PROD.owner.requestId).toBe(lease.requestId);
 });

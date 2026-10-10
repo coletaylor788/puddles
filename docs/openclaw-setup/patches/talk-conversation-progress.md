@@ -1,8 +1,14 @@
 # Talk conversation and native progress
 
-This OpenClaw 2026.9.6 patch lets the Live model discuss available context while
-backend work runs. It delegates unavailable facts, tools, actions and careful
-reasoning. Task controls still require a fresh host result.
+This OpenClaw 2026.9.6 patch makes Live conversation the default, including
+reasoning, explanation, brainstorming, and iteration while backend work runs.
+It delegates missing memory or context, information requiring a tool lookup,
+and external actions. Follow-ups reuse available results unless they need a new
+lookup or action. Task controls still require a fresh host result.
+
+The provider prompt, consultation tool description, and automatic session
+instructions share that boundary. Explicit always-consult instructions remain
+available for operators who select that behavior.
 
 The existing consultation callback forwards completed user-facing preambles as
 silent context. The built-in harness emits these independently of its reasoning

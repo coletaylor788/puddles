@@ -270,3 +270,21 @@ cleanup path, not generic deletion of journals or a new backup-retirement system
 Controllers must perform this on success and failure after children exit, and
 reconcile interrupted cleanup on restart. Until those hooks are aligned, the
 assigned owner performs this terminal cleanup explicitly.
+
+## Installation and preparation admission
+
+Activation uses the same `E2E_CAPACITY_ROOT` as the native builder. It measures
+expanded runtime archives and reserves staging plus independent snapshot and
+rollback copies, including state and external workshop data. The free floor is
+`E2E_REQUIRED_FREE_BYTES` (8 GiB by default). A controller can choose a higher
+floor for its release environment. It writes `capacity-admission.json` inside
+its recovery generation with demand, reservation and current retention health.
+A blocked reserve fails before service shutdown. Joined completion releases the
+reservation; forced interruption requires the existing exact-token recovery.
+
+Activation records external installation prefix ownership before extraction.
+Generation retirement journals and removes that dependency with fresh inventory,
+reference and host-consumer checks. Old generations without this record never
+gain external deletion authority by name. Runtime identity metadata inside the
+swap prefix describes the incoming package and is not used to identify its
+current predecessor payload.
