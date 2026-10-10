@@ -6,6 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { atomicJson, fileDigest, jsonDigest } from "../src/native-state.mjs";
 import { readCoordination } from "../src/deploy-coordination.mjs";
+import { systemOperations } from "../src/native-activation.mjs";
 import { retryCoordinate } from "./openclaw-deployment-slot.mjs";
 
 const read = path => JSON.parse(readFileSync(path, "utf8"));
@@ -19,9 +20,25 @@ export function maintenanceInputs(root, policy) {
     const latest = existsSync(join(root, "latest-activation.json")) ? read(join(root, "latest-activation.json")) : null;
     if (jsonDigest(latest) === jsonDigest(backup.activation)) return { target: backup.target, policy: { ...policy, replacement: { kind: "backup" } } };
     const release = read(join(root, "retention-context.json"));
-    if (!latest || release.transaction !== latest.transaction || !release.backupTarget ||
-        realpathSync(release.backupTarget.backupRoot) !== realpathSync(root)) throw new Error("New release requires an exact backup target");
-    return { target: release.backupTarget, policy: { ...policy, replacement: { kind: "backup" } }, refresh: true };
+    if (!latest || release.schemaVersion !== 1 || release.transaction !== latest.transaction) throw new Error("New release requires an exact backup target");
+    if (release.backupTarget) {
+      if (realpathSync(release.backupTarget.backupRoot) !== realpathSync(root)) throw new Error("New release requires an exact backup target");
+      return { target: release.backupTarget, policy: { ...policy, replacement: { kind: "backup" } }, refresh: true };
+    }
+    // Older release producers publish the original activation target. Its
+    // compact journal remains after payload retirement and binds this fallback.
+    if (!/^activation-[0-9]+-[0-9]+$/.test(latest.transaction) ||
+        release.target?.purpose !== "production" ||
+        realpathSync(release.target.backupRoot) !== realpathSync(root) ||
+        jsonDigest(release.target) !== latest.target) throw new Error("Legacy release target identity differs");
+    const journal = read(join(root, latest.transaction, "recovery.json"));
+    if (journal.schemaVersion !== 1 || journal.transaction !== latest.transaction || journal.target !== latest.target ||
+        journal.status !== "healthy" || journal.quiesced !== false ||
+        journal.deployedServiceSha256 !== fileDigest(release.target.plistPath)) throw new Error("Legacy release has no unchanged healthy service");
+    const { nodeMigration, legacyActivationReceipt, backupNode, ...target } = release.target;
+    return { target: { ...target, backupExclusions: [{ path: "deploy-snapshots", reason: "legacy-backup-storage" }] },
+      policy: { ...policy, replacement: { kind: "backup" } }, refresh: true, inspectService: true,
+      deployment: latest, serviceSha256: journal.deployedServiceSha256 };
   }
   const latest = read(join(root, "latest-activation.json"));
   const context = read(join(root, "retention-context.json"));
@@ -73,6 +90,12 @@ export async function maintain(config, dependencies = {}) {
   let before = null;
   let controllerStarted = false;
   try {
+    if (jsonDigest(maintenanceInputs(root, read(config.policy))) !== jsonDigest(inputs)) throw new Error("Maintenance inputs changed before ownership");
+    if (inputs.inspectService) {
+      const inspect = dependencies.inspectServiceNode ?? (target => systemOperations(target, work).inspectServiceNode());
+      inputs.target.backupNode = await inspect(inputs.target);
+      if (fileDigest(inputs.target.plistPath) !== inputs.serviceSha256) throw new Error("Deployed service changed during inspection");
+    }
     before = retentionState(root);
     atomicJson(leasePath, lease);
     atomicJson(targetPath, inputs.target);
