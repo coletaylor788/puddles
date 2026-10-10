@@ -45,18 +45,35 @@ function result(value: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value) }], details: { source: "rocket-money" } };
 }
 
-export function createPlugin(connector: typeof connect = connect) {
+export function createBridgeRuntime() {
+  return { bridge: null as Promise<Caller> | null, bound: null as string | null, pending: Promise.resolve() };
+}
+type BridgeRuntime = ReturnType<typeof createBridgeRuntime>;
+const runtimeKey = Symbol.for("puddles.rocket-money.mcp.v1");
+function sharedRuntime() {
+  // SDK runtime stores are scoped to a managed PluginInstance. HTTP and agent
+  // registries have different instances but must share this host process owner.
+  const host = globalThis as typeof globalThis & { [runtimeKey]?: BridgeRuntime };
+  return host[runtimeKey] ??= createBridgeRuntime();
+}
+
+export function createPlugin(connector: typeof connect = connect, runtime = sharedRuntime()) {
+  // Tool registries can register or import the plugin more than once in a gateway.
+  // The process slot keeps one profile owner across all of those entry points.
+  const serialized = <T>(action: () => Promise<T>): Promise<T> => {
+    const next = runtime.pending.then(action);
+    runtime.pending = next.then(() => undefined, () => undefined);
+    return next;
+  };
+  const close = async () => {
+    const pending = runtime.bridge; runtime.bridge = null; runtime.bound = null;
+    if (pending) await (await pending.catch(() => null))?.close().catch(() => undefined);
+  };
   return {
     id: "rocket-money", name: "Rocket Money",
     register(api: OpenClawPluginApi) {
-      let bridge: Promise<Caller> | null = null;
-      let bound: string | null = null;
       let provider: Promise<LLMClient> | null = null;
       let providerKey: string | null = null;
-      const close = async () => {
-        const pending = bridge; bridge = null; bound = null;
-        if (pending) await (await pending.catch(() => null))?.close().catch(() => undefined);
-      };
       api.registerTool((ctx: OpenClawPluginToolContext): AnyAgentTool[] => {
         const initial = configuration(api, ctx);
         if (!initial) return [];
@@ -81,41 +98,43 @@ export function createPlugin(connector: typeof connect = connect) {
             } catch {
               return result({ status: "error", error: { code: "EGRESS_BLOCKED" } });
             }
-            // The guard is asynchronous. Recheck authority before any provider call.
-            const authorized = configuration(api, ctx);
-            if (!authorized || JSON.stringify([authorized.command, authorized.stateDir, authorized.chromeExecutable]) !== key ||
-                (t.name.startsWith("rocket_money_set_") && !authorized.writesEnabled)) {
-              return result({ status: "error", error: { code: "ACCESS_DENIED" } });
-            }
-            try {
-              if (bound && bound !== key) await close();
-              if (!bridge) { bound = key; bridge = connector(cfg); }
-              const raw = await (await bridge).callTool(t.name, (params ?? {}) as Record<string, unknown>);
-              const text = raw.content.filter(c => c.type === "text").map(c => c.text).join("\n");
-              if (text.length > 16 * 1024 * 1024) throw new Error("LIMIT_EXCEEDED");
-              const guards = [new InjectionGuard({ llm }), new SecretRedactor({ llm })];
-              let checked = text;
-              for (const guard of guards) {
-                const verdict = await guard.check(t.name, checked);
-                if (verdict.action === "block") return result({ status: "error", error: { code: "CONTENT_BLOCKED" }, ...(typeof (params as any)?.requestId === "string" ? { requestId: (params as any).requestId } : {}) });
-                if (verdict.action === "modify") checked = verdict.content ?? "";
-              }
-              // Do not leak unfiltered structuredContent or original payload in details.
-              const current = configuration(api, ctx);
-              if (!current || JSON.stringify([current.command, current.stateDir, current.chromeExecutable]) !== key) {
+            return serialized(async () => {
+              // Classification and queueing are asynchronous. Recheck before dispatch.
+              const authorized = configuration(api, ctx);
+              if (!authorized || JSON.stringify([authorized.command, authorized.stateDir, authorized.chromeExecutable]) !== key ||
+                  (t.name.startsWith("rocket_money_set_") && !authorized.writesEnabled)) {
                 return result({ status: "error", error: { code: "ACCESS_DENIED" } });
               }
-              return { content: [{ type: "text" as const, text: checked }], details: { source: "rocket-money", isError: raw.isError === true } };
-            } catch {
-              await close();
-              // A lost write response is uncertain. Keep its ID available for reconciliation.
-              return result({ status: "error", error: { code: t.name.startsWith("rocket_money_set_") ? "OUTCOME_UNKNOWN" : "MCP_UNAVAILABLE" },
-                ...(typeof (params as any)?.requestId === "string" ? { requestId: (params as any).requestId } : {}) });
-            }
+              try {
+                if (runtime.bound && runtime.bound !== key) await close();
+                if (!runtime.bridge) { runtime.bound = key; runtime.bridge = connector(cfg); }
+                const raw = await (await runtime.bridge).callTool(t.name, (params ?? {}) as Record<string, unknown>);
+                const text = raw.content.filter(c => c.type === "text").map(c => c.text).join("\n");
+                if (text.length > 16 * 1024 * 1024) throw new Error("LIMIT_EXCEEDED");
+                const guards = [new InjectionGuard({ llm }), new SecretRedactor({ llm })];
+                let checked = text;
+                for (const guard of guards) {
+                  const verdict = await guard.check(t.name, checked);
+                  if (verdict.action === "block") return result({ status: "error", error: { code: "CONTENT_BLOCKED" }, ...(typeof (params as any)?.requestId === "string" ? { requestId: (params as any).requestId } : {}) });
+                  if (verdict.action === "modify") checked = verdict.content ?? "";
+                }
+                // Do not leak unfiltered structuredContent or original payload in details.
+                const current = configuration(api, ctx);
+                if (!current || JSON.stringify([current.command, current.stateDir, current.chromeExecutable]) !== key) {
+                  return result({ status: "error", error: { code: "ACCESS_DENIED" } });
+                }
+                return { content: [{ type: "text" as const, text: checked }], details: { source: "rocket-money", isError: raw.isError === true } };
+              } catch {
+                await close();
+                // A lost write response is uncertain. Keep its ID available for reconciliation.
+                return result({ status: "error", error: { code: t.name.startsWith("rocket_money_set_") ? "OUTCOME_UNKNOWN" : "MCP_UNAVAILABLE" },
+                  ...(typeof (params as any)?.requestId === "string" ? { requestId: (params as any).requestId } : {}) });
+              }
+            });
           },
         }));
       }, { names: TOOLS.map(t => t.name) });
-      api.registerService({ id: "rocket-money-mcp", start() {}, stop: close });
+      api.registerService({ id: "rocket-money-mcp", start() {}, stop: () => serialized(close) });
     },
   };
 }
