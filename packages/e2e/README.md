@@ -773,12 +773,17 @@ Its local configuration supplies `backupRoot`, `workDir`, `coordination`, `polic
 (the policy JSON path), and the coordination `agent` identity. Optional
 `timeoutMs` bounds a run (one hour by default, at most four hours). The workspace
 must already exist. The launcher reads the producer context, skips busy PROD,
-claims maintenance ownership, runs the existing slot controller, and releases
-only after a successful joined completion with no remaining backup lock. Its
+claims maintenance ownership and runs the existing slot controller. Successful
+joined completion with no remaining backup lock releases ownership; the narrowly
+allowed failure case is described below. Its
 work files and latest log/result use fixed names. Schedule this entrypoint with
 the host service manager after installing the reviewed tooling and configuration.
 
-An unsuccessful or forcibly killed controller retains ownership for explicit
-inspection. Scheduled calls do not steal that lease or clear its lock. A stopped
+A failed controller may release ownership only with its matching joined-child
+receipt, no remaining plan, tombstone or backup lock, and unchanged retirement
+journals. The result is `blocked`, preserving the failure. Other unsuccessful or
+forcibly killed controllers retain ownership for explicit inspection.
+`retention-health.json` reports the latest result; activation includes it in
+`capacity-admission.json`. Scheduled calls do not steal that lease or clear its lock. A stopped
 owner and all children must be verified before the owner resumes its exact
 retention plan. Graceful signals unwind the helper; SIGKILL cannot run cleanup.

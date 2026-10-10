@@ -8,11 +8,13 @@ import { setTimeout as delay } from "node:timers/promises";
 import { acquireLock, atomicJson, fileDigest, inside, jsonDigest, treeDigest } from "./native-state.mjs";
 import { verifyBuildReceipt, verifyProductionRelease } from "./native-release.mjs";
 import { acquireArtifactPoolLock } from "./native-retention.mjs";
-import { installRuntime } from "./native-package.mjs";
+import { installRuntime, runtimeArchiveBytes } from "./native-package.mjs";
 import { runCommand } from "./process-runner.mjs";
 import { readMigrationManifest } from "./native-state-migration.mjs";
 import { assertBatchArtifact, assertDeploymentOwnership } from "./deploy-coordination.mjs";
 import { applyWorkshopOwnerRepairs, inspectWorkshopMigration, restoreWorkshopSnapshots, snapshotWorkshopMigration, validateWorkshopBinding, verifyWorkshopSnapshots } from "./native-workshop-migration.mjs";
+
+import { reserveStageStorage, releaseStorage, storageLogicalBytes } from "./native-storage.mjs";
 
 const patchDir = resolve(dirname(fileURLToPath(import.meta.url)), "../../../docs/openclaw-setup/patches");
 
@@ -223,6 +225,32 @@ with open(destination, "xb") as file:
 shutil.copymode(source, destination)
 `, target.plistPath, destination, String(migration.argumentIndex), migration.expected.path, migration.desired.path]);
     },
+    async reserveCapacity(receipt) {
+      const artifacts = [receipt.artifact, ...(receipt.additionalArtifacts ?? []).map(item => item.artifact)];
+      const expanded = [];
+      for (const artifact of artifacts) expanded.push(await runtimeArchiveBytes(artifact, run));
+      const staged = (receipt.preparedFiles ?? []).reduce((sum, item) => sum + storageLogicalBytes(item.path), 0);
+      const workshop = inspectWorkshopMigration(target);
+      const workshopBytes = (workshop?.external ?? []).reduce((sum, item) => sum + (item.sha256 === null ? 0 : storageLogicalBytes(item.path)), 0);
+      const browserBytes = target.browser ? await runtimeArchiveBytes(target.browser, run) : 0;
+      const bytes = 2 * (expanded.reduce((sum, value) => sum + value, 0) + browserBytes + workshopBytes +
+        storageLogicalBytes(target.installDir) + storageLogicalBytes(target.stateDir)) + staged;
+      for (const path of [dirname(target.installDir), target.stateDir]) {
+        if (lstatSync(path).dev !== lstatSync(target.backupRoot).dev) throw new Error("Activation capacity requires one filesystem");
+      }
+      const healthPath = join(target.backupRoot, "retention-health.json");
+      const retentionHealth = existsSync(healthPath) ? JSON.parse(readFileSync(healthPath, "utf8")) : { status: "unknown" };
+      let capacity;
+      try {
+        capacity = reserveStageStorage(basename(recoveryDir), target.backupRoot, bytes);
+        atomicJson(join(recoveryDir, "capacity-admission.json"), { status: "admitted", capacity, retentionHealth });
+        return capacity;
+      } catch (error) {
+        if (capacity) releaseStorage(capacity.root, capacity.token);
+        atomicJson(join(recoveryDir, "capacity-admission.json"), { status: "blocked", bytes, retentionHealth, message: error.message });
+        throw new Error(`${error.message}; retention health: ${retentionHealth.status}`, { cause: error });
+      }
+    },
     async preflight() {
       await cli(["--version"], target.installDir, target.nodeMigration?.expected.realPath ?? target.nodeMigration?.expected.path ?? process.execPath);
       await run("python3", ["--version"]);
@@ -248,7 +276,7 @@ shutil.copymode(source, destination)
       }
       return null;
     },
-    async install(artifact, prefix) { return installRuntime(artifact, prefix, run); },
+    async install(artifact, prefix, onCreated) { return installRuntime(artifact, prefix, run, onCreated); },
     async stagePrepared(record, destination) {
       mkdirSync(dirname(destination), { recursive: true, mode: 0o700 });
       cpSync(record.path, destination, {
@@ -613,6 +641,7 @@ export async function activateNative(receipt, target, operationsFactory = system
     preparedFiles: preparedFileIdentity,
     status: "preflight", snapshotReady: false, browserChanged: false, quiesced: false,
   };
+  let capacity;
   let signal;
   let recoveryIdentityVerified = !recoverDir;
   const onSignal = (value) => { signal = value; };
@@ -688,6 +717,12 @@ export async function activateNative(receipt, target, operationsFactory = system
       return { status: "rolled-back", recoveryDir };
     }
     save("preflight");
+    capacity = await operations.reserveCapacity?.(receipt);
+    if (capacity) { journal.capacity = capacity; save("preflight"); }
+    if (existsSync(join(target.backupRoot, "retention-health.json"))) {
+      journal.retentionHealth = JSON.parse(readFileSync(join(target.backupRoot, "retention-health.json"), "utf8"));
+      save("preflight");
+    }
     if (target.nodeMigration) {
       await verifyNodeIdentities(target.nodeMigration, receipt, operations);
       const originalServiceSha256 = fileDigest(target.plistPath);
@@ -701,9 +736,19 @@ export async function activateNative(receipt, target, operationsFactory = system
     }
     journal.previousBrowser = await operations.preflight();
     const workshopPreflight = inspectWorkshopMigration(target);
-    const prefix = join(dirname(target.installDir), `.puddles-install-${Date.now()}-${process.pid}`);
+    const prefix = join(realpathSync(dirname(target.installDir)), `.puddles-install-${Date.now()}-${process.pid}`);
     journal.prefix = prefix;
-    const installed = await operations.install(receipt.artifact, prefix);
+    save("preflight");
+    const recordInstallation = () => {
+      const stat = lstatSync(prefix);
+      if (!stat.isDirectory() || stat.isSymbolicLink() || realpathSync(prefix) !== prefix) throw new Error("Invalid installation prefix");
+      journal.externalInstallations = [{ path: prefix,
+        identity: { dev: stat.dev, ino: stat.ino, birthtimeMs: stat.birthtimeMs } }];
+      save("preflight");
+    };
+    // The installer records ownership immediately after mkdir, before extraction.
+    const installed = await operations.install(receipt.artifact, prefix, recordInstallation);
+    if (!journal.externalInstallations) recordInstallation();
     journal.deployedRuntimeSha256 = treeDigest(installed, { portable: true });
     if (target.stateMigration) {
       const manifest = readMigrationManifest(target.stateMigration.manifestPath, target.stateMigration.sha256);
@@ -924,6 +969,7 @@ export async function activateNative(receipt, target, operationsFactory = system
     for (const [name, handler] of handlers) process.removeListener(name, handler);
     unlock();
     poolUnlock?.();
+    if (capacity) releaseStorage(capacity.root, capacity.token);
   }
 }
 

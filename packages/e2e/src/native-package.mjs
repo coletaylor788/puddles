@@ -223,10 +223,11 @@ export async function packProviderRuntime(sourceRoot, directory, provenance, run
   };
 }
 
-export async function installRuntime(artifact, prefix, run = runCommand) {
+export async function installRuntime(artifact, prefix, run = runCommand, onCreated = () => {}) {
   if (fileDigest(artifact.path) !== artifact.sha256) throw new Error("Artifact digest changed");
   if (existsSync(prefix)) throw new Error("Install prefix must be new");
   mkdirSync(prefix, { recursive: true, mode: 0o700 });
+  onCreated(prefix);
   const entries = await run("tar", ["-tzf", artifact.path], { capture: true, maxOutputBytes: runtimeArchiveListingOutputBytes });
   if (entries.split("\n").filter(Boolean).some((entry) => entry.startsWith("/") || entry.split("/").includes("..") || !["runtime", "runtime-identity.json"].includes(entry.split("/")[0]))) {
     throw new Error("Invalid runtime archive path");
@@ -238,4 +239,13 @@ export async function installRuntime(artifact, prefix, run = runCommand) {
   const runtime = join(prefix, "runtime");
   if (treeDigest(runtime, { portable: true }) !== identity.runtimeSha256) throw new Error("Installed runtime differs from artifact identity");
   return runtime;
+}
+
+export async function runtimeArchiveBytes(artifact, run = runCommand) {
+  if (fileDigest(artifact.path) !== artifact.sha256) throw new Error("Artifact digest changed");
+  const output = await run("python3", ["-c", "import sys,tarfile; a=tarfile.open(sys.argv[1], 'r:*'); print(sum(m.size for m in a if m.isfile()))", artifact.path],
+    { capture: true, quiet: true, timeoutMs: 120_000 });
+  const bytes = Number(output.trim());
+  if (!Number.isSafeInteger(bytes) || bytes < 0) throw new Error("Invalid expanded runtime size");
+  return bytes;
 }

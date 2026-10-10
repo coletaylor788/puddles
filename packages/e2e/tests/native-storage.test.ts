@@ -1,15 +1,15 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { spawn } from "node:child_process";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statfsSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 // @ts-expect-error Executable JavaScript module.
-import { initializeStorage, registerScratch, storageHold, sealScratch, planStorageCleanup, applyStorageCleanup, reserveStorage, releaseStorage, resumeFailedScratch } from "../src/native-storage.mjs";
+import { initializeStorage, registerScratch, storageHold, sealScratch, planStorageCleanup, applyStorageCleanup, reserveStorage, releaseStorage, resumeFailedScratch, reserveStageStorage, storageLogicalBytes } from "../src/native-storage.mjs";
 // @ts-expect-error Executable JavaScript module.
 import { finalizeScratch, finalizeFailedNativeBuild, retainCompletedOperationLog } from "../src/native-storage-finalize.mjs";
 // @ts-expect-error Executable JavaScript module.
-import { acquireLock, treeDigest } from "../src/native-state.mjs";
+import { acquireLock, treeDigest, fileDigest } from "../src/native-state.mjs";
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -251,4 +251,63 @@ it("keeps operation diagnostics until explicit task completion", async () => {
   for (const reference of readdirSync(join(pool, "references"))) completeRetentionRun(pool, reference.replace(/\.json$/, ""), "task");
   applyArtifactCleanup(pool);
   expect(readdirSync(join(pool, "objects"))).toEqual([]);
+});
+
+it("stage reservations count concurrent demand and preserve their configured floor", () => {
+  const root = fixture(), capacity = join(root, "capacity"); mkdirSync(capacity);
+  vi.stubEnv("E2E_CAPACITY_ROOT", capacity);
+  try {
+    writeFileSync(join(root, "payload"), "12345");
+    symlinkSync(join(root, "payload"), join(root, "link"));
+    expect(storageLogicalBytes(join(root, "payload"))).toBe(5);
+    expect(storageLogicalBytes(join(root, "link"))).toBe(0);
+    const reservation = reserveStageStorage("stage-one", root, 1024, 0);
+    const disk = statfsSync(capacity), available = disk.bavail * disk.bsize;
+    expect(() => reserveStageStorage("stage-two", root, available + 1024 ** 3, 1)).toThrow("Insufficient");
+    releaseStorage(reservation.root, reservation.token);
+    expect(JSON.parse(readFileSync(join(capacity, "reservations.json"), "utf8")).reservations).toEqual([]);
+  } finally { vi.unstubAllEnvs(); }
+});
+
+// @ts-expect-error Executable activation lifecycle.
+import { systemOperations } from "../src/native-activation.mjs";
+it("activation admission measures expanded archives and retains blocked maintenance health", async () => {
+  const root = fixture(), capacity = join(root, "capacity"), installDir = join(root, "installed"), stateDir = join(root, "state"), backupRoot = join(root, "backups");
+  for (const path of [capacity, installDir, stateDir, backupRoot]) mkdirSync(path);
+  writeFileSync(join(installDir, "code"), "1234"); writeFileSync(join(stateDir, "data"), "12345");
+  const archive = join(root, "runtime.tar.gz");
+  execFileSync("tar", ["-czf", archive, "-C", installDir, "."], { env: { ...process.env, COPYFILE_DISABLE: "1" } });
+  const browserArchive = join(root, "browser.tar");
+  execFileSync("tar", ["-cf", browserArchive, "-C", stateDir, "."], { env: { ...process.env, COPYFILE_DISABLE: "1" } });
+  const browser = { path: browserArchive, sha256: fileDigest(browserArchive) };
+  writeFileSync(join(backupRoot, "retention-health.json"), JSON.stringify({ status: "blocked", message: "recovery differs" }));
+  const recovery = join(backupRoot, "activation-100-1"); mkdirSync(recovery);
+  vi.stubEnv("E2E_CAPACITY_ROOT", capacity); vi.stubEnv("E2E_REQUIRED_FREE_BYTES", "0");
+  try {
+    const reservation = await systemOperations({ installDir, stateDir, backupRoot, browser }, recovery).reserveCapacity({ artifact: { path: archive, sha256: fileDigest(archive) } });
+    expect(reservation.bytes).toBe(2 * (4 + 5 + 4 + 5));
+    const admission = JSON.parse(readFileSync(join(recovery, "capacity-admission.json"), "utf8"));
+    expect(admission.retentionHealth.status).toBe("blocked");
+    releaseStorage(reservation.root, reservation.token);
+    vi.stubEnv("E2E_REQUIRED_FREE_BYTES", String(Number.MAX_SAFE_INTEGER));
+    await expect(systemOperations({ installDir, stateDir, backupRoot, browser }, recovery).reserveCapacity({ artifact: { path: archive, sha256: fileDigest(archive) } })).rejects.toThrow("retention health: blocked");
+    expect(JSON.parse(readFileSync(join(recovery, "capacity-admission.json"), "utf8")).status).toBe("blocked");
+  } finally { vi.unstubAllEnvs(); }
+});
+
+
+it("does not start a second archive reader after the first reader fails", async () => {
+  const root = fixture(), first = join(root, "first.tar"), second = join(root, "second.tar");
+  writeFileSync(first, "corrupt archive"); writeFileSync(second, "second archive");
+  const readers: string[] = [];
+  let active = 0;
+  const run = async (_command: string, args: string[]) => {
+    readers.push(args.at(-1)!); active++;
+    try { await new Promise(resolve => setTimeout(resolve, 10)); throw new Error("corrupt archive"); }
+    finally { active--; }
+  };
+  const receipt = { artifact: { path: first, sha256: fileDigest(first) }, additionalArtifacts: [{ artifact: { path: second, sha256: fileDigest(second) } }] };
+  await expect(systemOperations({ stateDir: root }, root, run).reserveCapacity(receipt)).rejects.toThrow("corrupt archive");
+  expect(readers).toEqual([first]);
+  expect(active).toBe(0);
 });
