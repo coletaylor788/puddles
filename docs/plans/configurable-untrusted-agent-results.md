@@ -77,7 +77,7 @@ A summarizer may omit conditions, dates, amounts, or attachment coverage. Existi
 
 #### Reused-session model migration
 
-Changing an agent's configured model does not replace an automatic model selection already stored on a reusable session. The installation migration therefore clears only reviewed, automatic selections that still point to the old default and have that same origin. Explicit user selections remain unchanged.
+Changing an agent's configured model does not replace an automatic model selection already stored on a reusable session. The installation migration therefore clears only reviewed, automatic selections that still point to a reviewed old default and have that same origin. A bounded list can cover successive defaults already used by the installation. Explicit user selections remain unchanged.
 
 Run this through the existing stopped-state deployment transaction, after native schema and candidate configuration migration but before doctor. Use native default-selection semantics and preserve conversation history, identity, activity times, and unrelated metadata. A selected active or locked session blocks activation. The existing complete state snapshot restores the original selections if activation fails.
 
@@ -97,7 +97,7 @@ Canary wrapping separately from any model change. Activate through the existing 
 
 The replacement immutable candidate passed cumulative validation, DEV and the installed TEST suite. The forced rollback rehearsal then failed because the copied predecessor seed retained unfinished legacy startup fixtures and lacked declared plugins. TEST closed failed with its isolated target and complete failure/recovery evidence retained. No external model requests ran. Production was unchanged and remains healthy on the earlier activation that failed migration acceptance.
 
-The guarded session migration and metadata-preservation repair remain approved. The release owner is correcting predecessor seed preparation and adding a regression that proves the copied predecessor starts before retrying the release. A new candidate must pass the normal cumulative and environment gates. Production acceptance and development cleanup remain pending.
+The requester approved the updated installed reader model on 2026-10-09. The guarded migration now also accepts a bounded set of exact prior defaults, so sessions created on an intermediate default follow the new configured model. Explicit user pins and cross-origin fallback selections remain unchanged. The guarded session migration and metadata-preservation repair remain approved. The release owner is correcting predecessor seed preparation and adding a regression that proves the copied predecessor starts before retrying the release. A new candidate must pass the normal cumulative and environment gates. Production acceptance and development cleanup remain pending.
 
 ## Agent section
 
@@ -140,7 +140,7 @@ This is a source policy: reader-to-main and browser-to-main content is enclosed;
 
 #### Sealed session defaults
 
-The release migration manifest gains an optional provider-neutral `sessionModelDefaults` operation list. Each entry names an agent and exact old and new provider/model identities. The configured candidate primary must equal the declared new identity. Select only automatic entries whose override and origin both equal the declared old identity. Leave explicit user pins, unrelated selections, and entries already using defaults untouched.
+The release migration manifest gains an optional provider-neutral `sessionModelDefaults` operation list. Each entry names an agent and exact old and new provider/model identities. Optional `additionalExpected` lists up to seven other exact predecessor identities in the same provider. Duplicates, the desired identity, and cross-provider entries are rejected. Each selected row must match both the override and its own origin to one complete predecessor identity; mixed identities do not match. The configured candidate primary must equal the declared new identity. Select only automatic entries whose override and origin both equal the declared old identity. Leave explicit user pins, unrelated selections, and entries already using defaults untouched.
 
 Apply the operation in the native stopped-state `sessions` phase after candidate configuration is applied and before doctor repair. Resolve state-owned session storage through candidate SDK helpers, use native default-selection semantics, and compare selected metadata before writing. Preserve session identity, raw transcripts, lifecycle fields, original activity time, and compatible auth. Reject selected active or locked entries. Whole-state activation rollback covers these writes. Tests must exercise model selection after reuse and rollback after a session mutation.
 
