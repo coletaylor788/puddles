@@ -1,5 +1,5 @@
 import {
-  chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync,
+  chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync,
   renameSync, rmSync,
 } from "node:fs";
 import { randomUUID } from "node:crypto";
@@ -32,17 +32,22 @@ function source(seed, name, directory) {
   return realpathSync(path);
 }
 
-function verifyContainedLinks(root, path = root) {
+function seedLinks(sources, name, path = sources[name], links = []) {
   for (const entry of readdirSync(path, { withFileTypes: true })) {
     const childPath = join(path, entry.name);
     if (entry.isSymbolicLink()) {
-      if (!inside(root, realpathSync(childPath))) {
+      const referent = realpathSync(childPath);
+      const targetName = ["installDir", "stateDir"].find((key) => inside(sources[key], referent));
+      if (isAbsolute(readlinkSync(childPath)) || !targetName) {
         throw new Error("Rehearsal seed contains a link outside its owned root");
       }
+      links.push({ name, path: relative(sources[name], childPath),
+        targetName, targetPath: relative(sources[targetName], referent) });
     } else if (entry.isDirectory()) {
-      verifyContainedLinks(root, childPath);
+      seedLinks(sources, name, childPath, links);
     }
   }
+  return links;
 }
 
 function preserveModes(sourcePath, destinationPath) {
@@ -86,8 +91,7 @@ export function createRehearsalTarget(target, seedPath) {
     plistSha256: fileDigest(sources.plistPath),
     ...(target.stateMigration ? { stateMigrationSha256: fileDigest(sources.stateMigrationPath) } : {}),
   };
-  verifyContainedLinks(sources.installDir);
-  verifyContainedLinks(sources.stateDir);
+  const links = ["installDir", "stateDir"].flatMap((name) => seedLinks(sources, name));
   if (target.stateMigration && seedDigests.stateMigrationSha256 !== target.stateMigration.sha256) {
     throw new Error("Rehearsal seed migration differs from the target");
   }
@@ -118,6 +122,15 @@ export function createRehearsalTarget(target, seedPath) {
       mkdirSync(dirname(destination), { recursive: true, mode: 0o700 });
       cpSync(sources[name], destination, { recursive: true, verbatimSymlinks: true });
       preserveModes(sources[name], destination);
+    }
+    // Managed plugins can refer to the sibling runtime. Both trees must exist
+    // before checking that each unchanged link now reaches its copied referent.
+    for (const link of links) {
+      const copiedLink = join(staging, destinations[link.name], link.path);
+      const expected = join(staging, destinations[link.targetName], link.targetPath);
+      if (!existsSync(copiedLink) || realpathSync(copiedLink) !== expected) {
+        throw new Error("Rehearsal seed link does not relocate into the target");
+      }
     }
     const service = join(staging, destinations.plistPath);
     mkdirSync(dirname(service), { recursive: true, mode: 0o700 });
