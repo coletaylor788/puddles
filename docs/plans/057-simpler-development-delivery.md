@@ -137,8 +137,9 @@ and 21 host-adapter tests pass. The complete application suite passes in 16m36s
 on the unchanged frozen build. TEST starts and reports healthy, but its strict
 reader data check found native title hydration in two incomplete synthetic
 sessions. The reader owner is correcting the fixture and adding real startup
-coverage. Production is unchanged; adoption, production acceptance, merge, and
-cleanup remain pending.
+coverage. Acceptance must predict legitimate native title initialization while
+preserving all unrelated data. Production is unchanged; adoption, production
+acceptance, merge, and cleanup remain pending.
 
 ## Agent section
 
