@@ -4786,3 +4786,60 @@ diff --git a/extensions/facetime/tests/inject-helper.test.ts b/extensions/faceti
      await expectClean(fixture.root, fixture.container);
    }, 10_000);
  });
+diff --git a/extensions/facetime/tests/inject-helper.test.ts b/extensions/facetime/tests/inject-helper.test.ts
+--- a/extensions/facetime/tests/inject-helper.test.ts
++++ b/extensions/facetime/tests/inject-helper.test.ts
+@@ -65,6 +65,7 @@
+   await writeFile(script, source);
+   const started = performance.now();
+   const child = spawn("/bin/bash", [script], {
++    detached: true,
+     env: {
+       ...process.env,
+       HOME: root,
+@@ -96,9 +97,11 @@
+   return { root, container, child, done };
+ }
+ 
+-async function expectClean(root: string, container: string) {
+-  const pid = Number(await readFile(join(root, "lldb.pid"), "utf8"));
+-  expect(isAlive(pid)).toBe(false);
++async function expectClean(root: string, container: string, child: ChildProcess) {
++  // The watchdog can kill LLDB before the fixture interpreter writes its PID.
++  // Check the owned process group, which also includes the watchdog itself.
++  expect(child.pid).toBeTypeOf("number");
++  expect(isAlive(-child.pid!)).toBe(false);
+   expect((await readdir(container)).filter((name) => name.endsWith(".auth"))).toEqual([]);
+   expect(
+     (await readdir(root)).filter((name) => name.startsWith("openclaw-facetime-lldb.")),
+@@ -129,18 +132,18 @@
+       const result = await fixture.done;
+       expect(result.code).toBe(status);
+       expect(result.elapsed).toBeLessThan(3_000);
+-      await expectClean(fixture.root, fixture.container);
++      await expectClean(fixture.root, fixture.container, fixture.child);
+     },
+     10_000,
+   );
+ 
+-  it("terminates and reaps an attach that exceeds its timeout", async () => {
+-    const fixture = await startInjector({ delay: 60, timeout: 0.3 });
++  it.each([0, 1.2])("terminates and reaps an attach with %s seconds of startup delay", async (startupDelay) => {
++    const fixture = await startInjector({ delay: 60, timeout: 0.3, startupDelay });
+     const result = await fixture.done;
+     expect(result.code).not.toBe(0);
+     expect(result.output).toContain("LLDB attach to FaceTime timed out");
+     expect(result.elapsed).toBeLessThan(3_000);
+-    await expectClean(fixture.root, fixture.container);
++    await expectClean(fixture.root, fixture.container, fixture.child);
+   }, 10_000);
+ 
+   it("joins the debugger and watchdog when interrupted", async () => {
+@@ -154,6 +157,6 @@
+     const result = await fixture.done;
+     expect(result.code).toBe(143);
+     expect(performance.now() - interrupted).toBeLessThan(3_000);
+-    await expectClean(fixture.root, fixture.container);
++    await expectClean(fixture.root, fixture.container, fixture.child);
+   }, 10_000);
+ });
