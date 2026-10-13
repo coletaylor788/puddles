@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 // @ts-expect-error executable runner module
-import { nativeRegressionTargets } from "../src/native-pipeline.mjs";
+import { nativeRegressionTargets } from "../src/application-suite.mjs";
 
 it("runs standalone native API regressions together with every mapped patch regression", () => {
   expect(nativeRegressionTargets({ patches: [

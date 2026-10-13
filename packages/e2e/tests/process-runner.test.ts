@@ -31,7 +31,7 @@ describe("managed runner signals", () => {
         stdout.setEncoding("utf8");
         stdout.on("data", (chunk) => {
           output += chunk;
-          if (output.includes("child-ready")) {
+          if (output.split("\n").includes("child-ready")) {
             clearTimeout(timeout);
             resolve();
           }

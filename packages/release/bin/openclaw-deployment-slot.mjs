@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { readFileSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
-import { atomicJson } from "../src/native-state.mjs";
+import { atomicJson } from "../../e2e/src/native-state.mjs";
 import {
   coordinate, coordinationPath, initializeCoordination, processIdentity,
   readCoordination, recoverMetadataLock,

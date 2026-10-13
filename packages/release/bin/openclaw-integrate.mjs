@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { atomicJson } from "../src/native-state.mjs";
+import { atomicJson } from "../../e2e/src/native-state.mjs";
 import { verifyProductionRelease } from "../src/native-release.mjs";
 import { verifyMergeEligibility } from "../src/merge-eligibility.mjs";
-import { runCommand } from "../src/process-runner.mjs";
+import { runCommand } from "../../e2e/src/process-runner.mjs";
 
 // This command finishes before activation starts. A remote race can block
 // delivery, but never becomes a reason to roll back a healthy live runtime.

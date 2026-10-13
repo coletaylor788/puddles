@@ -68,7 +68,8 @@ export async function runCommand(command, args, options = {}) {
     child.once("close", resolve);
     child.once("error", resolve);
   });
-  activeCommand = { child, done };
+  const tracked = { child, done, interrupted: false };
+  activeCommand = tracked;
   const stopResourceMonitor = options.resourcePath && child.pid
     ? startCommandResourceMonitor({
         path: options.resourcePath,
@@ -115,6 +116,9 @@ export async function runCommand(command, args, options = {}) {
       activeCommand = undefined;
     }
   }
+  // Signal cleanup owns this interrupted command and exits after joining its
+  // children. Do not let a top-level rejection terminate the wrapper first.
+  if (tracked.interrupted) return await new Promise(() => {});
   if (commandError && resourceError) {
     throw new AggregateError([commandError, resourceError], "Command and resource measurement failed");
   }
@@ -128,17 +132,23 @@ export async function stopActiveCommand(signal, graceMs = 10_000) {
   if (!active) {
     return;
   }
+  active.interrupted = true;
   signalChildGroup(active.child, signal);
-  let timer;
-  const completed = await Promise.race([
-    active.done.then(() => true),
-    new Promise((resolve) => { timer = setTimeout(() => resolve(false), graceMs); }),
-  ]);
-  clearTimeout(timer);
-  if (!completed) {
+  const groupAlive = () => {
+    if (process.platform === "win32") return active.child.exitCode === null && active.child.signalCode === null;
+    try { process.kill(-active.child.pid, 0); return true; }
+    catch (error) { if (error.code === "ESRCH") return false; throw error; }
+  };
+  const waitUntil = async milliseconds => {
+    const deadline = Date.now() + milliseconds;
+    while (groupAlive() && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
+    return !groupAlive();
+  };
+  if (!await waitUntil(graceMs)) {
     signalChildGroup(active.child, "SIGKILL");
-    await active.done;
+    if (!await waitUntil(5000)) throw new Error("Interrupted command descendants did not stop");
   }
+  await active.done;
 }
 
 export function installSignalHandlers(params) {

@@ -8,6 +8,11 @@ metadata:
 
 # Adversarial Review
 
+Configured model providers are trusted review services. Private source, diffs,
+and development context may be sent to them without separate permission.
+Exclude secrets and credentials from prompts, attachments, and logs. Keep private
+content out of public review comments and unrelated services.
+
 Routine documentation, plan, repository-instruction, and development-skill edits
 do not require this review or the full feature validation loop. Follow the
 documentation-only path in `safe-feature-development`. When explicitly asked to
@@ -116,19 +121,20 @@ Apply any additional checks listed below.
 Retain the same independent reviewer across corrections. Routine bookkeeping
 does not require a terminal fresh reviewer. Inspect whether cached proofs bind
 the actual source, test, environment, toolchain, build, and artifact inputs.
-Reject a mock-only proxy for the installed real runtime. Check that source
-integration happens before activation, outside the live rollback transaction.
+Reject a mock-only proxy for the installed real runtime. Check the approved release order: TEST and tests, one directly replaced backup,
+PROD and read-only tests, then merge of the tested heads. Merge stays outside the
+rollback operation. A failed final merge retains the ticket and intake hold.
+Never restore over new live writes.
 
-Distinguish local DEV drafts from final validation. Incremental local builds
-and mutable source are expected during iteration; do not require a CI artifact
-or full accumulated suite between ordinary fixes. Check that affected installed
-behavior is exercised early and that stale outputs are not reused. Reviewed
-features may merge after focused and required repository checks. One release
-owner runs the full accumulated CI gate on selected merged source and promotes
-that artifact through DEV, TEST, and PROD. Draft checks do not certify release.
-Check that later main commits do not force another build of the active candidate.
-Preserve slot ownership, isolation, recording adapters, and production recovery.
-TEST rollback snapshots are temporary and must be cleaned after their checks.
+Incremental local builds and mutable source are expected during DEV. Do not
+require a CI artifact or full suite between ordinary edits. At the front of the
+FIFO queue, the feature rebases main, refreshes changed build inputs, freezes its
+output, and runs the complete application suite. The same bytes reach TEST and
+PROD. Release-tool changes run the independent tool suite and install between
+tickets; application changes do not run tool implementation tests. Keep product
+regressions cumulative while updating assertions for changed expected behavior.
+Check ownership, recording adapters, crash recovery, and whole-workspace cleanup.
+Do not add evidence archives, arbitrary build caps, or extra backup generations.
 
 ## Project-specific concerns
 

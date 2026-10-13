@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
-import { atomicJson } from "../src/native-state.mjs";
+import { atomicJson } from "../../e2e/src/native-state.mjs";
 import { snapshotMergedBatch } from "../src/merged-batch.mjs";
 try {
   const [spec, output, ...extra] = process.argv.slice(2);

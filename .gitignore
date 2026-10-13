@@ -57,3 +57,7 @@ node_modules/
 **/dist/
 .pnpm-store/
 .openclaw-source/
+
+.application-output/
+
+.application-output.owner.json

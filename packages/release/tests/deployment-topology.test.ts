@@ -702,7 +702,7 @@ describe("native activation and recovery transaction", () => {
         const result = spawnSync("/bin/bash", [join(repoRoot, "docs/openclaw-setup/patches/apply-and-deploy.sh")], { env: f.env, encoding: "utf8", timeout: 10_000 });
         expect(result.status, result.stderr).toBe(0);
         expect(readFileSync(f.argumentsFile, "utf8").split("\0").filter(Boolean)).toEqual([
-          `${f.env.PUDDLES_REMOTE_ROOT}/packages/e2e/bin/openclaw-activate.mjs`,
+          `${f.env.PUDDLES_REMOTE_ROOT}/packages/release/bin/openclaw-activate.mjs`,
           f.env.OPENCLAW_CANDIDATE_RECEIPT, f.env.OPENCLAW_DEPLOY_TARGET, f.env.OPENCLAW_RECOVERY_DIR,
         ]);
         expect(readFileSync(f.pathFile, "utf8")).toBe(f.env.PUDDLES_REMOTE_PATH);
@@ -727,7 +727,7 @@ describe("native activation and recovery transaction", () => {
         const result = spawnSync("/bin/bash", [join(repoRoot, "docs/openclaw-setup/patches/apply-and-deploy.sh")], { env: f.env, encoding: "utf8", timeout: 10_000 });
         expect(result.status, result.stderr).toBe(0);
         expect(readFileSync(f.argumentsFile, "utf8").split("\0").filter(Boolean)).toEqual([
-          `${topology === "local" ? repoRoot : f.env.PUDDLES_REMOTE_ROOT}/packages/e2e/bin/openclaw-activate.mjs`,
+          `${topology === "local" ? repoRoot : f.env.PUDDLES_REMOTE_ROOT}/packages/release/bin/openclaw-activate.mjs`,
           f.env.OPENCLAW_CANDIDATE_RECEIPT, f.env.OPENCLAW_DEPLOY_TARGET, f.env.OPENCLAW_RECOVERY_DIR, "--rollback",
         ]);
       });
@@ -778,13 +778,13 @@ describe("native activation and recovery transaction", () => {
   });
 
   it("never invokes GitHub or dependency installation inside activation", () => {
-    const script = readFileSync(join(repoRoot, "packages/e2e/src/native-activation.mjs"), "utf8");
+    const script = readFileSync(join(repoRoot, "packages/release/src/native-activation.mjs"), "utf8");
     const activation = script.slice(script.indexOf("export async function activateNative"), script.indexOf("export async function verifyIntegratedCandidate"));
     expect(activation).not.toMatch(/["'](?:gh|npm|pnpm)["']|["']docker["'][^\n]*["']build["']/);
     const wrapper = readFileSync(join(repoRoot, "docs/openclaw-setup/patches/apply-and-deploy.sh"), "utf8");
     expect(wrapper).toContain('if [ -n "${MINI_HOST:-}" ]');
     expect(wrapper).toContain('exec ssh "$MINI_HOST" "$command"');
-    expect(wrapper).toContain('exec node "$ROOT/packages/e2e/bin/$entrypoint"');
+    expect(wrapper).toContain('exec node "$ROOT/packages/release/bin/$entrypoint"');
   });
 
   it.each([

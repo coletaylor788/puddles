@@ -9,7 +9,7 @@ const candidate = process.env.OPENCLAW_CANDIDATE;
 if (!candidate) throw new Error("OPENCLAW_CANDIDATE is required for candidate-source tests");
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
-it("rehearses actual Doctor ownership migration and external skill rollback", async () => {
+it("preserves applied skill history, ownership and content across reopen", async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "candidate-workshop-")));
   roots.push(root);
   for (const name of ["home", "scratch"]) mkdirSync(join(root, name));
@@ -20,5 +20,5 @@ it("rehearses actual Doctor ownership migration and external skill rollback", as
       OPENCLAW_STATE_DIR: join(root, "state"), OPENCLAW_CONFIG_PATH: join(root, "state/openclaw.json"),
       OPENCLAW_SERVICE_REPAIR_POLICY: "external", NO_COLOR: "1" },
   });
-  expect(JSON.parse(result.stdout)).toEqual({ passed: true, actualDoctorFailureReproduced: true, repairedOwnership: true, externalRollback: true });
+  expect(JSON.parse(result.stdout)).toEqual({ passed: true, historyPreserved: true, ownershipPreserved: true, repeatable: true });
 }, 110_000);

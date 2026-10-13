@@ -320,7 +320,7 @@ shutil.copymode(source, destination)
       await run("python3", [join(patchDir, "publish-runtime-tree.py"), from, to]);
     },
     async stop(runtime) {
-      const helper = resolve(patchDir, "../../../packages/e2e/bin/openclaw-service-stop.mjs");
+      const helper = resolve(patchDir, "../../../packages/release/bin/openclaw-service-stop.mjs");
       const interpreter = target.nodeMigration?.desired.path ?? target.backupNode?.path ?? process.execPath;
       let owner = "null";
       if (await loaded()) {

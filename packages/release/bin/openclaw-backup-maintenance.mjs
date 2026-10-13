@@ -4,7 +4,7 @@ import { existsSync, openSync, closeSync, readFileSync, realpathSync, readdirSyn
 import { randomUUID } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { atomicJson, fileDigest, jsonDigest } from "../src/native-state.mjs";
+import { atomicJson, fileDigest, jsonDigest } from "../../e2e/src/native-state.mjs";
 import { readCoordination } from "../src/deploy-coordination.mjs";
 import { systemOperations } from "../src/native-activation.mjs";
 import { retryCoordinate } from "./openclaw-deployment-slot.mjs";

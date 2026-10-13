@@ -1,0 +1,11 @@
+{
+  "description": "Compatibility modules for installed legacy activation and outstanding recovery. New releases use controller.mjs. Retire after adoption and recovery handoff.",
+  "modules": [
+    "native-migration-bindings.mjs",
+    "native-package.mjs",
+    "native-state-migration.mjs",
+    "native-state.mjs",
+    "native-workshop-migration.mjs",
+    "process-runner.mjs"
+  ]
+}

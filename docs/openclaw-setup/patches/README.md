@@ -405,7 +405,7 @@ state is not overwritten on replay. A newer transaction blocks stale recovery.
 
 ### Replace current recovery without activating a release
 
-Use `packages/e2e/bin/openclaw-backup.mjs` when the current healthy production
+Use `packages/release/bin/openclaw-backup.mjs` when the current healthy production
 recovery must be rotated independently of a release. Its `plan`, `capture`,
 `verify`, `materialize`, and `retire` operations use the same target validation,
 lock, service stop/join, clonefile, identity, health, and failure behavior as

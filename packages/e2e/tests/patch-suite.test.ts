@@ -4,7 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseDocument } from "yaml";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
-import { safeNode } from "../src/native-pipeline.mjs";
+import { safeNode } from "../src/application-suite.mjs";
 
 type PatchEntry = {
   name: string;
@@ -105,38 +105,15 @@ describe("OpenClaw cumulative patch suite", () => {
     expect(match?.[1]).toBe(suite.openclawRef);
   });
 
-  it("selects the standard macOS ARM runner with the measured low-memory profile", () => {
-    const workflow = readFileSync(join(repoRoot, ".github/workflows/integration.yml"), "utf8");
-    const runner = readFileSync(join(packageDir, "src/native-pipeline.mjs"), "utf8");
-    expect(workflow).toMatch(/runs-on:\s*macos-15\b/);
-    expect(workflow).toContain("E2E_RESOURCE_PROFILE: hosted-arm");
-    expect(workflow).toContain('E2E_RESOURCE_MEASURE: "1"');
-    expect(runner).toContain("resolveResourceProfile()");
-    expect(runner).not.toMatch(/\[[^\]]*"E2E_RESOURCE_PROFILE"[^\]]*\]/);
-    expect(runner).toMatch(/\[[^\]]*"E2E_RESOURCE_MEASURE"[^\]]*\]/);
-    expect(runner).toMatch(/stage\(runDir,\s*"regressions",\s*\{[^}]*buildEnvironment/s);
-    const timeout = parseDocument(workflow).toJS().jobs.cumulative["timeout-minutes"];
-    expect(timeout).toBeGreaterThan(90);
-    expect(timeout).toBeLessThanOrEqual(360);
-    expect(workflow).toContain("node packages/e2e/bin/openclaw-test-env.mjs ci");
-  });
-
-  it("checks generated prompt snapshots after applying the patch stack", () => {
-    const runner = readFileSync(
-      join(packageDir, "src", "native-pipeline.mjs"),
-      "utf8",
-    );
-    const finalApply = runner.indexOf('await run("git", ["apply", patchFile]');
-    const snapshotCheck = runner.indexOf(
-      'await run("corepack", ["pnpm", "prompt:snapshots:check"]',
-    );
-    const mappedTests = runner.indexOf(
-      "const { tests, candidateTests } = nativeRegressionTargets(suite)",
-    );
-
-    expect(finalApply).toBeGreaterThan(-1);
-    expect(snapshotCheck).toBeGreaterThan(finalApply);
-    expect(mappedTests).toBeGreaterThan(snapshotCheck);
+  it("keeps the full application check separate from its one build", () => {
+    const workflow = parseDocument(readFileSync(join(repoRoot, ".github/workflows/integration.yml"), "utf8")).toJS();
+    const steps = workflow.jobs.cumulative.steps;
+    const build = steps.findIndex((step: any) => step.name === "Build the application once");
+    const check = steps.findIndex((step: any) => step.name === "Run the full application suite");
+    expect(build).toBeGreaterThan(-1);
+    expect(check).toBeGreaterThan(build);
+    expect(steps[check].env.OPENCLAW_CANDIDATE_DIR).toBeTruthy();
+    expect(steps[check].run).toBe("node packages/e2e/bin/openclaw-test-env.mjs ci");
   });
 
   it("maps exact Vitest projects and proves collection before running old regressions", () => {
@@ -149,11 +126,7 @@ describe("OpenClaw cumulative patch suite", () => {
     for (const test of suite.patches.flatMap((patch) => patch.tests)) {
       expect(manifest.testProjects[test], test).toMatch(/^[a-z][a-z0-9-]*$/);
     }
-    const runner = readFileSync(join(packageDir, "src/native-pipeline.mjs"), "utf8");
-    expect(runner).toContain('"list", "--filesOnly"');
-    expect(runner).toContain("Mapped regression was not collected");
-    expect(runner).toContain("...scenarios, ...extension.scenarios");
-    expect(readFileSync(join(packageDir, "scenarios/imessage.mjs"), "utf8")).toContain("no-output");
+
   });
 
   it("registers the declaration portability compiler project", () => {

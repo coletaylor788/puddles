@@ -219,17 +219,17 @@ vi.mock("../src/native-fixture.mjs", async (original) => ({
 // @ts-expect-error JS lifecycle exports are tested at runtime.
 import { nativePipeline, nativeTargetPipeline, regressionEnvironment, removeOwnedWorktree, resolveBuildTimeoutMs, safeNode } from "../src/native-pipeline.mjs";
 // @ts-expect-error JS release modules are tested at runtime.
-import { certifyRelease, createTargetProof, importReleaseBundle } from "../src/native-release.mjs";
+import { certifyRelease, createTargetProof, importReleaseBundle } from "../../release/src/native-release.mjs";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
-import { createRehearsalTarget } from "../src/native-target.mjs";
+import { createRehearsalTarget } from "../../release/src/native-target.mjs";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
 import { atomicJson, jsonDigest, treeDigest } from "../src/native-state.mjs";
 // @ts-expect-error JS lifecycle exports are tested at runtime.
-import { findRetainedSourceGate, initializeArtifactPool, planArtifactCleanup } from "../src/native-retention.mjs";
+import { findRetainedSourceGate, initializeArtifactPool, planArtifactCleanup } from "../../release/src/native-retention.mjs";
 // @ts-expect-error JS storage modules are tested at runtime.
-import { initializeStorage } from "../src/native-storage.mjs";
+import { initializeStorage } from "../../release/src/native-storage.mjs";
 // @ts-expect-error JS storage modules are tested at runtime.
-import { finalizeFailedNativeBuild } from "../src/native-storage-finalize.mjs";
+import { finalizeFailedNativeBuild } from "../../release/src/native-storage-finalize.mjs";
 import { runCommand } from "../src/process-runner.mjs";
 
 const roots: string[] = [];

@@ -123,58 +123,79 @@ errors stop the operation needing that space.
 
 ### Status
 
-**Approval:** Proposed. This reflects the requester's queue, independent suites,
-durable tests, direct backup replacement, manager, and cleanup requirements.
-Research and guidance are complete; runtime implementation is not yet approved.
+**Approval:** Production approved. **Approval reference:** requester, October 12,
+2026: "approved, implement all the fixes" and act as release manager for validation.
+Implementation, review, deployment, rollback, merge, and cleanup are authorized.
+The requester supplied a replacement reader owner for the trial. Coordinate with
+that owner and leave the failed reader chats untouched.
 
 ## Agent section
 
 ### State
 
-Current tooling still uses the combined gate. The replacement is not installed.
-
-### Scope and acceptance criteria
-
-Prove application-only and tooling-only changes build and test independently.
-Promote one feature output; recover failures; advance the queue; finalize ownership.
-
-### Architecture and decisions
-
-Move release helpers from `packages/e2e/{src,bin,tests}` and companion adapters
-into their respective `packages/release` packages. Separate dependency installation
-and CI selection. Keep application fixtures and mapped product tests in E2E.
+Implementation is in progress on `codex/independent-release-package`. Both release
+packages build independently. The replacement is not installed. The new reader
+owner is preparing the trial feature and has accepted release coordination.
+The manager's hourly chat heartbeat is active.
 
 ### Implementation
 
-Update the runner, deployment wrapper, and companion imports together. Remove the
-private gate's catch-all test discovery. Consolidate mapped targets by project
-and reuse prepared inputs. Adapt existing backup and storage helpers: backup
-refresh currently preserves the old copy, and task completion refuses worktrees.
-Use app archival for managed worktrees after removing generated ignored output.
+The standalone controller implements FIFO ownership, rebase and merge guards,
+one directly replaced backup, recovery, DEV locking, and workspace finalization.
+It supervises deployments and standalone backup capture through worker crashes.
+Recovery records when intake can reopen so a retry cannot restore over new writes.
+Finalization reserves the workspace before stopping processes and resumes partial
+deletion from its external journal.
+
+The application builder reuses prepared source, the package store, UI output,
+Python payloads, and bundled plugin output. It produces one deployable directory.
+The application gate groups mapped public/private tests by project and keeps
+separate test modes. Release tests live outside the application workspace and CI.
+Installed behavior checks are being connected to the new complete output; none
+may silently skip because their prepared runtime was omitted.
+
+Guidance now specifies durable behavior tests, the queue order, one backup,
+scripted cleanup, and trusted configured model providers. Source and development
+context may go to those providers; secrets and credentials may not.
 
 ### Validation
 
-The measured combined suite took 26m52s. Its 4m55s predecessor recovery test belongs
-to release tooling. Removing that command alone projects 21m58s for the old
-application path, not a measured new runtime. Benchmark further consolidation,
-fixture simplification, and worker counts. Update test guidance in the development
-skill; test executable behavior, never document wording.
+The old combined run took 26m52s. The new release package passes 422 tests in about
+1m59s, including killed workers and recovery after intake reopens. The first
+application run passed mapped regressions but rejected escaping dependency links
+in its output. The builder now preserves relative links; its warm rebuild and
+installed behavior checks are under validation.
+One measured upstream infrastructure group takes 3m12s; report that cost separately
+from build, installed checks, and queue time. Do not present a partial run as the
+new full-suite duration.
 
-### Rollout and rollback
+### Review
 
-Until adoption, follow the current [runner](../../packages/e2e/README.md),
-[coordination](../../packages/e2e/DEPLOYMENT_COORDINATION.md), and
-[storage](../../packages/e2e/DEVELOPMENT_STORAGE.md) guides. Install one controller;
-keep its version fixed during each ticket. Reconcile legacy recovery references
-before removing completed migration helpers or old deployment paths.
+The independent reviewer found four material gaps: recovery could restore again
+after intake reopened, standalone backup lacked crash supervision, partial cleanup
+could lose its marker, and installed application coverage was not connected.
+The first three have passing regressions. Complete the application coverage and
+resume the same reviewer against the complete current diff before adoption.
 
-### Review log
+### Adoption and rollback
 
-Author consistency review complete. Earlier independent review returned no result.
-Implementation requires normal code review and package validation.
+PROD is healthy. Shared slots were free at the read-only inventory. Current
+runtime, state, helper services, and legacy recovery still need a complete adoption
+mapping. Stop the old backup/controller jobs only as part of that coordinated
+switch. Preserve existing reader recovery until its owner confirms its consumers
+are retired. Do not run both controller versions against the same services.
+
+Install tested release tooling between tickets. Use the reader feature to exercise
+TEST and its tests, backup, PROD and its tests, merge, queue advancement, and cleanup.
+Keep production intake held until acceptance and merge finish. The replacement is
+not considered adopted until this path passes on the real target.
 
 ### Checklist
 
-- [x] Audit process, test costs, package boundaries, and migration fixtures.
-- [x] Publish proposal and requested agent guidance.
-- [ ] Approve and implement the replacement; benchmark and verify adoption.
+- [x] Audit process, costs, package boundaries, and historical tests.
+- [x] Obtain implementation and production approval.
+- [x] Implement independent packages, incremental output, controller, and finalize.
+- [x] Start the manager heartbeat and coordinate the replacement reader owner.
+- [ ] Complete all application coverage, benchmark, and retained review.
+- [ ] Publish implementation and install the tested tooling.
+- [ ] Run the reader trial through production, merge, and cleanup.

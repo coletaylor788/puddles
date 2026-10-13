@@ -5,6 +5,9 @@ on:
   pull_request:
     # Only human-facing docs; runtime prompts, patches, and CI changes still run.
     paths-ignore:
+      - "packages/release/**"
+      - ".github/workflows/release.yml"
+      - "docs/openclaw-setup/patches/apply-and-deploy.sh"
       - "**/README.md"
       - "AGENTS.md"
       - ".github/copilot-instructions.md"
@@ -22,6 +25,9 @@ on:
     branches: [main]
     # Only human-facing docs; runtime prompts, patches, and CI changes still run.
     paths-ignore:
+      - "packages/release/**"
+      - ".github/workflows/release.yml"
+      - "docs/openclaw-setup/patches/apply-and-deploy.sh"
       - "**/README.md"
       - "AGENTS.md"
       - ".github/copilot-instructions.md"
@@ -151,70 +157,22 @@ jobs:
           python -m pip install -e './servers/gmail-mcp[dev]' -e './packages/browser-auth' -e './servers/rocket-money-mcp[dev]'
           test -x '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 
-      - name: Initialize public run evidence
+      - name: Apply the application patch stack
         run: |
-          export E2E_RUN_DIR="$RUNNER_TEMP/puddles-public-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          node packages/e2e/bin/public-ci-diagnostics.mjs init
-          printf 'E2E_RUN_DIR=%s\n' "$E2E_RUN_DIR" >> "$GITHUB_ENV"
-
-      - name: Run cumulative integration lifecycle
-        id: cumulative
+          node --input-type=module - <<'JS'
+          import { readFileSync } from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          const suite = JSON.parse(readFileSync('packages/e2e/openclaw-patch-suite.json', 'utf8'));
+          for (const patch of suite.patches) execFileSync('git', ['-C', '.openclaw-source', 'apply', `${process.cwd()}/docs/openclaw-setup/patches/${patch.name}.patch`], { stdio: 'inherit' });
+          JS
+      - name: Install application source dependencies
+        run: corepack pnpm -C .openclaw-source install --frozen-lockfile
+      - name: Build the application once
+        run: |
+          corepack pnpm build
+          node packages/e2e/bin/build-application.mjs "$GITHUB_WORKSPACE/.openclaw-source" "$GITHUB_WORKSPACE/.application-output"
+      - name: Run the full application suite
         env:
           OPENCLAW_SRC: ${{ github.workspace }}/.openclaw-source
+          OPENCLAW_CANDIDATE_DIR: ${{ github.workspace }}/.application-output
         run: node packages/e2e/bin/openclaw-test-env.mjs ci
-
-      - name: Export public ARM build bundle
-        if: success()
-        run: |
-          node packages/e2e/bin/openclaw-release-bundle.mjs export \
-            "$E2E_RUN_DIR/build.json" \
-            "$RUNNER_TEMP/openclaw-public-arm64-build.tar.gz" \
-            public
-
-      - name: Retain public ARM build bundle
-        id: build-upload
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: openclaw-public-arm64-build-${{ github.sha }}
-          path: |
-            ${{ runner.temp }}/openclaw-public-arm64-build.tar.gz
-            ${{ env.E2E_RUN_DIR }}/source-gate.json
-          retention-days: 7
-          if-no-files-found: error
-
-      - name: Collect public resource evidence
-        id: public-resources
-        if: always()
-        run: node packages/e2e/bin/public-ci-diagnostics.mjs resources
-
-      - name: Retain public resource evidence
-        if: always() && steps.public-resources.outcome == 'success'
-        uses: actions/upload-artifact@v4
-        with:
-          name: public-native-resources-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/puddles-public-resources-${{ github.run_id }}-${{ github.run_attempt }}
-          retention-days: 7
-          if-no-files-found: error
-
-      - name: Collect public failure evidence
-        id: public-diagnostics
-        if: failure() && steps.cumulative.outcome == 'failure'
-        run: node packages/e2e/bin/public-ci-diagnostics.mjs collect
-
-      - name: Retain sanitized public failure evidence
-        if: failure() && steps.public-diagnostics.outcome == 'success'
-        uses: actions/upload-artifact@v4
-        with:
-          name: public-native-failure-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/puddles-public-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
-          retention-days: 7
-          if-no-files-found: error
-
-      - name: Finalize acknowledged builder scratch
-        if: success() && steps.build-upload.outcome == 'success'
-        run: |
-          bundle="$RUNNER_TEMP/openclaw-public-arm64-build.tar.gz"
-          digest="$(shasum -a 256 "$bundle" | cut -d ' ' -f 1)"
-          node packages/e2e/bin/openclaw-storage.mjs finalize-build \
-            "$E2E_RUN_DIR" "ci-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" "$bundle" "$digest"

@@ -13,6 +13,14 @@ Setup guides and configuration hold deployment details; this is not a live audit
 - Any deviation requires explicit human approval before implementation. Update
   this document to reflect the approved change.
 
+## Development model providers
+
+Configured model providers are trusted development services. Agents may send
+public or private source, diffs, plans, test results, and other development
+context to them without separate permission. Exclude secrets and credentials
+from prompts, attachments, and logs. This does not authorize publishing private
+material or sending it to unrelated services.
+
 ## Overall threat model
 
 The host is trusted; agent tool execution is sandboxed. Each connection below

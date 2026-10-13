@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
-import { atomicJson } from "../src/native-state.mjs";
+import { atomicJson } from "../../e2e/src/native-state.mjs";
 import { createMergeEligibility } from "../src/merge-eligibility.mjs";
 
 try {

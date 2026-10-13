@@ -19,5 +19,5 @@ installSignalHandlers({
 
 await runCommand(process.execPath, [
   "-e",
-  "console.log('child-ready'); process.on('SIGTERM', () => process.exit(0)); setInterval(() => {}, 1000);",
+  "process.on('SIGTERM', () => process.exit(0)); console.log('child-ready'); setInterval(() => {}, 1000);",
 ]);
