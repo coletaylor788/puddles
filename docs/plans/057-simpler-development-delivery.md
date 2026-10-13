@@ -162,17 +162,24 @@ context may go to those providers; secrets and credentials may not.
 
 ### Validation
 
-The old combined run took 26m52s. Consolidated mapped application regressions
-pass in 17m06s: 6,395 ordinary cases plus 78 cases in each of two transport modes.
-The independent release suite passes 426 tests in 1m53s.
-This is not the full application-suite time. The complete application rerun is
-pending after fixing a fixture startup timeout. The release suite is complete. Four test workers did not improve
-the measured infrastructure group (3m16s versus 3m12s with two).
+The complete application gate passes in **16m33s** against one unchanged frozen
+output. It includes 6,395 mapped cases, 78 cases in each transport mode, 20
+packaged-runtime checks, installed conversation scenarios, and 51 companion
+installed checks. The one platform-specific mapped skip is for Linux procfs on
+macOS. The independent release suite passes 426 tests in 1m53s.
 
-Slow cases include stopped configuration repair (39s), FaceTime preflight (9s),
-and process termination cases that wait about 5s each. Installed keyword memory
-and local embedding checks previously took 3m03s and 2m04s in sequence; they now
-run independently in parallel. Report final measured time before adoption.
+The old combined run took 26m52s; the first complete new run took 23m42s. Sharing
+four workers across independent projects reduced the ordinary mapped group from
+11m03s to 6m25s. Explicit serial requirements remain intact. The installed groups
+now run concurrently: keyword memory takes 3m12s, local embeddings 1m29s, and the
+other 49 checks take 2m51s. Other slow cases include stopped configuration repair
+(41s), FaceTime preflight (9s), and process termination checks (about 5s each).
+
+The measured full run preceded a final separation of 50 legacy release cases
+from the application suite. Those cases remain covered under release tooling.
+Application packaging also drops old provider deployment commands. Revalidate
+the affected selection and packaged output; the composed reader trial still
+requires its own full gate before production.
 
 ### Review
 
@@ -200,7 +207,8 @@ not considered adopted until this path passes on the real target.
 - [x] Obtain implementation and production approval.
 - [x] Implement independent packages, incremental output, controller, and finalize.
 - [x] Start the manager heartbeat and coordinate the replacement reader owner.
-- [ ] Complete all application coverage, benchmark, and retained review.
+- [x] Complete the full application gate and retained review.
+- [x] Measure shared worker scheduling and concurrent installed checks.
 - [x] Publish paired draft implementation PRs.
 - [ ] Install the tested tooling.
 - [ ] Run the reader trial through production, merge, and cleanup.
