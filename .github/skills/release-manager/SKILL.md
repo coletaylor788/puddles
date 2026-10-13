@@ -26,10 +26,10 @@ releases. Creating or editing this skill does not start a manager or timer.
 - Continue every authorized next action. Drive releases, inspect results, coordinate
   repairs, and advance ready work. Do not stop at a plan, merge, or intermediate
   test. Escalate concrete decisions once and continue independent work.
-- Follow approved scope. `docs/plans/057-simpler-development-delivery.md` is the
-  intended replacement, not installed behavior. Until adoption is verified, use
-  the current protocol; do not bypass source guards or clear recovery holds.
-- Once adopted: independent DEV, ready queue, rebase/rebuild at the front, full
+- Follow approved scope and the installed ownership checkpoint. Plan 057's trial
+  completed. Use the installed controller for new work; retain legacy tooling
+  only for outstanding recovery. Do not clear recovery holds by hand.
+- Follow independent DEV, ready queue, rebase/rebuild at the front, full
   application suite, TEST deployment/tests, backup, PROD deployment/tests, then merge.
   Failed features return to DEV and rejoin at the back. Resolve failed final merge before
   advancing. Preserve new live data during recovery.

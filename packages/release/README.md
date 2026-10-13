@@ -5,9 +5,9 @@ TEST and PROD deployment, one backup, recovery, and workspace finalization. It
 has its own dependencies and build. The application supplies service commands
 and acceptance checks. No application build runs when this tool is built or tested.
 
-The new controller is installed for the manager's adoption trial. Normal
-ownership has not switched yet. Follow the [adoption checkpoint](../e2e/DEPLOYMENT_COORDINATION.md#adoption-checkpoint)
-and preserve the legacy tools needed by outstanding recovery.
+The installed controller owns new releases. Follow the
+[adoption checkpoint](../e2e/DEPLOYMENT_COORDINATION.md#adoption-checkpoint)
+and preserve legacy tools only while outstanding recovery still needs them.
 
 ## Build and test
 

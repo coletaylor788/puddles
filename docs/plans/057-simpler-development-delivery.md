@@ -145,21 +145,18 @@ Implementation, review, deployment, rollback, merge, and cleanup are authorized.
 The requester supplied a replacement reader owner for the trial. Coordinate with
 that owner and leave the failed reader chats untouched.
 
-The independent release tooling is implemented and under adoption. Its current
-public suite passes 433 tests. Complete the shared DEV/TEST setup and inherited
-service environment coverage before calling the process adopted. Keep live
-feature status and recovery details in the manager conversation. Production
-acceptance, merge, and cleanup remain part of completion.
+The independent release tooling and shared DEV/TEST path are installed. The trial
+passed the full application suite, TEST, backup, PROD, source merge, and normal
+intake. Stable service commands now own new releases. Legacy recovery and finished
+workspaces are being retired separately. Keep live status in the manager conversation.
 
 ## Agent section
 
 ### State
 
-Implementation is published in public PR 273 and companion PR 166 on
-`codex/independent-release-package`. Both are reviewed and CI passes. The reader
-source is composed into the build. The manager heartbeat is active hourly.
-The installed controller remains under adoption, with legacy exclusion used for
-each shared stage. Failed TEST attempts have stopped and left the lane.
+Implementation is merged in public PR 273 and its companion change. The trial
+completed and the queue is empty. The manager heartbeat remains active hourly.
+Cleanup follows the production and recovery ownership checks below.
 
 ### Implementation
 
@@ -192,8 +189,8 @@ conversation; do not add a retained test-report archive.
 
 The original combined suite took about 27 minutes. Grouping mapped tests by
 project, sharing workers, and running independent installed groups concurrently
-reduces that cost while preserving required coverage. Measure the complete suite
-again after adding environment parity checks.
+reduces that cost while preserving required coverage. The complete suite also
+passed after adding environment parity checks; timings remain in the conversation.
 
 ### Review
 
@@ -227,18 +224,15 @@ Use shared parameterized setup instead of per-attempt setup changes.
 
 ### Adoption and rollback
 
-The controller remains under adoption. The manager conversation holds the current
-owner, stage, feature acceptance, and recovery checkpoint. Keep legacy exclusion
-until the new controller has completed its trial and ownership has switched.
+The trial completed with one frozen output through DEV, the full application
+suite, TEST and PROD. Source merge and normal intake passed. Stable service
+commands live outside the trial workspace, and legacy automatic backup retention
+is disabled. The manager conversation holds current ownership and recovery state.
 
-After the owner establishes quality on a corrected DEV candidate, run a fresh
-ready ticket through full application
-validation, TEST and its tests, backup, PROD and its read-only tests, source merge,
-and cleanup. Keep production intake held through acceptance and merge. Preserve
-existing recovery authority until repaired current state and a verified backup
-no longer need it. Disable legacy automatic mutators as part of the final
-ownership switch. Install stable service commands between tickets so standalone
-backup and future releases do not depend on this trial workspace.
+Replace the single backup with accepted healthy state before retiring old recovery.
+Use the guarded retirement script to close exact obsolete references and resources.
+Do not rewrite old references to an incompatible backup format. Preserve live
+consumers, then finalize owned workspaces. Cleanup never holds the ready queue.
 
 ### Checklist
 
@@ -250,4 +244,6 @@ backup and future releases do not depend on this trial workspace.
 - [x] Measure shared worker scheduling and concurrent installed checks.
 - [x] Publish paired draft implementation PRs.
 - [x] Install the tested tooling for coordinated adoption.
-- [ ] Run the reader trial through production, merge, and cleanup.
+- [x] Run the trial through production, merge, and normal intake.
+- [x] Install stable service commands and disable legacy automatic retention.
+- [ ] Retire obsolete recovery and finalize finished workspaces.
