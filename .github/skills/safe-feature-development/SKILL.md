@@ -210,6 +210,14 @@ choices, routine fixes, review remediation, and CI repairs do not need renewed
 approval unless they create such a deviation. Do not turn review, merge, or
 deployment into routine requester handoffs.
 
+## Agent coordination
+
+Follow the repository's [agent coordination guidance](../../copilot-instructions.md#agent-coordination).
+Once human authorization covers coordination, share the source, findings,
+operational paths, recovery references, and other context assigned peers need
+to progress. Do not turn each handoff field into another permission request.
+Exclude secret and credential values and preserve the approved action scope.
+
 ## Workspace ownership
 
 Before editing, inspect the assigned checkout's branch, status, and base. Use a
