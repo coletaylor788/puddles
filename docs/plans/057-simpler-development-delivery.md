@@ -177,9 +177,9 @@ other 49 checks take 2m51s. Other slow cases include stopped configuration repai
 
 The measured full run preceded a final separation of 50 legacy release cases
 from the application suite. Those cases remain covered under release tooling.
-Application packaging also drops old provider deployment commands. Revalidate
-the affected selection and packaged output; the composed reader trial still
-requires its own full gate before production.
+Application packaging also drops old provider deployment commands. The updated
+output passes all 51 installed checks and retained review. The composed reader
+trial still requires its own full gate before production.
 
 ### Review
 
@@ -190,7 +190,7 @@ interruption test now waits for startup separately from its strict cleanup bound
 
 ### Adoption and rollback
 
-PROD is healthy. Shared slots were free at the read-only inventory. Current
+PROD was healthy and shared slots were free at the read-only inventory. Current
 runtime, state, helper services, and legacy recovery still need a complete adoption
 mapping. Stop the old backup/controller jobs only as part of that coordinated
 switch. Preserve existing reader recovery until its owner confirms its consumers
