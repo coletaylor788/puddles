@@ -2,6 +2,7 @@ export type RunCommandOptions = {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   capture?: boolean;
+  captureErrorOutput?: boolean;
   timeoutMs?: number;
   killGraceMs?: number;
   maxOutputBytes?: number;
@@ -17,6 +18,15 @@ export type RunCommandOptions = {
     totalMemoryBytes: number;
     logicalCpuCount: number;
     testWorkers?: number;
+  };
+};
+
+export type CapturedCommandError = Error & {
+  readonly capturedOutput?: {
+    stdout: string;
+    stderr: string;
+    exitCode: number | null;
+    signal: NodeJS.Signals | null;
   };
 };
 
