@@ -138,13 +138,13 @@ The requester supplied a replacement reader owner for the trial. Coordinate with
 that owner and leave the failed reader chats untouched.
 
 The independent release tooling is installed for the reader trial. Its 432 public
-and 21 host-adapter tests pass. The latest complete application suite passed in
-16m36s on the unchanged frozen build. TEST starts healthy, but its reader check
-incorrectly carried an entire repair snapshot across native startup. The owner
-is separating exact stopped-repair verification from functional checks after
-startup. The correction needs fresh review and full validation. Production is
-unchanged; adoption, production
-acceptance, merge, and cleanup remain pending.
+and 21 host-adapter tests pass. The complete application suite passed in 16m39s
+on the unchanged frozen build. Fresh TEST passed startup and reader preservation
+checks. The model comparison then failed without a completed output. Offline
+reproduction found that its request observer omitted the field containing system
+instructions. The owner is correcting that harness defect and its diagnostics. The controller stopped TEST;
+the lane is clear and production is unchanged. Adoption, production acceptance,
+merge, and cleanup remain pending.
 
 ## Agent section
 
@@ -168,7 +168,7 @@ deletion from its external journal.
 The application builder reuses prepared source, the package store, UI output,
 Python payloads, and bundled plugin output. It produces one deployable directory.
 The provider uses its compiled host dependencies instead of multi-platform npm
-publishing. A warm complete build takes 54s and the output is 1.1 GB.
+publishing. A warm complete build takes 58s and the output is 1.1 GB.
 The application gate groups mapped public/private tests by project and keeps
 separate test modes. Release tests live outside the application workspace and CI.
 The full gate supplies the installed checks with explicit runtime, filesystem,
@@ -180,17 +180,17 @@ context may go to those providers; secrets and credentials may not.
 
 ### Validation
 
-The latest completed application gate passed in **16m36s** with unchanged output.
+The latest completed application gate passed in **16m39s** with unchanged output.
 It includes 6,426 mapped cases, 78 cases in each transport mode, 20 packaged-runtime
-checks, installed conversation scenarios, 313 ordinary companion cases, and 55
-companion installed checks. Platform-specific and installed-only cases stay in
-their applicable runners. The independent release suites pass 432 public tests
-and 21 host-adapter tests.
+checks, installed conversation scenarios, companion unit tests, and 55 companion
+installed checks. Platform-specific and installed-only cases stay in their
+applicable runners. The independent release suites pass 432 public tests and
+21 host-adapter tests.
 
 The old combined run took 26m52s. Sharing workers reduced the mapped group to
-6m29s. Concurrent installed groups take 3m18s for keyword memory, 1m33s for local
-embeddings, 2m59s for 49 other checks, and 50s for reader/configuration checks.
-The public application scenarios take 2m57s. These remain the main test costs.
+6m27s. Concurrent installed groups take 3m22s for keyword memory, 1m36s for local
+embeddings, 3m7s for 49 other checks, and 56s for reader/configuration checks.
+The public application scenarios take 2m56s. These remain the main test costs.
 A complete warm build takes 58s and produces 1.1 GB.
 
 ### Review
@@ -201,19 +201,21 @@ processes before replacement, exclude macOS ephemeral ports in test allocation,
 and validate the complete rendered normal and held application configuration.
 The reader acceptance correction keeps exact checks around the one-time repair,
 then checks behavior, pins, history, interrupted inputs and recovered activity
-after startup. Its final review is pending. TEST requires explicit owner review
-of all 16 fresh model outputs.
+after startup. It passed retained review, the full suite, and fresh TEST. The
+comparison harness correction remains under review. TEST requires explicit owner
+review of all 16 fresh model outputs.
 
 ### Adoption and rollback
 
 The tested controller and host adapter are installed, but real adoption is not
 complete. TEST uses separate state, runtime, ports, and recording fixtures. The
-fourth trial reached healthy startup, then stopped automatically on synthetic
-reader-row hydration before any quality collection. Diagnosis is complete and
-the owned TEST state can be reset for a fresh trial. No backup replacement or
-production change has occurred.
+fifth trial passed application acceptance, then its model comparison failed
+without a completed output. The owner rejected it without replay. Recovery stopped
+TEST and its adoption lease was released. No backup replacement or production
+change occurred. The owner is proving the corrected observer and safe diagnostics
+with offline model fixtures before a new attempt.
 
-After the acceptance correction, run a fresh ready ticket through full application
+After the harness correction, run a fresh ready ticket through full application
 validation, TEST and its tests, backup, PROD and its read-only tests, source merge,
 and cleanup. Keep production intake held through acceptance and merge. Preserve
 existing recovery authority until repaired current state and a verified backup
