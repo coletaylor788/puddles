@@ -132,19 +132,23 @@ Implementation, review, deployment, rollback, merge, and cleanup are authorized.
 The requester supplied a replacement reader owner for the trial. Coordinate with
 that owner and leave the failed reader chats untouched.
 
-The release tooling passes its independent suite. The reviewed reader feature is
-composed into the application build; its full suite and TEST acceptance wiring
-are in progress. The new controller is not installed and production is unchanged.
+The independent release tooling is installed for the reader trial. Its 432 public
+and 21 host-adapter tests pass. The complete application suite passes in 16m36s
+on the unchanged frozen build. TEST starts and reports healthy, but its strict
+reader data check found native title hydration in two incomplete synthetic
+sessions. The reader owner is correcting the fixture and adding real startup
+coverage. Production is unchanged; adoption, production acceptance, merge, and
+cleanup remain pending.
 
 ## Agent section
 
 ### State
 
-Implementation is in progress on `codex/independent-release-package`. Both release
-packages build independently. The replacement is not installed. The reviewed reader
-feature is merged into the delivery worktree and the composed application rebuilt
-in 58 seconds. Its owner will collect and review the bounded TEST comparison.
-The manager's hourly chat heartbeat is active.
+Implementation is published in public PR 273 and companion PR 166 on
+`codex/independent-release-package`. Both are reviewed and CI passes. The reader
+source is composed into the build. The manager heartbeat is active hourly.
+The installed controller remains under adoption, with legacy exclusion used for
+each shared stage. Failed TEST attempts have stopped and left the lane.
 
 ### Implementation
 
@@ -170,50 +174,43 @@ context may go to those providers; secrets and credentials may not.
 
 ### Validation
 
-The complete application gate passes in **16m33s** against one unchanged frozen
-output. It includes 6,395 mapped cases, 78 cases in each transport mode, 20
-packaged-runtime checks, installed conversation scenarios, and 51 companion
-installed checks. The one platform-specific mapped skip is for Linux procfs on
-macOS. The latest independent release suite passes 430 tests in about 1m55s,
-including rollback of new files that had no predecessor.
+The final composed application gate passes in **16m36s** with unchanged output.
+It includes 6,426 mapped cases, 78 cases in each transport mode, 20 packaged-runtime
+checks, installed conversation scenarios, 313 ordinary companion cases, and 55
+companion installed checks. Platform-specific and installed-only cases stay in
+their applicable runners. The independent release suites pass 432 public tests
+and 21 host-adapter tests.
 
-The old combined run took 26m52s; the first complete new run took 23m42s. Sharing
-four workers across independent projects reduced the ordinary mapped group from
-11m03s to 6m25s. Explicit serial requirements remain intact. The installed groups
-now run concurrently: keyword memory takes 3m12s, local embeddings 1m29s, and the
-other 49 checks take 2m51s. Other slow cases include stopped configuration repair
-(41s), FaceTime preflight (9s), and process termination checks (about 5s each).
-
-The measured full run preceded a final separation of 50 legacy release cases
-from the application suite. Those cases remain covered under release tooling.
-Application packaging also drops old provider deployment commands. The updated
-output passes all 51 installed checks and retained review. The composed reader
-trial still requires its own full gate before production.
-The composed runner now includes both reader installed checks. Its final TEST
-step waits for the owner's explicit review of all 16 fresh comparison outputs.
-Collection alone cannot authorize backup or production; rejection, timeout,
-changed inputs, or prior collector progress fails TEST.
+The old combined run took 26m52s. Sharing workers reduced the mapped group to
+6m29s. Concurrent installed groups take 3m18s for keyword memory, 1m33s for local
+embeddings, 2m59s for 49 other checks, and 50s for reader/configuration checks.
+The public application scenarios take 2m57s. These remain the main test costs.
+A complete warm build takes 58s and produces 1.1 GB.
 
 ### Review
 
-Retained independent review is clear for the complete implementation. It covers
-recovery retries, supervised backup capture, partial cleanup, installed coverage,
-cache invalidation, interrupted tests, and service transitions. The FaceTime
-interruption test now waits for startup separately from its strict cleanup bound.
-The absent-file backup change also passed retained review and the full release suite.
+Retained independent review is clear for the current implementation. Adoption
+repairs preserve directory permissions during copy/restore, join captured writer
+processes before replacement, exclude macOS ephemeral ports in test allocation,
+and validate the complete rendered normal and held application configuration.
+Reader acceptance keeps strict checks on pins, history, metadata, and interrupted
+inputs. TEST requires explicit owner review of all 16 fresh model outputs.
 
 ### Adoption and rollback
 
-PROD was healthy and shared slots were free at the read-only inventory. Current
-runtime, state, helper services, and legacy recovery still need a complete adoption
-mapping. Stop the old backup/controller jobs only as part of that coordinated
-switch. Preserve existing reader recovery until its owner confirms its consumers
-are retired. Do not run both controller versions against the same services.
+The tested controller and host adapter are installed, but real adoption is not
+complete. TEST uses separate state, runtime, ports, and recording fixtures. The
+fourth trial reached healthy startup, then stopped automatically on synthetic
+reader-row hydration before any quality collection. Its state is retained for
+diagnosis. No backup replacement or production change has occurred.
 
-Install tested release tooling between tickets. Use the reader feature to exercise
-TEST and its tests, backup, PROD and its tests, merge, queue advancement, and cleanup.
-Keep production intake held until acceptance and merge finish. The replacement is
-not considered adopted until this path passes on the real target.
+After the fixture correction, run a fresh ready ticket through full application
+validation, TEST and its tests, backup, PROD and its read-only tests, source merge,
+and cleanup. Keep production intake held through acceptance and merge. Preserve
+existing recovery authority until repaired current state and a verified backup
+no longer need it. Disable legacy automatic mutators as part of the final
+ownership switch. Install stable service commands between tickets so standalone
+backup and future releases do not depend on this trial workspace.
 
 ### Checklist
 
@@ -224,5 +221,5 @@ not considered adopted until this path passes on the real target.
 - [x] Complete the full application gate and retained review.
 - [x] Measure shared worker scheduling and concurrent installed checks.
 - [x] Publish paired draft implementation PRs.
-- [ ] Install the tested tooling.
+- [x] Install the tested tooling for coordinated adoption.
 - [ ] Run the reader trial through production, merge, and cleanup.
