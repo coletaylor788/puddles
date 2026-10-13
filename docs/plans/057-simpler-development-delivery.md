@@ -147,8 +147,9 @@ that owner and leave the failed reader chats untouched.
 
 The independent release tooling and shared DEV/TEST path are installed. The trial
 passed the full application suite, TEST, backup, PROD, source merge, and normal
-intake. Stable service commands now own new releases. Legacy recovery and finished
-workspaces are being retired separately. Keep live status in the manager conversation.
+intake. Stable service commands now own new releases. The accepted healthy state
+is in the single backup, and the superseded legacy recovery is retired. The manager
+owns the remaining workspace closeout and any source checkout held by active tools.
 
 ## Agent section
 
@@ -156,7 +157,8 @@ workspaces are being retired separately. Keep live status in the manager convers
 
 Implementation is merged in public PR 273 and its companion change. The trial
 completed and the queue is empty. The manager heartbeat remains active hourly.
-Cleanup follows the production and recovery ownership checks below.
+Legacy recovery is retired. Generated builds are removed after source verification;
+remaining workspace and tool-consumer cleanup is tracked in the conversation.
 
 ### Implementation
 
