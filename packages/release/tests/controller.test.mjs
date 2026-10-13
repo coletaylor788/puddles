@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -40,6 +40,30 @@ test('full application suite, TEST, backup, PROD, merge execute in order on one 
   assert.equal(readQueue(f.config.root).active, null);
   assert.deepEqual(readdirSync(f.config.root).sort(), ['current.json', 'queue.json', 'queue.lock', 'release.lock']);
 });
+
+for (const failProduction of [false, true]) {
+  test(`deployment preserves private directory modes${failProduction ? ' through rollback' : ''}`, async t => {
+    const f = fixture(t);
+    chmodSync(f.ticket.artifact, 0o700);
+    mkdirSync(join(f.ticket.artifact, 'plugins'), { mode: 0o700 });
+    writeFileSync(join(f.ticket.artifact, 'plugins/content'), 'private application data', { mode: 0o600 });
+    chmodSync(f.config.prod.runtime, 0o700);
+    chmodSync(join(f.root, 'state'), 0o700);
+    enqueue(f.config.root, f.ticket);
+    const result = await runNext(f.config, async (_, env) => {
+      if (env.PUDDLES_RELEASE_PHASE === 'test-tests' || env.PUDDLES_RELEASE_PHASE === 'prod-tests') {
+        const runtime = env.PUDDLES_RELEASE_PHASE === 'test-tests' ? f.config.test.runtime : f.config.prod.runtime;
+        assert.equal(treeHash(runtime), treeHash(f.ticket.artifact));
+        assert.equal(lstatSync(join(runtime, 'plugins')).mode & 0o777, 0o700);
+      }
+      if (failProduction && env.PUDDLES_RELEASE_PHASE === 'prod-tests') throw new Error('recover private state');
+    });
+    assert.equal(result.status, failProduction ? 'failed' : 'released');
+    assert.equal(lstatSync(f.config.prod.runtime).mode & 0o777, 0o700);
+    assert.equal(lstatSync(join(f.root, 'state')).mode & 0o777, 0o700);
+    assert.equal(lstatSync(join(f.config.backup.root, 'runtime')).mode & 0o777, 0o700);
+  });
+}
 
 for (const failedPhase of ['rebase', 'build', 'applicationTests', 'test-start', 'test-tests', 'backup-stop', 'prod-start', 'prod-tests']) {
   test(`${failedPhase} failure recovers and lets the next feature proceed`, async t => {
