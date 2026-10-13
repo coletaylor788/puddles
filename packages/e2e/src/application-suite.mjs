@@ -25,7 +25,7 @@ const collected = (output, target) => output.split('\n').some(line => {
 });
 
 /** Resolve alternatives in batches; run a target only once per selected project. */
-export async function runMappedTests(source, manifests, run, workers = 2) {
+export async function runMappedTests(source, manifests, run, workers = 4) {
   if (!Number.isSafeInteger(workers) || workers < 1) throw new Error('Test workers must be a positive integer');
   const requests = new Map();
   for (const manifest of manifests) for (const target of nativeRegressionTargets(manifest).tests) {
@@ -72,7 +72,8 @@ export async function runCombinedProjects(source, selected, run, flags) {
   const selection = [...selected].map(([project, files]) => ({ project, files: [...files] }));
   const targets = [...new Set(selection.flatMap(group => group.files))];
   const imports = selection.map(({ project }, index) => `import p${index} from ${JSON.stringify(join(source, `test/vitest/vitest.${project}.config.ts`))};`).join('\n');
-  writeFileSync(path, `import base from ${JSON.stringify(join(source, 'vitest.config.ts'))};\n${imports}\nconst selection = ${JSON.stringify(selection)};\nconst configs = [${selection.map((_, index) => `p${index}`).join(',')}];\nexport default {...base,test:{...base.test,root:${JSON.stringify(source)},projects:configs.map((config,index)=>({...config,extends:false,test:{...config.test,include:selection[index].files.map(file=>${JSON.stringify(source + '/')}+file)}}))}};\n`);
+  const workers = Number(flags[flags.indexOf('--maxWorkers') + 1] ?? 4);
+  writeFileSync(path, `import base from ${JSON.stringify(join(source, 'vitest.config.ts'))};\nimport {applicationTestProject} from ${JSON.stringify(join(repository, 'packages/e2e/src/application-test-projects.mjs'))};\n${imports}\nconst selection = ${JSON.stringify(selection)};\nconst configs = [${selection.map((_, index) => `p${index}`).join(',')}];\nexport default {...base,test:{...base.test,root:${JSON.stringify(source)},projects:configs.map((config,index)=>applicationTestProject(config,selection[index].files,${JSON.stringify(source)},${workers}))}};\n`);
   try {
     // Retain each existing project's runtime, isolation and setup. Verify the
     // combined collector selects exactly the same file/project pairs.
@@ -88,7 +89,7 @@ export async function runCombinedProjects(source, selected, run, flags) {
   } finally { rmSync(directory, { recursive: true, force: true }); }
 }
 
-export async function applicationSuite({ source, artifact, extensionPath, workers = 2, env = process.env }, execute = runCommand) {
+export async function applicationSuite({ source, artifact, extensionPath, workers = 4, env = process.env }, execute = runCommand) {
   if (!safeNode()) throw new Error('Application checks require SQLite-safe Node 24.16+ or 26.1+');
   if (!isAbsolute(source ?? '') || !existsSync(join(source, 'dist'))) throw new Error('OPENCLAW_SRC must name the prepared, incrementally built feature source');
   if (!isAbsolute(artifact ?? '') || !existsSync(join(artifact, 'openclaw.mjs'))) throw new Error('OPENCLAW_CANDIDATE_DIR must name the complete built feature output');
@@ -97,7 +98,8 @@ export async function applicationSuite({ source, artifact, extensionPath, worker
   const extension = extensionPath ? (await import(pathToFileURL(realpathSync(extensionPath)).href)).default : {};
   const manifests = [suite, ...(extension.suites ?? [])];
   const testEnv = { ...env, OPENCLAW_SRC: source, OPENCLAW_CANDIDATE_DIR: artifact,
-    OPENCLAW_COMBINED_CANDIDATE: source, OPENCLAW_CANDIDATE: source, OPENCLAW_VITEST_WORKER_CACHE: '1', OPENCLAW_E2E_USE_PREBUILT_DIST: '1' };
+    OPENCLAW_COMBINED_CANDIDATE: source, OPENCLAW_CANDIDATE: source, OPENCLAW_VITEST_WORKER_CACHE: '1',
+    OPENCLAW_VITEST_MAX_WORKERS: String(workers), OPENCLAW_E2E_USE_PREBUILT_DIST: '1' };
   const run = async (command, args, options = {}) => {
     const start = Date.now();
     try { return await execute(command, args, { cwd: repository, timeoutMs: 30 * 60_000, env: testEnv, ...options }); }

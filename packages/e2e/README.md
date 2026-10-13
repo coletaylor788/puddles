@@ -58,7 +58,9 @@ OPENCLAW_CANDIDATE_DIR=/absolute/feature/application \
 A companion supplies `E2E_APPLICATION_EXTENSION=/absolute/companion/scripts/application-suite.mjs`.
 It declares additional application targets and checks. The runner combines mapped
 public/private targets by Vitest project, preserves distinct required modes,
-checks collection, and runs each selected target once per project. Missing tests
+checks collection, and runs each selected target once per project. Independent
+projects share four workers by default; explicitly serial tests keep one worker.
+Set `E2E_TEST_WORKERS` to change the full-suite worker count. Missing tests
 or failed checks fail the suite. It prints durations and does not build, deploy,
 archive reports, or run release-tool implementation tests.
 

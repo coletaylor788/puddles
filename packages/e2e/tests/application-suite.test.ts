@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 // @ts-expect-error executable module
 import { applicationSuite, repository, runMappedTests, runCombinedProjects } from '../src/application-suite.mjs';
+// @ts-expect-error executable module
+import { applicationTestProject } from '../src/application-test-projects.mjs';
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 function combinedListing(args: string[]) {
@@ -63,7 +65,7 @@ it('the full application gate tests prepared output without invoking a build or 
   const manifest = JSON.parse(readFileSync(join(repository, 'packages/e2e/openclaw-patch-suite.json'), 'utf8'));
   const root = source(['dist/ready', 'openclaw.mjs', ...new Set<string>([...manifest.tests, ...manifest.patches.flatMap((patch: { tests: string[] }) => patch.tests)])]);
   const calls: Array<{command: string; args: string[]; options: {env: Record<string, string>}}> = [];
-  const result = await applicationSuite({source: root, artifact: root}, async (command: string, args: string[], options: {env: Record<string, string>}) => {
+  const result = await applicationSuite({source: root, artifact: root, workers: 4}, async (command: string, args: string[], options: {env: Record<string, string>}) => {
     calls.push({command, args, options});
     return combinedListing(args) ?? args.filter(arg => /\.test\.tsx?$/.test(arg)).join('\n');
   });
@@ -73,6 +75,7 @@ it('the full application gate tests prepared output without invoking a build or 
   expect(calls.some(({args}) => args.includes('pytest'))).toBe(true);
   expect(calls.some(({args}) => args.some(arg => arg.endsWith('/bin/test-application.mjs')))).toBe(true);
   expect(calls.every(({options}) => options.env.OPENCLAW_CANDIDATE_DIR === root)).toBe(true);
+  expect(calls.every(({options}) => options.env.OPENCLAW_VITEST_MAX_WORKERS === '4')).toBe(true);
 });
 
 it('rejects lost, added or reassigned regressions in combined discovery', async () => {
@@ -80,4 +83,20 @@ it('rejects lost, added or reassigned regressions in combined discovery', async 
   for (const collected of ['', '[unit] extra.test.ts', '[other] a.test.ts']) {
     await expect(runCombinedProjects(root, new Map([['unit', new Set(['a.test.ts'])]]), async () => collected, [])).rejects.toThrow('differs from mapped regressions');
   }
+});
+
+it('shares workers across independent projects while retaining serial and isolation requirements', () => {
+  const original = { test: { pool: 'forks', isolate: true, runner: 'owned-runner',
+    setupFiles: ['owned-setup'], sequence: { groupOrder: 19, seed: 27 } } };
+  const first = applicationTestProject(original, ['a.test.ts'], '/source', 4);
+  const second = applicationTestProject({test: {sequence: {groupOrder: 70}}}, ['b.test.ts'], '/source', 4);
+  expect(first.test.sequence.groupOrder).toBe(second.test.sequence.groupOrder);
+  expect(first.test).toMatchObject({ pool: 'forks', isolate: true, runner: 'owned-runner',
+    setupFiles: ['owned-setup'], maxWorkers: 4, include: ['/source/a.test.ts'], sequence: {seed: 27} });
+  for (const requirement of [{fileParallelism: false}, {maxWorkers: 1}]) {
+    const serial = applicationTestProject({test: requirement}, ['c.test.ts'], '/source', 4);
+    expect(serial.test.maxWorkers).toBe(1);
+    expect(serial.test.sequence.groupOrder).not.toBe(first.test.sequence.groupOrder);
+  }
+  expect(original.test.sequence.groupOrder).toBe(19);
 });

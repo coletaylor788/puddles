@@ -32,7 +32,7 @@ try {
   if (command === "ci") {
     console.log(JSON.stringify(await applicationSuite({ source: process.env.OPENCLAW_SRC,
       artifact: process.env.OPENCLAW_CANDIDATE_DIR, extensionPath: process.env.E2E_APPLICATION_EXTENSION,
-      workers: Number(process.env.E2E_TEST_WORKERS ?? 2) })));
+      workers: Number(process.env.E2E_TEST_WORKERS ?? 4) })));
   } else if (["patches", "native", "build", "source-gate"].includes(command)) {
     const { nativePipeline } = await import("../src/native-pipeline.mjs");
     await nativePipeline(command, repositoryGates);
