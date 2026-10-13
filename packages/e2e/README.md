@@ -45,6 +45,15 @@ Deploy to DEV with the installed controller's `dev CONFIG REQUEST` command.
 Shared DEV holds only a short lock for deployment and installed checks. Other
 features continue building independently. See [coordination](DEPLOYMENT_COORDINATION.md).
 
+DEV and TEST use the same complete output, configuration renderer, service adapter,
+and application preparation and acceptance commands. Change bindings for paths,
+ports, identities, credential references, and recording endpoints, not application
+behavior. Validate the complete rendered configuration and run startup, health,
+and the changed feature's installed checks in DEV before joining the queue.
+For model behavior, this includes actual provider output; an offline recording
+alone does not establish quality. Focused probes help iteration but are not a DEV
+deployment. Reconcile DEV experiments with the reviewed base before declaring ready.
+
 ## Full application suite
 
 The release manager runs this against the frozen, already-built feature output:
@@ -72,10 +81,12 @@ remove completed repair fixtures after current state and backup no longer need t
 
 ## Installed tests
 
-TEST runs the real application with separate configuration, state, sessions,
+DEV and TEST run the real application with separate configuration, state, sessions,
 indexes, ports, and processes. External writes and delivery use deny-by-default
 recording fixtures. The installed application checks belong to the application,
-and are configured as the controller's TEST and PROD commands. Required unavailable
+and are configured as the controller's DEV, TEST and PROD commands. TEST repeats
+the shared checks on the frozen candidate with reset state and broader coverage.
+It should not introduce a new feature setup or acceptance path. Required unavailable
 checks fail. PROD checks are bounded, read-only, and never send messages.
 
 This is a trusted host, not a VM or permission sandbox. Share host services and

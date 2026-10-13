@@ -568,6 +568,13 @@ queue, then rebase and refresh the same build at the front. Run the full
 application suite once on the frozen output, then TEST and PROD acceptance.
 Print timings to the conversation; do not keep a second test-report archive.
 
+Use the same application configuration renderer, preparation, startup, health,
+and feature acceptance commands in DEV and TEST. Only environment bindings differ.
+Run the changed feature's installed use cases before declaring ready, including
+real provider output when model behavior changes. Focused probes remain useful
+but do not replace deployed DEV checks. When a later stage fails, close the missing
+DEV coverage or deployment gap before rejoining; do not keep debugging in TEST.
+
 ### Environment configuration and migrations
 
 DEV, TEST, and PROD own their configuration and writable state outside the

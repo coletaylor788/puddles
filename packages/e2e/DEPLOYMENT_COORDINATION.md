@@ -7,7 +7,8 @@ and review do not reserve TEST or PROD.
 ## Feature owner
 
 1. Work in one owned workspace and reuse its incremental build. Run focused tests
-   and installed DEV checks. Keep the manager informed of readiness and blockers.
+   and installed DEV checks using the same preparation, startup, health, and feature
+   acceptance path as TEST. Keep the manager informed of readiness and blockers.
 2. Commit and review the feature, satisfy repository checks, then call the installed
    controller's `enqueue CONFIG TICKET`. Paired repositories use one ticket.
 3. At the front, rebase main and rebuild changed inputs. Run the full application
@@ -32,6 +33,11 @@ recovery before proceeding.
 Use the [release-manager skill](../../.github/skills/release-manager/SKILL.md) for
 owner updates and the hourly native wake-up. A timer does not grant permission,
 replace a live owner, or make a failed deployment successful.
+
+Before admission, confirm the owner exercised the changed behavior in deployed
+DEV and reconciled configuration differences. Keep that result in the conversation.
+A focused probe or passing unit suite alone is not DEV readiness. For each late
+failure, fix the missing DEV coverage or shared deployment path before another attempt.
 
 The [release package README](../release/README.md) defines commands, target
 configuration, ticket fields, and direct backup replacement. Install tool updates

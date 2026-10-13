@@ -13,9 +13,9 @@ and tooling that guide future work. Make each loop safer, faster, and simpler.
 - Security first; never cut security corners for speed or convenience.
 - Keep it simple (KISS); simplify to reduce edge cases and brittleness.
 - Keep production healthy and retain one verified production recovery copy.
-- Keep feature work and source merges parallel. One release owner pins merged
-  source, builds once in CI, and promotes the same artifact DEV -> TEST -> PROD.
-  Later main commits do not invalidate that candidate.
+- Keep feature work parallel. Each feature owns one incremental build and proves
+  its installed behavior in DEV. One FIFO lane rebases ready work, freezes the
+  output, runs the full application suite, then TEST, backup, PROD, and merge.
 - Scripts own bounded execution, recovery, and cleanup even if an agent vanishes.
 
 ## Priorities
@@ -28,8 +28,8 @@ and tooling that guide future work. Make each loop safer, faster, and simpler.
 - Automation gaps: routine CI/CD needing an agent to usher it through.
   Agents should monitor and react to issues.
 - Parallel work: unnecessary serialization or interference. Coordinate only
-  shared resources and actual dependencies. Keep main open while feature gates
-  run; validate the combined result through the separate merged-batch gate.
+  shared resources and actual dependencies. Keep DEV available while one feature
+  owns TEST through PROD and merge.
 - Feedback cost: slow or repeated builds, checks, retries, handoffs, and local/CI
   differences that delay finding issues.
 - Disk growth: package-store reuse, incremental builds, and completed scratch
@@ -73,7 +73,8 @@ and tooling that guide future work. Make each loop safer, faster, and simpler.
 - Use the [storage lifecycle](../../../packages/e2e/DEVELOPMENT_STORAGE.md).
   Keep one mutable build per task, a shared host package store, current candidate,
   current PROD, and one PROD recovery copy. TEST is disposable, including its
-  completed rollback snapshots. Keep small results instead of full workspaces.
+  completed rollback snapshots. Results stay in the conversation; finalize the
+  whole feature workspace after release and merge.
 - Notify workers after changes merge and have them clean completed runs promptly.
   Authorized coordinators can clean abandoned generated data after checking live
   consumers and source/recovery preservation, even if a failed worker cannot

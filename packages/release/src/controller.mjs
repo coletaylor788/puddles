@@ -45,6 +45,10 @@ async function deploy(target, artifact, digest, run, phase) {
   await run(target.health, phase + '-health');
   await run(target.tests, phase + '-tests');
 }
+function applicationEnvironment(ticket, phase) {
+  return { PUDDLES_RELEASE_PHASE: phase, PUDDLES_RELEASE_ARTIFACT: ticket.artifact,
+    PUDDLES_RELEASE_WORKSPACE: ticket.workspace, PUDDLES_RELEASE_ID: ticket.id };
+}
 export async function deployDev(config, ticket, target, execute = command) {
   validateConfiguration(config); validateTicket(ticket, config);
   canonical(target.runtime);
@@ -54,7 +58,7 @@ export async function deployDev(config, ticket, target, execute = command) {
   if (target.prepare) validateCommand(target.prepare);
   const unlock = lock(join(config.root, 'dev.lock'));
   try {
-    await deploy(target, ticket.artifact, treeHash(ticket.artifact), (cmd, phase) => execute(cmd, { PUDDLES_RELEASE_PHASE: phase, PUDDLES_RELEASE_ARTIFACT: ticket.artifact }), 'dev');
+    await deploy(target, ticket.artifact, treeHash(ticket.artifact), (cmd, phase) => execute(cmd, applicationEnvironment(ticket, phase)), 'dev');
   } finally { unlock(); }
 }
 export async function runNext(config, execute = command, options = {}) {
@@ -87,8 +91,7 @@ export async function runNext(config, execute = command, options = {}) {
     save({ worker: options.worker ?? null, toolHash: options.toolHash ?? null });
     const run = (spec, phase) => {
       save({ operation: phase });
-      return execute(spec, { PUDDLES_RELEASE_PHASE: phase, PUDDLES_RELEASE_ARTIFACT: active.artifact,
-        PUDDLES_RELEASE_WORKSPACE: active.workspace, PUDDLES_RELEASE_ID: active.id }, child => save({ child }));
+      return execute(spec, applicationEnvironment(active, phase), child => save({ child }));
     };
     const leave = () => updateQueue(config.root, state => { state.active = null; });
     const recover = async () => {

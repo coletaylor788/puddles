@@ -88,6 +88,11 @@ the workspace, so updating the ticket does not dirty a branch.
 
 A DEV request contains `ticket` and `target` with the same target fields above.
 It cannot overlap TEST, PROD, backup, or any feature workspace.
+DEV, TEST and PROD use the same deployment implementation. Every callback receives
+`PUDDLES_RELEASE_PHASE`, `PUDDLES_RELEASE_ARTIFACT`, `PUDDLES_RELEASE_WORKSPACE`, and
+`PUDDLES_RELEASE_ID`. Reuse application callbacks across targets; supply environment
+bindings through their configuration. Keep application-specific checks out of this
+package.
 
 ## Finalization
 

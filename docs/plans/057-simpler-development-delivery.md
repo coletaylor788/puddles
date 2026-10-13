@@ -18,7 +18,8 @@ the workspace. Keep stage tests, one recovery backup, and a persistent manager.
 2. **Make tests durable.** Separate application tests from release tests. Replace
    historical rollout assertions with expected behavior; retire completed repairs.
 3. **Use the feature build everywhere.** Make incremental DEV output complete
-   enough for TEST and PROD. Consolidate duplicate test runs and fixture setup.
+   enough for TEST and PROD. Share deployment, configuration rendering, startup,
+   and feature checks between DEV and TEST. Prove changed behavior before queueing.
 4. **Install the queue and backup flow.** Reconcile current PROD and outstanding
    recovery first. Script the sequence below, including failure and final merge.
 5. **Add the manager.** Use the [release-manager skill](../../.github/skills/release-manager/SKILL.md)
@@ -89,6 +90,13 @@ Every agent owns one incremental build and shares the package cache. Anyone can
 use DEV, with a short lock around shared deployment and checks. There is no separate
 release builder or arbitrary build limit.
 
+DEV and TEST use the same deployment and application commands. Only bindings for
+state, ports, identities, credential references, and recording endpoints differ.
+DEV runs complete configuration validation, startup, health, and the feature's
+installed use cases, including real model output when relevant. TEST repeats those
+checks after rebase with reset state and broader coverage. A late failure prompts
+a fix in the shared path or missing DEV coverage before another release attempt.
+
 Reviewed, ready features enter one queue. At the front, rebase on main, rebuild
 changed inputs, and freeze the output used through TEST and PROD. Environment
 configuration stays separate. Paired public/private PRs form one ticket.
@@ -137,13 +145,17 @@ Implementation, review, deployment, rollback, merge, and cleanup are authorized.
 The requester supplied a replacement reader owner for the trial. Coordinate with
 that owner and leave the failed reader chats untouched.
 
-The independent release tooling is installed for the reader trial. Its 432 public
-and 21 host-adapter tests pass. The complete application suite passed in 16m37s
+The independent release tooling is installed for the reader trial. The updated
+controller passes 433 public tests; the unchanged host adapter passed 21 tests.
+The complete application suite passed in 16m37s
 on the unchanged frozen build, including the corrected comparison harness.
 Fresh TEST passed startup and reader preservation checks. All 16 model outputs
 completed, but three reader outputs paraphrased embedded instructions and failed
 the quality criteria. TEST recovered and released its slot. The owner is repairing
-reader guidance and must establish quality in DEV before rejoining the queue.
+reader guidance. Its correction passed all 16 focused live DEV outputs. Full
+deployed DEV readiness is still required before rejoining the queue.
+The trial also exposed incomplete DEV wiring and readiness checks. Hardening
+the shared DEV/TEST path is part of adoption, not a reader feature failure.
 Production is unchanged. Adoption, production acceptance, merge, and cleanup
 remain pending.
 
@@ -208,6 +220,23 @@ comparison harness correction also passed retained review and the full suite.
 TEST requires explicit owner
 review of all 16 fresh model outputs.
 
+### DEV and TEST parity
+
+The October 13 review found a shared deployment function but unequal callback
+context: DEV omitted the feature workspace and ID. Both stages now use one context
+helper. A regression runs real child callbacks through DEV and TEST and failed on
+the old implementation. Independent review is clear and the full release suite
+passes (49 Node cases and 384 Vitest cases). The reader application and quality CLI also restricted
+checks to TEST; the reader owner is adding development support to those same hooks.
+
+Earlier permission, rendered-config, startup-assertion, and collector failures
+should have surfaced before TEST. Focused reader probes skipped the full renderer,
+application preparation, held service, and state acceptance. Require those shared
+installed checks plus passing live quality before another admission. Keep the
+full application suite at release time; do not run it after every DEV edit.
+Replace per-attempt setup edits with shared parameterized setup before calling
+the new process adopted. Record results in the conversation, not another gate store.
+
 ### Adoption and rollback
 
 The tested controller and host adapter are installed, but real adoption is not
@@ -215,7 +244,7 @@ complete. TEST uses separate state, runtime, ports, and recording fixtures. The
 sixth trial passed application acceptance and completed all 16 comparison outputs.
 The owner rejected three instruction paraphrases. Recovery stopped TEST and its
 adoption lease was released. No backup replacement or production change occurred.
-The harness is corrected; remaining repair belongs to reader behavior.
+The harness is corrected. Reader quality and the DEV readiness gap remain open.
 
 After the owner establishes quality on a corrected DEV candidate, run a fresh
 ready ticket through full application

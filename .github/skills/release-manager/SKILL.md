@@ -72,6 +72,10 @@ releases. Creating or editing this skill does not start a manager or timer.
   an accepted handoff. Request updates on DEV readiness, review changes, blockers,
   candidate changes, deployment, and cleanup. Include feature/PR, revision,
   approval scope, checks/timings, readiness, blocker, and next action/owner.
+- Before admitting a feature, confirm its installed DEV checks exercised the same
+  preparation, startup, health, and feature acceptance path as TEST. A focused
+  probe is not complete DEV readiness. Investigate late failures as feedback-loop
+  gaps as well as product bugs, and fix the earliest shared path before retrying.
 - Notify owners of their turn and outcome. Request missing status when useful,
   without repeatedly waking them for unchanged questions. Messages do not grant
   slots. Inspect processes and journals before treating silence as abandonment.

@@ -283,3 +283,38 @@ test('DEV cannot replace production state or an alias that escapes its workspace
   assert.equal(readFileSync(join(f.root,'state/history'),'utf8'),'preserved');
   assert.deepEqual(f.seen,[]);
 });
+
+test('DEV and TEST execute the same application callbacks with the owning feature context', async t => {
+  const f = fixture(t);
+  const script = join(f.ticket.workspace, 'application-check.mjs');
+  writeFileSync(script, `
+    import assert from 'node:assert/strict';
+    import { appendFileSync, readFileSync } from 'node:fs';
+    import { join } from 'node:path';
+    const { PUDDLES_RELEASE_WORKSPACE: workspace, PUDDLES_RELEASE_ID: id,
+      PUDDLES_RELEASE_ARTIFACT: artifact, PUDDLES_RELEASE_PHASE: phase,
+      APPLICATION_RUNTIME: runtime } = process.env;
+    assert.equal(readFileSync(join(workspace, 'feature'), 'utf8'), id);
+    assert.equal(readFileSync(join(artifact, 'version'), 'utf8'), 'new');
+    if (/-start$|-health$|-tests$/.test(phase)) {
+      assert.equal(readFileSync(join(runtime, 'version'), 'utf8'), 'new');
+    }
+    appendFileSync(join(workspace, 'checks'), phase + '\\n');
+  `);
+  writeFileSync(join(f.ticket.workspace, 'feature'), f.ticket.id);
+  const target = name => {
+    const runtime = join(f.root, name);
+    const cmd = { command: process.execPath, args: [script], cwd: f.root,
+      timeoutMs: 5000, env: { APPLICATION_RUNTIME: runtime } };
+    return { runtime, stop: cmd, prepare: cmd, start: cmd, health: cmd, tests: cmd };
+  };
+  await deployDev(f.config, f.ticket, target('dev'));
+  assert.equal(readQueue(f.config.root).active, null);
+  assert.equal(readFileSync(join(f.root, 'prod/version'), 'utf8'), 'old');
+  assert.equal(existsSync(f.config.backup.root), false);
+  f.config.test = target('test');
+  enqueue(f.config.root, f.ticket);
+  assert.equal((await runNext(f.config)).status, 'released');
+  assert.deepEqual(readFileSync(join(f.ticket.workspace, 'checks'), 'utf8').trim().split('\n'),
+    ['dev', 'test'].flatMap(role => ['stop', 'prepare', 'start', 'health', 'tests'].map(step => `${role}-${step}`)));
+});
