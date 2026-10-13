@@ -9,6 +9,11 @@ export async function withApplicationCheckCleanup(root, run) {
   };
   installSignalHandlers({ cleanup });
   try { return await run(); }
+  catch (error) {
+    if (!isHandlingSignal()) throw error;
+    // The signal handler joins every child before cleanup and exits the process.
+    return await new Promise(() => {});
+  }
   finally {
     // Signal handling first joins the active process group, then removes state.
     if (!isHandlingSignal()) {

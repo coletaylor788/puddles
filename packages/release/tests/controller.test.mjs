@@ -33,7 +33,7 @@ test('full application suite, TEST, backup, PROD, merge execute in order on one 
   const result = await runNext(f.config, f.execute);
   assert.equal(result.status, 'released');
   assert.deepEqual(f.seen, ['rebase', 'build', 'applicationTests', 'test-stop', 'test-start', 'test-health', 'test-tests',
-    'quiesce', 'backup-health', 'backup-stop', 'backup-restart', 'backup-restarted-health', 'prod-stop', 'prod-start', 'prod-health', 'prod-tests', 'merge', 'resume-intake']);
+    'quiesce', 'backup-health', 'backup-stop', 'backup-restart', 'backup-restarted-health', 'prod-stop', 'prod-start', 'prod-health', 'prod-tests', 'merge', 'resume-intake', 'resume-health']);
   assert.equal(readFileSync(join(f.root, 'prod/version'), 'utf8'), 'new');
   assert.equal(readFileSync(join(f.root, 'backup/runtime/version'), 'utf8'), 'old');
   assert.equal(treeHash(f.ticket.artifact), treeHash(f.config.prod.runtime));
@@ -69,7 +69,7 @@ test('failed final merge keeps the slot; retry merges without redeploying', asyn
   assert.equal(readQueue(f.config.root).active.id, 'feature');
   assert.throws(() => cancel(f.config.root, 'feature'), /active release/);
   assert.equal((await runNext(f.config, f.execute)).status, 'released');
-  assert.deepEqual(f.seen, ['merge', 'resume-intake']);
+  assert.deepEqual(f.seen, ['merge', 'resume-intake', 'resume-health']);
 });
 
 test('changed frozen output cannot reach TEST or PROD', async t => {
@@ -87,7 +87,7 @@ test('an interrupted production deployment restores before releasing its ticket'
   updateQueue(f.config.root, state => { state.active.phase = 'prod'; state.active.status = 'running'; state.active.completed = state.active.completed.filter(x => x !== 'prod'); });
   assert.equal((await runNext(f.config, f.execute)).status, 'failed');
   assert.equal(readFileSync(join(f.root, 'prod/version'), 'utf8'), 'old');
-  assert.deepEqual(f.seen, ['restore-stop', 'restore-start', 'restore-health', 'recover-intake']);
+  assert.deepEqual(f.seen, ['restore-stop', 'restore-start', 'restore-health', 'recover-intake', 'recover-intake-health']);
 });
 
 test('backup replaces the existing generation directly and restores readable state', async t => {
@@ -171,7 +171,35 @@ test('recovery retries intake without restoring over writes accepted by the rest
   }),/intake reopened/);
   assert.equal((await runNext(f.config,f.execute)).status,'failed');
   assert.equal(readFileSync(join(f.root,'state/history'),'utf8'),'new live write');
-  assert.deepEqual(f.seen,['recover-intake']);
+  assert.deepEqual(f.seen,['recover-intake', 'recover-intake-health']);
+});
+
+test('failed health after intake resumes retains ownership and preserves newly accepted data on retry', async t => {
+  const f=fixture(t); enqueue(f.config.root,f.ticket); enqueue(f.config.root,{...f.ticket,id:'next'});
+  const result=await runNext(f.config,async(_,env)=>{
+    if(env.PUDDLES_RELEASE_PHASE==='resume-intake') writeFileSync(join(f.root,'state/history'),'new live write');
+    if(env.PUDDLES_RELEASE_PHASE==='resume-health') throw new Error('normal listener unavailable');
+  });
+  assert.equal(result.status,'merge-pending'); assert.equal(readQueue(f.config.root).active.id,'feature');
+  await assert.rejects(runNext(f.config,f.execute,{recover:true}),/Intake resumed/);
+  assert.equal((await runNext(f.config,f.execute)).status,'released');
+  assert.deepEqual(f.seen,['resume-intake','resume-health']);
+  assert.equal(readFileSync(join(f.root,'state/history'),'utf8'),'new live write');
+  assert.equal(readQueue(f.config.root).ready[0].id,'next');
+});
+
+test('failed recovered service health retries without another restore or intake restart', async t => {
+  const f=fixture(t); enqueue(f.config.root,f.ticket);
+  await assert.rejects(runNext(f.config,async(_,env)=>{
+    if(env.PUDDLES_RELEASE_PHASE==='prod-tests') throw new Error('candidate failed');
+    if(env.PUDDLES_RELEASE_PHASE==='recover-intake-health') {
+      writeFileSync(join(f.root,'state/history'),'new recovered service write');
+      throw new Error('normal listener unavailable');
+    }
+  }),/normal listener/);
+  assert.equal((await runNext(f.config,f.execute)).status,'failed');
+  assert.deepEqual(f.seen,['recover-intake-health']);
+  assert.equal(readFileSync(join(f.root,'state/history'),'utf8'),'new recovered service write');
 });
 
 test('DEV cannot replace production state or an alias that escapes its workspace', async t => {

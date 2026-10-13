@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { closeSync, openSync, writeSync } from "node:fs";
 import { startCommandResourceMonitor } from "./native-resources.mjs";
 
-let activeCommand;
+const activeCommands = new Set();
 let handlingSignal = false;
 
 function signalChildGroup(child, signal) {
@@ -69,7 +69,7 @@ export async function runCommand(command, args, options = {}) {
     child.once("error", resolve);
   });
   const tracked = { child, done, interrupted: false };
-  activeCommand = tracked;
+  activeCommands.add(tracked);
   const stopResourceMonitor = options.resourcePath && child.pid
     ? startCommandResourceMonitor({
         path: options.resourcePath,
@@ -112,13 +112,10 @@ export async function runCommand(command, args, options = {}) {
     try { stopResourceMonitor?.(); }
     catch (error) { resourceError = error; }
     if (log !== undefined) closeSync(log);
-    if (activeCommand?.child === child) {
-      activeCommand = undefined;
-    }
+    activeCommands.delete(tracked);
   }
-  // Signal cleanup owns this interrupted command and exits after joining its
-  // children. Do not let a top-level rejection terminate the wrapper first.
-  if (tracked.interrupted) return await new Promise(() => {});
+  // Let callers finish their own finally blocks. CLI wrappers suppress their
+  // top-level rejection while signal cleanup owns process exit.
   if (commandError && resourceError) {
     throw new AggregateError([commandError, resourceError], "Command and resource measurement failed");
   }
@@ -128,10 +125,7 @@ export async function runCommand(command, args, options = {}) {
 }
 
 export async function stopActiveCommand(signal, graceMs = 10_000) {
-  const active = activeCommand;
-  if (!active) {
-    return;
-  }
+  const stop = async active => {
   active.interrupted = true;
   signalChildGroup(active.child, signal);
   const groupAlive = () => {
@@ -149,6 +143,10 @@ export async function stopActiveCommand(signal, graceMs = 10_000) {
     if (!await waitUntil(5000)) throw new Error("Interrupted command descendants did not stop");
   }
   await active.done;
+  };
+  const results = await Promise.allSettled([...activeCommands].map(stop));
+  const errors = results.filter(result => result.status === "rejected").map(result => result.reason);
+  if (errors.length) throw new AggregateError(errors, "Interrupted commands did not stop");
 }
 
 export function installSignalHandlers(params) {

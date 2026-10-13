@@ -160,22 +160,24 @@ context may go to those providers; secrets and credentials may not.
 
 ### Validation
 
-The old combined run took 26m52s. The new release package passes 422 tests in about
-1m59s, including killed workers and recovery after intake reopens. The first
-application run passed mapped regressions but rejected escaping dependency links
-in its output. The builder now preserves relative links; its warm rebuild and
-installed behavior checks are under validation.
-One measured upstream infrastructure group takes 3m12s; report that cost separately
-from build, installed checks, and queue time. Do not present a partial run as the
-new full-suite duration.
+The old combined run took 26m52s. Consolidated mapped application regressions
+pass in 17m06s: 6,395 ordinary cases plus 78 cases in each of two transport modes.
+This is not the full application-suite time. The separate installed checks and
+final release suite remain under validation. Four test workers did not improve
+the measured infrastructure group (3m16s versus 3m12s with two).
+
+Slow cases include stopped configuration repair (39s), FaceTime preflight (9s),
+and process termination cases that wait about 5s each. Installed keyword memory
+and local embedding checks previously took 3m03s and 2m04s in sequence; they now
+run independently in parallel. Report final measured time before adoption.
 
 ### Review
 
-The independent reviewer found four material gaps: recovery could restore again
-after intake reopened, standalone backup lacked crash supervision, partial cleanup
-could lose its marker, and installed application coverage was not connected.
-The first three have passing regressions. Complete the application coverage and
-resume the same reviewer against the complete current diff before adoption.
+Retained review has driven fixes for recovery retries, supervised backup capture,
+partial cleanup, complete installed coverage, cache invalidation, and interrupted
+test children. The latest findings require a distinct held gateway port and the
+installed filesystem check in the full application runner. Both are under final
+validation. Resume the same reviewer against the complete diff before adoption.
 
 ### Adoption and rollback
 
@@ -197,5 +199,6 @@ not considered adopted until this path passes on the real target.
 - [x] Implement independent packages, incremental output, controller, and finalize.
 - [x] Start the manager heartbeat and coordinate the replacement reader owner.
 - [ ] Complete all application coverage, benchmark, and retained review.
-- [ ] Publish implementation and install the tested tooling.
+- [x] Publish paired draft implementation PRs.
+- [ ] Install the tested tooling.
 - [ ] Run the reader trial through production, merge, and cleanup.

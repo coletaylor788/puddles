@@ -106,10 +106,13 @@ export async function runNext(config, execute = command, options = {}) {
         }
         save({ recoveryRestored: true });
       }
-      if ((active.completed.includes('quiesce') || active.phase === 'backup') && !active.recoveryIntakeResumed) {
-        save({ intakeResuming: true, recoveryIntakeResuming: true });
-        await run(config.prod.resumeIntake, 'recover-intake');
-        save({ recoveryIntakeResumed: true });
+      if (active.completed.includes('quiesce') || active.phase === 'backup') {
+        if (!active.recoveryIntakeResumed) {
+          save({ intakeResuming: true, recoveryIntakeResuming: true });
+          await run(config.prod.resumeIntake, 'recover-intake');
+          save({ recoveryIntakeResumed: true });
+        }
+        await run(config.prod.health, 'recover-intake-health');
       }
       leave();
       return { status: 'failed', id: active.id, error: active.error ?? 'Interrupted release recovered; repair and rejoin at the back' };
@@ -152,6 +155,7 @@ export async function runNext(config, execute = command, options = {}) {
         } else if (stage === 'resumeIntake') {
           save({ intakeResuming: true });
           await run(config.prod.resumeIntake, 'resume-intake');
+          await run(config.prod.health, 'resume-health');
         }
         save({ completed: [...active.completed, stage], status: 'ready' });
       }
