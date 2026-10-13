@@ -72,6 +72,12 @@ invalidates the old backup, captures directly into the same location, and verifi
 it there. It restarts unchanged PROD even when capture fails. A failed capture
 cannot authorize deployment. There is no second backup generation.
 
+An entry may declare `allowAbsent: true` for a path the application can create,
+such as a new guidance file. Capture records its absence; rollback removes a file
+created by the failed deployment. If the path already exists, capture and restore
+its contents normally. All other entries, including the production runtime, must
+exist. Declare individual guidance files rather than unrelated workspace parents.
+
 A ticket has `id`, `workspace`, `artifact`, and commands `rebase`, `build`,
 `applicationTests`, and `merge`. The artifact must be inside its feature workspace.
 `applicationTests` runs the full application suite on the output of `build`.

@@ -20,6 +20,7 @@ export function validateConfiguration(config) {
   for (const key of ['quiesce', 'resumeIntake']) validateCommand(config.prod[key]);
   separate([config.root, config.backup.root, config.test.runtime, config.prod.runtime]);
   if (!config.backup.paths.some(entry => entry.path === config.prod.runtime)) throw new Error('Backup must include production runtime');
+  if (config.backup.paths.some(entry => entry.path === config.prod.runtime && entry.allowAbsent)) throw new Error('Production runtime must exist in the backup');
   for (const entry of config.backup.paths) separate([entry.path, config.test.runtime, config.root]);
   return config;
 }

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -112,6 +112,56 @@ test('failed replacement invalidates old backup and restarts unchanged productio
   assert.throws(() => verifyBackup(f.config.backup), /verified recovery/);
   assert.deepEqual(seen.slice(-2), ['backup-restart', 'backup-restarted-health']);
   assert.equal(readFileSync(join(f.root, 'prod/version'), 'utf8'), 'old');
+});
+
+test('failed deployment removes newly created guidance without restoring its unrelated workspace', async t => {
+  const f = fixture(t), parent = join(f.root, 'authored-workspace');
+  mkdirSync(parent);
+  const guidance = join(parent, 'AGENTS.md'), other = join(parent, 'notes.md');
+  writeFileSync(other, 'before');
+  f.config.backup.paths.push({ name: 'guidance', path: guidance, allowAbsent: true });
+  enqueue(f.config.root, f.ticket);
+  const result = await runNext(f.config, async (_, env) => {
+    if (env.PUDDLES_RELEASE_PHASE === 'prod-tests') {
+      writeFileSync(guidance, 'candidate guidance'); writeFileSync(other, 'independent update');
+      throw new Error('candidate rejected');
+    }
+  });
+  assert.equal(result.status, 'failed');
+  assert.ok(!existsSync(guidance));
+  assert.equal(readFileSync(other, 'utf8'), 'independent update');
+  assert.equal(readFileSync(join(f.root, 'prod/version'), 'utf8'), 'old');
+  assert.equal(readQueue(f.config.root).active, null);
+});
+
+test('an optional path that exists is captured and restored normally', async t => {
+  const f = fixture(t), guidance = join(f.root, 'AGENTS.md');
+  writeFileSync(guidance, 'accepted instructions');
+  f.config.backup.paths.push({ name: 'guidance', path: guidance, allowAbsent: true });
+  await replaceBackup(f.config.backup, f.config.prod, async () => {});
+  writeFileSync(guidance, 'rejected instructions');
+  await restoreBackup(f.config.backup, f.config.prod, async () => {});
+  assert.equal(readFileSync(guidance, 'utf8'), 'accepted instructions');
+});
+
+test('absence does not permit unexpected backup bytes or dangling source links', async t => {
+  const f = fixture(t), guidance = join(f.root, 'AGENTS.md');
+  f.config.backup.paths.push({ name: 'guidance', path: guidance, allowAbsent: true });
+  await replaceBackup(f.config.backup, f.config.prod, async () => {});
+  writeFileSync(join(f.config.backup.root, 'guidance'), 'unexpected data');
+  assert.throws(() => verifyBackup(f.config.backup), /changed/);
+  await assert.rejects(restoreBackup(f.config.backup, f.config.prod, async () => {}), /changed/);
+  symlinkSync(join(f.root, 'missing-target'), guidance);
+  await assert.rejects(replaceBackup(f.config.backup, f.config.prod, async () => {}));
+  assert.throws(() => verifyBackup(f.config.backup), /verified recovery/);
+});
+
+test('production runtime cannot be optional', t => {
+  const f = fixture(t); f.config.backup.paths[0].allowAbsent = true;
+  assert.throws(() => validateConfiguration(f.config), /Production runtime must exist/);
+  delete f.config.backup.paths[0].allowAbsent;
+  f.config.backup.paths[1].allowAbsent = 'yes';
+  assert.throws(() => validateConfiguration(f.config), /boolean/);
 });
 
 test('modified backup cannot authorize deployment or restoration', async t => {

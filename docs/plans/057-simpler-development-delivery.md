@@ -100,6 +100,9 @@ There is no second full copy. Failed or interrupted capture leaves current PROD
 in place; deployment waits for a successful backup. Losing the older backup during
 capture is accepted.
 
+Explicit optional entries record files that do not yet exist. Recovery removes
+files created by a rejected deployment without restoring unrelated workspace data.
+
 Keep that backup through PROD tests and merge. Restore on deployment or test
 failure. Hold intake during acceptance when restoration would discard new data;
 later recovery must preserve new live writes.
@@ -166,7 +169,8 @@ The complete application gate passes in **16m33s** against one unchanged frozen
 output. It includes 6,395 mapped cases, 78 cases in each transport mode, 20
 packaged-runtime checks, installed conversation scenarios, and 51 companion
 installed checks. The one platform-specific mapped skip is for Linux procfs on
-macOS. The independent release suite passes 426 tests in 1m53s.
+macOS. The latest independent release suite passes 430 tests in about 1m55s,
+including rollback of new files that had no predecessor.
 
 The old combined run took 26m52s; the first complete new run took 23m42s. Sharing
 four workers across independent projects reduced the ordinary mapped group from
@@ -187,6 +191,7 @@ Retained independent review is clear for the complete implementation. It covers
 recovery retries, supervised backup capture, partial cleanup, installed coverage,
 cache invalidation, interrupted tests, and service transitions. The FaceTime
 interruption test now waits for startup separately from its strict cleanup bound.
+The absent-file backup change also passed retained review and the full release suite.
 
 ### Adoption and rollback
 
