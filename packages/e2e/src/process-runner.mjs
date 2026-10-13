@@ -114,6 +114,13 @@ export async function runCommand(command, args, options = {}) {
     if (log !== undefined) closeSync(log);
     activeCommands.delete(tracked);
   }
+  // Opt-in callers can redact captured failures before persisting diagnostics.
+  // Keep raw output out of the message, stack and ordinary serialization.
+  if (commandError && capture && options.captureErrorOutput === true) {
+    Object.defineProperty(commandError, "capturedOutput", {
+      value: { stdout, stderr, exitCode: child.exitCode, signal: child.signalCode },
+    });
+  }
   // Let callers finish their own finally blocks. CLI wrappers suppress their
   // top-level rejection while signal cleanup owns process exit.
   if (commandError && resourceError) {

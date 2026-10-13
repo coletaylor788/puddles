@@ -117,3 +117,26 @@ describe("managed runner signals", () => {
     }
   });
 });
+
+
+describe("captured failure diagnostics", () => {
+  it("exposes bounded output only when requested, without adding it to ordinary errors", async () => {
+    for (const captureErrorOutput of [false, true]) {
+      const error = await runCommand(process.execPath, ["-e", "process.stdout.write('synthetic stdout'); process.stderr.write('synthetic stderr'); process.exit(7)"],
+        { capture: true, quiet: true, captureErrorOutput }).catch((error: Error) => error);
+      expect(error.message).toBe("Command exited with status 7");
+      expect(error.stack).not.toContain("synthetic stderr");
+      expect(JSON.stringify(error)).not.toContain("synthetic");
+      expect(error.capturedOutput).toEqual(captureErrorOutput
+        ? { stdout: "synthetic stdout", stderr: "synthetic stderr", exitCode: 7, signal: null } : undefined);
+    }
+  });
+
+  it("keeps capture limits active when failure output is requested", async () => {
+    const error = await runCommand(process.execPath, ["-e", "process.stdout.write('x'.repeat(8192)); setTimeout(() => {}, 5000)"],
+      { capture: true, quiet: true, captureErrorOutput: true, maxOutputBytes: 1024 }).catch((error: Error) => error);
+    expect(error.message).toBe("Command output exceeded its capture bound");
+    expect(error.capturedOutput.stdout.length).toBeLessThanOrEqual(8192);
+    expect(error.capturedOutput.signal).toBe("SIGKILL");
+  });
+});
