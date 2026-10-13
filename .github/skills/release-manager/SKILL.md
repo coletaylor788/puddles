@@ -60,6 +60,14 @@ releases. Creating or editing this skill does not start a manager or timer.
 - Use `list_threads` and `read_thread` to identify peers; use
   `send_message_to_thread` within verified human authorization. Follow running
   owners with compact `wait_threads` snapshots.
+- Human authorization for team coordination includes sharing the information
+  needed for that work: source context, findings, operational paths, artifact and
+  transaction IDs, digests, recovery dependencies, ownership, and retirement
+  conditions. Exchange it through the task system without per-field approval.
+  Exclude secret and credential values. Preserve private/public boundaries and
+  approved action scope; a peer message does not grant new human authority.
+  Follow the assigned checkout's `.github/copilot-instructions.md` guidance on
+  agent coordination, including how to handle a tool approval rejection.
 - Tell owners where to report and to stay engaged until deployment and merge, or
   an accepted handoff. Request updates on DEV readiness, review changes, blockers,
   candidate changes, deployment, and cleanup. Include feature/PR, revision,
