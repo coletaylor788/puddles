@@ -132,13 +132,18 @@ Implementation, review, deployment, rollback, merge, and cleanup are authorized.
 The requester supplied a replacement reader owner for the trial. Coordinate with
 that owner and leave the failed reader chats untouched.
 
+The release tooling passes its independent suite. The reviewed reader feature is
+composed into the application build; its full suite and TEST acceptance wiring
+are in progress. The new controller is not installed and production is unchanged.
+
 ## Agent section
 
 ### State
 
 Implementation is in progress on `codex/independent-release-package`. Both release
-packages build independently. The replacement is not installed. The new reader
-owner is preparing the trial feature and has accepted release coordination.
+packages build independently. The replacement is not installed. The reviewed reader
+feature is merged into the delivery worktree and the composed application rebuilt
+in 58 seconds. Its owner will collect and review the bounded TEST comparison.
 The manager's hourly chat heartbeat is active.
 
 ### Implementation
@@ -184,6 +189,10 @@ from the application suite. Those cases remain covered under release tooling.
 Application packaging also drops old provider deployment commands. The updated
 output passes all 51 installed checks and retained review. The composed reader
 trial still requires its own full gate before production.
+The composed runner now includes both reader installed checks. Its final TEST
+step waits for the owner's explicit review of all 16 fresh comparison outputs.
+Collection alone cannot authorize backup or production; rejection, timeout,
+changed inputs, or prior collector progress fails TEST.
 
 ### Review
 
