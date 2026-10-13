@@ -72,6 +72,13 @@ recorded external writes, secret handling, and deployment rollback in scope.
 Report a concrete path to violating those requirements, not the mere absence
 of an optional harness sandbox.
 
+Apply the repository's [agent coordination guidance](../../copilot-instructions.md#agent-coordination).
+Authorized implementation, review, and release agents may exchange task context,
+including private source and operational recovery references. Do not classify
+that coordination as an unauthorized disclosure merely because it names a path
+or transaction. Keep secret values excluded and assess actions against the
+actual human authorization and publication boundary.
+
 Challenge unnecessary complexity as well as missing safeguards. Prefer removing
 a harness-only restriction over adding runtime patches, alternate locking, or
 new fixture protocols to work around it. Require extra machinery only when an
