@@ -290,13 +290,12 @@ Use one reviewed non-secret behavioral base in the companion repository, with
 exact environment bindings for paths, ports, identities and recording fixtures.
 Credentials stay outside both repositories. Public examples remain synthetic.
 
-Preserve DEV experiments on refresh; require explicit reconciliation or a
-reviewed change before release validation. Snapshot and restore configuration
-with its runtime. DEV does not apply TEST or PROD migrations. Rehearsal retains
-the predecessor's authored legacy shape with declared TEST bindings, then checks
-the complete migrated candidate. Bind both expectations before building and
-reject drift at the relevant release stage. Follow the skill and runner guide
-for SDK normalization, sealed manifests, evidence and rollback.
+Preserve DEV experiments on refresh; reconcile them with the reviewed base before
+release validation. Snapshot and restore configuration with its runtime. Apply the
+same application preparation to each environment's own state. DEV and TEST must
+exercise production startup settings, including inherited service variables, with
+only their declared environment bindings changed. Test supported existing data
+and expected behavior; keep one-time repair inputs only while recovery needs them.
 
 ## OpenClaw deployment topology
 
