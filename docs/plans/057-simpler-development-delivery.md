@@ -148,8 +148,9 @@ that owner and leave the failed reader chats untouched.
 The independent release tooling and shared DEV/TEST path are installed. The trial
 passed the full application suite, TEST, backup, PROD, source merge, and normal
 intake. Stable service commands now own new releases. The accepted healthy state
-is in the single backup, and the superseded legacy recovery is retired. The manager
-owns the remaining workspace closeout and any source checkout held by active tools.
+is in the single backup. Superseded recovery, its scheduled tooling, and finished
+build workspaces are removed. The manager retains one published source checkout
+until the app's active tool processes release it. This does not hold the queue.
 
 ## Agent section
 
@@ -157,8 +158,9 @@ owns the remaining workspace closeout and any source checkout held by active too
 
 Implementation is merged in public PR 273 and its companion change. The trial
 completed and the queue is empty. The manager heartbeat remains active hourly.
-Legacy recovery is retired. Generated builds are removed after source verification;
-remaining workspace and tool-consumer cleanup is tracked in the conversation.
+Legacy recovery, its scheduled tooling, generated builds, and temporary workspaces
+are removed after source verification. Only one published source checkout remains
+held by active app tools. The manager owns its deferred cleanup in the conversation.
 
 ### Implementation
 
@@ -228,8 +230,9 @@ Use shared parameterized setup instead of per-attempt setup changes.
 
 The trial completed with one frozen output through DEV, the full application
 suite, TEST and PROD. Source merge and normal intake passed. Stable service
-commands live outside the trial workspace, and legacy automatic backup retention
-is disabled. The manager conversation holds current ownership and recovery state.
+commands live outside the trial workspace. The legacy backup scheduler and its
+tooling are removed. The manager conversation holds current ownership and recovery
+state.
 
 Replace the single backup with accepted healthy state before retiring old recovery.
 Use the guarded retirement script to close exact obsolete references and resources.
@@ -248,4 +251,5 @@ consumers, then finalize owned workspaces. Cleanup never holds the ready queue.
 - [x] Install the tested tooling for coordinated adoption.
 - [x] Run the trial through production, merge, and normal intake.
 - [x] Install stable service commands and disable legacy automatic retention.
-- [ ] Retire obsolete recovery and finalize finished workspaces.
+- [x] Retire obsolete recovery, its scheduled tooling, and finished build workspaces.
+- [ ] Retire the published source checkout after active app tools release it.
