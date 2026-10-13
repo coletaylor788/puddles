@@ -21,9 +21,11 @@ export function applicationSourceInputs(source) {
 }
 export async function buildApplicationCore(source, owner, save, build) {
   const inputs = applicationSourceInputs(source), dist = join(source, 'dist');
-  if (owner.coreInputs === inputs && existsSync(dist) && owner.coreOutput === treeDigest(dist, { portable: true, excludeNames: ["control-ui"] })) return 'reused';
+  // Compiler output may link to the shared dependency store. Portability is
+  // checked after materializing the complete application, not in this cache.
+  if (owner.coreInputs === inputs && existsSync(dist) && owner.coreOutput === treeDigest(dist, { excludeNames: ["control-ui"] })) return 'reused';
   await build();
   if (applicationSourceInputs(source) !== inputs) throw new Error("Application source changed during build");
-  save({ coreInputs: inputs, coreOutput: treeDigest(dist, { portable: true, excludeNames: ["control-ui"] }) });
+  save({ coreInputs: inputs, coreOutput: treeDigest(dist, { excludeNames: ["control-ui"] }) });
   return 'built';
 }

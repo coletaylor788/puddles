@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 // @ts-expect-error executable module
@@ -24,4 +24,15 @@ it('reuses unchanged output and rebuilds edits, new inputs, or damaged output', 
     expect(await buildApplicationCore(root, owner, save, build)).toBe('built');
     expect(builds).toBe(4);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+it('caches mutable compiler output that links to its host dependencies', async () => {
+  const root=mkdtempSync(join(tmpdir(),'application-cache-links-'));
+  try {
+    execFileSync('git',['init','-q',root]);writeFileSync(join(root,'.gitignore'),'dist/\nnode_modules/\n');
+    mkdirSync(join(root,'node_modules'));writeFileSync(join(root,'node_modules/dependency.js'),'dependency');
+    const owner={};const save=(value:object)=>Object.assign(owner,value);
+    const build=async()=>{mkdirSync(join(root,'dist'));symlinkSync('../node_modules/dependency.js',join(root,'dist/dependency.js'));};
+    expect(await buildApplicationCore(root,owner,save,build)).toBe('built');
+    expect(await buildApplicationCore(root,owner,save,()=>{throw new Error('unexpected rebuild');})).toBe('reused');
+  } finally {rmSync(root,{recursive:true,force:true});}
 });

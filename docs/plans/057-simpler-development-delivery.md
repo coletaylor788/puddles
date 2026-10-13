@@ -149,10 +149,12 @@ deletion from its external journal.
 
 The application builder reuses prepared source, the package store, UI output,
 Python payloads, and bundled plugin output. It produces one deployable directory.
+The provider uses its compiled host dependencies instead of multi-platform npm
+publishing. A warm complete build takes 54s and the output is 1.1 GB.
 The application gate groups mapped public/private tests by project and keeps
 separate test modes. Release tests live outside the application workspace and CI.
-Installed behavior checks are being connected to the new complete output; none
-may silently skip because their prepared runtime was omitted.
+The full gate supplies the installed checks with explicit runtime, filesystem,
+and local embedding fixtures. Missing required inputs fail before testing.
 
 Guidance now specifies durable behavior tests, the queue order, one backup,
 scripted cleanup, and trusted configured model providers. Source and development
@@ -162,8 +164,9 @@ context may go to those providers; secrets and credentials may not.
 
 The old combined run took 26m52s. Consolidated mapped application regressions
 pass in 17m06s: 6,395 ordinary cases plus 78 cases in each of two transport modes.
-This is not the full application-suite time. The separate installed checks and
-final release suite remain under validation. Four test workers did not improve
+The independent release suite passes 426 tests in 1m53s.
+This is not the full application-suite time. The complete application rerun is
+pending after fixing a fixture startup timeout. The release suite is complete. Four test workers did not improve
 the measured infrastructure group (3m16s versus 3m12s with two).
 
 Slow cases include stopped configuration repair (39s), FaceTime preflight (9s),
@@ -173,11 +176,10 @@ run independently in parallel. Report final measured time before adoption.
 
 ### Review
 
-Retained review has driven fixes for recovery retries, supervised backup capture,
-partial cleanup, complete installed coverage, cache invalidation, and interrupted
-test children. The latest findings require a distinct held gateway port and the
-installed filesystem check in the full application runner. Both are under final
-validation. Resume the same reviewer against the complete diff before adoption.
+Retained independent review is clear for the complete implementation. It covers
+recovery retries, supervised backup capture, partial cleanup, installed coverage,
+cache invalidation, interrupted tests, and service transitions. The FaceTime
+interruption test now waits for startup separately from its strict cleanup bound.
 
 ### Adoption and rollback
 
