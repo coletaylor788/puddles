@@ -115,6 +115,13 @@ export async function runCommand(command, args, options = {}) {
       activeCommand = undefined;
     }
   }
+  // Opt-in callers can redact captured failures before persisting diagnostics.
+  // Keep raw output out of the message, stack and ordinary serialization.
+  if (commandError && capture && options.captureErrorOutput === true) {
+    Object.defineProperty(commandError, "capturedOutput", {
+      value: { stdout, stderr, exitCode: child.exitCode, signal: child.signalCode },
+    });
+  }
   if (commandError && resourceError) {
     throw new AggregateError([commandError, resourceError], "Command and resource measurement failed");
   }
