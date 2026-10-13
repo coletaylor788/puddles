@@ -58,7 +58,9 @@ Run the full accumulated suite before PROD. TEST runs integration tests; PROD ru
 read-only acceptance tests. Write/delivery scenarios use recording fixtures.
 Combine public/private targets by test project, run each required test once on
 the composed candidate, and reuse build output and fixture setup. Keep all
-assertions, including real recovery. Measure test-worker parallelism on this host.
+required coverage, including real recovery. Simplify heavy backup/migration test
+fixtures and measure test-worker parallelism. Update obsolete tests when the
+behavior they describe is deliberately replaced.
 Report slow tests in the conversation.
 
 #### Backup and recovery
@@ -118,7 +120,8 @@ is requested; implementation of the redesigned controller is not yet approved.
   stage failures, interrupted backup/restore, failed final merge, queue fairness,
   agent loss, and cleanup boundaries. Never test real message sends.
 - The measured suite took 26m52s, including a 4m55s recovery test. Benchmark grouped
-  discovery, deduplication, shared setup, and worker counts on identical inputs.
+  discovery, deduplication, lighter backup/interpreter fixtures, shared setup, and
+  worker counts on identical inputs. Preserve supported behavior coverage.
   Claim improvements only after measurement.
 - Adopt one controller at a time. Independent review of the original proposal
   returned no result; implementation still needs normal review and validation.
