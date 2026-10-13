@@ -300,7 +300,9 @@ for SDK normalization, sealed manifests, evidence and rollback.
 
 ## OpenClaw deployment topology
 
-When deployment is in scope, use
-`docs/openclaw-setup/patches/apply-and-deploy.sh` rather than manually copying
-artifacts. An unset `MINI_HOST` means local deployment on the target Mac mini;
-set `MINI_HOST` only for an intentional, approved remote deployment.
+Use the installed release controller for targets whose adoption is complete.
+During adoption, follow the manager's current ownership checkpoint in
+`packages/e2e/DEPLOYMENT_COORDINATION.md`. Existing legacy transactions use
+`docs/openclaw-setup/patches/apply-and-deploy.sh`; do not copy artifacts manually.
+For that wrapper, an unset `MINI_HOST` means local deployment on the target Mac
+mini. Set `MINI_HOST` only for an intentional, approved remote deployment.

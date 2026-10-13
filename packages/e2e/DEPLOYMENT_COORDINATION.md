@@ -40,10 +40,14 @@ use the installed version and do not rerun its implementation tests.
 
 ## Adoption checkpoint
 
-The new controller is not installed yet. Before its first release, inspect legacy
-slots, running deployment processes, and recovery references. Finish or explicitly
-hand off legacy operations, disable legacy mutators including backup retention,
-and configure one controller for the actual DEV, TEST, and PROD targets. Validate
-its recovery in an isolated trial before switching live ownership. Keep any code
-needed by outstanding recovery. Existing transactions follow
+The new controller is installed for the manager's adoption trial. Adoption is
+pending. Its temporary callbacks claim the legacy slot for each shared stage so
+the two controllers cannot mutate the same target. Failed TEST attempts have
+recovered without changing PROD.
+
+Before switching normal ownership, complete the trial through PROD and merge,
+install stable service commands between tickets, and disable legacy automatic
+mutators including backup retention. Inspect slots, running processes, and
+recovery references before every ownership change. Keep any code needed by
+outstanding recovery. Existing transactions follow
 [legacy coordination](LEGACY_DEPLOYMENT_COORDINATION.md).

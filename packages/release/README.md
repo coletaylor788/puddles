@@ -5,8 +5,9 @@ TEST and PROD deployment, one backup, recovery, and workspace finalization. It
 has its own dependencies and build. The application supplies service commands
 and acceptance checks. No application build runs when this tool is built or tested.
 
-The new controller is under review. Keep the installed legacy controller for
-outstanding recovery until the release manager completes the adoption rehearsal.
+The new controller is installed for the manager's adoption trial. Normal
+ownership has not switched yet. Follow the [adoption checkpoint](../e2e/DEPLOYMENT_COORDINATION.md#adoption-checkpoint)
+and preserve the legacy tools needed by outstanding recovery.
 
 ## Build and test
 
