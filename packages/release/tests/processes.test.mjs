@@ -11,7 +11,9 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 function fixture(t) { const root = realpathSync(mkdtempSync(join(tmpdir(), 'release-process-'))); t.after(() => rmSync(root, { recursive: true, force: true })); return root; }
 test('only one process owns a lock and SIGKILL releases it without deleting the lock file', async t => {
   const root = fixture(t); const path = join(root, 'lock');
-  const child = spawn(process.execPath, ['--input-type=module', '-e', `import {lock} from ${JSON.stringify(new URL('../src/files.mjs', import.meta.url).href)}; lock(${JSON.stringify(path)}); console.log('locked'); setInterval(()=>{},1000);`], { stdio: ['ignore', 'pipe', 'inherit'] });
+  // Real owners retain the unlock callback. Discarding it lets GC close the
+  // SQLite connection, so retain it and collect before announcing ownership.
+  const child = spawn(process.execPath, ['--expose-gc', '--input-type=module', '-e', `import {lock} from ${JSON.stringify(new URL('../src/files.mjs', import.meta.url).href)}; const release=lock(${JSON.stringify(path)}); process.once('SIGTERM',release); globalThis.gc(); console.log('locked'); setInterval(()=>{},1000);`], { stdio: ['ignore', 'pipe', 'inherit'] });
   t.after(() => child.kill('SIGKILL'));
   await once(child.stdout, 'data');
   assert.throws(() => lock(path), /already running/);
