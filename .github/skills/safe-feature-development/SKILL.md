@@ -407,6 +407,15 @@ investigating instead of asking.
      or recording adapters. Unknown mutations must return explicit errors, and
      automated tests must not deliver real messages.
    - Add or update tests and directly relevant documentation with the code.
+   - Write durable tests of expected behavior and functional use cases. Update
+     assertions when approved behavior changes; remove obsolete assertions and
+     code instead of preserving an old rollout forever. A feature being in progress
+     does not make it a migration. Test actual use, persistence, restart, and failure
+     outcomes rather than the names or sequence of one-time conversion steps.
+     Keep existing-data cases while that data remains supported. Retire completed
+     repair helpers and their fixtures once current state and the recovery backup
+     no longer need them. Application behavior and generic deployment, backup, and
+     restore behavior belong in separate suites when Plan 057's split is adopted.
    - Promote upstream source edits into maintained repository patches before
      release. An edit left only in the persistent OpenClaw checkout is not a
      delivered feature. Register its regression targets in the shared pool.

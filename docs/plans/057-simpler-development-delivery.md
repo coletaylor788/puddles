@@ -2,126 +2,179 @@
 
 ## Human section
 
-### Summary
-
-Each feature agent builds once and develops in its own workspace. Ready features
-ship one at a time: rebase, test, deploy, then merge. Keep the full suite, one
-recovery backup, and a persistent release manager. Delete finished workspaces.
-
-### Implementation plan
-
-1. **Reconcile today's state.** Identify PROD, main, unreleased features, and
-   active recovery needs before replacing the current process.
-2. **Use the feature build everywhere.** Make incremental DEV output complete
-   enough for TEST and PROD. Remove separate release builds and handoff paths.
-3. **Consolidate tests.** Combine duplicate runs and setup. Keep every required
-   test before PROD, plus TEST integration and PROD acceptance checks.
-4. **Install the release queue.** Rebase at the front, follow the sequence below,
-   and send failed features back to DEV. Script backup replacement and recovery.
-5. **Add the manager.** Use the [release-manager skill](../../.github/skills/release-manager/SKILL.md)
-   to coordinate owners continuously, with an hourly wake-up as a fallback.
-6. **Add `finalize`.** After deployment and merge, one command removes the
-   feature's worktrees and generated files. Measure test time and disk growth.
-
 ### Design
+
+#### Summary
+
+Slow builds, unrelated tests, stalled releases, and retained workspaces make small
+changes expensive. Separate application and release tooling. Each feature keeps
+one incremental build. Ship ready features one at a time, then merge and delete
+the workspace. Keep stage tests, one recovery backup, and a persistent manager.
+
+#### Implementation plan
+
+1. **Separate release tooling.** Move deployment, queue, backup, recovery, and
+   cleanup into `packages/release`, with its own dependencies, build, and tests.
+2. **Make tests durable.** Separate application tests from release tests. Replace
+   historical rollout assertions with expected behavior; retire completed repairs.
+3. **Use the feature build everywhere.** Make incremental DEV output complete
+   enough for TEST and PROD. Consolidate duplicate test runs and fixture setup.
+4. **Install the queue and backup flow.** Reconcile current PROD and outstanding
+   recovery first. Script the sequence below, including failure and final merge.
+5. **Add the manager.** Use the [release-manager skill](../../.github/skills/release-manager/SKILL.md)
+   for continuous coordination and an hourly fallback wake-up.
+6. **Add `finalize`.** Remove finished workspaces. Measure application-suite time,
+   release-suite time, queue waiting, and disk growth separately.
 
 ```mermaid
 flowchart LR
   D[DEV: incremental build and focused tests] --> Q[Ready queue]
   Q --> R[Rebase on main and freeze build]
-  R --> F[Run full suite]
-  F --> T[Deploy TEST and run tests]
+  R --> F[Full application suite]
+  F --> T[Deploy TEST and test behavior]
   T --> B[Replace recovery backup]
-  B --> P[Deploy PROD and run tests]
-  P --> M[Merge to main and advance queue]
+  B --> P[Deploy PROD and test behavior]
+  P --> M[Merge and advance queue]
   F -->|failure| X[Recover, leave queue, fix in DEV]
   T -->|failure| X
   P -->|failure| X
   X --> D
 ```
 
+#### Two independent packages and test suites
+
+| What changes | Required suite | What it proves |
+|---|---|---|
+| Application code, prompts, configuration, or dependencies | Full application suite before PROD | The assistant behaves correctly |
+| Release tooling or its dependencies | Full release suite before installing the tool update | Deploy, backup, restore, queue, and cleanup work |
+| Both | Each package's suite | Both changes work independently |
+
+`packages/release` owns its manifest, dependency lock, build output, and CI job.
+It accepts a built application directory and commands to start and check it.
+It does not compile the application or import its internals. Its tests use a
+small fixture service. Application tests do not import deployment machinery.
+`packages/e2e` becomes the application's functional integration suite.
+
+Application changes reuse the installed release tool. Tool changes build and test
+that tool independently, then install it between releases. No application rebuild
+or joint test gate is required. Each package's changes select its own CI job.
+
+Every application deployment still runs the full application suite, TEST
+integration checks, an actual verified backup, and PROD acceptance checks.
+Executing backup and recovery is different from rerunning their implementation
+tests. PROD checks are read-only; writes and delivery use recording fixtures.
+
+#### Durable tests
+
+Test outcomes: the selected model is used, explicit user choices survive, history
+remains readable after restart, and approved actions work while unapproved ones
+fail. Update tests when expected behavior changes. Do not keep obsolete code or
+assertions just because an earlier release introduced them.
+
+Some existing tests really do convert old database schemas, repair specific old
+records, or rewrite stored model defaults. Replace rollout-specific fixtures with
+behavior tests. Remove completed one-time helpers once current data and the retained
+backup no longer need them. Existing-data readability remains application behavior;
+generic snapshot restoration belongs to release tooling. An unfinished feature
+still needs tests of its intended behavior, not a permanent migration category.
+
 #### Build and release
 
-Every agent owns one incremental build. There is no separate release builder or
-arbitrary two-agent limit. Share the package cache. Rebase and rebuild changed
-inputs when the queue turn starts, then promote that same output through TEST and
-PROD. Environment configuration stays separate.
+Every agent owns one incremental build and shares the package cache. Anyone can
+use DEV, with a short lock around shared deployment and checks. There is no separate
+release builder or arbitrary build limit.
 
-Anyone can use DEV, with a short lock around shared deployment and checks.
-Reviewed, ready features enter one queue. One controller owns a ticket through
-final merge; paired public/private PRs are one ticket. Main records the last
-completed PROD release. Failures recover, leave, and rejoin at the back after
-repair. If PROD succeeds but merge fails, finish merging or restore before
-advancing. Keep GitHub calls outside the service-stop transaction.
+Reviewed, ready features enter one queue. At the front, rebase on main, rebuild
+changed inputs, and freeze the output used through TEST and PROD. Environment
+configuration stays separate. Paired public/private PRs form one ticket.
 
-Run the full accumulated suite before PROD. TEST runs integration tests; PROD runs
-read-only acceptance tests. Write/delivery scenarios use recording fixtures.
-Combine public/private targets by test project, run each required test once on
-the composed candidate, and reuse build output and fixture setup. Keep all
-required coverage, including real recovery. Simplify heavy backup/migration test
-fixtures and measure test-worker parallelism. Update obsolete tests when the
-behavior they describe is deliberately replaced.
-Report slow tests in the conversation.
+Failures recover and leave the queue; repaired features rejoin at the back. After
+successful PROD tests, merge the tested revision. If merge fails, finish merging
+or restore before advancing. Keep GitHub calls outside the service-stop transaction.
 
 #### Backup and recovery
 
-Before changing PROD, confirm it is healthy. A script invalidates the old backup
-and captures current runtime, configuration, and state directly into the same
-backup location. Verify it in place, without another full copy. Only a successful
-backup permits deployment. If capture fails or is interrupted, leave current PROD
-in place and retry. Losing the older backup during capture is accepted.
+Confirm healthy PROD, invalidate the old backup, and capture current runtime,
+configuration, and state directly into the same backup location. Verify in place.
+There is no second full copy. Failed or interrupted capture leaves current PROD
+in place; deployment waits for a successful backup. Losing the older backup during
+capture is accepted.
 
-Keep the pre-deployment backup through PROD tests and merge. Restore it if
-deployment or tests fail. Hold intake during acceptance when restoration would
-otherwise discard new data; later recovery must preserve new live writes.
+Keep that backup through PROD tests and merge. Restore on deployment or test
+failure. Hold intake during acceptance when restoration would discard new data;
+later recovery must preserve new live writes.
 
-#### Manager and workspace cleanup
+#### Manager and cleanup
 
-The manager keeps approved work moving and asks owners for updates at milestones
-and blockers. Owners stay engaged through deployment and merge. An hourly chat
-heartbeat resumes stalled work. Scripts handle locks and recovery if the agent
-stops. Stay quiet when nothing changes.
+The manager keeps approved work moving and requests owner updates at milestones
+and blockers. Owners stay engaged through production and merge. An hourly chat
+heartbeat resumes stalled work; scripts recover interrupted operations. Stay quiet
+when nothing changes.
 
-Each feature's worktrees, build output, logs, and test state live in one owned
-workspace. Deployments and the backup live outside it. After deployment and merge,
-`finalize` stops its processes, checks that deployments no longer use its files,
-removes its worktrees, and deletes the workspace. Preserve unpublished source.
-Never delete shared caches or another feature's files.
+Each feature's worktrees, build, logs, and test state live in one workspace.
+Deployments, the installed release tool, shared caches, and backup live outside it.
+After deployment and merge, `finalize` stops owned processes, verifies deployments
+no longer use its files, retires worktrees, and deletes the workspace. Preserve
+unpublished source and other owners' files.
 
-Test results stay in the conversation. Retain only operational state needed for
-the active queue, deployment, and recovery. Retry cleanup independently without
-holding the queue. An actual disk error stops the operation needing that space.
+Results stay in the conversation. Retain only active queue, deployment, and
+recovery state. Retry cleanup independently without holding the queue. Actual disk
+errors stop the operation needing that space.
 
 ### Status
 
-**Approval:** Proposed. The requester specified the release order, full suite,
-stage tests, single backup, manager skill, and workspace finalization. The skill
-is requested; implementation of the redesigned controller is not yet approved.
+**Approval:** Proposed. This reflects the requester's queue, independent suites,
+durable tests, direct backup replacement, manager, and cleanup requirements.
+Research and guidance are complete; runtime implementation is not yet approved.
 
 ## Agent section
 
-### Implementation and validation
+### State
 
-- Adapt existing slot, pipeline, activation, and storage helpers. Follow the
-  [runner](../../packages/e2e/README.md), [coordination](../../packages/e2e/DEPLOYMENT_COORDINATION.md),
-  and [storage](../../packages/e2e/DEVELOPMENT_STORAGE.md) guides until adoption.
-- Replace merged-source admission with reviewed, pushed, pinned feature revisions.
-  Preserve required checks; verify final merged runtime inputs match.
-- Reuse `openclaw-backup-retention.mjs refresh TARGET_JSON POLICY_JSON WORK_DIR`
-  as the entrypoint, changing its current preserve-old behavior to direct
-  replacement. Mark the backup invalid during capture and valid only after
-  verification. Gate deployment on that result, reuse it for activation recovery,
-  and reconcile legacy recovery references before adoption.
-- Build `finalize` around `openclaw-storage.mjs task-complete` and producer cleanup.
-  It currently refuses Git worktrees, so add worktree retirement. Use app archival
-  for managed worktrees, removing generated ignored output first. Run cleanup from
-  outside its target directory and make interruption resumable.
-- Test full-suite enforcement, unchanged coverage after consolidation, packaging,
-  stage failures, interrupted backup/restore, failed final merge, queue fairness,
-  agent loss, and cleanup boundaries. Never test real message sends.
-- The measured suite took 26m52s, including a 4m55s recovery test. Benchmark grouped
-  discovery, deduplication, lighter backup/interpreter fixtures, shared setup, and
-  worker counts on identical inputs. Preserve supported behavior coverage.
-  Claim improvements only after measurement.
-- Adopt one controller at a time. Independent review of the original proposal
-  returned no result; implementation still needs normal review and validation.
+Current tooling still uses the combined gate. The replacement is not installed.
+
+### Scope and acceptance criteria
+
+Prove application-only and tooling-only changes build and test independently.
+Promote one feature output; recover failures; advance the queue; finalize ownership.
+
+### Architecture and decisions
+
+Move release helpers from `packages/e2e/{src,bin,tests}` and companion adapters
+into their respective `packages/release` packages. Separate dependency installation
+and CI selection. Keep application fixtures and mapped product tests in E2E.
+
+### Implementation
+
+Update the runner, deployment wrapper, and companion imports together. Remove the
+private gate's catch-all test discovery. Consolidate mapped targets by project
+and reuse prepared inputs. Adapt existing backup and storage helpers: backup
+refresh currently preserves the old copy, and task completion refuses worktrees.
+Use app archival for managed worktrees after removing generated ignored output.
+
+### Validation
+
+The measured combined suite took 26m52s. Its 4m55s predecessor recovery test belongs
+to release tooling. Removing that command alone projects 21m58s for the old
+application path, not a measured new runtime. Benchmark further consolidation,
+fixture simplification, and worker counts. Update test guidance in the development
+skill; test executable behavior, never document wording.
+
+### Rollout and rollback
+
+Until adoption, follow the current [runner](../../packages/e2e/README.md),
+[coordination](../../packages/e2e/DEPLOYMENT_COORDINATION.md), and
+[storage](../../packages/e2e/DEVELOPMENT_STORAGE.md) guides. Install one controller;
+keep its version fixed during each ticket. Reconcile legacy recovery references
+before removing completed migration helpers or old deployment paths.
+
+### Review log
+
+Author consistency review complete. Earlier independent review returned no result.
+Implementation requires normal code review and package validation.
+
+### Checklist
+
+- [x] Audit process, test costs, package boundaries, and migration fixtures.
+- [x] Publish proposal and requested agent guidance.
+- [ ] Approve and implement the replacement; benchmark and verify adoption.

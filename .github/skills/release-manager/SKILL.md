@@ -30,13 +30,20 @@ releases. Creating or editing this skill does not start a manager or timer.
   intended replacement, not installed behavior. Until adoption is verified, use
   the current protocol; do not bypass source guards or clear recovery holds.
 - Once adopted: independent DEV, ready queue, rebase/rebuild at the front, full
-  suite, TEST deployment/tests, backup, PROD deployment/tests, then merge. Failed
-  features return to DEV and rejoin at the back. Resolve failed final merge before
+  application suite, TEST deployment/tests, backup, PROD deployment/tests, then merge.
+  Failed features return to DEV and rejoin at the back. Resolve failed final merge before
   advancing. Preserve new live data during recovery.
-- Promote the feature's frozen build. Require the complete suite before PROD;
-  report slow tests and setup costs in this conversation. PROD checks are read-only.
+- Promote the feature's frozen build. After adoption, require the full application
+  suite before application PROD. Run the independent release package's suite
+  only when changing that tool or its dependencies; install updates between tickets.
+  Every deployment still runs TEST/PROD checks and makes a verified backup.
+  Report slow tests and setup costs in this conversation. PROD checks are read-only.
   Use recording fixtures for writes and delivery. Restore if deployment or PROD
   tests fail.
+- Require durable tests of expected behavior. Update assertions when the intended
+  behavior changes; do not accumulate tests of historical rollout steps. Separate
+  application behavior from deployment-tool behavior. Retire completed repair
+  helpers after verifying current state and the recovery backup no longer need them.
 - Replace backups through the existing script:
   `node packages/e2e/bin/openclaw-backup-retention.mjs refresh TARGET_JSON POLICY_JSON WORK_DIR`.
   The proposed policy first confirms healthy PROD, invalidates the old backup,
