@@ -46,14 +46,11 @@ use the installed version and do not rerun its implementation tests.
 
 ## Adoption checkpoint
 
-The new controller is installed for the manager's adoption trial. Adoption is
-pending. Its temporary callbacks claim the legacy slot for each shared stage so
-the two controllers cannot mutate the same target. Failed TEST attempts have
-recovered without changing PROD.
+The trial completed through PROD, source merge, and normal intake. The installed
+controller now owns new releases and direct backup replacement. Stable service
+commands replace the trial callbacks; legacy automatic backup retention is disabled.
 
-Before switching normal ownership, complete the trial through PROD and merge,
-install stable service commands between tickets, and disable legacy automatic
-mutators including backup retention. Inspect slots, running processes, and
-recovery references before every ownership change. Keep any code needed by
-outstanding recovery. Existing transactions follow
+Keep any code still needed by outstanding recovery until its consumers are retired.
+Cleanup is independent of the ready queue. Inspect slots, running processes, and
+recovery references before removing old resources. Existing transactions follow
 [legacy coordination](LEGACY_DEPLOYMENT_COORDINATION.md).
