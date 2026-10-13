@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync } from "node:fs";
+import { constants, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
@@ -30,7 +30,7 @@ function materializeSelectedRuntime(source, destination, pack) {
     mkdirSync(dirname(to), { recursive: true });
     const manifest = JSON.parse(readFileSync(join(real, "package.json"), "utf8"));
     cpSync(real, to, {
-      recursive: true, dereference: true,
+      recursive: true, dereference: true, mode: constants.COPYFILE_FICLONE,
       filter: (path) => !["node_modules", ".git"].includes(relative(real, path).split("/")[0]),
     });
     const deps = { ...manifest.peerDependencies, ...manifest.dependencies, ...manifest.optionalDependencies };
@@ -91,7 +91,7 @@ function materializeSelectedRuntime(source, destination, pack) {
       continue;
     }
     mkdirSync(dirname(join(destination, name)), { recursive: true });
-    cpSync(join(source, name), join(destination, name), { dereference: true });
+    cpSync(join(source, name), join(destination, name), { dereference: true, mode: constants.COPYFILE_FICLONE });
   }
   delete manifest.devDependencies;
   atomicJson(join(destination, "package.json"), manifest);

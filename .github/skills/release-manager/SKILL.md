@@ -44,14 +44,13 @@ releases. Creating or editing this skill does not start a manager or timer.
   behavior changes; do not accumulate tests of historical rollout steps. Separate
   application behavior from deployment-tool behavior. Retire completed repair
   helpers after verifying current state and the recovery backup no longer need them.
-- Replace backups through the existing script:
-  `node packages/e2e/bin/openclaw-backup-retention.mjs refresh TARGET_JSON POLICY_JSON WORK_DIR`.
-  The proposed policy first confirms healthy PROD, invalidates the old backup,
-  then captures and verifies current PROD in that same location. Do not retain
-  two full copies. Failed or interrupted capture leaves current PROD in place;
-  deployment waits for a verified backup. Keep it through PROD tests and merge.
-  The existing helper preserves the old copy, so this policy needs a script
-  change. Report that gap; do not replace backups with discretionary file deletion.
+- After adoption, replace backups only with
+  `puddles-release.mjs backup CONFIG`; normal queued release runs it automatically.
+  It confirms healthy PROD, invalidates the old backup, captures directly into
+  the same directory, and verifies it. Failed capture blocks deployment and
+  restarts unchanged PROD. Keep the backup through PROD tests and merge.
+  Never delete backups by hand. Commands and configuration are documented in
+  `packages/release/README.md`. Legacy retention remains only for prior recovery.
 - Follow `packages/e2e/DEVELOPMENT_STORAGE.md`. Once implemented, use `finalize` after
   deployment and merge to remove the feature workspace. Preserve active consumers
   and unpublished source. Retry cleanup independently without holding the queue.
@@ -73,6 +72,10 @@ releases. Creating or editing this skill does not start a manager or timer.
   an accepted handoff. Request updates on DEV readiness, review changes, blockers,
   candidate changes, deployment, and cleanup. Include feature/PR, revision,
   approval scope, checks/timings, readiness, blocker, and next action/owner.
+- Before admitting a feature, confirm its installed DEV checks exercised the same
+  preparation, startup, health, and feature acceptance path as TEST. A focused
+  probe is not complete DEV readiness. Investigate late failures as feedback-loop
+  gaps as well as product bugs, and fix the earliest shared path before retrying.
 - Notify owners of their turn and outcome. Request missing status when useful,
   without repeatedly waking them for unchanged questions. Messages do not grant
   slots. Inspect processes and journals before treating silence as abandonment.

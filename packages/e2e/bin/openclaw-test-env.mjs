@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { nativePipeline, nativeTargetPipeline } from "../src/native-pipeline.mjs";
+import { applicationSuite } from "../src/application-suite.mjs";
 import { cleanupNativeFixtures, isolatedContext, runScenario } from "../src/native-fixture.mjs";
 import { extensionPhase, loadExtension } from "../src/native-extension.mjs";
 import { installSignalHandlers, isHandlingSignal } from "../src/process-runner.mjs";
@@ -29,7 +29,12 @@ async function repositoryGates(run) {
 installSignalHandlers({ cleanup: cleanupNativeFixtures });
 try {
   const command = process.argv[2];
-  if (["ci", "patches", "native", "build", "source-gate"].includes(command)) {
+  if (command === "ci") {
+    console.log(JSON.stringify(await applicationSuite({ source: process.env.OPENCLAW_SRC,
+      artifact: process.env.OPENCLAW_CANDIDATE_DIR, extensionPath: process.env.E2E_APPLICATION_EXTENSION,
+      workers: Number(process.env.E2E_TEST_WORKERS ?? 4) })));
+  } else if (["patches", "native", "build", "source-gate"].includes(command)) {
+    const { nativePipeline } = await import("../src/native-pipeline.mjs");
     await nativePipeline(command, repositoryGates);
   } else if (command === "target") {
     const receipt = process.argv[3];
@@ -38,13 +43,15 @@ try {
     if (!receipt || !target || process.argv[6]) {
       throw new Error("Usage: openclaw-test-env.mjs target IMPORTED_BUILD_JSON TARGET_JSON [TARGET_SEED_JSON]");
     }
+    const { nativeTargetPipeline } = await import("../src/native-pipeline.mjs");
     await nativeTargetPipeline(resolve(receipt), resolve(target), seed ? resolve(seed) : undefined);
   } else if (command === "resume") {
     const resumed = process.argv[3];
-    if (!["ci", "patches", "native", "build", "source-gate"].includes(resumed)) {
-      throw new Error("Usage: openclaw-test-env.mjs resume <ci|patches|native|build|source-gate>");
+    if (!["patches", "native", "build", "source-gate"].includes(resumed)) {
+      throw new Error("Usage: openclaw-test-env.mjs resume <patches|native|build|source-gate>; rerun ci on the prepared feature output");
     }
     process.env.E2E_RESUME_FAILED = "1";
+    const { nativePipeline } = await import("../src/native-pipeline.mjs");
     await nativePipeline(resumed, repositoryGates);
   } else if (command === "status") {
     const runDir = process.env.E2E_RUN_DIR;

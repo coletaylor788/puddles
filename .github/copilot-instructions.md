@@ -57,7 +57,7 @@ or substantively revising designs; unrelated historical plans need no rewrite.
 For every feature or behavior change, invoke and follow the repository-local
 [`safe-feature-development`](skills/safe-feature-development/SKILL.md) skill.
 It covers design approval, the fast local and DEV loop, independent review,
-the accumulated release gate, landing, merged TEST rehearsal, production validation,
+the accumulated release gate, the ready queue, TEST rehearsal, production validation,
 and rollback. Its Puddles lifecycle section is the daily entrypoint;
 `packages/e2e/README.md` supplies the commands. Plan 039 records the delivery
 infrastructure and its historical acceptance, not additional approval gates.
@@ -123,50 +123,44 @@ Authorized cleanup of abandoned generated data follows the storage guide below;
 a missing worker reply alone does not prevent it. Independent CI runs do not
 reserve a shared deployment environment.
 
-Build ordinary DEV drafts locally and incrementally. Each task reuses one
-mutable build workspace and the host package store. Parallel workers use their
-own writable output, state, ports, and processes. Merge reviewed features after
-focused checks, applicable local DEV checks, and required repository checks.
-Source merge does not require a separate full release build or certify PROD.
+Each feature owns one reusable workspace and one incremental application build.
+Use the shared package store, with separate writable output, state, ports, and
+processes. Any owner may deploy to DEV under its short mutation lock. Build and
+review before joining the ready queue.
 
-One release owner selects merged commits, pins the public and optional companion
-heads, and runs the accumulated CI gate once for that candidate. Promote the
-same immutable artifact through DEV, TEST, and PROD. Environment configuration
-and writable state remain separate from the artifact. Later main commits join
-the next candidate; they do not invalidate the one being promoted. Never hold
-main or unrelated feature work while a release builds or waits.
+The release manager owns one FIFO lane from TEST through PROD and source merge.
+At the front, rebase the public and optional companion branches on main, rebuild
+changed inputs, freeze the output, and run the full application suite. Deploy
+that same output to TEST and run installed tests. Replace the one backup, deploy
+to PROD, run read-only production tests, then merge the tested source to main.
+Paired repositories use one ticket. Other owners keep working in DEV.
 
-Use the mini's shared record at
-`$HOME/.puddles/deploy-coordination/slots.json` for shared DEV, TEST, and PROD.
-Follow [deployment coordination](../packages/e2e/DEPLOYMENT_COORDINATION.md).
-Claim only for environment mutation and installed checks, including cleanup and
-recovery. Build and review before claiming; release before waiting for another
-slot. Keep the existing target transaction locks.
+A failed feature recovers and leaves the lane. Its owner fixes it in DEV and
+rejoins at the back. A failed final merge keeps the ticket until merge succeeds
+or production is restored while intake remains held. No source merge runs inside
+a rollback operation. Scripts bound child processes and recover interrupted
+operations; an absent agent must not leave production stopped indefinitely.
 
-The release owner handles a failed candidate with a prompt fix or revert and
-builds a replacement from corrected merged source. Keep healthy PROD running.
-A replacement artifact starts again at DEV. A production baseline change
-requires the affected TEST rehearsal again. Reuse the artifact only while its
-sealed configuration and migration inputs remain valid; changed sealed inputs
-require a replacement candidate. Scripts own bounded execution,
-rollback, interrupted-run recovery, and cleanup; an absent agent must not leave
-production stopped indefinitely. The parent orchestrator routes workers, and
-an owner records a handoff when transferring a release.
+Application code and release tooling are separate products. Application changes
+run the complete application suite before PROD, plus TEST and PROD checks.
+Changes to `packages/release` run its complete independent suite and install the
+tool between tickets. They do not require an application build or joint gate.
+Commands and adoption status are in [release tooling](../packages/release/README.md)
+and [deployment coordination](../packages/e2e/DEPLOYMENT_COORDINATION.md).
 
-Each session owns one reusable workspace (one paired checkout when required)
-and one mutable build. Rebuild incrementally and deploy revisions from that same
-source. Temporary replacement payloads retire after acknowledgment. Completion
-includes removal of every development artifact: worktrees, build output,
-fixtures, archives, logs, receipts and evidence. Publish source before retiring
-its checkout; preserve unpublished edits through Git or the app archive tool.
-Transfer still-needed artifacts to their active consumer before completing the
-feature. A cleanup failure means cleanup pending, not complete.
+The backup script confirms healthy PROD, stops writers, invalidates the old copy,
+and captures directly into the same directory. A failed capture restarts
+unchanged PROD and prevents deployment. Keep intake held through production
+acceptance and merge. Never restore over new live writes. Do not delete backups
+by hand or create a second full backup as part of replacement.
 
-Development cleanup must never delete production deployments, filesystem data,
-configuration, state, backups, recovery records or anything they reference.
-These are outside the development lifecycle regardless of age or disk pressure.
-Use [development storage](../packages/e2e/DEVELOPMENT_STORAGE.md) for explicit
-development boundaries, completion and legacy cleanup.
+Completion includes `finalize`: publish source, stop owned development processes,
+retire worktrees, and delete the whole feature workspace including builds,
+fixtures, logs, and receipts. Results remain in the conversation. Keep only
+active queue, installed deployment, and recovery state. Preserve other owners,
+unpublished source, shared caches, production state, and the backup. Retry
+cleanup independently without holding the ready queue. Follow
+[development storage](../packages/e2e/DEVELOPMENT_STORAGE.md).
 
 Keep one independent reviewer through remediation. Review the complete current
 behavior diff after meaningful changes. Do not require a terminal fresh reviewer
@@ -245,6 +239,13 @@ without a design may link source evidence instead; add its plan when designed.
 
 ## Publication safety
 
+Configured model providers are trusted development services. Agents may send
+public or private source, diffs, plans, test results, and other development
+context to those providers for implementation and independent review without
+separate permission. Keep secrets and credentials out of prompts, attachments,
+and logs. This permission does not authorize publishing private content to a
+public repository or sending it to unrelated services.
+
 - Keep public code, documentation, plans, commit messages, and logs
   provider-neutral.
 - Put only reusable, non-secret configuration and behavior in this repository.
@@ -253,48 +254,34 @@ without a design may link source evidence instead; add its plan when designed.
 - Route automated external writes and message delivery through explicit test
   doubles. Tests must not mutate live accounts or send real messages.
 
-## Shared cumulative integration pool
+## Durable application tests
 
-Every feature, behavior change, and bug fix must contribute a committed
-regression to the shared test pool. Run focused tests while iterating, then the
-entire accumulated pool once against the pinned release candidate before promotion:
+Every behavior change contributes a committed regression for the expected use
+case. Keep focused package tests beside the code and cross-component or patched
+OpenClaw tests in `packages/e2e`. Register upstream patch tests in the cumulative
+`packages/e2e/openclaw-patch-suite.json`; tests embedded only in a patch do not
+count unless the runner executes them.
 
-- Use `packages/e2e/` for cross-component, deployment, and OpenClaw patch
-  integration coverage. Keep focused package tests beside their implementation
-  as well.
-- The release owner runs
-  `node packages/e2e/bin/openclaw-test-env.mjs ci`. This is the required managed
-  lifecycle whenever that runner exists on the active branch.
-- OpenClaw source patches must add or update tests in the patch and register
-  every applicable test target in
-  `packages/e2e/openclaw-patch-suite.json`. The manifest is cumulative: do not
-  replace prior regressions with only the newest feature's tests.
-- Tests embedded only inside a `.patch` are insufficient unless the shared
-  runner exposes and executes them. Temporary session mocks or uncommitted
-  checks do not count.
-- The feature pull request contains the committed regression and focused results.
-  The release record reports the shared-pool command and result. Source may merge
-  before this release gate; do not call it released until its candidate passes
-  the accumulated pool and the applicable environment checks.
-- Live production checks must remain read-only and must never deliver messages.
-  Route all write and delivery behavior through deny-by-default recording
-  mocks.
+Run focused tests during development. The release manager runs the entire
+application pool on the frozen feature output before PROD:
+`node packages/e2e/bin/openclaw-test-env.mjs ci`. The application runner tests
+prepared output and does not rebuild it. Report slow checks and setup costs.
+Generic backup, deployment, queue, and recovery tests live in `packages/release`
+and run when that package changes, independently of the application.
 
-Repair failures in the same engineering loop. Every repair contributes a
-regression. Rerun affected proofs based on source, test, environment, toolchain,
-build, and artifact inputs, not job names or transport retries. Never skip old
-regressions for a changed final candidate. Integrate eligible exact source
-before activation. No GitHub merge belongs inside the live rollback transaction.
+Test durable expected behavior, persistence, restart, and failures. Update tests
+when expected behavior changes. A feature in progress is not a migration. Keep
+old-data cases only while those data remain supported. Remove completed one-time
+repair helpers and fixtures after verifying the current state and recovery backup
+no longer need them. Never remove recovery code just because its plan is old.
 
-The native test environment is a second real OpenClaw process on a trusted
-host, not a VM or a security sandbox. Writable state, sessions, indexes,
-configuration, ports, and PIDs are separate. All test mutations and delivery
-against external services must use explicit recording fixtures, with no silent
-live fallback. Local test state is writable; live state must not be changed by
-rehearsal. Deterministic
-read fixtures support assertions. Separately selected host health checks are
-read-only, bounded, and expose no personal results. Required unavailable host
-checks fail. Public CI never needs live credentials or another repository.
+TEST uses a separate real OpenClaw process on the trusted host. Separate writable
+state, sessions, indexes, configuration, ports, and PIDs. Use explicit recording
+fixtures for external mutations and delivery, with no silent live fallback.
+Production checks are bounded and read-only, and must never deliver messages.
+Required unavailable checks fail. Public CI needs neither live credentials nor
+the companion repository. Repair failures with committed regressions; rerun proofs
+when their source, build, environment, or artifact inputs changed.
 
 ## Environment configuration
 
@@ -303,17 +290,18 @@ Use one reviewed non-secret behavioral base in the companion repository, with
 exact environment bindings for paths, ports, identities and recording fixtures.
 Credentials stay outside both repositories. Public examples remain synthetic.
 
-Preserve DEV experiments on refresh; require explicit reconciliation or a
-reviewed change before release validation. Snapshot and restore configuration
-with its runtime. DEV does not apply TEST or PROD migrations. Rehearsal retains
-the predecessor's authored legacy shape with declared TEST bindings, then checks
-the complete migrated candidate. Bind both expectations before building and
-reject drift at the relevant release stage. Follow the skill and runner guide
-for SDK normalization, sealed manifests, evidence and rollback.
+Preserve DEV experiments on refresh; reconcile them with the reviewed base before
+release validation. Snapshot and restore configuration with its runtime. Apply the
+same application preparation to each environment's own state. DEV and TEST must
+exercise production startup settings, including inherited service variables, with
+only their declared environment bindings changed. Test supported existing data
+and expected behavior; keep one-time repair inputs only while recovery needs them.
 
 ## OpenClaw deployment topology
 
-When deployment is in scope, use
-`docs/openclaw-setup/patches/apply-and-deploy.sh` rather than manually copying
-artifacts. An unset `MINI_HOST` means local deployment on the target Mac mini;
-set `MINI_HOST` only for an intentional, approved remote deployment.
+Use the installed release controller for targets whose adoption is complete.
+During adoption, follow the manager's current ownership checkpoint in
+`packages/e2e/DEPLOYMENT_COORDINATION.md`. Existing legacy transactions use
+`docs/openclaw-setup/patches/apply-and-deploy.sh`; do not copy artifacts manually.
+For that wrapper, an unset `MINI_HOST` means local deployment on the target Mac
+mini. Set `MINI_HOST` only for an intentional, approved remote deployment.

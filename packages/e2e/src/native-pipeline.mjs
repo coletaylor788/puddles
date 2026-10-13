@@ -20,18 +20,18 @@ import { installRuntime, packProviderRuntime, packRuntime } from "./native-packa
 import { runCommand } from "./process-runner.mjs";
 import scenarios from "../scenarios/imessage.mjs";
 import { readMigrationManifest } from "./native-state-migration.mjs";
-import { createRehearsalTarget, rehearsalTargetSeed } from "./native-target.mjs";
+import { createRehearsalTarget, rehearsalTargetSeed } from "../../release/src/native-target.mjs";
 import { rehearseStateMigration } from "./native-state-migration-fixture.mjs";
-import { createBuildReceipt, createSourceGate, verifyBuildReceipt, verifyRuntimeToolchain } from "./native-release.mjs";
-import { exportReleaseBundle } from "./native-release.mjs";
-import { validateTarget, verifyRehearsalTarget } from "./native-activation.mjs";
+import { createBuildReceipt, createSourceGate, verifyBuildReceipt, verifyRuntimeToolchain } from "../../release/src/native-release.mjs";
+import { exportReleaseBundle } from "../../release/src/native-release.mjs";
+import { validateTarget, verifyRehearsalTarget } from "../../release/src/native-activation.mjs";
 import {
   protectRunArtifacts, acquireArtifactPoolLock, applyArtifactCleanup, artifactPoolRunId,
   findRetainedSourceGate, findSuccessfulBuild, registerDiagnosticLogs, registerFailedReproduction,
   registerSourceGate, registerSuccessfulBuild,
   registerRetainedObject, removeRetentionReference, retentionSpaceSummary, setRetentionReference,
-} from "./native-retention.mjs";
-import { reserveStorage, releaseStorage, resumeFailedScratch } from "./native-storage.mjs";
+} from "../../release/src/native-retention.mjs";
+import { reserveStorage, releaseStorage, resumeFailedScratch } from "../../release/src/native-storage.mjs";
 import { resolveResourceProfile } from "./native-resources.mjs";
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -642,7 +642,7 @@ export async function nativeTargetPipeline(receiptPath, targetPath, seedPath) {
   }
   if (!targetPath) throw new Error("Artifact target requires an explicit rehearsal target");
   const target = JSON.parse(readFileSync(targetPath, "utf8"));
-  const { assertBatchArtifact, assertDeploymentOwnership } = await import("./deploy-coordination.mjs");
+  const { assertBatchArtifact, assertDeploymentOwnership } = await import("../../release/src/deploy-coordination.mjs");
   assertBatchArtifact(assertDeploymentOwnership(target, "TEST"), receipt);
   selectTargetMigration(receipt, target);
   createRehearsalTarget(target, seedPath);

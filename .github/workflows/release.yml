@@ -1,0 +1,35 @@
+name: Release tooling
+on:
+  pull_request:
+    paths:
+      - 'packages/release/**'
+      - '.github/workflows/release.yml'
+      - 'docs/openclaw-setup/patches/apply-and-deploy.sh'
+  push:
+    branches: [main]
+    paths:
+      - 'packages/release/**'
+      - '.github/workflows/release.yml'
+      - 'docs/openclaw-setup/patches/apply-and-deploy.sh'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: release-tool-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  release:
+    runs-on: macos-15
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: packages/release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26.1.0'
+      - run: npm install --global corepack@0.36.0
+      - run: corepack pnpm install --frozen-lockfile
+      - run: corepack pnpm build
+      - run: corepack pnpm test

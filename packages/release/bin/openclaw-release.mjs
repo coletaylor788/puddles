@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { atomicJson } from "../src/native-state.mjs";
+import { atomicJson } from "../../e2e/src/native-state.mjs";
 import { certifyRelease, createTargetProof, promoteRelease } from "../src/native-release.mjs";
 import {
   acquireArtifactPoolLock,

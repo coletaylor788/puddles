@@ -5,7 +5,8 @@ import { mkdirSync, realpathSync, rmSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 
-const candidate = process.env.OPENCLAW_CANDIDATE;
+const source = process.env.OPENCLAW_CANDIDATE;
+const candidate = process.env.OPENCLAW_CANDIDATE_DIR ?? source;
 if (!candidate) throw new Error("OPENCLAW_CANDIDATE is required for candidate-source tests");
 const repo = realpathSync(resolve(import.meta.dirname, "../../.."));
 const roots: string[] = [];
@@ -19,7 +20,7 @@ describe("stopped-state operations through the actual candidate SDK", () => {
     for (const name of ["home", "state", "scratch"]) mkdirSync(join(root, name), { recursive: true });
     const result = await runFixture(process.execPath, [
       join(repo, "packages/e2e/fixtures/state-migration.mjs"), realpathSync(candidate!), root, mode,
-      join(candidate!, "test/fixtures/sqlite/openclaw-state-v2026.7.1-2.sqlite.gz"),
+      join(source!, "test/fixtures/sqlite/openclaw-state-v2026.7.1-2.sqlite.gz"),
     ], {
       encoding: "utf8", timeout: 45_000,
       env: {

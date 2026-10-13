@@ -7,9 +7,10 @@ import { tmpdir } from "node:os";
 // @ts-expect-error executable staging helper
 import { configure } from "../../../openclaw-plugins/communication-watcher/scripts/configure.mjs";
 
-const candidate = process.env.OPENCLAW_CANDIDATE;
+const candidate = process.env.OPENCLAW_CANDIDATE_DIR ?? process.env.OPENCLAW_CANDIDATE;
 if (!candidate) throw new Error("OPENCLAW_CANDIDATE is required");
 const repo = resolve(import.meta.dirname, "../../..");
+const plugin = process.env.OPENCLAW_CANDIDATE_DIR ? join(candidate!, "plugins/communication-watcher") : join(repo, "openclaw-plugins/communication-watcher/dist");
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
@@ -21,7 +22,7 @@ it("uses native correspondence search, checks current files, and leaves no nativ
   const path = `memory/correspondence/${sender}/2026-09-25.md`;
   for (const dir of ["node_modules", `main/communication-watcher/memory/correspondence/${sender}`, "reader", "other", "home", "state", "scratch"]) mkdirSync(join(root, dir), { recursive: true });
   symlinkSync(realpathSync(candidate!), join(root, "node_modules/openclaw"));
-  cpSync(join(repo, "openclaw-plugins/communication-watcher/dist"), join(root, "plugin"), { recursive: true });
+  cpSync(plugin, join(root, "plugin"), { recursive: true });
   writeFileSync(join(workspace, path), `Sender key: ${sender}\nSource: old-item\nCreated a tentative dinner placeholder. Event: fixture-event.\n`);
   writeFileSync(join(root, "other/note.md"), `Sender key: ${foreign}\nUNRELATED_CONTEXT`);
   writeFileSync(join(root, "provider.mjs"), `export default class {
@@ -131,13 +132,13 @@ it("runs real heartbeat intake, guarded actions, native handoff, and restart rec
   roots.push(root);
   // @ts-expect-error Executable native gateway fixture.
   const { communicationFixture } = await import("../fixtures/communication.mjs");
-  const result = await communicationFixture(candidate!, join(repo, "openclaw-plugins/communication-watcher/dist"), root);
+  const result = await communicationFixture(candidate!, plugin, root);
   expect(result).toMatchObject({ passed: true, heartbeatCycles: 5, nativeProvenance: true, recoveryWithoutDuplicate: true, pendingReportRecovery: true, oneReportPerHeartbeat: true });
 }, 180_000);
 
 it("cleans its detached gateway when interrupted during a pending main reply", () => {
   const root = join(realpathSync(tmpdir()), `communication-interrupt-${randomUUID()}`); roots.push(root);
-  const child = spawnSync(process.execPath, [join(repo, "packages/e2e/fixtures/communication.mjs"), candidate!, join(repo, "openclaw-plugins/communication-watcher/dist"), root, "--interrupt"], { encoding: "utf8", timeout: 90000, maxBuffer: 2 * 1024 * 1024 });
+  const child = spawnSync(process.execPath, [join(repo, "packages/e2e/fixtures/communication.mjs"), candidate!, plugin, root, "--interrupt"], { encoding: "utf8", timeout: 90000, maxBuffer: 2 * 1024 * 1024 });
   expect(child.status, `${child.stdout}\n${child.stderr}`).toBe(143);
   expect(JSON.parse(readFileSync(join(root, "main-reply.json"), "utf8"))).toEqual({ pending: true });
   expect(JSON.parse(readFileSync(join(root, "cleanup.json"), "utf8"))).toEqual({ gatewayStopped: true, containersRemoved: true });

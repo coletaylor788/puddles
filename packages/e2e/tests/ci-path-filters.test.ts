@@ -34,7 +34,7 @@ describe.each(["integration", "codeql"])("%s automatic CI path selection", (name
     it(`${event} runs for every runtime, test, dependency, or workflow input`, () => {
       for (const file of [
         "packages/mcp-hooks/src/index.ts", "packages/e2e/tests/example.test.ts",
-        "docs/openclaw-setup/patches/example.patch", "docs/openclaw-setup/patches/apply-and-deploy.sh",
+        "docs/openclaw-setup/patches/example.patch",
         "docs/openclaw-setup/patches/runtime.mjs", "pnpm-lock.yaml", "package.json",
         ".github/workflows/integration.yml", ".github/skills/example/scripts/check.py",
         "openclaw-skills/todoist-cli/SKILL.md",
@@ -64,7 +64,7 @@ it("keeps CodeQL coverage, weekly scans, and uploads after replacing default set
 });
 
 
-it("runs repository checks on feature events and builds a release only on a main dispatch", () => {
+it("runs application checks on feature events and the full prepared suite on dispatch", () => {
   const workflow = parseDocument(readFileSync(resolve(repoRoot, ".github/workflows/integration.yml"), "utf8")).toJS();
   expect(workflow.on.workflow_dispatch).toBeNull();
   expect(workflow.jobs.repository.if).toBe("github.event_name != 'workflow_dispatch'");
@@ -80,4 +80,23 @@ it("runs repository checks on feature events and builds a release only on a main
   expect(workflow.jobs.cumulative.steps.find((step: any) => step.name === "Check out Puddles").with.ref)
     .toBe("${{ github.event.pull_request.head.sha || github.sha }}");
   expect(workflow.jobs.cumulative.steps.some((step: any) => step.run === "node packages/e2e/bin/openclaw-test-env.mjs ci")).toBe(true);
+});
+
+it("selects independent application and release jobs", () => {
+  const app = parseDocument(readFileSync(resolve(repoRoot, '.github/workflows/integration.yml'), 'utf8')).toJS();
+  const release = parseDocument(readFileSync(resolve(repoRoot, '.github/workflows/release.yml'), 'utf8')).toJS();
+  for (const event of ['push', 'pull_request']) {
+    const appRuns = (files: string[]) => files.some(file => !app.on[event]['paths-ignore'].some((glob: string) => matchesGlob(file, glob)));
+    const releaseRuns = (files: string[]) => files.some(file => release.on[event].paths.some((glob: string) => matchesGlob(file, glob)));
+    expect(appRuns(['packages/release/src/backup.mjs'])).toBe(false);
+    expect(releaseRuns(['packages/release/src/backup.mjs'])).toBe(true);
+    expect(appRuns(['openclaw-plugins/secure-gmail/src/index.ts'])).toBe(true);
+    expect(releaseRuns(['openclaw-plugins/secure-gmail/src/index.ts'])).toBe(false);
+    expect(appRuns(['packages/release/src/backup.mjs', 'packages/mcp-hooks/src/index.ts'])).toBe(true);
+    expect(releaseRuns(['packages/release/src/backup.mjs', 'packages/mcp-hooks/src/index.ts'])).toBe(true);
+  }
+  const steps = release.jobs.release.steps.map((step: any) => step.run ?? '').join('\n');
+  expect(release.jobs.release.defaults.run['working-directory']).toBe('packages/release');
+  expect(steps).not.toContain('openclaw-test-env');
+  expect(steps).toContain('corepack pnpm test');
 });

@@ -58,7 +58,7 @@ if [ -n "${MINI_HOST:-}" ]; then
   if [ -n "${PUDDLES_REMOTE_PATH:-}" ]; then remote_args+=("PATH=$PUDDLES_REMOTE_PATH"); fi
   entrypoint="openclaw-activate.mjs"
   if [ "${OPENCLAW_DEPLOY_ACTION:-activate}" = rehearse ]; then entrypoint="openclaw-rehearse.mjs"; fi
-  remote_args+=("$remote_node" "$PUDDLES_REMOTE_ROOT/packages/e2e/bin/$entrypoint" \
+  remote_args+=("$remote_node" "$PUDDLES_REMOTE_ROOT/packages/release/bin/$entrypoint" \
     "$OPENCLAW_CANDIDATE_RECEIPT" "$OPENCLAW_DEPLOY_TARGET")
   if [ -n "${OPENCLAW_RECOVERY_DIR:-}" ]; then
     remote_args+=("$OPENCLAW_RECOVERY_DIR")
@@ -72,4 +72,4 @@ if [ -n "${OPENCLAW_RECOVERY_DIR:-}" ]; then args+=("$OPENCLAW_RECOVERY_DIR"); f
 if [ "${OPENCLAW_DEPLOY_ACTION:-activate}" = rollback ]; then args+=(--rollback); fi
 entrypoint="openclaw-activate.mjs"
 if [ "${OPENCLAW_DEPLOY_ACTION:-activate}" = rehearse ]; then entrypoint="openclaw-rehearse.mjs"; fi
-exec node "$ROOT/packages/e2e/bin/$entrypoint" "${args[@]}"
+exec node "$ROOT/packages/release/bin/$entrypoint" "${args[@]}"

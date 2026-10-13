@@ -1149,3 +1149,165 @@ index 1529133d5..cefdc62f8 100644
    openStartGate?: () => Promise<void>;
    closeStartGate?: () => void;
  } & Required<Pick<SpawnProcessAdapter<NodeJS.Signals | null>, "onExit" | "onError">>;
+diff --git a/src/test-utils/ports.ts b/src/test-utils/ports.ts
+--- a/src/test-utils/ports.ts
++++ b/src/test-utils/ports.ts
+@@ -1,5 +1,6 @@
+ // Allocates available local ports for tests that start servers.
+ import { readFileSync } from "node:fs";
++import { execFileSync } from "node:child_process";
+ import { createServer } from "node:net";
+ import { platform } from "node:os";
+ import { isMainThread, threadId } from "node:worker_threads";
+@@ -28,7 +29,8 @@
+   if (hostPortPool.value) {
+     return hostPortPool.value;
+   }
+-  if (platform() !== "linux") {
++  const os = platform();
++  if (os !== "linux" && os !== "darwin") {
+     return (hostPortPool.value = {
+       ranges: [{ start: 30_000, end: 64_999 }],
+       excludesEphemeral: false,
+@@ -36,15 +38,24 @@
+   }
+   let raw: string;
+   try {
+-    raw = readFileSync("/proc/sys/net/ipv4/ip_local_port_range", "utf8");
++    if (os === "linux") raw = readFileSync("/proc/sys/net/ipv4/ip_local_port_range", "utf8");
++    else {
++      const values = execFileSync("/usr/sbin/sysctl", ["-n",
++        "net.inet.ip.portrange.first", "net.inet.ip.portrange.last",
++        "net.inet.ip.portrange.hifirst", "net.inet.ip.portrange.hilast",
++      ], { encoding: "utf8", timeout: 5000 }).trim().split(/\s+/u).map(Number);
++      if (values.length !== 4 || values.some(value => !Number.isInteger(value) || value < 1 || value > 65535) ||
++          values[0] > values[1] || values[2] > values[3]) throw new Error("invalid macOS port ranges");
++      raw = `${Math.min(values[0], values[2])} ${Math.max(values[1], values[3])}`;
++    }
+   } catch (cause) {
+-    throw new Error("failed to read Linux ephemeral TCP port range", { cause });
++    throw new Error(`failed to read ${os === "linux" ? "Linux" : "macOS"} ephemeral TCP port range`, { cause });
+   }
+   const match = /^\s*(\d+)\s+(\d+)\s*$/u.exec(raw);
+   const low = Number(match?.[1]);
+   const high = Number(match?.[2]);
+   if (!match || low < 1 || high > 65535 || low > high) {
+-    throw new Error("invalid Linux ephemeral TCP port range");
++    throw new Error("invalid host ephemeral TCP port range");
+   }
+   // A probe is not a lease: startup's outbound sockets can claim its port and
+   // leave TIME_WAIT behind before the listener binds. Keep test listeners out
+@@ -213,7 +224,7 @@
+     return start;
+   }
+ 
+-  // Try other safe worker shards on Linux. Asking its kernel for port zero
++  // Try other safe worker shards. Asking the kernel for port zero
+   // would put the fallback straight back into the excluded ephemeral range.
+   for (let attempt = 0; attempt < 25; attempt += 1) {
+     const alternative = shards[(shardIndex + attempt + 1) % shards.length];
+diff --git a/src/test-utils/ports.test.ts b/src/test-utils/ports.test.ts
+--- a/src/test-utils/ports.test.ts
++++ b/src/test-utils/ports.test.ts
+@@ -7,6 +7,7 @@
+   platform: vi.fn(() => "linux"),
+   range: "32768\t60999\n",
+   reads: vi.fn(),
++  sysctl: vi.fn(() => "49152\n65535\n49152\n65535\n"),
+   cacheKey: Symbol("test port host"),
+   rejectPort: vi.fn<(...args: [number]) => string | undefined>(() => undefined),
+ }));
+@@ -36,6 +37,13 @@
+   ...(await importOriginal<typeof import("node:os")>()),
+   platform: host.platform,
+ }));
++vi.mock("node:child_process", async (importOriginal) => {
++  const actual = await importOriginal<typeof import("node:child_process")>();
++  return { ...actual, execFileSync: (...args: Parameters<typeof actual.execFileSync>) => {
++    if (args[0] === "/usr/sbin/sysctl") return host.sysctl();
++    return actual.execFileSync(...args);
++  } };
++});
+ vi.mock("node:fs", async (importOriginal) => {
+   const actual = await importOriginal<typeof import("node:fs")>();
+   return {
+@@ -68,6 +76,7 @@
+   vi.resetModules();
+   host.platform.mockReturnValue("linux");
+   host.reads.mockClear();
++  host.sysctl.mockReset().mockReturnValue("49152\n65535\n49152\n65535\n");
+   host.rejectPort.mockReset();
+   host.cacheKey = Symbol("test port host");
+ });
+@@ -155,7 +164,7 @@
+     },
+   );
+ 
+-  it.each(["darwin", "win32"])(
++  it.each(["win32"])(
+     "preserves the existing %s pool without Linux host reads",
+     async (os) => {
+       host.platform.mockReturnValue(os);
+@@ -163,6 +172,23 @@
+       const port = await getDeterministicFreePortBlock();
+       expect(port).toBeGreaterThanOrEqual(30000);
+       expect(port + 4).toBeLessThanOrEqual(64999);
++      expect(host.reads).not.toHaveBeenCalled();
++    },
++  );
++
++  it.each(["49152 65535 49152 65535", "40000 45000 50000 65000"])(
++    "excludes both macOS client ranges %s from every listener block",
++    async range => {
++      host.platform.mockReturnValue("darwin"); host.sysctl.mockReturnValue(range);
++      const values = range.split(" ").map(Number);
++      const { getDeterministicFreePortBlock } = await import("./ports.js");
++      for (let worker = 0; worker < 32; worker++) {
++        const port = await withEnvAsync({ VITEST_WORKER_ID: String(worker) }, () => getDeterministicFreePortBlock());
++        for (const offset of [0, 1, 2, 3, 4]) {
++          expect(port + offset < Math.min(values[0], values[2]) || port + offset > Math.max(values[1], values[3])).toBe(true);
++        }
++      }
++      expect(host.sysctl).toHaveBeenCalledTimes(1);
+       expect(host.reads).not.toHaveBeenCalled();
+     },
+   );
+@@ -283,7 +309,7 @@
+     });
+   });
+ 
+-  it.each(["darwin", "win32"])("preserves the explicit %s permission fallback", async (os) => {
++  it.each(["win32"])("preserves the explicit %s permission fallback", async (os) => {
+     host.platform.mockReturnValue(os);
+     host.rejectPort.mockReturnValue("EACCES");
+     const { getFreePortBlockWithPermissionFallback } = await import("./ports.js");
+@@ -291,6 +317,29 @@
+       getFreePortBlockWithPermissionFallback({ offsets: [0, 1, 2, 4], fallbackBase: 44000 }),
+     ).resolves.toBe(44000 + (process.pid % 10000));
+     expect(host.reads).not.toHaveBeenCalled();
++  });
++
++  it("keeps socket-denied macOS callers outside the client range", async () => {
++    host.platform.mockReturnValue("darwin"); host.rejectPort.mockReturnValue("EACCES");
++    const { getFreePortBlockWithPermissionFallback } = await import("./ports.js");
++    const port = await getFreePortBlockWithPermissionFallback({ offsets: [0, 1, 2, 4], fallbackBase: 55000 });
++    expect(port).toBeGreaterThanOrEqual(1024); expect(port + 4).toBeLessThan(49152);
++  });
++
++  it.each(["invalid", "49152 65535", "65535 49152 49152 65535"])("rejects invalid macOS host ranges %s", async raw => {
++    host.platform.mockReturnValue("darwin"); host.sysctl.mockReturnValue(raw);
++    const { getDeterministicFreePortBlock } = await import("./ports.js");
++    await expect(getDeterministicFreePortBlock()).rejects.toThrow("failed to read macOS ephemeral TCP port range");
++    expect(host.rejectPort).not.toHaveBeenCalled();
++  });
++
++  it("does not treat unavailable macOS host facts as an unchecked fallback", async () => {
++    host.platform.mockReturnValue("darwin");
++    host.sysctl.mockImplementationOnce(() => { throw new Error("denied sysctl"); });
++    const { getFreePortBlockWithPermissionFallback } = await import("./ports.js");
++    await expect(getFreePortBlockWithPermissionFallback({ offsets: [0], fallbackBase: 55000 }))
++      .rejects.toThrow("failed to read macOS ephemeral TCP port range");
++    expect(host.rejectPort).not.toHaveBeenCalled();
+   });
+ 
+   it.each(["1024 65535", "invalid"])(

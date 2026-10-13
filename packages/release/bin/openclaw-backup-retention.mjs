@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
 import { planBackupRetention, applyBackupRetention, runBackupRetention } from "../src/native-backup-retention.mjs";
-import { runCommand } from "../src/process-runner.mjs";
+import { runCommand } from "../../e2e/src/process-runner.mjs";
 import { refreshSingleBackup } from "../src/native-single-backup-retention.mjs";
 let interrupted = false;
 const onSignal = () => { interrupted = true; };

@@ -18,7 +18,8 @@ the workspace. Keep stage tests, one recovery backup, and a persistent manager.
 2. **Make tests durable.** Separate application tests from release tests. Replace
    historical rollout assertions with expected behavior; retire completed repairs.
 3. **Use the feature build everywhere.** Make incremental DEV output complete
-   enough for TEST and PROD. Consolidate duplicate test runs and fixture setup.
+   enough for TEST and PROD. Share deployment, configuration rendering, startup,
+   and feature checks between DEV and TEST. Prove changed behavior before queueing.
 4. **Install the queue and backup flow.** Reconcile current PROD and outstanding
    recovery first. Script the sequence below, including failure and final merge.
 5. **Add the manager.** Use the [release-manager skill](../../.github/skills/release-manager/SKILL.md)
@@ -78,11 +79,23 @@ backup no longer need them. Existing-data readability remains application behavi
 generic snapshot restoration belongs to release tooling. An unfinished feature
 still needs tests of its intended behavior, not a permanent migration category.
 
+Verify a one-time repair's exact changes around that mutation while stopped.
+After startup, check application behavior and preserved user data. Do not compare
+the entire database with a pre-startup snapshot or simulate unrelated startup
+housekeeping to predict it. The release tool only invokes application commands.
+
 #### Build and release
 
 Every agent owns one incremental build and shares the package cache. Anyone can
 use DEV, with a short lock around shared deployment and checks. There is no separate
 release builder or arbitrary build limit.
+
+DEV and TEST use the same deployment and application commands. Only bindings for
+state, ports, identities, credential references, and recording endpoints differ.
+DEV runs complete configuration validation, startup, health, and the feature's
+installed use cases, including real model output when relevant. TEST repeats those
+checks after rebase with reset state and broader coverage. A late failure prompts
+a fix in the shared path or missing DEV coverage before another release attempt.
 
 Reviewed, ready features enter one queue. At the front, rebase on main, rebuild
 changed inputs, and freeze the output used through TEST and PROD. Environment
@@ -99,6 +112,9 @@ configuration, and state directly into the same backup location. Verify in place
 There is no second full copy. Failed or interrupted capture leaves current PROD
 in place; deployment waits for a successful backup. Losing the older backup during
 capture is accepted.
+
+Explicit optional entries record files that do not yet exist. Recovery removes
+files created by a rejected deployment without restoring unrelated workspace data.
 
 Keep that backup through PROD tests and merge. Restore on deployment or test
 failure. Hold intake during acceptance when restoration would discard new data;
@@ -123,58 +139,115 @@ errors stop the operation needing that space.
 
 ### Status
 
-**Approval:** Proposed. This reflects the requester's queue, independent suites,
-durable tests, direct backup replacement, manager, and cleanup requirements.
-Research and guidance are complete; runtime implementation is not yet approved.
+**Approval:** Production approved. **Approval reference:** requester, October 12,
+2026: "approved, implement all the fixes" and act as release manager for validation.
+Implementation, review, deployment, rollback, merge, and cleanup are authorized.
+The requester supplied a replacement reader owner for the trial. Coordinate with
+that owner and leave the failed reader chats untouched.
+
+The independent release tooling is implemented and under adoption. Its current
+public suite passes 433 tests. Complete the shared DEV/TEST setup and inherited
+service environment coverage before calling the process adopted. Keep live
+feature status and recovery details in the manager conversation. Production
+acceptance, merge, and cleanup remain part of completion.
 
 ## Agent section
 
 ### State
 
-Current tooling still uses the combined gate. The replacement is not installed.
-
-### Scope and acceptance criteria
-
-Prove application-only and tooling-only changes build and test independently.
-Promote one feature output; recover failures; advance the queue; finalize ownership.
-
-### Architecture and decisions
-
-Move release helpers from `packages/e2e/{src,bin,tests}` and companion adapters
-into their respective `packages/release` packages. Separate dependency installation
-and CI selection. Keep application fixtures and mapped product tests in E2E.
+Implementation is published in public PR 273 and companion PR 166 on
+`codex/independent-release-package`. Both are reviewed and CI passes. The reader
+source is composed into the build. The manager heartbeat is active hourly.
+The installed controller remains under adoption, with legacy exclusion used for
+each shared stage. Failed TEST attempts have stopped and left the lane.
 
 ### Implementation
 
-Update the runner, deployment wrapper, and companion imports together. Remove the
-private gate's catch-all test discovery. Consolidate mapped targets by project
-and reuse prepared inputs. Adapt existing backup and storage helpers: backup
-refresh currently preserves the old copy, and task completion refuses worktrees.
-Use app archival for managed worktrees after removing generated ignored output.
+The standalone controller implements FIFO ownership, rebase and merge guards,
+one directly replaced backup, recovery, DEV locking, and workspace finalization.
+It supervises deployments and standalone backup capture through worker crashes.
+Recovery records when intake can reopen so a retry cannot restore over new writes.
+Finalization reserves the workspace before stopping processes and resumes partial
+deletion from its external journal.
+
+The application builder reuses prepared source, the package store, UI output,
+Python payloads, and bundled plugin output. It produces one deployable directory.
+The provider uses its compiled host dependencies instead of multi-platform npm
+publishing. A warm complete build takes 58s and the output is 1.1 GB.
+The application gate groups mapped public/private tests by project and keeps
+separate test modes. Release tests live outside the application workspace and CI.
+The full gate supplies the installed checks with explicit runtime, filesystem,
+and local embedding fixtures. Missing required inputs fail before testing.
+
+Guidance now specifies durable behavior tests, the queue order, one backup,
+scripted cleanup, and trusted configured model providers. Source and development
+context may go to those providers; secrets and credentials may not.
 
 ### Validation
 
-The measured combined suite took 26m52s. Its 4m55s predecessor recovery test belongs
-to release tooling. Removing that command alone projects 21m58s for the old
-application path, not a measured new runtime. Benchmark further consolidation,
-fixture simplification, and worker counts. Update test guidance in the development
-skill; test executable behavior, never document wording.
+The independent release suite passes 433 public tests: 49 Node cases and 384
+Vitest cases. Application and host integration results belong to their own
+runners. Keep current full-suite timing and slow-check analysis in the manager
+conversation; do not add a retained test-report archive.
 
-### Rollout and rollback
+The original combined suite took about 27 minutes. Grouping mapped tests by
+project, sharing workers, and running independent installed groups concurrently
+reduces that cost while preserving required coverage. Measure the complete suite
+again after adding environment parity checks.
 
-Until adoption, follow the current [runner](../../packages/e2e/README.md),
-[coordination](../../packages/e2e/DEPLOYMENT_COORDINATION.md), and
-[storage](../../packages/e2e/DEVELOPMENT_STORAGE.md) guides. Install one controller;
-keep its version fixed during each ticket. Reconcile legacy recovery references
-before removing completed migration helpers or old deployment paths.
+### Review
 
-### Review log
+Retained independent review is clear for the current implementation. Adoption
+repairs preserve directory permissions during copy/restore, join captured writer
+processes before replacement, exclude macOS ephemeral ports in test allocation,
+and validate the complete rendered normal and held application configuration.
+The reader acceptance correction keeps exact checks around the one-time repair,
+then checks behavior, pins, history, interrupted inputs and recovered activity
+after startup. It passed retained review, the full suite, and fresh TEST. The
+comparison harness correction also passed retained review and the full suite.
+TEST requires explicit owner
+review of all 16 fresh model outputs.
 
-Author consistency review complete. Earlier independent review returned no result.
-Implementation requires normal code review and package validation.
+### DEV and TEST parity
+
+The October 13 review found a shared deployment function but unequal callback
+context: DEV omitted the feature workspace and ID. Both stages now use one context
+helper. A regression runs real child callbacks through DEV and TEST and failed on
+the old implementation. Independent review is clear and the full release suite
+passes (49 Node cases and 384 Vitest cases). Application preparation and quality
+checks use the same hooks in DEV and TEST. A parameterized helper supplies their
+environment bindings.
+
+Use the full renderer, application preparation, held service, state acceptance,
+and model quality checks in deployed DEV. Exercise inherited normal service
+settings, including a normal gateway port that differs from the held port. The
+held launcher must apply its declared binding after the normal environment loads.
+Keep the full application suite at release time; do not run it after every DEV edit.
+Use shared parameterized setup instead of per-attempt setup changes.
+
+### Adoption and rollback
+
+The controller remains under adoption. The manager conversation holds the current
+owner, stage, feature acceptance, and recovery checkpoint. Keep legacy exclusion
+until the new controller has completed its trial and ownership has switched.
+
+After the owner establishes quality on a corrected DEV candidate, run a fresh
+ready ticket through full application
+validation, TEST and its tests, backup, PROD and its read-only tests, source merge,
+and cleanup. Keep production intake held through acceptance and merge. Preserve
+existing recovery authority until repaired current state and a verified backup
+no longer need it. Disable legacy automatic mutators as part of the final
+ownership switch. Install stable service commands between tickets so standalone
+backup and future releases do not depend on this trial workspace.
 
 ### Checklist
 
-- [x] Audit process, test costs, package boundaries, and migration fixtures.
-- [x] Publish proposal and requested agent guidance.
-- [ ] Approve and implement the replacement; benchmark and verify adoption.
+- [x] Audit process, costs, package boundaries, and historical tests.
+- [x] Obtain implementation and production approval.
+- [x] Implement independent packages, incremental output, controller, and finalize.
+- [x] Start the manager heartbeat and coordinate the replacement reader owner.
+- [x] Complete the full application gate and retained review.
+- [x] Measure shared worker scheduling and concurrent installed checks.
+- [x] Publish paired draft implementation PRs.
+- [x] Install the tested tooling for coordinated adoption.
+- [ ] Run the reader trial through production, merge, and cleanup.

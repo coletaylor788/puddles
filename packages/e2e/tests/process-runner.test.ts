@@ -1,9 +1,10 @@
+import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { runCommand } from "../src/process-runner.mjs";
+import { type CapturedCommandError, runCommand } from "../src/process-runner.mjs";
 
 describe("managed runner signals", () => {
   it("forwards SIGTERM to the active child before cleanup and exit", async () => {
@@ -31,7 +32,7 @@ describe("managed runner signals", () => {
         stdout.setEncoding("utf8");
         stdout.on("data", (chunk) => {
           output += chunk;
-          if (output.includes("child-ready")) {
+          if (output.split("\n").includes("child-ready")) {
             clearTimeout(timeout);
             resolve();
           }
@@ -115,5 +116,31 @@ describe("managed runner signals", () => {
     } finally {
       rmSync(state, { recursive: true, force: true });
     }
+  });
+});
+
+
+describe("captured failure diagnostics", () => {
+  it("exposes bounded output only when requested, without adding it to ordinary errors", async () => {
+    for (const captureErrorOutput of [false, true]) {
+      const error = await runCommand(process.execPath, ["-e", "process.stdout.write('synthetic stdout'); process.stderr.write('synthetic stderr'); process.exit(7)"],
+        { capture: true, quiet: true, captureErrorOutput }).catch((error: CapturedCommandError) => error);
+      assert.ok(error instanceof Error);
+      expect(error.message).toBe("Command exited with status 7");
+      expect(error.stack).not.toContain("synthetic stderr");
+      expect(JSON.stringify(error)).not.toContain("synthetic");
+      expect(error.capturedOutput).toEqual(captureErrorOutput
+        ? { stdout: "synthetic stdout", stderr: "synthetic stderr", exitCode: 7, signal: null } : undefined);
+    }
+  });
+
+  it("keeps capture limits active when failure output is requested", async () => {
+    const error = await runCommand(process.execPath, ["-e", "process.stdout.write('x'.repeat(8192)); setTimeout(() => {}, 5000)"],
+      { capture: true, quiet: true, captureErrorOutput: true, maxOutputBytes: 1024 }).catch((error: CapturedCommandError) => error);
+    assert.ok(error instanceof Error);
+    assert.ok(error.capturedOutput);
+    expect(error.message).toBe("Command output exceeded its capture bound");
+    expect(error.capturedOutput.stdout.length).toBeLessThanOrEqual(8192);
+    expect(error.capturedOutput.signal).toBe("SIGKILL");
   });
 });

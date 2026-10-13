@@ -1,6 +1,6 @@
 ---
 name: safe-feature-development
-description: "Take Puddles features from an explicitly approved design through fast local and DEV iteration, independent review, parallel source merges, one CI build promoted through DEV, TEST, and PROD, and rollback. Use when designing or implementing a feature or behavior change."
+description: "Take Puddles features from an approved design through incremental DEV builds, independent review, a FIFO TEST and PROD release, merge, and cleanup. Use when designing or implementing a feature or behavior change."
 metadata:
   author: Cole Taylor
   version: "4.0.0"
@@ -148,12 +148,11 @@ boundaries without duplicating the pipeline or its completed proofs.
 
 The owner keeps the requested code, focused tests, committed regression, related
 documentation, and retained adversarial review coherent. Iterate with the fast
-local and DEV loop below. Merge reviewed source after focused and required
-repository checks. One release owner builds selected merged source in CI and
-promotes that artifact through DEV, TEST, and PROD, with read-only production
-health checks and rollback. Never change
-sealed artifacts in place. A correction creates a new candidate and invalidates
-only proofs whose actual inputs changed.
+local and DEV loop below. Reviewed features join the ready queue after focused
+and required repository checks. At the front, rebase on main and freeze the
+feature's incremental build. Run the full application suite, TEST and its tests,
+backup, PROD and its read-only tests, then merge the tested source. A correction
+creates a new candidate and invalidates only proofs whose actual inputs changed.
 
 Treat an approved implementation request as authorization for the orchestrator
 and assigned owner to complete their assigned parts of the lifecycle. This
@@ -196,6 +195,11 @@ triggered by merging must stay within the approved scope. Follow repository
 rules and public/private separation. Inspect files, commit messages, PRs,
 issues, and published logs; never publish credentials, secrets, or private
 configuration. Use provider-neutral, synthetic examples in public material.
+
+Configured model providers are trusted for development and independent review,
+including private source and development context. Sending that context to the
+configured provider needs no separate permission. Exclude secrets and credentials
+from prompts, attachments, and logs. Public publication rules still apply.
 
 During implementation, escalate every security architecture deviation and any
 other major or high-impact deviation from the approved design. Examples include
@@ -405,10 +409,10 @@ investigating instead of asking.
    - The implementer iterates locally using the repository's established
      development workflow and runs focused tests that cover the changed
      behavior. Use the Puddles daily workflow below: focused local tests,
-     incremental local builds, queued draft deployment to DEV, and installed
+     incremental local builds, short-lock draft deployment to DEV, and installed
      behavior assertions. Mutable drafts need no CI build or release receipt.
-     The release owner runs the full accumulated CI gate once on the selected
-     merged candidate. Individual features need no separate full release build.
+     The release owner runs the complete application suite on the frozen feature
+     output before PROD. Reuse the incremental build; do not build a second candidate.
    - Use mocks or fakes for local testing and iteration when exercising a live
      dependency is unnecessary.
    - Route external writes and delivery in tests through deny-by-default mocks
@@ -423,7 +427,7 @@ investigating instead of asking.
      Keep existing-data cases while that data remains supported. Retire completed
      repair helpers and their fixtures once current state and the recovery backup
      no longer need them. Application behavior and generic deployment, backup, and
-     restore behavior belong in separate suites when Plan 057's split is adopted.
+     restore behavior belong in the independent release package suite.
    - Promote upstream source edits into maintained repository patches before
      release. An edit left only in the persistent OpenClaw checkout is not a
      delivered feature. Register its regression targets in the shared pool.
@@ -470,71 +474,47 @@ investigating instead of asking.
      diff recheck. Updating status or recording evidence does not restart review
      or rebuild unchanged code. Commit ids do not belong in the issue.
 
-5. **Merge reviewed source in parallel**
-   - Push the reviewed feature and create or update its pull request with the
-     committed regression, focused results, and retained review. Run applicable
-     local DEV checks and satisfy required repository checks.
-   - Resolve actual conflicts and repeat affected checks. Merge without waiting
-     for unrelated features or a release slot. Do not require a full release
-     build and exact CI-artifact DEV proof per feature before source merge.
-   - Verify the source landed and tell the release owner. Source merge is not
-     permission to deploy an unchecked artifact. Stay available for diagnosis.
+5. **Enter the ready queue**
+   - Push the reviewed feature and open its PR with focused results. Satisfy
+     repository checks. Report readiness and blockers to the release manager;
+     remain engaged until production, merge, and cleanup or an accepted handoff.
+   - At the front, rebase on main, resolve conflicts, and repeat affected review
+     and checks. Paired public/private branches travel as one ticket. Rebuild
+     changed inputs in the existing workspace and freeze the complete output.
+   - Application changes run the entire application suite before PROD. Tooling
+     changes run the independent release package's entire suite before installing
+     the tool between tickets. Neither requires the other's build or tests.
 
-6. **Build once and promote the release candidate**
-   - One release owner selects merged source and records included feature owners.
-     Pin public and optional companion heads. Run
-     `node packages/e2e/bin/openclaw-test-env.mjs ci` once for that candidate,
-     preserving the full accumulated regression pool. Builds hold no shared
-     environment slot. Main remains open throughout.
-   - Install the resulting immutable artifact in DEV and check it. Promote those
-     same bytes to TEST for installed scenarios and affected migration/rollback
-     checks, then to PROD. Do not rebuild or repackage between environments.
-     A later main commit belongs to the next candidate and does not invalidate
-     the selected release. Record source, artifact ID, and stage results;
-     scripts perform integrity checks without manual whole-workspace hashing.
-   - Exercise the real installed agent plugin and model SDK through a provider
-     API fixture, including a greeting and recorded reply. Do not replace the
-     plugin to make an integration test pass. When an authorized live TEST turn
-     is required, enforce its request budget, record its transport and candidate
-     identity, and block promotion on missing or failed evidence.
-   - Claim an environment only for its deployment, checks, cleanup, and recovery.
-     Keep writable state, configuration, sessions, ports, and PIDs separate.
-     Environment settings and credentials stay outside the deployable artifact.
-     External writes use recording adapters; live health checks are read-only.
-   - Preserve healthy PROD on build, DEV, or TEST failure. Diagnose promptly,
-     fix or revert the responsible source through a reviewed merge, and build a
-     replacement. The new artifact starts at DEV. Infrastructure retries reuse
-     the same artifact when its inputs remain valid. Do not block other workers
-     while a feature owner repairs a reverted change.
-   - Release TEST before waiting for PROD. If the production baseline changed,
-     repeat the affected TEST rehearsal. Reuse the artifact only when sealed
-     configuration and migration inputs remain valid; otherwise build a
-     replacement and start at DEV. Keep one verified PROD recovery copy. TEST rollback snapshots are temporary
-     test data and are removed after their checks finish.
-   - Scripts must bound execution and recover from interrupted deployment without
-     depending on an agent response. The owner monitors failures and records a
-     handoff if another owner takes over. Report unsupported automation honestly;
-     repair the existing controller rather than inventing another workflow.
+6. **Deploy to TEST and run tests**
+   - Hold the FIFO lane through TEST, PROD, and merge. Install the frozen feature
+     output into resettable TEST and run application acceptance checks against it.
+     DEV stays available to other feature owners under its own short lock.
+   - Keep environment configuration, credentials, writable state, ports, and
+     PIDs separate. Test delivery and writes use explicit recording adapters.
+     Exercise the actual installed plugin and SDK. Required missing checks fail.
+   - On failure, recover, release the ticket, repair in DEV, and rejoin at the
+     back. Do not make other ready features wait for repairs.
 
-7. **Activate exact artifacts**
-   - Use the configured deployment wrapper. Check explicit target identity and
-     hold its lock. Durably record recovery state before destructive work.
-   - Consume the exact rehearsed artifacts without rebuilding, repackaging,
-     dependency fetching, or installing from a registry while the gateway is
-     stopped. Snapshot the runtime and service definition and use atomic swaps.
-   - If production is out of scope, exercise activation, interruption recovery,
-     and rollback with fixtures. Do not invent access or add an approval gate.
+7. **Back up, deploy to PROD, and run tests**
+   - Use the installed controller. Confirm healthy PROD, hold intake, stop all
+     writers, invalidate the old backup, and capture directly into the same
+     directory. Verify the backup before replacing production. Failed capture
+     restarts unchanged PROD and blocks deployment. There is one backup.
+   - Install exactly the TEST output, without rebuilding or fetching dependencies.
+     Run bounded, read-only production acceptance checks. Never deliver messages.
+   - If deployment or tests fail, stop candidate writers, restore runtime,
+     configuration, and state from the backup, restart, verify health, then leave
+     the lane. Scripts recover interrupted commands before another ticket starts.
+     Retain an unresolved recovery ticket; do not conceal recovery failures.
 
-8. **Check health and recover**
-   - Production health and smoke checks are read-only and use explicit local
-     production state and configuration. Never deliver messages.
-   - On failure, restore the recorded package, runtime, service, and browser
-     snapshots, restart, and recheck health. Return nonzero and preserve the
-     original failure; surface rollback and cleanup failures separately.
-   - Keep recovery state across interruption. Restore a healthy service before
-     waiting for an agent. Repair with a committed regression and reuse unaffected
-     results. Replace the single PROD recovery copy only after its successor is
-     verified. Finalize completed staging and test snapshots automatically.
+8. **Merge and resume intake**
+   - Merge only the tested feature heads after PROD passes. Verify main represents
+     the tested source. Merge is outside the rollback operation. Resume intake
+     after merge, then advance the queue.
+   - If merge fails, hold the ticket and intake. Retry merge, or restore while
+     new live writes are still prevented. Never restore a backup over data
+     accepted after intake resumed. Do not rebuild a passing candidate for a
+     transient GitHub failure.
 
 9. **Close out**
    - Confirm exact source integration and required post-landing checks. Report
@@ -567,162 +547,55 @@ Feature work is complete only when:
 
 ## Puddles lifecycle
 
-Assume concurrent feature owners, including owners changing the same component.
-Use task-owned local worktrees for edits and focused tests. Check plans, PRs,
-and available task status, and coordinate overlapping interfaces and dependent
-changes directly with the owners. Never reserve the entire development loop
-while waiting for CI or a shared environment.
-
-Follow [deployment coordination](../../../packages/e2e/DEPLOYMENT_COORDINATION.md)
-for the mini's atomic lock file, DEV/TEST/PROD ready queues, initiating batch
-owner, and peer messages. Read it before using any shared environment. A
-heartbeat is not a transferable lease: inspect and contact an overdue owner,
-then use recorded recovery only after its controller and children stop.
-
-Read [the managed runner documentation](../../../packages/e2e/README.md)
-for current commands and [the deployment guide](../../../docs/openclaw-setup/patches/README.md)
-for artifact, target, recovery, and rollback contracts. These paths are relative
-to the repository root when invoking commands; the links resolve from this
-skill directory. Plan 039 records the infrastructure's acceptance history.
-Its one-off production and cleanup restrictions do not add approval gates to
-new features following this skill.
+Use [the application runner](../../../packages/e2e/README.md),
+[release tooling](../../../packages/release/README.md),
+[coordination](../../../packages/e2e/DEPLOYMENT_COORDINATION.md), and
+[storage](../../../packages/e2e/DEVELOPMENT_STORAGE.md). Plan 057 describes the
+replacement. Until its adoption checkpoint is complete, preserve existing
+recovery and use legacy commands only for outstanding legacy transactions.
 
 ### Daily development
 
-All local edits, type checks, and focused unit tests run in task-owned worktrees
-on the development machine, including composed OpenClaw source. Promote source
-edits into maintained patches before merging. Use repository-pinned toolchains
-and the maintained host pnpm store. Keep one persistent mutable OpenClaw build
-workspace per task, with separate writable output. Reuse compatible run paths.
-Give temporary comparisons and payloads an owner and a retirement condition.
-Keep one ready payload plus an in-flight replacement. After the last consumer
-finishes, use [storage finalization](../../../packages/e2e/DEVELOPMENT_STORAGE.md)
-to retire generated children while the task remains active; remove evidence at task completion. Keep queued artifact
-references until handoff completes. Age or a missing PID never authorizes cleanup.
+Keep a paired checkout when needed, prepared OpenClaw source, and one mutable
+application output in the feature workspace. Reuse compiler output and the host
+package store. Build incrementally, run focused tests, deploy to DEV, and check
+the installed behavior. Shared DEV needs only a short mutation lock; isolated
+instances with their own state and ports need no shared slot. No arbitrary cap
+on the number of feature builders. Measure actual host contention before tuning.
 
-Use a local incremental build for ordinary DEV iteration. Reuse the task's
-prepared source, installed dependencies, and compatible compiler outputs. Build
-and transfer only the affected runtime or plugin outputs through the maintained
-DEV wrapper. Mutable source is allowed; a commit, CI run, complete regression
-pool, or release receipt is not a prerequisite for trying a fix in DEV. Cold
-bootstrap is for missing or incompatible runtime/dependency/toolchain inputs,
-not every source edit. Check compatibility and rebuild affected outputs rather
-than bypassing stale-input checks or shipping stale files.
+A ready feature is reviewed, committed, and tested in DEV. Join the manager's
+queue, then rebase and refresh the same build at the front. Run the full
+application suite once on the frozen output, then TEST and PROD acceptance.
+Print timings to the conversation; do not keep a second test-report archive.
 
-Run the relevant type checks, unit regressions, and installed behavior assertions
-before repeating. Bring packaging, declaration generation, dependency loading,
-migrations, and recording-fixture checks into this loop when those paths change.
-Use the same maintained checks and pinned tools as CI where applicable. A
-locally passing unit suite alone is not proof of an installed runtime. Reproduce
-CI failures with the smallest relevant local command, add a regression, and
-rerun affected checks before another final CI attempt.
-
-Prepare the draft before queueing for DEV. Use the slot controller for every
-shared mutation, including start, stop, reset, activation, and installed checks.
-Keep target locks, isolated writable state, recording adapters, atomic swaps,
-and recovery. Release after the bounded check and cleanup, then message the next
-ready owner. Do not hold DEV while coding, building, reviewing, or waiting for
-CI. Local builds and isolated fixtures need no shared environment slot.
-
-Retain the failing command, exit status, and useful logs. Record build, transfer,
-startup, and test time separately from queue time and cold preparation. Aim for
-warm feedback within five minutes where practical; a slower loop is a reason to
-inspect its bottleneck, not skip checks or impose a new release gate.
-
-After retained review, applicable local DEV success, and required repository
-checks, merge the feature. The release owner performs the accumulated CI build
-on selected merged source. Its artifact passes DEV, TEST, and PROD unchanged.
-Draft checks support development and source merge; they do not certify release.
-Do not rebuild a candidate just because another feature merged while it ran.
-
-If a maintained wrapper only accepts CI bundles, treat that as a tooling gap to
-repair within the approved scope, not a reason to restore CI to every edit.
-Report the limitation until the supported local path exists. Do not bypass
-ownership or receipt checks, invent a command, or claim the local path works
-from documentation alone.
+Use the same application configuration renderer, preparation, startup, health,
+and feature acceptance commands in DEV and TEST. Only environment bindings differ.
+Run the changed feature's installed use cases before declaring ready, including
+real provider output when model behavior changes. Focused probes remain useful
+but do not replace deployed DEV checks. When a later stage fails, close the missing
+DEV coverage or deployment gap before rejoining; do not keep debugging in TEST.
 
 ### Environment configuration and migrations
 
-DEV, TEST and production each own their generated configuration, writable state
-and service bindings. Their application settings come from one reviewed
-non-secret base in the companion repository. Differences name exact leaves for
-ports, paths, service identities, credential references and recording adapters.
-Do not exclude entire plugin, model, agent or permission sections.
+DEV, TEST, and PROD own their configuration and writable state outside the
+artifact. Use the companion's reviewed behavioral base with environment-specific
+paths, ports, identities, and fixtures. Preserve DEV experiments until explicitly
+reconciled. Credentials stay outside both repositories.
 
-Preserve DEV experiments during ordinary refresh. Release validation rejects
-local drift until it is reviewed or explicitly reconciled. Stop writers and
-snapshot configuration, state and service settings before reconciliation;
-restore them with the previous runtime on failure. DEV uses its own generated
-candidate configuration and never applies a TEST or production migration.
-
-Capture the predecessor's authored configuration without expanding credential
-references. Preserve deprecated fields and absent settings in the TEST seed;
-remap only declared bindings. Synthetic history and external effects stay behind
-recording adapters. Use complete SDK core and plugin normalization to derive the
-candidate, not to erase the predecessor input before rehearsal.
-
-Seal the base, bindings and complete predecessor and candidate expectations in
-the existing migration inputs and manifests before building. Check predecessor
-parity before mutation and candidate parity after the complete migration. Source
-validation reproduces the manifests. Drift requires fresh affected evidence;
-never attach a new manifest to a certified build. Credentials stay outside both
-repositories. Owner settings and captured baselines stay out of public output.
-
-Inventory legacy state shapes as well as configuration. Before a Doctor upgrade,
-check ownership and enumerate filesystem changes outside the state snapshot.
-Bind affected source and destination paths, snapshot them and rehearse their
-rollback through the maintained activation helper. A copied state directory
-must use isolated workspace references before Doctor runs. Include the failing
-legacy shape in TEST; configuration parity alone does not cover it. Ownership
-repairs need an explicit owner decision, exact content preconditions and retained
-original metadata. Apply an already approved decision without another prompt.
-For history-format upgrades, measure synthetic migration volume and index
-cardinality before production. Small correctness fixtures do not establish
-a safe downtime allowance. Keep large measurements out of routine CI.
+Test current behavior and supported existing data. Do not turn each release into
+another historical migration fixture. Remove completed repair code only after
+current production and the recovery backup no longer require it. Keep rollback
+compatible with the state actually captured in the one backup.
 
 ### Release ownership and cleanup
 
-Feature owners work in parallel. One release owner carries each pinned candidate
-through CI, DEV, TEST, and PROD; included feature agents help diagnose failures.
-The owner does not reserve main, other tasks' builds, or an environment while
-waiting. Use the maintained artifact, certification, deployment, and recovery
-commands. Design approval already authorizes production and cleanup of the
-build's generated artifacts within scope. Do not request separate cleanup
-approval after ownership and retention checks pass. The owner finishes cleanup
-on success, failure, timeout and interruption, including outputs left by its
-child processes. Use the maintained cleaner; preserve its refusal checks.
+One manager coordinates the FIFO lane and carries each feature through merge.
+Owners keep the manager informed and keep working through repairs and cleanup.
+The manager's hourly native heartbeat is a fallback, not a replacement for active
+coordination. Use the release-manager skill when assigned that role.
 
-Keep one reusable workspace and mutable build per active session. A companion
-repository is one paired checkout in that workspace, not another attempt tree.
-Reuse compatible source, dependencies and output for incremental revisions.
-At feature completion remove its worktrees, builds, fixtures, archives, logs,
-receipts and evidence. Publish source first; preserve unpublished edits through
-Git or the app archive operation. Transfer any still-consumed artifact to its
-consumer before closeout. Run task completion through the storage controller;
-failed teardown leaves the task cleanup-pending and is retried on resume.
-
-Development cleanup never deletes production deployments, filesystem data,
-configuration, state, backups, recovery records or referenced dependencies.
-Keep those outside task roots and list them as protected paths. Do not retire
-production recovery to make room for development. Test-owned recovery fixtures
-require their producer's retirement check before generic task completion.
-
-Notify affected workers to apply merged tooling and clean their completed runs.
-A coordinator authorized to clean abandoned generated data may proceed after
-checking ownership, live processes, slots, source preservation, and production
-recovery references. An unresponsive worker does not itself block that cleanup.
-Uncertain ownership or a live consumer still requires investigation. Never edit
-another worker's source or stop its active work to recover space.
-
-Use [storage lifecycle](../../../packages/e2e/DEVELOPMENT_STORAGE.md) for existing
-commands and known gaps. If a helper still requires obsolete premerge receipts,
-repeated builds, or TEST backup retention, fix that helper through the assigned
-owner. Do not forge evidence, silently bypass a guard, or claim automation exists
-because the guidance now requires it. Preserve valid work during the transition.
-Public CI remains independent of private repositories and credentials.
-
-For OpenClaw source patch deployment, follow
-`docs/openclaw-setup/patches/README.md` and use
-`docs/openclaw-setup/patches/apply-and-deploy.sh` inside the mini controller.
-An unset `MINI_HOST` means local deployment on the target Mac mini. Set it only
-for an intentional, approved remote deployment.
+Publish source before finalizing. Run `finalize` from outside the feature workspace;
+archive app-managed worktrees through the app. Delete generated builds, fixtures,
+logs, archives, and receipts with the workspace. Preserve unpublished source,
+other owners, deployments, backup, and shared caches. Cleanup retries do not hold
+the queue. Results and follow-up context remain in the conversation.

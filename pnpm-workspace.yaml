@@ -1,5 +1,6 @@
 packages:
   - "packages/*"
+  - "!packages/release"
   - "openclaw-plugins/*"
 
 # Preserve the existing policy: only esbuild may run an install script.

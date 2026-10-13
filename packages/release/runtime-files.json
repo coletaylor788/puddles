@@ -1,0 +1,11 @@
+[
+  "files.mjs",
+  "commands.mjs",
+  "queue.mjs",
+  "backup.mjs",
+  "controller.mjs",
+  "git.mjs",
+  "finalize.mjs",
+  "supervisor.mjs",
+  "install.mjs"
+]
