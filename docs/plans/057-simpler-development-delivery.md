@@ -78,6 +78,11 @@ backup no longer need them. Existing-data readability remains application behavi
 generic snapshot restoration belongs to release tooling. An unfinished feature
 still needs tests of its intended behavior, not a permanent migration category.
 
+Verify a one-time repair's exact changes around that mutation while stopped.
+After startup, check application behavior and preserved user data. Do not compare
+the entire database with a pre-startup snapshot or simulate unrelated startup
+housekeeping to predict it. The release tool only invokes application commands.
+
 #### Build and release
 
 Every agent owns one incremental build and shares the package cache. Anyone can
@@ -133,12 +138,12 @@ The requester supplied a replacement reader owner for the trial. Coordinate with
 that owner and leave the failed reader chats untouched.
 
 The independent release tooling is installed for the reader trial. Its 432 public
-and 21 host-adapter tests pass. The complete application suite passes in 16m36s
-on the unchanged frozen build. TEST starts and reports healthy, but its strict
-reader data check found native title hydration in two incomplete synthetic
-sessions. The reader owner is correcting the fixture and adding real startup
-coverage. Acceptance must predict legitimate native title initialization while
-preserving all unrelated data. Production is unchanged; adoption, production
+and 21 host-adapter tests pass. The latest complete application suite passed in
+16m36s on the unchanged frozen build. TEST starts healthy, but its reader check
+incorrectly carried an entire repair snapshot across native startup. The owner
+is separating exact stopped-repair verification from functional checks after
+startup. The correction needs fresh review and full validation. Production is
+unchanged; adoption, production
 acceptance, merge, and cleanup remain pending.
 
 ## Agent section
@@ -175,7 +180,7 @@ context may go to those providers; secrets and credentials may not.
 
 ### Validation
 
-The final composed application gate passes in **16m36s** with unchanged output.
+The latest completed application gate passed in **16m36s** with unchanged output.
 It includes 6,426 mapped cases, 78 cases in each transport mode, 20 packaged-runtime
 checks, installed conversation scenarios, 313 ordinary companion cases, and 55
 companion installed checks. Platform-specific and installed-only cases stay in
@@ -194,18 +199,21 @@ Retained independent review is clear for the current implementation. Adoption
 repairs preserve directory permissions during copy/restore, join captured writer
 processes before replacement, exclude macOS ephemeral ports in test allocation,
 and validate the complete rendered normal and held application configuration.
-Reader acceptance keeps strict checks on pins, history, metadata, and interrupted
-inputs. TEST requires explicit owner review of all 16 fresh model outputs.
+The reader acceptance correction keeps exact checks around the one-time repair,
+then checks behavior, pins, history, interrupted inputs and recovered activity
+after startup. Its final review is pending. TEST requires explicit owner review
+of all 16 fresh model outputs.
 
 ### Adoption and rollback
 
 The tested controller and host adapter are installed, but real adoption is not
 complete. TEST uses separate state, runtime, ports, and recording fixtures. The
 fourth trial reached healthy startup, then stopped automatically on synthetic
-reader-row hydration before any quality collection. Its state is retained for
-diagnosis. No backup replacement or production change has occurred.
+reader-row hydration before any quality collection. Diagnosis is complete and
+the owned TEST state can be reset for a fresh trial. No backup replacement or
+production change has occurred.
 
-After the fixture correction, run a fresh ready ticket through full application
+After the acceptance correction, run a fresh ready ticket through full application
 validation, TEST and its tests, backup, PROD and its read-only tests, source merge,
 and cleanup. Keep production intake held through acceptance and merge. Preserve
 existing recovery authority until repaired current state and a verified backup
