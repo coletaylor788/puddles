@@ -151,7 +151,8 @@
     "src/plugin-sdk/session-store-runtime.conversation.test.ts": "plugin-sdk",
     "src/plugin-sdk/session-store-runtime.recovery.test.ts": "plugin-sdk",
     "src/config/sessions/session-accessor.sqlite-entry-revalidation.test.ts": "runtime-config",
-    "src/talk/agent-consult-tool.test.ts": "unit-src"
+    "src/talk/agent-consult-tool.test.ts": "unit-src",
+    "src/test-utils/ports.test.ts": "unit"
   },
   "patches": [
     {
@@ -163,7 +164,8 @@
         "src/process/supervisor/service-child-relay-host.test.ts",
         "src/process/supervisor/adapters/child.service-lifecycle.test.ts",
         "src/process/supervisor/service-child-ownership.bundle.test.ts",
-        "src/infra/windows-process-start.test.ts"
+        "src/infra/windows-process-start.test.ts",
+        "src/test-utils/ports.test.ts"
       ]
     },
     {
