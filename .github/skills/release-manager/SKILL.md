@@ -39,10 +39,12 @@ releases. Creating or editing this skill does not start a manager or timer.
   tests fail.
 - Replace backups through the existing script:
   `node packages/e2e/bin/openclaw-backup-retention.mjs refresh TARGET_JSON POLICY_JSON WORK_DIR`.
-  Use documented deployment ownership and `single-verified-backup`. Verify the new
-  copy before retiring the old; temporary overlap is expected. Retain the
-  pre-deployment backup through PROD tests and merge. Report missing controller
-  integration instead of claiming this release path already exists.
+  The proposed policy first confirms healthy PROD, invalidates the old backup,
+  then captures and verifies current PROD in that same location. Do not retain
+  two full copies. Failed or interrupted capture leaves current PROD in place;
+  deployment waits for a verified backup. Keep it through PROD tests and merge.
+  The existing helper preserves the old copy, so this policy needs a script
+  change. Report that gap; do not replace backups with discretionary file deletion.
 - Follow `packages/e2e/DEVELOPMENT_STORAGE.md`. Once implemented, use `finalize` after
   deployment and merge to remove the feature workspace. Preserve active consumers
   and unpublished source. Retry cleanup independently without holding the queue.

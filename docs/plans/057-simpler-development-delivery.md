@@ -63,10 +63,11 @@ Report slow tests in the conversation.
 
 #### Backup and recovery
 
-Before changing PROD, capture its runtime, configuration, and state. A script
-verifies the new backup, makes it current, then deletes the old one. Failed
-capture keeps the old backup. Rotation needs temporary space for both; afterward
-there is one backup, with no extra retained previous runtime.
+Before changing PROD, confirm it is healthy. A script invalidates the old backup
+and captures current runtime, configuration, and state directly into the same
+backup location. Verify it in place, without another full copy. Only a successful
+backup permits deployment. If capture fails or is interrupted, leave current PROD
+in place and retry. Losing the older backup during capture is accepted.
 
 Keep the pre-deployment backup through PROD tests and merge. Restore it if
 deployment or tests fail. Hold intake during acceptance when restoration would
@@ -105,8 +106,10 @@ is requested; implementation of the redesigned controller is not yet approved.
 - Replace merged-source admission with reviewed, pushed, pinned feature revisions.
   Preserve required checks; verify final merged runtime inputs match.
 - Reuse `openclaw-backup-retention.mjs refresh TARGET_JSON POLICY_JSON WORK_DIR`
-  with `single-verified-backup`. Integrate it before PROD and reuse its snapshot
-  for activation recovery. Reconcile existing recovery holds before adoption.
+  as the entrypoint, changing its current preserve-old behavior to direct
+  replacement. Mark the backup invalid during capture and valid only after
+  verification. Gate deployment on that result, reuse it for activation recovery,
+  and reconcile legacy recovery references before adoption.
 - Build `finalize` around `openclaw-storage.mjs task-complete` and producer cleanup.
   It currently refuses Git worktrees, so add worktree retirement. Use app archival
   for managed worktrees, removing generated ignored output first. Run cleanup from
