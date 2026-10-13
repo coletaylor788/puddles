@@ -83,7 +83,9 @@ package caches where useful. Protect production state and foreign processes.
 
 ## Adoption
 
-The replacement is being validated and is not yet installed on the Mini.
+The new controller is installed for the manager's adoption trial. Normal
+ownership has not switched yet. Follow the
+[adoption checkpoint](DEPLOYMENT_COORDINATION.md#adoption-checkpoint).
 Existing recovery transactions use [legacy runner commands](LEGACY_README.md),
 [legacy coordination](LEGACY_DEPLOYMENT_COORDINATION.md), and
 [legacy storage](LEGACY_DEVELOPMENT_STORAGE.md). Do not run both controllers
