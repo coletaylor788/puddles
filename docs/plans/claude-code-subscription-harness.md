@@ -1,8 +1,8 @@
 # Claude Code harness with subscription authentication
 
-Status: Proposed
+Status: Proposed; subscription setup pending
 Issue: Not created
-Last updated: 2026-10-08
+Last updated: 2026-10-12
 
 ## Human section
 
@@ -37,6 +37,43 @@ Use a dedicated Claude configuration for the gateway. Disable extra usage and
 remove conflicting authentication overrides from that runtime. Verify the
 effective account and subscription route with the installed executable before
 activation. This proposal includes no automatic Anthropic API backup.
+
+#### Setup blocker: subscription sign-in
+
+**Blocked until the owner completes subscription sign-in and the implementation
+agent verifies it in the gateway environment.** A browser login on another
+computer does not authenticate the gateway. The CLI login must belong to the
+same host OS user and dedicated Claude configuration directory the gateway uses.
+This blocks live subscription validation and activation; approved preparation
+and fixture-based implementation can proceed without the login.
+
+The implementation agent first installs or verifies official Claude Code,
+prepares an unused dedicated configuration directory and provides the owner
+with the exact terminal login command. It checks the selected runtime for
+conflicting API, Console, cloud or gateway credentials without modifying other
+Claude installations. The owner then completes these steps:
+
+1. **Activate a Claude Pro or Max subscription** on the claude.ai account intended
+   for the gateway, if that account does not already have an eligible plan.
+   A free account or Console/API credit balance does not satisfy this proposal.
+2. **Disable extra usage / usage credits** in
+   [Claude Settings > Usage](https://claude.ai/settings/usage). Leave automatic
+   credit purchases disabled. No API key or Console funding is needed.
+3. **Run the prepared login command in the gateway user's terminal on the
+   gateway host.** Choose the Claude subscription account, not Anthropic Console
+   or a third-party platform. Complete the browser sign-in yourself. Over SSH,
+   open the displayed authorization URL in your browser and, if prompted, paste
+   the returned code into that same terminal, not into chat or a repository.
+4. **Verify the login in the same terminal and configuration directory.** The
+   prepared status command should identify the claude.ai authentication route.
+   Tell the implementation agent that sign-in is complete and extra usage is
+   off. Do not send tokens, authorization codes or credential files.
+
+The implementation agent owns the final check: the real gateway service must
+see the same login, use subscription authentication, and complete a bounded
+qualification turn without switching to separately metered credentials.
+Signing in does not approve deployment. Exact commands and completion criteria
+are recorded in the Agent section below.
 
 #### Tools and sandboxing
 
@@ -85,17 +122,20 @@ replay of unfinished actions or uninterrupted execution.
 repository proposal on 2026-10-08. Scope is design documentation; implementation
 and activation are not part of this change.
 
-The upstream integration supports the proposed architecture. The exact installed
-combination still needs authentication, tool-boundary and conversation tests.
-No account, runtime configuration or service has been changed.
+The upstream integration supports the proposed architecture. **Setup blocker:**
+subscription entitlement and gateway-user sign-in are not yet verified. The owner
+must complete the setup steps above before live subscription validation or
+activation. The exact installed combination still needs tool-boundary and
+conversation tests. No account, runtime configuration or service has been changed.
 
 ## Agent section
 
 ### State
 
-Documentation-only proposal on `codex/claude-subscription-proposal`, based on
-public revision `baad973f3c718e317925b12d38dc854baccb1975`. No implementation
-or runtime validation is claimed.
+The proposal is published. This documentation-only follow-up adds the requested
+subscription setup blocker on `codex/claude-subscription-setup-blocker`, based on
+`a8e12a911a3c72f184877db9731ca680175d4175`. Account entitlement and native login
+have not been inspected. No implementation or runtime validation is claimed.
 
 ### Scope and acceptance criteria
 
@@ -130,6 +170,55 @@ and [agent sandbox guide](../openclaw-setup/03-openclaw-and-agent-sandboxing.md)
 
 ### Implementation
 
+#### Prepare the owner login
+
+The implementation agent verifies the installed CLI version and gateway OS user,
+then chooses a dedicated, user-owned `CLAUDE_CONFIG_DIR` outside agent workspaces.
+Confirm the directory is unused or belongs to this integration before touching
+it. Prepare the login shell and gateway environment without API keys, auth-token
+or endpoint overrides, API-key helpers, Console profiles, cloud-provider flags
+or managed gateway settings that supersede subscription authentication. Do not
+print credential values or change an unrelated installation.
+
+Provide the owner with concrete values privately. The command shape is:
+
+```sh
+# Run as the gateway OS user on the gateway host.
+# Replace the placeholder with the prepared dedicated directory.
+export CLAUDE_CONFIG_DIR="/absolute/path/to/prepared-claude-directory"
+claude --version
+claude auth login
+claude auth status --text
+```
+
+Do not add `--console`, use `setup-token`, copy a laptop's credentials, or use
+`--bare`. Native browser login is the chosen route. If the installed CLI needs
+the interactive flow, run `claude` in that same prepared environment and follow
+its login prompt. SSH callback handling is documented in
+[Claude authentication](https://code.claude.com/docs/en/authentication).
+
+#### Clear the blocker
+
+Require owner confirmation of an eligible subscription and disabled extra usage,
+then inspect `claude auth status` locally under the actual gateway environment.
+The current [CLI reference](https://code.claude.com/docs/en/cli-reference)
+documents `authMethod: "claude.ai"`; inspect available account/plan information
+and `/status` as well. A zero exit code alone proves login, not the required
+billing route. Newer versions report `configDirectory`, which should match the
+prepared directory. Keep identifying output private.
+
+Confirm daemon access to Claude-managed credential storage, including after a
+service restart; an interactive shell success is not enough. Run one bounded,
+tool-free subscription qualification turn only after implementation approval,
+with account-level extra usage disabled and conflicting routes excluded.
+Retain only sanitized pass/fail evidence. Do not clear the blocker on a user
+confirmation alone or infer billing from the CLI's API-equivalent cost estimate.
+The [official usage-credit controls](https://code.claude.com/docs/en/costs#add-usage-credits-to-your-subscription)
+place the Pro/Max toggle in Settings > Usage. Login and usage-setting documentation
+was checked on 2026-10-12; recheck on executable upgrades.
+
+#### Configure and qualify
+
 After approval, qualify one restricted role first. Configure the supported
 runtime, native login and exact tool selection. Preserve independent agent
 changes and existing patches. Keep roles that fail qualification on their
@@ -157,11 +246,16 @@ runtime artifact change; this documentation change starts no environments.
 
 The design separates supported upstream capability from installed proof, keeps
 tool execution within existing boundaries and excludes account-specific analysis.
+The setup follow-up distinguishes owner-only login from agent-owned preparation
+and verification. It does not install software, purchase a plan or change auth.
 
 ### Checklist
 
 - [x] Write the proposal and verify upstream contracts.
 - [ ] Approve implementation scope.
-- [ ] Qualify subscription authentication and every migrated tool path.
+- [ ] Prepare the gateway-user CLI, isolated Claude configuration and exact login command.
+- [ ] Owner confirms an eligible subscription, disables extra usage and completes native login.
+- [ ] Verify subscription authentication in the gateway service and clear the setup blocker.
+- [ ] Qualify every migrated tool path.
 - [ ] Validate conversation continuity, quality and recovery.
 - [ ] Release eligible roles through the existing lifecycle.
