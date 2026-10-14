@@ -2,7 +2,7 @@
 
 **Status:** Implementation
 **Issue:** [#242](https://github.com/coletaylor788/puddles/issues/242)
-**Last updated:** 2026-10-08
+**Last updated:** 2026-10-13
 
 ## Human section
 
@@ -44,16 +44,21 @@ read correction resolves the independent review's citation-preservation finding
 within that approved maintainer work. No access boundary or destructive migration
 is added. Landing, deployment, rollback and cleanup are authorized.
 
-All 89 focused tests passed and independent source review is clear. Local DEV
-packaging is in progress. Production is unchanged.
+The metadata reader is merged and installed in accepted production. The dependent
+maintainer cutover is using the installed release controller. Its complete
+application gate passed, then TEST rejected a target binding mismatch. That
+binding is corrected. A subsequent installed check exposed a fixture cleanup
+race; the runtime remains unchanged while the test harness is repaired. No live
+maintenance run is forced.
 
 ## Agent section
 
 ### State
 
-Assigned public worktree, branch `codex/wiki-maintenance`. Public PR #243 holds
-the runtime fix. Its companion prompt changes remain private. One task owns the
-pinned OpenClaw source and reusable local build workspace.
+Assigned public worktree, branch `codex/wiki-maintenance`. Public PR #243 is merged
+and included in the accepted runtime. Companion prompt changes remain private.
+The release manager owns promotion, backup, recovery, and tested-head merge. The
+wiki owner keeps one source pair and reusable build workspace for remaining work.
 
 ### Scope and acceptance criteria
 
@@ -81,16 +86,33 @@ cumulative manifest and deployment list.
 Retained independent reviewer has cleared the source behavior after finding that
 body-only reads could lose citations. Focused coverage includes a rich claim and
 citation roundtrip, body pagination, unchanged default text, denied bridge reads,
-and existing query/read tests. Packaging, DEV, accumulated CI, TEST rehearsal,
-production read-only verification and cleanup remain required.
+and existing query/read tests. The runtime is installed. Deployed DEV and a complete application gate passed
+for the companion cutover. Final TEST, production read-only acceptance, and owned
+cleanup remain pending through the new release manager.
 
 ### Rollout and rollback
 
-Land reviewed source. Pin merged source in the normal release workflow and promote
-one immutable candidate through DEV, TEST and PROD. Preserve healthy production on
-failure. Install the runtime before any operator prompt requests the new flag.
+The installed controller promotes one immutable runtime through DEV, TEST and
+PROD. The full application gate precedes TEST, a verified backup, production
+read-only acceptance, and tested-head merge. Preserve healthy production on
+failure. Runtime support is installed before the operator prompt requests it.
 Rollback the dependent prompt before restoring an older runtime. Never force a
 production maintenance turn as a deployment test.
+
+### Test fixture cleanup repair
+
+A completed gateway could leave a process group that no longer existed before
+the harness sent a final kill signal. On macOS that signal returned a permission
+error, and the early failure left provider fixture servers open. The harness now
+records the spawned process identity, verifies group members before signaling,
+and never escalates against a disappeared or reused group. Permission errors for
+a group that still exists remain failures. Every provider cleanup runs even if
+process shutdown fails. These changes affect test orchestration only.
+
+Committed regressions cover group disappearance, permission failures, identity
+reuse, surviving owned descendants, foreign owners, and provider cleanup after
+failure. A real detached process exercises the host process inspection. The same
+reviewer checks this repair before a fresh complete gate and promotion.
 
 ### Review log
 
@@ -101,6 +123,6 @@ citation-preservation finding is resolved. No new actionable findings remain.
 
 - [x] Diagnose metadata omission and retain independent review.
 - [x] Implement additive read contract and committed regression candidates.
-- [ ] Finish focused tests and packaging review.
+- [x] Finish focused tests and packaging review.
 - [ ] Land source and complete the accumulated release workflow.
 - [ ] Verify production read-only and clean task-owned development artifacts.

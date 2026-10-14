@@ -13,6 +13,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { createServer as createSocketServer } from "node:net";
 import { atomicJson } from "./native-state.mjs";
 import { runCommand } from "./process-runner.mjs";
+import { cleanupFixtureResources, stopFixtureProcess, trackFixtureProcess } from "./native-fixture-process.mjs";
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const activeFixtures = new Set();
@@ -76,22 +77,6 @@ async function until(check, description, timeoutMs, child) {
     await delay(50);
   }
   throw new Error(`Fixture timed out waiting for ${description}`);
-}
-
-async function stop(child) {
-  if (!child?.pid) return;
-  const kill = (signal) => {
-    try { process.kill(-child.pid, signal); }
-    catch (error) { if (error.code !== "ESRCH") throw error; }
-  };
-  const closed = child.exitCode !== null || child.signalCode !== null
-    ? Promise.resolve() : new Promise((yes) => child.once("close", yes));
-  kill("SIGTERM");
-  let timer;
-  await Promise.race([closed, new Promise((yes) => { timer = setTimeout(yes, 5_000); })]);
-  clearTimeout(timer);
-  kill("SIGKILL");
-  await closed;
 }
 
 function validateScenario(scenario) {
@@ -211,22 +196,21 @@ export async function runScenario(installedDir, scenario, options = {}) {
     }
   });
   let child;
+  let trackedChild;
   let log;
   let primaryError;
   const cleanup = async () => {
-    await stop(child);
-    const errors = [];
-    if (provider) {
-      try { await provider.close(); } catch (error) { errors.push(error); }
-    }
-    for (const cleanup of providerCleanups) {
-      try { await cleanup(); } catch (error) { errors.push(error); }
-    }
-    if (server.listening) {
-      server.closeAllConnections();
-      await new Promise((yes) => server.close(yes));
-    }
-    if (errors.length) throw new AggregateError(errors, "Provider cleanup failed");
+    await cleanupFixtureResources([
+      () => trackedChild && stopFixtureProcess(trackedChild),
+      () => provider?.close(),
+      ...providerCleanups,
+      async () => {
+        if (server.listening) {
+          server.closeAllConnections();
+          await new Promise(yes => server.close(yes));
+        }
+      },
+    ]);
   };
   activeFixtures.add(cleanup);
   try {
@@ -304,6 +288,7 @@ export async function runScenario(installedDir, scenario, options = {}) {
       });
       let spawnError;
       child.once("error", error => { spawnError = error; });
+      trackedChild = trackFixtureProcess(child);
       await until(() => {
         if (spawnError) throw spawnError;
         return records(join(context.recordingsDir, "imsg-ready.jsonl")).length > readyCount;
@@ -314,7 +299,7 @@ export async function runScenario(installedDir, scenario, options = {}) {
     let sendCount = 0;
     let rowid = 1;
     for (const step of scenario.steps) {
-      if (step.restartBefore) { await stop(child); await provider?.beforeRestart?.(); await startGateway(); }
+      if (step.restartBefore) { await stopFixtureProcess(trackedChild); await provider?.beforeRestart?.(); await startGateway(); }
       responses.push(...step.responses);
       requestCount += step.responses.length;
       if (step.wake) {
@@ -424,7 +409,7 @@ export async function runScenario(installedDir, scenario, options = {}) {
   } finally {
     const errors = [];
     try { await cleanup(); } catch (error) { errors.push(error); }
-    activeFixtures.delete(cleanup);
+    if (errors.length === 0) activeFixtures.delete(cleanup);
     if (log !== undefined) closeSync(log);
     if (!primaryError && errors.length === 0) {
       try {
