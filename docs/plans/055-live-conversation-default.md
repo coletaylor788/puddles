@@ -1,8 +1,8 @@
 # Default to live conversation
 
-Status: Implemented, reviewed, and DEV-validated; approved for landing and rollout
+Status: Source merged; deployment evidence tracked privately
 Issue: [#256](https://github.com/coletaylor788/puddles/issues/256)
-Last updated: 2026-10-09
+Last updated: 2026-10-13
 
 ## Human section
 
@@ -42,15 +42,20 @@ publication, validation, landing, rollout, rollback, and task cleanup.
 
 The implementation passes 116 focused runtime tests, ten patch-manifest checks,
 both TypeScript checks, independent review, and installed DEV validation.
-Publication and shipping are explicitly approved. Required repository checks,
-source merge, and the cumulative release pipeline are next. Production remains
-unchanged.
+Publication and shipping are explicitly approved. The source is merged in
+[PR #257](https://github.com/coletaylor788/puddles/pull/257). Deployment evidence
+and operational status are tracked privately with the release manager. Physical
+voice acceptance remains separate from the source and prompt checks.
 
 ## Agent section
 
 ### State
 
-- Task worktree: `voice-conversation-default`, based on freshly fetched main.
+- Public source landed in PR #257 at
+  `7b6133fac0db282da4ca8a17783c966c9359df79`.
+- The replacement owner recovered the approved work. Deployment identities,
+  installed verification results, and cleanup evidence remain in private
+  coordination with the release manager.
 - Related shipped behavior: [plan 050](050-talk-conversation-progress.md).
 - `talk-conversation-progress.patch` updates the provider prompt, shared tool
   description, and automatic/substantive session instructions. Proxy mode keeps
@@ -106,12 +111,14 @@ network-disabled probe against that exact installed runtime verifies compiled
 session instructions, the tool description, the provider browser request,
 explicit always mode, and disabled-tool policy. It invokes no consultation or
 external action. The DEV lease was released after the controller joined and
-retired its local payload. Cumulative release and real voice acceptance remain.
+retired its local payload. Current deployment evidence is tracked privately.
+Real voice acceptance must assess conversational judgment separately.
 
 ### Rollout and rollback
 
-Follow the existing one-artifact DEV, TEST, and PROD promotion after approval.
-Restore the prior runtime and any changed configuration together on failure.
+Follow the installed controller and release-manager workflow in
+[deployment coordination](../../packages/e2e/DEPLOYMENT_COORDINATION.md).
+Keep installation, rollback, and cleanup evidence in private coordination.
 Verify final installed prompts separately from physical conversational quality.
 
 ### Review log
@@ -128,5 +135,7 @@ distinct from prompt assertions and needs a real voice acceptance check.
 - [x] Complete independent source review.
 - [x] Validate the installed DEV runtime and release its slot.
 - [x] Obtain explicit publication permission.
-- [ ] Land the reviewed change after required repository checks.
-- [ ] Complete cumulative release and real voice acceptance.
+- [x] Land the reviewed change after required repository checks.
+- [ ] Confirm real voice reasoning and iteration stay conversational.
+
+Deployment completion and cleanup are tracked privately by the release manager.
