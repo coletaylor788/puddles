@@ -1,8 +1,8 @@
 # Native approval for household questions to main
 
-**Status:** Proposed
+**Status:** Production approved; native follow-up control needs a design decision
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
-**Last updated:** 2026-10-09
+**Last updated:** 2026-10-13
 
 ## Human section
 
@@ -67,7 +67,18 @@ household's wait cannot retract it.
 
 #### Return the answer without an automatic conversation
 
-Set the native `session.agentToAgent.maxPingPongTurns` setting to `0`.
+The approved design sets `session.agentToAgent.maxPingPongTurns` to `0`.
+The exact pinned source and deployed runtime retire that setting and supplies a fixed limit
+of five for ordinary peer exchanges. Setting the old key to zero is insufficient.
+
+**Proposed compatibility change, not yet approved:** restore the native
+configuration control with a small maintained OpenClaw patch, retaining the
+current default for other installations. Configure this deployment to zero and
+add a regression proving that an approved household question cannot start
+automatic follow-ups. Keep native approval and automatic answer return. Do not
+introduce a response executor, broker, or response approval flow. If maintaining
+this core change is not acceptable, retain the existing household relay.
+
 Ping-pong is OpenClaw's automatic exchange of ordinary agent replies after a
 session send. Those replies do not require another tool call. Disabling it
 means household must make a new approved `sessions_send` call to ask main
@@ -111,33 +122,42 @@ a response broker, payload store, custom approval UI, or core response patch.
 
 ### Status
 
-**Approval:** Proposed. **Approval reference:** In the design discussion on
-2026-10-09, the requester accepted disabling ping-pong and requested a proposal.
-The requester prefers response approval only if native support exists and does
-not want custom response handling. These decisions define the proposal;
-implementation and deployment are not yet approved.
+**Approval:** Production approved for the original design. **Approval reference:**
+On 2026-10-13, the requester instructed this owner to ramp up on the new release
+manager and continue deployment to production. The scope remains one approved
+question, automatic answer return, no ping-pong, and no custom response handling.
+The proposed core change to restore the removed setting needs a separate decision.
 
-The proposal is drafted. Native reply routing, announcement behavior, summary
-limits, and permission configuration need verification against the exact
-release source and installed recording fixtures during implementation. No
-runtime configuration, agent instructions, or deployed behavior has changed.
+Release coordination is established. Read-only inspection and a recording probe
+of the deployed code confirm that the old zero setting cannot prevent automatic
+follow-ups. Implementation and deployment of the affected route are blocked on
+the compatibility decision. Production and household permissions remain unchanged.
 
 ## Agent section
 
 ### State
 
-This is a documentation-only proposal in an assigned isolated worktree, on
-`codex/household-native-approval-proposal`, based on public commit `50389e1`.
-No overlapping household issue or open pull request was found during drafting.
-The existing [household plan](completed/022-household-and-friends-tiers.md)
-records the owner-mediated quoted-reply relay and its historical validation.
+The original proposal landed in PR #260. This owner resumed in the same isolated
+worktree on `codex/household-native-approvals`, from public main `4c16bdc`.
+Issue #259 tracks the feature. The current release manager has acknowledged the
+owner and supplied the installed controller and DEV intake requirements.
 
-The repository selects OpenClaw 2026.9.6 at
-`eb377ac59e6c9fd6c7705028034812becf00271b`. Local OpenClaw source was inspected for
-the hook contracts, session-send reply loop, announcement, and queue behavior.
-That local checkout is not established as the exact deployed source. Earlier
-attempts to read the relevant files from the pinned Git tree were unsuccessful.
-Do not treat the local inspection as installed or exact-candidate validation.
+The repository still records OpenClaw 2026.9.6 at
+`eb377ac59e6c9fd6c7705028034812becf00271b`, but the configured local source
+checkouts do not contain that object and differ from the installed application.
+The exact upstream commit is available through the GitHub API, with tree
+`fd9aae01e042ed8747ecbd0f45bb4791eb3379b9`. Reconstruct owned source from that
+commit and the maintained patches; do not build from a stale primary checkout.
+
+Exact pinned source retrieved through the GitHub API agrees with the deployed
+module inspection on these contracts:
+`sessions_send` uses `waitForAgentRunReply` and the completed run's `terminalReply`,
+which removes the previously identified latest-history answer selection path.
+However, its peer reply flow supplies `maxPingPongTurns: 5`; the old configuration
+key appears in `RETIRED_TUNING_PATHS`. The native documentation describes a built-in
+reply limit, not a replacement setting. Existing one-way paths are for internal
+UI callers, child sessions, or exact scoped grants, not a configurable replacement
+for an interactive household peer. Do not falsify the caller type to use them.
 
 ### Scope and acceptance criteria
 
@@ -192,9 +212,9 @@ Source pointers to inspect in the selected OpenClaw release:
 | `src/agents/tools/agent-step.ts` and `src/agents/run-wait.ts` | Run completion and selection of the matching answer |
 | `docs/concepts/queue.md` | New human input while approval or a reply is pending |
 
-The local source reads a session's latest answer after waiting for a run. Test
-concurrent owner traffic and overlapping requests; do not assume a run ID alone
-proves that the returned text belongs to this question. If the selected native
+The deployed source reads a completed run's terminal answer. Keep regressions
+for concurrent owner traffic and overlapping requests to verify that matching
+through the actual installed harness. If the selected native
 route cannot satisfy the acceptance criteria without custom response handling,
 record the concrete gap and revisit the design rather than silently adding it.
 
@@ -206,7 +226,9 @@ grant owner authority, broad session access, or permission for external actions.
 
 ### Implementation
 
-After design approval:
+The original design is approved through production; the compatibility change
+above remains unapproved. The approved policy and test work may proceed
+independently, but do not enable the route before resolving that decision:
 
 1. Verify selected source and inspect only relevant live configuration and
    relay instructions. Inventory consumers of the shared ping-pong setting.
@@ -222,13 +244,19 @@ After design approval:
    Follow the existing release process for source review, landing, and rollout.
 
 Do not edit a primary checkout or publish private routes, identities, account
-configuration, or operational inventories. No companion edits are needed to
-publish this proposal.
+configuration, or operational inventories. Companion changes require their own isolated worktree before editing.
 
 ### Validation
 
-For this proposal, review formatting, relative links, privacy, and consistency.
-Do not build or deploy unchanged runtime artifacts to validate documentation.
+On 2026-10-13, a recording probe extracted the installed peer-flow function
+and supplied synthetic callers, answers, and recording adapters. With configured
+limit zero, the actual session-send call supplied five, producing five automatic
+reply steps and two additional calls to main. The probe made zero external writes.
+This is evidence of the control mismatch, not installed end-to-end acceptance.
+No live configuration or runtime code was changed.
+
+Review documentation links, privacy, and consistency for this checkpoint. Do not
+build unchanged runtime artifacts to validate these plan edits.
 
 Implementation regressions must cover:
 
@@ -255,9 +283,15 @@ manifest. Physical iMessage acceptance remains a separate owner check.
 
 ### Rollout and rollback
 
-This proposal changes no runtime behavior. After approval, use the normal
-source review and release lifecycle, then promote one immutable artifact
-through DEV, TEST, and PROD with separate configuration and writable state.
+The checkpoint changes no runtime behavior. Use the adopted release controller,
+not the legacy wrapper. Complete focused tests, retained independent review,
+and deployed DEV checks using the same renderer, preparation, startup, health,
+and feature acceptance as TEST. Report readiness to the current manager before
+enqueueing. At the front of the FIFO queue, rebase both source branches, refresh
+the one incremental build, freeze it, and run the full application suite. Deploy
+the same output to TEST and then PROD after replacing and verifying the one
+backup. Merge the tested source only after production checks pass. Use separate
+configuration and writable state for each environment.
 Follow [deployment coordination](../../packages/e2e/DEPLOYMENT_COORDINATION.md)
 and the [deployment guide](../openclaw-setup/patches/README.md).
 
@@ -274,15 +308,22 @@ check found no native gate on automatically returned session-send answers in
 the inspected source. An explicit send could be approved, but replacing the
 automatic return path would exceed the requested simple integration.
 
-The proposal preserves those decisions and identifies exact-release and
-installed behavior checks without claiming they have passed.
+The original design's zero-setting assumption came from a stale local source
+checkout and fails against both the exact pin and deployed code.
+The current manager has been informed. The exact source call site is
+[`sessions-send-tool.ts:1091`](https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/src/agents/tools/sessions-send-tool.ts#L1091). The proposed compatibility patch restores
+that control rather than adding custom response handling; it remains a design
+decision. Independent implementation review has not started.
 
 ### Checklist
 
 - [x] Review existing household relay and Gmail approval contracts.
 - [x] Record question approval, no response gate, and zero ping-pong.
 - [x] Draft both Human and Agent sections with verification limits.
-- [ ] Obtain approval to implement this design.
+- [x] Obtain production approval for the original design.
+- [x] Coordinate with the adopted release manager and inspect deployed behavior.
+- [x] Resolve authoritative upstream source availability.
+- [ ] Approve the compatibility change for the retired follow-up setting.
 - [ ] Verify exact release contracts and current configuration.
 - [ ] Implement the policy and committed regressions.
 - [ ] Complete independent review, source landing, and release validation.
