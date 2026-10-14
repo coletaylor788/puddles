@@ -1,6 +1,6 @@
 # Native approval for household questions to main
 
-**Status:** Production approved; native plugin implemented, installed DEV validation pending
+**Status:** Deployed; household identity and physical phone acceptance pending
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
 **Last updated:** 2026-10-13
 
@@ -108,8 +108,15 @@ approval, session storage, access admission, and the send executor. Five synthet
 questions pass, including concurrent approval and matching replies, with zero
 external writes. A real gateway/channel recording also passes: the fixed owner
 approves the first question, household receives its answer, and denying a fresh
-follow-up leaves main at one run. Review and installed DEV acceptance remain in progress.
-Production configuration, permissions, and the current relay remain unchanged.
+follow-up leaves main at one run.
+
+Retained independent review, CI, complete DEV acceptance, the frozen application
+gate, and installed TEST checks passed. The release manager deployed the same
+artifact to production, verified the active plugin with read-only checks, merged
+[PR #287](https://github.com/coletaylor788/puddles/pull/287), and resumed intake.
+The normal production gateway is healthy. There is no agent-to-agent patch.
+The existing household identity remains a placeholder. A real household sender
+and physical question, owner approval, and answer acceptance are still pending.
 
 ## Agent section
 
@@ -118,7 +125,18 @@ Production configuration, permissions, and the current relay remain unchanged.
 The original proposal landed in PR #260; PR #281 recorded the retired-setting
 blocker. PR #284 withdrew the core patch proposal. Implementation uses paired
 isolated `codex/household-scoped-approvals` branches, coordinated with the release
-manager under the original production authorization.
+manager under the original production authorization. That implementation is merged
+and deployed. The tested public head was `893fce05f81867a609ae219b36c635bb2f960d7c`;
+the source merge was `937a5fde87e97efc964f7d0cd33715528896e1a6`.
+
+The installed artifact digest is
+`a8046a47e90c09980e18f54ee3f0658aa179d89726e85aeccfc3a8dd74435376`.
+The complete frozen gate passed in 13 minutes 5 seconds, and installed TEST
+passed in 3 minutes 12 seconds. The household recording proved two fresh
+approvals, one main run, one denied follow-up, and zero external writes. The
+controller verified the recovery backup before deployment and checked the exact
+source merge before resuming production intake. Normal production health and
+the installed artifact digest were independently checked after resumption.
 
 The selected OpenClaw 2026.9.6 commit is
 `eb377ac59e6c9fd6c7705028034812becf00271b`, tree
