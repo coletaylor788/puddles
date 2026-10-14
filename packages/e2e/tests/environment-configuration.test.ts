@@ -50,6 +50,21 @@ describe("environment configuration", () => {
       expect(() => renderEnvironmentConfiguration(config,[{path,category:"fixture",reason:"Invalid"}],{[path]:false})).toThrow(/Unsupported|Behavior/);
     }
   });
+  it("binds household requester identity without changing its target or consent policy", () => {
+    const entry = { enabled: true, config: { requesterAgentId: "household", targetSessionKey: "agent:main:main",
+      requesters: [{ sessionKey: "agent:household:imessage:direct:owner", senderId: "owner", accountId: "default", channel: "imessage" }] } };
+    const config = { plugins: { entries: { "approved-session-send": entry } } };
+    const root = "/plugins/entries/approved-session-send/config";
+    const rules = ["sessionKey", "senderId"].map(field => ({ path: `${root}/requesters/0/${field}`, category: "account", reason: "Synthetic household requester" }));
+    const selected = renderEnvironmentConfiguration(config, rules, { [rules[0].path]: "agent:household:imessage:direct:fixture", [rules[1].path]: "fixture" });
+    expect(selected.plugins.entries["approved-session-send"].enabled).toBe(true);
+    expect(selected.plugins.entries["approved-session-send"].config.targetSessionKey).toBe("agent:main:main");
+    expect(selected.plugins.entries["approved-session-send"].config.requesters[0].senderId).toBe("fixture");
+    for (const field of ["requesterAgentId", "targetSessionKey", "requesters/0/channel", "requesters"]) {
+      const path = `${root}/${field}`;
+      expect(() => renderEnvironmentConfiguration(config, [{ path, category: "account", reason: "Invalid behavior change" }], { [path]: "changed" })).toThrow(/Unsupported|Behavior/);
+    }
+  });
 
   it("binds a synthetic FaceTime owner while preserving carrier enablement and Talk behavior", () => {
     const config = { plugins: { entries: { facetime: { enabled: true,
