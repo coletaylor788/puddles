@@ -1,6 +1,6 @@
 # Preserve wiki metadata during maintenance
 
-**Status:** Implementation
+**Status:** Complete
 **Issue:** [#242](https://github.com/coletaylor788/puddles/issues/242)
 **Last updated:** 2026-10-13
 
@@ -44,19 +44,16 @@ read correction resolves the independent review's citation-preservation finding
 within that approved maintainer work. No access boundary or destructive migration
 is added. Landing, deployment, rollback and cleanup are authorized.
 
-The metadata reader is merged and installed in accepted production. The dependent
-maintainer cutover is using the installed release controller. Its complete
-application gate passed, then TEST rejected a target binding mismatch. That
-binding is corrected. A subsequent installed check exposed a fixture cleanup
-race; the runtime remains unchanged while the test harness is repaired. No live
-maintenance run is forced.
+The metadata reader is merged. Its focused tests, installed behavior checks, and
+complete application suite passed. The supporting test fixture cleanup repair is
+also merged with retained review clear. Operator-specific configuration and
+release acceptance remain in the private companion record.
 
 ## Agent section
 
 ### State
 
-Assigned public worktree, branch `codex/wiki-maintenance`. Public PR #243 is merged
-and included in the accepted runtime. Companion prompt changes remain private.
+Assigned public worktree, branch `codex/wiki-maintenance`. Public PR #243 is merged. Companion prompt changes remain private.
 The release manager owns promotion, backup, recovery, and tested-head merge. The
 wiki owner keeps one source pair and reusable build workspace for remaining work.
 
@@ -86,9 +83,8 @@ cumulative manifest and deployment list.
 Retained independent reviewer has cleared the source behavior after finding that
 body-only reads could lose citations. Focused coverage includes a rich claim and
 citation roundtrip, body pagination, unchanged default text, denied bridge reads,
-and existing query/read tests. The runtime is installed. Deployed DEV and a complete application gate passed
-for the companion cutover. Final TEST, production read-only acceptance, and owned
-cleanup remain pending through the new release manager.
+and existing query/read tests. The complete application suite and installed
+behavior checks passed. Operator-specific deployment evidence remains private.
 
 ### Rollout and rollback
 
@@ -116,7 +112,8 @@ timeout. These changes affect test orchestration only.
 Committed regressions cover group disappearance, permission failures, identity
 reuse, surviving owned descendants, foreign owners, and provider cleanup after
 failure. A real detached process exercises the host process inspection. The same
-reviewer checks this repair before a fresh complete gate and promotion.
+reviewer cleared this repair. Its eight regressions and original installed
+guidance case passed before the final complete gate and promotion.
 
 ### Review log
 
@@ -128,5 +125,13 @@ citation-preservation finding is resolved. No new actionable findings remain.
 - [x] Diagnose metadata omission and retain independent review.
 - [x] Implement additive read contract and committed regression candidates.
 - [x] Finish focused tests and packaging review.
-- [ ] Land source and complete the accumulated release workflow.
-- [ ] Verify production read-only and clean task-owned development artifacts.
+- [x] Land source and complete the accumulated release workflow.
+- [x] Complete installed acceptance and hand operator closeout to the private record.
+
+### Closeout
+
+Public PR #243 contains the metadata reader correction. Public PR #285 contains
+the supporting fixture cleanup repair. Both are merged. Operator-specific
+configuration, deployment evidence, and resource cleanup belong to the private
+companion record. Local author checkouts retire after this documentation-only
+closeout is published.
