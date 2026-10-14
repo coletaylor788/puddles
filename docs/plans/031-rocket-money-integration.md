@@ -1,8 +1,8 @@
 # Plan 031: Rocket Money MCP and shared browser authentication
 
-**Status:** Deployed; authenticated read passed; shared-session correction in progress
+**Status:** Shared-session correction merged
 **Issue:** [#135](https://github.com/coletaylor788/puddles/issues/135)
-**Last updated:** 2026-10-09
+**Last updated:** 2026-10-13
 
 ## Human section
 
@@ -101,11 +101,9 @@ Other financial writes, scheduled automation and a general integration framework
 **Approval reference:** Owner instruction, “this design is approved, implement and ship it, giving me directions to login when ready”; subsequent approval covers publication and retained independent review.
 **Scope:** The approved five tools, shared host authentication, private main skill and desktop login shortcut. No live financial mutations during validation.
 
-The implementation is deployed. Retained independent review, cumulative CI, installed DEV, all 14 installed TEST scenarios, and physical activation, coexistence, readiness and rollback checks passed. Production is healthy on the same certified artifact.
+The shared-session correction is merged. The adapter shares one MCP connection across native plugin instances and module reloads, preventing competing owners of the same browser profile. It serializes dispatch, configuration changes, and shutdown while retaining per-call authorization and content guards.
 
-Main's skill was updated through Skill Workshop. It keeps the same account and run across follow-ups, uses the five scoped tools, and includes login and uncertain-write recovery. Its read catalog matches the installed server. The desktop login shortcut is installed and points to the production artifact. The live main-container boundary check and existing sandbox mount checks passed without reading credentials.
-
-Owner-assisted login and a bounded authenticated read passed. A later main-agent request exposed duplicate MCP connections across tool registries, causing a local browser-lock `BUSY` response. A correction shares one process connection and serializes its lifecycle across registrations and module reloads. The competing verification process was closed; the permanent correction is under review and release validation. No live financial mutations were used for validation.
+The committed packaged check exercises two native plugin instances and requires one connection across four synthetic status calls. Deployment identities, operator setup, and account readiness belong in private release records. Unattended login and renewal remain validation items.
 
 ## Agent section
 
@@ -114,7 +112,7 @@ Owner-assisted login and a bounded authenticated read passed. A later main-agent
 - Canonical repository design; supersedes the earlier combined gateway and browser-worker proposals.
 - The implementation uses the shared `browser-auth` Python package, official MCP SDK and a main-only OpenClaw stdio adapter. The adapter retains the host process across turns and applies outbound LeakGuard plus inbound classification and redaction.
 - Main's skill and owner-specific finance rules remain private runtime content, managed outside the repository.
-- Shared-session correction: native plugin runtime stores are scoped to managed instances. Keep the MCP bridge in one process slot, retain per-call authorization and guards, and serialize dispatch, account changes and shutdown. Regression coverage uses distinct native plugin instances and the packaged MCP subprocess.
+- Shared-session correction shipped in [PR #261](https://github.com/coletaylor788/puddles/pull/261), merge `5ef80fdc542227803895e19a42f61ca16be5bc4f`. Native plugin runtime stores are scoped to managed instances. Keep the MCP bridge in one process slot, retain per-call authorization and guards, and serialize dispatch, account changes and shutdown. Regression coverage uses distinct native plugin instances and the packaged MCP subprocess.
 
 ### Scope and acceptance criteria
 
@@ -137,17 +135,19 @@ Owner-assisted login and a bounded authenticated read passed. A later main-agent
 
 ### Implementation
 
-1. Select the shared browser auth implementation and define its host-only client/session contract.
-2. Adapt reusable Rocket Money request logic behind the MCP tools.
-3. Connect the owner viewer to the auth provider and update main's private skill to use the MCP tools.
+1. The shared `browser-auth` package owns the private Chrome session and authenticated HTTP client.
+2. The MCP server validates reviewed reads and guarded category/date writes.
+3. The adapter shares its host subprocess across native plugin instances. Main uses a private Workshop skill; the operator shortcut opens the login flow.
 
 ### Validation
 
-Implementation approval activates the applicable checks recorded in the [validation appendix](031-rocket-money-deferred.md). Focused tests use synthetic transactions and credentials. Installed authentication, sandbox isolation and release evidence remain required before activation.
+The [validation appendix](031-rocket-money-deferred.md) retains the validation scope. The shared-session fix passed 15 focused plugin tests, typechecking, packaging, and retained independent review. The committed `openclaw-plugins/rocket-money/scripts/check-shared-session.mjs` exercises the packaged adapter and real MCP subprocess with two native instances, four synthetic calls, and one connection. It uses fresh state and does not access a live account.
+
+The synthetic registry check does not establish authenticated account access. Keep environment acceptance and account readiness in private release records. Financial write validation remains fixture-only.
 
 ### Rollout and rollback
 
-After implementation validation, enable reads first and then the two permitted writes. Disable the tools if authentication isolation or result verification fails. Do not fall back to sharing the authenticated browser with an agent.
+Use the installed release controller for deployment and rollback. Verify whether an accepted build already contains the correction before scheduling another release. Preserve the controller-owned recovery backup and private account state. Disable the tools if authentication isolation or result verification fails; never share the authenticated browser with an agent. Keep operator login setup bound to the installed runtime location.
 
 ### Review log
 
@@ -160,5 +160,6 @@ After implementation validation, enable reads first and then the two permitted w
 - [x] Preserve credential isolation, private rules and verified writes.
 - [x] Keep testing in the deferred appendix.
 - [x] Select the auth implementation and validate the synthetic installed integration.
-- [x] Ship the approved implementation, complete release validation, and provide owner login instructions.
-- [ ] Validate owner-assisted login and a bounded live read.
+- [x] Merge the shared-session correction with retained independent review.
+- [x] Commit packaged coverage for distinct native plugin instances sharing one MCP connection.
+- [x] Keep deployment and account readiness in private release coordination.
