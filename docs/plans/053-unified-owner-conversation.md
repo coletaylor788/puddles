@@ -1,8 +1,8 @@
 # One main conversation across text and voice
 
-Status: Implementation in progress
+Status: Released; physical acceptance pending
 Issue: [#239](https://github.com/coletaylor788/puddles/issues/239)
-Last updated: 2026-10-08
+Last updated: 2026-10-13
 
 ## Human section
 
@@ -72,79 +72,78 @@ the existing Talk path. Do not prebuild a new synchronization layer.
 “approved, ship the change” on 2026-10-08. Scope includes implementation,
 validation, landing, production deployment, rollback, and task cleanup.
 
-Implementation is in progress. Live inspection found iMessage using separate
-direct sessions while FaceTime uses main. Existing histories will be preserved
-and native continuity verified before activation.
+The installed production runtime passes both conversation checks. Owner iMessage,
+Talk, and shared FaceTime use main, while other senders remain isolated. The
+release manager confirmed the accepted artifact includes this change. A bounded
+historical reference now connects the preserved old text history to main.
+Physical text/call/text acceptance remains owner initiated.
 
 ## Agent section
 
 ### State
 
-- Branch `codex/unified-conversation-proposal`, public base `b71445e`.
-- Official documentation checked online and against pinned OpenClaw
-  `eb377ac59e6c9fd6c7705028034812becf00271b`.
-- Live inspection: global `dmScope: per-channel-peer`; FaceTime enabled with
-  `realtime.mode: talk` and `sessionKey: agent:main:main`. Direct iMessage rows
-  have different conversation IDs. Native Talk's active selection is unverified.
-- Related work: [FaceTime integration](046-facetime-talk-client.md) and
-  [Talk conversation progress](050-talk-conversation-progress.md).
+Public implementation merged in PR #240 at `baad973`; companion routing merged
+in its paired change. The conversation patch and installed scenarios are unchanged
+on current main. Production checks passed on October 13 through the adopted
+release process. The manager confirmed inclusion in the accepted production
+artifact. The one-time native history handoff passed readback without a model
+turn or message delivery. No separate application rebuild was needed.
 
 ### Scope and acceptance criteria
 
 Owner text and voice share main, including delegated results and ordinary speech.
-Other senders remain isolated. Preserve current discussion across cutover and
-avoid duplicate actions or channel replies.
+Other senders remain isolated. Preserve earlier histories, avoid replaying actions,
+and keep replies on their originating channel.
 
 ### Architecture and decisions
 
-Use the native per-binding DM scope and Talk session target. Pinned source
-confirms both routes: `src/routing/resolve-route.ts` applies binding overrides;
-`src/gateway/talk/client-agent-consult.ts` retains the canonical session target;
-`src/talk/client-voice-session.ts` persists speech there. Native Talk supplies
-bounded startup history. Persistent harness refresh and mid-call text visibility
-are acceptance checks, not assumed reasons to add infrastructure.
+Use native per-binding DM scope and Talk session targeting. The maintained
+`shared-conversation-context.patch` refreshes the persistent text harness from
+bounded native history before ordinary turns. Audio connections remain separate
+from the durable conversation. No custom session broker or transcript database.
 
 ### Implementation
 
-1. Verify the exact owner binding, client default, and supported
-   history handoff against the installed release.
-2. Apply the private routing change in a paired feature worktree. Retain shared
-   Talk mode and existing permissions.
-3. Test native continuity first. Repair only reproduced failures, with committed
-   regressions and the normal review and release lifecycle.
+Routing, shared history refresh, and cumulative regressions are merged and reviewed.
+The final handoff refreshed both histories and the release queue, then appended
+one 311-character historical reference through native `chat.inject`. Readback
+confirmed one note and an unchanged original transcript. No old action was replayed.
 
 ### Validation
 
-Installed synthetic checks pass owner isolation, shared Talk startup history,
-speech without consultation, reconnect, and transcript deduplication. A recorded
-SDK test reproduced missing speech in the resumed text harness. The fix passes
-24 transcript tests, 172 harness tests, and the canonical-session integration
-test. Both compiled candidate fixtures and package type checks pass. Private
-routing and migration checks pass on pinned Node.
+On October 13, both maintained scenarios passed against the installed production
+runtime using disposable synthetic state and denied network access:
 
-Remaining checks cover sequential
-text/voice handoff, voice-only discussion followed by text, simultaneous inputs,
-and reconnect or hangup while work is pending. Use recording fixtures, then
-owner-initiated physical acceptance. Check that the persistent harness sees the
-new spoken history. Release gate: `node packages/e2e/bin/openclaw-test-env.mjs ci`.
+- `main-conversation.mjs` (2.22 seconds): owner isolation, Talk default main,
+  text-to-voice, speech without consultation, text during a call, reconnect, and
+  transcript deduplication.
+- `shared-harness-context.mjs` (1.21 seconds): ordinary and resumed harness context,
+  later text corrections, unchanged current request, and replay-safe journal.
+
+Both reported zero model calls and external writes. Native configuration confirmed
+one owner iMessage binding to main, global per-channel-peer isolation, and shared
+FaceTime Talk targeting main. Original histories remain present, with newer text
+activity in main. These checks do not prove an immediate update inside an already
+open audio connection. Physical text/call/text acceptance remains outstanding.
 
 ### Rollout and rollback
 
-Use the existing DEV and release workflow. Preserve old histories and restore
-prior routing with the matching runtime on rollback. No raw database merge.
+Use the installed release controller and current manager. Do not repeat the old
+combined release or change legacy recovery holds. Preserve the accepted runtime
+and backup. Coordinate the history note outside an active deployment; never
+restore an older backup over newly accepted conversation activity.
 
 ### Review log
 
-The documentation confirms shared Talk history is native. This revision replaces
-the earlier iMessage-specific target and planned synchronization layer with main
-routing plus focused verification. Retained independent review found no remaining
-material findings in the complete public and private diff. It verified the
-context fix, migration, patch composition, and cumulative test mapping.
+Retained independent review cleared the complete implementation, routing migration,
+patch composition, and cumulative test mapping. October 13 work verifies installed
+behavior and updates release documentation; no runtime behavior changes.
 
 ### Checklist
 
-- [x] Verify live routing and document the native contracts.
-- [x] Simplify the proposal.
-- [x] Approve implementation through production.
-- [ ] Resolve and verify history cutover.
-- [ ] Validate, review, release, and complete cleanup.
+- [x] Verify native contracts and approve production scope.
+- [x] Implement, review, merge, and pass installed DEV checks.
+- [x] Pass installed production conversation checks.
+- [x] Confirm accepted artifact and finish the history handoff.
+- [ ] Complete source documentation and owned-artifact cleanup.
+- [ ] Owner validates physical text/call/text continuity.
