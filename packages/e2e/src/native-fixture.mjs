@@ -100,6 +100,7 @@ function validateScenario(scenario) {
       (!scenario.sessionRecall || typeof scenario.sessionRecall.enabled !== "boolean" ||
        Object.keys(scenario.sessionRecall).join(",") !== "enabled")) throw new Error("Invalid session recall fixture");
   if (scenario.heartbeat !== undefined && scenario.heartbeat !== true) throw new Error("Invalid fixture heartbeat selection");
+  if (scenario.sessionSend !== undefined && scenario.sessionSend !== true) throw new Error("Invalid fixture native session send selection");
   for (const step of scenario.steps) {
     if (step.wake !== undefined && (!scenario.heartbeat || typeof step.wake !== "string" || !step.wake.trim() || step.incoming?.length)) {
       throw new Error("Invalid fixture heartbeat wake");
@@ -118,6 +119,7 @@ function validateScenario(scenario) {
     for (const response of step.responses) {
       for (const tool of response.toolCalls ?? []) {
         if (!(scenario.heartbeat && step.wake && tool.name === "heartbeat_respond") &&
+            !(scenario.sessionSend && tool.name === "sessions_send") &&
             !(scenario.sessionRecall && tool.name === "sessions_history") && !scenario.adapters?.[tool.name]) throw new Error(`Missing required recording adapter: ${tool.name}`);
       }
     }
@@ -126,6 +128,7 @@ function validateScenario(scenario) {
 
 export async function runScenario(installedDir, scenario, options = {}) {
   validateScenario(scenario);
+  if (scenario.sessionSend && !options.providerFixture) throw new Error("Native session sends require an explicit isolated target provider fixture");
   if (!existsSync(join(installedDir, "openclaw.mjs")) ||
       !existsSync(join(installedDir, "dist", "entry.js")) ||
       !existsSync(join(installedDir, "node_modules"))) {

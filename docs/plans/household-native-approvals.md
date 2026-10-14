@@ -1,6 +1,6 @@
 # Native approval for household questions to main
 
-**Status:** Production scope approved; scoped native route proposed for validation
+**Status:** Production approved; native plugin implemented, installed DEV validation pending
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
 **Last updated:** 2026-10-13
 
@@ -101,20 +101,24 @@ instructed this owner to ramp up on the new release manager and continue deploym
 to production. The requester then explicitly said: "We should not patch agent to
 agent communication." That limit is binding; the earlier patch decision is retired.
 
-The scoped native route is a recommended design refinement supported by exact-pin
-source and upstream tests. Its combination with household approvals still needs
-implementation review and composed validation. No runtime implementation,
-configuration, permissions, release ticket, or production deployment has changed.
-Retain the current relay until this replacement passes installed acceptance.
+The scoped native route is implemented in `approved-session-send`, with paired
+configuration and application packaging. Forty-three focused tests pass. A recording
+test loads the plugin through the real OpenClaw registry and composes native
+approval, session storage, access admission, and the send executor. Five synthetic
+questions pass, including concurrent approval and matching replies, with zero
+external writes. A real gateway/channel recording also passes: the fixed owner
+approves the first question, household receives its answer, and denying a fresh
+follow-up leaves main at one run. Review and installed DEV acceptance remain in progress.
+Production configuration, permissions, and the current relay remain unchanged.
 
 ## Agent section
 
 ### State and source evidence
 
 The original proposal landed in PR #260; PR #281 recorded the retired-setting
-blocker. This revision removes its core patch proposal. The feature remains in
-the owner's isolated worktree on `codex/household-native-approvals`, coordinated
-with the current release manager under the original production authorization.
+blocker. PR #284 withdrew the core patch proposal. Implementation uses paired
+isolated `codex/household-scoped-approvals` branches, coordinated with the release
+manager under the original production authorization.
 
 The selected OpenClaw 2026.9.6 commit is
 `eb377ac59e6c9fd6c7705028034812becf00271b`, tree
@@ -166,22 +170,50 @@ Before enabling the route, prove the complete composition:
 - Plugin lifecycle, configuration refresh, and restart keep approval enforcement
   and route access consistent. No persisted or cached approval becomes authority.
 
-Native regression inspection establishes a supported seam, not end-to-end proof.
-Resolve authoritative metadata lookup and all runtime access entrypoints during
-implementation review. Any major departure from the documented hook/grant design
-requires a reviewed proposal; retain the no-core-patch limit throughout.
+The composed regression is
+`packages/e2e/scenarios/household-approval.mjs`, registered in the cumulative
+candidate suite. It loads the actual packaged plugin by default. An explicit
+development flag permits a freshly built plugin against the prepared runtime.
+Native registry loading caught and corrected metadata lookup against a configured
+session-store path. The plugin now resolves that path through the native runtime.
+Recorded checks cover argument mutation, fresh follow-up approval, concurrent
+questions and matching answers, denial, abort, spoofed caller, timeout, target
+failure, replacement and archive after a scoped grant, pending configuration
+disable, runtime stop, and denial when the provider is absent.
+
+The real channel regression exposed two plugin registration requirements. Startup
+activation alone does not select policy for the prepared run, and `discovery`
+registration can carry executable run hooks. The manifest declares Copilot harness
+activation, and registration includes full, discovery, and tool-discovery modes.
+Before reading runtime metadata, the global grant checks the native request
+registry for its own loaded plugin and approval hook. Missing scope, an omitted
+hook, or unrelated hooks grant nothing. This uses the exported runtime-scope SDK
+for the validated native Copilot flow; it is not a universal generation API.
+
+The private installed regression drives the real native owner `/approve` command
+through recorded iMessage ingress. It verifies distinct question approvals, no
+main execution before consent, one returned answer, denial of the later question,
+correct owner and household destinations, and no extra shutdown delivery. It is
+registered in the maintained installed application runner. CLI approval listing
+cannot substitute for this check because request visibility is reviewer-scoped.
+
+The host resolves the current main incarnation when granting access after
+approval. Native lifecycle admission prevents that grant from reaching a later
+replacement. Approval names the fixed conversation, not a historic incarnation.
+No custom session lock or per-question grant cache is introduced.
 
 ### Delivery and verification
 
-This is a documentation checkpoint. Review links, privacy, and consistency; do
-not build or deploy unchanged runtime code. Deployment-specific work later needs
-its own isolated companion worktree. Follow the
+Implementation and the companion configuration have isolated worktrees and one
+reusable application output. Follow the
 [security architecture](../openclaw-setup/security-architecture.md), the
 [runner guide](../../packages/e2e/README.md), and
 [deployment coordination](../../packages/e2e/DEPLOYMENT_COORDINATION.md).
 
-For implementation, add focused policy tests and a durable composed regression
-using recording adapters with no real message delivery. Complete DEV checks and
+The plugin replaces relay guidance only for configured interactive conversations.
+Private configuration permits the native tool, adds household to fixed-target
+plugin approval forwarding, and removes household from ordinary cross-agent
+access. Existing child-agent permissions remain unchanged. Complete DEV checks and
 retained independent review before manager intake. The manager owns the FIFO
 TEST/PROD lane, full application suite on frozen output, backup replacement,
 production read-only acceptance, and source merge. Do not enqueue an unvalidated
