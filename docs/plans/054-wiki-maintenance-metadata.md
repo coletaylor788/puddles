@@ -107,7 +107,11 @@ error, and the early failure left provider fixture servers open. The harness now
 records the spawned process identity, verifies group members before signaling,
 and never escalates against a disappeared or reused group. Permission errors for
 a group that still exists remain failures. Every provider cleanup runs even if
-process shutdown fails. These changes affect test orchestration only.
+process shutdown fails. If the leader has already exited and a surviving group
+cannot be proven to belong to the fixture, cleanup refuses to signal it. The
+identified owner must recover those processes; provider resources still close.
+The final child-close join retains the enclosing test and application command
+timeout. These changes affect test orchestration only.
 
 Committed regressions cover group disappearance, permission failures, identity
 reuse, surviving owned descendants, foreign owners, and provider cleanup after
