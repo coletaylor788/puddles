@@ -1,8 +1,8 @@
 # Voice request recovery on the current harness
 
-Status: Production approved; DEV validated, cumulative test repair in progress
+Status: Approved design; refreshing DEV qualification, production release held
 Issue: [#290](https://github.com/coletaylor788/puddles/issues/290)
-Last updated: 2026-10-14
+Last updated: 2026-10-15
 
 ## Human section
 
@@ -108,6 +108,13 @@ and fresh requests after terminal outcomes through review, release, and cleanup.
 Steering, migration compatibility, harness-specific adapter repairs, reader
 changes, registry storage repairs, and new queueing remain excluded.
 
+**Current execution limit:** Source refresh, retained review, and DEV qualification
+remain authorized. Automatic approval review rejected release admission and the
+release manager has an explicit production question pending. Keep queue admission,
+TEST, PROD, source merge, and automation held until that is resolved. The newly
+released household baseline requires fresh DEV qualification in the existing
+workspace and incremental build. Earlier receipts remain historical evidence.
+
 The inspected call shows an accepted original request followed by rejected
 additional input and misleading voice feedback. Installed classifier probes
 reproduce missed status questions and an overly broad follow-up marker. The
@@ -129,8 +136,12 @@ feature has reached production.
 
 ### State
 
-Implementation follows `safe-feature-development` under the recorded production
-approval. The current harness and route remain the acceptance target. Do not wait for or qualify a future harness as part of this work. Keep this existing file path so links and the open proposal remain valid.
+Implementation follows `safe-feature-development` under the recorded design
+approval, with the current release hold stated in the Human section. The prior
+R3 qualification is retired for admission after the household release. Rebase the
+existing pair, reuse its prepared source and incremental output, and produce fresh
+R4 review, guidance guards, and DEV receipts. Do not retarget or replay the old
+release ticket. Queue admission, TEST, PROD, merge, and automation remain held. The current harness and route remain the acceptance target. Do not wait for or qualify a future harness as part of this work. Keep this existing file path so links and the open proposal remain valid.
 
 Related designs are [voice progress](050-talk-conversation-progress.md) and
 [live conversation](055-live-conversation-default.md). Keep private transcripts,
