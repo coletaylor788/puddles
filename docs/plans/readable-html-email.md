@@ -1,6 +1,6 @@
 # Readable HTML email
 
-Status: Implementing approved design
+Status: Focused checks pass; review and release validation pending
 Issue: https://github.com/coletaylor788/puddles/issues/295
 Last updated: 2026-10-14
 
@@ -40,7 +40,7 @@ Implementation and focused offline tests pass. Two MIME defects found during rev
 
 ### State
 
-Feature branch `codex/readable-email`, based on public `dd9daad`. Companion changes are tracked separately. All fixtures are synthetic; production is unchanged.
+Feature branch `codex/readable-email`, based on public `dd9daad`; draft PR #296. Implementation and MIME fixes are committed through `722586d`. Companion changes are tracked separately. All fixtures are synthetic; production is unchanged.
 
 ### Scope and acceptance criteria
 
@@ -60,7 +60,7 @@ Reader guidance reports failed or incomplete reads without raw retries. The depe
 
 ### Validation
 
-Focused results: 260 Python tests, 91 secure-gmail tests, and five companion guidance tests pass. The legacy live-account test module is retired and direct invocation collects no executable tests. The broad suite skips that module. Packaged encoding regressions are awaiting a fresh run.
+Focused results: 260 Python tests, 91 secure-gmail tests, and five companion guidance tests pass. The legacy live-account test module is retired and direct invocation collects no executable tests. The broad suite skips that module. Packaged encoding regressions pass with the actual parser, MCP server, plugin and both guards using recording adapters. Hosted repository and code analysis checks pass.
 
 Require thorough parser unit tests and guarded-route tests covering:
 
