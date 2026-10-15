@@ -4,22 +4,21 @@ A policy plugin for one fixed cross-agent question route. It uses OpenClaw's
 native pre-call approval and scoped session-access SDK. It does not register a
 replacement tool or patch agent-to-agent communication.
 
-Configure exact interactive requesters and a canonical destination:
+Configure the calling agent and a canonical destination:
 
 ```json
 {
   "requesterAgentId": "household",
-  "targetSessionKey": "agent:main:main",
-  "requesters": [{
-    "sessionKey": "agent:household:imessage:direct:fixture-person",
-    "channel": "imessage",
-    "accountId": "default",
-    "senderId": "fixture-person"
-  }]
+  "targetSessionKey": "agent:main:main"
 }
 ```
 
-Use real host-observed session and sender identities in deployment configuration.
+OpenClaw identifies the calling agent. Interactive conversations belonging to
+that agent can request approval regardless of channel or sender. The hook checks
+the native agent, session, run, and current session incarnation. Child, cron, and
+hook sessions retain their restrictions. The scoped provider matches the native
+requester session's agent and the fixed target.
+
 The plugin entry must be explicitly enabled. Native `tools.agentToAgent` policy
 must deny the ordinary requester/target pair. The plugin fails closed if it does
 not. The SDK grant permits only `send` to the exact target session; it grants no
@@ -34,9 +33,13 @@ is refused unless the current native request registry contains this loaded
 plugin and its approval hook. Unsupported run registries fail closed. Do not
 enable another harness without proving that same composition.
 
-Set `plugins.entries.approved-session-send.hooks.allowConversationAccess=true`
-to enable the route-specific prompt guidance. It replaces older relay directions
-only in the configured household conversations.
+Put question instructions in the requester's agent-level `AGENTS.md` so native
+app and channel conversations receive the same guidance. Replace old manual
+message-relay instructions. Tell the agent to use `sessions_send` with the fixed
+target, a complete short question, and `timeoutSeconds=60`, then use the returned
+answer in the originating conversation. Every follow-up needs a fresh approval.
+Do not retry uncertain sends or promise later delivery. The plugin registers no
+conversation-specific prompt override.
 
 Every question requires native approve-once or deny. Configure native plugin
 approval forwarding to a fixed authenticated owner target and include the

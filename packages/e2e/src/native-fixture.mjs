@@ -305,6 +305,8 @@ export async function runScenario(installedDir, scenario, options = {}) {
       if (step.restartBefore) { await stopFixtureProcess(trackedChild); await provider?.beforeRestart?.(); await startGateway(); }
       responses.push(...step.responses);
       requestCount += step.responses.length;
+      // A provider may exercise native app ingress against this isolated gateway.
+      await provider?.dispatchStep?.(step);
       if (step.wake) {
         // Exercise the persisted monitor, whose scratch is the real checklist.
         // Generic wake payloads intentionally bypass monitor scratch.
