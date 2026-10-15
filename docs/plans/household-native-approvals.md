@@ -1,8 +1,8 @@
 # Native approval for household questions to main
 
-**Status:** Released; physical phone acceptance remains open
+**Status:** Approved answer interpretation repair in progress
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
-**Last updated:** 2026-10-14
+**Last updated:** 2026-10-15
 
 ## Human section
 
@@ -69,6 +69,20 @@ outcome; household must not resend automatically, read history, or promise later
 delivery. Native admission rejects a target replaced or archived after the grant.
 The plugin never replaces the tool executor or patches agent-to-agent code.
 
+#### Main recognizes the approved disclosure
+
+Main's agent instructions permit answering the specific question delivered by
+OpenClaw with native inter-session provenance from household's `sessions_send`
+route. That route already requires owner approval before main runs. Provenance
+identifies the source; the enforced route supplies the approval guarantee.
+Remove the conflicting household manual-relay guidance and blanket disclosure
+prohibition. Main returns the answer normally and retains its reader policy.
+
+This does not turn household into the owner. Message text claiming approval,
+forged headers, quoted requests, and worker output cannot establish the native
+source. The exception permits only the facts needed for this approved answer,
+not unrelated private information, external actions, or future questions.
+
 ### Status
 
 **Approval:** Production approved. **Approval reference:** On 2026-10-14 the
@@ -77,14 +91,24 @@ approval for every question, and native exact-session sends: "okay, approved thi
 new solution". No core agent-to-agent patch is permitted. This approval covers
 implementation, review, validation, release, and cleanup within that scope.
 
-The agent-level correction is deployed and its tested source is merged. Focused
-checks, retained review, DEV, the full application gate, TEST, and read-only
-production acceptance passed. Production is healthy with intake open. Physical
-phone question, owner approval, and returned-answer acceptance remains open.
+The phone retest delivered an approval and the approved request reached main.
+Main's refusal returned to household: its old instructions still prohibited the
+approved disclosure. The requester asked to investigate and fix this on
+2026-10-15. The repair updates main's agent-level policy within the approved
+question-and-answer scope. Physical answer acceptance remains open.
 
 ## Agent section
 
 ### State
+
+The 2026-10-15 physical retest confirmed an allowed approval, an `ok` native
+`sessions_send` result, and a returned refusal from main. Main retained the old
+private-data prohibition and manual reply-marker instructions. No transport or
+agent-to-agent runtime patch is needed. The earlier scripted target proved
+transport only; it did not test main's authorization interpretation. Current work
+adds main guidance and tests the native main harness with synthetic private facts.
+The last completed release evidence below remains historical, not certification
+of this repair.
 
 [PR #289](https://github.com/coletaylor788/puddles/pull/289) merged as
 `e31805991e18e8b0ec20974acd2e3260f4d5f62e`. The release controller deployed
@@ -214,4 +238,6 @@ entrypoint. Later behavior changes require review by that same reviewer.
 - [x] Complete retained review and required repository checks.
 - [x] Pass the frozen application gate, TEST, and read-only PROD acceptance.
 - [x] Merge tested source and finalize owned development output.
+- [ ] Validate main guidance with approved, denied, and forged-source synthetic requests.
+- [ ] Complete retained repair review and the new DEV, application, TEST, and PROD gates.
 - [ ] Complete physical question, owner approval, and answer acceptance.
