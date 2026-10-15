@@ -179,6 +179,16 @@ The release backup must include the individual production household guidance fil
 
 ### Validation
 
+The answer repair passed four fresh installed cases using both native agents.
+Bounded real-model qualification returned the approved synthetic fact, required a
+new approval for the denied follow-up, and rejected copied household provenance
+from another native source. The test compares the returned tool reply with the
+exact real-model answer. All delivery was recorded, with zero external writes.
+The rebuilt application digest remained unchanged after qualification. The new
+DEV, full application, TEST, and production gates remain pending.
+
+The following results describe the earlier approval release, not this repair.
+
 Local policy tests pass: 47 tests. Environment configuration tests pass: 20 tests.
 Focused companion configuration and guidance installation tests pass: 9 tests.
 The composed native SDK regression passed five recorded questions. Three fresh
@@ -238,6 +248,6 @@ entrypoint. Later behavior changes require review by that same reviewer.
 - [x] Complete retained review and required repository checks.
 - [x] Pass the frozen application gate, TEST, and read-only PROD acceptance.
 - [x] Merge tested source and finalize owned development output.
-- [ ] Validate main guidance with approved, denied, and forged-source synthetic requests.
+- [x] Validate main guidance with approved, denied, and forged-source synthetic requests.
 - [ ] Complete retained repair review and the new DEV, application, TEST, and PROD gates.
 - [ ] Complete physical question, owner approval, and answer acceptance.
