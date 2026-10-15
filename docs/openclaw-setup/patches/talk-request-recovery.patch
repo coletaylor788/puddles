@@ -353,10 +353,10 @@ index 5be9e255..08afd3e4 100644
          await harness.bridge.close({ disposition: "detach" });
          const sentAtClose = socket.sent.length;
 diff --git a/extensions/openai/realtime-quicksilver-instructions.ts b/extensions/openai/realtime-quicksilver-instructions.ts
-index 0d0ef210..4493c24a 100644
+index 0d0ef210..12dede63 100644
 --- a/extensions/openai/realtime-quicksilver-instructions.ts
 +++ b/extensions/openai/realtime-quicksilver-instructions.ts
-@@ -5,6 +5,8 @@ Converse live by default. Reason, explain, brainstorm, and iterate using the con
+@@ -5,12 +5,15 @@ Converse live by default. Reason, explain, brainstorm, and iterate using the con
  Delegate to the client only to retrieve missing memory or context, look up or verify information using the internet or other tools, or take an external action. Reasoning alone does not require delegation.
  Reuse available results; delegate again only when a new lookup or action is needed. If essential information must come from the user, ask a brief clarification live.
  Continue conversation from available context while delegated work runs. Delegate each backend request once; receipts, progress, and results are context, not new requests.
@@ -365,6 +365,13 @@ index 0d0ef210..4493c24a 100644
  Do not invent results, progress, or completion. Never claim an action succeeded without a result.`;
  
  const OPENAI_QUICKSILVER_CHANNEL_INSTRUCTIONS = `Context on the commentary channel is silent background. You may use it, but never read it aloud.
+ Context on the speakable channel is your answer to deliver naturally in your own words. Never mention the channel or the delegation.`;
+ 
+ export const OPENAI_QUICKSILVER_HOST_CONTROL_INSTRUCTIONS = `Delegate requests to check live task status, cancel, redirect, or change backend work to the client, even while another delegation is active.
++Questions about whether work is actually happening are status checks, even when phrased conversationally, such as "Are you actually checking?" or "How is that lookup going?" Each new status question requires a new client delegation and its fresh host result before you answer. Earlier receipts and progress updates, even from this call, cannot answer a new status question.
+ For these task-control requests, wait for a fresh host control result for this voice call. Do not infer current task status from shared history or rewrite a control request into a progress claim.
+ Ordinary conversational follow-ups, clarification, and brainstorming from available context do not require host control. Continue that discussion while backend work runs.
+ Shared conversation history may describe other calls or completed work; it does not establish this call's live ownership or status.
 diff --git a/src/gateway/talk/client-agent-consult.ts b/src/gateway/talk/client-agent-consult.ts
 index de5ce607..f4248fd9 100644
 --- a/src/gateway/talk/client-agent-consult.ts

@@ -115,6 +115,9 @@ controller acknowledges before admission and handles unsupported input through
 its overlap recovery path. Real-model validation also reproduced a status question
 missed after earlier discussion accumulated in the transcript. A narrow status
 match preserves that context and keeps mutating-control rules unchanged.
+A further live run answered from an earlier progress update without checking the
+host. The voice instruction now explicitly requires a new delegation for each
+status question. This must pass fresh live validation before release.
 Focused tests now prove that failed admission and completion racing extra input
 can suppress the original outcome. The shared voice repairs preserve that outcome
 and allow a fresh request. Source review is clear; installed and real-model DEV
@@ -233,7 +236,10 @@ at the end of accumulated input. Transcript storage and cancellation/negation
 precedence remain unchanged. The added composed regression checks the real
 classifier, status callback, original result, and retained context on the next
 request. The retained reviewer cleared this correction and the complete current
-source diff. Refreshed live-model evidence, installed DEV, and managed release
+source diff. A subsequent provider run skipped host control and answered from
+earlier progress. The added runtime instruction makes each new status question
+require its own fresh host result; retained review and real-model checks cover
+that correction. Refreshed live-model evidence, installed DEV, and managed release
 gates remain required.
 
 ### Checklist
