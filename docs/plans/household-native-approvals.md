@@ -91,8 +91,9 @@ phone question, owner approval, and returned-answer acceptance remains open.
 artifact `bf12e7d1bcdca8d6543cdfbef9a02badec4d32f54e67d16eb7ab10cfe36860f0`
 and completed ticket `household-agent-approvals-20261014-r3`. The release lane is
 empty, production is healthy, and intake is open. The single recovery backup is
-valid. The release manager owns remote workspace finalization; local feature
-output and its companion worktree have been finalized.
+valid. Native finalization removed the remote feature workspace, local feature
+output, companion worktree, and manager staging. Installed deployments, shared
+caches, and recovery state remain intact.
 
 The earlier native app failure came from conversation-specific instructions:
 household chose the old message relay, which failed before creating an approval.
@@ -212,5 +213,5 @@ entrypoint. Later behavior changes require review by that same reviewer.
 - [x] Pass native app and channel installed regressions and DEV behavior checks.
 - [x] Complete retained review and required repository checks.
 - [x] Pass the frozen application gate, TEST, and read-only PROD acceptance.
-- [ ] Merge tested source and finalize owned development output.
+- [x] Merge tested source and finalize owned development output.
 - [ ] Complete physical question, owner approval, and answer acceptance.
