@@ -1,6 +1,6 @@
 # Readable HTML email
 
-Status: Focused checks pass; review and release validation pending
+Status: Reviewed and DEV validated; release validation pending
 Issue: https://github.com/coletaylor788/puddles/issues/295
 Last updated: 2026-10-14
 
@@ -34,13 +34,13 @@ Keep the injection guard and reader prompt: malicious instructions can still app
 
 **Approval:** Production approved. **Approval reference:** The requester said “approved, ship it” on 2026-10-14, after agreeing to this design. Scope includes implementation, validation, release, merge and cleanup. No chunking or paging, and no real email examples.
 
-Implementation and focused offline tests pass. Two MIME defects found during review are corrected. Independent review and deployed DEV validation remain before the release queue.
+Implementation, focused offline tests and independent review pass. The installed DEV checks pass for readable email and reader guidance across ordinary, spawned and resumed sessions. The release manager owns the remaining full suite, TEST, production validation and source merge.
 
 ## Agent section
 
 ### State
 
-Feature branch `codex/readable-email`, based on public `dd9daad`; draft PR #296. Implementation and MIME fixes are committed through `722586d`. Companion changes are tracked separately. All fixtures are synthetic; production is unchanged.
+Feature branch `codex/readable-email`, PR #296. Reviewed behavior is public `173e0356` on base `e3180599`. Companion changes are tracked separately. All fixtures are synthetic; production is unchanged. The front-of-queue rebase must include subsequent changes to main.
 
 ### Scope and acceptance criteria
 
@@ -60,7 +60,7 @@ Reader guidance reports failed or incomplete reads without raw retries. The depe
 
 ### Validation
 
-Focused results: 260 Python tests, 91 secure-gmail tests, and five companion guidance tests pass. The legacy live-account test module is retired and direct invocation collects no executable tests. The broad suite skips that module. Packaged encoding regressions pass with the actual parser, MCP server, plugin and both guards using recording adapters. Hosted repository and code analysis checks pass.
+Focused results: 260 Python tests, 91 secure-gmail tests, and five companion guidance tests pass. The legacy live-account test module is retired and direct invocation collects no executable tests. The broad suite skips that module. Packaged encoding regressions pass with the actual parser, MCP server, plugin and both guards using recording adapters. Hosted repository and code analysis checks pass. Installed DEV acceptance passed: the packaged email route, complete authored configuration and native reader guidance scope/restart checks. Both the application output and installed DEV tree have digest `5ec736e12c8ce22d3ed1a59d3bfa826d3811ef6eedf350c2f031cf84fcc30c29`. Recording acceptance reports zero external writes.
 
 Require thorough parser unit tests and guarded-route tests covering:
 
@@ -79,9 +79,10 @@ Follow the normal release process. Never fall back to raw HTML on failure.
 
 ### Review log
 
-Prior review found two MIME defects: filename-only attachments disrupted downloads, and early HTML decoding lost encoding information. Both are corrected with offline and contained-worker regressions. The prior reviewer cannot be resumed after chat recovery; replacement review remains pending.
+Prior review found two MIME defects: filename-only attachments disrupted downloads, and early HTML decoding lost encoding information. Both are corrected with offline and contained-worker regressions. The prior reviewer could not be resumed after chat recovery. Replacement `email_review_recovery` completed the full public and companion diff plus deployment callback review with no material findings. It independently passed 60 focused Python tests, including real macOS containment and encodings, and five guidance lifecycle tests.
 
 ### Checklist
 
 - [x] Design agreed and test expectations recorded.
-- [ ] Implementation, validation and release.
+- [x] Implementation, focused validation, independent review and installed DEV acceptance.
+- [ ] Full application suite, TEST, production acceptance, merge and cleanup.
