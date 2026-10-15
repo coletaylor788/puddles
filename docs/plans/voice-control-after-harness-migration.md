@@ -1,6 +1,6 @@
 # Voice request recovery on the current harness
 
-Status: Production approved; implementation complete, validation in progress
+Status: Production approved; DEV validated, awaiting managed release
 Issue: [#290](https://github.com/coletaylor788/puddles/issues/290)
 Last updated: 2026-10-14
 
@@ -117,11 +117,13 @@ missed after earlier discussion accumulated in the transcript. A narrow status
 match preserves that context and keeps mutating-control rules unchanged.
 A further live run answered from an earlier progress update without checking the
 host. The voice instruction now explicitly requires a new delegation for each
-status question. This must pass fresh live validation before release.
+status question. Both natural status phrasings passed fresh live validation.
 Focused tests now prove that failed admission and completion racing extra input
 can suppress the original outcome. The shared voice repairs preserve that outcome
-and allow a fresh request. Source review is clear; installed and real-model DEV
-validation are in progress. No runtime change has reached production.
+and allow a fresh request. Source review is clear. Installed DEV and two live
+voice scenarios passed, including discussion, fresh status, terminal failure,
+and contextual retry. Managed release gates remain. No runtime change from this
+feature has reached production.
 
 ## Agent section
 
@@ -239,8 +241,11 @@ request. The retained reviewer cleared this correction and the complete current
 source diff. A subsequent provider run skipped host control and answered from
 earlier progress. The added runtime instruction makes each new status question
 require its own fresh host result; retained review and real-model checks cover
-that correction. Refreshed live-model evidence, installed DEV, and managed release
-gates remain required.
+that correction. Final DEV passed its complete installed suite, all twelve
+compiled Talk checks, and two real voice-model scenarios with different status
+phrasings. Both scenarios used a recording harness, made two work requests and
+one fresh status check, and recorded zero external writes. The retained reviewer
+cleared the complete source diff. Managed release gates remain required.
 
 ### Checklist
 
@@ -250,4 +255,5 @@ gates remain required.
 - [x] Approve implementation of the narrowed design.
 - [x] Validate classification, accurate feedback, and busy-input recovery in focused tests.
 - [x] Prove terminal outcomes allow a fresh contextual voice request in composed tests.
-- [ ] Complete DEV, review, cumulative release gates, and physical acceptance.
+- [x] Complete installed DEV, retained source review, and real-model validation.
+- [ ] Complete cumulative release gates and physical acceptance.
