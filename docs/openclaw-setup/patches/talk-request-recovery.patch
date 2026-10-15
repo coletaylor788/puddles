@@ -352,6 +352,27 @@ index 5be9e255..08afd3e4 100644
  
          await harness.bridge.close({ disposition: "detach" });
          const sentAtClose = socket.sent.length;
+diff --git a/extensions/openai/realtime-quicksilver-gateway-bridge.test.ts b/extensions/openai/realtime-quicksilver-gateway-bridge.test.ts
+index afbc6a43..711fbdc5 100644
+--- a/extensions/openai/realtime-quicksilver-gateway-bridge.test.ts
++++ b/extensions/openai/realtime-quicksilver-gateway-bridge.test.ts
+@@ -475,8 +475,14 @@ describe("GPT-Live gateway relay bridge", () => {
+     );
+     expect(
+       parseSent(connectedSocket).filter((event) => event.type === "session.context.append"),
+-    ).toHaveLength(2);
+-    expect(connectedSocket.sent[1]).toContain("I’ll check that request.");
++    ).toEqual([
++      {
++        type: "session.context.append",
++        channel: "speakable",
++        content: [{ type: "input_text", text: "Ready for the next task" }],
++      },
++    ]);
++    expect(parseSent(connectedSocket)).toHaveLength(2);
+ 
+     await bridge.close();
+     expect(closePeer).toHaveBeenCalledOnce();
 diff --git a/extensions/openai/realtime-quicksilver-instructions.ts b/extensions/openai/realtime-quicksilver-instructions.ts
 index 0d0ef210..12dede63 100644
 --- a/extensions/openai/realtime-quicksilver-instructions.ts
@@ -372,6 +393,46 @@ index 0d0ef210..12dede63 100644
  For these task-control requests, wait for a fresh host control result for this voice call. Do not infer current task status from shared history or rewrite a control request into a progress claim.
  Ordinary conversational follow-ups, clarification, and brainstorming from available context do not require host control. Continue that discussion while backend work runs.
  Shared conversation history may describe other calls or completed work; it does not establish this call's live ownership or status.
+diff --git a/extensions/openai/realtime-quicksilver-public-delegation.test.ts b/extensions/openai/realtime-quicksilver-public-delegation.test.ts
+index ca8c48a4..fc47b614 100644
+--- a/extensions/openai/realtime-quicksilver-public-delegation.test.ts
++++ b/extensions/openai/realtime-quicksilver-public-delegation.test.ts
+@@ -70,9 +70,13 @@ describe("public GPT-Live delegation", () => {
+         "<input>Check the forecast.</input>",
+       );
+       expect(runAgentConsult.mock.calls[0]?.[0].prompt).toContain("assistant: I can help.");
+-      expect(parseSent(socket)).toContainEqual(
+-        expect.objectContaining({ type: "session.commentary.append", delegation_id: null }),
+-      );
++      expect(parseSent(socket)).toEqual([
++        {
++          type: "session.commentary.append",
++          delegation_id: "item_public",
++          content: "The forecast is sunny.",
++        },
++      ]);
+       await nextEventLoopTurn();
+       frame({
+         type: "session.output_transcript.delta",
+diff --git a/extensions/openai/realtime-quicksilver-session-lifecycle.test.ts b/extensions/openai/realtime-quicksilver-session-lifecycle.test.ts
+index 3bbfa010..af07942f 100644
+--- a/extensions/openai/realtime-quicksilver-session-lifecycle.test.ts
++++ b/extensions/openai/realtime-quicksilver-session-lifecycle.test.ts
+@@ -163,7 +163,13 @@ describe("GPT-Live browser session lifecycle", () => {
+         const receipts = parseSent(socket).filter(
+           (event) => event.type === "session.context.append",
+         );
+-        expect(receipts).toHaveLength(hostClassified ? 1 : 0);
++        expect(receipts).toEqual([]);
++        expect(parseSent(socket)).toContainEqual({
++          type: "delegation.context.append",
++          delegation_item_id: "task",
++          channel: "speakable",
++          content: [{ type: "input_text", text: "Done" }],
++        });
+         expect(handleDelegationInput).toHaveBeenCalledTimes(hostClassified ? 1 : 0);
+       } finally {
+         await realtime.cleanup();
 diff --git a/src/gateway/talk/client-agent-consult.ts b/src/gateway/talk/client-agent-consult.ts
 index de5ce607..f4248fd9 100644
 --- a/src/gateway/talk/client-agent-consult.ts
@@ -573,6 +634,21 @@ index 34aefb87..448500f2 100644
    it("rechecks reusable browser ownership after yielding before backend admission", async () => {
      let current = true;
      const assertCurrent = vi.fn(() => {
+diff --git a/src/gateway/talk/client-gateway-control.test.ts b/src/gateway/talk/client-gateway-control.test.ts
+index 479e460d..ea3ffd56 100644
+--- a/src/gateway/talk/client-gateway-control.test.ts
++++ b/src/gateway/talk/client-gateway-control.test.ts
+@@ -19,7 +19,9 @@ describe("Talk client Gateway control owner", () => {
+     ["use the release branch instead", false, false, "delegation", false],
+     ["use the release branch instead", true, false, "delegation", true],
+     ["also check tests", false, false, "delegation", false],
+-    ["also check tests", true, false, "delegation", true],
++    ["also check tests", true, false, "delegation", false],
++    ["also what do you think of that result", true, false, "delegation", false],
++    ["when you're done also check tests", true, false, "delegation", true],
+     ["cancel my meeting tomorrow", true, false, "delegation", false],
+     ["hello", false, false, "delegation", false],
+     ["cancel", true, true, "transcript", true],
 diff --git a/src/talk/agent-run-control-shared.ts b/src/talk/agent-run-control-shared.ts
 index 4dc137d4..8c94031e 100644
 --- a/src/talk/agent-run-control-shared.ts

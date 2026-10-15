@@ -498,7 +498,11 @@
         "extensions/openai/realtime-quicksilver-concurrency.test.ts",
         "extensions/openai/realtime-quicksilver-delegation.test.ts",
         "extensions/openai/realtime-quicksilver-gateway-bridge-lifecycle.test.ts",
+        "extensions/openai/realtime-quicksilver-gateway-bridge.test.ts",
+        "extensions/openai/realtime-quicksilver-public-delegation.test.ts",
+        "extensions/openai/realtime-quicksilver-session-lifecycle.test.ts",
         "src/gateway/talk/client-gateway-control.agent-consult.test.ts",
+        "src/gateway/talk/client-gateway-control.test.ts",
         "src/talk/agent-run-control.test.ts"
       ],
       "candidateTests": [

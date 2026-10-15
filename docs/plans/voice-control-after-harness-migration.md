@@ -1,6 +1,6 @@
 # Voice request recovery on the current harness
 
-Status: Production approved; DEV validated, awaiting managed release
+Status: Production approved; DEV validated, cumulative test repair in progress
 Issue: [#290](https://github.com/coletaylor788/puddles/issues/290)
 Last updated: 2026-10-14
 
@@ -245,7 +245,13 @@ that correction. Final DEV passed its complete installed suite, all twelve
 compiled Talk checks, and two real voice-model scenarios with different status
 phrasings. Both scenarios used a recording harness, made two work requests and
 one fresh status check, and recorded zero external writes. The retained reviewer
-cleared the complete source diff. Managed release gates remain required.
+cleared the complete source diff. The first cumulative gate stopped before TEST
+on four older test expectations: three required the removed optimistic receipt,
+and one treated a bare "also" as an automatic follow-up. The corrected composed
+tests require correlated final delivery and preserve explicit follow-up routing.
+All four files are now part of this feature's focused qualification as well as
+the cumulative pool. Runtime behavior is unchanged by this test repair. Retained
+review and the complete managed release gates remain required.
 
 ### Checklist
 
