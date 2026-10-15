@@ -89,7 +89,11 @@ describe("patched browser sandbox entrypoint", () => {
     const isolated = readFileSync(script, "utf8")
       .replace("export HOME=/tmp/openclaw-home", `export HOME=${JSON.stringify(home)}`)
       .replace("${DISABLE_GRAPHICS_FLAGS,,}", "${DISABLE_GRAPHICS_FLAGS}")
-      .replace("${DISABLE_EXTENSIONS,,}", "${DISABLE_EXTENSIONS}");
+      .replace("${DISABLE_EXTENSIONS,,}", "${DISABLE_EXTENSIONS}")
+      // Fixture children stay alive until afterEach kills their process group.
+      // Bash 3.2 on macOS lacks wait -n. Waiting for all children is equivalent
+      // here; this test covers profile setup, not container exit supervision.
+      .replace(/^wait -n\s*$/m, "wait");
     writeFileSync(script, isolated);
     chmodSync(script, 0o755);
 
