@@ -108,12 +108,10 @@ and fresh requests after terminal outcomes through review, release, and cleanup.
 Steering, migration compatibility, harness-specific adapter repairs, reader
 changes, registry storage repairs, and new queueing remain excluded.
 
-**Current execution limit:** Source refresh, retained review, and DEV qualification
-remain authorized. Automatic approval review rejected release admission and the
-release manager has an explicit production question pending. Keep queue admission,
-TEST, PROD, source merge, and automation held until that is resolved. The newly
-released household baseline requires fresh DEV qualification in the existing
-workspace and incremental build. Earlier receipts remain historical evidence.
+**Current phase:** Refresh source, retained review, and DEV qualification against
+the newly released household baseline in the existing workspace and incremental
+build. Earlier receipts remain historical evidence. Release and source merge
+have not started.
 
 The inspected call shows an accepted original request followed by rejected
 additional input and misleading voice feedback. Installed classifier probes
