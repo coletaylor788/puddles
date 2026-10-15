@@ -1,6 +1,6 @@
 # Native approval for household questions to main
 
-**Status:** Agent-level correction reviewed; installed approval tests passed
+**Status:** Released; physical phone acceptance remains open
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
 **Last updated:** 2026-10-14
 
@@ -77,24 +77,27 @@ approval for every question, and native exact-session sends: "okay, approved thi
 new solution". No core agent-to-agent patch is permitted. This approval covers
 implementation, review, validation, release, and cleanup within that scope.
 
-The prior artifact remains deployed and healthy, but native app acceptance failed:
-its conversation-specific instructions were absent, household tried the old
-message relay, and cross-context policy rejected that call before any approval
-was created. The correction removes that coupling. Implementation, focused checks, retained
-review, and recorded installed approval tests have passed. DEV acceptance, the
-bounded real-model instruction check, and a fresh release are still required.
+The agent-level correction is deployed and its tested source is merged. Focused
+checks, retained review, DEV, the full application gate, TEST, and read-only
+production acceptance passed. Production is healthy with intake open. Physical
+phone question, owner approval, and returned-answer acceptance remains open.
 
 ## Agent section
 
 ### State
 
-The prior implementation merged in PR #287 and deployed artifact
-`a8046a47e90c09980e18f54ee3f0658aa179d89726e85aeccfc3a8dd74435376`.
-Its recorded approval flows passed DEV and TEST. Production acceptance was
-read-only plugin, configuration, and health verification. It did not prove
-physical approval delivery. The failed native app test made no `sessions_send`
-call and created no approval. Public records contain no private conversation
-content or identifiers.
+[PR #289](https://github.com/coletaylor788/puddles/pull/289) merged as
+`e31805991e18e8b0ec20974acd2e3260f4d5f62e`. The release controller deployed
+artifact `bf12e7d1bcdca8d6543cdfbef9a02badec4d32f54e67d16eb7ab10cfe36860f0`
+and completed ticket `household-agent-approvals-20261014-r3`. The release lane is
+empty, production is healthy, and intake is open. The single recovery backup is
+valid. The release manager owns remote workspace finalization; local feature
+output and its companion worktree have been finalized.
+
+The earlier native app failure came from conversation-specific instructions:
+household chose the old message relay, which failed before creating an approval.
+The deployed correction applies instructions and policy to the household agent
+across app and channel conversations. Physical approval delivery remains unproven.
 
 The selected upstream revision remains OpenClaw 2026.9.6,
 `eb377ac59e6c9fd6c7705028034812becf00271b`. Upstream removed
@@ -165,9 +168,19 @@ avoid an unrelated title-generation model call. Every household model request
 contains the exact packaged guidance. These tests exercise the native chat RPC
 contract; physical app pairing and delivery remain separate acceptance.
 
-Retained implementation and validation review is clear. DEV acceptance, bounded
-real-model tool choice, the full application gate, TEST, and read-only PROD checks
-are pending. Prior evidence does not certify changed packaged behavior.
+Retained implementation and validation review is clear. DEV passed all 67
+installed checks. A bounded real-model DEV check selected `sessions_send` and
+created a native approval from household after one model request. It stopped
+before main ran and recorded all delivery, with zero external writes.
+
+The full application gate passed in 810,137 ms. The final controller attempt
+reused that result only after exact source, artifact, prepared output, runner,
+environment, toolchain, and dependency inputs matched. TEST passed all 67 checks
+with no failures or skips in 209,502 ms. Read-only production acceptance passed in
+925 ms and verified health, plugin activation, configuration, and installed
+guidance. The installed guidance SHA-256 is
+`a53eff7b51c3812f252f1d36fe571f89e5ec7d35e55521c31994fca8fac3cb04`.
+No production model requests or message sends were used for acceptance.
 
 ### Rollout and rollback
 
@@ -187,15 +200,17 @@ separate from automated recording and read-only production checks.
 
 The retained independent reviewer cleared the complete public and companion
 behavior diff and the corrected installed test driver. Permission-denial behavior
-and connection lifetime are covered by the installed regression. Later behavior
-changes require review by that same reviewer.
+and connection lifetime are covered by the installed regression. The same reviewer
+also cleared the fixture-only browser wait compatibility correction, which keeps
+profile and stale-lock assertions intact without changing the shipped browser
+entrypoint. Later behavior changes require review by that same reviewer.
 
 ### Checklist
 
 - [x] Record approval and the agent-level design.
 - [x] Implement the policy and focused configuration regressions.
-- [ ] Pass native app and channel installed regressions and DEV behavior checks.
+- [x] Pass native app and channel installed regressions and DEV behavior checks.
 - [x] Complete retained review and required repository checks.
-- [ ] Pass the frozen application gate, TEST, and read-only PROD acceptance.
+- [x] Pass the frozen application gate, TEST, and read-only PROD acceptance.
 - [ ] Merge tested source and finalize owned development output.
 - [ ] Complete physical question, owner approval, and answer acceptance.
