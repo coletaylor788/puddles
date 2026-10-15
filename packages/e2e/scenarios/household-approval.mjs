@@ -55,10 +55,9 @@ if (process.argv[3] !== "--child") {
     if (result && afterGrant) { const change = afterGrant; afterGrant = undefined; await change(); }
     return result;
   };
-  const requesterKey = "agent:household:imessage:direct:fixture";
+  const requesterKey = "agent:household:ios-fixture";
   const targetKey = "agent:main:main";
-  const settings = { requesterAgentId: "household", targetSessionKey: targetKey,
-    requesters: [{ sessionKey: requesterKey, channel: "imessage", accountId: "default", senderId: "fixture-person" }] };
+  const settings = { requesterAgentId: "household", targetSessionKey: targetKey };
   const cfg = { agents: { ownership: "explicit", defaults: { sandbox: { sessionToolsVisibility: "all" } }, entries: {
     household: { workspace: join(root, "household") }, main: { workspace: join(root, "main") }, other: { workspace: join(root, "other") },
   } }, session: { store: join(root, "agents/{agentId}/sessions.json"), dmScope: "per-channel-peer" },
@@ -106,9 +105,8 @@ if (process.argv[3] !== "--child") {
       : { status: "ok", terminalReply: { disposition: "visible", text: replies.get(request.params.runId) } };
     throw new Error("Unapproved background or history operation: " + request.method);
   };
-  const raw = createSend({ config: cfg, agentId: "household", agentSessionKey: requesterKey, agentChannel: "imessage", callGateway });
-  const ctx = { config: cfg, agentId: "household", sessionKey: requesterKey, sessionId: "household-session", runId: "household-run",
-    requester: { channel: "imessage", accountId: "default", senderId: "fixture-person" } };
+  const raw = createSend({ config: cfg, agentId: "household", agentSessionKey: requesterKey, agentChannel: "webchat", callGateway });
+  const ctx = { config: cfg, agentId: "household", sessionKey: requesterKey, sessionId: "household-session", runId: "household-run" };
   const tool = wrap(raw, ctx, { emitDiagnostics: false });
   const args = () => ({ sessionKey: targetKey, message: "What time is dinner?", timeoutSeconds: 60 });
   async function pending() {
@@ -163,7 +161,7 @@ if (process.argv[3] !== "--child") {
     const cancelled = tool.execute("cancel", args(), abort.signal).catch(() => {});
     const cancelledId = (await pending()).id; abort.abort(); await cancelled;
     assert.equal(broker.resolve(cancelledId, "allow-once"), false); assert.equal(sends().length, 1);
-    const spoof = wrap(raw, { ...ctx, requester: { ...ctx.requester, senderId: "other-person" } }, { emitDiagnostics: false });
+    const spoof = wrap(raw, { ...ctx, agentId: "other" }, { emitDiagnostics: false });
     await spoof.execute("spoof", args()).catch(() => {});
     assert.equal(sends().length, 1); assert.equal(broker.listPending().length, 0);
     for (const value of ["timeout", "error"]) {

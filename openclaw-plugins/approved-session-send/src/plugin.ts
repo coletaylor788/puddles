@@ -1,7 +1,7 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/core";
 import { createAgentToAgentPolicy, createSessionVisibilityChecker } from "openclaw/plugin-sdk/session-visibility";
 import { getPluginRuntimeGatewayRequestScope } from "openclaw/plugin-sdk/plugin-runtime";
-import { agent, ID, question, settings } from "./policy.js";
+import { agent, ID, isRequesterSession, question, settings } from "./policy.js";
 
 export default {
   id: ID,
@@ -32,13 +32,6 @@ export default {
       if (!entry?.sessionId || entry.archivedAt !== undefined) throw new Error("Session is absent or archived");
       return entry;
     }
-    api.on("before_prompt_build", (_event, ctx) => {
-      try {
-        const config = current();
-        if (ctx.agentId !== config.requesterAgentId || !config.requesters.some(r => r.sessionKey === ctx.sessionKey)) return;
-        return { appendSystemContext: `For this conversation, use the approved question route to request information from main. This replaces older instructions to send the owner a message with a quoted-reply or [sk:...] relay marker. Call sessions_send with sessionKey=${JSON.stringify(config.targetSessionKey)}, a short complete question in message, and timeoutSeconds=60. Native owner approval is required for every question, including clarification. Approval permits sharing main's answer here; it does not give you owner identity or authorize actions. Use the returned reply to answer this conversation. If the call is denied, unavailable, or accepted without a reply, report that outcome. Do not resend automatically, promise a later answer, or read main's history. For decisions or actions outside your scope, ask the person to contact the owner directly.` };
-      } catch { return; }
-    });
     api.on("before_tool_call", (event, ctx) => {
       if (event.toolName !== "sessions_send") return;
       if (!ctx.agentId || !ctx.sessionKey) return { block: true, blockReason: "Session sends require host-derived caller identity." };
@@ -46,14 +39,12 @@ export default {
       if (!belongs) return;
       try {
         const config = current();
-        if (ctx.agentId !== config.requesterAgentId || !ctx.sessionKey || !ctx.sessionId || !ctx.runId || !ctx.requester?.senderId) throw new Error("Interactive caller identity is required");
-        const route = config.requesters.find(r => r.sessionKey === ctx.sessionKey && r.channel === ctx.requester?.channel &&
-          r.accountId === ctx.requester?.accountId && r.senderId === ctx.requester?.senderId);
-        if (!route || session(route.sessionKey).sessionId !== ctx.sessionId) throw new Error("Caller is not authorized");
+        if (ctx.agentId !== config.requesterAgentId || !ctx.sessionKey || !ctx.sessionId || !ctx.runId) throw new Error("Runtime caller identity is required");
+        if (!isRequesterSession(ctx.sessionKey, config) || session(ctx.sessionKey).sessionId !== ctx.sessionId) throw new Error("Caller is not authorized");
         session(config.targetSessionKey);
-        return question(event.params, config, route);
+        return question(event.params, config, ctx.sessionKey);
       } catch {
-        return { block: true, blockReason: "Question route unavailable or invalid. Use the configured interactive caller, main target, and a question that fits the full approval summary." };
+        return { block: true, blockReason: "Question route unavailable or invalid. Use the configured agent, main target, and a question that fits the full approval summary." };
       }
     });
     const unregister = createSessionVisibilityChecker.registerScopedAccessProvider(request => {
@@ -65,7 +56,7 @@ export default {
             !registry.typedHooks.some(h => h.pluginId === ID && h.hookName === "before_tool_call")) return;
         const config = current();
         if (request.action !== "send" || request.targetSessionKey !== config.targetSessionKey ||
-            !config.requesters.some(r => r.sessionKey === request.requesterSessionKey)) return;
+            !isRequesterSession(request.requesterSessionKey, config)) return;
         session(request.requesterSessionKey);
         return { expectedSessionId: session(config.targetSessionKey).sessionId };
       } catch { return; }

@@ -1,6 +1,6 @@
 # Native approval for household questions to main
 
-**Status:** Deployed; native app acceptance failed before approval creation
+**Status:** Agent-level correction in development; prior native app acceptance failed
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
 **Last updated:** 2026-10-14
 
@@ -8,299 +8,185 @@
 
 ### Design
 
-Household currently depends on a manual owner relay to ask main for information.
-Replace that relay with an owner-approved call to native `sessions_send`. Approve
-one question and permission to return its answer. Every later question needs a
-new approval, including clarification. Keep agent-to-agent communication native.
+Household asks main for information through native `sessions_send`. Each question
+requires the owner's approval. Main's answer returns to the household conversation
+that asked. The calling agent determines whether this policy applies, not the
+channel, sender, or a configured list of conversations.
 
 ```mermaid
 flowchart TD
-    Household["Household asks a question"] --> Policy["Check caller, fixed main target, and complete question"]
-    Policy --> Approval["Native approval in the owner's direct chat"]
+    Conversation["Household conversation, in an app or channel"] --> Household["Household follows its agent instructions"]
+    Household --> Policy["Policy checks the calling agent, fixed main target, and question"]
+    Policy --> Approval["Native approval to the fixed owner"]
     Approval --> Decision{"Owner decision"}
-    Decision -->|"Deny or expire"| Stop["No send"]
-    Decision -->|"Approve once"| Grant["Host grants send access to the exact main session"]
-    Grant --> Main["Native sessions_send runs main"]
-    Main --> Result["Native waited answer returns to household"]
-    Result --> Human["Household answers in the requesting conversation"]
-    Human -->|"Another question"| Policy
+    Decision -->|Deny or expire| Stop["Main does not run"]
+    Decision -->|Approve once| Main["Native send to main's exact session"]
+    Main --> Answer["Waited answer returns to the originating household conversation"]
+    Answer -->|Another question| Policy
 ```
 
-#### Approve the question
+#### Agent-level policy and instructions
 
-A small policy plugin uses `before_tool_call.requireApproval`, the same native
-pre-call approval hook used for Gmail sending. Accept only interactive household
-requests to the configured canonical main session. Require a bounded question
-and a fixed positive reply timeout. Reject alternate targets, labels, caller
-supplied session identities, watches, other modes, and unknown parameters.
-Caller and originating conversation identity come from the runtime.
+OpenClaw already identifies the agent executing each tool call. The plugin checks
+that identity and the current calling session before requesting approval. It does
+not introduce a caller identity system or require channel sender metadata. The
+configuration contains only the requesting agent and the fixed main session.
+Child, cron, and hook sessions retain their restrictions; household reader and
+browser agents gain no access.
 
-The fixed owner's direct iMessage approval shows the complete question, its
-origin, and that main's answer will return to that household conversation. Offer
-approve-once and deny with a ten-minute window. Reject questions that cannot fit
-in the native approval summary. OpenClaw owns the approval, authenticated owner
-decision, argument snapshot, and continuation. Denial, expiry, or cancellation
-before dispatch sends nothing. After dispatch, cancellation cannot retract it.
+Household's `AGENTS.md` tells it to call `sessions_send` for information it needs
+from main. The same instructions apply to native app and channel conversations.
+Remove the old manual owner-message relay and the per-conversation prompt override.
+For decisions or actions outside its scope, household asks the person to contact
+the owner directly. Information requests never fall back to the old relay.
 
-Approval does not turn household into the owner or authorize external actions.
-Main keeps its own tool permissions and approvals. Household gets no main history,
-files, memory, session discovery, or service tools. Reader and browser workers
-retain their current restrictions.
+#### Approve one question
 
-#### Grant a narrow native route
+The small policy plugin uses OpenClaw's `before_tool_call.requireApproval` hook.
+That hook pauses the tool before dispatch. The approval shows the requesting
+agent, originating conversation, fixed destination, and complete quoted question.
+The fixed authenticated owner can approve once or deny within ten minutes.
+Every later question, including clarification, needs a new approval.
 
-Use the documented `openclaw/plugin-sdk/session-visibility` API. A host-owned
-provider matches the send operation, the authorized household session, and the
-fixed main destination, then returns main's exact current session identity.
-Resolve that identity from authoritative host state; never accept it from the
-question or tool arguments. Native admission checks replacement and archive state.
+OpenClaw owns approval delivery, decisions, cancellation, and frozen arguments.
+The plugin accepts only the fixed target, a bounded question, and a positive
+60-second reply timeout. Approval permits returning main's answer to the asking
+conversation. It does not make household the owner or authorize unrelated actions.
+There is no native gate on the automatically returned answer, and no custom
+answer-approval system is proposed.
 
-The grant supplies target access, not human consent. The native pre-call hook
-must approve every send. The provider grants no other operation or target.
-Keep ordinary household cross-agent access denied so a missing or failed provider
-cannot fall back to unrestricted peer sending. Bind registration cleanup to the
-plugin runtime lifecycle. No approval cache, response executor, or broker is needed.
+#### Return one answer through native scoped access
 
-#### Return one answer
+The supported `openclaw/plugin-sdk/session-visibility` API grants `send` access
+to main's exact current session. The provider resolves that session from host
+state. It grants no history, discovery, search, alternate target, or main files.
+Ordinary household cross-agent access remains denied, so a missing or stopped
+provider cannot fall back to unrestricted peer communication.
 
-For an exact-session scoped grant, native `sessions_send` preserves the waited
-tool result and suppresses its detached reply loop, announcement, and ongoing
-watch. Household uses that result to answer the original conversation. A new
-question requires another tool call and approval. Other session sends keep their
-existing behavior.
-
-The positive timeout bounds household's wait. It does not stop main. If the wait
-expires, report the native timeout or uncertain outcome; do not resend blindly,
-read main's history, or promise automatic late delivery. This scoped route does
-not start the ordinary deferred answer flow. Main's explicit tools remain subject
-to their own policy; suppression of automatic replies is not an outbound filter.
-
-There is still no native approval gate on the automatically returned answer.
-The approved scope accepts that answer without a second approval. An explicit
-reply tool could request approval, but redirecting every answer through it would
-introduce the custom response handling the requester excluded.
-
-#### Why the removed setting is not restored
-
-Upstream removed `session.agentToAgent.maxPingPongTurns` in a broad configuration
-cleanup. Ordinary peer sends now use a fixed five-turn limit. No replacement
-configuration switch was introduced. The earlier zero-setting proposal relied
-on stale source, and restoring it with a core patch is withdrawn.
-
-The scoped SDK route is a separate supported capability, not a renamed setting.
-Control UI and native child sessions also have one-way completion behavior, but
-household must not impersonate either. `REPLY_SKIP` depends on model cooperation;
-`mode: "notify"` queues context without running main or returning an answer.
-Neither meets the required enforced question-and-answer boundary.
-
-#### Native app coverage gap
-
-The shipped route covers configured iMessage conversations. A physical test in
-a native app household conversation instead followed the old owner-message
-relay instructions. Native cross-context policy rejected that message. Household
-never called `sessions_send`, so the test created no approval. The new prompt
-guidance and caller admission both exclude this kind of conversation. Replacing
-the placeholder iMessage sender would not correct the native app path.
-
-The proposed correction is to recognize authorized interactive native app
-callers through trusted host identity and session metadata, give those callers
-the same question guidance, and keep the fixed main target and owner approval
-for each question. The exact supported identity contract still needs proof.
-Do not trust an `ios-` session-name prefix or identity supplied in message text.
-Keep workers and unauthorized sessions excluded. Preserve native approvals and
-exact-session sends without opening ordinary peer access or patching core A2A.
+Native exact-session sends return the waited answer without starting detached
+peer reply turns, announcements, or watches. A timeout can return an uncertain
+outcome; household must not resend automatically, read history, or promise later
+delivery. Native admission rejects a target replaced or archived after the grant.
+The plugin never replaces the tool executor or patches agent-to-agent code.
 
 ### Status
 
-**Approval:** Production approved for the original bounded question, automatic
-answer, and no-follow-up scope. **Approval reference:** On 2026-10-13 the requester
-instructed this owner to ramp up on the new release manager and continue deployment
-to production. The requester then explicitly said: "We should not patch agent to
-agent communication." That limit is binding; the earlier patch decision is retired.
+**Approval:** Production approved. **Approval reference:** On 2026-10-14 the
+requester approved the agent-level policy, agent-level instructions, fixed-owner
+approval for every question, and native exact-session sends: "okay, approved this
+new solution". No core agent-to-agent patch is permitted. This approval covers
+implementation, review, validation, release, and cleanup within that scope.
 
-**Native app correction scope:** The existing approval for interactive household
-questions remains valid. Establish the trusted-host identity contract before
-changing caller admission. If the correction fits the approved native seams and
-security boundary, proceed through ordinary remediation without another approval.
-If it requires a major boundary change, record the exact conflict and proposed
-decision for human review before affected implementation. This finding alone
-does not qualify a new ready ticket or deployment.
-
-The scoped native route is implemented in `approved-session-send`, with paired
-configuration and application packaging. Forty-three focused tests pass. A recording
-test loads the plugin through the real OpenClaw registry and composes native
-approval, session storage, access admission, and the send executor. Five synthetic
-questions pass, including concurrent approval and matching replies, with zero
-external writes. A real gateway/channel recording also passes: the fixed owner
-approves the first question, household receives its answer, and denying a fresh
-follow-up leaves main at one run.
-
-Retained independent review, CI, complete DEV acceptance, the frozen application
-gate, and installed TEST checks passed. The release manager deployed the same
-artifact to production, verified the active plugin with read-only checks, merged
-[PR #287](https://github.com/coletaylor788/puddles/pull/287), and resumed intake.
-The normal production gateway is healthy. There is no agent-to-agent patch.
-The existing iMessage household identity remains a placeholder. Native app
-physical acceptance failed before approval creation. The deployed runtime remains
-healthy, but the requested flow does not work in native app household chats.
-Real iMessage sender configuration and successful physical question, owner
-approval, and answer acceptance remain open. Production checks above were
-read-only; the recording approval flows passed in DEV and TEST.
+The prior artifact remains deployed and healthy, but native app acceptance failed:
+its conversation-specific instructions were absent, household tried the old
+message relay, and cross-context policy rejected that call before any approval
+was created. The correction removes that coupling. Local implementation and
+focused checks are underway. Installed native app validation, retained review,
+DEV readiness, and a fresh release are still required.
 
 ## Agent section
 
-### State and source evidence
+### State
 
-The original proposal landed in PR #260; PR #281 recorded the retired-setting
-blocker. PR #284 withdrew the core patch proposal. Implementation uses paired
-isolated `codex/household-scoped-approvals` branches, coordinated with the release
-manager under the original production authorization. That implementation is merged
-and deployed. The tested public head was `893fce05f81867a609ae219b36c635bb2f960d7c`;
-the source merge was `937a5fde87e97efc964f7d0cd33715528896e1a6`.
-
-The installed artifact digest is
+The prior implementation merged in PR #287 and deployed artifact
 `a8046a47e90c09980e18f54ee3f0658aa179d89726e85aeccfc3a8dd74435376`.
-The complete frozen gate passed in 13 minutes 5 seconds, and installed TEST
-passed in 3 minutes 12 seconds. The household recording proved two fresh
-approvals, one main run, one denied follow-up, and zero external writes. The
-controller verified the recovery backup before deployment and checked the exact
-source merge before resuming production intake. Normal production health and
-the installed artifact digest were independently checked after resumption.
+Its recorded approval flows passed DEV and TEST. Production acceptance was
+read-only plugin, configuration, and health verification. It did not prove
+physical approval delivery. The failed native app test made no `sessions_send`
+call and created no approval. Public records contain no private conversation
+content or identifiers.
 
-The selected OpenClaw 2026.9.6 commit is
-`eb377ac59e6c9fd6c7705028034812becf00271b`, tree
-`fd9aae01e042ed8747ecbd0f45bb4791eb3379b9`. The local primary OpenClaw checkouts
-were stale. Exact upstream source was retrieved through GitHub and checked
-against relevant installed modules. Reconstruct owned source from the selected
-pin and maintained patches, never from a stale primary checkout.
+The selected upstream revision remains OpenClaw 2026.9.6,
+`eb377ac59e6c9fd6c7705028034812becf00271b`. Upstream removed
+`session.agentToAgent.maxPingPongTurns` in
+[PR #111382](https://github.com/openclaw/openclaw/pull/111382). Ordinary peer sends
+use five turns. This design uses the separate supported exact-session capability,
+not a restored setting, `REPLY_SKIP`, or a custom executor.
 
-| Evidence | Finding |
-|---|---|
-| [Removal PR #111382](https://github.com/openclaw/openclaw/pull/111382) | Removed 209 tuning paths to reduce schema and compatibility costs. Explicit tuning reverts to built-in defaults; doctor removes retired keys. |
-| [Scoped SDK contract](https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/docs/plugins/sdk-runtime/agent.md#L122-L154) | `registerScopedAccessProvider` matches action and requester/target keys and returns host-authorized `expectedSessionId`. |
-| [Native send](https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/src/agents/tools/sessions-send-tool.ts#L989-L1025) | Exact-session grants skip the detached reply flow. Positive waits still use the completed run's terminal reply. |
-| [Native regression](https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/src/agents/openclaw-tools.sessions.test.ts#L1345-L1439) | Scoped sends create no post-return work or durable watch even with ordinary cross-agent access denied. This inspected upstream test is not a locally executed household proof. |
-| [Bundled plugin](https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/extensions/clickclack/src/discussions/register.ts#L26-L51) | ClickClack uses the same SDK registration alongside a pre-call target policy and lifecycle cleanup. |
-| [Session documentation](https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/docs/concepts/session-tool.md#L234-L240) | Peer loops, one-way UI/child behavior, and notify/steer semantics remain distinct. |
+### Scope and acceptance criteria
 
-On 2026-10-13 a recording probe extracted the installed ordinary peer-flow
-function and supplied synthetic callers and adapters. Configured zero still
-produced five automatic steps, including two further main turns, with zero
-external writes. This proves the old control mismatch, not the scoped design.
-The previous conclusion that a core patch was necessary was premature.
+- Native app and iMessage household conversations can request fixed-owner approval.
+- Every question freezes its own arguments and requires a fresh decision.
+- Main never runs before approval or after denial, expiry, or pre-dispatch abort.
+- The answer returns to the originating conversation without automatic peer turns.
+- Worker sessions, other destinations, missing caller context, stale sessions,
+  and absent approval hooks do not receive the scoped grant.
+- Household gets no main history, memory, files, or broad agent-to-agent access.
+- Agent instructions replace the manual relay across channels.
+- Automated checks record external delivery and never send live messages.
 
-### Implementation and acceptance
+### Architecture and decisions
 
-#### Native app review and proposed remediation
+[`src/plugin.ts`](../../openclaw-plugins/approved-session-send/src/plugin.ts)
+checks the native tool-call context's `agentId`, `sessionKey`, `sessionId`, and
+`runId`. It verifies that the session belongs to the configured agent and matches
+host state. Sender, channel, and account are not admission criteria. The scoped
+provider receives OpenClaw's requester session key and resolves its agent and
+current metadata through the native session API.
 
-Read-only review correlated the physical attempt with its native app household
-session, the legacy `message` call, the cross-context denial, and the absence of
-a household approval. No production mutation or replay was performed. Public
-records intentionally omit private conversation content and identifiers.
+The provider is process-wide, while hooks belong to run registries. Before
+granting access it requires its own loaded plugin and `before_tool_call` hook in
+the current native registry. Startup and Copilot harness activation, including
+`discovery` registration, remain required. Registration cleanup revokes access;
+configuration changes disable the old registration until reload.
 
-The relevant implementation is
-[`approved-session-send/src/plugin.ts`](../../openclaw-plugins/approved-session-send/src/plugin.ts).
-Its `before_prompt_build` hook matches configured requester session keys. Its
-`before_tool_call` hook also requires the configured channel, account, and sender.
-The scoped provider matches those configured session keys. A native app session
-outside that set receives neither replacement guidance nor access to the route.
-Installed household instructions still describe the old message relay.
+The prior `requesters` list and per-conversation prompt hook are removed. Agent
+instructions belong in the configured household workspace, supplied by the
+application's reviewed guidance. Environment bindings no longer alter approval
+requester identity. Fixed-owner forwarding remains independently configured.
 
-The correction changes packaged behavior, not just an environment binding.
-Before changing admission, establish which supported runtime fields prove
-the authenticated native app caller, interactive origin, and current session.
-Keep prompt selection, pre-call admission, and scoped access consistent. Reject
-missing or spoofed origin, worker sessions, archived sessions, and unsupported
-contexts. Do not substitute a session-name pattern for authentication.
+### Implementation
 
-Within the approved scope, add an installed native app regression with synthetic actors and
-recorded delivery. It must show the native app question selecting `sessions_send`,
-owner approval before main runs, the matching answer returning to that app chat,
-and a fresh approval for a later question. Denied and unauthorized cases must
-reach neither main nor a legacy message fallback. Retain the reviewer through
-remediation. Run DEV checks and the full gate on a fresh frozen artifact, then
-TEST and read-only PROD acceptance through the release manager's single lane.
-Physical acceptance remains a separate final check. No ticket is ready yet.
+The public plugin, manifest, package tests, and composed native regression change
+together. The composed test uses a native app session without requester channel
+metadata. Environment configuration tests reject attempts to change the policy's
+agent or target through bindings.
 
-#### Existing iMessage implementation
+Companion changes remove obsolete requester bindings, package household guidance,
+and apply it with the same environment preparation used in DEV, TEST, and PROD.
+Preparation binds the exact configured guidance path and predecessor hash or
+explicit absence, rejects drift and symlinks, and installs the candidate bytes.
+Acceptance compares installed guidance and plugin configuration with the candidate.
+The release backup must include the individual production household guidance file.
 
-Use a registered policy hook around built-in `sessions_send`, following the
-[Gmail hook](../../openclaw-plugins/secure-gmail/src/plugin.ts) and
-[plugin conventions](../../openclaw-plugins/README.md). Do not replace its executor,
-dispatch from approval resolution, or patch A2A code. Use the public SDK grant to
-keep permissions narrow. It has no tool-call arguments or approval ID: do not
-mistake its session access decision for approval of a particular message.
+### Validation
 
-Before enabling the route, prove the complete composition:
+Local policy tests pass: 47 tests. Environment configuration tests pass: 20 tests.
+Focused companion configuration and guidance installation tests pass: 9 tests.
+The installed regression covers both recorded iMessage ingress and native
+`chat.send`, including fixed-owner approval, main's answer, denial of a fresh
+follow-up, and no legacy relay fallback. Its new native app mode is not yet run.
+Check packaged guidance at the actual provider boundary and evaluate tool choice
+with real model output in isolated DEV before claiming model-behavior acceptance.
 
-- Native approval gates final bounded parameters on every household send. Denial,
-  expiry, cancellation, restart, or unavailable approval delivery sends nothing.
-- The provider accepts only `send` and the intended canonical requester/target.
-  Host-resolved session identity cannot be substituted by a caller. Replaced,
-  archived, missing, incognito, or unauthorized targets fail closed.
-- Ordinary visibility cannot admit an unscoped household peer send if the provider
-  is absent, rejected, unloaded, or changed. No broad A2A allowlist is introduced.
-- Concurrent questions and new human messages cannot alter approved arguments.
-  Every later question and clarification needs another owner approval.
-- The positive wait returns the matching run's terminal answer. Scoped success,
-  timeout, and error create no detached reply, announcement, or durable watch.
-  A timeout never causes replay or custom history lookup.
-- Household retains its identity. Its workers gain no route. Other callers,
-  Gmail approvals, and ordinary explicit sends preserve their current behavior.
-- Plugin lifecycle, configuration refresh, and restart keep approval enforcement
-  and route access consistent. No persisted or cached approval becomes authority.
+Retained review and fresh installed, DEV, full application, TEST, and PROD proofs
+are pending. Prior evidence does not certify changed packaged behavior.
 
-The composed regression is
-`packages/e2e/scenarios/household-approval.mjs`, registered in the cumulative
-candidate suite. It loads the actual packaged plugin by default. An explicit
-development flag permits a freshly built plugin against the prepared runtime.
-Native registry loading caught and corrected metadata lookup against a configured
-session-store path. The plugin now resolves that path through the native runtime.
-Recorded checks cover argument mutation, fresh follow-up approval, concurrent
-questions and matching answers, denial, abort, spoofed caller, timeout, target
-failure, replacement and archive after a scoped grant, pending configuration
-disable, runtime stop, and denial when the provider is absent.
+### Rollout and rollback
 
-The real channel regression exposed two plugin registration requirements. Startup
-activation alone does not select policy for the prepared run, and `discovery`
-registration can carry executable run hooks. The manifest declares Copilot harness
-activation, and registration includes full, discovery, and tool-discovery modes.
-Before reading runtime metadata, the global grant checks the native request
-registry for its own loaded plugin and approval hook. Missing scope, an omitted
-hook, or unrelated hooks grant nothing. This uses the exported runtime-scope SDK
-for the validated native Copilot flow; it is not a universal generation API.
+Follow the [application runner](../../packages/e2e/README.md),
+[deployment coordination](../../packages/e2e/DEPLOYMENT_COORDINATION.md), and
+[storage workflow](../../packages/e2e/DEVELOPMENT_STORAGE.md). Reuse one owned
+workspace and one incremental application output. The manager owns the FIFO lane.
 
-The private installed regression drives the real native owner `/approve` command
-through recorded iMessage ingress. It verifies distinct question approvals, no
-main execution before consent, one returned answer, denial of the later question,
-correct owner and household destinations, and no extra shutdown delivery. It is
-registered in the maintained installed application runner. CLI approval listing
-cannot substitute for this check because request visibility is reviewer-scoped.
+After review and DEV readiness, freeze the candidate, run the complete application
+suite, and install those bytes in TEST. Replace the verified backup before PROD.
+Keep intake held through read-only production checks and source merge. Restore
+runtime, configuration, and household instructions together on failure. Never
+leave scoped access active without the approval hook. Physical acceptance remains
+separate from automated recording and read-only production checks.
 
-The host resolves the current main incarnation when granting access after
-approval. Native lifecycle admission prevents that grant from reaching a later
-replacement. Approval names the fixed conversation, not a historic incarnation.
-No custom session lock or per-question grant cache is introduced.
+### Review log
 
-### Delivery and verification
+The prior release had a clear independent review. Its retained reviewer will
+review the complete current public and companion behavior diff and any remediation.
 
-Implementation and the companion configuration have isolated worktrees and one
-reusable application output. Follow the
-[security architecture](../openclaw-setup/security-architecture.md), the
-[runner guide](../../packages/e2e/README.md), and
-[deployment coordination](../../packages/e2e/DEPLOYMENT_COORDINATION.md).
+### Checklist
 
-The plugin replaces relay guidance only for configured interactive conversations.
-Private configuration permits the native tool, adds household to fixed-target
-plugin approval forwarding, and removes household from ordinary cross-agent
-access. Existing child-agent permissions remain unchanged. Complete DEV checks and
-retained independent review before manager intake. The manager owns the FIFO
-TEST/PROD lane, full application suite on frozen output, backup replacement,
-production read-only acceptance, and source merge. Do not enqueue an unvalidated
-proposal. Physical owner phone acceptance remains distinct.
-
-Rollback restores predecessor permissions, plugins, configuration, and relay
-instructions with its runtime. Never leave household's grant active without the
-approval hook. Finalize only owned artifacts through the
-[storage workflow](../../packages/e2e/DEVELOPMENT_STORAGE.md); preserve production,
-recovery state, and other owners.
+- [x] Record approval and the agent-level design.
+- [x] Implement the policy and focused configuration regressions.
+- [ ] Pass native app and channel installed regressions and DEV behavior checks.
+- [ ] Complete retained review and required repository checks.
+- [ ] Pass the frozen application gate, TEST, and read-only PROD acceptance.
+- [ ] Merge tested source and finalize owned development output.
+- [ ] Complete physical question, owner approval, and answer acceptance.

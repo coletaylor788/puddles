@@ -8,7 +8,7 @@ vi.mock("openclaw/plugin-sdk/session-visibility", () => ({
   createSessionVisibilityChecker: { registerScopedAccessProvider: sdk.register },
 }));
 const route = { sessionKey: "agent:household:imessage:direct:fixture", channel: "imessage", accountId: "default", senderId: "fixture-person" };
-const config = { requesterAgentId: "household", targetSessionKey: "agent:main:main", requesters: [route] };
+const config = { requesterAgentId: "household", targetSessionKey: "agent:main:main" };
 const args = { sessionKey: config.targetSessionKey, message: "What time is dinner?" };
 const context = { agentId: "household", sessionKey: route.sessionKey, sessionId: "household-session", runId: "run-1", requester: { channel: route.channel, accountId: route.accountId, senderId: route.senderId } };
 function setup(registrationMode = "full") {
@@ -35,7 +35,7 @@ describe("native question policy", () => {
       const result = hook({ toolName: "sessions_send", params: args, toolCallId }, context);
       expect(result.params).toEqual({ ...args, timeoutSeconds: 60 });
       expect(result.requireApproval).toMatchObject({ timeoutMs: 600000, allowedDecisions: ["allow-once", "deny"] });
-      for (const text of [route.senderId, route.sessionKey, args.message, config.targetSessionKey]) expect(result.requireApproval.description).toContain(text);
+      for (const text of [config.requesterAgentId, route.sessionKey, args.message, config.targetSessionKey]) expect(result.requireApproval.description).toContain(text);
     }
   });
   it.each(["sessionId", "expectedSessionId", "label", "agentId", "watch", "mode", "senderId", "extra"])("rejects caller-supplied %s", field => {
@@ -51,17 +51,37 @@ describe("native question policy", () => {
     expect(hook({ toolName: "sessions_send", params: { ...args, sessionKey } }, context).block).toBe(true);
   });
   it.each(["", "x".repeat(600), "hidden\u202equestion", "line\nbreak", " trailing "])("rejects undisplayable question %j", message => {
-    expect(() => question({ ...args, message }, config, route)).toThrow();
+    expect(() => question({ ...args, message }, config, route.sessionKey)).toThrow();
   });
   it.each([
     { agentId: "main" }, { agentId: undefined }, { sessionId: "replaced" }, { sessionId: undefined }, { runId: undefined },
-    { sessionKey: "agent:household:subagent:child" }, { requester: undefined },
-    { requester: { ...context.requester, senderId: "other-person" } },
-    { requester: { ...context.requester, channel: "webchat" } },
-    { requester: { ...context.requester, accountId: "other" } },
+    { sessionKey: "agent:household:subagent:child" }, { sessionKey: "agent:other:main" },
   ])("rejects missing or spoofed interactive identity %j", change => {
     const { hook } = setup();
     expect(hook({ toolName: "sessions_send", params: args }, { ...context, ...change }).block).toBe(true);
+  });
+  it.each([
+    ["agent:household:ios-fixture", undefined],
+    ["agent:household:main", undefined],
+    ["agent:household:imessage:direct:another-person", { channel: "imessage", accountId: "another", senderId: "another-person" }],
+    ["agent:household:webchat:fixture", { channel: "webchat" }],
+  ])("requires fresh approval independent of the originating conversation %s", (sessionKey, requester) => {
+    const { hook, entries, provider } = setup();
+    entries.set(sessionKey, { sessionId: "household-session" });
+    const ctx = { ...context, sessionKey, requester };
+    for (const toolCallId of ["question", "follow-up"]) {
+      const result = hook({ toolName: "sessions_send", params: args, toolCallId }, ctx);
+      expect(result.requireApproval.allowedDecisions).toEqual(["allow-once", "deny"]);
+      expect(result.requireApproval.description).toContain(sessionKey);
+    }
+    expect(provider({ action: "send", requesterSessionKey: sessionKey, targetSessionKey: config.targetSessionKey })).toEqual({ expectedSessionId: "main-session" });
+  });
+  it.each(["subagent", "cron", "hook"])("does not grant the route to %s sessions even with an existing session", kind => {
+    const { hook, entries, provider } = setup();
+    const sessionKey = `agent:household:${kind}:fixture`;
+    entries.set(sessionKey, { sessionId: "household-session" });
+    expect(hook({ toolName: "sessions_send", params: args }, { ...context, sessionKey }).block).toBe(true);
+    expect(provider({ action: "send", requesterSessionKey: sessionKey, targetSessionKey: config.targetSessionKey })).toBeUndefined();
   });
   it("does not change other agents or unrelated tools", () => {
     const { hook } = setup();
@@ -97,7 +117,7 @@ describe("scoped host access", () => {
   });
   it("revokes access and blocks calls after config change, disable, or cleanup", () => {
     const { hook, provider, cleanup, runtimeConfig } = setup();
-    runtimeConfig.plugins.entries[ID].config.requesters[0].senderId = "changed";
+    runtimeConfig.plugins.entries[ID].config.targetSessionKey = "agent:main:changed";
     expect(provider(request)).toBeUndefined();
     runtimeConfig.plugins.entries[ID].config = structuredClone(config);
     runtimeConfig.plugins.entries[ID].enabled = false;
@@ -110,7 +130,7 @@ describe("scoped host access", () => {
     expect(hook({ toolName: "sessions_send", params: args }, context).block).toBe(true);
   });
   it("rejects invalid registration and stays inert for CLI metadata", () => {
-    expect(() => settings({ ...config, requesters: [{ ...route, sessionKey: "agent:other:main" }] })).toThrow();
+    expect(() => settings({ ...config, requesterAgentId: "invalid agent" })).toThrow();
     plugin.register({ pluginConfig: config, registrationMode: "cli-metadata" } as never);
     expect(sdk.register).not.toHaveBeenCalled();
   });
