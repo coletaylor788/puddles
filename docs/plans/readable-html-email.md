@@ -1,6 +1,6 @@
 # Readable HTML email
 
-Status: Reviewed and DEV validated; release validation pending
+Status: Parser integrity fix reviewed; fresh DEV validation pending
 Issue: https://github.com/coletaylor788/puddles/issues/295
 Last updated: 2026-10-14
 
@@ -34,13 +34,13 @@ Keep the injection guard and reader prompt: malicious instructions can still app
 
 **Approval:** Production approved. **Approval reference:** The requester said “approved, ship it” on 2026-10-14, after agreeing to this design. Scope includes implementation, validation, release, merge and cleanup. No chunking or paging, and no real email examples.
 
-Implementation, focused offline tests and independent review pass. The installed DEV checks pass for readable email and reader guidance across ordinary, spawned and resumed sessions. The release manager owns the remaining full suite, TEST, production validation and source merge.
+Implementation, focused offline tests and independent review pass. Earlier installed DEV behavior checks passed, but a fresh run caught parser imports writing bytecode into the installed package. The parser now disables bytecode generation. Fresh packaged and DEV validation are required before the release manager runs the full suite, TEST, production validation and source merge.
 
 ## Agent section
 
 ### State
 
-Feature branch `codex/readable-email`, PR #296. Reviewed behavior is public `173e0356` on base `e3180599`. Companion changes are tracked separately. All fixtures are synthetic; production is unchanged. The front-of-queue rebase must include subsequent changes to main.
+Feature branch `codex/readable-email`, PR #296, based on public `224d40b1`. Companion changes are tracked separately. All fixtures are synthetic; production is unchanged. The next build and front-of-queue rebase must include subsequent changes to main.
 
 ### Scope and acceptance criteria
 
@@ -54,13 +54,15 @@ Extract text in the email integration. Run both guards in parallel on the same c
 
 `servers/gmail-mcp/src/gmail_mcp/{html_text,html_worker,readable}.py` implement extraction and containment. `server.py` selects readable MIME content. `openclaw-plugins/secure-gmail/src/readable-email.ts` validates and rebuilds the envelope before existing parallel hooks.
 
-macOS uses Seatbelt after trusted imports; Linux requires bubblewrap with read-only runtime mounts and no network namespace access. The worker has CPU and wall deadlines, no inherited credentials or extra descriptors, no core dumps or file writes, and a Linux address-space limit. macOS does not support that address-space limit.
+The child interpreter disables bytecode generation so trusted imports leave packaged libraries unchanged. macOS uses Seatbelt after trusted imports; Linux requires bubblewrap with read-only runtime mounts and no network namespace access. The worker has CPU and wall deadlines, no inherited credentials or extra descriptors, no core dumps or file writes, and a Linux address-space limit. macOS does not support that address-space limit.
 
 Reader guidance reports failed or incomplete reads without raw retries. The dependency lock adds only html5lib and its two dependencies.
 
 ### Validation
 
-Focused results: 260 Python tests, 91 secure-gmail tests, and five companion guidance tests pass. The legacy live-account test module is retired and direct invocation collects no executable tests. The broad suite skips that module. Packaged encoding regressions pass with the actual parser, MCP server, plugin and both guards using recording adapters. Hosted repository and code analysis checks pass. Installed DEV acceptance passed: the packaged email route, complete authored configuration and native reader guidance scope/restart checks. Both the application output and installed DEV tree have digest `5ec736e12c8ce22d3ed1a59d3bfa826d3811ef6eedf350c2f031cf84fcc30c29`. Recording acceptance reports zero external writes.
+Focused results: 261 offline Python tests, 91 secure-gmail tests, and five companion guidance tests pass. The legacy live-account test module is retired and direct invocation collects no executable tests. Packaged encoding regressions pass with the actual parser, MCP server, plugin and both guards using recording adapters.
+
+Earlier DEV acceptance passed on output and installed digest `5ec736e12c8ce22d3ed1a59d3bfa826d3811ef6eedf350c2f031cf84fcc30c29`. A subsequent incremental output differed, so the release stopped before TEST and production. The exact historical difference is unproven. Fresh DEV behavior checks on that output passed but installed integrity failed: parser imports added 27 bytecode files and directories. An isolated regression reproduced those additions before the fix and passes with the child interpreter's explicit `-B` flag. The installed scenario now checks packaged library integrity. Same-reviewer remediation review and 61 focused parser tests pass. Fresh complete packaging and DEV integrity acceptance remain required. Recording checks report zero external writes.
 
 Require thorough parser unit tests and guarded-route tests covering:
 
@@ -79,10 +81,11 @@ Follow the normal release process. Never fall back to raw HTML on failure.
 
 ### Review log
 
-Prior review found two MIME defects: filename-only attachments disrupted downloads, and early HTML decoding lost encoding information. Both are corrected with offline and contained-worker regressions. The prior reviewer could not be resumed after chat recovery. Replacement `email_review_recovery` completed the full public and companion diff plus deployment callback review with no material findings. It independently passed 60 focused Python tests, including real macOS containment and encodings, and five guidance lifecycle tests.
+Prior review found two MIME defects: filename-only attachments disrupted downloads, and early HTML decoding lost encoding information. Both are corrected with offline and contained-worker regressions. The prior reviewer could not be resumed after chat recovery. Replacement `email_review_recovery` completed the full public and companion diff plus deployment callback review with no material findings. It independently passed 60 focused Python tests, including real macOS containment and encodings, and five guidance lifecycle tests. After the bytecode fix it rechecked the complete paired diff, found no material issues, and independently passed all 61 focused Python tests.
 
 ### Checklist
 
 - [x] Design agreed and test expectations recorded.
-- [x] Implementation, focused validation, independent review and installed DEV acceptance.
+- [x] Implementation, focused validation and independent review.
+- [ ] Fresh packaged build and installed DEV integrity acceptance.
 - [ ] Full application suite, TEST, production acceptance, merge and cleanup.

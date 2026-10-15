@@ -1,6 +1,9 @@
 """Synthetic hostile mail: extraction preserves facts and excludes whole subtrees."""
 
+import hashlib
+import importlib.util
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -193,3 +196,46 @@ def test_worker_receives_no_credentials_and_no_input_in_argv():
 )
 def test_contained_worker_preserves_html_encoding(source, charset):
     assert html_to_text(source, charset) == "Café €42"
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="Native macOS sandbox probe")
+def test_worker_leaves_packaged_libraries_unchanged(tmp_path):
+    import gmail_mcp.readable as readable
+
+    shutil.copytree(
+        Path(readable.__file__).parent, tmp_path / "gmail_mcp",
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+    )
+    for name in ("html5lib", "webencodings", "six"):
+        spec = importlib.util.find_spec(name)
+        source = Path(spec.origin)
+        if spec.submodule_search_locations:
+            shutil.copytree(source.parent, tmp_path / name,
+                            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        else:
+            shutil.copyfile(source, tmp_path / source.name)
+
+    def inventory():
+        return {
+            str(path.relative_to(tmp_path)): (
+                path.stat().st_mode,
+                hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None,
+            )
+            for path in tmp_path.rglob("*")
+        }
+
+    before = inventory()
+    script = f"""
+import sys
+sys.path.insert(0, {str(tmp_path)!r})
+from gmail_mcp.readable import html_to_text
+assert html_to_text('<p>Café €42</p>') == 'Café €42'
+assert html_to_text('<p>Again</p>') == 'Again'
+"""
+    # Disabling parent bytecode is insufficient unless the child also disables it.
+    result = subprocess.run(
+        [sys.executable, "-I", "-B", "-c", script],
+        capture_output=True, text=True, timeout=30, env={},
+    )
+    assert result.returncode == 0, result.stderr
+    assert inventory() == before

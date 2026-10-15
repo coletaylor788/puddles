@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import {mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {lstatSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, writeFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
@@ -8,6 +9,22 @@ import {pathToFileURL} from 'node:url';
 // The Gmail service and guard model are recording fakes. No credentials or
 // network access are supplied to this process by its installed-test caller.
 const pluginRoot = resolve(process.argv[2]);
+function libraryDigest(root) {
+  const hash = createHash('sha256');
+  function visit(path, name) {
+    const stat = lstatSync(path);
+    hash.update(JSON.stringify([name, stat.mode & 0o777]));
+    if (stat.isSymbolicLink()) hash.update('link:' + readlinkSync(path));
+    else if (stat.isDirectory()) {
+      hash.update('directory');
+      for (const entry of readdirSync(path).sort()) visit(join(path, entry), name + '/' + entry);
+    } else hash.update(readFileSync(path));
+  }
+  visit(root, '.');
+  return hash.digest('hex');
+}
+const pythonLibrary = join(pluginRoot, 'python/lib');
+const beforeLibrary = libraryDigest(pythonLibrary);
 const root = mkdtempSync(join(tmpdir(), 'gmail-readable-'));
 let close;
 try {
@@ -92,8 +109,9 @@ export default class Provider { async classify(content, prompt, options) {
   assert.ok(!readFileSync(join(root,'audit.jsonl'),'utf8').includes('DROP_'));
   const raw = await read.execute('raw-denied', {email_id:'synthetic',format:'html_only'});
   assert.ok(JSON.stringify(raw).includes('Only readable text'));
+  assert.equal(libraryDigest(pythonLibrary), beforeLibrary, 'Parsing changed packaged Python libraries');
   console.log(JSON.stringify({status:'passed',externalWrites:0,checks:['installed-parser','installed-mcp','html-encoding',
-    'both-guards-text-only','reader-result','no-raw-details','raw-format-denied']}));
+    'both-guards-text-only','reader-result','no-raw-details','raw-format-denied','packaged-libraries-unchanged']}));
 } finally {
   await close?.();
   rmSync(root,{recursive:true,force:true});

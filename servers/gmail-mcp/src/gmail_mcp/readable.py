@@ -22,9 +22,12 @@ def html_to_text(html: str | bytes, transport_encoding: str | None = None) -> st
             libraries.add(
                 str(path.parent.parent if spec.submodule_search_locations else path.parent)
             )
+        # Interpreter flags do not inherit the parent's bytecode setting.
+        # Keep trusted imports from writing into the installed package.
         command = [
             str(Path(sys.executable).resolve()),
             "-I",
+            "-B",
             "-S",
             str(source / "html_worker.py"),
             json.dumps(sorted(libraries)),
