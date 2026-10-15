@@ -1,6 +1,6 @@
 # Native approval for household questions to main
 
-**Status:** Agent-level correction in development; prior native app acceptance failed
+**Status:** Agent-level correction reviewed; installed approval tests passed
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
 **Last updated:** 2026-10-14
 
@@ -80,9 +80,9 @@ implementation, review, validation, release, and cleanup within that scope.
 The prior artifact remains deployed and healthy, but native app acceptance failed:
 its conversation-specific instructions were absent, household tried the old
 message relay, and cross-context policy rejected that call before any approval
-was created. The correction removes that coupling. Local implementation and
-focused checks are underway. Installed native app validation, retained review,
-DEV readiness, and a fresh release are still required.
+was created. The correction removes that coupling. Implementation, focused checks, retained
+review, and recorded installed approval tests have passed. DEV acceptance, the
+bounded real-model instruction check, and a fresh release are still required.
 
 ## Agent section
 
@@ -153,13 +153,20 @@ The release backup must include the individual production household guidance fil
 
 Local policy tests pass: 47 tests. Environment configuration tests pass: 20 tests.
 Focused companion configuration and guidance installation tests pass: 9 tests.
-The installed regression covers both recorded iMessage ingress and native
-`chat.send`, including fixed-owner approval, main's answer, denial of a fresh
-follow-up, and no legacy relay fallback. Its new native app mode is not yet run.
-Check packaged guidance at the actual provider boundary and evaluate tool choice
-with real model output in isolated DEV before claiming model-behavior acceptance.
+The composed native SDK regression passed five recorded questions. Three fresh
+installed cases passed: iMessage, native app chat, and a native app connection
+without approval permission. Each successful conversation required two fresh
+approvals, ran main once, and denied its follow-up. The unprivileged connection
+created no approval record and never ran main. All external delivery was recorded.
 
-Retained review and fresh installed, DEV, full application, TEST, and PROD proofs
+The app fixture retains a native gateway connection throughout each conversation
+and uses normal operator approval scopes. It seeds a named empty conversation to
+avoid an unrelated title-generation model call. Every household model request
+contains the exact packaged guidance. These tests exercise the native chat RPC
+contract; physical app pairing and delivery remain separate acceptance.
+
+Retained implementation and validation review is clear. DEV acceptance, bounded
+real-model tool choice, the full application gate, TEST, and read-only PROD checks
 are pending. Prior evidence does not certify changed packaged behavior.
 
 ### Rollout and rollback
@@ -178,15 +185,17 @@ separate from automated recording and read-only production checks.
 
 ### Review log
 
-The prior release had a clear independent review. Its retained reviewer will
-review the complete current public and companion behavior diff and any remediation.
+The retained independent reviewer cleared the complete public and companion
+behavior diff and the corrected installed test driver. Permission-denial behavior
+and connection lifetime are covered by the installed regression. Later behavior
+changes require review by that same reviewer.
 
 ### Checklist
 
 - [x] Record approval and the agent-level design.
 - [x] Implement the policy and focused configuration regressions.
 - [ ] Pass native app and channel installed regressions and DEV behavior checks.
-- [ ] Complete retained review and required repository checks.
+- [x] Complete retained review and required repository checks.
 - [ ] Pass the frozen application gate, TEST, and read-only PROD acceptance.
 - [ ] Merge tested source and finalize owned development output.
 - [ ] Complete physical question, owner approval, and answer acceptance.
