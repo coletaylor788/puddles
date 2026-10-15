@@ -2,7 +2,7 @@
 
 Status: Proposed; subscription setup pending
 Issue: Not created
-Last updated: 2026-10-12
+Last updated: 2026-10-14
 
 ## Human section
 
@@ -97,11 +97,21 @@ It does not become Claude-native subagent delegation. Preserve independently
 delivered reader improvements; this migration does not change reader policy or
 reimplement result framing.
 
-Select an explicit supported Claude model for each migrated role. Use Opus for
-high-tier reasoning and preserve the reader's independently selected model.
-Move sessions at idle boundaries and retain their conversation records. Native
-session reuse and history recovery must be verified; keeping a conversation ID
-alone does not prove that the model received its prior context.
+Use **Opus for high-tier reasoning** and **Haiku for Reader and active memory's
+recall sub-agent**. Configure both Haiku selections explicitly; changing Reader
+alone does not change active memory. Keep Reader's existing instructions and
+permissions, including improvements delivered separately.
+
+These choices cover the agent roles in this migration, not every model call in
+the system. Heartbeats and scheduled jobs can select their own models. Security
+classifiers use separate provider settings, and memory embeddings are a different
+kind of model. Check those routes during implementation; this proposal does not
+silently migrate them or assume they use the Claude subscription.
+
+Switch harnesses between tasks, without deleting or resetting the conversation.
+Check that the agent remembers earlier facts after the switch. The same chat
+remaining visible in OpenClaw is not enough if the new harness did not receive
+its history.
 
 #### Quality and failure behavior
 
@@ -132,14 +142,15 @@ conversation tests. No account, runtime configuration or service has been change
 
 ### State
 
-The proposal is published. This documentation-only follow-up adds the requested
-subscription setup blocker on `codex/claude-subscription-setup-blocker`, based on
-`a8e12a911a3c72f184877db9731ca680175d4175`. Account entitlement and native login
-have not been inspected. No implementation or runtime validation is claimed.
+The proposal and setup blocker are published. This documentation-only follow-up
+makes the Haiku roles explicit and clarifies conversation continuity on
+`codex/claude-haiku-roles`. Account entitlement and native login have not been
+inspected. No implementation or runtime validation is claimed.
 
 ### Scope and acceptance criteria
 
 - Official Claude Code, native subscription login and stock OpenClaw integration.
+- Opus for high-tier agents; Haiku explicitly selected for Reader and active-memory recall.
 - Same OpenClaw agent identity and conversation, with useful retained context.
 - Exact allowed tools, sandbox execution and service permissions across all turn types.
 - No harness patches, custom transport, native action tools or API-account backup.
@@ -150,7 +161,14 @@ have not been inspected. No implementation or runtime validation is claimed.
 Use canonical `anthropic/<model>` references with model-scoped
 `agentRuntime.id: "claude-cli"`. Keep executable and OpenClaw versions explicit
 in the eventual release inputs. Do not use a global runtime override that
-unintentionally changes other providers or auxiliary workloads.
+unintentionally changes other providers or auxiliary workloads. Set Reader's
+agent model and `plugins.entries.active-memory.config.model` separately to the
+qualified Haiku model, with its `claude-cli` runtime selection. The pinned
+[active-memory contract](https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/extensions/active-memory/openclaw.plugin.json)
+identifies this as the blocking recall sub-agent's model. It does not select
+embedding models or every memory-maintenance job. Confirm both effective model
+requests and subscription routes; inventory separate heartbeat, scheduled-job
+and classifier selections without changing their scope.
 
 The repository pins OpenClaw to `eb377ac59e6c9fd6c7705028034812becf00271b`.
 Its [CLI backend contract](https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/docs/gateway/cli-backends.md)
@@ -227,7 +245,8 @@ current route; report a stock-integration gap before proposing custom code.
 ### Validation
 
 Check effective subscription authentication, fresh/resumed turns, restart and
-compaction; prove native tools are absent and permitted shell/file calls use
+compaction; verify Reader and active-memory recall request Haiku through the
+intended runtime; prove native tools are absent and permitted shell/file calls use
 Docker. Exercise reads, images, process handles, delegation, yield and one
 recorded external action. Check denied calls and source-result protections.
 Use synthetic content and recording adapters for external writes. Rehearse a
@@ -256,6 +275,7 @@ and verification. It does not install software, purchase a plan or change auth.
 - [ ] Prepare the gateway-user CLI, isolated Claude configuration and exact login command.
 - [ ] Owner confirms an eligible subscription, disables extra usage and completes native login.
 - [ ] Verify subscription authentication in the gateway service and clear the setup blocker.
+- [ ] Verify explicit Haiku routing for Reader and active-memory recall.
 - [ ] Qualify every migrated tool path.
 - [ ] Validate conversation continuity, quality and recovery.
 - [ ] Release eligible roles through the existing lifecycle.
