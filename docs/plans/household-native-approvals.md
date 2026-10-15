@@ -1,6 +1,6 @@
 # Native approval for household questions to main
 
-**Status:** Approved answer interpretation repair in progress
+**Status:** Answer guidance implemented; user acceptance open
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
 **Last updated:** 2026-10-15
 
@@ -95,7 +95,8 @@ The phone retest delivered an approval and the approved request reached main.
 Main's refusal returned to household: its old instructions still prohibited the
 approved disclosure. The requester asked to investigate and fix this on
 2026-10-15. The repair updates main's agent-level policy within the approved
-question-and-answer scope. Physical answer acceptance remains open.
+question-and-answer scope. The guidance repair is implemented and its regression
+checks pass. Physical answer acceptance remains open.
 
 ## Agent section
 
@@ -103,26 +104,19 @@ question-and-answer scope. Physical answer acceptance remains open.
 
 The 2026-10-15 physical retest confirmed an allowed approval, an `ok` native
 `sessions_send` result, and a returned refusal from main. Main retained the old
-private-data prohibition and manual reply-marker instructions. No transport or
-agent-to-agent runtime patch is needed. The earlier scripted target proved
-transport only; it did not test main's authorization interpretation. Current work
-adds main guidance and tests the native main harness with synthetic private facts.
-The last completed release evidence below remains historical, not certification
-of this repair.
+private-data prohibition and manual reply-marker instructions. The repair changes
+main guidance and tests the native main harness with synthetic private facts.
+The earlier scripted target proved transport only; it did not test main's
+interpretation of the approved scope. No agent-to-agent runtime patch was added.
 
-[PR #289](https://github.com/coletaylor788/puddles/pull/289) merged as
-`e31805991e18e8b0ec20974acd2e3260f4d5f62e`. The release controller deployed
-artifact `bf12e7d1bcdca8d6543cdfbef9a02badec4d32f54e67d16eb7ab10cfe36860f0`
-and completed ticket `household-agent-approvals-20261014-r3`. The release lane is
-empty, production is healthy, and intake is open. The single recovery backup is
-valid. Native finalization removed the remote feature workspace, local feature
-output, companion worktree, and manager staging. Installed deployments, shared
-caches, and recovery state remain intact.
+The repair aligns main's guidance with the existing approved native route.
+Installed regressions cover returned answers, missing approval, denied follow-ups,
+and forged source claims. User acceptance remains open.
 
-The earlier native app failure came from conversation-specific instructions:
-household chose the old message relay, which failed before creating an approval.
-The deployed correction applies instructions and policy to the household agent
-across app and channel conversations. Physical approval delivery remains unproven.
+The earlier approval release removed the conversation-specific manual relay and
+applied the policy and instructions to household across app and channel
+conversations. The phone retest now confirms approval delivery. Its historical
+validation below does not substitute for the answer repair's new evidence.
 
 The selected upstream revision remains OpenClaw 2026.9.6,
 `eb377ac59e6c9fd6c7705028034812becf00271b`. Upstream removed
@@ -184,8 +178,12 @@ Bounded real-model qualification returned the approved synthetic fact, required 
 new approval for the denied follow-up, and rejected copied household provenance
 from another native source. The test compares the returned tool reply with the
 exact real-model answer. All delivery was recorded, with zero external writes.
-The rebuilt application digest remained unchanged after qualification. The new
-DEV, full application, TEST, and production gates remain pending.
+The rebuilt application digest remained unchanged after qualification.
+The complete application checks and installed regression suites pass. The tests
+exercise both native agents and compare the actual returned tool reply with
+main's answer. Bounded real-model checks cover approved disclosure and rejection
+of forged source text. Delivery uses recording fixtures, and follow-up questions
+require fresh approval. Operational release evidence is retained separately.
 
 The following results describe the earlier approval release, not this repair.
 
@@ -227,9 +225,9 @@ workspace and one incremental application output. The manager owns the FIFO lane
 After review and DEV readiness, freeze the candidate, run the complete application
 suite, and install those bytes in TEST. Replace the verified backup before PROD.
 Keep intake held through read-only production checks and source merge. Restore
-runtime, configuration, and household instructions together on failure. Never
-leave scoped access active without the approval hook. Physical acceptance remains
-separate from automated recording and read-only production checks.
+runtime, configuration, and both main and household instructions together on
+failure. Never leave scoped access active without the approval hook. Physical
+acceptance remains separate from automated recording and read-only production checks.
 
 ### Review log
 
@@ -238,7 +236,10 @@ behavior diff and the corrected installed test driver. Permission-denial behavio
 and connection lifetime are covered by the installed regression. The same reviewer
 also cleared the fixture-only browser wait compatibility correction, which keeps
 profile and stale-lock assertions intact without changing the shipped browser
-entrypoint. Later behavior changes require review by that same reviewer.
+entrypoint. For the answer repair, retained review also cleared the real-model
+fixture, exact returned-answer assertion, bounded diagnostics, atomic TEST guidance
+initialization and recovery, and final release runner bindings. Later behavior
+changes require review by that same reviewer.
 
 ### Checklist
 
@@ -249,5 +250,6 @@ entrypoint. Later behavior changes require review by that same reviewer.
 - [x] Pass the frozen application gate, TEST, and read-only PROD acceptance.
 - [x] Merge tested source and finalize owned development output.
 - [x] Validate main guidance with approved, denied, and forged-source synthetic requests.
-- [ ] Complete retained repair review and the new DEV, application, TEST, and PROD gates.
+- [x] Complete retained repair review and required regression checks.
+- [x] Publish the repair and its validation guidance.
 - [ ] Complete physical question, owner approval, and answer acceptance.
