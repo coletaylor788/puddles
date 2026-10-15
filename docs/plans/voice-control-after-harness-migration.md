@@ -1,6 +1,6 @@
 # Voice request recovery on the current harness
 
-Status: Proposed; current-path findings inspected
+Status: Production approved; implementation complete, validation in progress
 Issue: [#290](https://github.com/coletaylor788/puddles/issues/290)
 Last updated: 2026-10-14
 
@@ -101,28 +101,28 @@ outcome and a usable next voice request, not a reader or registry repair.
 
 ### Status
 
-**Approval:** Proposed. **Approval reference:** On 2026-10-14 the requester asked
-to narrow the proposal to fixes on the existing harness and table migration
-work. Steering is deferred, reader-limit changes are excluded, and there is no
-investment in harness-specific adapter repairs. The current authorization is
-to revise and publish the proposal, not implement new runtime behavior.
+**Approval:** Production approved. **Approval reference:** On 2026-10-14 the
+requester replied "approved" to the narrowed current-harness proposal. Approval
+covers shared voice routing, truthful admission feedback, busy-input recovery,
+and fresh requests after terminal outcomes through review, release, and cleanup.
+Steering, migration compatibility, harness-specific adapter repairs, reader
+changes, registry storage repairs, and new queueing remain excluded.
 
 The inspected call shows an accepted original request followed by rejected
 additional input and misleading voice feedback. Installed classifier probes
 reproduce missed status questions and an overly broad follow-up marker. The
 controller acknowledges before admission and handles unsupported input through
-its overlap recovery path. End-to-end current-harness tests must establish
-which delivery or active-state cleanup repairs are needed after terminal failure.
-No implementation, configuration change, or deployment is part of this revision.
+its overlap recovery path. Focused tests now prove that failed admission and completion racing extra input
+can suppress the original outcome. The shared voice repairs preserve that outcome
+and allow a fresh request. Source review is clear; installed and real-model DEV
+validation are in progress. No runtime change has reached production.
 
 ## Agent section
 
 ### State
 
-This is a documentation-only scope revision. Follow the short documentation
-path in `safe-feature-development`. The current harness and route remain the
-acceptance target. Do not wait for or qualify a future harness as part of this
-work. Keep this existing file path so links and the open proposal remain valid.
+Implementation follows `safe-feature-development` under the recorded production
+approval. The current harness and route remain the acceptance target. Do not wait for or qualify a future harness as part of this work. Keep this existing file path so links and the open proposal remain valid.
 
 Related designs are [voice progress](050-talk-conversation-progress.md) and
 [live conversation](055-live-conversation-default.md). Keep private transcripts,
@@ -213,22 +213,25 @@ After implementation approval, follow focused local tests, installed DEV
 validation, retained independent review, and the managed cumulative CI, TEST,
 and PROD lifecycle on the current harness. Register applicable maintained-patch
 regressions in the cumulative manifest. Roll back through the release controller
-with matching configuration and state. This proposal revision deploys nothing.
+with matching configuration and state. No production deployment has occurred yet.
 
 ### Review log
 
-This narrowed proposal receives direct documentation review for current-harness
-scope, evidence, failure boundaries, and consistency between both sections.
-Earlier architecture reviews do not qualify the revised implementation scope.
-Check relative links and whitespace directly. Runtime implementation requires
-its own retained independent review and behavior tests.
+The retained implementation review identified a completion race: known refusal
+after the original task ended still closed the call and suppressed its result.
+The correction preserves the result only when input was not admitted and the
+call owner remains current. Composed regressions use the voice controller,
+Gateway owner, real run registry, and control adapter for both success and failure.
+The reviewer cleared the complete source diff after remediation. Stale ownership
+and accepted input with an uncertain receipt retain their existing protections.
+Installed DEV, real-model behavior, and managed release gates remain required.
 
 ### Checklist
 
 - [x] Inspect the observed call and installed voice-control path.
 - [x] Reproduce classifier failures without live inference.
 - [x] Restrict the proposal to shared voice fixes on the current harness.
-- [ ] Approve implementation of the narrowed design.
-- [ ] Validate classification, accurate feedback, and busy-input recovery.
-- [ ] Prove terminal outcomes allow a fresh contextual voice request.
+- [x] Approve implementation of the narrowed design.
+- [x] Validate classification, accurate feedback, and busy-input recovery in focused tests.
+- [x] Prove terminal outcomes allow a fresh contextual voice request in composed tests.
 - [ ] Complete DEV, review, cumulative release gates, and physical acceptance.

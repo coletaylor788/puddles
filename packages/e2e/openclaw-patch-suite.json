@@ -152,7 +152,9 @@
     "src/plugin-sdk/session-store-runtime.recovery.test.ts": "plugin-sdk",
     "src/config/sessions/session-accessor.sqlite-entry-revalidation.test.ts": "runtime-config",
     "src/talk/agent-consult-tool.test.ts": "unit-src",
-    "src/test-utils/ports.test.ts": "unit"
+    "src/test-utils/ports.test.ts": "unit",
+    "extensions/openai/realtime-quicksilver-gateway-bridge-lifecycle.test.ts": "extension-provider-openai",
+    "src/talk/agent-run-control.test.ts": "unit-src"
   },
   "patches": [
     {
@@ -488,6 +490,19 @@
         "src/agents/tools/subagents-tool.test.ts",
         "src/agents/untrusted-agent-results.test.ts",
         "src/cron/isolated-agent/subagent-followup.test.ts"
+      ]
+    },
+    {
+      "name": "talk-request-recovery",
+      "tests": [
+        "extensions/openai/realtime-quicksilver-concurrency.test.ts",
+        "extensions/openai/realtime-quicksilver-delegation.test.ts",
+        "extensions/openai/realtime-quicksilver-gateway-bridge-lifecycle.test.ts",
+        "src/gateway/talk/client-gateway-control.agent-consult.test.ts",
+        "src/talk/agent-run-control.test.ts"
+      ],
+      "candidateTests": [
+        "tests/candidate.talk-concurrency.test.ts"
       ]
     }
   ],
