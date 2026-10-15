@@ -1,8 +1,8 @@
 # Native approval for household questions to main
 
-**Status:** Deployed; household identity and physical phone acceptance pending
+**Status:** Deployed; native app acceptance failed before approval creation
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
-**Last updated:** 2026-10-13
+**Last updated:** 2026-10-14
 
 ## Human section
 
@@ -93,6 +93,23 @@ household must not impersonate either. `REPLY_SKIP` depends on model cooperation
 `mode: "notify"` queues context without running main or returning an answer.
 Neither meets the required enforced question-and-answer boundary.
 
+#### Native app coverage gap
+
+The shipped route covers configured iMessage conversations. A physical test in
+a native app household conversation instead followed the old owner-message
+relay instructions. Native cross-context policy rejected that message. Household
+never called `sessions_send`, so the test created no approval. The new prompt
+guidance and caller admission both exclude this kind of conversation. Replacing
+the placeholder iMessage sender would not correct the native app path.
+
+The proposed correction is to recognize authorized interactive native app
+callers through trusted host identity and session metadata, give those callers
+the same question guidance, and keep the fixed main target and owner approval
+for each question. The exact supported identity contract still needs proof.
+Do not trust an `ios-` session-name prefix or identity supplied in message text.
+Keep workers and unauthorized sessions excluded. Preserve native approvals and
+exact-session sends without opening ordinary peer access or patching core A2A.
+
 ### Status
 
 **Approval:** Production approved for the original bounded question, automatic
@@ -100,6 +117,14 @@ answer, and no-follow-up scope. **Approval reference:** On 2026-10-13 the reques
 instructed this owner to ramp up on the new release manager and continue deployment
 to production. The requester then explicitly said: "We should not patch agent to
 agent communication." That limit is binding; the earlier patch decision is retired.
+
+**Native app correction scope:** The existing approval for interactive household
+questions remains valid. Establish the trusted-host identity contract before
+changing caller admission. If the correction fits the approved native seams and
+security boundary, proceed through ordinary remediation without another approval.
+If it requires a major boundary change, record the exact conflict and proposed
+decision for human review before affected implementation. This finding alone
+does not qualify a new ready ticket or deployment.
 
 The scoped native route is implemented in `approved-session-send`, with paired
 configuration and application packaging. Forty-three focused tests pass. A recording
@@ -115,8 +140,12 @@ gate, and installed TEST checks passed. The release manager deployed the same
 artifact to production, verified the active plugin with read-only checks, merged
 [PR #287](https://github.com/coletaylor788/puddles/pull/287), and resumed intake.
 The normal production gateway is healthy. There is no agent-to-agent patch.
-The existing household identity remains a placeholder. A real household sender
-and physical question, owner approval, and answer acceptance are still pending.
+The existing iMessage household identity remains a placeholder. Native app
+physical acceptance failed before approval creation. The deployed runtime remains
+healthy, but the requested flow does not work in native app household chats.
+Real iMessage sender configuration and successful physical question, owner
+approval, and answer acceptance remain open. Production checks above were
+read-only; the recording approval flows passed in DEV and TEST.
 
 ## Agent section
 
@@ -161,6 +190,39 @@ external writes. This proves the old control mismatch, not the scoped design.
 The previous conclusion that a core patch was necessary was premature.
 
 ### Implementation and acceptance
+
+#### Native app review and proposed remediation
+
+Read-only review correlated the physical attempt with its native app household
+session, the legacy `message` call, the cross-context denial, and the absence of
+a household approval. No production mutation or replay was performed. Public
+records intentionally omit private conversation content and identifiers.
+
+The relevant implementation is
+[`approved-session-send/src/plugin.ts`](../../openclaw-plugins/approved-session-send/src/plugin.ts).
+Its `before_prompt_build` hook matches configured requester session keys. Its
+`before_tool_call` hook also requires the configured channel, account, and sender.
+The scoped provider matches those configured session keys. A native app session
+outside that set receives neither replacement guidance nor access to the route.
+Installed household instructions still describe the old message relay.
+
+The correction changes packaged behavior, not just an environment binding.
+Before changing admission, establish which supported runtime fields prove
+the authenticated native app caller, interactive origin, and current session.
+Keep prompt selection, pre-call admission, and scoped access consistent. Reject
+missing or spoofed origin, worker sessions, archived sessions, and unsupported
+contexts. Do not substitute a session-name pattern for authentication.
+
+Within the approved scope, add an installed native app regression with synthetic actors and
+recorded delivery. It must show the native app question selecting `sessions_send`,
+owner approval before main runs, the matching answer returning to that app chat,
+and a fresh approval for a later question. Denied and unauthorized cases must
+reach neither main nor a legacy message fallback. Retain the reviewer through
+remediation. Run DEV checks and the full gate on a fresh frozen artifact, then
+TEST and read-only PROD acceptance through the release manager's single lane.
+Physical acceptance remains a separate final check. No ticket is ready yet.
+
+#### Existing iMessage implementation
 
 Use a registered policy hook around built-in `sessions_send`, following the
 [Gmail hook](../../openclaw-plugins/secure-gmail/src/plugin.ts) and
