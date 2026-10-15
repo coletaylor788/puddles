@@ -15,6 +15,7 @@ import {
 import { connectMcpBridge, McpBridge } from "./mcp-bridge.js";
 import { approvalSummary, createSendTool, SEND_NAME } from "./send-email.js";
 import { gmailPrefilter } from "./prefilter.js";
+import { wrapReadableEmailCaller } from "./readable-email.js";
 import { wrapMcpTool, type AuditEntry, type AuditLogger } from "./wrap-tool.js";
 import type {
   CallToolResult,
@@ -152,7 +153,7 @@ const EXPOSED_TOOLS: McpTool[] = [
   },
   {
     name: "get_email",
-    description: "Get the full contents of an email by ID.",
+    description: "Read an email as plain text, extracting HTML when needed.",
     inputSchema: {
       type: "object",
       properties: {
@@ -162,9 +163,9 @@ const EXPOSED_TOOLS: McpTool[] = [
         },
         format: {
           type: "string",
-          enum: ["full", "text_only", "html_only"],
-          description: "Response format (default: full)",
-          default: "full",
+          enum: ["readable", "text_only"],
+          description: "Readable text, including HTML-only messages (default: readable)",
+          default: "readable",
         },
       },
       required: ["email_id"],
@@ -365,7 +366,7 @@ const secureGmailPlugin = {
         const caller =
           tool.name === "get_attachments"
             ? wrapAttachmentsCaller(lazyCaller, ctx, api)
-            : lazyCaller;
+            : tool.name === "get_email" ? wrapReadableEmailCaller(lazyCaller) : lazyCaller;
         return wrapMcpTool(tool, caller, { ingress: toolIngress, audit });
       });
     }

@@ -7,6 +7,7 @@ import os
 import re
 import threading
 import time
+from email.message import Message
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,7 @@ from .auth import (
 )
 from .keychain import KeychainAccessError
 from .logging_setup import log
+from .readable import html_to_text
 from .send import SEND_SCHEMA, send_email, send_enabled
 
 # Initialize MCP server
@@ -114,9 +116,9 @@ async def list_tools() -> list[Tool]:
                     },
                     "format": {
                         "type": "string",
-                        "enum": ["full", "text_only", "html_only"],
-                        "description": "Response format (default: full)",
-                        "default": "full",
+                        "enum": ["readable", "text_only"],
+                        "description": "Readable text, extracting HTML when needed",
+                        "default": "readable",
                     },
                 },
                 "required": ["email_id"],
@@ -407,7 +409,9 @@ async def _list_emails(arguments: dict[str, Any]) -> list[TextContent]:
         ]
 
 
-def _extract_body_parts(payload: dict) -> tuple[str | None, str | None, list[dict]]:
+def _extract_body_parts(
+    payload: dict,
+) -> tuple[str | None, tuple[bytes, str | None] | None, list[dict]]:
     """Extract text, HTML body, and attachments from email payload.
 
     Args:
@@ -420,30 +424,41 @@ def _extract_body_parts(payload: dict) -> tuple[str | None, str | None, list[dic
     html_body = None
     attachments = []
 
+    def part_charset(part: dict) -> str | None:
+        mime = Message()
+        mime["Content-Type"] = next((h["value"] for h in part.get("headers", [])
+                                    if h["name"].lower() == "content-type"), "text/plain")
+        return mime.get_content_charset()
+
+    def part_bytes(data: str) -> bytes:
+        return base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))
+
     def process_part(part: dict) -> None:
         nonlocal text_body, html_body
         mime_type = part.get("mimeType", "")
         filename = part.get("filename", "")
 
         # Check if this part is an attachment
-        if filename and part.get("body", {}).get("attachmentId"):
-            attachments.append({
-                "id": part["body"]["attachmentId"],
-                "filename": filename,
-                "mimeType": mime_type,
-                "size": part["body"].get("size", 0),
-            })
+        if filename:
+            body = part.get("body", {})
+            if body.get("attachmentId"):
+                attachments.append({
+                    "id": body["attachmentId"],
+                    "filename": filename,
+                    "mimeType": mime_type,
+                    "size": body.get("size", 0),
+                })
             return
 
         # Extract body content
-        if mime_type == "text/plain" and not text_body:
+        if mime_type == "text/plain" and not (text_body or "").strip():
             body_data = part.get("body", {}).get("data")
             if body_data:
-                text_body = base64.urlsafe_b64decode(body_data).decode("utf-8")
+                text_body = part_bytes(body_data).decode(part_charset(part) or "utf-8")
         elif mime_type == "text/html" and not html_body:
             body_data = part.get("body", {}).get("data")
             if body_data:
-                html_body = base64.urlsafe_b64decode(body_data).decode("utf-8")
+                html_body = (part_bytes(body_data), part_charset(part))
 
         # Recursively process multipart content
         if "parts" in part:
@@ -479,7 +494,9 @@ async def _get_email(arguments: dict[str, Any]) -> list[TextContent]:
     if not email_id:
         return [TextContent(type="text", text="Error: email_id is required.")]
 
-    format_type = arguments.get("format", "full")
+    format_type = arguments.get("format", "readable")
+    if format_type not in {"readable", "text_only"}:
+        return [TextContent(type="text", text='{"error":"Only readable text is available"}')]
 
     try:
         msg = await run_blocking(
@@ -503,15 +520,9 @@ async def _get_email(arguments: dict[str, Any]) -> list[TextContent]:
         if cc:
             payload["cc"] = cc
 
-        if format_type == "text_only":
-            payload["body_text"] = text_body or ""
-        elif format_type == "html_only":
-            payload["body_html"] = html_body or ""
-        else:
-            if text_body is not None:
-                payload["body_text"] = text_body
-            if html_body is not None:
-                payload["body_html"] = html_body
+        payload["format"] = "readable"
+        payload["body_text"] = text_body if (text_body or "").strip() else (
+            await asyncio.to_thread(html_to_text, *html_body) if html_body else "")
 
         if attachments:
             payload["attachments"] = [
@@ -525,9 +536,9 @@ async def _get_email(arguments: dict[str, Any]) -> list[TextContent]:
 
         return [TextContent(type="text", text=json.dumps(payload, ensure_ascii=False, indent=2))]
 
-    except Exception as e:
+    except Exception:
         return [
-            TextContent(type="text", text=json.dumps({"error": f"Error getting email: {e}"}))
+            TextContent(type="text", text='{"error":"Email read failed"}')
         ]
 
 

@@ -508,7 +508,7 @@ class TestExtractBodyParts:
         text, html, attachments = _extract_body_parts(payload)
 
         assert text is None
-        assert html == "<html><body>Hello</body></html>"
+        assert html == (b"<html><body>Hello</body></html>", None)
         assert attachments == []
 
     def test_extracts_multipart_content(self):
@@ -534,7 +534,7 @@ class TestExtractBodyParts:
         text, html, attachments = _extract_body_parts(payload)
 
         assert text == "Plain text"
-        assert html == "<p>HTML</p>"
+        assert html == (b"<p>HTML</p>", None)
 
     def test_extracts_attachments(self):
         """Extracts attachment metadata from message."""
