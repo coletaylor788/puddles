@@ -7,7 +7,10 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 // Mock the MCP bridge so register() doesn't try to spawn gmail-mcp.
 vi.mock("../src/mcp-bridge.js", () => {
   const callTool = vi.fn(async (name: string): Promise<CallToolResult> => ({
-    content: [{ type: "text", text: `RESULT_FROM_${name}` }],
+    content: [{ type: "text", text: name === "get_email" ? JSON.stringify({
+      format: "readable", from: "sender@example.test", to: "reader@example.test",
+      subject: "Example", date: "2026-10-14", body_text: `RESULT_FROM_${name}`,
+    }) : `RESULT_FROM_${name}` }],
   }));
   return {
     connectMcpBridge: vi.fn(async () => ({ callTool, close: vi.fn() })),

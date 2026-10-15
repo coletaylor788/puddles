@@ -20,6 +20,12 @@ scans:
 from, to, cc, subject, snippet, body_text, body_html, filename, error
 ```
 
+`get_email` uses only the server's `readable` format. HTML extraction happens
+before either hook. The plugin validates the response and constructs a fresh
+text-only envelope, dropping transport metadata and rejecting raw or unexpected
+fields. It runs both hooks in parallel on that same envelope. Raw HTML formats
+are unavailable; a conversion or size-limit failure never retries with HTML.
+
 Envelope fields (`id`, `date`, `count`, `mime_type`, `size_bytes`) are
 gmail-issued and are **not** sent to the LLMs — this eliminates false
 positives on opaque message IDs while preserving all real findings.
@@ -27,7 +33,7 @@ SecretRedactor's Phase-1 regex sweep still runs on the full content.
 
 If any hook returns `block`, the agent receives a sentinel message instead of
 the raw content. If all hooks return `allow` the original MCP result passes
-through unchanged.
+through unchanged (the validated text-only envelope for `get_email`).
 
 ## Owner-approved sending
 

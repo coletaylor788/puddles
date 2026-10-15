@@ -141,7 +141,20 @@ Get the full contents of an email by ID.
 
 **Parameters:**
 - `email_id` (required): The email ID (from list_emails)
-- `format` (optional): Response format - "full" (default), "text_only", or "html_only"
+- `format` (optional): `readable` (default), or its `text_only` alias. Both prefer
+  nonempty plain text and extract text from HTML when needed. Raw formats are rejected.
+
+HTML is parsed by pinned `html5lib` with ElementTree in a separate worker. Only
+allowlisted body text and layout separators survive; scripts, styles, comments,
+embedded content, unsupported subtrees and all attributes are excluded. Ordinary
+text is still untrusted and must pass the plugin's security guards.
+
+The worker inherits no credentials or extra file descriptors. On macOS it seals
+filesystem, network and process access with Seatbelt after trusted imports. Linux
+requires `bubblewrap` (`bwrap`) with user namespaces enabled and read-only runtime
+mounts. Conversion fails if containment is unavailable. CPU and wall deadlines
+bound parsing; Linux also enforces an address-space limit. Errors contain no source.
+Responses are complete text: no paging, truncation, raw fallback, or new size preflight.
 
 **Examples:**
 - "Read email ID abc123"
