@@ -112,7 +112,10 @@ The inspected call shows an accepted original request followed by rejected
 additional input and misleading voice feedback. Installed classifier probes
 reproduce missed status questions and an overly broad follow-up marker. The
 controller acknowledges before admission and handles unsupported input through
-its overlap recovery path. Focused tests now prove that failed admission and completion racing extra input
+its overlap recovery path. Real-model validation also reproduced a status question
+missed after earlier discussion accumulated in the transcript. A narrow status
+match preserves that context and keeps mutating-control rules unchanged.
+Focused tests now prove that failed admission and completion racing extra input
 can suppress the original outcome. The shared voice repairs preserve that outcome
 and allow a fresh request. Source review is clear; installed and real-model DEV
 validation are in progress. No runtime change has reached production.
@@ -224,7 +227,14 @@ call owner remains current. Composed regressions use the voice controller,
 Gateway owner, real run registry, and control adapter for both success and failure.
 The reviewer cleared the complete source diff after remediation. Stale ownership
 and accepted input with an uncertain receipt retain their existing protections.
-Installed DEV, real-model behavior, and managed release gates remain required.
+Live-model validation reproduced a status question prefixed by earlier live
+discussion. The correction matches only the two precise status-question forms
+at the end of accumulated input. Transcript storage and cancellation/negation
+precedence remain unchanged. The added composed regression checks the real
+classifier, status callback, original result, and retained context on the next
+request. The retained reviewer cleared this correction and the complete current
+source diff. Refreshed live-model evidence, installed DEV, and managed release
+gates remain required.
 
 ### Checklist
 

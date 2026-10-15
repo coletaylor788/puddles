@@ -1,11 +1,82 @@
 diff --git a/extensions/openai/realtime-quicksilver-concurrency.test.ts b/extensions/openai/realtime-quicksilver-concurrency.test.ts
-index 974da103..57f5c681 100644
+index 974da103..658b0ecc 100644
 --- a/extensions/openai/realtime-quicksilver-concurrency.test.ts
 +++ b/extensions/openai/realtime-quicksilver-concurrency.test.ts
-@@ -60,6 +60,108 @@ function scenario(params: Parameters<typeof createDelegationHarness>[0]) {
+@@ -1,5 +1,6 @@
+ import { setImmediate as nextEventLoopTurn } from "node:timers/promises";
+ import { describe, expect, it, vi } from "vitest";
++import { resolveRealtimeVoiceAgentControlIntent } from "../../src/talk/agent-run-control-shared.js";
+ import {
+   createDelegationHarness,
+   parseSent,
+@@ -60,6 +61,172 @@ function scenario(params: Parameters<typeof createDelegationHarness>[0]) {
  }
  
  describe("GPT-Live concurrent conversation and backend work", () => {
++  it("routes a trailing status question after live discussion without consuming that context", async () => {
++    const work = deferred<{ text: string }>();
++    const run = vi
++      .fn<ConsultRunner>()
++      .mockImplementationOnce(() => work.promise)
++      .mockResolvedValueOnce({ text: "next result" });
++    const steer = vi.fn(async () => {
++      throw unsupported();
++    });
++    const status = vi.fn();
++    const h = scenario({
++      runAgentConsult: run,
++      steerAgentConsult: steer,
++      handleDelegationInput: (input, respond) => {
++        const intent = resolveRealtimeVoiceAgentControlIntent({ text: input });
++        if (intent.shouldAutoControl && intent.mode === "status") {
++          status(input);
++          respond("The original lookup is running.");
++          return "control";
++        }
++        return "consult";
++      },
++    });
++    try {
++      h.request("lookup", "read the project document");
++      h.frame({
++        type: "session.input_transcript.delta",
++        delta:
++          "While that lookup runs, help me brainstorm a cozy reading nook. I like warm lighting and plants ",
++        start_ms: 110,
++        end_ms: 150,
++      });
++      h.frame({
++        type: "session.output_transcript.delta",
++        delta: "A warm floor lamp would help.",
++        start_ms: 160,
++        end_ms: 190,
++      });
++      h.frame({
++        type: "session.input_transcript.delta",
++        delta: "Are you actually ",
++        start_ms: 200,
++        end_ms: 230,
++      });
++      h.request("status", "checking that request");
++      await nextEventLoopTurn();
++      expect(status).toHaveBeenCalledOnce();
++      expect(steer).not.toHaveBeenCalled();
++      expect(run).toHaveBeenCalledOnce();
++      expect(h.replies("status")[0]?.content).toBe("The original lookup is running.");
++      work.resolve({ text: "original result" });
++      await nextEventLoopTurn();
++      expect(h.replies("lookup")[0]?.content).toBe("original result");
++      h.request("next", "read the second document");
++      await nextEventLoopTurn();
++      expect(run.mock.calls[1]?.[0].prompt).toContain("cozy reading nook");
++      expect(run.mock.calls[1]?.[0].prompt).toContain("A warm floor lamp would help.");
++      expect(h.onFatalError).not.toHaveBeenCalled();
++    } finally {
++      work.resolve({ text: "cleanup" });
++      h.controller.stop(new Error("test cleanup"));
++    }
++  });
++
 +  it("delivers an admission failure despite pending additional input and accepts a fresh request", async () => {
 +    const work = deferred<{ text: string }>();
 +    const run = vi
@@ -111,7 +182,7 @@ index 974da103..57f5c681 100644
    it.each(["resolve", "reject"] as const)(
      "preserves accepted work when pending steering %s during detached transcript drain",
      async (outcome) => {
-@@ -212,6 +314,7 @@ describe("GPT-Live concurrent conversation and backend work", () => {
+@@ -212,6 +379,7 @@ describe("GPT-Live concurrent conversation and backend work", () => {
          await vi.waitFor(() => expect(h.replies("first")[0]?.content).toBe("original answer"));
          expect(h.onFatalError).not.toHaveBeenCalled();
          expect(run).toHaveBeenCalledOnce();
@@ -496,15 +567,18 @@ index 34aefb87..448500f2 100644
      let current = true;
      const assertCurrent = vi.fn(() => {
 diff --git a/src/talk/agent-run-control-shared.ts b/src/talk/agent-run-control-shared.ts
-index 4dc137d4..0de6ba65 100644
+index 4dc137d4..8c94031e 100644
 --- a/src/talk/agent-run-control-shared.ts
 +++ b/src/talk/agent-run-control-shared.ts
-@@ -121,13 +121,15 @@ const CANCEL_CONTROL_PATTERNS = [
+@@ -121,13 +121,18 @@ const CANCEL_CONTROL_PATTERNS = [
  ] as const;
  
  const STATUS_CONTROL_PATTERNS = [
-+  /^(?:are you|is it)\s+(?:(?:actually|still)\s+)?(?:checking|working|running|looking)(?:\s+(?:on|at|into))?(?:\s+(?:(?:that|this|the|my)\s+)?(?:request|task|lookup|search|it))?\s*[.!?]*$/,
-+  /^how(?:'s| is)\s+(?:(?:that|this|the|my)\s+)?(?:lookup|request|task|search|check)\s+going\s*[.!?]*$/,
++  // Continuous voice transcripts can include discussion before the current question.
++  // Match only these complete, read-only status forms at the end. Keep mutating
++  // controls anchored and evaluate their negation against the full input.
++  /\b(?:are you|is it)\s+(?:(?:actually|still)\s+)?(?:checking|working|running|looking)(?:\s+(?:on|at|into))?(?:\s+(?:(?:that|this|the|my)\s+)?(?:request|task|lookup|search|it))?\s*[.!?]*$/,
++  /\bhow(?:'s| is)\s+(?:(?:that|this|the|my)\s+)?(?:lookup|request|task|search|check)\s+going\s*[.!?]*$/,
    /^(?:(?:ok|okay|alright|all right)[,\s]+)?(?:status|progress|update)(?:\s*[.!?])?$/,
    /^(?:(?:ok|okay|alright|all right)[,\s]+)?(?:give me|what'?s|any)\s+(?:an?\s+)?update(?:\s*[.!?])?$/,
    /^(?:(?:ok|okay|alright|all right)[,\s]+)?(where are we|what'?s happening|what (?:are you|is it) doing|what'?s it doing|how (?:is|are) (?:it|you|that|this) going|how'?s it going|are you still working|is it done|did it finish)(\b|[.!?])/,
@@ -516,7 +590,7 @@ index 4dc137d4..0de6ba65 100644
  ] as const;
  
  const STEER_CONTROL_PATTERNS = [
-@@ -171,7 +173,10 @@ export function resolveRealtimeVoiceAgentControlIntent(params: {
+@@ -171,7 +176,10 @@ export function resolveRealtimeVoiceAgentControlIntent(params: {
    }
  
    const text = params.text;
@@ -529,15 +603,18 @@ index 4dc137d4..0de6ba65 100644
    // abort of the whole run just because it starts with "stop".
    if (matchesAnyPattern(normalized, STOP_REDIRECT_CONTROL_PATTERNS)) {
 diff --git a/src/talk/agent-run-control.test.ts b/src/talk/agent-run-control.test.ts
-index 6219bbf8..dd1605c1 100644
+index 6219bbf8..12b7cec5 100644
 --- a/src/talk/agent-run-control.test.ts
 +++ b/src/talk/agent-run-control.test.ts
-@@ -59,6 +59,30 @@ function createDeps(options: {
+@@ -59,6 +59,36 @@ function createDeps(options: {
  }
  
  describe("classifyRealtimeVoiceAgentControlText", () => {
 +  it.each([
 +    "Are you actually checking?",
++    "While that lookup runs, help me brainstorm a cozy reading nook. I like warm lighting and plants Are you actually checking that request",
++    "Also I like the first option. How’s that lookup going?",
++    "Don’t stop that. Are you actually checking that request?",
 +    "Are you actually checking that request?",
 +    "Are you still working on it?",
 +    "How's that lookup going?",
@@ -555,6 +632,9 @@ index 6219bbf8..dd1605c1 100644
 +    "Also I like the first option.",
 +    "One more thing, that explanation makes sense.",
 +    "Are you checking accounts tomorrow?",
++    "Also, are you checking accounts tomorrow?",
++    'Explain the phrase "are you actually checking?"',
++    "Are you actually checking that request or asking me to do it?",
 +    "Don’t stop that.",
 +  ])("keeps discussion and negated cancellation out of automatic control: %s", (text) => {
 +    expect(shouldAutoControlRealtimeVoiceAgentText(text)).toBe(false);

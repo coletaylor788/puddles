@@ -94,6 +94,15 @@ if (process.argv[3] !== "--child") {
       type: "session.thinking.append", delegation_id: "first",
       content: "Existing notes identify two options. Research is running.",
     }]);
+    controller.handleFrame(Buffer.from(JSON.stringify({
+      type: "session.input_transcript.delta",
+      delta: "While that lookup runs, help me brainstorm a cozy reading nook. I like plants ",
+      start_ms: 110, end_ms: 140,
+    })), false);
+    controller.handleFrame(Buffer.from(JSON.stringify({
+      type: "session.output_transcript.delta", delta: "A warm lamp would help.",
+      start_ms: 150, end_ms: 180,
+    })), false);
     request("status", "Are you actually checking that request?");
     await tick();
     assert.equal(calls.length, 1, "status must not launch another task");

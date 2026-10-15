@@ -3,6 +3,9 @@
 This patch follows the existing public patch set on OpenClaw 2026.9.6. It keeps
 natural task-status questions on the host control path and avoids interpreting
 ordinary discussion beginning with "also" as an instruction to queue work.
+Precise status questions also match after earlier discussion in a continuous
+transcript. This leaves transcript context and mutating-control classification
+unchanged.
 
 Calling the consultation runner no longer produces an optimistic spoken receipt.
 Actual host progress and results establish what happened. A refused overlapping
