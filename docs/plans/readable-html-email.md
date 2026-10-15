@@ -1,8 +1,8 @@
 # Readable HTML email
 
-Status: Parser integrity fix reviewed; fresh DEV validation pending
+Status: Released to production; final cleanup in progress
 Issue: https://github.com/coletaylor788/puddles/issues/295
-Last updated: 2026-10-14
+Last updated: 2026-10-15
 
 ## Human section
 
@@ -34,13 +34,13 @@ Keep the injection guard and reader prompt: malicious instructions can still app
 
 **Approval:** Production approved. **Approval reference:** The requester said “approved, ship it” on 2026-10-14, after agreeing to this design. Scope includes implementation, validation, release, merge and cleanup. No chunking or paging, and no real email examples.
 
-Implementation, focused offline tests and independent review pass. Earlier installed DEV behavior checks passed, but a fresh run caught parser imports writing bytecode into the installed package. The parser now disables bytecode generation. Fresh packaged and DEV validation are required before the release manager runs the full suite, TEST, production validation and source merge.
+Released through the native controller on 2026-10-15. Fresh full application CI, installed DEV and TEST acceptance, backup, bounded read-only production acceptance, paired source merge and intake resumption all passed on the same artifact. Public PR #296 is merged. Real mailbox acceptance remains for the requester. Final cleanup follows this documentation closeout.
 
 ## Agent section
 
 ### State
 
-Feature branch `codex/readable-email`, PR #296, based on public `224d40b1`. Companion changes are tracked separately. All fixtures are synthetic; production is unchanged. The next build and front-of-queue rebase must include subsequent changes to main.
+Release `readable-email-20261014-r4` installed artifact `a9b2093099a718df7c1f8c98b61df02ad0be444eb5485d2319cc310fd2221170`. Public merge `350f58aa5c378cb4bd330055de0147ed47af7940` has exactly the reviewed source tree. Paired companion source is merged. Hosted checks passed. The retained reviewer cleared the complete behavior diff and final callback mapping. All acceptance email fixtures are synthetic.
 
 ### Scope and acceptance criteria
 
@@ -62,7 +62,9 @@ Reader guidance reports failed or incomplete reads without raw retries. The depe
 
 Focused results: 261 offline Python tests, 91 secure-gmail tests, and five companion guidance tests pass. The legacy live-account test module is retired and direct invocation collects no executable tests. Packaged encoding regressions pass with the actual parser, MCP server, plugin and both guards using recording adapters.
 
-Earlier DEV acceptance passed on output and installed digest `5ec736e12c8ce22d3ed1a59d3bfa826d3811ef6eedf350c2f031cf84fcc30c29`. A subsequent incremental output differed, so the release stopped before TEST and production. The exact historical difference is unproven. Fresh DEV behavior checks on that output passed but installed integrity failed: parser imports added 27 bytecode files and directories. An isolated regression reproduced those additions before the fix and passes with the child interpreter's explicit `-B` flag. The installed scenario now checks packaged library integrity. Same-reviewer remediation review and 61 focused parser tests pass. Fresh complete packaging and DEV integrity acceptance remain required. Recording checks report zero external writes.
+The final native DEV run passed the full installed suite in 246.639 seconds. The release then passed fresh full application CI in 751.304 seconds (28 projects, 199 registered tests), TEST acceptance in 247.657 seconds and production acceptance in 7.297 seconds. Candidate and installed files matched before and after acceptance. Recording checks reported zero external writes. Production intake resumed and its health check passed after both source merges.
+
+Earlier attempts caught parser import-time bytecode writes, an absent TEST reader directory and a release callback that omitted the host HOME variable. The child now uses `-B`; preparation validates the reader directory before creating an allowed DEV/TEST leaf; and the full installed callback preserves the normal host environment with explicit test bindings. DEV runs the same full installed suite as TEST. Nineteen callback regressions pass, including child environment and directory cases. The exact historical difference between the first two candidate digests remains unproven; neither reached production. Failed attempts are preserved until normal feature finalization.
 
 Require thorough parser unit tests and guarded-route tests covering:
 
@@ -87,5 +89,7 @@ Prior review found two MIME defects: filename-only attachments disrupted downloa
 
 - [x] Design agreed and test expectations recorded.
 - [x] Implementation, focused validation and independent review.
-- [ ] Fresh packaged build and installed DEV integrity acceptance.
-- [ ] Full application suite, TEST, production acceptance, merge and cleanup.
+- [x] Fresh packaged build and installed DEV integrity acceptance.
+- [x] Full application suite, TEST, production acceptance, merge and resumed intake.
+- [ ] Finalize owned feature workspaces after documentation publication.
+- [ ] Requester validation with real mail, if desired.
