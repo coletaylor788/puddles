@@ -409,7 +409,9 @@ async def _list_emails(arguments: dict[str, Any]) -> list[TextContent]:
         ]
 
 
-def _extract_body_parts(payload: dict) -> tuple[str | None, str | None, list[dict]]:
+def _extract_body_parts(
+    payload: dict,
+) -> tuple[str | None, tuple[bytes, str | None] | None, list[dict]]:
     """Extract text, HTML body, and attachments from email payload.
 
     Args:
@@ -422,12 +424,14 @@ def _extract_body_parts(payload: dict) -> tuple[str | None, str | None, list[dic
     html_body = None
     attachments = []
 
-    def decode_part(part: dict, data: str) -> str:
+    def part_charset(part: dict) -> str | None:
         mime = Message()
         mime["Content-Type"] = next((h["value"] for h in part.get("headers", [])
                                     if h["name"].lower() == "content-type"), "text/plain")
-        return base64.urlsafe_b64decode(data + "=" * (-len(data) % 4)).decode(
-            mime.get_content_charset() or "utf-8")
+        return mime.get_content_charset()
+
+    def part_bytes(data: str) -> bytes:
+        return base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))
 
     def process_part(part: dict) -> None:
         nonlocal text_body, html_body
@@ -436,23 +440,25 @@ def _extract_body_parts(payload: dict) -> tuple[str | None, str | None, list[dic
 
         # Check if this part is an attachment
         if filename:
-            attachments.append({
-                "id": part.get("body", {}).get("attachmentId"),
-                "filename": filename,
-                "mimeType": mime_type,
-                "size": part["body"].get("size", 0),
-            })
+            body = part.get("body", {})
+            if body.get("attachmentId"):
+                attachments.append({
+                    "id": body["attachmentId"],
+                    "filename": filename,
+                    "mimeType": mime_type,
+                    "size": body.get("size", 0),
+                })
             return
 
         # Extract body content
         if mime_type == "text/plain" and not (text_body or "").strip():
             body_data = part.get("body", {}).get("data")
             if body_data:
-                text_body = decode_part(part, body_data)
+                text_body = part_bytes(body_data).decode(part_charset(part) or "utf-8")
         elif mime_type == "text/html" and not html_body:
             body_data = part.get("body", {}).get("data")
             if body_data:
-                html_body = decode_part(part, body_data)
+                html_body = (part_bytes(body_data), part_charset(part))
 
         # Recursively process multipart content
         if "parts" in part:
@@ -516,7 +522,7 @@ async def _get_email(arguments: dict[str, Any]) -> list[TextContent]:
 
         payload["format"] = "readable"
         payload["body_text"] = text_body if (text_body or "").strip() else (
-            await asyncio.to_thread(html_to_text, html_body) if html_body else "")
+            await asyncio.to_thread(html_to_text, *html_body) if html_body else "")
 
         if attachments:
             payload["attachments"] = [

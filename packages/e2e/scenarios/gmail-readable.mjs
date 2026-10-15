@@ -25,11 +25,29 @@ html += '<table><tr><td>Due</td><td>€42.50</td></tr></table><p>2026-11-01</p>'
 html += '<script>DROP_SCRIPT</script><a href="javascript:DROP_URL">Terms</a>'
 html += '<!--DROP_COMMENT--><iframe>DROP_FRAME</iframe></body></html>'
 service = MagicMock()
-service.users.return_value.messages.return_value.get.return_value.execute.return_value = {
- 'payload': {'headers': [{'name': 'Subject', 'value': 'Synthetic notice'}],
- 'mimeType': 'multipart/alternative', 'parts': [
- {'mimeType': 'text/plain', 'body': {'data': 'IA'}},
- {'mimeType': 'text/html', 'body': {'data': base64.urlsafe_b64encode(html.encode()).decode()}}]}}
+def message(email_id):
+    if email_id == 'synthetic':
+        source, encoding = html.encode(), None
+    elif email_id == 'meta-charset':
+        source, encoding = '<meta charset="windows-1252"><p>Café €42</p>'.encode('cp1252'), None
+    elif email_id == 'bom':
+        source, encoding = '<p>Café €42</p>'.encode('utf-16'), 'windows-1252'
+    elif email_id == 'transport':
+        source, encoding = '<p>Café €42</p>'.encode('cp1252'), 'iso-8859-1'
+    else:
+        raise RuntimeError('Unknown synthetic email')
+    headers = [{'name': 'Content-Type', 'value': 'text/html' + (
+        '; charset=' + encoding if encoding else '')}]
+    return {'payload': {'headers': [{'name': 'Subject', 'value': 'Synthetic notice'}],
+        'mimeType': 'multipart/alternative', 'parts': [
+        {'mimeType': 'text/plain', 'body': {'data': 'IA'}},
+        {'mimeType': 'text/html', 'headers': headers,
+         'body': {'data': base64.urlsafe_b64encode(source).decode()}}]}}
+def get_message(**kwargs):
+    result = MagicMock()
+    result.execute.return_value = message(kwargs['id'])
+    return result
+service.users.return_value.messages.return_value.get.side_effect = get_message
 server.is_authenticated = lambda: True
 server.get_gmail_service = lambda **kwargs: service
 asyncio.run(server.main())
@@ -63,11 +81,18 @@ export default class Provider { async classify(content, prompt, options) {
     assert.ok(call.content.includes('€42.50') && call.content.includes('2026-11-01'));
     assert.ok(!call.content.includes('DROP_'));
   }
+  for (const email_id of ['meta-charset', 'bom', 'transport']) {
+    const before = calls.length;
+    const encoded = await read.execute(email_id, {email_id});
+    assert.equal(JSON.parse(encoded.content[0].text).body_text, 'Café €42');
+    assert.equal(calls.length, before + 2);
+    for (const call of calls.slice(before)) assert.ok(call.content.includes('Café €42'));
+  }
   assert.ok(!JSON.stringify(result).includes('DROP_'));
   assert.ok(!readFileSync(join(root,'audit.jsonl'),'utf8').includes('DROP_'));
   const raw = await read.execute('raw-denied', {email_id:'synthetic',format:'html_only'});
   assert.ok(JSON.stringify(raw).includes('Only readable text'));
-  console.log(JSON.stringify({status:'passed',externalWrites:0,checks:['installed-parser','installed-mcp',
+  console.log(JSON.stringify({status:'passed',externalWrites:0,checks:['installed-parser','installed-mcp','html-encoding',
     'both-guards-text-only','reader-result','no-raw-details','raw-format-denied']}));
 } finally {
   await close?.();

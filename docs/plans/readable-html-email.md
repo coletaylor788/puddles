@@ -1,7 +1,7 @@
 # Readable HTML email
 
 Status: Implementing approved design
-Issue: Pending
+Issue: https://github.com/coletaylor788/puddles/issues/295
 Last updated: 2026-10-14
 
 ## Human section
@@ -34,7 +34,7 @@ Keep the injection guard and reader prompt: malicious instructions can still app
 
 **Approval:** Production approved. **Approval reference:** The requester said “approved, ship it” on 2026-10-14, after agreeing to this design. Scope includes implementation, validation, release, merge and cleanup. No chunking or paging, and no real email examples.
 
-Implementation and focused tests are in progress. Independent review, installed validation and release remain pending.
+Implementation and focused offline tests pass. Two MIME defects found during review are corrected. Independent review and deployed DEV validation remain before the release queue.
 
 ## Agent section
 
@@ -60,6 +60,8 @@ Reader guidance reports failed or incomplete reads without raw retries. The depe
 
 ### Validation
 
+Focused results: 260 Python tests, 91 secure-gmail tests, and five companion guidance tests pass. The legacy live-account test module is retired and direct invocation collects no executable tests. The broad suite skips that module. Packaged encoding regressions are awaiting a fresh run.
+
 Require thorough parser unit tests and guarded-route tests covering:
 
 - Complex nested layouts, tables, footnotes and mixed MIME parts.
@@ -77,7 +79,7 @@ Follow the normal release process. Never fall back to raw HTML on failure.
 
 ### Review log
 
-Pending independent adversarial review of the complete change.
+Prior review found two MIME defects: filename-only attachments disrupted downloads, and early HTML decoding lost encoding information. Both are corrected with offline and contained-worker regressions. The prior reviewer cannot be resumed after chat recovery; replacement review remains pending.
 
 ### Checklist
 

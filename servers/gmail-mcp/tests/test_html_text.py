@@ -178,3 +178,18 @@ def test_worker_receives_no_credentials_and_no_input_in_argv():
         assert kwargs["env"] == {"LANG": "C.UTF-8"}
         assert kwargs["close_fds"] is True
         assert kwargs["stderr"] == subprocess.DEVNULL
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="Native macOS sandbox probe")
+@pytest.mark.parametrize(
+    "source, charset",
+    [
+        ('<meta charset="windows-1252"><p>Café €42</p>'.encode("cp1252"), None),
+        ("<p>Café €42</p>".encode("utf-16"), None),
+        ("<p>Café €42</p>".encode("utf-16"), "windows-1252"),
+        ("<p>Café €42</p>".encode("cp1252"), "iso-8859-1"),
+        ("<p>Café €42</p>".encode(), None),
+    ],
+)
+def test_contained_worker_preserves_html_encoding(source, charset):
+    assert html_to_text(source, charset) == "Café €42"

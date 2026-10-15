@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 
-def html_to_text(html: str) -> str:
+def html_to_text(html: str | bytes, transport_encoding: str | None = None) -> str:
     """Fail closed if parsing, containment, or the worker deadline fails."""
     try:
         source = Path(__file__).resolve().parent
@@ -60,9 +60,14 @@ def html_to_text(html: str) -> str:
             ]
         elif sys.platform != "darwin":
             raise RuntimeError("Sandbox unavailable")
+        if isinstance(html, str):
+            html = html.encode("utf-8")
+            transport_encoding = "utf-8"
+        # Encoding metadata travels over the same private pipe as the source.
+        worker_input = json.dumps(transport_encoding).encode("utf-8") + b"\n" + html
         completed = subprocess.run(
             command,
-            input=html.encode("utf-8"),
+            input=worker_input,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             env={"LANG": "C.UTF-8"},

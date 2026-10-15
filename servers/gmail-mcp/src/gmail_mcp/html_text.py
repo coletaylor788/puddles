@@ -19,14 +19,19 @@ BLOCKS = frozenset(
 )
 
 
-def extract_html_text(html: str) -> str:
+def extract_html_text(html: str | bytes, transport_encoding: str | None = None) -> str:
     """Emit allowed HTML body text, never attributes or excluded descendants.
 
     HTML5 tree construction handles malformed markup. Text that merely resembles
     code remains untrusted prose; callers must still run their ingress guards.
     Iterative traversal avoids recursion failures on deeply nested mail layouts.
     """
-    document = html5lib.parse(html, treebuilder="etree", namespaceHTMLElements=True)
+    encoding = (
+        {"transport_encoding": transport_encoding, "default_encoding": "utf-8"}
+        if isinstance(html, bytes)
+        else {}
+    )
+    document = html5lib.parse(html, treebuilder="etree", namespaceHTMLElements=True, **encoding)
     body = document.find(HTML_NS + "body")
     if body is None:
         return ""

@@ -7,6 +7,7 @@ import sys
 
 # -I -S excludes user/site startup code. Paths come only from the trusted launcher.
 sys.path[:0] = json.loads(sys.argv[1])
+import webencodings  # noqa: E402
 from html_text import extract_html_text  # noqa: E402
 
 
@@ -37,9 +38,14 @@ def restrict() -> None:
 if __name__ == "__main__":
     try:
         extract_html_text("")  # Load the fixed tree builder before sealing filesystem access.
+        # Python loads codecs lazily. Load the fixed HTML encoding set before
+        # sealing filesystem access, never based on source-controlled paths.
+        for label in webencodings.LABELS:
+            webencodings.lookup(label)
         restrict()
-        value = sys.stdin.buffer.read().decode("utf-8")
-        sys.stdout.buffer.write(extract_html_text(value).encode("utf-8"))
+        transport_encoding = json.loads(sys.stdin.buffer.readline())
+        value = sys.stdin.buffer.read()
+        sys.stdout.buffer.write(extract_html_text(value, transport_encoding).encode("utf-8"))
     except BaseException:
         # Parser exceptions can quote source. The parent gets only an exit code.
         raise SystemExit(1) from None

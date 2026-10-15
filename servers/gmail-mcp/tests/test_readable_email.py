@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from gmail_mcp.server import _get_email
+from gmail_mcp.server import _get_attachments, _get_email
 
 
 def part(kind, text, charset="utf-8", **extra):
@@ -51,7 +51,12 @@ async def test_prefers_plain_text_and_ignores_html_attachment():
             {
                 "mimeType": "multipart/mixed",
                 "parts": [
-                    part("text/html", "ATTACHED_SOURCE", filename="example.html"),
+                    part(
+                        "text/html",
+                        "ATTACHED_SOURCE",
+                        filename="example.html",
+                        body={"attachmentId": "html-attachment", "size": 10},
+                    ),
                     {
                         "mimeType": "multipart/alternative",
                         "parts": [
@@ -87,10 +92,79 @@ async def test_conversion_failure_drops_all_source_and_metadata():
 
 
 async def test_decode_failure_cannot_echo_body():
-    result = await read({"mimeType": "text/html", "body": {"data": "_w"}})
+    result = await read({"mimeType": "text/html", "body": {"data": "a"}})
     assert json.loads(result[0].text) == {"error": "Email read failed"}
 
 
 async def test_empty_mail_remains_empty_without_raw_retry():
     result = await read({"mimeType": "multipart/alternative", "parts": []})
     assert json.loads(result[0].text)["body_text"] == ""
+
+
+async def test_inline_attachment_does_not_break_later_download(tmp_path):
+    service = MagicMock()
+    messages = service.users.return_value.messages.return_value
+    messages.get.return_value.execute.return_value = {
+        "payload": {
+            "mimeType": "multipart/mixed",
+            "parts": [
+                part("text/html", "ATTACHMENT_NOT_BODY", filename="inline.html"),
+                {
+                    "mimeType": "application/pdf",
+                    "filename": "report.pdf",
+                    "body": {"attachmentId": "pdf-id", "size": 4},
+                },
+            ],
+        }
+    }
+    messages.attachments.return_value.get.return_value.execute.return_value = {
+        "data": base64.urlsafe_b64encode(b"%PDF").decode()
+    }
+    with (
+        patch("gmail_mcp.server.is_authenticated", return_value=True),
+        patch("gmail_mcp.server.get_gmail_service", return_value=service),
+    ):
+        result = await _get_attachments({"email_id": "synthetic", "save_to": str(tmp_path)})
+    assert "Downloaded 1 attachment(s)" in result[0].text
+    assert (tmp_path / "report.pdf").read_bytes() == b"%PDF"
+    messages.attachments.return_value.get.assert_called_once_with(
+        userId="me", messageId="synthetic", id="pdf-id"
+    )
+
+
+async def test_inline_html_attachment_is_not_body():
+    result = await read(
+        {
+            "mimeType": "multipart/mixed",
+            "parts": [part("text/html", "ATTACHMENT_NOT_BODY", filename="inline.html")],
+        }
+    )
+    assert json.loads(result[0].text)["body_text"] == ""
+
+
+@pytest.mark.parametrize(
+    "source, charset, expected",
+    [
+        ('<meta charset="windows-1252"><p>Café €42</p>'.encode("cp1252"), None, "Café €42"),
+        ("<p>Café €42</p>".encode("utf-16"), None, "Café €42"),
+        ("<p>Café €42</p>".encode("utf-16"), "windows-1252", "Café €42"),
+        ("<p>Café €42</p>".encode("cp1252"), "iso-8859-1", "Café €42"),
+        ("<p>日本語 €42</p>".encode(), None, "日本語 €42"),
+    ],
+)
+async def test_html_bytes_reach_parser_with_encoding_rules(source, charset, expected):
+    from gmail_mcp.html_text import extract_html_text
+
+    headers = [
+        {"name": "Content-Type", "value": "text/html" + (f"; charset={charset}" if charset else "")}
+    ]
+    with patch("gmail_mcp.server.html_to_text", side_effect=extract_html_text) as convert:
+        result = await read(
+            {
+                "mimeType": "text/html",
+                "headers": headers,
+                "body": {"data": base64.urlsafe_b64encode(source).decode()},
+            }
+        )
+    convert.assert_called_once_with(source, charset)
+    assert json.loads(result[0].text)["body_text"] == expected
