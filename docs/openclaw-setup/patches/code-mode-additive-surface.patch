@@ -1,5 +1,5 @@
 diff --git a/extensions/copilot/src/tool-bridge.test.ts b/extensions/copilot/src/tool-bridge.test.ts
-index 2d4c2d8a2b2..593f9c0b766 100644
+index 2d4c2d8a2b2..c688c172c81 100644
 --- a/extensions/copilot/src/tool-bridge.test.ts
 +++ b/extensions/copilot/src/tool-bridge.test.ts
 @@ -16,6 +16,7 @@ import {
@@ -100,9 +100,9 @@ index 2d4c2d8a2b2..593f9c0b766 100644
 +    let final: ReturnType<typeof runSdkTool> | undefined;
 +    try {
 +      await firstStarted.promise;
-+      const parked = await runSdkTool(get("code_exec"), {
++      const parked = (await runSdkTool(get("code_exec"), {
 +        code: "const pending = nested({}); await yield_control(); return await pending;",
-+      });
++      })) as ToolResultObject;
 +      const details = JSON.parse(parked.textResultForLlm);
 +      expect(details, JSON.stringify(parked)).toMatchObject({ status: "waiting" });
 +      expect(events).toEqual(["first:start"]);
@@ -114,7 +114,7 @@ index 2d4c2d8a2b2..593f9c0b766 100644
 +      expect(events).toEqual(["first:start", "first:done", "nested:start"]);
 +      nestedGate.resolve();
 +      expect(await final).toMatchObject({ textResultForLlm: "last result" });
-+      const resumed = await runSdkTool(get("code_wait"), { runId: details.runId });
++      const resumed = (await runSdkTool(get("code_wait"), { runId: details.runId })) as ToolResultObject;
 +      expect(JSON.parse(resumed.textResultForLlm)).toMatchObject({ status: "completed" });
 +      expect(first.execute).toHaveBeenCalledOnce();
 +      expect(nested.execute).toHaveBeenCalledOnce();
@@ -205,7 +205,7 @@ index 2d4c2d8a2b2..593f9c0b766 100644
 +          bridge.promptToolPolicy.apply().tools.find((tool) => tool.name === "code_exec"),
 +          "script control",
 +        );
-+        const result = await runSdkTool(script, {
++        const result = (await runSdkTool(script, {
 +          code: `
 +          const listed = await skills.list();
 +          const content = await skills.read("selected");
@@ -213,7 +213,7 @@ index 2d4c2d8a2b2..593f9c0b766 100644
 +          try { await skills.read("hidden"); } catch { hiddenDenied = true; }
 +          return { listed, content, hiddenDenied };
 +        `,
-+        });
++        })) as ToolResultObject;
 +        expect(result.resultType, JSON.stringify(result)).toBe("success");
 +        expect(JSON.parse(result.textResultForLlm)).toMatchObject({
 +          status: "completed",
@@ -1324,34 +1324,42 @@ index dc7a47b345c..70c619a4591 100644
 +    : result;
  }
 diff --git a/src/agents/embedded-agent-runner/run/attempt-stream-prepare.test.ts b/src/agents/embedded-agent-runner/run/attempt-stream-prepare.test.ts
-index 5e9f0ae6685..689b47338f7 100644
+index 5e9f0ae6685..80decd3ceda 100644
 --- a/src/agents/embedded-agent-runner/run/attempt-stream-prepare.test.ts
 +++ b/src/agents/embedded-agent-runner/run/attempt-stream-prepare.test.ts
-@@ -257,6 +257,9 @@ describe("prepareEmbeddedAttemptStream", () => {
+@@ -44,6 +44,7 @@ import {
+ import type { AgentSession } from "../../sessions/agent-session.js";
+ import { SessionManager } from "../../sessions/session-manager.js";
+ import { isToolResultError } from "../../tool-result-error.js";
++import type { CatalogTool } from "../../tool-search-types.js";
+ import { ACTIVE_EMBEDDED_RUNS, ACTIVE_EMBEDDED_RUN_REGISTRATIONS } from "../run-state.js";
+ 
+ type QuestionDispatcher = Extract<
+@@ -257,6 +258,9 @@ describe("prepareEmbeddedAttemptStream", () => {
            execution = parent
              .run(() =>
                prepared.toolSearchCatalogExecutor({
-+                get originalTool(): never {
++                get originalTool(): CatalogTool {
 +                  return this.tool;
 +                },
                  tool: {
                    name: "lookup",
                    execute: async () => ({ content: [{ type: "text", text: "synthetic result" }] }),
-@@ -482,6 +485,9 @@ describe("prepareEmbeddedAttemptStream", () => {
+@@ -482,6 +486,9 @@ describe("prepareEmbeddedAttemptStream", () => {
        const prepared = prepareCatalogExecutor([], { toolProgressDetail, onAgentEvent });
        try {
          await prepared.toolSearchCatalogExecutor({
-+          get originalTool(): never {
++          get originalTool(): CatalogTool {
 +            return this.tool;
 +          },
            tool: {
              name: "exec",
              execute: async () => ({ content: [{ type: "text", text: "clean" }] }),
-@@ -720,6 +726,9 @@ describe("prepareEmbeddedAttemptStream", () => {
+@@ -720,6 +727,9 @@ describe("prepareEmbeddedAttemptStream", () => {
        const toolName = "lookup";
        const input = { path: "original.txt" };
        const execution = prepared.toolSearchCatalogExecutor({
-+        get originalTool(): never {
++        get originalTool(): CatalogTool {
 +          return this.tool;
 +        },
          tool: {
