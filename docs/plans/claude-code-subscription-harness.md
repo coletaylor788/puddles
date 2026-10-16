@@ -1,6 +1,6 @@
 # Claude Code harness with subscription authentication
 
-Status: Production approved; implementation and qualification in progress
+Status: Production approved; native tool contingency awaiting decision
 Issue: https://github.com/coletaylor788/puddles/issues/303
 Last updated: 2026-10-15
 
@@ -89,6 +89,29 @@ tools retain their existing service boundaries; MCP does not place those
 services inside Docker. Existing host-authorized roles are outside the initial
 migration. No new host authority or native-tool replacement is proposed.
 
+#### Ordinary-turn qualification finding
+
+The pinned integration has the required restricted executor, but normal agent
+configuration does not select it for every turn. A caller-supplied `toolsAllow`
+list selects mediated OpenClaw tools and removes Claude's native tools. The
+agent's normal `tools.allow` policy is a different input. Ordinary messages do
+not automatically convert it into that caller cap.
+
+A prompt hook is not yet a sufficient replacement. In the pinned preparation
+order it filters an MCP catalog that has already omitted native coding tools.
+It can remove Claude tools without restoring OpenClaw file, process and shell
+operations. Setting Claude CLI arguments alone has the same missing-tool risk.
+An independent review is checking these findings before a mechanism is selected.
+
+The proposed contingency is a small, opt-in OpenClaw patch for the selected
+Claude-backed agents. It would select the existing mediated tool catalog before
+CLI preparation, intersect any caller restriction with existing agent policy,
+and reuse native-tool disabling, customization isolation and MCP enforcement.
+It would not replace either harness, introduce a transport, change sandbox
+permissions or change authentication. This contingency is **not covered by the
+configuration-only approval** and needs a decision if stock configuration cannot
+satisfy the installed checks.
+
 #### Agents and conversations
 
 Keep existing OpenClaw agents, instructions, workspaces and session tools.
@@ -134,10 +157,11 @@ to production." This covers implementation, qualification, release, rollback,
 source integration and cleanup within the designs. Reader policy remains with
 its existing owner; Haiku scope remains Reader and active-memory recall.
 
-Implementation and qualification are in progress. Native subscription login is
-visible from the gateway's login domain. Tool restrictions and conversation
-continuity still require installed proof before activation. Production routing
-has not changed.
+Native subscription login is verified in the gateway login domain. Ordinary-turn
+tool selection requires a decision on the scoped patch described in the public
+harness plan; the configuration-only approval does not cover that contingency.
+History continuation and all installed checks remain unproven. Production
+routing has not changed.
 
 ## Agent section
 
@@ -238,6 +262,29 @@ confirmation alone or infer billing from the CLI's API-equivalent cost estimate.
 The [official usage-credit controls](https://code.claude.com/docs/en/costs#add-usage-credits-to-your-subscription)
 place the Pro/Max toggle in Settings > Usage. Login and usage-setting documentation
 was checked on 2026-10-12; recheck on executable upgrades.
+
+#### Contingency patch scope, pending decision
+
+- Add one opt-in configuration control for using OpenClaw tools on selected
+  Claude-backed agent turns. Do not change unrelated providers or roles.
+- Apply the selection in shared CLI preparation before the initial tool catalog
+  and grant are built. Reuse the existing canonical tool factories, layered
+  permissions, exact grant and backend argument translation.
+- Preserve caller caps as additional restrictions, including an empty cap.
+  Keep denied tools denied and native tools/customizations unavailable on fresh
+  and resumed runs. Reject unsupported enforcement instead of falling back to
+  host-native execution.
+- Cover ordinary messages, delegated turns, scheduled turns and active-memory
+  recall with composed regressions. Verify allowed file/exec/process operations
+  use their configured OpenClaw implementations and Docker boundaries.
+- Do not modify history-account provenance, credential ownership, model fallback
+  orchestration, session delivery or the independently shipped reader policy.
+
+Source inspected at the pinned revision: `src/agents/cli-runner/prepare.ts`
+(caller-cap translation at 652, catalog construction at 1274 and hook filtering
+at 1300), `src/gateway/mcp-http.runtime.ts` (mediated coding selection at 80),
+and `src/auto-reply/reply/agent-runner-cli-candidate.ts` (caller cap at 469).
+These are source findings, not executed runtime acceptance.
 
 #### Configure and qualify
 
