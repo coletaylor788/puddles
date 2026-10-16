@@ -177,7 +177,8 @@
     "src/agents/code-mode.scheduling.test.ts": "agents-core",
     "src/agents/tool-search-scheduling.test.ts": "agents-core",
     "src/agents/embedded-agent-runner/run/attempt-stream-prepare.test.ts": "infra",
-    "src/agents/embedded-agent-runner/run.plugin-runtime-refresh.integration.test.ts": "agents-embedded-agent"
+    "src/agents/embedded-agent-runner/run.plugin-runtime-refresh.integration.test.ts": "agents-embedded-agent",
+    "src/gateway/mcp-grant-store.test.ts": "gateway-core"
   },
   "patches": [
     {
@@ -563,7 +564,8 @@
         "src/agents/cli-runner/prepare.web-search.test.ts",
         "src/gateway/mcp-http.handlers.network-error.test.ts",
         "src/gateway/mcp-http.runtime.test.ts",
-        "src/gateway/mcp-http.test.ts"
+        "src/gateway/mcp-http.test.ts",
+        "src/gateway/mcp-grant-store.test.ts"
       ]
     }
   ],
