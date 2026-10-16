@@ -12,6 +12,11 @@ and result capture. Hooks run once. Hook changes to either script-code alias are
 reconciled before execution. Guarded raw results enter Code Mode before transport
 serialization.
 
+The grant also preserves how the original catalog constructed its coding tools.
+An exact list of callable names must not turn node-only `exec` into gateway or
+sandbox execution. This host-owned selection stays separate from the name
+allowlist and cannot be supplied by an MCP client.
+
 The shared runtime belongs to the current grant and capture. It outlives the
 short schema cache so a later `code_wait` can resume work. Grant replacement,
 deactivation, revocation, and shutdown dispose it and abort pending work. A later

@@ -101,11 +101,11 @@ activation for all tool-enabled agents, validation, deployment, merge, and clean
 The contained-runtime boundary, native harnesses, scoped reads, direct tools,
 and existing approval engine remain the agreed scope.
 
-Both patches and shared activation are implemented and independently reviewed.
-The rebuilt application passes native Claude and Copilot checks for main and
-reader agents, including retained direct tools and scripted calls. Real-provider
-token measurements and managed DEV, TEST, and production checks remain. The
-release manager controls shared deployment allocation and paired source merge.
+Both patches and shared activation are implemented. The corrected artifact passes
+native Claude and Copilot checks for main and reader, including direct calls,
+scripts, and Claude continuations. The execution-scope correction passes review
+and 212 focused checks. Host capacity blocks shared DEV; a fresh qualification
+packet, real-provider measurements, TEST, and production checks remain.
 
 ## Agent section
 
@@ -114,6 +114,10 @@ release manager controls shared deployment allocation and paired source merge.
 Implementation owner is working in the isolated `codex/ptc-implementation`
 branch from public main `575ebf0df70b1d3d4fc25aafa51291276460b871`.
 Coordinate with the release manager and preserve the existing harness restrictions.
+The staged DEV request is invalidated before its stop phase. The corrected local
+artifact is reviewed and passes native checks. Refresh the staged artifact and
+qualification identities only after the release manager allocates capacity.
+No feature deployment has occurred.
 
 ### Scope and acceptance criteria
 
@@ -164,7 +168,9 @@ Deliver two maintained upstream patches and companion activation:
    advertise controls separately after prompt-policy filtering. Route nested
    calls through the MCP dispatcher's existing prepare/hook/authorize/execute/
    result sequence, extracting a shared helper where needed. Return guarded raw
-   results to Code Mode before MCP serialization. Retain the shared runtime
+   results to Code Mode before MCP serialization. Freeze the original tool
+   construction choices in host-owned grant context, separately from callable
+   names, so node-only execution cannot become gateway execution. Retain the shared runtime
    between execution and wait calls, outside the short schema cache, and connect
    grant replacement and task completion to its existing disposal and abort
    hooks. Reuse approval waits and scheduling without locking the outer control
@@ -240,17 +246,33 @@ expose no ambient host APIs. These deterministic probes do not measure real
 provider tokens or establish model quality.
 
 All 31 public patches apply cleanly, followed by the complete companion overlay;
-all 55 affected source files match the built source. A bounded real-provider
+all 57 affected source files match the corrected prepared source. A bounded real-provider
 comparison is prepared in the companion repository. The documented credential
 locator is unavailable locally, so that measurement awaits managed DEV access.
 No production qualification is claimed from local source or harness checks.
+
+A subsequent review with the Claude profile owner found an execution-scope defect
+in the prepared MCP grant. An uncapped catalog can contain node-only `exec`.
+Freezing that name into `toolsAllow` causes the existing exact-cap resolver to
+construct ordinary mediated `exec` instead. The correction freezes the original
+mediation selection separately in host-owned grant context. Preparation-to-grant
+regressions verify direct and scripted node execution, rejected gateway overrides,
+unavailable nodes, and unchanged explicitly mediated execution. All 212 focused
+checks pass (19.07s for 203 gateway checks, 14.39s for nine preparation checks).
+The retained reviewer cleared the correction. Core and declaration-portability
+type checks pass, as do nine public registration and 21 companion overlay checks.
+The corrected artifact passes fresh native Copilot (23.87s) and Claude (23.76s)
+probes with the same recorded operations and request counts described above.
+The old DEV packet cannot run; staging and qualification identities must be
+refreshed before managed DEV.
 
 ### Checklist
 
 - [x] Complete source/dependency audit and bounded capability probes.
 - [x] Specify additive projection, retained scoped capabilities, and Claude integration.
 - [x] Obtain implementation and production approval.
-- [ ] Implement both patches and activation; add durable regressions.
+- [x] Implement both patches and activation; add durable regressions.
+- [x] Correct and verify preserved execution scope when freezing MCP grants.
 - [ ] Verify both native harnesses and all agent roles.
 - [ ] Complete review, release gates, source merge, and cleanup.
 
