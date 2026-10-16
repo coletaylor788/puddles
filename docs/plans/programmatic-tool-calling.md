@@ -104,19 +104,20 @@ and existing approval engine remain the agreed scope.
 Both patches and shared activation are implemented. The corrected artifact passes
 native Claude and Copilot checks for main and reader, including direct calls,
 scripts, and Claude continuations. The execution-scope correction passes review
-and 212 focused checks. Host capacity blocks shared DEV; a fresh qualification
-packet, real-provider measurements, TEST, and production checks remain.
+and 212 focused checks. The release manager has allocated DEV preparation. Rebase checks, a fresh
+qualification packet, real-provider measurements, TEST, and production checks remain.
 
 ## Agent section
 
 ### State
 
 Implementation owner is working in the isolated `codex/ptc-implementation`
-branch from public main `575ebf0df70b1d3d4fc25aafa51291276460b871`.
+branch rebased onto public main `55403ba430b049867f329c8f1964991a08d7ffbe`.
 Coordinate with the release manager and preserve the existing harness restrictions.
 The staged DEV request is invalidated before its stop phase. The corrected local
-artifact is reviewed and passes native checks. Refresh the staged artifact and
-qualification identities only after the release manager allocates capacity.
+artifact is reviewed and passes native checks. The release manager has allocated the next DEV preparation. Refresh the staged
+artifact and qualification identities within that allocation; submit the sealed
+request for review before the single assigned DEV invocation.
 No feature deployment has occurred.
 
 ### Scope and acceptance criteria
