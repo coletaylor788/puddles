@@ -665,6 +665,74 @@ index 986b86eafbe..2fc1a7d9d47 100644
      {
        name: "keeps explicit backend env overrides even when clearEnv drops inherited values",
        baseEnv: { SAFE_OVERRIDE: "from-base" },
+diff --git a/src/agents/cli-runner.ts b/src/agents/cli-runner.ts
+index 519ba86c6a4..8c68a9e1d3a 100644
+--- a/src/agents/cli-runner.ts
++++ b/src/agents/cli-runner.ts
+@@ -111,7 +111,7 @@ export async function isCliBindingFlushed(
+   sessionId: string | undefined,
+   provider: string | undefined,
+   workspaceDir?: string,
+-  options?: { skipTranscriptProbe?: boolean },
++  options?: { skipTranscriptProbe?: boolean; configDir?: string },
+ ): Promise<boolean> {
+   if (!provider || !isClaudeCliBackend(provider)) {
+     return true;
+@@ -128,7 +128,13 @@ export async function isCliBindingFlushed(
+     if (delayMs > 0) {
+       await cliRunnerDeps.delay(delayMs);
+     }
+-    if (await cliRunnerDeps.claudeCliSessionTranscriptHasContent({ sessionId, workspaceDir })) {
++    if (
++      await cliRunnerDeps.claudeCliSessionTranscriptHasContent({
++        sessionId,
++        workspaceDir,
++        ...(options?.configDir ? { configDir: options.configDir } : {}),
++      })
++    ) {
+       return true;
+     }
+   }
+@@ -573,7 +579,12 @@ async function runPreparedCliAgentOwned(
+               effectiveCliSessionId,
+               params.provider,
+               context.cwd ?? context.workspaceDir,
+-              { skipTranscriptProbe: acceptsCliLiveSession(context) },
++              {
++                skipTranscriptProbe: acceptsCliLiveSession(context),
++                configDir:
++                  context.preparedBackend.env?.CLAUDE_CONFIG_DIR ??
++                  context.preparedBackend.backend.env?.CLAUDE_CONFIG_DIR,
++              },
+             );
+         const interruptionError = terminalInterruption
+           ? formatCliTerminalInterruption(terminalInterruption)
+diff --git a/src/agents/cli-runner/cli-run-settlement.test.ts b/src/agents/cli-runner/cli-run-settlement.test.ts
+index df2173d3919..284afc60f34 100644
+--- a/src/agents/cli-runner/cli-run-settlement.test.ts
++++ b/src/agents/cli-runner/cli-run-settlement.test.ts
+@@ -54,6 +54,21 @@ describe("isCliBindingFlushed", () => {
+     expect(probe).toHaveBeenCalledWith({ sessionId: "sid-fresh", workspaceDir });
+   });
+ 
++  it("probes the selected directory when settling a nonlive native binding", async () => {
++    const probe = vi.fn(async () => true);
++    setCliRunnerTestDeps({ claudeCliSessionTranscriptHasContent: probe });
++    expect(
++      await isCliBindingFlushed("dedicated", "claude-cli", workspaceDir, {
++        configDir: "/tmp/dedicated-login",
++      }),
++    ).toBe(true);
++    expect(probe).toHaveBeenCalledExactlyOnceWith({
++      sessionId: "dedicated",
++      workspaceDir,
++      configDir: "/tmp/dedicated-login",
++    });
++  });
++
+   it("retries up to three times before giving up", async () => {
+     const delay = vi.fn(async () => undefined);
+     const probe = vi.fn(async () => false);
 diff --git a/src/agents/cli-runner/execute-plugin.policy.test.ts b/src/agents/cli-runner/execute-plugin.policy.test.ts
 index 442567286ce..dae06584cea 100644
 --- a/src/agents/cli-runner/execute-plugin.policy.test.ts
@@ -1325,7 +1393,7 @@ index 07ba2e88169..24ea5df03d3 100644
          }
        }
 diff --git a/src/agents/cli-runner/prepare.test.ts b/src/agents/cli-runner/prepare.test.ts
-index 91e25c5da42..f05df6bbb42 100644
+index 91e25c5da42..02310e299b9 100644
 --- a/src/agents/cli-runner/prepare.test.ts
 +++ b/src/agents/cli-runner/prepare.test.ts
 @@ -901,6 +901,7 @@ describe("prepareCliRunContext", () => {
@@ -1392,8 +1460,66 @@ index 91e25c5da42..f05df6bbb42 100644
    it("materializes runtime toolsAllow for selectable backends without bundle MCP", async () => {
      const resolveExecutionArgs = vi.fn((context: { baseArgs: readonly string[] }) => [
        ...context.baseArgs,
+@@ -6215,6 +6265,57 @@ describe("prepareCliRunContext", () => {
+     });
+   });
+ 
++  it("retains a cold dedicated-directory binding and checks its orphaned tools", async () => {
++    const { dir } = fixture.session;
++    const taskDir = path.join(dir, "task");
++    fs.mkdirSync(taskDir, { recursive: true });
++    setRawCliBackendForPrepareTest({
++      id: "claude-cli",
++      pluginId: "anthropic",
++      bundleMcp: false,
++      config: {
++        command: "claude",
++        env: { CLAUDE_CONFIG_DIR: path.join(dir, "dedicated-login") },
++        args: ["--print"],
++        resumeArgs: ["--resume", "{sessionId}"],
++        output: "jsonl",
++        input: "stdin",
++        sessionMode: "existing",
++      },
++    });
++    const transcriptCheck = vi.fn(async () => true);
++    const orphanCheck = vi.fn(async () => false);
++    setCliRunnerPrepareTestDeps({
++      claudeCliSessionTranscriptHasContent: transcriptCheck,
++      claudeCliSessionTranscriptHasOrphanedToolUse: orphanCheck,
++    });
++
++    const context = await fixture.prepare({
++      sessionKey: "agent:main:telegram:direct:peer",
++      cwd: taskDir,
++      prompt: "follow-up",
++      provider: "claude-cli",
++      model: "opus",
++      cliSessionBinding: { sessionId: "live-claude-sid", cwdHash: hashCliSessionText(taskDir) },
++      cliSessionId: "live-claude-sid",
++    });
++
++    expect(transcriptCheck).toHaveBeenCalledWith({
++      sessionId: "live-claude-sid",
++      workspaceDir: taskDir,
++      configDir: path.join(dir, "dedicated-login"),
++    });
++    expect(orphanCheck).toHaveBeenCalledWith({
++      sessionId: "live-claude-sid",
++      workspaceDir: taskDir,
++      configDir: path.join(dir, "dedicated-login"),
++    });
++    expect(context.reusableCliSession).toEqual({
++      mode: "reuse",
++      sessionId: "live-claude-sid",
++    });
++  });
++
+   it.each(["prepared", "admitted"] as const)(
+     "stops CLI skill preparation before sandbox materialization when %s authority is revoked",
+     async (phase) => {
 diff --git a/src/agents/cli-runner/prepare.ts b/src/agents/cli-runner/prepare.ts
-index 656740e1686..3134a121b89 100644
+index 656740e1686..adc967b2e23 100644
 --- a/src/agents/cli-runner/prepare.ts
 +++ b/src/agents/cli-runner/prepare.ts
 @@ -621,6 +621,7 @@ async function prepareCliRunContextWithinReadFence(
@@ -1468,6 +1594,156 @@ index 656740e1686..3134a121b89 100644
        config: params.config,
        workspaceDir,
        agentDir,
+@@ -1885,11 +1911,15 @@ async function prepareCliRunContextWithinReadFence(
+       !nodeClaudePlacement &&
+       candidateClaudeCliSessionId !== undefined &&
+       isClaudeCliBackendId(params.provider);
++    const claudeConfigDir =
++      preparedBackendFinal.env?.CLAUDE_CONFIG_DIR ??
++      preparedBackendFinal.backend.env?.CLAUDE_CONFIG_DIR;
+     const claudeCliTranscriptMissing =
+       hasClaudeCliCandidate &&
+       !(await prepareDeps.claudeCliSessionTranscriptHasContent({
+         sessionId: candidateClaudeCliSessionId,
+         workspaceDir: cwd,
++        ...(claudeConfigDir ? { configDir: claudeConfigDir } : {}),
+       }));
+     const managedClaudeLiveSessionGeneration =
+       claudeCliTranscriptMissing &&
+@@ -1913,6 +1943,7 @@ async function prepareCliRunContextWithinReadFence(
+       (await prepareDeps.claudeCliSessionTranscriptHasOrphanedToolUse({
+         sessionId: candidateClaudeCliSessionId,
+         workspaceDir: cwd,
++        ...(claudeConfigDir ? { configDir: claudeConfigDir } : {}),
+       }));
+     const claudeCliInvalidatedReason: "missing-transcript" | "orphaned-tool-use" | undefined =
+       claudeCliTranscriptMissing && !hasManagedClaudeLiveSession
+diff --git a/src/agents/command/attempt-execution.helpers.ts b/src/agents/command/attempt-execution.helpers.ts
+index d2907ee8320..0e24e8338b6 100644
+--- a/src/agents/command/attempt-execution.helpers.ts
++++ b/src/agents/command/attempt-execution.helpers.ts
+@@ -126,6 +126,7 @@ function claudeCliSessionTranscriptPath(params: {
+   sessionId: string | undefined;
+   workspaceDir: string | undefined;
+   homeDir?: string;
++  configDir?: string;
+ }): string | null {
+   const sessionId = normalizeClaudeCliSessionId(params.sessionId);
+   if (!sessionId) {
+@@ -139,6 +140,7 @@ function claudeCliSessionTranscriptPath(params: {
+     resolveClaudeCliProjectDirForWorkspace({
+       workspaceDir,
+       homeDir: params.homeDir,
++      configDir: params.configDir,
+     }),
+     `${sessionId}.jsonl`,
+   );
+@@ -409,13 +411,18 @@ function formatClaudeCliFallbackPrelude(
+ export function buildClaudeCliFallbackContextPrelude(params: {
+   cliSessionId: string | undefined;
+   homeDir?: string;
++  configDir?: string;
+   charBudget?: number;
+ }): string {
+   const sessionId = params.cliSessionId?.trim();
+   if (!sessionId) {
+     return "";
+   }
+-  const seed = readClaudeCliFallbackSeed({ cliSessionId: sessionId, homeDir: params.homeDir });
++  const seed = readClaudeCliFallbackSeed({
++    cliSessionId: sessionId,
++    homeDir: params.homeDir,
++    configDir: params.configDir,
++  });
+   if (!seed) {
+     return "";
+   }
+diff --git a/src/agents/command/attempt-execution.ts b/src/agents/command/attempt-execution.ts
+index 651c2813b15..e18b5d239e9 100644
+--- a/src/agents/command/attempt-execution.ts
++++ b/src/agents/command/attempt-execution.ts
+@@ -107,6 +107,7 @@ import {
+   resolveFallbackRetryPrompt,
+   rebaseExecApprovalContinuationPromptRange,
+ } from "./attempt-execution.helpers.js";
++import { resolveConfiguredClaudeCliConfigDir } from "./claude-cli-project-dir.js";
+ import { resolveAgentRunContext } from "./run-context.js";
+ import {
+   consumeCliSessionForkInStore,
+@@ -392,6 +393,7 @@ export function runAgentAttempt(params: {
+     !isClaudeCliProvider(params.providerOverride)
+       ? buildClaudeCliFallbackContextPrelude({
+           cliSessionId: getCliSessionBinding(params.sessionEntry, "claude-cli")?.sessionId,
++          configDir: resolveConfiguredClaudeCliConfigDir(params.cfg, params.sessionAgentId),
+         })
+       : "";
+   const resolvedPrompt = resolveFallbackRetryPrompt({
+@@ -728,6 +730,7 @@ export function runAgentAttempt(params: {
+             (await claudeCliSessionTranscriptHasContent({
+               sessionId: cliSessionBinding.sessionId,
+               workspaceDir: cliProcessCwd,
++              configDir: resolveConfiguredClaudeCliConfigDir(params.cfg, params.sessionAgentId),
+             }))
+           ) {
+             return cliSessionBinding;
+diff --git a/src/agents/command/claude-cli-project-dir.ts b/src/agents/command/claude-cli-project-dir.ts
+index f3bf78dae4b..333fb0a2ddd 100644
+--- a/src/agents/command/claude-cli-project-dir.ts
++++ b/src/agents/command/claude-cli-project-dir.ts
+@@ -5,8 +5,37 @@ import fs from "node:fs";
+ import os from "node:os";
+ import path from "node:path";
+ import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
++import type { OpenClawConfig } from "../../config/types.openclaw.js";
+ 
+-const CLAUDE_PROJECTS_DIRNAME = path.join(".claude", "projects");
++/** Match the opt-in profile's native login directory; other backends keep defaults. */
++export function resolveConfiguredClaudeCliConfigDir(
++  cfg: OpenClawConfig,
++  agentId: string,
++): string | undefined {
++  const settings = cfg.plugins?.entries?.anthropic?.config;
++  const profiles = settings?.cliProfiles;
++  if (!profiles || typeof profiles !== "object" || !Object.hasOwn(profiles, agentId))
++    return undefined;
++  const value = settings?.cliConfigDir;
++  if (typeof value !== "string" || !value) return undefined;
++  const expanded = value.startsWith("~/") ? path.join(os.homedir(), value.slice(2)) : value;
++  if (!path.isAbsolute(expanded))
++    throw new Error("Claude profile config directory must be absolute");
++  return path.resolve(expanded);
++}
++
++export function resolveClaudeCliProjectsDir(params: {
++  homeDir?: string;
++  configDir?: string;
++}): string {
++  if (params.configDir !== undefined) {
++    if (!path.isAbsolute(params.configDir))
++      throw new Error("Claude config directory must be absolute");
++    return path.join(params.configDir, "projects");
++  }
++  const homeDir = normalizeOptionalString(params.homeDir) || process.env.HOME || os.homedir();
++  return path.join(homeDir, ".claude", "projects");
++}
+ const MAX_SANITIZED_PROJECT_LENGTH = 200;
+ 
+ // Claude CLI stores project state under a sanitized workspace key. Add a stable
+@@ -42,12 +71,11 @@ function canonicalizeWorkspaceDir(workspaceDir: string): string {
+ export function resolveClaudeCliProjectDirForWorkspace(params: {
+   workspaceDir: string;
+   homeDir?: string;
++  configDir?: string;
+ }): string {
+-  const homeDir = normalizeOptionalString(params.homeDir) || process.env.HOME || os.homedir();
+   const canonicalWorkspaceDir = canonicalizeWorkspaceDir(params.workspaceDir);
+   return path.join(
+-    homeDir,
+-    CLAUDE_PROJECTS_DIRNAME,
++    resolveClaudeCliProjectsDir(params),
+     sanitizeClaudeCliProjectKey(canonicalWorkspaceDir),
+   );
+ }
 diff --git a/src/agents/exec-defaults.test.ts b/src/agents/exec-defaults.test.ts
 index 6d11dd3e8cf..11be1d46bdd 100644
 --- a/src/agents/exec-defaults.test.ts
@@ -1525,6 +1801,385 @@ index 961eaef707b..c62f5ce5697 100644
    const sessionPermissionPolicy = params.sessionEntry?.permissionMode
      ? resolveSessionPermissionExecPolicy(
          { mode: params.sessionEntry.permissionMode },
+diff --git a/src/agents/tools/embedded-gateway-stub.ts b/src/agents/tools/embedded-gateway-stub.ts
+index 4552246864a..f4065c86feb 100644
+--- a/src/agents/tools/embedded-gateway-stub.ts
++++ b/src/agents/tools/embedded-gateway-stub.ts
+@@ -12,6 +12,7 @@ import type { CallGatewayOptions } from "../../gateway/call.js";
+ import type { SessionRowProjection } from "../../gateway/session-row-projection.js";
+ import { jsonUtf8Bytes } from "../../infra/json-utf8-bytes.js";
+ import { parseAgentSessionKey, scopeLegacySessionKeyToAgent } from "../../routing/session-key.js";
++import { resolveConfiguredClaudeCliConfigDir } from "../command/claude-cli-project-dir.js";
+ import {
+   readNonNegativeIntegerParam,
+   readPositiveIntegerParam,
+@@ -229,6 +230,9 @@ async function handleChatHistory(params: Record<string, unknown>): Promise<{
+   const effectiveMaxChars = rt.resolveEffectiveChatHistoryMaxChars();
+   const page = await rt.readChatHistoryPage({
+     entry: historyEntry,
++    ...(resolveConfiguredClaudeCliConfigDir(cfg, sessionAgentId)
++      ? { claudeConfigDir: resolveConfiguredClaudeCliConfigDir(cfg, sessionAgentId) }
++      : {}),
+     provider: resolvedSessionModel.provider,
+     sessionId,
+     storePath,
+diff --git a/src/commands/doctor-claude-cli.ts b/src/commands/doctor-claude-cli.ts
+index 7d270ad1b5c..38a24fe3276 100644
+--- a/src/commands/doctor-claude-cli.ts
++++ b/src/commands/doctor-claude-cli.ts
+@@ -14,6 +14,7 @@ import {
+   tryResolveDefaultAgentId,
+ } from "../agents/agent-scope-config.js";
+ import { resolveCliBackendConfig } from "../agents/cli-backends.js";
++import { resolveConfiguredClaudeCliConfigDir } from "../agents/command/claude-cli-project-dir.js";
+ import { resolveClaudeCliProjectDirForWorkspace } from "../agents/command/claude-cli-project-dir.js";
+ import { formatCliCommand } from "../cli/command-format.js";
+ import type { OpenClawConfig } from "../config/types.openclaw.js";
+@@ -142,6 +143,7 @@ function resolveClaudeCliWorkspaceTargets(params: {
+       const projectDir = resolveClaudeCliProjectDirForWorkspace({
+         workspaceDir,
+         homeDir: params.homeDir,
++        configDir: resolveConfiguredClaudeCliConfigDir(params.cfg, agentId),
+       });
+       return {
+         agentId,
+diff --git a/src/config/sessions/session-history-types.ts b/src/config/sessions/session-history-types.ts
+index f5b43f237ff..09324a4ff1b 100644
+--- a/src/config/sessions/session-history-types.ts
++++ b/src/config/sessions/session-history-types.ts
+@@ -38,6 +38,7 @@ export type ChatHistoryPageParams = {
+   offset: number | undefined;
+   messageId: string | undefined;
+   ignoreCliSessionImports?: boolean;
++  claudeConfigDir?: string;
+ };
+ 
+ type SessionHistoryTranscriptMeta = {
+diff --git a/src/gateway/cli-session-history.claude-snapshot.ts b/src/gateway/cli-session-history.claude-snapshot.ts
+index a78afb6eff8..577f89500a6 100644
+--- a/src/gateway/cli-session-history.claude-snapshot.ts
++++ b/src/gateway/cli-session-history.claude-snapshot.ts
+@@ -64,6 +64,7 @@ type Message = Record<string, unknown>;
+ type HistoryParams = {
+   cliSessionId: string;
+   homeDir?: string;
++  configDir?: string;
+   localSessionId?: string;
+   reseedReceipt?: CliSessionReseedReceipt;
+ };
+diff --git a/src/gateway/cli-session-history.claude.ts b/src/gateway/cli-session-history.claude.ts
+index aabcafe30e4..0e9704ef07f 100644
+--- a/src/gateway/cli-session-history.claude.ts
++++ b/src/gateway/cli-session-history.claude.ts
+@@ -1,7 +1,6 @@
+ // Claude CLI session history importer.
+ // Converts Claude project JSONL into OpenClaw transcript-compatible messages.
+ import fs from "node:fs";
+-import os from "node:os";
+ import path from "node:path";
+ import {
+   asFiniteNumber,
+@@ -14,6 +13,7 @@ import {
+   stripCliImageTurnContext,
+ } from "../agents/cli-image-turn-correlation.js";
+ import { hashCliReseedPrompt, parseCliReseedPrompt } from "../agents/cli-runner/reseed-envelope.js";
++import { resolveClaudeCliProjectsDir } from "../agents/command/claude-cli-project-dir.js";
+ import type { AgentMessage } from "../agents/runtime/index.js";
+ import { redactTranscriptMessage } from "../agents/transcript-redact.js";
+ import {
+@@ -30,7 +30,6 @@ import {
+ import { attachOpenClawTranscriptMeta } from "./session-transcript-readers.js";
+ 
+ export const CLAUDE_CLI_PROVIDER = "claude-cli";
+-const CLAUDE_PROJECTS_RELATIVE_DIR = path.join(".claude", "projects");
+ 
+ export type ClaudeCliProjectEntry = {
+   type?: unknown;
+@@ -76,14 +75,6 @@ export function redactClaudeCliHistoryMessage(
+   ) as unknown as TranscriptLikeMessage;
+ }
+ 
+-function resolveHistoryHomeDir(homeDir?: string): string {
+-  return normalizeOptionalString(homeDir) || process.env.HOME || os.homedir();
+-}
+-
+-function resolveClaudeProjectsDir(homeDir?: string): string {
+-  return path.join(resolveHistoryHomeDir(homeDir), CLAUDE_PROJECTS_RELATIVE_DIR);
+-}
+-
+ function normalizeClaudeCliSessionId(value: string): string | undefined {
+   const sessionId = value.trim();
+   return !sessionId ||
+@@ -473,12 +464,13 @@ export function parseClaudeCliHistoryEntry(
+ function resolveClaudeCliSessionFilePath(params: {
+   cliSessionId: string;
+   homeDir?: string;
++  configDir?: string;
+ }): string | undefined {
+   const sessionId = normalizeClaudeCliSessionId(params.cliSessionId);
+   if (!sessionId) {
+     return undefined;
+   }
+-  const projectsDir = resolveClaudeProjectsDir(params.homeDir);
++  const projectsDir = resolveClaudeCliProjectsDir(params);
+   let projectEntries: fs.Dirent[];
+   try {
+     projectEntries = fs.readdirSync(projectsDir, { withFileTypes: true });
+@@ -502,12 +494,13 @@ function resolveClaudeCliSessionFilePath(params: {
+ export async function resolveClaudeCliSessionFilePathAsync(params: {
+   cliSessionId: string;
+   homeDir?: string;
++  configDir?: string;
+ }): Promise<string | undefined> {
+   const sessionId = normalizeClaudeCliSessionId(params.cliSessionId);
+   if (!sessionId) {
+     return undefined;
+   }
+-  const projectsDir = resolveClaudeProjectsDir(params.homeDir);
++  const projectsDir = resolveClaudeCliProjectsDir(params);
+   let projectEntries: fs.Dirent[];
+   try {
+     projectEntries = await fs.promises.readdir(projectsDir, { withFileTypes: true });
+@@ -550,6 +543,7 @@ export async function resolveClaudeCliSessionFilePathAsync(params: {
+ export function readClaudeCliSessionMessages(params: {
+   cliSessionId: string;
+   homeDir?: string;
++  configDir?: string;
+   localSessionId?: string;
+   reseedReceipt?: CliSessionReseedReceipt;
+ }): TranscriptLikeMessage[] {
+@@ -646,6 +640,7 @@ function extractSummaryText(entry: ClaudeCliProjectEntry): string | undefined {
+ export function readClaudeCliFallbackSeed(params: {
+   cliSessionId: string;
+   homeDir?: string;
++  configDir?: string;
+ }): ClaudeCliFallbackSeed | undefined {
+   const filePath = resolveClaudeCliSessionFilePath(params);
+   if (!filePath) {
+diff --git a/src/gateway/cli-session-history.profile-dir.test.ts b/src/gateway/cli-session-history.profile-dir.test.ts
+new file mode 100644
+index 00000000000..54d4240eed9
+--- /dev/null
++++ b/src/gateway/cli-session-history.profile-dir.test.ts
+@@ -0,0 +1,142 @@
++import fs from "node:fs/promises";
++import os from "node:os";
++import path from "node:path";
++import { afterEach, beforeEach, describe, expect, it } from "vitest";
++import { claudeCliSessionTranscriptHasContent } from "../agents/command/attempt-execution.helpers.js";
++import {
++  resolveClaudeCliProjectDirForWorkspace,
++  resolveConfiguredClaudeCliConfigDir,
++} from "../agents/command/claude-cli-project-dir.js";
++import { readClaudeCliSessionMessagesAsync } from "./cli-session-history.claude-snapshot.js";
++import {
++  readClaudeCliSessionMessages,
++  readClaudeCliFallbackSeed,
++} from "./cli-session-history.claude.js";
++
++describe("dedicated Claude profile transcript directory", () => {
++  let homeDir: string, configDir: string, workspaceDir: string;
++  const cliSessionId = "synthetic-profile-session";
++  beforeEach(async () => {
++    homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "claude-profile-history-"));
++    configDir = path.join(homeDir, "dedicated");
++    workspaceDir = path.join(homeDir, "workspace");
++    await fs.mkdir(workspaceDir);
++  });
++  afterEach(async () => {
++    await fs.rm(homeDir, { recursive: true, force: true });
++  });
++  async function write(marker: string, directory?: string) {
++    const root = resolveClaudeCliProjectDirForWorkspace({
++      workspaceDir,
++      homeDir,
++      configDir: directory,
++    });
++    await fs.mkdir(root, { recursive: true });
++    const events = [
++      { type: "user", uuid: "user-1", message: { role: "user", content: marker } },
++      {
++        type: "assistant",
++        uuid: "assistant-1",
++        message: {
++          role: "assistant",
++          model: "synthetic-model",
++          content: [
++            {
++              type: "tool_use",
++              id: "write-1",
++              name: "Write",
++              input: { file_path: "/synthetic/file", content: marker },
++            },
++          ],
++        },
++      },
++      {
++        type: "user",
++        uuid: "result-1",
++        message: {
++          role: "user",
++          content: [
++            { type: "tool_result", tool_use_id: "write-1", content: "Created synthetic file" },
++          ],
++        },
++      },
++      {
++        type: "assistant",
++        uuid: "assistant-2",
++        message: {
++          role: "assistant",
++          model: "synthetic-model",
++          content: [{ type: "text", text: marker }],
++        },
++      },
++    ];
++    await fs.writeFile(
++      path.join(root, cliSessionId + ".jsonl"),
++      events.map((e) => JSON.stringify(e)).join("\n"),
++    );
++  }
++  it("keeps default and dedicated histories separate even when session ids collide", async () => {
++    await write("DEFAULT_HISTORY");
++    await write("DEDICATED_HISTORY", configDir);
++    const params = { cliSessionId, homeDir, configDir };
++    for (const messages of [
++      readClaudeCliSessionMessages(params),
++      await readClaudeCliSessionMessagesAsync(params),
++    ]) {
++      expect(JSON.stringify(messages)).toContain("DEDICATED_HISTORY");
++      expect(JSON.stringify(messages)).not.toContain("DEFAULT_HISTORY");
++      expect(JSON.stringify(messages)).toContain('"name":"Write"');
++      expect(JSON.stringify(messages)).toContain("Created synthetic file");
++    }
++    expect(JSON.stringify(readClaudeCliSessionMessages({ cliSessionId, homeDir }))).toContain(
++      "DEFAULT_HISTORY",
++    );
++    expect(JSON.stringify(readClaudeCliFallbackSeed(params))).toContain("DEDICATED_HISTORY");
++    expect(JSON.stringify(readClaudeCliFallbackSeed(params))).not.toContain("DEFAULT_HISTORY");
++  });
++  it("cold-resume probe finds the dedicated transcript without searching another account directory", async () => {
++    await write("DEDICATED_HISTORY", configDir);
++    expect(
++      await claudeCliSessionTranscriptHasContent({
++        sessionId: cliSessionId,
++        workspaceDir,
++        homeDir,
++        configDir,
++      }),
++    ).toBe(true);
++    expect(
++      await claudeCliSessionTranscriptHasContent({
++        sessionId: cliSessionId,
++        workspaceDir,
++        homeDir,
++      }),
++    ).toBe(false);
++    expect(
++      readClaudeCliSessionMessages({
++        cliSessionId,
++        homeDir,
++        configDir: path.join(homeDir, "other-account"),
++      }),
++    ).toEqual([]);
++    expect(
++      readClaudeCliSessionMessages({ cliSessionId: "other-session", homeDir, configDir }),
++    ).toEqual([]);
++    expect(
++      readClaudeCliSessionMessages({ cliSessionId: "../" + cliSessionId, homeDir, configDir }),
++    ).toEqual([]);
++  });
++  it("only opted-in agents resolve the dedicated profile directory", () => {
++    const config = {
++      plugins: {
++        entries: {
++          anthropic: {
++            config: { cliConfigDir: configDir, cliProfiles: { main: { mode: "workspace" } } },
++          },
++        },
++      },
++    };
++    expect(resolveConfiguredClaudeCliConfigDir(config, "main")).toBe(configDir);
++    expect(resolveConfiguredClaudeCliConfigDir(config, "other")).toBeUndefined();
++    expect(resolveConfiguredClaudeCliConfigDir({}, "main")).toBeUndefined();
++  });
++});
+diff --git a/src/gateway/cli-session-history.ts b/src/gateway/cli-session-history.ts
+index 28ce276040d..5d04f2feb2d 100644
+--- a/src/gateway/cli-session-history.ts
++++ b/src/gateway/cli-session-history.ts
+@@ -23,6 +23,7 @@ type CliSessionHistoryParams = {
+   provider?: string;
+   localMessages: unknown[];
+   homeDir?: string;
++  configDir?: string;
+   preparedImportedMessages?: unknown[];
+ };
+ 
+@@ -52,6 +53,7 @@ export function resolveChatHistoryWithCliSessionImports(params: CliSessionHistor
+     readClaudeCliSessionMessages({
+       cliSessionId: binding.sessionId,
+       homeDir: params.homeDir,
++      configDir: params.configDir,
+       localSessionId: params.entry?.sessionId,
+       reseedReceipt: binding.reseedReceipt,
+     });
+@@ -80,6 +82,7 @@ export async function readChatHistoryCliSessionImportSnapshot(
+     ? await readClaudeCliSessionMessagesAsync({
+         cliSessionId: binding.sessionId,
+         homeDir: params.homeDir,
++        configDir: params.configDir,
+         localSessionId: params.entry?.sessionId,
+         reseedReceipt: binding.reseedReceipt,
+       })
+diff --git a/src/gateway/server-methods/chat-history-handler.ts b/src/gateway/server-methods/chat-history-handler.ts
+index 225948a22a2..2dbd2a27027 100644
+--- a/src/gateway/server-methods/chat-history-handler.ts
++++ b/src/gateway/server-methods/chat-history-handler.ts
+@@ -6,6 +6,7 @@ import {
+ } from "../../../packages/gateway-protocol/src/index.js";
+ import { CHAT_HISTORY_MAX_ENTRIES } from "../../../packages/gateway-protocol/src/schema/chat-history-constants.js";
+ import { resolveAgentConfig } from "../../agents/agent-scope.js";
++import { resolveConfiguredClaudeCliConfigDir } from "../../agents/command/claude-cli-project-dir.js";
+ import { findModelCatalogEntry } from "../../agents/model-catalog.js";
+ import { resolveConfiguredThinkingDefault } from "../../agents/model-thinking-default.js";
+ import {
+@@ -336,6 +337,9 @@ export async function handleChatHistoryRequest({
+             readChatHistoryPage(
+               {
+                 entry: historyEntry,
++                ...(resolveConfiguredClaudeCliConfigDir(cfg, sessionAgentId)
++                  ? { claudeConfigDir: resolveConfiguredClaudeCliConfigDir(cfg, sessionAgentId) }
++                  : {}),
+                 provider: resolvedSessionModel.provider,
+                 sessionId,
+                 storePath,
+diff --git a/src/gateway/server-methods/chat-history-pages.ts b/src/gateway/server-methods/chat-history-pages.ts
+index 2040dfa3771..a08b0999f12 100644
+--- a/src/gateway/server-methods/chat-history-pages.ts
++++ b/src/gateway/server-methods/chat-history-pages.ts
+@@ -154,11 +154,13 @@ async function readChatHistoryPageLocal(params: ChatHistoryPageParams): Promise<
+             } = await import("../cli-session-history.js");
+             const importedMessages = await readChatHistoryCliSessionImportSnapshot({
+               entry,
++              configDir: params.claudeConfigDir,
+               provider,
+               localMessages: localMessagesWithBoundaryFilter,
+             });
+             const cliHistory = resolveChatHistoryWithCliSessionImports({
+               entry,
++              configDir: params.claudeConfigDir,
+               provider,
+               localMessages: localMessagesWithBoundaryFilter,
+               preparedImportedMessages: importedMessages,
+@@ -179,6 +181,7 @@ async function readChatHistoryPageLocal(params: ChatHistoryPageParams): Promise<
+               );
+               const completeCliHistory = resolveChatHistoryWithCliSessionImports({
+                 entry,
++                configDir: params.claudeConfigDir,
+                 provider,
+                 localMessages: completeLocalMessages,
+                 preparedImportedMessages: importedMessages,
 diff --git a/src/plugins/cli-backend.types.ts b/src/plugins/cli-backend.types.ts
 index 48da7e3fd3b..bf31f944c97 100644
 --- a/src/plugins/cli-backend.types.ts
@@ -1583,3 +2238,62 @@ index 48da7e3fd3b..bf31f944c97 100644
    config?: OpenClawConfig;
    backendId: string;
    agentId?: string;
+diff --git a/src/tui/embedded-backend.test.ts b/src/tui/embedded-backend.test.ts
+index bafc2419455..829116712e6 100644
+--- a/src/tui/embedded-backend.test.ts
++++ b/src/tui/embedded-backend.test.ts
+@@ -1480,6 +1480,32 @@ describe("EmbeddedTuiBackend", () => {
+     });
+   });
+ 
++  it("passes the owning agent dedicated directory into embedded native history", async () => {
++    const cfg = {
++      plugins: {
++        entries: {
++          anthropic: {
++            config: {
++              cliConfigDir: "/tmp/synthetic-login",
++              cliProfiles: { main: { mode: "workspace" } },
++            },
++          },
++        },
++      },
++    };
++    loadSessionEntryMock.mockReturnValue({
++      cfg,
++      agentId: "main",
++      canonicalKey: "agent:main:main",
++      storePath: "/tmp/openclaw-sessions.json",
++      entry: { sessionId: "sess-main" },
++    });
++    await new EmbeddedTuiBackend().loadHistory({ sessionKey: "agent:main:main" });
++    expect(readChatHistoryPageMock).toHaveBeenCalledWith(
++      expect.objectContaining({ claudeConfigDir: "/tmp/synthetic-login", sessionAgentId: "main" }),
++    );
++  });
++
+   it("loads runtime plugins for the send-path workspace before returning embedded history", async () => {
+     const cfg = { agents: { list: [{ id: "main" }] } };
+     loadSessionEntryMock.mockReturnValue({
+diff --git a/src/tui/embedded-backend.ts b/src/tui/embedded-backend.ts
+index 134f8eec455..7f617261000 100644
+--- a/src/tui/embedded-backend.ts
++++ b/src/tui/embedded-backend.ts
+@@ -21,6 +21,7 @@ import {
+   resolveDefaultAgentId,
+   resolveSessionAgentId,
+ } from "../agents/agent-scope.js";
++import { resolveConfiguredClaudeCliConfigDir } from "../agents/command/claude-cli-project-dir.js";
+ import { ensureContextWindowCacheLoaded } from "../agents/context.js";
+ import { resolveActiveEmbeddedRunSessionId } from "../agents/embedded-agent-runner/active-run-projections.js";
+ import {
+@@ -535,6 +536,9 @@ export class EmbeddedTuiBackend implements TuiBackend {
+     const effectiveMaxChars = resolveEffectiveChatHistoryMaxChars();
+     const historyPage = await readChatHistoryPage({
+       entry,
++      ...(resolveConfiguredClaudeCliConfigDir(cfg, sessionAgentId)
++        ? { claudeConfigDir: resolveConfiguredClaudeCliConfigDir(cfg, sessionAgentId) }
++        : {}),
+       provider: resolvedSessionModel.provider,
+       sessionId,
+       storePath,
