@@ -292,6 +292,7 @@ export async function runScenario(installedDir, scenario, options = {}) {
       let spawnError;
       child.once("error", error => { spawnError = error; });
       trackedChild = trackFixtureProcess(child);
+      await provider?.onGatewayStarted?.({pid: child.pid, identity: trackedChild.identity});
       await until(() => {
         if (spawnError) throw spawnError;
         return records(join(context.recordingsDir, "imsg-ready.jsonl")).length > readyCount;
