@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -36,3 +36,31 @@ await withApplicationCheckCleanup(${JSON.stringify(state)},()=>Promise.all([0,1]
     rmSync(root,{recursive:true,force:true});
   }
 },20000);
+
+for (const fails of [false, true]) it(`ordinary ${fails ? 'failed checks retain diagnostics' : 'successful checks remove state'} after joining fixtures`, () => {
+  const root = mkdtempSync(join(tmpdir(), 'application-result-')), state = join(root, 'state');
+  mkdirSync(state);
+  const diagnostic = join(state, 'failure.log'), stopped = join(root, 'fixture.stopped');
+  const moduleUrl = (file: string) => pathToFileURL(resolve(import.meta.dirname, '../src', file)).href;
+  const wrapper = join(root, 'wrapper.mjs');
+  writeFileSync(wrapper, `
+import {writeFileSync} from 'node:fs';
+import {registerNativeFixture} from ${JSON.stringify(moduleUrl('native-fixture.mjs'))};
+import {withApplicationCheckCleanup} from ${JSON.stringify(moduleUrl('application-check-cleanup.mjs'))};
+registerNativeFixture(async()=>{writeFileSync(${JSON.stringify(stopped)},'joined');});
+await withApplicationCheckCleanup(${JSON.stringify(state)},async()=>{
+  writeFileSync(${JSON.stringify(diagnostic)},'synthetic protected diagnostic');
+  if(${fails})throw new AggregateError([new Error('synthetic check failed')],'Installed application checks failed');
+});`);
+  try {
+    const result=spawnSync(process.execPath,[wrapper],{encoding:'utf8',timeout:10_000});
+    expect(result.error).toBeUndefined();expect(result.status).toBe(fails?1:0);
+    expect(readFileSync(stopped,'utf8')).toBe('joined');
+    expect(existsSync(state)).toBe(fails);
+    if(fails){
+      expect(readFileSync(diagnostic,'utf8')).toBe('synthetic protected diagnostic');
+      expect(result.stderr).toContain('Installed application checks failed');
+      expect(result.stderr).toContain('synthetic check failed');
+    }
+  } finally {rmSync(root,{recursive:true,force:true});}
+});

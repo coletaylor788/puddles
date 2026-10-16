@@ -2,15 +2,20 @@ import { rmSync } from 'node:fs';
 import { cleanupNativeFixtures } from './native-fixture.mjs';
 import { installSignalHandlers, isHandlingSignal } from './process-runner.mjs';
 export async function withApplicationCheckCleanup(root, run) {
+  let preserveFailure = false;
   const cleanup = async () => {
     const errors = await cleanupNativeFixtures();
-    if (!errors.length) rmSync(root, { recursive: true, force: true });
+    if (!errors.length && !preserveFailure) rmSync(root, { recursive: true, force: true });
     return errors;
   };
   installSignalHandlers({ cleanup });
   try { return await run(); }
   catch (error) {
-    if (!isHandlingSignal()) throw error;
+    if (!isHandlingSignal()) {
+      // Failed checks leave protected diagnostics in this owned run directory.
+      preserveFailure = true;
+      throw error;
+    }
     // The signal handler joins every child before cleanup and exits the process.
     return await new Promise(() => {});
   }
