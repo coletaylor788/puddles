@@ -43,6 +43,7 @@ PATCHES=(
   wiki-get-mutation-metadata
   untrusted-agent-results
   talk-request-recovery
+  claude-native-agent-profiles
 )
 
 if [ -n "${MINI_HOST:-}" ]; then

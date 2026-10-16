@@ -154,7 +154,14 @@
     "src/talk/agent-consult-tool.test.ts": "unit-src",
     "src/test-utils/ports.test.ts": "unit",
     "extensions/openai/realtime-quicksilver-gateway-bridge-lifecycle.test.ts": "extension-provider-openai",
-    "src/talk/agent-run-control.test.ts": "unit-src"
+    "src/talk/agent-run-control.test.ts": "unit-src",
+    "extensions/anthropic/cli-profile.test.ts": "extension-providers",
+    "extensions/anthropic/cli-runtime.test.ts": "extension-providers",
+    "src/agents/cli-runner/execute-plugin.test.ts": "infra",
+    "src/agents/cli-runner/execute-plugin.policy.test.ts": "infra",
+    "src/agents/cli-runner/prepare.test.ts": "infra",
+    "src/agents/cli-runner.spawn.test.ts": "infra",
+    "src/agents/exec-defaults.test.ts": "agents-core"
   },
   "patches": [
     {
@@ -507,6 +514,18 @@
       ],
       "candidateTests": [
         "tests/candidate.talk-concurrency.test.ts"
+      ]
+    },
+    {
+      "name": "claude-native-agent-profiles",
+      "tests": [
+        "extensions/anthropic/cli-profile.test.ts",
+        "extensions/anthropic/cli-runtime.test.ts",
+        "src/agents/cli-runner/execute-plugin.test.ts",
+        "src/agents/cli-runner/execute-plugin.policy.test.ts",
+        "src/agents/cli-runner/prepare.test.ts",
+        "src/agents/cli-runner.spawn.test.ts",
+        "src/agents/exec-defaults.test.ts"
       ]
     }
   ],
