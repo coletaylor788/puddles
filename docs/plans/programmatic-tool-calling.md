@@ -47,24 +47,21 @@ from fewer round trips and returning compact results.
 #### Contain scripts
 
 QuickJS runs inside WebAssembly in a host worker. The WASM guest provides
-isolation; the worker thread does not. The audited runtime has no guest access
-to host modules, files, processes, networking, or environment. OS isolation of
-the interpreter is not required. Use the bundled QuickJS executor explicitly,
-and reject Node VM execution in the additive surface.
+isolation; the worker thread does not. Scripts can compute and use the agent's
+existing authorized capabilities, but gain no ambient host filesystem, process,
+network, module, environment, or credential access. Use the bundled QuickJS
+executor explicitly and reject Node VM execution in the additive surface.
+OS isolation of the interpreter is not required.
 
-The bridge needs two changes to satisfy “effects only through existing tools”:
+Keep `skills.list()` and `skills.read()` for the agent's authorized skill
+catalog. Reading a known skill is a scoped, read-only capability, not arbitrary
+host file access. Keep existing catalog, MCP/node, and delegation helpers with
+their current caller checks. Bounded output, progress, timers, and caller-scoped
+in-memory results are ordinary runtime facilities.
 
-- Remove skill convenience APIs and reject their bridge requests. Their reader
-  can access host files outside normal tool dispatch. Agents can still use
-  their existing authorized reading tools.
-- Remove swarm convenience APIs and reject their bridge requests. Although
-  spawning uses a tool, waiting and progress events use separate host paths.
-  Existing delegation tools remain available directly and inside scripts.
-
-Keep catalog calls, MCP/node wrappers that dispatch through that catalog,
-bounded output, timers, and caller-scoped in-memory results. Deny the WASI
-runtime's raw stdout/stderr writes; script output uses the bounded controller.
-Do not add module loaders, filesystem mounts, network imports, or credentials.
+The boundary is no additional authority or unmediated external writes. Existing
+authorized reads remain available; actions retain their existing authorization
+and approval rules.
 
 The source audit and isolated probes found no demonstrated host-code escape.
 They establish the intended capability boundary, not a guarantee against all
@@ -78,17 +75,20 @@ them through its SDK. Both need the additive surface; Claude additionally needs
 that missing adapter wiring.
 
 Expose the controls through Claude's existing MCP connection. Keep the original
-tool allowlist separate from the added control names. Bind the catalog, results,
-and paused programs to the admitted run and grant generation. Reuse the MCP
-call checks for every nested invocation. Dispose that state when authority is
-replaced, revoked, or completed, including warm-process turn changes.
+tool allowlist separate from the added control names, and route nested calls
+through the existing execution engine. Retain the shared Code Mode runtime
+between execution and wait calls, then use its existing cleanup when the task
+ends or authority changes. This is adapter wiring, not a separate approval or
+lifecycle system.
 
 #### Preserve behavior
 
 Apply this to all agents and their existing restrictions. Tool-less runs gain
 no tools. Roles, models, credentials, routing, and native host-tool restrictions
 stay unchanged. Every nested action retains its own approval, content checks,
-ordering, cancellation, and audit event. Starting a script approves no action.
+ordering, cancellation, and audit event. If a tool needs approval, its call waits
+under the engine's existing rules. Code Mode already supports approval waits,
+timeouts, and cancellation; the adapter reuses that behavior.
 
 Programs are not transactions. Never replay completed or uncertain writes after
 interruption. Continuations remain transient and cannot survive Gateway restart.
@@ -97,8 +97,9 @@ interruption. Continuations remain transient and cannot survive Gateway restart.
 
 **Approval: Proposed.** The requester authorized the audit, design, and publication;
 required all agents, both native harnesses, and retained direct calls; and chose
-contained scripting without OS isolation. Implementation and deployment remain
-unapproved.
+contained scripting without OS isolation. Authorized skill reads remain in
+scope, and approvals use the existing engine. Implementation and deployment
+remain unapproved.
 
 The source audit is complete and the required changes are specified below.
 Installed integration tests and benefit measurements are implementation gates.
@@ -115,8 +116,9 @@ with the existing harness work through its landed source and restrictions.
 ### Scope and acceptance criteria
 
 - Preserve every existing direct tool and its behavior; add optional scripting.
-- Give scripts exactly the caller's existing tool authority and no independent
-  host capabilities. Controls cannot appear in their own catalog.
+- Preserve existing tool authority and authorized reads, including skill access.
+  Add no ambient host access or unmediated external writes. Controls cannot
+  appear in their own catalog.
 - Support all tool-enabled agent roles and both native harnesses.
 - Preserve per-call approvals, guards, sandboxing, audit, and cancellation.
 - Preserve rich results and prohibit replay of uncertain writes.
@@ -130,16 +132,17 @@ package, including the WASM imports, JS embedder, and encoding extension.
 
 | Audited path | Finding and decision |
 |---|---|
-| [Worker][worker], [executor][executor], [QuickJS package][quickjs] | No module loader; encoding is the only loaded extension. WASI imports supply time, randomness, output, and descriptor stubs, not file opening, sockets, or processes. Keep this runtime; override `fd_write` to deny raw host output on creation and restore. |
-| [Bridge][bridge], [skill reader][skills], [swarm handlers][swarm] | Reject `skillsList`, `skillsRead`, `agentSpawn`, `agentWait`, and `swarmNote` in the additive surface, and omit their guest globals/docs. Enforcement belongs on the host as well as in the guest. |
+| [Worker][worker], [executor][executor], [QuickJS package][quickjs] | No module loader; encoding is the only loaded extension. WASI imports supply time, randomness, diagnostics, and descriptor stubs, not file opening, sockets, or processes. Reuse the runtime; no guest-accessible raw output bypass was demonstrated. |
+| [Bridge][bridge], [skill reader][skills], [swarm handlers][swarm] | Skill reads select from the run's skill catalog. Delegation helpers retain spawn permissions, caller-scoped waits, and progress reporting. Keep these existing capabilities and checks. |
 | [Namespaces][namespaces], [results][results] | MCP and node effects use catalog dispatch; API descriptions are virtual data. Saved results are bounded memory scoped to agent/run/session/catalog. Retain these paths. |
 | [Catalog projection][projection], [harness surface][surface] | Current projection hides direct tools and names controls `exec`/`wait`. Add a separate additive projection over the same catalog. |
 | [Claude preparation][claude], [MCP dispatcher][dispatcher], [grant store][grants] | Claude lacks the shared controls. MCP dispatch owns hooks and authorization; grant replacement already emits invalidation. Extend those seams. |
 | [Copilot bridge][copilot] | Reuse its admitted wrappers, nested executor, and cleanup. Switch to additive projection without duplicating hooks. |
 
-Preserve the [security architecture](../openclaw-setup/security-architecture.md).
-These are capability restrictions within the requested runtime boundary, not an
-OS-isolation change or a replacement approval system.
+Preserve the [security architecture](../openclaw-setup/security-architecture.md)
+and existing capability checks. The patches add an invocation option and Claude
+adapter wiring; QuickJS selection is configuration, and approvals stay in the
+existing execution engine.
 
 ### Implementation
 
@@ -153,18 +156,17 @@ After approval, deliver two maintained upstream patches and companion activation
    recognized by their role, not confused with shell `exec`. Keep discovery
    controls direct but exclude orchestration controls from script recursion.
    Use the same projection in core and native harness paths. Require bundled
-   QuickJS, reject Node selection, disable the five bridge methods above, and
-   deny raw WASI output. Apply restrictions on fresh and resumed cells.
+   QuickJS and reject Node selection. Preserve existing skill and delegation
+   helpers, including their restrictions, on fresh and resumed cells.
 2. **Claude MCP integration.** Keep `toolsAllow` as the underlying authority;
-   advertise controls separately after prompt-policy filtering. Retain one shared
-   tool-surface runtime per active admitted grant generation, outside the short
-   schema cache. Extract the dispatcher's prepare/hook/authorize/execute/result
-   sequence into a shared invocation helper used by direct and nested calls.
-   Return guarded raw results to Code Mode before MCP serialization. Recheck
-   current grant authority on every call, including after approval. Connect
-   grant replacement/revocation and run cleanup to catalog disposal and abort.
-   Reuse catalog scheduling without locking the outer control against its own
-   nested calls. Refresh prompt/schema and grant context for warm Claude turns.
+   advertise controls separately after prompt-policy filtering. Route nested
+   calls through the MCP dispatcher's existing prepare/hook/authorize/execute/
+   result sequence, extracting a shared helper where needed. Return guarded raw
+   results to Code Mode before MCP serialization. Retain the shared runtime
+   between execution and wait calls, outside the short schema cache, and connect
+   grant replacement and task completion to its existing disposal and abort
+   hooks. Reuse approval waits and scheduling without locking the outer control
+   against its nested calls. Refresh context for warm Claude turns.
 3. **Activation.** In an isolated companion worktree, explicitly enable the
    additive QuickJS surface for all tool-enabled agents. Preserve existing
    restrictions and routing. Do not alter another owner's harness worktree.
@@ -182,7 +184,8 @@ without executing real tools. No application build or live service call ran.
 
 Implementation regressions must cover retained direct calls, control-name
 collisions, allowed/denied nested calls, exact approval arguments, post-approval
-guards, rejected helper requests, missing QuickJS, fresh/resumed restrictions,
+guards, authorized skill reads and unknown-skill denial, delegation caller checks,
+missing QuickJS, fresh/resumed restrictions,
 cross-agent/result-handle isolation, warm grant replacement, cancellation,
 resource limits, rich output, and interrupted writes. Run both real native
 harnesses with synthetic data and recording adapters. These verify the delivered
@@ -203,14 +206,15 @@ over new live writes. Finalize owned resources after publication and recovery ch
 ### Review log
 
 Completed source and dependency audit plus isolated engine/controller probes.
-Found concrete mismatches in compact-only projection and auxiliary bridge
-capabilities. The design addresses them. No production qualification or
-independent implementation review is claimed.
+The required patches address compact-only projection and missing Claude wiring.
+Scoped skill reads and existing helper checks are retained. Existing approval
+and lifecycle behavior is reused. No production qualification or independent
+implementation review is claimed.
 
 ### Checklist
 
 - [x] Complete source/dependency audit and bounded capability probes.
-- [x] Specify additive projection, bridge restrictions, and Claude integration.
+- [x] Specify additive projection, retained scoped capabilities, and Claude integration.
 - [ ] Obtain implementation approval.
 - [ ] Implement both patches and activation; add durable regressions.
 - [ ] Verify both native harnesses and all agent roles.
