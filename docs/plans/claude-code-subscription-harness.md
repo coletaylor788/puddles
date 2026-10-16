@@ -81,11 +81,27 @@ operation through OpenClaw's existing approval system. It must not proceed throu
 silent approval or reuse of a broader grant. A denied, expired or unavailable
 approval must leave the operation unexecuted. Hard-denied paths remain denied.
 
-The stock pinned integration cannot combine prompt-free workspace writes with
-mandatory approval outside the workspace. It asks OpenClaw before Claude evaluates
-its own permission rules. A blanket allow can skip the native check; asking every
-time prompts even for ordinary workspace operations. Configuration alone does not
-resolve this, and asking every time is not the chosen user experience.
+Claude Code already supports the desired experience: workspace edits can run
+without prompts, while outside writes request permission. Its native permission
+system should own that distinction. This is separate from its shell sandbox.
+
+The mismatch is in OpenClaw's approval bridge. It calls the same host authorization
+handler both before Claude checks permissions and when Claude asks for permission.
+A fresh comparison used the installed callback functions with the real Claude CLI:
+
+| Configuration | Workspace write | Outside write |
+|---|---|---|
+| Native Claude workspace permissions | Runs without asking | Requests permission |
+| OpenClaw full/off | Runs without asking | Automatically allowed |
+| OpenClaw full/off plus explicit Claude outside ask rule | Runs without asking | Claude asks; OpenClaw automatically answers allow |
+| OpenClaw always-ask | Requests approval | Requests approval |
+
+The earlier protected-path probe showed that explicit native deny rules still apply;
+no protected file was created in this comparison either. The problem is automatic
+approval of an operation that should require the owner, not removal of all native restrictions.
+Always-ask avoids that automatic approval but loses prompt-free workspace edits.
+The tested native ask rule does not repair the bridge. OpenClaw also forces Claude's
+default permission mode, so passing acceptEdits alone cannot restore standalone behavior.
 
 #### Resolved approval flow
 
@@ -110,9 +126,9 @@ process still requested approval for another outside path. A fresh process behav
 the same way. Withholding a response left the file absent, and a host veto blocked
 an otherwise permitted workspace write.
 
-This closes the behavior and design question. The adjustment belongs in the native
-permission bridge, not in a new file tool or filesystem checker. Claude retains
-workspace/path classification and native file execution. OpenClaw retains policy
+The adjustment restores Claude's native permission boundary at the integration
+point. It belongs in the permission bridge, not in a new file tool or filesystem
+checker. Claude retains workspace/path classification and native file execution. OpenClaw retains policy
 checks and human approval delivery. Trusted settings must exclude ambient grants
 or hooks that could skip the approval callback, and changed settings must invalidate
 an incompatible warm process. Actual gateway delivery remains an implementation
@@ -244,7 +260,23 @@ prior grant; rejection of unexpected allow-always; user denial; expiry; transpor
 failure; security deny; and unavailable tool. Policy resolution and UI transport
 were dependency seams, so this is not installed approval acceptance.
 
-The decisive native CLI prototype used default mode, a trusted absolute workspace
+A fresh comparison then executed the installed, unchanged Claude callback functions
+and host permission handler against the real CLI. Resolved policy, passing host hooks,
+active-run authority and approval delivery were controlled test inputs. Four cases
+passed: native acceptEdits; stock full/off; full/off with an explicit outside Edit
+ask rule; and stock always-ask. Stock cases used the adapter's default permission
+mode; all four had an explicit workspace allow rule. The earlier default-mode
+prototype separately confirmed prompt-free workspace writes without an early allow. The native case created only the workspace
+file after a recorded outside denial. Both full/off cases created the outside file
+without requesting host approval. The explicit ask rule reached can_use_tool, where
+the host handler returned allow automatically. Always-ask requested approval for both
+paths before native workspace classification. A third, explicitly denied file was
+absent in all four cases, although this probe did not retain its attempted tool
+invocation. No file existed at its permission callback. These are
+installed-function integration probes, not a claim about the current production
+session policy or acceptance of real owner-facing delivery. Fixtures were removed.
+
+The proposed-flow native CLI prototype used default mode, a trusted absolute workspace
 Edit allow rule, a PreToolUse continuation and recorded approval replies. Workspace
 Write/Edit completed with zero permission requests. Denied and unavailable outside
 writes, a symlink into a sibling directory and a hard-denied write left no files.
@@ -284,7 +316,8 @@ role on its existing route; it does not authorize broader access.
 
 Independent source review confirmed automatic approval paths, always-ask handling,
 policy precedence and the absence of ordinary agent-list to native-list translation.
-Follow-up independent review confirmed the stock configuration limitation and the
+Follow-up independent review challenged explicit ask-rule precedence. The installed-function
+probe confirmed that the rule reaches the same automatic host handler. This supports the
 phase-aware bridge as the appropriate narrow change. Preserve rewritten inputs,
 avoid duplicate host approvals, retain user-question handling and bind trusted
 settings to process reuse.
