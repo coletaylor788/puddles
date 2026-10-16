@@ -216,7 +216,14 @@
     "src/auto-reply/reply/agent-runner-memory.native-idle.test.ts": "auto-reply-reply",
     "extensions/anthropic/cli-profile.test.ts": "extension-providers",
     "src/agents/cli-runner/execute-plugin.policy.test.ts": "infra",
-    "src/agents/exec-defaults.test.ts": "agents-core"
+    "src/agents/exec-defaults.test.ts": "agents-core",
+    "src/gateway/cli-session-history.profile-dir.test.ts": "gateway-core",
+    "src/gateway/cli-session-history.test.ts": "gateway-core",
+    "src/gateway/cli-session-history.claude-snapshot.test.ts": "gateway-core",
+    "src/agents/cli-runner/history-boundary.test.ts": "infra",
+    "src/tui/embedded-backend.test.ts": "tui",
+    "src/agents/tools/embedded-gateway-stub.history.test.ts": "agents-tools",
+    "src/commands/doctor-claude-cli.test.ts": "commands"
   },
   "patches": [
     {
@@ -646,7 +653,16 @@
         "src/agents/cli-runner/execute-plugin.policy.test.ts",
         "src/agents/cli-runner/prepare.test.ts",
         "src/agents/cli-runner.spawn.test.ts",
-        "src/agents/exec-defaults.test.ts"
+        "src/agents/exec-defaults.test.ts",
+        "src/gateway/cli-session-history.profile-dir.test.ts",
+        "src/gateway/cli-session-history.test.ts",
+        "src/gateway/cli-session-history.claude-snapshot.test.ts",
+        "src/agents/command/attempt-execution.test.ts",
+        "src/agents/cli-runner/history-boundary.test.ts",
+        "src/agents/cli-runner/cli-run-settlement.test.ts",
+        "src/tui/embedded-backend.test.ts",
+        "src/agents/tools/embedded-gateway-stub.history.test.ts",
+        "src/commands/doctor-claude-cli.test.ts"
       ]
     }
   ],
