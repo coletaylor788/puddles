@@ -1,6 +1,6 @@
 # Native approval for household questions to main
 
-**Status:** Longer native wait implemented; validation incomplete
+**Status:** Deployed; physical owner acceptance pending
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
 
 ## Human section
@@ -88,9 +88,10 @@ fixed-owner approval per question, and native exact-session sends. **Approval
 reference:** The requester approved this solution with "okay, approved this new
 solution". The explicit no-agent-to-agent-patch constraint remains binding.
 
-The longer fixed wait is implemented and focused synthetic return tests pass.
-Complete acceptance and release readiness remain open. Any further change outside
-the approved policy design requires its own review before implementation.
+The longer fixed wait is deployed. DEV, the full application suite, installed TEST
+acceptance, and read-only production checks passed on 2026-10-16. The exact tested
+source is merged in [PR #306](https://github.com/coletaylor788/puddles/pull/306),
+and normal production intake has resumed. Physical owner acceptance remains open.
 
 ## Agent section
 
@@ -127,7 +128,8 @@ results do not certify the complete application or a release.
 
 Retained independent review found no material scope change in the longer wait.
 Native approval, fixed-target access, and the no-agent-to-agent-patch constraint
-remain in effect. Full acceptance is incomplete; no readiness claim is made.
+remain in effect. Retained review and automated release acceptance are complete.
+Physical owner acceptance remains separate.
 
 ### Release and rollback
 
@@ -146,6 +148,7 @@ failure. Physical acceptance remains separate from automated recording tests.
 
 - [x] Preserve the approved native route and fixed-wait constraints.
 - [x] Implement the longer wait and reproduce ordinary busy-main behavior.
-- [ ] Complete all required acceptance and retained review.
-- [ ] Pass DEV, full application, TEST, and read-only PROD gates.
-- [ ] Merge, finalize owned development output, and complete user acceptance.
+- [x] Complete all required automated acceptance and retained review.
+- [x] Pass DEV, full application, TEST, and read-only PROD gates.
+- [x] Merge exact tested source and publish release evidence.
+- [ ] Complete physical owner acceptance and final task closeout.
