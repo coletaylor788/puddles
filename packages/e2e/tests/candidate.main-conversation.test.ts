@@ -2,8 +2,11 @@ import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { expect, it } from "vitest";
 
+// These scenarios load compiled harness code and its packaged dependencies.
+// Source-only callers retain the legacy candidate path.
+const candidate = process.env.OPENCLAW_CANDIDATE_DIR ?? process.env.OPENCLAW_CANDIDATE;
+
 it("shares the owner's text and voice history in the installed main session", () => {
-  const candidate = process.env.OPENCLAW_CANDIDATE;
   expect(candidate, "OPENCLAW_CANDIDATE is required").toBeTruthy();
   const result = spawnSync(
     process.execPath,
@@ -19,7 +22,6 @@ it("shares the owner's text and voice history in the installed main session", ()
 }, 50_000);
 
 it("refreshes the persistent harness from shared speech without replaying requests", () => {
-  const candidate = process.env.OPENCLAW_CANDIDATE;
   expect(candidate, "OPENCLAW_CANDIDATE is required").toBeTruthy();
   const result = spawnSync(
     process.execPath,

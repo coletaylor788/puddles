@@ -1,8 +1,8 @@
 # Voice request recovery on the current harness
 
-Status: Proposed; current-path findings inspected
+Status: Release validation found a test binding error; repair in validation
 Issue: [#290](https://github.com/coletaylor788/puddles/issues/290)
-Last updated: 2026-10-14
+Last updated: 2026-10-15
 
 ## Human section
 
@@ -101,28 +101,52 @@ outcome and a usable next voice request, not a reader or registry repair.
 
 ### Status
 
-**Approval:** Proposed. **Approval reference:** On 2026-10-14 the requester asked
-to narrow the proposal to fixes on the existing harness and table migration
-work. Steering is deferred, reader-limit changes are excluded, and there is no
-investment in harness-specific adapter repairs. The current authorization is
-to revise and publish the proposal, not implement new runtime behavior.
+**Approval:** Production approved. **Approval reference:** On 2026-10-14 the
+requester replied "approved" to the narrowed current-harness proposal. Approval
+covers shared voice routing, truthful admission feedback, busy-input recovery,
+and fresh requests after terminal outcomes through review, release, and cleanup.
+Steering, migration compatibility, harness-specific adapter repairs, reader
+changes, registry storage repairs, and new queueing remain excluded.
+
+**Current phase:** The full application gate stopped before TEST on a runtime test
+that selected development source instead of the composed application. The test
+now selects the complete artifact and its packaged dependencies. Both affected
+scenarios also join installed DEV and TEST acceptance. The application is
+unchanged. Complete fresh validation and retained review before the next managed
+release attempt. Production deployment has not started.
 
 The inspected call shows an accepted original request followed by rejected
 additional input and misleading voice feedback. Installed classifier probes
 reproduce missed status questions and an overly broad follow-up marker. The
 controller acknowledges before admission and handles unsupported input through
-its overlap recovery path. End-to-end current-harness tests must establish
-which delivery or active-state cleanup repairs are needed after terminal failure.
-No implementation, configuration change, or deployment is part of this revision.
+its overlap recovery path. Real-model validation also reproduced a status question
+missed after earlier discussion accumulated in the transcript. A narrow status
+match preserves that context and keeps mutating-control rules unchanged.
+A further live run answered from an earlier progress update without checking the
+host. The voice instruction now explicitly requires a new delegation for each
+status question. Both natural status phrasings passed fresh live validation.
+Focused tests now prove that failed admission and completion racing extra input
+can suppress the original outcome. The shared voice repairs preserve that outcome
+and allow a fresh request. Source review is clear. Installed DEV and two live
+voice scenarios passed, including discussion, fresh status, terminal failure,
+and contextual retry. Managed release gates remain. No runtime change from this
+feature has reached production.
 
 ## Agent section
 
 ### State
 
-This is a documentation-only scope revision. Follow the short documentation
-path in `safe-feature-development`. The current harness and route remain the
-acceptance target. Do not wait for or qualify a future harness as part of this
-work. Keep this existing file path so links and the open proposal remain valid.
+Implementation follows `safe-feature-development` under the recorded design
+approval recorded in the Human section. The prior
+R3 qualification is retired for admission after the household release. R4 fresh
+DEV qualification and retained review passed. R5 stopped in the application gate
+because the shared conversation test loaded compiled development source without
+the packaged SDK dependency. Select the explicit composed artifact for both main
+conversation tests, retaining the legacy source path only when no artifact is
+supplied. Validate these scenarios against installed DEV and include them in TEST.
+Reuse unchanged application evidence with explicit input equivalence. Preserve
+the failed receipt and use a fresh ticket for the complete application gate.
+Do not retarget or replay the old ticket. Recurring automation is not authorized. The current harness and route remain the acceptance target. Do not wait for or qualify a future harness as part of this work. Keep this existing file path so links and the open proposal remain valid.
 
 Related designs are [voice progress](050-talk-conversation-progress.md) and
 [live conversation](055-live-conversation-default.md). Keep private transcripts,
@@ -213,22 +237,53 @@ After implementation approval, follow focused local tests, installed DEV
 validation, retained independent review, and the managed cumulative CI, TEST,
 and PROD lifecycle on the current harness. Register applicable maintained-patch
 regressions in the cumulative manifest. Roll back through the release controller
-with matching configuration and state. This proposal revision deploys nothing.
+with matching configuration and state. No production deployment has occurred yet.
 
 ### Review log
 
-This narrowed proposal receives direct documentation review for current-harness
-scope, evidence, failure boundaries, and consistency between both sections.
-Earlier architecture reviews do not qualify the revised implementation scope.
-Check relative links and whitespace directly. Runtime implementation requires
-its own retained independent review and behavior tests.
+The retained implementation review identified a completion race: known refusal
+after the original task ended still closed the call and suppressed its result.
+The correction preserves the result only when input was not admitted and the
+call owner remains current. Composed regressions use the voice controller,
+Gateway owner, real run registry, and control adapter for both success and failure.
+The reviewer cleared the complete source diff after remediation. Stale ownership
+and accepted input with an uncertain receipt retain their existing protections.
+Live-model validation reproduced a status question prefixed by earlier live
+discussion. The correction matches only the two precise status-question forms
+at the end of accumulated input. Transcript storage and cancellation/negation
+precedence remain unchanged. The added composed regression checks the real
+classifier, status callback, original result, and retained context on the next
+request. The retained reviewer cleared this correction and the complete current
+source diff. A subsequent provider run skipped host control and answered from
+earlier progress. The added runtime instruction makes each new status question
+require its own fresh host result; retained review and real-model checks cover
+that correction. Final DEV passed its complete installed suite, all twelve
+compiled Talk checks, and two real voice-model scenarios with different status
+phrasings. Both scenarios used a recording harness, made two work requests and
+one fresh status check, and recorded zero external writes. The retained reviewer
+cleared the complete source diff. The first cumulative gate stopped before TEST
+on four older test expectations: three required the removed optimistic receipt,
+and one treated a bare "also" as an automatic follow-up. The corrected composed
+tests require correlated final delivery and preserve explicit follow-up routing.
+All four files are now part of this feature's focused qualification as well as
+the cumulative pool. Runtime behavior is unchanged by this test repair. Retained
+review and the complete managed release gates remain required.
+
+R5 exposed a second test preparation gap. The runtime conversation scenarios used
+`OPENCLAW_CANDIDATE`, which names development source for mixed source tests.
+They now prefer `OPENCLAW_CANDIDATE_DIR`, the complete application, as other runtime
+scenarios do. An invalid explicit artifact fails without falling back. The existing
+dependency is present in the composed output, and the shared context scenario
+passed there with no model calls or external writes. No harness adapter or runtime
+dependency changed. Installed DEV and TEST must exercise both conversation cases.
 
 ### Checklist
 
 - [x] Inspect the observed call and installed voice-control path.
 - [x] Reproduce classifier failures without live inference.
 - [x] Restrict the proposal to shared voice fixes on the current harness.
-- [ ] Approve implementation of the narrowed design.
-- [ ] Validate classification, accurate feedback, and busy-input recovery.
-- [ ] Prove terminal outcomes allow a fresh contextual voice request.
-- [ ] Complete DEV, review, cumulative release gates, and physical acceptance.
+- [x] Approve implementation of the narrowed design.
+- [x] Validate classification, accurate feedback, and busy-input recovery in focused tests.
+- [x] Prove terminal outcomes allow a fresh contextual voice request in composed tests.
+- [x] Complete installed DEV, retained source review, and real-model validation.
+- [ ] Complete cumulative release gates and physical acceptance.
