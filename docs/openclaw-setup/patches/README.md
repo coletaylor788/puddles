@@ -43,8 +43,9 @@ activated gateway. Keep the previous interpreter available for rollback.
 | `untrusted-agent-results.patch` | Enclose configured source agent findings at model-facing boundaries |
 | `talk-request-recovery.patch` | Report each voice request accurately and permit fresh requests after failure |
 | `facetime-talk-client.patch` | Let FaceTime inherit native Talk configuration, history, controls, and accepted-work lifetime |
-
 | `wiki-get-mutation-metadata.patch` | Expose complete citation and claim metadata for preserving wiki updates |
+| `code-mode-additive-surface.patch` | Keep direct tools alongside contained scripting through the bundled QuickJS executor |
+| `claude-code-mode-mcp.patch` | Connect native Claude MCP calls to the shared contained runtime and existing execution policy |
 
 Each patch has a neighboring document explaining its behavior and history.
 Register new patches and every applicable test in the cumulative manifest at
