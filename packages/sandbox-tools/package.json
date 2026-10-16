@@ -1,0 +1,11 @@
+{
+  "name": "@puddles/sandbox-tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node --check bin/image.mjs && node --check runtime/register.mjs",
+    "lint": "node --check bin/image.mjs && node --check runtime/register.mjs",
+    "test": "node --test test/*.test.mjs"
+  }
+}

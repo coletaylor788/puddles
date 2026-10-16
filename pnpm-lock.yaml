@@ -175,6 +175,8 @@ overrides:
 
 importers:
 
+  packages/sandbox-tools: {}
+
   .: {}
 
   openclaw-plugins/approved-session-send:

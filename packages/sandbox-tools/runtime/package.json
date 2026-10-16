@@ -1,0 +1,10 @@
+{
+  "name": "puddles-sandbox-runtime",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "clawpdf": "0.3.2",
+    "rastermill": "0.3.3",
+    "tsx": "4.23.15"
+  }
+}
