@@ -1,6 +1,6 @@
 # Voice request recovery on the current harness
 
-Status: Release validation found a test binding error; repair in validation
+Status: Released; physical microphone acceptance remains
 Issue: [#290](https://github.com/coletaylor788/puddles/issues/290)
 Last updated: 2026-10-15
 
@@ -101,19 +101,17 @@ outcome and a usable next voice request, not a reader or registry repair.
 
 ### Status
 
-**Approval:** Production approved. **Approval reference:** On 2026-10-14 the
-requester replied "approved" to the narrowed current-harness proposal. Approval
-covers shared voice routing, truthful admission feedback, busy-input recovery,
-and fresh requests after terminal outcomes through review, release, and cleanup.
+**Scope:** Shared voice routing, truthful admission feedback, busy-input recovery,
+and fresh requests after terminal outcomes.
 Steering, migration compatibility, harness-specific adapter repairs, reader
 changes, registry storage repairs, and new queueing remain excluded.
 
-**Current phase:** The full application gate stopped before TEST on a runtime test
-that selected development source instead of the composed application. The test
-now selects the complete artifact and its packaged dependencies. Both affected
-scenarios also join installed DEV and TEST acceptance. The application is
-unchanged. Complete fresh validation and retained review before the next managed
-release attempt. Production deployment has not started.
+**Current phase:** The current-harness voice repairs are deployed and their
+paired source changes are merged. The complete application suite, installed TEST,
+and bounded read-only production acceptance passed on the same frozen application.
+Installed checks include both conversation scenarios, twelve compiled Talk checks,
+and two real voice-model scenarios with recording tools and zero external writes.
+Physical microphone acceptance remains for the requester.
 
 The inspected call shows an accepted original request followed by rejected
 additional input and misleading voice feedback. Installed classifier probes
@@ -129,24 +127,26 @@ Focused tests now prove that failed admission and completion racing extra input
 can suppress the original outcome. The shared voice repairs preserve that outcome
 and allow a fresh request. Source review is clear. Installed DEV and two live
 voice scenarios passed, including discussion, fresh status, terminal failure,
-and contextual retry. Managed release gates remain. No runtime change from this
-feature has reached production.
+and contextual retry. Managed release gates passed. Physical microphone acceptance
+remains separate from the real-model tests with synthetic audio and recording tools.
 
 ## Agent section
 
 ### State
 
-Implementation follows `safe-feature-development` under the recorded design
-approval recorded in the Human section. The prior
-R3 qualification is retired for admission after the household release. R4 fresh
-DEV qualification and retained review passed. R5 stopped in the application gate
-because the shared conversation test loaded compiled development source without
-the packaged SDK dependency. Select the explicit composed artifact for both main
-conversation tests, retaining the legacy source path only when no artifact is
-supplied. Validate these scenarios against installed DEV and include them in TEST.
-Reuse unchanged application evidence with explicit input equivalence. Preserve
-the failed receipt and use a fresh ticket for the complete application gate.
-Do not retarget or replay the old ticket. Recurring automation is not authorized. The current harness and route remain the acceptance target. Do not wait for or qualify a future harness as part of this work. Keep this existing file path so links and the open proposal remain valid.
+Implementation completed through the managed release lifecycle. The frozen
+artifact passed the complete application
+suite, installed TEST, and bounded read-only production acceptance before the
+paired source merge. Physical microphone acceptance remains open.
+
+Test preparation fixes select the explicit composed artifact for the conversation
+scenarios and include both scenarios in installed DEV and TEST. The companion
+patch assertion includes the new maintained patch. These repairs did not change
+the application artifact. Finalization removes the owned development workspace
+and generated evidence after active consumers retire. Recurring automation is not
+authorized. The current harness remains the acceptance target; no future harness
+or steering support was qualified. Keep this file path so existing links remain
+valid.
 
 Related designs are [voice progress](050-talk-conversation-progress.md) and
 [live conversation](055-live-conversation-default.md). Keep private transcripts,
@@ -237,7 +237,8 @@ After implementation approval, follow focused local tests, installed DEV
 validation, retained independent review, and the managed cumulative CI, TEST,
 and PROD lifecycle on the current harness. Register applicable maintained-patch
 regressions in the cumulative manifest. Roll back through the release controller
-with matching configuration and state. No production deployment has occurred yet.
+with matching configuration and state. The managed production deployment and
+paired source merge are complete.
 
 ### Review log
 
@@ -275,7 +276,13 @@ They now prefer `OPENCLAW_CANDIDATE_DIR`, the complete application, as other run
 scenarios do. An invalid explicit artifact fails without falling back. The existing
 dependency is present in the composed output, and the shared context scenario
 passed there with no model calls or external writes. No harness adapter or runtime
-dependency changed. Installed DEV and TEST must exercise both conversation cases.
+dependency changed. Installed DEV and TEST passed both conversation cases.
+
+The final release passed the complete application suite in thirteen minutes,
+followed by installed TEST and bounded read-only production acceptance on the
+same frozen artifact. The paired merge verified that both merged source trees
+matched the tested trees. The actual voice-model scenarios used synthetic audio
+and recording tools; physical microphone acceptance remains open.
 
 ### Checklist
 
@@ -286,4 +293,6 @@ dependency changed. Installed DEV and TEST must exercise both conversation cases
 - [x] Validate classification, accurate feedback, and busy-input recovery in focused tests.
 - [x] Prove terminal outcomes allow a fresh contextual voice request in composed tests.
 - [x] Complete installed DEV, retained source review, and real-model validation.
-- [ ] Complete cumulative release gates and physical acceptance.
+- [x] Complete cumulative application, installed TEST, and read-only PROD gates.
+- [x] Merge the tested paired source.
+- [ ] Complete physical microphone acceptance with the requester.
