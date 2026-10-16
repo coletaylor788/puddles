@@ -33,7 +33,7 @@ describe("native question policy", () => {
     const { hook } = setup();
     for (const toolCallId of ["first", "clarification", "new-human-question"]) {
       const result = hook({ toolName: "sessions_send", params: args, toolCallId }, context);
-      expect(result.params).toEqual({ ...args, timeoutSeconds: 60 });
+      expect(result.params).toEqual({ ...args, timeoutSeconds: 600 });
       expect(result.requireApproval).toMatchObject({ timeoutMs: 600000, allowedDecisions: ["allow-once", "deny"] });
       for (const text of [config.requesterAgentId, route.sessionKey, args.message, config.targetSessionKey]) expect(result.requireApproval.description).toContain(text);
     }
@@ -42,7 +42,7 @@ describe("native question policy", () => {
     const { hook } = setup();
     expect(hook({ toolName: "sessions_send", params: { ...args, [field]: "forged" } }, context).block).toBe(true);
   });
-  it.each([0, 30, -1, 600, "60"])("rejects alternate timeout %s", timeoutSeconds => {
+  it.each([0, 30, 60, -1, 900, "600"])("rejects alternate timeout %s", timeoutSeconds => {
     const { hook } = setup();
     expect(hook({ toolName: "sessions_send", params: { ...args, timeoutSeconds } }, context).block).toBe(true);
   });

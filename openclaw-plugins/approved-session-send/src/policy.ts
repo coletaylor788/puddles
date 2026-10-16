@@ -1,5 +1,5 @@
 export const ID = "approved-session-send";
-export const WAIT_SECONDS = 60;
+export const WAIT_SECONDS = 600;
 export interface Settings {
   requesterAgentId: string;
   targetSessionKey: string;
