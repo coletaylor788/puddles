@@ -158,8 +158,11 @@ and ship” after reviewing the phase-aware native approval design. Native Main,
 Household and Debug and restricted specialists are included. Haiku remains scoped
 to Reader and active-memory recall.
 
-The maintained patch and private routing configuration are under implementation
-and independent review. Focused approval and profile checks pass. Installed
+The maintained patch and private routing configuration are implemented and under
+independent review. Focused approval and profile checks pass. Two isolated
+qualification attempts exposed a fixture preparation error; that fixture now uses
+native session creation. Dedicated-directory history and resume checks are being
+qualified on a rebuilt application. Installed
 sandbox boundaries, actual approval delivery, model quality and harness continuity
 remain release gates. Production is unchanged.
 
@@ -248,14 +251,15 @@ against the composed public/private source. The complete application build passe
 The packaged application validates normal and held configuration and renders all
 8 agents through its real Claude backend (2 installed configuration tests).
 Environment rendering passes 14 tests; public/private manifest checks pass 9/24.
-Extension type checking passes. Core type checking still reports pre-existing
-public-baseline array-index errors in `src/test-utils/ports.ts`.
+Extension and current core type checking pass. The dedicated-directory repair
+adds passing history and account-boundary regressions; its final caller checks
+and rebuilt installed qualification are in progress.
 
-The retained reviewer has no unresolved source or packaging findings. The patch
-matches the composed source byte for byte and applies cleanly to its staged
-baseline. Actual Mini subscription execution, native sandbox boundaries, approval
-UI delivery, exact model quality and fallback continuity remain unqualified.
-The shared release lane is under a merge/slot hold; no deployment was attempted.
+The retained reviewer cleared the complete current source diff, including the
+directory repair and session fixture changes. Actual Mini subscription execution,
+native sandbox boundaries, approval delivery, exact model quality and fallback
+continuity remain unqualified. Two isolated attempts failed before acceptance and
+were cleaned up. No shared DEV or production deployment was attempted.
 
 Two direct CLI experiments tested disposable workspaces. Shell sibling writes,
 sibling/symlink reads and direct loopback access were blocked; a synthetic secret
@@ -314,6 +318,21 @@ Sources: [pinned CLI contract](https://github.com/openclaw/openclaw/blob/eb377ac
 [Claude permissions](https://code.claude.com/docs/en/permissions),
 [hook failure behavior](https://code.claude.com/docs/en/hooks#block-the-action-when-a-hook-fails).
 
+#### Installed qualification repair
+
+Two isolated attempts stopped at a history-read failure. A zero-model reproduction
+with the actual built gateway showed that external database seeding bypassed its
+session projection. The fixture now uses native `sessions.create` and verifies
+readable empty history before any provider turn. Both failed runs and verified
+cleanup receipts remain retained; neither counts as acceptance.
+
+The dedicated login directory also needs to reach native transcript imports and
+cold-resume checks. The existing readers otherwise look only in the default
+Claude directory. The patch propagates the explicit profile directory through
+those readers without changing history admission or adding a converter. Focused
+directory, tool-history, account-boundary and caller tests precede a new build;
+installed restart and fallback acceptance remain pending.
+
 ### Rollout and rollback
 
 Qualify Main first, then Household, Debug and specialists, before enabling their routes.
@@ -345,6 +364,9 @@ callbacks now restore the admitted request and caller contexts, explicitly clear
 foreign caller context. The retained reviewer cleared the fix. Sixty-eight focused
 tests cover native policy, concurrent callbacks, absent identity, revoked approvals
 and user-question delivery. Installed qualification remains pending.
+The dedicated-directory follow-up review closed missing cold-resume, settlement,
+embedded-history and doctor propagation. Explicit directories do not fall back to
+the default account directory; existing history admission remains unchanged.
 
 ### Checklist
 

@@ -33,6 +33,9 @@ actual CLI path/sandbox behavior need installed acceptance, not just argv tests.
 
 The patch touches the bundled Anthropic normalizer and transport, the CLI backend
 contract, preparation, environment clearing and the existing permission handler.
+Native history import and cold-resume probes also use the selected profile login
+directory. Agents without a profile keep their default directory. This preserves
+the existing transcript parser, redaction, session binding and account admission.
 A native-only default lets Claude evaluate workspace permissions without changing
 MCP or fallback exec policy. Explicit exec denials remain effective. No custom
 file writer, path classifier, approval service or transcript converter is added.
