@@ -1,8 +1,8 @@
 # Plan 031: Rocket Money MCP and shared browser authentication
 
-**Status:** Shared-session correction merged
+**Status:** Saved-login timing correction in review
 **Issue:** [#135](https://github.com/coletaylor788/puddles/issues/135)
-**Last updated:** 2026-10-13
+**Last updated:** 2026-10-15
 
 ## Human section
 
@@ -57,7 +57,7 @@ The shared provider can serve other host integrations. Rocket Money remains a sm
 | Expired | Attempt bounded renewal or login using the host browser's saved login. |
 | Needs interaction | Return `needs_user_login`; the owner completes MFA or a challenge through the desktop viewer. |
 
-The provider owns browser-to-HTTP session synchronization. Start with Chrome's password manager in the private host profile; an external password manager is optional. Unattended autofill and login remain validation items. Authentication is an internal host dependency, not a model-facing tool.
+The provider owns browser-to-HTTP session synchronization. Start with Chrome's password manager in the private host profile; an external password manager is optional. Renewal waits for delayed redirects and autofill, submits an already-filled form at most once on an approved login origin, and returns success only after verifying the pinned account. The browser runs in the owner's desktop login session. MFA and OS prompts still require owner interaction. Authentication is an internal host dependency, not a model-facing tool.
 
 #### Access boundary
 
@@ -103,7 +103,7 @@ Other financial writes, scheduled automation and a general integration framework
 
 The shared-session correction is merged. The adapter shares one MCP connection across native plugin instances and module reloads, preventing competing owners of the same browser profile. It serializes dispatch, configuration changes, and shutdown while retaining per-call authorization and content guards.
 
-The committed packaged check exercises two native plugin instances and requires one connection across four synthetic status calls. Deployment identities, operator setup, and account readiness belong in private release records. Unattended login and renewal remain validation items.
+The committed packaged check exercises two native plugin instances and requires one connection across four synthetic status calls. Deployment identities, operator setup, and account readiness belong in private release records. The saved-login timing correction is in review. It replaces the immediate form check and fixed sleep with bounded renewal and pinned-account verification. No financial operation runs before that verification succeeds.
 
 ## Agent section
 
@@ -140,6 +140,8 @@ The committed packaged check exercises two native plugin instances and requires 
 3. The adapter shares its host subprocess across native plugin instances. Main uses a private Workshop skill; the operator shortcut opens the login flow.
 
 ### Validation
+
+The renewal regression covers delayed redirects, delayed autofill, delayed session completion, silent success, missing credentials, challenges, ambiguous forms, unexpected origins and identity/provider failures. Only an expired-session result permits another verification attempt. The form is never submitted twice during one recovery. Synthetic browser checks retain cookie synchronization and restart coverage.
 
 The [validation appendix](031-rocket-money-deferred.md) retains the validation scope. The shared-session fix passed 15 focused plugin tests, typechecking, packaging, and retained independent review. The committed `openclaw-plugins/rocket-money/scripts/check-shared-session.mjs` exercises the packaged adapter and real MCP subprocess with two native instances, four synthetic calls, and one connection. It uses fresh state and does not access a live account.
 

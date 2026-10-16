@@ -1,5 +1,7 @@
 """Shared browser auth. Callers must be trusted host code, never agent sandboxes."""
 
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -125,29 +127,61 @@ class BrowserAuth:
             # Deliberately host-private; never returned through MCP or logs.
             atomic_json(self.directory / "session.json", self.context.storage_state())
 
-    def open_login(self, interactive=False):
+    def open_login(self, interactive=False, *, verify: Callable[[], None] | None = None):
+        if not interactive and verify is None:
+            raise AuthError("INVALID_AUTH_CONFIG")
         self.mark("renewing")
         ctx = self.start()
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
+        deadline = time.monotonic() + 60
+        submitted = False
+        next_check = 0.0
         try:
             page.goto(
                 self.site.home if interactive else self.site.renew,
                 wait_until="domcontentloaded",
                 timeout=45000,
             )
-            if not interactive:
-                # Use only a credential Chrome has already filled. Do not read it,
-                # enter it ourselves, dismiss OS prompts, or select another account.
-                origin = f"{urlsplit(page.url).scheme}://{urlsplit(page.url).netloc}"
-                if origin in self.site.login_origins:
+            if interactive:
+                return
+            allowed = {*self.site.login_origins}
+            for url in (self.site.home, self.site.renew):
+                parts = urlsplit(url)
+                allowed.add(f"{parts.scheme}://{parts.netloc}")
+            while time.monotonic() < deadline:
+                parts = urlsplit(page.url)
+                origin = f"{parts.scheme}://{parts.netloc}"
+                if origin not in allowed:
+                    raise AuthError("NEEDS_USER_LOGIN")
+                if time.monotonic() >= next_check:
+                    try:
+                        verify()
+                        return
+                    except AuthError as exc:
+                        if exc.code != "NEEDS_USER_LOGIN":
+                            raise
+                    next_check = time.monotonic() + 1
+                # SPA redirects, Chrome autofill and the session callback can finish
+                # after DOMContentLoaded. Wait for verified identity, not a fixed sleep.
+                if not submitted and origin in self.site.login_origins:
                     filled = page.locator('input[type="password"]')
-                    if filled.count() == 1 and filled.evaluate(
-                        "el => el.value.length > 0"
-                    ):
-                        submit = page.locator('button[type="submit"]')
-                        if submit.count() == 1 and submit.is_visible():
-                            submit.click(timeout=10000)
-                page.wait_for_timeout(1500)
+                    submit = page.locator('button[type="submit"]')
+                    if (filled.count() == 1 and filled.is_visible()
+                            and filled.evaluate("el => el.value.length > 0")
+                            and submit.count() == 1 and submit.is_visible()
+                            and submit.is_enabled()):
+                        # Use only Chrome's already-filled credential, at most once.
+                        # Never extract values, select accounts or dismiss OS/MFA prompts.
+                        submitted = True
+                        remaining = int((deadline - time.monotonic()) * 1000)
+                        if remaining <= 0:
+                            break
+                        submit.click(timeout=min(10000, remaining))
+                page.wait_for_timeout(250)
+            raise AuthError("NEEDS_USER_LOGIN")
+        except AuthError:
+            self.mark("needs_user_login")
+            raise
         except Exception:  # noqa: BLE001 - sanitize host/provider failures
             self.mark("needs_user_login")
             raise AuthError("NEEDS_USER_LOGIN") from None
