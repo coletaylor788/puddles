@@ -340,3 +340,19 @@ must be authorized to handle the data they inspect.
   Indexes, caches, and filesystem links must not bypass it.
 - Stored content retains its source restrictions. Reusing a sandbox does not
   create a fresh context.
+
+## Native Claude tool boundary
+
+The approved Claude migration adds an explicit native profile for ordinary agents.
+Claude's OS shell sandbox and native read permissions enforce the admitted workspace;
+protected credentials and temporary MCP configuration are denied. The shell has no
+direct network allowlist. Service access remains on guarded OpenClaw tools. Restricted
+specialists keep their existing Docker and MCP boundary. Diagnostic access remains
+an explicit exception and must not be described as workspace-sandboxed.
+
+OpenClaw policy vetoes run before native actions. Passing that check continues Claude
+permission evaluation; it is not an execution grant. Claude can allow workspace edits
+without prompting. When Claude requests an exception, OpenClaw asks for allow once or
+deny without standing grants or automatic approval. Explicit denials remain effective.
+See the [Claude migration plan](../plans/claude-code-subscription-harness.md) for
+implementation and installed acceptance status. This exception is not yet deployed.

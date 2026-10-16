@@ -178,7 +178,14 @@
     "src/agents/tool-search-scheduling.test.ts": "agents-core",
     "src/agents/embedded-agent-runner/run/attempt-stream-prepare.test.ts": "infra",
     "src/agents/embedded-agent-runner/run.plugin-runtime-refresh.integration.test.ts": "agents-embedded-agent",
-    "src/gateway/mcp-grant-store.test.ts": "gateway-core"
+    "src/gateway/mcp-grant-store.test.ts": "gateway-core",
+    "extensions/anthropic/cli-profile.test.ts": "extension-providers",
+    "extensions/anthropic/cli-runtime.test.ts": "extension-providers",
+    "src/agents/cli-runner/execute-plugin.test.ts": "infra",
+    "src/agents/cli-runner/execute-plugin.policy.test.ts": "infra",
+    "src/agents/cli-runner/prepare.test.ts": "infra",
+    "src/agents/cli-runner.spawn.test.ts": "infra",
+    "src/agents/exec-defaults.test.ts": "agents-core"
   },
   "patches": [
     {
@@ -566,6 +573,18 @@
         "src/gateway/mcp-http.runtime.test.ts",
         "src/gateway/mcp-http.test.ts",
         "src/gateway/mcp-grant-store.test.ts"
+      ]
+    },
+    {
+      "name": "claude-native-agent-profiles",
+      "tests": [
+        "extensions/anthropic/cli-profile.test.ts",
+        "extensions/anthropic/cli-runtime.test.ts",
+        "src/agents/cli-runner/execute-plugin.test.ts",
+        "src/agents/cli-runner/execute-plugin.policy.test.ts",
+        "src/agents/cli-runner/prepare.test.ts",
+        "src/agents/cli-runner.spawn.test.ts",
+        "src/agents/exec-defaults.test.ts"
       ]
     }
   ],
