@@ -108,7 +108,7 @@ if (process.argv[3] !== "--child") {
   const raw = createSend({ config: cfg, agentId: "household", agentSessionKey: requesterKey, agentChannel: "webchat", callGateway });
   const ctx = { config: cfg, agentId: "household", sessionKey: requesterKey, sessionId: "household-session", runId: "household-run" };
   const tool = wrap(raw, ctx, { emitDiagnostics: false });
-  const args = () => ({ sessionKey: targetKey, message: "What time is dinner?", timeoutSeconds: 60 });
+  const args = () => ({ sessionKey: targetKey, message: "What time is dinner?", timeoutSeconds: 600 });
   async function pending() {
     for (let i = 0; i < 100; i++) { const value = broker.listPending()[0]; if (value) return value; await new Promise(r => setTimeout(r, 10)); }
     throw new Error("Native approval was not requested");

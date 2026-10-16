@@ -36,7 +36,7 @@ enable another harness without proving that same composition.
 Put question instructions in the requester's agent-level `AGENTS.md` so native
 app and channel conversations receive the same guidance. Replace old manual
 message-relay instructions. Tell the agent to use `sessions_send` with the fixed
-target, a complete short question, and `timeoutSeconds=60`, then use the returned
+target, a complete short question, and `timeoutSeconds=600`, then use the returned
 answer in the originating conversation. Every follow-up needs a fresh approval.
 Do not retry uncertain sends or promise later delivery. The plugin registers no
 conversation-specific prompt override.
@@ -46,13 +46,13 @@ approval forwarding to a fixed authenticated owner target and include the
 requester agent in its forwarding filter. This plugin never sends approval
 messages itself and does not treat the requesting sender as an owner.
 
-Calls accept `sessionKey`, `message`, and an optional `timeoutSeconds` of 60.
+Calls accept `sessionKey`, `message`, and an optional `timeoutSeconds` of 600.
 The complete origin, destination, and quoted question must fit the native
 512-character summary. Control characters and hidden formatting are rejected.
 A positive wait returns the matching answer as the native tool result. Scoped
 sends create no detached ping-pong, announcement, or watch. A wait timeout can
-return `accepted` without a reply; it does not cancel main or promise later
-delivery. Any further question requires another approved call.
+return `accepted` without a reply; it guarantees neither target completion nor
+later delivery. Any further question requires another approved call.
 
 Configuration changes disable the old registration until plugin reload.
 Runtime cleanup removes the grant. Native admission rejects replaced or archived
