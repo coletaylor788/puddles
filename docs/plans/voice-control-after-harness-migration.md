@@ -1,6 +1,6 @@
 # Voice request recovery on the current harness
 
-Status: Fresh DEV qualification passed; release validation pending
+Status: Release validation found a test binding error; repair in validation
 Issue: [#290](https://github.com/coletaylor788/puddles/issues/290)
 Last updated: 2026-10-15
 
@@ -108,10 +108,12 @@ and fresh requests after terminal outcomes through review, release, and cleanup.
 Steering, migration compatibility, harness-specific adapter repairs, reader
 changes, registry storage repairs, and new queueing remain excluded.
 
-**Current phase:** Fresh DEV qualification and retained review passed against the
-latest released baseline. Continue through the managed cumulative application
-gate, TEST, production validation, paired source merge, and cleanup. Earlier
-receipts remain historical evidence. Production deployment has not started.
+**Current phase:** The full application gate stopped before TEST on a runtime test
+that selected development source instead of the composed application. The test
+now selects the complete artifact and its packaged dependencies. Both affected
+scenarios also join installed DEV and TEST acceptance. The application is
+unchanged. Complete fresh validation and retained review before the next managed
+release attempt. Production deployment has not started.
 
 The inspected call shows an accepted original request followed by rejected
 additional input and misleading voice feedback. Installed classifier probes
@@ -137,9 +139,13 @@ feature has reached production.
 Implementation follows `safe-feature-development` under the recorded design
 approval recorded in the Human section. The prior
 R3 qualification is retired for admission after the household release. R4 fresh
-DEV qualification and retained review passed. Stage a fresh release attempt using
-the same incremental output and current paired source. Preserve the original
-receipts and document the later status prose and matching compatibility pin.
+DEV qualification and retained review passed. R5 stopped in the application gate
+because the shared conversation test loaded compiled development source without
+the packaged SDK dependency. Select the explicit composed artifact for both main
+conversation tests, retaining the legacy source path only when no artifact is
+supplied. Validate these scenarios against installed DEV and include them in TEST.
+Reuse unchanged application evidence with explicit input equivalence. Preserve
+the failed receipt and use a fresh ticket for the complete application gate.
 Do not retarget or replay the old ticket. Recurring automation is not authorized. The current harness and route remain the acceptance target. Do not wait for or qualify a future harness as part of this work. Keep this existing file path so links and the open proposal remain valid.
 
 Related designs are [voice progress](050-talk-conversation-progress.md) and
@@ -262,6 +268,14 @@ tests require correlated final delivery and preserve explicit follow-up routing.
 All four files are now part of this feature's focused qualification as well as
 the cumulative pool. Runtime behavior is unchanged by this test repair. Retained
 review and the complete managed release gates remain required.
+
+R5 exposed a second test preparation gap. The runtime conversation scenarios used
+`OPENCLAW_CANDIDATE`, which names development source for mixed source tests.
+They now prefer `OPENCLAW_CANDIDATE_DIR`, the complete application, as other runtime
+scenarios do. An invalid explicit artifact fails without falling back. The existing
+dependency is present in the composed output, and the shared context scenario
+passed there with no model calls or external writes. No harness adapter or runtime
+dependency changed. Installed DEV and TEST must exercise both conversation cases.
 
 ### Checklist
 
