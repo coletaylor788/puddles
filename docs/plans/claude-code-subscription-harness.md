@@ -1,8 +1,8 @@
 # Claude Code harness with subscription authentication
 
-Status: Proposed; subscription setup pending
-Issue: Not created
-Last updated: 2026-10-14
+Status: Production approved; implementation and qualification in progress
+Issue: https://github.com/coletaylor788/puddles/issues/303
+Last updated: 2026-10-15
 
 ## Human section
 
@@ -40,8 +40,8 @@ activation. This proposal includes no automatic Anthropic API backup.
 
 #### Setup blocker: subscription sign-in
 
-**Blocked until the owner completes subscription sign-in and the implementation
-agent verifies it in the gateway environment.** A browser login on another
+**Owner sign-in is verified in the gateway login domain.** Full service/model
+qualification and confirmation that extra usage is disabled remain pending. A browser login on another
 computer does not authenticate the gateway. The CLI login must belong to the
 same host OS user and dedicated Claude configuration directory the gateway uses.
 This blocks live subscription validation and activation; approved preparation
@@ -72,7 +72,7 @@ Claude installations. The owner then completes these steps:
 The implementation agent owns the final check: the real gateway service must
 see the same login, use subscription authentication, and complete a bounded
 qualification turn without switching to separately metered credentials.
-Signing in does not approve deployment. Exact commands and completion criteria
+Production deployment is separately approved below. Exact commands and completion criteria
 are recorded in the Agent section below.
 
 #### Tools and sandboxing
@@ -128,24 +128,28 @@ replay of unfinished actions or uninterrupted execution.
 
 ### Status
 
-**Approval:** Proposed. **Approval reference:** The requester asked for this
-repository proposal on 2026-10-08. Scope is design documentation; implementation
-and activation are not part of this change.
+**Approval:** Production approved. **Approval reference:** On 2026-10-15 the
+requester said, "Logged in, approved to implement and ship both of these designs
+to production." This covers implementation, qualification, release, rollback,
+source integration and cleanup within the designs. Reader policy remains with
+its existing owner; Haiku scope remains Reader and active-memory recall.
 
-The upstream integration supports the proposed architecture. **Setup blocker:**
-subscription entitlement and gateway-user sign-in are not yet verified. The owner
-must complete the setup steps above before live subscription validation or
-activation. The exact installed combination still needs tool-boundary and
-conversation tests. No account, runtime configuration or service has been changed.
+Implementation and qualification are in progress. Native subscription login is
+visible from the gateway's login domain. Tool restrictions and conversation
+continuity still require installed proof before activation. Production routing
+has not changed.
 
 ## Agent section
 
 ### State
 
-The proposal and setup blocker are published. This documentation-only follow-up
-makes the Haiku roles explicit and clarifies conversation continuity on
-`codex/claude-haiku-roles`. Account entitlement and native login have not been
-inspected. No implementation or runtime validation is claimed.
+The approved implementation uses isolated paired feature branches named
+`codex/claude-harness-shipping`. The pinned OpenClaw revision remains
+`eb377ac59e6c9fd6c7705028034812becf00271b`. Claude Code 2.1.301 is installed.
+A bounded launchd probe in the gateway login domain reports native claude.ai
+subscription authentication. A plain SSH process cannot see that keychain login.
+No credentials were copied or extracted, and production was not restarted.
+The complete service environment and model/tool behavior remain to be qualified.
 
 ### Scope and acceptance criteria
 
@@ -250,8 +254,8 @@ intended runtime; prove native tools are absent and permitted shell/file calls u
 Docker. Exercise reads, images, process handles, delegation, yield and one
 recorded external action. Check denied calls and source-result protections.
 Use synthetic content and recording adapters for external writes. Rehearse a
-limit without repeatedly consuming real quota. The current change requires
-only document, source-reference and diagram review.
+limit without repeatedly consuming real quota. No installed runtime qualification has passed yet. Source inspection is not
+a substitute for the model, tool and conversation acceptance cases.
 
 ### Rollout and rollback
 
@@ -259,20 +263,21 @@ Use the existing reviewed configuration and release lifecycle after approval.
 Qualify one role before broader rollout. Preserve predecessor settings and
 conversation state. Rollback restores routing and compatible runtime state
 without deleting conversations. Follow the maintained release process for any
-runtime artifact change; this documentation change starts no environments.
+runtime artifact change. Do not activate roles whose required proof is missing.
 
 ### Review log
 
 The design separates supported upstream capability from installed proof, keeps
 tool execution within existing boundaries and excludes account-specific analysis.
-The setup follow-up distinguishes owner-only login from agent-owned preparation
-and verification. It does not install software, purchase a plan or change auth.
+The retained independent reviewer is checking ordinary-turn tool enforcement
+and history eligibility against the exact pinned source before implementation
+chooses a mechanism.
 
 ### Checklist
 
 - [x] Write the proposal and verify upstream contracts.
-- [ ] Approve implementation scope.
-- [ ] Prepare the gateway-user CLI, isolated Claude configuration and exact login command.
+- [x] Approve implementation scope.
+- [x] Prepare the gateway-user CLI, isolated Claude configuration and exact login command.
 - [ ] Owner confirms an eligible subscription, disables extra usage and completes native login.
 - [ ] Verify subscription authentication in the gateway service and clear the setup blocker.
 - [ ] Verify explicit Haiku routing for Reader and active-memory recall.
