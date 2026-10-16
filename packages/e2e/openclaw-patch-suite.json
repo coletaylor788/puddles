@@ -213,7 +213,10 @@
     "src/agents/command/claude-cli-project-dir.test.ts": "agents-support",
     "src/agents/command/attempt-execution.test.ts": "agents-support",
     "src/agents/cli-runner/cli-run-settlement.test.ts": "agents-support",
-    "src/auto-reply/reply/agent-runner-memory.native-idle.test.ts": "auto-reply-reply"
+    "src/auto-reply/reply/agent-runner-memory.native-idle.test.ts": "auto-reply-reply",
+    "extensions/anthropic/cli-profile.test.ts": "extension-providers",
+    "src/agents/cli-runner/execute-plugin.policy.test.ts": "infra",
+    "src/agents/exec-defaults.test.ts": "agents-core"
   },
   "patches": [
     {
@@ -632,6 +635,18 @@
         "src/agents/command/attempt-execution.test.ts",
         "src/agents/cli-runner/cli-run-settlement.test.ts",
         "src/auto-reply/reply/agent-runner-memory.native-idle.test.ts"
+      ]
+    },
+    {
+      "name": "claude-native-agent-profiles",
+      "tests": [
+        "extensions/anthropic/cli-profile.test.ts",
+        "extensions/anthropic/cli-runtime.test.ts",
+        "src/agents/cli-runner/execute-plugin.test.ts",
+        "src/agents/cli-runner/execute-plugin.policy.test.ts",
+        "src/agents/cli-runner/prepare.test.ts",
+        "src/agents/cli-runner.spawn.test.ts",
+        "src/agents/exec-defaults.test.ts"
       ]
     }
   ],

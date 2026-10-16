@@ -45,6 +45,7 @@ PATCHES=(
   code-mode-additive-surface
   claude-code-mode-mcp
   compaction-memory-idle
+  claude-native-agent-profiles
 )
 
 if [ -n "${MINI_HOST:-}" ]; then

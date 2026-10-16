@@ -1,8 +1,8 @@
 # Claude Code harness with subscription authentication
 
-Status: Workspace approval behavior resolved; narrow adapter change proposed
+Status: Approved implementation in progress; production unchanged
 Issue: https://github.com/coletaylor788/puddles/issues/303
-Last updated: 2026-10-15
+Last updated: 2026-10-16
 
 ## Human section
 
@@ -152,20 +152,16 @@ Debug retains its explicitly configured diagnostic access.
 
 ### Status
 
-**Approval:** Production approved within the recorded design scope.
-**Approval reference:** The requester approved implementation and shipping on
-2026-10-15, then agreed to native Main and Household, restricted specialists and
-explicitly approved write exceptions, and requested this proposal update.
-Debug is included in the native migration with its existing diagnostic access.
-Haiku remains scoped to Reader and active-memory recall. The current request
-updates documentation, not production. The narrowly scoped approval-bridge adjustment is now a concrete proposed implementation change; it
-has been prototyped in isolation, not installed in the gateway.
+**Approval:** Production approved.
+**Approval reference:** On 2026-10-16 the requester said “Okay approved, implement
+and ship” after reviewing the phase-aware native approval design. Native Main,
+Household and Debug and restricted specialists are included. Haiku remains scoped
+to Reader and active-memory recall.
 
-Source investigation and the native CLI prototype resolve workspace approval
-behavior and the two execution paths. Installed workspace isolation, actual
-approval delivery,
-model routing and context continuity remain release gates. No runtime or
-configuration change has been deployed by this investigation.
+The maintained patch and private routing configuration are under implementation
+and independent review. Focused approval and profile checks pass. Installed
+sandbox boundaries, actual approval delivery, model quality and harness continuity
+remain release gates. Production is unchanged.
 
 ## Agent section
 
@@ -176,7 +172,7 @@ baseline: `eb377ac59e6c9fd6c7705028034812becf00271b`; Claude Code 2.1.301.
 Native claude.ai authentication works in the gateway login domain, not plain SSH.
 The owner confirmed Extra usage off. A bounded direct subscription turn returned
 `claude-haiku-5-5`; Opus and deployed gateway execution remain unqualified.
-Refresh exact source/runtime compatibility before implementation. Coordinate any public or private main merge with the release manager.
+The isolated source now contains the implementation. Coordinate public/private main merges and installed slots with the release manager.
 
 ### Scope and acceptance criteria
 
@@ -202,7 +198,7 @@ checks exact availability, hooks and effective exec policy. Full/off allows
 without a prompt. Standing grants are keyed by tool name and live process.
 Effective ask-always ignores them. `cli-native-tool-approval.ts` then requests
 normal plugin approval with allow-once/deny and rejects missing or invalid decisions.
-Both native phases currently share this handler without a phase marker, so stock
+Both native phases in the pinned upstream share this handler without a phase marker, so stock
 configuration cannot defer the early decision while forcing the later escalation.
 
 `exec-defaults.ts` gives session permission policy precedence over ordinary
@@ -219,7 +215,7 @@ process reuse. Preserve separate restricted settings and MCP catalogs.
 
 ### Implementation
 
-Limit the adapter change to the existing native permission contract, host handler,
+The maintained `claude-native-agent-profiles.patch` changes the existing native permission contract, host handler,
 Claude bridge and trusted launch settings:
 
 - Carry an internal phase distinguishing PreToolUse policy checks from native
@@ -246,6 +242,20 @@ rendering, rewrites, cancellation and retained sessions. Follow the existing
 release lifecycle and coordinate main merges with the release manager.
 
 ### Validation
+
+Current candidate evidence: all seven affected source test files pass (403 tests)
+against the composed public/private source. The complete application build passes.
+The packaged application validates normal and held configuration and renders all
+8 agents through its real Claude backend (2 installed configuration tests).
+Environment rendering passes 14 tests; public/private manifest checks pass 9/24.
+Extension type checking passes. Core type checking still reports pre-existing
+public-baseline array-index errors in `src/test-utils/ports.ts`.
+
+The retained reviewer has no unresolved source or packaging findings. The patch
+matches the composed source byte for byte and applies cleanly to its staged
+baseline. Actual Mini subscription execution, native sandbox boundaries, approval
+UI delivery, exact model quality and fallback continuity remain unqualified.
+The shared release lane is under a merge/slot hold; no deployment was attempted.
 
 Two direct CLI experiments tested disposable workspaces. Shell sibling writes,
 sibling/symlink reads and direct loopback access were blocked; a synthetic secret
@@ -324,7 +334,12 @@ settings to process reuse.
 The requester clarified that individually approved writes are acceptable. Remove
 the native-file ban and mandatory mixed editing path. Current review attention is
 workspace isolation, effective approvals and correct specialist path selection.
-Source probes and design review do not count as gateway or production acceptance.
+Implementation review accepted and resolved three findings: temporary MCP credential
+file access, environment-preservation overrides defeating clearing, and exact MCP
+grants remaining broader than the agent cap. A follow-up removed agent-wide exec
+overrides so fallback policy stays unchanged, and made shell network denial strict.
+The retained reviewer rechecked the complete source and authored packaging with no
+remaining material findings. Source review is not gateway or production acceptance.
 
 ### Checklist
 
@@ -334,5 +349,5 @@ Source probes and design review do not count as gateway or production acceptance
 - [ ] Qualify actual workspace bounds, approval delivery and role selection.
 - [ ] Qualify Opus, Reader/recall Haiku, quality and context continuity.
 - [x] Resolve prompt-free workspace writes and one-time outside-write approval.
-- [ ] Implement the scoped approval-bridge adjustment with regression coverage.
+- [x] Implement the scoped approval-bridge adjustment with regression coverage.
 - [ ] Release, verify, merge and clean up through the existing lifecycle.
