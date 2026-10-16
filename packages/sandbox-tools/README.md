@@ -18,9 +18,8 @@ Builds require network access; installed file processing does not.
 Run focused tests with `node --test test/*.test.mjs`. Exercise the complete image:
 
 ```sh
-docker run --rm --network none --read-only --tmpfs /tmp:rw,size=256m \
-  --mount type=bind,src="$PWD/test",dst=/acceptance,readonly \
-  puddles-sandbox-media:dev node /acceptance/installed.mjs
+docker run --interactive --rm --network none --read-only --tmpfs /tmp:rw,size=256m \
+  puddles-sandbox-media:dev node --input-type=module < test/installed.mjs
 ```
 
 Acceptance uses only generated files and runs as the sandbox user. It checks

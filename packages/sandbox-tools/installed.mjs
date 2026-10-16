@@ -23,7 +23,8 @@ export function testSandbox(runtime,docker=process.env.PUDDLES_DOCKER ?? 'docker
   const manifest=load ? loadSandbox(runtime,docker,execute) : sandboxManifest(runtime);
   // A fresh, unprivileged, network-disabled container exercises the installed
   // image without reading user files or mutating an existing agent container.
-  execute(docker,['run','--pull=never','--rm','--network','none','--read-only','--tmpfs','/tmp:rw,size=256m','--mount',`type=bind,src=${resolve(runtime,'sandbox-tools')},dst=/acceptance,readonly`,manifest.image,'node','/acceptance/installed.mjs'],{stdio:'inherit',timeout:300000});
+  const script=readFileSync(join(runtime,'sandbox-tools/installed.mjs'));
+  execute(docker,['run','--interactive','--pull=never','--rm','--network','none','--read-only','--tmpfs','/tmp:rw,size=256m',manifest.image,'node','--input-type=module'],{input:script,stdio:['pipe','inherit','inherit'],timeout:300000});
   return manifest;
 }
 if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
