@@ -18,12 +18,11 @@ Keep their model loops, authentication, compaction, and session ownership in
 their existing OpenClaw integrations. Prefer capabilities those harnesses already
 provide. Do not migrate either to OpenClaw's generic agent loop to obtain PTC.
 
-The proposed default uses each harness's native tool interface with OpenClaw's
+The proposal uses each harness's native tool interface with OpenClaw's
 existing isolated Code Mode executor. Copilot already has this integration in
 the pinned source. Claude Code has the scoped MCP interface but needs the Code
-Mode surface connected to it. MCPorter is a client alternative, not a required
-execution engine. Neither native tool search nor a programmatic CLI invocation
-alone is equivalent to a program calling several tools.
+Mode surface connected to it. Neither native tool search nor a programmatic CLI
+invocation alone is equivalent to a program calling several tools.
 
 ```mermaid
 flowchart TD
@@ -62,25 +61,11 @@ accounts, grant new tools, change recipient rules, or move reading duties out of
 the existing Reader role. Lower model latency and token use are goals to measure,
 not promised results.
 
-#### Compare the approaches
+#### Native harness support
 
-| Concern | Native OpenClaw Code Mode | MCPorter through OpenClaw MCP |
-|---|---|---|
-| Programs | Plain JavaScript cells with loops, transforms, and async calls | JavaScript/TypeScript programs using a client library, or CLI calls |
-| Discovery | Run-scoped catalog, callable search results, and schema descriptions | MCP discovery, generated types, and callable server proxies |
-| Tool configuration | Uses the effective OpenClaw tool catalog | Can use OpenClaw as its sole MCP server, retaining OpenClaw's catalog |
-| Approvals and guards | Nested calls use the normal OpenClaw tool path | The native MCP endpoint runs hooks and existing tools; full caller context must be supplied by the host |
-| Program isolation | Bundled QuickJS guest has no ambient host access | MCPorter is a client, not a sandbox; execution and connection isolation need a supported integration |
-| Libraries and portability | Restricted guest API; no arbitrary npm imports or standalone CLI generation | Node/TypeScript ecosystem, typed clients, and generated standalone CLIs |
-| Waiting and limits | Built-in cell suspension, output limits, call limits, and cancellation | Client timeouts and lifecycle must fit OpenClaw's approval waits and run cancellation |
-| Harness reach | Copilot SDK integration exists; Claude needs the shared controls exposed through its native MCP interface | Both harnesses can use MCP, but scripts still need an isolated MCPorter connection |
-| Images and rich results | Some tools remain direct because their results cannot cross the JSON guest bridge | MCP result helpers exist; equivalent model delivery still requires verification |
-| Added moving parts | Existing runtime feature and bundled executor | Additional dependency plus a qualified script-to-host connection |
-
-Both approaches can provide the core goal: composing authorized calls and
-reducing intermediate output. There is no established installed parity across
-the two required harnesses. MCPorter has a real advantage for portable programs
-and external libraries, but those are not required by the initial use case.
+Use the existing OpenClaw catalog, per-call approvals, bounded JavaScript,
+and result filtering through each harness's native tool interface. Installed
+parity across the two required harnesses remains a qualification requirement.
 
 | Required harness | Verified native integration | PTC work still required |
 |---|---|---|
@@ -96,7 +81,7 @@ native scripting runtime. Do not assume that capability or confuse this with
 Codex Code Mode. If the installed versions provide such a surface, prefer it
 only after it passes the same tool, isolation, and lifecycle checks.
 
-#### Preferred path: native harness interfaces, shared execution
+#### Native harness interfaces and shared execution
 
 Select the bundled QuickJS executor explicitly. OpenClaw's default Node executor
 uses `node:vm` with gateway privileges and is not a security boundary. It is not
@@ -124,7 +109,9 @@ For Claude, extend the host-owned MCP projection to expose the same program
 controls and required direct-only tools. Reuse the shared tool-surface helper
 after the effective catalog has been narrowed by policy and prompt hooks. The
 MCP controls receive programs; credentials and tool callbacks stay in OpenClaw.
-No MCPorter package or network client runs inside the QuickJS guest.
+The native MCP grant binds the client to the caller, session, allowed tools,
+and active attempt. A program cannot choose its identity, upgrade to owner,
+or resolve its own approvals. The QuickJS guest has no network client or ambient service access.
 
 Bind this surface to the actual admitted run and active attempt, not just a
 session name or the short-lived schema cache. Retire it on cancellation,
@@ -141,32 +128,6 @@ forwarding, native tool restrictions, and per-call activity. Keep other MCP
 clients and agents on their existing surface unless explicitly enabled.
 If the shared helper cannot satisfy these contracts without a larger runtime
 or security redesign, revise the proposal before implementing that expansion.
-
-#### Alternative: MCPorter as a client of OpenClaw
-
-Configure exactly one host-selected OpenClaw connection. Do not import MCPorter
-connections from editors, user configuration, or arbitrary URLs. Do not expose
-raw Gmail, calendar, browser, or other service connections to the script.
-Existing guarded plugins remain the service clients and keep their credentials.
-
-Use the native MCP grant for the admitted run. This is host-issued authority
-that binds the client to the caller, session, allowed tools, and active attempt.
-It is more specific than a gateway login or a session name in a request.
-The grant and its active-attempt identifier must expire with the run. A program
-must not choose its identity, upgrade to owner, or resolve its own approvals.
-
-The endpoint exists, but a configuration-only sandbox connection is not yet
-proven. It listens on host loopback, which is not the same as a container's
-loopback. Also, the security architecture keeps gateway credentials outside
-agent sandboxes. An implementation must reuse an existing supported host
-transport that keeps credentials outside model-authored code. Mounting a
-gateway token, enabling host networking, or running arbitrary scripts on the
-trusted host would change the boundary and is not part of this proposal.
-
-If no existing transport satisfies this requirement, stop this alternative at
-design qualification. Bring back the smallest concrete adapter design and its
-boundary for review. Do not create a proxy service, new grant system, or broad
-host executor as an incidental implementation detail.
 
 #### Approval, failure, and result behavior
 
@@ -197,13 +158,13 @@ Recommend the existing Copilot SDK path plus a narrow Claude MCP integration
 of the same QuickJS executor. This uses both harnesses' native tool interfaces
 and keeps one OpenClaw tool catalog and approval path. A native harness PTC
 facility is preferable if verified to satisfy the complete contract without
-extra host authority. MCPorter remains an alternative for a demonstrated gap
-or a later need for portable scripts. Do not install competing paths by default.
+extra host authority. Keep the work within these native harness interfaces
+and the existing OpenClaw execution path.
 
-The decision to implement remains separate from this comparison. Approval of
+The decision to implement remains separate from this design. Approval of
 this design would cover the shared surface and narrow Claude integration for
 the main interactive agent on both native harnesses. It would not cover a
-harness migration, broader host execution, or a separate MCPorter service.
+harness migration, broader host execution, or a separate execution service.
 One working harness is not completion: both must pass before activation is
 presented as satisfying this proposal.
 
@@ -212,7 +173,8 @@ presented as satisfying this proposal.
 **Approval:** Proposed. **Approval reference:** On 2026-10-15 the requester asked
 to author this proposal, then asked for a comparison, required native Claude
 Code and GitHub Copilot CLI compatibility, and preferred their native
-capabilities. This authorizes design and publication. It does not approve
+capabilities. The requester then narrowed the proposal to native harness
+integration only. This authorizes design and publication. It does not approve
 implementation, runtime configuration, or deployment.
 
 The pinned Copilot integration already uses the shared Code Mode surface.
@@ -225,8 +187,8 @@ configuration has changed.
 
 ### State
 
-Design-only change on `codex/programmatic-tools-proposal`, based on public
-revision `54eec5a72203188d69493e63c32d8fd0dc69113c`. No application build,
+The proposal is published and remains unapproved for implementation. This
+revision narrows the design to native harness integration. No application build,
 dependency installation, DEV deployment, or production probe belongs to this
 documentation change.
 
@@ -265,9 +227,8 @@ this feature, and its source and processes remain outside this task's ownership.
 ### Architecture and decisions
 
 Source baseline: OpenClaw `eb377ac59e6c9fd6c7705028034812becf00271b`, the revision
-in `packages/e2e/openclaw-patch-suite.json`. MCPorter research snapshot:
-`5bcf9e178cd8c0a91888bf82a460c1a291aecced`. The latter is a source reference,
-not a selected dependency version or release qualification.
+in `packages/e2e/openclaw-patch-suite.json`. Source capability is not installed
+release qualification.
 
 | Evidence | What it establishes |
 |---|---|
@@ -278,7 +239,6 @@ not a selected dependency version or release qualification.
 | [MCP resolver][mcp-runtime] | Effective tools plus the grant's exact allowlist |
 | [MCP handler][mcp-handler] | Before-call hooks, authority recheck, wrapper execution, and completion hooks |
 | [MCP authentication][mcp-request] and [grant store][mcp-grants] | Host loopback, bearer/capture pairing, immutable caller context, and revocation |
-| [MCPorter runtime][mcporter] | Discovery, client proxies, and connection lifecycle |
 | [Copilot tool bridge][copilot-bridge] and [harness guide][copilot-guide] | Shared Code Mode helper already exposed through native Copilot SDK tools |
 | [Claude preparation][claude-prepare] and [CLI backend guide][cli-guide] | Scoped MCP overlay, native-tool restrictions, and current projection seam |
 | [Claude MCP documentation][claude-mcp] and [Copilot CLI documentation][copilot-cli] | Native MCP and discovery capabilities; not proof of a common isolated PTC API |
@@ -300,7 +260,7 @@ configuration and author explicit per-agent activation and executor selection.
 
 ### Implementation
 
-After approval of a selected path:
+After approval of this design:
 
 1. Inspect the installed OpenClaw artifact, Copilot plugin and CLI, Claude Code
    executable, effective harness routing, and native PTC capabilities without
@@ -327,14 +287,14 @@ After approval of a selected path:
 6. If a verified native harness PTC facility can satisfy the same design with
    less integration, document that equivalent implementation choice. If neither
    the shared helper nor native facilities can meet the contract, report the
-   concrete blocker before proposing MCPorter transport or broader execution.
+   concrete blocker and revise the design before changing the execution boundary.
 
 ### Validation
 
 For this proposal, inspect formatting, links, publication boundaries, and the
 complete documentation diff. Do not run application tests for prose changes.
-The source documentation and implementations above were read; no mcporter or
-Code Mode execution has been tested in the installed environment.
+The source documentation and implementations above were read; Code Mode
+execution has not been tested in the installed environment.
 
 Implementation qualification runs independently on both real native harnesses
 and their installed tools, with synthetic data and recording adapters for all
@@ -387,18 +347,17 @@ source publication and after recovery/consumer checks.
 
 Author review checked the native MCP path, Code Mode, and the Copilot SDK bridge.
 Copilot already projects the shared controls in source. Claude needs that
-connection implemented and verified. Neither installed parity nor an isolated
-MCPorter connection is represented as proven. Independent behavior review
-belongs to implementation; this proposal has not received an independent
-architecture review.
+connection implemented and verified. Installed parity remains unproven.
+Independent behavior review belongs to implementation; this proposal has not
+received an independent architecture review.
 
 ### Checklist
 
-- [x] Compare MCPorter with native Code Mode at the pinned OpenClaw revision.
+- [x] Identify native integration points for both required harnesses.
 - [x] Preserve the current security and approval responsibilities in the design.
 - [x] Separate source capabilities from installed parity and measured benefit.
 - [x] Publish the proposal and link its tracking issue.
-- [ ] Obtain approval of the selected approach and agent scope.
+- [ ] Obtain approval of the native integration design and agent scope.
 - [ ] Qualify both native harnesses, isolated execution, and tool parity.
 - [ ] Implement and independently review any approved configuration or code.
 - [ ] Complete DEV, cumulative application checks, TEST, and PROD acceptance.
@@ -412,7 +371,6 @@ architecture review.
 [mcp-handler]: https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/src/gateway/mcp-http.handlers.ts
 [mcp-request]: https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/src/gateway/mcp-http.request.ts
 [mcp-grants]: https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/src/gateway/mcp-grant-store.ts
-[mcporter]: https://github.com/openclaw/mcporter/blob/5bcf9e178cd8c0a91888bf82a460c1a291aecced/docs/mcp.md
 [copilot-bridge]: https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/extensions/copilot/src/tool-bridge.ts
 [copilot-guide]: https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/docs/plugins/copilot.md
 [claude-prepare]: https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/src/agents/cli-runner/prepare.ts
