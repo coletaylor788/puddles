@@ -358,7 +358,8 @@ export async function runScenario(installedDir, scenario, options = {}) {
         const prompt = JSON.stringify(requests[requestCount - step.responses.length].messages);
         for (const text of step.expect.promptIncludes) assert.ok(prompt.includes(text), "incoming event missing from real model request");
       }
-      const finalPrompt = JSON.stringify(requests[requestCount - 1].messages);
+      // Live provider fixtures dispatch through the installed gateway without a scripted request.
+      const finalPrompt = JSON.stringify(requests[requestCount - 1]?.messages ?? []);
       for (const text of step.expect.finalPromptIncludes ?? []) assert.ok(finalPrompt.includes(text), "expected final provider input missing");
       for (const text of step.expect.finalPromptExcludes ?? []) assert.ok(!finalPrompt.includes(text), "excluded source text reached final provider input");
       if (scenario.heartbeat) {

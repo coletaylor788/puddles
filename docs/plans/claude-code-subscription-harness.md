@@ -340,6 +340,11 @@ grants remaining broader than the agent cap. A follow-up removed agent-wide exec
 overrides so fallback policy stays unchanged, and made shell network denial strict.
 The retained reviewer rechecked the complete source and authored packaging with no
 remaining material findings. Source review is not gateway or production acceptance.
+A reused transport regression also exposed stale callback authority. Native deferred
+callbacks now restore the admitted request and caller contexts, explicitly clearing
+foreign caller context. The retained reviewer cleared the fix. Sixty-eight focused
+tests cover native policy, concurrent callbacks, absent identity, revoked approvals
+and user-question delivery. Installed qualification remains pending.
 
 ### Checklist
 
