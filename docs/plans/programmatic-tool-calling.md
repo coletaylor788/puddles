@@ -1,6 +1,6 @@
 # Programmatic tool calls through OpenClaw
 
-Status: Proposed
+Status: Proposed; source audit complete
 Issue: [#304](https://github.com/coletaylor788/puddles/issues/304)
 Last updated: 2026-10-15
 
@@ -8,191 +8,225 @@ Last updated: 2026-10-15
 
 ### Design
 
-Let every agent compose its existing tools in a contained JavaScript program.
-The program can loop, transform results, and make dependent or parallel calls,
-then return useful output. This may reduce model round trips and context usage.
-There is no separate list of tools approved for scripting. Each agent retains
-its existing catalog, identity, permissions, approvals, and content guards.
+Give every tool-enabled agent an optional contained script runner alongside its
+existing direct tools. A script can transform data and compose dependent or
+parallel calls. Each agent keeps its existing catalog, identity, permissions,
+approvals, and guards. There is no separate tool allowlist for scripting.
 
-Support native Claude Code and GitHub Copilot CLI. Keep their own model loops,
-authentication, compaction, and sessions. Prefer native capabilities when they
-meet this contract. The verified integration points are their native tool
-interfaces; a common built-in scripting engine has not been established.
+Keep native Claude Code and GitHub Copilot CLI, including their model loops,
+authentication, compaction, and sessions. Use their existing MCP and SDK tool
+interfaces with OpenClaw's QuickJS executor.
 
 ```mermaid
 flowchart TD
-    Claude["Claude Code: existing MCP interface"]
-    Copilot["Copilot CLI: existing SDK interface"]
-    Controls["OpenClaw program execution and wait controls"]
-    Guest["QuickJS / WASM: contained computation"]
-    Policy["Caller’s existing tool policy, approvals, and guards"]
-    Tools["Caller’s existing tools"]
-    Claude <-->|"Adapter change required"| Controls
-    Copilot <-->|"Already wired in pinned source"| Controls
-    Controls <--> Guest
-    Guest -->|"Tool requests only"| Policy
+    Harness["Native Claude Code or Copilot CLI"]
+    Direct["Existing direct tools"]
+    Script["Added code_exec / code_wait controls"]
+    Guest["QuickJS/WASM: contained computation"]
+    Policy["Existing caller policy, approvals, and guards"]
+    Tools["Existing tool implementations"]
+    Harness --> Direct --> Policy
+    Harness --> Script --> Guest
+    Guest -->|"Authorized tool requests"| Policy
     Policy --> Tools
     Tools -->|"Checked results"| Guest
 ```
 
-#### Script boundary
+#### Keep direct calls
 
-Use OpenClaw’s QuickJS executor explicitly. It evaluates JavaScript inside a
-WebAssembly guest in a host worker. The guest is the security boundary; the
-worker thread is not. Running the interpreter on the host does not itself give
-the script host privileges. OS isolation of the interpreter is not required.
+Upstream Code Mode normally hides tools behind its `exec` and `wait` controls.
+That does not meet this request. Add an additive surface that retains existing
+direct tools and introduces `code_exec` and `code_wait`. Keep shell `exec`
+unchanged. Scripts cannot call their own controls recursively.
 
-The script may compute in its own memory, produce bounded output, and invoke
-the agent’s existing tools. It must have no independent filesystem, shell,
-network, environment, credential, or administration access. External effects
-must go through existing authorized tools and their checks. Managed execution
-state and continuations must remain scoped to the caller.
+Use one catalog and the same authorized implementations for both paths.
+Preserve direct rich output and existing discovery behavior. Keeping direct
+tools means we do not claim savings from hiding their schemas; measure savings
+from fewer round trips and returning compact results.
 
-Audit the whole bridge, including helpers for skills, delegation, saved results,
-and node access. Helpers must not grant capabilities beyond the existing tool
-catalog. Route such operations through existing tools or disable the helper.
-Never use or fall back to the default Node `vm` executor, which is explicitly
-not a security boundary.
+#### Contain scripts
 
-Source review has not demonstrated a host RCE vulnerability. It is also not
-proof against runtime or bridge vulnerabilities. Approvals mediate tool calls;
-they cannot contain a runtime escape. Qualify the actual QuickJS runtime and
-bridge before activation, separately from downstream shell-tool sandboxing.
+QuickJS runs inside WebAssembly in a host worker. The WASM guest provides
+isolation; the worker thread does not. The audited runtime has no guest access
+to host modules, files, processes, networking, or environment. OS isolation of
+the interpreter is not required. Use the bundled QuickJS executor explicitly,
+and reject Node VM execution in the additive surface.
 
-#### What Claude needs
+The bridge needs two changes to satisfy “effects only through existing tools”:
 
-In the pinned OpenClaw version, the built-in Claude Code adapter exposes
-ordinary OpenClaw tools through a scoped MCP connection. It does not wire up
-the shared Code Mode interface. Copilot’s adapter already does through its SDK.
-This is an OpenClaw adapter integration gap, not a missing MCP capability in
-Claude Code, and not a verified configuration-only change.
+- Remove skill convenience APIs and reject their bridge requests. Their reader
+  can access host files outside normal tool dispatch. Agents can still use
+  their existing authorized reading tools.
+- Remove swarm convenience APIs and reject their bridge requests. Although
+  spawning uses a tool, waiting and progress events use separate host paths.
+  Existing delegation tools remain available directly and inside scripts.
 
-Extend the Claude adapter to expose the shared execution and wait controls
-through its existing MCP connection. Bind their underlying catalog to the
-current caller and run. Preserve that context during waits, refresh it for a
-new turn, and retire it on completion, cancellation, or revocation. Reuse
-OpenClaw’s executor and approval path; do not build another agent loop or give
-Claude’s native shell extra authority. Preserve direct tools where rich output
-cannot pass through a program.
+Keep catalog calls, MCP/node wrappers that dispatch through that catalog,
+bounded output, timers, and caller-scoped in-memory results. Deny the WASI
+runtime's raw stdout/stderr writes; script output uses the bounded controller.
+Do not add module loaders, filesystem mounts, network imports, or credentials.
 
-#### Scope and behavior
+The source audit and isolated probes found no demonstrated host-code escape.
+They establish the intended capability boundary, not a guarantee against all
+engine vulnerabilities. Approvals protect tool calls, not a runtime escape.
 
-Target all agents, including readers, delegated agents, household agents, and
-background agents. Each keeps its own restrictions. Tool-less runs gain no
-tools. Roles, models, credentials, and routing stay unchanged.
+#### Connect Claude
 
-Each nested call gets the same identity checks, approvals, guards, ordering,
-and audit events as a direct call. Approval of a program or earlier call does
-not approve later actions. Parallelize independent work within limits.
-Cancellation must stop pending work. Programs are not transactions: interrupted
-runs must not replay completed or uncertain writes. Continuations do not
-survive a Gateway restart. Both native harnesses must qualify before claiming
-support for the proposal.
+The pinned built-in Claude adapter exposes ordinary OpenClaw tools over MCP,
+but does not connect the shared Code Mode controls. Copilot already connects
+them through its SDK. Both need the additive surface; Claude additionally needs
+that missing adapter wiring.
+
+Expose the controls through Claude's existing MCP connection. Keep the original
+tool allowlist separate from the added control names. Bind the catalog, results,
+and paused programs to the admitted run and grant generation. Reuse the MCP
+call checks for every nested invocation. Dispose that state when authority is
+replaced, revoked, or completed, including warm-process turn changes.
+
+#### Preserve behavior
+
+Apply this to all agents and their existing restrictions. Tool-less runs gain
+no tools. Roles, models, credentials, routing, and native host-tool restrictions
+stay unchanged. Every nested action retains its own approval, content checks,
+ordering, cancellation, and audit event. Starting a script approves no action.
+
+Programs are not transactions. Never replay completed or uncertain writes after
+interruption. Continuations remain transient and cannot survive Gateway restart.
 
 ### Status
 
-**Approval: Proposed.** The requester authorized design and publication, required
-both native harnesses and all-agent scope, and specified contained scripts with
-no independent external effects. OS isolation is not required. Implementation,
-configuration changes, and deployment remain unapproved.
+**Approval: Proposed.** The requester authorized the audit, design, and publication;
+required all agents, both native harnesses, and retained direct calls; and chose
+contained scripting without OS isolation. Implementation and deployment remain
+unapproved.
 
-Copilot’s shared controls exist in pinned source. Claude needs adapter wiring.
-Runtime containment, installed parity, and measured benefit remain unverified.
+The source audit is complete and the required changes are specified below.
+Installed integration tests and benefit measurements are implementation gates.
 No runtime or tool configuration has changed.
 
 ## Agent section
 
 ### State
 
-Documentation only. The design covers all agents and both native harnesses.
-Keep the implementation separate from concurrent harness work; reuse its landed
-restrictions and routing without modifying another owner’s source or processes.
+Documentation only. The proposal now specifies implementation rather than
+leaving bridge policy or adapter design to a later investigation. Coordinate
+with the existing harness work through its landed source and restrictions.
 
 ### Scope and acceptance criteria
 
-- All agents can compose their existing tools without a second tool allowlist.
-- Programs have no independent host capabilities; auxiliary APIs add none.
-- Nested calls preserve caller context, permissions, approvals, content guards,
-  cancellation, ordering, sandbox behavior, and audit events.
-- Both native harnesses retain their own loops and support fresh/resumed runs.
-- Direct rich output remains usable; uncertain writes are never replayed.
-- Representative tasks retain quality and demonstrate measured benefit.
+- Preserve every existing direct tool and its behavior; add optional scripting.
+- Give scripts exactly the caller's existing tool authority and no independent
+  host capabilities. Controls cannot appear in their own catalog.
+- Support all tool-enabled agent roles and both native harnesses.
+- Preserve per-call approvals, guards, sandboxing, audit, and cancellation.
+- Preserve rich results and prohibit replay of uncertain writes.
+- Demonstrate correct multi-call tasks and measure round trips, latency, and tokens.
 
 ### Architecture and decisions
 
-Baseline: OpenClaw `eb377ac59e6c9fd6c7705028034812becf00271b`, pinned in
-`packages/e2e/openclaw-patch-suite.json`. Source support is not installed proof.
+Audited OpenClaw revision: `eb377ac59e6c9fd6c7705028034812becf00271b`, pinned in
+`packages/e2e/openclaw-patch-suite.json`. Audited its exact `quickjs-wasi@3.6.0`
+package, including the WASM imports, JS embedder, and encoding extension.
 
-| Source | Finding |
+| Audited path | Finding and decision |
 |---|---|
-| [Executor guide][executors] and [QuickJS worker][worker] | WASM guest in a host worker; Node VM is not a security boundary |
-| [Copilot bridge][copilot] | Uses `createAgentHarnessToolSurfaceRuntime` to expose shared controls |
-| [Claude preparation][claude] | Projects scoped MCP tools; equivalent Code Mode wiring is missing |
-| [Runtime internals][internals] | Nested context, ordering, and transient continuations |
+| [Worker][worker], [executor][executor], [QuickJS package][quickjs] | No module loader; encoding is the only loaded extension. WASI imports supply time, randomness, output, and descriptor stubs, not file opening, sockets, or processes. Keep this runtime; override `fd_write` to deny raw host output on creation and restore. |
+| [Bridge][bridge], [skill reader][skills], [swarm handlers][swarm] | Reject `skillsList`, `skillsRead`, `agentSpawn`, `agentWait`, and `swarmNote` in the additive surface, and omit their guest globals/docs. Enforcement belongs on the host as well as in the guest. |
+| [Namespaces][namespaces], [results][results] | MCP and node effects use catalog dispatch; API descriptions are virtual data. Saved results are bounded memory scoped to agent/run/session/catalog. Retain these paths. |
+| [Catalog projection][projection], [harness surface][surface] | Current projection hides direct tools and names controls `exec`/`wait`. Add a separate additive projection over the same catalog. |
+| [Claude preparation][claude], [MCP dispatcher][dispatcher], [grant store][grants] | Claude lacks the shared controls. MCP dispatch owns hooks and authorization; grant replacement already emits invalidation. Extend those seams. |
+| [Copilot bridge][copilot] | Reuse its admitted wrappers, nested executor, and cleanup. Switch to additive projection without duplicating hooks. |
 
-Use the existing run-scoped MCP connection, not an operator token or a second
-tool registry. Apply underlying tool policy before exposing program controls.
-Allowing a control must never authorize otherwise hidden tools. Preserve the
-[security architecture](../openclaw-setup/security-architecture.md) and existing
-plugin guards. Explicitly select QuickJS across agents; missing or unavailable
-execution must fail closed.
+Preserve the [security architecture](../openclaw-setup/security-architecture.md).
+These are capability restrictions within the requested runtime boundary, not an
+OS-isolation change or a replacement approval system.
 
 ### Implementation
 
-After design approval:
+After approval, deliver two maintained upstream patches and companion activation:
 
-1. Verify installed versions and configuration. Inspect QuickJS/WASM imports,
-   host callbacks, auxiliary APIs, and dependency versions against the contract.
-2. Qualify Copilot’s existing integration. Extend Claude’s MCP projection with
-   the shared controls and run-bound catalog/continuation lifecycle. Avoid
-   duplicate approval hooks and scheduler locks that block nested calls.
-3. Maintain required upstream changes as patches with registered regressions.
-   Configure all agents through an isolated companion worktree. Preserve each
-   agent’s tools and restrictions; do not enable native host execution.
+1. **Shared additive surface.** Add `tools.codeMode.surface: "additive"` with
+   existing compact behavior as the upstream default. Register the caller's
+   filtered tools in the existing catalog while retaining the direct surface.
+   Add `code_exec`/`code_wait`; fail on name collisions. Update control identity,
+   descriptions, prompt-policy handling, and wrapper metadata so controls are
+   recognized by their role, not confused with shell `exec`. Keep discovery
+   controls direct but exclude orchestration controls from script recursion.
+   Use the same projection in core and native harness paths. Require bundled
+   QuickJS, reject Node selection, disable the five bridge methods above, and
+   deny raw WASI output. Apply restrictions on fresh and resumed cells.
+2. **Claude MCP integration.** Keep `toolsAllow` as the underlying authority;
+   advertise controls separately after prompt-policy filtering. Retain one shared
+   tool-surface runtime per active admitted grant generation, outside the short
+   schema cache. Extract the dispatcher's prepare/hook/authorize/execute/result
+   sequence into a shared invocation helper used by direct and nested calls.
+   Return guarded raw results to Code Mode before MCP serialization. Recheck
+   current grant authority on every call, including after approval. Connect
+   grant replacement/revocation and run cleanup to catalog disposal and abort.
+   Reuse catalog scheduling without locking the outer control against its own
+   nested calls. Refresh prompt/schema and grant context for warm Claude turns.
+3. **Activation.** In an isolated companion worktree, explicitly enable the
+   additive QuickJS surface for all tool-enabled agents. Preserve existing
+   restrictions and routing. Do not alter another owner's harness worktree.
 
 ### Validation
 
-For this document, review accuracy, links, and the complete diff. No application
-build or runtime tests are needed for prose changes.
+Audit evidence: verified npm tarball integrity; enumerated actual engine and
+encoding WASM imports; read all 15 bridge handlers and their downstream paths.
+Isolated probes used Node 24.2.0 and the exact published QuickJS package. Twelve
+ambient host APIs were absent, constructor-created functions stayed in the
+guest, Node imports failed, and local computation worked. The original guest
+controller, with recording callbacks only, hid host callbacks, rejected virtual
+API path traversal, retained console output locally, and emitted helper requests
+without executing real tools. No application build or live service call ran.
 
-Implementation must test both installed harnesses with synthetic data and
-recording adapters for external effects. Cover direct/program permission parity,
-approval and guard failures, guest/bridge capability denial, cross-agent and
-stale-handle isolation, cancellation, interrupted writes, resource limits,
-rich output, and fresh/resumed/fallback runs. Safe capability probes do not prove
-absence of escape vulnerabilities. Include real-model tasks to measure quality,
-round trips, latency, and context usage.
+Implementation regressions must cover retained direct calls, control-name
+collisions, allowed/denied nested calls, exact approval arguments, post-approval
+guards, rejected helper requests, missing QuickJS, fresh/resumed restrictions,
+cross-agent/result-handle isolation, warm grant replacement, cancellation,
+resource limits, rich output, and interrupted writes. Run both real native
+harnesses with synthetic data and recording adapters. These verify the delivered
+implementation; they are not unresolved design questions or proof against every
+possible runtime vulnerability.
 
 ### Rollout and rollback
 
-After approval, follow the normal [application lifecycle](../../packages/e2e/README.md)
-and [release coordination](../../packages/e2e/DEPLOYMENT_COORDINATION.md): DEV,
-independent behavior review, full application gate, TEST, and managed production
-promotion. Production checks remain read-only. No rollout is authorized by this
-proposal’s publication.
+Follow the [application lifecycle](../../packages/e2e/README.md) and
+[release coordination](../../packages/e2e/DEPLOYMENT_COORDINATION.md) after approval:
+DEV, independent review, full application gate, TEST, and managed production
+promotion. Production checks remain read-only.
 
-Rollback restores affected agents’ prior tool surface and retires continuations
-without replay. Use managed runtime/configuration/state recovery when needed;
-never restore over new live writes. Finalize owned resources after publication
-and recovery checks.
+Rollback disables the added controls, restores prior configuration, and retires
+continuations without replay. Use managed recovery when needed; never restore
+over new live writes. Finalize owned resources after publication and recovery checks.
 
 ### Review log
 
-Author reviewed the pinned executor, worker, Copilot bridge, Claude preparation,
-and runtime documentation. No independent behavior review or installed execution
-qualification has occurred. Those belong to implementation.
+Completed source and dependency audit plus isolated engine/controller probes.
+Found concrete mismatches in compact-only projection and auxiliary bridge
+capabilities. The design addresses them. No production qualification or
+independent implementation review is claimed.
 
 ### Checklist
 
-- [x] Publish the all-agent design and explain the Claude adapter gap.
-- [x] Define contained computation with effects only through existing tools.
+- [x] Complete source/dependency audit and bounded capability probes.
+- [x] Specify additive projection, bridge restrictions, and Claude integration.
 - [ ] Obtain implementation approval.
-- [ ] Qualify QuickJS and the complete bridge; implement Claude integration.
+- [ ] Implement both patches and activation; add durable regressions.
 - [ ] Verify both native harnesses and all agent roles.
 - [ ] Complete review, release gates, source merge, and cleanup.
 
-[executors]: https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/docs/tools/code-mode/executors.md
 [worker]: https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/extensions/code-mode-quickjs/src/code-mode.worker.ts
-[copilot]: https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/extensions/copilot/src/tool-bridge.ts
+[executor]: https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/extensions/code-mode-quickjs/src/executor.ts
+[quickjs]: https://www.npmjs.com/package/quickjs-wasi/v/3.6.0
+[bridge]: https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/src/agents/code-mode-bridge.ts
+[skills]: https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/src/agents/code-mode-skills.ts
+[swarm]: https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/src/agents/code-mode-swarm.runtime.ts
+[namespaces]: https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/src/agents/code-mode-namespaces.ts
+[results]: https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/src/agents/code-mode-results.ts
+[projection]: https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/src/agents/code-mode.ts
+[surface]: https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/src/agents/harness/tool-surface-bridge.ts
 [claude]: https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/src/agents/cli-runner/prepare.ts
-[internals]: https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/docs/tools/code-mode/internals.md
+[dispatcher]: https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/src/gateway/mcp-http.handlers.ts
+[grants]: https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/src/gateway/mcp-grant-store.ts
+[copilot]: https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/extensions/copilot/src/tool-bridge.ts
