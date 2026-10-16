@@ -1181,8 +1181,8 @@ diff --git a/src/test-utils/ports.ts b/src/test-utils/ports.ts
 +        "net.inet.ip.portrange.hifirst", "net.inet.ip.portrange.hilast",
 +      ], { encoding: "utf8", timeout: 5000 }).trim().split(/\s+/u).map(Number);
 +      if (values.length !== 4 || values.some(value => !Number.isInteger(value) || value < 1 || value > 65535) ||
-+          values[0] > values[1] || values[2] > values[3]) throw new Error("invalid macOS port ranges");
-+      raw = `${Math.min(values[0], values[2])} ${Math.max(values[1], values[3])}`;
++          values[0]! > values[1]! || values[2]! > values[3]!) throw new Error("invalid macOS port ranges");
++      raw = `${Math.min(values[0]!, values[2]!)} ${Math.max(values[1]!, values[3]!)}`;
 +    }
    } catch (cause) {
 -    throw new Error("failed to read Linux ephemeral TCP port range", { cause });
