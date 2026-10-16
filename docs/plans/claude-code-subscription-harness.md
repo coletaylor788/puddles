@@ -1,6 +1,6 @@
 # Claude Code harness with subscription authentication
 
-Status: Agreed native and restricted agent split; implementation qualification pending
+Status: Workspace approval behavior resolved; narrow adapter change proposed
 Issue: https://github.com/coletaylor788/puddles/issues/303
 Last updated: 2026-10-15
 
@@ -81,29 +81,47 @@ operation through OpenClaw's existing approval system. It must not proceed throu
 silent approval or reuse of a broader grant. A denied, expired or unavailable
 approval must leave the operation unexecuted. Hard-denied paths remain denied.
 
-The inspected native approval handler supports asking every time. That mode
-ignores remembered tool grants and offers only allow once or deny. Other modes
-can allow silently, and an allow-always grant for Write can cover a different
-path on a later turn in the same process. Qualify the effective approval policy,
-including session overrides, rather than assuming every callback asks a human.
-Asking every time applies broadly to native tools; it does not provide selective,
-prompt-free workspace writes by itself. Record that usability cost during qualification.
+The stock pinned integration cannot combine prompt-free workspace writes with
+mandatory approval outside the workspace. It asks OpenClaw before Claude evaluates
+its own permission rules. A blanket allow can skip the native check; asking every
+time prompts even for ordinary workspace operations. Configuration alone does not
+resolve this, and asking every time is not the chosen user experience.
 
-Keep Docker configured for restricted agents and other harness paths. Browser
-and service operations retain their existing guarded adapters. Native approval
-permits Claude to execute its tool; it does not move that execution into Docker.
+#### Resolved approval flow
 
-#### Keep custom work minimal
+Keep native Write and Edit. Make one narrow adjustment to the existing approval
+bridge so it distinguishes the early policy check from a request for human permission.
 
-Use the existing Claude integration, native tools, OpenClaw approvals and restricted
-MCP execution. The earlier mandatory native-read/OpenClaw-write split and custom
-native tool-list translation are removed from the proposal.
+1. **Before a native tool call:** OpenClaw checks the active run, tool restrictions,
+   policy vetoes and any argument changes. Passing this stage means continue to
+   Claude's checks, not grant permission to execute.
+2. **Claude evaluates permissions:** trusted workspace rules allow normal file
+   work inside that agent's workspace. Hard-denied locations remain blocked.
+   Operations needing an exception reach Claude's permission callback.
+3. **OpenClaw asks the owner:** route that callback through the existing tool
+   approval system with allow once or deny. Do not apply automatic full-access
+   shortcuts or remembered tool-wide grants. Denial, expiry or unavailable approval
+   prevents execution. An approval authorizes that operation only.
 
-If qualification reveals a missing connection for restricted-role selection,
-trusted sandbox settings or effective approval policy, identify and address that
-specific gap through existing extension or backend mechanisms. Do not assume a
-broad backend patch is required. Do not weaken workspace or role boundaries to
-avoid a small necessary integration change.
+A real Claude CLI prototype demonstrated this flow: workspace Write and Edit ran
+without approval requests; outside writes and symlink escapes requested approval;
+only the explicitly approved outside file was created. A later turn in the same
+process still requested approval for another outside path. A fresh process behaved
+the same way. Withholding a response left the file absent, and a host veto blocked
+an otherwise permitted workspace write.
+
+This closes the behavior and design question. The adjustment belongs in the native
+permission bridge, not in a new file tool or filesystem checker. Claude retains
+workspace/path classification and native file execution. OpenClaw retains policy
+checks and human approval delivery. Trusted settings must exclude ambient grants
+or hooks that could skip the approval callback, and changed settings must invalidate
+an incompatible warm process. Actual gateway delivery remains an implementation
+acceptance test, not an undecided design choice.
+
+Keep Docker configured for restricted agents and other harness paths. Their MCP
+execution and approvals are unchanged. Browser and service operations retain their
+existing guarded adapters. Main and Household retain separate workspace roots;
+Debug retains its explicitly configured diagnostic access.
 
 #### Review and quality concerns
 
@@ -123,11 +141,13 @@ avoid a small necessary integration change.
 2026-10-15, then agreed to native Main and Household, restricted specialists and
 explicitly approved write exceptions, and requested this proposal update.
 Debug is included in the native migration with its existing diagnostic access.
-Haiku remains scoped to Reader and
-active-memory recall. The current request updates documentation, not production.
+Haiku remains scoped to Reader and active-memory recall. The current request
+updates documentation, not production. The narrowly scoped approval-bridge adjustment is now a concrete proposed implementation change; it
+has been prototyped in isolation, not installed in the gateway.
 
-Source investigation and bounded probes support the approval behavior and the
-two execution paths. Installed workspace isolation, actual approval delivery,
+Source investigation and the native CLI prototype resolve workspace approval
+behavior and the two execution paths. Installed workspace isolation, actual
+approval delivery,
 model routing and context continuity remain release gates. No runtime or
 configuration change has been deployed by this investigation.
 
@@ -166,33 +186,48 @@ checks exact availability, hooks and effective exec policy. Full/off allows
 without a prompt. Standing grants are keyed by tool name and live process.
 Effective ask-always ignores them. `cli-native-tool-approval.ts` then requests
 normal plugin approval with allow-once/deny and rejects missing or invalid decisions.
+Both native phases currently share this handler without a phase marker, so stock
+configuration cannot defer the early decision while forcing the later escalation.
 
 `exec-defaults.ts` gives session permission policy precedence over ordinary
 configuration. Full sessions can bypass host approval floors; sandbox routing
 omits those floors. Per-run ask-always can tighten session modes, but cannot
-relax security deny. Verify the final policy for every enabled native run.
+relax security deny. The proposed native-escalation branch must retain deny but
+request one-time human approval regardless of full/off or standing grants.
 
 Ordinary Claude runs load user settings; restricted argument translation strips
-custom settings and ambient features. Qualify trusted settings and existing
-process fingerprints before proposing any adapter change. Keep separate tool
-catalogs and execution environments explicit in installed checks.
+custom settings and ambient features. Supply a trusted native profile in default
+permission mode, with workspace-scoped Edit rules and no ambient permission grants,
+plugins or hooks that bypass escalation. Bind its exact content and workspace to
+process reuse. Preserve separate restricted settings and MCP catalogs.
 
 ### Implementation
 
-Qualify native Main, Household and Debug using the existing launcher, approval flow and
-trusted sandbox settings. Select the existing exact-cap path for specialists;
-keep their OpenClaw tools, Docker execution and service grants unchanged.
+Limit the adapter change to the existing native permission contract, host handler,
+Claude bridge and trusted launch settings:
 
-Verify native shell and read bounds, write approvals, process environment and
-local-service access. An incompatible workspace, role or permission change must
-replace or safely reconfigure the warm process. No stale grants may authorize a
-new role or outside write. Check that approval displays the target and operation
-clearly, including long inputs.
+- Carry an internal phase distinguishing PreToolUse policy checks from native
+  permission escalation. Keep behavior unchanged for other backends and capped runs.
+- At PreToolUse, enforce current-run authority, exact tool restrictions, security
+  denials and host policy hooks. Preserve rewritten input. Continue native permission
+  evaluation rather than returning a blanket permissionDecision allow.
+- At can_use_tool, revalidate the same call/run and use existing plugin approval
+  with allow-once/deny. Ignore full/off shortcuts and standing grants. Do not run
+  approval-producing host hooks twice or lose their vetoes. Preserve AskUserQuestion
+  handling and MCP tools' existing separate authorization.
+- Generate trusted settings per native role. Use default permission mode and an
+  absolute workspace-scoped Edit allow rule, which Claude applies to both Write
+  and Edit. Retain shell/read restrictions and protected paths. Exclude ambient
+  settings that widen permissions; fingerprint the profile for process reuse.
 
-Use configuration and supported extension points first. If one cannot express a
-required connection, document the precise missing capability and smallest change.
-Do not implement the withdrawn custom file-edit split or general native mapping.
-Follow the existing release lifecycle for executable changes; coordinate main merges with the release manager.
+Select the existing exact-cap path for specialists; keep their OpenClaw tools,
+Docker execution and service grants unchanged. No custom native tool-list mapping,
+file writer, path checker or new approval transport is required. Native Main,
+Household and Debug retain their respective workspace/diagnostic policies.
+
+Add executable regressions and qualify the installed gateway, including approval
+rendering, rewrites, cancellation and retained sessions. Follow the existing
+release lifecycle and coordinate main merges with the release manager.
 
 ### Validation
 
@@ -209,10 +244,19 @@ prior grant; rejection of unexpected allow-always; user denial; expiry; transpor
 failure; security deny; and unavailable tool. Policy resolution and UI transport
 were dependency seams, so this is not installed approval acceptance.
 
-The earlier command-hook error probe used default failure behavior. Current
-Claude docs provide `onFailure: "block"` from 2.1.295; that option was not tested.
-Withdraw the claim that the probe rules out all hooks. No path-checking hook is
-required merely to use OpenClaw's existing human approval flow.
+The decisive native CLI prototype used default mode, a trusted absolute workspace
+Edit allow rule, a PreToolUse continuation and recorded approval replies. Workspace
+Write/Edit completed with zero permission requests. Denied and unavailable outside
+writes, a symlink into a sibling directory and a hard-denied write left no files.
+Only the allow-once outside write succeeded, with the file absent before the decision.
+A second warm turn and a fresh process repeated the inside/outside distinction.
+A withheld callback response left its file absent until cancellation; a host veto
+also blocked a workspace write. Filesystem assertions passed and all test jobs and
+fixtures were removed. This proves Claude's native classification with the proposed
+bridge protocol, not the unimplemented OpenClaw adapter or actual owner-facing UI.
+
+The earlier command-hook error probe used default failure behavior. Claude supports
+`onFailure: "block"`; that option was not tested and is not the selected solution.
 
 Register executable regressions during implementation. Exercise all three native roles,
 all restricted roles, both session tools, recall, cron, resume and restart. Require
@@ -240,6 +284,10 @@ role on its existing route; it does not authorize broader access.
 
 Independent source review confirmed automatic approval paths, always-ask handling,
 policy precedence and the absence of ordinary agent-list to native-list translation.
+Follow-up independent review confirmed the stock configuration limitation and the
+phase-aware bridge as the appropriate narrow change. Preserve rewritten inputs,
+avoid duplicate host approvals, retain user-question handling and bind trusted
+settings to process reuse.
 The requester clarified that individually approved writes are acceptable. Remove
 the native-file ban and mandatory mixed editing path. Current review attention is
 workspace isolation, effective approvals and correct specialist path selection.
@@ -252,5 +300,6 @@ Source probes and design review do not count as gateway or production acceptance
 - [x] Agree native Main/Household/Debug and restricted specialist split.
 - [ ] Qualify actual workspace bounds, approval delivery and role selection.
 - [ ] Qualify Opus, Reader/recall Haiku, quality and context continuity.
-- [ ] Implement only demonstrated missing connections with regression coverage.
+- [x] Resolve prompt-free workspace writes and one-time outside-write approval.
+- [ ] Implement the scoped approval-bridge adjustment with regression coverage.
 - [ ] Release, verify, merge and clean up through the existing lifecycle.
