@@ -82,8 +82,7 @@ class RocketMoney:
                     self.auth.close()
                 raise
             try:
-                self.auth.open_login()
-                self.verify_identity()
+                self.auth.open_login(verify=self.verify_identity)
             except GatewayError:
                 self.auth.mark("needs_user_login")
                 self.auth.close()
