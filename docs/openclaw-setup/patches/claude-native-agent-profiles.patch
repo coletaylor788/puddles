@@ -666,13 +666,175 @@ index 986b86eafbe..2fc1a7d9d47 100644
        name: "keeps explicit backend env overrides even when clearEnv drops inherited values",
        baseEnv: { SAFE_OVERRIDE: "from-base" },
 diff --git a/src/agents/cli-runner/execute-plugin.policy.test.ts b/src/agents/cli-runner/execute-plugin.policy.test.ts
-index 442567286ce..f363d4b10b2 100644
+index 442567286ce..dae06584cea 100644
 --- a/src/agents/cli-runner/execute-plugin.policy.test.ts
 +++ b/src/agents/cli-runner/execute-plugin.policy.test.ts
-@@ -48,6 +48,61 @@ afterEach(() => {
+@@ -6,8 +6,17 @@ import {
+ } from "../../plugins/hook-runner-global.js";
+ import type { PluginHookHandlerMap } from "../../plugins/hook-types.js";
+ import { createMockPluginRegistry } from "../../plugins/hooks.test-fixtures.js";
++import {
++  getPluginRuntimeGatewayRequestScope,
++  withPluginRuntimeGatewayRequestScope,
++} from "../../plugins/runtime/gateway-request-scope.js";
++import { createOperationalRunInstanceRef } from "../admitted-run-context.js";
+ import * as beforeToolCall from "../agent-tools.before-tool-call.js";
+ import { createCliJsonlStreamingParser } from "../cli-output-stream.js";
++import {
++  getGatewayToolCallerIdentity,
++  withGatewayToolCallerIdentity,
++} from "../tools/gateway-caller-context.js";
+ import { callGatewayTool } from "../tools/gateway.js";
+ import { createCliEventHandlers } from "./execute-events.js";
+ import {
+@@ -48,6 +57,205 @@ afterEach(() => {
  });
  
  describe("plugin-owned CLI native tool policy", () => {
++  it.each([true, false])(
++    "restores the current Claude turn scope instead of pooled callback authority (bound=%s)",
++    async (bound) => {
++      const stale = { isWebchatConnect: () => false, hasCurrentClientAuthority: () => false };
++      const current = { isWebchatConnect: () => false, hasCurrentClientAuthority: () => true };
++      const currentCaller = {
++        agentId: "main",
++        sessionKey: "agent:main:current",
++        operationalRunInstance: createOperationalRunInstanceRef("current"),
++        receiptAuthority: () => true,
++      };
++      const staleCaller = {
++        agentId: "admin",
++        sessionKey: "agent:admin:stale",
++        fullPermission: true,
++        operationalRunInstance: createOperationalRunInstanceRef("stale"),
++        receiptAuthority: () => false,
++      };
++      const observed: unknown[] = [];
++      const observe = () => {
++        const caller = getGatewayToolCallerIdentity();
++        observed.push({
++          scope: getPluginRuntimeGatewayRequestScope()?.hasCurrentClientAuthority,
++          run: caller?.operationalRunInstance,
++          session: caller?.sessionKey,
++          receipt: caller?.receiptAuthority?.(),
++          fullPermission: caller?.fullPermission,
++        });
++      };
++      installBeforeToolCallHook(observe);
++      mockCallGatewayTool.mockImplementation(async () => {
++        observe();
++        return { id: "current-approval", decision: "allow-once" };
++      });
++      const { context } = await createExecution({ nativeTools: ["Write"] });
++      context.backendResolved.config.nativePermissionMode = "defer";
++      const invoke = () =>
++        runPlugin(context, async function* (execution) {
++          const result = await withGatewayToolCallerIdentity(staleCaller, () =>
++            withPluginRuntimeGatewayRequestScope(stale, () =>
++              execution.requestToolPermission({
++                phase: "permission",
++                toolName: "Write",
++                toolCallId: "current-turn-write",
++                toolInput: { file_path: "/outside/current.txt", content: "synthetic" },
++              }),
++            ),
++          );
++          expect(result).toMatchObject({ behavior: "allow" });
++          const expected = {
++            scope: bound ? current.hasCurrentClientAuthority : undefined,
++            run: bound ? currentCaller.operationalRunInstance : undefined,
++            session: bound ? currentCaller.sessionKey : undefined,
++            receipt: bound ? true : undefined,
++            fullPermission: undefined,
++          };
++          expect(observed).toEqual([expected, expected]);
++          yield SUCCESS_RESULT;
++        });
++      await (bound
++        ? withGatewayToolCallerIdentity(currentCaller, () =>
++            withPluginRuntimeGatewayRequestScope(current, invoke),
++          )
++        : invoke());
++    },
++  );
++
++  it("keeps concurrent Claude callback identities separate across approval waits", async () => {
++    const release: Array<() => void> = [];
++    const observed: string[] = [];
++    mockCallGatewayTool.mockImplementation(async () => {
++      const caller = getGatewayToolCallerIdentity();
++      await new Promise<void>((resolve) => {
++        release.push(resolve);
++        if (release.length === 2) release.forEach((done) => done());
++      });
++      expect(getGatewayToolCallerIdentity()?.operationalRunInstance).toBe(
++        caller?.operationalRunInstance,
++      );
++      expect(getPluginRuntimeGatewayRequestScope()?.hasCurrentClientAuthority?.()).toBe(true);
++      observed.push(caller?.sessionKey ?? "missing");
++      return { id: caller?.sessionKey, decision: "allow-once" };
++    });
++    await Promise.all(
++      ["one", "two"].map(async (id) => {
++        const { context } = await createExecution({ nativeTools: ["Write"] });
++        context.backendResolved.config.nativePermissionMode = "defer";
++        const caller = {
++          agentId: "main",
++          sessionKey: id,
++          operationalRunInstance: createOperationalRunInstanceRef(id),
++          receiptAuthority: () => true,
++        };
++        await withGatewayToolCallerIdentity(caller, () =>
++          withPluginRuntimeGatewayRequestScope(
++            { isWebchatConnect: () => false, hasCurrentClientAuthority: () => true },
++            () =>
++              runPlugin(context, async function* (execution) {
++                const result = await withGatewayToolCallerIdentity(
++                  { agentId: "foreign", sessionKey: "foreign" },
++                  () =>
++                    withPluginRuntimeGatewayRequestScope(
++                      { isWebchatConnect: () => false, hasCurrentClientAuthority: () => false },
++                      () =>
++                        execution.requestToolPermission({
++                          phase: "permission",
++                          toolName: "Write",
++                          toolInput: { file_path: "/outside/" + id, content: id },
++                        }),
++                    ),
++                );
++                expect(result).toMatchObject({ behavior: "allow" });
++                yield SUCCESS_RESULT;
++              }),
++          ),
++        );
++      }),
++    );
++    expect(observed.sort()).toEqual(["one", "two"]);
++  });
++
++  it("denies a reused Claude callback when its turn is revoked during approval", async () => {
++    const { context } = await createExecution({ nativeTools: ["Write"] });
++    context.backendResolved.config.nativePermissionMode = "defer";
++    let current = true;
++    context.params.assertCurrent = () => {
++      if (!current) throw new Error("revoked");
++    };
++    mockCallGatewayTool.mockImplementation(async () => {
++      current = false;
++      return { id: "late", decision: "allow-once" };
++    });
++    await runPlugin(context, async function* (execution) {
++      await expect(
++        execution.requestToolPermission({
++          phase: "permission",
++          toolName: "Write",
++          toolInput: { file_path: "/outside/late", content: "fixture" },
++        }),
++      ).resolves.toMatchObject({ behavior: "deny" });
++      yield SUCCESS_RESULT;
++    });
++  });
++
 +  it.each([false, true])(
 +    "checks rewritten Claude input once unless the escalated input changes (changed=%s)",
 +    async (changed) => {
@@ -732,10 +894,95 @@ index 442567286ce..f363d4b10b2 100644
      const { context } = await createExecution({ nativeTools: ["WebFetch"] });
      let callerCurrent = true;
 diff --git a/src/agents/cli-runner/execute-plugin.test.ts b/src/agents/cli-runner/execute-plugin.test.ts
-index e09dd73b517..da34807c4f3 100644
+index e09dd73b517..b13b31cd86f 100644
 --- a/src/agents/cli-runner/execute-plugin.test.ts
 +++ b/src/agents/cli-runner/execute-plugin.test.ts
-@@ -522,6 +522,101 @@ describe("plugin-owned CLI execution host boundary", () => {
+@@ -8,6 +8,14 @@ import type {
+   CliBackendLiveSessionHandle,
+   CliBackendToolPermissionResult,
+ } from "../../plugins/cli-backend.types.js";
++import {
++  getPluginRuntimeGatewayRequestScope,
++  withPluginRuntimeGatewayRequestScope,
++} from "../../plugins/runtime/gateway-request-scope.js";
++import {
++  getGatewayToolCallerIdentity,
++  withGatewayToolCallerIdentity,
++} from "../tools/gateway-caller-context.js";
+ import { callGatewayTool } from "../tools/gateway.js";
+ import {
+   closeCliLiveSession,
+@@ -113,6 +121,9 @@ describe("plugin-owned CLI execution host boundary", () => {
+         runId: "plugin-user-input",
+         nativeTools: ["AskUserQuestion"],
+       });
++      context.backendResolved.config.nativePermissionMode = "defer";
++      const currentScope = { isWebchatConnect: () => false, hasCurrentClientAuthority: () => true };
++      const currentCaller = { agentId: "main", sessionKey: "current-question" };
+       context.params.sessionKey = "main";
+       let callerCurrent = true;
+       context.params.assertCurrent = () => {
+@@ -129,6 +140,10 @@ describe("plugin-owned CLI execution host boundary", () => {
+       context.params.onBlockReply = onBlockReply;
+       const requests = new Map<string, { questions: Array<{ questionId: string }> }>();
+       mockCallGatewayTool.mockImplementation(async (method, _opts, rawParams) => {
++        expect(getPluginRuntimeGatewayRequestScope()?.hasCurrentClientAuthority).toBe(
++          currentScope.hasCurrentClientAuthority,
++        );
++        expect(getGatewayToolCallerIdentity()?.sessionKey).toBe("current-question");
+         const params = rawParams as {
+           id: string;
+           questions?: Array<{ questionId: string }>;
+@@ -163,22 +178,32 @@ describe("plugin-owned CLI execution host boundary", () => {
+       });
+       let result: unknown;
+ 
+-      await runPlugin(context, async function* (execution) {
+-        result = await execution.requestUserInput({
+-          toolName: "AskUserQuestion",
+-          toolCallId: "claude-question",
+-          questions: [
+-            {
+-              id: "one",
+-              header: "One",
+-              question: "First question?",
+-              isOther: true,
+-              options: [{ label: "A" }, { label: "B" }],
+-            },
+-          ],
+-        });
+-        yield SUCCESS_RESULT;
+-      });
++      await withGatewayToolCallerIdentity(currentCaller, () =>
++        withPluginRuntimeGatewayRequestScope(currentScope, () =>
++          runPlugin(context, async function* (execution) {
++            result = await withGatewayToolCallerIdentity(
++              { agentId: "foreign", sessionKey: "stale-question" },
++              () =>
++                withPluginRuntimeGatewayRequestScope({ isWebchatConnect: () => false }, () =>
++                  execution.requestUserInput({
++                    toolName: "AskUserQuestion",
++                    toolCallId: "claude-question",
++                    questions: [
++                      {
++                        id: "one",
++                        header: "One",
++                        question: "First question?",
++                        isOther: true,
++                        options: [{ label: "A" }, { label: "B" }],
++                      },
++                    ],
++                  }),
++                ),
++            );
++            yield SUCCESS_RESULT;
++          }),
++        ),
++      );
+ 
+       expect(result).toEqual(
+         revoked
+@@ -522,6 +547,101 @@ describe("plugin-owned CLI execution host boundary", () => {
      expect(mockCallGatewayTool).not.toHaveBeenCalled();
    });
  
@@ -838,7 +1085,7 @@ index e09dd73b517..da34807c4f3 100644
      const { context } = await createExecution({ nativeTools: ["Read"] });
      const decisions: CliBackendToolPermissionResult[] = [];
 diff --git a/src/agents/cli-runner/execute-plugin.ts b/src/agents/cli-runner/execute-plugin.ts
-index bab8eddd081..9121d4438df 100644
+index bab8eddd081..f28fb315867 100644
 --- a/src/agents/cli-runner/execute-plugin.ts
 +++ b/src/agents/cli-runner/execute-plugin.ts
 @@ -1,3 +1,4 @@
@@ -846,7 +1093,30 @@ index bab8eddd081..9121d4438df 100644
  import { stripSystemPromptCacheBoundary } from "@openclaw/ai/internal/shared";
  import { clampPositiveTimerTimeoutMs } from "@openclaw/normalization-core/number-coercion";
  import { isRecord } from "@openclaw/normalization-core/record-coerce";
-@@ -60,7 +61,11 @@ function createPluginToolPermissionHandler(params: {
+@@ -15,6 +16,10 @@ import type {
+   CliBackendUserInputRequest,
+   CliBackendUserInputResult,
+ } from "../../plugins/cli-backend.types.js";
++import {
++  getPluginRuntimeGatewayRequestScope,
++  withPluginRuntimeGatewayRequestScope,
++} from "../../plugins/runtime/gateway-request-scope.js";
+ import type { RunExit, TerminationReason } from "../../process/supervisor/types.js";
+ import {
+   recordAdjustedParamsForToolCall,
+@@ -30,6 +35,11 @@ import { resolveExecToolConfig } from "../lazy-exec-tool.js";
+ import { resolveReplyExpectation } from "../reply-completion.js";
+ import { recordAgentCleanupFailure } from "../run-cleanup-timeout.js";
+ import { resolveToolLoopDetectionConfig } from "../tool-loop-detection-config.js";
++import {
++  getGatewayToolCallerIdentity,
++  withGatewayToolCallerIdentity,
++  withoutGatewayToolCallerIdentity,
++} from "../tools/gateway-caller-context.js";
+ import {
+   restartCliLiveSession,
+   createCliLiveSessionCapability,
+@@ -60,7 +70,11 @@ function createPluginToolPermissionHandler(params: {
    env: NodeJS.ProcessEnv;
  }): (request: CliBackendToolPermissionRequest) => Promise<CliBackendToolPermissionResult> {
    const run = params.context.params;
@@ -858,7 +1128,7 @@ index bab8eddd081..9121d4438df 100644
      cfg: run.config,
      sessionEntry: run.sessionEntry,
      execOverrides: run.execOverrides,
-@@ -68,6 +73,12 @@ function createPluginToolPermissionHandler(params: {
+@@ -68,6 +82,12 @@ function createPluginToolPermissionHandler(params: {
      sessionKey: run.runtimePolicySessionKey ?? run.sessionKey,
    });
    const grants = new Set<string>();
@@ -871,7 +1141,7 @@ index bab8eddd081..9121d4438df 100644
  
    return async (request) => {
      const signal = request.abortSignal
-@@ -130,35 +141,45 @@ function createPluginToolPermissionHandler(params: {
+@@ -130,35 +150,45 @@ function createPluginToolPermissionHandler(params: {
        ...(run.senderId ? { senderId: run.senderId } : {}),
        ...(run.senderIsOwner !== undefined ? { senderIsOwner: run.senderIsOwner } : {}),
      };
@@ -946,7 +1216,7 @@ index bab8eddd081..9121d4438df 100644
      try {
        assertActive();
      } catch {
-@@ -204,13 +225,25 @@ function createPluginToolPermissionHandler(params: {
+@@ -204,13 +234,25 @@ function createPluginToolPermissionHandler(params: {
      }
  
      const plan = resolveCliNativeToolApprovalPlan(permission);
@@ -974,7 +1244,7 @@ index bab8eddd081..9121d4438df 100644
        assertActive();
        recordAdjustedParamsForToolCall(request.toolCallId, toolInput, run.runId);
        return { behavior: "allow", updatedInput: toolInput };
-@@ -238,7 +271,7 @@ function createPluginToolPermissionHandler(params: {
+@@ -238,7 +280,7 @@ function createPluginToolPermissionHandler(params: {
          },
          assertActive,
          abortSignal: signal,
@@ -983,9 +1253,37 @@ index bab8eddd081..9121d4438df 100644
        });
      } finally {
        params.onPendingApproval(-1);
-@@ -572,6 +605,9 @@ export async function executePluginOwnedProcess(params: {
+@@ -571,7 +613,37 @@ export async function executePluginOwnedProcess(params: {
+       params.mcpCapture?.beginCapture(params.mcpCapture.captureKey, assertCaptureCurrent);
      }
      assertCurrent();
++    // Pooled provider transports can call back from an earlier turn's async frame.
++    // Keep the admitted request's identity, registry and approval authority here.
++    const nativeRequestScope =
++      params.context.backendResolved.id === "claude-cli" &&
++      params.context.backendResolved.config.nativePermissionMode === "defer"
++        ? { isWebchatConnect: () => false, ...getPluginRuntimeGatewayRequestScope() }
++        : undefined;
++    const nativeCaller = nativeRequestScope ? getGatewayToolCallerIdentity() : undefined;
++    const withNativeRequestScope = <T>(invoke: () => Promise<T>): Promise<T> =>
++      nativeRequestScope
++        ? withoutGatewayToolCallerIdentity(() =>
++            withGatewayToolCallerIdentity(nativeCaller, () =>
++              withPluginRuntimeGatewayRequestScope(nativeRequestScope, invoke),
++            ),
++          )
++        : invoke();
++    const permissionHandler = createPluginToolPermissionHandler({
++      context: params.context,
++      abortSignal: signal,
++      onPendingApproval: updatePendingApproval,
++      env: params.env,
++    });
++    const userInputHandler = createPluginUserInputHandler({
++      context: params.context,
++      abortSignal: signal,
++      onPendingInput: updatePendingApproval,
++    });
      const execution = params.execute({
 +      ...(params.context.backendResolved.config.nativePermissionMode
 +        ? { nativePermissionMode: params.context.backendResolved.config.nativePermissionMode }
@@ -993,6 +1291,26 @@ index bab8eddd081..9121d4438df 100644
        command,
        argv0: params.executionArgv0,
        args: executionArgs,
+@@ -589,17 +661,8 @@ export async function executePluginOwnedProcess(params: {
+       ...(run.executionMode ? { executionMode: run.executionMode } : {}),
+       ...(run.cliToolAvailability ? { toolAvailability: run.cliToolAvailability } : {}),
+       ...(liveSession ? { liveSession } : {}),
+-      requestToolPermission: createPluginToolPermissionHandler({
+-        context: params.context,
+-        abortSignal: signal,
+-        onPendingApproval: updatePendingApproval,
+-        env: params.env,
+-      }),
+-      requestUserInput: createPluginUserInputHandler({
+-        context: params.context,
+-        abortSignal: signal,
+-        onPendingInput: updatePendingApproval,
+-      }),
++      requestToolPermission: (request) => withNativeRequestScope(() => permissionHandler(request)),
++      requestUserInput: (request) => withNativeRequestScope(() => userInputHandler(request)),
+     });
+     iterator = execution[Symbol.asyncIterator]();
+ 
 diff --git a/src/agents/cli-runner/execute.ts b/src/agents/cli-runner/execute.ts
 index 07ba2e88169..24ea5df03d3 100644
 --- a/src/agents/cli-runner/execute.ts
