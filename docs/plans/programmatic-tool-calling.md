@@ -104,8 +104,9 @@ and existing approval engine remain the agreed scope.
 Both patches and shared activation are implemented. The corrected artifact passes
 native Claude and Copilot checks for main and reader, including direct calls,
 scripts, and Claude continuations. The execution-scope correction passes review
-and 212 focused checks. The release manager has allocated DEV preparation. Rebase checks, a fresh
-qualification packet, real-provider measurements, TEST, and production checks remain.
+and 212 focused checks. The rebased candidate passes another 413 composed checks.
+The release manager has allocated staging and DEV preparation. The sealed qualification packet,
+real-provider measurements, TEST, and production checks remain.
 
 ## Agent section
 
@@ -115,9 +116,10 @@ Implementation owner is working in the isolated `codex/ptc-implementation`
 branch rebased onto public main `55403ba430b049867f329c8f1964991a08d7ffbe`.
 Coordinate with the release manager and preserve the existing harness restrictions.
 The staged DEV request is invalidated before its stop phase. The corrected local
-artifact is reviewed and passes native checks. The release manager has allocated the next DEV preparation. Refresh the staged
-artifact and qualification identities within that allocation; submit the sealed
-request for review before the single assigned DEV invocation.
+artifact is reviewed. Staging and local checks have a capacity allocation.
+Another qualified feature currently owns DEV. Refresh the target inputs after that
+allocation is released, then submit the sealed request for review before the single
+assigned DEV invocation.
 No feature deployment has occurred.
 
 ### Scope and acceptance criteria
@@ -247,7 +249,7 @@ expose no ambient host APIs. These deterministic probes do not measure real
 provider tokens or establish model quality.
 
 All 31 public patches apply cleanly, followed by the complete companion overlay;
-all 57 affected source files match the corrected prepared source. A bounded real-provider
+all 432 composed source paths match the rebased prepared source. A bounded real-provider
 comparison is prepared in the companion repository. The documented credential
 locator is unavailable locally, so that measurement awaits managed DEV access.
 No production qualification is claimed from local source or harness checks.
@@ -266,6 +268,17 @@ The corrected artifact passes fresh native Copilot (23.87s) and Claude (23.76s)
 probes with the same recorded operations and request counts described above.
 The old DEV packet cannot run; staging and qualification identities must be
 refreshed before managed DEV.
+
+After rebasing onto the accepted release, all 413 composed regressions pass across
+eight targets (383.67s). Core and declaration-portability typechecks, overlay and
+environment configuration checks, and required CI also pass. The application was
+rebuilt in place. A native Claude fixture exposed a cleanup race: detached CLI
+children could still write logs after the gateway exited. Fixture cleanup now
+waits for the captured child identities before removing their directory; this
+changes test infrastructure, not the application artifact. Fresh native Claude
+(28.17s) and Copilot (26.48s) checks pass with the same exact operations and request
+counts. The detached-writer regression also verifies bounded failure and process
+identity checks.
 
 ### Checklist
 
