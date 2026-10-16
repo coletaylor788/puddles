@@ -101,10 +101,11 @@ activation for all tool-enabled agents, validation, deployment, merge, and clean
 The contained-runtime boundary, native harnesses, scoped reads, direct tools,
 and existing approval engine remain the agreed scope.
 
-Both patches and the shared activation are implemented. Native MCP and CLI
-regressions pass, including mixed direct/script scheduling. Installed harness
-checks and benefit measurements remain delivery gates. Shared release coordination controls DEV
-allocation, TEST, production, and source merge.
+Both patches and shared activation are implemented and independently reviewed.
+The rebuilt application passes native Claude and Copilot checks for main and
+reader agents, including retained direct tools and scripted calls. Real-provider
+token measurements and managed DEV, TEST, and production checks remain. The
+release manager controls shared deployment allocation and paired source merge.
 
 ## Agent section
 
@@ -223,17 +224,26 @@ Current local evidence:
   in 96.96s. Earlier scoped-reader and port regressions also passed.
 - The native callback correction passed 38 focused regressions and 21 embedded
   refresh integration tests. Adapter fixtures passed another 41 checks.
-- Core source typecheck passed before the callback correction. The existing port-range helper needed a tuple
-  narrowing after its runtime validation; that correction stays in its original
-  maintained patch and changes no behavior.
+- Final core source typecheck passed. Optional broad test typechecks have
+  unrelated baseline errors; all feature diagnostics were corrected. The existing
+  port-range helper needed a tuple narrowing after runtime validation; that
+  correction stays in its original maintained patch and changes no behavior.
 - Both public patches apply to the clean pinned source, followed by the complete
   companion overlay. Patch order and regression registration: 9 passed.
 
-The frozen local application build passed after source corrections. The final
-patch stack composes with the companion overlay and matches the affected
-source files. The callback correction requires an incremental rebuild and fresh
-native probes; no production qualification
-is claimed from source checks.
+The rebuilt application passes real native harness probes with local scripted
+providers and recording tools. For both main and reader, Copilot uses three model
+requests for direct calls and two for one script (8 exact recorded operations).
+Claude uses three for direct, two for one script, and three when explicitly
+yielding and resuming (12 exact operations). Both preserve restrictions and
+expose no ambient host APIs. These deterministic probes do not measure real
+provider tokens or establish model quality.
+
+All 31 public patches apply cleanly, followed by the complete companion overlay;
+all 55 affected source files match the built source. A bounded real-provider
+comparison is prepared in the companion repository. The documented credential
+locator is unavailable locally, so that measurement awaits managed DEV access.
+No production qualification is claimed from local source or harness checks.
 
 ### Checklist
 
