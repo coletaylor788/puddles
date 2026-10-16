@@ -17,7 +17,7 @@ harness or a custom file-editing layer.
 ```mermaid
 flowchart TB
     OC["OpenClaw conversation and agent"] --> CC["Claude Code with subscription login"]
-    CC -->|"Main and Household"| Native["Native tools with agent workspace and approvals"]
+    CC -->|"Main, Household and Debug"| Native["Native tools with agent workspace and approvals"]
     CC -->|"Restricted specialists"| MCP["Permitted OpenClaw tools through MCP"]
     Native -->|"Service and session tools"| MCP
     MCP --> Docker["Existing Docker filesystem and shell tools"]
@@ -42,7 +42,7 @@ Reader instructions and its independently delivered policy changes remain intact
 |---|---|
 | Main | Native Claude tools plus permitted OpenClaw tools |
 | Household | Native Claude tools plus its own permitted OpenClaw tools |
-| Debug, if migrated | Native candidate; retain its existing diagnostic permissions and exclusions |
+| Debug | Native Claude tools; retain its existing diagnostic permissions and exclusions |
 | Reader and Household Reader | Restricted OpenClaw tools |
 | Browser Agent and Household Browser Agent | Restricted OpenClaw tools and existing browser isolation |
 | Wiki Maintainer | Restricted OpenClaw tools, including controlled wiki mutation tools |
@@ -122,7 +122,8 @@ avoid a small necessary integration change.
 **Approval reference:** The requester approved implementation and shipping on
 2026-10-15, then agreed to native Main and Household, restricted specialists and
 explicitly approved write exceptions, and requested this proposal update.
-Debug migration remains conditional. Haiku remains scoped to Reader and
+Debug is included in the native migration with its existing diagnostic access.
+Haiku remains scoped to Reader and
 active-memory recall. The current request updates documentation, not production.
 
 Source investigation and bounded probes support the approval behavior and the
@@ -143,9 +144,9 @@ Refresh exact source/runtime compatibility before implementation. Coordinate any
 
 ### Scope and acceptance criteria
 
-- Native Main and Household, each with its own workspace and scoped MCP tools.
+- Native Main, Household and Debug, each with its own access policy and scoped MCP tools.
 - Restricted Reader, Browser, Wiki Maintainer, Household Reader, Household Browser
-  and active-memory recall. Debug is a native candidate only if migrated.
+  and active-memory recall. Preserve Debug's existing diagnostic exception.
 - Haiku only for Reader and active-memory recall; preserve other overrides.
 - No unapproved outside-workspace native writes. Preserve denials and service guards.
 - Preserve empty/per-run tool caps, delegation, reader framing and history provenance.
@@ -178,7 +179,7 @@ catalogs and execution environments explicit in installed checks.
 
 ### Implementation
 
-Qualify native Main and Household using the existing launcher, approval flow and
+Qualify native Main, Household and Debug using the existing launcher, approval flow and
 trusted sandbox settings. Select the existing exact-cap path for specialists;
 keep their OpenClaw tools, Docker execution and service grants unchanged.
 
@@ -213,7 +214,7 @@ Claude docs provide `onFailure: "block"` from 2.1.295; that option was not teste
 Withdraw the claim that the probe rules out all hooks. No path-checking hook is
 required merely to use OpenClaw's existing human approval flow.
 
-Register executable regressions during implementation. Exercise both native roles,
+Register executable regressions during implementation. Exercise all three native roles,
 all restricted roles, both session tools, recall, cron, resume and restart. Require
 no write before approval and no write after deny, timeout or offline delivery.
 Test full-mode overrides, standing grants, settings changes, sibling roots,
@@ -229,7 +230,7 @@ Sources: [pinned CLI contract](https://github.com/openclaw/openclaw/blob/eb377ac
 
 ### Rollout and rollback
 
-Qualify Main first, then Household and specialists, before enabling their routes.
+Qualify Main first, then Household, Debug and specialists, before enabling their routes.
 Start at idle boundaries and retain conversation records. Release through the
 existing pipeline with tested artifacts and rollback. Rollback restores routing
 and policy without deleting sessions. A failed native boundary test leaves the
@@ -248,7 +249,7 @@ Source probes and design review do not count as gateway or production acceptance
 
 - [x] Record delivery approval, native login and disabled Extra usage.
 - [x] Investigate native restrictions, automatic approvals and standing grants.
-- [x] Agree native Main/Household and restricted specialist split.
+- [x] Agree native Main/Household/Debug and restricted specialist split.
 - [ ] Qualify actual workspace bounds, approval delivery and role selection.
 - [ ] Qualify Opus, Reader/recall Haiku, quality and context continuity.
 - [ ] Implement only demonstrated missing connections with regression coverage.
