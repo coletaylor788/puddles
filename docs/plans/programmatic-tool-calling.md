@@ -1,8 +1,8 @@
 # Programmatic tool calls through OpenClaw
 
-Status: Proposed; source audit complete
+Status: Production approved; implementation in progress
 Issue: [#304](https://github.com/coletaylor788/puddles/issues/304)
-Last updated: 2026-10-15
+Last updated: 2026-10-16
 
 ## Human section
 
@@ -95,23 +95,24 @@ interruption. Continuations remain transient and cannot survive Gateway restart.
 
 ### Status
 
-**Approval: Proposed.** The requester authorized the audit, design, and publication;
-required all agents, both native harnesses, and retained direct calls; and chose
-contained scripting without OS isolation. Authorized skill reads remain in
-scope, and approvals use the existing engine. Implementation and deployment
-remain unapproved.
+**Approval: Production approved.** **Approval reference:** the requester said
+“Approved, implement and ship” on 2026-10-16. This approves the two patches,
+activation for all tool-enabled agents, validation, deployment, merge, and cleanup.
+The contained-runtime boundary, native harnesses, scoped reads, direct tools,
+and existing approval engine remain the agreed scope.
 
-The source audit is complete and the required changes are specified below.
-Installed integration tests and benefit measurements are implementation gates.
-No runtime or tool configuration has changed.
+Both patches and the shared activation are implemented. Native MCP and CLI
+regressions pass, including mixed direct/script scheduling. Installed harness
+checks and benefit measurements remain delivery gates. Shared release coordination controls DEV
+allocation, TEST, production, and source merge.
 
 ## Agent section
 
 ### State
 
-Documentation only. The proposal now specifies implementation rather than
-leaving bridge policy or adapter design to a later investigation. Coordinate
-with the existing harness work through its landed source and restrictions.
+Implementation owner is working in the isolated `codex/ptc-implementation`
+branch from public main `575ebf0df70b1d3d4fc25aafa51291276460b871`.
+Coordinate with the release manager and preserve the existing harness restrictions.
 
 ### Scope and acceptance criteria
 
@@ -146,7 +147,7 @@ existing execution engine.
 
 ### Implementation
 
-After approval, deliver two maintained upstream patches and companion activation:
+Deliver two maintained upstream patches and companion activation:
 
 1. **Shared additive surface.** Add `tools.codeMode.surface: "additive"` with
    existing compact behavior as the upstream default. Register the caller's
@@ -195,7 +196,7 @@ possible runtime vulnerability.
 ### Rollout and rollback
 
 Follow the [application lifecycle](../../packages/e2e/README.md) and
-[release coordination](../../packages/e2e/DEPLOYMENT_COORDINATION.md) after approval:
+[release coordination](../../packages/e2e/DEPLOYMENT_COORDINATION.md) within the approved scope:
 DEV, independent review, full application gate, TEST, and managed production
 promotion. Production checks remain read-only.
 
@@ -206,16 +207,39 @@ over new live writes. Finalize owned resources after publication and recovery ch
 ### Review log
 
 Completed source and dependency audit plus isolated engine/controller probes.
-The required patches address compact-only projection and missing Claude wiring.
-Scoped skill reads and existing helper checks are retained. Existing approval
-and lifecycle behavior is reused. No production qualification or independent
-implementation review is claimed.
+The retained independent review covered the complete implementation. Corrections
+preserve single hook execution, finalized script arguments, delivered skill
+readers, direct client tools, and scheduling shared by direct and scripted calls.
+The scheduling fix also covers the embedded runner's prepared execution path.
+A real native Copilot probe exposed stale callback context; script controls now
+restore their captured plugin-refresh owner and still reject retired owners.
+The retained reviewer cleared the source and both patch exports. Its two test
+registration corrections are included in the cumulative suite.
+
+Current local evidence:
+
+- MCP, transport, and CLI preparation/skill regressions: 190 passed.
+- Final shared, scheduling, direct/client, and Copilot regressions: 245 passed
+  in 96.96s. Earlier scoped-reader and port regressions also passed.
+- The native callback correction passed 38 focused regressions and 21 embedded
+  refresh integration tests. Adapter fixtures passed another 41 checks.
+- Core source typecheck passed before the callback correction. The existing port-range helper needed a tuple
+  narrowing after its runtime validation; that correction stays in its original
+  maintained patch and changes no behavior.
+- Both public patches apply to the clean pinned source, followed by the complete
+  companion overlay. Patch order and regression registration: 9 passed.
+
+The frozen local application build passed after source corrections. The final
+patch stack composes with the companion overlay and matches the affected
+source files. The callback correction requires an incremental rebuild and fresh
+native probes; no production qualification
+is claimed from source checks.
 
 ### Checklist
 
 - [x] Complete source/dependency audit and bounded capability probes.
 - [x] Specify additive projection, retained scoped capabilities, and Claude integration.
-- [ ] Obtain implementation approval.
+- [x] Obtain implementation and production approval.
 - [ ] Implement both patches and activation; add durable regressions.
 - [ ] Verify both native harnesses and all agent roles.
 - [ ] Complete review, release gates, source merge, and cleanup.

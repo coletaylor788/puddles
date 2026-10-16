@@ -1169,7 +1169,7 @@ diff --git a/src/test-utils/ports.ts b/src/test-utils/ports.ts
      return (hostPortPool.value = {
        ranges: [{ start: 30_000, end: 64_999 }],
        excludesEphemeral: false,
-@@ -36,15 +38,24 @@
+@@ -36,15 +38,26 @@
    }
    let raw: string;
    try {
@@ -1197,7 +1197,7 @@ diff --git a/src/test-utils/ports.ts b/src/test-utils/ports.ts
    }
    // A probe is not a lease: startup's outbound sockets can claim its port and
    // leave TIME_WAIT behind before the listener binds. Keep test listeners out
-@@ -213,7 +224,7 @@
+@@ -213,7 +226,7 @@
      return start;
    }
  
