@@ -105,8 +105,10 @@ Both patches and shared activation are implemented. The corrected artifact passe
 native Claude and Copilot checks for main and reader, including direct calls,
 scripts, and Claude continuations. The execution-scope correction passes review
 and 212 focused checks. The rebased candidate passes another 413 composed checks.
-The release manager has allocated staging and DEV preparation. The sealed qualification packet,
-real-provider measurements, TEST, and production checks remain.
+Managed DEV passed startup, configuration, and both native harness probes. Its
+real-provider collector failed because the headless test omitted an explicit tool
+profile. That fixture defect is reproduced and corrected locally. A fresh DEV
+qualification, real-provider measurements, TEST, and production checks remain.
 
 ## Agent section
 
@@ -115,12 +117,12 @@ real-provider measurements, TEST, and production checks remain.
 Implementation owner is working in the isolated `codex/ptc-implementation`
 branch rebased onto public main `55403ba430b049867f329c8f1964991a08d7ffbe`.
 Coordinate with the release manager and preserve the existing harness restrictions.
-The staged DEV request is invalidated before its stop phase. The corrected local
-artifact is reviewed. Staging and local checks have a capacity allocation.
-Another qualified feature currently owns DEV. Refresh the target inputs after that
-allocation is released, then submit the sealed request for review before the single
-assigned DEV invocation.
-No feature deployment has occurred.
+The first managed DEV attempt passed startup and both native harness probes, then
+failed its real-provider collector before any fixture effect. The failed candidate
+was stopped under the native DEV lock; intake remains held and evidence is
+preserved. The feature is outside the release queue. The collector correction
+needs published checks and a fresh reviewed qualification request. Do not replay
+the consumed request. No TEST or production deployment has occurred.
 
 ### Scope and acceptance criteria
 
@@ -279,6 +281,22 @@ changes test infrastructure, not the application artifact. Fresh native Claude
 (28.17s) and Copilot (26.48s) checks pass with the same exact operations and request
 counts. The detached-writer regression also verifies bounded failure and process
 identity checks.
+
+Managed DEV passed stop, preparation, startup, health, configuration, and installed
+Copilot (13.76s) and Claude (16.05s) probes. The first real-provider direct case
+returned without tool calls. An offline headless reproduction showed that
+`agent exec` defaults to the coding profile, which excluded the fixture tools.
+The collector now sets an explicit fixture profile while retaining both exact
+tool allowlists. The installed regression reproduces the failure and passes all
+four corrected main/reader direct/script cases (34.69s). Five collector checks
+pass. Failed attempts retain redacted final output, offered tools, calls, and
+recorded effects. The application artifact is unchanged.
+
+The failed DEV candidate was stopped through the maintained stop operation under
+the installed DEV lock. Both listeners and all owned writers were absent; the
+candidate, configuration, held intake, and consumed request evidence remain.
+DEV ownership was released. A fresh real-provider attempt requires a new reviewed
+request and allocation.
 
 ### Checklist
 
