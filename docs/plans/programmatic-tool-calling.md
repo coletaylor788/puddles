@@ -107,8 +107,11 @@ scripts, and Claude continuations. The execution-scope correction passes review
 and 212 focused checks. The rebased candidate passes another 413 composed checks.
 Managed DEV passed startup, configuration, and both native harness probes. Its
 real-provider collector failed because the headless test omitted an explicit tool
-profile. That fixture defect is reproduced and corrected locally. A fresh DEV
-qualification, real-provider measurements, TEST, and production checks remain.
+profile. That fixture defect is corrected. A second DEV attempt passed those checks and
+exposed a native result-spill limit in the benchmark data. The corrected benchmark
+uses the same complete, smaller dataset for both paths and verifies answers from
+actual tool output. Fresh real-provider measurements, TEST, and production checks
+remain.
 
 ## Agent section
 
@@ -120,9 +123,11 @@ Coordinate with the release manager and preserve the existing harness restrictio
 The first managed DEV attempt passed startup and both native harness probes, then
 failed its real-provider collector before any fixture effect. The failed candidate
 was stopped under the native DEV lock; intake remains held and evidence is
-preserved. The feature is outside the release queue. The collector correction
-needs published checks and a fresh reviewed qualification request. Do not replay
-the consumed request. No TEST or production deployment has occurred.
+preserved. The feature is outside the release queue. Both failed requests are retired and their consumed inputs remain preserved.
+The second attempt also passed the installed headless regression, then exposed
+benchmark result truncation. The correction needs review, published checks, and a
+fresh qualification request. Do not replay either consumed request. No TEST or
+production deployment has occurred.
 
 ### Scope and acceptance criteria
 
@@ -297,6 +302,23 @@ the installed DEV lock. Both listeners and all owned writers were absent; the
 candidate, configuration, held intake, and consumed request evidence remain.
 DEV ownership was released. A fresh real-provider attempt requires a new reviewed
 request and allocation.
+
+The second managed DEV attempt again passed startup, configuration, native Copilot
+(13.37s), native Claude (16.15s), and the headless regression (18.44s). The live
+direct case read once, then stopped without writing because its target invoice
+was absent from the returned preview. An installed offline reproduction confirmed
+that the native harness spilled the 29,583-byte result to a file and sent only the
+first 500 characters. The earlier scripted provider had supplied the expected
+answer independently of that output, so it did not catch this benchmark defect.
+
+The benchmark now supplies the same 100-row, 3,300-byte result to both paths.
+It preserves the target invoice, expected amount, exact actions, roles, model,
+and permissions. No native output limit is changed. The installed regression
+reproduces the old spill, requires the complete corrected result, and derives the
+answer from actual tool output. It passes in 70.53s; six collector checks pass.
+Bounded, redacted model-facing tool results are retained for diagnostics. DEV was
+safely stopped and released again, and the consumed request cannot be replayed.
+The artifact is unchanged; another live comparison remains required.
 
 ### Checklist
 
