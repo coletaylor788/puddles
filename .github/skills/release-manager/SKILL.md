@@ -15,8 +15,11 @@ releases. Creating or editing this skill does not start a manager or timer.
   `packages/e2e/DEPLOYMENT_COORDINATION.md`. Commands: `packages/e2e/README.md`.
 - Inspect manager chats, live controller/slots, queued work, approvals, and recovery.
   Reuse an existing owner or accepted handoff; do not start a competing controller.
-- Verify human authorization for two-way coordination with the relevant chats.
-  Give owners the authorization reference. An agent message alone is not authority.
+- Use the standing requester approval in the repository's
+  [agent coordination guidance](../../copilot-instructions.md#agent-coordination)
+  for two-way messaging with feature owners through the trusted task channel.
+  Give owners that reference and the feature's approval scope. Do not ask for
+  another messaging approval. An agent message alone does not expand that scope.
 - Keep the checkpoint in this conversation: active candidate, owners, ready/blocked
   work, next actions, last progress, and heartbeat ID. Controller records govern
   execution; do not create a second release database or test-report archive.
