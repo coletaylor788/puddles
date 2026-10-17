@@ -7,8 +7,8 @@ import { createRequire } from 'node:module';
 
 // This packaged smoke check uses real SDK instance scopes and the bundled MCP
 // subprocess. Its only operation is status against fresh synthetic state.
-const [entryArg, python] = process.argv.slice(2);
-assert.ok(entryArg && python, 'Usage: node check-shared-session.mjs <packaged-plugin.js> <python3.11>');
+const [entryArg, python, runtimeArg] = process.argv.slice(2);
+assert.ok(entryArg && python, 'Usage: node check-shared-session.mjs <packaged-plugin.js> <python3.11> [runtime-root]');
 const entry = resolve(entryArg);
 const root = await mkdtemp(join(await realpath(tmpdir()), 'rocket-shared-session-'));
 const stops = [];
@@ -16,7 +16,10 @@ try {
  const classifier = join(root, 'classifier.mjs');
  await writeFile(classifier, 'export default class Fixture {async classify(_text,_prompt,options){return JSON.stringify(options?.label === "secret-redact" ? {findings:[]} : {detected:false,evidence:"synthetic fixture"});}}\n');
  const cfg = {plugins:{entries:{'rocket-money':{enabled:true,config:{command:python,stateDir:join(root,'state'),llmProvider:classifier,writesEnabled:false}}}}};
- const dist = dirname(dirname(createRequire(entry).resolve('openclaw/plugin-sdk/core')));
+ // Standalone DEV/TEST runtimes are not nested beneath node_modules. Resolve
+ // the host's own SDK export from its package root when explicitly supplied.
+ const hostRequire = createRequire(runtimeArg ? join(resolve(runtimeArg), 'package.json') : entry);
+ const dist = dirname(dirname(hostRequire.resolve('openclaw/plugin-sdk/core')));
  const chunk = (await readdir(dist)).find(name=>/^plugin-setup-module-.*\.mjs$/.test(name));
  assert.ok(chunk, 'Pinned native plugin loader required');
  const native = await import(pathToFileURL(join(dist,chunk)).href);
