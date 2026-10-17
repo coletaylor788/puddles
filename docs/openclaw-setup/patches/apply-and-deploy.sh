@@ -43,6 +43,8 @@ PATCHES=(
   wiki-get-mutation-metadata
   untrusted-agent-results
   talk-request-recovery
+  code-mode-additive-surface
+  claude-code-mode-mcp
 )
 
 if [ -n "${MINI_HOST:-}" ]; then

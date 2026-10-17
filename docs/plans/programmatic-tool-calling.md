@@ -1,8 +1,8 @@
 # Programmatic tool calls through OpenClaw
 
-Status: Proposed; source audit complete
+Status: Production approved; implementation in progress
 Issue: [#304](https://github.com/coletaylor788/puddles/issues/304)
-Last updated: 2026-10-15
+Last updated: 2026-10-16
 
 ## Human section
 
@@ -95,23 +95,42 @@ interruption. Continuations remain transient and cannot survive Gateway restart.
 
 ### Status
 
-**Approval: Proposed.** The requester authorized the audit, design, and publication;
-required all agents, both native harnesses, and retained direct calls; and chose
-contained scripting without OS isolation. Authorized skill reads remain in
-scope, and approvals use the existing engine. Implementation and deployment
-remain unapproved.
+**Approval: Production approved.** **Approval reference:** the requester said
+“Approved, implement and ship” on 2026-10-16. This approves the two patches,
+activation for all tool-enabled agents, validation, deployment, merge, and cleanup.
+The contained-runtime boundary, native harnesses, scoped reads, direct tools,
+and existing approval engine remain the agreed scope.
 
-The source audit is complete and the required changes are specified below.
-Installed integration tests and benefit measurements are implementation gates.
-No runtime or tool configuration has changed.
+Both patches and shared activation are implemented. The corrected artifact passes
+native Claude and Copilot checks for main and reader, including direct calls,
+scripts, and Claude continuations. The execution-scope correction passes review
+and 212 focused checks. The rebased candidate passes another 413 composed checks.
+Managed DEV passed startup, configuration, and both native harness probes. Its
+real-provider collector failed because the headless test omitted an explicit tool
+profile. That fixture defect is corrected. A second DEV attempt passed those checks and
+exposed a native result-spill limit in the benchmark data. The corrected benchmark
+uses the same complete, smaller dataset for both paths and verifies answers from
+actual tool output. The branches now include the released Media feature. The rebuilt candidate preserves
+its exact accepted image and skill. Fresh real-provider measurements,
+TEST, and production checks remain.
 
 ## Agent section
 
 ### State
 
-Documentation only. The proposal now specifies implementation rather than
-leaving bridge policy or adapter design to a later investigation. Coordinate
-with the existing harness work through its landed source and restrictions.
+Implementation owner is working in the isolated `codex/ptc-implementation`
+branch rebased onto public main `9c8b0c9e2a3e130f8818aa21235cde4151c6ce56`.
+Coordinate with the release manager and preserve the existing harness restrictions.
+The first managed DEV attempt passed startup and both native harness probes, then
+failed its real-provider collector before any fixture effect. The failed candidate
+was stopped under the native DEV lock; intake remains held and evidence is
+preserved. The feature is outside the release queue. Both failed requests are retired and their consumed inputs remain preserved.
+The second attempt also passed the installed headless regression, then exposed
+benchmark result truncation. The correction passed retained review, focused tests, and published checks.
+The Media rebase requires refreshed packaging, installed proofs, and a fresh
+qualification request. Preserve its accepted image, skill, and maintained stop
+adapter. Do not replay either consumed request. No TEST or production deployment
+has occurred.
 
 ### Scope and acceptance criteria
 
@@ -146,7 +165,7 @@ existing execution engine.
 
 ### Implementation
 
-After approval, deliver two maintained upstream patches and companion activation:
+Deliver two maintained upstream patches and companion activation:
 
 1. **Shared additive surface.** Add `tools.codeMode.surface: "additive"` with
    existing compact behavior as the upstream default. Register the caller's
@@ -162,7 +181,9 @@ After approval, deliver two maintained upstream patches and companion activation
    advertise controls separately after prompt-policy filtering. Route nested
    calls through the MCP dispatcher's existing prepare/hook/authorize/execute/
    result sequence, extracting a shared helper where needed. Return guarded raw
-   results to Code Mode before MCP serialization. Retain the shared runtime
+   results to Code Mode before MCP serialization. Freeze the original tool
+   construction choices in host-owned grant context, separately from callable
+   names, so node-only execution cannot become gateway execution. Retain the shared runtime
    between execution and wait calls, outside the short schema cache, and connect
    grant replacement and task completion to its existing disposal and abort
    hooks. Reuse approval waits and scheduling without locking the outer control
@@ -172,6 +193,11 @@ After approval, deliver two maintained upstream patches and companion activation
    restrictions and routing. Do not alter another owner's harness worktree.
 
 ### Validation
+
+After the Media rebase, all three native installed tests pass (89.90s total):
+Claude direct/script/continuation, Copilot direct/script, and the headless
+benchmark regression. Installed Media acceptance also passes. The accepted image
+and skill are unchanged, and the core build reused its existing inputs.
 
 Audit evidence: verified npm tarball integrity; enumerated actual engine and
 encoding WASM imports; read all 15 bridge handlers and their downstream paths.
@@ -195,7 +221,7 @@ possible runtime vulnerability.
 ### Rollout and rollback
 
 Follow the [application lifecycle](../../packages/e2e/README.md) and
-[release coordination](../../packages/e2e/DEPLOYMENT_COORDINATION.md) after approval:
+[release coordination](../../packages/e2e/DEPLOYMENT_COORDINATION.md) within the approved scope:
 DEV, independent review, full application gate, TEST, and managed production
 promotion. Production checks remain read-only.
 
@@ -206,17 +232,109 @@ over new live writes. Finalize owned resources after publication and recovery ch
 ### Review log
 
 Completed source and dependency audit plus isolated engine/controller probes.
-The required patches address compact-only projection and missing Claude wiring.
-Scoped skill reads and existing helper checks are retained. Existing approval
-and lifecycle behavior is reused. No production qualification or independent
-implementation review is claimed.
+The retained independent review covered the complete implementation. Corrections
+preserve single hook execution, finalized script arguments, delivered skill
+readers, direct client tools, and scheduling shared by direct and scripted calls.
+The scheduling fix also covers the embedded runner's prepared execution path.
+A real native Copilot probe exposed stale callback context; script controls now
+restore their captured plugin-refresh owner and still reject retired owners.
+The retained reviewer cleared the source and both patch exports. Its two test
+registration corrections are included in the cumulative suite.
+
+Current local evidence:
+
+- MCP, transport, and CLI preparation/skill regressions: 190 passed.
+- Final shared, scheduling, direct/client, and Copilot regressions: 245 passed
+  in 96.96s. Earlier scoped-reader and port regressions also passed.
+- The native callback correction passed 38 focused regressions and 21 embedded
+  refresh integration tests. Adapter fixtures passed another 41 checks.
+- Final core source typecheck passed. Optional broad test typechecks have
+  unrelated baseline errors; all feature diagnostics were corrected. The existing
+  port-range helper needed a tuple narrowing after runtime validation; that
+  correction stays in its original maintained patch and changes no behavior.
+- Both public patches apply to the clean pinned source, followed by the complete
+  companion overlay. Patch order and regression registration: 9 passed.
+
+The rebuilt application passes real native harness probes with local scripted
+providers and recording tools. For both main and reader, Copilot uses three model
+requests for direct calls and two for one script (8 exact recorded operations).
+Claude uses three for direct, two for one script, and three when explicitly
+yielding and resuming (12 exact operations). Both preserve restrictions and
+expose no ambient host APIs. These deterministic probes do not measure real
+provider tokens or establish model quality.
+
+All 31 public patches apply cleanly, followed by the complete companion overlay;
+all 432 composed source paths match the rebased prepared source. A bounded real-provider
+comparison is prepared in the companion repository. The documented credential
+locator is unavailable locally, so that measurement awaits managed DEV access.
+No production qualification is claimed from local source or harness checks.
+
+A subsequent review with the Claude profile owner found an execution-scope defect
+in the prepared MCP grant. An uncapped catalog can contain node-only `exec`.
+Freezing that name into `toolsAllow` causes the existing exact-cap resolver to
+construct ordinary mediated `exec` instead. The correction freezes the original
+mediation selection separately in host-owned grant context. Preparation-to-grant
+regressions verify direct and scripted node execution, rejected gateway overrides,
+unavailable nodes, and unchanged explicitly mediated execution. All 212 focused
+checks pass (19.07s for 203 gateway checks, 14.39s for nine preparation checks).
+The retained reviewer cleared the correction. Core and declaration-portability
+type checks pass, as do nine public registration and 21 companion overlay checks.
+The corrected artifact passes fresh native Copilot (23.87s) and Claude (23.76s)
+probes with the same recorded operations and request counts described above.
+The old DEV packet cannot run; staging and qualification identities must be
+refreshed before managed DEV.
+
+After rebasing onto the accepted release, all 413 composed regressions pass across
+eight targets (383.67s). Core and declaration-portability typechecks, overlay and
+environment configuration checks, and required CI also pass. The application was
+rebuilt in place. A native Claude fixture exposed a cleanup race: detached CLI
+children could still write logs after the gateway exited. Fixture cleanup now
+waits for the captured child identities before removing their directory; this
+changes test infrastructure, not the application artifact. Fresh native Claude
+(28.17s) and Copilot (26.48s) checks pass with the same exact operations and request
+counts. The detached-writer regression also verifies bounded failure and process
+identity checks.
+
+Managed DEV passed stop, preparation, startup, health, configuration, and installed
+Copilot (13.76s) and Claude (16.05s) probes. The first real-provider direct case
+returned without tool calls. An offline headless reproduction showed that
+`agent exec` defaults to the coding profile, which excluded the fixture tools.
+The collector now sets an explicit fixture profile while retaining both exact
+tool allowlists. The installed regression reproduces the failure and passes all
+four corrected main/reader direct/script cases (34.69s). Five collector checks
+pass. Failed attempts retain redacted final output, offered tools, calls, and
+recorded effects. The application artifact is unchanged.
+
+The failed DEV candidate was stopped through the maintained stop operation under
+the installed DEV lock. Both listeners and all owned writers were absent; the
+candidate, configuration, held intake, and consumed request evidence remain.
+DEV ownership was released. A fresh real-provider attempt requires a new reviewed
+request and allocation.
+
+The second managed DEV attempt again passed startup, configuration, native Copilot
+(13.37s), native Claude (16.15s), and the headless regression (18.44s). The live
+direct case read once, then stopped without writing because its target invoice
+was absent from the returned preview. An installed offline reproduction confirmed
+that the native harness spilled the 29,583-byte result to a file and sent only the
+first 500 characters. The earlier scripted provider had supplied the expected
+answer independently of that output, so it did not catch this benchmark defect.
+
+The benchmark now supplies the same 100-row, 3,300-byte result to both paths.
+It preserves the target invoice, expected amount, exact actions, roles, model,
+and permissions. No native output limit is changed. The installed regression
+reproduces the old spill, requires the complete corrected result, and derives the
+answer from actual tool output. It passes in 70.53s; six collector checks pass.
+Bounded, redacted model-facing tool results are retained for diagnostics. DEV was
+safely stopped and released again, and the consumed request cannot be replayed.
+The artifact is unchanged; another live comparison remains required.
 
 ### Checklist
 
 - [x] Complete source/dependency audit and bounded capability probes.
 - [x] Specify additive projection, retained scoped capabilities, and Claude integration.
-- [ ] Obtain implementation approval.
-- [ ] Implement both patches and activation; add durable regressions.
+- [x] Obtain implementation and production approval.
+- [x] Implement both patches and activation; add durable regressions.
+- [x] Correct and verify preserved execution scope when freezing MCP grants.
 - [ ] Verify both native harnesses and all agent roles.
 - [ ] Complete review, release gates, source merge, and cleanup.
 
