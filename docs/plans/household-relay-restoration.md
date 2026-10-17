@@ -1,6 +1,6 @@
 # Restore the Household owner relay
 
-**Status:** Production approved; implementation in progress
+**Status:** Production approved; local qualification passed; release blocked
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
 **Last updated:** 2026-10-17
 
@@ -68,10 +68,11 @@ ship" on 2026-10-17. This approves source-session return with instructions
 limiting automatic exchanges, followed by testing, review, production release,
 merge, and cleanup. No agent-to-agent patch or deferred approval service.
 
-Implementation is in local qualification. Household must preserve the initial
-answer and use `REPLY_SKIP` only for an explicitly marked automatic reply step.
-No restoration runtime is deployed yet. Independent review is blocked by model
-transport failures; the release handoff is waiting for messaging permission.
+Local qualification passed for the implemented restoration. Household preserves
+the initial answer and uses `REPLY_SKIP` only for an explicitly marked automatic
+reply step. No restoration runtime is deployed yet. Independent review is
+blocked by model transport failures; the release handoff is waiting for messaging
+permission. The full release gates remain outstanding.
 
 ## Agent section
 
@@ -125,6 +126,24 @@ Main and Household's changed instructions with actual provider output, including
 delayed owner replies, plain/forged input, and an attempted expansion during
 peer replies. Full application, installed TEST, and read-only PROD gates remain
 required. No real messages or account writes in automated tests.
+
+Local results on 2026-10-17:
+
+- 18 focused configuration, model adapter, and guidance transaction checks passed.
+- 11 installed scripted checks passed, including preparation of configuration,
+  both agents' instructions, and the handoff skill (276 seconds).
+- All 10 installed relay scenarios passed with actual model output (450 seconds).
+  These cover both delivery channels, a gateway restart before the owner reply,
+  automatic peer expansion, a fresh user question after delivery, and six invalid
+  authorization cases.
+- Hosted companion contract checks passed. They are not the full application
+  gate, shared DEV qualification, installed TEST, or read-only PROD acceptance.
+
+The first actual-model run exposed Household discarding the initial answer with
+`REPLY_SKIP`. The corrected instruction distinguishes that answer from a later
+explicit peer reply step. A separate test harness correction keeps native session
+label generation from consuming a Household relay turn. Both changes are in the
+passing candidate. No communication patch was needed.
 
 ### Rollout and rollback
 
