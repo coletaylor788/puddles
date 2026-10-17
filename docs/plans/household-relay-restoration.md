@@ -71,16 +71,17 @@ merge, and cleanup. No agent-to-agent patch or deferred approval service.
 Local qualification passed for the implemented restoration. Household preserves
 the initial answer and uses `REPLY_SKIP` only for an explicitly marked automatic
 reply step. No restoration runtime is deployed yet. Independent review is
-blocked by model transport failures; the release handoff is waiting for messaging
-permission. The full release gates remain outstanding.
+blocked by model transport failures. The requester explicitly authorized release
+coordination, and the release manager has received the candidate and passing
+evidence. The full release gates remain outstanding.
 
 ## Agent section
 
 ### State
 
 Public branch: `codex/restore-household-owner-relay`. A separately isolated
-companion worktree uses the same branch. No release ticket or shared DEV
-allocation has been requested. Preserve the unrelated request-context fix and
+companion worktree uses the same branch. The release manager has received the
+candidate and review blocker. No release ticket or shared DEV allocation is held. Preserve the unrelated request-context fix and
 native Gmail approvals.
 
 ### Scope and acceptance criteria
