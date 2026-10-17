@@ -1,0 +1,2 @@
+#!/bin/sh
+exec node --import /opt/sandbox-tools/runtime/node_modules/tsx/dist/loader.mjs --import /opt/sandbox-tools/runtime/register.mjs "$@"

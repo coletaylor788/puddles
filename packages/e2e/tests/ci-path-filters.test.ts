@@ -100,3 +100,15 @@ it("selects independent application and release jobs", () => {
   expect(steps).not.toContain('openclaw-test-env');
   expect(steps).toContain('corepack pnpm test');
 });
+
+it('tests the packaged sandbox image on a Docker-capable runner for every integration event', () => {
+  const workflow = parseDocument(readFileSync(resolve(repoRoot, '.github/workflows/integration.yml'), 'utf8')).toJS();
+  const job = workflow.jobs['sandbox-media'];
+  expect(job['runs-on']).toBe('ubuntu-24.04-arm');
+  expect(job.if).toBeUndefined();
+  const commands = job.steps.filter((step: any) => step.run).map((step: any) => step.run);
+  expect(commands).toEqual([
+    'node packages/sandbox-tools/build.mjs "$RUNNER_TEMP/sandbox-application"',
+    'node packages/sandbox-tools/installed.mjs test "$RUNNER_TEMP/sandbox-application"',
+  ]);
+});

@@ -50,6 +50,23 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  sandbox-media:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - name: Check out Puddles
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "26.1.0"
+      - name: Build and export the sandbox image
+        run: node packages/sandbox-tools/build.mjs "$RUNNER_TEMP/sandbox-application"
+      - name: Load the packaged image and test installed capabilities
+        run: node packages/sandbox-tools/installed.mjs test "$RUNNER_TEMP/sandbox-application"
+
   repository:
     if: github.event_name != 'workflow_dispatch'
     runs-on: macos-15

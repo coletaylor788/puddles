@@ -1,0 +1,2 @@
+#!/bin/sh
+exec timeout --kill-after=5s 120s node /opt/sandbox-tools/runtime/node_modules/@steipete/ffmpeg-wasm-local/lib/src/cli.js "$@"
