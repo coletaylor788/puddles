@@ -1,6 +1,6 @@
 # Restore the Household owner relay
 
-**Status:** Restoration approved; revised return path needs a decision
+**Status:** Production approved; implementation in progress
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
 **Last updated:** 2026-10-17
 
@@ -8,154 +8,143 @@
 
 ### Design
 
-Restore the owner-mediated message relay so a Household request can wait for a
-human reply without holding an agent turn open. The owner may answer much later.
-Keep email approvals unchanged. Do not add a deferred approval service or patch
-agent-to-agent communication.
+Restore the owner-mediated relay so Household can ask for information and end
+its turn. The owner can answer later without an open native approval expiring.
+Return that answer to the original Household session using OpenClaw's ordinary
+session messaging. Keep email approvals unchanged.
 
 ```mermaid
 flowchart LR
-    Household[Household question] --> Ping[Message owner with original conversation marker]
+    Household[Household question] --> Ping[Message owner with source session marker]
     Ping --> Wait[Household ends its turn]
     Ping --> Reply[Owner replies to that specific message later]
-    Reply --> Main[Main relays only the authorized answer]
-    Main --> Return[Return to original Household conversation]
+    Reply --> Main[Main relays the owner's answer]
+    Main --> Session[Original Household session]
+    Session --> User[Household delivers the answer to its user]
 ```
 
-#### Existing relay
+#### Asking the owner
 
-The previous instructions sent the owner an iMessage ending with
-`[sk:<originating session key>]`. Main only relayed an answer when the authenticated
-owner used the native Reply gesture on that message. It did not infer a target
-from timing or the most recent unanswered question. Household lacked
-`sessions_send`; each new question went back to the owner.
+Household sends the configured owner an iMessage ending with
+`[sk:<originating session key>]`, then stops. Each question needs its own owner
+response. Household and its workers cannot call `sessions_send` or read Main's
+private context. Existing message-recipient restrictions still apply.
 
-#### Compatibility conflict
+#### Returning the answer
 
-The retained handoff skill calls `sessions_send` with `maxPingPongTurns: 0`.
-The selected OpenClaw tool no longer accepts this setting. Normal peer sends
-can initiate automatic reply turns, while exact-session access suppresses the
-announcement needed by the old relay. Restoring the instructions and grants
-verbatim would not restore the stated one-shot behavior.
+Main acts only on an authenticated owner reply that uses the native iMessage
+Reply gesture and quotes the original request marker. A pasted marker, a plain
+owner message, or a message from another sender is not that reply. Main sends
+only the owner's answer to the exact Household session from the quoted marker.
+It never guesses a recent request or derives an external recipient from the key.
+Missing or malformed markers cause an explanation to the owner without delivery.
 
-#### Proposed compatible return path
+Household receives that answer in its own session and delivers it to the person
+who asked. Native-app conversations keep their source session; external chats
+keep their native channel route. Installed tests must establish both paths.
 
-For a canonical iMessage Household conversation, Main could send the owner's
-specific answer using the native `message` tool to that original chat. This
-would avoid starting a Household agent turn and therefore avoid a peer reply
-loop. Household would keep both direct and ordinary peer access to Main denied.
+#### Automatic reply turns
 
-This correction changes the old skill's explicit instruction to route through
-the Household agent. It needs a precise destination contract: only a valid
-original iMessage route may be used, and a missing, malformed, ambiguous, or
-non-iMessage marker must not be guessed. A native app session without a channel
-destination is not covered by this candidate. The authenticated owner reply
-supplies authority; the marker alone never does.
+OpenClaw can schedule automatic peer reply turns after `sessions_send`. The
+removed zero-turn setting is not restored, and no communication patch is added.
+Main and Household receive agent-level instructions to stop the exchange with
+`REPLY_SKIP` when appropriate. Main never treats an automatic reply as a new
+owner authorization, retrieves additional private facts, or expands the answer.
+Household treats a new question as a new owner request.
 
-The proposed scope is the original iMessage relay. Household sends the owner a
-question and ends its turn. A native quoted owner reply, even much later,
-authorizes Main to relay only that answer to the exact original iMessage chat.
-It does not authorize Household to ask Main anything further. Do not promise
-that direct delivery also updates Household's agent-session transcript until
-native routing and transcript behavior have been verified.
-
-This is a user-visible return-path change, so it needs an explicit decision.
-Approve this limited direct-chat return, or retain the current implementation
-while designing a different supported return path. A verbatim restoration is
-not compatible with the no-ping-pong requirement. No agent-to-agent patch is
-proposed.
+The requester explicitly accepts instructions for this boundary. Native turn
+scheduling does not freeze the exchange's subject: new input can be queued or,
+where authority permits, steer a running turn. The policy must hold even if a
+new question appears in the conversation during an exchange. Tests challenge
+Main with a peer reply claiming a new question, then separately verify a fresh
+user turn after delivery. They do not simulate concurrent user steering or claim
+deterministic prevention of model mistakes.
 
 ### Status
 
-**Approval:** Production approved for restoring the original owner-mediated
-relay. **Approval reference:** The requester said "Approved to restore" on
-2026-10-17, after the recommendation to restore the original relay, preserve
-per-question owner decisions, and return answers to the originating conversation.
+**Approval:** Production approved. **Approval reference:** "Approved to restore",
+then "Yeah the instructions is a fine solution", and "once tested, approved to
+ship" on 2026-10-17. This approves source-session return with instructions
+limiting automatic exchanges, followed by testing, review, production release,
+merge, and cleanup. No agent-to-agent patch or deferred approval service.
 
-The no-agent-to-agent-patch constraint remains in force. Approval covers the
-normal development, review, release, merge, and cleanup lifecycle. The proposed
-direct-chat correction needs a decision because it changes the return recipient
-from an agent session to an external chat and does not cover native-app sessions.
-No runtime changes or deployment have been made. The current synchronous route
-is still installed. The earlier deferred-native-approval proposal is not being
-implemented.
+Implementation is in local qualification. Household must preserve the initial
+answer and use `REPLY_SKIP` only for an explicitly marked automatic reply step.
+No restoration runtime is deployed yet. Independent review is blocked by model
+transport failures; the release handoff is waiting for messaging permission.
 
 ## Agent section
 
 ### State
 
-The public branch is `codex/restore-household-owner-relay`, based on freshly
-fetched main. A separately isolated companion worktree uses the same branch
-name. No runtime diff, candidate artifact, running development process, shared
-DEV allocation, or release ticket exists. The manager has requested isolated
-preparation only while verifying lane ownership.
+Public branch: `codex/restore-household-owner-relay`. A separately isolated
+companion worktree uses the same branch. No release ticket or shared DEV
+allocation has been requested. Preserve the unrelated request-context fix and
+native Gmail approvals.
 
 ### Scope and acceptance criteria
 
-Restore delayed owner-mediated iMessage answers. Keep email approvals unchanged,
-each later question separately owner-mediated, and Household's access to Main
-denied. No deferred approval service, agent-to-agent patch, inferred latest
-request, or default destination is in scope. The proposed direct-chat return
-and its native-app limitation await a decision.
+- An unanswered question ends Household's turn and starts no Main lookup.
+- A later authenticated quoted owner answer returns to the exact original
+  Household session, including iMessage and native-app sessions.
+- Plain owner input, forged provenance, malformed markers, and other senders
+  do not authorize an answer relay.
+- Household cannot call upward session tools. Workers retain their restrictions.
+- Main does not disclose additional facts if the automatic exchange asks for
+  more, including after another user message. A new question needs owner input.
+- Unknown delivery outcomes are reported without automatic replay.
 
 ### Architecture and decisions
 
-- [Historical Household design](completed/022-household-and-friends-tiers.md)
-  documents the quoted owner reply and absence of Household `sessions_send`.
-- The existing private `tier-handoff` skill was read from its configured main
-  workspace. It explicitly requires native quoted reply, a `[sk:]` marker,
-  `sessions_send(..., maxPingPongTurns: 0)`, and no direct channel message.
-- Selected OpenClaw revision `eb377ac59e6c9fd6c7705028034812becf00271b`:
-  `src/agents/tools/sessions-send-tool.ts` omits the old parameter and supplies
-  five peer reply turns for ordinary interactive requesters. Exact-session
-  grants suppress reply flow. `mode=notify` starts no run and has process-only
-  durability, so it is not an equivalent delayed answer mechanism.
-- Native `message` supports explicit channel, target, and account. The existing
-  environment separates direct sessions by channel and peer. Supported target
-  parsing and owner-quote handling must be exercised with recording fixtures.
+Selected upstream revision `eb377ac59e6c9fd6c7705028034812becf00271b` has ordinary
+peer reply flow with up to five additional turns. `runAgentStep` creates each
+turn in the existing session. The old `maxPingPongTurns` option is absent.
+`REPLY_SKIP` stops non-deliverable peer replies. Exact-session grants suppress
+the separate reply flow, so they are not the restored ordinary return route.
+
+The current sender grant is removed from Household. The ordinary agent allowlist
+again includes Household so Main can target it, while Household's tool and
+sandbox denials prevent Household from initiating session sends. Main's old
+approval-provenance exception is removed; automatic peer replies carry no owner
+approval for new disclosure. The legacy handoff skill is updated in the same
+managed transaction as both agents' guidance and configuration.
 
 ### Implementation
 
-Retain the unrelated native request-context repair and Gmail approval behavior.
-Remove Household's native question approval activation and `sessions_send` tool
-grant only as part of a coherent tested restoration. Keep workers restricted.
-Update packaged Household and Main guidance together with the handoff skill.
-Preserve unrelated instructions and use guarded predecessor checks and managed
-backup/restore for deployed files.
+Companion config and packaged guidance own the environment-specific behavior.
+Keep the reusable approval plugin packaged but disabled for this route. Use
+narrow config reconciliation and exact predecessor hashes to preserve unrelated
+guidance and DEV experiments. Include the handoff skill in preparation,
+acceptance, and rollback coverage. Public plugin behavior stays unchanged.
 
 ### Validation
 
-Cover a delayed owner reply after Household's turn ends, no reply/no Main work,
-plain owner messages without a quote, malformed and foreign markers, a second
-question requiring its own owner decision, and exactly the intended answer sent
-to the original chat with no peer turn. Use recorded message delivery and real
-model qualification for changed guidance. Production checks stay read-only.
+Run focused config and guidance transaction tests. Exercise installed native
+session messaging with recorded channel delivery and synthetic data. Qualify
+Main and Household's changed instructions with actual provider output, including
+delayed owner replies, plain/forged input, and an attempted expansion during
+peer replies. Full application, installed TEST, and read-only PROD gates remain
+required. No real messages or account writes in automated tests.
 
 ### Rollout and rollback
 
-Use the manager-owned release lane and the same reviewed artifact through TEST
-and PROD. Restore runtime, configuration, and deployed guidance together on
-failure. Retain the current healthy production deployment until the replacement
-passes its gates. Resolve the compatibility conflict before runtime changes.
+Use the manager-owned release lane and one reviewed artifact through TEST and
+PROD. Restore runtime, config, both agents' instructions, and handoff skill
+together if acceptance fails. Preserve current healthy production until then.
 
 ### Review log
 
-Source inspection confirms the removed return control. Independent design
-review attempts failed at the model transport layer without producing a review.
-No clearance is claimed. A retained independent reviewer must review the full
-implemented behavior before release.
-
-The repository-local safe-feature-development skill requires human review for
-major changes to the approved architecture or user-visible requirements. This
-applies to the proposed direct-chat substitution and native-app exclusion, not
-to routine restoration work or a second production approval.
+Prior independent design review attempts failed at the model transport layer
+without producing a review. Repeated implementation review attempts also failed
+with `response.failed` before producing findings. No clearance is claimed. The retained independent
+reviewer must examine the complete implemented diff before release. The user
+has resolved the earlier design question by accepting instruction-based scope.
 
 ### Checklist
 
-- [x] Recover the previous relay and record restoration approval.
-- [x] Verify the removed setting against the selected OpenClaw source.
+- [x] Recover the prior relay and verify current upstream behavior.
+- [x] Record approval for source-session return with agent instructions.
 - [x] Prepare isolated public and companion workspaces.
-- [ ] Resolve the direct-chat return decision.
-- [ ] Implement coherent config, guidance, and skill restoration.
-- [ ] Pass focused, installed DEV, and independent review checks.
+- [x] Implement config, guidance, and handoff skill restoration.
+- [ ] Pass focused, installed DEV, actual-model, and independent review checks.
 - [ ] Complete managed TEST, PROD, source merge, and cleanup.
