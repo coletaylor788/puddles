@@ -1,6 +1,6 @@
 # Restore the Household owner relay
 
-**Status:** Production approved; local qualification passed; release blocked
+**Status:** Production approved; fresh qualification failed; release blocked
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
 **Last updated:** 2026-10-17
 
@@ -42,6 +42,13 @@ Missing or malformed markers cause an explanation to the owner without delivery.
 Household receives that answer in its own session and delivers it to the person
 who asked. Native-app conversations keep their source session; external chats
 keep their native channel route. Installed tests must establish both paths.
+Household reads its own native session status to distinguish the saved external
+route from the active internal agent turn. For an external route, it sends only
+the answer through the current-source message tool without choosing a channel
+or recipient. In a confirmed native conversation with no external route, Main's
+incoming relay is already displayed as the answer, so Household stays silent.
+A later announcement must not repeat either answer. Failed or ambiguous status
+and attempted or uncertain sends do not count as confirmed delivery.
 
 #### Automatic reply turns
 
@@ -68,9 +75,14 @@ ship" on 2026-10-17. This approves source-session return with instructions
 limiting automatic exchanges, followed by testing, review, production release,
 merge, and cleanup. No agent-to-agent patch or deferred approval service.
 
-Local qualification passed for the implemented restoration. Household preserves
-the initial answer and uses `REPLY_SKIP` only for an explicitly marked automatic
-reply step. No restoration runtime is deployed yet. Independent review is
+Earlier local qualification passed, but a fresh actual-model run exposed an
+incorrect initial-delivery expectation. The captured native prompt requires a
+current-source message-tool reply; Household complied, while our instructions
+and test prohibited it. Guidance and tests now use native session status and the correct source
+presentation. A native app already displays the forwarded input; sending again
+would duplicate it. Tests require one total visible answer, including forwarded
+input, and one external delivery for external chats. Final qualification is pending.
+No restoration runtime is deployed yet. Independent review is
 blocked by model transport failures. The requester explicitly authorized release
 coordination, and the release manager has received the candidate and passing
 evidence. The full release gates remain outstanding.
@@ -139,12 +151,27 @@ Local results on 2026-10-17:
   authorization cases.
 - Hosted companion contract checks passed. They are not the full application
   gate, shared DEV qualification, installed TEST, or read-only PROD acceptance.
+- A later actual-model run passed nine scenarios and failed the initial iMessage
+  answer case (458 seconds). The earlier pass is historical, not current quality
+  clearance. Fresh capture reproduced a targetless final message containing only
+  the owner's answer. The native prompt explicitly requires that delivery path
+  and says the runtime stops after confirmation. The earlier no-tool assertion
+  was incorrect. Both delivery paths are being requalified after correction.
+- Six focused model-adapter and qualification checks passed. The qualification
+  wrapper now rejects missing, malformed, or empty credentials before creating
+  fixtures, so required actual-model checks cannot silently become scripted tests.
+- Read-only DEV and TEST snapshot comparisons match the full rendered behavior
+  after the proposed narrow reconciliation. Both preserve the accepted sandbox
+  image and match their recording-fixture startup environment. No shared state
+  was changed; these checks do not substitute for deployed DEV acceptance.
 
 The first actual-model run exposed Household discarding the initial answer with
-`REPLY_SKIP`. The corrected instruction distinguishes that answer from a later
-explicit peer reply step. A separate test harness correction keeps native session
-label generation from consuming a Household relay turn. Both changes are in the
-passing candidate. No communication patch was needed.
+`REPLY_SKIP`. Later capture established that the initial turn must use native
+current-source delivery rather than forcing plain text. Explicit peer reply
+steps still use `REPLY_SKIP`. Announcement suppression requires confirmed
+delivery, not an attempted call. A separate harness correction keeps native
+session label generation from consuming a Household relay turn. No communication
+patch was added.
 
 ### Rollout and rollback
 
