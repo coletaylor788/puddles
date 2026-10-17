@@ -1,8 +1,8 @@
 # Sandbox document and media tools
 
-Status: Approved for implementation and production
+Status: Released to production
 Issue: https://github.com/coletaylor788/puddles/issues/310
-Last updated: 2026-10-15
+Last updated: 2026-10-16
 
 ## Human section
 
@@ -24,13 +24,13 @@ Upgrade the agent sandbox with complete PDF, image, and audio/video processing c
 
 **Approval:** Production approved. **Approval reference:** The requester said “author as a proposal, then approved to implement and ship” on 2026-10-15, approving the table above. Scope includes implementation, validation, deployment, merge, and cleanup.
 
-Implementation and local installed acceptance are complete. Independent review is clear. DEV, TEST, and production promotion remain with the release manager.
+Released to production on 2026-10-16. DEV, the full application suite, TEST, and production acceptance passed. Both source pull requests are merged, and normal production intake is restored.
 
 ## Agent section
 
 ### State
 
-Owned branch: `codex/sandbox-media-tools`. The initial live inventory found no Node or npm on the two running agent sandbox PATHs. The installed host OpenClaw runtime includes clawpdf 0.3.2 and rastermill 0.3.3; these are not sandbox imports. No production changes have been made.
+Released through the installed controller as `sandbox-media-tools-20261016-r3`. Public implementation PR #312 and the paired companion change are merged. The production artifact matches the frozen DEV and TEST output. The initial inventory found no Node or npm in the running agent sandboxes; the released image now supplies the approved tools directly inside them.
 
 ### Scope and acceptance criteria
 
@@ -56,10 +56,16 @@ Promote the same prepared image through DEV, TEST, and production using the inst
 
 The retained reviewer verified focused tests and native lifecycle acceptance. Review found a rollback container cleanup gap and a Docker dependency in generic macOS CI; both were corrected. The retained reviewer cleared the complete corrected diff and manager callback bindings. Focused checks passed: 3 public media tests, 20 companion tests, and actual installed media and native rollback acceptance.
 
+### Release evidence
+
+The immutable application artifact is `ad9f9bb72317cc60390085c8d8c216e2bfe0da3cf8baf6f4fb23ff65f4b579b4`. The sandbox image is `sha256:b74b6f8a5c9ff64bdf5d2411b8ea5ccd2da253a45c9ed404b3471c3e336dced4`. Actual installed checks passed for PDF text and rendering, PNG/JPEG/WebP/HEIC/AVIF, audio/video operations, JavaScript, and TypeScript. Native recreation and rollback preserved workspace data, other targets, and browser containers. Production checks recorded no external writes. The controller verified the recovery backup, merged the tested source, restored intake, and confirmed normal production health.
+
+The maintained finalizer removed the owned local build workspace, companion worktree, and remote feature workspace. The clean public checkout remains attached to the active task; it has no archive attachment available in the app. Shared caches, installed environments, and recovery state remain in place.
+
 ### Checklist
 
 - [x] Record the approved proposal and production authorization.
 - [x] Implement all approved capabilities and durable regressions.
-- [ ] Validate installed DEV behavior and complete independent review.
-- [ ] Pass full application and TEST validation on the frozen output.
-- [ ] Deploy, verify production, merge, and finalize owned workspaces.
+- [x] Validate installed DEV behavior and complete independent review.
+- [x] Pass full application and TEST validation on the frozen output.
+- [x] Deploy, verify production, merge, and finalize owned workspaces.
