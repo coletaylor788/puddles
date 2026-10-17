@@ -110,24 +110,27 @@ real-provider collector failed because the headless test omitted an explicit too
 profile. That fixture defect is corrected. A second DEV attempt passed those checks and
 exposed a native result-spill limit in the benchmark data. The corrected benchmark
 uses the same complete, smaller dataset for both paths and verifies answers from
-actual tool output. Fresh real-provider measurements, TEST, and production checks
-remain.
+actual tool output. The branches now include the released Media feature. The rebuilt candidate preserves
+its exact accepted image and skill. Fresh real-provider measurements,
+TEST, and production checks remain.
 
 ## Agent section
 
 ### State
 
 Implementation owner is working in the isolated `codex/ptc-implementation`
-branch rebased onto public main `55403ba430b049867f329c8f1964991a08d7ffbe`.
+branch rebased onto public main `9c8b0c9e2a3e130f8818aa21235cde4151c6ce56`.
 Coordinate with the release manager and preserve the existing harness restrictions.
 The first managed DEV attempt passed startup and both native harness probes, then
 failed its real-provider collector before any fixture effect. The failed candidate
 was stopped under the native DEV lock; intake remains held and evidence is
 preserved. The feature is outside the release queue. Both failed requests are retired and their consumed inputs remain preserved.
 The second attempt also passed the installed headless regression, then exposed
-benchmark result truncation. The correction needs review, published checks, and a
-fresh qualification request. Do not replay either consumed request. No TEST or
-production deployment has occurred.
+benchmark result truncation. The correction passed retained review, focused tests, and published checks.
+The Media rebase requires refreshed packaging, installed proofs, and a fresh
+qualification request. Preserve its accepted image, skill, and maintained stop
+adapter. Do not replay either consumed request. No TEST or production deployment
+has occurred.
 
 ### Scope and acceptance criteria
 
@@ -190,6 +193,11 @@ Deliver two maintained upstream patches and companion activation:
    restrictions and routing. Do not alter another owner's harness worktree.
 
 ### Validation
+
+After the Media rebase, all three native installed tests pass (89.90s total):
+Claude direct/script/continuation, Copilot direct/script, and the headless
+benchmark regression. Installed Media acceptance also passes. The accepted image
+and skill are unchanged, and the core build reused its existing inputs.
 
 Audit evidence: verified npm tarball integrity; enumerated actual engine and
 encoding WASM imports; read all 15 bridge handlers and their downstream paths.
