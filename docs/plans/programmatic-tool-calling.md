@@ -2,7 +2,7 @@
 
 Status: Production approved; implementation in progress
 Issue: [#304](https://github.com/coletaylor788/puddles/issues/304)
-Last updated: 2026-10-16
+Last updated: 2026-10-18
 
 ## Human section
 
@@ -101,36 +101,33 @@ activation for all tool-enabled agents, validation, deployment, merge, and clean
 The contained-runtime boundary, native harnesses, scoped reads, direct tools,
 and existing approval engine remain the agreed scope.
 
-Both patches and shared activation are implemented. The corrected artifact passes
-native Claude and Copilot checks for main and reader, including direct calls,
-scripts, and Claude continuations. The execution-scope correction passes review
-and 212 focused checks. The rebased candidate passes another 413 composed checks.
-Managed DEV passed startup, configuration, and both native harness probes. Its
-real-provider collector failed because the headless test omitted an explicit tool
-profile. That fixture defect is corrected. A second DEV attempt passed those checks and
-exposed a native result-spill limit in the benchmark data. The corrected benchmark
-uses the same complete, smaller dataset for both paths and verifies answers from
-actual tool output. The branches now include the released Media feature. The rebuilt candidate preserves
-its exact accepted image and skill. Fresh real-provider measurements,
-TEST, and production checks remain.
+Both patches and shared activation are implemented. Managed DEV now passes
+startup, configuration, native Claude and Copilot probes, the headless regression,
+and the real-provider comparison for main and reader. The corrected benchmark
+reads the same complete dataset and records one write in each case. Scripts use
+two model requests instead of three and fewer tokens. They were slower in this
+small sample, so the result does not establish a latency improvement.
+
+The tested artifact preserves the released Media image and skill. DEV is stopped
+cleanly. Independent review is clear. The full application suite, TEST, production
+acceptance, paired source merge, and managed cleanup remain.
 
 ## Agent section
 
 ### State
 
-Implementation owner is working in the isolated `codex/ptc-implementation`
-branch rebased onto public main `9c8b0c9e2a3e130f8818aa21235cde4151c6ce56`.
-Coordinate with the release manager and preserve the existing harness restrictions.
-The first managed DEV attempt passed startup and both native harness probes, then
-failed its real-provider collector before any fixture effect. The failed candidate
-was stopped under the native DEV lock; intake remains held and evidence is
-preserved. The feature is outside the release queue. Both failed requests are retired and their consumed inputs remain preserved.
-The second attempt also passed the installed headless regression, then exposed
-benchmark result truncation. The correction passed retained review, focused tests, and published checks.
-The Media rebase requires refreshed packaging, installed proofs, and a fresh
-qualification request. Preserve its accepted image, skill, and maintained stop
-adapter. Do not replay either consumed request. No TEST or production deployment
-has occurred.
+The replacement owner resumed the existing public and companion branches after
+the original chat was archived. The approved implementation and retained build
+were recovered without changing runtime behavior. R4 passed on October 18 and
+was stopped through the maintained sandbox-aware stop operation. Its consumed
+request and the earlier failed requests cannot be replayed.
+
+The feature remains outside the release queue while its new release callbacks
+and Mini capacity estimate receive review. The release coordinator owns admission.
+Fresh main inspection found only public documentation and workflow guidance
+changes; the companion main was unchanged. The queue-front rebase must verify
+runtime equivalence again before retaining the DEV-qualified artifact. No TEST
+or production deployment has occurred.
 
 ### Scope and acceptance criteria
 
@@ -328,6 +325,22 @@ Bounded, redacted model-facing tool results are retained for diagnostics. DEV wa
 safely stopped and released again, and the consumed request cannot be replayed.
 The artifact is unchanged; another live comparison remains required.
 
+R4 completed successfully on October 18 in 202 seconds. Native Copilot, native
+Claude, the corrected headless regression, and all four real-provider cases passed.
+Each case read the same 100-row, 3,300-byte dataset and recorded exactly one write.
+
+| Role and mode | Model requests | Total tokens | Elapsed |
+|---|---:|---:|---:|
+| Main direct | 3 | 18,255 | 12.06s |
+| Main script | 2 | 11,650 | 18.66s |
+| Reader direct | 3 | 18,333 | 11.53s |
+| Reader script | 2 | 10,975 | 12.85s |
+
+These are one bounded sample per case, not a latency guarantee. The replacement
+retained reviewer cleared the complete current behavior and final qualification
+packet. All 33 guard and launcher checks passed. The controlled stop completed;
+DEV listeners and owned writers were absent and intake remained held.
+
 ### Checklist
 
 - [x] Complete source/dependency audit and bounded capability probes.
@@ -335,7 +348,7 @@ The artifact is unchanged; another live comparison remains required.
 - [x] Obtain implementation and production approval.
 - [x] Implement both patches and activation; add durable regressions.
 - [x] Correct and verify preserved execution scope when freezing MCP grants.
-- [ ] Verify both native harnesses and all agent roles.
+- [x] Verify native harnesses, main/reader behavior, and shared role activation.
 - [ ] Complete review, release gates, source merge, and cleanup.
 
 [worker]: https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/extensions/code-mode-quickjs/src/code-mode.worker.ts
