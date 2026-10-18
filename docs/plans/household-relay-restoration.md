@@ -167,7 +167,7 @@ Current local results on 2026-10-17 for the scoped return-grant repair:
   routes, a restart before the owner reply, extra-question tool results, fresh
   user questions, and six invalid authorization cases. All writes and delivery
   use recording fixtures. The temporary credential copy was removed afterward.
-- Hosted companion contract checks passed on `a656e176`. Public hosted checks
+- Hosted companion contract checks passed. Public hosted checks
   and the retained review are tracked by the release manager. Neither substitutes
   for deployed DEV, the full application pool, TEST, or read-only PROD acceptance.
 - Read-only DEV and TEST snapshot comparisons still match the full rendered
