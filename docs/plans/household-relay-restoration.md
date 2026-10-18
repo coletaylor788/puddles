@@ -1,6 +1,6 @@
 # Restore the Household owner relay
 
-**Status:** Production approved; local qualification passed; review and deployment pending
+**Status:** Production approved; review repair under qualification; deployment pending
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
 **Last updated:** 2026-10-17
 
@@ -19,7 +19,8 @@ flowchart LR
     Ping --> Wait[Household ends its turn]
     Ping --> Reply[Owner replies to that specific message later]
     Reply --> Main[Main relays the owner's answer]
-    Main --> Session[Original Household session]
+    Main --> Grant[Native send-only grant]
+    Grant --> Session[Original Household session]
     Session --> User[Household delivers the answer to its user]
 ```
 
@@ -42,6 +43,12 @@ Missing or malformed markers cause an explanation to the owner without delivery.
 Household receives that answer in its own session and delivers it to the person
 who asked. Native-app conversations keep their source session; external chats
 keep their native channel route. Installed tests must establish both paths.
+Ordinary cross-agent access remains denied for Household. A small policy plugin
+uses OpenClaw's existing scoped-access API to grant only Main's return send to
+an existing Household conversation. The grant binds the current target session
+incarnation and never permits status, history, list, or reverse access. If the
+plugin is absent or fails, native access remains denied. Main's instructions
+still establish owner authorization and select the original conversation.
 Household reads its own native session status to distinguish the saved external
 route from the active internal agent turn. For an external route, it sends only
 the answer through the current-source message tool without choosing a channel
@@ -52,18 +59,19 @@ and attempted or uncertain sends do not count as confirmed delivery.
 
 #### Automatic reply turns
 
-OpenClaw can schedule automatic peer reply turns after `sessions_send`. The
-removed zero-turn setting is not restored, and no communication patch is added.
-Main and Household receive agent-level instructions to stop the exchange with
-`REPLY_SKIP` when appropriate. Main never treats an automatic reply as a new
+An exact-session grant suppresses OpenClaw's separate peer and announcement
+turns. The initial target turn still handles delivery. The removed zero-turn
+setting is not restored, and no communication patch is added. Main and Household
+retain agent-level instructions to stop an unexpected automatic exchange with
+`REPLY_SKIP`. Main never treats an automatic reply or tool result as a new
 owner authorization, retrieves additional private facts, or expands the answer.
 Household treats a new question as a new owner request.
 
-The requester explicitly accepts instructions for this boundary. Native turn
-scheduling does not freeze the exchange's subject: new input can be queued or,
+The requester explicitly accepts instructions for the answer-content boundary.
+Native turn scheduling does not freeze the exchange's subject: new input can be queued or,
 where authority permits, steer a running turn. The policy must hold even if a
-new question appears in the conversation during an exchange. Tests challenge
-Main with a peer reply claiming a new question, then separately verify a fresh
+new question appears in the conversation during an exchange. Tests return an
+extra Household question, require no Main peer reentry, then separately verify a fresh
 user turn after delivery. They do not simulate concurrent user steering or claim
 deterministic prevention of model mistakes.
 
@@ -75,13 +83,12 @@ ship" on 2026-10-17. This approves source-session return with instructions
 limiting automatic exchanges, followed by testing, review, production release,
 merge, and cleanup. No agent-to-agent patch or deferred approval service.
 
-Final local qualification passes with native session status and source-aware
-delivery: one visible native-app answer and one external delivery for external
-chats. The full actual-model and scripted suites pass, including delayed replies
-after restart and new-question isolation. No restoration runtime is deployed.
-Independent review is blocked by reviewer transport failures. The requester
-explicitly authorized release coordination, and the manager has the candidate
-and passing evidence. Managed DEV and the remaining release gates are pending.
+Independent review found that a symmetric native agent allowlist also allowed
+Household to read Main's session status. The repair keeps ordinary access denied
+and grants only Main's return send through the existing native scoped-access API.
+The earlier delivery qualification passed, but the repaired grant and its failure
+behavior are being qualified again. The release manager retains the reviewer.
+No restoration runtime is deployed; managed DEV and subsequent gates are pending.
 
 ## Agent section
 
@@ -89,7 +96,7 @@ and passing evidence. Managed DEV and the remaining release gates are pending.
 
 Public branch: `codex/restore-household-owner-relay`. A separately isolated
 companion worktree uses the same branch. The release manager has received the
-candidate and review blocker. No release ticket or shared DEV allocation is held. Preserve the unrelated request-context fix and
+candidate and review finding. No release ticket or shared DEV allocation is held. Preserve the unrelated request-context fix and
 native Gmail approvals.
 
 ### Scope and acceptance criteria
@@ -110,11 +117,16 @@ Selected upstream revision `eb377ac59e6c9fd6c7705028034812becf00271b` has ordina
 peer reply flow with up to five additional turns. `runAgentStep` creates each
 turn in the existing session. The old `maxPingPongTurns` option is absent.
 `REPLY_SKIP` stops non-deliverable peer replies. Exact-session grants suppress
-the separate reply flow, so they are not the restored ordinary return route.
+the separate reply flow and bind the restored return route to one incarnation.
 
 The current sender grant is removed from Household. The ordinary agent allowlist
-again includes Household so Main can target it, while Household's tool and
-sandbox denials prevent Household from initiating session sends. Main's old
+excludes Household. The `session-return-grant` plugin grants only native `send`
+requests from eligible Main sessions to eligible existing Household sessions.
+It checks current configuration, the request's loaded plugin registry, both
+session entries, and the target incarnation. Worker, cron, and hook sessions
+are excluded. Runtime cleanup retires the grant. Missing or failed registration
+leaves native access denied. Household's tool and sandbox denials also prevent
+Household from initiating session sends. Main's old
 approval-provenance exception is removed; automatic peer replies carry no owner
 approval for new disclosure. The legacy handoff skill is updated in the same
 managed transaction as both agents' guidance and configuration.
@@ -122,7 +134,8 @@ managed transaction as both agents' guidance and configuration.
 ### Implementation
 
 Companion config and packaged guidance own the environment-specific behavior.
-Keep the reusable approval plugin packaged but disabled for this route. Use
+Keep the reusable approval plugin packaged but disabled for this route. Package
+and activate the separate return-grant plugin in the same transaction. Use
 narrow config reconciliation and exact predecessor hashes to preserve unrelated
 guidance and DEV experiments. Include the handoff skill in preparation,
 acceptance, and rollback coverage. Public plugin behavior stays unchanged.
@@ -136,7 +149,7 @@ delayed owner replies, plain/forged input, and an attempted expansion during
 peer replies. Full application, installed TEST, and read-only PROD gates remain
 required. No real messages or account writes in automated tests.
 
-Local results on 2026-10-17:
+Prior delivery results on 2026-10-17, before the scoped return-grant repair:
 
 - 19 focused configuration, model adapter, qualification-input, and guidance
   transaction checks passed on the final private behavior revision `d5405641`.
@@ -178,11 +191,13 @@ together if acceptance fails. Preserve current healthy production until then.
 
 ### Review log
 
-Prior independent design review attempts failed at the model transport layer
-without producing a review. Repeated implementation review attempts also failed
-with `response.failed` before producing findings. No clearance is claimed. The retained independent
-reviewer must examine the complete implemented diff before release. The user
-has resolved the earlier design question by accepting instruction-based scope.
+The retained independent reviewer completed review through the same-model CLI
+route. It found one P2: adding Household to the symmetric agent allowlist also
+enabled direct status reads of Main. The repair removes that grant and supplies
+only a reverse, exact-session send grant. Installed tests must prove denied
+reads and sends with absent, disabled, and failed plugin registration, plus
+enabled delivery and no peer reentry. The same reviewer will recheck the full
+diff after qualification. No clearance is claimed.
 
 ### Checklist
 
