@@ -1,6 +1,6 @@
 # Restore the Household owner relay
 
-**Status:** Production approved; fresh qualification failed; release blocked
+**Status:** Production approved; local qualification passed; review and deployment pending
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
 **Last updated:** 2026-10-17
 
@@ -75,17 +75,13 @@ ship" on 2026-10-17. This approves source-session return with instructions
 limiting automatic exchanges, followed by testing, review, production release,
 merge, and cleanup. No agent-to-agent patch or deferred approval service.
 
-Earlier local qualification passed, but a fresh actual-model run exposed an
-incorrect initial-delivery expectation. The captured native prompt requires a
-current-source message-tool reply; Household complied, while our instructions
-and test prohibited it. Guidance and tests now use native session status and the correct source
-presentation. A native app already displays the forwarded input; sending again
-would duplicate it. Tests require one total visible answer, including forwarded
-input, and one external delivery for external chats. Final qualification is pending.
-No restoration runtime is deployed yet. Independent review is
-blocked by model transport failures. The requester explicitly authorized release
-coordination, and the release manager has received the candidate and passing
-evidence. The full release gates remain outstanding.
+Final local qualification passes with native session status and source-aware
+delivery: one visible native-app answer and one external delivery for external
+chats. The full actual-model and scripted suites pass, including delayed replies
+after restart and new-question isolation. No restoration runtime is deployed.
+Independent review is blocked by reviewer transport failures. The requester
+explicitly authorized release coordination, and the manager has the candidate
+and passing evidence. Managed DEV and the remaining release gates are pending.
 
 ## Agent section
 
@@ -142,32 +138,33 @@ required. No real messages or account writes in automated tests.
 
 Local results on 2026-10-17:
 
-- 18 focused configuration, model adapter, and guidance transaction checks passed.
+- 19 focused configuration, model adapter, qualification-input, and guidance
+  transaction checks passed on the final private behavior revision `d5405641`.
 - 11 installed scripted checks passed, including preparation of configuration,
-  both agents' instructions, and the handoff skill (276 seconds).
-- All 10 installed relay scenarios passed with actual model output (450 seconds).
+  both agents' instructions, and the handoff skill (255 seconds).
+- All 10 installed relay scenarios passed with actual model output (432 seconds).
   These cover both delivery channels, a gateway restart before the owner reply,
   automatic peer expansion, a fresh user question after delivery, and six invalid
-  authorization cases.
-- Hosted companion contract checks passed. They are not the full application
+  authorization cases. Both happy paths had zero peer replies and announcements.
+  The native path retained one total visible forwarded answer with no duplicate;
+  the external path sent one answer through the saved source route. All delivery
+  and external writes used recording fixtures. The temporary qualification
+  credential copy was removed after the run.
+- Hosted companion contract checks passed on `d5405641`. They are not the full application
   gate, shared DEV qualification, installed TEST, or read-only PROD acceptance.
-- A later actual-model run passed nine scenarios and failed the initial iMessage
-  answer case (458 seconds). The earlier pass is historical, not current quality
-  clearance. Fresh capture reproduced a targetless final message containing only
-  the owner's answer. The native prompt explicitly requires that delivery path
-  and says the runtime stops after confirmation. The earlier no-tool assertion
-  was incorrect. Both delivery paths are being requalified after correction.
-- Six focused model-adapter and qualification checks passed. The qualification
-  wrapper now rejects missing, malformed, or empty credentials before creating
-  fixtures, so required actual-model checks cannot silently become scripted tests.
+- The qualification wrapper rejects missing, malformed, or empty credentials
+  before creating fixtures, so required actual-model checks cannot silently
+  become scripted tests.
 - Read-only DEV and TEST snapshot comparisons match the full rendered behavior
   after the proposed narrow reconciliation. Both preserve the accepted sandbox
   image and match their recording-fixture startup environment. No shared state
   was changed; these checks do not substitute for deployed DEV acceptance.
 
-The first actual-model run exposed Household discarding the initial answer with
-`REPLY_SKIP`. Later capture established that the initial turn must use native
-current-source delivery rather than forcing plain text. Explicit peer reply
+Earlier actual-model failures exposed Household discarding the initial answer
+and an incorrect no-tool test assertion. Native prompt capture established that
+external replies require current-source delivery. Native app history already
+displays Main's forwarded answer. Final qualification covers both paths after
+correcting the instructions and assertions. Explicit peer reply
 steps still use `REPLY_SKIP`. Announcement suppression requires confirmed
 delivery, not an attempted call. A separate harness correction keeps native
 session label generation from consuming a Household relay turn. No communication
