@@ -1,6 +1,6 @@
 # Restore the Household owner relay
 
-**Status:** Production approved; review repair under qualification; deployment pending
+**Status:** Production approved; repair qualification passed; review and deployment pending
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
 **Last updated:** 2026-10-17
 
@@ -86,8 +86,8 @@ merge, and cleanup. No agent-to-agent patch or deferred approval service.
 Independent review found that a symmetric native agent allowlist also allowed
 Household to read Main's session status. The repair keeps ordinary access denied
 and grants only Main's return send through the existing native scoped-access API.
-The earlier delivery qualification passed, but the repaired grant and its failure
-behavior are being qualified again. The release manager retains the reviewer.
+The repaired grant passes all installed denial and delivery checks plus all ten
+actual-model scenarios. The release manager retains the reviewer for its recheck.
 No restoration runtime is deployed; managed DEV and subsequent gates are pending.
 
 ## Agent section
@@ -149,29 +149,35 @@ delayed owner replies, plain/forged input, and an attempted expansion during
 peer replies. Full application, installed TEST, and read-only PROD gates remain
 required. No real messages or account writes in automated tests.
 
-Prior delivery results on 2026-10-17, before the scoped return-grant repair:
+Current local results on 2026-10-17 for the scoped return-grant repair:
 
-- 19 focused configuration, model adapter, qualification-input, and guidance
-  transaction checks passed on the final private behavior revision `d5405641`.
-- 11 installed scripted checks passed, including preparation of configuration,
-  both agents' instructions, and the handoff skill (255 seconds).
-- All 10 installed relay scenarios passed with actual model output (432 seconds).
-  These cover both delivery channels, a gateway restart before the owner reply,
-  automatic peer expansion, a fresh user question after delivery, and six invalid
-  authorization cases. Both happy paths had zero peer replies and announcements.
-  The native path retained one total visible forwarded answer with no duplicate;
-  the external path sent one answer through the saved source route. All delivery
-  and external writes used recording fixtures. The temporary qualification
-  credential copy was removed after the run.
-- Hosted companion contract checks passed on `d5405641`. They are not the full application
-  gate, shared DEV qualification, installed TEST, or read-only PROD acceptance.
-- The qualification wrapper rejects missing, malformed, or empty credentials
-  before creating fixtures, so required actual-model checks cannot silently
-  become scripted tests.
-- Read-only DEV and TEST snapshot comparisons match the full rendered behavior
-  after the proposed narrow reconciliation. Both preserve the accepted sandbox
-  image and match their recording-fixture startup environment. No shared state
-  was changed; these checks do not substitute for deployed DEV acceptance.
+- 23 focused plugin tests and its typecheck passed. Configuration, preparation,
+  and application layout checks passed (16 tests).
+- All four installed scripted routing cases passed in one clean run (109 seconds).
+  Both source routes and deliberate extra-question results produced exactly one
+  answer, zero Main peer reentry, and zero announcements.
+- Seven installed isolation scenarios passed (106 seconds). Native status,
+  model-changing status, history, and send requests to a seeded other-tier
+  session are denied with the plugin enabled, absent, disabled, and failing
+  registration. The sender's own status remains available. Missing grants also
+  deny Main's return send.
+- Six invalid-authorization scenarios and guarded preparation passed (154 seconds).
+  Together these runs cover all 18 installed scripted/preparation cases.
+- All 10 actual-model relay scenarios passed (428 seconds), including both source
+  routes, a restart before the owner reply, extra-question tool results, fresh
+  user questions, and six invalid authorization cases. All writes and delivery
+  use recording fixtures. The temporary credential copy was removed afterward.
+- Hosted companion contract checks passed on `a656e176`. Public hosted checks
+  and the retained review are tracked by the release manager. Neither substitutes
+  for deployed DEV, the full application pool, TEST, or read-only PROD acceptance.
+- Read-only DEV and TEST snapshot comparisons still match the full rendered
+  behavior after the narrow reconciliation and preserve the accepted sandbox
+  image. No shared state was changed. Refresh these inputs after allocation.
+
+The initial new isolation probe omitted ingress, and the next used the wrong
+fixture result field after its native denial assertions passed. Both harness
+errors were corrected. The final seven-case run passes without failures or skips.
+Earlier failed logs remain local review evidence, not qualification clearance.
 
 Earlier actual-model failures exposed Household discarding the initial answer
 and an incorrect no-tool test assertion. Native prompt capture established that
