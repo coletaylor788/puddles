@@ -117,15 +117,15 @@ explicit process joining and scope retirement. Retained review and typechecking
 pass. A packaging audit also found that the changed process runner is a declared
 input to the private bundled plugins. Maintained incremental preparation passed
 and refreshed that cache. Fresh DEV qualification of the rebuilt application
-remains pending. TEST, production acceptance, paired source merge, and managed
-cleanup remain.
+passed. Full application testing, TEST, production acceptance, paired source merge,
+and managed cleanup remain. Release admission awaits its capacity check.
 
 ## Agent section
 
 ### State
 
-The rebuilt application still requires fresh DEV qualification. The next packet
-must bind current inputs and pass retained review before release admission.
+The rebuilt application passed fresh DEV qualification. The release packet
+must bind that evidence and pass retained review and capacity checks before admission.
 Detailed environment diagnostics and recovery evidence remain in the companion
 checkpoint.
 
