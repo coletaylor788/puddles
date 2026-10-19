@@ -12,10 +12,10 @@ it('interruption joins parallel test workers and detached fixtures before deleti
   writeFileSync(worker, `
 import {spawn} from 'node:child_process'; import {writeFileSync} from 'node:fs'; import test from 'node:test';
 import {registerNativeFixture} from ${JSON.stringify(moduleUrl('native-fixture.mjs'))};
-import {trackFixtureProcess,stopFixtureProcess} from ${JSON.stringify(moduleUrl('native-fixture-process.mjs'))};
+import {spawnFixtureProcess,trackFixtureProcess,stopFixtureProcess} from ${JSON.stringify(moduleUrl('native-fixture-process.mjs'))};
 test('pending fixture', async () => {
  const fixture="const fs=require('node:fs');process.on('SIGTERM',()=>{fs.writeFileSync("+JSON.stringify(${JSON.stringify(stopped)}+process.env.FIXTURE_ID)+",fs.existsSync("+JSON.stringify(${JSON.stringify(state)})+")?'state-present':'state-deleted');process.exit(0);});console.log('ready');setInterval(()=>{},1000);";
- const child=spawn(process.execPath,['-e',fixture],{detached:true,stdio:['ignore','pipe','ignore']});
+ const child=spawnFixtureProcess(process.execPath,['-e',fixture],{detached:true,stdio:['ignore','pipe','ignore']});
  await new Promise(r=>child.stdout.once('data',r));
  const tracked=trackFixtureProcess(child);
  registerNativeFixture(()=>stopFixtureProcess(tracked));
@@ -56,9 +56,9 @@ it('test-runner timeout joins a detached fixture even when its worker exits befo
   writeFileSync(worker, `
 import {spawn} from 'node:child_process'; import test from 'node:test';
 import {registerNativeFixture} from ${JSON.stringify(moduleUrl('native-fixture.mjs'))};
-import {trackFixtureProcess,stopFixtureProcess} from ${JSON.stringify(moduleUrl('native-fixture-process.mjs'))};
+import {spawnFixtureProcess,trackFixtureProcess,stopFixtureProcess} from ${JSON.stringify(moduleUrl('native-fixture-process.mjs'))};
 test('writing fixture',async()=>{
- const child=spawn(process.execPath,['-e',${JSON.stringify(fixture)}],{detached:true,stdio:'ignore'});
+ const child=spawnFixtureProcess(process.execPath,['-e',${JSON.stringify(fixture)}],{detached:true,stdio:'ignore'});
  const tracked=trackFixtureProcess(child);registerNativeFixture(()=>stopFixtureProcess(tracked));
  await new Promise(()=>setInterval(()=>{},1000));
 });`);
@@ -109,3 +109,68 @@ await withApplicationCheckCleanup(${JSON.stringify(state)},async()=>{
     }
   } finally {rmSync(root,{recursive:true,force:true});}
 });
+
+for (const registration of ['complete', 'pending', 'stale-first', 'stale-last']) it(`unexpected worker exit joins its detached fixture with ${registration} ownership records`, async () => {
+  const root = mkdtempSync(join(tmpdir(), 'application-worker-exit-'));
+  const pidFile = join(root, 'pid'), writes = join(root, 'writes'), scopesFile = join(root, 'scopes');
+  const fixtureModule = pathToFileURL(resolve(import.meta.dirname, '../src/native-fixture-process.mjs')).href;
+  const writer = `const fs=require('node:fs');fs.writeFileSync(${JSON.stringify(pidFile)},String(process.pid));process.on('SIGTERM',()=>{});setInterval(()=>fs.appendFileSync(${JSON.stringify(writes)},'x'),10);`;
+  const worker = `import {spawnFixtureProcess,trackFixtureProcess} from ${JSON.stringify(fixtureModule)};import {existsSync,writeFileSync} from 'node:fs';import {join} from 'node:path';import {setTimeout as delay} from 'node:timers/promises';const child=spawnFixtureProcess(process.execPath,['-e',${JSON.stringify(writer)}],{stdio:'ignore'});const tracked=trackFixtureProcess(child);const scopes=JSON.parse(process.env.PUDDLES_PROCESS_SCOPES);writeFileSync(${JSON.stringify(scopesFile)},JSON.stringify(scopes));for(const scope of scopes){if(${JSON.stringify(registration)}==='pending')writeFileSync(join(scope,'launches','000-pending.json'),JSON.stringify({status:'pending'}));if(${JSON.stringify(registration)}.startsWith('stale-'))writeFileSync(join(scope,'launches',${JSON.stringify(registration === 'stale-first' ? '000-stale.json' : 'zzz-stale.json')}),JSON.stringify({status:'registered',pid:child.pid,start:'earlier process start'}));}while(!existsSync(${JSON.stringify(writes)}))await delay(10);process.exit(17);`;
+  const { runCommand } = await import('../src/process-runner.mjs');
+  try {
+    const failure = await runCommand(process.execPath, ['--input-type=module', '-e', worker], { quiet: true, timeoutMs: 5000, killGraceMs: 100 }).catch(error => error);
+    if (registration === 'pending') expect(failure.errors.map((error: Error) => error.message)).toEqual(expect.arrayContaining([expect.stringMatching(/incomplete/)]));
+    else expect(failure.message).toMatch(/17/);
+    const pid = Number(readFileSync(pidFile, 'utf8')), stopped = readFileSync(writes, 'utf8');
+    expect(() => process.kill(pid, 0)).toThrow();
+    await new Promise(resolve => setTimeout(resolve, 100)); expect(readFileSync(writes, 'utf8')).toBe(stopped);
+  } finally {
+    if (existsSync(scopesFile)) {
+      // @ts-expect-error Maintained executable release helper is tested at runtime.
+      const { processScopeRecords } = await import('../../release/src/owned-process.mjs');
+      // @ts-expect-error Maintained executable release helper is tested at runtime.
+      const { stopInterruptedChild } = await import('../../release/src/commands.mjs');
+      for (const scope of JSON.parse(readFileSync(scopesFile, 'utf8'))) if (existsSync(scope)) {
+        rmSync(join(scope, 'launches', '000-pending.json'), { force: true });
+        const [record] = processScopeRecords(scope);
+        await stopInterruptedChild({ ...record, scope });
+      }
+    }
+    if (existsSync(pidFile)) try { process.kill(-Number(readFileSync(pidFile, 'utf8')), 'SIGKILL'); } catch {}
+    rmSync(root, { recursive: true, force: true });
+  }
+}, 10000);
+
+it('failed joining preserves qualification state while native cleanup still runs', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'application-failed-join-')), state = join(root, 'state');
+  mkdirSync(state);
+  const pidFile = join(root, 'pid'), scopesFile = join(root, 'scopes'), writes = join(root, 'writes'), attempted = join(root, 'cleanup-attempted');
+  const moduleUrl = (file: string) => pathToFileURL(resolve(import.meta.dirname, '../src', file)).href;
+  const writer = `const fs=require('node:fs');fs.writeFileSync(${JSON.stringify(pidFile)},String(process.pid));fs.writeFileSync(${JSON.stringify(scopesFile)},process.env.PUDDLES_PROCESS_SCOPES);setInterval(()=>fs.appendFileSync(${JSON.stringify(writes)},fs.existsSync(${JSON.stringify(state)})?'present':'deleted'),10);`;
+  const wrapper = join(root, 'wrapper.mjs');
+  writeFileSync(wrapper, `import {writeFileSync} from 'node:fs';import {withApplicationCheckCleanup} from ${JSON.stringify(moduleUrl('application-check-cleanup.mjs'))};import {registerNativeFixture} from ${JSON.stringify(moduleUrl('native-fixture.mjs'))};import {runCommand} from ${JSON.stringify(moduleUrl('process-runner.mjs'))};const kill=process.kill.bind(process);process.kill=(pid,signal)=>{if(pid<0&&signal!==0)throw Object.assign(new Error('synthetic EPERM'),{code:'EPERM'});return kill(pid,signal);};registerNativeFixture(async()=>writeFileSync(${JSON.stringify(attempted)},'attempted'));await withApplicationCheckCleanup(${JSON.stringify(state)},()=>runCommand(process.execPath,['-e',${JSON.stringify(writer)}],{cwd:${JSON.stringify(state)},timeoutMs:5000,killGraceMs:100}));`);
+  const child = spawn(process.execPath, [wrapper], { stdio: 'ignore' });
+  try {
+    for (let i = 0; i < 100 && !existsSync(writes); i++) await new Promise(resolve => setTimeout(resolve, 20));
+    expect(existsSync(writes)).toBe(true);
+    const done = new Promise(resolve => child.once('exit', resolve)); child.kill('SIGTERM');
+    expect(await done).toBe(143);
+    expect(existsSync(state)).toBe(true); expect(existsSync(attempted)).toBe(true);
+    const pid = Number(readFileSync(pidFile, 'utf8')); expect(() => process.kill(pid, 0)).not.toThrow();
+    await new Promise(resolve => setTimeout(resolve, 60)); expect(readFileSync(writes, 'utf8')).not.toContain('deleted');
+  } finally {
+    child.kill('SIGKILL');
+    if (existsSync(scopesFile)) {
+      // Recovery uses the retained controller seam after the injected failure.
+      // @ts-expect-error Maintained executable release helper is tested at runtime.
+      const { stopInterruptedChild } = await import('../../release/src/commands.mjs');
+      // @ts-expect-error Maintained executable release helper is tested at runtime.
+      const { processScopeRecords } = await import('../../release/src/owned-process.mjs');
+      for (const scope of JSON.parse(readFileSync(scopesFile, 'utf8'))) {
+        const [record] = processScopeRecords(scope);
+        await stopInterruptedChild({ ...record, scope });
+      }
+    }
+    rmSync(root, { recursive: true, force: true });
+  }
+}, 10000);

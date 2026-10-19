@@ -1,3 +1,5 @@
+import { spawnOwnedProcess } from "../../release/src/owned-process.mjs";
+export const spawnFixtureProcess = spawnOwnedProcess;
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";

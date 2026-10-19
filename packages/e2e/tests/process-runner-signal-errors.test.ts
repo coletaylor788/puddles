@@ -4,6 +4,11 @@ import { afterEach, expect, it, vi } from "vitest";
 
 const mocked = vi.hoisted(() => ({ spawn: vi.fn(), execFileSync: vi.fn() }));
 vi.mock("node:child_process", () => mocked);
+vi.mock("../../release/src/owned-process.mjs", () => ({
+  createProcessScope: () => "synthetic scope", closeProcessScope: () => {},
+  inspectProcessScope: () => ({ records: [], incomplete: false }), retireProcessScope: () => {},
+  prepareOwnedProcess: () => ({ child: mocked.spawn(), release: () => {}, abort: () => {} }),
+}));
 import { runCommand } from "../src/process-runner.mjs";
 
 afterEach(() => vi.restoreAllMocks());

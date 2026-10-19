@@ -95,8 +95,7 @@ export async function runNext(config, execute = command, options = {}) {
     };
     const leave = () => updateQueue(config.root, state => { state.active = null; });
     const recover = async () => {
-      await stopInterruptedChild(active.child);
-      save({ child: null, status: 'recovering' });
+      await stopInterruptedChild(active.child, () => save({ child: null, status: 'recovering' }));
       if (!active.recoveryRestored) {
         if (active.phase === 'prod' || active.completed.includes('prod')) {
           await restoreBackup(config.backup, config.prod, run);
@@ -127,8 +126,7 @@ export async function runNext(config, execute = command, options = {}) {
       return await recover();
     }
     if (active.status === 'running' && ['merge', 'resumeIntake'].includes(active.phase)) {
-      await stopInterruptedChild(active.child);
-      save({ child: null, status: 'merge-pending' });
+      await stopInterruptedChild(active.child, () => save({ child: null, status: 'merge-pending' }));
     }
     if (active.status === 'running' || active.status === 'recovering') {
       // A new process never repeats an uncertain deploy command. Recover its recorded phase.
@@ -194,8 +192,7 @@ async function backupWithLock(config, execute, options) {
   save({ status: recovering ? 'recovering' : 'running', worker: options.worker ?? null, toolHash: options.toolHash ?? null });
   const run = (spec, phase) => execute(spec, { PUDDLES_RELEASE_PHASE: phase }, child => save({ child }));
   if (recovering) {
-    await stopInterruptedChild(active.child);
-    save({ child: null });
+    await stopInterruptedChild(active.child, () => save({ child: null }));
     await run(config.prod.start, 'recover-backup-start');
     await run(config.prod.health, 'recover-backup-health');
   } else {

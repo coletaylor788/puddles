@@ -39,7 +39,7 @@ export declare function runCommand(
 export declare function stopActiveCommand(signal: NodeJS.Signals, graceMs?: number): Promise<void>;
 
 export declare function installSignalHandlers(params: {
-  cleanup: () => Promise<unknown[]>;
+  cleanup: (result?: { joinSucceeded: boolean }) => Promise<unknown[]>;
   graceMs?: number;
 }): void;
 

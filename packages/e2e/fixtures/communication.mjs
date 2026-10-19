@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawnFixtureProcess } from '../src/native-fixture-process.mjs';
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import { createServer as createSocketServer } from 'node:net';
@@ -206,7 +206,7 @@ export async function communicationFixture(installedDir, pluginDir, root, option
     writeFileSync(context.configPath, JSON.stringify(cfg));
     log = openSync(join(root, 'gateway.log'), 'a', 0o600);
     const start = async () => {
-      child = spawn(process.execPath, [join(installedDir, 'openclaw.mjs'), 'gateway', 'run', '--port', String(port), '--bind', 'loopback'], { cwd: workspace, env: fixtureEnv(context), detached: true, stdio: ['ignore', log, log] });
+      child = spawnFixtureProcess(process.execPath, [join(installedDir, 'openclaw.mjs'), 'gateway', 'run', '--port', String(port), '--bind', 'loopback'], { cwd: workspace, env: fixtureEnv(context), detached: true, stdio: ['ignore', log, log] });
       writeFileSync(join(root, 'gateway-pid.json'), JSON.stringify({ pid: child.pid, port }));
       for (let i = 0; i < 600; i++) {
         assertCommunicationGatewayRunning(child, 'startup');

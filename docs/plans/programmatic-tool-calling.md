@@ -111,8 +111,10 @@ small sample, so the result does not establish a latency improvement.
 The tested artifact preserves the released Media image and skill. DEV is stopped
 cleanly. The corrected release staging and independent review are complete.
 Release admission waits for the shared controller cleanup fix and a refreshed
-release packet. The reviewed test-runner repair passes local checks. The full application suite, TEST, production
-acceptance, paired source merge, and managed cleanup remain.
+release packet. The complete process-ownership repair passes focused local checks and retained
+source review. All 451 release-tool checks pass; the composed installed check is in progress.
+The full application suite, TEST, production acceptance, paired source merge,
+and managed cleanup remain.
 
 ## Agent section
 
@@ -133,14 +135,22 @@ checks report no build or postbuild work needed. The controller released the lan
 no TEST or production deployment occurred.
 
 The feature remains outside the queue while the coordinator installs the shared
-controller fix for detached test writers. The exact reviewed application runner
-from `da8c0cfee7ce06c43d1f2e9a262772b1abf0c380` is adopted, with its timeout,
-interruption, exit-race, and process-identity regressions. This changes test
-execution and cleanup, not the retained application artifact. All 55 focused
-runner, lifecycle, native-loop, and fixture checks pass on Node 26.1.0 with normal
-host process access. E2E typechecking and retained integration review pass.
-Refresh installed-tool bindings and affected installed proofs in the release
-packet before admission. The coordinator owns allocation and the full release lane.
+controller fix for detached test writers. The complete repair from
+`4eca321af683ebe48ccbe6ed65323b6e54da60ab` replaces the earlier runner-only adoption.
+The runner records each detached process before allowing its workload to start.
+Cleanup joins registered workers even after their parent exits, and retains state
+when ownership is incomplete or joining fails. The shared helper and gate ship
+with the controller. PTC's existing detached CLI cleanup and eleven regressions
+remain intact. The companion adopts only three generic fixture ownership changes.
+
+All 60 focused runner, lifecycle, native-loop, and fixture checks pass on Node
+26.1.0 with normal host process access. E2E typechecking and retained source review
+pass. All 451 release-tool tests (67 Node and 384 Vitest) and release lint pass.
+The composed installed memory check is in progress. These source changes affect test execution and cleanup, not the
+retained application artifact. Refresh both source identities, installed and local
+controller bindings, and affected installed proofs in the release packet before
+admission. Prior requests and receipts remain consumed. The coordinator owns
+allocation and the full release lane.
 
 ### Scope and acceptance criteria
 

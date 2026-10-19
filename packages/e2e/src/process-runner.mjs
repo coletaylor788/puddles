@@ -1,6 +1,8 @@
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { closeSync, openSync, writeSync } from "node:fs";
 import { startCommandResourceMonitor } from "./native-resources.mjs";
+
+import { closeProcessScope, createProcessScope, prepareOwnedProcess, inspectProcessScope, retireProcessScope } from "../../release/src/owned-process.mjs";
 
 const activeCommands = new Set();
 let handlingSignal = false;
@@ -24,12 +26,15 @@ function ownedProcesses(active) {
   if (!active.child.pid) return [];
   if (process.platform === "win32") return active.child.exitCode === null && active.child.signalCode === null
     ? [{ pid: active.child.pid }] : [];
+  const registration = inspectProcessScope(active.scope);
+  active.incompleteRegistration = registration.incomplete;
   const rows = execFileSync("ps", ["-axo", "pid=,ppid=,pgid=,stat=,lstart="], { encoding: "utf8", timeout: 5000 })
     .split("\n").flatMap(line => {
       const match = line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(.+)$/);
       return match ? [{ pid: Number(match[1]), parent: Number(match[2]), group: Number(match[3]),
         zombie: match[4].startsWith("Z"), start: match[5] }] : [];
     });
+  for (const row of rows) if (registration.records.some(record => record.pid === row.pid && record.start === row.start)) active.descendants.set(row.pid, row.start);
   const parents = new Set(rows.filter(row => row.group === active.child.pid ||
     active.descendants.get(row.pid) === row.start).map(row => row.pid));
   let changed;
@@ -61,7 +66,11 @@ function joinCommandGroup(active, signal, graceMs) {
   // runCommand's finally and the signal handler share ownership until the whole
   // group has stopped. The leader's close event alone cannot release it.
   return active.stopping ??= (async () => {
-    if (!ownedProcesses(active).length) { await active.done; return; }
+    closeProcessScope(active.scope);
+    const verifyRegistration = () => {
+      if (active.incompleteRegistration) throw new Error("Process launch registration is incomplete; retain ownership scope");
+    };
+    if (!ownedProcesses(active).length) { await active.done; verifyRegistration(); return; }
     signalOwnedProcesses(active, signal);
     const waitUntil = async milliseconds => {
       const deadline = Date.now() + milliseconds;
@@ -73,6 +82,7 @@ function joinCommandGroup(active, signal, graceMs) {
       if (!await waitUntil(5000)) throw new Error("Command descendants did not stop");
     }
     await active.done;
+    verifyRegistration();
   })();
 }
 
@@ -83,12 +93,17 @@ export async function runCommand(command, args, options = {}) {
   const capture = options.capture === true;
   const piped = capture || options.logPath || options.quiet;
   const log = options.logPath ? openSync(options.logPath, "a", 0o600) : undefined;
-  const child = spawn(command, args, {
-    cwd: options.cwd,
-    env: options.env,
-    detached: process.platform !== "win32",
+  const scope = createProcessScope();
+  let prepared;
+  try { prepared = prepareOwnedProcess(command, args, {
+    cwd: options.cwd, env: options.env,
     stdio: piped ? ["ignore", "pipe", "pipe"] : "inherit",
-  });
+  }, [scope]); } catch (error) {
+    if (log !== undefined) closeSync(log);
+    error.message += `; retained process scope: ${scope}`;
+    throw error;
+  }
+  const { child } = prepared;
   let stdout = "";
   let stderr = "";
   let timedOut = false;
@@ -136,7 +151,7 @@ export async function runCommand(command, args, options = {}) {
     child.once("close", resolve);
     child.once("error", resolve);
   });
-  const tracked = { child, done, interrupted: false, descendants: new Map() };
+  const tracked = { child, done, scope, interrupted: false, descendants: new Map() };
   activeCommands.add(tracked);
   const stopResourceMonitor = options.resourcePath && child.pid
     ? startCommandResourceMonitor({
@@ -172,6 +187,7 @@ export async function runCommand(command, args, options = {}) {
         const suffix = capture && !options.quiet && stderr.trim() ? `: ${stderr.trim()}` : "";
         reject(new Error(`${options.quiet ? "Command" : command} exited with ${detail}${suffix}`));
       });
+      try { prepared.release(); } catch (error) { prepared.abort(); reject(error); }
     })]);
   } catch (error) {
     commandError = error;
@@ -183,7 +199,7 @@ export async function runCommand(command, args, options = {}) {
     try { stopResourceMonitor?.(); }
     catch (error) { resourceError = error; }
     if (log !== undefined) closeSync(log);
-    if (!cleanupError) activeCommands.delete(tracked);
+    if (!cleanupError) { retireProcessScope(scope); activeCommands.delete(tracked); }
   }
   // Opt-in callers can redact captured failures before persisting diagnostics.
   // Keep raw output out of the message, stack and ordinary serialization.
@@ -233,7 +249,7 @@ export function installSignalHandlers(params) {
           errors.push(error);
         }
         try {
-          errors.push(...(await params.cleanup()));
+          errors.push(...(await params.cleanup({ joinSucceeded: errors.length === 0 })));
         } catch (error) {
           errors.push(error);
         }
