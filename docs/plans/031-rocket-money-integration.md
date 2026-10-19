@@ -1,8 +1,8 @@
 # Plan 031: Rocket Money MCP and shared browser authentication
 
-**Status:** Saved-login timing correction in review
+**Status:** Saved-login correction awaiting release process cleanup repair
 **Issue:** [#135](https://github.com/coletaylor788/puddles/issues/135)
-**Last updated:** 2026-10-15
+**Last updated:** 2026-10-18
 
 ## Human section
 
@@ -95,6 +95,8 @@ Both components run on the trusted host. Prefer a shared auth library in the hos
 
 Other financial writes, scheduled automation and a general integration framework remain outside this design. The [future-scope appendix](031-rocket-money-deferred.md) retains follow-on work. Approval to ship activates the required synthetic regressions and release checks.
 
+The release command must stop its test processes before recovery can start. Some test runners and fixture gateways create separate process groups. On cancellation, the controller records their process identities before signaling their parents, then stops and joins the retained descendants. The application test runner also retains its process group until every writer stops, even if the group leader exits first. These corrections preserve the existing limits and financial boundaries.
+
 ### Status
 
 **Approval:** Production approved.
@@ -105,6 +107,8 @@ The shared-session correction is merged. The adapter shares one MCP connection a
 
 The committed packaged check exercises two native plugin instances and requires one connection across four synthetic status calls. Deployment identities, operator setup, and account readiness belong in private release records. The saved-login timing correction is in review. It replaces the immediate form check and fixed sleep with bounded renewal and pinned-account verification. No financial operation runs before that verification succeeds.
 
+DEV validation exposed detached test writers surviving a capacity stop. The environment is stopped and the failed attempt is retained. Repairing that release prerequisite is within the approved implementation scope. The release manager installs the independently tested controller correction between tickets. A fresh application attempt still requires updated input bindings, review, and DEV acceptance.
+
 ## Agent section
 
 ### State
@@ -113,6 +117,7 @@ The committed packaged check exercises two native plugin instances and requires 
 - The implementation uses the shared `browser-auth` Python package, official MCP SDK and a main-only OpenClaw stdio adapter. The adapter retains the host process across turns and applies outbound LeakGuard plus inbound classification and redaction.
 - Main's skill and owner-specific finance rules remain private runtime content, managed outside the repository.
 - Shared-session correction shipped in [PR #261](https://github.com/coletaylor788/puddles/pull/261), merge `5ef80fdc542227803895e19a42f61ca16be5bc4f`. Native plugin runtime stores are scoped to managed instances. Keep the MCP bridge in one process slot, retain per-call authorization and guards, and serialize dispatch, account changes and shutdown. Regression coverage uses distinct native plugin instances and the packaged MCP subprocess.
+- Saved-login DEV validation stopped on its resource bound. The release command lost detached descendants when intermediate parents exited. The test runner separately dropped group ownership and its escalation timer on leader close. Repair the maintained command and runner seams; never replay the consumed attempt or increase limits to hide the failure.
 
 ### Scope and acceptance criteria
 
@@ -146,6 +151,8 @@ The renewal regression covers delayed redirects, delayed autofill, delayed sessi
 The [validation appendix](031-rocket-money-deferred.md) retains the validation scope. The shared-session fix passed 15 focused plugin tests, typechecking, packaging, and retained independent review. The committed `openclaw-plugins/rocket-money/scripts/check-shared-session.mjs` exercises the packaged adapter and real MCP subprocess with two native instances, four synthetic calls, and one connection. It uses fresh state and does not access a live account.
 
 The synthetic registry check does not establish authenticated account access. Keep environment acceptance and account readiness in private release records. Financial write validation remains fixture-only.
+
+Release regressions reproduce a synchronous phase launcher and callback followed by a detached test runner and detached writing fixture. Both timeout and external cancellation must stop both detached processes and fixture growth before recovery. Runner regressions cover a leader exiting before its TERM-resistant descendant. Run the full independent release package suite and focused application lifecycle tests, then retain independent review of the source and installation packet. Changed controller and test-runner inputs invalidate their prior packet bindings and affected acceptance proofs.
 
 ### Rollout and rollback
 
