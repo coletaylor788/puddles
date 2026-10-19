@@ -1,6 +1,6 @@
 # Restore the Household owner relay
 
-**Status:** Production approved; repair qualification passed; review and deployment pending
+**Status:** Production approved; repair qualification passed; installer integration review and deployment pending
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
 **Last updated:** 2026-10-18
 
@@ -87,7 +87,7 @@ Independent review found that a symmetric native agent allowlist also allowed
 Household to read Main's session status. The repair keeps ordinary access denied
 and grants only Main's return send through the existing native scoped-access API.
 The repaired grant passes all installed denial and delivery checks plus all ten
-actual-model scenarios. The release manager retains the reviewer for its recheck.
+actual-model scenarios. The retained reviewer cleared the product repair and draft deployment controls. Shared installer integration is receiving the same reviewer's recheck.
 No restoration runtime is deployed; managed DEV and subsequent gates are pending.
 
 ## Agent section
@@ -203,23 +203,29 @@ enabled direct status reads of Main. The repair removes that grant and supplies
 only a reverse, exact-session send grant. Installed tests must prove denied
 reads and sends with absent, disabled, and failed plugin registration, plus
 enabled delivery and no peer reentry. The retained reviewer cleared that product
-repair. Final deployment controls and the qualification cleanup changes still
-need review before managed DEV acceptance.
+repair and the qualification cleanup changes, together with draft deployment controls. Final operational bindings and managed DEV acceptance remain outstanding.
 
 Qualification cancellation exposed shared runner failures: a detached fixture
 could outlive an unexpectedly exiting worker, and failed joining could still
 permit deletion of test state. This branch adopts the reviewed shared repairs
-through `4eca321`, without the unrelated feature changes. A launch gate records
+through `0050d267`, without the unrelated feature changes. A launch gate records
 process ownership before starting work. Surviving supervisors can then join
 registered fixtures after a worker exits. Failed joins retain test state.
 Qualification uses the existing asynchronous runner and fixture cleanup hooks.
 The shared source passes 451 release tests, 31 focused runner/fixture tests and
 the e2e typecheck. Composed qualification passes all five cleanup/credential
 cases and the installed gateway isolation scenario. These exact shared source
-inputs are reused here; the complete Household review and managed deployment
+inputs are reused here; the installer integration recheck and managed deployment
 remain pending. This changes test execution, not agent communication or the
 prepared application. The manager must install the corresponding controller
 repair before a new managed DEV run.
+
+The installer follow-up isolates intentional failing launch fixtures from their
+outer supervisor. Application checks now honor an explicit bounded deadline.
+The companion runs its installed test groups sequentially, waits for failed
+process cleanup before starting the next group, and stops on interruption.
+Household-specific installed checks remain in the inventory. These changes
+affect validation only; the application artifact is unchanged.
 
 ### Checklist
 
