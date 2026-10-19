@@ -114,8 +114,11 @@ a cleanup self-test that could stop its supervising command. The test-only repai
 limits synthetic failure records and recovery to scopes created by that test.
 All 302 public e2e checks now pass under maintained process supervision, including
 explicit process joining and scope retirement. Retained review and typechecking
-pass. A fresh release packet and hosted checks precede another full application
-run. TEST, production acceptance, paired source merge, and managed cleanup remain.
+pass. A packaging audit also found that the changed process runner is a declared
+input to the private bundled plugins. Maintained incremental preparation passed
+and refreshed that cache. The rebuilt application needs fresh DEV qualification
+before another full application run. TEST, production acceptance, paired source
+merge, and managed cleanup remain.
 
 ## Agent section
 
@@ -147,11 +150,13 @@ remain intact. The companion adopts only three generic fixture ownership changes
 All 60 focused runner, lifecycle, native-loop, and fixture checks pass on Node
 26.1.0 with normal host process access. E2E typechecking and retained source review
 pass. All 451 release-tool tests (67 Node and 384 Vitest) and release lint pass.
-The composed installed memory check passes all 14 cases in 198 seconds. These source changes affect test execution and cleanup, not the
-retained application artifact. Refresh both source identities, installed and local
-controller bindings, and affected installed proofs in the release packet before
-admission. Prior requests and receipts remain consumed. The coordinator owns
-allocation and the full release lane.
+The composed installed memory check passes all 14 cases in 198 seconds. The
+process runner is also a declared bundled-plugin build input, so those checks do
+not establish packaging readiness. Maintained preparation must refresh that cache,
+and fresh DEV qualification must bind the resulting application. Refresh both
+source identities, installed and local controller bindings, and affected installed
+proofs before admission. Prior requests and receipts remain consumed. The
+coordinator owns allocation and the full release lane.
 
 The second release attempt passed rebase and artifact validation, then its full
 suite was killed by a cleanup self-test. A bounded local reproduction confirmed
@@ -164,6 +169,16 @@ remain open and complete. All 302 checks across 32 public e2e files pass under t
 maintained command supervisor in 28 seconds, with explicit clean-join evidence.
 Typechecking and retained review pass. Preserve both failed release attempts and
 request a fresh packet and allocation after exact-head hosted checks.
+
+The packaging audit reproduced the old bundle cache key using the former helper
+bytes. Only `packages/e2e/src/process-runner.mjs` differed among declared helpers.
+The maintained incremental builder reused the core, regenerated the bundles, and
+recorded the current input key. The bundle output stayed identical. The complete
+application digest changed only because the recovered public checkout path changes
+bundled source comments, one dependency directory name, and its two links. All
+other file bytes, modes, and link targets match. Fresh DEV qualification is still
+required. The old artifact and both failed release attempts remain preserved;
+the unadmitted third release draft is withdrawn until that qualification passes.
 
 The reviewed integration runs installed groups sequentially with one worker,
 preserving all 23 PTC inventory entries. The public suite must honor the longer
