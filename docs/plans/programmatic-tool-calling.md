@@ -101,7 +101,7 @@ activation for all tool-enabled agents, validation, deployment, merge, and clean
 The contained-runtime boundary, native harnesses, scoped reads, direct tools,
 and existing approval engine remain the agreed scope.
 
-Both patches and shared activation are implemented. Managed DEV now passes
+Both patches and shared activation are implemented. The earlier managed DEV run passed
 startup, configuration, native Claude and Copilot probes, the headless regression,
 and the real-provider comparison for main and reader. The corrected benchmark
 reads the same complete dataset and records one write in each case. Scripts use
@@ -116,13 +116,28 @@ All 302 public e2e checks now pass under maintained process supervision, includi
 explicit process joining and scope retirement. Retained review and typechecking
 pass. A packaging audit also found that the changed process runner is a declared
 input to the private bundled plugins. Maintained incremental preparation passed
-and refreshed that cache. The rebuilt application needs fresh DEV qualification
-before another full application run. TEST, production acceptance, paired source
+and refreshed that cache. The rebuilt application passed DEV preparation, but
+startup exceeded the readiness deadline. It became ready after the check had
+failed. Maintained recovery stopped it safely. Fresh DEV qualification depends
+on the shared startup diagnosis. TEST, production acceptance, paired source
 merge, and managed cleanup remain.
 
 ## Agent section
 
 ### State
+
+R6 installed the rebuilt artifact after the reviewed predecessor transition.
+The health check failed at 60 seconds. The gateway later reported readiness about
+116 seconds after process launch, including about 87 seconds before its first
+startup log. These timings show the missed deadline, not its root cause. No
+installed PTC checks ran in this attempt. The shutdown wrapper selected the wrong
+Node interpreter and failed before invoking the maintained stop. A separate,
+bounded recovery used the unchanged stop helper with its required interpreter.
+The coordinator verified shutdown and retired process scopes, then released DEV
+capacity. The original failed receipts remain intact. A local wrapper repair now
+tests the actual interpreter selection for both successful and failed runs.
+The stopped candidate is retained as a referenced predecessor for other owners.
+No new DEV attempt or release admission is authorized by these failed receipts.
 
 The replacement owner resumed the existing public and companion branches after
 the original chat was archived. The approved implementation and retained build
