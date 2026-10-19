@@ -1,281 +1,394 @@
 # Claude Code harness with subscription authentication
 
-Status: Proposed; subscription setup pending
-Issue: Not created
-Last updated: 2026-10-14
+Status: Approved implementation in progress; production unchanged
+Issue: https://github.com/coletaylor788/puddles/issues/303
+Last updated: 2026-10-16
 
 ## Human section
 
 ### Design
 
-Use the official Claude Code harness for eligible OpenClaw agents, authenticated
-with a Claude subscription. Claude owns reasoning, its model/tool loop and native
-compaction. OpenClaw keeps agent identity, conversations, tools, scheduling,
-delegation and delivery. Use the existing integration and defer Claude's native
-action tools so the migration preserves the current execution boundaries.
+Use official Claude Code with subscription authentication. Claude owns reasoning,
+the model/tool loop and native compaction. OpenClaw retains agent identity,
+conversations, delegation, approvals, service permissions and delivery. Keep the
+integration close to its supported behavior rather than introducing another
+harness or a custom file-editing layer.
 
 ```mermaid
 flowchart TB
-    User["Messages and scheduled work"] --> OC["OpenClaw agent and conversation"]
-    OC <-->|"Prompts and replies"| CC["Claude Code harness on trusted host"]
-    CC <-->|"Subscription authentication"| Claude["Claude service"]
-    CC <-->|"Allowed tool calls and results"| MCP["OpenClaw MCP bridge"]
-    MCP -->|"Shell and file operations"| Docker["Existing agent Docker sandbox"]
-    MCP -->|"Scoped service operations"| Services["Existing service tools"]
-    MCP <-->|"Session tools and child results"| Agents["Other OpenClaw agents"]
+    OC["OpenClaw conversation and agent"] --> CC["Claude Code with subscription login"]
+    CC -->|"Main, Household and Debug"| Native["Native tools with agent workspace and approvals"]
+    CC -->|"Restricted specialists"| MCP["Permitted OpenClaw tools through MCP"]
+    Native -->|"Service and session tools"| MCP
+    MCP --> Docker["Existing Docker filesystem and shell tools"]
+    MCP --> Services["Existing guarded services and browser"]
+    MCP <-->|"Session tools"| Agents["Other OpenClaw agents"]
 ```
 
-#### Subscription authentication
+#### Authentication and models
 
-The gateway launches official Claude Code using its programmatic interface.
-This remains the Claude Code harness even though no interactive terminal is
-shown. Authentication must select the signed-in Claude subscription, rather
-than a Console account, API key or separately metered credit balance. Claude
-owns login and credential refresh. Credentials stay outside agent workspaces.
+Use the dedicated native login under the gateway's OS user. Claude manages its
+credentials and refresh. Do not introduce an API key, extracted token or metered
+Anthropic backup. Native login is verified in the gateway login domain, and the
+owner confirmed Extra usage is disabled. Preliminary installed gateway execution
+passes; broader acceptance remains open.
 
-Use a dedicated Claude configuration for the gateway. Disable extra usage and
-remove conflicting authentication overrides from that runtime. Verify the
-effective account and subscription route with the installed executable before
-activation. This proposal includes no automatic Anthropic API backup.
+Use Opus for high-tier reasoning and Haiku for Reader and active-memory recall.
+Preserve other model overrides. Delegation remains ordinary OpenClaw session tools.
+Reader instructions and its independently delivered policy changes remain intact.
 
-#### Setup blocker: subscription sign-in
+#### Which agents use which tools
 
-**Blocked until the owner completes subscription sign-in and the implementation
-agent verifies it in the gateway environment.** A browser login on another
-computer does not authenticate the gateway. The CLI login must belong to the
-same host OS user and dedicated Claude configuration directory the gateway uses.
-This blocks live subscription validation and activation; approved preparation
-and fixture-based implementation can proceed without the login.
+| Agent or run | Execution path |
+|---|---|
+| Main | Native Claude tools plus permitted OpenClaw tools |
+| Household | Native Claude tools plus its own permitted OpenClaw tools |
+| Debug | Native Claude tools; retain its existing diagnostic permissions and exclusions |
+| Reader and Household Reader | Restricted OpenClaw tools |
+| Browser Agent and Household Browser Agent | Restricted OpenClaw tools and existing browser isolation |
+| Wiki Maintainer | Restricted OpenClaw tools, including controlled wiki mutation tools |
+| Active-memory recall | Existing explicitly restricted memory-tool path |
 
-The implementation agent first installs or verifies official Claude Code,
-prepares an unused dedicated configuration directory and provides the owner
-with the exact terminal login command. It checks the selected runtime for
-conflicting API, Console, cloud or gateway credentials without modifying other
-Claude installations. The owner then completes these steps:
+Native means Claude may use its own Read, Write, Edit and Bash tools. Restricted
+means Claude still runs the agent loop, but its native action tools are disabled
+and it uses only permitted OpenClaw tools through MCP. Restricted does not mean
+read-only: Reader retains its permitted workspace writes, for example.
 
-1. **Activate a Claude Pro or Max subscription** on the claude.ai account intended
-   for the gateway, if that account does not already have an eligible plan.
-   A free account or Console/API credit balance does not satisfy this proposal.
-2. **Disable extra usage / usage credits** in
-   [Claude Settings > Usage](https://claude.ai/settings/usage). Leave automatic
-   credit purchases disabled. No API key or Console funding is needed.
-3. **Run the prepared login command in the gateway user's terminal on the
-   gateway host.** Choose the Claude subscription account, not Anthropic Console
-   or a third-party platform. Complete the browser sign-in yourself. Over SSH,
-   open the displayed authorization URL in your browser and, if prompted, paste
-   the returned code into that same terminal, not into chat or a repository.
-4. **Verify the login in the same terminal and configuration directory.** The
-   prepared status command should identify the claude.ai authentication route.
-   Tell the implementation agent that sign-in is complete and extra usage is
-   off. Do not send tokens, authorization codes or credential files.
+OpenClaw already filters its MCP tools by agent permissions. An explicit per-run
+tool allowance also selects the restricted path. An ordinary agent tool list does
+not automatically translate into a matching list of Claude-native tools. Wire
+specialists onto the existing restricted path explicitly; do not add a custom
+translation merely to give each specialist a partial native toolbox.
 
-The implementation agent owns the final check: the real gateway service must
-see the same login, use subscription authentication, and complete a bounded
-qualification turn without switching to separately metered credentials.
-Signing in does not approve deployment. Exact commands and completion criteria
-are recorded in the Agent section below.
+Scheduled, resumed and delegated runs retain their owning agent's path and any
+tighter per-run restriction. Neither spawn nor send alone makes a run restricted.
+Active-memory recall already supplies an explicit allowance in source.
 
-#### Tools and sandboxing
+#### Workspace boundaries and approved exceptions
 
-Use OpenClaw's existing restricted-tool integration. It disables Claude's native
-action tools and ambient customizations, then exposes the current agent's
-authorized OpenClaw tools through MCP. Apply that restriction to ordinary and
-resumed messages as well as scheduled and delegated turns. Merely approving
-an MCP tool list does not establish that native tools are unavailable.
+Native execution must preserve the intended workspace boundary. Main and Household
+use their own workspaces and access policies. Household does not inherit Main's
+filesystem access, personal-data tools or conversation permissions. Changing the
+harness must not silently grant access to sibling workspaces, credentials or host
+state. Keep Debug's existing diagnostic exception separate from ordinary agents.
 
-Claude Code runs on the trusted host. Shell and file operations still execute
-through OpenClaw's configured Docker sandbox. Browser, mail and other service
-tools retain their existing service boundaries; MCP does not place those
-services inside Docker. Existing host-authorized roles are outside the initial
-migration. No new host authority or native-tool replacement is proposed.
+This is an acceptance requirement, not an assumption that Claude's sandbox is
+identical to Docker. Configure and test native shell sandboxing and file-read
+restrictions against the actual agent workspace. Include symlinks, native file
+tools and resumed sessions, not only shell commands.
 
-#### Agents and conversations
+An outside-workspace write may proceed when the owner explicitly approves that
+operation through OpenClaw's existing approval system. It must not proceed through
+silent approval or reuse of a broader grant. A denied, expired or unavailable
+approval must leave the operation unexecuted. Hard-denied paths remain denied.
 
-Keep existing OpenClaw agents, instructions, workspaces and session tools.
-Delegation stays between OpenClaw agents, including waiting for child results.
-It does not become Claude-native subagent delegation. Preserve independently
-delivered reader improvements; this migration does not change reader policy or
-reimplement result framing.
+Claude Code already supports the desired experience: workspace edits can run
+without prompts, while outside writes request permission. Its native permission
+system should own that distinction. This is separate from its shell sandbox.
 
-Use **Opus for high-tier reasoning** and **Haiku for Reader and active memory's
-recall sub-agent**. Configure both Haiku selections explicitly; changing Reader
-alone does not change active memory. Keep Reader's existing instructions and
-permissions, including improvements delivered separately.
+The mismatch is in OpenClaw's approval bridge. It calls the same host authorization
+handler both before Claude checks permissions and when Claude asks for permission.
+A fresh comparison used the installed callback functions with the real Claude CLI:
 
-These choices cover the agent roles in this migration, not every model call in
-the system. Heartbeats and scheduled jobs can select their own models. Security
-classifiers use separate provider settings, and memory embeddings are a different
-kind of model. Check those routes during implementation; this proposal does not
-silently migrate them or assume they use the Claude subscription.
+| Configuration | Workspace write | Outside write |
+|---|---|---|
+| Native Claude workspace permissions | Runs without asking | Requests permission |
+| OpenClaw full/off | Runs without asking | Automatically allowed |
+| OpenClaw full/off plus explicit Claude outside ask rule | Runs without asking | Claude asks; OpenClaw automatically answers allow |
+| OpenClaw always-ask | Requests approval | Requests approval |
 
-Switch harnesses between tasks, without deleting or resetting the conversation.
-Check that the agent remembers earlier facts after the switch. The same chat
-remaining visible in OpenClaw is not enough if the new harness did not receive
-its history.
+The earlier protected-path probe showed that explicit native deny rules still apply;
+no protected file was created in this comparison either. The problem is automatic
+approval of an operation that should require the owner, not removal of all native restrictions.
+Always-ask avoids that automatic approval but loses prompt-free workspace edits.
+The tested native ask rule does not repair the bridge. OpenClaw also forces Claude's
+default permission mode, so passing acceptEdits alone cannot restore standalone behavior.
 
-#### Quality and failure behavior
+#### Resolved approval flow
 
-OpenClaw tools have different names and behavior from Claude's native tools.
-Validate tool selection, image interpretation, delegation and completion claims.
-Restricted customization loading also means OpenClaw must supply the role
-instructions and skills the agent needs. Check recall after compaction and
-restart, including authorization details and unfinished work.
+Keep native Write and Edit. Make one narrow adjustment to the existing approval
+bridge so it distinguishes the early policy check from a request for human permission.
 
-A subscription limit may interrupt a turn. Preserve the conversation and report
-the interruption using existing behavior. A later message can continue work
-once an eligible route is available. This proposal does not require automatic
-replay of unfinished actions or uninterrupted execution.
+1. **Before a native tool call:** OpenClaw checks the active run, tool restrictions,
+   policy vetoes and any argument changes. Passing this stage means continue to
+   Claude's checks, not grant permission to execute.
+2. **Claude evaluates permissions:** trusted workspace rules allow normal file
+   work inside that agent's workspace. Hard-denied locations remain blocked.
+   Operations needing an exception reach Claude's permission callback.
+3. **OpenClaw asks the owner:** route that callback through the existing tool
+   approval system with allow once or deny. Do not apply automatic full-access
+   shortcuts or remembered tool-wide grants. Denial, expiry or unavailable approval
+   prevents execution. An approval authorizes that operation only.
+
+A real Claude CLI prototype demonstrated this flow: workspace Write and Edit ran
+without approval requests; outside writes and symlink escapes requested approval;
+only the explicitly approved outside file was created. A later turn in the same
+process still requested approval for another outside path. A fresh process behaved
+the same way. Withholding a response left the file absent, and a host veto blocked
+an otherwise permitted workspace write.
+
+The adjustment restores Claude's native permission boundary at the integration
+point. It belongs in the permission bridge, not in a new file tool or filesystem
+checker. Claude retains workspace/path classification and native file execution. OpenClaw retains policy
+checks and human approval delivery. Trusted settings must exclude ambient grants
+or hooks that could skip the approval callback, and changed settings must invalidate
+an incompatible warm process. Actual gateway delivery remains an implementation
+acceptance test, not an undecided design choice.
+
+Keep Docker configured for restricted agents and other harness paths. Their MCP
+execution and approvals are unchanged. Browser and service operations retain their
+existing guarded adapters. Main and Household retain separate workspace roots;
+Debug retains its explicitly configured diagnostic access.
+
+#### Review and quality concerns
+
+| Concern | Required outcome |
+|---|---|
+| Workspace isolation | Main and Household stay within their own granted roots; outside writes need an explicit exception |
+| Approvals | No silent native write escalation, standing-grant bypass or permission widening on resume |
+| Specialist restrictions | Both session tools, scheduled work and recall select the intended restricted tools |
+| Credentials and services | Native tools cannot bypass protected state, credential handling or guarded service access |
+| AI quality | Check Haiku summary fidelity, delegated results, images and attachments; measure extra approval interruptions |
+| Conversation continuity | Resume and harness transitions retain usable prior context, not merely a conversation ID |
 
 ### Status
 
-**Approval:** Proposed. **Approval reference:** The requester asked for this
-repository proposal on 2026-10-08. Scope is design documentation; implementation
-and activation are not part of this change.
+**Approval:** Production approved.
+**Approval reference:** On 2026-10-16 the requester said “Okay approved, implement
+and ship” after reviewing the phase-aware native approval design. Native Main,
+Household and Debug and restricted specialists are included. Haiku remains scoped
+to Reader and active-memory recall.
 
-The upstream integration supports the proposed architecture. **Setup blocker:**
-subscription entitlement and gateway-user sign-in are not yet verified. The owner
-must complete the setup steps above before live subscription validation or
-activation. The exact installed combination still needs tool-boundary and
-conversation tests. No account, runtime configuration or service has been changed.
+The maintained patch and paired routing configuration have cleared independent
+review and exact-head repository checks. The rebuilt application passes installed
+configuration, session preparation and reviewer-bound approval regressions. The
+live eight-turn subscription check passes: prompt-free workspace writes, warm
+conversation continuity, exact one-time outside approval and denial, protected
+Household isolation, Household workspace behavior and restricted Haiku Reader
+output. Broader sandbox/profile, restart/compaction, model quality and fallback
+continuity remain release gates. Production is unchanged.
 
 ## Agent section
 
 ### State
 
-The proposal and setup blocker are published. This documentation-only follow-up
-makes the Haiku roles explicit and clarifies conversation continuity on
-`codex/claude-haiku-roles`. Account entitlement and native login have not been
-inspected. No implementation or runtime validation is claimed.
+Use the paired `codex/claude-harness-shipping` feature worktrees. Audited OpenClaw
+baseline: `eb377ac59e6c9fd6c7705028034812becf00271b`; Claude Code 2.1.301.
+Native claude.ai authentication works in the gateway login domain, not plain SSH.
+The owner confirmed Extra usage off. A bounded direct subscription turn returned
+`claude-haiku-5-5`. The isolated installed gateway now passes all eight preliminary
+subscription turns with exact Opus for Main/Household and Haiku for Reader.
+Native session identity stays stable across warm turns. The approval repair
+carries only the reviewer device from the admitted run into the existing native
+approval request. Installed regression rejects unrelated reviewers and denies
+requests without a capable route. Cleanup is verified. These results do not
+qualify shared DEV, broad sandbox behavior or production.
+The isolated source now contains the implementation. Coordinate public/private main merges and installed slots with the release manager.
 
 ### Scope and acceptance criteria
 
-- Official Claude Code, native subscription login and stock OpenClaw integration.
-- Opus for high-tier agents; Haiku explicitly selected for Reader and active-memory recall.
-- Same OpenClaw agent identity and conversation, with useful retained context.
-- Exact allowed tools, sandbox execution and service permissions across all turn types.
-- No harness patches, custom transport, native action tools or API-account backup.
-- Account details, personal usage, capacity estimates and cost analysis remain outside this repository.
+- Native Main, Household and Debug, each with its own access policy and scoped MCP tools.
+- Restricted Reader, Browser, Wiki Maintainer, Household Reader, Household Browser
+  and active-memory recall. Preserve Debug's existing diagnostic exception.
+- Haiku only for Reader and active-memory recall; preserve other overrides.
+- No unapproved outside-workspace native writes. Preserve denials and service guards.
+- Preserve empty/per-run tool caps, delegation, reader framing and history provenance.
+- Keep Docker available; add no custom write tool, harness, proxy or history converter.
 
 ### Architecture and decisions
 
-Use canonical `anthropic/<model>` references with model-scoped
-`agentRuntime.id: "claude-cli"`. Keep executable and OpenClaw versions explicit
-in the eventual release inputs. Do not use a global runtime override that
-unintentionally changes other providers or auxiliary workloads. Set Reader's
-agent model and `plugins.entries.active-memory.config.model` separately to the
-qualified Haiku model, with its `claude-cli` runtime selection. The pinned
-[active-memory contract](https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/extensions/active-memory/openclaw.plugin.json)
-identifies this as the blocking recall sub-agent's model. It does not select
-embedding models or every memory-maintenance job. Confirm both effective model
-requests and subscription routes; inventory separate heartbeat, scheduled-job
-and classifier selections without changing their scope.
+`cli-runner/prepare.ts` translates an explicit non-wildcard `toolsAllow` into exact
+availability with native tools disabled. Scoped MCP construction already applies
+agent policy. Ordinary `tools.allow` is not an automatic native-tool projection.
+`active-memory/recall-run.ts` supplies its cap and subscription-auth dispatch.
+Reader session calls need explicit restricted-path qualification at the target.
 
-The repository pins OpenClaw to `eb377ac59e6c9fd6c7705028034812becf00271b`.
-Its [CLI backend contract](https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/docs/gateway/cli-backends.md)
-documents native login, restricted MCP tools, compaction and bounded history
-recovery. Use its existing restriction mechanism; qualification must establish
-how it applies to every migrated agent turn, not just cron examples.
+`anthropic/cli.runtime.ts` registers PreToolUse authorization for native tools,
+including calls Claude settings would otherwise permit. `execute-plugin.ts`
+checks exact availability, hooks and effective exec policy. Full/off allows
+without a prompt. Standing grants are keyed by tool name and live process.
+Effective ask-always ignores them. `cli-native-tool-approval.ts` then requests
+normal plugin approval with allow-once/deny and rejects missing or invalid decisions.
+Both native phases in the pinned upstream share this handler without a phase marker, so stock
+configuration cannot defer the early decision while forcing the later escalation.
 
-Current [Claude authentication](https://code.claude.com/docs/en/authentication)
-and [programmatic usage](https://code.claude.com/docs/en/headless) documentation
-were checked on 2026-10-08. `claude -p` selects a programmatic interface, not a
-billing route. `--bare` ignores subscription credentials and is ineligible for
-this design. Recheck this contract on executable upgrades. Do not substitute
-API authentication if subscription operation becomes unsupported.
+`exec-defaults.ts` gives session permission policy precedence over ordinary
+configuration. Full sessions can bypass host approval floors; sandbox routing
+omits those floors. Per-run ask-always can tighten session modes, but cannot
+relax security deny. The proposed native-escalation branch must retain deny but
+request one-time human approval regardless of full/off or standing grants.
 
-Follow the existing [security architecture](../openclaw-setup/security-architecture.md)
-and [agent sandbox guide](../openclaw-setup/03-openclaw-and-agent-sandboxing.md).
+Ordinary Claude runs load user settings; restricted argument translation strips
+custom settings and ambient features. Supply a trusted native profile in default
+permission mode, with workspace-scoped Edit rules and no ambient permission grants,
+plugins or hooks that bypass escalation. Bind its exact content and workspace to
+process reuse. Preserve separate restricted settings and MCP catalogs.
 
 ### Implementation
 
-#### Prepare the owner login
+The maintained `claude-native-agent-profiles.patch` changes the existing native permission contract, host handler,
+Claude bridge and trusted launch settings:
 
-The implementation agent verifies the installed CLI version and gateway OS user,
-then chooses a dedicated, user-owned `CLAUDE_CONFIG_DIR` outside agent workspaces.
-Confirm the directory is unused or belongs to this integration before touching
-it. Prepare the login shell and gateway environment without API keys, auth-token
-or endpoint overrides, API-key helpers, Console profiles, cloud-provider flags
-or managed gateway settings that supersede subscription authentication. Do not
-print credential values or change an unrelated installation.
+- Carry an internal phase distinguishing PreToolUse policy checks from native
+  permission escalation. Keep behavior unchanged for other backends and capped runs.
+- At PreToolUse, enforce current-run authority, exact tool restrictions, security
+  denials and host policy hooks. Preserve rewritten input. Continue native permission
+  evaluation rather than returning a blanket permissionDecision allow.
+- At can_use_tool, revalidate the same call/run and use existing plugin approval
+  with allow-once/deny. Ignore full/off shortcuts and standing grants. Do not run
+  approval-producing host hooks twice or lose their vetoes. Preserve AskUserQuestion
+  handling and MCP tools' existing separate authorization.
+- Generate trusted settings per native role. Use default permission mode and an
+  absolute workspace-scoped Edit allow rule, which Claude applies to both Write
+  and Edit. Retain shell/read restrictions and protected paths. Exclude ambient
+  settings that widen permissions; fingerprint the profile for process reuse.
 
-Provide the owner with concrete values privately. The command shape is:
+Select the existing exact-cap path for specialists; keep their OpenClaw tools,
+Docker execution and service grants unchanged. No custom native tool-list mapping,
+file writer, path checker or new approval transport is required. Native Main,
+Household and Debug retain their respective workspace/diagnostic policies.
 
-```sh
-# Run as the gateway OS user on the gateway host.
-# Replace the placeholder with the prepared dedicated directory.
-export CLAUDE_CONFIG_DIR="/absolute/path/to/prepared-claude-directory"
-claude --version
-claude auth login
-claude auth status --text
-```
-
-Do not add `--console`, use `setup-token`, copy a laptop's credentials, or use
-`--bare`. Native browser login is the chosen route. If the installed CLI needs
-the interactive flow, run `claude` in that same prepared environment and follow
-its login prompt. SSH callback handling is documented in
-[Claude authentication](https://code.claude.com/docs/en/authentication).
-
-#### Clear the blocker
-
-Require owner confirmation of an eligible subscription and disabled extra usage,
-then inspect `claude auth status` locally under the actual gateway environment.
-The current [CLI reference](https://code.claude.com/docs/en/cli-reference)
-documents `authMethod: "claude.ai"`; inspect available account/plan information
-and `/status` as well. A zero exit code alone proves login, not the required
-billing route. Newer versions report `configDirectory`, which should match the
-prepared directory. Keep identifying output private.
-
-Confirm daemon access to Claude-managed credential storage, including after a
-service restart; an interactive shell success is not enough. Run one bounded,
-tool-free subscription qualification turn only after implementation approval,
-with account-level extra usage disabled and conflicting routes excluded.
-Retain only sanitized pass/fail evidence. Do not clear the blocker on a user
-confirmation alone or infer billing from the CLI's API-equivalent cost estimate.
-The [official usage-credit controls](https://code.claude.com/docs/en/costs#add-usage-credits-to-your-subscription)
-place the Pro/Max toggle in Settings > Usage. Login and usage-setting documentation
-was checked on 2026-10-12; recheck on executable upgrades.
-
-#### Configure and qualify
-
-After approval, qualify one restricted role first. Configure the supported
-runtime, native login and exact tool selection. Preserve independent agent
-changes and existing patches. Keep roles that fail qualification on their
-current route; report a stock-integration gap before proposing custom code.
+Add executable regressions and qualify the installed gateway, including approval
+rendering, rewrites, cancellation and retained sessions. Follow the existing
+release lifecycle and coordinate main merges with the release manager.
 
 ### Validation
 
-Check effective subscription authentication, fresh/resumed turns, restart and
-compaction; verify Reader and active-memory recall request Haiku through the
-intended runtime; prove native tools are absent and permitted shell/file calls use
-Docker. Exercise reads, images, process handles, delegation, yield and one
-recorded external action. Check denied calls and source-result protections.
-Use synthetic content and recording adapters for external writes. Rehearse a
-limit without repeatedly consuming real quota. The current change requires
-only document, source-reference and diagram review.
+Current candidate evidence: all seven affected source test files pass (403 tests)
+against the composed public/private source. The complete application build passes.
+The packaged application validates normal and held configuration and renders all
+8 agents through its real Claude backend (2 installed configuration tests).
+Environment rendering passes 14 tests; public/private manifest checks pass 9/24.
+Extension and current core type checking pass. The dedicated-directory repair
+adds passing history and account-boundary regressions. Caller checks and rebuilt
+installed session preparation pass.
+
+The retained reviewer cleared the complete current source diff, including the
+directory repair and session fixture changes. The eight-turn live subscription
+qualification passes with exact Opus for Main/Household and Haiku for Reader.
+It verifies warm native continuity, workspace writes, exact outside approvals and
+denials, protected Household isolation and a restricted Reader summary. Installed
+approval routing also rejects unrelated reviewers and denies unavailable routes.
+Broader native sandbox, role selection, model quality, restart/compaction and live
+fallback continuity remain open. Prior failed receipts are retained. No shared DEV
+or production deployment was attempted.
+
+Two direct CLI experiments tested disposable workspaces. Shell sibling writes,
+sibling/symlink reads and direct loopback access were blocked; a synthetic secret
+was excluded from the environment. A synthetic approval callback allowed native
+Write outside the workspace. This demonstrated an approval exception, not bypass
+of a required human decision. No production files were affected.
+
+A follow-up ran the pinned permission handler and approval helper with recorded
+responses. Nine scenarios passed: full/off auto-allow; a different Write path on
+a later warm turn reusing a grant; always-ask requesting both decisions despite a
+prior grant; rejection of unexpected allow-always; user denial; expiry; transport
+failure; security deny; and unavailable tool. Policy resolution and UI transport
+were dependency seams, so this is not installed approval acceptance.
+
+A fresh comparison then executed the installed, unchanged Claude callback functions
+and host permission handler against the real CLI. Resolved policy, passing host hooks,
+active-run authority and approval delivery were controlled test inputs. Four cases
+passed: native acceptEdits; stock full/off; full/off with an explicit outside Edit
+ask rule; and stock always-ask. Stock cases used the adapter's default permission
+mode; all four had an explicit workspace allow rule. The earlier default-mode
+prototype separately confirmed prompt-free workspace writes without an early allow. The native case created only the workspace
+file after a recorded outside denial. Both full/off cases created the outside file
+without requesting host approval. The explicit ask rule reached can_use_tool, where
+the host handler returned allow automatically. Always-ask requested approval for both
+paths before native workspace classification. A third, explicitly denied file was
+absent in all four cases, although this probe did not retain its attempted tool
+invocation. No file existed at its permission callback. These are
+installed-function integration probes, not a claim about the current production
+session policy or acceptance of real owner-facing delivery. Fixtures were removed.
+
+The proposed-flow native CLI prototype used default mode, a trusted absolute workspace
+Edit allow rule, a PreToolUse continuation and recorded approval replies. Workspace
+Write/Edit completed with zero permission requests. Denied and unavailable outside
+writes, a symlink into a sibling directory and a hard-denied write left no files.
+Only the allow-once outside write succeeded, with the file absent before the decision.
+A second warm turn and a fresh process repeated the inside/outside distinction.
+A withheld callback response left its file absent until cancellation; a host veto
+also blocked a workspace write. Filesystem assertions passed and all test jobs and
+fixtures were removed. This proves Claude's native classification with the proposed
+bridge protocol, not the unimplemented OpenClaw adapter or actual owner-facing UI.
+
+The earlier command-hook error probe used default failure behavior. Claude supports
+`onFailure: "block"`; that option was not tested and is not the selected solution.
+
+Register executable regressions during implementation. Exercise all three native roles,
+all restricted roles, both session tools, recall, cron, resume and restart. Require
+no write before approval and no write after deny, timeout or offline delivery.
+Test full-mode overrides, standing grants, settings changes, sibling roots,
+symlinks, protected state and different host/Docker paths. Include exact models,
+summary quality and context continuity. Use synthetic content and recording
+adapters, then the maintained DEV/TEST/PROD lifecycle. Do not send live test messages.
+
+Sources: [pinned CLI contract](https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/docs/gateway/cli-backends.md),
+[pinned native approvals](https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/src/agents/cli-runner/cli-native-tool-approval.ts),
+[Claude sandboxing](https://code.claude.com/docs/en/sandboxing),
+[Claude permissions](https://code.claude.com/docs/en/permissions),
+[hook failure behavior](https://code.claude.com/docs/en/hooks#block-the-action-when-a-hook-fails).
+
+#### Installed qualification repair
+
+Two isolated attempts stopped at a history-read failure. A zero-model reproduction
+with the actual built gateway showed that external database seeding bypassed its
+session projection. The fixture now uses native `sessions.create` and verifies
+readable empty history before any provider turn. Both failed runs and verified
+cleanup receipts remain retained; neither counts as acceptance.
+
+The dedicated login directory also needs to reach native transcript imports and
+cold-resume checks. The existing readers otherwise look only in the default
+Claude directory. The patch propagates the explicit profile directory through
+those readers without changing history admission or adding a converter. Focused
+directory, tool-history, account-boundary and caller tests pass on the rebuilt
+application. Installed cold restart and live fallback acceptance remain pending.
 
 ### Rollout and rollback
 
-Use the existing reviewed configuration and release lifecycle after approval.
-Qualify one role before broader rollout. Preserve predecessor settings and
-conversation state. Rollback restores routing and compatible runtime state
-without deleting conversations. Follow the maintained release process for any
-runtime artifact change; this documentation change starts no environments.
+Qualify Main first, then Household, Debug and specialists, before enabling their routes.
+Start at idle boundaries and retain conversation records. Release through the
+existing pipeline with tested artifacts and rollback. Rollback restores routing
+and policy without deleting sessions. A failed native boundary test leaves the
+role on its existing route; it does not authorize broader access.
 
 ### Review log
 
-The design separates supported upstream capability from installed proof, keeps
-tool execution within existing boundaries and excludes account-specific analysis.
-The setup follow-up distinguishes owner-only login from agent-owned preparation
-and verification. It does not install software, purchase a plan or change auth.
+Independent source review confirmed automatic approval paths, always-ask handling,
+policy precedence and the absence of ordinary agent-list to native-list translation.
+Follow-up independent review challenged explicit ask-rule precedence. The installed-function
+probe confirmed that the rule reaches the same automatic host handler. This supports the
+phase-aware bridge as the appropriate narrow change. Preserve rewritten inputs,
+avoid duplicate host approvals, retain user-question handling and bind trusted
+settings to process reuse.
+The requester clarified that individually approved writes are acceptable. Remove
+the native-file ban and mandatory mixed editing path. Current review attention is
+workspace isolation, effective approvals and correct specialist path selection.
+Implementation review accepted and resolved three findings: temporary MCP credential
+file access, environment-preservation overrides defeating clearing, and exact MCP
+grants remaining broader than the agent cap. A follow-up removed agent-wide exec
+overrides so fallback policy stays unchanged, and made shell network denial strict.
+The retained reviewer rechecked the complete source and authored packaging with no
+remaining material findings. Source review is not gateway or production acceptance.
+A reused transport regression also exposed stale callback authority. Native deferred
+callbacks now restore the admitted request and caller contexts, explicitly clearing
+foreign caller context. The retained reviewer cleared the fix. Sixty-eight focused
+tests cover native policy, concurrent callbacks, absent identity, revoked approvals
+and user-question delivery. The installed reviewer-route regression and eight-turn
+preliminary subscription qualification subsequently passed. Broader installed
+acceptance remains pending.
+The dedicated-directory follow-up review closed missing cold-resume, settlement,
+embedded-history and doctor propagation. Explicit directories do not fall back to
+the default account directory; existing history admission remains unchanged.
 
 ### Checklist
 
-- [x] Write the proposal and verify upstream contracts.
-- [ ] Approve implementation scope.
-- [ ] Prepare the gateway-user CLI, isolated Claude configuration and exact login command.
-- [ ] Owner confirms an eligible subscription, disables extra usage and completes native login.
-- [ ] Verify subscription authentication in the gateway service and clear the setup blocker.
-- [ ] Verify explicit Haiku routing for Reader and active-memory recall.
-- [ ] Qualify every migrated tool path.
-- [ ] Validate conversation continuity, quality and recovery.
-- [ ] Release eligible roles through the existing lifecycle.
+- [x] Record delivery approval, native login and disabled Extra usage.
+- [x] Investigate native restrictions, automatic approvals and standing grants.
+- [x] Agree native Main/Household/Debug and restricted specialist split.
+- [ ] Qualify actual workspace bounds, approval delivery and role selection.
+- [ ] Qualify Opus, Reader/recall Haiku, quality and context continuity.
+- [x] Resolve prompt-free workspace writes and one-time outside-write approval.
+- [x] Implement the scoped approval-bridge adjustment with regression coverage.
+- [ ] Release, verify, merge and clean up through the existing lifecycle.

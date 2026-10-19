@@ -1,0 +1,2355 @@
+diff --git a/docs/plugins/cli-backend-plugins.md b/docs/plugins/cli-backend-plugins.md
+index 7fb3ec821c3..913c3fa245a 100644
+--- a/docs/plugins/cli-backend-plugins.md
++++ b/docs/plugins/cli-backend-plugins.md
+@@ -565,3 +565,30 @@ MCP, or session-resume behavior.
+ - [Plugin SDK overview](/plugins/sdk-overview) - registration API reference
+ - [Plugin manifest](/plugins/manifest) - `cliBackends` and setup descriptors
+ - [Agent harness](/plugins/sdk-agent-harness) - full external agent runtimes
++
++## Agent-specific native permission profiles
++
++A backend normalizer receives the admitted `agentId` and `workspaceDir`. Its
++optional `toolsAllow` cap selects exact OpenClaw tools with native tools disabled;
++OpenClaw intersects it with the caller allowance and the scoped MCP catalog.
++An empty cap stays empty. `strictClearEnv` makes the backend's `clearEnv` exclusions
++apply even when an environment-preservation override is present.
++
++The bundled Claude backend can opt into `nativePermissionMode: "defer"` through
++an explicit Anthropic `cliProfiles` entry. It tags native authorization requests
++with `phase: "pre-tool"` or `"permission"`. A passing pre-tool check continues
++Claude's permission evaluation. A permission escalation uses OpenClaw's existing
++allow-once/deny approval and ignores standing grants and automatic allow modes.
++Host vetoes, rewritten input and current-run checks remain in force. Other
++backends and unselected agents retain their existing contract.
++
++Configure `plugins.entries.anthropic.config.cliConfigDir` for the dedicated native
++subscription login and `cliProfiles` keyed by agent ID. `workspace` uses native
++file tools and sandboxed shell commands rooted at the admitted workspace.
++`diagnostic` explicitly retains unsandboxed diagnostic access. `restricted` needs
++an explicit non-wildcard agent `tools.allow` and uses the existing MCP-only path.
++Optional `protectedPaths` adds absolute denied paths to native workspace profiles.
++These profiles require Claude Code 2.1.301 or newer and reject forwarded API
++credentials. They exclude ambient settings and clear inherited service secrets.
++Managed Claude settings still require deployment qualification because they can
++have higher precedence than inline settings.
+diff --git a/extensions/anthropic/cli-backend.ts b/extensions/anthropic/cli-backend.ts
+index c0ccc269204..8c0bad55cee 100644
+--- a/extensions/anthropic/cli-backend.ts
++++ b/extensions/anthropic/cli-backend.ts
+@@ -9,6 +9,7 @@ import type {
+   CliBackendPreparedExecution,
+ } from "openclaw/plugin-sdk/cli-backend";
+ import { parseClaudeCliJsonlEvent, parseClaudeCliJsonlLifecycleEvent } from "./cli-output.js";
++import { resolveClaudeAgentProfile } from "./cli-profile.js";
+ import {
+   CLAUDE_CLI_BACKEND_ID,
+   CLAUDE_CLI_DEFAULT_MODEL_REF,
+@@ -152,6 +153,7 @@ function resolveClaudeCliAuthInput(
+ export function buildAnthropicCliBackend(
+   options: {
+     ensureDynamicSystemPromptSectionsSupport?: () => Promise<void>;
++    resolveVersion?: () => Promise<string | undefined>;
+     supportsDynamicSystemPromptSections?: () => boolean;
+   } = {},
+ ): CliBackendPlugin {
+@@ -260,6 +262,11 @@ export function buildAnthropicCliBackend(
+           isolatedCompletionPrompt?: string;
+           isolatedCompletionSystemPrompt?: string;
+         };
++        if (resolveClaudeAgentProfile(context).profile && credentialContext.authCredential) {
++          throw new Error(
++            "Claude agent profiles require native subscription login; forwarded credentials are not permitted.",
++          );
++        }
+         const authInput = resolveClaudeCliAuthInput(credentialContext.authCredential);
+         const isolatedCompletion = credentialContext.isolatedCompletionPrompt !== undefined;
+         const cliExecution =
+@@ -293,6 +300,26 @@ export function buildAnthropicCliBackend(
+           ...cliExecution,
+         };
+       };
++      if (resolveClaudeAgentProfile(context).profile) {
++        return (async () => {
++          const version = await options.resolveVersion?.();
++          const parts = version?.split(".").map(Number);
++          if (
++            !parts ||
++            parts.length !== 3 ||
++            parts.some((part) => !Number.isInteger(part)) ||
++            !(
++              parts[0]! > 2 ||
++              (parts[0] === 2 && (parts[1]! > 1 || (parts[1] === 1 && parts[2]! >= 301)))
++            )
++          ) {
++            throw new Error(
++              "Claude agent profiles require verified Claude Code 2.1.301 or newer. Upgrade the gateway's Claude CLI before enabling this profile.",
++            );
++          }
++          return prepare();
++        })();
++      }
+       const supportProbe = options.ensureDynamicSystemPromptSectionsSupport?.();
+       return supportProbe ? supportProbe.then(prepare) : prepare();
+     },
+diff --git a/extensions/anthropic/cli-profile.test.ts b/extensions/anthropic/cli-profile.test.ts
+new file mode 100644
+index 00000000000..51239071516
+--- /dev/null
++++ b/extensions/anthropic/cli-profile.test.ts
+@@ -0,0 +1,135 @@
++import type { CliBackendNormalizeConfigContext } from "openclaw/plugin-sdk/cli-backend";
++import { describe, expect, it, vi } from "vitest";
++import { buildAnthropicCliBackend } from "./cli-backend.js";
++import { applyClaudeAgentProfile } from "./cli-profile.js";
++import { resolveClaudeCliExecutionArgs } from "./cli-shared.js";
++
++function context(
++  mode: "workspace" | "diagnostic" | "restricted",
++  allow: string[] = ["read", "write"],
++): CliBackendNormalizeConfigContext {
++  return {
++    backendId: "claude-cli",
++    agentId: "selected",
++    workspaceDir: "/tmp/workspace",
++    config: {
++      agents: { entries: { selected: { tools: { allow } } } },
++      plugins: {
++        entries: {
++          anthropic: {
++            config: {
++              cliConfigDir: "/tmp/native-login",
++              cliProfiles: { selected: { mode, protectedPaths: ["/tmp/workspace/private"] } },
++            },
++          },
++        },
++      },
++    },
++  };
++}
++const base = {
++  command: "claude",
++  args: ["-p", "--setting-sources", "user", "--permission-mode", "bypassPermissions"],
++  resumeArgs: ["-p", "--resume", "{sessionId}"],
++};
++const settings = (args: string[]) => JSON.parse(args[args.indexOf("--settings") + 1]!);
++
++describe("explicit Claude agent profiles", () => {
++  it("leaves non-selected agents unchanged", () => {
++    expect(applyClaudeAgentProfile(base, { ...context("workspace"), agentId: "other" })).toBe(base);
++  });
++  it("uses actual workspace and binds protected paths and native settings into fresh and resumed argv", () => {
++    const selected = applyClaudeAgentProfile(base, context("workspace"));
++    expect(selected.nativePermissionMode).toBe("defer");
++    for (const args of [selected.args!, selected.resumeArgs!]) {
++      expect(args).not.toContain("bypassPermissions");
++      expect(args[args.indexOf("--setting-sources") + 1]).toBe("");
++      expect(settings(args)).toMatchObject({
++        disableAllHooks: true,
++        permissions: {
++          blockReadsOutsideWorkingDirectories: true,
++          allow: ["Edit(//tmp/workspace/**)"],
++        },
++        sandbox: { enabled: true, failIfUnavailable: true, allowUnsandboxedCommands: false },
++      });
++      expect(settings(args).permissions.deny).toContain("Read(//tmp/workspace/private/**)");
++    }
++    const changed = applyClaudeAgentProfile(base, {
++      ...context("workspace"),
++      workspaceDir: "/tmp/other",
++    });
++    expect(changed.args).not.toEqual(selected.args);
++  });
++  it("clears inherited service secrets even when their names look harmless", () => {
++    vi.stubEnv("NEUTRAL_CONFIG_VALUE", "synthetic-not-a-secret");
++    try {
++      const selected = applyClaudeAgentProfile(base, context("workspace"));
++      expect(selected.strictClearEnv).toBe(true);
++      expect(selected.clearEnv).toContain("NEUTRAL_CONFIG_VALUE");
++      expect(selected.env?.CLAUDE_CONFIG_DIR).toBe("/tmp/native-login");
++      expect(settings(selected.args!).sandbox.filesystem.denyRead).toContain(
++        "/private/tmp/openclaw-cli-mcp-*",
++      );
++    } finally {
++      vi.unstubAllEnvs();
++    }
++  });
++  it.each([undefined, "2.1.256", "2.1.300"])(
++    "refuses unqualified Claude versions: %s",
++    async (version) => {
++      const backend = buildAnthropicCliBackend({ resolveVersion: async () => version });
++      await expect(
++        backend.prepareExecution!({
++          ...context("workspace"),
++          workspaceDir: "/tmp/workspace",
++          provider: "claude-cli",
++          modelId: "haiku",
++        }),
++      ).rejects.toThrow("2.1.301");
++    },
++  );
++  it("accepts native login on the qualified CLI and rejects forwarded API credentials", async () => {
++    const backend = buildAnthropicCliBackend({ resolveVersion: async () => "2.1.301" });
++    const execution = {
++      ...context("workspace"),
++      workspaceDir: "/tmp/workspace",
++      provider: "claude-cli",
++      modelId: "haiku",
++    };
++    await expect(backend.prepareExecution!(execution)).resolves.toBeDefined();
++    const forwarded = { ...execution, authCredential: { type: "api_key", key: "synthetic-key" } };
++    await expect(backend.prepareExecution!(forwarded)).rejects.toThrow("forwarded credentials");
++  });
++  it("keeps the diagnostic exception explicit", () => {
++    const selected = applyClaudeAgentProfile(base, context("diagnostic"));
++    expect(settings(selected.args!).sandbox.enabled).toBe(false);
++    expect(selected.nativePermissionMode).toBe("defer");
++  });
++  it.each([{ allow: [] }, { allow: ["read"] }])(
++    "preserves restricted agent caps, including empty caps: %j",
++    ({ allow }) => {
++      const selected = applyClaudeAgentProfile(base, context("restricted", allow));
++      expect(selected.toolsAllow).toEqual(allow);
++      expect(selected.nativePermissionMode).toBeUndefined();
++    },
++  );
++  it("rejects unbounded specialist configuration", () => {
++    expect(() => applyClaudeAgentProfile(base, context("restricted", ["*"]))).toThrow(
++      "explicit agent tools.allow",
++    );
++  });
++  it("keeps per-run restricted execution stronger than a native agent profile", () => {
++    const selected = applyClaudeAgentProfile(base, context("workspace"));
++    const args = resolveClaudeCliExecutionArgs({
++      workspaceDir: "/tmp/workspace",
++      provider: "claude-cli",
++      modelId: "haiku",
++      useResume: false,
++      baseArgs: selected.args!,
++      toolAvailability: { native: [], openClaw: ["memory_search"] },
++    });
++    expect(args[args.indexOf("--tools") + 1]).toBe("");
++    expect(args[args.indexOf("--allowedTools") + 1]).toBe("mcp__openclaw__memory_search");
++    expect(settings(args).permissions).toBeUndefined();
++  });
++});
+diff --git a/extensions/anthropic/cli-profile.ts b/extensions/anthropic/cli-profile.ts
+new file mode 100644
+index 00000000000..9cc6b4ca96b
+--- /dev/null
++++ b/extensions/anthropic/cli-profile.ts
+@@ -0,0 +1,179 @@
++import { realpathSync } from "node:fs";
++import os from "node:os";
++import path from "node:path";
++import { resolveAgentConfig } from "openclaw/plugin-sdk/agent-scope-runtime";
++import type {
++  CliBackendConfig,
++  CliBackendNormalizeConfigContext,
++} from "openclaw/plugin-sdk/cli-backend";
++
++type ClaudeAgentProfile = {
++  mode: "workspace" | "diagnostic" | "restricted";
++  protectedPaths?: string[];
++};
++type ClaudeProfileConfig = {
++  cliConfigDir?: string;
++  cliProfiles?: Record<string, ClaudeAgentProfile>;
++};
++
++export function resolveClaudeAgentProfile(
++  context?: Pick<CliBackendNormalizeConfigContext, "config" | "agentId">,
++) {
++  const config = context?.config?.plugins?.entries?.anthropic?.config as
++    | ClaudeProfileConfig
++    | undefined;
++  const profile = context?.agentId ? config?.cliProfiles?.[context.agentId] : undefined;
++  return { profile, configDir: config?.cliConfigDir };
++}
++
++function absolutePath(value: string): string {
++  const expanded = value.startsWith("~/") ? path.join(os.homedir(), value.slice(2)) : value;
++  // These are literal trusted paths, not permission-rule expressions.
++  if (!path.isAbsolute(expanded) || /[\n\r*?\[\]{}()]/u.test(expanded)) {
++    throw new Error("Claude profile paths must be absolute literal paths (or start with ~/).");
++  }
++  return path.resolve(expanded);
++}
++
++function replaceArgs(args: string[] | undefined, settings: object): string[] {
++  const result: string[] = [];
++  const values = new Set([
++    "--settings",
++    "--setting-sources",
++    "--permission-mode",
++    "--tools",
++    "--allowedTools",
++  ]);
++  for (let i = 0; i < (args?.length ?? 0); i++) {
++    const arg = args![i]!;
++    if (values.has(arg)) {
++      i++;
++      continue;
++    }
++    if ([...values].some((name) => arg.startsWith(`${name}=`))) continue;
++    if (arg === "--dangerously-skip-permissions") continue;
++    result.push(arg);
++  }
++  return [
++    ...result,
++    "--setting-sources",
++    "",
++    "--settings",
++    JSON.stringify(settings),
++    "--permission-mode",
++    "default",
++    "--tools",
++    "Read,Write,Edit,Bash,Glob,Grep,AskUserQuestion",
++    "--allowedTools",
++    "mcp__openclaw__*",
++    "--disable-slash-commands",
++    "--no-chrome",
++    "--strict-mcp-config",
++  ];
++}
++
++/** Select an explicit agent profile without changing the stock backend for other agents. */
++export function applyClaudeAgentProfile(
++  config: CliBackendConfig,
++  context?: CliBackendNormalizeConfigContext,
++): CliBackendConfig {
++  const { profile, configDir } = resolveClaudeAgentProfile(context);
++  if (!profile) return config;
++  if (!configDir)
++    throw new Error("Claude agent profiles require a dedicated cliConfigDir subscription login.");
++  const env = {
++    ...config.env,
++    CLAUDE_CONFIG_DIR: absolutePath(configDir),
++    CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: profile.mode === "workspace" ? "0" : "1",
++  };
++  // The native login only needs OS/session plumbing. Host service credentials belong
++  // to guarded MCP adapters, never to the model's shell environment.
++  const safeEnv =
++    /^(?:PATH|HOME|USER|LOGNAME|SHELL|TMPDIR|TMP|TEMP|LANG|LC_[A-Z_]+|TZ|TERM|COLORTERM|__CF_USER_TEXT_ENCODING)$/u;
++  const clearEnv = [
++    ...new Set([
++      ...(config.clearEnv ?? []),
++      ...Object.keys(process.env).filter((name) => !safeEnv.test(name)),
++    ]),
++  ].sort();
++  if (profile.mode === "restricted") {
++    const allow = context?.agentId
++      ? resolveAgentConfig(context.config ?? {}, context.agentId)?.tools?.allow
++      : undefined;
++    if (!allow || allow.some((name) => name.includes("*"))) {
++      throw new Error(
++        "Restricted Claude profiles require an explicit agent tools.allow without wildcards.",
++      );
++    }
++    return { ...config, env, clearEnv, strictClearEnv: true, toolsAllow: [...allow] };
++  }
++  // Discovery can normalize before a workspace is admitted. Only execution owns the root.
++  if (!context?.workspaceDir) return { ...config, env, clearEnv, strictClearEnv: true };
++  const workspace = absolutePath(context.workspaceDir);
++  const protectedPaths = [
++    ...new Set(
++      [configDir, "~/.ssh", "~/.aws", "~/Library/Keychains", ...(profile.protectedPaths ?? [])].map(
++        absolutePath,
++      ),
++    ),
++  ];
++  // MCP files contain rendered bearer credentials. Cover fresh and retained warm
++  // configs with stable globs instead of random per-turn paths in the fingerprint.
++  const mcpConfigPaths = [
++    ...new Set([os.tmpdir(), realpathSync(os.tmpdir()), "/tmp", "/private/tmp"]),
++  ].map((root) => path.join(root, "openclaw-cli-mcp-*"));
++  const deniedPaths = [...protectedPaths, ...mcpConfigPaths];
++  const settings = {
++    disableAllHooks: true,
++    enabledPlugins: {},
++    autoMemoryEnabled: false,
++    disableClaudeAiConnectors: true,
++    claudeMdExcludes: ["**/CLAUDE.md", "**/CLAUDE.local.md", "**/.claude/rules/**"],
++    permissions: {
++      defaultMode: "default",
++      blockReadsOutsideWorkingDirectories: profile.mode === "workspace",
++      allow: [`Edit(/${workspace}/**)`],
++      deny: deniedPaths.flatMap((entry) => [
++        `Read(/${entry})`,
++        `Read(/${entry}/**)`,
++        `Edit(/${entry})`,
++        `Edit(/${entry}/**)`,
++      ]),
++    },
++    sandbox: {
++      credentials: {
++        envVars: [
++          "OPENCLAW_MCP_TOKEN",
++          "OPENCLAW_MCP_SESSION_KEY",
++          "OPENCLAW_MCP_CLI_CAPTURE_KEY",
++          "GITHUB_TOKEN",
++          "GH_TOKEN",
++          "GH_ENTERPRISE_TOKEN",
++          "GITHUB_ENTERPRISE_TOKEN",
++        ].map((name) => ({ name, mode: "deny" })),
++      },
++      enabled: profile.mode === "workspace",
++      failIfUnavailable: true,
++      autoAllowBashIfSandboxed: true,
++      allowUnsandboxedCommands: false,
++      excludedCommands: [],
++      filesystem: { denyRead: deniedPaths, denyWrite: deniedPaths },
++      network: {
++        allowedDomains: [],
++        strictAllowlist: true,
++        allowLocalBinding: false,
++        allowUnixSockets: [],
++        allowAllUnixSockets: false,
++      },
++    },
++  };
++  return {
++    ...config,
++    env,
++    clearEnv,
++    strictClearEnv: true,
++    nativePermissionMode: "defer",
++    args: replaceArgs(config.args, settings),
++    resumeArgs: replaceArgs(config.resumeArgs, settings),
++  };
++}
+diff --git a/extensions/anthropic/cli-runtime.test-support.ts b/extensions/anthropic/cli-runtime.test-support.ts
+index 0edae255279..b07acc14e5c 100644
+--- a/extensions/anthropic/cli-runtime.test-support.ts
++++ b/extensions/anthropic/cli-runtime.test-support.ts
+@@ -19,6 +19,7 @@ let lateDecision;
+ let pendingInputUuid;
+ const priorResponses = {};
+ let credentialProof;
++let hookDecision;
+ let shutdownDescendant;
+ if (scenario === "shutdown-ignore" || scenario === "shutdown-eof") {
+   if (scenario === "shutdown-ignore") {
+@@ -287,7 +288,11 @@ for await (const line of createInterface({ input: process.stdin })) {
+         result({ hookDecision: response });
+         continue;
+       }
+-      assert.equal(response.hookSpecificOutput.permissionDecision, scenario === "user-question" ? "allow" : "deny");
++      if (scenario === "native-permission-phases") {
++        assert.equal(response.continue, true);
++        assert.equal(response.hookSpecificOutput.permissionDecision, undefined);
++        hookDecision = response;
++      } else assert.equal(response.hookSpecificOutput.permissionDecision, scenario === "user-question" ? "allow" : "deny");
+       request("permission-" + turn, { subtype: "can_use_tool",
+         tool_name: scenario === "user-question" ? "AskUserQuestion" : "Read",
+         input: scenario === "user-question" ? questionInput : { file_path: "fixture.txt" },
+@@ -298,7 +303,7 @@ for await (const line of createInterface({ input: process.stdin })) {
+         request("cancel-me", { subtype: "can_use_tool", tool_name: "Read",
+           input: { file_path: "cancel.txt" }, tool_use_id: "cancel-tool" });
+         setTimeout(() => send({ type: "control_cancel_request", request_id: "cancel-me" }), 20);
+-      } else result({ permission: response });
++      } else result({ permission: response, hookDecision });
+     } else if (id === "cancel-me") {
+       assert.equal(response.behavior, "deny");
+       result({ cancelledDecision: response });
+diff --git a/extensions/anthropic/cli-runtime.test.ts b/extensions/anthropic/cli-runtime.test.ts
+index 43bc906fdab..461899a5e6a 100644
+--- a/extensions/anthropic/cli-runtime.test.ts
++++ b/extensions/anthropic/cli-runtime.test.ts
+@@ -119,6 +119,29 @@ function resultDetail(records: Record<string, unknown>[]): Record<string, unknow
+ }
+ 
+ describe("Claude native stdio boundary", () => {
++  it("continues native permission evaluation after host preflight and forwards escalation separately", async () => {
++    const context = await createContext("native-permission-phases", {
++      nativePermissionMode: "defer",
++      requestToolPermission: vi.fn(async (request) =>
++        request.phase === "pre-tool"
++          ? { behavior: "allow" as const, updatedInput: { file_path: "rewritten.txt" } }
++          : { behavior: "deny" as const, message: "Owner denied outside write." },
++      ),
++    });
++    const detail = resultDetail(await collect(context));
++    expect(detail.hookDecision).toEqual({
++      continue: true,
++      hookSpecificOutput: {
++        hookEventName: "PreToolUse",
++        updatedInput: { file_path: "rewritten.txt" },
++      },
++    });
++    expect(detail.permission).toMatchObject({ behavior: "deny" });
++    expect(
++      vi.mocked(context.requestToolPermission).mock.calls.map(([request]) => request.phase),
++    ).toEqual(["pre-tool", "permission"]);
++  });
++
+   it.each([
+     { scenario: "shutdown-ignore", name: "native parent and child ignore EOF and SIGTERM" },
+     { scenario: "shutdown-eof", name: "native parent exits immediately on EOF" },
+diff --git a/extensions/anthropic/cli-shared.ts b/extensions/anthropic/cli-shared.ts
+index a83915fe40d..ccf0725cbc1 100644
+--- a/extensions/anthropic/cli-shared.ts
++++ b/extensions/anthropic/cli-shared.ts
+@@ -11,6 +11,7 @@ import type {
+ import { resolveExecModePolicy } from "openclaw/plugin-sdk/exec-approvals-runtime";
+ import { normalizeOptionalLowercaseString } from "openclaw/plugin-sdk/string-coerce-runtime";
+ import { CLAUDE_CLI_BACKEND_ID } from "./cli-constants.js";
++import { applyClaudeAgentProfile } from "./cli-profile.js";
+ export {
+   CLAUDE_CLI_BACKEND_ID,
+   CLAUDE_CLI_CLEAR_ENV,
+@@ -503,13 +504,17 @@ export function normalizeClaudeBackendConfig(
+   const permissionMode = isOpenClawRequestedYolo(context)
+     ? CLAUDE_BYPASS_PERMISSION_MODE
+     : undefined;
+-  return {
+-    ...config,
+-    args: normalizeClaudeBackendArgs(config.args, permissionMode),
+-    resumeArgs: normalizeClaudeBackendArgs(config.resumeArgs, permissionMode),
+-    output,
+-    liveSession:
+-      config.liveSession ?? (output === "jsonl" && input === "stdin" ? "claude-stdio" : undefined),
+-    input,
+-  };
++  return applyClaudeAgentProfile(
++    {
++      ...config,
++      args: normalizeClaudeBackendArgs(config.args, permissionMode),
++      resumeArgs: normalizeClaudeBackendArgs(config.resumeArgs, permissionMode),
++      output,
++      liveSession:
++        config.liveSession ??
++        (output === "jsonl" && input === "stdin" ? "claude-stdio" : undefined),
++      input,
++    },
++    context,
++  );
+ }
+diff --git a/extensions/anthropic/cli.runtime.ts b/extensions/anthropic/cli.runtime.ts
+index b9c318356a4..51687b974ed 100644
+--- a/extensions/anthropic/cli.runtime.ts
++++ b/extensions/anthropic/cli.runtime.ts
+@@ -107,6 +107,7 @@ async function authorizeTool(
+   session: ClaudeCliSession,
+   request: Record<string, unknown>,
+   signal: AbortSignal,
++  phase: "pre-tool" | "permission",
+ ): Promise<CliBackendToolPermissionResult> {
+   const turn = activeTurn(session);
+   const input = request.input;
+@@ -125,6 +126,10 @@ async function authorizeTool(
+         ? await turn.userInput.authorize({ input, signal: abortSignal, toolUseId })
+         : await turn.context.requestToolPermission({
+             toolName,
++            ...(turn.context.nativePermissionMode === "defer" &&
++            !toolName.startsWith("mcp__openclaw__")
++              ? { phase }
++              : {}),
+             toolInput: input,
+             cwd: typeof request.cwd === "string" ? request.cwd : undefined,
+             toolCallId: toolUseId,
+@@ -146,7 +151,10 @@ async function handleRequest(
+   signal: AbortSignal,
+ ): Promise<unknown> {
+   if (request.subtype === "can_use_tool") {
+-    return { ...(await authorizeTool(session, request, signal)), toolUseID: request.tool_use_id };
++    return {
++      ...(await authorizeTool(session, request, signal, "permission")),
++      toolUseID: request.tool_use_id,
++    };
+   }
+   if (request.subtype !== "hook_callback" || !isRecord(request.input)) {
+     throw new Error("Unsupported Claude CLI control request.");
+@@ -177,7 +185,7 @@ async function handleRequest(
+     ) {
+       return { continue: true };
+     }
+-    // Native settings can grant tools before can_use_tool. This hook preserves host policy.
++    // Enforce host policy without pre-approving an operation Claude may need to escalate.
+     const decision = await authorizeTool(
+       session,
+       {
+@@ -187,7 +195,18 @@ async function handleRequest(
+         tool_use_id: request.tool_use_id ?? input.tool_use_id,
+       },
+       signal,
++      "pre-tool",
+     );
++    if (
++      decision.behavior === "allow" &&
++      input.tool_name !== "AskUserQuestion" &&
++      turn?.context.nativePermissionMode === "defer"
++    ) {
++      return {
++        continue: true,
++        hookSpecificOutput: { hookEventName: "PreToolUse", updatedInput: decision.updatedInput },
++      };
++    }
+     return {
+       hookSpecificOutput: {
+         hookEventName: "PreToolUse",
+diff --git a/extensions/anthropic/openclaw.plugin.json b/extensions/anthropic/openclaw.plugin.json
+index f9de041a63d..aa3c3cccf6e 100644
+--- a/extensions/anthropic/openclaw.plugin.json
++++ b/extensions/anthropic/openclaw.plugin.json
+@@ -470,6 +470,36 @@
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
++      "cliConfigDir": {
++        "type": "string",
++        "description": "Dedicated native Claude subscription login directory. No API credentials are forwarded for selected profiles."
++      },
++      "cliProfiles": {
++        "type": "object",
++        "additionalProperties": {
++          "type": "object",
++          "additionalProperties": false,
++          "required": [
++            "mode"
++          ],
++          "properties": {
++            "mode": {
++              "type": "string",
++              "enum": [
++                "workspace",
++                "diagnostic",
++                "restricted"
++              ]
++            },
++            "protectedPaths": {
++              "type": "array",
++              "items": {
++                "type": "string"
++              }
++            }
++          }
++        }
++      },
+       "sessionCatalog": {
+         "type": "object",
+         "additionalProperties": false,
+diff --git a/src/agents/cli-backends.ts b/src/agents/cli-backends.ts
+index 67706b6840e..a62b1c5bede 100644
+--- a/src/agents/cli-backends.ts
++++ b/src/agents/cli-backends.ts
+@@ -284,11 +284,12 @@ export function resolveCliBackendLiveTest(provider: string): ResolvedCliBackendL
+ export function resolveCliBackendConfig(
+   provider: string,
+   cfg?: OpenClawConfig,
+-  options: { agentId?: string } = {},
++  options: { agentId?: string; workspaceDir?: string } = {},
+ ): ResolvedCliBackend | null {
+   const normalized = normalizeBackendKey(provider);
+   const normalizeContext: CliBackendNormalizeConfigContext = {
+     backendId: normalized,
++    ...(options.workspaceDir ? { workspaceDir: options.workspaceDir } : {}),
+     ...(options.agentId ? { agentId: options.agentId } : {}),
+     ...(cfg ? { config: cfg } : {}),
+   };
+diff --git a/src/agents/cli-runner.spawn.test.ts b/src/agents/cli-runner.spawn.test.ts
+index 986b86eafbe..2fc1a7d9d47 100644
+--- a/src/agents/cli-runner.spawn.test.ts
++++ b/src/agents/cli-runner.spawn.test.ts
+@@ -2109,6 +2109,13 @@ describe("runCliAgent spawn path", () => {
+       backend: { clearEnv: ["SAFE_CLEAR", "SAFE_DROP"] },
+       expected: { SAFE_CLEAR: "from-base", SAFE_DROP: undefined },
+     },
++    {
++      name: "cannot preserve cleared credentials under a strict native profile",
++      baseEnv: { ANTHROPIC_API_KEY: "synthetic-api-key", NEUTRAL_CREDENTIAL: "synthetic-neutral" },
++      preserve: ["ANTHROPIC_API_KEY", "NEUTRAL_CREDENTIAL"],
++      backend: { strictClearEnv: true, clearEnv: ["ANTHROPIC_API_KEY", "NEUTRAL_CREDENTIAL"] },
++      expected: { ANTHROPIC_API_KEY: undefined, NEUTRAL_CREDENTIAL: undefined },
++    },
+     {
+       name: "keeps explicit backend env overrides even when clearEnv drops inherited values",
+       baseEnv: { SAFE_OVERRIDE: "from-base" },
+diff --git a/src/agents/cli-runner.ts b/src/agents/cli-runner.ts
+index 519ba86c6a4..8c68a9e1d3a 100644
+--- a/src/agents/cli-runner.ts
++++ b/src/agents/cli-runner.ts
+@@ -111,7 +111,7 @@ export async function isCliBindingFlushed(
+   sessionId: string | undefined,
+   provider: string | undefined,
+   workspaceDir?: string,
+-  options?: { skipTranscriptProbe?: boolean },
++  options?: { skipTranscriptProbe?: boolean; configDir?: string },
+ ): Promise<boolean> {
+   if (!provider || !isClaudeCliBackend(provider)) {
+     return true;
+@@ -128,7 +128,13 @@ export async function isCliBindingFlushed(
+     if (delayMs > 0) {
+       await cliRunnerDeps.delay(delayMs);
+     }
+-    if (await cliRunnerDeps.claudeCliSessionTranscriptHasContent({ sessionId, workspaceDir })) {
++    if (
++      await cliRunnerDeps.claudeCliSessionTranscriptHasContent({
++        sessionId,
++        workspaceDir,
++        ...(options?.configDir ? { configDir: options.configDir } : {}),
++      })
++    ) {
+       return true;
+     }
+   }
+@@ -573,7 +579,12 @@ async function runPreparedCliAgentOwned(
+               effectiveCliSessionId,
+               params.provider,
+               context.cwd ?? context.workspaceDir,
+-              { skipTranscriptProbe: acceptsCliLiveSession(context) },
++              {
++                skipTranscriptProbe: acceptsCliLiveSession(context),
++                configDir:
++                  context.preparedBackend.env?.CLAUDE_CONFIG_DIR ??
++                  context.preparedBackend.backend.env?.CLAUDE_CONFIG_DIR,
++              },
+             );
+         const interruptionError = terminalInterruption
+           ? formatCliTerminalInterruption(terminalInterruption)
+diff --git a/src/agents/cli-runner/cli-native-tool-approval.ts b/src/agents/cli-runner/cli-native-tool-approval.ts
+index f0409b23e45..0e0009b3756 100644
+--- a/src/agents/cli-runner/cli-native-tool-approval.ts
++++ b/src/agents/cli-runner/cli-native-tool-approval.ts
+@@ -93,6 +93,7 @@ export async function requestCliNativeToolApproval(params: {
+   sessionKey?: string;
+   agentId?: string;
+   toolCallId?: string;
++  approvalReviewerDeviceIds?: string[];
+   cwd?: string;
+   fallbackCwd?: string;
+   env?: NodeJS.ProcessEnv;
+@@ -259,6 +260,9 @@ export async function requestCliNativeToolApproval(params: {
+           toolCallId: params.toolCallId,
+           agentId: params.agentId,
+           sessionKey: params.sessionKey,
++          ...(params.approvalReviewerDeviceIds?.length
++            ? { approvalReviewerDeviceIds: params.approvalReviewerDeviceIds }
++            : {}),
+           title: truncateUtf16Safe(
+             `${params.pluginId} native tool: ${params.toolName}`,
+             PLUGIN_APPROVAL_TITLE_MAX_LENGTH,
+diff --git a/src/agents/cli-runner/cli-run-settlement.test.ts b/src/agents/cli-runner/cli-run-settlement.test.ts
+index df2173d3919..284afc60f34 100644
+--- a/src/agents/cli-runner/cli-run-settlement.test.ts
++++ b/src/agents/cli-runner/cli-run-settlement.test.ts
+@@ -54,6 +54,21 @@ describe("isCliBindingFlushed", () => {
+     expect(probe).toHaveBeenCalledWith({ sessionId: "sid-fresh", workspaceDir });
+   });
+ 
++  it("probes the selected directory when settling a nonlive native binding", async () => {
++    const probe = vi.fn(async () => true);
++    setCliRunnerTestDeps({ claudeCliSessionTranscriptHasContent: probe });
++    expect(
++      await isCliBindingFlushed("dedicated", "claude-cli", workspaceDir, {
++        configDir: "/tmp/dedicated-login",
++      }),
++    ).toBe(true);
++    expect(probe).toHaveBeenCalledExactlyOnceWith({
++      sessionId: "dedicated",
++      workspaceDir,
++      configDir: "/tmp/dedicated-login",
++    });
++  });
++
+   it("retries up to three times before giving up", async () => {
+     const delay = vi.fn(async () => undefined);
+     const probe = vi.fn(async () => false);
+diff --git a/src/agents/cli-runner/execute-plugin.policy.test.ts b/src/agents/cli-runner/execute-plugin.policy.test.ts
+index 442567286ce..dae06584cea 100644
+--- a/src/agents/cli-runner/execute-plugin.policy.test.ts
++++ b/src/agents/cli-runner/execute-plugin.policy.test.ts
+@@ -6,8 +6,17 @@ import {
+ } from "../../plugins/hook-runner-global.js";
+ import type { PluginHookHandlerMap } from "../../plugins/hook-types.js";
+ import { createMockPluginRegistry } from "../../plugins/hooks.test-fixtures.js";
++import {
++  getPluginRuntimeGatewayRequestScope,
++  withPluginRuntimeGatewayRequestScope,
++} from "../../plugins/runtime/gateway-request-scope.js";
++import { createOperationalRunInstanceRef } from "../admitted-run-context.js";
+ import * as beforeToolCall from "../agent-tools.before-tool-call.js";
+ import { createCliJsonlStreamingParser } from "../cli-output-stream.js";
++import {
++  getGatewayToolCallerIdentity,
++  withGatewayToolCallerIdentity,
++} from "../tools/gateway-caller-context.js";
+ import { callGatewayTool } from "../tools/gateway.js";
+ import { createCliEventHandlers } from "./execute-events.js";
+ import {
+@@ -48,6 +57,205 @@ afterEach(() => {
+ });
+ 
+ describe("plugin-owned CLI native tool policy", () => {
++  it.each([true, false])(
++    "restores the current Claude turn scope instead of pooled callback authority (bound=%s)",
++    async (bound) => {
++      const stale = { isWebchatConnect: () => false, hasCurrentClientAuthority: () => false };
++      const current = { isWebchatConnect: () => false, hasCurrentClientAuthority: () => true };
++      const currentCaller = {
++        agentId: "main",
++        sessionKey: "agent:main:current",
++        operationalRunInstance: createOperationalRunInstanceRef("current"),
++        receiptAuthority: () => true,
++      };
++      const staleCaller = {
++        agentId: "admin",
++        sessionKey: "agent:admin:stale",
++        fullPermission: true,
++        operationalRunInstance: createOperationalRunInstanceRef("stale"),
++        receiptAuthority: () => false,
++      };
++      const observed: unknown[] = [];
++      const observe = () => {
++        const caller = getGatewayToolCallerIdentity();
++        observed.push({
++          scope: getPluginRuntimeGatewayRequestScope()?.hasCurrentClientAuthority,
++          run: caller?.operationalRunInstance,
++          session: caller?.sessionKey,
++          receipt: caller?.receiptAuthority?.(),
++          fullPermission: caller?.fullPermission,
++        });
++      };
++      installBeforeToolCallHook(observe);
++      mockCallGatewayTool.mockImplementation(async () => {
++        observe();
++        return { id: "current-approval", decision: "allow-once" };
++      });
++      const { context } = await createExecution({ nativeTools: ["Write"] });
++      context.backendResolved.config.nativePermissionMode = "defer";
++      const invoke = () =>
++        runPlugin(context, async function* (execution) {
++          const result = await withGatewayToolCallerIdentity(staleCaller, () =>
++            withPluginRuntimeGatewayRequestScope(stale, () =>
++              execution.requestToolPermission({
++                phase: "permission",
++                toolName: "Write",
++                toolCallId: "current-turn-write",
++                toolInput: { file_path: "/outside/current.txt", content: "synthetic" },
++              }),
++            ),
++          );
++          expect(result).toMatchObject({ behavior: "allow" });
++          const expected = {
++            scope: bound ? current.hasCurrentClientAuthority : undefined,
++            run: bound ? currentCaller.operationalRunInstance : undefined,
++            session: bound ? currentCaller.sessionKey : undefined,
++            receipt: bound ? true : undefined,
++            fullPermission: undefined,
++          };
++          expect(observed).toEqual([expected, expected]);
++          yield SUCCESS_RESULT;
++        });
++      await (bound
++        ? withGatewayToolCallerIdentity(currentCaller, () =>
++            withPluginRuntimeGatewayRequestScope(current, invoke),
++          )
++        : invoke());
++    },
++  );
++
++  it("keeps concurrent Claude callback identities separate across approval waits", async () => {
++    const release: Array<() => void> = [];
++    const observed: string[] = [];
++    mockCallGatewayTool.mockImplementation(async () => {
++      const caller = getGatewayToolCallerIdentity();
++      await new Promise<void>((resolve) => {
++        release.push(resolve);
++        if (release.length === 2) release.forEach((done) => done());
++      });
++      expect(getGatewayToolCallerIdentity()?.operationalRunInstance).toBe(
++        caller?.operationalRunInstance,
++      );
++      expect(getPluginRuntimeGatewayRequestScope()?.hasCurrentClientAuthority?.()).toBe(true);
++      observed.push(caller?.sessionKey ?? "missing");
++      return { id: caller?.sessionKey, decision: "allow-once" };
++    });
++    await Promise.all(
++      ["one", "two"].map(async (id) => {
++        const { context } = await createExecution({ nativeTools: ["Write"] });
++        context.backendResolved.config.nativePermissionMode = "defer";
++        const caller = {
++          agentId: "main",
++          sessionKey: id,
++          operationalRunInstance: createOperationalRunInstanceRef(id),
++          receiptAuthority: () => true,
++        };
++        await withGatewayToolCallerIdentity(caller, () =>
++          withPluginRuntimeGatewayRequestScope(
++            { isWebchatConnect: () => false, hasCurrentClientAuthority: () => true },
++            () =>
++              runPlugin(context, async function* (execution) {
++                const result = await withGatewayToolCallerIdentity(
++                  { agentId: "foreign", sessionKey: "foreign" },
++                  () =>
++                    withPluginRuntimeGatewayRequestScope(
++                      { isWebchatConnect: () => false, hasCurrentClientAuthority: () => false },
++                      () =>
++                        execution.requestToolPermission({
++                          phase: "permission",
++                          toolName: "Write",
++                          toolInput: { file_path: "/outside/" + id, content: id },
++                        }),
++                    ),
++                );
++                expect(result).toMatchObject({ behavior: "allow" });
++                yield SUCCESS_RESULT;
++              }),
++          ),
++        );
++      }),
++    );
++    expect(observed.sort()).toEqual(["one", "two"]);
++  });
++
++  it("denies a reused Claude callback when its turn is revoked during approval", async () => {
++    const { context } = await createExecution({ nativeTools: ["Write"] });
++    context.backendResolved.config.nativePermissionMode = "defer";
++    let current = true;
++    context.params.assertCurrent = () => {
++      if (!current) throw new Error("revoked");
++    };
++    mockCallGatewayTool.mockImplementation(async () => {
++      current = false;
++      return { id: "late", decision: "allow-once" };
++    });
++    await runPlugin(context, async function* (execution) {
++      await expect(
++        execution.requestToolPermission({
++          phase: "permission",
++          toolName: "Write",
++          toolInput: { file_path: "/outside/late", content: "fixture" },
++        }),
++      ).resolves.toMatchObject({ behavior: "deny" });
++      yield SUCCESS_RESULT;
++    });
++  });
++
++  it.each([false, true])(
++    "checks rewritten Claude input once unless the escalated input changes (changed=%s)",
++    async (changed) => {
++      const hook = vi.fn(async (event) => ({
++        params: { ...event.params, path: "/outside/reviewed.txt" },
++      }));
++      installBeforeToolCallHook(hook);
++      mockCallGatewayTool.mockResolvedValue({ id: "outside", decision: "allow-once" });
++      const { context } = await createExecution({ nativeTools: ["Write"] });
++      context.backendResolved.config.nativePermissionMode = "defer";
++      await runPlugin(context, async function* (execution) {
++        const base = { toolName: "Write", toolCallId: "one-write" };
++        const checked = await execution.requestToolPermission({
++          ...base,
++          phase: "pre-tool",
++          toolInput: { file_path: "/workspace/original.txt", content: "first" },
++        });
++        expect(checked).toMatchObject({
++          behavior: "allow",
++          updatedInput: { file_path: "/outside/reviewed.txt", content: "first" },
++        });
++        if (checked.behavior !== "allow") throw new Error("preflight denied");
++        expect(mockCallGatewayTool).not.toHaveBeenCalled();
++        await expect(
++          execution.requestToolPermission({
++            ...base,
++            phase: "permission",
++            toolInput: { ...checked.updatedInput, ...(changed ? { content: "changed" } : {}) },
++          }),
++        ).resolves.toMatchObject({ behavior: "allow" });
++        expect(hook).toHaveBeenCalledTimes(changed ? 2 : 1);
++        expect(mockCallGatewayTool).toHaveBeenCalledOnce();
++        yield SUCCESS_RESULT;
++      });
++    },
++  );
++
++  it("does not let Claude preflight continuation bypass a host veto", async () => {
++    installBeforeToolCallHook(() => ({ block: true, blockReason: "protected state" }));
++    const { context } = await createExecution({ nativeTools: ["Write"] });
++    context.backendResolved.config.nativePermissionMode = "defer";
++    await runPlugin(context, async function* (execution) {
++      await expect(
++        execution.requestToolPermission({
++          phase: "pre-tool",
++          toolName: "Write",
++          toolCallId: "blocked",
++          toolInput: { file_path: "/workspace/file.txt", content: "fixture" },
++        }),
++      ).resolves.toMatchObject({ behavior: "deny" });
++      yield SUCCESS_RESULT;
++    });
++    expect(mockCallGatewayTool).not.toHaveBeenCalled();
++  });
++
+   it("denies native tools when caller authority expires during policy or before a retained call", async () => {
+     const { context } = await createExecution({ nativeTools: ["WebFetch"] });
+     let callerCurrent = true;
+diff --git a/src/agents/cli-runner/execute-plugin.test.ts b/src/agents/cli-runner/execute-plugin.test.ts
+index e09dd73b517..7b296769e42 100644
+--- a/src/agents/cli-runner/execute-plugin.test.ts
++++ b/src/agents/cli-runner/execute-plugin.test.ts
+@@ -8,6 +8,14 @@ import type {
+   CliBackendLiveSessionHandle,
+   CliBackendToolPermissionResult,
+ } from "../../plugins/cli-backend.types.js";
++import {
++  getPluginRuntimeGatewayRequestScope,
++  withPluginRuntimeGatewayRequestScope,
++} from "../../plugins/runtime/gateway-request-scope.js";
++import {
++  getGatewayToolCallerIdentity,
++  withGatewayToolCallerIdentity,
++} from "../tools/gateway-caller-context.js";
+ import { callGatewayTool } from "../tools/gateway.js";
+ import {
+   closeCliLiveSession,
+@@ -113,6 +121,9 @@ describe("plugin-owned CLI execution host boundary", () => {
+         runId: "plugin-user-input",
+         nativeTools: ["AskUserQuestion"],
+       });
++      context.backendResolved.config.nativePermissionMode = "defer";
++      const currentScope = { isWebchatConnect: () => false, hasCurrentClientAuthority: () => true };
++      const currentCaller = { agentId: "main", sessionKey: "current-question" };
+       context.params.sessionKey = "main";
+       let callerCurrent = true;
+       context.params.assertCurrent = () => {
+@@ -129,6 +140,10 @@ describe("plugin-owned CLI execution host boundary", () => {
+       context.params.onBlockReply = onBlockReply;
+       const requests = new Map<string, { questions: Array<{ questionId: string }> }>();
+       mockCallGatewayTool.mockImplementation(async (method, _opts, rawParams) => {
++        expect(getPluginRuntimeGatewayRequestScope()?.hasCurrentClientAuthority).toBe(
++          currentScope.hasCurrentClientAuthority,
++        );
++        expect(getGatewayToolCallerIdentity()?.sessionKey).toBe("current-question");
+         const params = rawParams as {
+           id: string;
+           questions?: Array<{ questionId: string }>;
+@@ -163,22 +178,32 @@ describe("plugin-owned CLI execution host boundary", () => {
+       });
+       let result: unknown;
+ 
+-      await runPlugin(context, async function* (execution) {
+-        result = await execution.requestUserInput({
+-          toolName: "AskUserQuestion",
+-          toolCallId: "claude-question",
+-          questions: [
+-            {
+-              id: "one",
+-              header: "One",
+-              question: "First question?",
+-              isOther: true,
+-              options: [{ label: "A" }, { label: "B" }],
+-            },
+-          ],
+-        });
+-        yield SUCCESS_RESULT;
+-      });
++      await withGatewayToolCallerIdentity(currentCaller, () =>
++        withPluginRuntimeGatewayRequestScope(currentScope, () =>
++          runPlugin(context, async function* (execution) {
++            result = await withGatewayToolCallerIdentity(
++              { agentId: "foreign", sessionKey: "stale-question" },
++              () =>
++                withPluginRuntimeGatewayRequestScope({ isWebchatConnect: () => false }, () =>
++                  execution.requestUserInput({
++                    toolName: "AskUserQuestion",
++                    toolCallId: "claude-question",
++                    questions: [
++                      {
++                        id: "one",
++                        header: "One",
++                        question: "First question?",
++                        isOther: true,
++                        options: [{ label: "A" }, { label: "B" }],
++                      },
++                    ],
++                  }),
++                ),
++            );
++            yield SUCCESS_RESULT;
++          }),
++        ),
++      );
+ 
+       expect(result).toEqual(
+         revoked
+@@ -522,6 +547,125 @@ describe("plugin-owned CLI execution host boundary", () => {
+     expect(mockCallGatewayTool).not.toHaveBeenCalled();
+   });
+ 
++  it.each(["off", "always"] as const)(
++    "defers Claude preflight and asks once on escalation under %s",
++    async (ask) => {
++      const { context } = await createExecution({
++        config: { tools: { exec: { security: "full", ask } } },
++        nativeTools: ["Write"],
++      });
++      context.backendResolved.config.nativePermissionMode = "defer";
++      context.params.approvalReviewerDeviceId = "admitted-reviewer";
++      mockCallGatewayTool.mockResolvedValue({ id: "outside", decision: "allow-once" });
++      await runPlugin(context, async function* (execution) {
++        const request = {
++          toolName: "Write",
++          toolCallId: "write-1",
++          toolInput: {
++            file_path: "/outside/file.txt",
++            content: "fixture",
++            approvalReviewerDeviceIds: ["tool-selected-reviewer"],
++          },
++        };
++        await expect(
++          execution.requestToolPermission({ ...request, phase: "pre-tool" }),
++        ).resolves.toMatchObject({ behavior: "allow" });
++        expect(mockCallGatewayTool).not.toHaveBeenCalled();
++        await expect(
++          execution.requestToolPermission({ ...request, phase: "permission" }),
++        ).resolves.toMatchObject({ behavior: "allow" });
++        expect(mockCallGatewayTool).toHaveBeenCalledOnce();
++        expect(mockCallGatewayTool.mock.calls[0]?.[2]).toMatchObject({
++          allowedDecisions: ["allow-once", "deny"],
++          approvalReviewerDeviceIds: ["admitted-reviewer"],
++        });
++        yield SUCCESS_RESULT;
++      });
++    },
++  );
++
++  it("omits approval reviewers when the admitted run has none", async () => {
++    const { context } = await createExecution({ nativeTools: ["Write"] });
++    context.backendResolved.config.nativePermissionMode = "defer";
++    mockCallGatewayTool.mockResolvedValue({ id: "outside", decision: "allow-once" });
++    await runPlugin(context, async function* (execution) {
++      await execution.requestToolPermission({
++        toolName: "Write",
++        toolCallId: "write-without-reviewer",
++        toolInput: { file_path: "/outside/file.txt", content: "fixture" },
++        phase: "permission",
++      });
++      expect(mockCallGatewayTool.mock.calls[0]?.[2]).not.toHaveProperty(
++        "approvalReviewerDeviceIds",
++      );
++      yield SUCCESS_RESULT;
++    });
++  });
++
++  it.each(["deny", "allow-always", null, "unavailable"])(
++    "refuses a Claude escalation without one-time approval: %s",
++    async (decision) => {
++      const { context } = await createExecution({ nativeTools: ["Write"] });
++      context.backendResolved.config.nativePermissionMode = "defer";
++      if (decision === "unavailable") mockCallGatewayTool.mockRejectedValue(new Error("offline"));
++      else mockCallGatewayTool.mockResolvedValue({ id: "outside", decision });
++      await runPlugin(context, async function* (execution) {
++        const request = {
++          toolName: "Write",
++          toolInput: { file_path: "/outside/file.txt", content: "fixture" },
++        };
++        await expect(
++          execution.requestToolPermission({ ...request, phase: "pre-tool" }),
++        ).resolves.toMatchObject({ behavior: "allow" });
++        await expect(
++          execution.requestToolPermission({ ...request, phase: "permission" }),
++        ).resolves.toMatchObject({ behavior: "deny" });
++        yield SUCCESS_RESULT;
++      });
++    },
++  );
++
++  it("retains security deny before both Claude phases", async () => {
++    const { context } = await createExecution({
++      config: { tools: { exec: { security: "deny", ask: "off" } } },
++    });
++    context.backendResolved.config.nativePermissionMode = "defer";
++    await runPlugin(context, async function* (execution) {
++      for (const phase of ["pre-tool", "permission"] as const) {
++        await expect(
++          execution.requestToolPermission({
++            phase,
++            toolName: "Write",
++            toolInput: { file_path: "/workspace/file.txt", content: "fixture" },
++          }),
++        ).resolves.toMatchObject({ behavior: "deny" });
++      }
++      yield SUCCESS_RESULT;
++    });
++    expect(mockCallGatewayTool).not.toHaveBeenCalled();
++  });
++
++  it("preserves ask-off allowlist denial outside the opted-in profile", async () => {
++    const { context } = await createExecution({
++      config: { tools: { exec: { security: "allowlist", ask: "off" } } },
++      nativeTools: ["Write"],
++    });
++    await runPlugin(context, async function* (execution) {
++      expect(execution.nativePermissionMode).toBeUndefined();
++      for (const phase of [undefined, "pre-tool", "permission"] as const) {
++        await expect(
++          execution.requestToolPermission({
++            phase,
++            toolName: "Write",
++            toolInput: { file_path: "/tmp/a", content: "fixture" },
++          }),
++        ).resolves.toMatchObject({ behavior: "deny" });
++      }
++      yield SUCCESS_RESULT;
++    });
++    expect(mockCallGatewayTool).not.toHaveBeenCalled();
++  });
++
+   it("fails closed for unnamed and unavailable native tools before requesting approval", async () => {
+     const { context } = await createExecution({ nativeTools: ["Read"] });
+     const decisions: CliBackendToolPermissionResult[] = [];
+diff --git a/src/agents/cli-runner/execute-plugin.ts b/src/agents/cli-runner/execute-plugin.ts
+index bab8eddd081..bdb63a9f03a 100644
+--- a/src/agents/cli-runner/execute-plugin.ts
++++ b/src/agents/cli-runner/execute-plugin.ts
+@@ -1,3 +1,4 @@
++import { createHash } from "node:crypto";
+ import { stripSystemPromptCacheBoundary } from "@openclaw/ai/internal/shared";
+ import { clampPositiveTimerTimeoutMs } from "@openclaw/normalization-core/number-coercion";
+ import { isRecord } from "@openclaw/normalization-core/record-coerce";
+@@ -15,6 +16,10 @@ import type {
+   CliBackendUserInputRequest,
+   CliBackendUserInputResult,
+ } from "../../plugins/cli-backend.types.js";
++import {
++  getPluginRuntimeGatewayRequestScope,
++  withPluginRuntimeGatewayRequestScope,
++} from "../../plugins/runtime/gateway-request-scope.js";
+ import type { RunExit, TerminationReason } from "../../process/supervisor/types.js";
+ import {
+   recordAdjustedParamsForToolCall,
+@@ -30,6 +35,11 @@ import { resolveExecToolConfig } from "../lazy-exec-tool.js";
+ import { resolveReplyExpectation } from "../reply-completion.js";
+ import { recordAgentCleanupFailure } from "../run-cleanup-timeout.js";
+ import { resolveToolLoopDetectionConfig } from "../tool-loop-detection-config.js";
++import {
++  getGatewayToolCallerIdentity,
++  withGatewayToolCallerIdentity,
++  withoutGatewayToolCallerIdentity,
++} from "../tools/gateway-caller-context.js";
+ import {
+   restartCliLiveSession,
+   createCliLiveSessionCapability,
+@@ -60,7 +70,11 @@ function createPluginToolPermissionHandler(params: {
+   env: NodeJS.ProcessEnv;
+ }): (request: CliBackendToolPermissionRequest) => Promise<CliBackendToolPermissionResult> {
+   const run = params.context.params;
++  const deferNativePermission =
++    params.context.backendResolved.id === "claude-cli" &&
++    params.context.backendResolved.config.nativePermissionMode === "defer";
+   const permission = resolveExecDefaults({
++    ...(deferNativePermission ? { defaultSecurity: "full" as const } : {}),
+     cfg: run.config,
+     sessionEntry: run.sessionEntry,
+     execOverrides: run.execOverrides,
+@@ -68,6 +82,12 @@ function createPluginToolPermissionHandler(params: {
+     sessionKey: run.runtimePolicySessionKey ?? run.sessionKey,
+   });
+   const grants = new Set<string>();
++  // One admitted turn only. Avoid repeating approval-producing hooks for an unchanged call.
++  const checkedCalls = new Map<string, string>();
++  const inputKey = (name: string, input: Record<string, unknown>) =>
++    createHash("sha256")
++      .update(JSON.stringify([name, input]))
++      .digest("hex");
+ 
+   return async (request) => {
+     const signal = request.abortSignal
+@@ -130,35 +150,45 @@ function createPluginToolPermissionHandler(params: {
+       ...(run.senderId ? { senderId: run.senderId } : {}),
+       ...(run.senderIsOwner !== undefined ? { senderIsOwner: run.senderIsOwner } : {}),
+     };
+-    const hookResult = await runBeforeToolCallHook({
+-      toolName: canonicalToolName,
+-      params: policyInput,
+-      ...(request.toolCallId ? { toolCallId: request.toolCallId } : {}),
+-      signal,
+-      ctx: {
+-        ...(run.agentId ? { agentId: run.agentId } : {}),
+-        ...(run.config ? { config: run.config } : {}),
+-        cwd: params.context.cwd ?? params.context.workspaceDir,
+-        workspaceDir: params.context.workspaceDir,
+-        ...(run.sessionKey ? { sessionKey: run.sessionKey } : {}),
+-        sessionId: run.sessionId,
+-        runId: run.runId,
+-        ...(run.trigger ? { trigger: run.trigger } : {}),
+-        ...(run.approvalReviewerDeviceId
+-          ? { approvalReviewerDeviceId: run.approvalReviewerDeviceId }
+-          : {}),
+-        ...(run.currentChannelId ? { channelId: run.currentChannelId } : {}),
+-        ...(Object.keys(requester).length > 0 ? { requester } : {}),
+-        turnSourceChannel: run.messageChannel ?? run.messageProvider,
+-        turnSourceTo: run.chatId ?? run.currentChannelId,
+-        turnSourceAccountId: run.agentAccountId,
+-        turnSourceThreadId: run.currentThreadTs,
+-        loopDetection: resolveToolLoopDetectionConfig({
+-          cfg: run.config,
+-          agentId: run.agentId,
+-        }),
+-      },
+-    });
++    const nativePhase = deferNativePermission ? request.phase : undefined;
++    const alreadyChecked =
++      nativePhase === "permission" &&
++      request.toolCallId !== undefined &&
++      checkedCalls.get(request.toolCallId) === inputKey(toolName, request.toolInput);
++    if (nativePhase === "permission" && request.toolCallId) {
++      checkedCalls.delete(request.toolCallId);
++    }
++    const hookResult = alreadyChecked
++      ? { blocked: false as const, params: policyInput }
++      : await runBeforeToolCallHook({
++          toolName: canonicalToolName,
++          params: policyInput,
++          ...(request.toolCallId ? { toolCallId: request.toolCallId } : {}),
++          signal,
++          ctx: {
++            ...(run.agentId ? { agentId: run.agentId } : {}),
++            ...(run.config ? { config: run.config } : {}),
++            cwd: params.context.cwd ?? params.context.workspaceDir,
++            workspaceDir: params.context.workspaceDir,
++            ...(run.sessionKey ? { sessionKey: run.sessionKey } : {}),
++            sessionId: run.sessionId,
++            runId: run.runId,
++            ...(run.trigger ? { trigger: run.trigger } : {}),
++            ...(run.approvalReviewerDeviceId
++              ? { approvalReviewerDeviceId: run.approvalReviewerDeviceId }
++              : {}),
++            ...(run.currentChannelId ? { channelId: run.currentChannelId } : {}),
++            ...(Object.keys(requester).length > 0 ? { requester } : {}),
++            turnSourceChannel: run.messageChannel ?? run.messageProvider,
++            turnSourceTo: run.chatId ?? run.currentChannelId,
++            turnSourceAccountId: run.agentAccountId,
++            turnSourceThreadId: run.currentThreadTs,
++            loopDetection: resolveToolLoopDetectionConfig({
++              cfg: run.config,
++              agentId: run.agentId,
++            }),
++          },
++        });
+     try {
+       assertActive();
+     } catch {
+@@ -204,13 +234,25 @@ function createPluginToolPermissionHandler(params: {
+     }
+ 
+     const plan = resolveCliNativeToolApprovalPlan(permission);
+-    if (plan === "deny") {
++    if (permission.security === "deny" || (!nativePhase && plan === "deny")) {
+       return denyTool(
+         `OpenClaw exec policy denied native tool use (security=${permission.security}, ask=${permission.ask}).`,
+       );
+     }
++    if (nativePhase === "pre-tool") {
++      assertActive();
++      if (request.toolCallId) {
++        checkedCalls.set(request.toolCallId, inputKey(toolName, toolInput));
++      }
++      recordAdjustedParamsForToolCall(request.toolCallId, toolInput, run.runId);
++      // The Claude bridge translates this into continuation, never permissionDecision: allow.
++      return { behavior: "allow", updatedInput: toolInput };
++    }
+     const currentGrants = getCliLiveSessionApprovalGrants(params.context) ?? grants;
+-    if (plan === "allow" || (permission.ask !== "always" && currentGrants.has(toolName))) {
++    if (
++      nativePhase !== "permission" &&
++      (plan === "allow" || (permission.ask !== "always" && currentGrants.has(toolName)))
++    ) {
+       assertActive();
+       recordAdjustedParamsForToolCall(request.toolCallId, toolInput, run.runId);
+       return { behavior: "allow", updatedInput: toolInput };
+@@ -226,6 +268,9 @@ function createPluginToolPermissionHandler(params: {
+         sessionKey: run.sessionKey,
+         agentId: run.agentId,
+         toolCallId: request.toolCallId,
++        ...(run.approvalReviewerDeviceId
++          ? { approvalReviewerDeviceIds: [run.approvalReviewerDeviceId] }
++          : {}),
+         cwd: request.cwd,
+         fallbackCwd: params.context.cwd ?? params.context.workspaceDir,
+         bindingEnv: params.env,
+@@ -238,7 +283,7 @@ function createPluginToolPermissionHandler(params: {
+         },
+         assertActive,
+         abortSignal: signal,
+-        ask: permission.ask,
++        ask: nativePhase === "permission" ? "always" : permission.ask,
+       });
+     } finally {
+       params.onPendingApproval(-1);
+@@ -571,7 +616,37 @@ export async function executePluginOwnedProcess(params: {
+       params.mcpCapture?.beginCapture(params.mcpCapture.captureKey, assertCaptureCurrent);
+     }
+     assertCurrent();
++    // Pooled provider transports can call back from an earlier turn's async frame.
++    // Keep the admitted request's identity, registry and approval authority here.
++    const nativeRequestScope =
++      params.context.backendResolved.id === "claude-cli" &&
++      params.context.backendResolved.config.nativePermissionMode === "defer"
++        ? { isWebchatConnect: () => false, ...getPluginRuntimeGatewayRequestScope() }
++        : undefined;
++    const nativeCaller = nativeRequestScope ? getGatewayToolCallerIdentity() : undefined;
++    const withNativeRequestScope = <T>(invoke: () => Promise<T>): Promise<T> =>
++      nativeRequestScope
++        ? withoutGatewayToolCallerIdentity(() =>
++            withGatewayToolCallerIdentity(nativeCaller, () =>
++              withPluginRuntimeGatewayRequestScope(nativeRequestScope, invoke),
++            ),
++          )
++        : invoke();
++    const permissionHandler = createPluginToolPermissionHandler({
++      context: params.context,
++      abortSignal: signal,
++      onPendingApproval: updatePendingApproval,
++      env: params.env,
++    });
++    const userInputHandler = createPluginUserInputHandler({
++      context: params.context,
++      abortSignal: signal,
++      onPendingInput: updatePendingApproval,
++    });
+     const execution = params.execute({
++      ...(params.context.backendResolved.config.nativePermissionMode
++        ? { nativePermissionMode: params.context.backendResolved.config.nativePermissionMode }
++        : {}),
+       command,
+       argv0: params.executionArgv0,
+       args: executionArgs,
+@@ -589,17 +664,8 @@ export async function executePluginOwnedProcess(params: {
+       ...(run.executionMode ? { executionMode: run.executionMode } : {}),
+       ...(run.cliToolAvailability ? { toolAvailability: run.cliToolAvailability } : {}),
+       ...(liveSession ? { liveSession } : {}),
+-      requestToolPermission: createPluginToolPermissionHandler({
+-        context: params.context,
+-        abortSignal: signal,
+-        onPendingApproval: updatePendingApproval,
+-        env: params.env,
+-      }),
+-      requestUserInput: createPluginUserInputHandler({
+-        context: params.context,
+-        abortSignal: signal,
+-        onPendingInput: updatePendingApproval,
+-      }),
++      requestToolPermission: (request) => withNativeRequestScope(() => permissionHandler(request)),
++      requestUserInput: (request) => withNativeRequestScope(() => userInputHandler(request)),
+     });
+     iterator = execution[Symbol.asyncIterator]();
+ 
+diff --git a/src/agents/cli-runner/execute.ts b/src/agents/cli-runner/execute.ts
+index 07ba2e88169..24ea5df03d3 100644
+--- a/src/agents/cli-runner/execute.ts
++++ b/src/agents/cli-runner/execute.ts
+@@ -409,7 +409,7 @@ export async function executePreparedCliRun(
+       const env = sanitizeHostExecEnv({ baseEnv: process.env, blockPathOverrides: true });
+       const preservedEnv = parseCliBackendPreserveEnv(process.env[CLI_BACKEND_PRESERVE_ENV]);
+       for (const key of backend.clearEnv ?? []) {
+-        if (!preservedEnv.has(key) || selectedClaudeClearEnv?.has(key)) {
++        if (backend.strictClearEnv || !preservedEnv.has(key) || selectedClaudeClearEnv?.has(key)) {
+           delete env[key];
+         }
+       }
+diff --git a/src/agents/cli-runner/prepare.test.ts b/src/agents/cli-runner/prepare.test.ts
+index 91e25c5da42..02310e299b9 100644
+--- a/src/agents/cli-runner/prepare.test.ts
++++ b/src/agents/cli-runner/prepare.test.ts
+@@ -901,6 +901,7 @@ describe("prepareCliRunContext", () => {
+     expect(normalizeConfig).toHaveBeenCalledWith(expect.any(Object), {
+       backendId: "test-cli",
+       agentId: "arthur",
++      workspaceDir: arthurWorkspace,
+       config,
+     });
+     expect(context.params.agentId).toBe("arthur");
+@@ -4507,6 +4508,55 @@ describe("prepareCliRunContext", () => {
+     expect(getActiveMcpLoopbackRuntime).not.toHaveBeenCalled();
+   });
+ 
++  it.each([
++    { cap: undefined, expected: ["read", "write"] },
++    {
++      cap: undefined,
++      availability: { native: ["Write"], openClaw: ["read", "exec"] },
++      expected: ["read"],
++    },
++    { cap: ["*"], expected: ["read", "write"] },
++    { cap: [], expected: [] },
++    { cap: ["read"], expected: ["read"] },
++    { cap: ["read", "exec"], expected: ["read"] },
++  ])(
++    "applies agent backend restrictions without widening caller cap $cap",
++    async ({ cap, expected, ...testCase }) => {
++      const resolveExecutionArgs = vi.fn((context: { baseArgs: readonly string[] }) => [
++        ...context.baseArgs,
++      ]);
++      const project = vi.fn((scope: McpProjectionParams) => ({
++        agentId: "main",
++        tools: ["read", "write", "exec"]
++          .filter((name) => scope.context.toolsAllow?.includes(name))
++          .map((name) => ({ name })),
++      }));
++      setRawCliBackendForPrepareTest({
++        id: "selectable-cli",
++        pluginId: "selectable-plugin",
++        bundleMcp: false,
++        nativeToolMode: "selectable",
++        toolAvailabilityEnforcement: "execution-args",
++        resolveExecutionArgs,
++        config: {
++          ...createJsonlStdinBackendConfig("selectable-cli"),
++          toolsAllow: ["read", "write"],
++        },
++      });
++      setCliRunnerPrepareTestDeps({
++        resolveMcpLoopbackPolicyTools: project,
++        resolveMcpLoopbackScopedTools: project,
++      });
++      const context = await fixture.prepare({
++        provider: "selectable-cli",
++        sessionKey: "agent:main:main",
++        toolsAllow: cap,
++        ...("availability" in testCase ? { cliToolAvailability: testCase.availability } : {}),
++      });
++      expect(context.params.cliToolAvailability).toEqual({ native: [], openClaw: expected });
++    },
++  );
++
+   it("materializes runtime toolsAllow for selectable backends without bundle MCP", async () => {
+     const resolveExecutionArgs = vi.fn((context: { baseArgs: readonly string[] }) => [
+       ...context.baseArgs,
+@@ -6215,6 +6265,57 @@ describe("prepareCliRunContext", () => {
+     });
+   });
+ 
++  it("retains a cold dedicated-directory binding and checks its orphaned tools", async () => {
++    const { dir } = fixture.session;
++    const taskDir = path.join(dir, "task");
++    fs.mkdirSync(taskDir, { recursive: true });
++    setRawCliBackendForPrepareTest({
++      id: "claude-cli",
++      pluginId: "anthropic",
++      bundleMcp: false,
++      config: {
++        command: "claude",
++        env: { CLAUDE_CONFIG_DIR: path.join(dir, "dedicated-login") },
++        args: ["--print"],
++        resumeArgs: ["--resume", "{sessionId}"],
++        output: "jsonl",
++        input: "stdin",
++        sessionMode: "existing",
++      },
++    });
++    const transcriptCheck = vi.fn(async () => true);
++    const orphanCheck = vi.fn(async () => false);
++    setCliRunnerPrepareTestDeps({
++      claudeCliSessionTranscriptHasContent: transcriptCheck,
++      claudeCliSessionTranscriptHasOrphanedToolUse: orphanCheck,
++    });
++
++    const context = await fixture.prepare({
++      sessionKey: "agent:main:telegram:direct:peer",
++      cwd: taskDir,
++      prompt: "follow-up",
++      provider: "claude-cli",
++      model: "opus",
++      cliSessionBinding: { sessionId: "live-claude-sid", cwdHash: hashCliSessionText(taskDir) },
++      cliSessionId: "live-claude-sid",
++    });
++
++    expect(transcriptCheck).toHaveBeenCalledWith({
++      sessionId: "live-claude-sid",
++      workspaceDir: taskDir,
++      configDir: path.join(dir, "dedicated-login"),
++    });
++    expect(orphanCheck).toHaveBeenCalledWith({
++      sessionId: "live-claude-sid",
++      workspaceDir: taskDir,
++      configDir: path.join(dir, "dedicated-login"),
++    });
++    expect(context.reusableCliSession).toEqual({
++      mode: "reuse",
++      sessionId: "live-claude-sid",
++    });
++  });
++
+   it.each(["prepared", "admitted"] as const)(
+     "stops CLI skill preparation before sandbox materialization when %s authority is revoked",
+     async (phase) => {
+diff --git a/src/agents/cli-runner/prepare.ts b/src/agents/cli-runner/prepare.ts
+index 656740e1686..adc967b2e23 100644
+--- a/src/agents/cli-runner/prepare.ts
++++ b/src/agents/cli-runner/prepare.ts
+@@ -621,6 +621,7 @@ async function prepareCliRunContextWithinReadFence(
+   // config and managed process reuse must key from the resolved session owner.
+   const backendResolved = resolveCliBackendConfig(params.provider, params.config, {
+     agentId: workspaceResolution.agentId,
++    workspaceDir,
+   });
+   if (!backendResolved) {
+     throw new Error(`Unknown CLI backend: ${params.provider}`);
+@@ -645,6 +646,21 @@ async function prepareCliRunContextWithinReadFence(
+         workspaceDir,
+         cwd,
+       });
++  // A backend's agent cap selects the same exact-tool path as an explicit caller cap.
++  // Agent policy still filters the MCP catalog, so an existing tighter caller cap is retained.
++  if (backendResolved.config.toolsAllow !== undefined) {
++    if (!canEnforceExactToolAvailability) {
++      throw new Error(`CLI backend ${backendResolved.id} cannot enforce its agent tool cap`);
++    }
++    if (params.cliToolAvailability !== undefined) {
++      params = { ...params, cliToolAvailability: { ...params.cliToolAvailability, native: [] } };
++    } else if (
++      params.toolsAllow === undefined ||
++      params.toolsAllow.some((name) => normalizeToolPolicyName(name) === "*")
++    ) {
++      params = { ...params, toolsAllow: [...backendResolved.config.toolsAllow] };
++    }
++  }
+   let runtimeToolsAllowPolicy: string[] | undefined;
+   const rootedToolsAllow = params.rootedExecution
+     ? params.cliToolAvailability?.openClaw
+@@ -1241,7 +1257,7 @@ async function prepareCliRunContextWithinReadFence(
+     params.disableTools !== true &&
+     params.skillLibraryAuthoring !== undefined;
+   const shouldMaterializeRuntimePolicy =
+-    runtimeToolsAllowPolicy !== undefined &&
++    (runtimeToolsAllowPolicy !== undefined || backendResolved.config.toolsAllow !== undefined) &&
+     !nodeClaudePlacement &&
+     !skipsTurnPreparation &&
+     !systemAgentMcpConfig &&
+@@ -1300,7 +1316,10 @@ async function prepareCliRunContextWithinReadFence(
+       : [];
+   params.assertCurrent?.();
+   const hookFilteredProjectedTools = applyEmbeddedAttemptToolsAllow(
+-    projectedToolsBeforePromptBuild,
++    applyEmbeddedAttemptToolsAllow(
++      projectedToolsBeforePromptBuild,
++      backendResolved.config.toolsAllow,
++    ),
+     promptBuildToolsAllow,
+   );
+   if (
+@@ -1345,6 +1364,12 @@ async function prepareCliRunContextWithinReadFence(
+     hookFilteredProjectedTools,
+     params.cliToolAvailability?.openClaw,
+   );
++  if (backendResolved.config.toolsAllow !== undefined && params.cliToolAvailability) {
++    params = {
++      ...params,
++      cliToolAvailability: { native: [], openClaw: projectedTools.map((tool) => tool.name) },
++    };
++  }
+   const nodeSkillWorkshop = nodeWorkshopEnabled
+     ? projectedTools.find((tool) => tool.name === "skill_workshop")
+     : undefined;
+@@ -1651,6 +1676,7 @@ async function prepareCliRunContextWithinReadFence(
+         : undefined;
+     cleanupPreparedResources = cleanupPreparedBackend;
+     const prepareExecutionContext = {
++      agentId: workspaceResolution.agentId,
+       config: params.config,
+       workspaceDir,
+       agentDir,
+@@ -1885,11 +1911,15 @@ async function prepareCliRunContextWithinReadFence(
+       !nodeClaudePlacement &&
+       candidateClaudeCliSessionId !== undefined &&
+       isClaudeCliBackendId(params.provider);
++    const claudeConfigDir =
++      preparedBackendFinal.env?.CLAUDE_CONFIG_DIR ??
++      preparedBackendFinal.backend.env?.CLAUDE_CONFIG_DIR;
+     const claudeCliTranscriptMissing =
+       hasClaudeCliCandidate &&
+       !(await prepareDeps.claudeCliSessionTranscriptHasContent({
+         sessionId: candidateClaudeCliSessionId,
+         workspaceDir: cwd,
++        ...(claudeConfigDir ? { configDir: claudeConfigDir } : {}),
+       }));
+     const managedClaudeLiveSessionGeneration =
+       claudeCliTranscriptMissing &&
+@@ -1913,6 +1943,7 @@ async function prepareCliRunContextWithinReadFence(
+       (await prepareDeps.claudeCliSessionTranscriptHasOrphanedToolUse({
+         sessionId: candidateClaudeCliSessionId,
+         workspaceDir: cwd,
++        ...(claudeConfigDir ? { configDir: claudeConfigDir } : {}),
+       }));
+     const claudeCliInvalidatedReason: "missing-transcript" | "orphaned-tool-use" | undefined =
+       claudeCliTranscriptMissing && !hasManagedClaudeLiveSession
+diff --git a/src/agents/command/attempt-execution.helpers.ts b/src/agents/command/attempt-execution.helpers.ts
+index d2907ee8320..0e24e8338b6 100644
+--- a/src/agents/command/attempt-execution.helpers.ts
++++ b/src/agents/command/attempt-execution.helpers.ts
+@@ -126,6 +126,7 @@ function claudeCliSessionTranscriptPath(params: {
+   sessionId: string | undefined;
+   workspaceDir: string | undefined;
+   homeDir?: string;
++  configDir?: string;
+ }): string | null {
+   const sessionId = normalizeClaudeCliSessionId(params.sessionId);
+   if (!sessionId) {
+@@ -139,6 +140,7 @@ function claudeCliSessionTranscriptPath(params: {
+     resolveClaudeCliProjectDirForWorkspace({
+       workspaceDir,
+       homeDir: params.homeDir,
++      configDir: params.configDir,
+     }),
+     `${sessionId}.jsonl`,
+   );
+@@ -409,13 +411,18 @@ function formatClaudeCliFallbackPrelude(
+ export function buildClaudeCliFallbackContextPrelude(params: {
+   cliSessionId: string | undefined;
+   homeDir?: string;
++  configDir?: string;
+   charBudget?: number;
+ }): string {
+   const sessionId = params.cliSessionId?.trim();
+   if (!sessionId) {
+     return "";
+   }
+-  const seed = readClaudeCliFallbackSeed({ cliSessionId: sessionId, homeDir: params.homeDir });
++  const seed = readClaudeCliFallbackSeed({
++    cliSessionId: sessionId,
++    homeDir: params.homeDir,
++    configDir: params.configDir,
++  });
+   if (!seed) {
+     return "";
+   }
+diff --git a/src/agents/command/attempt-execution.ts b/src/agents/command/attempt-execution.ts
+index 651c2813b15..e18b5d239e9 100644
+--- a/src/agents/command/attempt-execution.ts
++++ b/src/agents/command/attempt-execution.ts
+@@ -107,6 +107,7 @@ import {
+   resolveFallbackRetryPrompt,
+   rebaseExecApprovalContinuationPromptRange,
+ } from "./attempt-execution.helpers.js";
++import { resolveConfiguredClaudeCliConfigDir } from "./claude-cli-project-dir.js";
+ import { resolveAgentRunContext } from "./run-context.js";
+ import {
+   consumeCliSessionForkInStore,
+@@ -392,6 +393,7 @@ export function runAgentAttempt(params: {
+     !isClaudeCliProvider(params.providerOverride)
+       ? buildClaudeCliFallbackContextPrelude({
+           cliSessionId: getCliSessionBinding(params.sessionEntry, "claude-cli")?.sessionId,
++          configDir: resolveConfiguredClaudeCliConfigDir(params.cfg, params.sessionAgentId),
+         })
+       : "";
+   const resolvedPrompt = resolveFallbackRetryPrompt({
+@@ -728,6 +730,7 @@ export function runAgentAttempt(params: {
+             (await claudeCliSessionTranscriptHasContent({
+               sessionId: cliSessionBinding.sessionId,
+               workspaceDir: cliProcessCwd,
++              configDir: resolveConfiguredClaudeCliConfigDir(params.cfg, params.sessionAgentId),
+             }))
+           ) {
+             return cliSessionBinding;
+diff --git a/src/agents/command/claude-cli-project-dir.ts b/src/agents/command/claude-cli-project-dir.ts
+index f3bf78dae4b..333fb0a2ddd 100644
+--- a/src/agents/command/claude-cli-project-dir.ts
++++ b/src/agents/command/claude-cli-project-dir.ts
+@@ -5,8 +5,37 @@ import fs from "node:fs";
+ import os from "node:os";
+ import path from "node:path";
+ import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
++import type { OpenClawConfig } from "../../config/types.openclaw.js";
+ 
+-const CLAUDE_PROJECTS_DIRNAME = path.join(".claude", "projects");
++/** Match the opt-in profile's native login directory; other backends keep defaults. */
++export function resolveConfiguredClaudeCliConfigDir(
++  cfg: OpenClawConfig,
++  agentId: string,
++): string | undefined {
++  const settings = cfg.plugins?.entries?.anthropic?.config;
++  const profiles = settings?.cliProfiles;
++  if (!profiles || typeof profiles !== "object" || !Object.hasOwn(profiles, agentId))
++    return undefined;
++  const value = settings?.cliConfigDir;
++  if (typeof value !== "string" || !value) return undefined;
++  const expanded = value.startsWith("~/") ? path.join(os.homedir(), value.slice(2)) : value;
++  if (!path.isAbsolute(expanded))
++    throw new Error("Claude profile config directory must be absolute");
++  return path.resolve(expanded);
++}
++
++export function resolveClaudeCliProjectsDir(params: {
++  homeDir?: string;
++  configDir?: string;
++}): string {
++  if (params.configDir !== undefined) {
++    if (!path.isAbsolute(params.configDir))
++      throw new Error("Claude config directory must be absolute");
++    return path.join(params.configDir, "projects");
++  }
++  const homeDir = normalizeOptionalString(params.homeDir) || process.env.HOME || os.homedir();
++  return path.join(homeDir, ".claude", "projects");
++}
+ const MAX_SANITIZED_PROJECT_LENGTH = 200;
+ 
+ // Claude CLI stores project state under a sanitized workspace key. Add a stable
+@@ -42,12 +71,11 @@ function canonicalizeWorkspaceDir(workspaceDir: string): string {
+ export function resolveClaudeCliProjectDirForWorkspace(params: {
+   workspaceDir: string;
+   homeDir?: string;
++  configDir?: string;
+ }): string {
+-  const homeDir = normalizeOptionalString(params.homeDir) || process.env.HOME || os.homedir();
+   const canonicalWorkspaceDir = canonicalizeWorkspaceDir(params.workspaceDir);
+   return path.join(
+-    homeDir,
+-    CLAUDE_PROJECTS_DIRNAME,
++    resolveClaudeCliProjectsDir(params),
+     sanitizeClaudeCliProjectKey(canonicalWorkspaceDir),
+   );
+ }
+diff --git a/src/agents/exec-defaults.test.ts b/src/agents/exec-defaults.test.ts
+index 6d11dd3e8cf..11be1d46bdd 100644
+--- a/src/agents/exec-defaults.test.ts
++++ b/src/agents/exec-defaults.test.ts
+@@ -184,6 +184,29 @@ describe("resolveExecDefaults", () => {
+     expect(defaults.ask).toBe("off");
+   });
+ 
++  it("lets native permission evaluation set a baseline without changing sandbox exec defaults", () => {
++    const cfg = withDefaultAgent({ tools: { exec: { host: "auto" } } });
++    const params = { cfg, sandboxAvailable: true };
++    expect(resolveExecDefaults(params).security).toBe("deny");
++    expect(resolveExecDefaults({ ...params, defaultSecurity: "full" }).security).toBe("full");
++    for (const policy of [
++      { ...cfg, tools: { exec: { security: "deny" as const } } },
++      { ...cfg, agents: { entries: { main: { tools: { exec: { security: "deny" as const } } } } } },
++    ]) {
++      expect(
++        resolveExecDefaults({ ...params, cfg: policy, agentId: "main", defaultSecurity: "full" })
++          .security,
++      ).toBe("deny");
++    }
++    expect(
++      resolveExecDefaults({
++        ...params,
++        defaultSecurity: "full",
++        execOverrides: { security: "deny" },
++      }).security,
++    ).toBe("deny");
++  });
++
+   it("keeps sandbox deny by default when auto resolves to sandbox", () => {
+     const defaults = resolveExecDefaults({
+       cfg: withDefaultAgent({
+diff --git a/src/agents/exec-defaults.ts b/src/agents/exec-defaults.ts
+index 961eaef707b..c62f5ce5697 100644
+--- a/src/agents/exec-defaults.ts
++++ b/src/agents/exec-defaults.ts
+@@ -114,6 +114,8 @@ export function resolveExecDefaults(params: {
+   /** Resolve agents.defaults/tools.exec without applying any roster entry override. */
+   scope?: { kind: "defaults" };
+   sandboxAvailable?: boolean;
++  /** Native harness permission checks can supply a baseline without overriding policy. */
++  defaultSecurity?: ExecSecurity;
+   elevatedRequested?: boolean;
+ }): {
+   host: ExecTarget;
+@@ -143,7 +145,8 @@ export function resolveExecDefaults(params: {
+     sandboxAvailable,
+     sandboxRequired,
+   });
+-  const defaultSecurity = resolved.effectiveHost === "sandbox" ? "deny" : "full";
++  const defaultSecurity =
++    params.defaultSecurity ?? (resolved.effectiveHost === "sandbox" ? "deny" : "full");
+   const sessionPermissionPolicy = params.sessionEntry?.permissionMode
+     ? resolveSessionPermissionExecPolicy(
+         { mode: params.sessionEntry.permissionMode },
+diff --git a/src/agents/tools/embedded-gateway-stub.ts b/src/agents/tools/embedded-gateway-stub.ts
+index 4552246864a..f4065c86feb 100644
+--- a/src/agents/tools/embedded-gateway-stub.ts
++++ b/src/agents/tools/embedded-gateway-stub.ts
+@@ -12,6 +12,7 @@ import type { CallGatewayOptions } from "../../gateway/call.js";
+ import type { SessionRowProjection } from "../../gateway/session-row-projection.js";
+ import { jsonUtf8Bytes } from "../../infra/json-utf8-bytes.js";
+ import { parseAgentSessionKey, scopeLegacySessionKeyToAgent } from "../../routing/session-key.js";
++import { resolveConfiguredClaudeCliConfigDir } from "../command/claude-cli-project-dir.js";
+ import {
+   readNonNegativeIntegerParam,
+   readPositiveIntegerParam,
+@@ -229,6 +230,9 @@ async function handleChatHistory(params: Record<string, unknown>): Promise<{
+   const effectiveMaxChars = rt.resolveEffectiveChatHistoryMaxChars();
+   const page = await rt.readChatHistoryPage({
+     entry: historyEntry,
++    ...(resolveConfiguredClaudeCliConfigDir(cfg, sessionAgentId)
++      ? { claudeConfigDir: resolveConfiguredClaudeCliConfigDir(cfg, sessionAgentId) }
++      : {}),
+     provider: resolvedSessionModel.provider,
+     sessionId,
+     storePath,
+diff --git a/src/commands/doctor-claude-cli.ts b/src/commands/doctor-claude-cli.ts
+index 7d270ad1b5c..38a24fe3276 100644
+--- a/src/commands/doctor-claude-cli.ts
++++ b/src/commands/doctor-claude-cli.ts
+@@ -14,6 +14,7 @@ import {
+   tryResolveDefaultAgentId,
+ } from "../agents/agent-scope-config.js";
+ import { resolveCliBackendConfig } from "../agents/cli-backends.js";
++import { resolveConfiguredClaudeCliConfigDir } from "../agents/command/claude-cli-project-dir.js";
+ import { resolveClaudeCliProjectDirForWorkspace } from "../agents/command/claude-cli-project-dir.js";
+ import { formatCliCommand } from "../cli/command-format.js";
+ import type { OpenClawConfig } from "../config/types.openclaw.js";
+@@ -142,6 +143,7 @@ function resolveClaudeCliWorkspaceTargets(params: {
+       const projectDir = resolveClaudeCliProjectDirForWorkspace({
+         workspaceDir,
+         homeDir: params.homeDir,
++        configDir: resolveConfiguredClaudeCliConfigDir(params.cfg, agentId),
+       });
+       return {
+         agentId,
+diff --git a/src/config/sessions/session-history-types.ts b/src/config/sessions/session-history-types.ts
+index f5b43f237ff..09324a4ff1b 100644
+--- a/src/config/sessions/session-history-types.ts
++++ b/src/config/sessions/session-history-types.ts
+@@ -38,6 +38,7 @@ export type ChatHistoryPageParams = {
+   offset: number | undefined;
+   messageId: string | undefined;
+   ignoreCliSessionImports?: boolean;
++  claudeConfigDir?: string;
+ };
+ 
+ type SessionHistoryTranscriptMeta = {
+diff --git a/src/gateway/cli-session-history.claude-snapshot.ts b/src/gateway/cli-session-history.claude-snapshot.ts
+index a78afb6eff8..577f89500a6 100644
+--- a/src/gateway/cli-session-history.claude-snapshot.ts
++++ b/src/gateway/cli-session-history.claude-snapshot.ts
+@@ -64,6 +64,7 @@ type Message = Record<string, unknown>;
+ type HistoryParams = {
+   cliSessionId: string;
+   homeDir?: string;
++  configDir?: string;
+   localSessionId?: string;
+   reseedReceipt?: CliSessionReseedReceipt;
+ };
+diff --git a/src/gateway/cli-session-history.claude.ts b/src/gateway/cli-session-history.claude.ts
+index aabcafe30e4..0e9704ef07f 100644
+--- a/src/gateway/cli-session-history.claude.ts
++++ b/src/gateway/cli-session-history.claude.ts
+@@ -1,7 +1,6 @@
+ // Claude CLI session history importer.
+ // Converts Claude project JSONL into OpenClaw transcript-compatible messages.
+ import fs from "node:fs";
+-import os from "node:os";
+ import path from "node:path";
+ import {
+   asFiniteNumber,
+@@ -14,6 +13,7 @@ import {
+   stripCliImageTurnContext,
+ } from "../agents/cli-image-turn-correlation.js";
+ import { hashCliReseedPrompt, parseCliReseedPrompt } from "../agents/cli-runner/reseed-envelope.js";
++import { resolveClaudeCliProjectsDir } from "../agents/command/claude-cli-project-dir.js";
+ import type { AgentMessage } from "../agents/runtime/index.js";
+ import { redactTranscriptMessage } from "../agents/transcript-redact.js";
+ import {
+@@ -30,7 +30,6 @@ import {
+ import { attachOpenClawTranscriptMeta } from "./session-transcript-readers.js";
+ 
+ export const CLAUDE_CLI_PROVIDER = "claude-cli";
+-const CLAUDE_PROJECTS_RELATIVE_DIR = path.join(".claude", "projects");
+ 
+ export type ClaudeCliProjectEntry = {
+   type?: unknown;
+@@ -76,14 +75,6 @@ export function redactClaudeCliHistoryMessage(
+   ) as unknown as TranscriptLikeMessage;
+ }
+ 
+-function resolveHistoryHomeDir(homeDir?: string): string {
+-  return normalizeOptionalString(homeDir) || process.env.HOME || os.homedir();
+-}
+-
+-function resolveClaudeProjectsDir(homeDir?: string): string {
+-  return path.join(resolveHistoryHomeDir(homeDir), CLAUDE_PROJECTS_RELATIVE_DIR);
+-}
+-
+ function normalizeClaudeCliSessionId(value: string): string | undefined {
+   const sessionId = value.trim();
+   return !sessionId ||
+@@ -473,12 +464,13 @@ export function parseClaudeCliHistoryEntry(
+ function resolveClaudeCliSessionFilePath(params: {
+   cliSessionId: string;
+   homeDir?: string;
++  configDir?: string;
+ }): string | undefined {
+   const sessionId = normalizeClaudeCliSessionId(params.cliSessionId);
+   if (!sessionId) {
+     return undefined;
+   }
+-  const projectsDir = resolveClaudeProjectsDir(params.homeDir);
++  const projectsDir = resolveClaudeCliProjectsDir(params);
+   let projectEntries: fs.Dirent[];
+   try {
+     projectEntries = fs.readdirSync(projectsDir, { withFileTypes: true });
+@@ -502,12 +494,13 @@ function resolveClaudeCliSessionFilePath(params: {
+ export async function resolveClaudeCliSessionFilePathAsync(params: {
+   cliSessionId: string;
+   homeDir?: string;
++  configDir?: string;
+ }): Promise<string | undefined> {
+   const sessionId = normalizeClaudeCliSessionId(params.cliSessionId);
+   if (!sessionId) {
+     return undefined;
+   }
+-  const projectsDir = resolveClaudeProjectsDir(params.homeDir);
++  const projectsDir = resolveClaudeCliProjectsDir(params);
+   let projectEntries: fs.Dirent[];
+   try {
+     projectEntries = await fs.promises.readdir(projectsDir, { withFileTypes: true });
+@@ -550,6 +543,7 @@ export async function resolveClaudeCliSessionFilePathAsync(params: {
+ export function readClaudeCliSessionMessages(params: {
+   cliSessionId: string;
+   homeDir?: string;
++  configDir?: string;
+   localSessionId?: string;
+   reseedReceipt?: CliSessionReseedReceipt;
+ }): TranscriptLikeMessage[] {
+@@ -646,6 +640,7 @@ function extractSummaryText(entry: ClaudeCliProjectEntry): string | undefined {
+ export function readClaudeCliFallbackSeed(params: {
+   cliSessionId: string;
+   homeDir?: string;
++  configDir?: string;
+ }): ClaudeCliFallbackSeed | undefined {
+   const filePath = resolveClaudeCliSessionFilePath(params);
+   if (!filePath) {
+diff --git a/src/gateway/cli-session-history.profile-dir.test.ts b/src/gateway/cli-session-history.profile-dir.test.ts
+new file mode 100644
+index 00000000000..54d4240eed9
+--- /dev/null
++++ b/src/gateway/cli-session-history.profile-dir.test.ts
+@@ -0,0 +1,142 @@
++import fs from "node:fs/promises";
++import os from "node:os";
++import path from "node:path";
++import { afterEach, beforeEach, describe, expect, it } from "vitest";
++import { claudeCliSessionTranscriptHasContent } from "../agents/command/attempt-execution.helpers.js";
++import {
++  resolveClaudeCliProjectDirForWorkspace,
++  resolveConfiguredClaudeCliConfigDir,
++} from "../agents/command/claude-cli-project-dir.js";
++import { readClaudeCliSessionMessagesAsync } from "./cli-session-history.claude-snapshot.js";
++import {
++  readClaudeCliSessionMessages,
++  readClaudeCliFallbackSeed,
++} from "./cli-session-history.claude.js";
++
++describe("dedicated Claude profile transcript directory", () => {
++  let homeDir: string, configDir: string, workspaceDir: string;
++  const cliSessionId = "synthetic-profile-session";
++  beforeEach(async () => {
++    homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "claude-profile-history-"));
++    configDir = path.join(homeDir, "dedicated");
++    workspaceDir = path.join(homeDir, "workspace");
++    await fs.mkdir(workspaceDir);
++  });
++  afterEach(async () => {
++    await fs.rm(homeDir, { recursive: true, force: true });
++  });
++  async function write(marker: string, directory?: string) {
++    const root = resolveClaudeCliProjectDirForWorkspace({
++      workspaceDir,
++      homeDir,
++      configDir: directory,
++    });
++    await fs.mkdir(root, { recursive: true });
++    const events = [
++      { type: "user", uuid: "user-1", message: { role: "user", content: marker } },
++      {
++        type: "assistant",
++        uuid: "assistant-1",
++        message: {
++          role: "assistant",
++          model: "synthetic-model",
++          content: [
++            {
++              type: "tool_use",
++              id: "write-1",
++              name: "Write",
++              input: { file_path: "/synthetic/file", content: marker },
++            },
++          ],
++        },
++      },
++      {
++        type: "user",
++        uuid: "result-1",
++        message: {
++          role: "user",
++          content: [
++            { type: "tool_result", tool_use_id: "write-1", content: "Created synthetic file" },
++          ],
++        },
++      },
++      {
++        type: "assistant",
++        uuid: "assistant-2",
++        message: {
++          role: "assistant",
++          model: "synthetic-model",
++          content: [{ type: "text", text: marker }],
++        },
++      },
++    ];
++    await fs.writeFile(
++      path.join(root, cliSessionId + ".jsonl"),
++      events.map((e) => JSON.stringify(e)).join("\n"),
++    );
++  }
++  it("keeps default and dedicated histories separate even when session ids collide", async () => {
++    await write("DEFAULT_HISTORY");
++    await write("DEDICATED_HISTORY", configDir);
++    const params = { cliSessionId, homeDir, configDir };
++    for (const messages of [
++      readClaudeCliSessionMessages(params),
++      await readClaudeCliSessionMessagesAsync(params),
++    ]) {
++      expect(JSON.stringify(messages)).toContain("DEDICATED_HISTORY");
++      expect(JSON.stringify(messages)).not.toContain("DEFAULT_HISTORY");
++      expect(JSON.stringify(messages)).toContain('"name":"Write"');
++      expect(JSON.stringify(messages)).toContain("Created synthetic file");
++    }
++    expect(JSON.stringify(readClaudeCliSessionMessages({ cliSessionId, homeDir }))).toContain(
++      "DEFAULT_HISTORY",
++    );
++    expect(JSON.stringify(readClaudeCliFallbackSeed(params))).toContain("DEDICATED_HISTORY");
++    expect(JSON.stringify(readClaudeCliFallbackSeed(params))).not.toContain("DEFAULT_HISTORY");
++  });
++  it("cold-resume probe finds the dedicated transcript without searching another account directory", async () => {
++    await write("DEDICATED_HISTORY", configDir);
++    expect(
++      await claudeCliSessionTranscriptHasContent({
++        sessionId: cliSessionId,
++        workspaceDir,
++        homeDir,
++        configDir,
++      }),
++    ).toBe(true);
++    expect(
++      await claudeCliSessionTranscriptHasContent({
++        sessionId: cliSessionId,
++        workspaceDir,
++        homeDir,
++      }),
++    ).toBe(false);
++    expect(
++      readClaudeCliSessionMessages({
++        cliSessionId,
++        homeDir,
++        configDir: path.join(homeDir, "other-account"),
++      }),
++    ).toEqual([]);
++    expect(
++      readClaudeCliSessionMessages({ cliSessionId: "other-session", homeDir, configDir }),
++    ).toEqual([]);
++    expect(
++      readClaudeCliSessionMessages({ cliSessionId: "../" + cliSessionId, homeDir, configDir }),
++    ).toEqual([]);
++  });
++  it("only opted-in agents resolve the dedicated profile directory", () => {
++    const config = {
++      plugins: {
++        entries: {
++          anthropic: {
++            config: { cliConfigDir: configDir, cliProfiles: { main: { mode: "workspace" } } },
++          },
++        },
++      },
++    };
++    expect(resolveConfiguredClaudeCliConfigDir(config, "main")).toBe(configDir);
++    expect(resolveConfiguredClaudeCliConfigDir(config, "other")).toBeUndefined();
++    expect(resolveConfiguredClaudeCliConfigDir({}, "main")).toBeUndefined();
++  });
++});
+diff --git a/src/gateway/cli-session-history.ts b/src/gateway/cli-session-history.ts
+index 28ce276040d..5d04f2feb2d 100644
+--- a/src/gateway/cli-session-history.ts
++++ b/src/gateway/cli-session-history.ts
+@@ -23,6 +23,7 @@ type CliSessionHistoryParams = {
+   provider?: string;
+   localMessages: unknown[];
+   homeDir?: string;
++  configDir?: string;
+   preparedImportedMessages?: unknown[];
+ };
+ 
+@@ -52,6 +53,7 @@ export function resolveChatHistoryWithCliSessionImports(params: CliSessionHistor
+     readClaudeCliSessionMessages({
+       cliSessionId: binding.sessionId,
+       homeDir: params.homeDir,
++      configDir: params.configDir,
+       localSessionId: params.entry?.sessionId,
+       reseedReceipt: binding.reseedReceipt,
+     });
+@@ -80,6 +82,7 @@ export async function readChatHistoryCliSessionImportSnapshot(
+     ? await readClaudeCliSessionMessagesAsync({
+         cliSessionId: binding.sessionId,
+         homeDir: params.homeDir,
++        configDir: params.configDir,
+         localSessionId: params.entry?.sessionId,
+         reseedReceipt: binding.reseedReceipt,
+       })
+diff --git a/src/gateway/server-methods/chat-history-handler.ts b/src/gateway/server-methods/chat-history-handler.ts
+index 225948a22a2..2dbd2a27027 100644
+--- a/src/gateway/server-methods/chat-history-handler.ts
++++ b/src/gateway/server-methods/chat-history-handler.ts
+@@ -6,6 +6,7 @@ import {
+ } from "../../../packages/gateway-protocol/src/index.js";
+ import { CHAT_HISTORY_MAX_ENTRIES } from "../../../packages/gateway-protocol/src/schema/chat-history-constants.js";
+ import { resolveAgentConfig } from "../../agents/agent-scope.js";
++import { resolveConfiguredClaudeCliConfigDir } from "../../agents/command/claude-cli-project-dir.js";
+ import { findModelCatalogEntry } from "../../agents/model-catalog.js";
+ import { resolveConfiguredThinkingDefault } from "../../agents/model-thinking-default.js";
+ import {
+@@ -336,6 +337,9 @@ export async function handleChatHistoryRequest({
+             readChatHistoryPage(
+               {
+                 entry: historyEntry,
++                ...(resolveConfiguredClaudeCliConfigDir(cfg, sessionAgentId)
++                  ? { claudeConfigDir: resolveConfiguredClaudeCliConfigDir(cfg, sessionAgentId) }
++                  : {}),
+                 provider: resolvedSessionModel.provider,
+                 sessionId,
+                 storePath,
+diff --git a/src/gateway/server-methods/chat-history-pages.ts b/src/gateway/server-methods/chat-history-pages.ts
+index 2040dfa3771..a08b0999f12 100644
+--- a/src/gateway/server-methods/chat-history-pages.ts
++++ b/src/gateway/server-methods/chat-history-pages.ts
+@@ -154,11 +154,13 @@ async function readChatHistoryPageLocal(params: ChatHistoryPageParams): Promise<
+             } = await import("../cli-session-history.js");
+             const importedMessages = await readChatHistoryCliSessionImportSnapshot({
+               entry,
++              configDir: params.claudeConfigDir,
+               provider,
+               localMessages: localMessagesWithBoundaryFilter,
+             });
+             const cliHistory = resolveChatHistoryWithCliSessionImports({
+               entry,
++              configDir: params.claudeConfigDir,
+               provider,
+               localMessages: localMessagesWithBoundaryFilter,
+               preparedImportedMessages: importedMessages,
+@@ -179,6 +181,7 @@ async function readChatHistoryPageLocal(params: ChatHistoryPageParams): Promise<
+               );
+               const completeCliHistory = resolveChatHistoryWithCliSessionImports({
+                 entry,
++                configDir: params.claudeConfigDir,
+                 provider,
+                 localMessages: completeLocalMessages,
+                 preparedImportedMessages: importedMessages,
+diff --git a/src/plugins/cli-backend.types.ts b/src/plugins/cli-backend.types.ts
+index 48da7e3fd3b..bf31f944c97 100644
+--- a/src/plugins/cli-backend.types.ts
++++ b/src/plugins/cli-backend.types.ts
+@@ -6,6 +6,10 @@ import type { ContextEngineHostCapability } from "../context-engine/types.js";
+ export type CliBackendConfig = {
+   /** CLI command to execute (absolute path or on PATH). */
+   command: string;
++  /** Opt in to native permission evaluation followed by one-time host escalation. */
++  nativePermissionMode?: "defer";
++  /** Agent-scoped MCP cap; selects the existing exact-tool path. */
++  toolsAllow?: string[];
+   /** Base args applied to every invocation. */
+   args?: string[];
+   /** Output parsing mode (default: json). */
+@@ -24,6 +28,8 @@ export type CliBackendConfig = {
+   env?: Record<string, string>;
+   /** Env vars to remove before launching this CLI. */
+   clearEnv?: string[];
++  /** Do not let diagnostic preserve-env overrides retain cleared inherited values. */
++  strictClearEnv?: true;
+   /** Flag used to pass model id (e.g. --model). */
+   modelArg?: string;
+   /** Model aliases mapping (OpenClaw model id → CLI model id). */
+@@ -113,6 +119,7 @@ export type CliBundleMcpMode =
+   | "gemini-system-settings";
+ 
+ export type CliBackendPrepareExecutionContext = {
++  agentId?: string;
+   config?: OpenClawConfig;
+   workspaceDir: string;
+   agentDir?: string;
+@@ -168,6 +175,8 @@ export type CliBackendToolAvailability = {
+ 
+ /** Native action a plugin-owned runtime asks the admitted host run to authorize. */
+ export type CliBackendToolPermissionRequest = {
++  /** Claude policy checks precede native permission evaluation; escalation asks the owner. */
++  phase?: "pre-tool" | "permission";
+   /** Actual working directory reported by the native permission hook. */
+   cwd?: string;
+   toolName: string;
+@@ -244,6 +253,7 @@ export type CliBackendPromptContext = {
+ 
+ /** Exact prepared local process facts consumed by a plugin-owned execution transport. */
+ export type CliBackendExecuteContext = {
++  nativePermissionMode?: "defer";
+   command: string;
+   /** Preserve a verified invocation name when command resolves through a PATH shim. */
+   argv0?: string;
+@@ -374,6 +384,8 @@ type CliBackendExactToolAvailabilityVersionPolicy = Readonly<{
+ }>;
+ 
+ export type CliBackendNormalizeConfigContext = {
++  /** Actual admitted workspace, when resolving an execution. */
++  workspaceDir?: string;
+   config?: OpenClawConfig;
+   backendId: string;
+   agentId?: string;
+diff --git a/src/tui/embedded-backend.test.ts b/src/tui/embedded-backend.test.ts
+index bafc2419455..829116712e6 100644
+--- a/src/tui/embedded-backend.test.ts
++++ b/src/tui/embedded-backend.test.ts
+@@ -1480,6 +1480,32 @@ describe("EmbeddedTuiBackend", () => {
+     });
+   });
+ 
++  it("passes the owning agent dedicated directory into embedded native history", async () => {
++    const cfg = {
++      plugins: {
++        entries: {
++          anthropic: {
++            config: {
++              cliConfigDir: "/tmp/synthetic-login",
++              cliProfiles: { main: { mode: "workspace" } },
++            },
++          },
++        },
++      },
++    };
++    loadSessionEntryMock.mockReturnValue({
++      cfg,
++      agentId: "main",
++      canonicalKey: "agent:main:main",
++      storePath: "/tmp/openclaw-sessions.json",
++      entry: { sessionId: "sess-main" },
++    });
++    await new EmbeddedTuiBackend().loadHistory({ sessionKey: "agent:main:main" });
++    expect(readChatHistoryPageMock).toHaveBeenCalledWith(
++      expect.objectContaining({ claudeConfigDir: "/tmp/synthetic-login", sessionAgentId: "main" }),
++    );
++  });
++
+   it("loads runtime plugins for the send-path workspace before returning embedded history", async () => {
+     const cfg = { agents: { list: [{ id: "main" }] } };
+     loadSessionEntryMock.mockReturnValue({
+diff --git a/src/tui/embedded-backend.ts b/src/tui/embedded-backend.ts
+index 134f8eec455..7f617261000 100644
+--- a/src/tui/embedded-backend.ts
++++ b/src/tui/embedded-backend.ts
+@@ -21,6 +21,7 @@ import {
+   resolveDefaultAgentId,
+   resolveSessionAgentId,
+ } from "../agents/agent-scope.js";
++import { resolveConfiguredClaudeCliConfigDir } from "../agents/command/claude-cli-project-dir.js";
+ import { ensureContextWindowCacheLoaded } from "../agents/context.js";
+ import { resolveActiveEmbeddedRunSessionId } from "../agents/embedded-agent-runner/active-run-projections.js";
+ import {
+@@ -535,6 +536,9 @@ export class EmbeddedTuiBackend implements TuiBackend {
+     const effectiveMaxChars = resolveEffectiveChatHistoryMaxChars();
+     const historyPage = await readChatHistoryPage({
+       entry,
++      ...(resolveConfiguredClaudeCliConfigDir(cfg, sessionAgentId)
++        ? { claudeConfigDir: resolveConfiguredClaudeCliConfigDir(cfg, sessionAgentId) }
++        : {}),
+       provider: resolvedSessionModel.provider,
+       sessionId,
+       storePath,
