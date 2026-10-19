@@ -1,8 +1,8 @@
 # Programmatic tool calls through OpenClaw
 
-Status: Production approved; implementation in progress
+Status: Released to production; source merged
 Issue: [#304](https://github.com/coletaylor788/puddles/issues/304)
-Last updated: 2026-10-18
+Last updated: 2026-10-19
 
 ## Human section
 
@@ -101,96 +101,41 @@ activation for all tool-enabled agents, validation, deployment, merge, and clean
 The contained-runtime boundary, native harnesses, scoped reads, direct tools,
 and existing approval engine remain the agreed scope.
 
-Both patches and shared activation are implemented. The earlier managed DEV run passed
-startup, configuration, native Claude and Copilot probes, the headless regression,
-and the real-provider comparison for main and reader. The corrected benchmark
-reads the same complete dataset and records one write in each case. Scripts use
-two model requests instead of three and fewer tokens. They were slower in this
-small sample, so the result does not establish a latency improvement.
+Both patches and shared activation are released. The same frozen application
+passed the complete application suite, installed TEST checks, verified backup,
+and read-only production acceptance on October 19. Normal production intake
+resumed after both source PRs merged. The release coordinator independently
+verified closure, healthy production, stopped TEST, and retired process scopes.
 
-The tested artifact preserves the released Media image and skill. DEV is stopped
-cleanly, and the shared controller repair is installed. The next full suite exposed
-a cleanup self-test that could stop its supervising command. The test-only repair
-limits synthetic failure records and recovery to scopes created by that test.
-All 302 public e2e checks now pass under maintained process supervision, including
-explicit process joining and scope retirement. Retained review and typechecking
-pass. A packaging audit also found that the changed process runner is a declared
-input to the private bundled plugins. Maintained incremental preparation passed
-and refreshed that cache. Fresh DEV qualification of the rebuilt application
-passed. Full application testing, TEST, production acceptance, paired source merge,
-and managed cleanup remain. Release admission awaits its capacity check.
+Native Claude and Copilot retain direct tools and support scripted calls under
+the same authority. The managed DEV comparison read the same complete dataset
+and recorded one write per case. Scripts used two model requests instead of
+three and fewer tokens. They were slower in this small sample, so this does not
+establish a latency improvement. The Mini development workspace was finalized through the maintained controller.
+Laptop workspace retirement follows publication of this closeout.
 
 ## Agent section
 
 ### State
 
-The rebuilt application passed fresh DEV qualification. The release packet
-must bind that evidence and pass retained review and capacity checks before admission.
-Detailed environment diagnostics and recovery evidence remain in the companion
-checkpoint.
+Released through [PR #315](https://github.com/coletaylor788/puddles/pull/315).
+The tested public revision was `922927d2dbffc709f35e557ceb8274b736f02652`;
+merge `cf7f8828661867688fc1a33b30e5865da8b51c4f` preserves that source tree.
+The companion activation was tested and merged in the same release transaction.
 
-The replacement owner resumed the existing public and companion branches after
-the original chat was archived. The approved implementation and retained build
-were recovered without changing runtime behavior. R4 passed on October 18 and
-was stopped through the maintained sandbox-aware stop operation. Its consumed
-request and the earlier failed requests cannot be replayed.
+The complete application gate passed in 36m41s. Its mapped upstream pool passed
+7,183 tests across 226 files, with one skipped test. Installed checks passed
+without skips, including native Claude, native Copilot, and the headless
+regression. TEST repeated the complete installed suite in 17m27s. Read-only
+production acceptance passed in 46s with zero external writes. The preserved
+Media image and skill passed their installed checks.
 
-The first release attempt passed rebase and artifact checks, then stopped before
-any application tests because staging omitted the prepared upstream build output.
-The corrected staging now includes complete `dist` and `dist-runtime` trees,
-including build stamps and embedded runtime dependencies. Their hashes and all
-public and companion package outputs match the retained build. Native read-only
-checks report no build or postbuild work needed. The controller released the lane;
-no TEST or production deployment occurred.
-
-The feature is outside the queue after the second release attempt stopped before
-TEST. The installed controller includes the complete detached-writer repair from
-`4eca321af683ebe48ccbe6ed65323b6e54da60ab` replaces the earlier runner-only adoption.
-The runner records each detached process before allowing its workload to start.
-Cleanup joins registered workers even after their parent exits, and retains state
-when ownership is incomplete or joining fails. The shared helper and gate ship
-with the controller. PTC's existing detached CLI cleanup and eleven regressions
-remain intact. The companion adopts only three generic fixture ownership changes.
-
-All 60 focused runner, lifecycle, native-loop, and fixture checks pass on Node
-26.1.0 with normal host process access. E2E typechecking and retained source review
-pass. All 451 release-tool tests (67 Node and 384 Vitest) and release lint pass.
-The composed installed memory check passes all 14 cases in 198 seconds. The
-process runner is also a declared bundled-plugin build input, so those checks do
-not establish packaging readiness. Maintained preparation must refresh that cache,
-and fresh DEV qualification must bind the resulting application. Refresh both
-source identities, installed and local controller bindings, and affected installed
-proofs before admission. Prior requests and receipts remain consumed. The
-coordinator owns allocation and the full release lane.
-
-The second release attempt passed rebase and artifact validation, then its full
-suite was killed by a cleanup self-test. A bounded local reproduction confirmed
-that test recovery traversed inherited supervisor scopes and stopped their
-processes. The repair filters those ancestors from synthetic record injection
-and test-owned recovery. Real runtime ancestor tracking is unchanged. A nested
-regression exercises all five affected cases and checks that the supervisor
-survives, its child receipt clears, its own scope retires, and inherited scopes
-remain open and complete. All 302 checks across 32 public e2e files pass under the
-maintained command supervisor in 28 seconds, with explicit clean-join evidence.
-Typechecking and retained review pass. Preserve both failed release attempts and
-request a fresh packet and allocation after exact-head hosted checks.
-
-The packaging audit reproduced the old bundle cache key using the former helper
-bytes. Only `packages/e2e/src/process-runner.mjs` differed among declared helpers.
-The maintained incremental builder reused the core, regenerated the bundles, and
-recorded the current input key. The bundle output stayed identical. The complete
-application digest changed only because the recovered public checkout path changes
-bundled source comments, one dependency directory name, and its two links. All
-other file bytes, modes, and link targets match. Fresh DEV qualification is still
-required. The old artifact and both failed release attempts remain preserved;
-the unadmitted third release draft is withdrawn until that qualification passes.
-
-The reviewed integration runs installed groups sequentially with one worker,
-preserving all 23 PTC inventory entries. The public suite must honor the longer
-companion check deadline. Nine public and four companion regressions pass locally.
-Retained integration review and nested timeout review pass. Compare the final
-shared owner revision, then verify the installed controller and its TEST deadline.
-No new packet is eligible until those inputs are recaptured.
+Earlier failed release attempts are closed and cannot be replayed. Their repairs
+include supervised test cleanup, accurate bundled-plugin input tracking, bounded
+sequential installed groups, and the companion's ordered patch manifest. The
+successful release used fresh controls and the rebuilt, qualified output.
+Detailed deployment identities and recovery evidence belong in the companion
+checkpoint. Cleanup runs independently and does not reserve the release lane.
 
 ### Scope and acceptance criteria
 
@@ -412,7 +357,9 @@ DEV listeners and owned writers were absent and intake remained held.
 - [x] Implement both patches and activation; add durable regressions.
 - [x] Correct and verify preserved execution scope when freezing MCP grants.
 - [x] Verify native harnesses, main/reader behavior, and shared role activation.
-- [ ] Complete review, release gates, source merge, and cleanup.
+- [x] Complete review, release gates, and source merge.
+- [x] Finalize the Mini development workspace.
+- [ ] Retire laptop workspaces after closeout publication.
 
 [worker]: https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/extensions/code-mode-quickjs/src/code-mode.worker.ts
 [executor]: https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/extensions/code-mode-quickjs/src/executor.ts
