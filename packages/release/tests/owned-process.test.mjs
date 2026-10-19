@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -72,13 +72,20 @@ test('closing a scope refuses a registered gate before workload release', async 
 test('an ancestor registration failure prevents launch and retains incomplete intent', async t => {
   const root = fixture(t), scope = ownedScope(t), broken = join(root, 'broken'); mkdirSync(broken); mkdirSync(join(broken, 'launches'));
   chmodSync(join(broken, 'launches'), 0o500);
+  const inherited = process.env.PUDDLES_PROCESS_SCOPES;
+  // This fixture fails before spawn. Its intentionally unresolved intent belongs
+  // only to the synthetic scopes, never to an enclosing installer.
+  delete process.env.PUDDLES_PROCESS_SCOPES;
   try {
     assert.throws(() => prepareOwnedProcess(process.execPath, ['-e', 'process.exit(0)'], { stdio: 'ignore' }, [scope, broken]), /EACCES/);
     closeProcessScope(scope);
     assert.throws(() => processScopeRecords(scope), /incomplete/);
     assert.throws(() => retireProcessScope(scope), /incomplete/);
     assert.equal(existsSync(scope), true);
-  } finally { chmodSync(join(broken, 'launches'), 0o700); rmSync(scope, { recursive: true }); }
+    if (process.env.SYNTHETIC_NEGATIVE_RECEIPT) appendFileSync(process.env.SYNTHETIC_NEGATIVE_RECEIPT, 'before-spawn\n');
+  } finally {
+    if (inherited === undefined) delete process.env.PUDDLES_PROCESS_SCOPES; else process.env.PUDDLES_PROCESS_SCOPES = inherited;
+    chmodSync(join(broken, 'launches'), 0o700); rmSync(scope, { recursive: true }); }
 });
 
 test('launcher death after registration leaves a discoverable gate without starting workload', async t => {
@@ -97,11 +104,12 @@ test('launcher death before PID commit leaves no runnable workload and retains i
   const shim = join(root, 'ps');
   writeFileSync(shim, `#!${process.execPath}\nrequire('node:fs').writeFileSync(${JSON.stringify(pidFile)},process.argv[3]);if(process.ppid!==Number(process.env.SYNTHETIC_LAUNCHER_PID))process.exit(2);process.kill(process.ppid,'SIGKILL');`, { mode: 0o700 });
   const driver = `import {prepareOwnedProcess} from ${JSON.stringify(helper)};process.env.SYNTHETIC_LAUNCHER_PID=String(process.pid);prepareOwnedProcess(process.execPath,['-e',${JSON.stringify(`require('node:fs').writeFileSync(${JSON.stringify(marker)},'bad')`)}],{stdio:'ignore'},[${JSON.stringify(scope)}]);`;
-  const child = spawn(process.execPath, ['--input-type=module', '-e', driver], { env: { ...process.env, PATH: root + ':' + process.env.PATH }, stdio: 'ignore' });
+  const child = spawn(process.execPath, ['--input-type=module', '-e', driver], { env: { ...process.env, PATH: root + ':' + process.env.PATH, PUDDLES_PROCESS_SCOPES: '[]' }, stdio: 'ignore' });
   await once(child, 'exit'); const pid = Number(readFileSync(pidFile, 'utf8')); await joined(pid);
   assert.equal(existsSync(marker), false); closeProcessScope(scope);
   assert.throws(() => processScopeRecords(scope), /incomplete/); assert.equal(existsSync(scope), true);
   rmSync(scope, { recursive: true });
+  if (process.env.SYNTHETIC_NEGATIVE_RECEIPT) appendFileSync(process.env.SYNTHETIC_NEGATIVE_RECEIPT, 'gate-aborted\n');
 });
 
 test('restart joins registered fixtures after original phase PID is gone and clears receipt before retirement', async t => {
@@ -193,4 +201,11 @@ test('packaged controller launches and joins through its own gate without applic
   const { command: packagedCommand } = await import(new URL('file://' + join(source, 'commands.mjs')));
   await packagedCommand({ command: process.execPath, args: ['-e', `require('node:fs').writeFileSync(${JSON.stringify(marker)},'started')`], cwd: root, timeoutMs: 5000 });
   assert.equal(readFileSync(marker, 'utf8'), 'started');
+});
+
+
+test('intentional prelaunch failures do not contaminate the supervising installer scope', async t => {
+  const root = fixture(t), receipt = join(root, 'negative-fixtures');
+  await command({ command: '/usr/bin/env', env: { SYNTHETIC_NEGATIVE_RECEIPT: receipt }, args: ['-u', 'NODE_TEST_CONTEXT', process.execPath, '--test', '--test-name-pattern=ancestor registration failure|launcher death before PID commit', fileURLToPath(import.meta.url)], cwd: root, timeoutMs: 10_000 });
+  assert.deepEqual(readFileSync(receipt, 'utf8').trim().split('\n'), ['before-spawn', 'gate-aborted']);
 });
