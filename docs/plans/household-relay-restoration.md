@@ -1,6 +1,6 @@
 # Restore the Household owner relay
 
-**Status:** Production approved; corrected build and fresh DEV tests passed; release qualification pending
+**Status:** Production approved; refreshing qualification after the released application update
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
 **Last updated:** 2026-10-19
 
@@ -83,31 +83,41 @@ ship" on 2026-10-17. This approves source-session return with instructions
 limiting automatic exchanges, followed by testing, review, production release,
 merge, and cleanup. No agent-to-agent patch or deferred approval service.
 
-The relay keeps ordinary Household access denied and grants only Main's return
-send through the existing native scoped-access API. The retained reviewer
-cleared the product and fixture repairs. The
-[indexed source preparation repair](indexed-source-preparation.md) is implemented
-and the replacement build passes native readiness and exact transfer checks.
-Fresh managed DEV passed all 12 actual-model scenarios with no failures or skips.
-Maintained shutdown, independent closure, and credential retirement passed. Production is unchanged. The full application suite,
-installed TEST, backup, production acceptance, source merge, and final cleanup
-remain pending under the manager's capacity admission.
+The requester renewed approval for the required release operations on
+2026-10-19 in the release-manager chat, message
+`01a154e7-a796-7793-9861-f961e7ad930b`. This includes removing the obsolete
+DEV-only compatibility filter so qualification preserves the programmatic-tool
+settings already released for all tool-enabled agents. Existing agent tool
+permissions and native approvals stay unchanged.
+
+The previous build passed all 12 managed DEV scenarios and independent shutdown.
+Those results describe the prior source base. The feature is now rebased on the
+released application update. Shared process ownership remains unchanged, the
+installed test inventory retains both features, and focused preparation tests
+pass with the obsolete filter removed. The refreshed build, retained review,
+new DEV qualification, full application suite, installed TEST, production
+acceptance, source merge, and final cleanup remain pending under the manager's
+resource allocation.
 
 ## Agent section
 
 ### State
 
-Public branch: `codex/restore-household-owner-relay`. A separately isolated
-companion worktree uses the same branch. The release manager has received the
-replacement candidate and fresh passing DEV evidence. The native controller and
-maintained shutdown have joined. The manager independently verified the stopped
-runtime and configuration, retired the temporary credential, and released the
-DEV allocation. No release ticket is held. The old Mini generated source,
-application, and Python environment were retired through the maintained storage
-helper after their consumers ended. Compact evidence and published source are
-preserved. The replacement application and current DEV controls remain installed
-in the feature workspace. Preserve the unrelated request-context fix and native
-Gmail approvals.
+Public branch: `codex/restore-household-owner-relay`. The isolated companion
+worktree uses the same branch. Both were rebased onto the released programmatic
+tool changes. Conflicts preserve the released process runner and cleanup tests.
+The companion's sequential installed runner now includes both programmatic-tool
+coverage and Household preparation and return-isolation checks.
+
+The old DEV compatibility filter is removed. Preparation validates the candidate
+before changing target configuration or guidance and preserves existing
+programmatic-tool settings. The direct approval above resolved the tool-review
+hold. The same retained reviewer is checking the refreshed source. No release
+ticket or shared mutation allocation is held. Previous build and DEV receipts
+are historical. Refresh the installed controller and actual stopped DEV
+predecessor before qualification; preserve any manager-identified recovery
+consumers. Reuse the owned local source and mutable build output. Preserve
+native Gmail approvals and the unrelated request-context fix.
 
 ### Scope and acceptance criteria
 
