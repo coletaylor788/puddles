@@ -30,7 +30,8 @@ flowchart TB
 Use the dedicated native login under the gateway's OS user. Claude manages its
 credentials and refresh. Do not introduce an API key, extracted token or metered
 Anthropic backup. Native login is verified in the gateway login domain, and the
-owner confirmed Extra usage is disabled. Gateway execution still needs qualification.
+owner confirmed Extra usage is disabled. Preliminary installed gateway execution
+passes; broader acceptance remains open.
 
 Use Opus for high-tier reasoning and Haiku for Reader and active-memory recall.
 Preserve other model overrides. Delegation remains ordinary OpenClaw session tools.
@@ -259,14 +260,18 @@ The packaged application validates normal and held configuration and renders all
 8 agents through its real Claude backend (2 installed configuration tests).
 Environment rendering passes 14 tests; public/private manifest checks pass 9/24.
 Extension and current core type checking pass. The dedicated-directory repair
-adds passing history and account-boundary regressions; its final caller checks
-and rebuilt installed qualification are in progress.
+adds passing history and account-boundary regressions. Caller checks and rebuilt
+installed session preparation pass.
 
 The retained reviewer cleared the complete current source diff, including the
-directory repair and session fixture changes. Actual Mini subscription execution,
-native sandbox boundaries, approval delivery, exact model quality and fallback
-continuity remain unqualified. Two isolated attempts failed before acceptance and
-were cleaned up. No shared DEV or production deployment was attempted.
+directory repair and session fixture changes. The eight-turn live subscription
+qualification passes with exact Opus for Main/Household and Haiku for Reader.
+It verifies warm native continuity, workspace writes, exact outside approvals and
+denials, protected Household isolation and a restricted Reader summary. Installed
+approval routing also rejects unrelated reviewers and denies unavailable routes.
+Broader native sandbox, role selection, model quality, restart/compaction and live
+fallback continuity remain open. Prior failed receipts are retained. No shared DEV
+or production deployment was attempted.
 
 Two direct CLI experiments tested disposable workspaces. Shell sibling writes,
 sibling/symlink reads and direct loopback access were blocked; a synthetic secret
@@ -337,8 +342,8 @@ The dedicated login directory also needs to reach native transcript imports and
 cold-resume checks. The existing readers otherwise look only in the default
 Claude directory. The patch propagates the explicit profile directory through
 those readers without changing history admission or adding a converter. Focused
-directory, tool-history, account-boundary and caller tests precede a new build;
-installed restart and fallback acceptance remain pending.
+directory, tool-history, account-boundary and caller tests pass on the rebuilt
+application. Installed cold restart and live fallback acceptance remain pending.
 
 ### Rollout and rollback
 
@@ -370,7 +375,9 @@ A reused transport regression also exposed stale callback authority. Native defe
 callbacks now restore the admitted request and caller contexts, explicitly clearing
 foreign caller context. The retained reviewer cleared the fix. Sixty-eight focused
 tests cover native policy, concurrent callbacks, absent identity, revoked approvals
-and user-question delivery. Installed qualification remains pending.
+and user-question delivery. The installed reviewer-route regression and eight-turn
+preliminary subscription qualification subsequently passed. Broader installed
+acceptance remains pending.
 The dedicated-directory follow-up review closed missing cold-resume, settlement,
 embedded-history and doctor propagation. Explicit directories do not fall back to
 the default account directory; existing history admission remains unchanged.
