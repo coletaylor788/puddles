@@ -1,8 +1,8 @@
 # Restore the Household owner relay
 
-**Status:** Production approved; managed DEV passed; full release checks and production pending
+**Status:** Production approved; prior DEV passed; corrected build preparation and fresh qualification pending
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
-**Last updated:** 2026-10-18
+**Last updated:** 2026-10-19
 
 ## Human section
 
@@ -90,8 +90,11 @@ The repaired grant passes installed denial and delivery checks. The retained
 reviewer cleared the product repair, fixture repair, and final DEV controls.
 Managed DEV passed all 12 actual-model scenarios and was independently verified
 stopped. Production is unchanged. The full application suite, installed TEST,
-backup, production acceptance, merge, and cleanup remain pending. Release
-preparation continues locally while the manager resolves target disk capacity.
+backup, production acceptance, merge, and cleanup remain pending. Staging transfer repairs restored the original source and output fingerprints,
+but native Git-free readiness exposed a shared build-inventory gap. The
+[indexed source preparation repair](indexed-source-preparation.md) must complete
+before affected output is rebuilt and requalified. The manager also owns target
+capacity admission.
 
 ## Agent section
 
@@ -100,8 +103,11 @@ preparation continues locally while the manager resolves target disk capacity.
 Public branch: `codex/restore-household-owner-relay`. A separately isolated
 companion worktree uses the same branch. The release manager has received the
 candidate and passing DEV evidence. DEV is stopped and its allocation is
-released. No release ticket is held. Preserve the unrelated request-context fix
-and native Gmail approvals.
+released. No release ticket is held. All staging and repair processes are
+stopped. Preserve the original artifact and DEV evidence. Local work now fixes
+native discovery of patch-added source before a corrected build and fresh
+qualification. Preserve the unrelated request-context fix and native Gmail
+approvals.
 
 ### Scope and acceptance criteria
 
