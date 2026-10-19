@@ -1,6 +1,6 @@
 # Restore the Household owner relay
 
-**Status:** Production approved; repair qualification passed; installer integration review and deployment pending
+**Status:** Production approved; managed DEV passed; full release checks and production pending
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
 **Last updated:** 2026-10-18
 
@@ -86,9 +86,12 @@ merge, and cleanup. No agent-to-agent patch or deferred approval service.
 Independent review found that a symmetric native agent allowlist also allowed
 Household to read Main's session status. The repair keeps ordinary access denied
 and grants only Main's return send through the existing native scoped-access API.
-The repaired grant passes all installed denial and delivery checks plus all ten
-actual-model scenarios. The retained reviewer cleared the product repair and draft deployment controls. Shared installer integration is receiving the same reviewer's recheck.
-No restoration runtime is deployed; managed DEV and subsequent gates are pending.
+The repaired grant passes installed denial and delivery checks. The retained
+reviewer cleared the product repair, fixture repair, and final DEV controls.
+Managed DEV passed all 12 actual-model scenarios and was independently verified
+stopped. Production is unchanged. The full application suite, installed TEST,
+backup, production acceptance, merge, and cleanup remain pending. Release
+preparation continues locally while the manager resolves target disk capacity.
 
 ## Agent section
 
@@ -96,8 +99,9 @@ No restoration runtime is deployed; managed DEV and subsequent gates are pending
 
 Public branch: `codex/restore-household-owner-relay`. A separately isolated
 companion worktree uses the same branch. The release manager has received the
-candidate and review finding. No release ticket or shared DEV allocation is held. Preserve the unrelated request-context fix and
-native Gmail approvals.
+candidate and passing DEV evidence. DEV is stopped and its allocation is
+released. No release ticket is held. Preserve the unrelated request-context fix
+and native Gmail approvals.
 
 ### Scope and acceptance criteria
 
@@ -138,7 +142,7 @@ Keep the reusable approval plugin packaged but disabled for this route. Package
 and activate the separate return-grant plugin in the same transaction. Use
 narrow config reconciliation and exact predecessor hashes to preserve unrelated
 guidance and DEV experiments. Include the handoff skill in preparation,
-acceptance, and rollback coverage. Public plugin behavior stays unchanged.
+acceptance, and rollback coverage. The scoped return-grant plugin supplies only the native send permission described above.
 
 ### Validation
 
@@ -189,6 +193,19 @@ delivery, not an attempted call. A separate harness correction keeps native
 session label generation from consuming a Household relay turn. No communication
 patch was added.
 
+Managed DEV qualification on 2026-10-18 passed all 12 actual-model cases
+in 502 seconds. This includes both source routes and silent Main completion
+after sending an answer. The manager independently verified process shutdown,
+closed ports, retired temporary credentials, and released the DEV allocation.
+The prepared application stayed unchanged.
+
+An earlier DEV attempt exposed a fixture error: a text-only Main completion
+after a tool result could lose its workspace marker. The fixture now resolves
+previously observed tool-call IDs to their original agent, rejects unknown or
+mixed histories, and waits for Main completion before a fresh question. Two
+recovery cases cover silent completion on both source routes. The focused
+checks and all 12 scripted installed cases also pass.
+
 ### Rollout and rollback
 
 Use the manager-owned release lane and one reviewed artifact through TEST and
@@ -203,7 +220,9 @@ enabled direct status reads of Main. The repair removes that grant and supplies
 only a reverse, exact-session send grant. Installed tests must prove denied
 reads and sends with absent, disabled, and failed plugin registration, plus
 enabled delivery and no peer reentry. The retained reviewer cleared that product
-repair and the qualification cleanup changes, together with draft deployment controls. Final operational bindings and managed DEV acceptance remain outstanding.
+repair and the qualification cleanup changes. The same reviewer subsequently
+cleared the fixture repair and final DEV controls. Managed DEV passed. The
+normal release controls still require their retained review before admission.
 
 Qualification cancellation exposed shared runner failures: a detached fixture
 could outlive an unexpectedly exiting worker, and failed joining could still
@@ -215,10 +234,9 @@ Qualification uses the existing asynchronous runner and fixture cleanup hooks.
 The shared source passes 451 release tests, 31 focused runner/fixture tests and
 the e2e typecheck. Composed qualification passes all five cleanup/credential
 cases and the installed gateway isolation scenario. These exact shared source
-inputs are reused here; the installer integration recheck and managed deployment
-remain pending. This changes test execution, not agent communication or the
-prepared application. The manager must install the corresponding controller
-repair before a new managed DEV run.
+inputs are reused here. The manager adopted the controller repair before the
+passing managed DEV run. These changes affect test execution, not agent
+communication or the prepared application.
 
 The installer follow-up isolates intentional failing launch fixtures from their
 outer supervisor. Application checks now honor an explicit bounded deadline.
@@ -233,5 +251,5 @@ affect validation only; the application artifact is unchanged.
 - [x] Record approval for source-session return with agent instructions.
 - [x] Prepare isolated public and companion workspaces.
 - [x] Implement config, guidance, and handoff skill restoration.
-- [ ] Pass focused, installed DEV, actual-model, and independent review checks.
+- [x] Pass focused, installed DEV, actual-model, and independent review checks.
 - [ ] Complete managed TEST, PROD, source merge, and cleanup.
