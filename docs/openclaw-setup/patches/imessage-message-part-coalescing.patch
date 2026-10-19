@@ -60,10 +60,18 @@ index d5ee71b48..05d93ce30 100644
      ...buildChannelReactionShape({ notificationModes: ["off", "own", "all"] }),
      catchup: z
 diff --git a/extensions/imessage/src/monitor.last-route.test.ts b/extensions/imessage/src/monitor.last-route.test.ts
-index d0a062e29..e282bcf82 100644
+index d0a062e..ae5832a 100644
 --- a/extensions/imessage/src/monitor.last-route.test.ts
 +++ b/extensions/imessage/src/monitor.last-route.test.ts
-@@ -161,6 +161,18 @@ const waitForTransportReadyMock = vi.hoisted(() =>
+@@ -11,6 +11,7 @@ import {
+   recordInboundSession,
+   type ensureConfiguredBindingRouteReady,
+ } from "openclaw/plugin-sdk/conversation-runtime";
++import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
+ import {
+   createTestRegistry,
+   resetPluginRuntimeStateForTest,
+@@ -161,6 +162,18 @@ const waitForTransportReadyMock = vi.hoisted(() =>
  );
  const createIMessageRpcClientMock = vi.hoisted(() => vi.fn<typeof createIMessageRpcClient>());
  const probeIMessagePrivateApiMock = vi.hoisted(() => vi.fn<typeof probeIMessagePrivateApi>());
@@ -82,7 +90,7 @@ index d0a062e29..e282bcf82 100644
  const readChannelAllowFromStoreMock = vi.hoisted(() => vi.fn(async () => [] as string[]));
  const ensureConfiguredBindingRouteReadyMock = vi.hoisted(() =>
    vi.fn<typeof ensureConfiguredBindingRouteReady>(async () => ({ ok: true })),
-@@ -173,12 +185,18 @@ const dispatchReplyWithBufferedBlockDispatcherMock = vi.hoisted(() =>
+@@ -173,12 +186,18 @@ const dispatchReplyWithBufferedBlockDispatcherMock = vi.hoisted(() =>
  );
  const debouncerControl = vi.hoisted(() => ({
    holdEntries: false,
@@ -101,7 +109,7 @@ index d0a062e29..e282bcf82 100644
      this.flush = undefined;
      this.flushEach = undefined;
    },
-@@ -186,6 +204,9 @@ const debouncerControl = vi.hoisted(() => ({
+@@ -186,6 +205,9 @@ const debouncerControl = vi.hoisted(() => ({
  const createChannelInboundDebouncerMock = vi.hoisted(() =>
    vi.fn(
      (opts: {
@@ -111,7 +119,7 @@ index d0a062e29..e282bcf82 100644
        onFlush: (
          entries: unknown[],
          createFlush: typeof createTestInboundDebounceFlush,
-@@ -193,10 +214,24 @@ const createChannelInboundDebouncerMock = vi.hoisted(() =>
+@@ -193,10 +215,24 @@ const createChannelInboundDebouncerMock = vi.hoisted(() =>
      }) => ({
        debouncer: {
          enqueue: async (entry: unknown) => {
@@ -136,7 +144,7 @@ index d0a062e29..e282bcf82 100644
            debouncerControl.entries.push(entry);
            debouncerControl.flush = async () => {
              const entries = debouncerControl.entries.splice(0);
-@@ -212,7 +247,9 @@ const createChannelInboundDebouncerMock = vi.hoisted(() =>
+@@ -212,7 +248,9 @@ const createChannelInboundDebouncerMock = vi.hoisted(() =>
              }
            };
          },
@@ -147,7 +155,7 @@ index d0a062e29..e282bcf82 100644
          cancelKey: () => false,
          drain: async () => {},
        },
-@@ -239,7 +276,7 @@ vi.mock("openclaw/plugin-sdk/channel-inbound", async (importOriginal) => {
+@@ -239,7 +277,7 @@ vi.mock("openclaw/plugin-sdk/channel-inbound", async (importOriginal) => {
    return {
      ...actual,
      createChannelInboundDebouncer: createChannelInboundDebouncerMock,
@@ -156,7 +164,7 @@ index d0a062e29..e282bcf82 100644
    };
  });
  
-@@ -255,6 +292,43 @@ vi.mock("./probe.js", async (importOriginal) => {
+@@ -255,6 +293,43 @@ vi.mock("./probe.js", async (importOriginal) => {
    };
  });
  
@@ -200,7 +208,7 @@ index d0a062e29..e282bcf82 100644
  vi.mock("./monitor/abort-handler.js", () => ({
    attachIMessageMonitorAbortHandler: vi.fn(() => () => {}),
  }));
-@@ -306,6 +380,7 @@ describe("iMessage monitor last-route updates", () => {
+@@ -306,6 +381,7 @@ describe("iMessage monitor last-route updates", () => {
            rpcMethods: [],
          },
      );
@@ -208,7 +216,107 @@ index d0a062e29..e282bcf82 100644
      readChannelAllowFromStoreMock.mockReset().mockResolvedValue([]);
      ensureConfiguredBindingRouteReadyMock.mockReset().mockResolvedValue({ ok: true });
      dispatchReplyWithBufferedBlockDispatcherMock.mockClear();
-@@ -1750,5 +1825,1607 @@ describe("iMessage monitor last-route updates", () => {
+@@ -739,30 +815,74 @@ describe("iMessage monitor last-route updates", () => {
+     ).toBe(false);
+   });
+ 
+-  it("waits for configured ACP target readiness before dispatching an authorized message", async () => {
+-    let releaseReadiness: ((value: { ok: true }) => void) | undefined;
+-    ensureConfiguredBindingRouteReadyMock.mockImplementationOnce(
+-      () =>
+-        new Promise((resolve) => {
+-          releaseReadiness = resolve;
+-        }),
+-    );
+-    createIMessageWatchClient({
++  it("waits for configured ACP target readiness before dispatching an authorized message", async ({
++    onTestFailed,
++  }) => {
++    const readinessEntered = createDeferred<void>();
++    const releaseReadiness = createDeferred<{ ok: true }>();
++    const dispatchEntered = createDeferred<void>();
++    const runtimeFailure = createDeferred<string>();
++    const runtime = {
++      error: vi.fn((...args: unknown[]) => runtimeFailure.resolve(args.map(String).join(" "))),
++      exit: vi.fn(),
++      log: vi.fn(),
++    };
++    let stage = "monitor startup";
++    onTestFailed(() => {
++      console.error(`ACP readiness test failed during ${stage}`, runtime.error.mock.calls);
++    });
++    const waitForStage = async (name: string, entered: Promise<void>) => {
++      stage = name;
++      const deadline = createDeferred<void>();
++      const timer = setTimeout(() => deadline.reject(new Error(`${name}: timed out`)), 10_000);
++      try {
++        await Promise.race([
++          entered,
++          deadline.promise,
++          runtimeFailure.promise.then((message) => {
++            throw new Error(`${name}: ${message}`);
++          }),
++        ]);
++      } finally {
++        clearTimeout(timer);
++      }
++    };
++    ensureConfiguredBindingRouteReadyMock.mockImplementationOnce(() => {
++      readinessEntered.resolve();
++      return releaseReadiness.promise;
++    });
++    dispatchReplyWithBufferedBlockDispatcherMock.mockImplementationOnce(async () => {
++      dispatchEntered.resolve();
++      return EMPTY_DISPATCH_RESULT;
++    });
++    const client = createIMessageWatchClient({
+       onClose: async (notify) => {
+         notify(createInboundMessage({ id: 81, guid: "acp-ready-81", text: "start the agent" }));
+-        await vi.waitFor(() => {
++        try {
++          // Durable admission is asynchronous. Wait for entry, not a polling deadline.
++          await waitForStage("readiness entry", readinessEntered.promise);
+           expect(ensureConfiguredBindingRouteReadyMock).toHaveBeenCalledTimes(1);
+-        });
+-        expect(dispatchReplyWithBufferedBlockDispatcherMock).not.toHaveBeenCalled();
+-        releaseReadiness?.({ ok: true });
+-        await vi.waitFor(() => {
++          expect(dispatchReplyWithBufferedBlockDispatcherMock).not.toHaveBeenCalled();
++          releaseReadiness.resolve({ ok: true });
++          await waitForStage("dispatch entry", dispatchEntered.promise);
+           expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(1);
+-        });
++          stage = "monitor shutdown";
++        } finally {
++          releaseReadiness.resolve({ ok: true });
++        }
+       },
+     });
+ 
+-    await runIMessageMonitor(createConfiguredBindingMonitor());
++    try {
++      await runIMessageMonitor(createConfiguredBindingMonitor({ runtime }));
++    } finally {
++      expect(client.stop).toHaveBeenCalledTimes(1);
++    }
+ 
++    stage = "final assertions";
++    expect(runtime.error).not.toHaveBeenCalled();
++    expect(ensureConfiguredBindingRouteReadyMock).toHaveBeenCalledTimes(1);
++    expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(1);
+     expect(ensureConfiguredBindingRouteReadyMock).toHaveBeenCalledWith({
+       cfg: expect.any(Object),
+       bindingResolution: expect.objectContaining({
+@@ -778,7 +898,7 @@ describe("iMessage monitor last-route updates", () => {
+     expect(ensureConfiguredBindingRouteReadyMock.mock.invocationCallOrder[0]).toBeLessThan(
+       dispatchReplyWithBufferedBlockDispatcherMock.mock.invocationCallOrder[0]!,
+     );
+-  });
++  }, 30_000);
+ 
+   it("drops unavailable configured ACP messages before typing, reads, media, history, or dispatch", async () => {
+     setAvailablePrivateApiMethods(["watch.subscribe", "typing", "read"]);
+@@ -1750,5 +1870,1607 @@ describe("iMessage monitor last-route updates", () => {
        }
      });
    }

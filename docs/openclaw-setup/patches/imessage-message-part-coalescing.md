@@ -119,6 +119,11 @@ parts on the host.
 
 ## Verification
 
+The configured ACP readiness test waits for explicit readiness and dispatch
+signals. Durable admission has no one-second completion contract. The test keeps
+the ordering and exact-once assertions, reports the failed stage and runtime
+errors, and has a bounded overall deadline.
+
 The patch adds regression coverage for:
 
 - short lead-in plus URL-preview row;
