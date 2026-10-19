@@ -158,13 +158,14 @@ and ship” after reviewing the phase-aware native approval design. Native Main,
 Household and Debug and restricted specialists are included. Haiku remains scoped
 to Reader and active-memory recall.
 
-The maintained patch and private routing configuration are implemented and under
-independent review. Focused approval and profile checks pass. Two isolated
-qualification attempts exposed a fixture preparation error; that fixture now uses
-native session creation. Dedicated-directory history and resume checks are being
-qualified on a rebuilt application. Installed
-sandbox boundaries, actual approval delivery, model quality and harness continuity
-remain release gates. Production is unchanged.
+The maintained patch and paired routing configuration have cleared independent
+review and exact-head repository checks. The rebuilt application passes installed
+configuration, session preparation and reviewer-bound approval regressions. The
+live eight-turn subscription check passes: prompt-free workspace writes, warm
+conversation continuity, exact one-time outside approval and denial, protected
+Household isolation, Household workspace behavior and restricted Haiku Reader
+output. Broader sandbox/profile, restart/compaction, model quality and fallback
+continuity remain release gates. Production is unchanged.
 
 ## Agent section
 
@@ -174,7 +175,13 @@ Use the paired `codex/claude-harness-shipping` feature worktrees. Audited OpenCl
 baseline: `eb377ac59e6c9fd6c7705028034812becf00271b`; Claude Code 2.1.301.
 Native claude.ai authentication works in the gateway login domain, not plain SSH.
 The owner confirmed Extra usage off. A bounded direct subscription turn returned
-`claude-haiku-5-5`; Opus and deployed gateway execution remain unqualified.
+`claude-haiku-5-5`. The isolated installed gateway now passes all eight preliminary
+subscription turns with exact Opus for Main/Household and Haiku for Reader.
+Native session identity stays stable across warm turns. The approval repair
+carries only the reviewer device from the admitted run into the existing native
+approval request. Installed regression rejects unrelated reviewers and denies
+requests without a capable route. Cleanup is verified. These results do not
+qualify shared DEV, broad sandbox behavior or production.
 The isolated source now contains the implementation. Coordinate public/private main merges and installed slots with the release manager.
 
 ### Scope and acceptance criteria
