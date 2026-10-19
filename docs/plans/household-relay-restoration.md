@@ -1,6 +1,6 @@
 # Restore the Household owner relay
 
-**Status:** Production approved; refreshing qualification after the released application update
+**Status:** Production approved; test correction validated, preparing a fresh release
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
 **Last updated:** 2026-10-19
 
@@ -90,14 +90,13 @@ DEV-only compatibility filter so qualification preserves the programmatic-tool
 settings already released for all tool-enabled agents. Existing agent tool
 permissions and native approvals stay unchanged.
 
-The previous build passed all 12 managed DEV scenarios and independent shutdown.
-Those results describe the prior source base. The feature is now rebased on the
-released application update. Shared process ownership remains unchanged, the
-installed test inventory retains both features, and focused preparation tests
-pass with the obsolete filter removed. The refreshed build, retained review,
-new DEV qualification, full application suite, installed TEST, production
-acceptance, source merge, and final cleanup remain pending under the manager's
-resource allocation.
+The refreshed candidate passed all 12 managed DEV scenarios and independent
+shutdown. Its full release stopped in the application suite on an iMessage
+batching test. Production is unchanged. A test-only correction replaces a
+one-second polling assumption with bounded completion signals and runtime-error
+diagnostics, preserving the batching inputs and exact result assertions. Review
+and focused validation passed. A fresh release remains pending. TEST, production
+acceptance, source merge, and final cleanup have not completed.
 
 ## Agent section
 
@@ -111,13 +110,17 @@ coverage and Household preparation and return-isolation checks.
 
 The old DEV compatibility filter is removed. Preparation validates the candidate
 before changing target configuration or guidance and preserves existing
-programmatic-tool settings. The direct approval above resolved the tool-review
-hold. The same retained reviewer is checking the refreshed source. No release
-ticket or shared mutation allocation is held. Previous build and DEV receipts
-are historical. Refresh the installed controller and actual stopped DEV
-predecessor before qualification; preserve any manager-identified recovery
-consumers. Reuse the owned local source and mutable build output. Preserve
-native Gmail approvals and the unrelated request-context fix.
+programmatic-tool settings. The refreshed application passed managed DEV. The
+fourth full release stopped before TEST after one failure among 7,184 selected
+OpenClaw cases (7,182 passed and one skipped). Independent closure confirmed
+retired processes, an empty queue, and unchanged production and backup. That
+attempt is consumed. Preserve its failure evidence and use a fresh successor.
+The current correction changes only the malformed-payload bucket test and its
+documentation. Its full test file and delayed-admission case passed. Four
+failure probes confirmed that errors and missing dispatch remain observable.
+Independent closure verified process retirement and unchanged source and
+application output. No test or build allocation is held during preparation.
+Reuse proofs only where their actual inputs remain unchanged.
 
 ### Scope and acceptance criteria
 
@@ -161,6 +164,25 @@ guidance and DEV experiments. Include the handoff skill in preparation,
 acceptance, and rollback coverage. The scoped return-grant plugin supplies only the native send permission described above.
 
 ### Validation
+
+The latest full application run failed the iMessage test `starts a fresh bucket
+after a payload without continuation metadata`. Its first default `vi.waitFor`
+expired while the dispatch count was zero. The fixture uses real durable
+admission but discards runtime errors, so the failure does not establish a
+timing-only cause. The correction waits for the first dispatch and all five
+debouncer enqueue completions, after submitting all notifications together.
+It preserves the two compositions, exact counts, content checks, and production
+behavior. Named deadlines and captured runtime errors expose stalled or failed
+processing. Retained review cleared the correction. All 64 cases in the corrected
+test file passed, as did the affected case with a deliberate 1.5-second admission
+delay. Separate probes produced the expected failures for admission errors,
+dispatch errors, and a flush that never dispatches. The original test failed
+under the same delay, demonstrating its polling limitation without proving the
+historical release failure's cause. Independent closure verified the temporary
+test's removal and unchanged source and application output. The validation
+wrapper needed one correction to recognize excluded cases as `skipped` in the
+installed Vitest report. The two successful results remained valid; only the
+four unfinished probes ran in the successor.
 
 Run focused config and guidance transaction tests. Exercise installed native
 session messaging with recorded channel delivery and synthetic data. Qualify
