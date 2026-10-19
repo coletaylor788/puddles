@@ -112,7 +112,7 @@ The tested artifact preserves the released Media image and skill. DEV is stopped
 cleanly. The corrected release staging and independent review are complete.
 Release admission waits for the shared controller cleanup fix and a refreshed
 release packet. The complete process-ownership repair passes focused local checks and retained
-source review. All 451 release-tool checks pass; the composed installed check is in progress.
+source review. All 451 release-tool checks and the composed installed check pass.
 The full application suite, TEST, production acceptance, paired source merge,
 and managed cleanup remain.
 
@@ -146,11 +146,18 @@ remain intact. The companion adopts only three generic fixture ownership changes
 All 60 focused runner, lifecycle, native-loop, and fixture checks pass on Node
 26.1.0 with normal host process access. E2E typechecking and retained source review
 pass. All 451 release-tool tests (67 Node and 384 Vitest) and release lint pass.
-The composed installed memory check is in progress. These source changes affect test execution and cleanup, not the
+The composed installed memory check passes all 14 cases in 198 seconds. These source changes affect test execution and cleanup, not the
 retained application artifact. Refresh both source identities, installed and local
 controller bindings, and affected installed proofs in the release packet before
 admission. Prior requests and receipts remain consumed. The coordinator owns
 allocation and the full release lane.
+
+The reviewed integration runs installed groups sequentially with one worker,
+preserving all 23 PTC inventory entries. The public suite must honor the longer
+companion check deadline. Nine public and four companion regressions pass locally.
+Retained integration review and nested timeout review pass. Compare the final
+shared owner revision, then verify the installed controller and its TEST deadline.
+No new packet is eligible until those inputs are recaptured.
 
 ### Scope and acceptance criteria
 
