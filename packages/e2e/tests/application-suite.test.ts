@@ -100,3 +100,28 @@ it('shares workers across independent projects while retaining serial and isolat
   }
   expect(original.test.sequence.groupOrder).toBe(19);
 });
+
+it('honors bounded companion check deadlines without changing other checks', async () => {
+  const manifest = JSON.parse(readFileSync(join(repository, 'packages/e2e/openclaw-patch-suite.json'), 'utf8'));
+  const root = source(['dist/ready', 'openclaw.mjs', ...new Set<string>([...manifest.tests, ...manifest.patches.flatMap((patch: { tests: string[] }) => patch.tests)])]);
+  for (const timeoutMs of [4_500_000, 0, -1, 1.5, 6 * 60 * 60_000 + 1]) {
+    const extensionPath = join(root, `extension-${timeoutMs}.mjs`);
+    writeFileSync(extensionPath, `export default ${JSON.stringify({ checks: [
+      { command: 'synthetic-default', args: [], cwd: root },
+      { command: 'synthetic-sequential', args: [], cwd: root, timeoutMs },
+    ] })}`);
+    const calls: Array<{ command: string; timeoutMs: number }> = [];
+    const result = applicationSuite({ source: root, artifact: root, extensionPath }, async (command: string, args: string[], options: { timeoutMs: number }) => {
+      calls.push({ command, timeoutMs: options.timeoutMs });
+      return combinedListing(args) ?? args.filter(arg => /\.test\.tsx?$/.test(arg)).join('\n');
+    });
+    if (timeoutMs === 4_500_000) {
+      await result;
+      expect(calls.find(call => call.command === 'synthetic-sequential')?.timeoutMs).toBe(timeoutMs);
+    } else {
+      await expect(result).rejects.toThrow('timeout');
+      expect(calls.some(call => call.command === 'synthetic-sequential')).toBe(false);
+    }
+    expect(calls.filter(call => call.command !== 'synthetic-sequential').every(call => call.timeoutMs === 30 * 60_000)).toBe(true);
+  }
+});

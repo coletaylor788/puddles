@@ -7,5 +7,7 @@
   "git.mjs",
   "finalize.mjs",
   "supervisor.mjs",
-  "install.mjs"
+  "install.mjs",
+  "owned-process.mjs",
+  "owned-process-gate.mjs"
 ]

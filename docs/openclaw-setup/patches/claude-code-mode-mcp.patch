@@ -1,0 +1,1823 @@
+diff --git a/src/agents/cli-runner/prepare.ts b/src/agents/cli-runner/prepare.ts
+index 656740e1686..569e0fb5b33 100644
+--- a/src/agents/cli-runner/prepare.ts
++++ b/src/agents/cli-runner/prepare.ts
+@@ -23,6 +23,7 @@ import {
+   revokeMcpLoopbackClientGrant,
+   transferMcpLoopbackClientGrant,
+ } from "../../gateway/mcp-grant-store.js";
++import { createMcpCodeModeToolSurface } from "../../gateway/mcp-http.code-mode.js";
+ import { ensureMcpLoopbackServer } from "../../gateway/mcp-http.js";
+ import {
+   createMcpLoopbackServerConfig,
+@@ -94,6 +95,8 @@ import {
+   hashCliSessionText,
+   resolveCliSessionReuse,
+ } from "../cli-session.js";
++import { resolveRuntimeCodeModeSkills } from "../code-mode-skill-runtime.js";
++import type { CodeModeSkill } from "../code-mode-skills.js";
+ import {
+   claudeCliSessionTranscriptHasContent,
+   claudeCliSessionTranscriptHasOrphanedToolUse,
+@@ -154,6 +157,7 @@ import {
+   type BundledCliBackendAuthPolicy,
+ } from "./cli-backend-auth-policy.js";
+ import { getCliLiveSessionGeneration } from "./cli-live-session-registry.js";
++import { resolveMaterializedCliCodeModeSkills } from "./code-mode-skills.js";
+ import {
+   createCliRunCurrentAssertion,
+   resolveCliExecutionTarget,
+@@ -296,7 +300,7 @@ async function resolveCliSkillsPrompt(params: {
+   skillsSnapshot: RunCliAgentParams["skillsSnapshot"];
+   workspaceDir: string;
+   executionWorkspaceDir: string;
+-}): Promise<{ prompt: string; usagePaths?: SkillUsagePath[] }> {
++}): Promise<{ prompt: string; usagePaths?: SkillUsagePath[]; codeModeSkills: CodeModeSkill[] }> {
+   params.assertCurrent();
+   const skillsSnapshot =
+     params.skillsSnapshot ??
+@@ -329,16 +333,23 @@ async function resolveCliSkillsPrompt(params: {
+         agentId: params.agentId,
+         skillsSnapshot,
+       });
++    const prompt = await resolveSkillsPrompt({
++      assertCurrent: params.assertCurrent,
++      skillsSnapshot,
++      entries: shouldLoadSkillEntries ? skillEntries : undefined,
++      loadEntries: loadSkillEntries,
++      workspaceDir: params.workspaceDir,
++      config: params.config,
++      agentId: params.agentId,
++      preserveEntryOrder,
++    });
+     return {
+-      prompt: await resolveSkillsPrompt({
+-        assertCurrent: params.assertCurrent,
++      prompt,
++      codeModeSkills: resolveRuntimeCodeModeSkills({
++        skillsPrompt: prompt,
++        candidates: skillsSnapshot.resolvedSkills ?? skillEntries.map((entry) => entry.skill),
+         skillsSnapshot,
+-        entries: shouldLoadSkillEntries ? skillEntries : undefined,
+-        loadEntries: loadSkillEntries,
+-        workspaceDir: params.workspaceDir,
+-        config: params.config,
+-        agentId: params.agentId,
+-        preserveEntryOrder,
++        skillsWorkspaceDir: params.workspaceDir,
+       }),
+     };
+   }
+@@ -387,17 +398,31 @@ async function resolveCliSkillsPrompt(params: {
+     skillsWorkspaceDir,
+     skillsPromptWorkspaceDir,
+   });
++  const prompt = await resolveSkillsPrompt({
++    assertCurrent: params.assertCurrent,
++    skillsSnapshot: skillsSnapshotForRun,
++    entries: promptSkillEntries,
++    workspaceDir: skillsPromptWorkspaceDir,
++    config: params.config,
++    agentId: params.agentId,
++    eligibility: skillsEligibility,
++    preserveEntryOrder,
++  });
+   return {
++    prompt,
+     usagePaths: skillUsagePaths,
+-    prompt: await resolveSkillsPrompt({
+-      assertCurrent: params.assertCurrent,
+-      skillsSnapshot: skillsSnapshotForRun,
+-      entries: promptSkillEntries,
+-      workspaceDir: skillsPromptWorkspaceDir,
+-      config: params.config,
+-      agentId: params.agentId,
+-      eligibility: skillsEligibility,
+-      preserveEntryOrder,
++    codeModeSkills: await resolveMaterializedCliCodeModeSkills({
++      skillsPrompt: prompt,
++      rootDir: skillsWorkspaceDir,
++      candidates:
++        skillsSnapshotForRun?.resolvedSkills?.map((skill) => {
++          const delivered = sandboxWorkspace.skillUsagePaths?.find(
++            (entry) => entry.skillName === skill.name,
++          );
++          if (!delivered)
++            throw new Error(`Selected skill ${skill.name} has no delivered CLI source.`);
++          return { ...skill, filePath: delivered.readPath };
++        }) ?? skillEntries.map((entry) => entry.skill),
+     }),
+   };
+ }
+@@ -1283,21 +1308,20 @@ async function prepareCliRunContextWithinReadFence(
+       ? prepareDeps.resolveMcpLoopbackPolicyTools
+       : prepareDeps.resolveMcpLoopbackScopedTools;
+   params.assertCurrent?.();
+-  const projectedToolsBeforePromptBuild =
++  const projectedToolScope =
+     (bundleMcpEnabled || shouldMaterializeRuntimePolicy || nodeWorkshopEnabled) &&
+     mcpProjectionContext
+-      ? (
+-          await resolveProjectedTools({
+-            cfg: runConfig,
+-            signal: params.abortSignal,
+-            context: mcpProjectionContext,
+-            rootedExecution,
+-            ...(skillLibraryAuthoring ? { skillLibraryAuthoring } : {}),
+-            ...(mcpToolAuth ? { authProfileStore: mcpToolAuth.store } : {}),
+-            ...(mcpToolAuth?.agentDir ? { authProfileStoreAgentDir: mcpToolAuth.agentDir } : {}),
+-          })
+-        ).tools
+-      : [];
++      ? await resolveProjectedTools({
++          cfg: runConfig,
++          signal: params.abortSignal,
++          context: mcpProjectionContext,
++          rootedExecution,
++          ...(skillLibraryAuthoring ? { skillLibraryAuthoring } : {}),
++          ...(mcpToolAuth ? { authProfileStore: mcpToolAuth.store } : {}),
++          ...(mcpToolAuth?.agentDir ? { authProfileStoreAgentDir: mcpToolAuth.agentDir } : {}),
++        })
++      : undefined;
++  const projectedToolsBeforePromptBuild = projectedToolScope?.tools ?? [];
+   params.assertCurrent?.();
+   const hookFilteredProjectedTools = applyEmbeddedAttemptToolsAllow(
+     projectedToolsBeforePromptBuild,
+@@ -1345,11 +1369,27 @@ async function prepareCliRunContextWithinReadFence(
+     hookFilteredProjectedTools,
+     params.cliToolAvailability?.openClaw,
+   );
++  // Preview only. The executable runtime belongs to the minted grant in the MCP server.
++  const codeModeSkills: CodeModeSkill[] = [];
++  const codeModePreview =
++    bundleMcpEnabled && mcpContextBase
++      ? createMcpCodeModeToolSurface({
++          config: runConfig,
++          context: { ...mcpContextBase, toolsAllow: projectedTools.map((tool) => tool.name) },
++          tools: projectedTools,
++          executeTool: async () => {
++            throw new Error("CLI tool preview cannot execute tools");
++          },
++        })
++      : undefined;
++  const codeModeEnabled = codeModePreview?.enabled === true;
++  const codeModePromptTools = codeModeEnabled ? codeModePreview!.tools : projectedTools;
++  codeModePreview?.cleanup();
+   const nodeSkillWorkshop = nodeWorkshopEnabled
+     ? projectedTools.find((tool) => tool.name === "skill_workshop")
+     : undefined;
+   const promptTools = bundleMcpEnabled
+-    ? projectedTools
++    ? codeModePromptTools
+     : nodeSkillWorkshop
+       ? [nodeSkillWorkshop]
+       : [];
+@@ -1408,11 +1448,26 @@ async function prepareCliRunContextWithinReadFence(
+       ? backendResolved.projectNativeToolAuthority
+       : undefined;
+   const mcpGrant = finalizeCliMcpGrant(
+-    mcpContextBase,
+-    restrictedLoopbackToolsAllow,
++    codeModeEnabled && mcpContextBase
++      ? {
++          ...mcpContextBase,
++          codeMode: true,
++          codeModeMediatedTools: projectedToolScope?.mediatedNativeTools,
++        }
++      : mcpContextBase,
++    codeModeEnabled ? projectedTools.map((tool) => tool.name) : restrictedLoopbackToolsAllow,
+     Boolean(projectNativeToolAuthority),
+     params.assertCurrent,
+   );
++  if (codeModeEnabled && params.cliToolAvailability) {
++    params = {
++      ...params,
++      cliToolAvailability: {
++        ...params.cliToolAvailability,
++        openClaw: codeModePromptTools.map((tool) => tool.name),
++      },
++    };
++  }
+   const toolBoundExtraSystemPromptHash = params.cliToolAvailability
+     ? hashCliSessionText(
+         JSON.stringify([
+@@ -1435,6 +1490,7 @@ async function prepareCliRunContextWithinReadFence(
+       mcpLoopbackRuntime && mcpGrant
+         ? prepareDeps.mintMcpLoopbackClientGrant({
+             ...mcpGrant,
++            codeModeSkills,
+             runtimeOwnerToken: mcpLoopbackRuntime.ownerToken,
+             admittedRunContext: params.admittedRunContext,
+             messageActionTurnCapability: params.messageActionTurnCapability,
+@@ -1949,7 +2005,11 @@ async function prepareCliRunContextWithinReadFence(
+           skillPreparationParams.abortSignal?.throwIfAborted();
+           skillPreparationParams.preparedRunAdmission?.assertSourceCurrent();
+         };
+-    const preparedSkills = rootedExecution
++    const preparedSkills: {
++      prompt: string;
++      usagePaths?: SkillUsagePath[];
++      codeModeSkills?: CodeModeSkill[];
++    } = rootedExecution
+       ? { prompt: params.skillsSnapshot?.prompt ?? "" }
+       : skipsTurnPreparation || nodeClaudePlacement || claudeSkillsPlugin.args.length > 0
+         ? { prompt: "" }
+@@ -1964,6 +2024,17 @@ async function prepareCliRunContextWithinReadFence(
+           });
+     assertSkillsCurrent();
+     const systemPromptSkillsPrompt = preparedSkills.prompt;
++    if (codeModeEnabled) {
++      codeModeSkills.push(
++        ...(preparedSkills.codeModeSkills ??
++          resolveRuntimeCodeModeSkills({
++            skillsPrompt: params.skillsSnapshot?.prompt ?? "",
++            candidates: params.skillsSnapshot?.resolvedSkills ?? [],
++            skillsSnapshot: params.skillsSnapshot,
++            skillsWorkspaceDir: workspaceDir,
++          })),
++      );
++    }
+     const runtimeChannel = skipsTurnPreparation
+       ? undefined
+       : normalizeMessageChannel(params.messageChannel ?? params.messageProvider);
+diff --git a/src/agents/cli-runner/prepare.web-search.test.ts b/src/agents/cli-runner/prepare.web-search.test.ts
+index 2eda61171bb..98213c27a12 100644
+--- a/src/agents/cli-runner/prepare.web-search.test.ts
++++ b/src/agents/cli-runner/prepare.web-search.test.ts
+@@ -1,11 +1,14 @@
+ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+ import type { OpenClawConfig } from "../../config/types.openclaw.js";
++import type { mintMcpLoopbackClientGrant as mintClientGrant } from "../../gateway/mcp-grant-store.js";
++import { createMcpCodeModeToolSurface } from "../../gateway/mcp-http.code-mode.js";
+ import {
+   resolveMcpLoopbackPolicyTools,
+   resolveMcpLoopbackScopedTools,
+ } from "../../gateway/mcp-http.runtime.js";
+ import type { CliBackendPlugin } from "../../plugins/cli-backend.types.js";
+ import { loadBundledPluginFacade } from "../../test-utils/bundled-plugin-public-surface.js";
++import { resolveExecTarget } from "../bash-tools.exec-runtime.js";
+ import { execSchema } from "../bash-tools.schemas.js";
+ import { testing as cliBackendsTesting } from "../cli-backends.test-support.js";
+ import {
+@@ -32,6 +35,7 @@ const searchTool = {
+ };
+ const messageTool = { ...searchTool, name: "message", label: "Message" };
+ const nodeExecution = vi.fn();
++let nodeConnected = true;
+ function executionTool(defaults: { host?: string; node?: string } = {}) {
+   return {
+     ...searchTool,
+@@ -41,6 +45,13 @@ function executionTool(defaults: { host?: string; node?: string } = {}) {
+       if (defaults.host !== "node") {
+         throw new Error("Gateway-local execution is forbidden in this node-only proof");
+       }
++      // Keep the real exec target policy while recording the final node dispatch.
++      resolveExecTarget({
++        configuredTarget: defaults.host,
++        requestedTarget: (params as { host?: "gateway" | "node" | "sandbox" }).host,
++        sandboxAvailable: false,
++        elevatedRequested: false,
++      });
+       nodeExecution(defaults, params);
+       return { content: [{ type: "text", text: "node execution" }] };
+     },
+@@ -59,7 +70,7 @@ vi.mock("../bash-tools.js", () => ({ createExecTool: executionTool }));
+ vi.mock("../tools/gateway.js", () => ({
+   callGatewayTool: async (method: string) => {
+     if (method === "node.list") {
+-      return { nodes: [{ nodeId: "worker", connected: true, commands: ["system.run"] }] };
++      return { nodes: [{ nodeId: "worker", connected: nodeConnected, commands: ["system.run"] }] };
+     }
+     if (method === "computer.status") {
+       return { configured: false, available: false };
+@@ -69,10 +80,13 @@ vi.mock("../tools/gateway.js", () => ({
+ }));
+ let fixture: ReturnType<typeof createCliRunnerPrepareFixture>;
+ const captureNativeToolAuthority = vi.fn((_tools: readonly string[] | null) => true);
+-const mintMcpLoopbackClientGrant = vi.fn(createTestMcpLoopbackClientGrant);
++const mintMcpLoopbackClientGrant = vi.fn((params: Parameters<typeof mintClientGrant>[0]) =>
++  createTestMcpLoopbackClientGrant(params),
++);
+ 
+ beforeEach(() => {
+   vi.clearAllMocks();
++  nodeConnected = true;
+   cliBackendsTesting.setDepsForTest({
+     resolvePluginSetupCliBackend: () => undefined,
+     resolveRuntimeCliBackends: () => [{ ...buildAnthropicCliBackend(), pluginId: "anthropic" }],
+@@ -210,3 +224,121 @@ describe("registered Claude CLI search preparation", () => {
+     },
+   );
+ });
++
++describe("Claude additive Code Mode preparation", () => {
++  it.each([false, true])(
++    "keeps underlying grant authority separate when disableTools=%s",
++    async (disableTools) => {
++      const context = await fixture.prepare({
++        provider: "claude-cli",
++        model: "fixture-model",
++        config: {
++          tools: {
++            codeMode: { enabled: true, surface: "additive", executor: "quickjs" },
++            allow: ["web_search"],
++          },
++        },
++        disableTools,
++        cliToolAvailability: { native: [], openClaw: ["web_search"] },
++      });
++      try {
++        const names = context.systemPromptReport.tools.entries.map((tool) => tool.name);
++        if (disableTools) {
++          expect(names).not.toContain("code_exec");
++          expect(names).not.toContain("code_wait");
++          expect(mintMcpLoopbackClientGrant).not.toHaveBeenCalled();
++        } else {
++          expect(names).toEqual(expect.arrayContaining(["web_search", "code_exec", "code_wait"]));
++          const grant = mintMcpLoopbackClientGrant.mock.calls[0]?.[0];
++          expect(grant?.context).toMatchObject({ codeMode: true, toolsAllow: ["web_search"] });
++          expect(grant?.codeModeSkills).toEqual([]);
++          expect(context.params.cliToolAvailability?.openClaw).toEqual(
++            expect.arrayContaining(["web_search", "code_exec", "code_wait"]),
++          );
++          expect(context.params.cliToolAvailability?.native).toEqual([]);
++        }
++      } finally {
++        await context.preparedBackend.cleanup?.();
++      }
++    },
++  );
++});
++
++describe("Code Mode preserves the original CLI execution surface", () => {
++  it.each([false, true])(
++    "keeps exec constructor provenance for exact cap=%s",
++    async (restricted) => {
++      const cfg: OpenClawConfig = {
++        tools: {
++          codeMode: { enabled: true, surface: "additive", executor: "quickjs" },
++          allow: ["exec"],
++          exec: { host: "auto", mode: "full" },
++        },
++      };
++      const prepared = await fixture.prepare({
++        provider: "claude-cli",
++        model: "fixture-model",
++        config: cfg,
++        senderIsOwner: true,
++        ...(restricted ? { cliToolAvailability: { native: [], openClaw: ["exec"] } } : {}),
++      });
++      try {
++        const context = mintMcpLoopbackClientGrant.mock.calls[0]![0].context;
++        expect(context.toolsAllow).toEqual(["exec"]);
++        expect(context.codeModeMediatedTools).toEqual(restricted ? ["exec"] : []);
++        const scoped = await resolveMcpLoopbackScopedTools({
++          cfg,
++          context,
++          isGrantCurrent: () => true,
++        });
++        const exec = scoped.tools.find((tool) => tool.name === "exec")!;
++        expect(exec.parameters).toMatchObject({
++          properties: {
++            host: {
++              enum: restricted ? expect.arrayContaining(["gateway"]) : ["node"],
++            },
++          },
++        });
++        if (restricted) return;
++        const direct = await exec.execute("direct-node", { command: "direct-proof" });
++        expect(direct).toEqual({ content: [{ type: "text", text: "node execution" }] });
++        const surface = createMcpCodeModeToolSurface({
++          config: cfg,
++          context,
++          tools: scoped.tools,
++          executeTool: async ({ originalTool, toolCallId, input, signal }) =>
++            originalTool.execute!(toolCallId, input, signal),
++        });
++        try {
++          const codeExec = surface.tools.find((tool) => tool.name === "code_exec")!;
++          const result = await codeExec.execute("script-node", {
++            code: 'return await exec({command:"nested-proof"});',
++          });
++          expect(result.details, JSON.stringify(result)).toMatchObject({ status: "completed" });
++          expect(nodeExecution.mock.calls.map((call) => call[1])).toEqual([
++            { command: "direct-proof" },
++            { command: "nested-proof" },
++          ]);
++          for (const call of nodeExecution.mock.calls)
++            expect(call[0]).toMatchObject({ host: "node" });
++          const refused = await codeExec.execute("script-gateway", {
++            code: 'return await exec({command:"forbidden",host:"gateway"});',
++          });
++          expect(JSON.stringify(refused)).toContain("exec host not allowed");
++          expect(nodeExecution).toHaveBeenCalledTimes(2);
++        } finally {
++          surface.cleanup();
++        }
++        nodeConnected = false;
++        const disconnected = await resolveMcpLoopbackScopedTools({
++          cfg,
++          context,
++          isGrantCurrent: () => true,
++        });
++        expect(disconnected.tools.some((tool) => tool.name === "exec")).toBe(false);
++      } finally {
++        await prepared.preparedBackend.cleanup?.();
++      }
++    },
++  );
++});
+diff --git a/src/gateway/mcp-grant-store.test.ts b/src/gateway/mcp-grant-store.test.ts
+index bc987272f38..1d1ef4d3ff8 100644
+--- a/src/gateway/mcp-grant-store.test.ts
++++ b/src/gateway/mcp-grant-store.test.ts
+@@ -138,6 +138,7 @@ describe("mcp-grant-store", () => {
+       sourceReplyDeliveryMode: "message_tool_only" as const,
+       sourceReplyOnly: true,
+       toolsAllow: ["message"],
++      codeModeMediatedTools: [] as string[],
+       taskSuggestionDeliveryMode: "gateway" as const,
+       requireExplicitMessageTarget: true,
+       senderIsOwner: false,
+@@ -159,10 +160,12 @@ describe("mcp-grant-store", () => {
+     context.pinnedWidgetAuthoring = false;
+     context.sourceReplyOnly = false;
+     context.toolsAllow.push("exec");
++    context.codeModeMediatedTools.push("exec");
+     grant.context.clientCaps?.push("return-value-mutation");
+     grant.context.pinnedWidgetAuthoring = false;
+     grant.context.sourceReplyOnly = false;
+     grant.context.toolsAllow?.push("write");
++    grant.context.codeModeMediatedTools?.push("write");
+ 
+     expect(
+       resolveMcpLoopbackClientGrant({
+@@ -177,6 +180,7 @@ describe("mcp-grant-store", () => {
+       pinnedWidgetAuthoring: true,
+       sourceReplyOnly: true,
+       toolsAllow: ["message"],
++      codeModeMediatedTools: [],
+     });
+   });
+ 
+diff --git a/src/gateway/mcp-grant-store.ts b/src/gateway/mcp-grant-store.ts
+index 6345e945771..9a9840aa930 100644
+--- a/src/gateway/mcp-grant-store.ts
++++ b/src/gateway/mcp-grant-store.ts
+@@ -6,6 +6,7 @@ import {
+ } from "../agents/admitted-run-context.js";
+ import type { AuthProfileStore } from "../agents/auth-profiles/types.js";
+ import type { ExecElevatedDefaults } from "../agents/bash-tools.exec-types.js";
++import type { CodeModeSkill } from "../agents/code-mode-skills.js";
+ import type { DelegationCapability } from "../agents/delegation-capability.js";
+ import type { ExecPolicyOverrides, ExecSessionDefaults } from "../agents/exec-defaults.js";
+ import type { PreparedQuestionAnswerAuthority } from "../agents/harness/host-private-capabilities.js";
+@@ -66,6 +67,10 @@ export type McpLoopbackRequestContext = {
+    * hard enforcement. Unset keeps the full session-scoped surface.
+    */
+   toolsAllow?: string[];
++  /** Host-selected contained scripting, separate from underlying tool authority. */
++  codeMode?: true;
++  /** Original coding-tool constructor selection, frozen by CLI preparation only. */
++  codeModeMediatedTools?: string[];
+   /** Host-minted search exclusion; independent of coding-tool authority in toolsAllow. */
+   webSearchDisabled?: true;
+   /** Canonical observed native authority; null awaits this turn's initialization. */
+@@ -149,6 +154,7 @@ type StoredMcpLoopbackClientGrant = McpLoopbackClientGrant & {
+   /** Effective attempt authority, including plugin-owned timeout and cancellation. */
+   assertCaptureCurrent?: () => void;
+   toolAuth?: McpLoopbackToolAuth;
++  codeModeSkills?: readonly CodeModeSkill[];
+ };
+ 
+ type McpLoopbackClientGrantRevocation = {
+@@ -264,6 +270,7 @@ export function mintMcpLoopbackClientGrant(params: {
+   skillLibraryAuthoring?: SkillLibraryAuthoringCapability;
+   rootedExecution?: PreparedRootedExecutionCapability;
+   toolAuth?: McpLoopbackToolAuth;
++  codeModeSkills?: readonly CodeModeSkill[];
+ }): McpLoopbackClientGrant {
+   const sessionKey = params.context.sessionKey.trim();
+   if (!sessionKey) {
+@@ -286,6 +293,7 @@ export function mintMcpLoopbackClientGrant(params: {
+       : {}),
+     ...(params.cronAuthorityCheck ? { cronAuthorityCheck: params.cronAuthorityCheck } : {}),
+     abortSignal: params.abortSignal,
++    codeModeSkills: params.codeModeSkills,
+     assertCurrent: params.assertCurrent,
+     bindQuestionAnswerAuthority: params.bindQuestionAnswerAuthority,
+     ...(params.skillLibraryAuthoring
+@@ -488,7 +496,9 @@ export function resolveMcpLoopbackClientGrant(params: {
+       skillLibraryAuthoring?: SkillLibraryAuthoringCapability;
+       rootedExecution?: PreparedRootedExecutionCapability;
+       isCurrent: () => boolean;
++      abortSignal?: AbortSignal;
+       toolAuth?: McpLoopbackToolAuth;
++      codeModeSkills?: readonly CodeModeSkill[];
+     }
+   | undefined {
+   const { token, runtimeOwnerToken, captureKey } = params;
+@@ -538,6 +548,8 @@ export function resolveMcpLoopbackClientGrant(params: {
+         }
+       : {}),
+     questionAnswerAuthority,
++    abortSignal: grant.abortSignal,
++    codeModeSkills: grant.codeModeSkills,
+     ...(grant.skillLibraryAuthoring ? { skillLibraryAuthoring: grant.skillLibraryAuthoring } : {}),
+     isCurrent,
+     ...(grant.rootedExecution ? { rootedExecution: grant.rootedExecution } : {}),
+diff --git a/src/gateway/mcp-http.handlers.ts b/src/gateway/mcp-http.handlers.ts
+index a0f7a145f46..3859b64b8e6 100644
+--- a/src/gateway/mcp-http.handlers.ts
++++ b/src/gateway/mcp-http.handlers.ts
+@@ -3,9 +3,23 @@
+ import crypto from "node:crypto";
+ import { ContentBlockSchema, type ContentBlock } from "@modelcontextprotocol/sdk/types.js";
+ import { isRecord } from "@openclaw/normalization-core/record-coerce";
+-import { runBeforeToolCallHook, type HookContext } from "../agents/agent-tools.before-tool-call.js";
++import {
++  buildBlockedToolResult,
++  runBeforeToolCallHook,
++  type HookContext,
++} from "../agents/agent-tools.before-tool-call.js";
++import {
++  prepareBeforeToolCallExecutionParams,
++  finalizeBeforeToolCallExecutionParams,
++} from "../agents/agent-tools.before-tool-call.wrapper.js";
++import { validateToolExecutionParams } from "../agents/agent-tools.execution-validation.js";
++import {
++  getCodeModeExecBeforeHookMetadata,
++  normalizeCodeModeExecBeforeHookParams,
++} from "../agents/code-mode-control-tools.js";
+ import { extractToolErrorMessage } from "../agents/embedded-agent-tool-results.js";
+ import { runAgentHarnessAfterToolCallHook } from "../agents/harness/hook-helpers.js";
++import type { AgentToolResult, AgentToolUpdateCallback } from "../agents/runtime/index.js";
+ import { copyInternalToolResultState } from "../agents/runtime/internal-hooks.js";
+ import {
+   formatToolExecutionErrorMessage,
+@@ -60,6 +74,174 @@ function normalizeToolCallContent(result: unknown): ContentBlock[] {
+   ];
+ }
+ 
++export type McpToolExecutionContext = {
++  hookContext?: HookContext;
++  signal?: AbortSignal;
++  /** Revalidate short-lived client authority immediately before side effects. */
++  authorizeToolCall?: () => boolean;
++  onToolCallResult?: (
++    call: {
++      toolName: string;
++      args: Record<string, unknown>;
++    } & McpLoopbackToolCallOutcome,
++  ) => void;
++  onToolCallPrepared?: (call: { toolName: string; args: Record<string, unknown> }) => void;
++};
++
++/** Shared execution boundary for direct MCP calls and contained nested calls. */
++export async function executeMcpToolCall(
++  params: McpToolExecutionContext & {
++    tool: McpLoopbackTool;
++    toolName: string;
++    toolArgs: Record<string, unknown>;
++    toolCallId?: string;
++    onUpdate?: AgentToolUpdateCallback;
++  },
++): Promise<AgentToolResult<unknown>> {
++  const { tool, toolName, toolArgs } = params;
++  const toolCallId = params.toolCallId ?? `mcp-${crypto.randomUUID()}`;
++  const startedAt = Date.now();
++  let executedToolArgs = toolArgs;
++  const reportToolCallResult = (
++    outcome: McpLoopbackToolCallOutcome,
++    result: unknown,
++    error?: string,
++  ) => {
++    void runAgentHarnessAfterToolCallHook({
++      toolName,
++      toolCallId,
++      runId: params.hookContext?.runId,
++      agentId: params.hookContext?.agentId,
++      sessionId: params.hookContext?.sessionId,
++      sessionKey: params.hookContext?.sessionKey,
++      channelId: params.hookContext?.channelId,
++      startArgs: executedToolArgs,
++      result,
++      error,
++      startedAt,
++    }).catch(() => {});
++    try {
++      params.onToolCallResult?.({
++        toolName,
++        args: executedToolArgs,
++        ...outcome,
++      });
++    } catch {
++      // Observability callbacks must never alter the tool result returned to the MCP client.
++    }
++  };
++  try {
++    const preparedToolArgs = await prepareBeforeToolCallExecutionParams({
++      tool,
++      params: toolArgs,
++      toolCallId,
++      ctx: params.hookContext,
++      signal: params.signal,
++    });
++    const hookParams = normalizeCodeModeExecBeforeHookParams({ tool, params: preparedToolArgs });
++    executedToolArgs = preparedToolArgs as Record<string, unknown>;
++    // Gateway before-tool hooks still run for loopback MCP calls so policy
++    // and audit behavior matches native tool calls from normal chat runs.
++    // Preserve prepared params so exec can restore private workdir/env state after hooks.
++    const hookResult = await runBeforeToolCallHook({
++      toolName,
++      params: hookParams,
++      ...getCodeModeExecBeforeHookMetadata({ tool, params: preparedToolArgs }),
++      toolCallId,
++      ctx: params.hookContext,
++      signal: params.signal,
++    });
++    if (hookResult.blocked) {
++      const disposition = hookResult.kind === "failure" ? hookResult.disposition : "blocked";
++      reportToolCallResult(
++        disposition === "blocked"
++          ? {
++              outcome: disposition,
++              deniedReason: hookResult.deniedReason ?? "plugin-before-tool-call",
++            }
++          : { outcome: disposition },
++        hookResult.reason,
++        hookResult.reason,
++      );
++      return disposition === "blocked"
++        ? buildBlockedToolResult({
++            reason: hookResult.reason,
++            deniedReason: hookResult.deniedReason ?? "plugin-before-tool-call",
++            toolCallId,
++            runId: params.hookContext?.runId,
++          })
++        : {
++            content: [{ type: "text", text: hookResult.reason }],
++            details: { status: disposition },
++          };
++    }
++    params.signal?.throwIfAborted();
++    const finalizedToolArgs = finalizeBeforeToolCallExecutionParams({
++      tool,
++      preparedParams: preparedToolArgs,
++      hookParams,
++      adjustedParams: hookResult.params,
++      finalizerMode: "adapter",
++    });
++    await validateToolExecutionParams(toolCallId, finalizedToolArgs);
++    executedToolArgs = finalizedToolArgs as Record<string, unknown>;
++    try {
++      params.onToolCallPrepared?.({ toolName, args: executedToolArgs });
++    } catch {
++      // Observability callbacks must never alter the tool result returned to the MCP client.
++    }
++    if (params.authorizeToolCall && !params.authorizeToolCall()) {
++      reportToolCallResult(
++        { outcome: "blocked", deniedReason: "client-grant-revoked" },
++        undefined,
++        "Tool call authorization expired",
++      );
++      return buildBlockedToolResult({
++        reason: "Tool call authorization expired",
++        deniedReason: "client-grant-revoked",
++        toolCallId,
++        runId: params.hookContext?.runId,
++      });
++    }
++    params.signal?.throwIfAborted();
++    let result: Awaited<ReturnType<typeof tool.execute>>;
++    try {
++      result = params.onUpdate
++        ? await tool.execute(toolCallId, finalizedToolArgs, params.signal, params.onUpdate)
++        : await tool.execute(toolCallId, finalizedToolArgs, params.signal);
++    } catch (error) {
++      throw tool.resultContentSource === "network"
++        ? protectNetworkToolExecutionError(error, "tool execution failed", params.signal)
++        : error;
++    }
++    const failureKind = resolveToolResultFailureKind(result);
++    reportToolCallResult(
++      failureKind === "blocked"
++        ? { outcome: "blocked", deniedReason: "tool_result_blocked" }
++        : { outcome: failureKind ?? "completed", result },
++      result,
++      failureKind ? (extractToolErrorMessage(result) ?? "Tool execution failed") : undefined,
++    );
++    return result;
++  } catch (error) {
++    // A disconnected request does not identify the enclosing run outcome,
++    // but its payload may prove partial delivery and prevent a duplicate send.
++    const message = formatToolExecutionErrorMessage(error, "tool execution failed");
++    reportToolCallResult(
++      {
++        outcome: params.signal?.aborted ? "unknown" : resolveToolExecutionErrorKind(error),
++        result: error,
++      },
++      error,
++      message,
++    );
++    return {
++      content: [{ type: "text", text: message || "tool execution failed" }],
++      details: { status: "error" },
++    };
++  }
++}
++
+ /** Handles one MCP loopback JSON-RPC message and returns a response or notification null. */
+ export async function handleMcpJsonRpc(params: {
+   message: JsonRpcRequest;
+@@ -139,130 +321,25 @@ export async function handleMcpJsonRpc(params: {
+           isError: true,
+         });
+       }
+-      const toolCallId = `mcp-${crypto.randomUUID()}`;
+-      const startedAt = Date.now();
+-      let executedToolArgs = toolArgs;
+-      const reportToolCallResult = (
+-        outcome: McpLoopbackToolCallOutcome,
+-        result: unknown,
+-        error?: string,
+-      ) => {
+-        void runAgentHarnessAfterToolCallHook({
+-          toolName,
+-          toolCallId,
+-          runId: params.hookContext?.runId,
+-          agentId: params.hookContext?.agentId,
+-          sessionId: params.hookContext?.sessionId,
+-          sessionKey: params.hookContext?.sessionKey,
+-          channelId: params.hookContext?.channelId,
+-          startArgs: executedToolArgs,
+-          result,
+-          error,
+-          startedAt,
+-        }).catch(() => {});
+-        try {
+-          params.onToolCallResult?.({
+-            toolName,
+-            args: executedToolArgs,
+-            ...outcome,
+-          });
+-        } catch {
+-          // Observability callbacks must never alter the tool result returned to the MCP client.
+-        }
+-      };
++      const result = await executeMcpToolCall({ ...params, tool, toolName, toolArgs });
+       try {
+-        const preparedToolArgs = tool.prepareBeforeToolCallParams
+-          ? await tool.prepareBeforeToolCallParams(toolArgs, {
+-              toolCallId,
+-              hookContext: params.hookContext,
+-              signal: params.signal,
+-            })
+-          : toolArgs;
+-        executedToolArgs = preparedToolArgs as Record<string, unknown>;
+-        // Gateway before-tool hooks still run for loopback MCP calls so policy
+-        // and audit behavior matches native tool calls from normal chat runs.
+-        // Preserve prepared params so exec can restore private workdir/env state after hooks.
+-        const hookResult = await runBeforeToolCallHook({
+-          toolName,
+-          params: preparedToolArgs,
+-          toolCallId,
+-          ctx: params.hookContext,
+-          signal: params.signal,
+-        });
+-        if (hookResult.blocked) {
+-          const disposition = hookResult.kind === "failure" ? hookResult.disposition : "blocked";
+-          reportToolCallResult(
+-            disposition === "blocked"
+-              ? {
+-                  outcome: disposition,
+-                  deniedReason: hookResult.deniedReason ?? "plugin-before-tool-call",
+-                }
+-              : { outcome: disposition },
+-            hookResult.reason,
+-            hookResult.reason,
+-          );
+-          return jsonRpcResult(id, {
+-            content: [{ type: "text", text: hookResult.reason }],
+-            isError: true,
+-          });
+-        }
+-        const finalizedToolArgs =
+-          tool.finalizeBeforeToolCallParams?.(hookResult.params, preparedToolArgs) ??
+-          hookResult.params;
+-        executedToolArgs = finalizedToolArgs as Record<string, unknown>;
+-        try {
+-          params.onToolCallPrepared?.({ toolName, args: executedToolArgs });
+-        } catch {
+-          // Observability callbacks must never alter the tool result returned to the MCP client.
+-        }
+-        if (params.authorizeToolCall && !params.authorizeToolCall()) {
+-          reportToolCallResult(
+-            { outcome: "blocked", deniedReason: "client-grant-revoked" },
+-            undefined,
+-            "Tool call authorization expired",
+-          );
+-          return jsonRpcResult(id, {
+-            content: [{ type: "text", text: "Tool call authorization expired" }],
+-            isError: true,
+-          });
+-        }
+-        let result: Awaited<ReturnType<typeof tool.execute>>;
+-        try {
+-          result = await tool.execute(toolCallId, finalizedToolArgs, params.signal);
+-        } catch (error) {
+-          throw tool.resultContentSource === "network"
+-            ? protectNetworkToolExecutionError(error, "tool execution failed", params.signal)
+-            : error;
+-        }
+-        const failureKind = resolveToolResultFailureKind(result);
+-        reportToolCallResult(
+-          failureKind === "blocked"
+-            ? { outcome: "blocked", deniedReason: "tool_result_blocked" }
+-            : { outcome: failureKind ?? "completed", result },
+-          result,
+-          failureKind ? (extractToolErrorMessage(result) ?? "Tool execution failed") : undefined,
+-        );
+         return copyInternalToolResultState(
+           result,
+           jsonRpcResult(id, {
+             content: normalizeToolCallContent(result),
+-            isError: failureKind !== undefined,
++            isError: resolveToolResultFailureKind(result) !== undefined,
+           }),
+         );
+       } catch (error) {
+-        // A disconnected request does not identify the enclosing run outcome,
+-        // but its payload may prove partial delivery and prevent a duplicate send.
+-        const message = formatToolExecutionErrorMessage(error, "tool execution failed");
+-        reportToolCallResult(
+-          {
+-            outcome: params.signal?.aborted ? "unknown" : resolveToolExecutionErrorKind(error),
+-            result: error,
+-          },
+-          error,
+-          message,
+-        );
++        // Keep a completed action's capture, but do not acknowledge undelivered
++        // terminal output when its MCP serialization fails.
+         return jsonRpcResult(id, {
+-          content: [{ type: "text", text: message || "tool execution failed" }],
++          content: [
++            {
++              type: "text",
++              text: formatToolExecutionErrorMessage(error, "tool result serialization failed"),
++            },
++          ],
+           isError: true,
+         });
+       }
+diff --git a/src/gateway/mcp-http.runtime.test.ts b/src/gateway/mcp-http.runtime.test.ts
+index 109f9c0ba51..263c1d6d381 100644
+--- a/src/gateway/mcp-http.runtime.test.ts
++++ b/src/gateway/mcp-http.runtime.test.ts
+@@ -342,6 +342,30 @@ describe("resolveMcpLoopbackScopedTools", () => {
+ });
+ 
+ describe("McpLoopbackToolCache", () => {
++  it("keeps frozen constructor provenance in the cache identity and node discovery", async () => {
++    const cache = new McpLoopbackToolCache();
++    const params = scopeParams({
++      nodeExecAllowed: true,
++      toolsAllow: ["exec"],
++      codeMode: true,
++      grantToken: "same-grant",
++    });
++    resolveGatewayScopedTools.mockReturnValue(scopedToolFixture(["exec"]));
++    for (const mediated of [[], ["exec"], []]) {
++      const resolved = await cache.resolve({
++        ...params,
++        context: { ...params.context, codeModeMediatedTools: mediated },
++      });
++      expect(resolved.mediatedNativeTools).toEqual(mediated);
++      expect(resolveGatewayScopedTools.mock.calls[mediated.length ? 1 : 0]?.[0]).toMatchObject({
++        includeNodeExecTool: mediated.length === 0,
++        mediatedToolNames: new Set(mediated),
++      });
++    }
++    expect(listNodes).toHaveBeenCalledTimes(2);
++    expect(resolveGatewayScopedTools).toHaveBeenCalledTimes(2);
++  });
++
+   it("rechecks execution availability before reusing cached schemas", async () => {
+     const cache = new McpLoopbackToolCache();
+     const params = scopeParams({ senderIsOwner: true, nodeExecAllowed: true });
+diff --git a/src/gateway/mcp-http.runtime.ts b/src/gateway/mcp-http.runtime.ts
+index c4ec16ce6f9..fdbdfe3c943 100644
+--- a/src/gateway/mcp-http.runtime.ts
++++ b/src/gateway/mcp-http.runtime.ts
+@@ -1,7 +1,8 @@
+-// MCP loopback runtime scope cache.
+-// Resolves Gateway-visible tools for MCP clients with short-lived schema caching.
+ import { stableStringify } from "@openclaw/normalization-core/stable-stringify";
+ import type { AuthProfileStore } from "../agents/auth-profiles/types.js";
++// MCP loopback runtime scope cache.
++// Resolves Gateway-visible tools for MCP clients with short-lived schema caching.
++import type { CodeModeSkill } from "../agents/code-mode-skills.js";
+ import {
+   loadPairedComputerUseAvailabilityForSurface,
+   type PairedComputerUseAvailability,
+@@ -14,11 +15,13 @@ import { applyEmbeddedAttemptToolsAllow } from "../agents/embedded-agent-runner/
+ import { loadNodeExecAvailability } from "../agents/node-exec-availability.js";
+ import type { PreparedRootedExecutionCapability } from "../agents/rooted-run-params.js";
+ import { normalizeToolPolicyName } from "../agents/tool-policy.js";
++import type { ToolSearchCatalogToolExecutor } from "../agents/tool-search-types.js";
+ import type { OpenClawConfig } from "../config/types.openclaw.js";
+ import { DirectoryCache } from "../infra/outbound/directory-cache.js";
+ import { getPluginToolMeta } from "../plugins/tool-metadata.js";
+ import type { SkillLibraryAuthoringCapability } from "../skills/library/authoring.js";
+ import type { McpLoopbackRequestContext } from "./mcp-grant-store.js";
++import { createMcpCodeModeToolSurface } from "./mcp-http.code-mode.js";
+ import {
+   buildMcpToolSchema,
+   readMcpLoopbackToolName,
+@@ -45,6 +48,7 @@ type CachedScopedTools = {
+   // built with, or before-tool-call policy resolves state against a different root.
+   workspaceDir: string | undefined;
+   tools: McpLoopbackTool[];
++  mediatedNativeTools: string[];
+   toolSchema: McpToolSchemaEntry[];
+ };
+ 
+@@ -98,6 +102,17 @@ function resolveMediatedNativeTools(
+   );
+ }
+ 
++function resolveScopedMediatedNativeTools(
++  params: McpLoopbackScopeParams,
++  mode: LoopbackToolsAllowMode,
++): Set<string> {
++  if (params.rootedExecution) return new Set(NATIVE_TOOL_EXCLUDE);
++  const captured = params.context.codeModeMediatedTools;
++  return params.context.codeMode === true && captured !== undefined
++    ? new Set(captured)
++    : resolveMediatedNativeTools(params.context.toolsAllow, mode);
++}
++
+ async function resolveNodeExecScope(
+   params: McpLoopbackScopeParams,
+   mode: LoopbackToolsAllowMode,
+@@ -105,7 +120,7 @@ async function resolveNodeExecScope(
+   const shouldResolveExec =
+     !params.rootedExecution &&
+     params.context.nodeExecAllowed === true &&
+-    resolveMediatedNativeTools(params.context.toolsAllow, mode).size === 0;
++    resolveScopedMediatedNativeTools(params, mode).size === 0;
+   if (!shouldResolveExec) {
+     return params;
+   }
+@@ -189,9 +204,7 @@ function resolveMcpLoopbackTools(
+   }
+   // Restricted CLI grants use OpenClaw's implementations for coding tools;
+   // native CLI tools bypass path, approval, sandbox, and exec policy.
+-  const mediatedNativeTools = params.rootedExecution
+-    ? new Set(NATIVE_TOOL_EXCLUDE)
+-    : resolveMediatedNativeTools(toolsAllow, mode);
++  const mediatedNativeTools = resolveScopedMediatedNativeTools(params, mode);
+   for (const toolName of mediatedNativeTools) {
+     excludeToolNames.delete(toolName);
+   }
+@@ -232,6 +245,7 @@ function resolveMcpLoopbackTools(
+     agentId: scoped.agentId,
+     workspaceDir: scoped.workspaceDir,
+     tools,
++    mediatedNativeTools: [...mediatedNativeTools],
+     toolSchema,
+   };
+ }
+@@ -241,6 +255,7 @@ export async function resolveMcpLoopbackScopedTools(params: McpLoopbackScopePara
+   agentId: string | undefined;
+   workspaceDir?: string;
+   tools: McpLoopbackTool[];
++  mediatedNativeTools?: string[];
+ }> {
+   const resolved = await resolveNodeScope(params, "exact");
+   return resolved.policyResolved ?? resolveMcpLoopbackTools(resolved.params, "exact");
+@@ -250,6 +265,7 @@ export async function resolveMcpLoopbackScopedTools(params: McpLoopbackScopePara
+ export async function resolveMcpLoopbackPolicyTools(params: McpLoopbackScopeParams): Promise<{
+   agentId: string | undefined;
+   tools: McpLoopbackTool[];
++  mediatedNativeTools?: string[];
+ }> {
+   const resolved = await resolveNodeScope(params, "policy");
+   return resolved.policyResolved ?? resolveMcpLoopbackTools(resolved.params, "policy");
+@@ -325,6 +341,60 @@ export class McpLoopbackToolCache {
+   // Revocation needs the config scopes where one grant may have cached tools.
+   #grantConfigScopes = new Map<string, Set<OpenClawConfig>>();
+   #epoch = 0;
++  // Cells outlive the schema TTL, but never the exact authenticated grant row.
++  #codeMode = new Map<
++    string,
++    {
++      cfg: OpenClawConfig;
++      key: string;
++      value: CachedScopedTools;
++      dispose: () => void;
++    }
++  >();
++
++  projectCodeMode(
++    params: McpLoopbackScopeParams & {
++      scoped: CachedScopedTools;
++      executeTool: ToolSearchCatalogToolExecutor;
++      skills?: readonly CodeModeSkill[];
++      grantSignal?: AbortSignal;
++    },
++  ): CachedScopedTools {
++    if (!params.grantToken || params.context.codeMode !== true) return params.scoped;
++    if (!params.isGrantCurrent?.()) throw new Error("Code Mode grant is no longer active");
++    const key = buildMcpLoopbackToolCacheKey(params);
++    const previous = this.#codeMode.get(params.grantToken);
++    if (previous?.cfg === params.cfg && previous.key === key) return previous.value;
++    previous?.dispose();
++    this.#codeMode.delete(params.grantToken);
++    const abort = new AbortController();
++    const signal = params.grantSignal
++      ? AbortSignal.any([abort.signal, params.grantSignal])
++      : abort.signal;
++    const surface = createMcpCodeModeToolSurface({
++      config: params.cfg,
++      context: { ...params.context, senderIsOwner: params.context.senderIsOwner === true },
++      tools: params.scoped.tools,
++      executeTool: params.executeTool,
++      signal,
++      skills: params.skills,
++    });
++    const value = {
++      ...params.scoped,
++      tools: surface.tools,
++      toolSchema: buildMcpToolSchema(surface.tools),
++    };
++    this.#codeMode.set(params.grantToken, {
++      cfg: params.cfg,
++      key,
++      value,
++      dispose: () => {
++        abort.abort(new Error("Code Mode grant retired"));
++        surface.cleanup();
++      },
++    });
++    return value;
++  }
+ 
+   async resolve(input: McpLoopbackScopeParams): Promise<CachedScopedTools> {
+     const epoch = this.#epoch;
+@@ -364,9 +434,12 @@ export class McpLoopbackToolCache {
+ 
+   evictGrant(token: string): boolean {
+     this.#epoch += 1;
++    const surface = this.#codeMode.get(token);
++    surface?.dispose();
++    this.#codeMode.delete(token);
+     const scopes = this.#grantConfigScopes.get(token);
+     if (!scopes) {
+-      return false;
++      return surface !== undefined;
+     }
+     const cacheKeyPrefix = `${token}\u0000`;
+     for (const cfg of scopes) {
+@@ -378,6 +451,8 @@ export class McpLoopbackToolCache {
+ 
+   clear(): void {
+     this.#epoch += 1;
++    for (const surface of this.#codeMode.values()) surface.dispose();
++    this.#codeMode.clear();
+     this.#entries.clear();
+     this.#grantConfigScopes.clear();
+   }
+diff --git a/src/gateway/mcp-http.test.ts b/src/gateway/mcp-http.test.ts
+index 3ce2b2350a6..11ca03e9154 100644
+--- a/src/gateway/mcp-http.test.ts
++++ b/src/gateway/mcp-http.test.ts
+@@ -58,12 +58,12 @@ type MockGatewayTool = {
+ 
+ const activeAdmissions: PreparedAgentRunAdmission[] = [];
+ 
+-async function activeAdmission(runId: string): Promise<AdmittedRunContext> {
++async function activeAdmission(runId: string, agentId = "main"): Promise<AdmittedRunContext> {
+   const admission = prepareAgentRunAdmission({
+     cfg: {},
+     facts: {
+       runId,
+-      agentId: "main",
++      agentId,
+       ingress: { kind: "system", boundary: "mcp-http-test", state: "present" },
+     },
+     operationalRunInstance: createOperationalRunInstanceRef(runId),
+@@ -96,7 +96,7 @@ type McpToolResultPayload = {
+ };
+ 
+ const runBeforeToolCallHookMock = vi.hoisted(() =>
+-  vi.fn(async (args: { params: unknown }): Promise<MockBeforeToolCallHookResult> => ({
++  vi.fn(async (args: BeforeToolCallHookInput): Promise<MockBeforeToolCallHookResult> => ({
+     blocked: false,
+     params: args.params,
+   })),
+@@ -125,7 +125,9 @@ const loadNodeExecAvailabilityMock = vi.hoisted(() =>
+ 
+ const logWarnMock = vi.hoisted(() => vi.fn<(message: string) => void>());
+ const sessionEntries = vi.hoisted(() => new Map<string, Record<string, unknown>>());
+-const getRuntimeConfigMock = vi.hoisted(() => vi.fn(() => ({ session: { mainKey: "main" } })));
++const getRuntimeConfigMock = vi.hoisted(() =>
++  vi.fn((): OpenClawConfig => ({ session: { mainKey: "main" } })),
++);
+ 
+ // Partial: the real gateway resolver reaches other exports of this module when a
+ // test drives it instead of the mock below.
+@@ -159,7 +161,8 @@ vi.mock("../config/sessions/session-accessor.js", async (importOriginal) => {
+   };
+ });
+ 
+-vi.mock("../agents/agent-tools.before-tool-call.js", () => ({
++vi.mock("../agents/agent-tools.before-tool-call.policy.js", async (importOriginal) => ({
++  ...(await importOriginal<typeof import("../agents/agent-tools.before-tool-call.policy.js")>()),
+   runBeforeToolCallHook: (...args: Parameters<typeof runBeforeToolCallHookMock>) =>
+     runBeforeToolCallHookMock(...args),
+ }));
+@@ -1425,6 +1428,7 @@ describe("mcp loopback server", () => {
+       sourceReplyDeliveryMode: "message_tool_only",
+       sourceReplyOnly: true,
+       toolsAllow: ["message"],
++      codeModeMediatedTools: [],
+       nativeCronCreatorToolAllowlist: ["read", "write", "edit", "apply_patch", "exec", "process"],
+       // The delegation gate lives in resolveGatewayScopedTools, so dropping
+       // this field at the HTTP mapping silently disables it for CLI backends.
+@@ -1479,6 +1483,7 @@ describe("mcp loopback server", () => {
+         headers: jsonHeaders({
+           ...(captureKey ? { "x-openclaw-cli-capture-key": captureKey } : {}),
+           "x-session-key": "agent:main:main",
++          "x-openclaw-code-mode-mediated-tools": "exec,read,write",
+           "x-openclaw-session-id": "session-spoofed",
+           "x-openclaw-message-channel": "telegram",
+           "x-openclaw-client-caps": "inline-widgets,admin",
+@@ -3523,9 +3528,23 @@ describe("mcp loopback server", () => {
+     expectMcpResultText(payload as McpToolResultPayload, "Tool not available: cron", true);
+   });
+ 
+-  it("preserves request-disconnect evidence without classifying a tool failure", async () => {
++  it("does not start a tool when the request is already aborted", async () => {
+     const controller = new AbortController();
+     controller.abort();
++    const execute = vi.fn(async () => ({ content: [] }));
++    const tool = makeMessageTool({ execute });
++    const payload = await handleMcpJsonRpc({
++      message: mcpToolCallMessage("message", { body: "hello" }),
++      tools: [tool as unknown as AnyAgentTool],
++      toolSchema: buildMockMcpToolSchema([tool]),
++      signal: controller.signal,
++    });
++    expect(execute).not.toHaveBeenCalled();
++    expect((payload as McpToolResultPayload).result?.isError).toBe(true);
++  });
++
++  it("preserves request-disconnect evidence without classifying a tool failure", async () => {
++    const controller = new AbortController();
+     const onToolCallResult = vi.fn();
+     const partialDelivery = Object.assign(new Error("request disconnected"), {
+       name: "AbortError",
+@@ -3533,6 +3552,7 @@ describe("mcp loopback server", () => {
+     });
+     const tool = makeMessageTool({
+       execute: async () => {
++        controller.abort();
+         throw partialDelivery;
+       },
+     });
+@@ -4518,3 +4538,357 @@ describe("createMcpLoopbackServerConfig", () => {
+   });
+ });
+ /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
++
++describe("contained scripts over the native CLI MCP grant", () => {
++  it.each(["allow", "deny", "revoke", "invalid"] as const)(
++    "uses the existing nested approval boundary on resume: %s",
++    async (decision) => {
++      const config = {
++        tools: { codeMode: { enabled: true, surface: "additive", executor: "quickjs" } },
++      } satisfies OpenClawConfig;
++      getRuntimeConfigMock.mockImplementation(() => config);
++      const identities: unknown[] = [];
++      const prepare = vi.fn(async (input: unknown) => input);
++      const execute = vi.fn(async (_id: unknown, input: unknown) => {
++        identities.push(getGatewayToolCallerIdentity());
++        return { content: [], details: input };
++      });
++      mockScopedTools([
++        {
++          name: "fixture",
++          label: "Fixture",
++          description: "Synthetic action",
++          prepareBeforeToolCallParams: prepare,
++          parameters: { type: "object", properties: { value: { type: "number" } } },
++          execute,
++        },
++      ]);
++      const { runtime } = await startLoopbackServerForTest();
++      const context = {
++        sessionKey: "agent:main:approval",
++        agentId: "main",
++        sessionId: "approval-session",
++        runId: `approval-${decision}`,
++        senderIsOwner: false,
++        toolsAllow: ["fixture"],
++        codeMode: true,
++      } satisfies McpLoopbackRequestContext;
++      const grant = mintMcpLoopbackClientGrant({
++        context,
++        runtimeOwnerToken: runtime.ownerToken,
++        admittedRunContext: await activeAdmission(context.runId),
++      });
++      const captureKey = `capture-${decision}`;
++      activateMcpLoopbackClientGrantCapture({
++        token: grant.token,
++        runtimeOwnerToken: runtime.ownerToken,
++        captureKey,
++      });
++      const scope = { token: grant.token, headers: { "x-openclaw-cli-capture-key": captureKey } };
++      const parked = await readOkMcpPayload(
++        await sendLoopbackToolCall({
++          ...scope,
++          name: "code_exec",
++          args: { code: "await yield_control(); return await fixture({value: 1});" },
++        }),
++      );
++      const first = JSON.parse(String(parked.result?.content?.[0]?.text));
++      expect(first, JSON.stringify(first)).toMatchObject({ status: "waiting" });
++      const entered = createDeferred<void>();
++      const resolved = createDeferred<void>();
++      runBeforeToolCallHookMock.mockImplementation(async (args: BeforeToolCallHookInput) => {
++        if (args.toolName !== "fixture") return { blocked: false, params: args.params };
++        expect(args.ctx).toMatchObject({
++          agentId: "main",
++          sessionKey: context.sessionKey,
++          runId: context.runId,
++        });
++        entered.resolve();
++        await resolved.promise;
++        return decision === "deny"
++          ? {
++              blocked: true,
++              kind: "veto",
++              reason: "Synthetic approval denied",
++              deniedReason: "plugin-approval",
++            }
++          : { blocked: false, params: { value: decision === "invalid" ? "wrong type" : 7 } };
++      });
++      const pending = sendLoopbackToolCall({
++        ...scope,
++        name: "code_wait",
++        args: { runId: first.runId },
++      });
++      await entered.promise;
++      expect(execute).not.toHaveBeenCalled();
++      if (decision === "revoke") revokeMcpLoopbackClientGrant(grant.token);
++      resolved.resolve();
++      const response = await readOkMcpPayload(await pending);
++      expect(prepare).toHaveBeenCalledTimes(1);
++      expect(
++        runBeforeToolCallHookMock.mock.calls.filter(
++          ([call]) => (call as BeforeToolCallHookInput).toolName === "fixture",
++        ),
++      ).toHaveLength(1);
++      if (decision === "allow") {
++        expect(execute).toHaveBeenCalledTimes(1);
++        expect(execute).toHaveBeenLastCalledWith(
++          expect.any(String),
++          { value: 7 },
++          expect.any(AbortSignal),
++          undefined,
++          undefined,
++        );
++        expect(identities[0]).toMatchObject({ agentId: "main", sessionKey: context.sessionKey });
++        expect(JSON.parse(String(response.result?.content?.[0]?.text))).toMatchObject({
++          status: "completed",
++          value: { value: 7 },
++        });
++      } else {
++        expect(execute).not.toHaveBeenCalled();
++      }
++    },
++  );
++
++  it("keeps direct calls, scopes nested hooks and resumes beyond the schema cache", async () => {
++    const config = {
++      session: { mainKey: "main" },
++      tools: { codeMode: { enabled: true, surface: "additive", executor: "quickjs" } },
++    } satisfies OpenClawConfig;
++    getRuntimeConfigMock.mockImplementation(() => config);
++    const execute = vi.fn(async (_id: unknown, input: unknown) => ({
++      content: [{ type: "text", text: JSON.stringify(input) }],
++      details: input,
++    }));
++    mockScopedTools([
++      {
++        name: "fixture",
++        label: "Fixture",
++        description: "Read a synthetic value",
++        parameters: {
++          type: "object",
++          properties: { value: { type: "number" } },
++          required: ["value"],
++        },
++        execute,
++      },
++    ]);
++    resolveGatewayScopedToolsMock.mockImplementation((params) => ({
++      agentId: (params as { agentId?: string }).agentId ?? "reader",
++      tools: [
++        {
++          name: "fixture",
++          label: "Fixture",
++          description: "Synthetic",
++          parameters: { type: "object", properties: { value: { type: "number" } } },
++          execute,
++        },
++      ],
++    }));
++    const { runtime } = await startLoopbackServerForTest();
++    const context = {
++      sessionKey: "agent:reader:ptc",
++      agentId: "reader",
++      sessionId: "ptc-session",
++      runId: "ptc-run",
++      senderIsOwner: false,
++      toolsAllow: ["fixture"],
++      codeMode: true,
++    } satisfies McpLoopbackRequestContext;
++    const grant = mintMcpLoopbackClientGrant({
++      context,
++      runtimeOwnerToken: runtime.ownerToken,
++      admittedRunContext: await activeAdmission(context.runId, "reader"),
++      codeModeSkills: [
++        {
++          name: "manual",
++          description: "Synthetic manual",
++          location: "/fixture/SKILL.md",
++          source: { filePath: "/fixture/SKILL.md", readContent: "Authorized instructions" },
++        },
++      ],
++    });
++    expect(
++      activateMcpLoopbackClientGrantCapture({
++        token: grant.token,
++        runtimeOwnerToken: runtime.ownerToken,
++        captureKey: "ptc-capture",
++      }),
++    ).toBeTruthy();
++    const scope = { token: grant.token, headers: { "x-openclaw-cli-capture-key": "ptc-capture" } };
++    const listed = await readOkMcpPayload(await sendLoopbackToolsList(scope));
++    expect(listed.result?.tools?.map((tool) => tool.name)).toEqual([
++      "code_exec",
++      "code_wait",
++      "fixture",
++    ]);
++    const calls: BeforeToolCallHookInput[] = [];
++    runBeforeToolCallHookMock.mockImplementation(async (args: BeforeToolCallHookInput) => {
++      calls.push(args);
++      if (args.toolName === "fixture") return { blocked: false, params: { value: 7 } };
++      return { blocked: false, params: args.params };
++    });
++    await readOkMcpPayload(
++      await sendLoopbackToolCall({ ...scope, name: "fixture", args: { value: 1 } }),
++    );
++    expect(execute).toHaveBeenLastCalledWith(
++      expect.any(String),
++      { value: 7 },
++      expect.any(AbortSignal),
++    );
++    const script = await readOkMcpPayload(
++      await sendLoopbackToolCall({
++        ...scope,
++        name: "code_exec",
++        args: {
++          code: 'text(await skills.read("manual")); text([typeof process, typeof require, typeof fetch]); await fixture({value: 2}); await yield_control(); return 42;',
++        },
++      }),
++    );
++    const first = JSON.parse(String(script.result?.content?.[0]?.text));
++    expect(first, JSON.stringify(first)).toMatchObject({ status: "waiting" });
++    expect(JSON.stringify(first.output)).toContain("Authorized instructions");
++    expect(JSON.stringify(first.output)).toContain("undefined");
++    expect(execute).toHaveBeenCalledTimes(2);
++    expect(calls.filter((call) => call.toolName === "fixture")).toHaveLength(2);
++    expect(calls.find((call) => call.toolName === "code_exec")).toMatchObject({
++      toolKind: "code_mode_exec",
++    });
++    expect(calls.at(-1)?.ctx).toMatchObject({
++      agentId: "reader",
++      sessionKey: context.sessionKey,
++      runId: context.runId,
++    });
++    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 31_000);
++    try {
++      const resumed = await readOkMcpPayload(
++        await sendLoopbackToolCall({ ...scope, name: "code_wait", args: { runId: first.runId } }),
++      );
++      expect(JSON.parse(String(resumed.result?.content?.[0]?.text))).toMatchObject({
++        status: "completed",
++        value: 42,
++      });
++    } finally {
++      clock.mockRestore();
++    }
++    for (const alias of ["code", "command"]) {
++      runBeforeToolCallHookMock.mockImplementation(async (args: BeforeToolCallHookInput) => ({
++        blocked: false,
++        params:
++          args.toolName === "code_exec"
++            ? { ...(args.params as Record<string, unknown>), [alias]: "return 73;" }
++            : args.params,
++      }));
++      const rewritten = await readOkMcpPayload(
++        await sendLoopbackToolCall({
++          ...scope,
++          name: "code_exec",
++          args: { code: "await fixture({value: 99});" },
++        }),
++      );
++      expect(JSON.parse(String(rewritten.result?.content?.[0]?.text))).toMatchObject({
++        status: "completed",
++        value: 73,
++      });
++      runBeforeToolCallHookMock.mockImplementation(async (args: BeforeToolCallHookInput) => ({
++        blocked: false,
++        params:
++          args.toolName === "code_exec"
++            ? { ...(args.params as Record<string, unknown>), [alias]: "" }
++            : args.params,
++      }));
++      const invalidated = await readOkMcpPayload(
++        await sendLoopbackToolCall({
++          ...scope,
++          name: "code_exec",
++          args: { code: "await fixture({value: 99});" },
++        }),
++      );
++      expect(invalidated.result?.isError).toBe(true);
++    }
++    expect(execute).toHaveBeenCalledTimes(2);
++    runBeforeToolCallHookMock.mockImplementation(async (args: BeforeToolCallHookInput) => ({
++      blocked: false,
++      params: args.params,
++    }));
++    const denied = await readOkMcpPayload(
++      await sendLoopbackToolCall({
++        ...scope,
++        name: "code_exec",
++        args: {
++          code: 'return await skills.read("../../etc/passwd");',
++        },
++      }),
++    );
++    expect(JSON.parse(String(denied.result?.content?.[0]?.text)).status).toBe("failed");
++    const parked = await readOkMcpPayload(
++      await sendLoopbackToolCall({
++        ...scope,
++        name: "code_exec",
++        args: {
++          code: "await yield_control(); await fixture({value: 99});",
++        },
++      }),
++    );
++    const parkedId = JSON.parse(String(parked.result?.content?.[0]?.text)).runId;
++    expect(parkedId).toBeTruthy();
++    const otherGrant = mintMcpLoopbackClientGrant({
++      context: { ...context, agentId: "main", sessionKey: "agent:main:other", runId: "other-run" },
++      runtimeOwnerToken: runtime.ownerToken,
++      admittedRunContext: await activeAdmission("other-run"),
++    });
++    activateMcpLoopbackClientGrantCapture({
++      token: otherGrant.token,
++      runtimeOwnerToken: runtime.ownerToken,
++      captureKey: "other-capture",
++    });
++    const otherResponse = await readOkMcpPayload(
++      await sendLoopbackToolCall({
++        token: otherGrant.token,
++        headers: { "x-openclaw-cli-capture-key": "other-capture" },
++        name: "code_wait",
++        args: { runId: parkedId },
++      }),
++    );
++    expect(otherResponse.result).toMatchObject({ isError: true });
++    expect(JSON.stringify(otherResponse.result)).toContain("different agent run");
++    expect(execute).toHaveBeenCalledTimes(2);
++    expect(
++      deactivateMcpLoopbackClientGrantCapture({
++        token: grant.token,
++        runtimeOwnerToken: runtime.ownerToken,
++        captureKey: "ptc-capture",
++      }),
++    ).toBe(true);
++    expect(
++      activateMcpLoopbackClientGrantCapture({
++        token: grant.token,
++        runtimeOwnerToken: runtime.ownerToken,
++        captureKey: "next-capture",
++      }),
++    ).toBeTruthy();
++    const warmScope = {
++      token: grant.token,
++      headers: { "x-openclaw-cli-capture-key": "next-capture" },
++    };
++    const stale = await readOkMcpPayload(
++      await sendLoopbackToolCall({ ...warmScope, name: "code_wait", args: { runId: parkedId } }),
++    );
++    expect(stale.result).toMatchObject({ isError: true });
++    expect(JSON.stringify(stale.result)).toContain("unavailable or expired");
++    const fresh = await readOkMcpPayload(
++      await sendLoopbackToolCall({ ...warmScope, name: "code_exec", args: { code: "return 91;" } }),
++    );
++    expect(JSON.parse(String(fresh.result?.content?.[0]?.text))).toMatchObject({
++      status: "completed",
++      value: 91,
++    });
++    revokeMcpLoopbackClientGrant(otherGrant.token);
++    revokeMcpLoopbackClientGrant(grant.token);
++    expect(
++      (await sendLoopbackToolCall({ ...scope, name: "code_wait", args: { runId: parkedId } }))
++        .status,
++    ).toBe(401);
++    expect(execute).toHaveBeenCalledTimes(2);
++  });
++});
+diff --git a/src/gateway/mcp-http.ts b/src/gateway/mcp-http.ts
+index 78b59f1186c..3af0c91cfb7 100644
+--- a/src/gateway/mcp-http.ts
++++ b/src/gateway/mcp-http.ts
+@@ -159,7 +159,7 @@ async function startMcpLoopbackServer(
+   work: AsyncWorkScope,
+ ): Promise<() => Promise<void>> {
+   // Shutdown preloads this module even when no MCP listener is needed.
+-  const [{ handleMcpJsonRpc }, { McpLoopbackToolCache }] = await Promise.all([
++  const [{ handleMcpJsonRpc, executeMcpToolCall }, { McpLoopbackToolCache }] = await Promise.all([
+     import("./mcp-http.handlers.js"),
+     import("./mcp-http.runtime.js"),
+   ]);
+@@ -291,7 +291,7 @@ async function startMcpLoopbackServer(
+         }
+         const yieldContext = resolveMcpLoopbackYieldContext(cliRequestCaptureHandle);
+         // Tools capture their creator at construction, not the later HTTP execution scope.
+-        const scopedTools = await withAgentQuestionAnswerAuthority(
++        let scopedTools = await withAgentQuestionAnswerAuthority(
+           boundClientGrant?.questionAnswerAuthority,
+           () =>
+             toolCache.resolve({
+@@ -321,6 +321,73 @@ async function startMcpLoopbackServer(
+             }),
+         );
+ 
++        const hookContext = {
++          agentId: scopedTools.agentId,
++          config: cfg,
++          ...(scopedTools.workspaceDir ? { workspaceDir: scopedTools.workspaceDir } : {}),
++          sessionKey: requestContext.sessionKey,
++          sessionId: requestContext.sessionId,
++          runId: requestContext.runId,
++          approvalReviewerDeviceId: requestContext.approvalReviewerDeviceId,
++          channelId: requestContext.currentChannelId,
++          turnSourceChannel: requestContext.messageProvider,
++          turnSourceTo: requestContext.currentChannelId,
++          turnSourceAccountId: requestContext.accountId,
++          turnSourceThreadId: requestContext.currentThreadTs,
++          loopDetection: resolveToolLoopDetectionConfig({
++            cfg,
++            agentId: scopedTools.agentId,
++          }),
++        };
++        scopedTools = toolCache.projectCodeMode({
++          context: requestContext,
++          cfg,
++          scoped: scopedTools,
++          grantToken: boundGrantToken,
++          isGrantCurrent: authorizeToolCall,
++          yieldContextCacheKey: yieldContext?.cacheKey,
++          grantSignal: boundClientGrant?.abortSignal,
++          skills: boundClientGrant?.codeModeSkills,
++          executeTool: async (call) => {
++            // Nested calls retain their own audit/delivery capture after code_exec yields.
++            if (!isRecord(call.input)) throw new Error("Tool arguments must be an object");
++            if (!authorizeToolCall()) throw new Error("Tool call authorization expired");
++            const capture = markMcpLoopbackToolCallStarted({
++              captureKey: cliCaptureKey,
++              toolName: call.toolName,
++              args: call.input,
++            });
++            try {
++              const result = await executeMcpToolCall({
++                tool: {
++                  ...call.originalTool,
++                  // Loopback catalogs contain native tools. The shared catalog
++                  // signature also accepts extension tools with a fifth context.
++                  execute: (id, args, signal, onUpdate) =>
++                    call.originalTool.execute(id, args, signal, onUpdate, undefined as never),
++                },
++                toolName: call.toolName,
++                toolCallId: call.toolCallId,
++                toolArgs: call.input,
++                signal: call.signal,
++                onUpdate: call.onUpdate,
++                hookContext,
++                authorizeToolCall,
++                onToolCallPrepared: capture
++                  ? (prepared) => updateMcpLoopbackToolCallCapture(capture, prepared)
++                  : undefined,
++                onToolCallResult: capture
++                  ? (result) =>
++                      recordMcpLoopbackToolCallResult({ captureHandle: capture, ...result })
++                  : undefined,
++              });
++              return await call.acceptResultBeforeProjection(result);
++            } finally {
++              markMcpLoopbackToolCallFinished(capture);
++            }
++          },
++        });
++
+         // Discovery may outlive the requesting connection or grant.
+         requestAbort.signal.throwIfAborted();
+         if (boundClientGrant && !boundClientGrant.isCurrent()) {
+@@ -375,24 +442,7 @@ async function startMcpLoopbackServer(
+                 message,
+                 tools: scopedTools.tools,
+                 toolSchema: scopedTools.toolSchema,
+-                hookContext: {
+-                  agentId: scopedTools.agentId,
+-                  config: cfg,
+-                  ...(scopedTools.workspaceDir ? { workspaceDir: scopedTools.workspaceDir } : {}),
+-                  sessionKey: requestContext.sessionKey,
+-                  sessionId: requestContext.sessionId,
+-                  runId: requestContext.runId,
+-                  approvalReviewerDeviceId: requestContext.approvalReviewerDeviceId,
+-                  channelId: requestContext.currentChannelId,
+-                  turnSourceChannel: requestContext.messageProvider,
+-                  turnSourceTo: requestContext.currentChannelId,
+-                  turnSourceAccountId: requestContext.accountId,
+-                  turnSourceThreadId: requestContext.currentThreadTs,
+-                  loopDetection: resolveToolLoopDetectionConfig({
+-                    cfg,
+-                    agentId: scopedTools.agentId,
+-                  }),
+-                },
++                hookContext,
+                 signal,
+                 authorizeToolCall,
+                 onToolCallPrepared: cliCaptureHandle
+diff --git a/src/agents/cli-runner/code-mode-skills.test.ts b/src/agents/cli-runner/code-mode-skills.test.ts
+new file mode 100644
+index 00000000000..80fd37824e8
+--- /dev/null
++++ b/src/agents/cli-runner/code-mode-skills.test.ts
+@@ -0,0 +1,57 @@
++import { mkdtemp, mkdir, writeFile, rm, symlink } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import path from "node:path";
++import { afterEach, expect, it } from "vitest";
++import { readCodeModeSkill } from "../code-mode-skills.js";
++import { resolveMaterializedCliCodeModeSkills } from "./code-mode-skills.js";
++
++const roots: string[] = [];
++afterEach(async () => {
++  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
++});
++
++it("reads only the delivered skill behind a container-visible catalog location", async () => {
++  const rootDir = await mkdtemp(path.join(tmpdir(), "cli-contained-skills-"));
++  roots.push(rootDir);
++  const baseDir = path.join(rootDir, "manual");
++  const filePath = path.join(baseDir, "SKILL.md");
++  await mkdir(baseDir);
++  await writeFile(filePath, "Delivered instructions");
++  const skills = await resolveMaterializedCliCodeModeSkills({
++    rootDir,
++    skillsPrompt: [
++      "<available_skills>",
++      "  <skill>",
++      "    <name>manual</name>",
++      "    <location>/workspace/skills/manual/SKILL.md</location>",
++      "  </skill>",
++      "</available_skills>",
++    ].join("\n"),
++    candidates: [
++      {
++        name: "manual",
++        description: "Manual",
++        filePath,
++        baseDir,
++        source: "openclaw-workspace",
++        sourceInfo: {
++          path: filePath,
++          source: "openclaw-workspace",
++          scope: "project",
++          origin: "top-level",
++          baseDir,
++        },
++        disableModelInvocation: false,
++      },
++    ],
++  });
++  expect(skills).toHaveLength(1);
++  expect(skills[0]?.location).toBe("/workspace/skills/manual/SKILL.md");
++  await expect(readCodeModeSkill(skills[0]!)).resolves.toBe("Delivered instructions");
++  const outside = await mkdtemp(path.join(tmpdir(), "cli-outside-skills-"));
++  roots.push(outside);
++  await writeFile(path.join(outside, "private"), "Not a delivered instruction");
++  await rm(filePath);
++  await symlink(path.join(outside, "private"), filePath);
++  await expect(readCodeModeSkill(skills[0]!)).rejects.toThrow();
++});
+diff --git a/src/agents/cli-runner/code-mode-skills.ts b/src/agents/cli-runner/code-mode-skills.ts
+new file mode 100644
+index 00000000000..bce80868ac2
+--- /dev/null
++++ b/src/agents/cli-runner/code-mode-skills.ts
+@@ -0,0 +1,24 @@
++import path from "node:path";
++import { root as fsRoot } from "../../infra/fs-safe.js";
++import { resolveCodeModeSkills } from "../code-mode-skills.js";
++
++/** Native CLI preparation owns a delivered skill copy, without a live container bridge. */
++export async function resolveMaterializedCliCodeModeSkills(
++  params: Parameters<typeof resolveCodeModeSkills>[0] & { rootDir: string },
++) {
++  const skills = resolveCodeModeSkills(params);
++  if (!skills.length) return skills;
++  const root = await fsRoot(params.rootDir);
++  for (const skill of skills) {
++    // The source is the exact delivered file selected during preparation. The
++    // model-visible location can be a container path, never a host read request.
++    const relativePath = path.relative(params.rootDir, skill.source.filePath);
++    skill.reader = async ({ signal }) => {
++      signal?.throwIfAborted();
++      const result = await root.read(relativePath, { symlinks: "reject", hardlinks: "reject" });
++      signal?.throwIfAborted();
++      return result.buffer.toString("utf8");
++    };
++  }
++  return skills;
++}
+diff --git a/src/gateway/mcp-http.code-mode.ts b/src/gateway/mcp-http.code-mode.ts
+new file mode 100644
+index 00000000000..78e571a2cf2
+--- /dev/null
++++ b/src/gateway/mcp-http.code-mode.ts
+@@ -0,0 +1,55 @@
++import { resolveCodeModeConfig } from "../agents/code-mode-runtime.js";
++import type { CodeModeSkill } from "../agents/code-mode-skills.js";
++import { createAgentHarnessToolSurfaceRuntimeCore } from "../agents/harness/tool-surface-bridge.js";
++import type { ToolSearchCatalogToolExecutor } from "../agents/tool-search-types.js";
++import type { OpenClawConfig } from "../config/types.openclaw.js";
++import type { McpLoopbackRequestContext } from "./mcp-grant-store.js";
++import type { McpLoopbackTool } from "./mcp-http.schema.js";
++
++/** Project the same admitted tool catalog for CLI preparation and MCP execution. */
++export function createMcpCodeModeToolSurface(params: {
++  config: OpenClawConfig;
++  context: McpLoopbackRequestContext;
++  tools: McpLoopbackTool[];
++  executeTool: ToolSearchCatalogToolExecutor;
++  signal?: AbortSignal;
++  skills?: readonly CodeModeSkill[];
++}) {
++  const { context } = params;
++  const runtime = createAgentHarnessToolSurfaceRuntimeCore({
++    config: params.config,
++    agentId: context.runtimePolicyAgentId ?? context.agentId,
++    sessionId: context.sessionId,
++    sessionKey: context.sessionKey,
++    runId: context.runId,
++    modelProvider: context.modelProvider,
++    modelId: context.modelId,
++    modelToolsEnabled: params.tools.length > 0,
++    toolsAllow: context.toolsAllow,
++    codeModeOverride:
++      resolveCodeModeConfig(params.config, context.runtimePolicyAgentId ?? context.agentId)
++        .surface === "additive"
++        ? context.codeMode
++        : false,
++    disableToolSearch: true,
++    supportsDeferredToolCalls: false,
++    executeTool: params.executeTool,
++    abortSignal: params.signal,
++  });
++  // CLI preparation has already applied policy and prompt-hook restrictions.
++  const surface = runtime.compactTools(params.tools, {
++    localModelLeanApplied: true,
++    prepared: {
++      preserveToolNames: params.tools.map((tool) => tool.name),
++      toolExecutionAllow: context.toolsAllow,
++      codeModeSkills: params.skills,
++      abortSignal: params.signal,
++      executeTool: params.executeTool,
++    },
++  });
++  return {
++    tools: surface.tools,
++    enabled: runtime.codeModeControlsEnabled,
++    cleanup: runtime.cleanup,
++  };
++}

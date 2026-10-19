@@ -130,7 +130,9 @@ export async function applicationSuite({ source, artifact, extensionPath, worker
   });
   for (const check of extension.checks ?? []) {
     if (!Array.isArray(check.args) || !isAbsolute(check.cwd ?? '')) throw new Error('Application companion checks require explicit commands and working directories');
-    await run(check.command, check.args, { cwd: check.cwd, env: { ...testEnv, ...check.env } });
+    if (check.timeoutMs !== undefined && (!Number.isSafeInteger(check.timeoutMs) || check.timeoutMs < 1 || check.timeoutMs > 6 * 60 * 60_000)) throw new Error('Application companion check timeout must be positive and at most six hours');
+    await run(check.command, check.args, { cwd: check.cwd, env: { ...testEnv, ...check.env },
+      ...(check.timeoutMs === undefined ? {} : { timeoutMs: check.timeoutMs }) });
   }
   return { status: 'passed', ...mapped };
 }

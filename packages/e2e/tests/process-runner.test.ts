@@ -7,6 +7,25 @@ import { describe, expect, it } from "vitest";
 import { type CapturedCommandError, runCommand } from "../src/process-runner.mjs";
 
 describe("managed runner signals", () => {
+  for (const reason of ["timeout", "leader exit"]) it(`${reason} joins a TERM-resistant writer before releasing its process group`, async () => {
+    const root = mkdtempSync(join(tmpdir(), "runner-descendant-"));
+    const writes = join(root, "writes"), pidFile = join(root, "writer.pid");
+    const writer = `const fs=require('node:fs');process.on('SIGTERM',()=>{});fs.writeFileSync(${JSON.stringify(pidFile)},String(process.pid));setInterval(()=>fs.appendFileSync(${JSON.stringify(writes)},'x'),10);`;
+    const leader = `const fs=require('node:fs');const child=require('node:child_process').spawn(process.execPath,['-e',${JSON.stringify(writer)}],{stdio:'ignore'});const ready=setInterval(()=>{if(fs.existsSync(${JSON.stringify(writes)})){clearInterval(ready);${reason === "leader exit" ? "process.exit(0);" : ""}}},10);setInterval(()=>{},1000);`;
+    try {
+      const result = runCommand(process.execPath, ["-e", leader], { quiet: true, timeoutMs: 1000, killGraceMs: 100 });
+      if (reason === "timeout") await expect(result).rejects.toThrow(/exceeded/);
+      else await expect(result).resolves.toBe("");
+      const stopped = readFileSync(writes, "utf8");
+      await new Promise(resolve => setTimeout(resolve, 100));
+      expect(readFileSync(writes, "utf8")).toBe(stopped);
+      expect(() => process.kill(Number(readFileSync(pidFile, "utf8")), 0)).toThrow();
+    } finally {
+      if (existsSync(pidFile)) try { process.kill(Number(readFileSync(pidFile, "utf8")), "SIGKILL"); } catch {}
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("forwards SIGTERM to the active child before cleanup and exit", async () => {
     const state = mkdtempSync(join(tmpdir(), "e2e-signal-"));
     const marker = join(state, "cleaned");

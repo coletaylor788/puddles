@@ -154,7 +154,31 @@
     "src/talk/agent-consult-tool.test.ts": "unit-src",
     "src/test-utils/ports.test.ts": "unit",
     "extensions/openai/realtime-quicksilver-gateway-bridge-lifecycle.test.ts": "extension-provider-openai",
-    "src/talk/agent-run-control.test.ts": "unit-src"
+    "src/talk/agent-run-control.test.ts": "unit-src",
+    "src/agents/harness/tool-surface-bridge.test.ts": "unit-fast",
+    "src/agents/code-mode.config.test.ts": "unit-fast",
+    "src/agents/embedded-agent-runner/terminal-tool-failure.test.ts": "unit-fast",
+    "src/agents/sessions/tools/tool-definition-wrapper.test.ts": "unit-fast",
+    "src/config/zod-schema.code-mode.test.ts": "runtime-config",
+    "src/agents/code-mode.test.ts": "agents-core",
+    "src/agents/code-mode-executor.test.ts": "agents-core",
+    "src/agents/main-session-recovery/main-session-restart-recovery-resume-policy.test.ts": "agents-support",
+    "src/plugins/code-mode-executor.test.ts": "plugins",
+    "extensions/copilot/src/tool-bridge.test.ts": "extension-database-workers",
+    "src/agents/code-mode.guest.test.ts": "agents-core",
+    "src/agents/embedded-agent-runner/skill-runtime.library-read.test.ts": "agents-embedded-agent",
+    "src/agents/embedded-agent-runner/skill-runtime.workspace.test.ts": "agents-embedded-agent",
+    "src/agents/embedded-agent-runner/run/attempt-tool-catalog.test.ts": "agents-embedded-agent-run",
+    "src/gateway/mcp-http.test.ts": "gateway-core",
+    "src/gateway/mcp-http.runtime.test.ts": "gateway-core",
+    "src/gateway/mcp-http.handlers.network-error.test.ts": "gateway-core",
+    "src/agents/cli-runner/prepare.web-search.test.ts": "agents-support",
+    "src/agents/cli-runner/code-mode-skills.test.ts": "agents-support",
+    "src/agents/code-mode.scheduling.test.ts": "agents-core",
+    "src/agents/tool-search-scheduling.test.ts": "agents-core",
+    "src/agents/embedded-agent-runner/run/attempt-stream-prepare.test.ts": "infra",
+    "src/agents/embedded-agent-runner/run.plugin-runtime-refresh.integration.test.ts": "agents-embedded-agent",
+    "src/gateway/mcp-grant-store.test.ts": "gateway-core"
   },
   "patches": [
     {
@@ -507,6 +531,41 @@
       ],
       "candidateTests": [
         "tests/candidate.talk-concurrency.test.ts"
+      ]
+    },
+    {
+      "name": "code-mode-additive-surface",
+      "tests": [
+        "extensions/copilot/src/tool-bridge.test.ts",
+        "src/agents/code-mode-executor.test.ts",
+        "src/agents/code-mode.config.test.ts",
+        "src/agents/code-mode.guest.test.ts",
+        "src/agents/code-mode.test.ts",
+        "src/agents/embedded-agent-runner/run/attempt-tool-catalog.test.ts",
+        "src/agents/embedded-agent-runner/skill-runtime.library-read.test.ts",
+        "src/agents/embedded-agent-runner/skill-runtime.workspace.test.ts",
+        "src/agents/embedded-agent-runner/terminal-tool-failure.test.ts",
+        "src/agents/harness/tool-surface-bridge.test.ts",
+        "src/agents/main-session-recovery/main-session-restart-recovery-resume-policy.test.ts",
+        "src/agents/sessions/tools/tool-definition-wrapper.test.ts",
+        "src/agents/system-prompt.test.ts",
+        "src/config/zod-schema.code-mode.test.ts",
+        "src/plugins/code-mode-executor.test.ts",
+        "src/agents/code-mode.scheduling.test.ts",
+        "src/agents/tool-search-scheduling.test.ts",
+        "src/agents/embedded-agent-runner/run/attempt-stream-prepare.test.ts",
+        "src/agents/embedded-agent-runner/run.plugin-runtime-refresh.integration.test.ts"
+      ]
+    },
+    {
+      "name": "claude-code-mode-mcp",
+      "tests": [
+        "src/agents/cli-runner/code-mode-skills.test.ts",
+        "src/agents/cli-runner/prepare.web-search.test.ts",
+        "src/gateway/mcp-http.handlers.network-error.test.ts",
+        "src/gateway/mcp-http.runtime.test.ts",
+        "src/gateway/mcp-http.test.ts",
+        "src/gateway/mcp-grant-store.test.ts"
       ]
     }
   ],

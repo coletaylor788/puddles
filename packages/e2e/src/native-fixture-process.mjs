@@ -1,14 +1,23 @@
+import { spawnOwnedProcess } from "../../release/src/owned-process.mjs";
+export const spawnFixtureProcess = spawnOwnedProcess;
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { setTimeout as delay } from "node:timers/promises";
 
-export function fixtureProcessGroup(pid) {
-  return execFileSync("ps", ["-axo", "pid=,pgid=,uid=,lstart="], {
+function fixtureProcesses() {
+  return execFileSync("ps", ["-axo", "pid=,ppid=,pgid=,uid=,lstart="], {
     encoding: "utf8", timeout: 5000,
   }).split("\n").flatMap(line => {
-    const match = line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(.+)$/);
-    return match && Number(match[2]) === pid
-      ? [{ pid: Number(match[1]), uid: Number(match[3]), start: match[4] }] : [];
+    const match = line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(.+)$/);
+    return match ? [{ pid: Number(match[1]), parentPid: Number(match[2]), group: Number(match[3]),
+      uid: Number(match[4]), start: match[5] }] : [];
   });
+}
+
+const processIdentity = ({ pid, uid, start }) => ({ pid, uid, start });
+
+export function fixtureProcessGroup(pid) {
+  return fixtureProcesses().filter(row => row.group === pid).map(processIdentity);
 }
 
 export function trackFixtureProcess(child) {
@@ -16,16 +25,51 @@ export function trackFixtureProcess(child) {
   return { child, identity };
 }
 
-export async function stopFixtureProcess({ child, identity }, {
-  readGroup = fixtureProcessGroup, signal = process.kill.bind(process), graceMs = 5000,
+async function waitForFixtureDescendants(identities, readProcesses, graceMs) {
+  if (!identities) return;
+  const deadline = Date.now() + graceMs;
+  for (;;) {
+    const remaining = readProcesses().filter(row => identities.has(row.pid));
+    for (const row of remaining) assert.deepEqual(processIdentity(row), identities.get(row.pid),
+      "Fixture descendant identity changed");
+    if (!remaining.length) return;
+    assert.ok(Date.now() < deadline, "Fixture descendants did not stop before cleanup");
+    await delay(25);
+  }
+}
+
+export async function stopFixtureProcess(handle, {
+  readGroup = fixtureProcessGroup, readProcesses = fixtureProcesses,
+  signal = process.kill.bind(process), graceMs = 5000,
 } = {}) {
+  const { child, identity } = handle;
   if (!child?.pid) return;
   const members = readGroup(child.pid);
-  if (!members.length) return;
+  if (!members.length) return await waitForFixtureDescendants(handle.descendantIdentities, readProcesses, graceMs);
   assert.ok(identity, "Fixture process identity was not captured");
   assert.deepEqual(members.find(row => row.pid === child.pid), identity,
     "Fixture process group no longer has its owned leader");
   assert.ok(members.every(row => row.uid === process.getuid()), "Fixture process group has another owner");
+  // Native harness children may detach into their own groups. Capture them
+  // before gateway exit reparents them, then wait without signaling those groups.
+  const snapshot = readProcesses();
+  assert.deepEqual(processIdentity(snapshot.find(row => row.pid === child.pid) ?? {}), identity,
+    "Fixture process identity changed before descendant capture");
+  const descendants = new Set([child.pid]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const row of snapshot) {
+      if ((descendants.has(row.parentPid) || row.group === child.pid) && !descendants.has(row.pid)) {
+        descendants.add(row.pid); changed = true;
+      }
+    }
+  }
+  const descendantIdentities = new Map(snapshot.filter(row => descendants.has(row.pid))
+    .map(row => [row.pid, processIdentity(row)]));
+  assert.ok([...descendantIdentities.values()].every(row => row.uid === process.getuid()),
+    "Fixture descendant has another owner");
+  handle.descendantIdentities = descendantIdentities;
   const owned = new Map(members.map(row => [row.pid, row]));
   const currentOwned = () => {
     const current = readGroup(child.pid);
@@ -50,6 +94,7 @@ export async function stopFixtureProcess({ child, identity }, {
   // Never send a second signal to an exited or reused process group.
   send("SIGKILL");
   await closed;
+  await waitForFixtureDescendants(descendantIdentities, readProcesses, graceMs);
 }
 
 export async function cleanupFixtureResources(actions) {

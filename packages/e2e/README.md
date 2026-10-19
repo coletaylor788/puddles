@@ -65,7 +65,9 @@ OPENCLAW_CANDIDATE_DIR=/absolute/feature/application \
 ```
 
 A companion supplies `E2E_APPLICATION_EXTENSION=/absolute/companion/scripts/application-suite.mjs`.
-It declares additional application targets and checks. The runner combines mapped
+It declares additional application targets and checks. A companion check may declare
+`timeoutMs` from 1 millisecond through six hours when its sequential phases need
+a different bound. Omitted values retain the 30-minute default. The runner combines mapped
 public/private targets by Vitest project, preserves distinct required modes,
 checks collection, and runs each selected target once per project. Independent
 projects share four workers by default; explicitly serial tests keep one worker.

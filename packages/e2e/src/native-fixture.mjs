@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import {
   appendFileSync, chmodSync, closeSync, cpSync, existsSync, mkdirSync,
@@ -13,7 +12,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { createServer as createSocketServer } from "node:net";
 import { atomicJson } from "./native-state.mjs";
 import { runCommand } from "./process-runner.mjs";
-import { cleanupFixtureResources, stopFixtureProcess, trackFixtureProcess } from "./native-fixture-process.mjs";
+import { cleanupFixtureResources, spawnFixtureProcess, stopFixtureProcess, trackFixtureProcess } from "./native-fixture-process.mjs";
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const activeFixtures = new Set();
@@ -46,6 +45,7 @@ export function isolatedContext(root) {
 
 export function fixtureEnv(context) {
   return {
+    ...(process.env.PUDDLES_PROCESS_SCOPES === undefined ? {} : { PUDDLES_PROCESS_SCOPES: process.env.PUDDLES_PROCESS_SCOPES }),
     PATH: `${dirname(process.execPath)}:${process.env.PATH ?? "/usr/bin:/bin"}`,
     HOME: context.home, USERPROFILE: context.home,
     TMPDIR: context.tempDir, TMP: context.tempDir, TEMP: context.tempDir,
@@ -286,7 +286,7 @@ export async function runScenario(installedDir, scenario, options = {}) {
     const timeout = options.timeoutMs ?? 90_000;
     const startGateway = async () => {
       const readyCount = records(join(context.recordingsDir, "imsg-ready.jsonl")).length;
-      child = spawn(process.execPath, [join(installedDir, "openclaw.mjs"), "gateway", "run", "--port", String(port), "--bind", "loopback"], {
+      child = spawnFixtureProcess(process.execPath, [join(installedDir, "openclaw.mjs"), "gateway", "run", "--port", String(port), "--bind", "loopback"], {
         cwd: context.workspace, env: environment, detached: true, stdio: ["ignore", log, log],
       });
       let spawnError;

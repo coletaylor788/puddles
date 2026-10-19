@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
@@ -34,4 +34,38 @@ test('a successful command cannot leave a writer running in its process group', 
   const writer = `const fs=require('node:fs');setInterval(()=>fs.appendFileSync(${JSON.stringify(path)},'x'),10);`;
   await command({ command: process.execPath, args: ['-e', `require('node:child_process').spawn(process.execPath,['-e',${JSON.stringify(writer)}],{stdio:'ignore'}).unref();setTimeout(()=>process.exit(0),200);`], cwd: root, timeoutMs: 2000 });
   const stopped = readFileSync(path, 'utf8'); await pause(80); assert.equal(readFileSync(path, 'utf8'), stopped);
+});
+
+for (const reason of ['timeout', 'growth abort']) test(`${reason} joins detached fixture writers after the phase leader exits`, async t => {
+  const root = fixture(t), writes = join(root, 'writes'), pidFile = join(root, 'writer.pid'), runnerPidFile = join(root, 'runner.pid');
+  const writer = `const fs=require('node:fs');process.on('SIGTERM',()=>{});fs.writeFileSync(${JSON.stringify(pidFile)},String(process.pid));setInterval(()=>fs.appendFileSync(${JSON.stringify(writes)},'x'),10);`;
+  // Match a phase launcher waiting synchronously on a wrapper whose test runner
+  // starts another process group. The intermediate parents exit on SIGTERM.
+  const runner = `require('node:fs').writeFileSync(${JSON.stringify(runnerPidFile)},String(process.pid));require('node:child_process').spawn(process.execPath,['-e',${JSON.stringify(writer)}],{detached:true,stdio:'ignore'});setInterval(()=>{},1000);`;
+  const wrapper = `require('node:child_process').spawn(process.execPath,['-e',${JSON.stringify(runner)}],{detached:true,stdio:'ignore'});setInterval(()=>{},1000);`;
+  const feature = `require('node:child_process').execFileSync(process.execPath,['-e',${JSON.stringify(wrapper)}],{stdio:'inherit'});`;
+  const phase = `require('node:child_process').spawnSync(process.execPath,['-e',${JSON.stringify(feature)}],{stdio:'inherit'});`;
+  const driver = join(root, 'driver.mjs');
+  writeFileSync(driver, `import {command} from ${JSON.stringify(new URL('../src/commands.mjs', import.meta.url).href)};try {await command(${JSON.stringify({ command: process.execPath, args: ['-e', phase], cwd: root, timeoutMs: reason === 'timeout' ? 800 : 10000 })});process.exitCode=2;}catch {process.exitCode=1;}`);
+  const child = spawn(process.execPath, [driver], { stdio: 'ignore' });
+  let writerPid, runnerPid;
+  try {
+    for (let i = 0; i < 100 && !existsSync(writes); i++) await pause(20);
+    assert.ok(existsSync(writes), 'synthetic writer started');
+    writerPid = Number(readFileSync(pidFile, 'utf8'));
+    runnerPid = Number(readFileSync(runnerPidFile, 'utf8'));
+    const exited = once(child, 'exit');
+    if (reason === 'growth abort') child.kill('SIGTERM');
+    const [code] = await exited;
+    assert.equal(code, 1);
+    const stopped = readFileSync(writes, 'utf8');
+    await pause(100);
+    assert.equal(readFileSync(writes, 'utf8'), stopped, 'fixture growth stopped before command returned');
+    assert.throws(() => process.kill(writerPid, 0), { code: 'ESRCH' });
+    assert.throws(() => process.kill(runnerPid, 0), { code: 'ESRCH' });
+  } finally {
+    child.kill('SIGKILL');
+    if (writerPid) try { process.kill(-writerPid, 'SIGKILL'); } catch {}
+    if (runnerPid) try { process.kill(-runnerPid, 'SIGKILL'); } catch {}
+  }
 });

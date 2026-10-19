@@ -3,7 +3,8 @@ import { cleanupNativeFixtures } from './native-fixture.mjs';
 import { installSignalHandlers, isHandlingSignal } from './process-runner.mjs';
 export async function withApplicationCheckCleanup(root, run) {
   let preserveFailure = false;
-  const cleanup = async () => {
+  const cleanup = async ({ joinSucceeded = true } = {}) => {
+    if (!joinSucceeded) preserveFailure = true;
     const errors = await cleanupNativeFixtures();
     if (!errors.length && !preserveFailure) rmSync(root, { recursive: true, force: true });
     return errors;
