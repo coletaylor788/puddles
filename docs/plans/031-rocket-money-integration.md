@@ -1,8 +1,8 @@
 # Plan 031: Rocket Money MCP and shared browser authentication
 
-**Status:** Saved-login correction awaiting release process cleanup repair
+**Status:** Saved-login correction reviewed; refreshed build and qualification pending
 **Issue:** [#135](https://github.com/coletaylor788/puddles/issues/135)
-**Last updated:** 2026-10-18
+**Last updated:** 2026-10-19
 
 ## Human section
 
@@ -105,11 +105,9 @@ Cleanup closes the scopes to new launches, joins every registered writer, and th
 **Approval reference:** Owner instruction, “this design is approved, implement and ship it, giving me directions to login when ready”; subsequent approval covers publication and retained independent review.
 **Scope:** The approved five tools, shared host authentication, private main skill and desktop login shortcut. No live financial mutations during validation.
 
-The shared-session correction is merged. The adapter shares one MCP connection across native plugin instances and module reloads, preventing competing owners of the same browser profile. It serializes dispatch, configuration changes, and shutdown while retaining per-call authorization and content guards.
+The shared-session correction is merged. The saved-login timing correction and packaged synthetic check passed retained review and local validation. Renewal waits for delayed redirects and autofill, then verifies the pinned account before financial work. The check requires one connection across two native plugin instances and four calls.
 
-The committed packaged check exercises two native plugin instances and requires one connection across four synthetic status calls. Deployment identities, operator setup, and account readiness belong in private release records. The saved-login timing correction is in review. It replaces the immediate form check and fixed sleep with bounded renewal and pinned-account verification. No financial operation runs before that verification succeeds.
-
-DEV validation exposed detached test writers surviving a capacity stop. The environment is stopped and the failed attempt is retained. Repairing that release prerequisite is within the approved implementation scope. The earlier installation packet is revoked while the durable launch correction completes independent review. The release manager installs the reviewed controller correction between tickets. A fresh application attempt still requires updated input bindings, review, and DEV acceptance.
+The shared process cleanup fixes are now in main. The candidate is rebased onto the newly released programmatic-tool support and retains its behavior and tests. That changes prepared application inputs, so the prior artifact and DEV results cannot qualify this source. Rebuild the candidate, repeat DEV acceptance, then use the normal TEST and production lane. Account readiness remains a separate owner login check.
 
 ## Agent section
 
@@ -119,7 +117,8 @@ DEV validation exposed detached test writers surviving a capacity stop. The envi
 - The implementation uses the shared `browser-auth` Python package, official MCP SDK and a main-only OpenClaw stdio adapter. The adapter retains the host process across turns and applies outbound LeakGuard plus inbound classification and redaction.
 - Main's skill and owner-specific finance rules remain private runtime content, managed outside the repository.
 - Shared-session correction shipped in [PR #261](https://github.com/coletaylor788/puddles/pull/261), merge `5ef80fdc542227803895e19a42f61ca16be5bc4f`. Native plugin runtime stores are scoped to managed instances. Keep the MCP bridge in one process slot, retain per-call authorization and guards, and serialize dispatch, account changes and shutdown. Regression coverage uses distinct native plugin instances and the packaged MCP subprocess.
-- Saved-login DEV validation stopped on its resource bound. The release command lost detached descendants when intermediate parents exited. The test runner separately dropped group ownership and its escalation timer on leader close. Repair the maintained command and runner seams with the shared ownership gate; never replay the consumed attempt or increase limits to hide the failure.
+- Earlier saved-login DEV attempts exposed process ownership and build discovery defects. Their corrections are reviewed; the process ownership changes are now in main. Historical attempts remain consumed. The current branch keeps the shared source-index preparation correction and requires a refreshed artifact plus fresh DEV acceptance after integrating main.
+- Refreshed public base: `cf7f8828661867688fc1a33b30e5865da8b51c4f`. Rebase conflicts retained the identical merged cleanup implementation and its regressions. Programmatic-tool patches and tests stay present. No financial behavior changed during conflict resolution.
 
 ### Scope and acceptance criteria
 
@@ -164,6 +163,8 @@ Use the installed release controller for deployment and rollback. Verify whether
 
 ### Review log
 
+- 2026-10-19: Retained review cleared the renewal candidate and guarded staging controls. Integration with the newly merged programmatic-tool base requires a current-diff recheck and fresh artifact qualification.
+
 - 2026-10-06: Selected trusted-host execution with model-visible tools only.
 - 2026-10-07: Recorded the proposal in repository docs; separated shared browser authentication from the Rocket Money-specific MCP client. Organized the review surface around the diagram, component ownership, request flow and boundaries. Consolidated concise MCP contracts into the main design; made an external password manager optional.
 
@@ -176,3 +177,5 @@ Use the installed release controller for deployment and rollback. Verify whether
 - [x] Merge the shared-session correction with retained independent review.
 - [x] Commit packaged coverage for distinct native plugin instances sharing one MCP connection.
 - [x] Keep deployment and account readiness in private release coordination.
+- [ ] Build and qualify the refreshed saved-login candidate through DEV, TEST and production.
+- [ ] Provide login directions after the deployed renewal correction is verified.
