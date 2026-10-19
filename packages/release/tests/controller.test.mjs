@@ -65,6 +65,54 @@ for (const failProduction of [false, true]) {
   });
 }
 
+for (const target of ['dev', 'release', 'rollback']) {
+  test(`${target} preserves artifact permissions under an owner-only umask`, async t => {
+    const originalUmask = process.umask(0o022);
+    try {
+      const f = fixture(t);
+      for (const root of [f.ticket.artifact, f.config.prod.runtime, join(f.root, 'state')]) {
+        mkdirSync(join(root, 'nested'));
+        writeFileSync(join(root, 'nested/plain'), 'public data');
+        writeFileSync(join(root, 'nested/private'), 'private data');
+        chmodSync(join(root, 'nested/private'), 0o600);
+        writeFileSync(join(root, 'nested/run'), '#!/bin/sh\nexit 0\n');
+        chmodSync(join(root, 'nested/run'), 0o755);
+        symlinkSync('private', join(root, 'nested/link'));
+      }
+      const original = treeHash(f.config.prod.runtime);
+      const state = treeHash(join(f.root, 'state'));
+      const artifact = treeHash(f.ticket.artifact);
+      process.umask(0o077);
+      const checked = [];
+      const execute = async (_, env) => {
+        const phase = env.PUDDLES_RELEASE_PHASE;
+        if (['dev-tests', 'test-tests', 'prod-tests'].includes(phase)) {
+          const runtime = phase === 'dev-tests' ? join(f.root, 'dev') :
+            phase === 'test-tests' ? f.config.test.runtime : f.config.prod.runtime;
+          assert.equal(treeHash(runtime), artifact);
+          checked.push(phase);
+        }
+        if (target === 'rollback' && phase === 'prod-tests') throw new Error('synthetic rollback');
+      };
+      if (target === 'dev') {
+        await deployDev(f.config, f.ticket, { ...f.config.test, runtime: join(f.root, 'dev') }, execute);
+        assert.deepEqual(checked, ['dev-tests']);
+      } else {
+        enqueue(f.config.root, f.ticket);
+        const result = await runNext(f.config, execute);
+        assert.equal(result.status, target === 'rollback' ? 'failed' : 'released');
+        assert.deepEqual(checked, ['test-tests', 'prod-tests']);
+        assert.equal(treeHash(join(f.config.backup.root, 'runtime')), original);
+        assert.equal(treeHash(f.config.prod.runtime), target === 'rollback' ? original : artifact);
+        assert.equal(treeHash(join(f.config.backup.root, 'state')), state);
+      }
+      assert.equal(treeHash(f.ticket.artifact), artifact);
+      assert.equal(treeHash(join(f.root, 'state')), state);
+      assert.equal(process.umask(), 0o077);
+    } finally { process.umask(originalUmask); }
+  });
+}
+
 for (const failedPhase of ['rebase', 'build', 'applicationTests', 'test-start', 'test-tests', 'backup-stop', 'prod-start', 'prod-tests']) {
   test(`${failedPhase} failure recovers and lets the next feature proceed`, async t => {
     const f = fixture(t); enqueue(f.config.root, f.ticket); enqueue(f.config.root, { ...f.ticket, id: 'second' });
