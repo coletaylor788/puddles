@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { constants, chmodSync, closeSync, cpSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { constants, chmodSync, closeSync, cpSync, existsSync, fsyncSync, lchmodSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { execFileSync } from 'node:child_process';
@@ -55,15 +55,23 @@ export function copy(source, destination) {
   separate([source, destination]);
   cpSync(source, destination, { recursive: true, preserveTimestamps: true, verbatimSymlinks: true,
     mode: constants.COPYFILE_FICLONE, errorOnExist: true, force: false });
-  // cpSync preserves file modes, but creates directories using the process
-  // defaults. Preserve authored directory access, including owner-only state.
-  function directoryModes(from, to) {
+  // macOS copy-on-write copies and symlink creation can apply the current
+  // umask. Restore authored modes without following links or changing umask.
+  function restoreModes(from, to) {
     const stat = lstatSync(from);
-    if (!stat.isDirectory()) return;
-    for (const name of readdirSync(from)) directoryModes(join(from, name), join(to, name));
+    if (stat.isSymbolicLink()) {
+      if ((lstatSync(to).mode & 0o777) !== (stat.mode & 0o777)) {
+        if (!lchmodSync) throw new Error('Cannot preserve symbolic link permissions');
+        lchmodSync(to, stat.mode & 0o777);
+      }
+      return;
+    }
+    if (stat.isDirectory()) {
+      for (const name of readdirSync(from)) restoreModes(join(from, name), join(to, name));
+    }
     chmodSync(to, stat.mode & 0o777);
   }
-  directoryModes(source, destination);
+  restoreModes(source, destination);
 }
 export function processIdentity(pid) {
   try { return execFileSync('ps', ['-p', String(pid), '-o', 'lstart='], { encoding: 'utf8' }).trim() || null; }

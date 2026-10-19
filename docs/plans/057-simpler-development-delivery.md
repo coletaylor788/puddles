@@ -152,6 +152,14 @@ is in the single backup. Superseded recovery, its scheduled tooling, and finishe
 build workspaces are removed. The manager retains one published source checkout
 until the app's active tool processes release it. This does not hold the queue.
 
+A further copy repair is in progress. On macOS, installing under an owner-only
+umask can remove group and other permissions from regular files and symbolic
+links. The controller correctly rejects that changed output. The shared copy
+helper will preserve those authored modes, alongside directory modes, without
+following symbolic links or relaxing the artifact check. It will ship as a
+separate release-tool update. Its independent suite and retained review pass;
+installation is pending.
+
 ## Agent section
 
 ### State
@@ -184,9 +192,20 @@ Guidance now specifies durable behavior tests, the queue order, one backup,
 scripted cleanup, and trusted configured model providers. Source and development
 context may go to those providers; secrets and credentials may not.
 
+### Copy permissions repair
+
+The shared `copy` helper restores regular file permissions after the copy and
+uses `lchmod` for a symbolic link whose mode differs. Directory permissions are
+restored after their children. Platforms unable to restore a differing link mode
+fail explicitly. No process umask changes and no digest exceptions are added.
+Regressions exercise DEV, TEST, PROD, backup and rollback under umask `077`, with
+public files, executables, private files and relative symbolic links. The source
+artifact and caller umask must remain unchanged. Installation is pending; failed
+application qualification cannot be reused after adopting the repaired tool.
+
 ### Validation
 
-The independent release suite passes 433 public tests: 49 Node cases and 384
+The independent release suite passes 455 public tests: 71 Node cases and 384
 Vitest cases. Application and host integration results belong to their own
 runners. Keep current full-suite timing and slow-check analysis in the manager
 conversation; do not add a retained test-report archive.
