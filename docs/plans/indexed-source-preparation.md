@@ -1,6 +1,6 @@
 # Include patch-added source in native build discovery
 
-**Status:** Production approved as a release-preparation repair; local validation and retained review passed; corrected builds pending
+**Status:** Production approved; corrected build and fresh DEV tests passed; release qualification pending
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
 **Last updated:** 2026-10-19
 
@@ -46,11 +46,13 @@ the Mini and deployment. On 2026-10-19 the release manager assigned this narrow
 shared preparation correction under that authority. This adds no agent access
 or communication changes.
 
-The focused cache, ownership and preparation tests pass. The actual native
-collector regression passes. Retained independent review cleared the complete current change. Frozen
-artifacts and prior DEV evidence remain unchanged. Affected candidates require
-corrected builds and fresh qualification when their output changes, followed by
-the normal release lane and capacity checks.
+The focused cache, ownership and preparation tests and actual native collector
+regression pass. Retained independent review cleared the complete change. The
+Household replacement build passes native readiness and exact transfer checks,
+and all 12 fresh DEV acceptance cases pass. Independent shutdown closure and
+credential retirement also passed. Other consumers remain under their owners' qualification. Prior
+evidence is not relabeled for replacement output; the normal release lane and
+capacity checks still apply.
 
 ## Agent section
 
@@ -58,8 +60,10 @@ the normal release lane and capacity checks.
 
 Implementation belongs to the Household owner on its existing public feature
 branch. The release manager coordinates other consumers. The change is shared
-build preparation, not a dependency on Household runtime behavior. No Mini
-mutation or actual candidate rebuild is part of local validation.
+build preparation, not a dependency on Household runtime behavior. The correction
+is published separately and the Household owner has rebuilt and staged its
+replacement through the maintained lifecycle. Fresh DEV tests passed; full
+release qualification and source merge remain pending.
 
 ### Scope and acceptance criteria
 
@@ -102,7 +106,12 @@ Eight focused preparation, cache and output-ownership tests pass. The actual
 native collector regression passes against the pinned prepared source in a
 separate temporary fixture. Its index and source files are the only source data
 mutated by the regression. The fixture is removed afterward. These results do
-not qualify a rebuilt application or replace installed DEV checks.
+not by themselves qualify a rebuilt application or replace installed DEV checks.
+The replacement build completed in 151 seconds. Readiness with all nested native
+Git calls disabled reported no missing entries, and both previously omitted
+compiled modules were present. Exact transfer validation passed, followed by all
+12 fresh installed DEV cases in 468 seconds. The manager independently verified
+shutdown and credential retirement.
 
 ### Rollout and rollback
 
@@ -119,8 +128,9 @@ release-ready.
 The retained independent reviewer cleared the complete current public diff and
 all new files on 2026-10-19 with no material findings or architecture deviations.
 The review confirmed native indexing, cache invalidation, both build consumers
-and the physical Git-free regression. Actual candidate compilation and fresh
-qualification remain outstanding.
+and the physical Git-free regression. The same reviewer cleared the replacement
+DEV and transfer controls. Candidate compilation and fresh DEV tests now pass;
+the full release gates remain outstanding.
 
 ### Checklist
 
@@ -129,5 +139,7 @@ qualification remain outstanding.
 - [x] Pass focused and actual native collector regressions.
 - [x] Complete retained review.
 - [x] Publish the shared correction as a separate commit for release owners.
-- [ ] Rebuild and requalify affected candidates under manager coordination.
+- [x] Rebuild Household and pass fresh DEV tests under manager coordination.
+- [x] Complete independent Household DEV closure.
+- [ ] Complete qualification for other consumers.
 - [ ] Complete release, merge and cleanup.
