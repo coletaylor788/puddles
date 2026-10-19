@@ -1,6 +1,6 @@
 # Restore the Household owner relay
 
-**Status:** Production approved; prior DEV passed; corrected build preparation and fresh qualification pending
+**Status:** Production approved; corrected build and fresh DEV tests passed; release qualification pending
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
 **Last updated:** 2026-10-19
 
@@ -83,18 +83,15 @@ ship" on 2026-10-17. This approves source-session return with instructions
 limiting automatic exchanges, followed by testing, review, production release,
 merge, and cleanup. No agent-to-agent patch or deferred approval service.
 
-Independent review found that a symmetric native agent allowlist also allowed
-Household to read Main's session status. The repair keeps ordinary access denied
-and grants only Main's return send through the existing native scoped-access API.
-The repaired grant passes installed denial and delivery checks. The retained
-reviewer cleared the product repair, fixture repair, and final DEV controls.
-Managed DEV passed all 12 actual-model scenarios and was independently verified
-stopped. Production is unchanged. The full application suite, installed TEST,
-backup, production acceptance, merge, and cleanup remain pending. Staging transfer repairs restored the original source and output fingerprints,
-but native Git-free readiness exposed a shared build-inventory gap. The
-[indexed source preparation repair](indexed-source-preparation.md) must complete
-before affected output is rebuilt and requalified. The manager also owns target
-capacity admission.
+The relay keeps ordinary Household access denied and grants only Main's return
+send through the existing native scoped-access API. The retained reviewer
+cleared the product and fixture repairs. The
+[indexed source preparation repair](indexed-source-preparation.md) is implemented
+and the replacement build passes native readiness and exact transfer checks.
+Fresh managed DEV passed all 12 actual-model scenarios with no failures or skips.
+Maintained shutdown, independent closure, and credential retirement passed. Production is unchanged. The full application suite,
+installed TEST, backup, production acceptance, source merge, and final cleanup
+remain pending under the manager's capacity admission.
 
 ## Agent section
 
@@ -102,12 +99,15 @@ capacity admission.
 
 Public branch: `codex/restore-household-owner-relay`. A separately isolated
 companion worktree uses the same branch. The release manager has received the
-candidate and passing DEV evidence. DEV is stopped and its allocation is
-released. No release ticket is held. All staging and repair processes are
-stopped. Preserve the original artifact and DEV evidence. Local work now fixes
-native discovery of patch-added source before a corrected build and fresh
-qualification. Preserve the unrelated request-context fix and native Gmail
-approvals.
+replacement candidate and fresh passing DEV evidence. The native controller and
+maintained shutdown have joined. The manager independently verified the stopped
+runtime and configuration, retired the temporary credential, and released the
+DEV allocation. No release ticket is held. The old Mini generated source,
+application, and Python environment were retired through the maintained storage
+helper after their consumers ended. Compact evidence and published source are
+preserved. The replacement application and current DEV controls remain installed
+in the feature workspace. Preserve the unrelated request-context fix and native
+Gmail approvals.
 
 ### Scope and acceptance criteria
 
@@ -203,7 +203,18 @@ Managed DEV qualification on 2026-10-18 passed all 12 actual-model cases
 in 502 seconds. This includes both source routes and silent Main completion
 after sending an answer. The manager independently verified process shutdown,
 closed ports, retired temporary credentials, and released the DEV allocation.
-The prepared application stayed unchanged.
+The prepared application stayed unchanged. That run belongs to the original
+candidate and does not qualify its replacement.
+
+On 2026-10-19 the corrected native build completed in 151 seconds. Native
+readiness passed with all nested Git calls disabled, and both previously omitted
+compiled entries were present. Fresh transfer checks verified the complete
+replacement artifact, source snapshots, control seal, and stopped predecessor.
+The replacement then passed all 12 installed actual-model DEV cases in 468
+seconds, with no failures or skips. The controller and maintained stop both
+joined without a resource-limit abort. Independent closure verified the stopped
+runtime and configuration, no remaining writers, closed ports, and retirement
+of the temporary credential.
 
 An earlier DEV attempt exposed a fixture error: a text-only Main completion
 after a tool result could lose its workspace marker. The fixture now resolves
@@ -227,8 +238,9 @@ only a reverse, exact-session send grant. Installed tests must prove denied
 reads and sends with absent, disabled, and failed plugin registration, plus
 enabled delivery and no peer reentry. The retained reviewer cleared that product
 repair and the qualification cleanup changes. The same reviewer subsequently
-cleared the fixture repair and final DEV controls. Managed DEV passed. The
-normal release controls still require their retained review before admission.
+cleared the fixture repair, corrected build preparation, replacement DEV controls,
+and transfer packet. Fresh managed DEV passed. Full release controls for the
+replacement still require their retained review before admission.
 
 Qualification cancellation exposed shared runner failures: a detached fixture
 could outlive an unexpectedly exiting worker, and failed joining could still
@@ -258,4 +270,6 @@ affect validation only; the application artifact is unchanged.
 - [x] Prepare isolated public and companion workspaces.
 - [x] Implement config, guidance, and handoff skill restoration.
 - [x] Pass focused, installed DEV, actual-model, and independent review checks.
+- [x] Rebuild with corrected source discovery and pass fresh DEV tests.
+- [x] Complete independent closure of the replacement DEV run.
 - [ ] Complete managed TEST, PROD, source merge, and cleanup.
