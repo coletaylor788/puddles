@@ -109,12 +109,13 @@ two model requests instead of three and fewer tokens. They were slower in this
 small sample, so the result does not establish a latency improvement.
 
 The tested artifact preserves the released Media image and skill. DEV is stopped
-cleanly. The corrected release staging and independent review are complete.
-Release admission waits for the shared controller cleanup fix and a refreshed
-release packet. The complete process-ownership repair passes focused local checks and retained
-source review. All 451 release-tool checks and the composed installed check pass.
-The full application suite, TEST, production acceptance, paired source merge,
-and managed cleanup remain.
+cleanly, and the shared controller repair is installed. The next full suite exposed
+a cleanup self-test that could stop its supervising command. The test-only repair
+limits synthetic failure records and recovery to scopes created by that test.
+All 302 public e2e checks now pass under maintained process supervision, including
+explicit process joining and scope retirement. Retained review and typechecking
+pass. A fresh release packet and hosted checks precede another full application
+run. TEST, production acceptance, paired source merge, and managed cleanup remain.
 
 ## Agent section
 
@@ -134,8 +135,8 @@ public and companion package outputs match the retained build. Native read-only
 checks report no build or postbuild work needed. The controller released the lane;
 no TEST or production deployment occurred.
 
-The feature remains outside the queue while the coordinator installs the shared
-controller fix for detached test writers. The complete repair from
+The feature is outside the queue after the second release attempt stopped before
+TEST. The installed controller includes the complete detached-writer repair from
 `4eca321af683ebe48ccbe6ed65323b6e54da60ab` replaces the earlier runner-only adoption.
 The runner records each detached process before allowing its workload to start.
 Cleanup joins registered workers even after their parent exits, and retains state
@@ -151,6 +152,18 @@ retained application artifact. Refresh both source identities, installed and loc
 controller bindings, and affected installed proofs in the release packet before
 admission. Prior requests and receipts remain consumed. The coordinator owns
 allocation and the full release lane.
+
+The second release attempt passed rebase and artifact validation, then its full
+suite was killed by a cleanup self-test. A bounded local reproduction confirmed
+that test recovery traversed inherited supervisor scopes and stopped their
+processes. The repair filters those ancestors from synthetic record injection
+and test-owned recovery. Real runtime ancestor tracking is unchanged. A nested
+regression exercises all five affected cases and checks that the supervisor
+survives, its child receipt clears, its own scope retires, and inherited scopes
+remain open and complete. All 302 checks across 32 public e2e files pass under the
+maintained command supervisor in 28 seconds, with explicit clean-join evidence.
+Typechecking and retained review pass. Preserve both failed release attempts and
+request a fresh packet and allocation after exact-head hosted checks.
 
 The reviewed integration runs installed groups sequentially with one worker,
 preserving all 23 PTC inventory entries. The public suite must honor the longer
