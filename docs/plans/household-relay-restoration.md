@@ -2,7 +2,7 @@
 
 **Status:** Production approved; repair qualification passed; review and deployment pending
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
-**Last updated:** 2026-10-17
+**Last updated:** 2026-10-18
 
 ## Human section
 
@@ -202,8 +202,19 @@ route. It found one P2: adding Household to the symmetric agent allowlist also
 enabled direct status reads of Main. The repair removes that grant and supplies
 only a reverse, exact-session send grant. Installed tests must prove denied
 reads and sends with absent, disabled, and failed plugin registration, plus
-enabled delivery and no peer reentry. The same reviewer will recheck the full
-diff after qualification. No clearance is claimed.
+enabled delivery and no peer reentry. The retained reviewer cleared that product
+repair. Final deployment controls and the qualification cleanup changes still
+need review before managed DEV acceptance.
+
+Qualification cancellation exposed a shared runner failure: a detached fixture
+writer could outlive its parent test process. This branch adopts the reviewed
+shared runner repair from commits `5f74966` and `da8c0cf`, without the unrelated
+feature changes. It retains descendant process identities before cancellation
+and joins those processes before returning. All 15 affected runner regressions
+pass locally. Qualification uses the existing asynchronous runner and fixture
+cleanup hooks. This changes test execution, not agent communication or the
+prepared application. The manager must install the corresponding controller
+repair before a new managed DEV run.
 
 ### Checklist
 
