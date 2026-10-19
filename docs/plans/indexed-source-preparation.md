@@ -128,6 +128,6 @@ qualification remain outstanding.
 - [x] Implement guarded native indexing and cache invalidation.
 - [x] Pass focused and actual native collector regressions.
 - [x] Complete retained review.
-- [ ] Publish source.
+- [x] Publish the shared correction as a separate commit for release owners.
 - [ ] Rebuild and requalify affected candidates under manager coordination.
 - [ ] Complete release, merge and cleanup.
