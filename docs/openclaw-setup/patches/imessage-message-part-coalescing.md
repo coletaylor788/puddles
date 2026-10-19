@@ -124,6 +124,13 @@ signals. Durable admission has no one-second completion contract. The test keeps
 the ordering and exact-once assertions, reports the failed stage and runtime
 errors, and has a bounded overall deadline.
 
+The malformed-payload bucket test also waits for explicit dispatch and enqueue
+completion. It submits all five notifications together before waiting, so the
+fixture still exercises batching. It retains the exact dispatch counts and
+message-content checks. Stage deadlines and captured runtime errors distinguish
+unfinished admission from failed processing; the release failure alone does not
+establish which caused the original one-second polling timeout.
+
 The patch adds regression coverage for:
 
 - short lead-in plus URL-preview row;

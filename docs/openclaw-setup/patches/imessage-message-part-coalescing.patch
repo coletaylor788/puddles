@@ -316,7 +316,7 @@ index d0a062e..ae5832a 100644
  
    it("drops unavailable configured ACP messages before typing, reads, media, history, or dispatch", async () => {
      setAvailablePrivateApiMethods(["watch.subscribe", "typing", "read"]);
-@@ -1750,5 +1870,1607 @@ describe("iMessage monitor last-route updates", () => {
+@@ -1750,5 +1870,1657 @@ describe("iMessage monitor last-route updates", () => {
        }
      });
    }
@@ -937,9 +937,55 @@ index d0a062e..ae5832a 100644
 +    },
 +  );
 +
-+  it("starts a fresh bucket after a payload without continuation metadata", async () => {
++  it("starts a fresh bucket after a payload without continuation metadata", async ({
++    onTestFailed,
++  }) => {
 +    debouncerControl.holdEntries = true;
 +    debouncerControl.respectDebouncePolicy = true;
++
++    const firstDispatch = createDeferred<void>();
++    const allRowsEnqueued = createDeferred<void>();
++    const runtimeFailure = createDeferred<string>();
++    const runtime = {
++      error: vi.fn((...args: unknown[]) => runtimeFailure.resolve(args.map(String).join(" "))),
++      exit: vi.fn(),
++      log: vi.fn(),
++    };
++    let stage = "monitor startup";
++    onTestFailed(() => {
++      console.error(`iMessage bucket test failed during ${stage}`, runtime.error.mock.calls);
++    });
++    const waitForStage = async (name: string, entered: Promise<void>) => {
++      stage = name;
++      const deadline = createDeferred<void>();
++      const timer = setTimeout(() => deadline.reject(new Error(`${name}: timed out`)), 10_000);
++      try {
++        await Promise.race([
++          entered,
++          deadline.promise,
++          runtimeFailure.promise.then((message) => {
++            throw new Error(`${name}: ${message}`);
++          }),
++        ]);
++      } finally {
++        clearTimeout(timer);
++      }
++    };
++    dispatchReplyWithBufferedBlockDispatcherMock.mockImplementationOnce(async () => {
++      firstDispatch.resolve();
++      return EMPTY_DISPATCH_RESULT;
++    });
++    const createDebouncer = createChannelInboundDebouncerMock.getMockImplementation()!;
++    createChannelInboundDebouncerMock.mockImplementationOnce((opts) => {
++      const result = createDebouncer(opts);
++      const enqueue = result.debouncer.enqueue;
++      let enqueued = 0;
++      result.debouncer.enqueue = async (entry) => {
++        await enqueue(entry);
++        if (++enqueued === 5) allRowsEnqueued.resolve();
++      };
++      return result;
++    });
 +
 +    let onNotification: ((message: { method: string; params: unknown }) => void) | undefined;
 +    const client = {
@@ -1001,13 +1047,14 @@ index d0a062e..ae5832a 100644
 +            },
 +          });
 +        }
-+        await vi.waitFor(() => {
-+          expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(1);
-+        });
-+        await vi.waitFor(() => {
-+          expect(debouncerControl.entries).toHaveLength(3);
-+        });
++        // Durable admission is asynchronous; wait for ownership, not a polling deadline.
++        await waitForStage("first composition dispatch", firstDispatch.promise);
++        await waitForStage("second composition admission", allRowsEnqueued.promise);
++        expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(1);
++        expect(debouncerControl.entries).toHaveLength(3);
++        stage = "second composition flush";
 +        await debouncerControl.flush?.();
++        stage = "monitor shutdown";
 +      }),
 +      stop: vi.fn(async () => {}),
 +    };
@@ -1031,9 +1078,12 @@ index d0a062e..ae5832a 100644
 +        },
 +        session: { mainKey: "main" },
 +      } as never,
-+      runtime: { error: vi.fn(), exit: vi.fn(), log: vi.fn() },
++      runtime,
 +    });
 +
++    stage = "final assertions";
++    expect(runtime.error).not.toHaveBeenCalled();
++    expect(client.stop).toHaveBeenCalledTimes(1);
 +    expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(2);
 +    expect(dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[0]?.[0].ctx.Body).toContain(
 +      "What link is this? https://example.com/first",
@@ -1043,7 +1093,7 @@ index d0a062e..ae5832a 100644
 +    expect(secondBody).toContain("Check this");
 +    expect(secondBody).toContain("https://example.com/second");
 +    expect(secondBody).toContain("second composition tail");
-+  });
++  }, 30_000);
 +
 +  it("keeps a chained non-URL balloon separate from a pending pair", async () => {
 +    debouncerControl.holdEntries = true;
