@@ -206,13 +206,18 @@ enabled delivery and no peer reentry. The retained reviewer cleared that product
 repair. Final deployment controls and the qualification cleanup changes still
 need review before managed DEV acceptance.
 
-Qualification cancellation exposed a shared runner failure: a detached fixture
-writer could outlive its parent test process. This branch adopts the reviewed
-shared runner repair from commits `5f74966` and `da8c0cf`, without the unrelated
-feature changes. It retains descendant process identities before cancellation
-and joins those processes before returning. All 15 affected runner regressions
-pass locally. Qualification uses the existing asynchronous runner and fixture
-cleanup hooks. This changes test execution, not agent communication or the
+Qualification cancellation exposed shared runner failures: a detached fixture
+could outlive an unexpectedly exiting worker, and failed joining could still
+permit deletion of test state. This branch adopts the reviewed shared repairs
+through `4eca321`, without the unrelated feature changes. A launch gate records
+process ownership before starting work. Surviving supervisors can then join
+registered fixtures after a worker exits. Failed joins retain test state.
+Qualification uses the existing asynchronous runner and fixture cleanup hooks.
+The shared source passes 451 release tests, 31 focused runner/fixture tests and
+the e2e typecheck. Composed qualification passes all five cleanup/credential
+cases and the installed gateway isolation scenario. These exact shared source
+inputs are reused here; the complete Household review and managed deployment
+remain pending. This changes test execution, not agent communication or the
 prepared application. The manager must install the corresponding controller
 repair before a new managed DEV run.
 
