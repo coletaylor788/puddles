@@ -41,6 +41,13 @@ third argument supplies application plugins as `[{"id":"plugin-id","source":"/ab
 Companion builds compose their required plugins and sidecars into the same output.
 Environment configuration, credentials, and writable state stay outside it.
 
+Before checking the build cache, the builder adds nonignored new source files
+to the prepared checkout's Git index with `git add --intent-to-add`. Native
+plugin discovery then sees files introduced by patches as well as upstream
+files. This does not stage their contents or commit them. Existing staged
+changes remain intact; a recreated staged deletion requires resolution first.
+The preparation version invalidates caches created before this indexing step.
+
 Deploy to DEV with the installed controller's `dev CONFIG REQUEST` command.
 Shared DEV holds only a short lock for deployment and installed checks. Other
 features continue building independently. See [coordination](DEPLOYMENT_COORDINATION.md).
