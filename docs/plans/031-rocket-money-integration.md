@@ -95,7 +95,7 @@ Both components run on the trusted host. Prefer a shared auth library in the hos
 
 Other financial writes, scheduled automation and a general integration framework remain outside this design. The [future-scope appendix](031-rocket-money-deferred.md) retains follow-on work. Approval to ship activates the required synthetic regressions and release checks.
 
-The release command must stop its test processes before recovery can start. Some test runners and fixture gateways create separate process groups. On cancellation, the controller records their process identities before signaling their parents, then stops and joins the retained descendants. The application test runner also retains its process group until every writer stops, even if the group leader exits first. These corrections preserve the existing limits and financial boundaries.
+The release command must stop its test processes before recovery can start. Some test runners and fixture gateways create separate process groups. On cancellation, the controller records their process identities before signaling their parents, then stops and joins the retained descendants. The application test runner also retains its process group until every writer stops, even if the group leader exits first. A disappearing process group can return a permission error on macOS. Recheck that specific target before accepting the error as an exit race. A permission error for a live process must fail promptly and retain cleanup ownership. These corrections preserve the existing limits and financial boundaries.
 
 ### Status
 
@@ -152,7 +152,7 @@ The [validation appendix](031-rocket-money-deferred.md) retains the validation s
 
 The synthetic registry check does not establish authenticated account access. Keep environment acceptance and account readiness in private release records. Financial write validation remains fixture-only.
 
-Release regressions reproduce a synchronous phase launcher and callback followed by a detached test runner and detached writing fixture. Both timeout and external cancellation must stop both detached processes and fixture growth before recovery. Runner regressions cover a leader exiting before its TERM-resistant descendant. Run the full independent release package suite and focused application lifecycle tests, then retain independent review of the source and installation packet. Changed controller and test-runner inputs invalidate their prior packet bindings and affected acceptance proofs.
+Release regressions reproduce a synchronous phase launcher and callback followed by a detached test runner and detached writing fixture. Both timeout and external cancellation must stop both detached processes and fixture growth before recovery. Runner regressions cover a leader exiting before its TERM-resistant descendant, vanished and live signal targets, and a live child that never emits a close event. Interruption tests verify that fixtures exit while their state still exists, before the wrapper removes it. Run the full independent release package suite and focused application lifecycle tests, then retain independent review of the source and installation packet. Changed controller and test-runner inputs invalidate their prior packet bindings and affected acceptance proofs.
 
 ### Rollout and rollback
 
