@@ -1,17 +1,79 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { closeSync, openSync, writeSync } from "node:fs";
 import { startCommandResourceMonitor } from "./native-resources.mjs";
 
 const activeCommands = new Set();
 let handlingSignal = false;
 
-function signalChildGroup(child, signal) {
+function signalChildGroup(active, signal) {
+  const { child } = active;
   if (process.platform !== "win32" && child.pid) {
     try { process.kill(-child.pid, signal); }
-    catch (error) { if (error.code !== "ESRCH") throw error; }
+    catch (error) {
+      // macOS can report EPERM when a group exits between ps and kill.
+      // A permission failure for a surviving owned group remains an error.
+      if (error.code !== "ESRCH" && (error.code !== "EPERM" ||
+        ownedProcesses(active).some(row => row.group === child.pid))) throw error;
+    }
     return;
   }
   child.kill(signal);
+}
+
+function ownedProcesses(active) {
+  if (!active.child.pid) return [];
+  if (process.platform === "win32") return active.child.exitCode === null && active.child.signalCode === null
+    ? [{ pid: active.child.pid }] : [];
+  const rows = execFileSync("ps", ["-axo", "pid=,ppid=,pgid=,stat=,lstart="], { encoding: "utf8", timeout: 5000 })
+    .split("\n").flatMap(line => {
+      const match = line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(.+)$/);
+      return match ? [{ pid: Number(match[1]), parent: Number(match[2]), group: Number(match[3]),
+        zombie: match[4].startsWith("Z"), start: match[5] }] : [];
+    });
+  const parents = new Set(rows.filter(row => row.group === active.child.pid ||
+    active.descendants.get(row.pid) === row.start).map(row => row.pid));
+  let changed;
+  do {
+    changed = false;
+    for (const row of rows) if (parents.has(row.parent) && !parents.has(row.pid)) {
+      parents.add(row.pid); changed = true;
+    }
+  } while (changed);
+  for (const row of rows) if (parents.has(row.pid) && !active.descendants.has(row.pid)) active.descendants.set(row.pid, row.start);
+  return rows.filter(row => !row.zombie && active.descendants.get(row.pid) === row.start);
+}
+
+function signalOwnedProcesses(active, signal) {
+  // Read ancestry before signaling can orphan detached fixtures. Retain exact
+  // identities so a reused PID cannot acquire the old command's ownership.
+  const owned = ownedProcesses(active);
+  signalChildGroup(active, signal);
+  for (const row of owned) if (row.group !== active.child.pid) {
+    try { process.kill(row.pid, signal); }
+    catch (error) {
+      if (error.code !== "ESRCH" && (error.code !== "EPERM" ||
+        ownedProcesses(active).some(current => current.pid === row.pid && current.start === row.start))) throw error;
+    }
+  }
+}
+
+function joinCommandGroup(active, signal, graceMs) {
+  // runCommand's finally and the signal handler share ownership until the whole
+  // group has stopped. The leader's close event alone cannot release it.
+  return active.stopping ??= (async () => {
+    if (!ownedProcesses(active).length) { await active.done; return; }
+    signalOwnedProcesses(active, signal);
+    const waitUntil = async milliseconds => {
+      const deadline = Date.now() + milliseconds;
+      while (ownedProcesses(active).length && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
+      return !ownedProcesses(active).length;
+    };
+    if (!await waitUntil(graceMs)) {
+      signalOwnedProcesses(active, "SIGKILL");
+      if (!await waitUntil(5000)) throw new Error("Command descendants did not stop");
+    }
+    await active.done;
+  })();
 }
 
 export async function runCommand(command, args, options = {}) {
@@ -32,11 +94,17 @@ export async function runCommand(command, args, options = {}) {
   let timedOut = false;
   let outputExceeded = false;
   let killTimer;
+  let rejectSignal;
+  const signalFailure = new Promise((_, reject) => { rejectSignal = reject; });
+  const signal = kind => {
+    try { signalOwnedProcesses(tracked, kind); }
+    catch (error) { rejectSignal(error); }
+  };
   const timer = setTimeout(() => {
     timedOut = true;
-    signalChildGroup(child, "SIGTERM");
+    signal("SIGTERM");
     killTimer = setTimeout(() => {
-      signalChildGroup(child, "SIGKILL");
+      signal("SIGKILL");
       child.stdout?.destroy();
       child.stderr?.destroy();
     }, options.killGraceMs ?? 5_000);
@@ -48,7 +116,7 @@ export async function runCommand(command, args, options = {}) {
       stdout += chunk;
       if (Buffer.byteLength(stdout) > (options.maxOutputBytes ?? 4 * 1024 * 1024)) {
         outputExceeded = true;
-        signalChildGroup(child, "SIGKILL");
+        signal("SIGKILL");
       }
     }
   });
@@ -59,7 +127,7 @@ export async function runCommand(command, args, options = {}) {
       stderr += chunk;
       if (Buffer.byteLength(stderr) > (options.maxOutputBytes ?? 4 * 1024 * 1024)) {
         outputExceeded = true;
-        signalChildGroup(child, "SIGKILL");
+        signal("SIGKILL");
       }
     }
   });
@@ -68,7 +136,7 @@ export async function runCommand(command, args, options = {}) {
     child.once("close", resolve);
     child.once("error", resolve);
   });
-  const tracked = { child, done, interrupted: false };
+  const tracked = { child, done, interrupted: false, descendants: new Map() };
   activeCommands.add(tracked);
   const stopResourceMonitor = options.resourcePath && child.pid
     ? startCommandResourceMonitor({
@@ -83,8 +151,9 @@ export async function runCommand(command, args, options = {}) {
   let result;
   let commandError;
   let resourceError;
+  let cleanupError;
   try {
-    result = await new Promise((resolve, reject) => {
+    result = await Promise.race([signalFailure, new Promise((resolve, reject) => {
       child.once("error", (error) => reject(options.quiet ? new Error("Command could not start", { cause: error }) : error));
       child.once("close", (code, signal) => {
         if (outputExceeded) {
@@ -103,16 +172,18 @@ export async function runCommand(command, args, options = {}) {
         const suffix = capture && !options.quiet && stderr.trim() ? `: ${stderr.trim()}` : "";
         reject(new Error(`${options.quiet ? "Command" : command} exited with ${detail}${suffix}`));
       });
-    });
+    })]);
   } catch (error) {
     commandError = error;
   } finally {
+    try { await joinCommandGroup(tracked, "SIGTERM", options.killGraceMs ?? 5_000); }
+    catch (error) { cleanupError = error; }
     clearTimeout(timer);
     clearTimeout(killTimer);
     try { stopResourceMonitor?.(); }
     catch (error) { resourceError = error; }
     if (log !== undefined) closeSync(log);
-    activeCommands.delete(tracked);
+    if (!cleanupError) activeCommands.delete(tracked);
   }
   // Opt-in callers can redact captured failures before persisting diagnostics.
   // Keep raw output out of the message, stack and ordinary serialization.
@@ -123,33 +194,20 @@ export async function runCommand(command, args, options = {}) {
   }
   // Let callers finish their own finally blocks. CLI wrappers suppress their
   // top-level rejection while signal cleanup owns process exit.
-  if (commandError && resourceError) {
-    throw new AggregateError([commandError, resourceError], "Command and resource measurement failed");
+  const errors = [commandError, resourceError, cleanupError].filter(Boolean);
+  if (errors.length > 1) {
+    throw new AggregateError(errors, "Command and resource measurement or cleanup failed");
   }
   if (commandError) throw commandError;
   if (resourceError) throw resourceError;
+  if (cleanupError) throw cleanupError;
   return result;
 }
 
 export async function stopActiveCommand(signal, graceMs = 10_000) {
   const stop = async active => {
   active.interrupted = true;
-  signalChildGroup(active.child, signal);
-  const groupAlive = () => {
-    if (process.platform === "win32") return active.child.exitCode === null && active.child.signalCode === null;
-    try { process.kill(-active.child.pid, 0); return true; }
-    catch (error) { if (error.code === "ESRCH") return false; throw error; }
-  };
-  const waitUntil = async milliseconds => {
-    const deadline = Date.now() + milliseconds;
-    while (groupAlive() && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
-    return !groupAlive();
-  };
-  if (!await waitUntil(graceMs)) {
-    signalChildGroup(active.child, "SIGKILL");
-    if (!await waitUntil(5000)) throw new Error("Interrupted command descendants did not stop");
-  }
-  await active.done;
+  await joinCommandGroup(active, signal, graceMs);
   };
   const results = await Promise.allSettled([...activeCommands].map(stop));
   const errors = results.filter(result => result.status === "rejected").map(result => result.reason);

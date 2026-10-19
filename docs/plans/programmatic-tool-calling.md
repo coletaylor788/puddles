@@ -109,7 +109,9 @@ two model requests instead of three and fewer tokens. They were slower in this
 small sample, so the result does not establish a latency improvement.
 
 The tested artifact preserves the released Media image and skill. DEV is stopped
-cleanly. Independent review is clear. The full application suite, TEST, production
+cleanly. The corrected release staging and independent review are complete.
+Release admission waits for the shared controller cleanup fix and a refreshed
+release packet. The reviewed test-runner repair passes local checks. The full application suite, TEST, production
 acceptance, paired source merge, and managed cleanup remain.
 
 ## Agent section
@@ -122,12 +124,23 @@ were recovered without changing runtime behavior. R4 passed on October 18 and
 was stopped through the maintained sandbox-aware stop operation. Its consumed
 request and the earlier failed requests cannot be replayed.
 
-The feature remains outside the release queue while its new release callbacks
-and Mini capacity estimate receive review. The release coordinator owns admission.
-Fresh main inspection found only public documentation and workflow guidance
-changes; the companion main was unchanged. The queue-front rebase must verify
-runtime equivalence again before retaining the DEV-qualified artifact. No TEST
-or production deployment has occurred.
+The first release attempt passed rebase and artifact checks, then stopped before
+any application tests because staging omitted the prepared upstream build output.
+The corrected staging now includes complete `dist` and `dist-runtime` trees,
+including build stamps and embedded runtime dependencies. Their hashes and all
+public and companion package outputs match the retained build. Native read-only
+checks report no build or postbuild work needed. The controller released the lane;
+no TEST or production deployment occurred.
+
+The feature remains outside the queue while the coordinator installs the shared
+controller fix for detached test writers. The exact reviewed application runner
+from `da8c0cfee7ce06c43d1f2e9a262772b1abf0c380` is adopted, with its timeout,
+interruption, exit-race, and process-identity regressions. This changes test
+execution and cleanup, not the retained application artifact. All 55 focused
+runner, lifecycle, native-loop, and fixture checks pass on Node 26.1.0 with normal
+host process access. E2E typechecking and retained integration review pass.
+Refresh installed-tool bindings and affected installed proofs in the release
+packet before admission. The coordinator owns allocation and the full release lane.
 
 ### Scope and acceptance criteria
 
