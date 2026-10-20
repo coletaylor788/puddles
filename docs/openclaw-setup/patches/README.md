@@ -16,8 +16,7 @@ activated gateway. Keep the previous interpreter available for rollback.
 | Patch | Purpose |
 |---|---|
 | `file-lock-stale-reclaim-guard.patch` | Guard stale file-lock recovery |
-| `sessions-yield-block-and-gather.patch` | Block at yield and gather subagent results |
-| `sessions-yield-durable-handoff.patch` | Preserve gathered completion ownership across restart |
+| `native-parent-continuation.patch` | Native parent delivery regression coverage; test-only worker synchronization |
 | `subagent-cross-agent-spawn-fix.patch` | Explicit targeting and inherited tools |
 | `skill-workshop-sandbox-fix.patch` | Skill workshop in sandboxed agents |
 | `imessage-message-part-coalescing.patch` | Selective text, link, and image coalescing |
@@ -455,3 +454,7 @@ path does not authorize service maintenance by itself.
 Production checks are read-only. Never validate by sending a message or running
 a cron that can deliver one. Do not use the built-in updater for this patched
 runtime; it bypasses the cumulative gate, installed rehearsal, and recovery.
+
+## Compaction snapshots and idle maintenance
+
+[Compaction memory and idle maintenance](compaction-memory-idle.md) retains memory-save input independently of the live turn and admits configured idle compaction through native maintenance. [Native parent continuation](native-parent-continuation.md) replaces the retired custom gather patches.
