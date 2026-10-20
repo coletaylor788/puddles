@@ -1,6 +1,6 @@
 # Restore the Household owner relay
 
-**Status:** Production approved; repairing a release toolchain failure
+**Status:** Production approved; repairing an asynchronous test assertion
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
 **Last updated:** 2026-10-20
 
@@ -90,19 +90,42 @@ DEV-only compatibility filter so qualification preserves the programmatic-tool
 settings already released for all tool-enabled agents. Existing agent tool
 permissions and native approvals stay unchanged.
 
-The current artifact passed all 12 managed DEV scenarios. The eighth full
-release passed the unit pool, candidate regressions and all application flow
-scenarios, then stopped before TEST because a companion lint subprocess could
-not find its package manager. Production is healthy and unchanged. The narrow
-repair makes nested workspace scripts use the same explicit package-manager
-launcher as their outer command. An executable regression passes with that
-launcher available and no package-manager shim on PATH. Exact workspace lint passed as well.
-Final review and a fresh release remain required. No application runtime change
-is needed for this repair.
+The current artifact passed all 12 managed DEV scenarios. The tenth full
+release completed 7,182 passing cases, one failure and one skip, then stopped
+before TEST or production deployment. Independent closure confirmed that
+production is healthy and unchanged. The earlier package-manager failure is
+fixed.
+
+The remaining failure is an iMessage test that polls for image dispatch while
+durable admission and media staging run asynchronously. The unchanged test
+passed in one focused reproduction. The test-only correction waits
+for actual dispatch events, deliberately holds media staging, and checks that
+both standalone payloads bypass the coalescing buffer. It preserves the exact
+message and attachment assertions. All 99 focused cases passed, and retained
+review is clear. Source composition and output checks confirmed that the existing runtime artifact is unchanged
+and needs no rebuild. A fresh release remains required.
 
 ## Agent section
 
 ### State
+
+The R10 release is consumed and independently closed. Its full application
+run selected 226 files and finished in 1,143.05 seconds with 7,182 passes,
+one failure and one skip. The failure was
+`monitor.last-route.test.ts`'s standalone URL-preview and image case: the second
+dispatch was not observed before `vi.waitFor`'s polling deadline. A single
+unchanged focused reproduction passed in 990 ms of test time (36.97 seconds
+including transform and import work). A passing reproduction does not establish
+a runtime fix. The maintained coalescing patch now changes only this test to
+observe dispatch-entry promises and controlled media staging, without sleeps
+or longer polling timeouts. Its registered cumulative test remains unchanged.
+Focused validation passed all 99 cases across the routing and coalescing files
+in 67.60 seconds, including transform and import work. The corrected case took
+666 ms. Full patch composition passed, runtime and package outputs were
+unchanged, and build and postbuild readiness both reported clean. The same
+artifact remains eligible for the prior DEV proof while its actual inputs
+match. Retained review is clear. The next release must use a fresh attempt
+and refresh source, configuration and capacity at the front of the queue.
 
 Public branch: `codex/restore-household-owner-relay`. The isolated companion
 worktree uses the same branch. Both were rebased onto the released programmatic
