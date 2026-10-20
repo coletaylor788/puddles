@@ -126,6 +126,16 @@ function validateScenario(scenario) {
   }
 }
 
+export function assertFinalProviderPrompt(request, expect) {
+  const includes = expect.finalPromptIncludes ?? [];
+  const excludes = expect.finalPromptExcludes ?? [];
+  if (includes.length === 0 && excludes.length === 0) return;
+  assert.ok(request, "final provider prompt assertion requires a captured request");
+  const finalPrompt = JSON.stringify(request.messages);
+  for (const text of includes) assert.ok(finalPrompt.includes(text), "expected final provider input missing");
+  for (const text of excludes) assert.ok(!finalPrompt.includes(text), "excluded source text reached final provider input");
+}
+
 export async function runScenario(installedDir, scenario, options = {}) {
   validateScenario(scenario);
   if (scenario.sessionSend && !options.providerFixture) throw new Error("Native session sends require an explicit isolated target provider fixture");
@@ -292,6 +302,7 @@ export async function runScenario(installedDir, scenario, options = {}) {
       let spawnError;
       child.once("error", error => { spawnError = error; });
       trackedChild = trackFixtureProcess(child);
+      await provider?.onGatewayStarted?.({ pid: child.pid, identity: trackedChild.identity });
       await until(() => {
         if (spawnError) throw spawnError;
         return records(join(context.recordingsDir, "imsg-ready.jsonl")).length > readyCount;
@@ -358,9 +369,7 @@ export async function runScenario(installedDir, scenario, options = {}) {
         const prompt = JSON.stringify(requests[requestCount - step.responses.length].messages);
         for (const text of step.expect.promptIncludes) assert.ok(prompt.includes(text), "incoming event missing from real model request");
       }
-      const finalPrompt = JSON.stringify(requests[requestCount - 1].messages);
-      for (const text of step.expect.finalPromptIncludes ?? []) assert.ok(finalPrompt.includes(text), "expected final provider input missing");
-      for (const text of step.expect.finalPromptExcludes ?? []) assert.ok(!finalPrompt.includes(text), "excluded source text reached final provider input");
+      assertFinalProviderPrompt(requests[requestCount - 1], step.expect);
       if (scenario.heartbeat) {
       const firstRequest = requests[requestCount - step.responses.length];
       const offered = firstRequest.tools?.map(t => t.function?.name) ?? [];
