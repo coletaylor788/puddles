@@ -52,17 +52,23 @@ it('preserves unexpected directories, files and symlinks instead of repairing th
   }
 }));
 
-it('keeps non-excluded cache children, their contents and ordinary source changes in the digest', () => fixture(source => {
-  prepareEmptyCacheParent(source, expected);
-  const empty = treeDigest(source, policy), path = join(source, '.cache', 'input');
-  writeFileSync(path, 'first'); const added = treeDigest(source, policy);
-  expect(added).not.toBe(empty);
-  writeFileSync(path, 'second'); const changed = treeDigest(source, policy);
-  expect(changed).not.toBe(added);
-  chmodSync(path, 0o600); const permissions = treeDigest(source, policy);
-  expect(permissions).not.toBe(changed);
-  symlinkSync('../source.ts', join(source, '.cache', 'link'));
-  const linked = treeDigest(source, policy); expect(linked).not.toBe(permissions);
-  writeFileSync(join(source, 'source.ts'), 'changed');
-  expect(treeDigest(source, policy)).not.toBe(linked);
-}));
+it.each([0o022, 0o077])('keeps non-excluded cache children, their contents and ordinary source changes in the digest with umask %s', umask => {
+  const previous = process.umask(umask);
+  try {
+    fixture(source => {
+      prepareEmptyCacheParent(source, expected);
+      const empty = treeDigest(source, policy), path = join(source, '.cache', 'input');
+      writeFileSync(path, 'first'); chmodSync(path, 0o644);
+      const added = treeDigest(source, policy);
+      expect(added).not.toBe(empty);
+      writeFileSync(path, 'second'); const changed = treeDigest(source, policy);
+      expect(changed).not.toBe(added);
+      chmodSync(path, 0o600); const permissions = treeDigest(source, policy);
+      expect(permissions).not.toBe(changed);
+      symlinkSync('../source.ts', join(source, '.cache', 'link'));
+      const linked = treeDigest(source, policy); expect(linked).not.toBe(permissions);
+      writeFileSync(join(source, 'source.ts'), 'changed');
+      expect(treeDigest(source, policy)).not.toBe(linked);
+    });
+  } finally { process.umask(previous); }
+});

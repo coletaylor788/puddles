@@ -1,6 +1,6 @@
 # Restore the Household owner relay
 
-**Status:** Production approved; directory repair validated, fresh staging pending
+**Status:** Production approved; staging passed, test fixture correction validated
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
 **Last updated:** 2026-10-20
 
@@ -104,23 +104,35 @@ The current artifact passed all 12 managed DEV scenarios. The iMessage test
 correction passed all 99 focused cases and independent review. Its source and
 output checks confirmed that the runtime artifact needs no rebuild.
 
-The next staging attempt stopped before the full suite, TEST or production.
-A file-by-file comparison found only a missing empty `.cache` parent on the
-target. Independent closure confirmed unchanged production and preserved the
-partial source. The narrow directory-preparation repair passed all 13 staging integration
-cases and four repository regressions. Independent review is clear. A fresh
-staging attempt remains required.
+The narrow directory-preparation repair passed staging and independent
+verification. The next release stopped in a repository regression before the
+OpenClaw pool, TEST or production. That test assumed a file started with mode
+0644, but the release process created it with mode 0600. The correction sets
+the starting mode explicitly and covers both normal and restrictive umasks.
+All five focused cases passed under each launch umask. Retained review is
+clear and independent closure verified both test processes. Runtime behavior
+and source integrity rules stay unchanged. A fresh release remains required.
 
 ## Agent section
 
 ### State
 
-Stage R12 is consumed and independently failed-closed. The test correction was
-applied, but the exact after-source digest failed before dist replacement,
-repository checkout or callback installation. Metadata comparison reproduced
-both digests and found one difference: an empty `.cache` directory with mode
-0755 existed locally and was absent on the target. All file contents, other
-permissions and links matched. Keep the partial source and history intact.
+Stage R13 passed and is independently closed. Its exact source, output, DEV,
+production and backup checks passed. The earlier Stage R12 failure was an empty
+`.cache` parent present locally and absent on the target; the maintained repair
+resolved that difference without broadening exclusions.
+
+Full R12 is consumed and independently failed-closed. Its original command
+joined with exit 1 before TEST or production. Process retirement, an empty
+queue and unchanged healthy production and backup are verified. The public
+e2e package reported 309 passing cases and one failure:
+`prepared-source-cache.test.ts` changed a file to 0600 when the inherited
+release umask had already created it with that mode. The correction establishes
+0644 explicitly and runs the digest regression under 022 and 077. All content,
+mode, symlink and ordinary-source assertions remain. The five focused cases
+also passed under both launch masks. Independent validation closure retired
+both native owners, and retained review of the correction is clear. Preserve
+the failed release evidence and use a fresh release attempt.
 
 `packages/e2e/src/prepared-source-cache.mjs` validates the explicit absent-parent
 preimage and prepares only that fixed empty directory. Its committed regression
@@ -132,9 +144,9 @@ The maintained tests used the existing package-local Vitest runner after a
 first invocation selected an absent root runner; no maintained test ran in
 that failed invocation. Independent closure retired every test owner and
 retained the 13 passing integration cases without replay. Retained review of
-the complete helper, tests and staging integration is clear. The successor
-packet must bind the exact maintained helper as a staging control before
-transfer. No new application build is needed for this directory preparation.
+the complete helper, tests and staging integration is clear. Stage R13 bound
+and transferred those exact helper bytes. No new application build is needed
+for the directory preparation or the test-only mode correction.
 
 
 The R10 release is consumed and independently closed. Its full application
@@ -272,6 +284,13 @@ guidance and DEV experiments. Include the handoff skill in preparation,
 acceptance, and rollback coverage. The scoped return-grant plugin supplies only the native send permission described above.
 
 ### Validation
+
+Full R12 passed the private toolchain and lint preflights, then stopped in the
+public e2e package after 16.14 seconds. Its 34 files contained 309 passing tests
+and one failing mode-transition assertion. The OpenClaw pool did not run.
+Focused validation passed all five cases under launch umask 022 and all five
+under 077. The native commands joined in 804 ms and 586 ms respectively.
+Both variants retain the content, permission, link and source-change checks.
 
 The seventh full application run failed the harness-native successful-summary
 classification. The corrected table passed all five rows in the focused run.
