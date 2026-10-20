@@ -1,8 +1,8 @@
 # Plan 031: Rocket Money MCP and shared browser authentication
 
-**Status:** Shared-session correction merged
+**Status:** Saved-login DEV checks and application test repair passed; release pending
 **Issue:** [#135](https://github.com/coletaylor788/puddles/issues/135)
-**Last updated:** 2026-10-13
+**Last updated:** 2026-10-20
 
 ## Human section
 
@@ -57,7 +57,7 @@ The shared provider can serve other host integrations. Rocket Money remains a sm
 | Expired | Attempt bounded renewal or login using the host browser's saved login. |
 | Needs interaction | Return `needs_user_login`; the owner completes MFA or a challenge through the desktop viewer. |
 
-The provider owns browser-to-HTTP session synchronization. Start with Chrome's password manager in the private host profile; an external password manager is optional. Unattended autofill and login remain validation items. Authentication is an internal host dependency, not a model-facing tool.
+The provider owns browser-to-HTTP session synchronization. Start with Chrome's password manager in the private host profile; an external password manager is optional. Renewal waits for delayed redirects and autofill, submits an already-filled form at most once on an approved login origin, and returns success only after verifying the pinned account. The browser runs in the owner's desktop login session. MFA and OS prompts still require owner interaction. Authentication is an internal host dependency, not a model-facing tool.
 
 #### Access boundary
 
@@ -95,15 +95,19 @@ Both components run on the trusted host. Prefer a shared auth library in the hos
 
 Other financial writes, scheduled automation and a general integration framework remain outside this design. The [future-scope appendix](031-rocket-money-deferred.md) retains follow-on work. Approval to ship activates the required synthetic regressions and release checks.
 
+The release command must stop its test processes before recovery can start. Test workers and fixture gateways can create separate process groups and outlive their parents. Both the controller and application runner therefore use one small launch helper. Before a workload starts, the helper records its process ID and start time in every supervising scope. A short gate process waits for that durable registration, then replaces itself with the workload. Target Node preloads run only in the workload. The controller package includes the helper and gate; it needs no application runtime or background supervisor.
+
+Cleanup closes the scopes to new launches, joins every registered writer, and then removes ownership records. Incomplete registration or failed joining retains the scope and test state for recovery. An incomplete launch must not prevent stopping other known writers. Recovery matches every recorded process ID and start time, including after an intermediate worker exits. It refuses a changed original identity. A disappearing group can report a permission error on macOS; recheck the target before treating that error as an exit race. A live target's permission error remains a failure. These corrections preserve the existing resource limits and financial boundaries. Application-owned sequential checks can declare their calculated timeout through the existing suite extension; omitted values retain the current default.
+
 ### Status
 
 **Approval:** Production approved.
 **Approval reference:** Owner instruction, “this design is approved, implement and ship it, giving me directions to login when ready”; subsequent approval covers publication and retained independent review.
 **Scope:** The approved five tools, shared host authentication, private main skill and desktop login shortcut. No live financial mutations during validation.
 
-The shared-session correction is merged. The adapter shares one MCP connection across native plugin instances and module reloads, preventing competing owners of the same browser profile. It serializes dispatch, configuration changes, and shutdown while retaining per-call authorization and content guards.
+The shared-session correction is merged. The saved-login timing correction and packaged synthetic check passed retained review and local validation. Renewal waits for delayed redirects and autofill, then verifies the pinned account before financial work. The check requires one connection across two native plugin instances and four calls.
 
-The committed packaged check exercises two native plugin instances and requires one connection across four synthetic status calls. Deployment identities, operator setup, and account readiness belong in private release records. Unattended login and renewal remain validation items.
+The refreshed candidate passed DEV acceptance. The latest release stopped in the application suite on an Active Memory custom-tool retry test, before TEST or production deployment. Production is unchanged. A test-only repair controls the retry clock and joins cleanup while preserving the configured timeout and success assertions. The repaired case and all 226 tests in its file passed. Refresh the affected source proofs before returning to the release queue. Account readiness remains a separate owner login check.
 
 ## Agent section
 
@@ -113,6 +117,8 @@ The committed packaged check exercises two native plugin instances and requires 
 - The implementation uses the shared `browser-auth` Python package, official MCP SDK and a main-only OpenClaw stdio adapter. The adapter retains the host process across turns and applies outbound LeakGuard plus inbound classification and redaction.
 - Main's skill and owner-specific finance rules remain private runtime content, managed outside the repository.
 - Shared-session correction shipped in [PR #261](https://github.com/coletaylor788/puddles/pull/261), merge `5ef80fdc542227803895e19a42f61ca16be5bc4f`. Native plugin runtime stores are scoped to managed instances. Keep the MCP bridge in one process slot, retain per-call authorization and guards, and serialize dispatch, account changes and shutdown. Regression coverage uses distinct native plugin instances and the packaged MCP subprocess.
+- Earlier saved-login DEV attempts exposed process ownership and build discovery defects. Their corrections are reviewed; the process ownership changes are now in main. The refreshed candidate passed DEV. Historical attempts remain consumed; the latest failed release is independently closed with production unchanged.
+- Refreshed public base: `c2293925046120f612da362d18b7e0e125753b2e`. Programmatic-tool patches and tests stay present. The current repair changes only the Active Memory retry fixture and related documentation. Its full test file remains registered in the cumulative application suite.
 
 ### Scope and acceptance criteria
 
@@ -141,15 +147,25 @@ The committed packaged check exercises two native plugin instances and requires 
 
 ### Validation
 
+The renewal regression covers delayed redirects, delayed autofill, delayed session completion, silent success, missing credentials, challenges, ambiguous forms, unexpected origins and identity/provider failures. Only an expired-session result permits another verification attempt. The form is never submitted twice during one recovery. Synthetic browser checks retain cookie synchronization and restart coverage.
+
 The [validation appendix](031-rocket-money-deferred.md) retains the validation scope. The shared-session fix passed 15 focused plugin tests, typechecking, packaging, and retained independent review. The committed `openclaw-plugins/rocket-money/scripts/check-shared-session.mjs` exercises the packaged adapter and real MCP subprocess with two native instances, four synthetic calls, and one connection. It uses fresh state and does not access a live account.
 
 The synthetic registry check does not establish authenticated account access. Keep environment acceptance and account readiness in private release records. Financial write validation remains fixture-only.
+
+Release regressions cover timeout, cancellation, unexpected worker exit, launcher death before and after registration, missing or partial gate payloads, closing scopes, failed observer persistence, and restart after the original process exits. Known registered writers must stop even when another intent is incomplete. Stale records sharing a PID must not replace its current identity. Node preload regression requires no execution in an unreleased gate and exactly one execution in the released workload. Packaging proof runs the gate from an isolated copy of the runtime manifest. A nested regression requires explicit completion receipts from intentional prelaunch failures so installer ownership stays intact and skipped child tests cannot count as passing. Installer verification uses the exact published Git commit and tree, which the compatibility tests require.
+
+Runner regressions cover a leader exiting before its TERM-resistant descendant, vanished and live signal targets, and a live child that never emits a close event. Interruption tests verify that fixtures exit while their state still exists, before the wrapper removes it. A failed join keeps state while still attempting registered native fixture cleanup. Sanitized fixture environments forward only the reserved ownership variable in addition to their existing allowlist. Run the full independent release package suite, focused application lifecycle tests, and affected private installed tests. Retain independent review of the complete source and installation packet. Changed controller and test-runner inputs invalidate their prior packet bindings and affected acceptance proofs. Optional companion check deadlines are positive integers bounded at six hours; regression coverage verifies forwarding, invalid values and the unchanged default.
 
 ### Rollout and rollback
 
 Use the installed release controller for deployment and rollback. Verify whether an accepted build already contains the correction before scheduling another release. Preserve the controller-owned recovery backup and private account state. Disable the tools if authentication isolation or result verification fails; never share the authenticated browser with an agent. Keep operator login setup bound to the installed runtime location.
 
 ### Review log
+
+- 2026-10-20: Retained review cleared the test-only retry repair. The repaired case and all 226 tests in its file passed, with test processes joined. The full release stopped before TEST; production remains unchanged. Refreshed release proofs are still required.
+
+- 2026-10-19: Retained review cleared the renewal candidate and guarded staging controls. Integration with the newly merged programmatic-tool base requires a current-diff recheck and fresh artifact qualification.
 
 - 2026-10-06: Selected trusted-host execution with model-visible tools only.
 - 2026-10-07: Recorded the proposal in repository docs; separated shared browser authentication from the Rocket Money-specific MCP client. Organized the review surface around the diagram, component ownership, request flow and boundaries. Consolidated concise MCP contracts into the main design; made an external password manager optional.
@@ -163,3 +179,5 @@ Use the installed release controller for deployment and rollback. Verify whether
 - [x] Merge the shared-session correction with retained independent review.
 - [x] Commit packaged coverage for distinct native plugin instances sharing one MCP connection.
 - [x] Keep deployment and account readiness in private release coordination.
+- [ ] Build and qualify the refreshed saved-login candidate through DEV, TEST and production.
+- [ ] Provide login directions after the deployed renewal correction is verified.

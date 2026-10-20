@@ -578,6 +578,7 @@
   "candidateTests": [
     "tests/candidate.gmail-approval.test.ts",
     "tests/candidate.main-conversation.test.ts",
-    "tests/candidate.household-approval.test.ts"
+    "tests/candidate.household-approval.test.ts",
+    "tests/candidate.application-source.test.ts"
   ]
 }

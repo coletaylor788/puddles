@@ -1,4 +1,4 @@
-# Join memory fixture cleanup
+# Control memory fixture timing and cleanup
 
 This test-only patch follows the cold-recall regressions on OpenClaw v2026.9.6.
 Two fixtures can return a hook result before their simulated embedded run has
@@ -13,6 +13,13 @@ fixture deliberately holds cleanup after terminal polling wins, then releases
 and joins it before leaving the case. Existing timing, output, and rotated
 transcript assertions stay intact. No production timeout or teardown retry
 changes are made.
+
+The custom-tool retry fixture also uses a fake clock. It waits for the failed
+transcript write, advances the intended 75 millisecond retry delay, then waits
+for the successful write and recall result. Slow filesystem operations no longer
+consume its one-second recall budget. Its success and context assertions remain
+unchanged. Teardown releases the retry and joins the recall before shared state
+is reset.
 
 The runtime cold-recall override is retired. These joins remain necessary for
 the retained delayed-provider and cleanup fixtures. The cumulative manifest
