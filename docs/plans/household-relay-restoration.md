@@ -1,8 +1,8 @@
 # Restore the Household owner relay
 
-**Status:** Production approved; test correction validated, preparing a fresh release
+**Status:** Production approved; repairing a release toolchain failure
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
-**Last updated:** 2026-10-19
+**Last updated:** 2026-10-20
 
 ## Human section
 
@@ -90,16 +90,15 @@ DEV-only compatibility filter so qualification preserves the programmatic-tool
 settings already released for all tool-enabled agents. Existing agent tool
 permissions and native approvals stay unchanged.
 
-The current artifact passed all 12 managed DEV scenarios. Its seventh full
-release stopped before TEST or production on an Active Memory classification
-test. The test expected a successful result, but its real one-second deadline
-expired while recall completed. Production and the backup remain unchanged.
-Independent review cleared a test-only correction that controls the clock for
-all five classification cases and joins recall cleanup. All five focused cases
-and all 226 tests in the affected file pass, including the separate deadline
-regressions. The correction keeps the timeout, assertions, and runtime code
-unchanged. A fresh complete application run, TEST, production acceptance, source
-merge, and cleanup remain required.
+The current artifact passed all 12 managed DEV scenarios. The eighth full
+release passed the unit pool, candidate regressions and all application flow
+scenarios, then stopped before TEST because a companion lint subprocess could
+not find its package manager. Production is healthy and unchanged. The narrow
+repair makes nested workspace scripts use the same explicit package-manager
+launcher as their outer command. An executable regression passes with that
+launcher available and no package-manager shim on PATH. Exact workspace lint passed as well.
+Final review and a fresh release remain required. No application runtime change
+is needed for this repair.
 
 ## Agent section
 
@@ -408,3 +407,23 @@ affect validation only; the application artifact is unchanged.
 - [x] Rebuild with corrected source discovery and pass fresh DEV tests.
 - [x] Complete independent closure of the replacement DEV run.
 - [ ] Complete managed TEST, PROD, source merge, and cleanup.
+
+### Eighth full release and nested package-manager repair
+
+The eighth attempt is consumed and independently closed. The core pool passed
+7,183 cases with one skip across 226 files. Candidate checks passed 22 cases,
+and all 16 application scenarios passed. The subsequent companion lint command
+failed with exit127 because its shell invoked a package-manager name that was
+not exposed by the pinned toolchain. The installed controller stopped TEST,
+retired its processes and cleared the ticket. Production runtime, configuration,
+backup and normal intake were verified unchanged and healthy.
+
+The companion's lint and test scripts now use the explicit launcher already
+used by its build command. The registered executable toolchain regression runs
+both authored scripts with no package-manager shim on PATH, checks both workspace
+groups and verifies that a failed workspace test stops the application runner.
+It passed under a bounded native process. Exact companion lint under that same
+restricted PATH also passed. The successor must perform the same preflight
+before the full application pool. Reuse only proofs whose actual inputs still
+match; do not replay the consumed release or change runtime output merely to
+refresh source metadata.
