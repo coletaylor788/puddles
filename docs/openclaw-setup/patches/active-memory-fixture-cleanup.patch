@@ -168,7 +168,37 @@ diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/i
    });
  
    it.each([
-@@ -4921,6 +4992,7 @@
+@@ -4769,6 +4840,9 @@
+       status: "ok",
+     },
+   ])("classifies grounded harness-native recall: $name", async (testCase) => {
++    // Outcome classification does not depend on wall-clock filesystem latency.
++    vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
++    const pendingRecall = await trackRecallRun();
+     testing.setMinimumTimeoutMsForTests(1);
+     testing.setSetupGraceTimeoutMsForTests(0);
+     registerPluginConfig({ timeoutMs: 1_000, toolsAllow: ["memory_search"], logging: true });
+@@ -4817,10 +4891,15 @@
+       },
+     );
+ 
+-    const result = await runPromptBuild(
+-      { prompt: "what food do i usually order? harness evidence" },
+-      { sessionKey },
+-    );
++    let result: Awaited<ReturnType<typeof runPromptBuild>>;
++    try {
++      result = await runPromptBuild(
++        { prompt: "what food do i usually order? harness evidence" },
++        { sessionKey },
++      );
++    } finally {
++      await pendingRecall();
++    }
+ 
+     if (testCase.status === "ok") {
+       const context = requirePrependContext(result);
+@@ -4921,6 +5000,7 @@
        registerPluginConfig({ timeoutMs, setupGraceTimeoutMs, logging: true });
        const providerReady = createDeferred<void>();
        let readinessTimer: ReturnType<typeof setTimeout> | undefined;
@@ -176,7 +206,7 @@ diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/i
        hoisted.getActiveMemorySearchManager.mockImplementationOnce(async () => {
          readinessTimer = setTimeout(() => providerReady.resolve(), readyAfterMs);
          await providerReady.promise;
-@@ -4963,7 +5035,18 @@
+@@ -4963,7 +5043,18 @@
        } finally {
          clearTimeout(readinessTimer);
          providerReady.resolve();
@@ -195,7 +225,7 @@ diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/i
      },
    );
  
-@@ -5057,28 +5140,55 @@
+@@ -5057,28 +5148,55 @@
      seedSession(sessionKey, "s-terminal-unavailable-then-diagnostic", 0);
      const warning = "Memory search is unavailable due to an embedding/provider error.";
      const action = "Check the embedding provider configuration, then retry memory_search.";
@@ -268,7 +298,7 @@ diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/i
  
      expectPrependContextContains(result, unavailableRecallContext);
      const infoLines = vi
-@@ -5095,6 +5205,8 @@
+@@ -5095,6 +5213,8 @@
    it.each([false, true])(
      "uses configured memory evidence from a rotated embedded transcript (stale poll: %s)",
      async (stalePoll) => {
@@ -277,7 +307,7 @@ diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/i
        testing.setMinimumTimeoutMsForTests(1);
        testing.setSetupGraceTimeoutMsForTests(0);
        registerPluginConfig({
-@@ -5104,6 +5216,16 @@
+@@ -5104,6 +5224,16 @@
        });
        const sessionKey = "agent:main:rotated-memory-evidence";
        seedSession(sessionKey, "s-rotated-memory-evidence", 0);
@@ -294,7 +324,7 @@ diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/i
        const cleanupStarted = createDeferred<void>();
        const releaseCleanup = createDeferred<void>();
        const watcherStopped = createDeferred<void>();
-@@ -5118,6 +5240,7 @@
+@@ -5118,6 +5248,7 @@
              const page = await readDelta(params);
              if (!heldRead && page.kind === "page" && page.events.length > 0) {
                heldRead = true;
@@ -302,7 +332,7 @@ diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/i
                staleReadStarted.resolve();
                await releaseStaleRead.promise;
              }
-@@ -5130,6 +5253,7 @@
+@@ -5130,6 +5261,7 @@
          "recall cleanup fixture",
        );
        hoisted.cleanupSessionLifecycleArtifacts.mockImplementationOnce(async (params) => {
@@ -310,7 +340,7 @@ diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/i
          cleanupStarted.resolve();
          await releaseCleanup.promise;
          return await cleanup(params);
-@@ -5141,65 +5265,79 @@
+@@ -5141,65 +5273,79 @@
            ...watch,
            stop() {
              watch.stop();
@@ -430,7 +460,7 @@ diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/i
          await cleanupStarted.promise;
          releaseStaleRead.resolve();
          // Drain continuations of the old read after execution has completed;
-@@ -5213,13 +5351,27 @@
+@@ -5213,13 +5359,27 @@
        } finally {
          releaseStaleRead.resolve();
          releaseCleanup.resolve();
