@@ -1,6 +1,6 @@
 # Restore the Household owner relay
 
-**Status:** Production approved; staging passed, test fixture correction validated
+**Status:** Production approved; companion repairs validated, refreshed DEV pending
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
 **Last updated:** 2026-10-19
 
@@ -100,22 +100,56 @@ DEV-only compatibility filter so qualification preserves the programmatic-tool
 settings already released for all tool-enabled agents. Existing agent tool
 permissions and native approvals stay unchanged.
 
-The current artifact passed all 12 managed DEV scenarios. The iMessage test
-correction passed all 99 focused cases and independent review. Its source and
-output checks confirmed that the runtime artifact needs no rebuild.
+The preceding artifact passed all 12 managed DEV scenarios. The iMessage test
+correction passed all 99 focused cases and independent review. Those test-only
+source changes preserved the runtime output.
 
-The directory-preparation and file-mode corrections passed staging and focused
-validation. The latest release stopped before TEST or production on one cleanup
-test, with 310 repository cases passing. That test checks shared process records
-while other workers may be starting. The correction checks a supervisor owned
-by the test after its children join, and preserves checks that real supervising
-scopes remain open. All ten focused cleanup cases passed with an unrelated
-pending launch held throughout the run. Retained review is clear. Runtime
-behavior and source integrity rules stay unchanged. A fresh release is required.
+The latest release passed 311 public tests, 7,183 OpenClaw tests with one skip,
+and all 22 candidate tests. It then stopped on five companion-suite failures
+before TEST or production. The fixes align the approval-routing expectation,
+refresh two exact patch digests, preserve the denied tool set in canonical order,
+and resolve missing Corepack beside the selected Node executable. Strict parity,
+toolchain checks and the complete application gate remain required. Production
+and backup are unchanged, and all release processes retired.
+
+The configuration ordering correction changes packaged bytes. Rebuild the
+affected output and renew installed DEV qualification before release. The
+complete companion suite will run early to catch integration failures before
+the expensive OpenClaw pool. A fresh release attempt is required.
+
+The corrected companion suite passed locally: 429 passes, no failures and 16
+skips. Independent review is clear. A complete existing Node/Corepack pair is
+available, so the successor explicitly selects it without installing new tools.
+The changed packaged configuration still needs a fresh artifact and DEV proof.
 
 ## Agent section
 
 ### State
+
+Full R14 is consumed and independently closed. Public e2e reported 34 files and
+311 tests passing. OpenClaw reported 226 files, 7,183 passes and one skip. The
+candidate suite passed 13 files and 22 tests. The companion suite reported 424
+passes, five failures and 16 skips. TEST and production deployment were not
+reached. The queue is empty; production and backup are unchanged.
+
+The companion corrections keep Main-only current approval routing and explicit
+support for the valid earlier shared route. Two manifest digests must match the
+already reviewed public test corrections. The migration parity failures compare
+the same eight denied tools in different order; canonicalize the shared list and
+deployment reconciler without removing a deny or relaxing comparison. Extend
+the existing reconciliation regression to preserve an unrelated deny and remain
+idempotent. The selected Node executable lacks adjacent Corepack, so resolve
+the supported host toolchain explicitly rather than weakening its version check.
+Complete companion validation passed with 429 passes and 16 skips. The original
+command joined successfully in 52.44 seconds, and independent closure verified
+both process owners retired. All five preceding failures passed. The FaceTime
+packaging check and four SDK cases also passed after the local request supplied
+the same prepared-source aliases as the maintained application runner. Retained
+review is clear. The successor suite and DEV commands will bind an existing
+complete Node 26.1.0/Corepack 0.36.0 pair with exact identity checks.
+The packaged configuration changes invalidate the previous artifact identity
+and affected installed DEV proof. Unchanged compiled inputs may still be reused
+through the maintained incremental builder.
 
 Stage R14 passed and is independently closed. Source, output, DEV, production
 and backup checks passed. Full R13 stopped before TEST or production. The public
