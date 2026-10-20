@@ -2513,11 +2513,12 @@ diff --git a/test/vitest/vitest.database-worker-core-paths.mjs b/test/vitest/vit
 index 9d89e2200ef..cf5f938d11c 100644
 --- a/test/vitest/vitest.database-worker-core-paths.mjs
 +++ b/test/vitest/vitest.database-worker-core-paths.mjs
-@@ -1,5 +1,7 @@
+@@ -1,5 +1,8 @@
  // These consumers need the host-owned SQLite broker, which runs in forked processes.
  export const databaseWorkerCoreTestFiles = [
 +  "src/agents/session-maintenance/compaction-memory-jobs.test.ts",
 +  "src/agents/session-maintenance/compaction-memory.test.ts",
++  "src/agents/session-maintenance/compaction-memory.capture.test.ts",
    "src/config/sessions/disk-budget.physical-usage.test.ts",
    "src/agents/agent-bundle-mcp-requester-connect.read.test.ts",
    "src/agents/mcp-oauth-provider.read.test.ts",
@@ -3712,10 +3713,9 @@ index 00000000000..6f90f10c40d
 +});
 diff --git a/src/agents/session-maintenance/compaction-memory.ts b/src/agents/session-maintenance/compaction-memory.ts
 new file mode 100644
-index 00000000000..59b8e4b75b2
 --- /dev/null
 +++ b/src/agents/session-maintenance/compaction-memory.ts
-@@ -0,0 +1,304 @@
+@@ -0,0 +1,319 @@
 +import crypto from "node:crypto";
 +import path from "node:path";
 +import { runCompactionMemorySnapshot } from "../../auto-reply/reply/agent-runner-memory.js";
@@ -3915,6 +3915,12 @@ index 00000000000..59b8e4b75b2
 +  return state.runner;
 +}
 +
++// Durable plugin state rejects undefined values, including optional object fields.
++// Keep every supplied policy constraint while omitting only absent fields.
++function definedFields<T extends object>(value: T): T {
++  return Object.fromEntries(Object.entries(value).filter(([, field]) => field !== undefined)) as T;
++}
++
 +/** Await retention only. Its separate root owns inference after the hook returns. */
 +export async function captureCompactionMemory(ctx: AgentHarnessHookContext): Promise<void> {
 +  const cfg = ctx.config ?? getRuntimeConfig();
@@ -3984,7 +3990,16 @@ index 00000000000..59b8e4b75b2
 +      provider,
 +      model,
 +      contextTokens,
-+      policy: ctx.memorySavePolicy,
++      ...(ctx.memorySavePolicy
++        ? {
++            policy: {
++              ...definedFields(ctx.memorySavePolicy),
++              ...(ctx.memorySavePolicy.conversationToolPolicy
++                ? { conversationToolPolicy: definedFields(ctx.memorySavePolicy.conversationToolPolicy) }
++                : {}),
++            },
++          }
++        : {}),
 +      ...((ctx.memorySaveAuth?.authProfileId ?? entry.authProfileOverride)
 +        ? { authProfileId: ctx.memorySaveAuth?.authProfileId ?? entry.authProfileOverride }
 +        : {}),
@@ -4805,4 +4820,96 @@ new file mode 100644
 +  expect(scheduled).toHaveBeenCalledOnce();
 +  expect(scheduled.mock.calls[0][0].agentHarnessId).toBe("configured-runtime");
 +  expect(scheduled.mock.calls[0][0].nativeIdleBinding).toBeUndefined();
++});
+diff --git a/src/agents/session-maintenance/compaction-memory.capture.test.ts b/src/agents/session-maintenance/compaction-memory.capture.test.ts
+new file mode 100644
+--- /dev/null
++++ b/src/agents/session-maintenance/compaction-memory.capture.test.ts
+@@ -0,0 +1,87 @@
++import { afterEach, expect, it, vi } from "vitest";
++import { SessionManager } from "../sessions/session-manager.js";
++import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
++import { resolveSessionStorePathForScope } from "../../config/sessions/session-store-path.js";
++import { waitForSessionTranscriptProjection } from "../../config/sessions/session-transcript-reconcile.js";
++import type { OpenClawConfig } from "../../config/types.openclaw.js";
++import { createCorePluginStateKeyedStore } from "../../plugin-state/plugin-state-store.js";
++import { drainGlobalSingletonLifecycleState } from "../../shared/global-singleton.js";
++import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
++import { captureCompactionMemory } from "./compaction-memory.js";
++import { readCompactionMemorySnapshot, type CompactionMemoryRecord } from "./compaction-memory-jobs.js";
++
++// Exercise real source selection, bounded hydration and durable storage. A missing
++// runtime registry deliberately leaves the retained job pending, without inference.
++vi.mock("../../plugins/runtime.js", async (original) => ({
++  ...(await original<object>()),
++  getPluginRegistryForContext: () => undefined,
++}));
++vi.mock("../../auto-reply/reply/agent-runner-memory.js", () => ({
++  runCompactionMemorySnapshot: () => { throw new Error("This capture test must never invoke inference"); },
++}));
++afterEach(async () => { await drainGlobalSingletonLifecycleState("close"); });
++
++it.each([
++  {kind: "host", sparsePolicy: false},
++  {kind: "native", sparsePolicy: false},
++  {kind: "host", sparsePolicy: true},
++  {kind: "native", sparsePolicy: true},
++])("retains actual $kind history with sparse policy $sparsePolicy", async ({kind, sparsePolicy}) => {
++  await withOpenClawTestState({label: "compaction-capture-real-store"}, async (state) => {
++    const harness = kind === "native" ? "claude-cli" : "synthetic";
++    const config: OpenClawConfig = {
++      agents: {defaults: {
++        workspace: state.workspaceDir,
++        sandbox: {mode: "off"},
++        compaction: {memoryFlush: {enabled: true, compactionHooks: [harness]}},
++      }},
++    };
++    await state.writeConfig(config);
++    const identity = {agentId: "main", sessionKey: "agent:main:capture", sessionId: "capture-source"};
++    const scope = {...identity, storePath: resolveSessionStorePathForScope(identity, config)};
++    await upsertSessionEntryCore(scope, {
++      sessionId: identity.sessionId, updatedAt: 1,
++      agentHarnessId: harness, modelProvider: "synthetic", model: "model", contextTokens: 256000,
++    });
++    const source = SessionManager.open(scope, state.workspaceDir);
++    source.appendMessage({role: "user", content: "Retain the Cedar preference.", timestamp: 1});
++    const toolResult = {role: "toolResult" as const, toolCallId: "read-1", toolName: "read",
++      content: [{type: "text" as const, text: "Cedar preference is maple-17."}], isError: false, timestamp: 2};
++    if (kind === "host") source.appendMessage(toolResult);
++    await waitForSessionTranscriptProjection(scope);
++    const context = {
++      config, ...identity, memorySaveHarnessId: harness,
++      modelProviderId: "synthetic", modelId: "model", contextTokenBudget: 256000,
++      ...(sparsePolicy ? {memorySavePolicy: {
++        runtimePolicySessionKey: identity.sessionKey,
++        chatType: undefined, groupId: undefined, agentAccountId: undefined,
++        conversationToolPolicy: {allow: ["read"], alsoAllow: undefined, deny: ["exec"]},
++      }} : {}),
++      ...(kind === "native" ? {memorySaveEntries: [
++        ...source.getEntries(),
++        {type: "message", id: "native-tool-only", parentId: null, timestamp: new Date(2).toISOString(), message: toolResult},
++      ]} : {}),
++    };
++    if (kind === "native") expect(JSON.stringify(source.getEntries())).not.toContain("maple-17");
++    await captureCompactionMemory(context);
++    const store = createCorePluginStateKeyedStore<CompactionMemoryRecord>({ownerId: "core:compaction-memory", namespace: "snapshots", retention: "retained"});
++    const jobs = (await store.entries()).map(r => r.value).filter(r => r.kind === "job");
++    expect(jobs).toHaveLength(1);
++    const job = jobs[0]!;
++    expect(job).toMatchObject({status: "pending", attempts: 0, source: {...identity, harnessId: harness, contextTokens: 256000}});
++    if (sparsePolicy) {
++      expect(job.source.policy).toEqual({runtimePolicySessionKey: identity.sessionKey,
++        conversationToolPolicy: {allow: ["read"], deny: ["exec"]}});
++    } else {
++      expect(Object.hasOwn(job.source, "policy")).toBe(false);
++    }
++    const snapshot = await readCompactionMemorySnapshot(store, job);
++    expect(snapshot).toEqual(expect.arrayContaining([
++      expect.objectContaining({type: "message", message: expect.objectContaining({
++        role: "toolResult", content: [{type: "text", text: "Cedar preference is maple-17."}],
++      })}),
++    ]));
++    await captureCompactionMemory(context);
++    expect((await store.entries()).filter(r => r.value.kind === "job")).toHaveLength(1);
++  });
 +});
