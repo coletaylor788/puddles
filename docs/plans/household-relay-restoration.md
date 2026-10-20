@@ -1,6 +1,6 @@
 # Restore the Household owner relay
 
-**Status:** Production approved; repairing an asynchronous test assertion
+**Status:** Production approved; directory repair validated, fresh staging pending
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
 **Last updated:** 2026-10-20
 
@@ -75,6 +75,16 @@ extra Household question, require no Main peer reentry, then separately verify a
 user turn after delivery. They do not simulate concurrent user steering or claim
 deterministic prevention of model mistakes.
 
+#### Staging source
+
+Local test runs may create an empty `.cache` parent whose `vitest` child is
+excluded from the prepared-source digest. Staging explicitly prepares that
+parent only when the reviewed plan requires an absent directory with mode 0755.
+It checks source ownership, consumers, the original digest and the absence
+preimage before preparation, then requires the exact final source digest.
+Existing directories, files, symlinks and other permissions are rejected.
+All non-excluded cache children remain part of the integrity check.
+
 ### Status
 
 **Approval:** Production approved. **Approval reference:** "Approved to restore",
@@ -90,24 +100,42 @@ DEV-only compatibility filter so qualification preserves the programmatic-tool
 settings already released for all tool-enabled agents. Existing agent tool
 permissions and native approvals stay unchanged.
 
-The current artifact passed all 12 managed DEV scenarios. The tenth full
-release completed 7,182 passing cases, one failure and one skip, then stopped
-before TEST or production deployment. Independent closure confirmed that
-production is healthy and unchanged. The earlier package-manager failure is
-fixed.
+The current artifact passed all 12 managed DEV scenarios. The iMessage test
+correction passed all 99 focused cases and independent review. Its source and
+output checks confirmed that the runtime artifact needs no rebuild.
 
-The remaining failure is an iMessage test that polls for image dispatch while
-durable admission and media staging run asynchronously. The unchanged test
-passed in one focused reproduction. The test-only correction waits
-for actual dispatch events, deliberately holds media staging, and checks that
-both standalone payloads bypass the coalescing buffer. It preserves the exact
-message and attachment assertions. All 99 focused cases passed, and retained
-review is clear. Source composition and output checks confirmed that the existing runtime artifact is unchanged
-and needs no rebuild. A fresh release remains required.
+The next staging attempt stopped before the full suite, TEST or production.
+A file-by-file comparison found only a missing empty `.cache` parent on the
+target. Independent closure confirmed unchanged production and preserved the
+partial source. The narrow directory-preparation repair passed all 13 staging integration
+cases and four repository regressions. Independent review is clear. A fresh
+staging attempt remains required.
 
 ## Agent section
 
 ### State
+
+Stage R12 is consumed and independently failed-closed. The test correction was
+applied, but the exact after-source digest failed before dist replacement,
+repository checkout or callback installation. Metadata comparison reproduced
+both digests and found one difference: an empty `.cache` directory with mode
+0755 existed locally and was absent on the target. All file contents, other
+permissions and links matched. Keep the partial source and history intact.
+
+`packages/e2e/src/prepared-source-cache.mjs` validates the explicit absent-parent
+preimage and prepares only that fixed empty directory. Its committed regression
+covers restrictive umask, unexpected entries and unchanged integrity coverage
+for cache children and ordinary source. Fresh staging copies these maintained
+bytes and retains exact before and after digest checks. No cache exclusion is
+broadened. All 13 staging integration cases and four maintained helper cases passed.
+The maintained tests used the existing package-local Vitest runner after a
+first invocation selected an absent root runner; no maintained test ran in
+that failed invocation. Independent closure retired every test owner and
+retained the 13 passing integration cases without replay. Retained review of
+the complete helper, tests and staging integration is clear. The successor
+packet must bind the exact maintained helper as a staging control before
+transfer. No new application build is needed for this directory preparation.
+
 
 The R10 release is consumed and independently closed. Its full application
 run selected 226 files and finished in 1,143.05 seconds with 7,182 passes,
