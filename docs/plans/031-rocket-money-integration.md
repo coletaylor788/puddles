@@ -1,8 +1,8 @@
 # Plan 031: Rocket Money MCP and shared browser authentication
 
-**Status:** Saved-login correction reviewed; refreshed build and qualification pending
+**Status:** Saved-login DEV checks and application test repair passed; release pending
 **Issue:** [#135](https://github.com/coletaylor788/puddles/issues/135)
-**Last updated:** 2026-10-19
+**Last updated:** 2026-10-20
 
 ## Human section
 
@@ -107,7 +107,7 @@ Cleanup closes the scopes to new launches, joins every registered writer, and th
 
 The shared-session correction is merged. The saved-login timing correction and packaged synthetic check passed retained review and local validation. Renewal waits for delayed redirects and autofill, then verifies the pinned account before financial work. The check requires one connection across two native plugin instances and four calls.
 
-The shared process cleanup fixes are now in main. The candidate is rebased onto the newly released programmatic-tool support and retains its behavior and tests. That changes prepared application inputs, so the prior artifact and DEV results cannot qualify this source. Rebuild the candidate, repeat DEV acceptance, then use the normal TEST and production lane. Account readiness remains a separate owner login check.
+The refreshed candidate passed DEV acceptance. The latest release stopped in the application suite on an Active Memory custom-tool retry test, before TEST or production deployment. Production is unchanged. A test-only repair controls the retry clock and joins cleanup while preserving the configured timeout and success assertions. The repaired case and all 226 tests in its file passed. Refresh the affected source proofs before returning to the release queue. Account readiness remains a separate owner login check.
 
 ## Agent section
 
@@ -117,8 +117,8 @@ The shared process cleanup fixes are now in main. The candidate is rebased onto 
 - The implementation uses the shared `browser-auth` Python package, official MCP SDK and a main-only OpenClaw stdio adapter. The adapter retains the host process across turns and applies outbound LeakGuard plus inbound classification and redaction.
 - Main's skill and owner-specific finance rules remain private runtime content, managed outside the repository.
 - Shared-session correction shipped in [PR #261](https://github.com/coletaylor788/puddles/pull/261), merge `5ef80fdc542227803895e19a42f61ca16be5bc4f`. Native plugin runtime stores are scoped to managed instances. Keep the MCP bridge in one process slot, retain per-call authorization and guards, and serialize dispatch, account changes and shutdown. Regression coverage uses distinct native plugin instances and the packaged MCP subprocess.
-- Earlier saved-login DEV attempts exposed process ownership and build discovery defects. Their corrections are reviewed; the process ownership changes are now in main. Historical attempts remain consumed. The current branch keeps the shared source-index preparation correction and requires a refreshed artifact plus fresh DEV acceptance after integrating main.
-- Refreshed public base: `cf7f8828661867688fc1a33b30e5865da8b51c4f`. Rebase conflicts retained the identical merged cleanup implementation and its regressions. Programmatic-tool patches and tests stay present. No financial behavior changed during conflict resolution.
+- Earlier saved-login DEV attempts exposed process ownership and build discovery defects. Their corrections are reviewed; the process ownership changes are now in main. The refreshed candidate passed DEV. Historical attempts remain consumed; the latest failed release is independently closed with production unchanged.
+- Refreshed public base: `c2293925046120f612da362d18b7e0e125753b2e`. Programmatic-tool patches and tests stay present. The current repair changes only the Active Memory retry fixture and related documentation. Its full test file remains registered in the cumulative application suite.
 
 ### Scope and acceptance criteria
 
@@ -162,6 +162,8 @@ Runner regressions cover a leader exiting before its TERM-resistant descendant, 
 Use the installed release controller for deployment and rollback. Verify whether an accepted build already contains the correction before scheduling another release. Preserve the controller-owned recovery backup and private account state. Disable the tools if authentication isolation or result verification fails; never share the authenticated browser with an agent. Keep operator login setup bound to the installed runtime location.
 
 ### Review log
+
+- 2026-10-20: Retained review cleared the test-only retry repair. The repaired case and all 226 tests in its file passed, with test processes joined. The full release stopped before TEST; production remains unchanged. Refreshed release proofs are still required.
 
 - 2026-10-19: Retained review cleared the renewal candidate and guarded staging controls. Integration with the newly merged programmatic-tool base requires a current-diff recheck and fresh artifact qualification.
 
