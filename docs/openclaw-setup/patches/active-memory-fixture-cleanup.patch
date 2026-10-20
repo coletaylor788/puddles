@@ -18,7 +18,70 @@ diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/i
    };
    const makeMemoryToolAllowlistError = (
      reason: string,
-@@ -4704,11 +4714,17 @@
+@@ -4574,6 +4584,18 @@
+     registerPluginConfig({ timeoutMs: 100, toolsAllow: ["memory_lookup_custom"], logging: true });
+     const sessionKey = "agent:main:custom-tool-timeout-failure";
+     seedSession(sessionKey, "s-custom-tool-timeout-failure", 0);
++    const pendingRecall = await trackRecallRun();
++    const cleanupStarted = createDeferred<void>();
++    const releaseCleanup = createDeferred<void>();
++    const cleanup = expectDefined(
++      hoisted.cleanupSessionLifecycleArtifacts.getMockImplementation(),
++      "expected the recording cleanup adapter",
++    );
++    hoisted.cleanupSessionLifecycleArtifacts.mockImplementationOnce(async (params) => {
++      cleanupStarted.resolve();
++      await releaseCleanup.promise;
++      return await cleanup(params);
++    });
+     runEmbeddedAgent.mockImplementationOnce(
+       async (params: {
+         sessionFile: string;
+@@ -4611,15 +4633,27 @@
+       },
+     );
+ 
+-    const result = await runPromptBuild(
++    const resultPromise = runPromptBuild(
+       { prompt: "what food do i usually order? custom timeout failure" },
+       { sessionKey },
+     );
+ 
+-    expect(result).toBeUndefined();
+-    const lines = getActiveMemoryLines(sessionKey);
+-    expectLinesToContain(lines, "Active Memory: status=timeout");
+-    expectLinesNotToContain(lines, "timeout_partial");
++    try {
++      // Keep cleanup pending until the timeout result has been observed.
++      await cleanupStarted.promise;
++      const result = await resultPromise;
++      expect(result).toBeUndefined();
++      const lines = getActiveMemoryLines(sessionKey);
++      expectLinesToContain(lines, "Active Memory: status=timeout");
++      expectLinesNotToContain(lines, "timeout_partial");
++    } finally {
++      releaseCleanup.resolve();
++      await expect(pendingRecall()).rejects.toThrow("active-memory timeout after");
++    }
++    expect(Object.keys(hoisted.sessionStore).some((key) => key.includes(":active-memory:"))).toBe(
++      false,
++    );
++    expect(Object.keys(hoisted.runtimeTranscriptFiles)).toEqual([]);
+   });
+ 
+   it("waits for configured custom-tool evidence after memory_search fails", async () => {
+@@ -4679,7 +4713,9 @@
+       { sessionKey },
+     );
+ 
+-    expectPrependContextContains(result, "User usually orders ramen.");
++    expect(result, recallDiagnostics(sessionKey)).toMatchObject({
++      prependContext: expect.stringContaining("User usually orders ramen."),
++    });
+     expectLinesToContain(getActiveMemoryLines(sessionKey), "Active Memory: status=ok");
+   });
+ 
+@@ -4704,11 +4740,17 @@
    });
  
    it("allows a configured custom tool to succeed after a failed attempt", async () => {
@@ -36,7 +99,7 @@ diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/i
      const failedResult = {
        message: {
          role: "toolResult",
-@@ -4718,9 +4734,9 @@
+@@ -4718,9 +4760,9 @@
      };
      runEmbeddedAgent.mockImplementationOnce(async (params: { sessionFile: string }) => {
        await writeTranscriptJsonl(params.sessionFile, [failedResult]);
@@ -49,7 +112,7 @@ diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/i
        await writeTranscriptJsonl(params.sessionFile, [
          failedResult,
          {
-@@ -4732,16 +4748,44 @@
+@@ -4732,16 +4774,44 @@
            },
          },
        ]);
@@ -97,7 +160,7 @@ diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/i
    });
  
    it.each([
-@@ -4921,6 +4965,7 @@
+@@ -4921,6 +4991,7 @@
        registerPluginConfig({ timeoutMs, setupGraceTimeoutMs, logging: true });
        const providerReady = createDeferred<void>();
        let readinessTimer: ReturnType<typeof setTimeout> | undefined;
@@ -105,7 +168,7 @@ diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/i
        hoisted.getActiveMemorySearchManager.mockImplementationOnce(async () => {
          readinessTimer = setTimeout(() => providerReady.resolve(), readyAfterMs);
          await providerReady.promise;
-@@ -4963,7 +5008,18 @@
+@@ -4963,7 +5034,18 @@
        } finally {
          clearTimeout(readinessTimer);
          providerReady.resolve();
@@ -124,7 +187,7 @@ diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/i
      },
    );
  
-@@ -5057,28 +5113,55 @@
+@@ -5057,28 +5139,55 @@
      seedSession(sessionKey, "s-terminal-unavailable-then-diagnostic", 0);
      const warning = "Memory search is unavailable due to an embedding/provider error.";
      const action = "Check the embedding provider configuration, then retry memory_search.";
