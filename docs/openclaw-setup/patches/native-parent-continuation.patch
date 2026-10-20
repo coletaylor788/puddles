@@ -1,0 +1,77 @@
+diff --git a/src/agents/subagents/registry/subagent-registry.persistence.resume.test.ts b/src/agents/subagents/registry/subagent-registry.persistence.resume.test.ts
+index cfa8e29175d..2a0166717ed 100644
+--- a/src/agents/subagents/registry/subagent-registry.persistence.resume.test.ts
++++ b/src/agents/subagents/registry/subagent-registry.persistence.resume.test.ts
+@@ -706,6 +706,20 @@ describe("subagent registry persistence resume", () => {
+     });
+   });
+ 
++  it("does not replay a suspended result carrying an older gather handoff", async () => {
++    await withRegistryState(async () => {
++      const run = createOrphanedRequiredDelivery("suspended");
++      const handoff = { requesterAgentId: "main", requesterSessionId: "previous-parent", toolCallId: "previous-yield", createdAt: Date.now() };
++      Object.assign(run.delivery, { yieldGatherHandoff: handoff });
++      saveSubagentRegistryToSqlite(new Map([[run.runId, run]]));
++      mod.initSubagentRegistry();
++      activateRegistry();
++      await nextTask();
++      expect(announceSpy).not.toHaveBeenCalled();
++      expect(readPersistedRun(run.runId)?.delivery).toMatchObject({ status: "suspended", yieldGatherHandoff: handoff });
++    });
++  });
++
+   it("keeps restored recovery dormant until the Gateway lifecycle activates it", async () => {
+     const wakeRequester = vi.fn(async () => false);
+     vi.spyOn(requesterSettleModule, "maybeWakeRequesterAfterAllChildrenSettled").mockImplementation(
+diff --git a/src/agents/subagents/registry/subagent-registry.requester-wake.e2e.test.ts b/src/agents/subagents/registry/subagent-registry.requester-wake.e2e.test.ts
+index c0d2eae395c..2702896d1f4 100644
+--- a/src/agents/subagents/registry/subagent-registry.requester-wake.e2e.test.ts
++++ b/src/agents/subagents/registry/subagent-registry.requester-wake.e2e.test.ts
+@@ -1,3 +1,4 @@
++import { observeRootWork } from "./subagent-registry.browser-cleanup.test-support.js";
+ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+ import { getRuntimeConfig } from "../../../config/config.js";
+ import { replaceSessionEntry } from "../../../config/sessions/session-accessor.js";
+@@ -906,8 +907,19 @@ describe("requester settle wake product flow", () => {
+             await spawnVisibleChild({ ...alpha, requesterTurnRunId: initialRequesterTurnRunId });
+             await yieldTurn(initialRequesterTurnRunId, [alpha]);
+             attachment?.releaseProvisional();
++            const joinFirstWake = !acceptNextChild ? observeRootWork() : undefined;
+             emitCompleted(alpha.runId, alpha.childSessionKey, "alpha findings");
+-            await vi.waitFor(() => expect(firstWakeReturned).toBe(true));
++            await vi.dynamicImportSettled();
++            await joinFirstWake?.();
++            // AUDIT: join persisted retry admission before jumping the fake clock.
++            // Current upstream also waits for this state (v2026.10.5).
++            await vi.waitFor(() => {
++              expect(firstWakeReturned).toBe(true);
++              if (!acceptNextChild) {
++                expect(registry.getSubagentRunByRunId(alpha.runId)?.requesterSettleWake)
++                  .toMatchObject({ status: "pending", attemptCount: 1, nextAttemptAt: expect.any(Number) });
++              }
++            });
+             await vi.advanceTimersByTimeAsync(0);
+             expect(getRequesterWakeCalls()).toHaveLength(1);
+             expect(visibleFinals).toBe(0);
+@@ -930,7 +942,20 @@ describe("requester settle wake product flow", () => {
+             }
+             // Cross both native retry deadlines; a transferred obligation must not
+             // start an extra parent turn, while an empty failed handoff must recover.
+-            await vi.advanceTimersByTimeAsync(151_000);
++            const retryHorizon = Date.now() + 151_000;
++            if (!acceptNextChild) {
++              const retryAt = registry.getSubagentRunByRunId(alpha.runId)?.requesterSettleWake?.nextAttemptAt;
++              expect(retryAt).toEqual(expect.any(Number));
++              const joinRetry = observeRootWork();
++              await vi.advanceTimersByTimeAsync(retryAt! - Date.now());
++              await vi.dynamicImportSettled();
++              await joinRetry();
++              await vi.waitFor(() => {
++                expect(visibleFinals).toBe(1);
++                expect(registry.getSubagentRunByRunId(alpha.runId)?.delivery?.status).toBe("delivered");
++              });
++            }
++            await vi.advanceTimersByTimeAsync(Math.max(0, retryHorizon - Date.now()));
+             await registry.testing.sweepOnceForTests();
+             await vi.advanceTimersByTimeAsync(0);
+             for (const child of acceptNextChild ? [alpha, beta] : [alpha]) {
