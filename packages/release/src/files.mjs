@@ -33,14 +33,13 @@ export function atomicJson(path, data) {
     try { fsyncSync(dir); } finally { closeSync(dir); }
   } finally { rmSync(temporary, { force: true }); }
 }
-export function treeHash(root) {
+export function treeHash(root, { allowExternalLinks = false } = {}) {
   const hash = createHash('sha256');
   function visit(path, name) {
     const stat = lstatSync(path);
     hash.update(JSON.stringify([name, stat.mode & 0o777]));
     if (stat.isSymbolicLink()) {
-      const target = realpathSync(path);
-      if (!contains(root, target)) throw new Error(`Artifact link escapes its root: ${name}`);
+      if (!allowExternalLinks && !contains(root, realpathSync(path))) throw new Error(`Artifact link escapes its root: ${name}`);
       hash.update('link:' + readlinkSync(path));
     } else if (stat.isDirectory()) {
       hash.update('directory');

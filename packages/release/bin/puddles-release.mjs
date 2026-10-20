@@ -6,6 +6,7 @@ import { atomicJson, readJson, treeHash } from '../src/files.mjs';
 import { enqueue, cancel, readQueue } from '../src/queue.mjs';
 import { deployDev, runNext, refreshBackup, validateConfiguration, validateTicket } from '../src/controller.mjs';
 import { command } from '../src/commands.mjs';
+import { retireCheckOutput } from '../src/check-output.mjs';
 import { initWorkspace, finalizeWorkspace } from '../src/finalize.mjs';
 import { rebaseRepositories, mergeRepositories } from '../src/git.mjs';
 
@@ -14,6 +15,10 @@ try {
   if (!file) throw new Error('Usage: puddles-release <status|enqueue|cancel|run|dev|backup|rebase|merge> CONFIG [TICKET]');
   let result;
   if (action === 'workspace-init') result = initWorkspace(readJson(file));
+  else if (action === 'check-output-retire') {
+    const { receipt, owner, runId, acknowledgeFailure } = readJson(file);
+    result = retireCheckOutput({ receipt, owner, runId, acknowledgeFailure });
+  }
   else if (action === 'finalize') result = await finalizeWorkspace(file, argument);
   else if (action === 'rebase' || action === 'merge') {
     const repositories = readJson(file);

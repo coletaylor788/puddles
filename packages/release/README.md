@@ -44,6 +44,7 @@ Run `node packages/release/bin/puddles-release.mjs` with:
 | `merge REPOSITORIES` | Merge only those tested heads |
 | `workspace-init WORKSPACE` | Register ownership and protected paths |
 | `finalize ROOT OWNER` | Remove a finished workspace from outside that workspace |
+| `check-output-retire REQUEST` | Retire registered, completed check output after its producer exits |
 
 The manager calls `run` again for the next feature. A failed feature leaves the
 queue after recovery; fixes rejoin at the back. A failed final merge retains its
@@ -113,3 +114,19 @@ upstream clones or patched build checkouts as disposable. Existing source cannot
 be relabeled this way. Finalization removes their linked-worktree registrations
 and build data without publishing generated patches. Authored feature checkouts
 still require clean, published source, with repository metadata outside the workspace.
+
+## Retained check output
+
+Application checks register a fresh output directory before writing test data.
+The sibling `<output>.check-output/receipt.json` records the creator, native
+process scope, terminal cleanup result, and output identity. Failed checks keep
+their diagnostics. Successful checks remove output after joining fixtures; the
+small receipt remains available for diagnosis and restart.
+
+To retire an acknowledged failure, save a local JSON request with `receipt`,
+`owner`, `runId`, and `acknowledgeFailure: true`, using values from that receipt.
+Run `check-output-retire REQUEST` from outside the output. The command refuses
+live processes or handles, changed output, source checkouts, unresolved recovery,
+and incomplete process registration. Interrupted deletion resumes from its
+recorded destination. A `recovery-required` or `running` receipt stays held.
+There is no automatic adoption of historical directories lacking a receipt.
