@@ -1,7 +1,15 @@
 diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/index.test.ts
 --- a/extensions/active-memory/index.test.ts
 +++ b/extensions/active-memory/index.test.ts
-@@ -459,6 +459,16 @@
+@@ -36,6 +36,7 @@
+ import * as recallRun from "./recall-run.js";
+ import { resolveActiveRecallForRun } from "./recall-state.js";
+ import * as transcriptWatch from "./transcript-watch.js";
++import { TERMINAL_MEMORY_SEARCH_POLL_INTERVAL_MS } from "./types.js";
+ 
+ // Match only lone surrogates so valid supplementary-plane characters remain allowed.
+ const UNPAIRED_SURROGATE_RE =
+@@ -459,6 +460,16 @@
          { once: true },
        );
      });
@@ -18,7 +26,7 @@ diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/i
    };
    const makeMemoryToolAllowlistError = (
      reason: string,
-@@ -4574,6 +4584,18 @@
+@@ -4574,6 +4585,18 @@
      registerPluginConfig({ timeoutMs: 100, toolsAllow: ["memory_lookup_custom"], logging: true });
      const sessionKey = "agent:main:custom-tool-timeout-failure";
      seedSession(sessionKey, "s-custom-tool-timeout-failure", 0);
@@ -37,7 +45,7 @@ diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/i
      runEmbeddedAgent.mockImplementationOnce(
        async (params: {
          sessionFile: string;
-@@ -4611,15 +4633,27 @@
+@@ -4611,15 +4634,27 @@
        },
      );
  
@@ -70,7 +78,7 @@ diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/i
    });
  
    it("waits for configured custom-tool evidence after memory_search fails", async () => {
-@@ -4679,7 +4713,9 @@
+@@ -4679,7 +4714,9 @@
        { sessionKey },
      );
  
@@ -81,7 +89,7 @@ diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/i
      expectLinesToContain(getActiveMemoryLines(sessionKey), "Active Memory: status=ok");
    });
  
-@@ -4704,11 +4740,17 @@
+@@ -4704,11 +4741,17 @@
    });
  
    it("allows a configured custom tool to succeed after a failed attempt", async () => {
@@ -99,7 +107,7 @@ diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/i
      const failedResult = {
        message: {
          role: "toolResult",
-@@ -4718,9 +4760,9 @@
+@@ -4718,9 +4761,9 @@
      };
      runEmbeddedAgent.mockImplementationOnce(async (params: { sessionFile: string }) => {
        await writeTranscriptJsonl(params.sessionFile, [failedResult]);
@@ -112,7 +120,7 @@ diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/i
        await writeTranscriptJsonl(params.sessionFile, [
          failedResult,
          {
-@@ -4732,16 +4774,44 @@
+@@ -4732,16 +4775,44 @@
            },
          },
        ]);
@@ -160,7 +168,7 @@ diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/i
    });
  
    it.each([
-@@ -4921,6 +4991,7 @@
+@@ -4921,6 +4992,7 @@
        registerPluginConfig({ timeoutMs, setupGraceTimeoutMs, logging: true });
        const providerReady = createDeferred<void>();
        let readinessTimer: ReturnType<typeof setTimeout> | undefined;
@@ -168,7 +176,7 @@ diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/i
        hoisted.getActiveMemorySearchManager.mockImplementationOnce(async () => {
          readinessTimer = setTimeout(() => providerReady.resolve(), readyAfterMs);
          await providerReady.promise;
-@@ -4963,7 +5034,18 @@
+@@ -4963,7 +5035,18 @@
        } finally {
          clearTimeout(readinessTimer);
          providerReady.resolve();
@@ -187,7 +195,7 @@ diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/i
      },
    );
  
-@@ -5057,28 +5139,55 @@
+@@ -5057,28 +5140,55 @@
      seedSession(sessionKey, "s-terminal-unavailable-then-diagnostic", 0);
      const warning = "Memory search is unavailable due to an embedding/provider error.";
      const action = "Check the embedding provider configuration, then retry memory_search.";
@@ -260,3 +268,194 @@ diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/i
  
      expectPrependContextContains(result, unavailableRecallContext);
      const infoLines = vi
+@@ -5095,6 +5205,8 @@
+   it.each([false, true])(
+     "uses configured memory evidence from a rotated embedded transcript (stale poll: %s)",
+     async (stalePoll) => {
++      vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
++      const pendingRecall = await trackRecallRun();
+       testing.setMinimumTimeoutMsForTests(1);
+       testing.setSetupGraceTimeoutMsForTests(0);
+       registerPluginConfig({
+@@ -5104,6 +5216,16 @@
+       });
+       const sessionKey = "agent:main:rotated-memory-evidence";
+       seedSession(sessionKey, "s-rotated-memory-evidence", 0);
++      const stages: string[] = [];
++      let recallAbortSignal: AbortSignal | undefined;
++      const diagnostics = () =>
++        JSON.stringify({
++          recall: recallDiagnostics(sessionKey),
++          stages,
++          aborted: recallAbortSignal?.aborted,
++          abortReason: String(recallAbortSignal?.reason ?? ""),
++        });
++      const initialTranscriptWritten = createDeferred<void>();
+       const cleanupStarted = createDeferred<void>();
+       const releaseCleanup = createDeferred<void>();
+       const watcherStopped = createDeferred<void>();
+@@ -5118,6 +5240,7 @@
+             const page = await readDelta(params);
+             if (!heldRead && page.kind === "page" && page.events.length > 0) {
+               heldRead = true;
++              stages.push("stale-read-held");
+               staleReadStarted.resolve();
+               await releaseStaleRead.promise;
+             }
+@@ -5130,6 +5253,7 @@
+         "recall cleanup fixture",
+       );
+       hoisted.cleanupSessionLifecycleArtifacts.mockImplementationOnce(async (params) => {
++        stages.push("cleanup-held");
+         cleanupStarted.resolve();
+         await releaseCleanup.promise;
+         return await cleanup(params);
+@@ -5141,65 +5265,79 @@
+           ...watch,
+           stop() {
+             watch.stop();
++            stages.push("watcher-stopped");
+             watcherStopped.resolve();
+           },
+         };
+       });
+-      runEmbeddedAgent.mockImplementationOnce(async (params: { sessionFile: string }) => {
+-        if (stalePoll) {
+-          await writeTranscriptJsonl(params.sessionFile, [
++      runEmbeddedAgent.mockImplementationOnce(
++        async (params: { sessionFile: string; abortSignal?: AbortSignal }) => {
++          recallAbortSignal = params.abortSignal;
++          if (stalePoll) {
++            await writeTranscriptJsonl(params.sessionFile, [
++              {
++                message: {
++                  role: "toolResult",
++                  toolName: "memory_search",
++                  details: { disabled: true, error: "embedding request failed" },
++                },
++              },
++            ]);
++            stages.push("initial-transcript-written");
++            initialTranscriptWritten.resolve();
++            await staleReadStarted.promise;
++          }
++          const memoryResult = {
++            message: {
++              role: "toolResult",
++              toolName: "memory_get",
++              details: { path: "memory/food.md", text: "User usually orders ramen." },
++            },
++          };
++          if (stalePoll) {
++            await fs.appendFile(params.sessionFile, `${JSON.stringify(memoryResult)}\n`, "utf8");
++          } else {
++            await writeTranscriptJsonl(params.sessionFile, [memoryResult]);
++          }
++          const activeSessionFile = path.join(path.dirname(params.sessionFile), "rotated.jsonl");
++          hoisted.runtimeTranscriptFiles["rotated-transcript"] = activeSessionFile;
++          await writeTranscriptJsonl(activeSessionFile, [
+             {
+               message: {
+                 role: "toolResult",
+                 toolName: "memory_search",
+-                details: { disabled: true, error: "embedding request failed" },
++                details: {
++                  disabled: true,
++                  error: "embedding request failed",
++                },
+               },
+             },
+           ]);
+-          await staleReadStarted.promise;
+-        }
+-        const memoryResult = {
+-          message: {
+-            role: "toolResult",
+-            toolName: "memory_get",
+-            details: { path: "memory/food.md", text: "User usually orders ramen." },
+-          },
+-        };
+-        if (stalePoll) {
+-          await fs.appendFile(params.sessionFile, `${JSON.stringify(memoryResult)}\n`, "utf8");
+-        } else {
+-          await writeTranscriptJsonl(params.sessionFile, [memoryResult]);
+-        }
+-        const activeSessionFile = path.join(path.dirname(params.sessionFile), "rotated.jsonl");
+-        hoisted.runtimeTranscriptFiles["rotated-transcript"] = activeSessionFile;
+-        await writeTranscriptJsonl(activeSessionFile, [
+-          {
+-            message: {
+-              role: "toolResult",
+-              toolName: "memory_search",
+-              details: {
+-                disabled: true,
+-                error: "embedding request failed",
++          stages.push("embedded-completed");
++          return {
++            payloads: [{ text: "User usually orders ramen." }],
++            meta: {
++              agentMeta: {
++                sessionId: "rotated-transcript",
++                sessionFile: lastRuntimeEmbeddedRunParams().sessionKey,
+               },
+             },
+-          },
+-        ]);
+-        return {
+-          payloads: [{ text: "User usually orders ramen." }],
+-          meta: {
+-            agentMeta: {
+-              sessionId: "rotated-transcript",
+-              sessionFile: lastRuntimeEmbeddedRunParams().sessionKey,
+-            },
+-          },
+-        };
+-      });
++          };
++        },
++      );
+ 
+       const resultPromise = runPromptBuild(
+         { prompt: "what food do i usually order? rotated transcript" },
+         { sessionKey },
+       );
+       try {
++        if (stalePoll) {
++          await initialTranscriptWritten.promise;
++          // Drive the real watcher after the fixture transcript exists. Keep the
++          // recall deadline fixed while real filesystem work completes.
++          await vi.advanceTimersByTimeAsync(TERMINAL_MEMORY_SEARCH_POLL_INTERVAL_MS);
++          await staleReadStarted.promise;
++        }
+         await cleanupStarted.promise;
+         releaseStaleRead.resolve();
+         // Drain continuations of the old read after execution has completed;
+@@ -5213,13 +5351,27 @@
+       } finally {
+         releaseStaleRead.resolve();
+         releaseCleanup.resolve();
++        try {
++          await pendingRecall();
++        } finally {
++          // This rotated transcript is owned by the fixture, not recall cleanup.
++          const rotatedFile = hoisted.runtimeTranscriptFiles["rotated-transcript"];
++          if (rotatedFile) {
++            await fs.rm(rotatedFile, { force: true });
++            delete hoisted.runtimeTranscriptFiles["rotated-transcript"];
++          }
++        }
+       }
+       const result = await resultPromise;
+ 
+-      expect(result, JSON.stringify(api.logger.info.mock.calls)).toMatchObject({
++      expect(result, diagnostics()).toMatchObject({
+         prependContext: expect.stringContaining("User usually orders ramen."),
+       });
+       expectLinesToContain(getActiveMemoryLines(sessionKey), "status=ok");
++      expect(Object.keys(hoisted.runtimeTranscriptFiles)).toEqual([]);
++      expect(
++        Object.keys(hoisted.sessionStore).filter((key) => key.includes(":active-memory:")),
++      ).toEqual([]);
+     },
+   );
+ 
