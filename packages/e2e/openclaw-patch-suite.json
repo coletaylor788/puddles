@@ -19,8 +19,6 @@
     "src/agents/embedded-agent-runner/run/terminal-resolution.test.ts": "agents-embedded-agent-run",
     "src/plugin-sdk/file-lock.stale-contention.test.ts": "plugin-sdk",
     "src/agents/tools/sessions-yield-tool.test.ts": "agents-tools",
-    "src/agents/tools/yield-gather-state.test.ts": "unit-fast",
-    "src/agents/tools/yield-descendant-gather.test.ts": "agents-tools",
     "src/agents/subagents/announce/subagent-announce-delivery.test.ts": "agents-support",
     "src/agents/subagents/registry/subagent-registry-queries.test.ts": "unit-fast",
     "src/agents/subagents/registry/subagent-registry-lifecycle.test.ts": "agents-support",
@@ -52,7 +50,6 @@
     "src/agents/tools/skill-workshop-tool.availability.test.ts": "agents-tools",
     "src/skills/workshop/tool-policy-diagnostic.test.ts": "unit-fast",
     "src/agents/tool-allowlist-guard.test.ts": "unit-fast",
-    "src/agents/subagents/registry/subagent-registry-yield-gather.test.ts": "agents-support",
     "src/state/openclaw-agent-db.storage-migration.test.ts": "infra",
     "src/commands/doctor-agent-memory-schema.test.ts": "commands",
     "src/process/supervisor/service-child-ownership.bundle.test.ts": "process",
@@ -155,7 +152,35 @@
     "src/test-utils/ports.test.ts": "unit",
     "extensions/openai/realtime-quicksilver-gateway-bridge-lifecycle.test.ts": "extension-provider-openai",
     "src/talk/agent-run-control.test.ts": "unit-src",
-    "src/agents/harness/tool-surface-bridge.test.ts": "unit-fast",
+    "src/agents/subagents/registry/subagent-registry-requester-yield.test.ts": "agents-support",
+    "src/agents/subagents/registry/subagent-parent-recovery.restart-integration.test.ts": "agents-support",
+    "src/agents/subagents/announce/subagent-announce-direct-delivery.test.ts": "agents-support",
+    "src/agents/subagents/registry/subagent-registry.requester-wake.e2e.test.ts": "e2e",
+    "src/agents/subagents/announce/subagent-announce.requester-settle-wake.test.ts": "agents-support",
+    "src/agents/subagents/announce/subagent-announce.requester-settle-results.test.ts": "agents-support",
+    "src/agents/subagents/announce/subagent-announce.requester-settle-ownership.test.ts": "agents-support",
+    "src/agents/subagents/announce/subagent-announce.requester-settle-dispatch.test.ts": "agents-support",
+    "src/agents/cli-runner/mcp-grant-context.test.ts": "unit-fast",
+    "src/agents/cli-runner/prepare.test.ts": "infra",
+    "src/agents/cli-runner/session-history.test.ts": "infra",
+    "src/auto-reply/reply/agent-runner-memory.test.ts": "infra",
+    "src/auto-reply/reply/memory-flush-session.test.ts": "infra",
+    "src/gateway/tool-resolution.test.ts": "gateway-core",
+    "src/agents/session-maintenance/compaction-memory-input.test.ts": "unit-fast",
+    "src/agents/session-maintenance/compaction-memory-jobs.test.ts": "infra",
+    "src/agents/session-maintenance/compaction-memory.test.ts": "infra",
+    "src/agents/session-maintenance/idle.test.ts": "agents-support",
+    "src/agents/subagents/registry/subagent-registry.persistence.resume.test.ts": "agents-support",
+    "extensions/anthropic/cli-runtime.test.ts": "extension-providers",
+    "extensions/anthropic/cli-compaction-snapshot.test.ts": "extension-providers",
+    "src/agents/cli-runner/execute-plugin.test.ts": "agents-support",
+    "src/agents/embedded-agent-runner/compact.hooks.test.ts": "infra",
+    "extensions/anthropic/cli-shared.test.ts": "extension-providers",
+    "src/agents/cli-runner.spawn.test.ts": "agents-core",
+    "src/agents/tools/yield-gather-state.test.ts": "unit-fast",
+    "src/agents/tools/yield-descendant-gather.test.ts": "agents-tools",
+    "src/agents/subagents/registry/subagent-registry-yield-gather.test.ts": "agents-support",
+    "src/agents/harness/tool-surface-bridge.test.ts": "unit-fast-isolated",
     "src/agents/code-mode.config.test.ts": "unit-fast",
     "src/agents/embedded-agent-runner/terminal-tool-failure.test.ts": "unit-fast",
     "src/agents/sessions/tools/tool-definition-wrapper.test.ts": "unit-fast",
@@ -214,24 +239,23 @@
       ]
     },
     {
-      "name": "sessions-yield-block-and-gather",
+      "name": "native-parent-continuation",
       "tests": [
         "src/agents/tools/sessions-yield-tool.test.ts",
-        "src/agents/tools/yield-gather-state.test.ts",
-        "src/agents/tools/yield-descendant-gather.test.ts",
+        "src/agents/subagents/registry/subagent-registry-requester-yield.test.ts",
+        "src/agents/subagents/registry/subagent-parent-recovery.restart-integration.test.ts",
+        "src/agents/subagents/announce/subagent-announce-direct-delivery.test.ts",
+        "src/agents/subagents/registry/subagent-registry.requester-wake.e2e.test.ts",
+        "src/agents/subagents/announce/subagent-announce.requester-settle-wake.test.ts",
+        "src/agents/subagents/announce/subagent-announce.requester-settle-results.test.ts",
+        "src/agents/subagents/announce/subagent-announce.requester-settle-ownership.test.ts",
+        "src/agents/subagents/announce/subagent-announce.requester-settle-dispatch.test.ts",
         "src/agents/subagents/announce/subagent-announce-delivery.test.ts",
         "src/agents/subagents/registry/subagent-registry-queries.test.ts",
         "src/agents/subagents/registry/subagent-registry-lifecycle.test.ts",
-        "src/cron/isolated-agent/subagent-followup.test.ts"
-      ]
-    },
-    {
-      "name": "sessions-yield-durable-handoff",
-      "tests": [
-        "src/agents/tools/yield-descendant-gather.test.ts",
-        "src/agents/subagents/announce/subagent-announce-delivery.test.ts",
+        "src/cron/isolated-agent/subagent-followup.test.ts",
         "src/agents/subagents/registry/subagent-registry.store.sqlite.test.ts",
-        "src/agents/subagents/registry/subagent-registry-yield-gather.test.ts"
+        "src/agents/subagents/registry/subagent-registry.persistence.resume.test.ts"
       ]
     },
     {
@@ -566,6 +590,28 @@
         "src/gateway/mcp-http.runtime.test.ts",
         "src/gateway/mcp-http.test.ts",
         "src/gateway/mcp-grant-store.test.ts"
+      ]
+    },
+    {
+      "name": "compaction-memory-idle",
+      "tests": [
+        "extensions/anthropic/cli-runtime.test.ts",
+        "extensions/anthropic/cli-shared.test.ts",
+        "src/agents/cli-runner.spawn.test.ts",
+        "src/agents/cli-runner/execute-plugin.test.ts",
+        "src/agents/cli-runner/mcp-grant-context.test.ts",
+        "src/agents/cli-runner/prepare.test.ts",
+        "src/agents/cli-runner/session-history.test.ts",
+        "src/agents/embedded-agent-runner/compact.hooks.test.ts",
+        "src/auto-reply/reply/agent-runner-memory.test.ts",
+        "src/auto-reply/reply/memory-flush-session.test.ts",
+        "src/gateway/tool-resolution.test.ts",
+        "extensions/anthropic/cli-compaction-snapshot.test.ts",
+        "src/agents/session-maintenance/compaction-memory-input.test.ts",
+        "src/agents/session-maintenance/compaction-memory-jobs.test.ts",
+        "src/agents/session-maintenance/compaction-memory.test.ts",
+        "src/agents/session-maintenance/idle.test.ts",
+        "src/agents/harness/tool-surface-bridge.test.ts"
       ]
     }
   ],
