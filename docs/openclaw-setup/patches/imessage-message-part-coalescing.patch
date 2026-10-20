@@ -316,7 +316,7 @@ index d0a062e..ae5832a 100644
  
    it("drops unavailable configured ACP messages before typing, reads, media, history, or dispatch", async () => {
      setAvailablePrivateApiMethods(["watch.subscribe", "typing", "read"]);
-@@ -1750,5 +1870,1657 @@ describe("iMessage monitor last-route updates", () => {
+@@ -1750,5 +1870,1716 @@ describe("iMessage monitor last-route updates", () => {
        }
      });
    }
@@ -416,6 +416,51 @@ index d0a062e..ae5832a 100644
 +    const mediaPath = path.join(mediaDir, "standalone.jpg");
 +    fs.writeFileSync(mediaPath, "image");
 +
++    const urlDispatched = createDeferred<void>();
++    const imageDispatched = createDeferred<void>();
++    const mediaEntered = createDeferred<void>();
++    const releaseMedia = createDeferred<void>();
++    const runtimeFailure = createDeferred<string>();
++    const runtime = {
++      error: vi.fn((...args: unknown[]) => runtimeFailure.resolve(args.map(String).join(" "))),
++      exit: vi.fn(),
++      log: vi.fn(),
++    };
++    const waitForStage = async (name: string, entered: Promise<void>) => {
++      const deadline = createDeferred<void>();
++      const timer = setTimeout(() => deadline.reject(new Error(`${name}: timed out`)), 10_000);
++      try {
++        await Promise.race([
++          entered,
++          deadline.promise,
++          runtimeFailure.promise.then((message) => {
++            throw new Error(`${name}: ${message}`);
++          }),
++        ]);
++      } finally {
++        clearTimeout(timer);
++      }
++    };
++    const stageAttachments = iMessageMediaStaging.stageIMessageAttachments;
++    vi.spyOn(iMessageMediaStaging, "stageIMessageAttachments").mockImplementation(
++      async (attachments, params) => {
++        if (attachments.length > 0) {
++          mediaEntered.resolve();
++          await releaseMedia.promise;
++        }
++        return stageAttachments(attachments, params);
++      },
++    );
++    dispatchReplyWithBufferedBlockDispatcherMock
++      .mockImplementationOnce(async () => {
++        urlDispatched.resolve();
++        return EMPTY_DISPATCH_RESULT;
++      })
++      .mockImplementationOnce(async () => {
++        imageDispatched.resolve();
++        return EMPTY_DISPATCH_RESULT;
++      });
++
 +    let onNotification: ((message: { method: string; params: unknown }) => void) | undefined;
 +    const client = {
 +      request: vi.fn(async (method: string) => {
@@ -425,51 +470,60 @@ index d0a062e..ae5832a 100644
 +        throw new Error(`unexpected imsg method ${method}`);
 +      }),
 +      waitForClose: vi.fn(async () => {
-+        onNotification?.({
-+          method: "message",
-+          params: {
-+            message: {
-+              id: 724,
-+              guid: "LIVE-GUID-724",
-+              text: "https://example.com/standalone",
-+              balloon_bundle_id: "com.apple.messages.URLBalloonProvider",
-+              created_at: new Date().toISOString(),
-+              chat_id: 123,
-+              sender: "+15550001111",
-+              is_from_me: false,
-+              is_group: false,
++        try {
++          onNotification?.({
++            method: "message",
++            params: {
++              message: {
++                id: 724,
++                guid: "LIVE-GUID-724",
++                text: "https://example.com/standalone",
++                balloon_bundle_id: "com.apple.messages.URLBalloonProvider",
++                created_at: new Date().toISOString(),
++                chat_id: 123,
++                sender: "+15550001111",
++                is_from_me: false,
++                is_group: false,
++              },
 +            },
-+          },
-+        });
-+        await vi.waitFor(() => {
++          });
++          // Durable admission completes asynchronously before dispatch can begin.
++          await waitForStage("URL dispatch", urlDispatched.promise);
 +          expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(1);
-+        });
++          expect(debouncerControl.entries).toEqual([]);
 +
-+        onNotification?.({
-+          method: "message",
-+          params: {
-+            message: {
-+              id: 725,
-+              guid: "LIVE-GUID-725",
-+              text: null,
-+              attachments: [
-+                {
-+                  original_path: mediaPath,
-+                  mime_type: "image/jpeg",
-+                  transfer_name: "standalone.jpg",
-+                },
-+              ],
-+              created_at: new Date().toISOString(),
-+              chat_id: 456,
-+              sender: "+15550001111",
-+              is_from_me: false,
-+              is_group: false,
++          onNotification?.({
++            method: "message",
++            params: {
++              message: {
++                id: 725,
++                guid: "LIVE-GUID-725",
++                text: null,
++                attachments: [
++                  {
++                    original_path: mediaPath,
++                    mime_type: "image/jpeg",
++                    transfer_name: "standalone.jpg",
++                  },
++                ],
++                created_at: new Date().toISOString(),
++                chat_id: 456,
++                sender: "+15550001111",
++                is_from_me: false,
++                is_group: false,
++              },
 +            },
-+          },
-+        });
-+        await vi.waitFor(() => {
++          });
++          await waitForStage("media staging", mediaEntered.promise);
++          expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(1);
++          expect(debouncerControl.entries).toEqual([]);
++          releaseMedia.resolve();
++          await waitForStage("image dispatch", imageDispatched.promise);
 +          expect(dispatchReplyWithBufferedBlockDispatcherMock).toHaveBeenCalledTimes(2);
-+        });
++          expect(debouncerControl.entries).toEqual([]);
++        } finally {
++          releaseMedia.resolve();
++        }
 +      }),
 +      stop: vi.fn(async () => {}),
 +    };
@@ -481,36 +535,41 @@ index d0a062e..ae5832a 100644
 +      return client as never;
 +    });
 +
-+    await monitorIMessageProvider({
-+      config: {
-+        channels: {
-+          imessage: {
-+            coalesceSameSenderDms: true,
-+            dmPolicy: "allowlist",
-+            allowFrom: ["+15550001111"],
-+            includeAttachments: true,
-+            attachmentRoots: [mediaDir],
-+            sendReadReceipts: false,
++    try {
++      await monitorIMessageProvider({
++        config: {
++          channels: {
++            imessage: {
++              coalesceSameSenderDms: true,
++              dmPolicy: "allowlist",
++              allowFrom: ["+15550001111"],
++              includeAttachments: true,
++              attachmentRoots: [mediaDir],
++              sendReadReceipts: false,
++            },
 +          },
-+        },
-+        session: { mainKey: "main" },
-+      } as never,
-+      runtime: { error: vi.fn(), exit: vi.fn(), log: vi.fn() },
-+    });
++          session: { mainKey: "main" },
++        } as never,
++        runtime,
++      });
++      expect(runtime.error).not.toHaveBeenCalled();
 +
-+    expect(dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[0]?.[0].ctx.Body).toContain(
-+      "https://example.com/standalone",
-+    );
-+    expect(
-+      dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[1]?.[0].ctx.media?.map(
-+        (item) => item.path,
-+      ),
-+    ).toEqual([expect.stringMatching(/standalone---.+\.jpg$/)]);
-+    expect(
-+      dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[1]?.[0].ctx.media?.map(
-+        (item) => item.contentType,
-+      ),
-+    ).toEqual(["image/jpeg"]);
++      expect(dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[0]?.[0].ctx.Body).toContain(
++        "https://example.com/standalone",
++      );
++      expect(
++        dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[1]?.[0].ctx.media?.map(
++          (item) => item.path,
++        ),
++      ).toEqual([expect.stringMatching(/standalone---.+\.jpg$/)]);
++      expect(
++        dispatchReplyWithBufferedBlockDispatcherMock.mock.calls[1]?.[0].ctx.media?.map(
++          (item) => item.contentType,
++        ),
++      ).toEqual(["image/jpeg"]);
++    } finally {
++      dispatchReplyWithBufferedBlockDispatcherMock.mockReset().mockResolvedValue(EMPTY_DISPATCH_RESULT);
++    }
 +  });
 +
 +  it("does not merge a payload after an overdue absolute deadline", async () => {
