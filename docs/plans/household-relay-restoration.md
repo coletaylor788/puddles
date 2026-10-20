@@ -91,12 +91,14 @@ settings already released for all tool-enabled agents. Existing agent tool
 permissions and native approvals stay unchanged.
 
 The refreshed candidate passed all 12 managed DEV scenarios and independent
-shutdown. Its full release stopped in the application suite on an iMessage
-batching test. Production is unchanged. A test-only correction replaces a
-one-second polling assumption with bounded completion signals and runtime-error
-diagnostics, preserving the batching inputs and exact result assertions. Review
-and focused validation passed. A fresh release remains pending. TEST, production
-acceptance, source merge, and final cleanup have not completed.
+shutdown. Its latest full release stopped on an Active Memory assertion before
+TEST or production deployment. Production and the backup are unchanged. The
+failed case passes alone and beside its preceding timeout cases. A test-only
+correction joins an outstanding recall owner in the preceding fixture and adds
+diagnostics to the failed assertion. Focused validation, all 226 tests in the
+affected file, and independent review passed. The original failure's cause is
+not yet established. A fresh complete application run, TEST, production
+acceptance, source merge, and final cleanup remain ahead.
 
 ## Agent section
 
@@ -115,12 +117,27 @@ fourth full release stopped before TEST after one failure among 7,184 selected
 OpenClaw cases (7,182 passed and one skipped). Independent closure confirmed
 retired processes, an empty queue, and unchanged production and backup. That
 attempt is consumed. Preserve its failure evidence and use a fresh successor.
-The current correction changes only the malformed-payload bucket test and its
+The earlier correction changes only the malformed-payload bucket test and its
 documentation. Its full test file and delayed-admission case passed. Four
 failure probes confirmed that errors and missing dispatch remain observable.
 Independent closure verified process retirement and unchanged source and
 application output. No test or build allocation is held during preparation.
 Reuse proofs only where their actual inputs remain unchanged.
+
+The fifth full release passed that corrected iMessage case but stopped on
+`waits for configured custom-tool evidence after memory_search fails`. The core
+pool reported 7,182 passed, one failed, and one skipped across 226 files. The
+original caller and every native owner joined; independent closure verified an
+empty lane, closed TEST ports, absent qualification credentials, and unchanged
+production, configuration, and backup. That attempt is consumed as well.
+An unchanged isolated run passed the case, and an unchanged ordered run passed
+it with three neighboring timeout cases. Independent diagnosis identified a
+missing recall join in the immediately preceding fixture, without claiming that
+it caused this failure. The current correction deterministically holds and joins
+that cleanup, preserves its behavior assertions, and adds existing diagnostics
+to the success assertion. All four focused cases and all 226 cases in the full
+file passed with the correction. The retained reviewer cleared the complete
+current behavior diff. No production code or deadline changes.
 
 ### Scope and acceptance criteria
 
@@ -165,7 +182,21 @@ acceptance, and rollback coverage. The scoped return-grant plugin supplies only 
 
 ### Validation
 
-The latest full application run failed the iMessage test `starts a fresh bucket
+The latest full application run failed the Active Memory custom-tool evidence
+case with `expected prependContext` after about five seconds. That duration does
+not establish which deadline or cleanup stage was involved. The original case
+passed alone in 869 ms and with three neighboring timeout cases in 242 ms. Both
+diagnostic processes and their native scopes retired successfully. A retained
+independent review identified the preceding fixture's missing recall join as a
+real isolation gap. The correction passed all four focused cases, including the
+held-cleanup case in 302 ms and the following success case in 226 ms. The native
+owner and its scope retired, with no resource violation or source drift. The
+retained reviewer cleared the complete current diff. The entire 226-case file
+then passed with no skips or failures in 62.38 seconds. Its native command joined
+in 65.61 seconds and retired its scope without a resource violation. A fresh
+complete application run is still required.
+
+The preceding full application run failed the iMessage test `starts a fresh bucket
 after a payload without continuation metadata`. Its first default `vi.waitFor`
 expired while the dispatch count was zero. The fixture uses real durable
 admission but discards runtime errors, so the failure does not establish a
