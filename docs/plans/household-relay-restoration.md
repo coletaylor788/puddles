@@ -90,16 +90,16 @@ DEV-only compatibility filter so qualification preserves the programmatic-tool
 settings already released for all tool-enabled agents. Existing agent tool
 permissions and native approvals stay unchanged.
 
-The refreshed candidate passed all 12 managed DEV scenarios. Its latest full
-release stopped on a rotated-transcript Active Memory assertion before TEST or
-production deployment. Production and the backup are unchanged. Both variants
-pass in isolation, so the original failure's cause remains unproven. Independent
-review cleared a test-only correction that controls poll timing and joins cleanup.
-All five focused cases and all 226 tests in the affected file pass. A temporary
-guard-removal check fails as expected, proving the stale-result assertion still
-works. The restored test input triggers the native build freshness check, so
-application preparation must refresh before a fresh complete application run,
-TEST, production acceptance, source merge, and final cleanup.
+The current artifact passed all 12 managed DEV scenarios. Its seventh full
+release stopped before TEST or production on an Active Memory classification
+test. The test expected a successful result, but its real one-second deadline
+expired while recall completed. Production and the backup remain unchanged.
+Independent review cleared a test-only correction that controls the clock for
+all five classification cases and joins recall cleanup. All five focused cases
+and all 226 tests in the affected file pass, including the separate deadline
+regressions. The correction keeps the timeout, assertions, and runtime code
+unchanged. A fresh complete application run, TEST, production acceptance, source
+merge, and cleanup remain required.
 
 ## Agent section
 
@@ -161,6 +161,25 @@ compose exactly, and application output bytes remain unchanged. Native readiness
 requires a refresh because restored runtime input has a newer modification time
 than the build stamp. Existing output equality does not waive that build check.
 
+The seventh full release passed the previously corrected cases but failed
+`classifies grounded harness-native recall: successful summary`. The core pool
+reported 7,182 passed, one failed, and one skipped in 1,247.59 seconds. The
+classification reported `timeout_partial` after 1.4 seconds with its 26-character
+summary retained. Independent closure verified all original commands and owners
+stopped, an empty queue, unchanged production and backup, normal intake, and
+healthy production. No TEST or production deployment occurred. This attempt is
+consumed.
+
+The five-row table uses immediate mocked native tool evidence and completion,
+but its real 1,000 ms watchdog also races transcript reads and cleanup. This is
+a concrete timing dependency in a classification test. The exact scheduling or
+I/O cause of the failed run remains unproven. The reviewed correction freezes
+only Date, performance, and timeout timers for that table, retains real
+filesystem work, and joins the recall owner before shared fixture reset. All
+classification and error assertions stay intact. The observed partial result
+does not itself prove cleanup contaminated another case. The correction changes
+no runtime behavior and does not increase the deadline.
+
 ### Scope and acceptance criteria
 
 - An unanswered question ends Household's turn and starts no Main lookup.
@@ -204,7 +223,15 @@ acceptance, and rollback coverage. The scoped return-grant plugin supplies only 
 
 ### Validation
 
-The latest full application run failed the rotated embedded-transcript case
+The seventh full application run failed the harness-native successful-summary
+classification. The corrected table passed all five rows in the focused run.
+The complete file passed all 226 cases with no skips in 63.33 seconds; its native
+command joined in 66.62 seconds. The successful-summary row passed in 174 ms.
+Terminal-error rows still reject summaries, and the independent live deadline,
+cold-recall timeout, and near-limit settlement regressions pass unchanged. Both
+native validation owners retired with no resource violation.
+
+The sixth full application run failed the rotated embedded-transcript case
 with absent context. It ran for 1,267.47 seconds. Isolated unchanged variants
 passed in 1,185 ms without a stale read and 173 ms with one; the native command
 joined in 32.01 seconds. This does not establish the original failure's cause.
@@ -326,6 +353,12 @@ PROD. Restore runtime, config, both agents' instructions, and handoff skill
 together if acceptance fails. Preserve current healthy production until then.
 
 ### Review log
+
+The retained reviewer cleared the harness-native classification correction.
+It confirmed that the table tests outcomes rather than elapsed time, and that
+selective fake timers preserve the assertions and real filesystem work. The
+focused and full-file checks passed. Review of the final maintained patch and
+source consistency remains part of release preparation.
 
 The retained reviewer cleared the rotated-transcript correction, its exact
 maintained patch reconstruction, and the three bounded validation runners. The

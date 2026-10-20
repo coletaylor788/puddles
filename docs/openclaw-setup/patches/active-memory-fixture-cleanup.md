@@ -49,6 +49,20 @@ removing the post-read stopped guard fails the grounded-context assertion as
 expected; the original watcher is restored after the negative check. A fresh
 complete application run remains required.
 
+The harness-native outcome table also fixes its clock while retaining real
+filesystem work. Its mocked agent supplies tool evidence and completes
+immediately, so classification should not depend on disk work finishing within
+a real one-second timer. It joins the underlying recall before shared fixture
+reset. All five expected classifications, including terminal errors with a
+summary, retain their assertions and the configured 1,000 ms budget. Dedicated
+deadline tests keep their original clocks and behavior.
+
+A full run reported `timeout_partial` instead of `ok` for the successful-summary
+row. The precise scheduling or I/O delay is unproven; this is not evidence of a
+runtime defect. The corrected five-row table and all 226 tests in the file pass,
+including the separate deadline regressions. The complete application release
+must still pass before deployment.
+
 The runtime cold-recall override is retired. These joins remain necessary for
 the retained delayed-provider and cleanup fixtures. The cumulative manifest
 retains the complete Active Memory group. The index
