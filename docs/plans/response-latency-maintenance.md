@@ -32,7 +32,7 @@ Retire blocking-gather and durable-handoff customizations together. Native paren
 
 ### Status
 
-Implementation and release are approved. Local source checks and installed synthetic Claude delegation checks have passed. Real-provider qualification is approved and awaiting the release manager's allocation. Full DEV, TEST and production acceptance remain open. No deployed latency improvement is claimed.
+Implementation and release are approved. Local source checks and installed synthetic Claude delegation checks have passed. Native Claude compaction succeeded in the latest real-provider attempt, but the attempt ended before memory-saving and restart acceptance. It is fully closed. The idle-scheduling correction below has static review; its tests and a new build remain pending. Full DEV, TEST and production acceptance remain open. No deployed latency improvement is claimed.
 
 ## Agent section
 
@@ -47,6 +47,8 @@ Use existing compaction notifications, internal snapshot preparation and the mem
 Claude manual and idle operations use a host-admitted, resume-only control path. Safe mode retains built-in `/compact` while disabling customizations. Empty tools, strict empty MCP configuration and a denying permission callback prevent tools from running during compaction. Ordinary turns retain `--disable-slash-commands`; a foreground prompt cannot select the control path.
 
 Code Mode selects the borrowed source policy separately from the session that owns execution. Its replay, wait ownership and lifecycle events retain that execution identity. Shared hooks and the idle scheduler use existing session-maintenance ownership and persistence.
+
+Native Claude completion carries a CLI session binding rather than the embedded harness completion fields. Both command and reply maintenance now capture that binding after a successful native completion. Delayed admission rechecks the full binding and effective runtime, together with the existing session, queue, delivery and writer guards. Native login does not require an invented embedded-auth callback. The existing embedded scheduling path remains intact. Four registered regression files cover the two entry points, native binding validation and the actual delayed scheduler. Static review is clear; execution is pending.
 
 Native yielded-parent ownership and terminal delivery guards are present in the pinned upstream base. Remove both gather patches and adapt dependent untrusted-result presentation hunks. The delegation canary expects a native `yielded` acknowledgment followed by one `subagent_settle` continuation. It checks wrapping enabled and disabled and direct, delayed, spawn and yield paths.
 
