@@ -206,3 +206,23 @@ it('failure fixtures preserve their supervising command and retire only their ow
     expect(inspectProcessScope(scope).incomplete).toBe(false);
   }
 }, 40_000);
+
+it('serial check runs restore inherited scopes and remove their completed signal handlers', () => {
+  const root = mkdtempSync(join(tmpdir(), 'application-serial-'));
+  const moduleUrl = pathToFileURL(resolve(import.meta.dirname, '../src/application-check-cleanup.mjs')).href;
+  const wrapper = join(root, 'wrapper.mjs');
+  writeFileSync(wrapper, `import assert from 'node:assert/strict';import {mkdirSync} from 'node:fs';
+import {withApplicationCheckCleanup} from ${JSON.stringify(moduleUrl)};
+const scopes=process.env.PUDDLES_PROCESS_SCOPES,signals=['SIGHUP','SIGINT','SIGTERM'];
+const before=signals.map(s=>process.listenerCount(s));
+for(const fails of [true,false]){const state=${JSON.stringify(root)}+'/'+String(fails);mkdirSync(state);
+try{await withApplicationCheckCleanup(state,async()=>{if(fails)throw Error('expected failure');});}catch(e){assert.equal(e.message,'expected failure');}
+assert.equal(process.env.PUDDLES_PROCESS_SCOPES,scopes);assert.deepEqual(signals.map(s=>process.listenerCount(s)),before);}
+`);
+  try {
+    const result = spawnSync(process.execPath, [wrapper], { encoding: 'utf8', timeout: 10000 });
+    expect(result.status, result.stderr).toBe(0);
+    expect(existsSync(join(root, 'true'))).toBe(true);
+    expect(existsSync(join(root, 'false'))).toBe(false);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

@@ -231,12 +231,13 @@ export async function stopActiveCommand(signal, graceMs = 10_000) {
 }
 
 export function installSignalHandlers(params) {
+  const handlers = [];
   for (const [signal, exitCode] of [
     ["SIGHUP", 129],
     ["SIGINT", 130],
     ["SIGTERM", 143],
   ]) {
-    process.on(signal, () => {
+    const handler = () => {
       if (handlingSignal) {
         return;
       }
@@ -258,8 +259,11 @@ export function installSignalHandlers(params) {
         }
         process.exit(exitCode);
       })();
-    });
+    };
+    process.on(signal, handler);
+    handlers.push([signal, handler]);
   }
+  return () => { for (const [signal, handler] of handlers) process.removeListener(signal, handler); };
 }
 
 export function isHandlingSignal() {

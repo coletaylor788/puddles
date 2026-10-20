@@ -1,5 +1,6 @@
 [
   "files.mjs",
+  "check-output.mjs",
   "commands.mjs",
   "queue.mjs",
   "backup.mjs",
