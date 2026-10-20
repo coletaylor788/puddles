@@ -90,15 +90,16 @@ DEV-only compatibility filter so qualification preserves the programmatic-tool
 settings already released for all tool-enabled agents. Existing agent tool
 permissions and native approvals stay unchanged.
 
-The refreshed candidate passed all 12 managed DEV scenarios and independent
-shutdown. Its latest full release stopped on an Active Memory assertion before
-TEST or production deployment. Production and the backup are unchanged. The
-failed case passes alone and beside its preceding timeout cases. A test-only
-correction joins an outstanding recall owner in the preceding fixture and adds
-diagnostics to the failed assertion. Focused validation, all 226 tests in the
-affected file, and independent review passed. The original failure's cause is
-not yet established. A fresh complete application run, TEST, production
-acceptance, source merge, and final cleanup remain ahead.
+The refreshed candidate passed all 12 managed DEV scenarios. Its latest full
+release stopped on a rotated-transcript Active Memory assertion before TEST or
+production deployment. Production and the backup are unchanged. Both variants
+pass in isolation, so the original failure's cause remains unproven. Independent
+review cleared a test-only correction that controls poll timing and joins cleanup.
+All five focused cases and all 226 tests in the affected file pass. A temporary
+guard-removal check fails as expected, proving the stale-result assertion still
+works. The restored test input triggers the native build freshness check, so
+application preparation must refresh before a fresh complete application run,
+TEST, production acceptance, source merge, and final cleanup.
 
 ## Agent section
 
@@ -138,6 +139,27 @@ that cleanup, preserves its behavior assertions, and adds existing diagnostics
 to the success assertion. All four focused cases and all 226 cases in the full
 file passed with the correction. The retained reviewer cleared the complete
 current behavior diff. No production code or deadline changes.
+
+The sixth full release passed the preceding custom-tool case in 195 ms but
+failed `uses configured memory evidence from a rotated embedded transcript
+(stale poll: true)` in 1,323 ms. Its core pool again reported 7,182 passed, one
+failed, and one skipped across 226 files. The original caller joined with exit
+code 1. Independent closure verified retired owners and an empty lane with
+production and backup unchanged. No TEST or production deployment occurred.
+This attempt is consumed and must not be replayed.
+
+Both unchanged rotated-transcript variants then passed in isolation. The
+reviewed correction is applied to the maintained patch and prepared source. It
+uses selective fake timers to drive the actual poll after the fixture writes
+its transcript, preserves the stale-read ordering and 1,000 ms recall budget,
+joins recall cleanup, and removes the fixture-owned rotated file. It changes no
+production code. All five focused cases and all 226 tests in the file passed. Removing only the
+post-read stopped guard caused the expected grounded-context failure. The native
+owner retired before the original watcher bytes were restored. Every command
+joined and retired its scope without a resource violation. All maintained patches
+compose exactly, and application output bytes remain unchanged. Native readiness
+requires a refresh because restored runtime input has a newer modification time
+than the build stamp. Existing output equality does not waive that build check.
 
 ### Scope and acceptance criteria
 
@@ -182,7 +204,18 @@ acceptance, and rollback coverage. The scoped return-grant plugin supplies only 
 
 ### Validation
 
-The latest full application run failed the Active Memory custom-tool evidence
+The latest full application run failed the rotated embedded-transcript case
+with absent context. It ran for 1,267.47 seconds. Isolated unchanged variants
+passed in 1,185 ms without a stale read and 173 ms with one; the native command
+joined in 32.01 seconds. This does not establish the original failure's cause.
+Independent review found a concrete missing cleanup join in the fixture and
+cleared the proposed timing and cleanup correction. The corrected five-case selection passed. The negative control temporarily
+removed the existing post-read stopped check and failed the grounded-context
+assertion as expected. The watcher was restored after native process retirement.
+The entire 226-case file passed with no skips in 64.24 seconds; its native command
+joined in 67.59 seconds. Production watcher behavior stays unchanged.
+
+The fifth full application run failed the Active Memory custom-tool evidence
 case with `expected prependContext` after about five seconds. That duration does
 not establish which deadline or cleanup stage was involved. The original case
 passed alone in 869 ms and with three neighboring timeout cases in 242 ms. Both
@@ -293,6 +326,12 @@ PROD. Restore runtime, config, both agents' instructions, and handoff skill
 together if acceptance fails. Preserve current healthy production until then.
 
 ### Review log
+
+The retained reviewer cleared the rotated-transcript correction, its exact
+maintained patch reconstruction, and the three bounded validation runners. The
+subsequent focused, negative, and full-file results meet that review's remaining
+local validation requirements. The current application release remains unqualified
+until a fresh complete run and installed acceptance pass.
 
 The retained independent reviewer completed review through the same-model CLI
 route. It found one P2: adding Household to the symmetric agent allowlist also
