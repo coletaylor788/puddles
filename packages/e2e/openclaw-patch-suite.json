@@ -203,7 +203,11 @@
     "src/agents/tool-search-scheduling.test.ts": "agents-core",
     "src/agents/embedded-agent-runner/run/attempt-stream-prepare.test.ts": "infra",
     "src/agents/embedded-agent-runner/run.plugin-runtime-refresh.integration.test.ts": "agents-embedded-agent",
-    "src/gateway/mcp-grant-store.test.ts": "gateway-core"
+    "src/gateway/mcp-grant-store.test.ts": "gateway-core",
+    "src/agents/session-maintenance/native-idle.test.ts": "unit-fast",
+    "src/agents/session-maintenance/run.native-idle.test.ts": "agents-support",
+    "src/auto-reply/reply/agent-runner-maintenance.test.ts": "auto-reply-reply",
+    "src/agents/command/maintenance.test.ts": "agents-support"
   },
   "patches": [
     {
@@ -611,7 +615,11 @@
         "src/agents/session-maintenance/compaction-memory-jobs.test.ts",
         "src/agents/session-maintenance/compaction-memory.test.ts",
         "src/agents/session-maintenance/idle.test.ts",
-        "src/agents/harness/tool-surface-bridge.test.ts"
+        "src/agents/harness/tool-surface-bridge.test.ts",
+        "src/agents/session-maintenance/native-idle.test.ts",
+        "src/agents/session-maintenance/run.native-idle.test.ts",
+        "src/auto-reply/reply/agent-runner-maintenance.test.ts",
+        "src/agents/command/maintenance.test.ts"
       ]
     }
   ],
