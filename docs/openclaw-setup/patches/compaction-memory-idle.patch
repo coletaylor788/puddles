@@ -845,32 +845,55 @@ index 96248b3f0d7..2ccfeca02f1 100644
    trigger?: EmbeddedRunTrigger;
    sessionFile: string;
 diff --git a/src/agents/command/post-run.ts b/src/agents/command/post-run.ts
-index 1d4fbd876b0..d80dee1abb5 100644
 --- a/src/agents/command/post-run.ts
 +++ b/src/agents/command/post-run.ts
-@@ -30,6 +30,7 @@ import { buildMainSessionRecoveryClearPatch } from "../main-session-recovery/mai
+@@ -30,6 +30,8 @@
  import { persistPendingFinalDeliveryMarker } from "../pending-final-delivery-marker.js";
  import type { AgentRunSessionTarget } from "../run-session-target.types.js";
  import { throwAgentRunRestartAbortReason } from "../run-termination.js";
 +import { isIdleCompactionHarness } from "../session-maintenance/idle.js";
++import { resolveCompletedNativeIdleBinding } from "../session-maintenance/native-idle.js";
  import type { SessionMaintenanceRequest } from "../session-maintenance/run.js";
  import { persistAssistantTranscriptRepairRecord } from "./assistant-transcript-repair.js";
  import { persistAgentSession } from "./attempt-execution.shared.js";
-@@ -392,8 +393,12 @@ export async function finalizeEmbeddedAgentCommand(params: {
+@@ -391,10 +393,16 @@
+           }
          : undefined;
      const agentMeta = result.meta.agentMeta;
++    const nativeIdleBinding = resolveCompletedNativeIdleBinding({ cfg, meta: result.meta, entry: sessionEntry });
++    const maintenanceHarnessId = nativeIdleBinding?.backendId ?? agentMeta?.agentHarnessId;
++    const maintenanceAuth = nativeIdleBinding
++      ? { authProfileId: nativeIdleBinding.binding.authProfileId }
++      : params.attempt.maintenanceAuthProfile;
      const embeddedMaintenance =
 -      transcriptPersistenceRunner === "embedded" &&
 -      agentMeta?.agentHarnessId === OPENCLAW_AGENT_RUNTIME_ID &&
+-      params.attempt.maintenanceAuthProfile !== undefined &&
 +      ((transcriptPersistenceRunner === "embedded" &&
 +        agentMeta?.agentHarnessId === OPENCLAW_AGENT_RUNTIME_ID) ||
-+        isIdleCompactionHarness(
-+          agentMeta?.agentHarnessId,
-+          cfg.agents?.defaults?.compaction?.idle,
-+        )) &&
-       params.attempt.maintenanceAuthProfile !== undefined &&
++        isIdleCompactionHarness(maintenanceHarnessId, cfg.agents?.defaults?.compaction?.idle)) &&
++      maintenanceAuth !== undefined &&
        !fallbackExhausted &&
        terminal.outcome.status === "ok" &&
+       !resultErrorPayload &&
+@@ -422,14 +430,15 @@
+               provider: agentMeta?.provider ?? fallbackProvider,
+               model: agentMeta?.model ?? fallbackModel,
+               thinkLevel: effectiveTurnThinkLevel,
+-              auth: params.attempt.maintenanceAuthProfile,
++              auth: maintenanceAuth,
+             }),
+             sessionId: runOwnedSessionId,
+             lifecycleRevision: sessionEntry.lifecycleRevision,
+             lifecycleGeneration,
+             startedAt: params.attempt.startedAt,
+             oneShotCliRun: params.opts.oneShotCliRun,
+-            agentHarnessId: agentMeta?.agentHarnessId,
++            agentHarnessId: maintenanceHarnessId,
++            nativeIdleBinding,
+             compactionRequestBudget: params.attempt.compactionRequestBudget,
+           }
+         : undefined;
 diff --git a/src/agents/embedded-agent-runner/cli-backend-dispatch.ts b/src/agents/embedded-agent-runner/cli-backend-dispatch.ts
 index 06fa2e66fde..6739bffe91e 100644
 --- a/src/agents/embedded-agent-runner/cli-backend-dispatch.ts
@@ -1360,7 +1383,6 @@ index b9a94e90d43..baefa232f92 100644
    session.foreground += 1;
    let released = false;
 diff --git a/src/agents/session-maintenance/run.ts b/src/agents/session-maintenance/run.ts
-index f8177b21f53..5f01b65d0b8 100644
 --- a/src/agents/session-maintenance/run.ts
 +++ b/src/agents/session-maintenance/run.ts
 @@ -1,4 +1,6 @@
@@ -1370,23 +1392,27 @@ index f8177b21f53..5f01b65d0b8 100644
  import type { SessionEntry } from "../../config/sessions/types.js";
  import type { OpenClawConfig } from "../../config/types.openclaw.js";
  import { fenceScheduledGatewayContextResolver } from "../../gateway/scheduled-run-gateway-context.js";
-@@ -24,6 +26,7 @@ import {
+@@ -24,6 +26,10 @@
  } from "../command/runtime-loaders.js";
  import type { CompactionRequestBudget } from "../sessions/compaction/request-budget.js";
  import { createSessionMaintenanceOwner } from "./coordinator.js";
 +import { isIdleCompactionHarness, scheduleIdleCompaction } from "./idle.js";
++import { matchesNativeIdleBinding, type NativeIdleBinding } from "./native-idle.js";
++import { resolveEffectiveAgentRuntime } from "../thinking-runtime.js";
++import { resolveDefaultAgentId } from "../agent-scope.js";
  
  const log = createSubsystemLogger("agents/session-maintenance");
  export type SessionMaintenanceRequest = {
-@@ -42,6 +45,7 @@ export type SessionMaintenanceRequest = {
+@@ -42,6 +48,8 @@
    oneShotCliRun?: boolean;
    agentHarnessId?: string;
    compactionRequestBudget?: CompactionRequestBudget;
 +  idleCompaction?: boolean;
++  nativeIdleBinding?: NativeIdleBinding;
  };
  
  /** Copy data only: turn callbacks, tool grants, delivery context and writer custody stay behind. */
-@@ -118,6 +122,36 @@ export function scheduleSessionMaintenance(
+@@ -118,6 +126,36 @@
    request: SessionMaintenanceRequest,
    afterOwnerSettles?: Promise<boolean>,
  ): void {
@@ -1423,13 +1449,25 @@ index f8177b21f53..5f01b65d0b8 100644
    const { prepared, followupRun } = request;
    const sessionKey = prepared.sessionKey;
    if (!sessionKey) {
-@@ -197,6 +231,17 @@ export function scheduleSessionMaintenance(
+@@ -197,6 +235,29 @@
                  ) {
                    throw createAbortError("Session changed before optional maintenance admission");
                  }
 +                if (
 +                  request.idleCompaction &&
-+                  (entry.agentHarnessId !== request.agentHarnessId ||
++                  ((request.nativeIdleBinding
++                    ? !matchesNativeIdleBinding(entry, request.nativeIdleBinding) ||
++                      resolveEffectiveAgentRuntime({
++                        cfg: prepared.cfg,
++                        provider: followupRun.run.provider,
++                        modelId: followupRun.run.model,
++                        agentId: followupRun.run.agentId ?? resolveDefaultAgentId(prepared.cfg),
++                        sessionKey:
++                          prepared.runtimePolicySessionKey ??
++                          followupRun.run.runtimePolicySessionKey ?? sessionKey,
++                        sessionEntry: entry,
++                      }) !== request.nativeIdleBinding.backendId
++                    : entry.agentHarnessId !== request.agentHarnessId) ||
 +                    entry.modelProvider !== followupRun.run.provider ||
 +                    entry.model !== followupRun.run.model)
 +                ) {
@@ -1441,7 +1479,7 @@ index f8177b21f53..5f01b65d0b8 100644
                  if (entry.pendingFinalDelivery) {
                    throw createAbortError(
                      "Optional maintenance skipped while final delivery is pending",
-@@ -210,25 +255,40 @@ export function scheduleSessionMaintenance(
+@@ -210,25 +271,40 @@
                  if (!entry) {
                    throw createAbortError("Session maintenance has no admitted session");
                  }
@@ -1496,7 +1534,7 @@ index f8177b21f53..5f01b65d0b8 100644
                  // Flush reports aborted attempts as failed outcomes; cancellation still forbids compaction.
                  assertCurrent();
                  entry = flushed.sessionEntry ?? entry;
-@@ -251,6 +311,7 @@ export function scheduleSessionMaintenance(
+@@ -251,6 +327,7 @@
                    defaultModel: followupRun.run.model,
                    isHeartbeat: false,
                    agentHarnessId: request.agentHarnessId,
@@ -1505,34 +1543,45 @@ index f8177b21f53..5f01b65d0b8 100644
                    authorize: () => {
                      assertCurrent();
 diff --git a/src/auto-reply/reply/agent-runner-maintenance.ts b/src/auto-reply/reply/agent-runner-maintenance.ts
-index f033affa6f1..ca81536142f 100644
 --- a/src/auto-reply/reply/agent-runner-maintenance.ts
 +++ b/src/auto-reply/reply/agent-runner-maintenance.ts
-@@ -1,4 +1,5 @@
+@@ -1,4 +1,6 @@
  import { OPENCLAW_AGENT_RUNTIME_ID } from "../../agents/agent-runtime-id.js";
 +import { isIdleCompactionHarness } from "../../agents/session-maintenance/idle.js";
++import { resolveCompletedNativeIdleBinding } from "../../agents/session-maintenance/native-idle.js";
  import {
    createSessionMaintenanceFollowup,
    scheduleSessionMaintenance,
-@@ -32,7 +33,11 @@ export function scheduleReplySessionMaintenance(params: {
+@@ -16,7 +18,11 @@
+   const { context, accounting, sessionEntry } = params;
+   const { replyOperation, followupRun, cfg, sessionKey, storePath } = context;
+   const meta = accounting.runResult.meta;
+-  const auth = context.execution.maintenanceAuthProfile;
++  const nativeIdleBinding = resolveCompletedNativeIdleBinding({ cfg, meta, entry: sessionEntry });
++  const agentHarnessId = nativeIdleBinding?.backendId ?? meta?.agentMeta?.agentHarnessId;
++  const auth = nativeIdleBinding
++    ? { authProfileId: nativeIdleBinding.binding.authProfileId }
++    : context.execution.maintenanceAuthProfile;
+   if (
+     !sessionEntry ||
+     !sessionKey ||
+@@ -32,7 +38,8 @@
      meta?.aborted ||
      meta?.yielded ||
      meta?.error ||
 -    meta?.agentMeta?.agentHarnessId !== OPENCLAW_AGENT_RUNTIME_ID ||
-+    (meta?.agentMeta?.agentHarnessId !== OPENCLAW_AGENT_RUNTIME_ID &&
-+      !isIdleCompactionHarness(
-+        meta?.agentMeta?.agentHarnessId,
-+        cfg.agents?.defaults?.compaction?.idle,
-+      )) ||
++    (agentHarnessId !== OPENCLAW_AGENT_RUNTIME_ID &&
++      !isIdleCompactionHarness(agentHarnessId, cfg.agents?.defaults?.compaction?.idle)) ||
      auth === undefined ||
      cfg.agents?.defaults?.compaction?.enabled === false
    ) {
-@@ -63,7 +68,7 @@ export function scheduleReplySessionMaintenance(params: {
+@@ -63,7 +70,8 @@
        lifecycleRevision: sessionEntry.lifecycleRevision,
        lifecycleGeneration: replyOperation.lifecycleGeneration,
        startedAt: replyOperation.startedAtMs,
 -      agentHarnessId: meta.agentMeta.agentHarnessId,
-+      agentHarnessId: meta?.agentMeta?.agentHarnessId,
++      agentHarnessId,
++      nativeIdleBinding,
        compactionRequestBudget: context.execution.compactionRequestBudget,
      },
      replyOperation.ownerSettlement.then(
@@ -4260,3 +4309,500 @@ index 78e571a2cf2..6ba5c0acc9d 100644
      runId: context.runId,
      modelProvider: context.modelProvider,
      modelId: context.modelId,
+diff --git a/src/agents/command/maintenance.test.ts b/src/agents/command/maintenance.test.ts
+--- a/src/agents/command/maintenance.test.ts
++++ b/src/agents/command/maintenance.test.ts
+@@ -14,6 +14,7 @@
+   GATEWAY_INGRESS_ARGS,
+ } from "../agent-command.compaction.test-support.js";
+ import { waitForSessionMaintenance } from "../session-maintenance/coordinator.js";
++import * as maintenanceRuntime from "../session-maintenance/run.js";
+ 
+ const {
+   replaceSessionEntry,
+@@ -306,3 +307,68 @@
+     },
+   );
+ });
++
++
++it("schedules native CLI idle work without an embedded auth callback or harness field", async () => {
++  const sessionId = "native-idle-host";
++  const sessionKey = `agent:main:explicit:${sessionId}`;
++  const binding = { sessionId: "native-idle-session", authEpochVersion: 1 };
++  state.cfg!.agents!.defaults!.compaction = {
++    idle: { afterMinutes: 15, inputThresholdRatio: 0.8, harnesses: ["claude-cli"] },
++  };
++  await replaceSessionEntry({ sessionKey, storePath: requireStorePath() }, {
++    sessionId, updatedAt: Date.now(),
++    cliSessionIds: { "claude-cli": binding.sessionId },
++    cliSessionBindings: { "claude-cli": binding },
++  });
++  state.runAgentAttemptMock.mockImplementationOnce(async () => {
++    const result = makeCompactionResult({ sessionId, text: "Native answer.", runner: "cli" });
++    result.meta.executionTrace!.winnerProvider = "claude-cli";
++    result.meta.agentMeta!.cliSessionBinding = binding;
++    return result;
++  });
++  const schedule = vi.spyOn(maintenanceRuntime, "scheduleSessionMaintenance").mockImplementation(() => {});
++  try {
++    await agentCommandFromGatewayIngress({
++      message: "continue", sessionId, sessionKey, allowModelOverride: true,
++      runContext: { messageChannel: "webchat", accountId: "primary" },
++    }, ...GATEWAY_INGRESS_ARGS);
++    expect(schedule).toHaveBeenCalledOnce();
++    expect(schedule.mock.calls[0][0]).toMatchObject({
++      agentHarnessId: "claude-cli",
++      nativeIdleBinding: { backendId: "claude-cli", binding: { sessionId: binding.sessionId } },
++    });
++    expect(schedule.mock.calls[0][0].followupRun.run.authProfileId).toBeUndefined();
++    expect(findStoredSessionEntry(sessionKey)?.agentHarnessId).toBeUndefined();
++  } finally {
++    schedule.mockRestore();
++  }
++});
++
++
++it("preserves configured embedded idle scheduling with completed auth", async () => {
++  const sessionId = "configured-idle-host";
++  const sessionKey = `agent:main:explicit:${sessionId}`;
++  state.cfg!.agents!.defaults!.compaction = {
++    idle: { afterMinutes: 15, inputThresholdRatio: 0.8, harnesses: ["configured-runtime"] },
++  };
++  await replaceSessionEntry({ sessionKey, storePath: requireStorePath() }, {
++    sessionId, updatedAt: Date.now(), agentHarnessId: "configured-runtime",
++  });
++  state.runAgentAttemptMock.mockImplementationOnce(async (params) => {
++    params.onSuccessfulAuthProfile?.({});
++    return makeCompactionResult({ sessionId, text: "Embedded answer.", runner: "embedded", agentHarnessId: "configured-runtime" });
++  });
++  const schedule = vi.spyOn(maintenanceRuntime, "scheduleSessionMaintenance").mockImplementation(() => {});
++  try {
++    await agentCommandFromGatewayIngress({
++      message: "continue", sessionId, sessionKey, allowModelOverride: true,
++      runContext: { messageChannel: "webchat", accountId: "primary" },
++    }, ...GATEWAY_INGRESS_ARGS);
++    expect(schedule).toHaveBeenCalledOnce();
++    expect(schedule.mock.calls[0][0].agentHarnessId).toBe("configured-runtime");
++    expect(schedule.mock.calls[0][0].nativeIdleBinding).toBeUndefined();
++  } finally {
++    schedule.mockRestore();
++  }
++});
+diff --git a/src/agents/session-maintenance/native-idle.test.ts b/src/agents/session-maintenance/native-idle.test.ts
+new file mode 100644
+--- /dev/null
++++ b/src/agents/session-maintenance/native-idle.test.ts
+@@ -0,0 +1,77 @@
++import { describe, expect, it } from "vitest";
++import type { CliSessionBinding, SessionEntry } from "../../config/sessions.js";
++import type { OpenClawConfig } from "../../config/types.openclaw.js";
++import type { EmbeddedAgentRunResult } from "../embedded-agent-runner/types.js";
++import { matchesNativeIdleBinding, resolveCompletedNativeIdleBinding } from "./native-idle.js";
++
++function fixture() {
++  const binding: CliSessionBinding = {
++    sessionId: "native-session",
++    authEpochVersion: 1,
++    cwdHash: "workspace-hash",
++  };
++  const entry: SessionEntry = {
++    sessionId: "host-session", updatedAt: 1,
++    cliSessionIds: { "claude-cli": binding.sessionId },
++    cliSessionBindings: { "claude-cli": structuredClone(binding) },
++  };
++  const cfg: OpenClawConfig = { agents: { defaults: { compaction: {
++    idle: { afterMinutes: 15, inputThresholdRatio: 0.8, harnesses: ["claude-cli"] },
++  } } } };
++  const meta: EmbeddedAgentRunResult["meta"] = {
++    durationMs: 1,
++    executionTrace: { runner: "cli", winnerProvider: "claude-cli", winnerModel: "native-model", attempts: [], fallbackUsed: false },
++    agentMeta: { sessionId: "native-session", provider: "anthropic", model: "native-model", cliSessionBinding: structuredClone(binding) },
++  };
++  return { cfg, entry, meta };
++}
++
++describe("completed native idle binding", () => {
++  it("accepts native-login completion without generic harness or profile fields", () => {
++    const input = fixture();
++    const captured = resolveCompletedNativeIdleBinding(input);
++    expect(captured?.backendId).toBe("claude-cli");
++    expect(captured?.binding.authProfileId).toBeUndefined();
++    expect(input.entry.agentHarnessId).toBeUndefined();
++    expect(matchesNativeIdleBinding(input.entry, captured!)).toBe(true);
++    input.entry.cliSessionBindings!["claude-cli"].cwdHash = "changed";
++    expect(captured?.binding.cwdHash).toBe("workspace-hash");
++    expect(matchesNativeIdleBinding(input.entry, captured!)).toBe(false);
++  });
++
++  it.each(["aborted", "yielded", "error", "embedded", "missing-completion", "legacy-only", "conflict", "disabled"])(
++    "rejects %s as native completion evidence", (condition) => {
++      const input = fixture();
++      if (condition === "aborted") input.meta.aborted = true;
++      if (condition === "yielded") input.meta.yielded = true;
++      if (condition === "error") input.meta.error = { kind: "incomplete_turn", message: "failed" };
++      if (condition === "embedded") input.meta.executionTrace!.runner = "embedded";
++      if (condition === "missing-completion") delete input.meta.agentMeta!.cliSessionBinding;
++      if (condition === "legacy-only") delete input.entry.cliSessionBindings;
++      if (condition === "conflict") input.entry.agentHarnessId = "other-runtime";
++      if (condition === "disabled") input.cfg.agents!.defaults!.compaction!.idle!.harnesses = [];
++      expect(resolveCompletedNativeIdleBinding(input)).toBeUndefined();
++    },
++  );
++
++  it.each(["sessionId", "authProfileId", "authEpoch", "authEpochVersion"] as const)(
++    "rejects mismatched completion %s", (field) => {
++      const input = fixture();
++      const changed = input.entry.cliSessionBindings!["claude-cli"];
++      if (field === "authEpochVersion") changed[field] = 2;
++      else changed[field] = "changed";
++      expect(resolveCompletedNativeIdleBinding(input)).toBeUndefined();
++    },
++  );
++
++  it.each(["sessionId", "authProfileId", "authEpoch", "resumeCheckpointId", "mcpResumeHash", "forkNextResume"] as const)(
++    "invalidates the quiet period after %s changes", (field) => {
++      const input = fixture();
++      const captured = resolveCompletedNativeIdleBinding(input)!;
++      const changed = input.entry.cliSessionBindings!["claude-cli"];
++      if (field === "forkNextResume") changed[field] = true;
++      else changed[field] = "changed";
++      expect(matchesNativeIdleBinding(input.entry, captured)).toBe(false);
++    },
++  );
++});
+diff --git a/src/agents/session-maintenance/native-idle.ts b/src/agents/session-maintenance/native-idle.ts
+new file mode 100644
+--- /dev/null
++++ b/src/agents/session-maintenance/native-idle.ts
+@@ -0,0 +1,53 @@
++import { isDeepStrictEqual } from "node:util";
++import type { CliSessionBinding, SessionEntry } from "../../config/sessions.js";
++import type { OpenClawConfig } from "../../config/types.openclaw.js";
++import { getCliSessionBinding } from "../cli-session.js";
++import type { EmbeddedAgentRunResult } from "../embedded-agent-runner/types.js";
++import { isIdleCompactionHarness } from "./idle.js";
++
++export type NativeIdleBinding = {
++  backendId: string;
++  binding: CliSessionBinding;
++};
++
++/** Native completion proves ambient login without an embedded auth observer. */
++export function resolveCompletedNativeIdleBinding(params: {
++  cfg: OpenClawConfig;
++  meta: EmbeddedAgentRunResult["meta"] | undefined;
++  entry: SessionEntry | undefined;
++}): NativeIdleBinding | undefined {
++  const { meta, entry } = params;
++  const backendId = meta?.executionTrace?.winnerProvider;
++  const completed = meta?.agentMeta?.cliSessionBinding;
++  if (
++    meta?.executionTrace?.runner !== "cli" ||
++    meta.aborted || meta.yielded || meta.error ||
++    !backendId ||
++    !isIdleCompactionHarness(backendId, params.cfg.agents?.defaults?.compaction?.idle) ||
++    !completed?.sessionId ||
++    !entry ||
++    !entry.cliSessionBindings?.[backendId]?.sessionId ||
++    (entry.agentHarnessId !== undefined && entry.agentHarnessId !== backendId)
++  ) {
++    return undefined;
++  }
++  const binding = getCliSessionBinding(entry, backendId);
++  if (!binding) {
++    return undefined;
++  }
++  // A legacy session-id fallback alone is not native completion/auth evidence.
++  for (const field of ["sessionId", "authProfileId", "authEpoch", "authEpochVersion"] as const) {
++    if (binding[field] !== completed[field]) {
++      return undefined;
++    }
++  }
++  return { backendId, binding: structuredClone(binding) };
++}
++
++/** Any native reseed, auth change or pending fork invalidates this quiet period. */
++export function matchesNativeIdleBinding(entry: SessionEntry, captured: NativeIdleBinding): boolean {
++  return (
++    (entry.agentHarnessId === undefined || entry.agentHarnessId === captured.backendId) &&
++    isDeepStrictEqual(getCliSessionBinding(entry, captured.backendId), captured.binding)
++  );
++}
+diff --git a/src/agents/session-maintenance/run.native-idle.test.ts b/src/agents/session-maintenance/run.native-idle.test.ts
+new file mode 100644
+--- /dev/null
++++ b/src/agents/session-maintenance/run.native-idle.test.ts
+@@ -0,0 +1,181 @@
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++import type { SessionEntry } from "../../config/sessions.js";
++import type { OpenClawConfig } from "../../config/types.openclaw.js";
++import { cancelIdleCompaction } from "./idle.js";
++import { resolveCompletedNativeIdleBinding } from "./native-idle.js";
++import { scheduleSessionMaintenance, type SessionMaintenanceRequest } from "./run.js";
++
++const state = vi.hoisted(() => ({
++  cfg: undefined as OpenClawConfig | undefined,
++  entry: undefined as SessionEntry | undefined,
++  runtime: "claude-cli",
++  queueDepth: 0,
++  children: [] as unknown[],
++  tracked: [] as Promise<unknown>[],
++  compact: vi.fn(async () => undefined),
++  flush: vi.fn(),
++  resolveRuntime: vi.fn(),
++  createOwner: vi.fn(),
++  release: vi.fn(),
++}));
++vi.mock("../../config/io.js", () => ({ getRuntimeConfig: () => state.cfg }));
++vi.mock("../../auto-reply/reply/queue.js", () => ({ getFollowupQueueDepth: () => state.queueDepth }));
++vi.mock("../../infra/agent-events.js", () => ({
++  assertAgentRunLifecycleGenerationCurrent: vi.fn(),
++  registerAgentEventLifecycleRotationHandler: vi.fn(),
++}));
++vi.mock("../../logging/subsystem.js", () => ({
++  createSubsystemLogger: () => ({ debug: vi.fn(), warn: vi.fn() }),
++}));
++vi.mock("../../plugins/runtime.js", () => ({ getPluginRegistryForContext: () => ({}) }));
++vi.mock("../../plugins/runtime/gateway-request-scope.js", () => ({
++  getPluginRuntimeGatewayRequestScope: () => undefined,
++  withPluginRuntimeGatewayRequestScope: (_scope: unknown, run: () => unknown) => run(),
++}));
++vi.mock("../../gateway/scheduled-run-gateway-context.js", () => ({
++  fenceScheduledGatewayContextResolver: () => undefined,
++}));
++vi.mock("../../process/gateway-work-admission.js", () => ({
++  runWithGatewayIndependentRootWorkAdmission: (run: () => unknown) => run(),
++}));
++vi.mock("../../sessions/session-lifecycle-admission.js", () => ({
++  beginSessionWorkAdmission: async ({ assertAllowed }: { assertAllowed: () => void }) => {
++    assertAllowed();
++    return {
++      run: async (run: () => unknown) => { assertAllowed(); return run(); },
++      release: state.release,
++    };
++  },
++}));
++vi.mock("../command/runtime-loaders.js", () => ({
++  loadSessionStoreRuntime: async () => ({ loadSessionEntryReadOnly: () => state.entry }),
++  loadAgentRunnerMemoryRuntime: async () => ({
++    runSessionCompactionIfNeeded: state.compact,
++    runMemoryFlushIfNeeded: state.flush,
++  }),
++}));
++vi.mock("../thinking-runtime.js", () => ({
++  resolveEffectiveAgentRuntime: (input: unknown) => {
++    state.resolveRuntime(input);
++    return state.runtime;
++  },
++}));
++vi.mock("../agent-scope.js", () => ({ resolveDefaultAgentId: () => "main" }));
++vi.mock("../subagents/registry/subagent-registry.js", () => ({
++  listUnsettledRequesterChildren: () => state.children,
++}));
++vi.mock("./coordinator.js", () => ({
++  createSessionMaintenanceOwner: ({ abortSignal }: { abortSignal: AbortSignal }) => {
++    state.createOwner();
++    return {
++      signal: abortSignal,
++      assertCurrent: () => abortSignal.throwIfAborted(),
++      run: (run: () => unknown) => run(),
++      track: (work: Promise<unknown>) => { state.tracked.push(work); return work; },
++    };
++  },
++}));
++
++const sessionKey = "agent:main:native-idle-admission";
++function fixture(): SessionMaintenanceRequest {
++  const binding = { sessionId: "native-session", authEpochVersion: 1, cwdHash: "workspace" };
++  const cfg: OpenClawConfig = { agents: { defaults: { compaction: {
++    idle: { afterMinutes: 15, inputThresholdRatio: 0.8, harnesses: ["claude-cli"] },
++  } } } };
++  state.cfg = cfg;
++  state.entry = {
++    sessionId: "host-session", updatedAt: 1,
++    modelProvider: "anthropic", model: "native-model",
++    cliSessionIds: { "claude-cli": binding.sessionId },
++    cliSessionBindings: { "claude-cli": structuredClone(binding) },
++  };
++  return {
++    prepared: { cfg, sessionKey, runtimePolicySessionKey: "agent:main:policy-source", storePath: "/synthetic/sessions", timeoutMs: 60_000 },
++    followupRun: {
++      prompt: "", enqueuedAt: Date.now(),
++      run: { agentId: "main", sessionId: "host-session", provider: "anthropic", model: "native-model", timeoutMs: 60_000 },
++    } as SessionMaintenanceRequest["followupRun"],
++    sessionId: "host-session", lifecycleRevision: undefined, lifecycleGeneration: "generation",
++    startedAt: Date.now(), agentHarnessId: "claude-cli",
++    nativeIdleBinding: resolveCompletedNativeIdleBinding({
++      cfg,
++      entry: state.entry,
++      meta: {
++        durationMs: 1,
++        executionTrace: { runner: "cli", winnerProvider: "claude-cli", winnerModel: "native-model", attempts: [], fallbackUsed: false },
++        agentMeta: { sessionId: binding.sessionId, provider: "anthropic", model: "native-model", cliSessionBinding: binding },
++      },
++    }),
++  };
++}
++async function fireIdle() {
++  await vi.advanceTimersByTimeAsync(15 * 60_000);
++  await Promise.allSettled(state.tracked);
++}
++beforeEach(() => {
++  vi.useFakeTimers();
++  vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
++  vi.clearAllMocks();
++  state.runtime = "claude-cli";
++  state.queueDepth = 0;
++  state.children = [];
++  state.tracked = [];
++});
++afterEach(() => {
++  cancelIdleCompaction(sessionKey);
++  vi.useRealTimers();
++});
++
++describe("native idle delayed admission", () => {
++  it("waits for settlement and the full quiet period, then uses a fresh budget and policy identity", async () => {
++    const request = fixture();
++    expect(request.nativeIdleBinding).toBeDefined();
++    let settle!: (ok: boolean) => void;
++    scheduleSessionMaintenance(request, new Promise<boolean>((resolve) => { settle = resolve; }));
++    await vi.advanceTimersByTimeAsync(15 * 60_000);
++    expect(state.createOwner).not.toHaveBeenCalled();
++    settle(true);
++    await Promise.resolve();
++    await vi.advanceTimersByTimeAsync(15 * 60_000 - 1);
++    expect(state.compact).not.toHaveBeenCalled();
++    expect(state.createOwner).not.toHaveBeenCalled();
++    state.cfg = structuredClone(request.prepared.cfg);
++    await vi.advanceTimersByTimeAsync(1);
++    await Promise.allSettled(state.tracked);
++    expect(state.compact).toHaveBeenCalledTimes(1);
++    expect(state.compact).toHaveBeenCalledWith(expect.objectContaining({
++      cfg: state.cfg, idleCompaction: true, agentHarnessId: "claude-cli",
++    }));
++    expect(state.resolveRuntime).toHaveBeenCalledWith(expect.objectContaining({
++      cfg: state.cfg, sessionKey: "agent:main:policy-source", sessionEntry: state.entry,
++    }));
++    expect(request.followupRun.run.timeoutMs).toBe(60_000);
++    expect(state.entry!.agentHarnessId).toBeUndefined();
++    expect(state.flush).not.toHaveBeenCalled();
++    expect(state.release).toHaveBeenCalledOnce();
++  });
++
++  it.each(["binding", "auth", "runtime", "session", "model", "policy", "queued", "delivery", "delegation"])(
++    "skips compaction when %s changes during the quiet period", async (change) => {
++      const request = fixture();
++      expect(request.nativeIdleBinding).toBeDefined();
++      scheduleSessionMaintenance(request);
++      const entry = state.entry!;
++      if (change === "binding") entry.cliSessionBindings!["claude-cli"].sessionId = "replacement";
++      if (change === "auth") entry.cliSessionBindings!["claude-cli"].authEpochVersion = 2;
++      if (change === "runtime") state.runtime = "other-runtime";
++      if (change === "session") entry.sessionId = "replacement";
++      if (change === "model") entry.model = "other-model";
++      if (change === "policy") {
++        state.cfg = structuredClone(request.prepared.cfg);
++        state.cfg.agents!.defaults!.compaction!.idle!.harnesses = [];
++      }
++      if (change === "queued") state.queueDepth = 1;
++      if (change === "delivery") entry.pendingFinalDelivery = {} as NonNullable<SessionEntry["pendingFinalDelivery"]>;
++      if (change === "delegation") state.children = [{}];
++      await fireIdle();
++      expect(state.compact).not.toHaveBeenCalled();
++      expect(state.flush).not.toHaveBeenCalled();
++    },
++  );
++});
+diff --git a/src/auto-reply/reply/agent-runner-maintenance.test.ts b/src/auto-reply/reply/agent-runner-maintenance.test.ts
+new file mode 100644
+--- /dev/null
++++ b/src/auto-reply/reply/agent-runner-maintenance.test.ts
+@@ -0,0 +1,86 @@
++import { beforeEach, expect, it, vi } from "vitest";
++import type { SessionEntry } from "../../config/sessions/types.js";
++import type { AccountedAgentTurn } from "./agent-runner-result-accounting.js";
++import type { FinalizeReplyAgentRunInput } from "./agent-runner-result.types.js";
++import { scheduleReplySessionMaintenance } from "./agent-runner-maintenance.js";
++
++const scheduled = vi.hoisted(() => vi.fn());
++vi.mock("../../agents/session-maintenance/run.js", () => ({
++  scheduleSessionMaintenance: scheduled,
++  createSessionMaintenanceFollowup: ({ run, auth }: { run: object; auth: object }) => ({
++    prompt: "", run: { ...run, ...auth },
++  }),
++}));
++beforeEach(() => scheduled.mockClear());
++
++function fixture() {
++  const binding = { sessionId: "native-session", authEpochVersion: 1 };
++  const sessionEntry: SessionEntry = {
++    sessionId: "host-session", updatedAt: 1,
++    cliSessionIds: { "claude-cli": binding.sessionId },
++    cliSessionBindings: { "claude-cli": structuredClone(binding) },
++  };
++  const context = {
++    cfg: { agents: { defaults: { compaction: {
++      idle: { afterMinutes: 15, inputThresholdRatio: 0.8, harnesses: ["claude-cli"] },
++    } } } },
++    sessionKey: "agent:main:idle", storePath: "/synthetic/sessions.sqlite",
++    execution: { status: "ok", maintenanceAuthProfile: undefined },
++    followupRun: { prompt: "", run: { agentId: "main", timeoutMs: 120000 } },
++    replyOperation: {
++      ownerSettlement: Promise.resolve(), lifecycleGeneration: "generation",
++      startedAtMs: 1, result: { kind: "completed" }, abortSignal: new AbortController().signal,
++    },
++  } as unknown as FinalizeReplyAgentRunInput;
++  const accounting = {
++    providerUsed: "anthropic", modelUsed: "native-model", autoCompactionCount: 0,
++    runResult: { meta: {
++      durationMs: 1,
++      executionTrace: { runner: "cli", winnerProvider: "claude-cli", winnerModel: "native-model", attempts: [], fallbackUsed: false },
++      agentMeta: { provider: "anthropic", model: "native-model", sessionId: "native-session", cliSessionBinding: structuredClone(binding) },
++    } },
++  } as unknown as AccountedAgentTurn;
++  return { context, accounting, sessionEntry };
++}
++
++it("arms native Claude idle work after a reply without embedded harness/auth fields", async () => {
++  const input = fixture();
++  scheduleReplySessionMaintenance(input);
++  expect(scheduled).toHaveBeenCalledOnce();
++  const [request, settlement] = scheduled.mock.calls[0];
++  expect(request.agentHarnessId).toBe("claude-cli");
++  expect(request.nativeIdleBinding.binding.sessionId).toBe("native-session");
++  expect(request.followupRun.run.authProfileId).toBeUndefined();
++  await expect(settlement).resolves.toBe(true);
++  expect(input.sessionEntry.agentHarnessId).toBeUndefined();
++});
++
++it.each(["aborted", "yielded", "failed", "compacted", "missing-binding", "unknown-embedded-auth"])(
++  "does not schedule %s completion", (condition) => {
++    const input = fixture();
++    if (condition === "aborted") input.accounting.runResult.meta.aborted = true;
++    if (condition === "yielded") input.accounting.runResult.meta.yielded = true;
++    if (condition === "failed") input.accounting.runResult.meta.error = { kind: "incomplete_turn", message: "failed" };
++    if (condition === "compacted") input.accounting.autoCompactionCount = 1;
++    if (condition === "missing-binding") delete input.sessionEntry.cliSessionBindings;
++    if (condition === "unknown-embedded-auth") {
++      input.accounting.runResult.meta.executionTrace!.runner = "embedded";
++      input.accounting.runResult.meta.agentMeta!.agentHarnessId = "openclaw";
++    }
++    scheduleReplySessionMaintenance(input);
++    expect(scheduled).not.toHaveBeenCalled();
++  },
++);
++
++
++it("preserves configured embedded-harness maintenance with its completed auth observer", () => {
++  const input = fixture();
++  input.context.cfg.agents!.defaults!.compaction!.idle!.harnesses = ["configured-runtime"];
++  input.accounting.runResult.meta.executionTrace!.runner = "embedded";
++  input.accounting.runResult.meta.agentMeta!.agentHarnessId = "configured-runtime";
++  input.context.execution.maintenanceAuthProfile = {};
++  scheduleReplySessionMaintenance(input);
++  expect(scheduled).toHaveBeenCalledOnce();
++  expect(scheduled.mock.calls[0][0].agentHarnessId).toBe("configured-runtime");
++  expect(scheduled.mock.calls[0][0].nativeIdleBinding).toBeUndefined();
++});
