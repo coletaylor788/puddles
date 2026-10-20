@@ -1,8 +1,7 @@
 diff --git a/extensions/active-memory/index.test.ts b/extensions/active-memory/index.test.ts
-index 456ea65..8efc884 100644
 --- a/extensions/active-memory/index.test.ts
 +++ b/extensions/active-memory/index.test.ts
-@@ -36,6 +36,7 @@ import plugin, { testing } from "./index.js";
+@@ -36,6 +36,7 @@
  import * as recallRun from "./recall-run.js";
  import { resolveActiveRecallForRun } from "./recall-state.js";
  import * as transcriptWatch from "./transcript-watch.js";
@@ -10,10 +9,11 @@ index 456ea65..8efc884 100644
  
  // Match only lone surrogates so valid supplementary-plane characters remain allowed.
  const UNPAIRED_SURROGATE_RE =
-@@ -460,6 +461,16 @@ describe("active-memory plugin", () => {
+@@ -459,6 +460,16 @@
+         { once: true },
        );
      });
-   };
++  };
 +  const trackRecallRun = async () => {
 +    const recallRuntime = await import("./recall-run.js");
 +    const runRecallSubagent = recallRuntime.runRecallSubagent;
@@ -23,11 +23,10 @@ index 456ea65..8efc884 100644
 +      return pendingRecall;
 +    });
 +    return () => expectDefined(pendingRecall, "expected an owned recall run");
-+  };
+   };
    const makeMemoryToolAllowlistError = (
      reason: string,
-     sources = "runtime toolsAllow: memory_search, memory_get",
-@@ -4574,6 +4585,18 @@ describe("active-memory plugin", () => {
+@@ -4574,6 +4585,18 @@
      registerPluginConfig({ timeoutMs: 100, toolsAllow: ["memory_lookup_custom"], logging: true });
      const sessionKey = "agent:main:custom-tool-timeout-failure";
      seedSession(sessionKey, "s-custom-tool-timeout-failure", 0);
@@ -46,7 +45,7 @@ index 456ea65..8efc884 100644
      runEmbeddedAgent.mockImplementationOnce(
        async (params: {
          sessionFile: string;
-@@ -4611,15 +4634,27 @@ describe("active-memory plugin", () => {
+@@ -4611,15 +4634,27 @@
        },
      );
  
@@ -79,7 +78,7 @@ index 456ea65..8efc884 100644
    });
  
    it("waits for configured custom-tool evidence after memory_search fails", async () => {
-@@ -4679,7 +4714,9 @@ describe("active-memory plugin", () => {
+@@ -4679,7 +4714,9 @@
        { sessionKey },
      );
  
@@ -90,7 +89,37 @@ index 456ea65..8efc884 100644
      expectLinesToContain(getActiveMemoryLines(sessionKey), "Active Memory: status=ok");
    });
  
-@@ -4921,6 +4958,7 @@ describe("active-memory plugin", () => {
+@@ -4769,6 +4806,9 @@
+       status: "ok",
+     },
+   ])("classifies grounded harness-native recall: $name", async (testCase) => {
++    // Outcome classification does not depend on wall-clock filesystem latency.
++    vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
++    const pendingRecall = await trackRecallRun();
+     testing.setMinimumTimeoutMsForTests(1);
+     testing.setSetupGraceTimeoutMsForTests(0);
+     registerPluginConfig({ timeoutMs: 1_000, toolsAllow: ["memory_search"], logging: true });
+@@ -4817,10 +4857,15 @@
+       },
+     );
+ 
+-    const result = await runPromptBuild(
+-      { prompt: "what food do i usually order? harness evidence" },
+-      { sessionKey },
+-    );
++    let result: Awaited<ReturnType<typeof runPromptBuild>>;
++    try {
++      result = await runPromptBuild(
++        { prompt: "what food do i usually order? harness evidence" },
++        { sessionKey },
++      );
++    } finally {
++      await pendingRecall();
++    }
+ 
+     if (testCase.status === "ok") {
+       const context = requirePrependContext(result);
+@@ -4921,6 +4966,7 @@
        registerPluginConfig({ timeoutMs, setupGraceTimeoutMs, logging: true });
        const providerReady = createDeferred<void>();
        let readinessTimer: ReturnType<typeof setTimeout> | undefined;
@@ -98,7 +127,7 @@ index 456ea65..8efc884 100644
        hoisted.getActiveMemorySearchManager.mockImplementationOnce(async () => {
          readinessTimer = setTimeout(() => providerReady.resolve(), readyAfterMs);
          await providerReady.promise;
-@@ -4963,7 +5001,18 @@ describe("active-memory plugin", () => {
+@@ -4963,7 +5009,18 @@
        } finally {
          clearTimeout(readinessTimer);
          providerReady.resolve();
@@ -117,7 +146,7 @@ index 456ea65..8efc884 100644
      },
    );
  
-@@ -5057,28 +5106,55 @@ describe("active-memory plugin", () => {
+@@ -5057,28 +5114,55 @@
      seedSession(sessionKey, "s-terminal-unavailable-then-diagnostic", 0);
      const warning = "Memory search is unavailable due to an embedding/provider error.";
      const action = "Check the embedding provider configuration, then retry memory_search.";
@@ -163,6 +192,8 @@ index 456ea65..8efc884 100644
 -      ]);
 -      return { payloads: [{ text: "User usually orders tonkotsu ramen." }] };
 -    });
+-
+-    const result = await runPromptBuild(
 +        ]);
 +        await waitForAbort(params.abortSignal).catch((error: unknown) => {
 +          expect(String(error)).toContain("active-memory terminal memory search result");
@@ -170,8 +201,7 @@ index 456ea65..8efc884 100644
 +        return { payloads: [{ text: "User usually orders tonkotsu ramen." }] };
 +      },
 +    );
- 
--    const result = await runPromptBuild(
++
 +    const resultPromise = runPromptBuild(
        { prompt: "what food do i usually order? unavailable diagnostic" },
        { sessionKey },
@@ -189,7 +219,7 @@ index 456ea65..8efc884 100644
  
      expectPrependContextContains(result, unavailableRecallContext);
      const infoLines = vi
-@@ -5095,6 +5171,8 @@ describe("active-memory plugin", () => {
+@@ -5095,6 +5179,8 @@
    it.each([false, true])(
      "uses configured memory evidence from a rotated embedded transcript (stale poll: %s)",
      async (stalePoll) => {
@@ -198,7 +228,7 @@ index 456ea65..8efc884 100644
        testing.setMinimumTimeoutMsForTests(1);
        testing.setSetupGraceTimeoutMsForTests(0);
        registerPluginConfig({
-@@ -5104,6 +5182,16 @@ describe("active-memory plugin", () => {
+@@ -5104,6 +5190,16 @@
        });
        const sessionKey = "agent:main:rotated-memory-evidence";
        seedSession(sessionKey, "s-rotated-memory-evidence", 0);
@@ -215,7 +245,7 @@ index 456ea65..8efc884 100644
        const cleanupStarted = createDeferred<void>();
        const releaseCleanup = createDeferred<void>();
        const watcherStopped = createDeferred<void>();
-@@ -5118,6 +5206,7 @@ describe("active-memory plugin", () => {
+@@ -5118,6 +5214,7 @@
              const page = await readDelta(params);
              if (!heldRead && page.kind === "page" && page.events.length > 0) {
                heldRead = true;
@@ -223,7 +253,7 @@ index 456ea65..8efc884 100644
                staleReadStarted.resolve();
                await releaseStaleRead.promise;
              }
-@@ -5130,6 +5219,7 @@ describe("active-memory plugin", () => {
+@@ -5130,6 +5227,7 @@
          "recall cleanup fixture",
        );
        hoisted.cleanupSessionLifecycleArtifacts.mockImplementationOnce(async (params) => {
@@ -231,7 +261,7 @@ index 456ea65..8efc884 100644
          cleanupStarted.resolve();
          await releaseCleanup.promise;
          return await cleanup(params);
-@@ -5141,65 +5231,79 @@ describe("active-memory plugin", () => {
+@@ -5141,65 +5239,79 @@
            ...watch,
            stop() {
              watch.stop();
@@ -351,7 +381,7 @@ index 456ea65..8efc884 100644
          await cleanupStarted.promise;
          releaseStaleRead.resolve();
          // Drain continuations of the old read after execution has completed;
-@@ -5213,13 +5317,27 @@ describe("active-memory plugin", () => {
+@@ -5213,13 +5325,27 @@
        } finally {
          releaseStaleRead.resolve();
          releaseCleanup.resolve();
