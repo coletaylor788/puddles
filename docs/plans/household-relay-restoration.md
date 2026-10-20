@@ -104,35 +104,48 @@ The current artifact passed all 12 managed DEV scenarios. The iMessage test
 correction passed all 99 focused cases and independent review. Its source and
 output checks confirmed that the runtime artifact needs no rebuild.
 
-The narrow directory-preparation repair passed staging and independent
-verification. The next release stopped in a repository regression before the
-OpenClaw pool, TEST or production. That test assumed a file started with mode
-0644, but the release process created it with mode 0600. The correction sets
-the starting mode explicitly and covers both normal and restrictive umasks.
-All five focused cases passed under each launch umask. Retained review is
-clear and independent closure verified both test processes. Runtime behavior
-and source integrity rules stay unchanged. A fresh release remains required.
+The directory-preparation and file-mode corrections passed staging and focused
+validation. The latest release stopped before TEST or production on one cleanup
+test, with 310 repository cases passing. That test checks shared process records
+while other workers may be starting. The correction checks a supervisor owned
+by the test after its children join, and preserves checks that real supervising
+scopes remain open. All ten focused cleanup cases passed with an unrelated
+pending launch held throughout the run. Retained review is clear. Runtime
+behavior and source integrity rules stay unchanged. A fresh release is required.
 
 ## Agent section
 
 ### State
 
-Stage R13 passed and is independently closed. Its exact source, output, DEV,
-production and backup checks passed. The earlier Stage R12 failure was an empty
-`.cache` parent present locally and absent on the target; the maintained repair
-resolved that difference without broadening exclusions.
+Stage R14 passed and is independently closed. Source, output, DEV, production
+and backup checks passed. Full R13 stopped before TEST or production. The public
+e2e package reported 310 passing cases and one failure at
+`application-check-cleanup.test.ts:206`: an inherited process scope reported
+incomplete registration. The runtime deliberately records pending launches
+before starting workers, so a snapshot of a shared suite scope can legitimately
+be incomplete while other tests run. The failed snapshot did not preserve the
+individual pending record, so its exact originating worker is unconfirmed.
 
-Full R12 is consumed and independently failed-closed. Its original command
-joined with exit 1 before TEST or production. Process retirement, an empty
-queue and unchanged healthy production and backup are verified. The public
-e2e package reported 309 passing cases and one failure:
-`prepared-source-cache.test.ts` changed a file to 0600 when the inherited
-release umask had already created it with that mode. The correction establishes
-0644 explicitly and runs the digest regression under 022 and 077. All content,
-mode, symlink and ordinary-source assertions remain. The five focused cases
-also passed under both launch masks. Independent validation closure retired
-both native owners, and retained review of the correction is clear. Preserve
-the failed release evidence and use a fresh release attempt.
+The test-only correction runs the failure fixtures under a dedicated native
+supervisor. After the nested command joins, it checks that the supervisor's own
+scope is open and fully registered, and that the nested child and scope retired.
+The outer test then verifies supervisor retirement and retains the real inherited
+scope closing checks. It changes no runtime semantics or fixture deadlines. The
+extra supervisor has its own bounded command. Focused validation held an
+unrelated pending record in a new test-owned ancestor throughout the full cleanup
+test file, without modifying actual inherited records. All ten cases passed in
+9.95 seconds, including the five nested failure fixtures. Both native ownership
+and the synthetic ancestor retired after completion. Independent closure verified
+retirement. Retained review is clear.
+Independent recovery verification is complete. All release owners retired, the
+queue is empty, and healthy production and backup are unchanged. Preserve Full
+R13 evidence and do not replay it.
+
+The preceding cache-mode correction explicitly establishes mode 0644 and runs
+the digest regression under 022 and 077. All five cases passed under both launch
+masks, independent closure retired both owners, and retained review is clear.
+The correction also passed in Full R13. Stage R13 had resolved the earlier empty
+`.cache` parent difference without broadening exclusions.
 
 `packages/e2e/src/prepared-source-cache.mjs` validates the explicit absent-parent
 preimage and prepares only that fixed empty directory. Its committed regression
@@ -422,6 +435,14 @@ PROD. Restore runtime, config, both agents' instructions, and handoff skill
 together if acceptance fails. Preserve current healthy production until then.
 
 ### Review log
+
+The retained reviewer cleared the cleanup-scope correction and its complete
+current behavior diff. It verified that the dedicated supervisor owns the last
+appended scope, failure fixtures preserve inherited scopes, nested failures
+propagate, and both child and supervisor retirement remain checked. All ten
+cleanup tests passed with a pending sibling held in a test-owned ancestor.
+Independent closure verified native ownership and synthetic scope retirement.
+The original pending worker remains unproven, and fresh release gates remain.
 
 The retained reviewer cleared the harness-native classification correction.
 It confirmed that the table tests outcomes rather than elapsed time, and that
