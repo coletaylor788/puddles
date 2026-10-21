@@ -1,6 +1,6 @@
 # Restore the Household owner relay
 
-**Status:** Production approved; companion repairs validated, refreshed DEV pending
+**Status:** Production approved; release test clock repair validated, rebuild pending
 **Issue:** [#259](https://github.com/coletaylor788/puddles/issues/259)
 **Last updated:** 2026-10-19
 
@@ -100,31 +100,52 @@ DEV-only compatibility filter so qualification preserves the programmatic-tool
 settings already released for all tool-enabled agents. Existing agent tool
 permissions and native approvals stay unchanged.
 
-The preceding artifact passed all 12 managed DEV scenarios. The iMessage test
-correction passed all 99 focused cases and independent review. Those test-only
-source changes preserved the runtime output.
+The refreshed artifact passed all 12 managed DEV scenarios. The latest release
+then stopped before deployment on two iMessage test assertions. Both checked
+that at least 14.9 seconds remained in a 15-second buffer after real asynchronous
+ingress work. Message count and content checks passed, but host scheduling used
+more than the implicit 100 ms allowance.
 
-The latest release passed 311 public tests, 7,183 OpenClaw tests with one skip,
-and all 22 candidate tests. It then stopped on five companion-suite failures
-before TEST or production. The fixes align the approval-routing expectation,
-refresh two exact patch digests, preserve the denied tool set in canonical order,
-and resolve missing Corepack beside the selected Node executable. Strict parity,
-toolchain checks and the complete application gate remain required. Production
-and backup are unchanged, and all release processes retired.
+The reviewed test-only correction fixes the date clock in those three table
+rows while keeping timer scheduling and ingress work real. Existing assertions
+and separate real-debouncer deadline tests remain intact. Production timing and
+agent communication behavior do not change. The patch and companion digest are
+updated. All three focused cases and all 64 tests in the affected file passed.
+The failed release is independently
+closed, with production healthy and unchanged.
 
-The configuration ordering correction changes packaged bytes. Rebuild the
-affected output and renew installed DEV qualification before release. The
-complete companion suite will run early to catch integration failures before
-the expensive OpenClaw pool. A fresh release attempt is required.
-
-The corrected companion suite passed locally: 429 passes, no failures and 16
-skips. Independent review is clear. A complete existing Node/Corepack pair is
-available, so the successor explicitly selects it without installing new tools.
-The changed packaged configuration still needs a fresh artifact and DEV proof.
+The prepared source fingerprint changes. Run the affected rows and complete
+file before the supported build refresh. Verify artifact provenance and renew
+DEV qualification for changed output before another full release attempt.
 
 ## Agent section
 
 ### State
+
+Full R16 is consumed and independently closed. Its combined OpenClaw group
+reported 225 files passing and one failing, with 7,181 tests passing, two failing
+and one skipped. Both failures were the punctuationless and comma-delimited
+prompt rows at the remaining-window assertion. TEST and production deployment
+were not reached. All release owners retired; production and backup remain
+unchanged. The earlier private-suite timeout repair passed in this release.
+
+The retained reviewer accepted using `vi.setSystemTime` alone in the three-row
+mock-debouncer table. Enabling fake timers would let `vi.waitFor` advance the
+clock on every poll, so that option was removed. Existing teardown restores the
+date clock. The maintained public patch and companion exact digest now carry
+the same two-line change as the composed source. The three focused cases passed, followed by all 64 cases in the complete file
+under the standard database-worker test configuration. Both separate deadline
+cases passed. The owned run joined successfully in 67.30 seconds, and independent
+closure verified every test process and scope retired. No build has run for this
+revision yet.
+
+The application build cache hashes authored tests as inputs. Reevaluate the
+supported build and embedded build provenance after these tests pass. Do not
+reuse the preceding artifact or DEV acceptance merely because runtime source
+is unchanged. A new artifact needs fresh DEV, full application, TEST and PROD
+checks before source merge. Keep all consumed release records immutable.
+
+The following paragraphs retain earlier release findings for context.
 
 Full R14 is consumed and independently closed. Public e2e reported 34 files and
 311 tests passing. OpenClaw reported 226 files, 7,183 passes and one skip. The
