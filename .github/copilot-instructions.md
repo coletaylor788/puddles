@@ -137,16 +137,18 @@ Use the shared package store, with separate writable output, state, ports, and
 processes. Any owner may deploy to DEV under its short mutation lock. Build and
 review before joining the ready queue.
 
-The release manager owns one FIFO lane from TEST through PROD and source merge.
-At the front, rebase the public and optional companion branches on main, rebuild
-changed inputs, freeze the output, and run the full application suite. Deploy
-that same output to TEST and run installed tests. Replace the one backup, deploy
-to PROD, run read-only production tests, then merge the tested source to main.
-Paired repositories use one ticket. Other owners keep working in DEV.
+GitHub CI and the installed host service own deployment execution. Follow
+[triggered CI](../packages/release/CI.md) and its cutover checkpoint. The release
+manager and its automation are retired; do not recreate them. Refresh paired
+branches from main before queueing, rebuild changed inputs, and repeat affected
+review and DEV checks. CI rejects stale candidates at dequeue. It runs the full
+suite, TEST, backup, PROD checks, and exact PR merge on one frozen output.
+DEV CI runs only deployment-dependent checks and holds its slot through teardown.
 
 A failed feature recovers and leaves the lane. Its owner fixes it in DEV and
-rejoins at the back. A failed final merge keeps the ticket until merge succeeds
-or production is restored while intake remains held. No source merge runs inside
+rejoins at the back. A failed final merge keeps the ticket until its exact source
+state is reconciled. Partial or uncertain paired merges cannot be cancelled into
+ordinary rollback. No source merge runs inside
 a rollback operation. Scripts bound child processes and recover interrupted
 operations; an absent agent must not leave production stopped indefinitely.
 
@@ -271,7 +273,7 @@ OpenClaw tests in `packages/e2e`. Register upstream patch tests in the cumulativ
 `packages/e2e/openclaw-patch-suite.json`; tests embedded only in a patch do not
 count unless the runner executes them.
 
-Run focused tests during development. The release manager runs the entire
+Run focused tests during development. Production CI runs the entire
 application pool on the frozen feature output before PROD:
 `node packages/e2e/bin/openclaw-test-env.mjs ci`. The application runner tests
 prepared output and does not rebuild it. Report slow checks and setup costs.

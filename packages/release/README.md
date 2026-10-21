@@ -1,5 +1,9 @@
 # Release tooling
 
+The replacement entrypoint is [triggered CI](CI.md). Plan 064 records cutover
+status; the commands below remain available for existing transaction recovery.
+Do not resume agent-managed releases while cutover is pending.
+
 This package deploys a complete application directory. It owns the ready queue,
 TEST and PROD deployment, one backup, recovery, and workspace finalization. It
 has its own dependencies and build. The application supplies service commands

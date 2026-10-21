@@ -5,6 +5,13 @@ source, incremental output, test state, and temporary files. Share the host pack
 store. Deployments, environment state, installed release tooling, and the one backup
 live outside feature workspaces.
 
+Triggered CI adds a bounded immutable build registry and bounded run/outbox records;
+see [CI storage and recovery](../release/CI.md#recovery-and-storage). Active runs
+pin their snapshots. The service collects expired unreferenced snapshots and
+retries environment teardown without an agent. It keeps environment ownership
+until teardown succeeds. Notification outages must not prevent artifact cleanup.
+Existing unregistered data and recovery remain subject to the rules below.
+
 Register ownership using the installed controller:
 
 ```sh

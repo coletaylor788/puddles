@@ -13,7 +13,8 @@
     "test": "node --test tests/*.test.mjs && corepack pnpm exec vitest run"
   },
   "bin": {
-    "puddles-release": "bin/puddles-release.mjs"
+    "puddles-release": "bin/puddles-release.mjs",
+    "puddles-ci": "bin/puddles-ci.mjs"
   },
   "packageManager": "pnpm@12.4.0",
   "devDependencies": {
