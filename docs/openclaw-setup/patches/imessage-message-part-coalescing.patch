@@ -60,7 +60,7 @@ index d5ee71b48..05d93ce30 100644
      ...buildChannelReactionShape({ notificationModes: ["off", "own", "all"] }),
      catchup: z
 diff --git a/extensions/imessage/src/monitor.last-route.test.ts b/extensions/imessage/src/monitor.last-route.test.ts
-index d0a062e..ae5832a 100644
+index d0a062e..90613f9 100644
 --- a/extensions/imessage/src/monitor.last-route.test.ts
 +++ b/extensions/imessage/src/monitor.last-route.test.ts
 @@ -11,6 +11,7 @@ import {
@@ -316,7 +316,7 @@ index d0a062e..ae5832a 100644
  
    it("drops unavailable configured ACP messages before typing, reads, media, history, or dispatch", async () => {
      setAvailablePrivateApiMethods(["watch.subscribe", "typing", "read"]);
-@@ -1750,5 +1870,1716 @@ describe("iMessage monitor last-route updates", () => {
+@@ -1750,5 +1870,1718 @@ describe("iMessage monitor last-route updates", () => {
        }
      });
    }
@@ -780,6 +780,8 @@ index d0a062e..ae5832a 100644
 +  ])(
 +    "merges a payload-referential $name with the following URL balloon row",
 +    async ({ prompt, url, observedRuntimeGapMs, rowBase, linkRepliesToPrompt }) => {
++      // Check window selection without charging real ingress work against the clock.
++      vi.setSystemTime(new Date("2026-09-01T12:00:00.000Z"));
 +      debouncerControl.holdEntries = true;
 +      debouncerControl.respectDebouncePolicy = true;
 +
