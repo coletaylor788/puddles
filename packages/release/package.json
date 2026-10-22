@@ -10,7 +10,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "lint": "node scripts/build.mjs --check",
-    "test": "node --test tests/*.test.mjs && corepack pnpm exec vitest run"
+    "test": "node --test tests/*.test.mjs && vitest run"
   },
   "bin": {
     "puddles-release": "bin/puddles-release.mjs",
