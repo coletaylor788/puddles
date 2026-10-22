@@ -27,12 +27,20 @@ agents own implementation, focused tests, retained review, and repairs.
 
 ## Integration requirements
 
-Production preflight requires enforced main protection, strict up-to-date checks,
-at least one required successful check, and at least one approving review of the
-current PR head with stale approvals dismissed. These are checked before deployment
-and enforced by GitHub on the normal PR merge endpoint. A repository plan that does
-not support those protections cannot qualify for production. Do not substitute a
-direct main push or waive an unavailable gate.
+This is a single-owner workflow. User authorization and retained agent review
+belong to the owning task. GitHub approving reviews, another account, branch
+protection, and paid repository features are not prerequisites. Each changed
+repository freezes a nonempty `requiredChecks` list in the candidate inputs.
+Production requires those checks to succeed on the exact head, rejects any
+reported pending or failed check, and verifies the current main base and tree.
+
+The production lane is the sole main writer during releases. CI uses the normal
+PR merge endpoint with the expected head. GitHub does not atomically compare the
+expected base, so CI checks it immediately before merging and verifies the PR
+merge SHA, exact tree, and ordered base/head parents afterward and on recovery.
+An unexpected outside merge may already have changed main when detected; CI
+holds intake and reconciliation instead of claiming success or admitting another
+release. Source refresh and independent merges stay outside an active release.
 
 The paired merge is not atomic. A partially completed or uncertain merge keeps
 the transaction and intake held. Retry queries GitHub state and completes only

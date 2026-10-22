@@ -49,6 +49,15 @@ A stale candidate leaves the queue, wakes its owner, and must be refreshed befor
 rejoining. CI never rebases or repairs source. All production releases use the
 same lane. Main writes must follow this policy, including updates outside CI.
 
+The repository owner can authorize their own releases. Retained agent review
+and user approval remain in the task; a GitHub approving review, second account,
+or branch protection is not required. Candidate inputs name the expected CI
+checks explicitly, and production verifies their success on the exact head.
+The release lane is the sole main writer. The normal PR merge API binds the head
+but cannot atomically bind the base. CI checks the base before merge and the
+merge SHA, tree, and ordered parents afterward and on recovery. Unexpected
+outside changes hold reconciliation even if they produce the same file tree.
+
 Production CI consumes the same build used in DEV. It tests the application,
 deploys TEST and checks it, holds production intake, replaces and verifies the
 single backup, deploys PROD, and runs read-only acceptance tests. Only then does
@@ -82,6 +91,9 @@ testing a dummy change through the replacement on 2026-10-21. The approved
 corrections are fast installed-only DEV CI, full tests in production CI, merge
 after PROD success, freshness checks before queueing and at dequeue, and use of
 the trusted application account on the target host.
+The requester subsequently clarified that this is a single-owner project:
+self-authorization is sufficient, and no branch policies or second GitHub
+account should be required. The implementation follows that correction.
 
 Implementation is in isolated paired worktrees and under retained independent
 review. Existing implementers are paused. The release manager confirmed its
@@ -114,8 +126,9 @@ activated; a live dummy promotion and actual task wake remain unqualified.
 - Extend `packages/release` rather than create another deployment engine.
 - GitHub schedules; local durable transaction state protects recovery.
 - Keep legacy ticket support for outstanding recovery only.
-- Frozen submissions carry source heads/bases, artifact digest, DEV evidence,
-  review binding, and owning task reference. Inputs cannot inject commands.
+- Frozen submissions carry source heads/bases, expected repository check names,
+  artifact digest, DEV evidence, and owning task reference. Retained agent review
+  and user authorization stay in the task. Inputs cannot inject commands.
 - Stable installed callbacks supply application and environment operations.
 - Feature refresh belongs outside the queue. No agent waits while holding a slot.
 - Bounded terminal records replace conversation-only operational state.
@@ -162,6 +175,12 @@ cleanup, workflow cancellation, and event delivery. Public implementation review
 cleared on 2026-10-21; its final focused suite passed all 18 tests and the runtime
 bundle built successfully. Private integration review and live acceptance remain
 pending.
+
+The complete paired implementation subsequently cleared retained review. The
+single-owner correction also cleared that reviewer: explicit frozen checks
+replace policy/review API dependencies, with exact merge identity verified on
+both completion and recovery. Its focused source suite passed seven tests and
+the complete private adapter suite passed 117 tests. Live acceptance is pending.
 
 ### Checklist
 
