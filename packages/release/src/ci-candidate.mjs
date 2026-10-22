@@ -33,12 +33,36 @@ export function bytes(root) {
   if (stat.isSymbolicLink()) return 0;
   return stat.isDirectory() ? readdirSync(root).reduce((n, name) => n + bytes(join(root, name)), 0) : stat.size;
 }
-export function capacity(root, { maxBytes, reserveBytes }, additional = 0) {
-  if (![maxBytes, reserveBytes, additional].every(n => Number.isSafeInteger(n) && n >= 0) || maxBytes === 0) throw new Error('Explicit CI storage budget required');
+// File lengths alone omit allocation rounding and directory/link metadata.
+// Estimate against the destination volume, not the source's allocated blocks.
+export function storageFootprint(root, allocationUnit) {
+  if (!Number.isSafeInteger(allocationUnit) || allocationUnit < 1) throw new Error('Invalid storage allocation unit');
+  let logicalBytes = 0, entries = 0;
+  const visit = path => {
+    const stat = lstatSync(path); entries++;
+    if (entries > 1_000_000) throw new Error('Storage footprint inventory exceeds bound');
+    if (stat.isSymbolicLink()) return;
+    if (stat.isDirectory()) for (const name of readdirSync(path)) visit(join(path, name));
+    else logicalBytes += stat.size;
+  };
+  visit(root);
+  const physicalBytes = logicalBytes + entries * allocationUnit + 1024 * 1024;
+  if (!Number.isSafeInteger(physicalBytes)) throw new Error('Storage footprint exceeds bound');
+  return { logicalBytes, entries, physicalBytes };
+}
+export function capacity(root, { maxBytes, reserveBytes }, additional = 0, { physicalAdditional = additional, phase = 'admission' } = {}) {
+  if (![maxBytes, reserveBytes, additional, physicalAdditional, reserveBytes + physicalAdditional].every(n => Number.isSafeInteger(n) && n >= 0) ||
+      maxBytes === 0 || physicalAdditional < additional || !/^[a-z][a-z0-9-]{0,63}$/.test(phase)) throw new Error('Explicit CI storage budget required');
   const used = existsSync(root) ? bytes(root) : 0;
   const disk = statfsSync(root);
-  if (used + additional > maxBytes || disk.bavail * disk.bsize < reserveBytes + additional) throw new Error('CI storage capacity unavailable');
-  return { used, available: disk.bavail * disk.bsize };
+  const available = disk.bavail * disk.bsize, requiredAvailable = reserveBytes + physicalAdditional;
+  if (used + additional > maxBytes || available < requiredAvailable) {
+    const details = { phase, used, additional, maxBytes, available, reserveBytes, physicalAdditional, requiredAvailable };
+    const error = new Error('CI storage capacity unavailable: ' + JSON.stringify(details));
+    error.code = 'CI_STORAGE_CAPACITY'; error.details = details;
+    throw error;
+  }
+  return { used, available };
 }
 export async function publishCandidate(root, source, inputs, policy, controls, fault = () => {}, admission = {}) {
   separate([root, source, ...(controls ? [controls] : [])]);
@@ -57,7 +81,11 @@ export async function publishCandidate(root, source, inputs, policy, controls, f
     const destination = join(root, id);
     assertCandidateAvailable(root, id);
     if (existsSync(destination)) return loadCandidate(root, id).manifest;
-    capacity(root, policy, bytes(source) + (controls ? bytes(controls) : 0));
+    const allocationUnit = statfsSync(root).bsize;
+    const footprints = [storageFootprint(source, allocationUnit), ...(controls ? [storageFootprint(controls, allocationUnit)] : [])];
+    capacity(root, policy, footprints.reduce((n, value) => n + value.logicalBytes, 0), {
+      phase: 'publication', physicalAdditional: footprints.reduce((n, value) => n + value.physicalBytes, 0),
+    });
     journal.allocate(id, { version: 1, id, createdAt: Date.now(), state: 'publishing' });
     staging = destination;
     fault('publication-owner-ready', { id });

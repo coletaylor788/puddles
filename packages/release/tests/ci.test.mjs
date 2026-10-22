@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { atomicJson, readJson, lock } from '../src/files.mjs';
@@ -195,7 +195,16 @@ for (const mode of ['dev', 'prod']) test(`killed ${mode} CI worker recovers owne
   const phasePid = Number(readFileSync(marker, 'utf8'));
   child.kill('SIGKILL'); await exited;
   assert.equal((await executeCI(f.config, 'killed')).status, 'failed');
-  assert.throws(() => process.kill(phasePid, 0), { code: 'ESRCH' });
+  // A zombie cannot write; macOS may retain it briefly until its new parent reaps it.
+  // Inspect all processes so an absent PID is distinguished from a failed ps command.
+  const processes = execFileSync('/bin/ps', ['-axo', 'pid=,stat='], { encoding: 'utf8', timeout: 5000 });
+  const rows = processes.trim().split('\n').map(line => {
+    const match = /^\s*(\d+)\s+(\S+)\s*$/.exec(line);
+    assert.ok(match, 'process inspection returned a valid PID and state');
+    return { pid: Number(match[1]), state: match[2] };
+  });
+  const remaining = rows.find(row => row.pid === phasePid);
+  assert.ok(!remaining || remaining.state.startsWith('Z'), 'recovery left no live owned writer');
   assert.equal(existsSync(mode === 'dev' ? f.config.dev.runtime : f.config.controller.test.runtime), false);
   assert.equal(readFileSync(join(f.root, 'prod/version'), 'utf8'), 'prod');
   assert.equal(readQueue(f.config.controller.root).active, null);
