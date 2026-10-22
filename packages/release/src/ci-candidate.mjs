@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readdirSync, rmSync, statfsSync } from 'node:fs';
 import { join } from 'node:path';
 import { assertCandidateAvailable, registryJournal } from './ci-registry-journal.mjs';
-import { atomicJson, canonical, copy, lock, readJson, separate, treeHash } from './files.mjs';
+import { atomicJson, canonical, copy, lock, admissionLock, readJson, separate, treeHash } from './files.mjs';
 
 export const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export function identifier(value) {
@@ -40,14 +40,14 @@ export function capacity(root, { maxBytes, reserveBytes }, additional = 0) {
   if (used + additional > maxBytes || disk.bavail * disk.bsize < reserveBytes + additional) throw new Error('CI storage capacity unavailable');
   return { used, available: disk.bavail * disk.bsize };
 }
-export function publishCandidate(root, source, inputs, policy, controls, fault = () => {}) {
+export async function publishCandidate(root, source, inputs, policy, controls, fault = () => {}, admission = {}) {
   separate([root, source, ...(controls ? [controls] : [])]);
   if (controls) inputs = { ...inputs, controlsDigest: treeHash(controls) };
   else if (inputs.controlsDigest !== undefined) throw new Error('Frozen application controls are missing');
   mkdirSync(root, { recursive: true, mode: 0o700 });
   // Maintenance may briefly own this lock after the build finishes. Wait only
   // for admission; never replay publication or the completed build.
-  const unlock = lock(join(root, '.registry.lock'), { timeoutMs: 30_000 });
+  const unlock = await admissionLock(join(root, '.registry.lock'), admission);
   let staging, journal;
   try {
     journal = registryJournal(root, fault);
@@ -87,24 +87,24 @@ export function loadCandidate(root, id) {
   if (controls && treeHash(controls) !== manifest.inputs.controlsDigest) throw new Error('Frozen application controls changed');
   return { manifest, directory, artifact: join(directory, 'artifact'), ...(controls ? { controls } : {}) };
 }
-export function pinCandidate(root, id, consumer) {
+export async function pinCandidate(root, id, consumer, admission = {}) {
   identifier(consumer);
-  const unlock = lock(join(root, '.registry.lock'));
+  const unlock = await admissionLock(join(root, '.registry.lock'), admission);
   try {
     const value = loadCandidate(root, id);
     atomicJson(join(value.directory, 'consumers', consumer + '.json'), { consumer, id });
     return value;
   } finally { unlock(); }
 }
-export function unpinCandidate(root, id, consumer) {
+export async function unpinCandidate(root, id, consumer, admission = {}) {
   identifier(id); identifier(consumer); canonical(root);
-  const unlock = lock(join(root, '.registry.lock'));
+  const unlock = await admissionLock(join(root, '.registry.lock'), admission);
   try { rmSync(join(root, id, 'consumers', consumer + '.json'), { force: true }); }
   finally { unlock(); }
 }
-export function recordGate(root, id, name, evidence) {
+export async function recordGate(root, id, name, evidence, admission = {}) {
   identifier(name);
-  const unlock = lock(join(root, '.registry.lock'));
+  const unlock = await admissionLock(join(root, '.registry.lock'), admission);
   try {
     const { manifest, directory } = loadCandidate(root, id);
     atomicJson(join(directory, 'gates', name + '.json'), { ...evidence, candidate: id,

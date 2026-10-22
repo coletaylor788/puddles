@@ -5,10 +5,11 @@ import { canonical } from './files.mjs';
 
 // Caller owns .registry.lock. Ownership survives deletion of candidate contents.
 const LIMIT = 128 * 1024 * 1024, ENTRY_LIMIT = 1_000_000;
-const databasePath = root => join(root, '.registry.lock', 'ownership.sqlite');
+const settings = mode => mode === 'candidate' ? { lock: '.registry.lock', valid: value => /^[a-f0-9]{64}$/.test(value) } : mode === 'transfer' ? { lock: '.transfers.lock', valid: value => /^transfer-[a-zA-Z0-9][a-zA-Z0-9._-]{0,90}$/.test(value) } : (() => { throw Error('Unknown ownership journal mode'); })();
+const databasePath = (root, mode = 'candidate') => join(root, settings(mode).lock, 'ownership.sqlite');
 const present = path => { try { lstatSync(path); return true; } catch (error) { if (error.code === 'ENOENT') return false; throw error; } };
-function validateDatabase(root) {
-  const database = databasePath(root);
+function validateDatabase(root, mode = 'candidate') {
+  const database = databasePath(root, mode);
   for (const path of [database, database + '-journal']) {
     canonical(path);
     if (present(path)) {
@@ -43,15 +44,19 @@ export function assertCandidateAvailable(root, id) {
   try { if (db.prepare('SELECT id FROM ownership WHERE id = ?').get(id)) throw Error('Candidate publication or retirement is incomplete'); }
   finally { db.close(); }
 }
-export function registryJournal(root, fault = () => {}) {
-  validateDatabase(root);
-  const path = databasePath(root), db = new DatabaseSync(path);
+export function registryJournal(root, fault = () => {}) { return directoryJournal(root, 'candidate', fault); }
+export function transferJournal(root, fault = () => {}) { return directoryJournal(root, 'transfer', fault); }
+function directoryJournal(root, mode, fault) {
+  const scope = settings(mode);
+  const valid = id => { if (!scope.valid(id)) throw Error('Invalid owned directory identifier'); };
+  validateDatabase(root, mode);
+  const path = databasePath(root, mode), db = new DatabaseSync(path);
   db.exec('PRAGMA page_size=4096; PRAGMA auto_vacuum=FULL; PRAGMA synchronous=FULL; PRAGMA journal_mode=DELETE; PRAGMA max_page_count=32768; CREATE TABLE IF NOT EXISTS ownership (id TEXT PRIMARY KEY, payload TEXT NOT NULL)');
   const registry = { path: root, identity: identity(root) };
   function rows() {
     return db.prepare('SELECT payload FROM ownership ORDER BY id').all().map(row => {
       const value = JSON.parse(row.payload);
-      if (value.version !== 1 || !/^[a-f0-9]{64}$/.test(value.id) || !equal(value.registry, registry) ||
+      if (value.version !== 1 || !scope.valid(value.id) || !equal(value.registry, registry) ||
           !['allocating', 'retiring'].includes(value.kind)) throw Error('Candidate ownership journal binding changed');
       return value;
     });
@@ -64,7 +69,7 @@ export function registryJournal(root, fault = () => {}) {
     db.exec('BEGIN IMMEDIATE');
     try { db.prepare('INSERT OR REPLACE INTO ownership VALUES (?, ?)').run(value.id, payload); fault('journal-before-commit', value); db.exec('COMMIT'); }
     catch (error) { db.exec('ROLLBACK'); throw error; }
-    syncDirectory(join(root, '.registry.lock'));
+    syncDirectory(join(root, scope.lock));
   }
   function clear(id) { db.prepare('DELETE FROM ownership WHERE id = ?').run(id); }
   function consumers(directory) { return present(join(directory, 'consumers')) && readdirSync(join(directory, 'consumers')).length > 0; }
@@ -106,7 +111,7 @@ export function registryJournal(root, fault = () => {}) {
   }
   return {
     close: () => db.close(),
-    pending: id => rows().some(value => value.id === id),
+    pending: id => { valid(id); return rows().some(value => value.id === id); },
     recover(protectedIds = []) {
       const removed = [];
       for (const value of rows()) {
@@ -118,6 +123,7 @@ export function registryJournal(root, fault = () => {}) {
       return removed;
     },
     allocate(id, owner) {
+      valid(id);
       const directory = join(root, id), value = { version: 1, id, kind: 'allocating', owner: JSON.stringify(owner, null, 2) + '\n' };
       save(value); fault('allocation-before-mkdir', value);
       mkdirSync(directory, { mode: 0o700 }); syncDirectory(root); fault('allocation-after-mkdir', value);
@@ -129,6 +135,7 @@ export function registryJournal(root, fault = () => {}) {
       clear(id);
     },
     retire(id) {
+      valid(id);
       const directory = join(root, id);
       if (consumers(directory)) throw Error('Candidate still has consumers');
       const value = { version: 1, kind: 'retiring', id, entries: inventory(directory) };

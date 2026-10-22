@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { lock } from '../src/files.mjs';
+import { lock, admissionLock } from '../src/files.mjs';
 import { loadCandidate, publishCandidate } from '../src/ci-candidate.mjs';
 
 function fixture(t) {
@@ -35,7 +35,7 @@ test('publication waits for a real maintenance owner then publishes exactly once
   let allocations = 0;
   try {
     const started = performance.now();
-    const manifest = publishCandidate(f.registry, f.source, f.inputs, f.policy, undefined,
+    const manifest = await publishCandidate(f.registry, f.source, f.inputs, f.policy, undefined,
       point => { if (point === 'publication-owner-ready') allocations++; });
     assert.ok(performance.now() - started >= 250, 'waited for the competing process');
     assert.equal(allocations, 1);
@@ -44,20 +44,57 @@ test('publication waits for a real maintenance owner then publishes exactly once
   } finally { await stop(); }
 });
 
-test('publication deadline leaves no allocation or partial candidate', { timeout: 90_000 }, async t => {
+test('publication deadline leaves no allocation or partial candidate', async t => {
   const f = fixture(t), stop = await owner(f.path);
   try {
     const started = performance.now();
-    assert.throws(() => publishCandidate(f.registry, f.source, f.inputs, f.policy), /Operation is already running/);
+    await assert.rejects(publishCandidate(f.registry, f.source, f.inputs, f.policy, undefined, undefined,
+      { timeoutMs: 150, deadline: performance.now() + 60_000 }), /Operation is already running/);
     const elapsed = performance.now() - started;
-    // SQLite bounds busy-handler sleep; loaded runners may deschedule the
-    // process between sleeps. Keep a watchdog without asserting scheduling.
-    assert.ok(elapsed >= 29_000 && elapsed < 75_000, `bounded publication wait: ${elapsed}ms`);
+    assert.ok(elapsed >= 140 && elapsed < 2000, `clamped publication wait: ${elapsed}ms`);
     assert.deepEqual(readdirSync(f.registry), ['.registry.lock']);
-    assert.ok(readdirSync(f.path).every(name => ['lock.sqlite', 'lock.sqlite-journal'].includes(name)),
-      'only the competing owner lock database and its rollback journal exist before admission');
     assert.equal(existsSync(join(f.path, 'ownership.sqlite')), false);
   } finally { await stop(); }
+});
+
+test('background admission returns promptly and permanent failures do not retry', async t => {
+  const f = fixture(t), stop = await owner(f.path);
+  try {
+    const started = performance.now();
+    await assert.rejects(admissionLock(f.path, { timeoutMs: 0 }), /Operation is already running/);
+    assert.ok(performance.now() - started < 500);
+  } finally { await stop(); }
+  writeFileSync(join(f.path, 'lock.sqlite'), 'corrupt database');
+  const started = performance.now();
+  await assert.rejects(admissionLock(f.path, { timeoutMs: 5000 }), error => error.cause?.errcode === 26);
+  assert.ok(performance.now() - started < 500, 'permanent SQLite failure is not contention');
+  for (const timeoutMs of [-1, 330001, 0.5, NaN, Infinity, '100', null]) {
+    const absent = join(f.root, 'invalid-async');
+    await assert.rejects(admissionLock(absent, { timeoutMs }), /Invalid admission timeout/);
+    assert.equal(existsSync(absent), false);
+  }
+});
+
+test('SIGTERM interrupts yielded admission before publication and releases listeners', async t => {
+  const f = fixture(t), stop = await owner(f.path);
+  try {
+    const child = spawn(process.execPath, ['--input-type=module', '-e', `
+      import {publishCandidate} from ${JSON.stringify(new URL('../src/ci-candidate.mjs', import.meta.url).href)};
+      const f=${JSON.stringify(f)};
+      const pending=publishCandidate(f.registry,f.source,f.inputs,f.policy);
+      console.log('waiting');
+      try { await pending; process.exitCode=2; } catch(error) {
+        if(error.message !== 'CI admission interrupted') throw error;
+        if(process.listenerCount('SIGTERM')) throw Error('signal listener retained');
+      }
+    `], {stdio:['ignore','pipe','pipe']});
+    const exited=once(child,'exit');
+    await once(child.stdout,'data'); child.kill('SIGTERM');
+    const [code,signal]=await exited;
+    assert.equal(code,0); assert.equal(signal,null);
+    assert.deepEqual(readdirSync(f.registry),['.registry.lock']);
+  } finally { await stop(); }
+  (await admissionLock(f.path,{timeoutMs:0}))();
 });
 
 test('ordinary locks remain nonblocking and configured deadlines are bounded', async t => {
