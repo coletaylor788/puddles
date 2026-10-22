@@ -80,6 +80,12 @@ content digests. Loading verifies its identity and runtime bytes. Mutable DEV an
 application-suite receipts bind to that identity. Active consumers pin snapshots.
 Collection removes only recognized expired unreferenced objects. Registry byte
 budgets and disk reserve checks reject admission before space is exhausted.
+Admission distinguishes the logical registry quota from the temporary physical
+space required while copying. Publication includes destination allocation rounding
+and directory metadata. Transfer adapters must reserve both incoming and published
+copies before uploading. Capacity failures report the phase and numeric budgets
+without exposing filesystem paths; the final publication check still runs because
+unrelated disk use can change after admission.
 
 Run records default to a 100 MiB budget, 500 records, and seven-day delivered-result
 retention. Snapshot age defaults to one day. Host configuration sets appropriate
