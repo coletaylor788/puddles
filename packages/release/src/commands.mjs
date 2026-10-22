@@ -46,7 +46,7 @@ export async function command(specification, context = {}, observe = () => {}) {
   try {
     await Promise.race([signalFailure, new Promise((resolve, reject) => {
       child.once('error', reject);
-      child.once('exit', (code, signal) => code === 0 && !expired ? resolve() : reject(new Error(`Command failed (${expired ? 'timeout/interruption' : signal ?? code}): ${specification.command}`)));
+      child.once('exit', (code, signal) => code === 0 && !expired ? resolve() : reject(Object.assign(new Error(`Command failed (${expired ? 'timeout/interruption' : signal ?? code}): ${specification.command}`), { exitCode: code })));
       try { prepared.release(); } catch (error) { prepared.abort(); reject(error); }
     })]);
   } finally {

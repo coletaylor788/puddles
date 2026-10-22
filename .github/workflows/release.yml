@@ -29,7 +29,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '26.1.0'
-      - run: npm install --global corepack@0.36.0
-      - run: corepack pnpm install --frozen-lockfile
-      - run: corepack pnpm build
-      - run: corepack pnpm test
+      - name: Install pinned package manager
+        run: |
+          npm install --prefix "$RUNNER_TEMP/puddles-pnpm" --no-save --no-audit --no-fund pnpm@12.4.0
+          echo "$RUNNER_TEMP/puddles-pnpm/node_modules/.bin" >> "$GITHUB_PATH"
+          test "$("$RUNNER_TEMP/puddles-pnpm/node_modules/.bin/pnpm" --version)" = 12.4.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm test

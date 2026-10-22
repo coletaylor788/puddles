@@ -136,8 +136,10 @@ flowchart TB
 
 - **Build trust:** source, dependencies, and build scripts run with the builder's
   permissions. Use reviewed, pinned inputs.
-- **Credentials:** CI gets no production credentials. Keep account data and
-  secrets out of build logs and artifacts.
+- **Credentials:** GitHub receives identifiers and status, never production
+  credentials or private runtime payloads. The target runner and installed
+  deployment service run as the trusted application account and can access that
+  account's local credentials. Keep account data and secrets out of logs.
 - **Test isolation:** build tests, DEV, and TEST use separate state and processes.
   External calls use recording adapters. Tests cannot change PROD or live accounts.
 - **Production artifacts:** deploy reviewed artifacts that passed release checks.
@@ -145,6 +147,16 @@ flowchart TB
 
 Artifact hashes detect changed bytes; they do not protect against a compromised
 builder.
+
+[Triggered CI](../../packages/release/CI.md) moves queueing, deployment, recovery,
+and cleanup into deterministic services. Agents submit frozen candidate IDs and
+receive status; they do not own an environment while waiting for another agent.
+Private dispatch workflows use installed tools on trusted hosts. They must not
+execute fork-provided workflow code or accept a caller-supplied shell command.
+The full application suite and deployed checks qualify the same artifact and
+frozen application-control closure. Required checks, current review, and strict
+main freshness are enforced before production and by the normal merge endpoint.
+Uncertain paired merge or intake state holds the lane for reconciliation.
 
 ## Agent architecture
 

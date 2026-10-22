@@ -1,5 +1,21 @@
 # Deployment coordination
 
+## Triggered CI cutover
+
+[Plan 064](../../docs/plans/064-triggered-ci.md) replaces the manager with
+[GitHub workflows and a supervised host transaction](../release/CI.md).
+Feature agents remain paused until its live dummy trial passes. Do not start a
+release-manager heartbeat or submit new legacy tickets. Build and refresh from
+main before queueing; DEV CI deploys, checks installed behavior, and tears down.
+Production CI runs the full suite and TEST/backup/PROD/merge sequence. Scripts
+own queuing, recovery, cleanup, and status delivery. A stale candidate returns
+to its owner; no rebase or repair occurs while it holds a deployment lane.
+
+The remaining text describes the prior controller adoption and retained recovery.
+It does not authorize restarting the retired manager.
+
+## Previous process
+
 One release manager owns a FIFO lane from TEST through PROD and merge. DEV stays
 open to feature owners under a short deployment lock. Building, focused tests,
 and review do not reserve TEST or PROD.

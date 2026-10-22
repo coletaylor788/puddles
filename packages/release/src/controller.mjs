@@ -31,7 +31,8 @@ export function validateTicket(ticket, config) {
   if (!ticket.artifact.startsWith(ticket.workspace + '/')) throw new Error('Artifact must belong to the feature workspace');
   separate([ticket.workspace, config.root, config.backup.root, config.test.runtime, config.prod.runtime]);
   for (const entry of config.backup.paths) separate([ticket.workspace, entry.path]);
-  for (const name of ['rebase', 'build', 'applicationTests', 'merge']) validateCommand(ticket[name]);
+  if (ticket.frozenDigest !== undefined && !/^[a-f0-9]{64}$/.test(ticket.frozenDigest)) throw new Error('Invalid frozen candidate digest');
+  for (const name of ticket.frozenDigest ? ['preflight', 'applicationTests', 'merge'] : ['rebase', 'build', 'applicationTests', 'merge']) validateCommand(ticket[name]);
   return ticket;
 }
 async function deploy(target, artifact, digest, run, phase) {
@@ -72,7 +73,8 @@ export async function runNext(config, execute = command, options = {}) {
       if (!state.active && state.ready.length && !options.recover) {
         const ticket = state.ready.shift();
         validateTicket(ticket, config);
-        state.active = { ...ticket, configHash, phase: 'rebase', completed: [], child: null };
+        state.active = { ...ticket, configHash, phase: ticket.frozenDigest ? 'preflight' : 'rebase',
+          ...(ticket.frozenDigest ? { digest: ticket.frozenDigest } : {}), completed: [], child: null };
       }
       return state.active;
     });
@@ -118,7 +120,7 @@ export async function runNext(config, execute = command, options = {}) {
         await run(config.prod.health, 'recover-intake-health');
       }
       leave();
-      return { status: 'failed', id: active.id, error: active.error ?? 'Interrupted release recovered; repair and rejoin at the back' };
+      return { status: 'failed', id: active.id, error: active.error ?? 'Interrupted release recovered; repair and rejoin at the back', ...(active.errorCode === undefined ? {} : { errorCode: active.errorCode }) };
     };
     if (options.recover) {
       if (active.intakeResuming && !active.recoveryIntakeResuming || active.completed.includes('resumeIntake')) throw new Error('Intake resumed; recovery must preserve new live writes');
@@ -137,10 +139,11 @@ export async function runNext(config, execute = command, options = {}) {
       active.phase = 'merge';
     }
     try {
-      for (const stage of stages) {
+      for (const stage of active.frozenDigest ? ['preflight', ...stages.slice(2)] : stages) {
         if (active.completed.includes(stage)) continue;
         save({ phase: stage, status: 'running', error: null });
-        if (['rebase', 'build', 'applicationTests', 'merge'].includes(stage)) {
+        if (['preflight', 'rebase', 'build', 'applicationTests', 'merge'].includes(stage)) {
+          if (active.frozenDigest && treeHash(active.artifact) !== active.frozenDigest) throw new Error('Frozen CI artifact changed');
           if (stage === 'applicationTests' && treeHash(active.artifact) !== active.digest) throw new Error('Artifact changed before application suite');
           await run(active[stage], stage);
           if (stage === 'build') save({ digest: treeHash(active.artifact) });
@@ -167,7 +170,7 @@ export async function runNext(config, execute = command, options = {}) {
       leave();
       return result;
     } catch (error) {
-      save({ error: error.message });
+      save({ error: error.message, errorCode: error.exitCode });
       if (active.phase === 'merge' || active.phase === 'resumeIntake') {
         save({ status: 'merge-pending' });
         return { status: 'merge-pending', id: active.id, error: error.message };

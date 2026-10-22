@@ -5,6 +5,12 @@ description: "Coordinate Puddles feature agents and releases as a persistent man
 
 # Release Manager
 
+**Retired by requester approval in Plan 064.** Do not start this role, recreate
+its automation, or dispatch legacy release tickets. Read
+[`packages/release/CI.md`](../../../packages/release/CI.md) for the replacement.
+The content below is historical recovery guidance only. A new explicit requester
+decision is required to reinstate agent release coordination.
+
 Keep approved work moving through production and merge. Remain responsible between
 releases. Creating or editing this skill does not start a manager or timer.
 

@@ -148,10 +148,11 @@ boundaries without duplicating the pipeline or its completed proofs.
 
 The owner keeps the requested code, focused tests, committed regression, related
 documentation, and retained adversarial review coherent. Iterate with the fast
-local and DEV loop below. Reviewed features join the ready queue after focused
-and required repository checks. At the front, rebase on main and freeze the
-feature's incremental build. Run the full application suite, TEST and its tests,
-backup, PROD and its read-only tests, then merge the tested source. A correction
+local and DEV loop below. Refresh from main before queueing, then rebuild and
+repeat affected review and DEV checks. Reviewed frozen candidates enter GitHub
+CI after focused and required repository checks. CI rejects stale bases at
+dequeue and runs the full application suite, TEST, backup, PROD checks, and exact
+PR merge. Follow [triggered CI](../../../packages/release/CI.md). A correction
 creates a new candidate and invalidates only proofs whose actual inputs changed.
 
 Treat an approved implementation request as authorization for the orchestrator
@@ -488,11 +489,11 @@ investigating instead of asking.
 
 5. **Enter the ready queue**
    - Push the reviewed feature and open its PR with focused results. Satisfy
-     repository checks. Report readiness and blockers to the release manager;
-     remain engaged until production, merge, and cleanup or an accepted handoff.
-   - At the front, rebase on main, resolve conflicts, and repeat affected review
-     and checks. Paired public/private branches travel as one ticket. Rebuild
-     changed inputs in the existing workspace and freeze the complete output.
+     repository checks. The release-manager agent is retired. Remain responsible
+     for repairs through production, merge, and cleanup; CI wakes the owning task.
+   - Before queueing, refresh from main, resolve conflicts, rebuild in the same
+     workspace, and repeat affected review and DEV checks. Paired repositories
+     travel as one candidate. CI rechecks main at dequeue and rejects stale builds.
    - Application changes run the entire application suite before PROD. Tooling
      changes run the independent release package's entire suite before installing
      the tool between tickets. Neither requires the other's build or tests.
@@ -523,8 +524,9 @@ investigating instead of asking.
    - Merge only the tested feature heads after PROD passes. Verify main represents
      the tested source. Merge is outside the rollback operation. Resume intake
      after merge, then advance the queue.
-   - If merge fails, hold the ticket and intake. Retry merge, or restore while
-     new live writes are still prevented. Never restore a backup over data
+   - If merge fails, hold the ticket and intake. Query actual paired merge state
+     before retry. Partial or uncertain merges retain ownership and cannot be
+     cancelled into ordinary rollback. Never restore a backup over data
      accepted after intake resumed. Do not rebuild a passing candidate for a
      transient GitHub failure.
 
@@ -575,9 +577,9 @@ the installed behavior. Shared DEV needs only a short mutation lock; isolated
 instances with their own state and ports need no shared slot. No arbitrary cap
 on the number of feature builders. Measure actual host contention before tuning.
 
-A ready feature is reviewed, committed, and tested in DEV. Join the manager's
-queue, then rebase and refresh the same build at the front. Run the full
-application suite once on the frozen output, then TEST and PROD acceptance.
+A ready feature is reviewed, committed, refreshed from main, and tested in DEV.
+Submit its frozen build to GitHub CI. The service rejects a changed base and wakes
+the owner. Production CI runs the full suite, then TEST and PROD acceptance.
 Print timings to the conversation; do not keep a second test-report archive.
 
 Use the same application configuration renderer, preparation, startup, health,
@@ -601,13 +603,15 @@ compatible with the state actually captured in the one backup.
 
 ### Release ownership and cleanup
 
-One manager coordinates the FIFO lane and carries each feature through merge.
-Owners keep the manager informed and keep working through repairs and cleanup.
-The manager's hourly native heartbeat is a fallback, not a replacement for active
-coordination. Use the release-manager skill when assigned that role.
+GitHub schedules the lane and deterministic scripts carry each feature through
+merge and cleanup. The host service recovers without an active agent. Owners
+receive start/result events and resume only for implementation or repairs.
+Do not recreate the retired manager or its heartbeat. Plan 064 records cutover
+and live qualification status; do not restart feature releases before it passes.
 
 Publish source before finalizing. Run `finalize` from outside the feature workspace;
 archive app-managed worktrees through the app. Delete generated builds, fixtures,
 logs, archives, and receipts with the workspace. Preserve unpublished source,
-other owners, deployments, backup, and shared caches. Cleanup retries do not hold
-the queue. Results and follow-up context remain in the conversation.
+other owners, deployments, backup, and shared caches. Environment teardown retains
+its slot until successful; later workspace finalization is independent. Results
+and follow-up context remain in the conversation.
