@@ -3,6 +3,7 @@ import { constants, chmodSync, closeSync, cpSync, existsSync, fsyncSync, lchmodS
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { execFileSync } from 'node:child_process';
+import { setTimeout as delay } from 'node:timers/promises';
 
 export const readJson = path => JSON.parse(readFileSync(path, 'utf8'));
 export const contains = (parent, child) => resolve(parent) === resolve(child) || resolve(child).startsWith(resolve(parent) + sep);
@@ -96,4 +97,29 @@ export function lock(directory, { timeoutMs = 0 } = {}) {
 export function withLock(directory, action) {
   const unlock = lock(directory);
   try { return action(); } finally { unlock(); }
+}
+
+export const FOREGROUND_ADMISSION_MS = 330_000;
+// Foreground callers wait for admission only. Yielding keeps termination and
+// supervisor callbacks responsive; maintenance explicitly requests timeout zero.
+export async function admissionLock(directory, { timeoutMs = FOREGROUND_ADMISSION_MS, deadline = performance.now() + timeoutMs } = {}) {
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 0 || timeoutMs > FOREGROUND_ADMISSION_MS || !Number.isFinite(deadline)) throw Error('Invalid admission timeout');
+  deadline = Math.min(deadline, performance.now() + timeoutMs);
+  let interrupted = false;
+  const stop = () => { interrupted = true; };
+  process.once('SIGTERM', stop); process.once('SIGINT', stop);
+  try {
+    for (;;) {
+      if (interrupted) throw Error('CI admission interrupted');
+      try {
+        const release = lock(directory);
+        if (interrupted) { release(); throw Error('CI admission interrupted'); }
+        return release;
+      }
+      catch (error) {
+        if (error.cause?.code !== 'ERR_SQLITE_ERROR' || ![5, 6].includes(error.cause.errcode & 255) || performance.now() >= deadline || timeoutMs === 0) throw error;
+        await delay(Math.max(1, Math.min(100, deadline - performance.now())));
+      }
+    }
+  } finally { process.removeListener('SIGTERM', stop); process.removeListener('SIGINT', stop); }
 }

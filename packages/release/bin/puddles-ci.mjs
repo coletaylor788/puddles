@@ -15,7 +15,7 @@ mkdirSync(config.runs, { recursive: true, mode: 0o700 });
 const result = value => console.log(JSON.stringify(value));
 if (action === 'request' || action === 'cancel-request') {
   const [id, candidate, mode, githubRun, owner] = args;
-  result((action === 'request' ? requestCI : cancelRequestCI)(config, { id, candidate, mode, githubRun, owner }));
+  result(await (action === 'request' ? requestCI : cancelRequestCI)(config, { id, candidate, mode, githubRun, owner }, args[5] === '--background' ? { timeoutMs: 0 } : undefined));
 } else if (action === 'work') result(await executeCI(config, args[0]));
 else if (action === 'cancel') { cancelCI(config, args[0]); result({ requested: true }); }
 else if (action === 'status') result(args[0] ? readJson(join(config.runs, identifier(args[0]) + '.json')) : runRecords(config));
@@ -52,7 +52,7 @@ else if (action === 'service') {
   const report = error => console.error(JSON.stringify({ service: 'ci', error: error.message }));
   try {
     while (!stopping) {
-      try { reconcileCI(config); } catch (error) { report(error); }
+      try { await reconcileCI(config); } catch (error) { report(error); }
       if (config.reconcile) {
         try { await command(config.reconcile, { PUDDLES_CI_RUNS: config.runs }); } catch (error) { report(error); }
       }

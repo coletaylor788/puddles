@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { atomicJson, lock, readJson, separate } from './files.mjs';
+import { atomicJson, lock, admissionLock, FOREGROUND_ADMISSION_MS, readJson, separate } from './files.mjs';
 import { command, stopInterruptedChild, validateCommand } from './commands.mjs';
 import { deployDev, runNext, validateConfiguration } from './controller.mjs';
 import { cancel as cancelTicket, enqueue, readQueue } from './queue.mjs';
@@ -23,17 +23,19 @@ function requestIdentity(config, { id, candidate, mode, githubRun, owner }) {
   if (!['dev', 'prod'].includes(mode) || !/^[0-9]+:[0-9]+$/.test(githubRun ?? '') || typeof owner !== 'string' || !owner) throw new Error('CI request requires mode, workflow identity, and owner');
   return { version: 1, id, candidate, mode, githubRun, owner, configDigest: digest(config) };
 }
-export function requestCI(config, value) {
+export async function requestCI(config, value, admission = {}) {
+  admission = { timeoutMs: FOREGROUND_ADMISSION_MS, ...admission };
+  admission.deadline ??= performance.now() + admission.timeoutMs;
   const request = requestIdentity(config, value), { id, candidate } = request;
   mkdirSync(config.runs, { recursive: true, mode: 0o700 });
-  const unlock = lock(join(config.runs, '.requests.lock'));
+  const unlock = await admissionLock(join(config.runs, '.requests.lock'), admission);
   try {
     const path = join(config.runs, id + '.json');
     if (existsSync(path)) {
       const existing = readJson(path);
       if (existing.requestDigest !== digest(request)) throw new Error('CI request identity was reused');
       if (existing.status === 'registering') {
-        pinCandidate(config.registry, candidate, id);
+        await pinCandidate(config.registry, candidate, id, admission);
         atomicJson(path, { ...existing, status: 'admitted' });
         return readJson(path);
       }
@@ -43,17 +45,19 @@ export function requestCI(config, value) {
     if (runRecords(config).length >= (config.maxRunRecords ?? 500)) throw new Error('CI record limit reached; reconcile delivery and cleanup');
     const value = { ...request, requestDigest: digest(request), status: 'registering', phase: 'pending', child: null, createdAt: Date.now(), events: [] };
     atomicJson(path, value);
-    pinCandidate(config.registry, candidate, id);
+    await pinCandidate(config.registry, candidate, id, admission);
     atomicJson(path, { ...value, status: 'admitted' });
     return readJson(path);
   } finally { unlock(); }
 }
 // GitHub may cancel before the runner admits a request. Register the exact
 // terminal identity under the admission mutex so a late submit cannot deploy it.
-export function cancelRequestCI(config, value) {
+export async function cancelRequestCI(config, value, admission = {}) {
+  admission = { timeoutMs: FOREGROUND_ADMISSION_MS, ...admission };
+  admission.deadline ??= performance.now() + admission.timeoutMs;
   const request = requestIdentity(config, value), { id } = request;
   mkdirSync(config.runs, { recursive: true, mode: 0o700 });
-  const unlock = lock(join(config.runs, '.requests.lock'));
+  const unlock = await admissionLock(join(config.runs, '.requests.lock'), admission);
   try {
     const path = join(config.runs, id + '.json');
     if (existsSync(path)) {
@@ -187,10 +191,10 @@ export async function executeCI(config, id, execute = command) {
     save({ status: 'cleaning', outcome });
     await run(state.mode === 'dev' ? config.dev.stop : config.controller.test.stop, 'cleanup-stop');
     await run(state.mode === 'dev' ? config.devCleanup : config.testCleanup, 'cleanup');
-    if (state.mode === 'dev' && outcome === 'passed') recordGate(config.registry, state.candidate, 'dev', {
+    if (state.mode === 'dev' && outcome === 'passed') await recordGate(config.registry, state.candidate, 'dev', {
       status: 'passed', run: id, targetDigest: digest(config.dev), completedAt: Date.now(),
     });
-    unpinCandidate(config.registry, state.candidate, id);
+    await unpinCandidate(config.registry, state.candidate, id);
     event(outcome, { status: outcome, phase: 'complete', child: null, completedAt: Date.now() });
     rmSync(ownerPath);
     return state;
@@ -221,9 +225,9 @@ export function runRecords(config) {
   return readdirSync(config.runs).filter(name => /^[a-zA-Z0-9][\w.-]*\.json$/.test(name) && !name.endsWith('.cancel.json'))
     .map(file => readJson(join(config.runs, file))).filter(state => state.version === 1 && state.requestDigest);
 }
-export function reconcileCI(config) {
+export async function reconcileCI(config) {
   for (const state of runRecords(config)) {
-    if (state.status === 'registering') requestCI(config, state);
+    if (state.status === 'registering') await requestCI(config, state, { timeoutMs: 0 });
   }
   for (const mode of ['dev', 'prod']) {
     let release;
