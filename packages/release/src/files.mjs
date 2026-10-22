@@ -77,13 +77,14 @@ export function processIdentity(pid) {
   try { return execFileSync('ps', ['-p', String(pid), '-o', 'lstart='], { encoding: 'utf8' }).trim() || null; }
   catch { return null; }
 }
-export function lock(directory) {
+export function lock(directory, { timeoutMs = 0 } = {}) {
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 0 || timeoutMs > 30_000) throw new Error('Invalid lock timeout');
   canonical(directory);
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   // The kernel releases SQLite's lock when the process exits, including SIGKILL.
   // Keep this tiny file in place: deleting lock files creates competing owners.
   const database = new DatabaseSync(join(directory, 'lock.sqlite'));
-  try { database.exec('BEGIN EXCLUSIVE'); }
+  try { database.exec(`PRAGMA busy_timeout=${timeoutMs}; BEGIN EXCLUSIVE`); }
   catch (error) { database.close(); throw new Error('Operation is already running', { cause: error }); }
   let closed = false;
   return () => {
