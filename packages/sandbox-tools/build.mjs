@@ -31,15 +31,16 @@ export function prepareSandboxTools(output, docker = process.env.PUDDLES_DOCKER 
   if (prior?.source !== source || prior?.platform !== platform || prior?.builder !== builder || !existsSync(join(cache,'image.tar'))) {
     mkdirSync(cache,{recursive:true});
     const temporary = join(cache,'image.tar.tmp');
-    let image;
+    let image, configDigest;
     if (builder) {
       if (!/^puddles-ci-[a-z0-9-]{1,48}$/.test(builder)) throw new Error('Invalid dedicated CI builder');
       const inspection = execute(docker,['buildx','inspect',builder],{encoding:'utf8',timeout:30000});
       if (!/^Driver:\s+docker-container\s*$/m.test(inspection)) throw new Error('CI requires a dedicated docker-container builder');
       const metadata = join(cache,'build-metadata.json');
       execute(docker,['buildx','build','--builder',builder,'--provenance=false','--output','type=docker,dest='+temporary,'--metadata-file',metadata,component],{stdio:'inherit',timeout:60*60_000});
-      image = JSON.parse(readFileSync(metadata,'utf8'))['containerimage.config.digest'];
-      if (archiveImage(temporary,{untagged:true}) !== image) throw new Error('Exported sandbox image differs from build metadata');
+      const result = JSON.parse(readFileSync(metadata,'utf8'));
+      image = result['containerimage.digest']; configDigest = result['containerimage.config.digest'];
+      if (archiveImage(temporary,{untagged:true,containerd:true}) !== image || archiveImage(temporary,{untagged:true}) !== configDigest) throw new Error('Exported sandbox image differs from build metadata');
       rmSync(metadata);
     } else {
       const tag = 'puddles-sandbox-media:' + source.slice(0,16);
@@ -50,7 +51,7 @@ export function prepareSandboxTools(output, docker = process.env.PUDDLES_DOCKER 
     if (!/^sha256:[a-f0-9]{64}$/.test(image)) throw new Error('Invalid sandbox image identity');
     renameSync(temporary,join(cache,'image.tar'));
     const archiveSha256=createHash('sha256').update(readFileSync(join(cache,'image.tar'))).digest('hex');
-    prior={version:1,source,platform,image,archiveSha256,...(builder ? {builder,untagged:true} : {})};
+    prior={version:1,source,platform,image,archiveSha256,...(builder ? {builder,untagged:true,configDigest} : {})};
     writeFileSync(marker,JSON.stringify(prior,null,2)+'\n');
   }
   const digest=createHash('sha256').update(readFileSync(join(cache,'image.tar'))).digest('hex');

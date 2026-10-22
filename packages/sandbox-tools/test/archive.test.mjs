@@ -14,10 +14,14 @@ function fixture(t,manifest){
   const root=mkdtempSync(join(tmpdir(),'sandbox-archive-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
   const config=JSON.stringify({architecture:'arm64',os:'linux'}),archive=join(root,'image.tar');
   writeFileSync(join(root,'config.json'),config);writeFileSync(join(root,'manifest.json'),JSON.stringify(manifest??[{Config:'config.json',RepoTags:[],Layers:[]}]));
-  execFileSync('/usr/bin/tar',['-cf',archive,'-C',root,'manifest.json','config.json']);return {root,archive,image:'sha256:'+hash(config)};
+  const image='sha256:'+hash(config),imageBytes=JSON.stringify({schemaVersion:2,config:{digest:image},layers:[]}),manifestImage='sha256:'+hash(imageBytes);
+  mkdirSync(join(root,'blobs/sha256'),{recursive:true});writeFileSync(join(root,'blobs/sha256',manifestImage.slice(7)),imageBytes);
+  writeFileSync(join(root,'index.json'),JSON.stringify({schemaVersion:2,manifests:[{digest:manifestImage}]}));writeFileSync(join(root,'oci-layout'),JSON.stringify({imageLayoutVersion:'1.0.0'}));
+  execFileSync('/usr/bin/tar',['-cf',archive,'-C',root,'manifest.json','config.json','index.json','oci-layout','blobs']);return {root,archive,image,manifestImage};
 }
 test('untagged docker export verifies the actual configuration bytes',t=>{
   const f=fixture(t);assert.equal(archiveImage(f.archive,{untagged:true}),f.image);
+  assert.equal(archiveImage(f.archive,{untagged:true,containerd:true}),f.manifestImage);assert.notEqual(f.image,f.manifestImage);
 });
 test('CI rejects tagged, multiple-image and escaping-config archives',t=>{
   for(const [manifest,error]of [
@@ -25,6 +29,18 @@ test('CI rejects tagged, multiple-image and escaping-config archives',t=>{
     [[{Config:'config.json'},{Config:'config.json'}],/exactly one/],
     [[{Config:'../config.json'}],/Invalid archive/],
   ]){const f=fixture(t,manifest);assert.throws(()=>archiveImage(f.archive,{untagged:true}),error);}
+});
+test('CI rejects named OCI images and altered descriptor/config bindings',t=>{
+  for(const mutate of [
+    f=>writeFileSync(join(f.root,'index.json'),JSON.stringify({schemaVersion:2,manifests:[{digest:f.manifestImage,annotations:{'io.containerd.image.name':'foreign:tag'}}]})),
+    f=>writeFileSync(join(f.root,'index.json'),JSON.stringify({schemaVersion:2,manifests:[{digest:f.manifestImage},{digest:f.manifestImage}]})),
+    f=>writeFileSync(join(f.root,'blobs/sha256',f.manifestImage.slice(7)),'{}'),
+    f=>writeFileSync(join(f.root,'config.json'),JSON.stringify({architecture:'amd64',os:'linux'})),
+  ]){
+    const f=fixture(t);mutate(f);
+    execFileSync('/usr/bin/tar',['-cf',f.archive,'-C',f.root,'manifest.json','config.json','index.json','oci-layout','blobs']);
+    assert.throws(()=>archiveImage(f.archive,{untagged:true,containerd:true}),/unnamed manifest|one OCI index|identity differs/);
+  }
 });
 test('installed acceptance delegates each import/test to the maintained CI owner',t=>{
   const f=fixture(t),sandbox=join(f.root,'sandbox-tools');mkdirSync(sandbox);
@@ -45,12 +61,12 @@ test('repeated CI builds reuse the direct archive without loading or tagging dae
     if(args[0]==='buildx'&&args[1]==='inspect')return 'Driver: docker-container\n';
     if(args[0]==='buildx'&&args[1]==='build'){
       const destination=args[args.indexOf('--output')+1].replace('type=docker,dest=','');
-      writeFileSync(destination,readFileSync(f.archive));writeFileSync(args[args.indexOf('--metadata-file')+1],JSON.stringify({'containerimage.config.digest':f.image}));return '';
+      writeFileSync(destination,readFileSync(f.archive));writeFileSync(args[args.indexOf('--metadata-file')+1],JSON.stringify({'containerimage.config.digest':f.image,'containerimage.digest':f.manifestImage}));return '';
     }
     throw Error('Unexpected Docker mutation '+args);
   };
   assert.equal(prepareSandboxTools(output,'docker',execute).untagged,true);
-  assert.equal(prepareSandboxTools(output,'docker',execute).image,f.image);
+  assert.equal(prepareSandboxTools(output,'docker',execute).image,f.manifestImage);
   assert.equal(calls.filter(args=>args[1]==='build').length,1);
   assert.equal(calls.some(args=>args[0]==='image'||args.includes('--load')||args.includes('--tag')),false);
 });

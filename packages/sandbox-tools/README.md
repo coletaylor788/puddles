@@ -46,6 +46,9 @@ and exports an untagged Docker archive directly, without loading it into the
 daemon. The builder owner must serialize builds, enforce cache/free-space
 budgets, and maintain the builder. The artifact records its builder and archive
 identity, and incompatible cached archives rebuild automatically.
+This managed path requires Docker's containerd image store. It binds both the
+single exported manifest digest used by that store and the verified configuration
+digest; it rejects named or multiple-image archives before import.
 
 `PUDDLES_CI_DOCKER_IMPORT` can bind an installed lifecycle adapter using JSON
 absolute `node`, `script` and `config` paths. Installed load/test operations call
