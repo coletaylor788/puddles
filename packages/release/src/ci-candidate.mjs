@@ -45,7 +45,9 @@ export function publishCandidate(root, source, inputs, policy, controls, fault =
   if (controls) inputs = { ...inputs, controlsDigest: treeHash(controls) };
   else if (inputs.controlsDigest !== undefined) throw new Error('Frozen application controls are missing');
   mkdirSync(root, { recursive: true, mode: 0o700 });
-  const unlock = lock(join(root, '.registry.lock'));
+  // Maintenance may briefly own this lock after the build finishes. Wait only
+  // for admission; never replay publication or the completed build.
+  const unlock = lock(join(root, '.registry.lock'), { timeoutMs: 30_000 });
   let staging, journal;
   try {
     journal = registryJournal(root, fault);
