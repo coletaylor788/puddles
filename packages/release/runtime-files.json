@@ -11,6 +11,7 @@
   "owned-process.mjs",
   "owned-process-gate.mjs",
   "ci-candidate.mjs",
+  "ci-registry-journal.mjs",
   "ci-source.mjs",
   "ci-run.mjs"
 ]

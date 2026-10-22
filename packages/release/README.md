@@ -117,3 +117,18 @@ upstream clones or patched build checkouts as disposable. Existing source cannot
 be relabeled this way. Finalization removes their linked-worktree registrations
 and build data without publishing generated patches. Authored feature checkouts
 still require clean, published source, with repository metadata outside the workspace.
+
+Candidate removal records an exact filesystem inventory in a separate SQLite
+ownership journal before unlinking anything. The journal stays under the stable
+registry lock directory, so a killed collector can resume even after `owner.json`
+is gone. Recovery accepts only missing entries from that inventory; replacements,
+additional files, consumer pins and protected IDs hold deletion. A retiring ID
+cannot be loaded, pinned or republished. Publishing also records allocation intent
+before creating its directory, covering interruption before its owner marker is
+published. Exception cleanup uses the same retirement journal.
+
+The journal uses synchronous FULL transactions, a 64 MiB total payload admission
+bound, a 128 MiB database cap (plus at most that much rollback journal), and FULL
+auto-vacuum after removal. Each inventory is limited to one million entries.
+Unknown paths are retained for diagnosis; cleanup does not infer ownership from a
+filename. These checks preserve the existing registry lock and collector API.

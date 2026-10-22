@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readdirSync, rmSync, statfsSync } from 'node:fs';
 import { join } from 'node:path';
+import { assertCandidateAvailable, registryJournal } from './ci-registry-journal.mjs';
 import { atomicJson, canonical, copy, lock, readJson, separate, treeHash } from './files.mjs';
 
 export const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -39,24 +40,25 @@ export function capacity(root, { maxBytes, reserveBytes }, additional = 0) {
   if (used + additional > maxBytes || disk.bavail * disk.bsize < reserveBytes + additional) throw new Error('CI storage capacity unavailable');
   return { used, available: disk.bavail * disk.bsize };
 }
-export function publishCandidate(root, source, inputs, policy, controls) {
+export function publishCandidate(root, source, inputs, policy, controls, fault = () => {}) {
   separate([root, source, ...(controls ? [controls] : [])]);
   if (controls) inputs = { ...inputs, controlsDigest: treeHash(controls) };
   else if (inputs.controlsDigest !== undefined) throw new Error('Frozen application controls are missing');
   mkdirSync(root, { recursive: true, mode: 0o700 });
   const unlock = lock(join(root, '.registry.lock'));
-  let staging;
+  let staging, journal;
   try {
+    journal = registryJournal(root, fault);
     const artifactDigest = treeHash(source);
     const inputsDigest = digest(inputs);
     const id = digest({ artifactDigest, inputsDigest });
     const destination = join(root, id);
+    assertCandidateAvailable(root, id);
     if (existsSync(destination)) return loadCandidate(root, id).manifest;
     capacity(root, policy, bytes(source) + (controls ? bytes(controls) : 0));
-    // Register before copying. A crash leaves an identifiable partial object.
+    journal.allocate(id, { version: 1, id, createdAt: Date.now(), state: 'publishing' });
     staging = destination;
-    mkdirSync(staging, { mode: 0o700 });
-    atomicJson(join(staging, 'owner.json'), { version: 1, id, createdAt: Date.now(), state: 'publishing' });
+    fault('publication-owner-ready', { id });
     copy(source, join(staging, 'artifact'));
     if (controls) {
       copy(controls, join(staging, 'controls'));
@@ -68,12 +70,13 @@ export function publishCandidate(root, source, inputs, policy, controls) {
     atomicJson(join(staging, 'owner.json'), { version: 1, id, createdAt: manifest.createdAt, state: 'published' });
     return manifest;
   } catch (error) {
-    if (staging) rmSync(staging, { recursive: true, force: true });
+    if (staging) journal.retire(staging.slice(root.length + 1));
     throw error;
-  } finally { unlock(); }
+  } finally { journal?.close(); unlock(); }
 }
 export function loadCandidate(root, id) {
   canonical(root); identifier(id);
+  assertCandidateAvailable(root, id);
   const directory = canonical(join(root, id));
   const manifest = validateCandidate(readJson(join(directory, 'manifest.json')));
   if (manifest.id !== id || readJson(join(directory, 'owner.json')).state !== 'published' ||
@@ -115,21 +118,23 @@ export function requireGate(root, id, name, expected) {
       Object.entries(expected).some(([key, value]) => evidence[key] !== value)) throw new Error('Required candidate gate is missing or stale');
   return evidence;
 }
-export function collectCandidates(root, { maxAgeMs, protectedIds = [] }, now = Date.now()) {
+export function collectCandidates(root, { maxAgeMs, protectedIds = [] }, now = Date.now(), fault = () => {}) {
   canonical(root);
   if (!Number.isSafeInteger(maxAgeMs) || maxAgeMs < 0) throw new Error('Invalid candidate retention');
   const unlock = lock(join(root, '.registry.lock'));
-  const removed = [];
+  let journal;
   try {
+    journal = registryJournal(root, fault);
+    const removed = journal.recover(protectedIds);
     for (const id of readdirSync(root)) {
-      if (!/^[a-f0-9]{64}$/.test(id) || protectedIds.includes(id)) continue;
+      if (!/^[a-f0-9]{64}$/.test(id) || protectedIds.includes(id) || journal.pending(id)) continue;
       const directory = canonical(join(root, id));
       const owner = readJson(join(directory, 'owner.json'));
       if (owner.id !== id || !Number.isSafeInteger(owner.createdAt)) throw new Error('Unknown candidate ownership');
       const consumers = join(directory, 'consumers');
       if (existsSync(consumers) && readdirSync(consumers).length || now - owner.createdAt < maxAgeMs) continue;
-      rmSync(directory, { recursive: true }); removed.push(id);
+      journal.retire(id); removed.push(id);
     }
     return removed;
-  } finally { unlock(); }
+  } finally { journal?.close(); unlock(); }
 }
