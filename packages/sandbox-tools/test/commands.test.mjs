@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+// Unit command fixtures must not inherit the parent's installed CI importer.
+delete process.env.PUDDLES_CI_DOCKER_IMPORT;
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

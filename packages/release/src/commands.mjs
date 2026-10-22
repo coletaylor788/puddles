@@ -16,14 +16,22 @@ export async function command(specification, context = {}, observe = () => {}) {
   validateCommand(specification);
   const started = Date.now();
   const scope = createProcessScope();
+  // CI diagnostics live only in the bounded local transaction record. Do not
+  // print command arguments/environment or create an unbounded service log.
+  const capture = Boolean(context.PUDDLES_CI_RUN);
+  const tails = { stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) };
   let prepared;
   try { prepared = prepareOwnedProcess(specification.command, specification.args, {
-    cwd: specification.cwd, env: { ...process.env, ...specification.env, ...context }, stdio: 'inherit',
+    cwd: specification.cwd, env: { ...process.env, ...specification.env, ...context }, stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
   }, [scope]); } catch (error) {
     error.message += `; retained process scope: ${scope}`;
     throw error;
   }
   const { child } = prepared;
+  const closed = new Promise(resolve => child.once('close', resolve));
+  if (capture) for (const name of ['stdout', 'stderr']) child[name].on('data', chunk => {
+    tails[name] = Buffer.concat([tails[name], chunk]).subarray(-8192);
+  });
   try { if (child.pid) observe({ pid: child.pid, start: prepared.start, scope }); }
   catch (error) { prepared.abort(); await killAndWait(child.pid, new Map(), scope); throw error; }
   let expired = false;
@@ -43,20 +51,29 @@ export async function command(specification, context = {}, observe = () => {}) {
   let interruptTimer;
   const interrupt = () => { expired = true; terminate(); interruptTimer ??= setTimeout(() => killGroup(child.pid), 3000); };
   process.once('SIGINT', interrupt); process.once('SIGTERM', interrupt);
+  let failure;
   try {
     await Promise.race([signalFailure, new Promise((resolve, reject) => {
       child.once('error', reject);
       child.once('exit', (code, signal) => code === 0 && !expired ? resolve() : reject(Object.assign(new Error(`Command failed (${expired ? 'timeout/interruption' : signal ?? code}): ${specification.command}`), { exitCode: code })));
       try { prepared.release(); } catch (error) { prepared.abort(); reject(error); }
     })]);
-  } finally {
+  } catch (error) { failure = error; } finally {
     clearTimeout(timer); clearTimeout(killTimer); clearTimeout(interruptTimer);
     process.removeListener('SIGINT', interrupt); process.removeListener('SIGTERM', interrupt);
     // A command may not leave a detached writer behind when it reports completion.
     await killAndWait(child.pid, descendants, scope);
+    if (capture) await closed;
     observe(null);
     retireProcessScope(scope);
     console.log(JSON.stringify({ phase: context.PUDDLES_RELEASE_PHASE, durationMs: Date.now() - started }));
+  }
+  if (failure) {
+    if (capture) for (const name of ['stdout', 'stderr']) {
+      const tail = tails[name].toString('utf8').trim();
+      if (tail) failure.message += `\n${name} tail (at most 8192 bytes):\n${tail}`;
+    }
+    throw failure;
   }
 }
 function killGroup(pid) {

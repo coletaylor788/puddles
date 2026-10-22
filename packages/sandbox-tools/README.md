@@ -39,3 +39,17 @@ macOS application build does not select a Docker sandbox. DEV and TEST must
 select the exact image ID and run the same installed checks. Before production,
 retain the previous image identity for rollback. The release controller owns
 activation, acceptance, source merge, and recovery. Never build during activation.
+
+A CI host can set `PUDDLES_SANDBOX_BUILDER` to its explicitly owned
+`puddles-ci-*` Buildx builder. This path requires the `docker-container` driver
+and exports an untagged Docker archive directly, without loading it into the
+daemon. The builder owner must serialize builds, enforce cache/free-space
+budgets, and maintain the builder. The artifact records its builder and archive
+identity, and incompatible cached archives rebuild automatically.
+
+`PUDDLES_CI_DOCKER_IMPORT` can bind an installed lifecycle adapter using JSON
+absolute `node`, `script` and `config` paths. Installed load/test operations call
+that adapter with `load`, `test` or `test-existing`, the configuration path, and
+the runtime. The adapter owns durable image/container registration, interruption
+recovery and reference-aware retirement. Without this binding, the ordinary
+direct Docker commands remain available.
