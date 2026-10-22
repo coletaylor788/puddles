@@ -200,3 +200,20 @@ for (const mode of ['dev', 'prod']) test(`killed ${mode} CI worker recovers owne
   assert.equal(readFileSync(join(f.root, 'prod/version'), 'utf8'), 'prod');
   assert.equal(readQueue(f.config.controller.root).active, null);
 });
+
+
+test('DEV failure retains its callback phase after successful teardown', async t => {
+  const f = fixture(t); f.request('failed-phase');
+  const result = await executeCI(f.config, 'failed-phase', async (cmd, env) => {
+    assert.equal(readJson(join(f.config.runs, 'failed-phase.json')).phase, env.PUDDLES_RELEASE_PHASE);
+    if (cmd.env.ACTION === 'dev-health') throw new Error('exact health failure');
+    return f.execute(cmd, env);
+  });
+  assert.equal(result.status, 'failed');
+  assert.equal(result.phase, 'complete');
+  assert.equal(result.failurePhase, 'dev-health');
+  assert.equal(result.error, 'exact health failure');
+  assert.equal(result.child, null);
+  assert.equal(existsSync(f.config.dev.runtime), false);
+  assert.equal(existsSync(join(f.config.runs, '.dev-owner.json')), false);
+});

@@ -84,9 +84,15 @@ export async function executeCI(config, id, execute = command) {
   const save = patch => { state = { ...state, ...patch, updatedAt: Date.now() }; atomicJson(path, state); };
   const event = (status, patch = {}) => save({ ...patch, events: state.events.at(-1)?.status === status ? state.events :
     [...state.events, { id: `${id}:${state.events.length}`, status, at: Date.now() }] });
+  const executeObserved = async (spec, env, observe) => {
+    const phase = env.PUDDLES_RELEASE_PHASE;
+    save({ phase });
+    try { return await execute(spec, env, observe); }
+    catch (error) { save({ failurePhase: phase, error: error.message }); throw error; }
+  };
   const run = (spec, phase) => {
     save({ phase });
-    return execute(spec, { PUDDLES_CI_RUN: id, PUDDLES_CI_MODE: state.mode, PUDDLES_CI_CANDIDATE: state.candidate,
+    return executeObserved(spec, { PUDDLES_CI_RUN: id, PUDDLES_CI_MODE: state.mode, PUDDLES_CI_CANDIDATE: state.candidate,
       PUDDLES_CI_REGISTRY: config.registry, PUDDLES_CI_RUNS: config.runs, PUDDLES_RELEASE_PHASE: phase,
       PUDDLES_RELEASE_ID: id, PUDDLES_RELEASE_WORKSPACE: join(config.registry, state.candidate),
       PUDDLES_RELEASE_ARTIFACT: join(config.registry, state.candidate, 'artifact') }, child => save({ child }));
@@ -129,7 +135,7 @@ export async function executeCI(config, id, execute = command) {
           preflight: config.preflight, applicationTests: config.applicationTests, merge: config.merge,
         }, config.dev, (spec, env) => {
           if (existsSync(join(config.runs, id + '.cancel.json'))) throw new Error('cancelled');
-          return execute(spec, { ...env, ...common }, child => save({ child }));
+          return executeObserved(spec, { ...env, ...common }, child => save({ child }));
         });
         if (existsSync(join(config.runs, id + '.cancel.json'))) throw new Error('cancelled');
         outcome = 'passed';
@@ -159,7 +165,7 @@ export async function executeCI(config, id, execute = command) {
           const phase = env.PUDDLES_RELEASE_PHASE;
           if (existsSync(join(config.runs, id + '.cancel.json')) &&
               !/^(restore-|recover-|backup-restart)/.test(phase) && phase !== 'resume-intake' && phase !== 'resume-health') throw new Error('cancelled');
-          return execute(spec, { ...env, ...common }, observe);
+          return executeObserved(spec, { ...env, ...common }, observe);
         };
         const result = await runNext(config.controller, guardedExecute, { recover: cancel, toolHash: config.toolDigest });
         if (result.status === 'merge-pending') {

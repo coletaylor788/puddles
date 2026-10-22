@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { archiveImage } from './archive.mjs';
 
 const component = dirname(fileURLToPath(import.meta.url));
 export function componentDigest(root = component) {
@@ -18,25 +19,39 @@ export function componentDigest(root = component) {
   }
   visit(root); return hash.digest('hex');
 }
-export function prepareSandboxTools(output, docker = process.env.PUDDLES_DOCKER ?? 'docker') {
+export function prepareSandboxTools(output, docker = process.env.PUDDLES_DOCKER ?? 'docker', execute = execFileSync) {
   output = resolve(output);
   const cache = output + '.sandbox-tools';
+  const builder = process.env.PUDDLES_SANDBOX_BUILDER;
   const source = componentDigest();
-  const platform = execFileSync(docker,['info','--format','{{.OSType}}/{{.Architecture}}'],{encoding:'utf8',timeout:30000}).trim();
+  const platform = execute(docker,['info','--format','{{.OSType}}/{{.Architecture}}'],{encoding:'utf8',timeout:30000}).trim();
   const marker = join(cache,'manifest.json');
   let prior;
   if (existsSync(marker)) prior=JSON.parse(readFileSync(marker,'utf8'));
-  if (prior?.source !== source || prior?.platform !== platform || !existsSync(join(cache,'image.tar'))) {
+  if (prior?.source !== source || prior?.platform !== platform || prior?.builder !== builder || !existsSync(join(cache,'image.tar'))) {
     mkdirSync(cache,{recursive:true});
-    const tag = 'puddles-sandbox-media:' + source.slice(0,16);
-    execFileSync(docker,['build','--provenance=false','--tag',tag,component],{stdio:'inherit',timeout:60*60_000});
-    const image = execFileSync(docker,['image','inspect','--format','{{.Id}}',tag],{encoding:'utf8',timeout:30000}).trim();
-    if (!/^sha256:[a-f0-9]{64}$/.test(image)) throw new Error('Invalid sandbox image identity');
     const temporary = join(cache,'image.tar.tmp');
-    execFileSync(docker,['image','save','--output',temporary,tag],{stdio:'inherit',timeout:300000});
+    let image, configDigest;
+    if (builder) {
+      if (!/^puddles-ci-[a-z0-9-]{1,48}$/.test(builder)) throw new Error('Invalid dedicated CI builder');
+      const inspection = execute(docker,['buildx','inspect',builder],{encoding:'utf8',timeout:30000});
+      if (!/^Driver:\s+docker-container\s*$/m.test(inspection)) throw new Error('CI requires a dedicated docker-container builder');
+      const metadata = join(cache,'build-metadata.json');
+      execute(docker,['buildx','build','--builder',builder,'--provenance=false','--output','type=docker,dest='+temporary,'--metadata-file',metadata,component],{stdio:'inherit',timeout:60*60_000});
+      const result = JSON.parse(readFileSync(metadata,'utf8'));
+      image = result['containerimage.digest']; configDigest = result['containerimage.config.digest'];
+      if (archiveImage(temporary,{untagged:true,containerd:true}) !== image || archiveImage(temporary,{untagged:true}) !== configDigest) throw new Error('Exported sandbox image differs from build metadata');
+      rmSync(metadata);
+    } else {
+      const tag = 'puddles-sandbox-media:' + source.slice(0,16);
+      execute(docker,['build','--provenance=false','--tag',tag,component],{stdio:'inherit',timeout:60*60_000});
+      image = execute(docker,['image','inspect','--format','{{.Id}}',tag],{encoding:'utf8',timeout:30000}).trim();
+      execute(docker,['image','save','--output',temporary,tag],{stdio:'inherit',timeout:300000});
+    }
+    if (!/^sha256:[a-f0-9]{64}$/.test(image)) throw new Error('Invalid sandbox image identity');
     renameSync(temporary,join(cache,'image.tar'));
     const archiveSha256=createHash('sha256').update(readFileSync(join(cache,'image.tar'))).digest('hex');
-    prior={version:1,source,platform,image,archiveSha256};
+    prior={version:1,source,platform,image,archiveSha256,...(builder ? {builder,untagged:true,configDigest} : {})};
     writeFileSync(marker,JSON.stringify(prior,null,2)+'\n');
   }
   const digest=createHash('sha256').update(readFileSync(join(cache,'image.tar'))).digest('hex');

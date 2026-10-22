@@ -3,6 +3,15 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isAbsolute } from 'node:path';
+
+function managed(action, runtime, execute) {
+  if (!process.env.PUDDLES_CI_DOCKER_IMPORT) return null;
+  const binding = JSON.parse(process.env.PUDDLES_CI_DOCKER_IMPORT);
+  if (![binding.node,binding.script,binding.config].every(value => typeof value === 'string' && isAbsolute(value))) throw new Error('Invalid installed CI Docker adapter');
+  execute(binding.node,[binding.script,action,binding.config,resolve(runtime)],{stdio:'inherit',timeout:1300000});
+  return sandboxManifest(runtime);
+}
 
 export function sandboxManifest(runtime) {
   const directory=join(resolve(runtime),'sandbox-tools');
@@ -13,6 +22,7 @@ export function sandboxManifest(runtime) {
   return manifest;
 }
 export function loadSandbox(runtime,docker=process.env.PUDDLES_DOCKER ?? 'docker',execute=execFileSync) {
+  const result=managed('load',runtime,execute); if(result) return result;
   const manifest=sandboxManifest(runtime);
   execute(docker,['image','load','--input',join(runtime,'sandbox-tools/image.tar')],{stdio:'inherit',timeout:300000});
   const actual=execute(docker,['image','inspect','--format','{{.Id}}',manifest.image],{encoding:'utf8',timeout:30000}).trim();
@@ -20,6 +30,7 @@ export function loadSandbox(runtime,docker=process.env.PUDDLES_DOCKER ?? 'docker
   return manifest;
 }
 export function testSandbox(runtime,docker=process.env.PUDDLES_DOCKER ?? 'docker',execute=execFileSync,{load=true}={}) {
+  const result=managed(load?'test':'test-existing',runtime,execute); if(result) return result;
   const manifest=load ? loadSandbox(runtime,docker,execute) : sandboxManifest(runtime);
   // A fresh, unprivileged, network-disabled container exercises the installed
   // image without reading user files or mutating an existing agent container.
