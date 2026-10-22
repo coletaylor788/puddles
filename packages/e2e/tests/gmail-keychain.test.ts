@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 
 const execFileAsync = promisify(execFile);
+const python = process.env.GMAIL_MCP_PYTHON ?? "python3";
 const repoRoot = resolve(import.meta.dirname, "..", "..", "..");
 const tempRoots: string[] = [];
 
@@ -113,7 +114,7 @@ keychain.write_token(second)
 assert keychain.read_token() == second
 `;
 
-    await execFileAsync("python3", ["-c", probe], {
+    await execFileAsync(python, ["-c", probe], {
       env: {
         ...process.env,
         FAKE_SECURITY_LOG: fixture.log,
@@ -149,7 +150,7 @@ else:
     raise AssertionError("expected malformed credential error")
 `;
 
-    await execFileAsync("python3", ["-c", probe], {
+    await execFileAsync(python, ["-c", probe], {
       env: {
         ...process.env,
         FAKE_SECURITY_LOG: fixture.log,
@@ -177,7 +178,7 @@ else:
     raise AssertionError("expected a bounded Keychain timeout")
 `;
 
-    const { stdout } = await execFileAsync("python3", ["-c", probe], {
+    const { stdout } = await execFileAsync(python, ["-c", probe], {
       env: {
         ...process.env,
         FAKE_SECURITY_LOG: fixture.log,
